@@ -16,6 +16,7 @@ def test_rpc_serve_help_returns_zero_and_lists_stdio(capsys):
     assert rc == 0
     assert "--stdio" in out
     assert "--persistent-db" in out
+    assert "--agent" not in out
 
 
 def test_rpc_serve_requires_stdio(capsys):

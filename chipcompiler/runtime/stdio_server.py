@@ -123,15 +123,9 @@ def _read_chunk(input_stream: BinaryIO) -> bytes:
     return input_stream.read(8192)
 
 
-def main(*, persistent_db_enabled: bool = False, agent_enabled: bool = False) -> int:
-    server = RuntimeServer(persistent_db_enabled=persistent_db_enabled)
-    if agent_enabled:
-        from agent.server import AgentRuntimeServer
-
-        server = AgentRuntimeServer(persistent_db_enabled=persistent_db_enabled)
+def main(*, persistent_db_enabled: bool = False) -> int:
     return run_stdio_server(
         sys.stdin.buffer,
         sys.stdout.buffer,
-        server=server,
         persistent_db_enabled=persistent_db_enabled,
     )

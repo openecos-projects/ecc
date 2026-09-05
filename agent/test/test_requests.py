@@ -201,24 +201,19 @@ def test_candidate_rerun_rejects_a_multi_knob_patch_as_an_invalid_request():
     }
 
 
-def test_agent_rpc_cli_is_explicitly_opt_in():
+def test_agent_rpc_uses_dedicated_entrypoint():
     def request(method: str, request_id: int, params: dict | None = None) -> bytes:
         payload = {"jsonrpc": "2.0", "method": method, "id": request_id}
         if params is not None:
             payload["params"] = params
         return encode_content_length_frame(json.dumps(payload, separators=(",", ":")))
 
-    def capabilities(*, agent_enabled: bool) -> list[str]:
+    def capabilities() -> list[str]:
         command = [
             sys.executable,
             "-m",
-            "chipcompiler.cli.main",
-            "rpc",
-            "serve",
-            "--stdio",
+            "agent.rpc_server",
         ]
-        if agent_enabled:
-            command.append("--agent")
         completed = subprocess.run(
             command,
             input=request("rpc.hello", 1, {"version": 1}) + request("rpc.shutdown", 2),
@@ -230,5 +225,4 @@ def test_agent_rpc_cli_is_explicitly_opt_in():
         assert completed.returncode == 0, completed.stderr.decode("utf-8", errors="replace")
         return responses[0]["result"]["capabilities"]
 
-    assert "candidate.rerun" not in capabilities(agent_enabled=False)
-    assert "candidate.rerun" in capabilities(agent_enabled=True)
+    assert "candidate.rerun" in capabilities()

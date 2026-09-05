@@ -10,7 +10,6 @@ class TestPackaging:
         with open(pyproject, "rb") as f:
             data = tomllib.load(f)
         assert data["project"]["scripts"]["ecc"] == "chipcompiler.cli.main:main"
-        assert set(data["project"]["scripts"]) == {"ecc"}
 
     def test_pyinstaller_spec_collects_jsonrpcserver_data_files(self):
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))

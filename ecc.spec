@@ -254,7 +254,19 @@ a = Analysis(
     noarchive=False,
 )
 
+agent_a = Analysis(
+    [str(ECC_DIR / "agent" / "rpc_server.py")],
+    pathex=[str(ECC_DIR)],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
+    hookspath=[str(HOOKS_DIR)],
+    excludes=EXCLUDES,
+    noarchive=False,
+)
+
 pyz = PYZ(a.pure, a.zipped_data)
+agent_pyz = PYZ(agent_a.pure, agent_a.zipped_data)
 
 if BUNDLE_MODE == "onedir":
     exe = EXE(
@@ -268,12 +280,27 @@ if BUNDLE_MODE == "onedir":
         console=True,
         codesign_identity=CODESIGN_IDENTITY,
     )
+    agent_exe = EXE(
+        agent_pyz,
+        agent_a.scripts,
+        [],
+        exclude_binaries=True,
+        name="ecc-agent-rpc",
+        strip=False,
+        upx=False,
+        console=True,
+        codesign_identity=CODESIGN_IDENTITY,
+    )
 
     coll = COLLECT(
         exe,
+        agent_exe,
         a.binaries,
+        agent_a.binaries,
         a.zipfiles,
+        agent_a.zipfiles,
         a.datas,
+        agent_a.datas,
         strip=False,
         upx=False,
         name="ecc",
@@ -287,6 +314,19 @@ else:
         a.datas,
         [],
         name="ecc",
+        strip=False,
+        upx=True,
+        console=True,
+        codesign_identity=CODESIGN_IDENTITY,
+    )
+    agent_exe = EXE(
+        agent_pyz,
+        agent_a.scripts,
+        agent_a.binaries,
+        agent_a.zipfiles,
+        agent_a.datas,
+        [],
+        name="ecc-agent-rpc",
         strip=False,
         upx=True,
         console=True,
