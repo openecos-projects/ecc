@@ -809,9 +809,7 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
     if not rtl_files or not sdc_files:
         raise RuntimeApiError("command_failed", "candidate input fingerprints are unavailable")
     try:
-        parameters = json.loads((root / "home" / "parameters.json").read_text(encoding="utf-8"))
-        pdk_root = Path(parameters["PDK Root"])
-        tech_lef = pdk_root / "prtech" / "techLEF" / "N551P6M_ecos.lef"
+        tech_lef = Path(getattr(getattr(workspace, "pdk", None), "tech", None))
         pdk_sha256 = f"sha256:{sha256(tech_lef.read_bytes()).hexdigest()}"
         lef_text = tech_lef.read_text(encoding="utf-8")
         units_match = re.search(r"DATABASE\s+MICRONS\s+(\d+)", lef_text, re.IGNORECASE)

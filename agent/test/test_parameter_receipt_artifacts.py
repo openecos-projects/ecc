@@ -170,6 +170,30 @@ def test_parameter_receipt_context_aggregates_all_rtl_and_sdc_files(tmp_path: Pa
     )
 
 
+def test_parameter_receipt_context_uses_loaded_pdk_tech_without_legacy_json(
+    tmp_path: Path,
+) -> None:
+    workspace, _ = _materialized_workspace(
+        tmp_path,
+        candidate_id="candidate-canonical-config",
+        knob_id="place.target_density",
+        before=0.5,
+        written=0.85,
+    )
+    (tmp_path / "home" / "parameters.json").unlink()
+    request = SimpleNamespace(
+        candidate_id="candidate-canonical-config",
+        target_step="place",
+        patch=[{"knob_id": "place.target_density", "value": 0.85}],
+        seed=17,
+    )
+
+    context = _parameter_receipt_context(workspace, request, HASH)
+
+    assert context["pdk_sha256"] == sha256_path(workspace.pdk.tech)
+    assert context["site_width_dbu"] == 200
+
+
 def test_cell_padding_receipt_preserves_surface_site_value(tmp_path: Path, monkeypatch) -> None:
     workspace, materialization = _materialized_workspace(
         tmp_path,
