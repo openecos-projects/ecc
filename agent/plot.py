@@ -44,3 +44,11 @@ class AgentECCToolsPlot(ECCToolsPlot):
         if _is_candidate_workspace(self.workspace):
             return True
         return super().plot()
+
+    def plot_array_maps(self, input_paths: list[str]) -> None:
+        if _is_candidate_workspace(self.workspace):
+            return
+        if os.environ.get("ECOS_AGENT_SKIP_DISPLAY_PLOTS") == "1":
+            plot_array_maps(input_paths, self.workspace.logger.warning)
+            return
+        super().plot_array_maps(input_paths)

@@ -30,6 +30,21 @@ def test_agent_plotter_skips_all_display_plots_for_candidate_workspaces(monkeypa
     assert ecc_runner.ECCToolsPlot is AgentECCToolsPlot
 
 
+def test_agent_plotter_uses_headless_display_helper_only_when_requested(monkeypatch, tmp_path):
+    calls = []
+    ordinary = SimpleNamespace(
+        directory=tmp_path / "ordinary",
+        logger=SimpleNamespace(warning=lambda message: calls.append(message)),
+    )
+    monkeypatch.setenv("ECOS_AGENT_SKIP_DISPLAY_PLOTS", "1")
+    monkeypatch.setattr("agent.plot.plot_array_maps", lambda paths, warn: calls.append(paths))
+    monkeypatch.setattr(ECCToolsPlot, "plot_array_maps", lambda *_args: calls.append("default"))
+
+    AgentECCToolsPlot(ordinary, SimpleNamespace()).plot_array_maps(["map.csv"])
+
+    assert calls == [["map.csv"]]
+
+
 class _Scalar:
     def __init__(self, value):
         self.value = value
