@@ -700,10 +700,11 @@ def test_copy_rcx_spef_outputs_fails_when_declared_spef_source_is_missing(tmp_pa
 
     assert ecc_runner.copy_rcx_spef_outputs(workspace, step) is False
     assert not (output_dir / "missing.spef").exists()
+    assert not (output_dir / "present.spef").exists()
     assert step.output.spef == [output_dir / "missing.spef"]
 
 
-def test_copy_rcx_spef_outputs_fails_when_published_spef_is_zero_byte(tmp_path):
+def test_copy_rcx_spef_outputs_fails_when_source_spef_is_zero_byte(tmp_path):
     data_dir = tmp_path / "RCX_ecc" / "data"
     output_dir = tmp_path / "RCX_ecc" / "output"
     spef_writer = data_dir / "spef_writer"
@@ -717,8 +718,56 @@ def test_copy_rcx_spef_outputs_fails_when_published_spef_is_zero_byte(tmp_path):
     workspace = Workspace(directory=tmp_path, logger=FakeLogger())
 
     assert ecc_runner.copy_rcx_spef_outputs(workspace, step) is False
-    assert (output_dir / "empty.spef").read_text(encoding="utf-8") == ""
+    assert not (output_dir / "empty.spef").exists()
     assert step.output.spef == [output_dir / "empty.spef"]
+
+
+def test_copy_rcx_spef_outputs_fails_and_keeps_stale_destination_when_source_missing(tmp_path):
+    data_dir = tmp_path / "RCX_ecc" / "data"
+    output_dir = tmp_path / "RCX_ecc" / "output"
+    spef_writer = data_dir / "spef_writer"
+    spef_writer.mkdir(parents=True)
+    (spef_writer / "good.spef").write_text("*SPEF\nfresh\n", encoding="utf-8")
+    stale_destination = output_dir / "missing.spef"
+    output_dir.mkdir(parents=True)
+    stale_destination.write_text("*SPEF\nstale\n", encoding="utf-8")
+    spef_outputs = [output_dir / "good.spef", stale_destination]
+    step = EccStep(
+        name=StepEnum.RCX.value,
+        data=EccData(dir=data_dir),
+        output=EccOutput(dir=output_dir, spef=spef_outputs),
+    )
+    workspace = Workspace(directory=tmp_path, logger=FakeLogger())
+
+    assert ecc_runner.copy_rcx_spef_outputs(workspace, step) is False
+
+    assert stale_destination.read_text(encoding="utf-8") == "*SPEF\nstale\n"
+    assert not (output_dir / "good.spef").exists()
+    assert step.output.spef is spef_outputs
+    assert step.output.spef == [output_dir / "good.spef", stale_destination]
+
+
+def test_copy_rcx_spef_outputs_fails_without_partial_copy_when_one_source_is_empty(tmp_path):
+    data_dir = tmp_path / "RCX_ecc" / "data"
+    output_dir = tmp_path / "RCX_ecc" / "output"
+    spef_writer = data_dir / "spef_writer"
+    spef_writer.mkdir(parents=True)
+    (spef_writer / "good.spef").write_text("*SPEF\n", encoding="utf-8")
+    (spef_writer / "empty.spef").write_text("", encoding="utf-8")
+    spef_outputs = [output_dir / "good.spef", output_dir / "empty.spef"]
+    step = EccStep(
+        name=StepEnum.RCX.value,
+        data=EccData(dir=data_dir),
+        output=EccOutput(dir=output_dir, spef=spef_outputs),
+    )
+    workspace = Workspace(directory=tmp_path, logger=FakeLogger())
+
+    assert ecc_runner.copy_rcx_spef_outputs(workspace, step) is False
+
+    assert not (output_dir / "good.spef").exists()
+    assert not (output_dir / "empty.spef").exists()
+    assert step.output.spef is spef_outputs
+    assert step.output.spef == [output_dir / "good.spef", output_dir / "empty.spef"]
 
 
 def _make_rcx_step(tmp_path):
