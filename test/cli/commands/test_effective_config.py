@@ -631,7 +631,16 @@ class TestManifestBoolTypeSafety:
     while values an ecc.toml/--set override makes inert surface as divergence
     warnings instead of errors."""
 
-    def _hybrid_toml(self, project_dir, *, params="", design_freq=None, preset=None, flow_extra=""):
+    def _hybrid_toml(
+        self,
+        project_dir,
+        *,
+        params="",
+        design_freq=None,
+        preset=None,
+        flow_extra="",
+        extra_sections="",
+    ):
         design = '[design]\nname = "gcd"\ntop = "gcd"\nrtl = ["rtl/gcd.v"]\nclock_port = "clk"\n'
         if design_freq is not None:
             design += f"frequency_mhz = {design_freq}\n"
@@ -643,14 +652,18 @@ class TestManifestBoolTypeSafety:
             text += flow_extra
         if params:
             text += f"\n[params.flow]\n{params}\n"
-        return text
+        return text + extra_sections
 
-    def _run_toml(self, project_dir, *, params="", design_freq=None):
+    def _run_toml(self, project_dir, *, params="", design_freq=None, extra_sections=""):
         # A run needs a derivable preset; the entry range is pinned to the
         # preset's manifest range so the flow-range divergence stays out of
         # the way of the parameter divergences under test.
         return self._hybrid_toml(
-            project_dir, params=params, design_freq=design_freq, preset="rtl2gds"
+            project_dir,
+            params=params,
+            design_freq=design_freq,
+            preset="rtl2gds",
+            extra_sections=extra_sections,
         )
 
     _PRESET_RANGE = {"start_step": "Synth", "end_step": "PostRouteLEC"}
@@ -875,6 +888,133 @@ class TestManifestBoolTypeSafety:
             r for r in manifest_stubs.records() if r.get("warning") == "config_layer_diverged"
         ]
         assert not diverged
+
+    def test_run_coerced_bool_reaches_create_workspace(
+        self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs
+    ):
+        project_dir = _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            extra_parameters={"run_analysis": "false"},
+        )
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
+        assert parameters["run_analysis"] is False
+
+    def test_run_set_overrides_invalid_manifest_bool(
+        self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        toml_text = self._run_toml(project_dir)
+        _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            ecc_toml=toml_text,
+            extra_parameters={"run_analysis": "maybe"},
+            entry_extra=self._PRESET_RANGE,
+        )
+
+        rc = cli_main.run(
+            ["run", "--project", str(project_dir), "--set", "flow.run_analysis=false", "--json"]
+        )
+
+        assert rc == 0
+        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
+        assert parameters["run_analysis"] is False
+
+    def test_run_explicit_design_frequency_overrides_invalid_manifest_frequency(
+        self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        toml_text = self._run_toml(project_dir, design_freq=100)
+        _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            "abc",
+            ecc_toml=toml_text,
+            entry_extra=self._PRESET_RANGE,
+        )
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
+        assert parameters["frequency_max"] == 100.0
+
+    def test_run_params_override_supersedes_invalid_manifest_fanout(
+        self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        toml_text = self._run_toml(project_dir, extra_sections="\n[params.cts]\nmax_fanout = 20\n")
+        _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            ecc_toml=toml_text,
+            extra_parameters={"max_fanout": "xyz"},
+            entry_extra=self._PRESET_RANGE,
+        )
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
+        assert parameters["max_fanout"] == 20
+
+    def test_fresh_run_preparation_cleans_up_on_coercion_failure(self, tmp_path, monkeypatch):
+        """Defense-in-depth: a coercion failure past handler validation must
+        not strand the freshly created run directory nor leak ecc-rtl-*
+        temp filelists."""
+        import tempfile
+        from types import SimpleNamespace
+
+        from chipcompiler.cli.project import run_prepare
+        from chipcompiler.cli.project.config import ProjectConfig
+
+        cfg = ProjectConfig(
+            design_name="gcd",
+            design_top="gcd",
+            design_rtl=["rtl/a.v", "rtl/b.v"],
+            design_clock_port="clk",
+            design_frequency_mhz=100.0,
+            pdk_name="ics55",
+            pdk_root=str(tmp_path / "pdk"),
+            flow_preset="rtl2gds",
+            project_dir=str(tmp_path),
+            manifest_parameters={"run_analysis": "maybe"},
+        )
+        run_dir = tmp_path / "ws_bad"
+        run_dir.mkdir()
+        temp_dirs_before = set(Path(tempfile.gettempdir()).glob("ecc-rtl-*"))
+
+        result = run_prepare.execute_fresh_run(
+            SimpleNamespace(),
+            SimpleNamespace(project=None, project_dir=str(tmp_path)),
+            cfg,
+            str(run_dir),
+            "ws_bad",
+            {},
+            None,
+            "manifest",
+            [],
+            workspace_registered=False,
+            owns_target=True,
+        )
+
+        assert result.exit_code == 1
+        assert [r["error"] for r in result.records] == ["config_error"]
+        assert "expected bool for flow.run_analysis" in result.records[0]["reason"]
+        assert not run_dir.exists()
+        assert set(Path(tempfile.gettempdir()).glob("ecc-rtl-*")) == temp_dirs_before
 
 
 class TestManifestFlatGeometryValidation:
