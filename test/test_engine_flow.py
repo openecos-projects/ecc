@@ -25,6 +25,16 @@ from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
 
 
+class CompletionObserver:
+    """Record on_step_completed deliveries for assertions."""
+
+    def __init__(self):
+        self.completed = []
+
+    def on_step_completed(self, _step, state, error=None):
+        self.completed.append((state, error))
+
+
 def test_engine_flow_missing_path_is_not_initialized():
     engine_flow = EngineFlow(Workspace())
 
@@ -607,6 +617,109 @@ class TestStepExceptionForcesIncomplete:
         assert interrupted_step["state"] == StateEnum.Imcomplete.value
         assert interrupted_step["runtime"] == "0:0:0"
         assert interrupted_step["peak memory (mb)"] >= 0
+
+
+class TestRunStepReturnContract:
+    """Regression: a non-success run_step() return must fail the step, never Success."""
+
+    @staticmethod
+    def _make_flow(tmp_path, name, tool, output):
+        workspace = Workspace()
+        workspace.flow.path = tmp_path / "flow.json"
+        flow_data = {"steps": [{"name": name, "tool": tool, "state": "Unstart"}]}
+        workspace.flow.path.write_text(json.dumps(flow_data), encoding="utf-8")
+        engine_flow = EngineFlow(workspace)
+        workspace_step = EccStep(name=name, directory=tmp_path, tool=tool, output=output)
+        engine_flow.workspace_steps = [workspace_step]
+        engine_flow.engine_db = SimpleNamespace(engine=None)
+        return engine_flow, workspace, workspace_step
+
+    @staticmethod
+    def _valid_route_output(tmp_path):
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        for name in ("route.def", "route.v", "route.gds"):
+            (output_dir / name).write_text("content\n", encoding="utf-8")
+        return EccOutput(
+            def_=output_dir / "route.def",
+            verilog=output_dir / "route.v",
+            gds=output_dir / "route.gds",
+        )
+
+    @pytest.mark.parametrize(
+        "returned",
+        [
+            False,
+            None,
+            StateEnum.Imcomplete,
+            StateEnum.Invalid,
+            StateEnum.Pending,
+            StateEnum.Unstart,
+            StateEnum.Ongoing,
+        ],
+    )
+    def test_non_success_return_forces_incomplete(self, monkeypatch, tmp_path, returned):
+        engine_flow, workspace, workspace_step = self._make_flow(
+            tmp_path, "route", "ecc", self._valid_route_output(tmp_path)
+        )
+        observer = CompletionObserver()
+        monkeypatch.setattr(tools, "run_step", lambda **_kwargs: returned)
+        monkeypatch.setattr(tools, "save_layout_image", lambda **_kwargs: True)
+
+        state = engine_flow.run_step(workspace_step, observer=observer)
+
+        assert state == StateEnum.Imcomplete
+        persisted_step = json.loads(workspace.flow.path.read_text(encoding="utf-8"))["steps"][0]
+        assert persisted_step["state"] == StateEnum.Imcomplete.value
+        assert observer.completed == [
+            (
+                StateEnum.Imcomplete,
+                f"route(ecc) reported failure (run_step returned {returned!r}).",
+            )
+        ]
+
+    @pytest.mark.parametrize("returned", [True, StateEnum.Success])
+    def test_success_returns_reach_success(self, monkeypatch, tmp_path, returned):
+        engine_flow, workspace, workspace_step = self._make_flow(
+            tmp_path, "route", "ecc", self._valid_route_output(tmp_path)
+        )
+        observer = CompletionObserver()
+        monkeypatch.setattr(tools, "run_step", lambda **_kwargs: returned)
+        monkeypatch.setattr(tools, "save_layout_image", lambda **_kwargs: True)
+        monkeypatch.setattr(tools, "build_step_metrics", lambda **_kwargs: StepMetrics(data={}))
+
+        state = engine_flow.run_step(workspace_step, observer=observer)
+
+        assert state == StateEnum.Success
+        persisted_step = json.loads(workspace.flow.path.read_text(encoding="utf-8"))["steps"][0]
+        assert persisted_step["state"] == StateEnum.Success.value
+        assert observer.completed == [(StateEnum.Success, None)]
+
+    @pytest.mark.parametrize("returned", [True, StateEnum.Success])
+    def test_sizer_state_enum_return_keeps_success_contract(self, monkeypatch, tmp_path, returned):
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        def_path = output_dir / "sized.def"
+        verilog_path = output_dir / "sized.v"
+        def_path.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n", encoding="utf-8")
+        verilog_path.write_text("module gcd; endmodule\n", encoding="utf-8")
+        engine_flow, workspace, workspace_step = self._make_flow(
+            tmp_path,
+            StepEnum.TIMING_OPT.value,
+            "sizer",
+            EccOutput(def_=def_path, verilog=verilog_path),
+        )
+        observer = CompletionObserver()
+        monkeypatch.setattr(tools, "run_step", lambda **_kwargs: returned)
+        monkeypatch.setattr(tools, "save_layout_image", lambda **_kwargs: True)
+        monkeypatch.setattr(tools, "build_step_metrics", lambda **_kwargs: StepMetrics(data={}))
+
+        state = engine_flow.run_step(workspace_step, observer=observer)
+
+        assert state == StateEnum.Success
+        persisted_step = json.loads(workspace.flow.path.read_text(encoding="utf-8"))["steps"][0]
+        assert persisted_step["state"] == StateEnum.Success.value
+        assert observer.completed == [(StateEnum.Success, None)]
 
 
 class TestCreateStepFailureBreaksChain:
