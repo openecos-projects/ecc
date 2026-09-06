@@ -195,14 +195,16 @@ def build_project_config_items(
 
     # Parameter resolution errors (including ecc.toml [params] parse errors)
     # must not be swallowed: a view that silently shows defaults hides that
-    # the effective values are not what is displayed.
+    # the effective values are not what is displayed. They lead the item list
+    # so the handler's error dispatch sees them first.
     error_records = [
         {"kind": "error", "status": "invalid_config", "reason": err}
         for err in [*resolve_errors, *getattr(cfg, "_param_errors", [])]
     ]
-    items.extend(error_records)
+    if error_records:
+        return [*error_records, *items], 1
 
-    return items, 1 if error_records else 0
+    return items, 0
 
 
 def _load_cli_provenance(run_dir: str) -> tuple[dict[str, object], str | None]:

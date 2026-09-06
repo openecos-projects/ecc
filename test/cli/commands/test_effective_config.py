@@ -986,13 +986,37 @@ class TestManifestResolvedConfigView:
 
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
-        params = {r["key"]: r for r in data["records"] if r.get("kind") == "param"}
-        # An explicit null is present, not absent: it must not display as the
+        # The view's records never leak raw; errors use the standard record
+        # contract, not the view's internal status field. The NoneType reason
+        # proves the explicit null was seen — not silently read as the
         # default True while the runtime value is falsy.
-        assert params["flow.run_analysis"]["value"] is None
-        assert params["flow.run_analysis"]["source"] == "project.json"
-        errors = [r for r in data["records"] if r.get("kind") == "error"]
-        assert any("expected bool for flow.run_analysis" in r["reason"] for r in errors)
+        records = data["records"]
+        assert all(r.get("kind") == "error" for r in records)
+        assert all(r.get("error") == "invalid_config" for r in records)
+        assert any("expected bool for flow.run_analysis" in r["reason"] for r in records)
+
+    def test_config_resolved_text_output_shows_error_reason(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        manifest_stubs.write(
+            project_dir,
+            [manifest_stubs.entry(project_dir, "ws_0001")],
+            base_design={
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v"],
+                "parameters": {"design": "gcd", "frequency_max": 100, "run_analysis": None},
+            },
+        )
+
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+
+        assert rc == 1
+        assert "expected bool for flow.run_analysis" in capsys.readouterr().out
 
     def test_config_resolved_reports_manifest_frequency_type_error(
         self, tmp_path, capsys, monkeypatch, manifest_stubs
@@ -1019,6 +1043,7 @@ class TestManifestResolvedConfigView:
         # The manifest-supplied string must not be masked by a phantom
         # ecc.toml-layer frequency injection.
         errors = [r for r in data["records"] if r.get("kind") == "error"]
+        assert all(r.get("error") == "invalid_config" for r in errors)
         assert any(
             "expected float for design.frequency_mhz, got str" in r["reason"] for r in errors
         )
@@ -1036,4 +1061,5 @@ class TestManifestResolvedConfigView:
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
         errors = [r for r in data["records"] if r.get("kind") == "error"]
+        assert all(r.get("error") == "invalid_config" for r in errors)
         assert any("expected bool for flow.run_analysis" in r["reason"] for r in errors)
