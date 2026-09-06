@@ -132,8 +132,10 @@ def copy_rcx_spef_outputs(workspace: Workspace, step: EccStep) -> bool:
         for output_path in output_paths:
             source_path = spef_writer_dir / output_path.name
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source_path, output_path)
+            # Register before copying: a copy that truncates its destination
+            # and then fails must still be cleaned up.
             written.append(output_path)
+            shutil.copy2(source_path, output_path)
             workspace.logger.info("Copied RCX SPEF %s to %s", source_path, output_path)
 
         for output_path in output_paths:

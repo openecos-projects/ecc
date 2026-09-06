@@ -1,3 +1,4 @@
+import errno
 import json
 import shutil
 from pathlib import Path
@@ -771,7 +772,10 @@ def test_copy_rcx_spef_outputs_fails_without_partial_copy_when_one_source_is_emp
     assert step.output.spef == [output_dir / "good.spef", output_dir / "empty.spef"]
 
 
-def test_copy_rcx_spef_outputs_cleans_partial_publication_when_a_copy_fails(tmp_path, monkeypatch):
+@pytest.mark.parametrize("partial_content", ["", "*SPEF\ntrunc"])
+def test_copy_rcx_spef_outputs_cleans_partial_publication_when_a_copy_fails(
+    tmp_path, monkeypatch, partial_content
+):
     data_dir = tmp_path / "RCX_ecc" / "data"
     output_dir = tmp_path / "RCX_ecc" / "output"
     spef_writer = data_dir / "spef_writer"
@@ -788,8 +792,10 @@ def test_copy_rcx_spef_outputs_cleans_partial_publication_when_a_copy_fails(tmp_
     real_copy2 = shutil.copy2
 
     def fail_second_copy(source, destination, **kwargs):
-        if Path(destination).name == "b.spef":
-            raise OSError("disk full")
+        destination = Path(destination)
+        if destination.name == "b.spef":
+            destination.write_text(partial_content, encoding="utf-8")
+            raise OSError(errno.ENOSPC, "No space left on device")
         return real_copy2(source, destination, **kwargs)
 
     monkeypatch.setattr(ecc_runner.shutil, "copy2", fail_second_copy)
