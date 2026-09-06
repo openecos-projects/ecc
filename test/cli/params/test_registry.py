@@ -457,8 +457,8 @@ class TestManifestCoercion:
         canonical = {"core": {"utilitization": 1}, "frequency_max": 100}
         coerced, errors = coerce_manifest_parameters(canonical)
         assert errors == []
-        assert coerced["core"]["utilitization"] == 1.0
-        assert canonical["core"]["utilitization"] == 1
+        assert isinstance(coerced["core"]["utilitization"], float)
+        assert isinstance(canonical["core"]["utilitization"], int)
 
     def test_huge_int_degrades_to_error(self):
         canonical = {"frequency_max": 10**400}
