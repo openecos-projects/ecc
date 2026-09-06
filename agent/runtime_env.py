@@ -1,6 +1,7 @@
 """Process environment preparation for the opt-in Agent runtime."""
 
 import os
+import subprocess
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -11,6 +12,10 @@ _SIZER_EXECUTABLES = (
     Path("build") / "Sizer",
     Path("Sizer"),
 )
+
+
+class SizerRuntimePreflightError(RuntimeError):
+    pass
 
 
 def _packaged_sizer_executable() -> Path | None:
@@ -38,6 +43,39 @@ def prepare_agent_runtime_environment() -> None:
     path_entries = os.environ.get("PATH", "").split(os.pathsep)
     if binary_dir not in path_entries:
         os.environ["PATH"] = os.pathsep.join((binary_dir, *filter(None, path_entries)))
+
+
+def preflight_sizer_runtime(timeout_seconds: float = 5.0) -> None:
+    from chipcompiler.tools.ecc_sizer.utility import get_sizer_command, is_sizer_runtime_exist
+
+    command = get_sizer_command()
+    if not command or not is_sizer_runtime_exist():
+        raise SizerRuntimePreflightError("Sizer runtime is unavailable")
+
+    env = os.environ.copy()
+    env.pop("LD_LIBRARY_PATH", None)
+    env.pop("LD_PRELOAD", None)
+    try:
+        result = subprocess.run(
+            [*command, "-env", os.devnull, "-f", os.devnull],
+            capture_output=True,
+            check=False,
+            env=env,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise SizerRuntimePreflightError("Sizer runtime preflight failed") from exc
+    if result.returncode != 0:
+        detail = next(
+            (
+                line.strip()
+                for line in (*result.stderr.splitlines(), *result.stdout.splitlines())
+                if line
+            ),
+            "unknown startup failure",
+        )
+        raise SizerRuntimePreflightError(f"Sizer runtime preflight failed: {detail[:512]}")
 
 
 @contextmanager

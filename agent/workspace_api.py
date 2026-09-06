@@ -40,6 +40,7 @@ from .requests import (
     CandidateResumeRequest,
     WorkspaceExtractFoundationRequest,
 )
+from .runtime_env import preflight_sizer_runtime
 
 
 def _stable_hash(value) -> str:
@@ -152,27 +153,35 @@ class FlowAgentRuntimeApi:
         return candidate_resume(self, request)
 
     def _candidate_rerun(self, session, request: CandidateRerunRequest, observer) -> dict:
-        candidate_workspace, candidate_root_ref, parent = _create_candidate_workspace(
-            self.ecc_api,
-            session.workspace,
-            request.candidate_id,
-            request.parent_candidate_root_ref,
-            request.target_step,
-        )
+        candidate_workspace = None
+        candidate_root_ref = None
+        parent = None
         flow = None
         try:
+            preflight_done = self._preflight_candidate_rerun_before_clone(
+                session.workspace, request
+            )
+            candidate_workspace, candidate_root_ref, parent = _create_candidate_workspace(
+                self.ecc_api,
+                session.workspace,
+                request.candidate_id,
+                request.parent_candidate_root_ref,
+                request.target_step,
+            )
             flow = self._build_flow(candidate_workspace, create_step_workspaces=False)
             create_step_workspaces = getattr(flow, "create_step_workspaces", None)
             if callable(create_step_workspaces):
                 create_step_workspaces(initialize_config=False)
-            if request.patch:
-                _materialize_candidate_rerun(candidate_workspace, flow, request)
             steps = _candidate_rerun_steps(
                 flow,
                 request.target_step,
                 request.end_step,
                 request.execution_scope,
             )
+            if not preflight_done:
+                _preflight_candidate_steps(steps)
+            if request.patch:
+                _materialize_candidate_rerun(candidate_workspace, flow, request)
             _prepare_candidate_rerun(candidate_workspace, flow, steps)
             _notify_candidate_rerun_prepared(observer, steps, request)
             if request.patch:
@@ -221,6 +230,21 @@ class FlowAgentRuntimeApi:
             flow = build_agent_flow_for_workspace(workspace)
         return flow
 
+    def _preflight_candidate_rerun_before_clone(
+        self, workspace, request: CandidateRerunRequest
+    ) -> bool:
+        try:
+            steps = _candidate_step_range(
+                workspace.flow.data["steps"],
+                request.target_step,
+                request.end_step,
+                request.execution_scope,
+            )
+        except (AttributeError, KeyError, TypeError):
+            return False
+        _preflight_candidate_steps(steps)
+        return True
+
     def _with_workspace_lock(self, workspace_id: str, operation):
         return self.ecc_api._with_session_mutation_lock(workspace_id, operation)
 
@@ -244,13 +268,27 @@ def _foundation_receipt(workspace_dir: Path) -> dict:
 
 
 def _candidate_rerun_steps(flow, target_step: str, end_step: str, execution_scope: str) -> list:
+    return _candidate_step_range(
+        list(getattr(flow, "workspace_steps", ())),
+        target_step,
+        end_step,
+        execution_scope,
+    )
+
+
+def _candidate_step_range(
+    steps: list, target_step: str, end_step: str, execution_scope: str
+) -> list:
     if execution_scope not in {"single_step", "full_flow"}:
         raise RuntimeApiError("invalid_request", "candidate rerun execution scope is invalid")
-    steps = list(getattr(flow, "workspace_steps", ()))
     target_index = next(
-        (index for index, step in enumerate(steps) if step.name == target_step), None
+        (index for index, step in enumerate(steps) if _step_value(step, "name") == target_step),
+        None,
     )
-    end_index = next((index for index, step in enumerate(steps) if step.name == end_step), None)
+    end_index = next(
+        (index for index, step in enumerate(steps) if _step_value(step, "name") == end_step),
+        None,
+    )
     if target_index is None or end_index is None:
         raise RuntimeApiError(
             "command_failed", f"rerun step not found: {target_step} or {end_step}"
@@ -264,6 +302,10 @@ def _candidate_rerun_steps(flow, target_step: str, end_step: str, execution_scop
     if end_index < target_index:
         raise RuntimeApiError("invalid_request", "rerun end step precedes the target step")
     return steps[target_index : end_index + 1]
+
+
+def _step_value(step, field: str):
+    return step.get(field) if isinstance(step, dict) else getattr(step, field, None)
 
 
 _IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
@@ -940,6 +982,11 @@ def _prepare_candidate_rerun(workspace, flow, steps: list) -> None:
             raise RuntimeApiError("command_failed", f"candidate flow state is missing: {step.name}")
         record.update({"state": "Unstart", "runtime": "", "peak memory (mb)": 0})
     flow.save()
+
+
+def _preflight_candidate_steps(steps: list) -> None:
+    if any(_step_value(step, "tool") == "sizer" for step in steps):
+        preflight_sizer_runtime()
 
 
 def _candidate_step_artifact_dirs(step) -> tuple[Path, ...]:

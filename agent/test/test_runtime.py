@@ -4,7 +4,11 @@ import threading
 
 import pytest
 
-from agent.runtime_env import prepare_agent_runtime_environment
+from agent.runtime_env import (
+    SizerRuntimePreflightError,
+    preflight_sizer_runtime,
+    prepare_agent_runtime_environment,
+)
 from chipcompiler.runtime.operations import RuntimeOperationFailed, RuntimeOperationManager
 
 
@@ -45,6 +49,39 @@ def test_agent_runtime_without_packaged_sizer_preserves_environment(tmp_path, mo
     assert os.environ["PATH"] == str(tmp_path)
     assert os.environ["LD_LIBRARY_PATH"] == "/host/lib"
     assert os.environ["LD_PRELOAD"] == "/host/preload.so"
+
+
+def test_sizer_runtime_preflight_accepts_launchable_runtime(tmp_path, monkeypatch):
+    runtime_root = tmp_path / "ecc-sizer"
+    executable = runtime_root / "bin" / "Sizer"
+    executable.parent.mkdir(parents=True)
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o755)
+    sentinel = runtime_root / "src" / "sizer_os.tcl"
+    sentinel.parent.mkdir()
+    sentinel.write_text("", encoding="utf-8")
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime_root))
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-path"))
+    prepare_agent_runtime_environment()
+
+    preflight_sizer_runtime()
+
+
+def test_sizer_runtime_preflight_rejects_broken_runtime(tmp_path, monkeypatch):
+    runtime_root = tmp_path / "ecc-sizer"
+    executable = runtime_root / "bin" / "Sizer"
+    executable.parent.mkdir(parents=True)
+    executable.write_text("#!/bin/sh\necho broken runtime >&2\nexit 1\n", encoding="utf-8")
+    executable.chmod(0o755)
+    sentinel = runtime_root / "src" / "sizer_os.tcl"
+    sentinel.parent.mkdir()
+    sentinel.write_text("", encoding="utf-8")
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime_root))
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-path"))
+    prepare_agent_runtime_environment()
+
+    with pytest.raises(SizerRuntimePreflightError, match="broken runtime"):
+        preflight_sizer_runtime()
 
 
 def test_structured_candidate_failure_preserves_partial_result() -> None:

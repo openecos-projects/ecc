@@ -15,6 +15,7 @@ from agent.workspace_api import (
     _candidate_step_artifact_dirs,
     _create_candidate_workspace,
     _materialize_candidate_rerun,
+    _preflight_candidate_steps,
     _reject_workspace_symlinks,
     build_agent_flow_for_workspace,
 )
@@ -35,6 +36,81 @@ def test_candidate_artifact_dirs_support_typed_step_outputs(tmp_path):
     )
 
     assert _candidate_step_artifact_dirs(step) == (Path(output_dir), Path(analysis_dir))
+
+
+def test_candidate_preflight_checks_sizer_once(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "agent.workspace_api.preflight_sizer_runtime", lambda: calls.append("sizer")
+    )
+
+    _preflight_candidate_steps(
+        [
+            SimpleNamespace(tool="ecc"),
+            SimpleNamespace(tool="sizer"),
+            SimpleNamespace(tool="ecc"),
+        ]
+    )
+
+    assert calls == ["sizer"]
+
+
+def test_candidate_preflight_skips_sizer_check_when_step_range_excludes_it(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "agent.workspace_api.preflight_sizer_runtime", lambda: calls.append("sizer")
+    )
+
+    _preflight_candidate_steps([SimpleNamespace(tool="ecc")])
+
+    assert calls == []
+
+
+def test_candidate_sizer_preflight_failure_skips_clone(monkeypatch, tmp_path):
+    workspace = SimpleNamespace(
+        directory=tmp_path,
+        flow=SimpleNamespace(
+            data={
+                "steps": [
+                    {"name": "place", "tool": "dreamplace"},
+                    {"name": "Timing optimization", "tool": "sizer"},
+                    {"name": "Harden", "tool": "ecc"},
+                ]
+            }
+        ),
+    )
+    api = FlowAgentRuntimeApi(_EccApi(workspace))
+    monkeypatch.setattr(
+        api,
+        "_build_flow",
+        lambda *_args, **_kwargs: pytest.fail("preflight must not build the parent flow"),
+    )
+    monkeypatch.setattr(
+        "agent.workspace_api.preflight_sizer_runtime",
+        lambda: (_ for _ in ()).throw(RuntimeError("sizer broken")),
+    )
+    monkeypatch.setattr(
+        "agent.workspace_api._create_candidate_workspace",
+        lambda *_args: pytest.fail("candidate clone must wait for Sizer preflight"),
+    )
+
+    operation = api.candidate_rerun(
+        CandidateRerunRequest(
+            workspace_id="workspace-1",
+            target_step="place",
+            end_step="Harden",
+            candidate_id="candidate-1",
+            patch=[{"knob_id": "place.target_density", "value": 0.6}],
+            execution_scope="full_flow",
+            idempotency_key="episode-1.intervention-1",
+            context_sha256=CONTEXT_SHA256,
+            parameter_card_sha256=CONTEXT_SHA256,
+            seed=17,
+        )
+    )
+
+    terminal = _wait_for_terminal(api.ecc_api.operations, operation["operationId"], "failed")
+    assert "sizer broken" in terminal["error"]["message"]
 
 
 def test_candidate_clone_skips_step_directories_that_will_be_rerun(tmp_path):
@@ -301,9 +377,10 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     candidate_root = tmp_path / ".agent" / "candidates" / "candidate-1"
     candidate_root_ref = ".agent/candidates/candidate-1"
     candidate_manifest_ref = f"{candidate_root_ref}/analysis/candidate_workspace.v1.json"
-    assert flows[0].run_calls == [("place", True), ("CTS", True), ("Harden", True)]
-    assert flows[0].created is True
-    assert flows[0].initialize_config is False
+    candidate_flow = flows[-1]
+    assert candidate_flow.run_calls == [("place", True), ("CTS", True), ("Harden", True)]
+    assert candidate_flow.created is True
+    assert candidate_flow.initialize_config is False
     assert flow_path.read_bytes() == parent_flow_bytes
     assert config_path.read_text(encoding="utf-8") == '{"target_density": 0.5}\n'
     assert (tmp_path / "place_dreamplace" / "output" / "stale").is_file()
@@ -313,7 +390,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     assert json.loads(
         (candidate_root / "config" / "dreamplace.json").read_text(encoding="utf-8")
     ) == {"random_seed": 17, "target_density": 0.6}
-    assert flows[0].observed_random_seeds == [17]
+    assert candidate_flow.observed_random_seeds == [17]
     assert not list((candidate_root / "place_dreamplace" / "output").iterdir())
     assert not list((candidate_root / "place_dreamplace" / "analysis").iterdir())
     assert not list((candidate_root / "CTS_ecc" / "output").iterdir())
