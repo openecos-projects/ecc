@@ -170,6 +170,22 @@ def _fill_missing_from_base(cfg, assembled: dict, project_dir: str) -> None:
     cfg.manifest_origin_def = _source_origin_def(assembled, project_dir)
 
 
+def effective_override_keys(cfg, cli_overrides=None) -> frozenset:
+    """The registry keys an ecc.toml/--set override actually replaces.
+
+    ``_explicit_keys`` records raw [design]/[pdk]/[flow] section keys, which
+    include keys that never become overrides (e.g. a parameter misplaced
+    under [flow]); only [params] overrides, CLI overrides, and the one
+    registry parameter fed from a non-params section ([design]
+    frequency_mhz, merged through to_parameters) count as overriding.
+    """
+    keys = set(cfg.params_overrides or {})
+    keys.update(cli_overrides or {})
+    if "design.frequency_mhz" in getattr(cfg, "_explicit_keys", frozenset()):
+        keys.add("design.frequency_mhz")
+    return frozenset(keys)
+
+
 def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None) -> list[str]:
     """Validate the effective config for a manifest-backed project.
 
@@ -209,14 +225,13 @@ def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None
             )
         manifest_parameters = getattr(cfg, "manifest_parameters", None)
         if manifest_parameters:
-            from chipcompiler.cli.project.params import PARAM_REGISTRY, validate_value
+            from chipcompiler.cli.project.params import (
+                PARAM_REGISTRY,
+                _validate_schema_type,
+                validate_value,
+            )
             from chipcompiler.data.parameter_keys import geometry_to_parameters
 
-            overridden = (
-                set(getattr(cfg, "_explicit_keys", frozenset()))
-                | set(cfg.params_overrides or {})
-                | set(cli_overrides or {})
-            )
             # Generated manifests hoist geometry values to GUI-flat aliases
             # (utilitization, margin, ...); validate the canonical form so
             # the registry's nested maps_to targets actually resolve.
@@ -224,7 +239,11 @@ def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None
             errors.extend(
                 f"project.json: {err}"
                 for err in _invalid_manifest_parameters(
-                    canonical, PARAM_REGISTRY, validate_value, overridden
+                    canonical,
+                    PARAM_REGISTRY,
+                    validate_value,
+                    effective_override_keys(cfg, cli_overrides),
+                    validate_type=_validate_schema_type,
                 )
             )
     return errors
@@ -291,15 +310,23 @@ def layer_divergences(cfg, assembled: dict, entry) -> list[str]:
     if "design.rtl" in explicit and base_sources != toml_sources:
         keys.append("rtl")
 
+    from chipcompiler.cli.project.params import _validate_schema_type, lookup_schema
     from chipcompiler.data.parameter_keys import geometry_to_parameters
 
     canonical_params = geometry_to_parameters(assembled.get("parameters") or {})
+    # A [params.design] key supersedes the [design] frequency — the
+    # standalone value is inert and must not warn on its own.
     if (
         "design.frequency_mhz" in explicit
+        and "design.frequency_mhz" not in cfg.params_overrides
         and "frequency_max" in canonical_params
-        and canonical_params["frequency_max"] != cfg.design_frequency_mhz
     ):
-        keys.append("frequency_max")
+        coerced, type_err = _validate_schema_type(
+            canonical_params["frequency_max"],
+            lookup_schema("design.frequency_mhz"),
+        )
+        if type_err or coerced != cfg.design_frequency_mhz:
+            keys.append("frequency_max")
 
     # An explicit valid preset overrides the entry's declared range (GUI
     # range vocabulary on both sides); an unknown preset is left to
@@ -311,48 +338,110 @@ def layer_divergences(cfg, assembled: dict, entry) -> list[str]:
 
     if cfg.params_overrides and canonical_params:
         from chipcompiler.cli.project.params import (
+            _validate_schema_type,
             build_backend_overrides,
+            lookup_schema,
+            manifest_value_for,
             resolve_parameters,
         )
 
+        # Registry-backed keys compare per schema with type normalization:
+        # a type-invalid manifest value counts as divergent, a same-valued
+        # differently-typed one ("false" vs false) does not.
+        compared: set[str] = set()
+        for dotted, override_value in cfg.params_overrides.items():
+            schema = lookup_schema(dotted)
+            if schema is None:
+                continue
+            manifest_value, present = manifest_value_for(canonical_params, schema.maps_to)
+            if not present:
+                continue
+            leaf_keys = _backend_leaf_keys(schema)
+            compared.update(leaf_keys)
+            coerced, type_err = _validate_schema_type(manifest_value, schema)
+            if type_err or coerced != override_value:
+                keys.extend(leaf_keys)
+
+        # Non-registry keys keep the generic flatten comparison; keys the
+        # per-schema pass covered are skipped to avoid double-reporting.
         resolved, _ = resolve_parameters(toml_overrides=cfg.params_overrides)
         backend = build_backend_overrides(resolved)
         flat_base = dict(_flatten(canonical_params))
         for key, value in _flatten(backend):
-            if key in flat_base and flat_base[key] != value:
+            if key not in compared and key in flat_base and flat_base[key] != value:
                 keys.append(key)
     return keys
 
 
+def _backend_leaf_keys(schema) -> tuple[str, ...]:
+    """The flattened backend key names a schema's maps_to target produces."""
+    maps_to = schema.maps_to
+    if isinstance(maps_to, str):
+        return (maps_to,)
+    return tuple(".".join((subtree, leaf)) for subtree, leaf in maps_to.items())
+
+
 def cli_divergence_warning(cfg, cli_overrides: dict) -> dict | None:
     """The config_layer_diverged warning for --set values overriding a
-    DIFFERENT lower-layer value (manifest base, then ecc.toml [params]).
+    DIFFERENT lower-layer value (ecc.toml [params], then an explicit
+    [design] frequency, then the manifest base).
 
-    Same canonical projection as layer_divergences: every layer is
-    resolved through the params registry and compared flattened. An
-    override that merely restates the lower-layer value does not warn.
+    Registry-backed keys compare per schema with type normalization: a
+    type-invalid manifest value counts as divergent only when no higher
+    layer supersedes it, and a same-valued differently-typed one ("false"
+    vs false) does not warn. Non-registry keys keep the generic flatten
+    comparison, skipping keys the per-schema pass covered.
     """
     if not cli_overrides:
         return None
-    from chipcompiler.cli.project.params import build_backend_overrides, resolve_parameters
+    from chipcompiler.cli.project.params import (
+        _validate_schema_type,
+        build_backend_overrides,
+        lookup_schema,
+        manifest_value_for,
+        resolve_parameters,
+    )
     from chipcompiler.data.parameter_keys import geometry_to_parameters
 
-    lower: dict = {}
     manifest_parameters = getattr(cfg, "manifest_parameters", None)
-    if manifest_parameters:
-        lower.update(_flatten(geometry_to_parameters(manifest_parameters)))
-    if cfg.params_overrides:
-        resolved_toml, _ = resolve_parameters(toml_overrides=cfg.params_overrides)
-        lower.update(_flatten(build_backend_overrides(resolved_toml)))
-    if not lower:
-        return None
+    canonical_params = geometry_to_parameters(manifest_parameters or {})
+    explicit = getattr(cfg, "_explicit_keys", frozenset())
+    params_overrides = cfg.params_overrides or {}
 
+    compared: set[str] = set()
+    diverging: list[str] = []
+    for key, cli_value in cli_overrides.items():
+        schema = lookup_schema(key)
+        if schema is None:
+            continue
+        leaf_keys = _backend_leaf_keys(schema)
+        compared.update(leaf_keys)
+        if key in params_overrides:
+            lower_value: object = params_overrides[key]
+        elif key == "design.frequency_mhz" and "design.frequency_mhz" in explicit:
+            lower_value = cfg.design_frequency_mhz
+        else:
+            manifest_value, present = manifest_value_for(canonical_params, schema.maps_to)
+            if not present:
+                continue
+            coerced, type_err = _validate_schema_type(manifest_value, schema)
+            if type_err:
+                diverging.extend(leaf_keys)
+                continue
+            lower_value = coerced
+        if lower_value != cli_value:
+            diverging.extend(leaf_keys)
+
+    lower: dict = {}
+    if manifest_parameters:
+        lower.update(_flatten(canonical_params))
+    if params_overrides:
+        resolved_toml, _ = resolve_parameters(toml_overrides=params_overrides)
+        lower.update(_flatten(build_backend_overrides(resolved_toml)))
     resolved_cli, _ = resolve_parameters(cli_overrides=cli_overrides)
-    diverging = [
-        key
-        for key, value in _flatten(build_backend_overrides(resolved_cli))
-        if key in lower and lower[key] != value
-    ]
+    for key, value in _flatten(build_backend_overrides(resolved_cli)):
+        if key not in compared and key in lower and lower[key] != value:
+            diverging.append(key)
     if not diverging:
         return None
     return warning_record(
@@ -382,38 +471,36 @@ def _invalid_manifest_parameters(
     registry,
     validate_value,
     overridden_keys: frozenset | set = frozenset(),
+    validate_type=None,
 ) -> list[str]:
     """Validate manifest-layer parameter values against the registry.
 
     Maps each known registry target (maps_to) back to the manifest's flat
-    keys and applies the schema's range/choice rules. Values whose dotted
-    key has an explicit ecc.toml/--set override are skipped (they are inert
-    and surface as divergence warnings instead). Unknown keys pass through
-    untouched (forward-compatible additions).
+    keys and applies the schema's rules. When *validate_type* is supplied it
+    runs first as a whole-value type check/coercion whose coerced value is
+    discarded — the per-element range/choice checks below stay computed on
+    the original manifest values so their diagnostics are unchanged. Values
+    whose dotted key has an explicit ecc.toml/--set override are skipped
+    (they are inert and surface as divergence warnings instead). Unknown
+    keys pass through untouched (forward-compatible additions).
     """
     errors: list[str] = []
+    from chipcompiler.cli.project.params import manifest_value_for
+
     for schema in registry:
         if schema.param in overridden_keys:
             continue
-        maps_to = schema.maps_to
-        value = None
-        present = False
-        if isinstance(maps_to, str):
-            if maps_to in manifest_parameters:
-                value = manifest_parameters[maps_to]
-                present = True
-        elif isinstance(maps_to, dict):
-            for subtree, leaf in maps_to.items():
-                node = manifest_parameters.get(subtree)
-                if isinstance(node, dict) and leaf in node:
-                    value = node[leaf]
-                    present = True
-                    break
-        if present:
-            # A list value (e.g. core.margin's [x, y]) validates per element.
-            values = value if isinstance(value, list) else [value]
-            for item in values:
-                errors.extend(validate_value(item, schema))
+        value, present = manifest_value_for(manifest_parameters, schema.maps_to)
+        if not present:
+            continue
+        if validate_type is not None:
+            _, type_err = validate_type(value, schema)
+            if type_err:
+                errors.append(type_err)
+        # A list value (e.g. core.margin's [x, y]) validates per element.
+        values = value if isinstance(value, list) else [value]
+        for item in values:
+            errors.extend(validate_value(item, schema))
     return errors
 
 

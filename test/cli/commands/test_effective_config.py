@@ -528,14 +528,18 @@ def _write_manifest_project(
     frequency_max,
     ecc_toml=None,
     extra_parameters=None,
+    entry_extra=None,
 ):
     project_dir = tmp_path / "proj"
     project_dir.mkdir()
     parameters = {"design": "gcd", "frequency_max": frequency_max}
     parameters.update(extra_parameters or {})
+    entry = manifest_stubs.entry(project_dir, "ws_0001")
+    if entry_extra:
+        entry.update(entry_extra)
     manifest_stubs.write(
         project_dir,
-        [manifest_stubs.entry(project_dir, "ws_0001")],
+        [entry],
         base_design={
             "pdk": "ics55",
             "pdk_root": str(project_dir / "pdk"),
@@ -619,6 +623,258 @@ class TestManifestParameterValidation:
         assert rc == 0
         parameters = flow_mocks.capture["create_kwargs"]["parameters"]
         assert parameters["frequency_max"] == 100.0
+
+
+class TestManifestBoolTypeSafety:
+    """project.json run_analysis is the first bool registry parameter: its
+    manifest value must face schema type validation like every other layer,
+    while values an ecc.toml/--set override makes inert surface as divergence
+    warnings instead of errors."""
+
+    def _hybrid_toml(self, project_dir, *, params="", design_freq=None, preset=None, flow_extra=""):
+        design = '[design]\nname = "gcd"\ntop = "gcd"\nrtl = ["rtl/gcd.v"]\nclock_port = "clk"\n'
+        if design_freq is not None:
+            design += f"frequency_mhz = {design_freq}\n"
+        text = design + '\n[pdk]\nname = "ics55"\nroot = "' + str(project_dir / "pdk") + '"\n'
+        if preset or flow_extra:
+            text += "\n[flow]\n"
+            if preset:
+                text += f'preset = "{preset}"\n'
+            text += flow_extra
+        if params:
+            text += f"\n[params.flow]\n{params}\n"
+        return text
+
+    def _run_toml(self, project_dir, *, params="", design_freq=None):
+        # A run needs a derivable preset; the entry range is pinned to the
+        # preset's manifest range so the flow-range divergence stays out of
+        # the way of the parameter divergences under test.
+        return self._hybrid_toml(
+            project_dir, params=params, design_freq=design_freq, preset="rtl2gds"
+        )
+
+    _PRESET_RANGE = {"start_step": "Synth", "end_step": "PostRouteLEC"}
+
+    def test_check_rejects_bad_manifest_bool(self, tmp_path, capsys, monkeypatch, manifest_stubs):
+        project_dir = _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            extra_parameters={"run_analysis": "maybe"},
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc != 0
+        reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
+        assert "project.json: expected bool for flow.run_analysis, got str" in reasons
+
+    def test_check_accepts_bool_like_manifest_string(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            extra_parameters={"run_analysis": "false"},
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        assert manifest_stubs.records()[0]["status"] == "checked"
+
+    def test_check_params_override_supersedes_invalid_manifest_bool(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        toml_text = self._hybrid_toml(project_dir, params="run_analysis = false")
+        _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            ecc_toml=toml_text,
+            extra_parameters={"run_analysis": "maybe"},
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        assert manifest_stubs.records()[0]["status"] == "checked"
+
+    def test_check_misplaced_flow_section_key_is_not_an_override(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        toml_text = self._hybrid_toml(project_dir, flow_extra="run_analysis = false\n")
+        _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            ecc_toml=toml_text,
+            extra_parameters={"run_analysis": "maybe"},
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc != 0
+        reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
+        assert "expected bool for flow.run_analysis" in reasons
+
+    def test_check_no_divergence_when_coerced_values_match(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        toml_text = self._hybrid_toml(project_dir, params="run_analysis = false")
+        _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            ecc_toml=toml_text,
+            extra_parameters={"run_analysis": "false"},
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        diverged = [
+            r for r in manifest_stubs.records() if r.get("warning") == "config_layer_diverged"
+        ]
+        assert not diverged
+
+    def test_check_divergence_for_type_invalid_manifest_bool(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        toml_text = self._hybrid_toml(project_dir, params="run_analysis = false")
+        _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            ecc_toml=toml_text,
+            extra_parameters={"run_analysis": 0},
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        diverged = [
+            r for r in manifest_stubs.records() if r.get("warning") == "config_layer_diverged"
+        ]
+        assert diverged and "run_analysis" in diverged[0]["keys"]
+
+    def test_check_divergence_for_dict_manifest_bool(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        toml_text = self._hybrid_toml(project_dir, params="run_analysis = false")
+        _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            ecc_toml=toml_text,
+            extra_parameters={"run_analysis": {"bad": True}},
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        diverged = [
+            r for r in manifest_stubs.records() if r.get("warning") == "config_layer_diverged"
+        ]
+        assert diverged and "run_analysis" in diverged[0]["keys"]
+
+    def test_run_reports_only_toml_divergence_for_three_layer_bool(
+        self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        toml_text = self._run_toml(project_dir, params="run_analysis = false")
+        _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            ecc_toml=toml_text,
+            extra_parameters={"run_analysis": "maybe"},
+            entry_extra=self._PRESET_RANGE,
+        )
+
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                str(project_dir),
+                "--set",
+                "flow.run_analysis=false",
+                "--json",
+            ]
+        )
+
+        assert rc == 0
+        diverged = [
+            r for r in manifest_stubs.records() if r.get("warning") == "config_layer_diverged"
+        ]
+        assert len(diverged) == 1
+        assert "ecc.toml" in diverged[0]["reason"]
+        assert "run_analysis" in diverged[0]["keys"]
+
+    def test_run_matching_design_frequency_has_no_cli_divergence(
+        self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        toml_text = self._run_toml(project_dir, design_freq=200)
+        _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            ecc_toml=toml_text,
+            entry_extra=self._PRESET_RANGE,
+        )
+
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                str(project_dir),
+                "--set",
+                "design.frequency_mhz=200",
+                "--json",
+            ]
+        )
+
+        assert rc == 0
+        diverged = [
+            r for r in manifest_stubs.records() if r.get("warning") == "config_layer_diverged"
+        ]
+        assert len(diverged) == 1
+        assert "--set" not in diverged[0]["reason"]
+        assert "frequency_max" in diverged[0]["keys"]
+
+    def test_check_no_divergence_when_params_supersedes_design_frequency(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        toml_text = (
+            self._hybrid_toml(project_dir, design_freq=200)
+            + "\n[params.design]\nfrequency_mhz = 100\n"
+        )
+        _write_manifest_project(manifest_stubs, tmp_path, monkeypatch, 100, ecc_toml=toml_text)
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        diverged = [
+            r for r in manifest_stubs.records() if r.get("warning") == "config_layer_diverged"
+        ]
+        assert not diverged
 
 
 class TestManifestFlatGeometryValidation:
