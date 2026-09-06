@@ -56,12 +56,10 @@ def copy_rcx_spef_outputs(workspace: Workspace, step: EccStep) -> bool:
         return False
 
     declared_paths = [spef_path for spef_path in step.output.spef if spef_path]
-    if declared_paths:
-        output_paths = [output_dir / spef_path.name for spef_path in declared_paths]
-    else:
-        output_paths = [
-            output_dir / spef_path.name for spef_path in sorted(spef_writer_dir.glob("*.spef"))
-        ]
+    output_paths = [
+        output_dir / spef_path.name
+        for spef_path in (declared_paths or sorted(spef_writer_dir.glob("*.spef")))
+    ]
 
     if not output_paths:
         workspace.logger.error("RCX extraction produced no SPEF artifacts to publish")

@@ -305,11 +305,9 @@ class EngineFlow:
                     success = True
             case StepEnum.RCX.value:
                 spef_list = ecc_output.spef if ecc_output else []
-                success = bool(spef_list)
-                for spef in spef_list:
-                    if not (os.path.isfile(spef) and os.path.getsize(spef) > 0):
-                        success = False
-                        break
+                success = bool(spef_list) and all(
+                    os.path.isfile(spef) and os.path.getsize(spef) > 0 for spef in spef_list
+                )
             case StepEnum.TIMING_OPT.value:
                 if os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""):
                     success = True
