@@ -127,26 +127,40 @@ def copy_rcx_spef_outputs(workspace: Workspace, step: EccStep) -> bool:
             workspace.logger.error("RCX extraction artifact is missing or empty: %s", source_path)
             return False
 
-    written: list[Path] = []
+    processed: list[tuple[Path, Path | None]] = []
+    temp_paths: list[Path] = []
     try:
         for output_path in output_paths:
             source_path = spef_writer_dir / output_path.name
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            # Register before copying: a copy that truncates its destination
-            # and then fails must still be cleaned up.
-            written.append(output_path)
-            shutil.copy2(source_path, output_path)
+            backup_path = (
+                output_path.with_name(f".{output_path.name}.prev") if output_path.exists() else None
+            )
+            if backup_path is not None:
+                # Preserve the previously published SPEF so a failure later
+                # in this pass can restore the last known-good artifact.
+                output_path.replace(backup_path)
+            temp_path = output_path.with_name(f".{output_path.name}.tmp")
+            processed.append((output_path, backup_path))
+            temp_paths.append(temp_path)
+            shutil.copy2(source_path, temp_path)
+            temp_path.replace(output_path)
             workspace.logger.info("Copied RCX SPEF %s to %s", source_path, output_path)
 
         for output_path in output_paths:
             if not (os.path.isfile(output_path) and os.path.getsize(output_path) > 0):
                 raise OSError(f"Published RCX SPEF is missing or empty: {output_path}")
     except Exception as exc:
-        # Publication is all-or-nothing: a partial SPEF set left behind by a
-        # failed copy or a failed validation must not remain visible as
-        # current extraction output.
-        for output_path in written:
-            output_path.unlink(missing_ok=True)
+        # Publication is all-or-nothing: a failed pass restores the SPEFs it
+        # replaced, removes the destinations it created, and drops partial
+        # temporary copies, leaving the step outputs exactly as before.
+        for output_path, backup_path in processed:
+            if backup_path is not None:
+                backup_path.replace(output_path)
+            else:
+                output_path.unlink(missing_ok=True)
+        for temp_path in temp_paths:
+            temp_path.unlink(missing_ok=True)
         workspace.logger.error("Failed to publish RCX SPEF artifacts: %s", exc)
         return False
 

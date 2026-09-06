@@ -793,7 +793,7 @@ def test_copy_rcx_spef_outputs_cleans_partial_publication_when_a_copy_fails(
 
     def fail_second_copy(source, destination, **kwargs):
         destination = Path(destination)
-        if destination.name == "b.spef":
+        if destination.name == ".b.spef.tmp":
             destination.write_text(partial_content, encoding="utf-8")
             raise OSError(errno.ENOSPC, "No space left on device")
         return real_copy2(source, destination, **kwargs)
@@ -829,9 +829,9 @@ def test_copy_rcx_spef_outputs_cleans_partial_publication_when_validation_fails(
     def copy_with_invalid_second(source, destination, **_kwargs):
         destination = Path(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        if destination.name == "b.spef" and second_write == "zero-byte":
+        if destination.name == ".b.spef.tmp" and second_write == "zero-byte":
             destination.write_text("", encoding="utf-8")
-        elif destination.name == "a.spef":
+        elif destination.name == ".a.spef.tmp":
             destination.write_text("*SPEF\na\n", encoding="utf-8")
 
     monkeypatch.setattr(ecc_runner.shutil, "copy2", copy_with_invalid_second)
@@ -840,6 +840,45 @@ def test_copy_rcx_spef_outputs_cleans_partial_publication_when_validation_fails(
 
     assert not (output_dir / "a.spef").exists()
     assert not (output_dir / "b.spef").exists()
+    assert step.output.spef is spef_outputs
+    assert step.output.spef == [output_dir / "a.spef", output_dir / "b.spef"]
+
+
+def test_copy_rcx_spef_outputs_restores_previous_spef_when_a_later_copy_fails(
+    tmp_path, monkeypatch
+):
+    data_dir = tmp_path / "RCX_ecc" / "data"
+    output_dir = tmp_path / "RCX_ecc" / "output"
+    spef_writer = data_dir / "spef_writer"
+    spef_writer.mkdir(parents=True)
+    (spef_writer / "a.spef").write_text("*SPEF\nfresh a\n", encoding="utf-8")
+    (spef_writer / "b.spef").write_text("*SPEF\nfresh b\n", encoding="utf-8")
+    output_dir.mkdir(parents=True)
+    previous_a = output_dir / "a.spef"
+    previous_a.write_text("*SPEF\nprevious a\n", encoding="utf-8")
+    spef_outputs = [output_dir / "a.spef", output_dir / "b.spef"]
+    step = EccStep(
+        name=StepEnum.RCX.value,
+        data=EccData(dir=data_dir),
+        output=EccOutput(dir=output_dir, spef=spef_outputs),
+    )
+    workspace = Workspace(directory=tmp_path, logger=FakeLogger())
+    real_copy2 = shutil.copy2
+
+    def fail_second_copy(source, destination, **kwargs):
+        destination = Path(destination)
+        if destination.name == ".b.spef.tmp":
+            destination.write_text("*SPEF\ntrunc", encoding="utf-8")
+            raise OSError(errno.ENOSPC, "No space left on device")
+        return real_copy2(source, destination, **kwargs)
+
+    monkeypatch.setattr(ecc_runner.shutil, "copy2", fail_second_copy)
+
+    assert ecc_runner.copy_rcx_spef_outputs(workspace, step) is False
+
+    assert previous_a.read_text(encoding="utf-8") == "*SPEF\nprevious a\n"
+    assert not (output_dir / "b.spef").exists()
+    assert list(output_dir.iterdir()) == [previous_a]
     assert step.output.spef is spef_outputs
     assert step.output.spef == [output_dir / "a.spef", output_dir / "b.spef"]
 
