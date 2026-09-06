@@ -306,20 +306,16 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
         if status_value == "invalid_config":
             # Every invalid_config record the view supplies becomes a standard
             # error record; raw view items must never leak to the output.
-            records = []
-            for item in items:
-                if item.get("status") != "invalid_config":
-                    continue
-                rec = error_record(
+            records = [
+                error_record(
                     "invalid_config",
                     inspect=disclosure_cmd("ecc check", project),
+                    **({"reason": item["reason"]} if item.get("reason") else {}),
                 )
-                if item.get("reason"):
-                    rec["reason"] = item["reason"]
-                records.append(rec)
-            if records:
-                return CommandResult.err(records)
-            return CommandResult.err(items)
+                for item in items
+                if item.get("status") == "invalid_config"
+            ]
+            return CommandResult.err(records)
         return CommandResult.err(items)
 
     if not items:

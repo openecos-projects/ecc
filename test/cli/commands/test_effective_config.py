@@ -1063,3 +1063,39 @@ class TestManifestResolvedConfigView:
         errors = [r for r in data["records"] if r.get("kind") == "error"]
         assert all(r.get("error") == "invalid_config" for r in errors)
         assert any("expected bool for flow.run_analysis" in r["reason"] for r in errors)
+
+    def test_config_resolved_error_records_full_contract(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
+        (project_dir / "ecc.toml").write_text(
+            '\n[params.flow]\nrun_analysis = "maybe"\n\n[params.cts]\nmax_fanout = "nope"\n'
+        )
+
+        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        assert data["records"] == [
+            {
+                "kind": "error",
+                "error": "invalid_config",
+                "inspect": f"ecc check --project {project_dir}",
+                "reason": "expected bool for flow.run_analysis, got 'maybe'",
+            },
+            {
+                "kind": "error",
+                "error": "invalid_config",
+                "inspect": f"ecc check --project {project_dir}",
+                "reason": "expected int for cts.max_fanout, got 'nope'",
+            },
+        ]
+
+        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "expected bool for flow.run_analysis" in out
+        assert "expected int for cts.max_fanout" in out
