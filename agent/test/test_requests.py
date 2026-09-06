@@ -6,7 +6,12 @@ from types import SimpleNamespace
 import pytest
 
 from agent.methods import agent_method_names
-from agent.requests import CandidateRerunRequest, CandidateResumeRequest, parse_agent_request_model
+from agent.requests import (
+    CandidateRerunRequest,
+    CandidateResumeRequest,
+    RuntimePreflightRequest,
+    parse_agent_request_model,
+)
 from agent.server import AgentRuntimeServer
 from chipcompiler.runtime.requests import RequestValidationError
 from chipcompiler.runtime.transport import ContentLengthDecoder, encode_content_length_frame
@@ -17,6 +22,7 @@ PARAMETER_CARD_SHA256 = "sha256:" + "b" * 64
 
 def test_agent_methods_keep_the_original_rpc_names():
     assert agent_method_names() == (
+        "agent.runtime_preflight",
         "workspace.extract_foundation",
         "candidate.export_capabilities",
         "candidate.bind_input",
@@ -30,6 +36,19 @@ def test_agent_runtime_server_registers_isolated_methods():
     server = AgentRuntimeServer()
 
     assert set(agent_method_names()).issubset(server.capabilities)
+
+
+def test_runtime_preflight_is_read_only_and_checks_agent_tools(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "agent.workspace_api.preflight_sizer_runtime", lambda: calls.append("preflight")
+    )
+    server = AgentRuntimeServer()
+
+    result = server.agent_api.runtime_preflight(RuntimePreflightRequest())
+
+    assert result == {"sizer": True, "dreamplace": True}
+    assert calls == ["preflight"]
 
 
 def test_agent_runtime_server_prepares_agent_environment(monkeypatch):

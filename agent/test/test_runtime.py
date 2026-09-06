@@ -63,6 +63,10 @@ def test_sizer_runtime_preflight_accepts_launchable_runtime(tmp_path, monkeypatc
     monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime_root))
     monkeypatch.setenv("PATH", str(tmp_path / "empty-path"))
     prepare_agent_runtime_environment()
+    monkeypatch.setattr(
+        "chipcompiler.tools.ecc_dreamplace.utility.is_eda_exist",
+        lambda: True,
+    )
 
     preflight_sizer_runtime()
 
@@ -79,8 +83,33 @@ def test_sizer_runtime_preflight_rejects_broken_runtime(tmp_path, monkeypatch):
     monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime_root))
     monkeypatch.setenv("PATH", str(tmp_path / "empty-path"))
     prepare_agent_runtime_environment()
+    monkeypatch.setattr(
+        "chipcompiler.tools.ecc_dreamplace.utility.is_eda_exist",
+        lambda: True,
+    )
 
     with pytest.raises(SizerRuntimePreflightError, match="broken runtime"):
+        preflight_sizer_runtime()
+
+
+def test_sizer_runtime_preflight_rejects_missing_dreamplace_runtime(tmp_path, monkeypatch):
+    runtime_root = tmp_path / "ecc-sizer"
+    executable = runtime_root / "bin" / "Sizer"
+    executable.parent.mkdir(parents=True)
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o755)
+    sentinel = runtime_root / "src" / "sizer_os.tcl"
+    sentinel.parent.mkdir()
+    sentinel.write_text("", encoding="utf-8")
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime_root))
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-path"))
+    prepare_agent_runtime_environment()
+    monkeypatch.setattr(
+        "chipcompiler.tools.ecc_dreamplace.utility.is_eda_exist",
+        lambda: False,
+    )
+
+    with pytest.raises(SizerRuntimePreflightError, match="DreamPlace runtime is unavailable"):
         preflight_sizer_runtime()
 
 

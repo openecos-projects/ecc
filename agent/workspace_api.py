@@ -86,6 +86,10 @@ class FlowAgentRuntimeApi:
     def __init__(self, ecc_api: WorkspaceRuntimeApi):
         self.ecc_api = ecc_api
 
+    def runtime_preflight(self, _request) -> dict[str, bool]:
+        preflight_sizer_runtime()
+        return {"sizer": True, "dreamplace": True}
+
     def extract_foundation(self, request: WorkspaceExtractFoundationRequest) -> dict:
         def extract(session):
             workspace_dir = Path(session.workspace.directory).resolve()

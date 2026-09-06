@@ -5,6 +5,11 @@ from chipcompiler.runtime.requests import RequestValidationError, parse_request_
 
 
 @dataclass(frozen=True)
+class RuntimePreflightRequest:
+    pass
+
+
+@dataclass(frozen=True)
 class WorkspaceExtractFoundationRequest:
     workspace_id: str
 

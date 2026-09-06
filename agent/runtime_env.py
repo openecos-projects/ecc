@@ -52,6 +52,11 @@ def preflight_sizer_runtime(timeout_seconds: float = 5.0) -> None:
     if not command or not is_sizer_runtime_exist():
         raise SizerRuntimePreflightError("Sizer runtime is unavailable")
 
+    from chipcompiler.tools.ecc_dreamplace.utility import is_eda_exist as is_dreamplace_exist
+
+    if not is_dreamplace_exist():
+        raise SizerRuntimePreflightError("DreamPlace runtime is unavailable")
+
     env = os.environ.copy()
     env.pop("LD_LIBRARY_PATH", None)
     env.pop("LD_PRELOAD", None)

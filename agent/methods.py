@@ -8,10 +8,16 @@ from .requests import (
     CandidateMaterializeRequest,
     CandidateRerunRequest,
     CandidateResumeRequest,
+    RuntimePreflightRequest,
     WorkspaceExtractFoundationRequest,
 )
 
 AGENT_RUNTIME_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
+    RuntimeMethodSpec(
+        method_name="agent.runtime_preflight",
+        request_model=RuntimePreflightRequest,
+        handler_name="runtime_preflight",
+    ),
     RuntimeMethodSpec(
         method_name="workspace.extract_foundation",
         request_model=WorkspaceExtractFoundationRequest,
