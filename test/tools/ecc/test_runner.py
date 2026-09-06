@@ -802,6 +802,42 @@ def test_copy_rcx_spef_outputs_cleans_partial_publication_when_a_copy_fails(tmp_
     assert step.output.spef == [output_dir / "a.spef", output_dir / "b.spef"]
 
 
+@pytest.mark.parametrize("second_write", ["zero-byte", "skipped"])
+def test_copy_rcx_spef_outputs_cleans_partial_publication_when_validation_fails(
+    tmp_path, monkeypatch, second_write
+):
+    data_dir = tmp_path / "RCX_ecc" / "data"
+    output_dir = tmp_path / "RCX_ecc" / "output"
+    spef_writer = data_dir / "spef_writer"
+    spef_writer.mkdir(parents=True)
+    (spef_writer / "a.spef").write_text("*SPEF\na\n", encoding="utf-8")
+    (spef_writer / "b.spef").write_text("*SPEF\nb\n", encoding="utf-8")
+    spef_outputs = [output_dir / "a.spef", output_dir / "b.spef"]
+    step = EccStep(
+        name=StepEnum.RCX.value,
+        data=EccData(dir=data_dir),
+        output=EccOutput(dir=output_dir, spef=spef_outputs),
+    )
+    workspace = Workspace(directory=tmp_path, logger=FakeLogger())
+
+    def copy_with_invalid_second(source, destination, **_kwargs):
+        destination = Path(destination)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.name == "b.spef" and second_write == "zero-byte":
+            destination.write_text("", encoding="utf-8")
+        elif destination.name == "a.spef":
+            destination.write_text("*SPEF\na\n", encoding="utf-8")
+
+    monkeypatch.setattr(ecc_runner.shutil, "copy2", copy_with_invalid_second)
+
+    assert ecc_runner.copy_rcx_spef_outputs(workspace, step) is False
+
+    assert not (output_dir / "a.spef").exists()
+    assert not (output_dir / "b.spef").exists()
+    assert step.output.spef is spef_outputs
+    assert step.output.spef == [output_dir / "a.spef", output_dir / "b.spef"]
+
+
 def _make_rcx_step(tmp_path):
     return EccStep(
         name=StepEnum.RCX.value,

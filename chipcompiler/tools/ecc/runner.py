@@ -135,18 +135,18 @@ def copy_rcx_spef_outputs(workspace: Workspace, step: EccStep) -> bool:
             shutil.copy2(source_path, output_path)
             written.append(output_path)
             workspace.logger.info("Copied RCX SPEF %s to %s", source_path, output_path)
+
+        for output_path in output_paths:
+            if not (os.path.isfile(output_path) and os.path.getsize(output_path) > 0):
+                raise OSError(f"Published RCX SPEF is missing or empty: {output_path}")
     except Exception as exc:
         # Publication is all-or-nothing: a partial SPEF set left behind by a
-        # failed copy must not remain visible as current extraction output.
+        # failed copy or a failed validation must not remain visible as
+        # current extraction output.
         for output_path in written:
             output_path.unlink(missing_ok=True)
         workspace.logger.error("Failed to publish RCX SPEF artifacts: %s", exc)
         return False
-
-    for output_path in output_paths:
-        if not (os.path.isfile(output_path) and os.path.getsize(output_path) > 0):
-            workspace.logger.error("Published RCX SPEF is missing or empty: %s", output_path)
-            return False
 
     if isinstance(step.output.spef, list):
         step.output.spef[:] = output_paths
