@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -768,6 +769,37 @@ def test_copy_rcx_spef_outputs_fails_without_partial_copy_when_one_source_is_emp
     assert not (output_dir / "empty.spef").exists()
     assert step.output.spef is spef_outputs
     assert step.output.spef == [output_dir / "good.spef", output_dir / "empty.spef"]
+
+
+def test_copy_rcx_spef_outputs_cleans_partial_publication_when_a_copy_fails(tmp_path, monkeypatch):
+    data_dir = tmp_path / "RCX_ecc" / "data"
+    output_dir = tmp_path / "RCX_ecc" / "output"
+    spef_writer = data_dir / "spef_writer"
+    spef_writer.mkdir(parents=True)
+    (spef_writer / "a.spef").write_text("*SPEF\na\n", encoding="utf-8")
+    (spef_writer / "b.spef").write_text("*SPEF\nb\n", encoding="utf-8")
+    spef_outputs = [output_dir / "a.spef", output_dir / "b.spef"]
+    step = EccStep(
+        name=StepEnum.RCX.value,
+        data=EccData(dir=data_dir),
+        output=EccOutput(dir=output_dir, spef=spef_outputs),
+    )
+    workspace = Workspace(directory=tmp_path, logger=FakeLogger())
+    real_copy2 = shutil.copy2
+
+    def fail_second_copy(source, destination, **kwargs):
+        if Path(destination).name == "b.spef":
+            raise OSError("disk full")
+        return real_copy2(source, destination, **kwargs)
+
+    monkeypatch.setattr(ecc_runner.shutil, "copy2", fail_second_copy)
+
+    assert ecc_runner.copy_rcx_spef_outputs(workspace, step) is False
+
+    assert not (output_dir / "a.spef").exists()
+    assert not (output_dir / "b.spef").exists()
+    assert step.output.spef is spef_outputs
+    assert step.output.spef == [output_dir / "a.spef", output_dir / "b.spef"]
 
 
 def _make_rcx_step(tmp_path):
