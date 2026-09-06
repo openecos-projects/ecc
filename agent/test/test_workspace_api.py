@@ -12,6 +12,7 @@ from agent.workspace_api import (
     FlowAgentRuntimeApi,
     _candidate_rerun_result,
     _candidate_rerun_steps,
+    _candidate_source_step,
     _candidate_step_artifact_dirs,
     _create_candidate_workspace,
     _materialize_candidate_rerun,
@@ -192,6 +193,24 @@ def test_candidate_rerun_slice_starts_at_the_modified_stage(
 
     assert steps[0].name == expected_first
     assert steps[-1].name == "Harden"
+
+
+def test_floorplan_candidate_uses_synthesis_checkpoint_across_lec() -> None:
+    flow = SimpleNamespace(
+        workspace=SimpleNamespace(
+            flow=SimpleNamespace(
+                data={
+                    "steps": [
+                        {"name": "Synthesis", "tool": "yosys"},
+                        {"name": "lec", "tool": "yosys_lec"},
+                        {"name": "Floorplan", "tool": "ecc"},
+                    ]
+                }
+            )
+        )
+    )
+
+    assert _candidate_source_step(flow, "Floorplan") == "Synthesis"
 
 
 def test_agent_flow_defaults_to_harden_flow(monkeypatch):

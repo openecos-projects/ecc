@@ -955,9 +955,12 @@ def _candidate_source_step(flow, target_step: str) -> str:
     steps = flow.workspace.flow.data.get("steps", [])
     for index, step in enumerate(steps):
         if step.get("name") == target_step and index:
-            source = steps[index - 1].get("name")
-            if isinstance(source, str):
-                return source
+            for source_step in reversed(steps[:index]):
+                if source_step.get("tool") == "yosys_lec":
+                    continue
+                source = source_step.get("name")
+                if isinstance(source, str):
+                    return source
     raise RuntimeApiError("invalid_request", f"candidate target has no predecessor: {target_step}")
 
 
