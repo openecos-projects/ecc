@@ -480,3 +480,192 @@ class TestHybridFullLayering:
         winner = json.loads((Path(project_dir) / "project.json").read_text())
         # Our run's success was never written into the other path's entry.
         assert winner["workspaces"][0]["status"] == "running"
+
+
+class TestManifestRunCoercion:
+    """Manifest parameter values reach create_workspace type-coerced; keys an
+    ecc.toml/--set override actually replaces are skipped so the higher layer
+    wins even when the manifest value is invalid."""
+
+    def test_run_coerced_bool_reaches_create_workspace(
+        self, tmp_path, capsys, flow_mocks, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        manifest_stubs.write(
+            project_dir,
+            [manifest_stubs.entry(project_dir, "ws_0001")],
+            base_design={
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v"],
+                "parameters": {"design": "gcd", "frequency_max": 100, "run_analysis": "false"},
+            },
+        )
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
+        assert parameters["run_analysis"] is False
+
+    def test_run_set_overrides_invalid_manifest_bool(
+        self, tmp_path, capsys, flow_mocks, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        manifest_stubs.write(
+            project_dir,
+            [manifest_stubs.entry(project_dir, "ws_0001")],
+            base_design={
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v"],
+                "parameters": {"design": "gcd", "frequency_max": 100, "run_analysis": "maybe"},
+            },
+        )
+
+        rc = cli_main.run(
+            ["run", "--project", str(project_dir), "--set", "flow.run_analysis=false", "--json"]
+        )
+
+        assert rc == 0
+        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
+        assert parameters["run_analysis"] is False
+
+    def test_run_explicit_design_frequency_overrides_invalid_manifest_frequency(
+        self, tmp_path, capsys, flow_mocks, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        manifest_stubs.write(
+            project_dir,
+            [manifest_stubs.entry(project_dir, "ws_0001")],
+            base_design={
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v"],
+                "parameters": {"design": "gcd", "frequency_max": "abc"},
+            },
+        )
+        (project_dir / "ecc.toml").write_text(
+            '[design]\nname = "gcd"\ntop = "gcd"\nrtl = ["rtl/gcd.v"]\nclock_port = "clk"\n'
+            "frequency_mhz = 100.0\n"
+            '\n[pdk]\nname = "ics55"\nroot = "'
+            + str(project_dir / "pdk")
+            + '"\n\n[flow]\npreset = "rtl2gds"\n'
+        )
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
+        assert parameters["frequency_max"] == 100.0
+
+    def test_run_params_override_supersedes_invalid_manifest_fanout(
+        self, tmp_path, capsys, flow_mocks, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        manifest_stubs.write(
+            project_dir,
+            [manifest_stubs.entry(project_dir, "ws_0001")],
+            base_design={
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v"],
+                "parameters": {"design": "gcd", "frequency_max": 100, "max_fanout": "xyz"},
+            },
+        )
+        (project_dir / "ecc.toml").write_text(
+            '[design]\nname = "gcd"\ntop = "gcd"\nrtl = ["rtl/gcd.v"]\nclock_port = "clk"\n'
+            '\n[pdk]\nname = "ics55"\nroot = "'
+            + str(project_dir / "pdk")
+            + '"\n\n[flow]\npreset = "rtl2gds"\n\n[params.cts]\nmax_fanout = 20\n'
+        )
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+
+        assert rc == 0
+        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
+        assert parameters["max_fanout"] == 20
+
+
+class TestFreshRunCoercionCleanup:
+    """Defense-in-depth for the run preparation itself: a coercion failure
+    past handler validation must not strand the freshly created run target,
+    and a target this process does not own must survive untouched."""
+
+    @staticmethod
+    def _config(tmp_path, rtl):
+        from chipcompiler.cli.project.config import ProjectConfig
+
+        return ProjectConfig(
+            design_name="gcd",
+            design_top="gcd",
+            design_rtl=rtl,
+            design_clock_port="clk",
+            design_frequency_mhz=100.0,
+            pdk_name="ics55",
+            pdk_root=str(tmp_path / "pdk"),
+            flow_preset="rtl2gds",
+            project_dir=str(tmp_path),
+            manifest_parameters={"run_analysis": "maybe"},
+        )
+
+    @staticmethod
+    def _execute(tmp_path, cfg, monkeypatch, owns_target):
+        from types import SimpleNamespace
+
+        from chipcompiler.cli.project import run_prepare
+
+        materializations = []
+        monkeypatch.setattr(
+            run_prepare,
+            "_materialize_rtl_filelist",
+            lambda cfg: materializations.append(cfg) or "filelist",
+        )
+        run_dir = tmp_path / "ws_bad"
+        run_dir.mkdir()
+        (run_dir / "marker.txt").write_text("keep")
+        result = run_prepare.execute_fresh_run(
+            SimpleNamespace(),
+            SimpleNamespace(project=None, project_dir=str(tmp_path)),
+            cfg,
+            str(run_dir),
+            "ws_bad",
+            {},
+            None,
+            "manifest",
+            [],
+            workspace_registered=False,
+            owns_target=owns_target,
+        )
+        return result, run_dir, materializations
+
+    def test_owned_target_cleaned_up_on_coercion_failure(self, tmp_path, monkeypatch):
+        cfg = self._config(tmp_path, ["rtl/a.v", "rtl/b.v"])
+
+        result, run_dir, materializations = self._execute(
+            tmp_path, cfg, monkeypatch, owns_target=True
+        )
+
+        assert result.exit_code == 1
+        assert [r["error"] for r in result.records] == ["config_error"]
+        assert "expected bool for flow.run_analysis" in result.records[0]["reason"]
+        assert not run_dir.exists()
+        # Materialization never ran, so no ecc-rtl-* temp dirs can leak.
+        assert materializations == []
+
+    def test_foreign_target_preserved_on_coercion_failure(self, tmp_path, monkeypatch):
+        cfg = self._config(tmp_path, ["rtl/a.v"])
+
+        result, run_dir, _ = self._execute(tmp_path, cfg, monkeypatch, owns_target=False)
+
+        assert result.exit_code == 1
+        assert run_dir.exists()
+        assert (run_dir / "marker.txt").read_text() == "keep"
