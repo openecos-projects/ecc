@@ -338,29 +338,16 @@ def layer_divergences(cfg, assembled: dict, entry) -> list[str]:
 
     if cfg.params_overrides and canonical_params:
         from chipcompiler.cli.project.params import (
-            _validate_schema_type,
             build_backend_overrides,
-            lookup_schema,
             manifest_value_for,
             resolve_parameters,
         )
 
-        # Registry-backed keys compare per schema with type normalization:
-        # a type-invalid manifest value counts as divergent, a same-valued
-        # differently-typed one ("false" vs false) does not.
-        compared: set[str] = set()
-        for dotted, override_value in cfg.params_overrides.items():
-            schema = lookup_schema(dotted)
-            if schema is None:
-                continue
-            manifest_value, present = manifest_value_for(canonical_params, schema.maps_to)
-            if not present:
-                continue
-            leaf_keys = _backend_leaf_keys(schema)
-            compared.update(leaf_keys)
-            coerced, type_err = _validate_schema_type(manifest_value, schema)
-            if type_err or coerced != override_value:
-                keys.extend(leaf_keys)
+        diverging, compared = _diverging_lower_keys(
+            cfg.params_overrides,
+            lambda schema: manifest_value_for(canonical_params, schema.maps_to),
+        )
+        keys.extend(diverging)
 
         # Non-registry keys keep the generic flatten comparison; keys the
         # per-schema pass covered are skipped to avoid double-reporting.
@@ -381,6 +368,34 @@ def _backend_leaf_keys(schema) -> tuple[str, ...]:
     return tuple(".".join((subtree, leaf)) for subtree, leaf in maps_to.items())
 
 
+def _diverging_lower_keys(overrides: dict, resolve_lower) -> tuple[list[str], set[str]]:
+    """Per-schema divergences between *overrides* and the layer
+    *resolve_lower* supplies.
+
+    *resolve_lower(schema)* returns ``(lower_value, present)``: an absent
+    lower value cannot diverge, a type-invalid one counts as divergent, and
+    a coerced-equal one does not ("false" vs false). Returns (diverging
+    backend leaf keys, leaf keys the per-schema pass covered).
+    """
+    from chipcompiler.cli.project.params import _validate_schema_type, lookup_schema
+
+    diverging: list[str] = []
+    compared: set[str] = set()
+    for dotted, override_value in overrides.items():
+        schema = lookup_schema(dotted)
+        if schema is None:
+            continue
+        leaf_keys = _backend_leaf_keys(schema)
+        compared.update(leaf_keys)
+        lower_value, present = resolve_lower(schema)
+        if not present:
+            continue
+        coerced, type_err = _validate_schema_type(lower_value, schema)
+        if type_err or coerced != override_value:
+            diverging.extend(leaf_keys)
+    return diverging, compared
+
+
 def cli_divergence_warning(cfg, cli_overrides: dict) -> dict | None:
     """The config_layer_diverged warning for --set values overriding a
     DIFFERENT lower-layer value (ecc.toml [params], then an explicit
@@ -395,9 +410,7 @@ def cli_divergence_warning(cfg, cli_overrides: dict) -> dict | None:
     if not cli_overrides:
         return None
     from chipcompiler.cli.project.params import (
-        _validate_schema_type,
         build_backend_overrides,
-        lookup_schema,
         manifest_value_for,
         resolve_parameters,
     )
@@ -408,29 +421,15 @@ def cli_divergence_warning(cfg, cli_overrides: dict) -> dict | None:
     explicit = getattr(cfg, "_explicit_keys", frozenset())
     params_overrides = cfg.params_overrides or {}
 
-    compared: set[str] = set()
-    diverging: list[str] = []
-    for key, cli_value in cli_overrides.items():
-        schema = lookup_schema(key)
-        if schema is None:
-            continue
-        leaf_keys = _backend_leaf_keys(schema)
-        compared.update(leaf_keys)
+    def resolve_lower(schema):
+        key = schema.param
         if key in params_overrides:
-            lower_value: object = params_overrides[key]
-        elif key == "design.frequency_mhz" and "design.frequency_mhz" in explicit:
-            lower_value = cfg.design_frequency_mhz
-        else:
-            manifest_value, present = manifest_value_for(canonical_params, schema.maps_to)
-            if not present:
-                continue
-            coerced, type_err = _validate_schema_type(manifest_value, schema)
-            if type_err:
-                diverging.extend(leaf_keys)
-                continue
-            lower_value = coerced
-        if lower_value != cli_value:
-            diverging.extend(leaf_keys)
+            return params_overrides[key], True
+        if key == "design.frequency_mhz" and "design.frequency_mhz" in explicit:
+            return cfg.design_frequency_mhz, True
+        return manifest_value_for(canonical_params, schema.maps_to)
+
+    diverging, compared = _diverging_lower_keys(cli_overrides, resolve_lower)
 
     lower: dict = {}
     if manifest_parameters:
