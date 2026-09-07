@@ -1003,6 +1003,25 @@ def test_refresh_workspace_config_preserves_nested_dreamplace_override_precedenc
     assert dreamplace["routability_opt_flag"] == 0
 
 
+def test_apply_config_overrides_validates_every_target_before_writing(tmp_path):
+    from chipcompiler.data.workspace.config_overrides import apply_config_overrides
+
+    cts_path = tmp_path / "cts.json"
+    json_write(cts_path, {"skew_bound": "0.05"})
+    parameters = {
+        "config_overrides": {
+            "cts.json": {"skew_bound": "0.20"},
+            "bogus.json": {"threads": 1},
+        }
+    }
+
+    with pytest.raises(ValueError, match="unknown config override target"):
+        apply_config_overrides({"cts.json": cts_path}, parameters)
+
+    # The valid first override is not persisted when a later target is invalid.
+    assert json_read(cts_path) == {"skew_bound": "0.05"}
+
+
 def test_refresh_workspace_config_reapplies_direct_config_overrides(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):

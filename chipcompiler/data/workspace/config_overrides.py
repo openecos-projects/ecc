@@ -15,6 +15,7 @@ def apply_config_overrides(config_paths: dict[str, Path], parameters: dict) -> N
     if not isinstance(overrides, dict):
         return
 
+    staged: list[tuple[Path, dict]] = []
     for config_key, patch in overrides.items():
         config_path = _config_path_for_key(config_paths, config_key)
         if config_path is None:
@@ -23,6 +24,9 @@ def apply_config_overrides(config_paths: dict[str, Path], parameters: dict) -> N
             raise ValueError(f"config override patch must be an object: {config_key}")
         config = json_read(config_path)
         _merge_config_patch(config, patch)
+        staged.append((config_path, config))
+
+    for config_path, config in staged:
         if not json_write(config_path, config):
             raise OSError(f"Failed to write config override: {config_path}")
 
