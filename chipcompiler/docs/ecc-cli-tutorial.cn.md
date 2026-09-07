@@ -59,7 +59,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ### 2.2 从源码运行（可选）
 
-按 [README](../README.cn.md#源码构建) 带 `--recursive` 克隆仓库（`chipcompiler/thirdparty/` 会拉取 `ecc-tools` 和 `ecc-dreamplace`），再参照 [开发指南](development.md) 配置 `uv` 工作区：
+按 [README](../../README.cn.md#源码构建) 带 `--recursive` 克隆仓库（`chipcompiler/thirdparty/` 会拉取 `ecc-tools` 和 `ecc-dreamplace`），再参照 [开发指南](../../docs/development.md) 配置 `uv` 工作区：
 
 ```bash
 git clone --recursive https://github.com/openecos-projects/ecc.git

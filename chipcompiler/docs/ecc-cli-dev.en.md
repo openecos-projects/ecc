@@ -2,7 +2,7 @@
 
 This guide is for developers who need to add or modify commands in the `ecc` CLI. It is based on the current source tree (the `chipcompiler` package, v0.1.0-alpha.11). All code paths are relative to the `ecc` repository root.
 
-Related documents: [architecture.md](architecture.md) (architecture), [development.md](development.md) (development workflow), [workspace-cli.md](workspace-cli.md) (RPC sidecar protocol), [../CLAUDE.md](../CLAUDE.md) (repository conventions).
+Related documents: [architecture.md](../../docs/architecture.md) (architecture), [development.md](../../docs/development.md) (development workflow), [workspace-cli.md](../../docs/workspace-cli.md) (RPC sidecar protocol), [../../CLAUDE.md](../../CLAUDE.md) (repository conventions).
 
 ## 1. Entry point and overall structure
 
@@ -227,7 +227,7 @@ Project preset sequences are defined in `chipcompiler/rtl2gds/builder.py` (`buil
 
 ### 5.6 Extending the RPC (`ecc rpc serve`)
 
-`rpc serve --stdio` starts the JSON-RPC 2.0 sidecar (`chipcompiler/runtime/stdio_server.py`). Methods are declared in `chipcompiler/runtime/methods.py::RUNTIME_METHODS` (`method_name` + a pydantic `request_model` + `handler_name`), handler implementations live in `chipcompiler/runtime/workspace_api.py`, and `runtime/server.py` mounts them uniformly; protocol details in [workspace-cli.md](workspace-cli.md). Adding a method = one `RuntimeMethodSpec` + the matching API method + a request model; no CLI-layer changes needed.
+`rpc serve --stdio` starts the JSON-RPC 2.0 sidecar (`chipcompiler/runtime/stdio_server.py`). Methods are declared in `chipcompiler/runtime/methods.py::RUNTIME_METHODS` (`method_name` + a pydantic `request_model` + `handler_name`), handler implementations live in `chipcompiler/runtime/workspace_api.py`, and `runtime/server.py` mounts them uniformly; protocol details in [workspace-cli.md](../../docs/workspace-cli.md). Adding a method = one `RuntimeMethodSpec` + the matching API method + a request model; no CLI-layer changes needed.
 
 ### 5.7 Extending project declarations (`ecc project *` / `ecc workspace refresh`)
 
@@ -250,7 +250,7 @@ rm -rf ~/.local/ecc && mkdir -p ~/.local/ecc && cp -a dist/ecc/. ~/.local/ecc/
 ecc --help            # verify doctor / signoff / report are listed
 ```
 
-To roll back to the official release, re-run the [README](../README.md#installation) installer (`curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh`).
+To roll back to the official release, re-run the [README](../../README.md#installation) installer (`curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh`).
 
 ## 7. Constraints and caveats (from the repository conventions)
 

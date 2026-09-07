@@ -9,7 +9,7 @@ from chipcompiler.cli.core.docs import guides_root
 
 
 def test_guides_root_points_at_repository_docs_in_dev_mode():
-    repo_docs = Path(__file__).parents[2] / "docs"
+    repo_docs = Path(__file__).parents[2] / "chipcompiler" / "docs"
 
     assert guides_root() == repo_docs
     assert (guides_root() / "ecc-cli-config.en.md").is_file()

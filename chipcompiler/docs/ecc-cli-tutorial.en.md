@@ -59,7 +59,7 @@ The `--with-toolchain` wrapper exports `CHIPCOMPILER_OSS_CAD_DIR` and `CHIPCOMPI
 
 ### 2.2 Running from source (optional)
 
-Clone the repository with `--recursive` as the [README](../README.md#build-from-source) describes (`chipcompiler/thirdparty/` pulls in `ecc-tools` and `ecc-dreamplace`), then set up the `uv` workspace per the [development guide](development.md):
+Clone the repository with `--recursive` as the [README](../../README.md#build-from-source) describes (`chipcompiler/thirdparty/` pulls in `ecc-tools` and `ecc-dreamplace`), then set up the `uv` workspace per the [development guide](../../docs/development.md):
 
 ```bash
 git clone --recursive https://github.com/openecos-projects/ecc.git

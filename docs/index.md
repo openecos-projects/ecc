@@ -6,15 +6,15 @@ Welcome to the ChipCompiler documentation center.
 
 The `ecc` command-line tool ships bilingual guides (`.en.md` / `.cn.md`):
 
-- **[CLI Tutorial](ecc-cli-tutorial.en.md)** / **[中文教程](ecc-cli-tutorial.cn.md)** - From zero to RTL → Harden with a signoff package
+- **[CLI Tutorial](../chipcompiler/docs/ecc-cli-tutorial.en.md)** / **[中文教程](../chipcompiler/docs/ecc-cli-tutorial.cn.md)** - From zero to RTL → Harden with a signoff package
   - Installing the ecc CLI, PDK, and Yosys
   - First project, the 15-step `rtl2gds` flow, signoff package, and reports
   - Tuning parameters, workspaces, and rerun scenarios
-- **[CLI User Guide](ecc-cli-ug.en.md)** / **[中文用户指南](ecc-cli-ug.cn.md)** - All currently supported commands
+- **[CLI User Guide](../chipcompiler/docs/ecc-cli-ug.en.md)** / **[中文用户指南](../chipcompiler/docs/ecc-cli-ug.cn.md)** - All currently supported commands
   - Every command and option: `init`/`check`/`run`/`status`/`log`/`config`/`doctor`/`param`/`pdk`/`project`/`workspace`/`signoff`/`report`/`rpc`/`layout-image`
   - Run selectors (`--resume`/`--from`/`--to`/`--only`), error-code reference, end-to-end workflows
-- **[CLI Config Reference](ecc-cli-config.en.md)** / **[中文配置参考](ecc-cli-config.cn.md)** - `ecc.toml`, workspace files, and the parameter system
-- **[CLI Dev Guide](ecc-cli-dev.en.md)** / **[中文开发指南](ecc-cli-dev.cn.md)** - Adding or modifying CLI commands
+- **[CLI Config Reference](../chipcompiler/docs/ecc-cli-config.en.md)** / **[中文配置参考](../chipcompiler/docs/ecc-cli-config.cn.md)** - `ecc.toml`, workspace files, and the parameter system
+- **[CLI Dev Guide](../chipcompiler/docs/ecc-cli-dev.en.md)** / **[中文开发指南](../chipcompiler/docs/ecc-cli-dev.cn.md)** - Adding or modifying CLI commands
 - **[Workspace CLI Guide](workspace-cli.md)** - Private JSON-RPC runtime sidecar protocol (`ecc rpc serve`)
 
 ## Core Documentation
@@ -58,10 +58,10 @@ ChipCompiler supports various EDA file formats. Technical specifications for par
 ### I want to...
 
 - **Get started with ChipCompiler** → See main [README](../README.md)
-- **Run my first RTL-to-GDS flow** → [CLI Tutorial](ecc-cli-tutorial.en.md) / [中文教程](ecc-cli-tutorial.cn.md)
-- **Look up an `ecc` command or option** → [CLI User Guide](ecc-cli-ug.en.md) / [中文用户指南](ecc-cli-ug.cn.md)
-- **Understand `ecc.toml` / workspace files / parameters** → [CLI Config Reference](ecc-cli-config.en.md) / [中文配置参考](ecc-cli-config.cn.md)
-- **Extend the CLI with new commands** → [CLI Dev Guide](ecc-cli-dev.en.md)
+- **Run my first RTL-to-GDS flow** → [CLI Tutorial](../chipcompiler/docs/ecc-cli-tutorial.en.md) / [中文教程](../chipcompiler/docs/ecc-cli-tutorial.cn.md)
+- **Look up an `ecc` command or option** → [CLI User Guide](../chipcompiler/docs/ecc-cli-ug.en.md) / [中文用户指南](../chipcompiler/docs/ecc-cli-ug.cn.md)
+- **Understand `ecc.toml` / workspace files / parameters** → [CLI Config Reference](../chipcompiler/docs/ecc-cli-config.en.md) / [中文配置参考](../chipcompiler/docs/ecc-cli-config.cn.md)
+- **Extend the CLI with new commands** → [CLI Dev Guide](../chipcompiler/docs/ecc-cli-dev.en.md)
 - **Use legacy workspace commands** → [Workspace CLI Guide](workspace-cli.md)
 - **Understand the architecture** → [Architecture](architecture.md)
 - **Set up development environment** → [Development Guide](development.md)

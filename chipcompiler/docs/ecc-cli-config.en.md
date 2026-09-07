@@ -1,6 +1,6 @@
 # ECC Flow Tool Configuration Reference (by step)
 
-This document consolidates **the tool configuration files actually used by each step of the ECC RTL-to-Harden flow, all of their parameters, and what each parameter means**. Configuration values and generation logic were verified against the v0.1.0-alpha.11 source (after the rebase onto main; templates live in [chipcompiler/tools/*/configs/](../chipcompiler/tools/ecc/configs/)) and a real gcd@ics55 harden run.
+This document consolidates **the tool configuration files actually used by each step of the ECC RTL-to-Harden flow, all of their parameters, and what each parameter means**. Configuration values and generation logic were verified against the v0.1.0-alpha.11 source (after the rebase onto main; templates live in [chipcompiler/tools/*/configs/](../../chipcompiler/tools/ecc/configs/)) and a real gcd@ics55 harden run.
 
 - For command usage, see the [ECC CLI User Guide](ecc-cli-ug.en.md); to get started from scratch, see the [Tutorial](ecc-cli-tutorial.en.md)
 - Config inspection command: `ecc config <step>` (lists the configuration files actually in effect for that step); parameter inspection/modification command: `ecc param` (see §1.4)
@@ -61,7 +61,7 @@ graph LR
 
 ### 0.3 Which configurations each step uses
 
-Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG_KEYS` in [chipcompiler/data/workspace/__init__.py](../chipcompiler/data/workspace/__init__.py)):
+Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG_KEYS` in [chipcompiler/data/workspace/__init__.py](../../chipcompiler/data/workspace/__init__.py)):
 
 | Step | db_ecc | Step-specific config | Notes |
 |---|---|---|---|
@@ -85,7 +85,7 @@ Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG
 
 ### 1.1 Legacy-semantic parameters (13)
 
-Source: `_LEGACY_PARAM_REGISTRY` in [chipcompiler/cli/project/params.py](../chipcompiler/cli/project/params.py) (the compatibility section of `PARAM_REGISTRY`; the direct-config parameters are the `config_params/` schemas in §1.2). These parameters are kept for compatibility; precedence: `--set` > `ecc.toml [params]` > defaults. The "Written to" column shows the tool configuration field each parameter ultimately lands in.
+Source: `_LEGACY_PARAM_REGISTRY` in [chipcompiler/cli/project/params.py](../../chipcompiler/cli/project/params.py) (the compatibility section of `PARAM_REGISTRY`; the direct-config parameters are the `config_params/` schemas in §1.2). These parameters are kept for compatibility; precedence: `--set` > `ecc.toml [params]` > defaults. The "Written to" column shows the tool configuration field each parameter ultimately lands in.
 
 | Parameter | Type / range | Default | Written to (config field) | Meaning |
 |---|---|---|---|---|
@@ -150,7 +150,7 @@ Workspace-local overrides written by `ecc param set KEY VALUE --workspace NAME` 
 
 ### 1.4 Parameter-configuration CLI commands (`ecc param`)
 
-Parameter inspection and modification go through the `ecc param` subcommands (subcommand definitions: [chipcompiler/cli/commands/param.py](../chipcompiler/cli/commands/param.py); project-scope implementation: [chipcompiler/cli/command_handlers/param.py](../chipcompiler/cli/command_handlers/param.py), workspace-scope implementation: [chipcompiler/cli/command_handlers/workspace_params.py](../chipcompiler/cli/command_handlers/workspace_params.py)):
+Parameter inspection and modification go through the `ecc param` subcommands (subcommand definitions: [chipcompiler/cli/commands/param.py](../../chipcompiler/cli/commands/param.py); project-scope implementation: [chipcompiler/cli/command_handlers/param.py](../../chipcompiler/cli/command_handlers/param.py), workspace-scope implementation: [chipcompiler/cli/command_handlers/workspace_params.py](../../chipcompiler/cli/command_handlers/workspace_params.py)):
 
 | Command | What it does |
 |---|---|

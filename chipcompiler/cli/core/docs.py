@@ -1,6 +1,8 @@
 """Locate and load the bundled CLI guide documents."""
 
 import sys
+from importlib import resources
+from importlib.resources.abc import Traversable
 from pathlib import Path
 
 GUIDE_STEMS = {
@@ -15,13 +17,11 @@ class GuideNotFoundError(FileNotFoundError):
     pass
 
 
-def guides_root() -> Path:
+def guides_root() -> Traversable:
     bundle_root = getattr(sys, "_MEIPASS", None)
     if bundle_root:
         return Path(bundle_root) / "docs"
-    import chipcompiler
-
-    return Path(chipcompiler.__file__).resolve().parent.parent / "docs"
+    return resources.files("chipcompiler") / "docs"
 
 
 def load_guide(topic: str, lang: str) -> bytes:
