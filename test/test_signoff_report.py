@@ -378,7 +378,9 @@ class TestCollectWorkspaceReport:
             seen["workspace"] = workspace
             return "REPORT"
 
-        monkeypatch.setattr("chipcompiler.engine.signoff.generate_text_report", fake_generate)
+        monkeypatch.setattr(
+            "chipcompiler.engine.signoff.collector.generate_text_report", fake_generate
+        )
         workspace = _make_workspace(tmp_path)
         assert SignoffPackageCollector(workspace).text_report() == "REPORT"
         assert seen["workspace"] is workspace
