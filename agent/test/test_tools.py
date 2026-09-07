@@ -4,6 +4,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from agent import tools as eda
 from agent.data import parameter_runtime_observer as runtime_observer
 from agent.data.candidate_materialization import materialize_candidate_config
@@ -205,3 +207,26 @@ def test_legalization_runner_reapplies_real_dreamplace_overlay(monkeypatch, tmp_
 
     assert eda.run_step(workspace, step, ecc_module=True) is True
     assert consumed == [16]
+
+
+@pytest.mark.parametrize("workers", [1, 2, 4])
+def test_candidate_sta_routes_only_parallel_mode_to_agent(monkeypatch, tmp_path, workers):
+    calls = []
+    workspace = SimpleNamespace(directory=tmp_path / ".agent" / "candidates" / "one", logger=None)
+    step = SimpleNamespace(name="sta", tool="ecc")
+    tool = SimpleNamespace(
+        build_step_config=lambda *_: None,
+        run_step=lambda **_: calls.append("serial") or True,
+    )
+    monkeypatch.setenv("ECOS_AGENT_STA_WORKERS", str(workers))
+    monkeypatch.setattr(eda, "load_eda_module", lambda *_args, **_kwargs: tool)
+    monkeypatch.setattr(eda, "log_workspace_step", lambda *_: None)
+    monkeypatch.setattr(eda, "reapply_materialized_candidate_config", lambda *_: None)
+    monkeypatch.setattr(eda, "run_with_parameter_observation", lambda *args: args[-1]())
+    monkeypatch.setattr(
+        eda,
+        "run_parallel_sta",
+        lambda _workspace, _step, _module, count: calls.append(count) or True,
+    )
+    assert eda.run_step(workspace, step) is True
+    assert calls == (["serial"] if workers == 1 else [workers])

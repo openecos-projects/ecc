@@ -13,6 +13,7 @@ from chipcompiler.engine.step_execution import get_process_rss_mb, track_current
 from chipcompiler.utility.log import redirect_stdio_to_file
 
 from .plot import _is_candidate_workspace
+from .sta_parallel import track_sta_process_memory
 from .tools import run_step as run_agent_step
 
 
@@ -53,7 +54,9 @@ class AgentEngineFlow(EngineFlow):
         self.set_state(name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Ongoing)
         _notify_flow_observer(observer, "on_step_started", workspace_step)
         self._redirect_step_stdio(workspace_step)
-        start_memory, peak_memory, stop_monitor, monitor = self._start_memory_monitor()
+        start_memory, peak_memory, stop_monitor, monitor = self._start_memory_monitor(
+            workspace_step
+        )
         result = False
         previous_observer = getattr(self.workspace, "_runtime_flow_observer", None)
         if observer is not None:
@@ -103,12 +106,16 @@ class AgentEngineFlow(EngineFlow):
         except Exception:
             traceback.print_exc()
 
-    def _start_memory_monitor(self) -> tuple[float, list[float], Event, Thread]:
+    def _start_memory_monitor(self, step) -> tuple[float, list[float], Event, Thread]:
         start_memory = get_process_rss_mb(os.getpid())
         peak_memory = [start_memory]
         stop_monitor = Event()
         monitor = Thread(
-            target=track_current_process_memory,
+            target=(
+                track_sta_process_memory
+                if step.name == "sta" and _is_candidate_workspace(self.workspace)
+                else track_current_process_memory
+            ),
             args=(os.getpid(), stop_monitor, peak_memory),
             daemon=True,
         )
