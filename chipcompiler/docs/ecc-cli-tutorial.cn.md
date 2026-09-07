@@ -1,6 +1,6 @@
 # ECC CLI 入门教程：从零跑通 RTL → Harden 并产出签核包
 
-本教程面向第一次接触 ECC 的用户：从一台只有 Linux 系统的机器开始，安装 `ecc` 命令行工具，把一个 Verilog RTL 设计（[gcd](examples/gcd/gcd.v)，最大公约数计算单元）一路跑完 **综合 → 布局布线 → 物理验证 → 逻辑等价性检查（LEC）→ 时序签核 → Harden** 全流程，最终拿到：
+本教程面向第一次接触 ECC 的用户：从一台只有 Linux 系统的机器开始，安装 `ecc` 命令行工具，把一个 Verilog RTL 设计（[gcd](../../docs/examples/gcd/gcd.v)，最大公约数计算单元）一路跑完 **综合 → 布局布线 → 物理验证 → 逻辑等价性检查（LEC）→ 时序签核 → Harden** 全流程，最终拿到：
 
 - **Harden 交付物**：GDS 版图、抽象 LEF、时序 LIB、版图快照 PNG；
 - **签核包** `gcd_signoff_package.tar.gz`（含 RTL/配置/交付物/LEC 证明/报告等 300+ 文件）；
@@ -184,7 +184,7 @@ curl -fL -o rtl/gcd.v \
 # cp /path/to/ecc/docs/examples/gcd/gcd.v rtl/
 ```
 
-多文件设计请改用 filelist（`rtl = ["rtl/filelist.f"]`），语法见 [examples/gcd/README.md](examples/gcd/README.md#using-filelist) 与 [filelist 语法](specification/filelist-grammar.md)。
+多文件设计请改用 filelist（`rtl = ["rtl/filelist.f"]`），语法见 [examples/gcd/README.md](../../docs/examples/gcd/README.md#using-filelist) 与 [filelist 语法](../../docs/specification/filelist-grammar.md)。
 
 ### 3.3 认识 ecc.toml
 
@@ -713,10 +713,10 @@ ecc config --plain      # 项目级配置（键值 + 解析后绝对路径）
 
 ## 8. 下一步
 
-- 换你自己的设计：改 `ecc.toml` 的 `top`/`rtl`/`clock_port`/`frequency_mhz`，多文件用 [filelist](examples/gcd/README.md#using-filelist)；
+- 换你自己的设计：改 `ecc.toml` 的 `top`/`rtl`/`clock_port`/`frequency_mhz`，多文件用 [filelist](../../docs/examples/gcd/README.md#using-filelist)；
 - 了解 preset 差异：`rtl2gds`（完整 15 步综合到 Harden 链，含综合级 LEC）、`syn_sta`（仅综合）、`synthesis_lec`（综合 + LEC，两步）；
 - 全部命令细节见 **[ECC CLI 用户指南](ecc-cli-ug.cn.md)**；CLI 扩展开发见 [ecc-cli-dev.cn.md](ecc-cli-dev.cn.md)；
-- 用 Python API 直接编排 flow（`EngineFlow`）见 [examples/gcd/ics55flow.py](examples/gcd/ics55flow.py)。
+- 用 Python API 直接编排 flow（`EngineFlow`）见 [examples/gcd/ics55flow.py](../../docs/examples/gcd/ics55flow.py)。
 
 ---
 

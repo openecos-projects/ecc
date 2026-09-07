@@ -257,7 +257,7 @@ To roll back to the official release, re-run the [README](../../README.md#instal
 - **Module size**: once a file exceeds roughly 800 LoC, put new functionality in a new module instead of growing it (repository CLAUDE.md section 6).
 - **Python 3+**: do not use `__future__`; check `requires-python` in `pyproject.toml` for the minimum version.
 - **Test placement** follows ownership boundaries; prefer whole-object comparisons; do not write tests for statically defined values; do not keep negative tests for removed logic.
-- **Code review** must enforce the additional standards in [review-guidelines.md](review-guidelines.md).
+- **Code review** must enforce the additional standards in [review-guidelines.md](../../docs/review-guidelines.md).
 - `uv.lock` is the source of truth for dependencies; `requirements_lock.txt` is auto-generated and gitignored.
 - ECC-Tools' tool identifier in code is `"ecc"` (not `"ecc-tools"`); every tool module must implement `is_eda_exist / build_step / run_step`; steps execute in `multiprocessing.Process` and state persists in `workspace.flow.json`.
 - After installing dependencies, `ecc` is editable — source changes take effect on the next import, no reinstall needed.

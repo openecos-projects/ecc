@@ -257,7 +257,7 @@ ecc --help            # 验证 doctor / signoff / report 已列出
 - **模块体积**：文件超过约 800 LoC 时新功能放新模块，不要继续堆（[../../CLAUDE.md](../../CLAUDE.md) 第 6 节）。
 - **Python 3+**：不用 `__future__`；最低版本看 `pyproject.toml` 的 `requires-python`。
 - **测试放置**按所有权边界；优先整对象比较；不为静态定义的值写测试；不为已删除的逻辑保留负向测试。
-- **代码评审**必须执行 [review-guidelines.md](review-guidelines.md) 的附加标准。
+- **代码评审**必须执行 [review-guidelines.md](../../docs/review-guidelines.md) 的附加标准。
 - `uv.lock` 是依赖事实源；`requirements_lock.txt` 自动生成且被 gitignore。
 - ECC-Tools 在代码里的工具标识是 `"ecc"`（不是 `"ecc-tools"`）；每个工具模块需实现 `is_eda_exist / build_step / run_step`；步骤在 `multiprocessing.Process` 中执行，状态持久化在 `workspace.flow.json`。
 - 依赖安装后 `ecc` 以 editable 方式生效，改源码下次导入即生效，无需重装。
