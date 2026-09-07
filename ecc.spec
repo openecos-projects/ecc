@@ -52,6 +52,17 @@ DREAMPLACE_THIRDPARTY_FILES = (
     "thirdparty/NCTUgr.ICCAD2012/ICCAD12.set",
 )
 
+DOC_GUIDES = (
+    "docs/ecc-cli-config.en.md",
+    "docs/ecc-cli-config.cn.md",
+    "docs/ecc-cli-ug.en.md",
+    "docs/ecc-cli-ug.cn.md",
+    "docs/ecc-cli-tutorial.en.md",
+    "docs/ecc-cli-tutorial.cn.md",
+    "docs/ecc-cli-dev.en.md",
+    "docs/ecc-cli-dev.cn.md",
+)
+
 LINUX_RUNTIME_LIBS = (
     "/lib/x86_64-linux-gnu/libgomp.so.1",
     "/lib/x86_64-linux-gnu/libtbb.so.12",
@@ -174,6 +185,20 @@ def collect_dreamplace_thirdparty_files():
     return datas
 
 
+def collect_doc_guides():
+    datas = []
+    for relpath in DOC_GUIDES:
+        src = ECC_DIR / relpath
+        if src.is_file():
+            datas.append((str(src), "docs"))
+        else:
+            warnings.warn(
+                f"Required ECC runtime resource was not collected: {relpath}",
+                stacklevel=2,
+            )
+    return datas
+
+
 def collect_platform_runtime_libs():
     if sys.platform.startswith("linux"):
         binaries = []
@@ -221,6 +246,7 @@ datas.extend(collect_required_metadata())
 datas.extend(collect_ecc_resources())
 datas.extend(collect_jsonrpcserver_resources())
 datas.extend(collect_dreamplace_thirdparty_files())
+datas.extend(collect_doc_guides())
 
 binaries = []
 binaries.extend(ecc_binaries)

@@ -50,6 +50,14 @@ def _plain_value(value) -> str:
     return s
 
 
+def render_markdown(text: str, file=None, *, color: bool) -> None:
+    from rich.console import Console
+    from rich.markdown import Markdown
+
+    console = Console(file=file or sys.stdout, force_terminal=True, no_color=not color)
+    console.print(Markdown(text))
+
+
 def render_result(
     result: CommandResult, mode: OutputMode, file=None, command=None, *, color=True
 ) -> None:

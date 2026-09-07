@@ -4,6 +4,7 @@ from typing import Annotated
 
 import typer
 
+from chipcompiler.cli.commands.doc import register_doc_commands
 from chipcompiler.cli.commands.doctor import register_doctor_commands
 from chipcompiler.cli.commands.param import param_app
 from chipcompiler.cli.commands.pdk import pdk_app
@@ -81,6 +82,7 @@ def layout_image_cmd(
 
 register_project_commands(app)
 register_doctor_commands(app)
+register_doc_commands(app)
 app.add_typer(param_app, name="param")
 app.add_typer(pdk_app, name="pdk")
 app.add_typer(project_app, name="project")
