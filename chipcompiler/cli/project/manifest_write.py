@@ -305,7 +305,11 @@ def pre_register_workspace(
             end_step=end_step,
             status="not_started",
         )
-        return "registered" if write_manifest_if_absent(project_dir, document) else "failed"
+        if write_manifest_if_absent(project_dir, document):
+            return "registered"
+        # A concurrent creator won the link race: fall through and apply the
+        # same registration mutation under the manifest lock instead of
+        # aborting this run. A genuine I/O failure fails again below.
 
     outcome = "registered"
 

@@ -192,6 +192,7 @@ def execute_fresh_run(
     workspace_registered: bool,
     owns_target: bool,
     backup_path: str | None = None,
+    ws_locks=None,
     execute_flow: bool = True,
 ) -> CommandResult:
     """Create the workspace, seed it, execute the flow, and map the result.
@@ -201,7 +202,9 @@ def execute_fresh_run(
     generation, engine execution, and status write-back. When *backup_path*
     is set the invocation overwrote an existing workspace by renaming it
     aside: a failure before the replacement is fully constructed restores
-    the backup, and only a verified construction discards it.
+    the backup, and only a verified construction discards it. *ws_locks* is
+    the caller's lock stack already holding the workspace lock (taken before
+    the overwrite rename); when None this function takes the lock itself.
     """
     import shutil
 
@@ -326,11 +329,16 @@ def execute_fresh_run(
     # creation. It stays held through seeding and engine execution below —
     # the same execution ownership as the existing-run path — while the
     # migration lock is released right after creation so a run never pins
-    # project-wide migration for minutes.
-    ws_locks = contextlib.ExitStack()
+    # project-wide migration for minutes. The caller's stack already holds
+    # the lock when it took the overwrite rename; entering here would be a
+    # no-op on the same path, so only a self-owned stack enters it.
+    caller_locks = ws_locks is not None
+    if ws_locks is None:
+        ws_locks = contextlib.ExitStack()
     try:
         with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
-            ws_locks.enter_context(_workspace_lock(Path(run_dir)))
+            if not caller_locks:
+                ws_locks.enter_context(_workspace_lock(Path(run_dir)))
             try:
                 workspace = create_workspace(
                     directory=run_dir,
@@ -458,7 +466,10 @@ def execute_fresh_run(
                 ]
             )
     finally:
-        ws_locks.close()
+        # A caller-owned stack outlives this function: the dispatcher closes
+        # it after the engine run, so only a self-owned stack closes here.
+        if not caller_locks:
+            ws_locks.close()
 
     if workspace_registered:
         _write_back_status(project_dir, run_name, "success", warning_records)

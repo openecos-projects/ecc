@@ -488,7 +488,9 @@ class TestHybridFullLayering:
 
         assert rc != 0
         (record,) = manifest_stubs.records()
-        assert record["error"] == "workspace_registration_failed"
+        # The lost create race falls through to the locked registration,
+        # which classifies the same-id winner at another path as a conflict.
+        assert record["error"] == "workspace_conflict"
         assert flow_mocks.capture["create_kwargs"] is None
         winner = json.loads((Path(project_dir) / "project.json").read_text())
         # Our run never wrote its status into the other path's entry.
