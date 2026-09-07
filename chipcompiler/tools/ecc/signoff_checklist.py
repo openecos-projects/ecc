@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 
 from chipcompiler.data import Checklist, StateEnum, StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data.step_dirs import STEP_DIRECTORIES
 from chipcompiler.tools.ecc.sta_qor import (
     STA_QOR_SUMMARY_FILENAME,
     STA_REPORT_FILENAMES,
@@ -19,23 +20,6 @@ from chipcompiler.tools.ecc.sta_qor import (
 )
 from chipcompiler.utility import json_read
 from chipcompiler.utility.filelist import resolve_initial_rtl
-
-_STEP_DIRECTORIES = {
-    StepEnum.SYNTHESIS.value: "Synthesis_yosys",
-    StepEnum.LEC.value: "lec_yosys_lec",
-    StepEnum.FLOORPLAN.value: "Floorplan_ecc",
-    StepEnum.PLACEMENT.value: "place_dreamplace",
-    StepEnum.CTS.value: "CTS_ecc",
-    StepEnum.LEGALIZATION.value: "legalization_dreamplace",
-    StepEnum.ROUTING.value: "route_ecc",
-    StepEnum.DRC.value: "drc_ecc",
-    StepEnum.LVS.value: "lvs_ecc",
-    StepEnum.FILLER.value: "filler_ecc",
-    StepEnum.POST_ROUTE_LEC.value: "postRouteLec_yosys_lec",
-    StepEnum.RCX.value: "RCX_ecc",
-    StepEnum.STA.value: "sta_ecc",
-    StepEnum.HARDEN.value: "Harden_ecc",
-}
 
 _QUALITY_GATES_BY_STEP = {
     StepEnum.DRC.value: ("qor.drc.clean",),
@@ -143,7 +127,7 @@ def _prefixed_evidence(step_directory: str, evidence: list) -> list[dict]:
         path = item.get("path")
         is_workspace_step_path = isinstance(path, str) and any(
             path == directory or path.startswith(directory + "/")
-            for directory in _STEP_DIRECTORIES.values()
+            for directory in STEP_DIRECTORIES.values()
         )
         if (
             isinstance(path, str)
@@ -658,8 +642,8 @@ def rebuild_home_checklist(workspace: Workspace, resource_issues=None) -> dict:
         return {}
     workspace_dir = Path(workspace_directory)
     items = []
-    post_route_lec_dir = _STEP_DIRECTORIES[StepEnum.POST_ROUTE_LEC.value]
-    for directory in _STEP_DIRECTORIES.values():
+    post_route_lec_dir = STEP_DIRECTORIES[StepEnum.POST_ROUTE_LEC.value]
+    for directory in STEP_DIRECTORIES.values():
         if directory == post_route_lec_dir:
             continue
         data = json_read(workspace_dir / directory / "checklist.json")
@@ -678,7 +662,7 @@ def rebuild_home_checklist(workspace: Workspace, resource_issues=None) -> dict:
             _lec_artifact_items(workspace, StepEnum.POST_ROUTE_LEC.value, result_json, golden, gate)
         )
     for step_name in _QUALITY_GATES_BY_STEP:
-        step_directory = workspace_dir / _STEP_DIRECTORIES[step_name]
+        step_directory = workspace_dir / STEP_DIRECTORIES[step_name]
         items.extend(
             _quality_gate_items_from_summary(
                 workspace,

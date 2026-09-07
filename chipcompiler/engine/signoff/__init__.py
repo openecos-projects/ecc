@@ -1296,22 +1296,9 @@ class SignoffPackageCollector:
         return str(temperature).replace("-", "m").replace(".", "p")
 
     def _step_dirs(self) -> dict[str, str]:
-        return {
-            StepEnum.SYNTHESIS.value: "Synthesis_yosys",
-            StepEnum.LEC.value: "lec_yosys_lec",
-            StepEnum.FLOORPLAN.value: "Floorplan_ecc",
-            StepEnum.PLACEMENT.value: "place_dreamplace",
-            StepEnum.CTS.value: "CTS_ecc",
-            StepEnum.LEGALIZATION.value: "legalization_dreamplace",
-            StepEnum.ROUTING.value: "route_ecc",
-            StepEnum.DRC.value: "drc_ecc",
-            StepEnum.LVS.value: "lvs_ecc",
-            StepEnum.FILLER.value: "filler_ecc",
-            StepEnum.POST_ROUTE_LEC.value: "postRouteLec_yosys_lec",
-            StepEnum.RCX.value: "RCX_ecc",
-            StepEnum.STA.value: "sta_ecc",
-            StepEnum.HARDEN.value: "Harden_ecc",
-        }
+        from chipcompiler.data.step_dirs import STEP_DIRECTORIES
+
+        return STEP_DIRECTORIES
 
 
 # Public entry point for the text design summary; the implementation lives in
