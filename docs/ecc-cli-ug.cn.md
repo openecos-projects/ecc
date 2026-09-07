@@ -113,6 +113,22 @@ Commands:
   rpc           Run the private ECC JSON-RPC runtime
 ```
 
+## 1.5. doc — 在终端阅读内置指南
+
+`ecc doc` 将随包内置的 CLI 指南直接渲染到终端，因此在打包安装（无源码、无文档目录）的环境中也能离线查阅完整参考。
+
+```bash
+ecc doc config              # 完整配置参考（渲染输出）
+ecc doc config 7            # 仅第 7 节（cts）
+ecc doc ug 8.5 --lang cn    # 小数节按编号精确匹配（8 ≠ 8.5）
+ecc doc config --plain      # 原始 markdown，逐字节输出
+```
+
+- 主题：`config`、`ug`、`tutorial`、`dev`；`--lang` 选择 `en`（默认）或 `cn`。
+- `section` 与指南的 `## N.` 编号标题精确匹配；未知编号退出码为 1，并列出全部可用编号。
+- 非法的主题/语言取值由参数校验拒绝（退出码 2）。
+- 管道输出保留 unicode 渲染版式；`--plain` 原样输出原始 markdown，适合脚本处理。
+
 ## 2. version — 查看版本
 
 ```bash

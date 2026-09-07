@@ -113,6 +113,22 @@ Commands:
   rpc           Run the private ECC JSON-RPC runtime
 ```
 
+## 1.5. doc — read the bundled guides in the terminal
+
+`ecc doc` renders the bundled CLI guides directly in the terminal, so the full reference stays available offline inside packaged installations.
+
+```bash
+ecc doc config              # full configuration reference (rendered)
+ecc doc config 7            # only section 7 (cts)
+ecc doc ug 8.5 --lang cn    # decimal sections are addressed exactly (8 ≠ 8.5)
+ecc doc config --plain      # raw markdown, byte-for-byte
+```
+
+- Topics: `config`, `ug`, `tutorial`, `dev`; `--lang` selects `en` (default) or `cn`.
+- `section` matches the guides' numbered `## N.` headings exactly; an unknown section exits 1 and lists the available section numbers.
+- Invalid topic/language values are rejected by argument validation (exit 2).
+- Default output keeps the rendered unicode layout even when piped; `--plain` prints the raw markdown unchanged (script-friendly).
+
 ## 2. version — show versions
 
 ```bash

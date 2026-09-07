@@ -22,6 +22,13 @@ def test_all_four_topics_resolve_in_both_languages():
             assert text.startswith("# ")
 
 
+def test_ug_guide_documents_the_doc_command_in_both_languages():
+    for lang in ("en", "cn"):
+        text = docs.load_guide("ug", lang).decode("utf-8")
+        assert "## 1.5. doc" in text
+        assert "ecc doc config" in text
+
+
 def test_doc_config_plain_is_byte_identical_to_the_guide_file(capsysbinary):
     rc = cli_main.run(["doc", "config", "--plain"])
 
