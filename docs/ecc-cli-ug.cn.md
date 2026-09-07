@@ -120,6 +120,7 @@ Commands:
 
 ```bash
 ecc doc config              # 完整配置参考（渲染输出）
+ecc doc config --sections   # 列出章节编号与标题
 ecc doc config 7            # 仅第 7 节（cts）
 ecc doc ug 8.5 --lang cn    # 小数节按编号精确匹配（8 ≠ 8.5）
 ecc doc config --plain      # 原始 markdown，逐字节输出

@@ -120,6 +120,7 @@ Commands:
 
 ```bash
 ecc doc config              # full configuration reference (rendered)
+ecc doc config --sections   # list the numbered sections with their titles
 ecc doc config 7            # only section 7 (cts)
 ecc doc ug 8.5 --lang cn    # decimal sections are addressed exactly (8 ≠ 8.5)
 ecc doc config --plain      # raw markdown, byte-for-byte

@@ -142,6 +142,33 @@ def test_doc_section_tokens_match_exactly(capsys):
     assert out.startswith("## 8.5.")
 
 
+def test_doc_sections_lists_tokens_with_titles(capsys):
+    rc = cli_main.run(["doc", "config", "--sections"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "Configuration System Overview" in out
+    assert "cts (ecc-tools)" in out
+    assert "8.5" not in out
+
+
+def test_doc_sections_with_chinese_titles(capsys):
+    rc = cli_main.run(["doc", "ug", "--lang", "cn", "--sections"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "8.5" in out
+    assert any("\u4e00" <= ch <= "\u9fff" for ch in out)
+
+
+def test_doc_sections_rejects_section_combination(capsys):
+    rc = cli_main.run(["doc", "config", "7", "--sections"])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "Error:" in captured.err
+
+
 def test_doc_unknown_section_lists_available_tokens(capsys):
     rc = cli_main.run(["doc", "config", "99"])
 
@@ -150,6 +177,7 @@ def test_doc_unknown_section_lists_available_tokens(capsys):
     assert "no section 99" in captured.err
     for token in ("0", "7", "16"):
         assert token in captured.err
+    assert "Configuration System Overview" in captured.err
 
 
 def test_doc_without_section_shows_the_full_guide(capsys):

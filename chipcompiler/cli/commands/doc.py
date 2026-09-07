@@ -36,6 +36,12 @@ def doc_cmd(
     ] = None,
     *,
     lang: Annotated[DocLanguage, typer.Option("--lang", help="Guide language")] = DocLanguage.en,
+    sections: Annotated[
+        bool,
+        typer.Option(
+            "--sections", help="List the guide's numbered sections with their titles, then exit"
+        ),
+    ] = False,
     plain: Annotated[
         bool,
         typer.Option("--plain", help="Print the raw markdown instead of the rendered layout"),
@@ -43,10 +49,16 @@ def doc_cmd(
 ) -> None:
     try:
         raw = docs.load_guide(topic.value, lang.value)
-        if plain and section is None:
+        if plain and section is None and not sections:
             _write_plain(raw)
             return
         text = raw.decode("utf-8")
+        if sections:
+            if section is not None:
+                typer.echo("Error: --sections cannot be combined with SECTION", err=True)
+                raise typer.Exit(1)
+            _write_text(docs.table_of_contents(text))
+            return
         if section is not None:
             text = docs.slice_section(text, section)
     except docs.GuideNotFoundError as exc:
@@ -88,3 +100,11 @@ def _write_plain(data: bytes) -> None:
     else:
         stream.write(data)
         stream.flush()
+
+
+def _write_text(text: str) -> None:
+    try:
+        sys.stdout.write(text)
+    except UnicodeEncodeError:
+        typer.echo("Error: terminal encoding cannot render this output", err=True)
+        raise typer.Exit(1) from None
