@@ -3,6 +3,7 @@ from typing import Annotated
 import typer
 
 from chipcompiler.cli.command_handlers import signoff as signoff_handlers
+from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import (
     SignoffExportInput,
     SignoffInspectInput,
@@ -18,12 +19,7 @@ from chipcompiler.cli.core.options import (
     WorkspaceOption,
 )
 
-signoff_app = typer.Typer(
-    add_completion=False,
-    no_args_is_help=True,
-    rich_markup_mode=None,
-    help="Inspect and export signoff packages",
-)
+signoff_app = create_app(help="Inspect and export signoff packages")
 
 
 def _finish(subcommand: str, command_input, handler) -> None:

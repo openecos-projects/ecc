@@ -5,6 +5,7 @@ from typing import Annotated
 import typer
 
 from chipcompiler.cli.command_handlers import project_config as handlers
+from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import (
     ProjectAddInput,
     ProjectSetInput,
@@ -16,12 +17,7 @@ from chipcompiler.cli.core.inputs import (
 from chipcompiler.cli.core.invocation import execute_command
 from chipcompiler.cli.core.options import JsonlOption, JsonOption, PlainOption, ProjectOption
 
-project_app = typer.Typer(
-    add_completion=False,
-    no_args_is_help=True,
-    rich_markup_mode=None,
-    help="Edit project declarations in ecc.toml",
-)
+project_app = create_app(help="Edit project declarations in ecc.toml")
 
 
 def _finish(subcommand: str, command_input, handler) -> None:

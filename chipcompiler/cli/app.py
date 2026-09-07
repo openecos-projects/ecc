@@ -13,15 +13,11 @@ from chipcompiler.cli.commands.report import report_app
 from chipcompiler.cli.commands.rpc import rpc_app
 from chipcompiler.cli.commands.signoff import signoff_app
 from chipcompiler.cli.commands.workspace import workspace_app
+from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.version_info import root_version_line, version_payload, version_text
 from chipcompiler.cli.inspection.tool_versions import tool_versions
 
-app = typer.Typer(
-    add_completion=False,
-    no_args_is_help=True,
-    rich_markup_mode=None,
-    help="ECC - EDA toolchain for RTL-to-GDS flows",
-)
+app = create_app(help="ECC - EDA toolchain for RTL-to-GDS flows")
 
 
 def version_callback(value: bool) -> None:  # noqa: FBT001 -- typer invokes Option callbacks positionally

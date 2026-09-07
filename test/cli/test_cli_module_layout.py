@@ -173,3 +173,14 @@ def test_production_code_does_not_import_removed_inspection_modules():
         source = source_path.read_text()
         for name in forbidden_imports:
             assert name not in source, source_path
+
+
+def test_typer_apps_are_created_through_the_shared_factory():
+    package_root = Path(__file__).parents[2] / "chipcompiler" / "cli"
+    factory = package_root / "core" / "apps.py"
+
+    for source_path in package_root.rglob("*.py"):
+        if source_path == factory:
+            continue
+        source = source_path.read_text()
+        assert "typer.Typer(" not in source, source_path

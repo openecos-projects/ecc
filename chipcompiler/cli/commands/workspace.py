@@ -5,16 +5,12 @@ from typing import Annotated
 import typer
 
 from chipcompiler.cli.command_handlers import project as project_handlers
+from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import WorkspaceRefreshInput, output_options, project_options
 from chipcompiler.cli.core.invocation import execute_command
 from chipcompiler.cli.core.options import JsonlOption, JsonOption, PlainOption, ProjectOption
 
-workspace_app = typer.Typer(
-    add_completion=False,
-    no_args_is_help=True,
-    rich_markup_mode=None,
-    help="Refresh managed workspaces from project configuration",
-)
+workspace_app = create_app(help="Refresh managed workspaces from project configuration")
 
 
 @workspace_app.command("refresh", help="Recreate a workspace from ecc.toml without running it")

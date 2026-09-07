@@ -7,6 +7,7 @@ from chipcompiler.cli.command_handlers.param import param_list as param_list_han
 from chipcompiler.cli.command_handlers.param import param_set as param_set_handler
 from chipcompiler.cli.command_handlers.param import param_show as param_show_handler
 from chipcompiler.cli.command_handlers.param import param_unset as param_unset_handler
+from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import (
     ParamDiffInput,
     ParamListInput,
@@ -25,12 +26,7 @@ from chipcompiler.cli.core.options import (
     WorkspaceOption,
 )
 
-param_app = typer.Typer(
-    add_completion=False,
-    no_args_is_help=True,
-    rich_markup_mode=None,
-    help="Manage EDA parameters",
-)
+param_app = create_app(help="Manage EDA parameters")
 
 
 def _finish_param(
