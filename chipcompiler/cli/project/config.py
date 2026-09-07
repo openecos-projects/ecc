@@ -289,22 +289,27 @@ def _resolve_pdk_root(cfg: ProjectConfig) -> str:
 
 
 def resolve_pdk_overrides(
-    cfg: ProjectConfig, additional_overrides: dict[str, object] | None = None
+    cfg: ProjectConfig,
+    additional_overrides: dict[str, object] | None = None,
+    *,
+    pdk_root: str | None = None,
 ) -> dict[str, object]:
     """Return pdk_overrides with path-field values resolved to absolute paths.
 
-    PDK-content paths (PDK_CONTENT_PATH_FIELDS) resolve against the PDK root;
-    design-data paths (sdc/spef) resolve against the project dir. Non-path
-    values such as dont_use glob patterns pass through untouched.
+    PDK-content paths (PDK_CONTENT_PATH_FIELDS) resolve against the PDK root —
+    *pdk_root* when given (e.g. a candidate root being validated by
+    `pdk setup`), otherwise the configured root; design-data paths
+    (sdc/spef) resolve against the project dir. Non-path values such as
+    dont_use glob patterns pass through untouched.
     """
     from chipcompiler.data.pdk import PATH_LIST_FIELDS, PATH_SCALAR_FIELDS, PDK_CONTENT_PATH_FIELDS
 
     resolved = dict(cfg.pdk_overrides)
     if additional_overrides:
         resolved.update(additional_overrides)
-    pdk_root = _resolve_pdk_root(cfg)
+    base_root = _resolve_pdk_root(cfg) if pdk_root is None else pdk_root
     for key, value in resolved.items():
-        base = pdk_root if key in PDK_CONTENT_PATH_FIELDS else cfg.project_dir
+        base = base_root if key in PDK_CONTENT_PATH_FIELDS else cfg.project_dir
         if key in PATH_SCALAR_FIELDS and isinstance(value, str):
             resolved[key] = _resolve_path(base, value)
         elif key in PATH_LIST_FIELDS and isinstance(value, list):

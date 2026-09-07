@@ -6,7 +6,8 @@ import tomllib
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.project.config_fields import lookup_project_field, parse_project_field_values
-from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_scoped_key, write_text_atomic
+from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_scoped_key
+from chipcompiler.utility.file import write_text_atomic
 
 
 def project_set(args, ctx: CommandContext) -> CommandResult:

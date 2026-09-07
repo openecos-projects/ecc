@@ -102,6 +102,38 @@ class TestReportQor:
         with open(expected) as f:
             assert f.read() == "QOR BODY"
 
+    def test_qor_write_failure_is_a_structured_error_not_a_traceback(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, report_mocks, plain_records
+    ):
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "default")
+        os.makedirs(run_dir)
+        report_mocks.workspace.directory = run_dir
+        # An existing report must survive a failed write, and the failure
+        # must surface as a structured record, never a traceback.
+        existing = os.path.join(run_dir, "signoff", "gcd_qor_report.txt")
+        os.makedirs(os.path.dirname(existing))
+        with open(existing, "w") as f:
+            f.write("PREVIOUS REPORT")
+
+        real_replace = os.replace
+
+        def failing_replace(src, dst):
+            if str(dst).endswith("gcd_qor_report.txt"):
+                raise OSError(28, "No space left on device")
+            real_replace(src, dst)
+
+        monkeypatch.setattr(os, "replace", failing_replace)
+
+        rc = cli_main.run(["report", "qor", "--project", project_dir, "--plain"])
+
+        record = plain_records(capsys.readouterr().out)[0]
+        assert rc == 1
+        assert record["error"] == "report_write_failed"
+        assert "No space left" in record["reason"]
+        with open(existing) as f:
+            assert f.read() == "PREVIOUS REPORT"
+
     def test_qor_output_override(
         self, tmp_path, capsys, monkeypatch, create_cli_project, report_mocks, plain_records
     ):

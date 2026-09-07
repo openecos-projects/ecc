@@ -2,8 +2,32 @@
 
 import hashlib
 import os
+import tempfile
 from contextlib import suppress
 from pathlib import Path
+
+
+def write_text_atomic(path: str, text: str) -> None:
+    """Replace the file at `path` with `text` via a sibling temp file + os.replace.
+
+    A plain `open(path, "w")` truncates first, so an interruption or write
+    failure after truncation can destroy the existing file; the sibling temp
+    file keeps the old content intact until the fully written replacement
+    can be renamed in.
+    """
+    directory = os.path.dirname(os.path.abspath(path))
+    fd, tmp_path = tempfile.mkstemp(
+        dir=directory, prefix=f".{os.path.basename(path)}.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            file.write(text)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(tmp_path, path)
+    except BaseException:
+        os.unlink(tmp_path)
+        raise
 
 
 def chmod_folder(folder: str, mode: int = 0o777):

@@ -4,7 +4,8 @@ import os
 
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
-from chipcompiler.cli.project.toml_edit import set_pdk_root, write_text_atomic
+from chipcompiler.cli.project.toml_edit import set_pdk_root
+from chipcompiler.utility.file import write_text_atomic
 
 
 def _write_pdk_root(config_path: str, value: str) -> None:
@@ -189,6 +190,7 @@ def setup(command_input, ctx: CommandContext) -> CommandResult:
         _validate_pdk_contents,
         find_config_path,
         load_project_config,
+        resolve_pdk_overrides,
     )
 
     config_path = find_config_path(ctx.project_dir)
@@ -205,7 +207,11 @@ def setup(command_input, ctx: CommandContext) -> CommandResult:
     actions: list[str] = []
 
     def contents_problem() -> str | None:
-        return _validate_pdk_contents(pdk_name, path, None)
+        # Validate the layout the project actually uses: configured
+        # [pdk.overrides] content paths resolve against the candidate root
+        # being set up, not the generic default layout.
+        overrides = resolve_pdk_overrides(cfg, pdk_root=path) if cfg is not None else None
+        return _validate_pdk_contents(pdk_name, path, overrides)
 
     if not os.path.isdir(path):
         missing_tools = [tool for tool in ("git", "make") if shutil.which(tool) is None]

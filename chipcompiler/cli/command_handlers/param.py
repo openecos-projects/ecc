@@ -11,6 +11,7 @@ from chipcompiler.cli.project.params import (
     validate_pdk_target,
     validate_value,
 )
+from chipcompiler.utility.file import write_text_atomic
 
 
 def _manifest_mode_error(ctx: CommandContext) -> CommandResult | None:
@@ -375,7 +376,7 @@ def _write_param_to_toml(config_path: str, schema, value: object) -> None:
         original = f.read()
 
     new_text = toml_edit.set_scoped_key(original, target_table, name, value)
-    toml_edit.write_text_atomic(config_path, new_text)
+    write_text_atomic(config_path, new_text)
 
 
 def _remove_param_from_toml(config_path: str, schema) -> bool:
@@ -392,5 +393,5 @@ def _remove_param_from_toml(config_path: str, schema) -> bool:
     if result is None:
         return False
 
-    toml_edit.write_text_atomic(config_path, result)
+    write_text_atomic(config_path, result)
     return True

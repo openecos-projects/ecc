@@ -4,33 +4,9 @@ Edits preserve the surrounding file layout (comments, ordering, indentation)
 so repeated `param set`/`pdk set-root` calls do not churn the config file.
 """
 
-import os
 import re
-import tempfile
 
 _TABLE_HEADER_RE = re.compile(r"^[ \t]*\[([^\]]+)\][ \t]*(?:#.*)?$", re.MULTILINE)
-
-
-def write_text_atomic(path: str, text: str) -> None:
-    """Replace the file at `path` with `text` via a sibling temp file + os.replace.
-
-    A plain `open(path, "w")` truncates first, so an interruption or write
-    failure can destroy the existing ecc.toml; the sibling temp file keeps the
-    old content intact until the fully written replacement can be renamed in.
-    """
-    directory = os.path.dirname(os.path.abspath(path))
-    fd, tmp_path = tempfile.mkstemp(
-        dir=directory, prefix=f".{os.path.basename(path)}.", suffix=".tmp"
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as file:
-            file.write(text)
-            file.flush()
-            os.fsync(file.fileno())
-        os.replace(tmp_path, path)
-    except BaseException:
-        os.unlink(tmp_path)
-        raise
 
 
 def find_table_span(text: str, table_name: str) -> tuple[int, int] | None:
@@ -46,6 +22,59 @@ def find_table_span(text: str, table_name: str) -> tuple[int, int] | None:
     return None
 
 
+def _skip_string(segment: str, start: int) -> int:
+    """Return the index just past the TOML string starting at segment[start]."""
+    quote = segment[start]
+    if segment[start : start + 3] in ('"""', "'''"):
+        end = start + 3
+        while end < len(segment):
+            if quote == '"' and segment.startswith("\\", end):
+                end += 2
+                continue
+            if segment.startswith(segment[start : start + 3], end):
+                return end + 3
+            end += 1
+        return len(segment)
+    end = start + 1
+    while end < len(segment):
+        if quote == '"' and segment[end] == "\\":
+            end += 2
+            continue
+        if segment[end] == quote:
+            return end + 1
+        end += 1
+    return len(segment)
+
+
+def _toml_code_depth(segment: str) -> int:
+    """Net []/{} depth of a TOML fragment, skipping strings and comments.
+
+    Bracket characters inside quoted strings, triple-quoted strings, or
+    comments are content, not structure: counting them would make a value
+    like "alu[rev" look multiline and swallow following keys.
+    """
+    depth = 0
+    i = 0
+    while i < len(segment):
+        ch = segment[i]
+        if ch == "#":
+            nl = segment.find("\n", i)
+            if nl == -1:
+                break
+            i = nl + 1
+        elif ch in ('"', "'"):
+            i = _skip_string(segment, i)
+        elif ch in "[{":
+            depth += 1
+            i += 1
+        elif ch in "]}":
+            depth -= 1
+            i += 1
+        else:
+            i += 1
+    return depth
+
+
 def _extend_multiline_value(text: str, match_end: int) -> int:
     """Extend match end past continuation lines for multiline TOML values.
 
@@ -55,26 +84,16 @@ def _extend_multiline_value(text: str, match_end: int) -> int:
     line_start = text.rfind("\n", 0, match_end) + 1
     matched_line = text[line_start:match_end]
 
-    depth = 0
-    eq_pos = matched_line.find("=")
-    if eq_pos >= 0:
-        for ch in matched_line[eq_pos + 1 :]:
-            if ch in ("[", "{"):
-                depth += 1
-            elif ch in ("]", "}"):
-                depth -= 1
-
+    depth = _toml_code_depth(matched_line)
     if depth <= 0:
         return match_end
 
     pos = match_end
     while pos < len(text) and depth > 0:
-        ch = text[pos]
-        if ch in ("[", "{"):
-            depth += 1
-        elif ch in ("]", "}"):
-            depth -= 1
-        pos += 1
+        nl = text.find("\n", pos)
+        line_end = len(text) if nl == -1 else nl + 1
+        depth += _toml_code_depth(text[pos:line_end])
+        pos = line_end
 
     while pos < len(text) and text[pos] in (" ", "\t"):
         pos += 1

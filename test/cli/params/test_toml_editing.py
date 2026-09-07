@@ -3,7 +3,7 @@ import os
 import tomllib
 
 from chipcompiler.cli import main as cli_main
-from chipcompiler.cli.project.toml_edit import set_pdk_root
+from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_pdk_root, set_scoped_key
 
 
 class TestSetPdkRoot:
@@ -161,6 +161,35 @@ class TestIndentedTomlKeys:
 
 class TestMultilineTomlValues:
     """Scoped TOML edit must handle multiline array values."""
+
+    def test_brackets_inside_strings_are_not_structure(self):
+        import tomllib
+
+        text = '[params.floorplan]\ntarget = "alu[rev"\nmode = "slide"\n'
+
+        after = set_scoped_key(text, "params.floorplan", "target", "new")
+
+        parsed = tomllib.loads(after)
+        assert parsed["params"]["floorplan"] == {"target": "new", "mode": "slide"}
+
+    def test_bracket_in_comment_does_not_swallow_keys(self):
+        import tomllib
+
+        text = '[params.floorplan]\ncore_margin = [2, 2] # [docs]\nmode = "slide"\n'
+
+        after = set_scoped_key(text, "params.floorplan", "core_margin", [4, 4])
+
+        parsed = tomllib.loads(after)
+        assert parsed["params"]["floorplan"] == {"core_margin": [4, 4], "mode": "slide"}
+
+    def test_unset_with_unbalanced_bracket_in_string(self):
+        import tomllib
+
+        text = '[pdk]\nroot = "a[\\b"\nname = "ics55"\n'
+
+        after = remove_scoped_key(text, "pdk", "root")
+
+        assert tomllib.loads(after) == {"pdk": {"name": "ics55"}}
 
     def test_set_replaces_multiline_array(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
