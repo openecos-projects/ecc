@@ -51,6 +51,6 @@ def slice_section(text: str, token: str) -> str:
         start = match.start()
         next_match = _ANY_HEADING.search(text, match.end())
         end = next_match.start() if next_match else len(text)
-        return text[start:end].rstrip() + "\n"
+        return text[start:end]
     available = " ".join(heading_tokens(text))
     raise SectionNotFoundError(f"no section {token}; available sections: {available}")

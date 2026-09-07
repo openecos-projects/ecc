@@ -51,6 +51,23 @@ def test_doc_plain_preserves_crlf_line_endings(tmp_path, monkeypatch, capsysbina
     assert out == b"# Packaged guide\r\n\r\ntext\r\n"
 
 
+def test_doc_section_plain_preserves_crlf_and_trailing_whitespace(
+    tmp_path, monkeypatch, capsysbinary
+):
+    guide = tmp_path / "docs" / "ecc-cli-config.en.md"
+    guide.parent.mkdir()
+    guide.write_bytes(
+        b"# Guide\r\n\r\n## 1. First\r\n\r\ntext   \r\n\r\n\r\n## 2. Second\r\nbody\r\n"
+    )
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+
+    rc = cli_main.run(["doc", "config", "1", "--plain"])
+
+    out = capsysbinary.readouterr().out
+    assert rc == 0
+    assert out == b"## 1. First\r\n\r\ntext   \r\n\r\n\r\n"
+
+
 def test_rendered_output_survives_non_utf8_stdout_via_plain_fallback(tmp_path, monkeypatch, capsys):
     import io
 
