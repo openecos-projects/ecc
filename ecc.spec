@@ -230,6 +230,24 @@ def collect_ecc_tools_extension_binaries():
     )
 
 
+def rich_unicode_data_hiddenimports():
+    # rich imports its per-Unicode-version cell-width tables dynamically
+    # (rich._unicode_data.unicode<N>-<N>-<N>), so PyInstaller's static
+    # analysis cannot see them; render-only CJK output needs them at runtime.
+    module_spec = find_spec("rich")
+    if module_spec is None or module_spec.submodule_search_locations is None:
+        return []
+
+    names = []
+    for package_root in module_spec.submodule_search_locations:
+        data_dir = Path(package_root) / "_unicode_data"
+        if data_dir.is_dir():
+            names.extend(
+                f"rich._unicode_data.{path.stem}" for path in sorted(data_dir.glob("unicode*.py"))
+            )
+    return names
+
+
 ecc_datas, ecc_binaries, ecc_hiddenimports = collect_all("chipcompiler")
 ecc_tools_datas, ecc_tools_binaries, ecc_tools_hiddenimports = collect_all("ecc_tools_bin")
 klayout_datas, klayout_binaries, klayout_hiddenimports = collect_all("klayout")
@@ -260,6 +278,7 @@ binaries = filter_collected_payloads(binaries)
 
 hiddenimports = []
 hiddenimports.extend(HIDDENIMPORTS)
+hiddenimports.extend(rich_unicode_data_hiddenimports())
 hiddenimports.extend(ecc_hiddenimports)
 hiddenimports.extend(ecc_tools_hiddenimports)
 hiddenimports.extend(klayout_hiddenimports)
