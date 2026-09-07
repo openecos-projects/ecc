@@ -147,3 +147,47 @@ class TestReadOnly:
         cli_main.run(["config", "--project", str(tmp_path), "--workspace", "ws", "--json"])
 
         assert snapshot() == before
+
+
+class TestUnknownStepErrors:
+    """unknown_step failures carry the standard error-record shape so the
+    text renderer prints a readable message instead of empty fields."""
+
+    def test_config_unknown_step_text(self, tmp_path, capsys, create_flow_json):
+        ws = _make_workspace(tmp_path)
+        create_flow_json(ws, profile="inspect")
+
+        rc = cli_main.run(["config", "nope", "--project", str(tmp_path), "--workspace", "ws"])
+
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "[error]" in out
+        assert "unknown_step" in out
+        assert "nope" in out
+
+    def test_config_unknown_step_json(self, tmp_path, capsys, create_flow_json):
+        ws = _make_workspace(tmp_path)
+        create_flow_json(ws, profile="inspect")
+
+        rc = cli_main.run(
+            ["config", "nope", "--project", str(tmp_path), "--workspace", "ws", "--json"]
+        )
+
+        assert rc == 1
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert record["kind"] == "error"
+        assert record["error"] == "unknown_step"
+        assert record["step"] == "nope"
+
+    def test_log_unknown_step_json(self, tmp_path, capsys, create_flow_json):
+        ws = _make_workspace(tmp_path)
+        create_flow_json(ws, profile="inspect")
+
+        rc = cli_main.run(
+            ["log", "nope", "--project", str(tmp_path), "--workspace", "ws", "--jsonl"]
+        )
+
+        assert rc == 1
+        record = json.loads(capsys.readouterr().out.strip())
+        assert record["kind"] == "error"
+        assert record["error"] == "unknown_step"

@@ -187,11 +187,11 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
             )
         return CommandResult.err(
             [
-                {
-                    "step": requested_step_token,
-                    "status": "unknown_step",
-                    "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
-                }
+                error_record(
+                    "unknown_step",
+                    step=requested_step_token,
+                    inspect_cmd=disclosure_cmd("ecc status", project, ctx.run_id),
+                )
             ]
         )
 
@@ -303,11 +303,11 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
         if status_value == "unknown_step":
             return CommandResult.err(
                 [
-                    {
-                        "step": first.get("step", ""),
-                        "status": "unknown_step",
-                        "inspect": disclosure_cmd("ecc status", project, ctx.run_id),
-                    }
+                    error_record(
+                        "unknown_step",
+                        step=first.get("step", ""),
+                        inspect=disclosure_cmd("ecc status", project, ctx.run_id),
+                    )
                 ]
             )
         if status_value == "missing_config":

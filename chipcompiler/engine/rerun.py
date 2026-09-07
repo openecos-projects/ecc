@@ -124,6 +124,19 @@ def _require_step_index(flow: "EngineFlow", name: str) -> int:
     for index, step in enumerate(steps):
         if step.get("name") == name:
             return index
+    # Selectors accept any CLI spelling of a persisted step ("floorplan",
+    # "Floorplan", "FLOORPLAN", "synth", ...) — only an unambiguous
+    # canonical form may not be guessed at.
+    from chipcompiler.rtl2gds.builder import normalize_flow_step
+
+    canonical = normalize_flow_step(name)
+    for index, step in enumerate(steps):
+        if step.get("name") == canonical:
+            return index
+    folded = str(name or "").casefold()
+    for index, step in enumerate(steps):
+        if str(step.get("name", "")).casefold() == folded:
+            return index
     available = ", ".join(str(step.get("name")) for step in steps)
     raise ValueError(f"unknown step '{name}'; available steps: {available}")
 

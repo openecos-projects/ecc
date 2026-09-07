@@ -248,7 +248,6 @@ class TestRunMigrationRace:
         create_legacy_workspace,
         monkeypatch,
     ):
-
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
         create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])

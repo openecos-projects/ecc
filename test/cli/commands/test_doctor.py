@@ -312,9 +312,7 @@ class TestRunPreflight:
             lambda **_kwargs: pytest.fail("workspace mode must not create a workspace"),
         )
 
-        project_dir = create_cli_project(
-            pdk_root=minimal_ics55_pdk_factory(tmp_path / "ics55")
-        )
+        project_dir = create_cli_project(pdk_root=minimal_ics55_pdk_factory(tmp_path / "ics55"))
         workspace = Path(project_dir) / "ws"
         (workspace / "home").mkdir(parents=True)
         (workspace / "home" / "flow.json").write_text('{"steps": []}')

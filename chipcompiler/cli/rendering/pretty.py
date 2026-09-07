@@ -105,6 +105,7 @@ _STATUS_COLORS = {
     "incomplete": YELLOW,
     "ongoing": YELLOW,
     "pending": YELLOW,
+    "partial": YELLOW,
 }
 
 
@@ -174,9 +175,7 @@ def render_run_summary(records, file=None, *, color=True):
     target.write(f"{render_header(tag, color=color)}\n")
     for warning in (rec for rec in records if rec.get("kind") == "warning"):
         message = warning.get("reason") or warning.get("warning") or ""
-        target.write(
-            f"  {style('warning', YELLOW if color else None, enabled=color)}: {message}\n"
-        )
+        target.write(f"  {style('warning', YELLOW if color else None, enabled=color)}: {message}\n")
     target.write(f"  workspace id: {r.get('workspace_id', '')}\n")
     target.write(f"  status: {status_style(st, color=color)}\n")
     target.write(f"  workspace: {r.get('workspace', '')}\n")

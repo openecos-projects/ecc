@@ -24,6 +24,7 @@ class InitInput:
 class CheckInput:
     output: OutputOptions
     project: ProjectOptions
+    workspace: str | None = None
 
 
 @dataclass(frozen=True)

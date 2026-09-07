@@ -475,7 +475,8 @@ class TestLogErrorCases:
         rc = cli_main.run(["log", "nonexistent", "--jsonl", "--project", project_dir])
         assert rc == 1
         record = json.loads(capsys.readouterr().out.strip())
-        assert record["status"] == "unknown_step"
+        assert record["kind"] == "error"
+        assert record["error"] == "unknown_step"
 
     def test_known_step_no_logs_returns_nonzero(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()

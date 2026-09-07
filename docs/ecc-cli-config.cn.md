@@ -3,7 +3,7 @@
 本文整理 ECC RTL-to-Harden 流程中**每一步实际使用的工具配置文件、全部参数及其含义**。配置取值与生成逻辑均核对自 v0.1.0-alpha.11 源码（rebase main 之后；模板位于 [chipcompiler/tools/*/configs/](../chipcompiler/tools/ecc/configs/)）与一次真实的 gcd@ics55 harden 运行。
 
 - 想了解命令用法 → [ECC CLI 用户指南](ecc-cli-ug.cn.md)；从零上手 → [入门教程](ecc-cli-tutorial.cn.md)
-- 配置查看命令：`ecc config <step>`（列出该步骤实际生效的配置文件）
+- 配置查看命令：`ecc config <step>`（列出该步骤实际生效的配置文件）；参数查看与修改命令：`ecc param`（见 §1.4）
 
 ## 0. 配置体系总览
 
@@ -149,6 +149,42 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 保存时两份由同一份扁平参数渲染，正常情况下永远一致。若文件被手工改到两处不一致，加载规则为：**`[design]`/`[pdk]` 的非空值覆盖 `[params]` 副本；节区键为空或缺失时回落到 `[params]` 副本**。写入采用临时文件 + 原子 rename，不穿透 symlink。
 
 通过 `ecc param set KEY VALUE --workspace NAME` 写入的已创建 workspace 覆盖也保存在 `[params]`：实际参数值与 `config_overrides` 共同决定刷新后的步骤配置，`workspace_param_overrides` 列表记录 `key`、首次修改前的 `baseline` 和当前 `value`，供 `ecc param diff --workspace NAME` 使用。`ecc param unset KEY --workspace NAME` 会恢复该 `baseline` 并清除这条本地覆盖记录；其所属步骤及后续步骤会失效，直到再次运行。PDK 资源路径和引用不能在此处局部修改，应更新 `ecc.toml` 后执行 `ecc workspace refresh NAME`。
+
+### 1.4 参数配置 CLI 命令（`ecc param`）
+
+参数的查看与修改统一走 `ecc param` 子命令（子命令定义：[chipcompiler/cli/commands/param.py](../chipcompiler/cli/commands/param.py)；项目作用域实现：[chipcompiler/cli/command_handlers/param.py](../chipcompiler/cli/command_handlers/param.py)，workspace 作用域实现：[chipcompiler/cli/command_handlers/workspace_params.py](../chipcompiler/cli/command_handlers/workspace_params.py)）：
+
+| 命令 | 作用 |
+|---|---|
+| `ecc param list [--step STEP] [--all]` | 列出参数。缺省只显示 §1.1 的旧语义参数和已显式覆盖的直配参数；`--step STEP` 按 group/applies 过滤出该步骤的完整已审核 schema；`--all` 显示全部审核 schema |
+| `ecc param show KEY` | 单参数详情：当前值 / 默认值 / 来源 / 类型 / 取值范围 / 写入目标（`maps_to`、`config_target`、`pdk_target`）及描述 |
+| `ecc param set KEY VALUE` | 校验后写入参数覆盖（两种作用域见下表）；取值非法（超范围、不在 choices、类型不符）直接报 `invalid_value`，不落盘 |
+| `ecc param unset KEY` | 移除该参数的覆盖，恢复默认值（workspace 作用域恢复到首次修改前的 `baseline`） |
+| `ecc param diff` | 只列出与默认值不同的参数（workspace 作用域：局部覆盖及其 `baseline`） |
+
+所有子命令共享的通用选项：
+
+| 选项 | 作用 |
+|---|---|
+| `--project DIR` | 指定项目目录（缺省为当前目录） |
+| `--workspace NAME` | 切换到 workspace 作用域：操作 project.json 清单中声明的指定 workspace，而不是项目 `ecc.toml` |
+| `--json` / `--jsonl` / `--plain` | 结构化输出：JSON 记录数组 / 每行一条 JSON / `key=value`（便于脚本解析）；缺省为人类可读文本 |
+
+两种作用域的行为差异：
+
+| | 项目作用域（默认） | workspace 作用域（`--workspace NAME`） |
+|---|---|---|
+| 写入位置 | `ecc.toml` 的 `[params.<group>]` 或 `[pdk.overrides]`（保留注释与格式） | `<workspace>/home/params.toml` 的 `[params]`，同时记录 `workspace_param_overrides` |
+| 生效时机 | 下次 `ecc run` **新建** workspace 时 | 立即刷新生成配置；参数所属步骤及其后缀标记为待执行（输出 `from_step` / `invalidated_steps`），后续 `ecc run --workspace NAME` 从该步骤续跑 |
+| 可改参数 | 全部已审核 schema（含 `pdk.*` 路径参数） | 不含 `pdk.*`（路径改动必须改 `ecc.toml` 后执行 `ecc workspace refresh NAME`）；且参数所属步骤必须存在于该 workspace 的持久化 flow，否则报 `workspace_param_refresh_required` |
+| 前提 | 项目须有 `ecc.toml`；project.json 清单项目暂不支持（报 `param_requires_ecc_toml`） | 须为清单项目中声明的受管 workspace（否则报 `workspace_param_requires_managed_workspace`） |
+| 恢复 | `unset` 从 `ecc.toml` 删除对应键 | `unset` 恢复 `baseline` 并清除该条覆盖记录 |
+
+取值解析：标量按 schema 类型解析；列表与对象必须写成 JSON 字面量，数组整体替换，例如 `ecc param set cts.routing_layer '[4, 5]'`。
+
+一次性覆盖用 `ecc run --set KEY=VALUE`：仅在**新建**（含 `--overwrite`）workspace 时生效并记录到 `home/cli-param-overrides.json`；对已有 workspace 使用会报 `set_requires_fresh_run`，此时应改用 `ecc param set KEY VALUE --workspace NAME` 或 `--overwrite` 重建。
+
+完整命令输出示例见 [ECC CLI 用户指南 §9](ecc-cli-ug.cn.md)。
 
 ## 2. 公共配置：db_ecc.json
 
@@ -473,9 +509,12 @@ ecc config --plain            # 项目级配置（ecc.toml 解析后）
 ecc param list --step cts                 # 查看 CTS 全部可调字段
 ecc param list --all                      # 查看完整审核 schema
 ecc param show KEY / diff                 # 单参数 / 与默认差异
-ecc param set place.target_density 0.55  # 改参数（写入 ecc.toml，下次 run 生效）
+ecc param set place.target_density 0.55  # 改参数（写入 ecc.toml，下次新建 workspace 时生效）
 ecc param set cts.skew_bound 0.05         # 直配 CTS JSON 字段
-ecc run --set place.target_density=0.55  # 只对本次 run 生效
+ecc param unset place.target_density     # 移除覆盖，恢复默认值
+ecc param set cts.skew_bound 0.06 --workspace default  # 只改指定 workspace（见 §1.4）
+ecc param diff --workspace default        # 该 workspace 的局部覆盖及 baseline
+ecc run --set place.target_density=0.55  # 一次性覆盖：仅新建（含 --overwrite）workspace 时生效
 ```
 
 修改层级建议：**统一走 `ecc param`；用 `--step` / `--all` 发现字段；不要直接改 `params.toml` 或 `config/*.json`**（刷新会覆盖手改）。

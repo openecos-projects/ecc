@@ -58,6 +58,28 @@ def test_save_load_round_trip_sg13g2_nested_subtrees(tmp_path):
     assert loaded["_flow"] == {}
 
 
+def test_save_load_round_trip_preserves_reserved_payloads(tmp_path):
+    payload = {
+        "design": "gcd",
+        "config_overrides": {
+            "route": {"RT": {"-thread_number": "16"}},
+            "dreamplace": {
+                "RePlAce_LOWER_PCOF": 1.2,
+                "global_place_stages": [{"Llambda_density_weight_iteration": 2}],
+            },
+            "sta": {"signoff": [{"MAX": ["Cworst"], "MIN": ["Cbest"]}]},
+        },
+        "workspace_param_overrides": [
+            {"key": "route.RT.-thread_number", "baseline": "50", "value": "16"}
+        ],
+    }
+    assert save_workspace_config(tmp_path, payload)
+
+    loaded = load_workspace_config(tmp_path)
+    assert loaded["config_overrides"] == payload["config_overrides"]
+    assert loaded["workspace_param_overrides"] == payload["workspace_param_overrides"]
+
+
 def test_design_section_mirrors_identity_keys(tmp_path):
     payload = _flat_template(ICS55_PARAMETERS_TEMPLATE)
     payload.update({"design": "gcd", "top_module": "gcd", "clock": "clk"})

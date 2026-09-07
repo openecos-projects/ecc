@@ -3,7 +3,7 @@
 This document consolidates **the tool configuration files actually used by each step of the ECC RTL-to-Harden flow, all of their parameters, and what each parameter means**. Configuration values and generation logic were verified against the v0.1.0-alpha.11 source (after the rebase onto main; templates live in [chipcompiler/tools/*/configs/](../chipcompiler/tools/ecc/configs/)) and a real gcd@ics55 harden run.
 
 - For command usage, see the [ECC CLI User Guide](ecc-cli-ug.en.md); to get started from scratch, see the [Tutorial](ecc-cli-tutorial.en.md)
-- Config inspection command: `ecc config <step>` (lists the configuration files actually in effect for that step)
+- Config inspection command: `ecc config <step>` (lists the configuration files actually in effect for that step); parameter inspection/modification command: `ecc param` (see §1.4)
 
 ## 0. Configuration System Overview
 
@@ -147,6 +147,42 @@ The file has four sections:
 On save, both copies are rendered from the same flat payload, so they never diverge in normal operation. If the file is hand-edited into disagreement, the load rule is: **a non-empty `[design]`/`[pdk]` value overrides its `[params]` copy; an empty or missing section key falls back to the `[params]` copy**. Writes are staged to a temp file and installed with an atomic rename, never through a symlink.
 
 Workspace-local overrides written by `ecc param set KEY VALUE --workspace NAME` also live under `[params]`: the effective parameter value and `config_overrides` together determine the refreshed step configuration, while the `workspace_param_overrides` list records each `key`, its first pre-edit `baseline`, and current `value` for `ecc param diff --workspace NAME`. `ecc param unset KEY --workspace NAME` restores that baseline and removes the local override record; the owning step and its suffix become invalid until they run again. PDK resource paths and references cannot be changed locally; update `ecc.toml` and use `ecc workspace refresh NAME` instead.
+
+### 1.4 Parameter-configuration CLI commands (`ecc param`)
+
+Parameter inspection and modification go through the `ecc param` subcommands (subcommand definitions: [chipcompiler/cli/commands/param.py](../chipcompiler/cli/commands/param.py); project-scope implementation: [chipcompiler/cli/command_handlers/param.py](../chipcompiler/cli/command_handlers/param.py), workspace-scope implementation: [chipcompiler/cli/command_handlers/workspace_params.py](../chipcompiler/cli/command_handlers/workspace_params.py)):
+
+| Command | What it does |
+|---|---|
+| `ecc param list [--step STEP] [--all]` | List parameters. By default only the §1.1 legacy-semantic parameters plus explicitly overridden direct-config parameters are shown; `--step STEP` filters by group/applies to show the full reviewed schema of that step; `--all` shows the entire reviewed schema |
+| `ecc param show KEY` | Single-parameter detail: current value / default / source / type / range / write target (`maps_to`, `config_target`, `pdk_target`) and description |
+| `ecc param set KEY VALUE` | Validate and write the parameter override (two scopes in the table below); invalid values (out of range, not in choices, wrong type) fail with `invalid_value` and nothing is written |
+| `ecc param unset KEY` | Remove the override and fall back to the default (workspace scope restores the pre-edit `baseline`) |
+| `ecc param diff` | List only parameters that differ from their defaults (workspace scope: local overrides with their `baseline`) |
+
+Options shared by every subcommand:
+
+| Option | What it does |
+|---|---|
+| `--project DIR` | Select the project directory (defaults to the current directory) |
+| `--workspace NAME` | Switch to workspace scope: operate on the named workspace declared in the project.json manifest instead of the project `ecc.toml` |
+| `--json` / `--jsonl` / `--plain` | Structured output: a JSON record array / one JSON object per line / `key=value` (script-friendly); the default is human-readable text |
+
+Behavior differences between the two scopes:
+
+| | Project scope (default) | Workspace scope (`--workspace NAME`) |
+|---|---|---|
+| Written to | `[params.<group>]` or `[pdk.overrides]` in `ecc.toml` (comments and formatting preserved) | `[params]` in `<workspace>/home/params.toml`, plus a `workspace_param_overrides` record |
+| When it takes effect | On the next `ecc run` that **creates** a workspace | Immediately refreshes the generated configuration; the owning step and its suffix are marked pending (`from_step` / `invalidated_steps` are reported) and a later `ecc run --workspace NAME` resumes from that step |
+| What can be changed | The full reviewed schema (including the `pdk.*` path parameters) | Not `pdk.*` (path changes require editing `ecc.toml` and running `ecc workspace refresh NAME`); the owning step must exist in the workspace's persisted flow, otherwise `workspace_param_refresh_required` is reported |
+| Precondition | The project must have an `ecc.toml`; project.json manifest projects are not supported yet (`param_requires_ecc_toml`) | Must be a managed workspace declared in the manifest (otherwise `workspace_param_requires_managed_workspace`) |
+| Undo | `unset` deletes the corresponding key from `ecc.toml` | `unset` restores the `baseline` and removes the override record |
+
+Value parsing: scalars are parsed according to the schema type; list and object values must be JSON literals and arrays are replaced wholesale, e.g. `ecc param set cts.routing_layer '[4, 5]'`.
+
+For one-off overrides use `ecc run --set KEY=VALUE`: it applies only when the workspace is **freshly created** (including `--overwrite`) and is recorded in `home/cli-param-overrides.json`; on an existing workspace it fails with `set_requires_fresh_run` — use `ecc param set KEY VALUE --workspace NAME` or rebuild with `--overwrite` instead.
+
+For full command output examples, see [ECC CLI User Guide §9](ecc-cli-ug.en.md).
 
 ## 2. Shared configuration: db_ecc.json
 
@@ -471,9 +507,12 @@ ecc config --plain            # project-level config (ecc.toml after resolution)
 ecc param list --step cts                 # list all tunable CTS fields
 ecc param list --all                      # show the full reviewed schema
 ecc param show KEY / diff                 # single parameter / diff against defaults
-ecc param set place.target_density 0.55  # change a parameter (written to ecc.toml, effective on the next run)
+ecc param set place.target_density 0.55  # change a parameter (written to ecc.toml; applies when a workspace is next created)
 ecc param set cts.skew_bound 0.05         # set a CTS JSON field directly
-ecc run --set place.target_density=0.55  # effective for this run only
+ecc param unset place.target_density     # remove the override, back to the default
+ecc param set cts.skew_bound 0.06 --workspace default  # change only one workspace (see §1.4)
+ecc param diff --workspace default        # that workspace's local overrides and baselines
+ecc run --set place.target_density=0.55  # one-off override: applies only to a freshly created (or --overwrite) workspace
 ```
 
 Recommended practice for making changes: **always go through `ecc param`; use `--step` / `--all` to discover fields; never edit `params.toml` or `config/*.json` directly** (refresh will overwrite manual edits).

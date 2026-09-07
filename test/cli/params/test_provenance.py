@@ -60,9 +60,7 @@ class TestCliProvenance:
         capsys.readouterr()
 
         # Verify provenance file was written
-        provenance = os.path.join(
-            project_dir, "default", "home", "cli-param-overrides.json"
-        )
+        provenance = os.path.join(project_dir, "default", "home", "cli-param-overrides.json")
         assert os.path.isfile(provenance)
         with open(provenance) as f:
             data = json.load(f)
