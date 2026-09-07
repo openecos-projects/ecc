@@ -230,6 +230,22 @@ def collect_ecc_tools_extension_binaries():
     )
 
 
+def filter_host_fontconfig(binaries):
+    # PyInstaller pulls libfontconfig in as a DT_NEEDED dependency of the
+    # bundled libcairo. Do not ship it: a bundled library parses the host's
+    # /etc/fonts/conf.d, and version skew against those host configs spams
+    # Fontconfig warnings (and breaks the host fc-list binary with symbol
+    # errors when the bundle lib dir is on its library search path). The
+    # host libfontconfig always matches the host fontconfig data. Applied
+    # to the Analysis output, because input-list filtering cannot stop the
+    # dependency walk from re-collecting it.
+    return [
+        entry
+        for entry in binaries
+        if not any(Path(part).name.startswith("libfontconfig.so") for part in entry[:2])
+    ]
+
+
 def rich_unicode_data_hiddenimports():
     # rich imports its per-Unicode-version cell-width tables dynamically
     # (rich._unicode_data.unicode<N>-<N>-<N>), so PyInstaller's static
@@ -298,6 +314,8 @@ a = Analysis(
     excludes=EXCLUDES,
     noarchive=False,
 )
+
+a.binaries = filter_host_fontconfig(a.binaries)
 
 pyz = PYZ(a.pure, a.zipped_data)
 
