@@ -144,7 +144,7 @@ class TestVirginFirstRun:
         # project.json): a loud error before any workspace creation — never
         # a quiet success.
         monkeypatch.setattr(
-            "chipcompiler.cli.project.manifest.write_manifest_if_absent",
+            "chipcompiler.cli.project.manifest_write.write_manifest_if_absent",
             lambda *args, **kwargs: False,
         )
 
@@ -204,7 +204,7 @@ class TestManifestRunCommand:
             project_dir, [manifest_stubs.entry(project_dir, "ws_0001", status="running")]
         )
         monkeypatch.setattr(
-            "chipcompiler.cli.project.manifest.write_back_workspace_status",
+            "chipcompiler.cli.project.manifest_write.write_back_workspace_status",
             lambda project_dir, workspace_id, status: False,
         )
 
@@ -481,7 +481,7 @@ class TestHybridFullLayering:
             return False
 
         monkeypatch.setattr(
-            "chipcompiler.cli.project.manifest.write_manifest_if_absent", losing_write
+            "chipcompiler.cli.project.manifest_write.write_manifest_if_absent", losing_write
         )
 
         rc = cli_main.run(["run", "--project", project_dir, "--plain"])

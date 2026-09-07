@@ -264,7 +264,7 @@ def dispatch_project_run(
             if not workspace_registered:
                 from chipcompiler.cli.core.records import error_record
                 from chipcompiler.cli.project.config import resolve_pdk_root
-                from chipcompiler.cli.project.manifest import pre_register_workspace
+                from chipcompiler.cli.project.manifest_write import pre_register_workspace
 
                 registration = pre_register_workspace(
                     project_dir,

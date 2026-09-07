@@ -16,7 +16,8 @@ import sys
 
 from typing_extensions import deprecated
 
-from chipcompiler.cli.project.manifest import find_manifest, load_manifest, update_manifest
+from chipcompiler.cli.project.manifest import find_manifest, load_manifest
+from chipcompiler.cli.project.manifest_write import update_manifest
 from chipcompiler.cli.project.migrate_plan import (
     MigrationEntry,
     MigrationPreview,
@@ -91,7 +92,7 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
     that actually moved.
     """
     from chipcompiler.cli.project import migrate_fs
-    from chipcompiler.cli.project.manifest import write_manifest_if_absent
+    from chipcompiler.cli.project.manifest_write import write_manifest_if_absent
 
     plan = preview.plan
     records: list[dict] = []

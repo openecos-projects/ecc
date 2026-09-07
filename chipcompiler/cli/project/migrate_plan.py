@@ -20,9 +20,11 @@ from typing_extensions import deprecated
 
 from chipcompiler.cli.project.manifest import (
     base_design_from_config,
-    build_manifest_document,
     find_manifest,
     load_manifest,
+)
+from chipcompiler.cli.project.manifest_write import (
+    build_manifest_document,
     manifest_workspace_entry,
 )
 

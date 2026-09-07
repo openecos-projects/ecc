@@ -280,7 +280,7 @@ class TestMigrate:
         run2 = create_legacy_workspace(project_dir, pdk_root, "exp2", ["Success", "Success"])
 
         monkeypatch.setattr(
-            "chipcompiler.cli.project.manifest.write_manifest_if_absent",
+            "chipcompiler.cli.project.manifest_write.write_manifest_if_absent",
             lambda *a, **k: False,
         )
         monkeypatch.setattr(

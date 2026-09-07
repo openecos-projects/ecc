@@ -121,7 +121,7 @@ def _workspace_failed_result(run_name: str, run_dir: str, reason: str | None) ->
 def _write_back_status(project_dir: str, run_name: str, status: str, warning_records: list) -> None:
     """Best-effort manifest status write-back; degrades to a warning."""
     from chipcompiler.cli.core.records import warning_record
-    from chipcompiler.cli.project.manifest import write_back_workspace_status
+    from chipcompiler.cli.project.manifest_write import write_back_workspace_status
 
     if not write_back_workspace_status(project_dir, run_name, status):
         warning_records.append(
