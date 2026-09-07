@@ -1,3 +1,4 @@
+import ast
 import importlib
 from pathlib import Path
 
@@ -182,5 +183,12 @@ def test_typer_apps_are_created_through_the_shared_factory():
     for source_path in package_root.rglob("*.py"):
         if source_path == factory:
             continue
-        source = source_path.read_text()
-        assert "typer.Typer(" not in source, source_path
+        tree = ast.parse(source_path.read_text())
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if isinstance(func, ast.Name) and func.id == "Typer":
+                raise AssertionError(source_path)
+            if isinstance(func, ast.Attribute) and func.attr == "Typer":
+                raise AssertionError(source_path)
