@@ -1,7 +1,25 @@
 import json
 import os
+import tomllib
 
 from chipcompiler.cli import main as cli_main
+from chipcompiler.cli.project.toml_edit import set_pdk_root
+
+
+class TestSetPdkRoot:
+    def test_set_pdk_root_escapes_quotes_and_backslashes(self):
+        text = '[pdk]\nname = "ics55"\nroot = "/old"\n'
+
+        result = set_pdk_root(text, 'C:\\pdk "special"')
+
+        parsed = tomllib.loads(result)
+        assert parsed["pdk"]["root"] == 'C:\\pdk "special"'
+        assert parsed["pdk"]["name"] == "ics55"
+
+    def test_set_pdk_root_creates_escaped_table_when_missing(self):
+        result = set_pdk_root('name = "proj"\n', 'weird "path"\\dir')
+
+        assert tomllib.loads(result)["pdk"]["root"] == 'weird "path"\\dir'
 
 
 class TestScopedTomlEdit:

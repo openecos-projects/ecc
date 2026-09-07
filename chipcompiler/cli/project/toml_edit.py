@@ -4,9 +4,33 @@ Edits preserve the surrounding file layout (comments, ordering, indentation)
 so repeated `param set`/`pdk set-root` calls do not churn the config file.
 """
 
+import os
 import re
+import tempfile
 
 _TABLE_HEADER_RE = re.compile(r"^[ \t]*\[([^\]]+)\][ \t]*(?:#.*)?$", re.MULTILINE)
+
+
+def write_text_atomic(path: str, text: str) -> None:
+    """Replace the file at `path` with `text` via a sibling temp file + os.replace.
+
+    A plain `open(path, "w")` truncates first, so an interruption or write
+    failure can destroy the existing ecc.toml; the sibling temp file keeps the
+    old content intact until the fully written replacement can be renamed in.
+    """
+    directory = os.path.dirname(os.path.abspath(path))
+    fd, tmp_path = tempfile.mkstemp(
+        dir=directory, prefix=f".{os.path.basename(path)}.", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            file.write(text)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(tmp_path, path)
+    except BaseException:
+        os.unlink(tmp_path)
+        raise
 
 
 def find_table_span(text: str, table_name: str) -> tuple[int, int] | None:
@@ -149,9 +173,10 @@ def remove_scoped_key(text: str, target_table: str, name: str) -> str | None:
 
 def set_pdk_root(text: str, value: str) -> str:
     """Set `root = "<value>"` under the existing [pdk] table, preserving layout."""
+    value_str = format_toml_value(value)
     span = find_table_span(text, "pdk")
     if span is None:
-        return text.rstrip("\n") + f'\n\n[pdk]\nroot = "{value}"\n'
+        return text.rstrip("\n") + f"\n\n[pdk]\nroot = {value_str}\n"
 
     body_start, body_end = span
     section = text[body_start:body_end]
@@ -160,9 +185,9 @@ def set_pdk_root(text: str, value: str) -> str:
     if key_match:
         new_section = (
             section[: key_match.start()]
-            + f'{key_match.group(1)}root = "{value}"'
+            + f"{key_match.group(1)}root = {value_str}"
             + section[key_match.end() :]
         )
     else:
-        new_section = f'root = "{value}"\n' + section
+        new_section = f"root = {value_str}\n" + section
     return text[:body_start] + new_section + text[body_end:]
