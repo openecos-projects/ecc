@@ -111,8 +111,11 @@ def validate_entry_inputs(cfg, entry_step: str | None) -> list[str]:
 def _validate_rtl_sources(paths: tuple[str, ...]) -> list[str]:
     errors: list[str] = []
     for path in paths:
-        errors.extend(_validate_file("rtl", path))
-        if errors:
+        # Per-path errors: one missing source must not hide independent
+        # suffix/filelist problems in the remaining declared sources.
+        path_errors = _validate_file("rtl", path)
+        errors.extend(path_errors)
+        if path_errors:
             continue
         suffix = os.path.splitext(path)[1].lower()
         if suffix in FILELIST_SUFFIXES:

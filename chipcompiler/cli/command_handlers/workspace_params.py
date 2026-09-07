@@ -108,6 +108,8 @@ def _snapshot_transaction(workspace) -> dict:
     config/*.json files, and the flow ledger); a failure after the first
     commit must roll all of them back or the workspace keeps new parameters
     paired with stale configs and a ledger that lets the next run no-op.
+    The auto-generated SDC is rewritten by the refresh before config
+    validation can fail, so it belongs to the same transaction.
     """
     from pathlib import Path
 
@@ -116,6 +118,9 @@ def _snapshot_transaction(workspace) -> dict:
     config_dir = workspace_dir / "config"
     if config_dir.is_dir():
         paths.extend(path for path in config_dir.iterdir() if path.is_file())
+    sdc = getattr(getattr(workspace, "pdk", None), "sdc", None)
+    if sdc:
+        paths.append(Path(sdc))
     snapshot = {}
     for path in paths:
         try:

@@ -11,21 +11,30 @@ same workspace (or an overwrite/migration replacing it) serialize on the
 lock. Imported lazily by the run handler; keep module-level imports cheap.
 """
 
+import logging
 import os
 import shlex
 from pathlib import Path
 
 from chipcompiler.cli.core.types import CommandResult
 
+logger = logging.getLogger(__name__)
+
 
 def execute_workspace_run(
-    command_input, workspace_path: str, workspace_id: str | None = None
+    command_input,
+    workspace_path: str,
+    workspace_id: str | None = None,
+    *,
+    project_dir: str | None = None,
 ) -> CommandResult:
     """Reconcile and execute a registered project workspace.
 
     Selector validity was already checked by the handler. Explicit
     selectors (--from/--only) re-execute on request; the default resume
-    runs only within the reconciled target range.
+    runs only within the reconciled target range. When *project_dir* names
+    a manifest project, the run lifecycle is written back to project.json
+    (running, then the terminal status) so the GUI never reads a stale one.
     """
     from chipcompiler.data import load_workspace
     from chipcompiler.data.workspace_config import (
@@ -41,6 +50,17 @@ def execute_workspace_run(
 
     def error(kind: str, **fields) -> CommandResult:
         return CommandResult.err([{"kind": "error", "error": kind, **fields}])
+
+    def write_status(status: str) -> None:
+        """Best-effort manifest status write-back; degrades to a log."""
+        from chipcompiler.cli.project.manifest_write import write_back_workspace_status
+
+        if project_dir is None or not workspace_id:
+            return
+        if not write_back_workspace_status(project_dir, workspace_id, status):
+            logger.warning(
+                "manifest write-back failed: %s: %s -> %s", project_dir, workspace_id, status
+            )
 
     workspace_path = os.path.abspath(workspace_path)
 
@@ -97,9 +117,12 @@ def execute_workspace_run(
             and command_input.from_step is None
             and command_input.only is None
         ):
-            # The persisted flow already covers the target and succeeded;
+            # The persisted flow already covers the target and finished;
             # resume has nothing to do. Explicit selectors (--from/--only)
-            # still re-execute on request.
+            # still re-execute on request. The flow is complete, so the
+            # manifest entry reads success even if a previous failed state
+            # is stale.
+            write_status("success")
             return CommandResult.ok(
                 [
                     {
@@ -111,6 +134,8 @@ def execute_workspace_run(
                     }
                 ]
             )
+
+        write_status("running")
 
         try:
             engine_flow = EngineFlow(workspace=workspace)
@@ -162,6 +187,7 @@ def execute_workspace_run(
         except Exception as exc:
             return error("flow_failed", workspace=workspace_path, reason=str(exc))
 
+    write_status("success" if result.ok else "failed")
     record = {
         "workspace_id": workspace_id or "default",
         "status": "success" if result.ok else "failed",
