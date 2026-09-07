@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 from .csv import csv_write
 from .file import chmod_folder, file_digest, find_files
 from .filelist import (
@@ -16,8 +18,31 @@ from .log import (
     redirect_stdio_to_file,
     rotate_log_on_start,
 )
-from .plot import plot_bar_chart, plot_csv_bar_chart, plot_csv_map, plot_csv_table, plot_metrics
 from .util import track_process_memory
+
+# Plot helpers pull in matplotlib (~1s import, font scan on cold cache), so
+# they are re-exported lazily via PEP 562 instead of at package import time.
+_PLOT_EXPORTS = frozenset(
+    {"plot_bar_chart", "plot_csv_bar_chart", "plot_csv_map", "plot_csv_table", "plot_metrics"}
+)
+
+if TYPE_CHECKING:
+    from .plot import (
+        plot_bar_chart,
+        plot_csv_bar_chart,
+        plot_csv_map,
+        plot_csv_table,
+        plot_metrics,
+    )
+
+
+def __getattr__(name: str):
+    if name in _PLOT_EXPORTS:
+        from . import plot
+
+        return getattr(plot, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "chmod_folder",
