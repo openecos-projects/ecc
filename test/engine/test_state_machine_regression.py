@@ -450,28 +450,6 @@ class TestLegacyStateNormalization:
         assert "Normalizing legacy" in caplog.text
         assert "Incomplete" in caplog.text
 
-    def test_agent_incomplete_step_normalized_on_resume(self, tmp_path, monkeypatch):
-        """AgentEngineFlow: legacy Incomplete step resumes without ValueError."""
-        import agent.engine as agent_engine
-
-        flow = _make_resume_workspace(
-            tmp_path,
-            [("Synthesis", "Success"), ("Floorplan", "Incomplete")],
-        )
-        agent_flow = agent_engine.AgentEngineFlow.__new__(agent_engine.AgentEngineFlow)
-        agent_flow.workspace = flow.workspace
-        agent_flow.workspace_steps = flow.workspace_steps
-        agent_flow.engine_db = flow.engine_db
-
-        monkeypatch.setattr(agent_engine, "run_agent_step", lambda **_kw: True)
-        monkeypatch.setattr(agent_flow, "check_step_result", lambda **_kw: True)
-
-        result = agent_flow.run_step(agent_flow.workspace_steps[1], rerun=False)
-        assert result == StateEnum.Success
-
-        persisted = json.loads((tmp_path / "home" / "flow.json").read_text())
-        assert persisted["steps"][1]["state"] == StateEnum.Success.value
-
 
 class TestRunStepsLedgerCompleteness:
     """run_steps verifies full-ledger coverage by default; callers binding

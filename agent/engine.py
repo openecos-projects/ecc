@@ -4,7 +4,11 @@ import traceback
 from threading import Event, Thread
 
 from chipcompiler.data import StateEnum, WorkspaceStep
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow import (
+    EngineFlow,
+    _notify_flow_observer,
+    _wait_for_step_rendered,
+)
 from chipcompiler.engine.step_execution import get_process_rss_mb, track_current_process_memory
 from chipcompiler.utility.log import redirect_stdio_to_file
 
@@ -21,7 +25,13 @@ class AgentEngineFlow(EngineFlow):
         steps.insert(filler_index, self.init_flow_step("DRC", "ecc", StateEnum.Unstart))
         self.save()
 
-    def run_step(self, workspace_step: WorkspaceStep | str, *, rerun: bool = False) -> StateEnum:
+    def run_step(
+        self,
+        workspace_step: WorkspaceStep | str,
+        *,
+        rerun: bool = False,
+        observer=None,
+    ) -> StateEnum:
         if isinstance(workspace_step, str):
             workspace_step = self.get_workspace_step(workspace_step)
         if workspace_step is None:
@@ -32,6 +42,7 @@ class AgentEngineFlow(EngineFlow):
         ):
             self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
             self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
+            _notify_flow_observer(observer, "on_step_skipped", workspace_step)
             return StateEnum.Success
 
         self._normalize_legacy_terminal_state(workspace_step, step_tag)
@@ -39,9 +50,13 @@ class AgentEngineFlow(EngineFlow):
         start_time = time.time()
         timing_constraints = self.timing_constraint_facts()
         self.set_state(name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Ongoing)
+        _notify_flow_observer(observer, "on_step_started", workspace_step)
         self._redirect_step_stdio(workspace_step)
         start_memory, peak_memory, stop_monitor, monitor = self._start_memory_monitor()
         result = False
+        previous_observer = getattr(self.workspace, "_runtime_flow_observer", None)
+        if observer is not None:
+            self.workspace._runtime_flow_observer = observer
         try:
             result = run_agent_step(
                 workspace=self.workspace, step=workspace_step, ecc_module=self.engine_db.engine
@@ -52,6 +67,11 @@ class AgentEngineFlow(EngineFlow):
             traceback.print_exc()
         finally:
             self._stop_memory_monitor(stop_monitor, monitor)
+            if observer is not None:
+                if previous_observer is None:
+                    delattr(self.workspace, "_runtime_flow_observer")
+                else:
+                    self.workspace._runtime_flow_observer = previous_observer
 
         elapsed = time.time() - start_time
         state = self._step_state(workspace_step, result)
@@ -62,6 +82,13 @@ class AgentEngineFlow(EngineFlow):
             timing_constraints,
             max(0, round(peak_memory[0] - start_memory, 3)),
         )
+        _notify_flow_observer(observer, "on_step_completed", workspace_step, state)
+        if state == StateEnum.Success and not _wait_for_step_rendered(
+            observer,
+            workspace_step,
+            state,
+        ):
+            return StateEnum.Invalid
         return state
 
     def _redirect_step_stdio(self, workspace_step: WorkspaceStep) -> None:

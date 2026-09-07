@@ -33,6 +33,21 @@ class CandidateRerunRequest:
     candidate_id: str
     patch: list[dict[str, Any]]
     execution_scope: str
+    idempotency_key: str
+    context_sha256: str
+    parameter_card_sha256: str
+    seed: int
+    parent_candidate_root_ref: str | None = None
+
+
+@dataclass(frozen=True)
+class CandidateResumeRequest:
+    workspace_id: str
+    candidate_id: str
+    idempotency_key: str
+    context_sha256: str
+    parameter_card_sha256: str
+    seed: int
 
 
 _FIELD_ALIASES = {
@@ -42,6 +57,10 @@ _FIELD_ALIASES = {
     "sourceStep": "source_step",
     "candidateId": "candidate_id",
     "executionScope": "execution_scope",
+    "idempotencyKey": "idempotency_key",
+    "contextSha256": "context_sha256",
+    "parameterCardSha256": "parameter_card_sha256",
+    "parentCandidateRootRef": "parent_candidate_root_ref",
 }
 
 

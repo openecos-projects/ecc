@@ -278,6 +278,7 @@ if BUNDLE_MODE == "onedir":
         upx=False,
         name="ecc",
     )
+    ecc_exe_path = Path(coll.name) / "ecc"
 else:
     exe = EXE(
         pyz,
@@ -292,3 +293,8 @@ else:
         console=True,
         codesign_identity=CODESIGN_IDENTITY,
     )
+    ecc_exe_path = Path(exe.name)
+
+agent_exe_path = ecc_exe_path.with_name(f"ecc-agent-rpc{ecc_exe_path.suffix}")
+agent_exe_path.unlink(missing_ok=True)
+os.link(ecc_exe_path, agent_exe_path)

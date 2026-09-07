@@ -42,6 +42,7 @@ dependencies = [
   "uvicorn>=0.27",
 ]
 scripts.ecc = "chipcompiler.cli.main:main"
+scripts.ecc-agent-rpc = "agent.rpc_server:main"
 
 [dependency-groups]
 dev = [
@@ -66,7 +67,7 @@ constraint-dependencies = [
   "llvmlite>=0.40.0",
   "numba>=0.57.0",
 ]
-build-backend.module-name = [ "chipcompiler" ]
+build-backend.module-name = [ "agent", "chipcompiler" ]
 build-backend.module-root = ""
 build-backend.source-exclude = [
   "/scripts/**",
