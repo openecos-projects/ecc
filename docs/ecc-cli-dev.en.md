@@ -241,16 +241,16 @@ The command itself can be verified directly with `.venv/bin/ecc` or `uv run ecc`
 
 ```bash
 cd ecc
-bash docs/ecc-cli-local-build.sh   # creates dist/release/ecc-cli-linux-x86_64.tar.gz; rebuilds dist/ecc/ (onedir, ~3.6G; the first run triggers dreamplace's cmake install, which is normal)
+ECOS_PYINSTALLER_MODE=onedir uv run --no-sync --managed-python \
+  pyinstaller ecc.spec --clean --noconfirm
+# rebuilds dist/ecc/ (onedir, ~3.6G; the first run triggers dreamplace's cmake install, which is normal)
 
-# Install locally (the default install location of ecc-cli-setup.sh; the ~/.local/bin/ecc symlink and ~/.ecc-env.sh need no changes)
+# Install locally (overwrite your install location, e.g. ~/.local/ecc; a PATH symlink pointing at it needs no change)
 rm -rf ~/.local/ecc && mkdir -p ~/.local/ecc && cp -a dist/ecc/. ~/.local/ecc/
 ecc --help            # verify doctor / signoff / report are listed
-
-# The script uses the official tar.gz format and smoke-tests the extracted bundle.
 ```
 
-To roll back to the official release: `bash docs/ecc-cli-setup.sh --force` (see [ecc-cli-setup.sh](ecc-cli-setup.sh)).
+To roll back to the official release, re-run the [README](../README.md#installation) installer (`curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh`).
 
 ## 7. Constraints and caveats (from the repository conventions)
 

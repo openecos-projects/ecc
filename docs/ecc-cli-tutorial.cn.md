@@ -30,70 +30,43 @@ graph LR
 | 操作系统 | Linux x86_64（其他架构需自行交叉验证） |
 | 基础命令 | `bash`、`curl` 或 `wget`、`tar`、`git`、`make`、`bzip2` |
 | 磁盘空间 | ≥ 10 GB 空闲（安装后实测：ecc CLI ≈ 3.6 GB + OSS CAD Suite ≈ 2.9 GB + PDK ≈ 1.9 GB） |
-| 网络 | 能访问 GitHub（下载 CLI / PDK / OSS CAD Suite；受限环境见 §2.1 的 `GH_PROXY`） |
+| 网络 | 能访问 release.openecos.com（安装脚本）与 GitHub（PDK / OSS CAD Suite） |
 | Python / 依赖 | **无需**。ecc-tools、DreamPlace 等已捆绑在 CLI 包内 |
 
 ## 2. 安装 ecc CLI（从零）
 
 ### 2.1 一键安装（推荐）
 
-仓库自带安装脚本 [ecc-cli-setup.sh](ecc-cli-setup.sh)，一条命令完成：下载安装 ecc CLI → 配置 PATH → 环境自检 → 补齐 ICS55 PDK（clone + `make unzip` 下载 liberty/GDS）、Yosys（OSS CAD Suite 最新版，内置 slang 前端）和 Timing optimization 所需的 Sizer。幂等可重复运行，已就绪的部件自动跳过。
+使用官方安装脚本安装 `ecc` CLI（Linux x86_64，glibc 2.34+）：
 
 ```bash
-# 获取脚本（clone 仓库可同时拿到本教程用的 gcd 示例 RTL）
-git clone --depth 1 https://github.com/openecos-projects/ecc.git
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
+```
+
+同时安装 Yosys（OSS CAD Suite，内置 slang 前端）与 ICS55 PDK（推荐，本教程流程直接可用）：
+
+```bash
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --with-toolchain
+```
+
+wrapper 默认安装到 `~/.local/bin`。该目录不在 `PATH` 中时加入（当前终端立即生效，新终端自动生效）：
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+`--with-toolchain` 安装的 wrapper 会导出 `CHIPCOMPILER_OSS_CAD_DIR` 与 `CHIPCOMPILER_ICS55_PDK_ROOT`，Yosys 与 ICS55 PDK 由 wrapper 自动配置；之后缺工具链时重新运行安装脚本加 `--with-toolchain` 即可补齐。环境体检用 `ecc doctor`（见 §2.4）。
+
+### 2.2 从源码运行（可选）
+
+按 [README](../README.cn.md#源码构建) 带 `--recursive` 克隆仓库（`chipcompiler/thirdparty/` 会拉取 `ecc-tools` 和 `ecc-dreamplace`），再参照 [开发指南](development.md) 配置 `uv` 工作区：
+
+```bash
+git clone --recursive https://github.com/openecos-projects/ecc.git
 cd ecc
-
-bash docs/ecc-cli-setup.sh
+uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package ecc-tools-bin
+uv run ecc --help
 ```
-
-安装完成后**当前终端立即生效**（新终端自动生效）：
-
-```bash
-source ~/.ecc-env.sh
-```
-
-脚本产出一览：
-
-| 产物 | 位置 | 说明 |
-|---|---|---|
-| ecc CLI | `~/.local/ecc/` | PyInstaller 打包的 `ecc` + `_internal/`，两者须保持在一起 |
-| PDK | `~/.local/icsprout55-pdk/` | 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` 指向它 |
-| Yosys | `~/.local/oss-cad-suite/` | 环境变量 `CHIPCOMPILER_OSS_CAD_DIR` 指向它 |
-| Sizer | `~/.local/ecc-sizer/` | `bin/Sizer` 与 `src/sizer_os.tcl`；`ecc doctor` 的必需组件 |
-| 环境文件 | `~/.ecc-env.sh` | PATH + 上述变量，已幂等写入 `~/.bashrc`（zsh 则 `~/.zshrc`） |
-| 便利软链接 | `~/.local/bin/ecc` | 多数发行版该目录已在 PATH |
-
-常用变体：
-
-```bash
-bash docs/ecc-cli-setup.sh --check-only    # 只做环境体检，不安装任何东西
-bash docs/ecc-cli-setup.sh --force         # 强制重装 ecc CLI（升级同理）
-bash docs/ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # 只装 ecc CLI 本体；必需依赖未就绪时最终自检会失败
-GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh   # 网络受限走代理
-```
-
-### 2.2 安装本地源码构建包
-
-在 Linux x86_64 的本地 checkout 中，先构建压缩包，再把它交给常规安装器：
-
-```bash
-cd ecc
-bash docs/ecc-cli-local-build.sh
-
-# 替换 CLI 并补齐必需依赖。
-ECC_CLI_URL="$PWD/dist/release/ecc-cli-linux-x86_64.tar.gz" \
-  bash docs/ecc-cli-setup.sh --force
-```
-
-PDK、Yosys 与 Sizer 都已就绪时，只替换 CLI：
-
-```bash
-ECC_CLI_URL="file://$PWD/dist/release/ecc-cli-linux-x86_64.tar.gz" \
-  bash docs/ecc-cli-setup.sh --force --skip-pdk --skip-tools --skip-sizer
-```
-
-最终自检仍要求全部必需依赖就绪，否则会以非零状态退出。
 
 ### 2.3 手动安装（可选）
 
@@ -136,7 +109,7 @@ dreamplace 0.1.0a7
 ecc_tools 0.1.0a12
 runtime ECC CLI
 yosys 0.68+132
-sizer not installed
+sizer 0.1.0-alpha
 klayout 0.30.2
 ```
 
@@ -167,7 +140,7 @@ $ ecc doctor
   ...
 ```
 
-必需项（yosys、yosys-slang、ecc-tools、dreamplace、sizer、pdk）全部 `pass` 后，`ecc doctor` 才会成功。就绪的 Sizer 同时需要可执行文件和 runtime root。完整 `rtl2gds` 流包含 Timing optimization 步骤；新建或 `--overwrite` 的 `rtl2gds` 会在启动预检中检查 Sizer，缺失时以 `env_not_ready` 失败。已有 workspace 或 `--workspace` 重跑不预检，缺 Sizer 时仍可能在流中段失败。[ecc-cli-setup.sh](ecc-cli-setup.sh) 会在有预编译 Release 时尝试安装；必需组件未齐时以非零退出。
+必需项（yosys、yosys-slang、ecc-tools、dreamplace、sizer、pdk）全部 `pass` 后，`ecc doctor` 才会成功。就绪的 Sizer 同时需要可执行文件和 runtime root。完整 `rtl2gds` 流包含 Timing optimization 步骤；新建或 `--overwrite` 的 `rtl2gds` 会在启动预检中检查 Sizer，缺失时以 `env_not_ready` 失败。已有 workspace 或 `--workspace` 重跑不预检，缺 Sizer 时仍可能在流中段失败。缺组件时按 `ecc doctor` 的 remediation 提示补齐（如 `ecc pdk setup`，或重新运行 §2.1 安装脚本加 `--with-toolchain`）。
 
 ## 3. 创建第一个项目
 
@@ -203,12 +176,12 @@ gcd/
 本教程用仓库自带的 gcd 示例——一个 16/16 bit 减法型 GCD 计算单元（FSM 控制器 + 数据通路，综合后数百个标准单元），小而完整，是验证后端流程的经典教学设计：
 
 ```bash
-# 从克隆的 ecc 仓库拷贝（或任意你自己的 .v 文件）
-cp /path/to/ecc/docs/examples/gcd/gcd.v rtl/
+# 下载仓库自带的 gcd 示例（或任意你自己的 .v 文件）
+curl -fL -o rtl/gcd.v \
+  https://raw.githubusercontent.com/openecos-projects/ecc/main/docs/examples/gcd/gcd.v
 
-# 没有 clone 仓库时，直接下载单文件也可以：
-# curl -fL -o rtl/gcd.v \
-#   https://raw.githubusercontent.com/openecos-projects/ecc/main/docs/examples/gcd/gcd.v
+# 已 clone 仓库时直接拷贝也可以：
+# cp /path/to/ecc/docs/examples/gcd/gcd.v rtl/
 ```
 
 多文件设计请改用 filelist（`rtl = ["rtl/filelist.f"]`），语法见 [examples/gcd/README.md](examples/gcd/README.md#using-filelist) 与 [filelist 语法](specification/filelist-grammar.md)。
@@ -723,8 +696,8 @@ ecc config --plain      # 项目级配置（键值 + 解析后绝对路径）
 
 | 症状 | 原因 | 处理 |
 |---|---|---|
-| `ecc: command not found` | PATH 未生效 | `source ~/.ecc-env.sh`；重开终端；或检查 `~/.local/bin` 在 PATH |
-| `[error] env_not_ready`（run 时） | preset 必需工具缺失 | 按 `ecc doctor` 输出补齐；通常是 yosys/slang，重跑 `bash docs/ecc-cli-setup.sh` |
+| `ecc: command not found` | PATH 未生效 | `export PATH="$HOME/.local/bin:$PATH"`；或重开终端 |
+| `[error] env_not_ready`（run 时） | preset 必需工具缺失 | 按 `ecc doctor` 输出补齐；通常是 yosys/slang，重新运行 §2.1 安装脚本加 `--with-toolchain` |
 | `[error] run_exists` | workspace 目录已存在但不是有效 ECC workspace | `ecc run --overwrite`，或换 `--workspace NAME`。注意：**跑完再执行 `ecc run` 不会报这个错**——已成功时是 no_op，中断时自动续跑 |
 | `[error] workspace_required` | 项目里有多个活跃 workspace，没指明用哪个 | 按报错列出的名称传 `--workspace NAME` |
 | `[error] unknown_step` | `--from`/`--only` 的步骤名拼写与 `home/flow.json` 持久化名不符（如写了 `placement`，持久化名是 `place`） | 照抄报错列出的可用步骤名；详见 §6.3 的「步骤名怎么写」 |
@@ -733,10 +706,10 @@ ecc config --plain      # 项目级配置（键值 + 解析后绝对路径）
 | `[error] signoff_incomplete`（export 时） | 必需交付物缺失（如某步失败） | `ecc signoff inspect` 看 blocked 项；`ecc status`/`ecc log` 排查失败步骤后重跑 |
 | `ecc check` 报 `pdk.root is required` | 未找到 PDK | `ecc pdk setup` 或 `ecc pdk set-root <路径>`，或设 `CHIPCOMPILER_ICS55_PDK_ROOT` |
 | PDK liberty 缺失 | 只 clone 了 PDK 没下数据 | `make -C ~/.local/icsprout55-pdk unzip`（可加 `USE_PROXY=true GH_PROXY=...`） |
-| 下载 GitHub 资源超时 | 网络受限 | `GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh` |
-| doctor 显示 `sizer: fail` | 必需的 Sizer 组件未安装 | `ecc doctor` 返回非零。完整 `rtl2gds` 链含 Timing optimization 步骤，运行前应安装 Sizer。重跑 [ecc-cli-setup.sh](ecc-cli-setup.sh)（官方发布预编译包后自动安装），或按 remediation 提示源码构建 |
+| 下载超时 | 网络受限 | 重试安装脚本；或按 §2.3 手动安装（PDK 的 `make unzip` 支持 `USE_PROXY=true GH_PROXY=...`） |
+| doctor 显示 `sizer: fail` | 必需的 Sizer 组件未安装 | `ecc doctor` 返回非零。完整 `rtl2gds` 链含 Timing optimization 步骤，运行前应安装 Sizer。按 remediation 提示源码构建 |
 | synthesis 日志报 `yosys slang frontend check failed` | yosys 无 slang 前端 | 换 OSS CAD Suite ≥ v0.67 的 yosys，`ecc log synthesis` 排查 |
-| synthesis 在 DFFLIBMAP 报 `uncaught exception during Yosys command invoked from TCL` 后退出 | 当前 shell 未加载 ecc 环境（如非交互终端），ecc 回落到系统 PATH 里的旧版 yosys（解析 ics55 liberty 会直接崩溃，异常详情被 TCL 吞掉） | `which yosys` 确认指向 OSS CAD Suite；`source ~/.ecc-env.sh` 后重跑 |
+| synthesis 在 DFFLIBMAP 报 `uncaught exception during Yosys command invoked from TCL` 后退出 | 当前 shell 未加载 ecc 环境（如非交互终端），ecc 回落到系统 PATH 里的旧版 yosys（解析 ics55 liberty 会直接崩溃，异常详情被 TCL 吞掉） | `which yosys` 确认指向 OSS CAD Suite；重开终端（或重跑安装脚本 `--with-toolchain`）后重跑 |
 
 ## 8. 下一步
 

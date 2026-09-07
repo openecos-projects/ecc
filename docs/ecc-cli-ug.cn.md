@@ -10,62 +10,25 @@
 
 ### 一键安装（推荐）
 
-仓库自带安装脚本 [ecc-cli-setup.sh](ecc-cli-setup.sh)（本目录）：下载安装 ecc CLI、配置 PATH、自检环境、并补齐缺失的 PDK（icsprout55-pdk + liberty/GDS）、Yosys（OSS CAD Suite 最新版，含 slang 前端；LEC 等价性检查复用该 yosys）与 Timing optimization 所需的 Sizer（存在预编译 ecc-sizer 包时自动安装）。幂等可重复运行，已就绪的部件自动跳过：
+安装 `ecc` CLI（Linux x86_64，glibc 2.34+）：
 
 ```bash
-bash ecc-cli-setup.sh                 # 一键安装 + 自检 + 补齐
-bash ecc-cli-setup.sh --check-only    # 只做环境体检，不安装任何东西
-bash ecc-cli-setup.sh --force         # 强制重装 ecc CLI
-bash ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # 只装 ecc CLI 本体；必需依赖未就绪时最终自检会失败
-bash ecc-cli-setup.sh --no-shell-rc   # 不修改 shell rc（默认会幂等地写入加载行）
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
 ```
 
-可配置项（环境变量覆盖，版本/地址变化时改这里，无需改脚本）：
-
-| 变量 | 默认值 | 说明 |
-|---|---|---|
-| `ECC_VERSION` | `latest` | ecc 发行版 tag（如 `v0.1.0-alpha.11`） |
-| `ECC_RELEASE_BASE` | ecc 官方 Releases 页 | 发行页地址（换镜像/换仓库时改） |
-| `ECC_ASSET_NAME` | `ecc-cli-linux-x86_64.tar.gz` | 资产名（布局变化时改） |
-| `ECC_CLI_URL` | 空 | 完整直链或本地压缩包路径，优先级最高 |
-| `ECC_INSTALL_DIR` | `~/.local/ecc` | 安装目录 |
-| `ECC_PDK_DIR` | `~/.local/icsprout55-pdk` | PDK 目录（仓库地址固定为 https://github.com/openecos-projects/icsprout55-pdk.git） |
-| `ECC_OSS_CAD_DIR` | `~/.local/oss-cad-suite` | OSS CAD Suite 目录（Yosys） |
-| `OSS_CAD_URL` | 空 | OSS CAD Suite 完整直链覆盖（默认自动取最新发行版） |
-| `OSS_ARCH_PATTERN` | `linux-x64` | OSS CAD Suite 资产架构匹配串（非 x86_64 时改） |
-| `ECC_SIZER_DIR` | `~/.local/ecc-sizer` | Sizer 安装根目录（含 `bin/Sizer` 与 `src/sizer_os.tcl`） |
-| `ECC_SIZER_URL` | 空 | ecc-sizer 预编译包完整直链覆盖（官方无 Release 时可手动指定） |
-| `GH_PROXY` | 空 | GitHub 下载代理前缀（如 `https://gh-proxy.org/`），直连不畅时使用 |
-
-脚本产出 `~/.ecc-env.sh`（PATH（含 Sizer 的 bin）+ `CHIPCOMPILER_ICS55_PDK_ROOT` + `CHIPCOMPILER_OSS_CAD_DIR` + 装有 Sizer 时的 `CHIPCOMPILER_ECC_SIZER_ROOT`），并幂等地让 `~/.bashrc`/`~/.zshrc`（以及 bash 登录 shell 的 `~/.profile`）加载它；另建 `~/.local/bin/ecc` 软链接。网络受限环境示例：
+同时安装 Yosys（OSS CAD Suite，含 slang 前端）与 ICS55 PDK：
 
 ```bash
-GH_PROXY=https://gh-proxy.org/ bash ecc-cli-setup.sh
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --with-toolchain
 ```
 
-### 本地源码构建包
-
-安装本地 checkout 构建的 bundle 时，先打包再把安装器指向该压缩包。
-`ECC_CLI_URL` 接受绝对本地路径或 `file://` URL；本地文件直接复制，不经过
-`GH_PROXY`。
+wrapper 默认安装到 `~/.local/bin`。该目录不在 `PATH` 中时加入：
 
 ```bash
-cd ecc
-bash docs/ecc-cli-local-build.sh
-
-# 替换 CLI 并补齐必需依赖。
-ECC_CLI_URL="$PWD/dist/release/ecc-cli-linux-x86_64.tar.gz" \
-  bash docs/ecc-cli-setup.sh --force
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-PDK、Yosys 与 Sizer 都已就绪时，只替换 CLI：
-
-```bash
-ECC_CLI_URL="file://$PWD/dist/release/ecc-cli-linux-x86_64.tar.gz" \
-  bash docs/ecc-cli-setup.sh --force --skip-pdk --skip-tools --skip-sizer
-```
-
-最终自检仍要求全部必需依赖就绪，否则会以非零状态退出。
+`--with-toolchain` 安装的 wrapper 会导出 `CHIPCOMPILER_OSS_CAD_DIR` 与 `CHIPCOMPILER_ICS55_PDK_ROOT`，Yosys 与 PDK 由 wrapper 自动配置；缺工具链时重新运行安装脚本加 `--with-toolchain` 即可补齐。环境体检用 `ecc doctor`。
 
 ### 预编译 CLI 包（手动安装）
 
@@ -100,7 +63,7 @@ which ecc && ecc --version          # 任意目录下应输出 ecc <版本号>
 # 升级 = 用新包覆盖解压目录内容；方式 B/C 的软链接无需改动
 ```
 
-> 官方最新 Release（v0.1.0-alpha.11，`ecc-cli-setup.sh` 默认安装的就是它）已包含本文全部命令，含 `doctor`/`signoff`/`report` 与 `run` 的 workspace/范围选择器。当源码领先于最近一次 Release 时（两次发布之间的新行为），用 [ecc-cli-local-build.sh](ecc-cli-local-build.sh) 本地打包再经 `ECC_CLI_URL` 安装即可体验（流程见 [ecc-cli-dev.cn.md §6](ecc-cli-dev.cn.md)）；重新运行 `bash ecc-cli-setup.sh --force` 会装回官方发行版，未发布的新行为随之消失，属预期回退。
+> 官方最新 Release（v0.1.0-alpha.11）已包含本文全部命令，含 `doctor`/`signoff`/`report` 与 `run` 的 workspace/范围选择器。当源码领先于最近一次 Release 时（两次发布之间的新行为），按 [ecc-cli-dev.cn.md](ecc-cli-dev.cn.md) 的源码开发方式用 `uv run ecc` 即可体验（editable 安装，改源码下次导入即生效）；重新运行安装脚本会装回官方发行版，未发布的新行为随之消失，属预期回退。
 
 > 注：`ecc` 的项目定位默认取当前目录（`ecc.toml` 所在处），所以「任意文件夹启动」是常态用法；在其他目录操作项目时加 `--project <dir>` 即可。
 
@@ -171,7 +134,7 @@ dreamplace 0.1.0a7
 ecc_tools 0.1.0a12
 runtime ECC CLI
 yosys 0.68+132
-sizer not installed
+sizer 0.1.0-alpha
 klayout 0.30.2
 
 $ ecc version --json
@@ -292,7 +255,7 @@ rc=1
 
 - PDK 根目录解析优先级：`ecc.toml` 的 `pdk.root` > 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > 仓库默认 `<ecc 检出目录>/../pdk/icsprout55-pdk`（ecos-studio workspace 布局；数据层与 `ecc pdk show` 使用。`ecc check`/`ecc run` 仍要求前三者之一，未设置时报 `pdk.root is required`）。
 - 综合步骤内部仍有 slang fail-fast（日志报 `yosys slang frontend check failed`），事后排查用 `ecc log synthesis`。
-- 安装/补齐环境的脚本：`bash docs/ecc-cli-setup.sh`（见第 0 节，`--check-only` 只体检）。
+- 重装/补齐工具链：重新运行第 0 节的安装脚本（加 `--with-toolchain`）。
 
 ### 手动排查清单（无 doctor 时备用）
 

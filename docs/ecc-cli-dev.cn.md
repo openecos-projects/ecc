@@ -241,23 +241,16 @@ config_param(
 
 ```bash
 cd ecc
-bash docs/ecc-cli-local-build.sh   # 生成 dist/release/ecc-cli-linux-x86_64.tar.gz，并重建 dist/ecc/（onedir，~3.6G；首跑会触发 dreamplace 的 cmake 安装，属正常）
+ECOS_PYINSTALLER_MODE=onedir uv run --no-sync --managed-python \
+  pyinstaller ecc.spec --clean --noconfirm
+# 重建 dist/ecc/（onedir，~3.6G；首跑会触发 dreamplace 的 cmake 安装，属正常）
 
-# 安装到本机（ecc-cli-setup.sh 的默认安装位；~/.local/bin/ecc 软链与 ~/.ecc-env.sh 均无需改动）
+# 安装到本机（覆盖现有安装位，如 ~/.local/ecc；PATH 中指向它的软链无需改动）
 rm -rf ~/.local/ecc && mkdir -p ~/.local/ecc && cp -a dist/ecc/. ~/.local/ecc/
 ecc --help            # 验证 doctor / signoff / report 已列出
-
-# 脚本按官方 tar.gz 格式打包，并对解压后的 bundle 做 smoke test。
 ```
 
-打出的 tar.gz 也可以直接复用安装脚本装到本机（会清空旧目录整包替换，并顺带维护 `~/.ecc-env.sh` 与 `~/.local/bin/ecc` 软链；`ECC_CLI_URL` 接受绝对路径或 `file://` 直链，失败不会回退下载官方包）：
-
-```bash
-ECC_CLI_URL=$PWD/dist/release/ecc-cli-linux-x86_64.tar.gz \
-  bash docs/ecc-cli-setup.sh --force --skip-pdk --skip-tools --skip-sizer
-```
-
-回退官方发行版：`bash docs/ecc-cli-setup.sh --force`（见 [ecc-cli-setup.sh](ecc-cli-setup.sh)）。
+回退官方发行版：重新运行 [README](../README.cn.md#安装) 的安装脚本（`curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh`）。
 
 ## 7. 约束与注意事项（来自仓库约定）
 

@@ -10,62 +10,25 @@
 
 ### One-shot setup (recommended)
 
-The repository ships an install script, [ecc-cli-setup.sh](ecc-cli-setup.sh) (in this directory): it downloads and installs the ecc CLI, configures PATH, runs an environment self-check, and fills in any missing dependencies — the PDK (icsprout55-pdk + liberty/GDS), Yosys (latest OSS CAD Suite with the slang frontend; LEC reuses that yosys), and Sizer for Timing optimization (the script installs a prebuilt ecc-sizer package when one is available). It is idempotent: re-running skips anything already in place.
+Install the `ecc` CLI (Linux x86_64, glibc 2.34+):
 
 ```bash
-bash ecc-cli-setup.sh                 # install + self-check + fill in dependencies
-bash ecc-cli-setup.sh --check-only    # environment check only, installs nothing
-bash ecc-cli-setup.sh --force         # force reinstall of the ecc CLI
-bash ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # install only the ecc CLI; the final check fails until required dependencies are ready
-bash ecc-cli-setup.sh --no-shell-rc   # do not touch shell rc files (by default a load line is added idempotently)
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
 ```
 
-Configuration knobs (override via environment variables; change these when versions/URLs change — no script edits needed):
-
-| Variable | Default | Description |
-|---|---|---|
-| `ECC_VERSION` | `latest` | ecc release tag (e.g. `v0.1.0-alpha.11`) |
-| `ECC_RELEASE_BASE` | Official ecc Releases page | Release page URL (change for a mirror or a different repository) |
-| `ECC_ASSET_NAME` | `ecc-cli-linux-x86_64.tar.gz` | Asset name (change if the layout changes) |
-| `ECC_CLI_URL` | empty | Full direct URL or local archive path; highest priority |
-| `ECC_INSTALL_DIR` | `~/.local/ecc` | Installation directory |
-| `ECC_PDK_DIR` | `~/.local/icsprout55-pdk` | PDK directory (repository URL is fixed: https://github.com/openecos-projects/icsprout55-pdk.git) |
-| `ECC_OSS_CAD_DIR` | `~/.local/oss-cad-suite` | OSS CAD Suite directory (Yosys) |
-| `OSS_CAD_URL` | empty | Full direct URL override for OSS CAD Suite (defaults to the latest release) |
-| `OSS_ARCH_PATTERN` | `linux-x64` | OSS CAD Suite asset architecture pattern (change for non-x86_64 hosts) |
-| `ECC_SIZER_DIR` | `~/.local/ecc-sizer` | Sizer install root (holds `bin/Sizer` and `src/sizer_os.tcl`) |
-| `ECC_SIZER_URL` | empty | Full direct URL override for the ecc-sizer prebuilt package (set manually while no official Release exists) |
-| `GH_PROXY` | empty | GitHub download proxy prefix (e.g. `https://gh-proxy.org/`), for restricted networks |
-
-The script produces `~/.ecc-env.sh` (PATH (including the Sizer bin directory) + `CHIPCOMPILER_ICS55_PDK_ROOT` + `CHIPCOMPILER_OSS_CAD_DIR` + `CHIPCOMPILER_ECC_SIZER_ROOT` when Sizer is installed), idempotently makes `~/.bashrc`/`~/.zshrc` (and `~/.profile` for bash login shells) load it, and creates a `~/.local/bin/ecc` symlink. Example for a restricted network:
+Install Yosys (OSS CAD Suite with the slang frontend) and the ICS55 PDK as well:
 
 ```bash
-GH_PROXY=https://gh-proxy.org/ bash ecc-cli-setup.sh
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --with-toolchain
 ```
 
-### Local source-built bundle
-
-To install a bundle built from the local checkout, build it first, then point the
-installer at the archive. `ECC_CLI_URL` accepts an absolute local path or a
-`file://` URL; local files are copied directly and never use `GH_PROXY`.
+The wrapper installs to `~/.local/bin`. If that directory is not on your `PATH`, add it:
 
 ```bash
-cd ecc
-bash docs/ecc-cli-local-build.sh
-
-# Replace the CLI and provision any required dependencies.
-ECC_CLI_URL="$PWD/dist/release/ecc-cli-linux-x86_64.tar.gz" \
-  bash docs/ecc-cli-setup.sh --force
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-When the PDK, Yosys, and Sizer are already ready, replace only the CLI:
-
-```bash
-ECC_CLI_URL="file://$PWD/dist/release/ecc-cli-linux-x86_64.tar.gz" \
-  bash docs/ecc-cli-setup.sh --force --skip-pdk --skip-tools --skip-sizer
-```
-
-The final self-check still fails until every required dependency is ready.
+The `--with-toolchain` wrapper exports `CHIPCOMPILER_OSS_CAD_DIR` and `CHIPCOMPILER_ICS55_PDK_ROOT`, so Yosys and the PDK are configured by the wrapper; when the toolchain is missing, re-run the installer with `--with-toolchain`. Check the environment with `ecc doctor`.
 
 ### Pre-built CLI bundle (manual install)
 
@@ -100,7 +63,7 @@ which ecc && ecc --version          # from any directory, should print ecc <vers
 # Upgrading = overwrite the extraction directory with the new bundle; symlinks from options B/C need no change
 ```
 
-> The latest official release (v0.1.0-alpha.11 — what `ecc-cli-setup.sh` installs by default) already ships every command in this guide, including `doctor`/`signoff`/`report` and the `run` workspace/range selectors. When the source tree is ahead of the last release (behavior added between releases), build locally with [ecc-cli-local-build.sh](ecc-cli-local-build.sh) and install via `ECC_CLI_URL` (procedure in [ecc-cli-dev.en.md §6](ecc-cli-dev.en.md)); re-running `bash ecc-cli-setup.sh --force` reinstalls the official release, and unreleased behavior disappears with it — the expected rollback.
+> The latest official release (v0.1.0-alpha.11) already ships every command in this guide, including `doctor`/`signoff`/`report` and the `run` workspace/range selectors. When the source tree is ahead of the last release (behavior added between releases), run from source with `uv run ecc` as described in [ecc-cli-dev.en.md](ecc-cli-dev.en.md) (editable install — source changes take effect on the next import); re-running the installer reinstalls the official release, and unreleased behavior disappears with it — the expected rollback.
 
 > `ecc` resolves the project from the current directory by default (wherever `ecc.toml` lives), so "launch from any folder" is the normal usage; to operate on a project from elsewhere, add `--project <dir>`.
 
@@ -172,7 +135,7 @@ dreamplace 0.1.0a7
 ecc_tools 0.1.0a12
 runtime ECC CLI
 yosys 0.68+132
-sizer not installed
+sizer 0.1.0-alpha
 klayout 0.30.2
 
 $ ecc version --json
@@ -293,7 +256,7 @@ Notes:
 
 - PDK root resolution priority: `pdk.root` in `ecc.toml` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > the repo default `<ecc checkout>/../pdk/icsprout55-pdk` (ecos-studio workspace layout; used by the data layer and `ecc pdk show`. `ecc check`/`ecc run` still require one of the first three and report `pdk.root is required` otherwise).
 - The synthesis step still fails fast internally on slang problems (the log reports `yosys slang frontend check failed`); inspect afterwards with `ecc log synthesis`.
-- Setup/repair script: `bash docs/ecc-cli-setup.sh` (see section 0; `--check-only` checks only).
+- Reinstall/repair toolchain: re-run the section 0 installer (with `--with-toolchain`).
 
 ### Manual checklist (fallback when doctor is unavailable)
 

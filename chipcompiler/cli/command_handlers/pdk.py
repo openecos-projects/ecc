@@ -182,8 +182,8 @@ def setup(command_input, ctx: CommandContext) -> CommandResult:
     """Clone + `make unzip` a PDK checkout, then set it as the project root.
 
     Only the missing parts run: an existing complete checkout is only
-    wired in via set-root. Downloads honor `GH_PROXY` the same way
-    ecc-cli-setup.sh does (proxy-prefixed clone URL, USE_PROXY=true).
+    wired in via set-root. Downloads honor `GH_PROXY` (proxy-prefixed
+    clone URL, USE_PROXY=true).
     """
     import shutil
     import subprocess

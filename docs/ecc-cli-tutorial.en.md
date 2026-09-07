@@ -30,71 +30,43 @@ graph LR
 | OS | Linux x86_64 (other architectures are untested) |
 | Basic commands | `bash`, `curl` or `wget`, `tar`, `git`, `make`, `bzip2` |
 | Disk | ≥ 10 GB free (measured after install: ecc CLI ≈ 3.6 GB + OSS CAD Suite ≈ 2.9 GB + PDK ≈ 1.9 GB) |
-| Network | Access to GitHub (to download the CLI / PDK / OSS CAD Suite; see `GH_PROXY` in §2.1 for restricted networks) |
+| Network | Access to release.openecos.com (installer) and GitHub (PDK / OSS CAD Suite) |
 | Python / deps | **None**. ecc-tools, DreamPlace, etc. are bundled inside the CLI package |
 
 ## 2. Installing the ecc CLI (from zero)
 
 ### 2.1 One-shot installer (recommended)
 
-The repository ships an installer script, [ecc-cli-setup.sh](ecc-cli-setup.sh), which does everything in one command: download and install the ecc CLI → set up PATH → run an environment self-check → provision the ICS55 PDK (clone + `make unzip` to fetch liberty/GDS), Yosys (latest OSS CAD Suite with the slang frontend built in), and Sizer for Timing optimization. It is idempotent — rerunning skips anything already in place.
+Install the `ecc` CLI (Linux x86_64, glibc 2.34+) with the official installer:
 
 ```bash
-# Get the script (cloning the repo also gives you the gcd example RTL used here)
-git clone --depth 1 https://github.com/openecos-projects/ecc.git
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
+```
+
+Install Yosys (OSS CAD Suite with the slang frontend built in) and the ICS55 PDK as well (recommended; the flow in this tutorial works out of the box):
+
+```bash
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --with-toolchain
+```
+
+The wrapper installs to `~/.local/bin`. If that directory is not on your `PATH`, add it (effective in the current terminal immediately; new terminals pick it up automatically):
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+The `--with-toolchain` wrapper exports `CHIPCOMPILER_OSS_CAD_DIR` and `CHIPCOMPILER_ICS55_PDK_ROOT`, so Yosys and the ICS55 PDK are configured by the wrapper; when the toolchain is missing later, re-run the installer with `--with-toolchain`. Check the environment with `ecc doctor` (see §2.4).
+
+### 2.2 Running from source (optional)
+
+Clone the repository with `--recursive` as the [README](../README.md#build-from-source) describes (`chipcompiler/thirdparty/` pulls in `ecc-tools` and `ecc-dreamplace`), then set up the `uv` workspace per the [development guide](development.md):
+
+```bash
+git clone --recursive https://github.com/openecos-projects/ecc.git
 cd ecc
-
-bash docs/ecc-cli-setup.sh
+uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package ecc-tools-bin
+uv run ecc --help
 ```
-
-After installation, make it effective **in the current terminal immediately** (new terminals pick it up automatically):
-
-```bash
-source ~/.ecc-env.sh
-```
-
-What the script installs:
-
-| Artifact | Location | Notes |
-|---|---|---|
-| ecc CLI | `~/.local/ecc/` | PyInstaller bundle: `ecc` + `_internal/`; the two must stay together |
-| PDK | `~/.local/icsprout55-pdk/` | pointed to by `CHIPCOMPILER_ICS55_PDK_ROOT` |
-| Yosys | `~/.local/oss-cad-suite/` | pointed to by `CHIPCOMPILER_OSS_CAD_DIR` |
-| Sizer | `~/.local/ecc-sizer/` | `bin/Sizer` plus `src/sizer_os.tcl`; required by `ecc doctor` |
-| Environment file | `~/.ecc-env.sh` | PATH + the variables above; idempotently appended to `~/.bashrc` (or `~/.zshrc` for zsh) |
-| Convenience symlink | `~/.local/bin/ecc` | that directory is already on PATH on most distros |
-
-Common variants:
-
-```bash
-bash docs/ecc-cli-setup.sh --check-only    # environment check only, installs nothing
-bash docs/ecc-cli-setup.sh --force         # force-reinstall the ecc CLI (also how you upgrade)
-bash docs/ecc-cli-setup.sh --skip-pdk --skip-tools --skip-sizer   # install only the ecc CLI; the final check fails until required dependencies are ready
-GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh   # use a proxy on restricted networks
-```
-
-### 2.2 Install a local source-built bundle
-
-From a local checkout on Linux x86_64, build the bundle and pass the archive to
-the normal installer:
-
-```bash
-cd ecc
-bash docs/ecc-cli-local-build.sh
-
-# Replace the CLI and provision any required dependencies.
-ECC_CLI_URL="$PWD/dist/release/ecc-cli-linux-x86_64.tar.gz" \
-  bash docs/ecc-cli-setup.sh --force
-```
-
-When the PDK, Yosys, and Sizer are already ready, replace only the CLI:
-
-```bash
-ECC_CLI_URL="file://$PWD/dist/release/ecc-cli-linux-x86_64.tar.gz" \
-  bash docs/ecc-cli-setup.sh --force --skip-pdk --skip-tools --skip-sizer
-```
-
-The final self-check still requires every dependency to be ready.
 
 ### 2.3 Manual install (optional)
 
@@ -137,7 +109,7 @@ dreamplace 0.1.0a7
 ecc_tools 0.1.0a12
 runtime ECC CLI
 yosys 0.68+132
-sizer not installed
+sizer 0.1.0-alpha
 klayout 0.30.2
 ```
 
@@ -168,7 +140,7 @@ $ ecc doctor
   ...
 ```
 
-All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, and pdk) must `pass` before `ecc doctor` succeeds. A ready Sizer has both its executable and runtime root. The complete `rtl2gds` flow contains Timing optimization; fresh or `--overwrite` `rtl2gds` targets check Sizer during startup preflight and return `env_not_ready` when it is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail mid-flow. [ecc-cli-setup.sh](ecc-cli-setup.sh) attempts a prebuilt installation when a release is available and exits non-zero until the required components are ready.
+All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, and pdk) must `pass` before `ecc doctor` succeeds. A ready Sizer has both its executable and runtime root. The complete `rtl2gds` flow contains Timing optimization; fresh or `--overwrite` `rtl2gds` targets check Sizer during startup preflight and return `env_not_ready` when it is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail mid-flow. When a component is missing, follow the `ecc doctor` remediation hint (e.g. `ecc pdk setup`, or re-run the §2.1 installer with `--with-toolchain`).
 
 ## 3. Creating Your First Project
 
@@ -205,12 +177,12 @@ gcd/
 This tutorial uses the bundled gcd example — a 16/16-bit subtractive GCD unit (FSM controller + datapath, a few hundred standard cells after synthesis). Small but complete, it is a classic teaching design for exercising a backend flow:
 
 ```bash
-# Copy it from your clone of the ecc repo (or use any .v file of your own)
-cp /path/to/ecc/docs/examples/gcd/gcd.v rtl/
+# Download the gcd example shipped in the repository (or use any .v file of your own)
+curl -fL -o rtl/gcd.v \
+  https://raw.githubusercontent.com/openecos-projects/ecc/main/docs/examples/gcd/gcd.v
 
-# No clone? Download the single file directly:
-# curl -fL -o rtl/gcd.v \
-#   https://raw.githubusercontent.com/openecos-projects/ecc/main/docs/examples/gcd/gcd.v
+# With a local clone, copying the file works too:
+# cp /path/to/ecc/docs/examples/gcd/gcd.v rtl/
 ```
 
 For multi-file designs, switch to a filelist (`rtl = ["rtl/filelist.f"]`); see [examples/gcd/README.md](examples/gcd/README.md#using-filelist) and the [filelist grammar](specification/filelist-grammar.md).
@@ -725,8 +697,8 @@ ecc config --plain      # project-level config (key=value + resolved absolute pa
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `ecc: command not found` | PATH not effective | `source ~/.ecc-env.sh`; open a new terminal; check `~/.local/bin` is on PATH |
-| `[error] env_not_ready` (at run) | tools required by the preset are missing | Follow `ecc doctor`; usually yosys/slang — rerun `bash docs/ecc-cli-setup.sh` |
+| `ecc: command not found` | PATH not effective | `export PATH="$HOME/.local/bin:$PATH"`; or open a new terminal |
+| `[error] env_not_ready` (at run) | tools required by the preset are missing | Follow `ecc doctor`; usually yosys/slang — re-run the §2.1 installer with `--with-toolchain` |
 | `[error] run_exists` | the workspace directory already exists but is not a valid ECC workspace | `ecc run --overwrite`, or select a different `--workspace NAME`. Note: **running `ecc run` again after the flow completed does NOT raise this error** — it no-ops when everything succeeded, and auto-resumes after an interruption |
 | `[error] workspace_required` | the project has multiple active workspaces and none was specified | pass `--workspace NAME` with one of the names listed in the error |
 | `[error] unknown_step` | a step name passed to `--from`/`--only` doesn't match the persisted names in `home/flow.json` (e.g. you wrote `placement`; the persisted name is `place`) | copy one of the available step names listed in the error; see the "How to spell step names" note in §6.3 |
@@ -735,10 +707,10 @@ ecc config --plain      # project-level config (key=value + resolved absolute pa
 | `[error] signoff_incomplete` (at export) | required deliverables missing (e.g. a failed step) | `ecc signoff inspect` for blocked items; debug with `ecc status`/`ecc log`, then rerun |
 | `ecc check` reports `pdk.root is required` | no PDK found | `ecc pdk setup` or `ecc pdk set-root <path>`, or set `CHIPCOMPILER_ICS55_PDK_ROOT` |
 | PDK liberty missing | PDK cloned without data files | `make -C ~/.local/icsprout55-pdk unzip` (add `USE_PROXY=true GH_PROXY=...` if needed) |
-| GitHub downloads time out | restricted network | `GH_PROXY=https://gh-proxy.org/ bash docs/ecc-cli-setup.sh` |
-| doctor shows `sizer: fail` | required Sizer component not installed | `ecc doctor` exits non-zero. The complete `rtl2gds` chain contains Timing optimization, so install Sizer before running it. Re-run [ecc-cli-setup.sh](ecc-cli-setup.sh) (installs the prebuilt package automatically once published), or build ecc-sizer per the remediation hint |
+| Downloads time out | restricted network | retry the installer; or install manually per §2.3 (the PDK's `make unzip` supports `USE_PROXY=true GH_PROXY=...`) |
+| doctor shows `sizer: fail` | required Sizer component not installed | `ecc doctor` exits non-zero. The complete `rtl2gds` chain contains Timing optimization, so install Sizer before running it. Build ecc-sizer per the remediation hint |
 | synthesis log says `yosys slang frontend check failed` | yosys lacks the slang frontend | use an OSS CAD Suite yosys ≥ v0.67; debug with `ecc log synthesis` |
-| synthesis aborts at DFFLIBMAP with `uncaught exception during Yosys command invoked from TCL` | the current shell never loaded the ecc env (e.g. a non-interactive terminal), so ecc fell back to an old yosys on system PATH, which crashes parsing the ics55 liberty (the TCL wrapper swallows the exception detail) | verify `which yosys` points at the OSS CAD Suite; `source ~/.ecc-env.sh` and rerun |
+| synthesis aborts at DFFLIBMAP with `uncaught exception during Yosys command invoked from TCL` | the current shell never loaded the ecc env (e.g. a non-interactive terminal), so ecc fell back to an old yosys on system PATH, which crashes parsing the ics55 liberty (the TCL wrapper swallows the exception detail) | verify `which yosys` points at the OSS CAD Suite; open a new terminal (or re-run the installer with `--with-toolchain`) and rerun |
 
 ## 8. Next Steps
 
