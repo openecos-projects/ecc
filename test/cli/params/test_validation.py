@@ -120,7 +120,7 @@ class TestBoolParamValidation:
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
         assert rc == 0
         capsys.readouterr()
-        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--json"])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         records = [r for r in data["records"] if r.get("key") == "flow.run_analysis"]

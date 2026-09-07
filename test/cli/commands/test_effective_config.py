@@ -991,7 +991,7 @@ class TestManifestResolvedConfigView:
             },
         )
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--json", "--project", str(project_dir)])
 
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
@@ -1022,7 +1022,7 @@ class TestManifestResolvedConfigView:
             },
         )
 
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--project", str(project_dir)])
 
         assert rc == 1
         assert "expected bool for flow.run_analysis" in capsys.readouterr().out
@@ -1045,7 +1045,7 @@ class TestManifestResolvedConfigView:
             },
         )
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--json", "--project", str(project_dir)])
 
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
@@ -1065,7 +1065,7 @@ class TestManifestResolvedConfigView:
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
         (project_dir / "ecc.toml").write_text('\n[params.flow]\nrun_analysis = "maybe"\n')
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--json", "--project", str(project_dir)])
 
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
@@ -1083,7 +1083,7 @@ class TestManifestResolvedConfigView:
             '\n[params.flow]\nrun_analysis = "maybe"\n\n[params.cts]\nmax_fanout = "nope"\n'
         )
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--json", "--project", str(project_dir)])
 
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
@@ -1102,7 +1102,7 @@ class TestManifestResolvedConfigView:
             },
         ]
 
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--project", str(project_dir)])
 
         assert rc == 1
         out = capsys.readouterr().out
