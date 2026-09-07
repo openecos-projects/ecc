@@ -127,7 +127,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
                     "status": "fail",
                     "reason": err,
                     "source": "ecc.toml" if ctx.config is not None else "project.json",
-                    "inspect": disclosure_cmd("ecc check --json", project),
+                    "inspect": disclosure_cmd("ecc check", project),
                 }
                 for err in errors
             ]
@@ -169,7 +169,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
                         "status": "fail",
                         "path": entry,
                         "reason": reason,
-                        "inspect": disclosure_cmd("ecc check --json", project),
+                        "inspect": disclosure_cmd("ecc check", project),
                     }
                     for reason in reasons
                 )
@@ -180,7 +180,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
                 "check": "rtl",
                 "status": "pass",
                 "path": cfg.design_rtl[0],
-                "inspect": disclosure_cmd("ecc check --json", project),
+                "inspect": disclosure_cmd("ecc check", project),
             }
         )
 

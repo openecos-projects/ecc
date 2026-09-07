@@ -19,8 +19,6 @@ from chipcompiler.cli.core.inputs import (
 )
 from chipcompiler.cli.core.invocation import CommandHandler, CommandInputT, execute_command
 from chipcompiler.cli.core.options import (
-    JsonlOption,
-    JsonOption,
     PlainOption,
     ProjectOption,
     WorkspaceOption,
@@ -44,8 +42,6 @@ def list_cmd(
     step: Annotated[str | None, typer.Option("--step")] = None,
     all_params: Annotated[bool, typer.Option("--all")] = False,
     workspace: WorkspaceOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     """List parameter overrides.
@@ -63,7 +59,7 @@ def list_cmd(
     See 'ecc doc config' for the full reference.
     """
     command_input = ParamListInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         step=step,
         all=all_params,
@@ -78,8 +74,6 @@ def show_cmd(
     key: Annotated[str, typer.Argument()],
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     """Show one parameter value.
@@ -92,7 +86,7 @@ def show_cmd(
     See 'ecc doc config' for the full reference.
     """
     command_input = ParamShowInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         key=key,
         workspace=workspace,
@@ -107,8 +101,6 @@ def set_cmd(
     value: Annotated[str, typer.Argument()],
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     """Set a parameter override.
@@ -139,7 +131,7 @@ def set_cmd(
     See 'ecc doc config' for the full reference.
     """
     command_input = ParamSetInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         key=key,
         value=value,
@@ -154,8 +146,6 @@ def unset_cmd(
     key: Annotated[str, typer.Argument()],
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     """Remove a parameter override.
@@ -168,7 +158,7 @@ def unset_cmd(
     See 'ecc doc config' for the full reference.
     """
     command_input = ParamUnsetInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         key=key,
         workspace=workspace,
@@ -181,8 +171,6 @@ def diff_cmd(
     *,
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     """Compare parameter overrides with defaults.
@@ -194,7 +182,7 @@ def diff_cmd(
     See 'ecc doc config' for the full reference.
     """
     command_input = ParamDiffInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         workspace=workspace,
     )

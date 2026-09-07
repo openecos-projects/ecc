@@ -3,8 +3,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class OutputOptions:
-    json: bool = False
-    jsonl: bool = False
     plain: bool = False
 
 
@@ -231,8 +229,8 @@ class WorkspaceRefreshInput:
     workspace: str
 
 
-def output_options(*, json_output: bool, jsonl: bool, plain: bool) -> OutputOptions:
-    return OutputOptions(json=json_output, jsonl=jsonl, plain=plain)
+def output_options(*, plain: bool) -> OutputOptions:
+    return OutputOptions(plain=plain)
 
 
 def project_options(project: str | None) -> ProjectOptions:

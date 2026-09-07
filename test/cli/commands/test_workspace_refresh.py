@@ -11,6 +11,7 @@ def test_workspace_refresh_recreates_without_running(
     create_flow_json,
     flow_mocks,
     manifest_stubs,
+    plain_records,
 ):
     project_dir = create_cli_project()
     workspace_dir = os.path.join(project_dir, "baseline")
@@ -18,10 +19,10 @@ def test_workspace_refresh_recreates_without_running(
     manifest_stubs.write(project_path, [manifest_stubs.entry(project_path, "baseline")])
     create_flow_json(workspace_dir)
 
-    rc = cli_main.run(["workspace", "refresh", "baseline", "--project", project_dir, "--json"])
+    rc = cli_main.run(["workspace", "refresh", "baseline", "--project", project_dir, "--plain"])
 
     assert rc == 0
-    records = json.loads(capsys.readouterr().out)["records"]
+    records = plain_records(capsys.readouterr().out)
     assert records[-1]["status"] == "refreshed"
     assert flow_mocks.flow.instances[-1].create_called is True
     assert flow_mocks.flow.instances[-1].run_called is False

@@ -67,6 +67,7 @@ def test_readonly_commands_never_migrate_legacy_workspace(
     create_cli_project,
     minimal_ics55_pdk_factory,
     create_flow_json,
+    plain_records,
 ):
     """status/log/check/config on a legacy workspace rewrite nothing: they
     resolve the managed <project>/<id> path and never touch runs/, so no
@@ -83,18 +84,18 @@ def test_readonly_commands_never_migrate_legacy_workspace(
     params_toml = os.path.join(home, "params.toml")
     assert not os.path.exists(params_toml)
 
-    rc = cli_main.run([*command, "--project", project_dir, "--json"])
+    rc = cli_main.run([*command, "--project", project_dir, "--plain"])
 
     assert rc == expected_rc
     assert {path: Path(path).read_bytes() for path in watched} == snapshots
     assert not os.path.exists(params_toml)
-    records = json.loads(capsys.readouterr().out)["records"]
+    records = plain_records(capsys.readouterr().out)
     has_hint = any(r.get("warning") == "legacy_layout_detected" for r in records)
     assert has_hint == expects_hint
 
 
 def test_shadowed_workspace_config_warns_without_touching_files(
-    tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+    tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
 ):
     """params.toml + parameters.json 并存：run/check/status 输出
     workspace_config_shadowed 提示，且两个文件都原样不动。"""
@@ -139,17 +140,17 @@ def test_shadowed_workspace_config_warns_without_touching_files(
     params_before = Path(params_path).read_bytes()
     legacy_before = Path(legacy_path).read_bytes()
 
-    rc = cli_main.run(["status", "--project", project_dir, "--workspace", "ws_shadow", "--json"])
+    rc = cli_main.run(["status", "--project", project_dir, "--workspace", "ws_shadow", "--plain"])
 
     assert rc == 0
-    records = json.loads(capsys.readouterr().out)["records"]
+    records = plain_records(capsys.readouterr().out)
     (warning,) = [r for r in records if r.get("warning") == "workspace_config_shadowed"]
     assert "delete" in warning["reason"]
     assert Path(params_path).read_bytes() == params_before
     assert Path(legacy_path).read_bytes() == legacy_before
 
 
-def test_shadow_warning_probes_the_explicit_workspace_target(tmp_path, capsys):
+def test_shadow_warning_probes_the_explicit_workspace_target(tmp_path, capsys, plain_records):
     """run --workspace 探测的是显式目标，不是项目推导的 run_dir。"""
     project_dir = tmp_path / "proj"
     (project_dir / "rtl").mkdir(parents=True)
@@ -182,14 +183,14 @@ def test_shadow_warning_probes_the_explicit_workspace_target(tmp_path, capsys):
 
     # The workspace lacks PDK assets so the run fails validation — the
     # boundary warning is appended on EVERY outcome, including this one.
-    rc = cli_main.run(["run", "--project", str(project_dir), "--workspace", "ws", "--json"])
+    rc = cli_main.run(["run", "--project", str(project_dir), "--workspace", "ws", "--plain"])
 
     assert rc != 0
-    records = json.loads(capsys.readouterr().out)["records"]
+    records = plain_records(capsys.readouterr().out)
     assert any(r.get("warning") == "workspace_config_shadowed" for r in records)
 
 
-def test_shadow_warning_fires_on_dangling_legacy_symlink(tmp_path, capsys):
+def test_shadow_warning_fires_on_dangling_legacy_symlink(tmp_path, capsys, plain_records):
     """lexists 语义：悬挂的 parameters.json 链接同样构成并存。"""
     project_dir = tmp_path / "proj"
     (project_dir / "rtl").mkdir(parents=True)
@@ -205,7 +206,7 @@ def test_shadow_warning_fires_on_dangling_legacy_symlink(tmp_path, capsys):
     (home / "params.toml").write_text('[params]\ndesign = "gcd"\n')
     os.symlink(tmp_path / "gone.json", home / "parameters.json")
 
-    cli_main.run(["run", "--project", str(project_dir), "--workspace", "ws", "--json"])
+    cli_main.run(["run", "--project", str(project_dir), "--workspace", "ws", "--plain"])
 
-    records = json.loads(capsys.readouterr().out)["records"]
+    records = plain_records(capsys.readouterr().out)
     assert any(r.get("warning") == "workspace_config_shadowed" for r in records)

@@ -1,8 +1,36 @@
 import json
 import os
 import re
+import shlex
 
 import pytest
+
+
+def parse_plain_records(out: str) -> list[dict[str, str]]:
+    """Parse `--plain` output (one key=value record per line) into dicts.
+
+    All values come back as strings; compare against "3" rather than 3.
+    Quoted values may span multiple physical lines (e.g. multi-line reasons),
+    so lines accumulate until shlex can close the quotation.
+    """
+    records = []
+    buffer = ""
+    for line in out.splitlines():
+        buffer = f"{buffer}\n{line}" if buffer else line
+        try:
+            fields = shlex.split(buffer)
+        except ValueError:
+            continue
+        records.append(dict(field.split("=", 1) for field in fields))
+        buffer = ""
+    if buffer:
+        raise ValueError(f"unparseable --plain output: {buffer!r}")
+    return records
+
+
+@pytest.fixture
+def plain_records():
+    return parse_plain_records
 
 
 def create_cli_project(tmp_path, name="gcd", pdk_root=None, freq=100.0):

@@ -74,9 +74,9 @@ def flow_mocks(monkeypatch):
 
 
 @pytest.fixture
-def manifest_stubs(capsys):
+def manifest_stubs(capsys, plain_records):
     """Shared manifest-project scaffolding: project.json writer, workspace
-    entry builder, and JSON record reader bound to capsys."""
+    entry builder, and record reader bound to capsys."""
 
     def _write(project_dir, workspaces, **overrides):
         rtl = project_dir / "rtl" / "gcd.v"
@@ -108,7 +108,7 @@ def manifest_stubs(capsys):
         }
 
     def _records():
-        return json.loads(capsys.readouterr().out)["records"]
+        return plain_records(capsys.readouterr().out)
 
     return SimpleNamespace(write=_write, entry=_entry, records=_records)
 

@@ -80,7 +80,7 @@ def build_project_config_items(
     else:
         entries.append(("flow.preset", cfg.flow_preset, cfg.flow_preset, source_of("flow.preset")))
 
-    inspect = disclosure_cmd("ecc config --json", project, run_id)
+    inspect = disclosure_cmd("ecc config", project, run_id)
 
     for key, value, resolved, source in entries:
         items.append(
@@ -291,7 +291,7 @@ def build_step_config_items(
                 "path": os.path.relpath(str(fpath), base_dir),
                 "source": "workspace_config",
                 "inspect_cmd": disclosure_cmd(
-                    f"ecc config {requested_step_token} --json", project, run_id
+                    f"ecc config {requested_step_token}", project, run_id
                 ),
             }
         )

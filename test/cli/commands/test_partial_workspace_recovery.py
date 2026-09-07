@@ -17,16 +17,17 @@ class TestPartialWorkspaceRecovery:
         create_cli_project,
         mock_pdk_validation,
         monkeypatch,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "exp1")
         monkeypatch.setattr("chipcompiler.data.create_workspace", _failing_create_workspace)
 
-        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "exp1", "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "exp1", "--plain"])
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "workspace_failed",
@@ -49,6 +50,7 @@ class TestPartialWorkspaceRecovery:
         create_cli_project,
         mock_pdk_validation,
         spy_mutations,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -59,10 +61,10 @@ class TestPartialWorkspaceRecovery:
             f.write("precious\n")
         mutations = spy_mutations()
 
-        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "exp1", "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "exp1", "--plain"])
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "run_exists",
@@ -83,6 +85,7 @@ class TestPartialWorkspaceRecovery:
         create_flow_json,
         mock_pdk_validation,
         monkeypatch,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -91,11 +94,11 @@ class TestPartialWorkspaceRecovery:
         monkeypatch.setattr("chipcompiler.data.create_workspace", _failing_create_workspace)
 
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--json"]
+            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--plain"]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "workspace_failed",
@@ -113,6 +116,7 @@ class TestPartialWorkspaceRecovery:
         create_cli_project,
         mock_pdk_validation,
         spy_mutations,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -122,10 +126,10 @@ class TestPartialWorkspaceRecovery:
         os.makedirs(os.path.join(run_dir, "home"))
         mutations = spy_mutations()
 
-        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "exp1", "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "exp1", "--plain"])
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "run_exists",
@@ -138,17 +142,17 @@ class TestPartialWorkspaceRecovery:
         assert os.path.isdir(os.path.join(run_dir, "home"))
 
     def test_empty_dir_without_overwrite_reports_run_exists(
-        self, tmp_path, capsys, create_cli_project, mock_pdk_validation
+        self, tmp_path, capsys, create_cli_project, mock_pdk_validation, plain_records
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "exp1")
         os.makedirs(run_dir)
 
-        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "exp1", "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "exp1", "--plain"])
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "run_exists",
@@ -159,14 +163,14 @@ class TestPartialWorkspaceRecovery:
         ]
         assert os.listdir(run_dir) == []
 
-    def test_nonexistent_workspace_run_leaves_no_artifacts(self, tmp_path, capsys):
+    def test_nonexistent_workspace_run_leaves_no_artifacts(self, tmp_path, capsys, plain_records):
         """A failed --workspace run must not mutate the tree: no parent
         directories, no sibling lock file."""
         workspace_path = os.path.join(str(tmp_path), "new", "sub", "ws")
 
-        rc = cli_main.run(["run", "--workspace", workspace_path, "--json"])
+        rc = cli_main.run(["run", "--workspace", workspace_path, "--plain"])
 
         assert rc == 1
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         assert any(r.get("error") == "invalid_workspace" for r in records)
         assert not os.path.exists(os.path.join(str(tmp_path), "new"))

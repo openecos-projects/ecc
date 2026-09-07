@@ -51,7 +51,7 @@ class TestScopedTomlEdit:
         assert "0.7" in content
         assert "0.65" not in content
 
-    def test_set_then_show_still_works(self, tmp_path, capsys, create_cli_project):
+    def test_set_then_show_still_works(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project()
 
         cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
@@ -61,11 +61,11 @@ class TestScopedTomlEdit:
         capsys.readouterr()
 
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--json"]
+            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
         )
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert data["records"][0]["value"] == 0.7
+        records = plain_records(capsys.readouterr().out)
+        assert records[0]["value"] == "0.7"
 
 
 class TestIndentedTomlKeys:
@@ -88,7 +88,7 @@ class TestIndentedTomlKeys:
         assert after.count("target_density") == 1
         assert "0.7" in after
 
-    def test_set_then_show_indented(self, tmp_path, capsys, create_cli_project):
+    def test_set_then_show_indented(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
@@ -101,11 +101,11 @@ class TestIndentedTomlKeys:
         capsys.readouterr()
 
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--json"]
+            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
         )
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert data["records"][0]["value"] == 0.7
+        records = plain_records(capsys.readouterr().out)
+        assert records[0]["value"] == "0.7"
 
     def test_unset_removes_indented_key(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
@@ -178,7 +178,7 @@ class TestMultilineTomlValues:
             after = f.read()
         assert "core_margin" not in after
 
-    def test_set_multiline_then_show(self, tmp_path, capsys, create_cli_project):
+    def test_set_multiline_then_show(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
@@ -191,11 +191,11 @@ class TestMultilineTomlValues:
         capsys.readouterr()
 
         rc = cli_main.run(
-            ["param", "show", "floorplan.core_margin", "--project", project_dir, "--json"]
+            ["param", "show", "floorplan.core_margin", "--project", project_dir, "--plain"]
         )
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert data["records"][0]["value"] == [4, 4]
+        records = plain_records(capsys.readouterr().out)
+        assert records[0]["value"] == "[4, 4]"
 
     def test_set_preserves_adjacent_key_after_multiline(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
@@ -226,7 +226,12 @@ class TestMultilineTomlValues:
         return run_dir
 
     def test_malformed_json_provenance_fails(
-        self, tmp_path, capsys, monkeypatch, create_cli_project
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        plain_records,
     ):
         project_dir = create_cli_project()
         run_dir = self._setup_run_dir(project_dir)
@@ -236,10 +241,10 @@ class TestMultilineTomlValues:
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: [],
         )
-        rc = cli_main.run(["config", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--plain"])
         assert rc == 1
-        data = json.loads(capsys.readouterr().out)
-        assert data["records"][0]["error"] == "invalid_config"
+        records = plain_records(capsys.readouterr().out)
+        assert records[0]["error"] == "invalid_config"
 
     def test_non_dict_provenance_fails(self, tmp_path, capsys, monkeypatch, create_cli_project):
         project_dir = create_cli_project()
@@ -250,11 +255,16 @@ class TestMultilineTomlValues:
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: [],
         )
-        rc = cli_main.run(["config", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--plain"])
         assert rc == 1
 
     def test_unknown_key_in_provenance_fails(
-        self, tmp_path, capsys, monkeypatch, create_cli_project
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        plain_records,
     ):
         project_dir = create_cli_project()
         run_dir = self._setup_run_dir(project_dir)
@@ -264,10 +274,10 @@ class TestMultilineTomlValues:
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: [],
         )
-        rc = cli_main.run(["config", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--plain"])
         assert rc == 1
-        data = json.loads(capsys.readouterr().out)
-        assert data["records"][0]["error"] == "invalid_config"
+        records = plain_records(capsys.readouterr().out)
+        assert records[0]["error"] == "invalid_config"
 
 
 class TestSafeTomlSectionParsing:
@@ -308,7 +318,9 @@ class TestSafeTomlSectionParsing:
         assert "0.7" in after
         assert 'preset = "rtl2gds"' in after
 
-    def test_set_then_show_after_commented_header(self, tmp_path, capsys, create_cli_project):
+    def test_set_then_show_after_commented_header(
+        self, tmp_path, capsys, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
@@ -321,11 +333,11 @@ class TestSafeTomlSectionParsing:
         capsys.readouterr()
 
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--json"]
+            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
         )
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert data["records"][0]["value"] == 0.7
+        records = plain_records(capsys.readouterr().out)
+        assert records[0]["value"] == "0.7"
 
     def test_unset_ignores_commented_section_header(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()

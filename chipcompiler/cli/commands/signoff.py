@@ -12,8 +12,6 @@ from chipcompiler.cli.core.inputs import (
 )
 from chipcompiler.cli.core.invocation import execute_command
 from chipcompiler.cli.core.options import (
-    JsonlOption,
-    JsonOption,
     PlainOption,
     ProjectOption,
     WorkspaceOption,
@@ -31,12 +29,10 @@ def inspect_cmd(
     *,
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     command_input = SignoffInspectInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         workspace=workspace,
     )
@@ -53,12 +49,10 @@ def export_cmd(
     ] = False,
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     command_input = SignoffExportInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         workspace=workspace,
         output_path=output_path,

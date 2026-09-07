@@ -1,5 +1,4 @@
 import io
-import json
 import os
 from io import StringIO
 
@@ -277,22 +276,6 @@ class TestPrettyDefaultOutput:
 
 
 # ---------------------------------------------------------------------------
-# JSON/JSONL unaffected by pretty changes
-# ---------------------------------------------------------------------------
-
-
-class TestJsonUnchanged:
-    def test_status_json_unchanged(self, tmp_path, capsys, create_cli_project, create_flow_json):
-        project_dir = create_cli_project()
-        create_flow_json(os.path.join(project_dir, "default"), profile="pretty")
-        rc = cli_main.run(["status", "--project", project_dir, "--json"])
-        assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert "records" in data
-        assert data["records"][0]["workspace_id"] == "default"
-
-
-# ---------------------------------------------------------------------------
 # Regression: multi-record error rendering (Codex Round 1 finding)
 # ---------------------------------------------------------------------------
 
@@ -420,7 +403,6 @@ class TestSharedColorPolicy:
         from chipcompiler.cli.core.types import OutputMode
         from chipcompiler.cli.rendering.pretty import supports_color
 
-        assert not supports_color(mode=OutputMode.JSON)
         assert not supports_color(mode=OutputMode.PLAIN)
 
     def test_progress_supports_color_delegates(self):

@@ -1,4 +1,3 @@
-import json
 import os
 from types import SimpleNamespace
 
@@ -93,36 +92,36 @@ def _patch_export(monkeypatch, destination="/tmp/pkg.tar.gz", error=None):
 
 class TestSignoffInspect:
     def test_inspect_payload(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub
+        self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub, plain_records
     ):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         os.makedirs(run_dir)
         _patch_inspect(monkeypatch)
 
-        rc = cli_main.run(["signoff", "inspect", "--project", project_dir, "--json"])
+        rc = cli_main.run(["signoff", "inspect", "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        records = plain_records(capsys.readouterr().out)
         assert rc == 0
-        summary = data["records"][0]
+        summary = records[0]
         assert summary["signoff"] == "inspect"
         assert summary["status"] == "attention"
-        groups = [r for r in data["records"] if "group" in r]
+        groups = [r for r in records if "group" in r]
         assert [g["group"] for g in groups] == ["harden", "sta"]
-        risks = [r for r in data["records"] if "risk" in r]
+        risks = [r for r in records if "risk" in r]
         assert risks[0]["title"] == "STA report missing"
 
     def test_inspect_blocked_still_exits_zero(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub
+        self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub, plain_records
     ):
         project_dir = create_cli_project()
         os.makedirs(os.path.join(project_dir, "default"))
         _patch_inspect(monkeypatch, {"status": "blocked", "groups": [], "risks": []})
 
-        rc = cli_main.run(["signoff", "inspect", "--project", project_dir, "--json"])
+        rc = cli_main.run(["signoff", "inspect", "--project", project_dir, "--plain"])
 
         assert rc == 0
-        assert json.loads(capsys.readouterr().out)["records"][0]["status"] == "blocked"
+        assert plain_records(capsys.readouterr().out)[0]["status"] == "blocked"
 
     def test_inspect_text_rendering(
         self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub
@@ -144,14 +143,14 @@ class TestSignoffInspect:
         os.makedirs(tmp_path / "ws")
 
         rc = cli_main.run(
-            ["signoff", "inspect", "--project", str(tmp_path), "--workspace", "ws", "--json"]
+            ["signoff", "inspect", "--project", str(tmp_path), "--workspace", "ws", "--plain"]
         )
 
         assert rc == 0
         assert workspace_stub.seen.load_path == str(tmp_path / "ws")
 
     def test_unresolved_workspace_rejected_before_load(
-        self, tmp_path, capsys, monkeypatch, create_cli_project
+        self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
     ):
         monkeypatch.setattr(
             "chipcompiler.data.load_workspace",
@@ -159,39 +158,41 @@ class TestSignoffInspect:
         )
 
         rc = cli_main.run(
-            ["signoff", "inspect", "--project", str(tmp_path), "--workspace", "absent", "--json"]
+            ["signoff", "inspect", "--project", str(tmp_path), "--workspace", "absent", "--plain"]
         )
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == "missing_workspace"
         assert record["workspace"] == str(tmp_path / "absent")
 
-    def test_missing_run_workspace(self, tmp_path, capsys, monkeypatch, create_cli_project):
+    def test_missing_run_workspace(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project()  # no runs/default directory
 
-        rc = cli_main.run(["signoff", "inspect", "--project", project_dir, "--json"])
+        rc = cli_main.run(["signoff", "inspect", "--project", project_dir, "--plain"])
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == "missing_workspace"
 
 
 class TestSignoffExport:
     def test_export_records_path(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub
+        self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub, plain_records
     ):
         project_dir = create_cli_project()
         os.makedirs(os.path.join(project_dir, "default"))
         calls = _patch_export(monkeypatch, destination="/tmp/out/pkg.tar.gz")
 
         rc = cli_main.run(
-            ["signoff", "export", "-o", "/tmp/out/pkg.tar.gz", "--project", project_dir, "--json"]
+            ["signoff", "export", "-o", "/tmp/out/pkg.tar.gz", "--project", project_dir, "--plain"]
         )
 
-        data = json.loads(capsys.readouterr().out)
+        records = plain_records(capsys.readouterr().out)
         assert rc == 0
-        assert data["records"][0] == {
+        assert records[0] == {
             "signoff": "export",
             "status": "exported",
             "path": "/tmp/out/pkg.tar.gz",
@@ -216,7 +217,6 @@ class TestSignoffExport:
                 "--include-debug",
                 "--project",
                 project_dir,
-                "--json",
             ]
         )
 
@@ -224,7 +224,7 @@ class TestSignoffExport:
         assert calls[0]["include_debug"] is True
 
     def test_export_incomplete_maps_to_error(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub
+        self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub, plain_records
     ):
         from chipcompiler.runtime.workspace_api import RuntimeApiError
 
@@ -236,10 +236,10 @@ class TestSignoffExport:
         )
 
         rc = cli_main.run(
-            ["signoff", "export", "-o", "/tmp/pkg.tar.gz", "--project", project_dir, "--json"]
+            ["signoff", "export", "-o", "/tmp/pkg.tar.gz", "--project", project_dir, "--plain"]
         )
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == "signoff_incomplete"
         assert "incomplete" in record["reason"]

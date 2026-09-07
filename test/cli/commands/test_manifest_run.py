@@ -11,7 +11,7 @@ class TestVirginFirstRun:
     ):
         project_dir = create_cli_project()
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
         assert rc == 0
         run_dir = os.path.join(project_dir, "default")
@@ -60,7 +60,7 @@ class TestVirginFirstRun:
     ):
         project_dir = create_cli_project()
 
-        rc = cli_main.run(["run", "--project", project_dir, "--set", "cts.max_fanout=16", "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--set", "cts.max_fanout=16"])
 
         assert rc == 0
         manifest = json.loads((tmp_path / "gcd" / "project.json").read_text())
@@ -73,7 +73,7 @@ class TestVirginFirstRun:
         flow_mocks.flow.run_steps_value = False
         project_dir = create_cli_project()
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir])
 
         assert rc != 0
         manifest = json.loads((tmp_path / "gcd" / "project.json").read_text())
@@ -84,7 +84,7 @@ class TestVirginFirstRun:
     ):
         project_dir = create_cli_project()
 
-        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "sweeps/s1", "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "sweeps/s1", "--plain"])
 
         assert rc != 0
         (record,) = manifest_stubs.records()
@@ -100,7 +100,7 @@ class TestVirginFirstRun:
         # a silent virgin demotion.
         os.mkdir(os.path.join(project_dir, "project.json"))
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
         assert rc != 0
         records = manifest_stubs.records()
@@ -128,7 +128,7 @@ class TestVirginFirstRun:
             ],
         )
 
-        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "actual", "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "actual", "--plain"])
 
         assert rc != 0
         records = manifest_stubs.records()
@@ -148,7 +148,7 @@ class TestVirginFirstRun:
             lambda *args, **kwargs: False,
         )
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
         assert rc != 0
         (record,) = manifest_stubs.records()
@@ -165,7 +165,7 @@ class TestManifestRunCommand:
         project_dir.mkdir()
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--workspace", "exp2", "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--workspace", "exp2", "--plain"])
 
         assert rc == 0
         assert flow_mocks.capture["create_kwargs"]["directory"] == str(project_dir / "exp2")
@@ -184,7 +184,7 @@ class TestManifestRunCommand:
         project_dir.mkdir()
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir)])
 
         assert rc == 0
         assert flow_mocks.capture["create_kwargs"]["directory"] == str(project_dir / "ws_0001")
@@ -208,7 +208,7 @@ class TestManifestRunCommand:
             lambda project_dir, workspace_id, status: False,
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         records = manifest_stubs.records()
@@ -253,7 +253,7 @@ class TestOriginDefResolution:
     ):
         project_dir = self._project(manifest_stubs, tmp_path, "inputs/gcd.def", hybrid=False)
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir)])
 
         assert rc == 0
         assert flow_mocks.capture["create_kwargs"]["origin_def"] == str(
@@ -266,7 +266,7 @@ class TestOriginDefResolution:
         project_dir = self._project(manifest_stubs, tmp_path, "inputs/gcd.def", hybrid=True)
         flow_mocks.flow.has_init_value = True
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir)])
 
         assert rc == 0
         assert flow_mocks.capture["create_kwargs"]["origin_def"] == str(
@@ -278,7 +278,7 @@ class TestOriginDefResolution:
         project_dir = self._project(manifest_stubs, tmp_path, absolute, hybrid=True)
         flow_mocks.flow.has_init_value = True
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir)])
 
         assert rc == 0
         assert flow_mocks.capture["create_kwargs"]["origin_def"] == absolute
@@ -309,7 +309,7 @@ class TestHybridLayering:
             + '"\n\n[flow]\npreset = "rtl2gds"\n'
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir)])
 
         assert rc == 0
         parameters = flow_mocks.capture["create_kwargs"]["parameters"]
@@ -345,7 +345,7 @@ class TestHybridLayering:
         }
         (project_dir / "project.json").write_text(json.dumps(document))
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir)])
 
         assert rc == 0
         assert flow_mocks.capture["create_kwargs"]["origin_verilog"].endswith("src/gcd.v")
@@ -376,7 +376,7 @@ class TestExistingRunGuards:
             {"preset": "rtl2gds"},
         )
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
         assert rc != 0
         (record,) = manifest_stubs.records()
@@ -398,7 +398,7 @@ class TestHybridFullLayering:
             '[design]\nfrequency_mhz = 200.0\n\n[flow]\npreset = "rtl2gds"\n'
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir)])
 
         assert rc == 0
         kwargs = flow_mocks.capture["create_kwargs"]
@@ -432,7 +432,7 @@ class TestHybridFullLayering:
             '\n[flow]\npreset = "rtl2gds"\n'
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir)])
 
         assert rc == 0
         kwargs = flow_mocks.capture["create_kwargs"]
@@ -451,7 +451,7 @@ class TestHybridFullLayering:
             '\n[flow]\npreset = "rtl2gds"\n'
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         records = manifest_stubs.records()
@@ -484,7 +484,7 @@ class TestHybridFullLayering:
             "chipcompiler.cli.project.manifest.write_manifest_if_absent", losing_write
         )
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
         assert rc != 0
         (record,) = manifest_stubs.records()
@@ -517,7 +517,7 @@ class TestManifestRunCoercion:
             },
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir)])
 
         assert rc == 0
         parameters = flow_mocks.capture["create_kwargs"]["parameters"]
@@ -541,7 +541,7 @@ class TestManifestRunCoercion:
         )
 
         rc = cli_main.run(
-            ["run", "--project", str(project_dir), "--set", "flow.run_analysis=false", "--json"]
+            ["run", "--project", str(project_dir), "--set", "flow.run_analysis=false"]
         )
 
         assert rc == 0
@@ -572,7 +572,7 @@ class TestManifestRunCoercion:
             + '"\n\n[flow]\npreset = "rtl2gds"\n'
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir)])
 
         assert rc == 0
         parameters = flow_mocks.capture["create_kwargs"]["parameters"]
@@ -601,7 +601,7 @@ class TestManifestRunCoercion:
             + '"\n\n[flow]\npreset = "rtl2gds"\n\n[params.cts]\nmax_fanout = 20\n'
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir)])
 
         assert rc == 0
         parameters = flow_mocks.capture["create_kwargs"]["parameters"]

@@ -14,8 +14,6 @@ from chipcompiler.cli.core.inputs import (
 )
 from chipcompiler.cli.core.invocation import execute_command
 from chipcompiler.cli.core.options import (
-    JsonlOption,
-    JsonOption,
     PlainOption,
     ProjectOption,
     WorkspaceOption,
@@ -39,12 +37,10 @@ def qor_cmd(
     output_path: OutputPathOption = None,
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     command_input = ReportQorInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         workspace=workspace,
         output_path=output_path,
@@ -58,12 +54,10 @@ def checklist_cmd(
     output_path: OutputPathOption = None,
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     command_input = ReportChecklistInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         workspace=workspace,
         output_path=output_path,
@@ -77,12 +71,10 @@ def summary_cmd(
     output_path: OutputPathOption = None,
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     command_input = ReportSummaryInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         workspace=workspace,
         output_path=output_path,
@@ -113,12 +105,10 @@ def step_cmd(
     sections: SectionOption = None,
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     command_input = ReportStepInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         workspace=workspace,
         step=step,

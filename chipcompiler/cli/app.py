@@ -46,23 +46,13 @@ def root_callback(
 @app.command("version", help="Show ECC runtime, component, and installed tool versions")
 def version_cmd(
     *,
-    json_output: Annotated[bool, typer.Option("--json")] = False,
-    jsonl: Annotated[bool, typer.Option("--jsonl")] = False,
-    plain: Annotated[bool, typer.Option("--plain")] = False,
+    # Machine-readable output for the desktop app; not part of the documented CLI surface.
+    json_output: Annotated[bool, typer.Option("--json", hidden=True)] = False,
 ) -> None:
     payload = version_payload()
     tools = tool_versions()
-    if jsonl:
-        for name in ("ecc", "dreamplace", "ecc_tools"):
-            typer.echo(json.dumps({"component": name, "version": payload[name]}))
-        for name, version in tools.items():
-            typer.echo(json.dumps({"component": name, "version": version}))
-    elif json_output:
+    if json_output:
         typer.echo(json.dumps({**payload, "tools": tools}))
-    elif plain:
-        from chipcompiler.cli.rendering.render import render_plain
-
-        render_plain(({**payload, **tools},))
     else:
         typer.echo(version_text(payload, tools))
 

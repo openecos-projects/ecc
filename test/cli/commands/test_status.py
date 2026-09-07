@@ -6,7 +6,7 @@ from chipcompiler.cli import main as cli_main
 
 class TestStatus:
     def test_status_normalizes_every_rtl2gds_step(
-        self, tmp_path, capsys, create_cli_project, create_flow_json
+        self, tmp_path, capsys, create_cli_project, create_flow_json, plain_records
     ):
         from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
 
@@ -21,10 +21,10 @@ class TestStatus:
             ],
         )
 
-        rc = cli_main.run(["status", "--json", "--project", project_dir])
+        rc = cli_main.run(["status", "--plain", "--project", project_dir])
 
         assert rc == 0
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         assert [record["step"] for record in records if "step" in record] == [
             "synthesis",
             "lec",
@@ -55,16 +55,16 @@ class TestStatus:
         assert "synthesis" in out
         assert "floorplan" in out
 
-    def test_status_json(self, tmp_path, capsys, create_cli_project, create_flow_json):
+    def test_status_plain(
+        self, tmp_path, capsys, create_cli_project, create_flow_json, plain_records
+    ):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir, profile="main")
 
-        rc = cli_main.run(["status", "--project", project_dir, "--json"])
+        rc = cli_main.run(["status", "--project", project_dir, "--plain"])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert "records" in data
-        records = data["records"]
+        records = plain_records(capsys.readouterr().out)
         assert records[0]["workspace_id"] == "default"
         assert records[0]["status"] == "success"
         assert "inspect_cmd" in records[0]
@@ -74,18 +74,6 @@ class TestStatus:
         assert len(step_records) == 2
         assert all("log_cmd" in r for r in step_records)
         assert all("metrics_cmd" not in r for r in step_records)
-
-    def test_status_jsonl(self, tmp_path, capsys, create_cli_project, create_flow_json):
-        project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "default")
-        create_flow_json(run_dir, profile="main")
-
-        rc = cli_main.run(["status", "--project", project_dir, "--jsonl"])
-        assert rc == 0
-        lines = capsys.readouterr().out.strip().split("\n")
-        objects = [json.loads(ln) for ln in lines]
-        assert "workspace_id" in objects[0]
-        assert "step" in objects[1]
 
     def test_status_normalizes_step_names(
         self, tmp_path, capsys, create_cli_project, create_flow_json
@@ -107,7 +95,7 @@ class TestStatus:
         assert "placement" in out
 
     def test_status_reports_warning_when_flow_has_non_blocking_warning(
-        self, tmp_path, capsys, create_cli_project, create_flow_json
+        self, tmp_path, capsys, create_cli_project, create_flow_json, plain_records
     ):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
@@ -120,10 +108,10 @@ class TestStatus:
             ],
         )
 
-        rc = cli_main.run(["status", "--project", project_dir, "--json"])
+        rc = cli_main.run(["status", "--project", project_dir, "--plain"])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert data["records"][0]["status"] == "warning"
+        records = plain_records(capsys.readouterr().out)
+        assert records[0]["status"] == "warning"
 
     def test_status_missing_run(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
@@ -149,7 +137,7 @@ class TestStatus:
 class TestCorruptFlowJson:
     """Non-dict flow.json must be reported as corrupt, not missing."""
 
-    def test_array_flow_json_is_corrupt(self, tmp_path, capsys, create_cli_project):
+    def test_array_flow_json_is_corrupt(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         home = os.path.join(run_dir, "home")
@@ -157,12 +145,12 @@ class TestCorruptFlowJson:
         with open(os.path.join(home, "flow.json"), "w") as f:
             json.dump([], f)
 
-        rc = cli_main.run(["status", "--json", "--project", project_dir])
+        rc = cli_main.run(["status", "--plain", "--project", project_dir])
         assert rc == 1
-        data = json.loads(capsys.readouterr().out)
-        assert data["records"][0].get("status") == "corrupt"
+        records = plain_records(capsys.readouterr().out)
+        assert records[0].get("status") == "corrupt"
 
-    def test_string_flow_json_is_corrupt(self, tmp_path, capsys, create_cli_project):
+    def test_string_flow_json_is_corrupt(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         home = os.path.join(run_dir, "home")
@@ -170,10 +158,10 @@ class TestCorruptFlowJson:
         with open(os.path.join(home, "flow.json"), "w") as f:
             json.dump("bad", f)
 
-        rc = cli_main.run(["status", "--json", "--project", project_dir])
+        rc = cli_main.run(["status", "--plain", "--project", project_dir])
         assert rc == 1
-        data = json.loads(capsys.readouterr().out)
-        assert data["records"][0].get("status") == "corrupt"
+        records = plain_records(capsys.readouterr().out)
+        assert records[0].get("status") == "corrupt"
 
 
 class TestRunStatusStates:
@@ -191,7 +179,7 @@ class TestRunStatusStates:
         assert get_run_status(flow("Success", "Ongoing")) == "ongoing"
 
     def test_status_reports_partial_after_bounded_rerun(
-        self, tmp_path, capsys, create_cli_project, create_flow_json
+        self, tmp_path, capsys, create_cli_project, create_flow_json, plain_records
     ):
         project_dir = create_cli_project()
         create_flow_json(
@@ -202,8 +190,8 @@ class TestRunStatusStates:
             ],
         )
 
-        rc = cli_main.run(["status", "--json", "--project", project_dir])
+        rc = cli_main.run(["status", "--plain", "--project", project_dir])
 
         assert rc == 0
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         assert records[0]["status"] == "partial"

@@ -1,4 +1,3 @@
-import json
 import os
 
 from chipcompiler.cli import main as cli_main
@@ -10,47 +9,61 @@ def _read_toml(project_dir):
 
 
 class TestPdkSetRoot:
-    def test_set_root_writes_absolute_path(self, tmp_path, capsys, create_cli_project):
+    def test_set_root_writes_absolute_path(
+        self, tmp_path, capsys, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project(pdk_root="")
         target = tmp_path / "my-pdk"
         target.mkdir()
 
-        rc = cli_main.run(["pdk", "set-root", str(target), "--project", project_dir, "--json"])
+        rc = cli_main.run(["pdk", "set-root", str(target), "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        data = plain_records(capsys.readouterr().out)
         assert rc == 0
-        assert data["records"][0]["status"] == "set"
-        assert data["records"][0]["path"] == str(target)
+        assert data[0]["status"] == "set"
+        assert data[0]["path"] == str(target)
         assert f'root = "{target}"' in _read_toml(project_dir)
 
     def test_set_root_expands_relative_path(
-        self, tmp_path, capsys, monkeypatch, create_cli_project
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        plain_records,
     ):
         project_dir = create_cli_project(pdk_root="")
         target = tmp_path / "rel-pdk"
         target.mkdir()
         monkeypatch.chdir(tmp_path)
 
-        rc = cli_main.run(["pdk", "set-root", "rel-pdk", "--project", project_dir, "--json"])
+        rc = cli_main.run(["pdk", "set-root", "rel-pdk", "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        data = plain_records(capsys.readouterr().out)
         assert rc == 0
-        assert data["records"][0]["path"] == str(target)
+        assert data[0]["path"] == str(target)
         assert f'root = "{target}"' in _read_toml(project_dir)
 
-    def test_set_root_rejects_missing_directory(self, tmp_path, capsys, create_cli_project):
+    def test_set_root_rejects_missing_directory(
+        self, tmp_path, capsys, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project(pdk_root="")
 
         rc = cli_main.run(
-            ["pdk", "set-root", str(tmp_path / "nope"), "--project", project_dir, "--json"]
+            ["pdk", "set-root", str(tmp_path / "nope"), "--project", project_dir, "--plain"]
         )
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == "invalid_pdk_path"
 
     def test_set_root_warns_on_incomplete_contents(
-        self, tmp_path, capsys, monkeypatch, create_cli_project
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        plain_records,
     ):
         project_dir = create_cli_project(pdk_root="")
         target = tmp_path / "bare-pdk"  # exists but has no LEF/liberty
@@ -60,18 +73,18 @@ class TestPdkSetRoot:
             lambda name, root, overrides=None: "PDK has no liberty files",
         )
 
-        rc = cli_main.run(["pdk", "set-root", str(target), "--project", project_dir, "--json"])
+        rc = cli_main.run(["pdk", "set-root", str(target), "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        data = plain_records(capsys.readouterr().out)
         assert rc == 0  # advisory: set-root still succeeds
-        assert data["records"][0]["status"] == "set"
-        assert data["records"][1]["status"] == "incomplete"
-        assert "make unzip" in data["records"][1]["hint"]
+        assert data[0]["status"] == "set"
+        assert data[1]["status"] == "incomplete"
+        assert "make unzip" in data[1]["hint"]
 
     def test_set_root_preserves_other_keys(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project(pdk_root="/old/location")
 
-        rc = cli_main.run(["pdk", "set-root", str(tmp_path), "--project", project_dir, "--json"])
+        rc = cli_main.run(["pdk", "set-root", str(tmp_path), "--project", project_dir, "--plain"])
 
         toml = _read_toml(project_dir)
         assert rc == 0
@@ -81,7 +94,9 @@ class TestPdkSetRoot:
 
 
 class TestPdkShow:
-    def test_show_reports_ecc_toml_source(self, tmp_path, capsys, monkeypatch, create_cli_project):
+    def test_show_reports_ecc_toml_source(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project(pdk_root=str(tmp_path / "pdk-a"))
         (tmp_path / "pdk-a").mkdir()
         monkeypatch.setattr(
@@ -89,17 +104,19 @@ class TestPdkShow:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["pdk", "show", "--project", project_dir, "--json"])
+        rc = cli_main.run(["pdk", "show", "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        data = plain_records(capsys.readouterr().out)
         assert rc == 0
-        record = data["records"][0]
+        record = data[0]
         assert record["name"] == "ics55"
         assert record["source"] == "ecc.toml"
         assert record["root"] == str(tmp_path / "pdk-a")
-        assert data["records"][1]["status"] == "pass"
+        assert data[1]["status"] == "pass"
 
-    def test_show_reports_env_source(self, tmp_path, capsys, monkeypatch, create_cli_project):
+    def test_show_reports_env_source(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project(pdk_root="")
         env_dir = tmp_path / "env-pdk"
         env_dir.mkdir()
@@ -109,27 +126,34 @@ class TestPdkShow:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["pdk", "show", "--project", project_dir, "--json"])
+        rc = cli_main.run(["pdk", "show", "--project", project_dir, "--plain"])
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 0
         assert record["source"] == "CHIPCOMPILER_ICS55_PDK_ROOT"
         assert record["root"] == str(env_dir)
 
-    def test_show_flags_missing_root(self, tmp_path, capsys, monkeypatch, create_cli_project):
+    def test_show_flags_missing_root(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project(pdk_root=str(tmp_path / "ghost"))  # never created
         monkeypatch.delenv("CHIPCOMPILER_ICS55_PDK_ROOT", raising=False)
         monkeypatch.delenv("ICS55_PDK_ROOT", raising=False)
 
-        rc = cli_main.run(["pdk", "show", "--project", project_dir, "--json"])
+        rc = cli_main.run(["pdk", "show", "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        data = plain_records(capsys.readouterr().out)
         assert rc == 0  # show is advisory
-        assert data["records"][1]["status"] == "missing"
-        assert "set-root" in data["records"][1]["set_root"]
+        assert data[1]["status"] == "missing"
+        assert "set-root" in data[1]["set_root"]
 
     def test_show_reports_unreadable_config(
-        self, tmp_path, capsys, monkeypatch, create_cli_project
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        plain_records,
     ):
         project_dir = create_cli_project()
 
@@ -138,10 +162,10 @@ class TestPdkShow:
 
         monkeypatch.setattr("chipcompiler.cli.project.config.load_project_config", deny)
 
-        rc = cli_main.run(["pdk", "show", "--project", project_dir, "--json"])
+        rc = cli_main.run(["pdk", "show", "--project", project_dir, "--plain"])
 
         assert rc == 1
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         assert records[0]["kind"] == "error"
         assert records[0]["error"] == "config_error"
         assert records[0]["reason"].startswith("unreadable project config:")
@@ -149,18 +173,23 @@ class TestPdkShow:
 
 
 class TestPdkUnset:
-    def test_unset_restores_empty_root(self, tmp_path, capsys, create_cli_project):
+    def test_unset_restores_empty_root(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project(pdk_root=str(tmp_path))
 
-        rc = cli_main.run(["pdk", "unset", "--project", project_dir, "--json"])
+        rc = cli_main.run(["pdk", "unset", "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        data = plain_records(capsys.readouterr().out)
         assert rc == 0
-        assert data["records"][0]["status"] == "unset"
+        assert data[0]["status"] == "unset"
         assert 'root = ""' in _read_toml(project_dir)
 
     def test_unset_then_show_falls_back_to_env(
-        self, tmp_path, capsys, monkeypatch, create_cli_project
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        plain_records,
     ):
         project_dir = create_cli_project(pdk_root=str(tmp_path))
         env_dir = tmp_path / "env-pdk"
@@ -171,11 +200,11 @@ class TestPdkUnset:
             lambda name, root, overrides=None: None,
         )
 
-        cli_main.run(["pdk", "unset", "--project", project_dir, "--json"])
+        cli_main.run(["pdk", "unset", "--project", project_dir, "--plain"])
         capsys.readouterr()
-        rc = cli_main.run(["pdk", "show", "--project", project_dir, "--json"])
+        rc = cli_main.run(["pdk", "show", "--project", project_dir, "--plain"])
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 0
         assert record["source"] == "CHIPCOMPILER_ICS55_PDK_ROOT"
 
@@ -189,7 +218,12 @@ class _FakeResult:
 
 class TestPdkSetup:
     def test_setup_complete_checkout_only_sets_root(
-        self, tmp_path, capsys, monkeypatch, create_cli_project
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        plain_records,
     ):
         project_dir = create_cli_project(pdk_root="")
         pdk_dir = tmp_path / "ready-pdk"
@@ -199,16 +233,21 @@ class TestPdkSetup:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["pdk", "setup", str(pdk_dir), "--project", project_dir, "--json"])
+        rc = cli_main.run(["pdk", "setup", str(pdk_dir), "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        data = plain_records(capsys.readouterr().out)
         assert rc == 0
-        assert data["records"][0]["status"] == "ready"
-        assert data["records"][0]["actions"] == []  # nothing fetched
+        assert data[0]["status"] == "ready"
+        assert data[0]["actions"] == "[]"  # nothing fetched
         assert f'root = "{pdk_dir}"' in _read_toml(project_dir)
 
     def test_setup_clones_and_unzips_missing_checkout(
-        self, tmp_path, capsys, monkeypatch, create_cli_project
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        plain_records,
     ):
         import subprocess as real_subprocess
 
@@ -236,16 +275,18 @@ class TestPdkSetup:
 
         monkeypatch.setattr("chipcompiler.cli.project.config._validate_pdk_contents", fake_validate)
 
-        rc = cli_main.run(["pdk", "setup", str(pdk_dir), "--project", project_dir, "--json"])
+        rc = cli_main.run(["pdk", "setup", str(pdk_dir), "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        data = plain_records(capsys.readouterr().out)
         assert rc == 0
-        assert data["records"][0]["actions"] == ["clone", "unzip"]
+        assert data[0]["actions"] == "['clone', 'unzip']"
         assert calls["clone"][0][-1] == str(pdk_dir)
         assert calls["make"][0][1] == str(pdk_dir)
         assert f'root = "{pdk_dir}"' in _read_toml(project_dir)
 
-    def test_setup_clone_failure(self, tmp_path, capsys, monkeypatch, create_cli_project):
+    def test_setup_clone_failure(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
+    ):
         import subprocess as real_subprocess
 
         project_dir = create_cli_project(pdk_root="")
@@ -258,15 +299,20 @@ class TestPdkSetup:
 
         monkeypatch.setattr("subprocess.run", fake_run)
 
-        rc = cli_main.run(["pdk", "setup", str(pdk_dir), "--project", project_dir, "--json"])
+        rc = cli_main.run(["pdk", "setup", str(pdk_dir), "--project", project_dir, "--plain"])
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == "clone_failed"
         assert "repository not found" in record["reason"]
 
     def test_setup_unzip_retries_then_fails(
-        self, tmp_path, capsys, monkeypatch, create_cli_project
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        plain_records,
     ):
         import subprocess as real_subprocess
 
@@ -287,14 +333,16 @@ class TestPdkSetup:
             lambda name, root, overrides=None: "PDK has no liberty files",
         )
 
-        rc = cli_main.run(["pdk", "setup", str(pdk_dir), "--project", project_dir, "--json"])
+        rc = cli_main.run(["pdk", "setup", str(pdk_dir), "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        data = plain_records(capsys.readouterr().out)
         assert rc == 1
         assert len(make_calls) == 3  # retried three times
-        assert data["records"][0]["error"] == "unzip_failed"
+        assert data[0]["error"] == "unzip_failed"
 
-    def test_setup_unzip_recovers_on_retry(self, tmp_path, capsys, monkeypatch, create_cli_project):
+    def test_setup_unzip_recovers_on_retry(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
+    ):
         import subprocess as real_subprocess
 
         project_dir = create_cli_project(pdk_root="")
@@ -316,12 +364,12 @@ class TestPdkSetup:
 
         monkeypatch.setattr("chipcompiler.cli.project.config._validate_pdk_contents", fake_validate)
 
-        rc = cli_main.run(["pdk", "setup", str(pdk_dir), "--project", project_dir, "--json"])
+        rc = cli_main.run(["pdk", "setup", str(pdk_dir), "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        data = plain_records(capsys.readouterr().out)
         assert rc == 0
         assert attempts["n"] == 2
-        assert data["records"][0]["actions"] == ["unzip"]
+        assert data[0]["actions"] == "[unzip]"
 
     def test_setup_forwards_gh_proxy_to_make(
         self, tmp_path, capsys, monkeypatch, create_cli_project
@@ -347,7 +395,7 @@ class TestPdkSetup:
         monkeypatch.setattr("chipcompiler.cli.project.config._validate_pdk_contents", fake_validate)
         monkeypatch.setenv("GH_PROXY", "https://gh-proxy.org/")
 
-        rc = cli_main.run(["pdk", "setup", str(pdk_dir), "--project", project_dir, "--json"])
+        rc = cli_main.run(["pdk", "setup", str(pdk_dir), "--project", project_dir, "--plain"])
 
         assert rc == 0
         assert seen["cmd"] == [
@@ -358,7 +406,12 @@ class TestPdkSetup:
         ]
 
     def test_setup_default_path_when_argument_omitted(
-        self, tmp_path, capsys, monkeypatch, create_cli_project
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        plain_records,
     ):
         project_dir = create_cli_project(pdk_root="")
         monkeypatch.setattr(
@@ -370,8 +423,8 @@ class TestPdkSetup:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["pdk", "setup", "--project", project_dir, "--json"])
+        rc = cli_main.run(["pdk", "setup", "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        data = plain_records(capsys.readouterr().out)
         assert rc == 0
-        assert data["records"][0]["path"] == str(tmp_path / "default-pdk")
+        assert data[0]["path"] == str(tmp_path / "default-pdk")

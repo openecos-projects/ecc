@@ -1,4 +1,3 @@
-import json
 import os
 import sys
 
@@ -19,17 +18,6 @@ def render_text(records: tuple[dict, ...], file=None) -> None:
             else:
                 parts.append(f"{display_key}={value}")
         print(" ".join(parts), file=target)
-
-
-def render_json(result: CommandResult, file=None) -> None:
-    target = file or sys.stdout
-    print(json.dumps({"records": list(result.records)}, ensure_ascii=False), file=target)
-
-
-def render_jsonl(result: CommandResult, file=None) -> None:
-    target = file or sys.stdout
-    for record in result.records:
-        print(json.dumps(record, ensure_ascii=False), file=target)
 
 
 def render_plain(records: tuple[dict, ...], file=None) -> None:
@@ -80,11 +68,7 @@ def render_markdown(text: str, file=None, *, color: bool, pager: bool = False) -
 def render_result(
     result: CommandResult, mode: OutputMode, file=None, command=None, *, color=True
 ) -> None:
-    if mode == OutputMode.JSON:
-        render_json(result, file=file)
-    elif mode == OutputMode.JSONL:
-        render_jsonl(result, file=file)
-    elif mode == OutputMode.PLAIN:
+    if mode == OutputMode.PLAIN:
         render_plain(result.records, file=file)
     elif mode == OutputMode.TEXT:
         _render_pretty(result, file=file, command=command, color=color)

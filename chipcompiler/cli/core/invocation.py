@@ -26,11 +26,7 @@ CommandInputT = TypeVar("CommandInputT", bound=CommandInput)
 CommandHandler = Callable[[CommandInputT, CommandContext], CommandResult]
 
 
-def output_mode(*, json_output: bool, jsonl: bool, plain: bool) -> OutputMode:
-    if jsonl:
-        return OutputMode.JSONL
-    if json_output:
-        return OutputMode.JSON
+def output_mode(*, plain: bool) -> OutputMode:
     if plain:
         return OutputMode.PLAIN
     return OutputMode.TEXT
@@ -131,11 +127,7 @@ def build_context(command_input: CommandInput) -> CommandContext:
         workspace_id = workspace_name or "default"
         run_dir, run_id = os.path.join(project_dir, workspace_id), workspace_id
 
-    mode = output_mode(
-        json_output=command_input.output.json,
-        jsonl=command_input.output.jsonl,
-        plain=command_input.output.plain,
-    )
+    mode = output_mode(plain=command_input.output.plain)
 
     return CommandContext(
         project_dir=project_dir,

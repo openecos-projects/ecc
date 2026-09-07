@@ -39,7 +39,7 @@ FLOORPLAN_QOR_METRICS = {
         {
             "id": "num_instances",
             "display_name": "Instance Count",
-            "value": 454,
+            "value": "454",
             "unit": "count",
             "category": "area_cost",
             "direction": "lower_is_better",
@@ -242,9 +242,9 @@ def create_step_workspace(tmp_path, *, with_drc=True, with_home_checklist=False)
     return ws
 
 
-def run_step(args, capsys):
+def run_step(args, capsys, plain_records):
     rc = cli_main.run(args)
-    return rc, json.loads(capsys.readouterr().out)
+    return rc, plain_records(capsys.readouterr().out)
 
 
 def step_args(tmp_path, *args, workspace="ws"):
@@ -253,7 +253,7 @@ def step_args(tmp_path, *args, workspace="ws"):
 
 
 class TestStepOverview:
-    def test_overview_includes_every_rtl2gds_step(self, tmp_path, capsys):
+    def test_overview_includes_every_rtl2gds_step(self, tmp_path, capsys, plain_records):
         from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
 
         ws = str(tmp_path / "ws")
@@ -267,10 +267,10 @@ class TestStepOverview:
             },
         )
 
-        rc, data = run_step(step_args(tmp_path, "--json"), capsys)
+        rc, records = run_step(step_args(tmp_path, "--plain"), capsys, plain_records)
 
         assert rc == 0
-        assert [record["step"] for record in data["records"][1:]] == [
+        assert [record["step"] for record in records[1:]] == [
             "synthesis",
             "lec",
             "floorplan",
@@ -288,18 +288,19 @@ class TestStepOverview:
             "harden",
         ]
 
-    def test_overview_records(self, tmp_path, capsys):
+    def test_overview_records(self, tmp_path, capsys, plain_records):
         ws = create_step_workspace(tmp_path)
 
-        rc, data = run_step(step_args(tmp_path, "--json"), capsys)
+        rc, records = run_step(step_args(tmp_path, "--plain"), capsys, plain_records)
 
         assert rc == 0
-        assert data["records"] == [
+        # --plain renders values as strings and omits None-valued keys
+        assert records == [
             {
                 "report": "step",
                 "view": "overview",
                 "workspace": ws,
-                "steps": 3,
+                "steps": "3",
                 "inspect": f"ecc report step <step> --project {tmp_path} --workspace ws",
             },
             {
@@ -307,11 +308,11 @@ class TestStepOverview:
                 "tool": "ecc",
                 "status": "success",
                 "runtime": "0:0:1",
-                "peak_memory_mb": 143.227,
-                "metrics": 2,
+                "peak_memory_mb": "143.227",
+                "metrics": "2",
                 "quality": "pass",
                 "checklist": "ready",
-                "blocked": 0,
+                "blocked": "0",
                 "inspect": f"ecc report step floorplan --project {tmp_path} --workspace ws",
             },
             {
@@ -319,11 +320,8 @@ class TestStepOverview:
                 "tool": "sizer",
                 "status": "success",
                 "runtime": "0:0:9",
-                "peak_memory_mb": 2.305,
-                "metrics": None,
-                "quality": None,
-                "checklist": None,
-                "blocked": 0,
+                "peak_memory_mb": "2.305",
+                "blocked": "0",
                 "inspect": (
                     f"ecc report step timing_optimization --project {tmp_path} --workspace ws"
                 ),
@@ -332,36 +330,36 @@ class TestStepOverview:
                 "step": "drc",
                 "tool": "ecc",
                 "status": "unknown",
-                "runtime": None,
-                "peak_memory_mb": None,
-                "metrics": 1,
+                "metrics": "1",
                 "quality": "blocked",
                 "checklist": "blocked",
-                "blocked": 1,
+                "blocked": "1",
                 "inspect": f"ecc report step drc --project {tmp_path} --workspace ws",
             },
         ]
 
-    def test_overview_without_steps(self, tmp_path, capsys):
+    def test_overview_without_steps(self, tmp_path, capsys, plain_records):
         ws = str(tmp_path / "empty")
         os.makedirs(ws)
 
-        rc, data = run_step(step_args(tmp_path, "--json", workspace="empty"), capsys)
+        rc, records = run_step(
+            step_args(tmp_path, "--plain", workspace="empty"), capsys, plain_records
+        )
 
         assert rc == 0
-        assert data["records"] == [
+        assert records == [
             {
                 "report": "step",
                 "view": "overview",
                 "workspace": ws,
-                "steps": 0,
+                "steps": "0",
                 "inspect": f"ecc report step <step> --project {tmp_path} --workspace empty",
                 "step_status": "no_steps",
                 "run": f"ecc run --project {tmp_path} --workspace empty",
             }
         ]
 
-    def test_overview_text(self, tmp_path, capsys):
+    def test_overview_text(self, tmp_path, capsys, plain_records):
         create_step_workspace(tmp_path)
 
         rc = cli_main.run(step_args(tmp_path))
@@ -376,26 +374,28 @@ class TestStepOverview:
 
 
 class TestStepDetail:
-    def test_detail_feature_section(self, tmp_path, capsys):
+    def test_detail_feature_section(self, tmp_path, capsys, plain_records):
         create_step_workspace(tmp_path)
 
-        rc, data = run_step(
-            step_args(tmp_path, "floorplan", "--section", "feature", "--json"), capsys
+        rc, records = run_step(
+            step_args(tmp_path, "floorplan", "--section", "feature", "--plain"),
+            capsys,
+            plain_records,
         )
 
         assert rc == 0
-        head, *section = data["records"]
+        head, *section = records
         assert head["view"] == "detail"
         assert head["step"] == "floorplan"
         assert head["step_name"] == "Floorplan"
-        assert head["sections"] == ["feature"]
+        assert head["sections"] == "[feature]"
         assert section == [
             {
                 "step": "floorplan",
                 "section": "feature",
                 "kind": "run",
                 "key": "run.peak_memory_mb",
-                "value": 143.227,
+                "value": "143.227",
                 "source": "Floorplan_ecc/feature/Floorplan.step.json",
             },
             {
@@ -403,7 +403,7 @@ class TestStepDetail:
                 "section": "feature",
                 "kind": "run",
                 "key": "run.runtime_seconds",
-                "value": 1.757,
+                "value": "1.757",
                 "source": "Floorplan_ecc/feature/Floorplan.step.json",
             },
             {
@@ -435,7 +435,7 @@ class TestStepDetail:
                 "section": "feature",
                 "kind": "constraint",
                 "key": "constraints.sdc.size_bytes",
-                "value": 253,
+                "value": "253",
                 "source": "Floorplan_ecc/feature/Floorplan.step.json",
             },
             {
@@ -459,7 +459,7 @@ class TestStepDetail:
                 "section": "feature",
                 "kind": "stat",
                 "key": "Design Statis.num_instances",
-                "value": 454,
+                "value": "454",
                 "source": "Floorplan_ecc/feature/Floorplan.db.json",
             },
             {
@@ -467,28 +467,30 @@ class TestStepDetail:
                 "section": "feature",
                 "kind": "stat",
                 "key": "Design Statis.num_nets",
-                "value": 368,
+                "value": "368",
                 "source": "Floorplan_ecc/feature/Floorplan.db.json",
             },
         ]
 
-    def test_detail_analysis_section_with_gate(self, tmp_path, capsys):
+    def test_detail_analysis_section_with_gate(self, tmp_path, capsys, plain_records):
         create_step_workspace(tmp_path)
 
-        rc, data = run_step(step_args(tmp_path, "drc", "--section", "analysis", "--json"), capsys)
+        rc, records = run_step(
+            step_args(tmp_path, "drc", "--section", "analysis", "--plain"), capsys, plain_records
+        )
 
         assert rc == 0
-        head, summary, metric, gate = data["records"]
-        assert head["sections"] == ["analysis"]
+        head, summary, metric, gate = records
+        assert head["sections"] == "[analysis]"
         assert summary == {
             "step": "drc",
             "section": "analysis",
             "kind": "summary",
             "quality_status": "blocked",
             "analysis_status": "valid",
-            "metric_count": 1,
-            "dimensions": {},
-            "missing_metrics": [],
+            "metric_count": "1",
+            "dimensions": "{}",
+            "missing_metrics": "[]",
             "analysis_revision": "quality-gates-v4",
         }
         assert metric == {
@@ -497,13 +499,13 @@ class TestStepDetail:
             "kind": "metric",
             "metric": "drc_count",
             "label": "DRC Count",
-            "value": 336,
+            "value": "336",
             "unit": "count",
             "category": "clock_robustness_dfm",
             "direction": "lower_is_better",
             "role": "gate",
-            "gate": True,
-            "score": True,
+            "gate": "True",
+            "score": "True",
             "source": "drc_ecc/feature/drc.step.json#/drc/number",
         }
         assert gate == {
@@ -513,29 +515,31 @@ class TestStepDetail:
             "gate": "qor.drc.clean",
             "title": "Final DRC clean",
             "state": "failed",
-            "blocking": True,
-            "checks": [{"metric": "drc_count", "actual": 336, "operator": "==", "expected": 0}],
+            "blocking": "True",
+            "checks": "[{'metric': 'drc_count', 'actual': 336, 'operator': '==', 'expected': 0}]",
         }
 
-    def test_detail_checklist_from_step_file(self, tmp_path, capsys):
+    def test_detail_checklist_from_step_file(self, tmp_path, capsys, plain_records):
         create_step_workspace(tmp_path)
 
-        rc, data = run_step(
-            step_args(tmp_path, "floorplan", "--section", "checklist", "--json"), capsys
+        rc, records = run_step(
+            step_args(tmp_path, "floorplan", "--section", "checklist", "--plain"),
+            capsys,
+            plain_records,
         )
 
         assert rc == 0
-        head, summary, item = data["records"]
+        head, summary, item = records
         assert summary == {
             "step": "floorplan",
             "section": "checklist",
             "kind": "summary",
             "checklist_status": "ready",
             "source": "step",
-            "passed": 1,
-            "blocked": 0,
-            "attention": 0,
-            "unavailable": 0,
+            "passed": "1",
+            "blocked": "0",
+            "attention": "0",
+            "unavailable": "0",
         }
         assert item == {
             "step": "floorplan",
@@ -546,53 +550,57 @@ class TestStepDetail:
             "title": "Floorplan DEF",
             "state": "pass",
             "policy": "block",
-            "blocked": False,
+            "blocked": "False",
             "summary": "Current output is present and non-empty.",
-            "evidence": ["Floorplan_ecc/output/gcd_Floorplan.def.gz"],
+            "evidence": "[Floorplan_ecc/output/gcd_Floorplan.def.gz]",
         }
 
-    def test_detail_checklist_falls_back_to_home(self, tmp_path, capsys):
+    def test_detail_checklist_falls_back_to_home(self, tmp_path, capsys, plain_records):
         ws = create_step_workspace(tmp_path, with_home_checklist=True)
         os.remove(os.path.join(ws, "Floorplan_ecc", "checklist.json"))
 
-        rc, data = run_step(
-            step_args(tmp_path, "floorplan", "--section", "checklist", "--json"), capsys
+        rc, records = run_step(
+            step_args(tmp_path, "floorplan", "--section", "checklist", "--plain"),
+            capsys,
+            plain_records,
         )
 
         assert rc == 0
-        head, summary, item = data["records"]
+        head, summary, item = records
         assert summary["source"] == "home"
-        assert summary["passed"] == 1
-        assert summary["blocked"] == 0
+        assert summary["passed"] == "1"
+        assert summary["blocked"] == "0"
         assert item["id"] == "artifact.floorplan.def"
 
-    def test_detail_unavailable_sections(self, tmp_path, capsys):
+    def test_detail_unavailable_sections(self, tmp_path, capsys, plain_records):
         create_step_workspace(tmp_path, with_drc=False)
 
-        rc, data = run_step(step_args(tmp_path, "timing_optimization", "--json"), capsys)
+        rc, records = run_step(
+            step_args(tmp_path, "timing_optimization", "--plain"), capsys, plain_records
+        )
 
         assert rc == 0
-        statuses = {
-            r["section"]: r["section_status"] for r in data["records"] if "section_status" in r
-        }
+        statuses = {r["section"]: r["section_status"] for r in records if "section_status" in r}
         # The sizer step has run facts but no analysis or checklist outputs.
         assert statuses == {"analysis": "unavailable", "checklist": "unavailable"}
-        feature_keys = [r["key"] for r in data["records"] if r.get("section") == "feature"]
+        feature_keys = [r["key"] for r in records if r.get("section") == "feature"]
         assert feature_keys == [
             "run.peak_memory_mb",
             "run.runtime_seconds",
             "run.state",
         ]
 
-    def test_detail_accepts_flow_token_with_spaces(self, tmp_path, capsys):
+    def test_detail_accepts_flow_token_with_spaces(self, tmp_path, capsys, plain_records):
         create_step_workspace(tmp_path, with_drc=False)
 
-        rc, data = run_step(step_args(tmp_path, "timing optimization", "--json"), capsys)
+        rc, records = run_step(
+            step_args(tmp_path, "timing optimization", "--plain"), capsys, plain_records
+        )
 
         assert rc == 0
-        assert data["records"][0]["step"] == "timing_optimization"
+        assert records[0]["step"] == "timing_optimization"
 
-    def test_detail_text(self, tmp_path, capsys):
+    def test_detail_text(self, tmp_path, capsys, plain_records):
         create_step_workspace(tmp_path)
 
         rc = cli_main.run(step_args(tmp_path, "drc"))
@@ -604,51 +612,55 @@ class TestStepDetail:
 
 
 class TestStepErrors:
-    def test_unknown_step(self, tmp_path, capsys):
+    def test_unknown_step(self, tmp_path, capsys, plain_records):
         create_step_workspace(tmp_path, with_drc=False)
 
-        rc, data = run_step(step_args(tmp_path, "nope", "--json"), capsys)
+        rc, records = run_step(step_args(tmp_path, "nope", "--plain"), capsys, plain_records)
 
         assert rc == 1
-        assert data["records"] == [
+        assert records == [
             {
                 "kind": "error",
                 "error": "unknown_step",
                 "step": "nope",
-                "available": ["floorplan", "timing_optimization"],
+                "available": "['floorplan', 'timing_optimization']",
                 "inspect": f"ecc report step --project {tmp_path} --workspace ws",
             }
         ]
 
-    def test_invalid_section(self, tmp_path, capsys):
+    def test_invalid_section(self, tmp_path, capsys, plain_records):
         create_step_workspace(tmp_path, with_drc=False)
 
-        rc, data = run_step(
-            step_args(tmp_path, "floorplan", "--section", "bogus", "--json"), capsys
+        rc, records = run_step(
+            step_args(tmp_path, "floorplan", "--section", "bogus", "--plain"), capsys, plain_records
         )
 
         assert rc == 1
-        assert data["records"][0]["error"] == "invalid_section"
-        assert data["records"][0]["sections"] == ["feature", "analysis", "checklist"]
+        assert records[0]["error"] == "invalid_section"
+        assert records[0]["sections"] == "['feature', 'analysis', 'checklist']"
 
-    def test_section_requires_step(self, tmp_path, capsys):
+    def test_section_requires_step(self, tmp_path, capsys, plain_records):
         create_step_workspace(tmp_path, with_drc=False)
 
-        rc, data = run_step(step_args(tmp_path, "--section", "analysis", "--json"), capsys)
+        rc, records = run_step(
+            step_args(tmp_path, "--section", "analysis", "--plain"), capsys, plain_records
+        )
 
         assert rc == 1
-        assert data["records"][0]["error"] == "section_requires_step"
+        assert records[0]["error"] == "section_requires_step"
 
-    def test_missing_workspace_directory(self, tmp_path, capsys):
-        rc, data = run_step(step_args(tmp_path, "--json", workspace="absent"), capsys)
+    def test_missing_workspace_directory(self, tmp_path, capsys, plain_records):
+        rc, records = run_step(
+            step_args(tmp_path, "--plain", workspace="absent"), capsys, plain_records
+        )
 
         assert rc == 1
-        assert data["records"][0]["error"] == "missing_workspace"
-        assert data["records"][0]["workspace"] == str(tmp_path / "absent")
+        assert records[0]["error"] == "missing_workspace"
+        assert records[0]["workspace"] == str(tmp_path / "absent")
 
 
 class TestStepReadOnly:
-    def test_invocation_writes_nothing(self, tmp_path, capsys):
+    def test_invocation_writes_nothing(self, tmp_path, capsys, plain_records):
         ws = create_step_workspace(tmp_path)
 
         def snapshot():
@@ -658,6 +670,6 @@ class TestStepReadOnly:
 
         before = snapshot()
         cli_main.run(step_args(tmp_path))
-        cli_main.run(step_args(tmp_path, "floorplan", "--json"))
+        cli_main.run(step_args(tmp_path, "floorplan", "--plain"))
 
         assert snapshot() == before

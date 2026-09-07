@@ -1,4 +1,3 @@
-import dataclasses
 import json
 from importlib import metadata
 
@@ -82,48 +81,6 @@ def test_version_command_returns_json_payload(monkeypatch, capsys):
     assert data["tools"] == {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"}
 
 
-def test_version_command_returns_jsonl_lines(monkeypatch, capsys):
-    monkeypatch.setattr(
-        "chipcompiler.cli.app.tool_versions",
-        lambda: {"yosys": "0.68", "sizer": "unknown", "klayout": "0.30.2"},
-    )
-
-    rc = cli_main.run(["version", "--jsonl"])
-
-    lines = capsys.readouterr().out.splitlines()
-    assert rc == 0
-    records = [json.loads(ln) for ln in lines]
-    assert [r["component"] for r in records] == [
-        "ecc",
-        "dreamplace",
-        "ecc_tools",
-        "yosys",
-        "sizer",
-        "klayout",
-    ]
-    assert all(set(r) == {"component", "version"} for r in records)
-    assert records[3] == {"component": "yosys", "version": "0.68"}
-    assert records[4] == {"component": "sizer", "version": "unknown"}
-    assert records[5] == {"component": "klayout", "version": "0.30.2"}
-
-
-def test_version_command_returns_plain_line(monkeypatch, capsys):
-    monkeypatch.setattr(
-        "chipcompiler.cli.app.tool_versions",
-        lambda: {"yosys": "0.68", "sizer": "unknown", "klayout": "0.30.2"},
-    )
-
-    rc = cli_main.run(["version", "--plain"])
-
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "schema_version=1" in out
-    assert 'runtime="ECC CLI"' in out
-    assert "yosys=0.68" in out
-    assert "sizer=unknown" in out
-    assert "klayout=0.30.2" in out
-
-
 def test_version_metadata_missing_uses_unknown(monkeypatch, capsys):
     def missing_version(distribution):
         raise metadata.PackageNotFoundError(distribution)
@@ -180,14 +137,14 @@ def test_invalid_option_returns_nonzero_without_system_exit(capsys):
     assert "No such option" in capsys.readouterr().err
 
 
-def test_config_without_resolved_reaches_the_config_handler(tmp_path, capsys):
+def test_config_without_resolved_reaches_the_config_handler(tmp_path, capsys, plain_records):
     project = tmp_path / "project"
     project.mkdir()
 
-    rc = cli_main.run(["config", "--project", str(project), "--json"])
+    rc = cli_main.run(["config", "--project", str(project), "--plain"])
 
     assert rc == 1
-    assert json.loads(capsys.readouterr().out)["records"][0]["error"] == "missing_config"
+    assert plain_records(capsys.readouterr().out)[0]["error"] == "missing_config"
 
 
 def test_removed_config_resolved_option_returns_unknown_option(capsys):
@@ -209,42 +166,6 @@ def test_removed_signoff_report_command_returns_unknown_command(capsys):
 
     assert rc != 0
     assert "No such command" in capsys.readouterr().err
-
-
-def test_output_mode_priority_prefers_jsonl(monkeypatch, tmp_path, capsys):
-    seen = {}
-
-    def fake_resolve_project_dir(project):
-        return str(tmp_path)
-
-    def fake_status(command_input, ctx):
-        seen["input_type"] = type(command_input).__name__
-        seen["frozen"] = dataclasses.is_dataclass(command_input)
-        seen["mode"] = ctx.output_mode.value
-        seen["json"] = command_input.output.json
-        seen["jsonl"] = command_input.output.jsonl
-        seen["plain"] = command_input.output.plain
-        return CommandResult.ok([{"status": "ok"}])
-
-    monkeypatch.setattr(
-        "chipcompiler.cli.core.invocation.resolve_project_dir",
-        fake_resolve_project_dir,
-    )
-    monkeypatch.setattr("chipcompiler.cli.command_handlers.inspect.status", fake_status)
-
-    rc = cli_main.run(["status", "--jsonl", "--json", "--plain"])
-
-    objects = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
-    assert rc == 0
-    assert objects == [{"status": "ok"}]
-    assert seen == {
-        "input_type": "StatusInput",
-        "frozen": True,
-        "mode": "jsonl",
-        "json": True,
-        "jsonl": True,
-        "plain": True,
-    }
 
 
 def test_run_set_remains_repeatable(monkeypatch, tmp_path):
@@ -337,7 +258,9 @@ def test_run_workspace_flag_reaches_workspace_validation(capsys):
     assert "invalid_workspace" in capsys.readouterr().out
 
 
-def test_status_command_handler_still_returns_command_result(monkeypatch, tmp_path, capsys):
+def test_status_command_handler_still_returns_command_result(
+    monkeypatch, tmp_path, capsys, plain_records
+):
     monkeypatch.setattr(
         "chipcompiler.cli.core.invocation.resolve_project_dir",
         lambda project: str(tmp_path),
@@ -348,14 +271,13 @@ def test_status_command_handler_still_returns_command_result(monkeypatch, tmp_pa
 
     monkeypatch.setattr("chipcompiler.cli.command_handlers.inspect.status", fake_status)
 
-    rc = cli_main.run(["status", "--json"])
+    rc = cli_main.run(["status", "--plain"])
 
-    data = json.loads(capsys.readouterr().out)
     assert rc == 0
-    assert data == {"records": [{"command": "status", "status": "ok"}]}
+    assert plain_records(capsys.readouterr().out) == [{"command": "status", "status": "ok"}]
 
 
-def test_param_callback_passes_typed_input(monkeypatch, tmp_path, capsys):
+def test_param_callback_passes_typed_input(monkeypatch, tmp_path, capsys, plain_records):
     seen = {}
     monkeypatch.setattr(
         "chipcompiler.cli.core.invocation.resolve_project_dir",
@@ -370,10 +292,10 @@ def test_param_callback_passes_typed_input(monkeypatch, tmp_path, capsys):
 
     monkeypatch.setattr("chipcompiler.cli.commands.param.param_show_handler", fake_show)
 
-    rc = cli_main.run(["param", "show", "place.target_density", "--project", "gcd", "--json"])
+    rc = cli_main.run(["param", "show", "place.target_density", "--project", "gcd", "--plain"])
 
     assert rc == 0
-    assert json.loads(capsys.readouterr().out) == {"records": [{"param": "place.target_density"}]}
+    assert plain_records(capsys.readouterr().out) == [{"param": "place.target_density"}]
     assert seen == {
         "input_type": "ParamShowInput",
         "key": "place.target_density",

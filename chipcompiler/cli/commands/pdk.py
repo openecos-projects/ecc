@@ -14,8 +14,6 @@ from chipcompiler.cli.core.inputs import (
 )
 from chipcompiler.cli.core.invocation import execute_command
 from chipcompiler.cli.core.options import (
-    JsonlOption,
-    JsonOption,
     PlainOption,
     ProjectOption,
 )
@@ -37,12 +35,10 @@ def setup_cmd(
         ),
     ] = None,
     project: ProjectOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     command_input = PdkSetupInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         path=path,
     )
@@ -57,8 +53,6 @@ def set_root_cmd(
         typer.Argument(help="Path to an icsprout55-pdk checkout (absolute after expansion)"),
     ],
     project: ProjectOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     """Set the [pdk] root path in ecc.toml.
@@ -71,7 +65,7 @@ def set_root_cmd(
     See 'ecc doc config' for the full reference.
     """
     command_input = PdkSetRootInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         path=path,
     )
@@ -82,12 +76,10 @@ def set_root_cmd(
 def show_cmd(
     *,
     project: ProjectOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     command_input = PdkShowInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
     )
     _finish("show", command_input, pdk_handlers.show)
@@ -97,12 +89,10 @@ def show_cmd(
 def unset_cmd(
     *,
     project: ProjectOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     command_input = PdkUnsetInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
     )
     _finish("unset", command_input, pdk_handlers.unset)

@@ -71,7 +71,7 @@ def _write_manifest(project_dir: str) -> None:
 
 
 def test_workspace_param_set_persists_and_invalidates_suffix(
-    capsys, create_cli_project, monkeypatch
+    capsys, create_cli_project, monkeypatch, plain_records
 ):
     project_dir = create_cli_project()
     workspace_dir = Path(project_dir) / "baseline"
@@ -91,15 +91,15 @@ def test_workspace_param_set_persists_and_invalidates_suffix(
             "baseline",
             "--project",
             project_dir,
-            "--json",
+            "--plain",
         ]
     )
 
     assert rc == 0
-    record = json.loads(capsys.readouterr().out)["records"][0]
-    assert record["value"] == 0.65
+    record = plain_records(capsys.readouterr().out)[0]
+    assert record["value"] == "0.65"
     assert record["from_step"] == "place"
-    assert record["invalidated_steps"] == ["place", "route"]
+    assert record["invalidated_steps"] == "['place', 'route']"
     assert workspace.parameters.data["dreamplace"]["target_density"] == 0.65
     assert [step["state"] for step in workspace.flow.data["steps"]] == [
         "Success",
@@ -117,16 +117,18 @@ def test_workspace_param_set_persists_and_invalidates_suffix(
             "baseline",
             "--project",
             project_dir,
-            "--json",
+            "--plain",
         ]
     )
 
     assert rc == 0
-    assert json.loads(capsys.readouterr().out)["records"][0]["value"] == 0.2
+    assert plain_records(capsys.readouterr().out)[0]["value"] == "0.2"
     assert workspace.parameters.data["dreamplace"]["target_density"] == 0.2
 
 
-def test_workspace_param_list_honors_step_filter(capsys, create_cli_project, monkeypatch):
+def test_workspace_param_list_honors_step_filter(
+    capsys, create_cli_project, monkeypatch, plain_records
+):
     project_dir = create_cli_project()
     workspace_dir = Path(project_dir) / "baseline"
     _write_manifest(project_dir)
@@ -146,11 +148,11 @@ def test_workspace_param_list_honors_step_filter(capsys, create_cli_project, mon
             "cts",
             "--project",
             project_dir,
-            "--json",
+            "--plain",
         ]
     )
 
     assert rc == 0
-    assert json.loads(capsys.readouterr().out)["records"] == [
+    assert plain_records(capsys.readouterr().out) == [
         {"param": "list", "status": "clean", "workspace": "baseline"}
     ]

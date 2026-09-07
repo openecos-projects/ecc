@@ -1,4 +1,3 @@
-import json
 import os
 
 import pytest
@@ -20,6 +19,7 @@ class TestStepConfigIgnoresLegacyFlowRun:
         set_flow_run,
         toml_line,
         selector,
+        plain_records,
     ):
         """The step view reads only the workspace; a legacy [flow].run key
         in ecc.toml must not break step-scoped config listing."""
@@ -33,11 +33,11 @@ class TestStepConfigIgnoresLegacyFlowRun:
         args = ["config", "cts"]
         if selector is not None:
             args += ["--workspace", selector]
-        args += ["--project", project_dir, "--json"]
+        args += ["--project", project_dir, "--plain"]
         rc = cli_main.run(args)
 
         assert rc == 0
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         assert [item["path"] for item in records] == [
             "default/config/db_ecc.json",
             "default/config/cts_ecc.json",
@@ -46,7 +46,12 @@ class TestStepConfigIgnoresLegacyFlowRun:
 
 class TestConfigUnreadableFallback:
     def test_config_resolved_reports_invalid_config_on_unreadable_toml(
-        self, tmp_path, capsys, create_cli_project, monkeypatch
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        monkeypatch,
+        plain_records,
     ):
         project_dir = create_cli_project()
 
@@ -55,10 +60,10 @@ class TestConfigUnreadableFallback:
 
         monkeypatch.setattr("chipcompiler.cli.project.config.load_project_config", deny)
 
-        rc = cli_main.run(["config", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--plain"])
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "invalid_config",
@@ -67,16 +72,20 @@ class TestConfigUnreadableFallback:
         ]
 
     def test_config_resolved_reports_invalid_config_on_non_utf8_toml(
-        self, tmp_path, capsys, create_cli_project
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        plain_records,
     ):
         project_dir = create_cli_project()
         with open(os.path.join(project_dir, "ecc.toml"), "wb") as f:
             f.write(b'[flow]\nrun = "\xff\xfe"\n')
 
-        rc = cli_main.run(["config", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--plain"])
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "invalid_config",

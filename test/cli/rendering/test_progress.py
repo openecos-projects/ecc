@@ -104,12 +104,6 @@ class TestSupportsColor:
         env = {"TERM": "dumb"}
         assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.TEXT, env) is False
 
-    def test_disabled_json(self):
-        assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.JSON) is False
-
-    def test_disabled_jsonl(self):
-        assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.JSONL) is False
-
     def test_enabled_with_clean_env(self):
         env = {"TERM": "xterm-256color"}
         assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.TEXT, env) is True
@@ -134,14 +128,6 @@ class TestShouldEnableRunProgress:
     def test_enabled_text_tty(self):
         ctx = _make_ctx(OutputMode.TEXT)
         assert should_enable_run_progress(ctx, FakeTTYStderr(isatty_value=True)) is True
-
-    def test_disabled_json(self):
-        ctx = _make_ctx(OutputMode.JSON)
-        assert should_enable_run_progress(ctx, FakeTTYStderr(isatty_value=True)) is False
-
-    def test_disabled_jsonl(self):
-        ctx = _make_ctx(OutputMode.JSONL)
-        assert should_enable_run_progress(ctx, FakeTTYStderr(isatty_value=True)) is False
 
     def test_disabled_plain(self):
         ctx = _make_ctx(OutputMode.PLAIN)
