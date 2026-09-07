@@ -11,7 +11,7 @@ GUIDE_STEMS = {
     "dev": "ecc-cli-dev",
 }
 
-_NUMBERED_HEADING = re.compile(r"^## (?P<token>\d+(?:\.\d+)*)\.\s*(?P<title>.*)$", re.MULTILINE)
+_NUMBERED_HEADING = re.compile(r"^## (?P<token>\d+(?:\.\d+)*)\.[ \t]*(?P<title>.*)$", re.MULTILINE)
 _ANY_HEADING = re.compile(r"^## ", re.MULTILINE)
 
 

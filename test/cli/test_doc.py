@@ -152,6 +152,55 @@ def test_doc_sections_lists_tokens_with_titles(capsys):
     assert "8.5" not in out
 
 
+def test_heading_parser_handles_empty_titles_and_adjacent_headings():
+    text = "## 1.\n## 2. Next\nbody\n"
+
+    assert docs.heading_entries(text) == [("1", ""), ("2", "Next")]
+    assert docs.slice_section(text, "2") == "## 2. Next\nbody\n"
+    assert "  2  Next" in docs.table_of_contents(text)
+
+
+def test_doc_sections_output_pairs_each_token_with_its_title(capsys):
+    rc = cli_main.run(["doc", "ug", "--sections"])
+
+    out = capsys.readouterr().out
+    entries = {}
+    for line in out.splitlines():
+        parts = line.strip().split(None, 1)
+        if parts:
+            entries[parts[0]] = parts[1] if len(parts) > 1 else ""
+    assert rc == 0
+    assert entries["8"] == "config — view the resolved configuration"
+    assert entries["8.5"] == (
+        "project / workspace — edit project declarations and refresh workspaces"
+    )
+
+
+def test_doc_sections_combination_error_is_single_line_with_empty_stdout(capsys):
+    rc = cli_main.run(["doc", "config", "7", "--sections"])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert captured.out == ""
+    assert len(captured.err.strip().splitlines()) == 1
+
+
+def test_doc_sections_fails_cleanly_on_non_utf8_stdout(tmp_path, monkeypatch, capsys):
+    import io
+
+    guide = tmp_path / "docs" / "ecc-cli-ug.en.md"
+    guide.parent.mkdir()
+    guide.write_bytes("## 1. ünïcode title\n".encode())
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(io.BytesIO(), encoding="ascii"))
+
+    rc = cli_main.run(["doc", "ug", "--sections"])
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "Error:" in captured.err
+
+
 def test_doc_sections_with_chinese_titles(capsys):
     rc = cli_main.run(["doc", "ug", "--lang", "cn", "--sections"])
 
