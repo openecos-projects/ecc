@@ -133,6 +133,10 @@ def test_doc_pager_keeps_styles_when_color_is_supported(monkeypatch, capsys):
     monkeypatch.setattr(pydoc, "pager", paged.append)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     monkeypatch.setattr("chipcompiler.cli.commands.doc.supports_color", lambda: True)
+    # Rich consults NO_COLOR and TERM independently of supports_color();
+    # pin them so the styled path is hermetic.
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
 
     rc = cli_main.run(["doc", "config"])
 

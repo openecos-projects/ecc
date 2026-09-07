@@ -1,5 +1,7 @@
 import os
 
+import pytest
+
 from chipcompiler.cli import main as cli_main
 
 
@@ -217,6 +219,26 @@ class _FakeResult:
 
 
 class TestPdkSetup:
+    @pytest.fixture(autouse=True)
+    def available_tools(self, monkeypatch):
+        """Simulate a host with git/make so tests exercise clone/unzip behavior."""
+        monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
+
+    def test_setup_missing_tool_fails_before_clone(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
+    ):
+        project_dir = create_cli_project(pdk_root="")
+        monkeypatch.setattr("shutil.which", lambda name: None if name == "git" else name)
+
+        rc = cli_main.run(
+            ["pdk", "setup", str(tmp_path / "fresh-pdk"), "--project", project_dir, "--plain"]
+        )
+
+        record = plain_records(capsys.readouterr().out)[0]
+        assert rc == 1
+        assert record["error"] == "missing_tool"
+        assert "git" in record["reason"]
+
     def test_setup_complete_checkout_only_sets_root(
         self,
         tmp_path,
