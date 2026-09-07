@@ -239,6 +239,13 @@ def filter_host_fontconfig(binaries):
     # host libfontconfig always matches the host fontconfig data. Applied
     # to the Analysis output, because input-list filtering cannot stop the
     # dependency walk from re-collecting it.
+    #
+    # Consequence (verified host prerequisite): the bundle keeps libcairo
+    # (PyInstaller dependency) and DreamPlace's draw_place_cpp loads
+    # fontconfig through it, so a supported host must provide
+    # libfontconfig.so.1 itself (any glibc-based distro with fontconfig
+    # installed qualifies; a bare container without fontconfig will fail
+    # placement with a loader error).
     return [
         entry
         for entry in binaries

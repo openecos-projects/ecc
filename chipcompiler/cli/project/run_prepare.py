@@ -380,23 +380,26 @@ def execute_fresh_run(
                 return failed_workspace(None)
 
         # Seeding writes are part of the replacement construction: they run
-        # before the commit point so a failure here still restores the
-        # renamed-aside previous workspace.
-        if cli_overrides:
-            import json
+        # before the commit point inside the recovery boundary, so a write
+        # failure restores the renamed-aside previous workspace.
+        try:
+            if cli_overrides:
+                import json
 
-            provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
-            os.makedirs(os.path.dirname(provenance_path), exist_ok=True)
-            with open(provenance_path, "w") as _f:
-                json.dump(cli_overrides, _f)
+                provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
+                os.makedirs(os.path.dirname(provenance_path), exist_ok=True)
+                with open(provenance_path, "w") as _f:
+                    json.dump(cli_overrides, _f)
 
-        if flow_config is None:
-            # CLI-born workspaces persist the named prefix chain as their target.
-            workspace_parameters = getattr(workspace, "parameters", None)
-            if workspace_parameters is not None:
-                workspace_parameters.data["_flow"] = {"preset": cfg.flow_preset}
-                if not save_parameter(workspace_parameters):
-                    return failed_workspace("failed to persist the flow target in params.toml")
+            if flow_config is None:
+                # CLI-born workspaces persist the named prefix chain as their target.
+                workspace_parameters = getattr(workspace, "parameters", None)
+                if workspace_parameters is not None:
+                    workspace_parameters.data["_flow"] = {"preset": cfg.flow_preset}
+                    if not save_parameter(workspace_parameters):
+                        return failed_workspace("failed to persist the flow target in params.toml")
+        except Exception as exc:
+            return failed_workspace(str(exc))
 
         # Engine execution still holds the workspace lock taken before
         # creation: a second `ecc run` taking the existing-workspace path

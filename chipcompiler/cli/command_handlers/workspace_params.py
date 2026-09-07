@@ -1,6 +1,5 @@
 """Workspace-scoped variants of the schema-backed parameter commands."""
 
-import logging
 from pathlib import Path
 
 from chipcompiler.cli.core.records import error_record
@@ -129,11 +128,16 @@ def _snapshot_transaction(workspace) -> dict:
         paths.append(Path(sdc))
     snapshot: dict = {}
     for path in paths:
-        try:
-            snapshot[path] = path.read_bytes() if path.is_file() else None
-        except OSError as exc:
+        if not path.is_file():
             snapshot[path] = None
-            logging.getLogger(__name__).warning("cannot snapshot %s: %s", path, exc)
+            continue
+        try:
+            snapshot[path] = path.read_bytes()
+        except OSError as exc:
+            # A file that exists but cannot be read must abort the
+            # transaction before any mutation: restoring it as absent would
+            # delete a real configuration.
+            raise OSError(f"cannot snapshot {path}: {exc}") from exc
     return snapshot
 
 

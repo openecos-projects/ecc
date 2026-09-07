@@ -41,18 +41,11 @@ def persist_origin_inputs(
     else:
         workspace.design.origin_verilog = origin_dir / f"{workspace.design.name}.v"
 
-    golden_verilog_path = Path(golden_verilog) if golden_verilog else None
-    if golden_verilog_path and golden_verilog_path.exists():
-        target = origin_dir / f"golden_{golden_verilog_path.name}"
-        if target == workspace.design.origin_verilog or target.exists():
-            # The generated golden name collides with the primary netlist
-            # (or another input): copying would silently overwrite a real
-            # input and could make LEC compare a file with itself.
-            raise ValueError(f"golden netlist name collides with an existing input: {target}")
-        shutil.copy(golden_verilog_path, target)
-        workspace.design.golden_verilog = target
-
-    # Copy filelist and all referenced source files
+    # Copy filelist and all referenced source files BEFORE the golden
+    # netlist: the bulk copy picks destination names by relative path, so
+    # running it first lets the golden collision check below refuse an
+    # ambiguous layout instead of the copy silently overwriting the golden
+    # file with RTL source content.
     input_filelist_path = Path(input_filelist) if input_filelist else None
     if input_filelist_path and input_filelist_path.exists():
         try:
@@ -71,6 +64,17 @@ def persist_origin_inputs(
             target = origin_dir / input_filelist_path.name
             shutil.copy(input_filelist_path, target)
             workspace.design.input_filelist = target
+
+    golden_verilog_path = Path(golden_verilog) if golden_verilog else None
+    if golden_verilog_path and golden_verilog_path.exists():
+        target = origin_dir / f"golden_{golden_verilog_path.name}"
+        if target == workspace.design.origin_verilog or target.exists():
+            # The generated golden name collides with the primary netlist
+            # (or another input): copying would silently overwrite a real
+            # input and could make LEC compare a file with itself.
+            raise ValueError(f"golden netlist name collides with an existing input: {target}")
+        shutil.copy(golden_verilog_path, target)
+        workspace.design.golden_verilog = target
 
     if workspace.pdk.sdc and workspace.pdk.sdc.exists():
         sdc_target = origin_dir / workspace.pdk.sdc.name

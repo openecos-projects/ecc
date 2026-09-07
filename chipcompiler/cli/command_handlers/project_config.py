@@ -23,7 +23,9 @@ def project_set(args, ctx: CommandContext) -> CommandResult:
     config_path, missing = _config_path_or_error(ctx)
     if missing is not None:
         return missing
-    _set_value(config_path, field, value)
+    error = _set_value(config_path, field, value)
+    if error is not None:
+        return error
     return CommandResult.ok([_record(field.key, value, "set")])
 
 
@@ -34,11 +36,17 @@ def project_unset(args, ctx: CommandContext) -> CommandResult:
     config_path, missing = _config_path_or_error(ctx)
     if missing is not None:
         return missing
-    with open(config_path) as file:
-        changed = remove_scoped_key(file.read(), field.table, field.name)
+    try:
+        with open(config_path) as file:
+            changed = remove_scoped_key(file.read(), field.table, field.name)
+    except (OSError, UnicodeDecodeError) as exc:
+        return CommandResult.err([_io_error(config_path, exc)])
     if changed is None:
         return CommandResult.ok([_record(field.key, None, "no_value")])
-    write_text_atomic(config_path, changed)
+    try:
+        write_text_atomic(config_path, changed)
+    except OSError as exc:
+        return CommandResult.err([_io_error(config_path, exc)])
     return CommandResult.ok([_record(field.key, None, "unset")])
 
 
@@ -57,8 +65,8 @@ def project_show(args, ctx: CommandContext) -> CommandResult:
     try:
         with open(config_path, "rb") as file:
             data = tomllib.load(file)
-    except tomllib.TOMLDecodeError as exc:
-        return CommandResult.err([error_record("invalid_project_config", reason=str(exc))])
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        return CommandResult.err([_io_error(config_path, exc)])
     if args.key is not None:
         field, error = _field_or_error(args.key)
         if error is not None:
@@ -110,8 +118,8 @@ def _change_rtl(args, ctx: CommandContext, *, add: bool) -> CommandResult:
     try:
         with open(config_path, "rb") as file:
             data = tomllib.load(file)
-    except tomllib.TOMLDecodeError as exc:
-        return CommandResult.err([error_record("invalid_project_config", reason=str(exc))])
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        return CommandResult.err([_io_error(config_path, exc)])
     current = data.get("design", {}).get("rtl", [])
     if not isinstance(current, list) or not all(isinstance(value, str) for value in current):
         return CommandResult.err(
@@ -123,14 +131,28 @@ def _change_rtl(args, ctx: CommandContext, *, add: bool) -> CommandResult:
     else:
         updated = [value for value in current if value not in values]
         status = "removed"
-    _set_value(config_path, field, updated)
+    error = _set_value(config_path, field, updated)
+    if error is not None:
+        return error
     return CommandResult.ok([_record(field.key, updated, status)])
 
 
-def _set_value(config_path: str, field, value: object) -> None:
-    with open(config_path) as file:
-        updated = set_scoped_key(file.read(), field.table, field.name, value)
-    write_text_atomic(config_path, updated)
+def _set_value(config_path: str, field, value: object) -> CommandResult | None:
+    """Apply one field edit; returns a structured error when the edit fails."""
+    try:
+        with open(config_path) as file:
+            updated = set_scoped_key(file.read(), field.table, field.name, value)
+    except (OSError, UnicodeDecodeError) as exc:
+        return _io_error(config_path, exc)
+    try:
+        write_text_atomic(config_path, updated)
+    except OSError as exc:
+        return _io_error(config_path, exc)
+    return None
+
+
+def _io_error(config_path: str, exc: Exception) -> dict:
+    return error_record("config_error", path=config_path, reason=str(exc))
 
 
 def _field_or_error(key: str):

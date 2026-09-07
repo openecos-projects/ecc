@@ -16,6 +16,7 @@ tools/ecc/metrics.py::build_qor_metrics_payload.
 """
 
 import dataclasses
+import math
 from pathlib import Path
 
 from chipcompiler.data import StateEnum, StepEnum
@@ -164,15 +165,18 @@ class QorScoreReport:
 
 
 def _flexible_number(value):
+    """Parse a finite metric number; NaN/Infinity are invalid, not extreme."""
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        return float(value)
+        number = float(value)
+        return number if math.isfinite(number) else None
     if isinstance(value, str) and value.strip():
         try:
-            return float(value.replace(",", "").strip())
+            number = float(value.replace(",", "").strip())
         except ValueError:
             return None
+        return number if math.isfinite(number) else None
     return None
 
 

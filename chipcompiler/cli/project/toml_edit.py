@@ -106,10 +106,19 @@ def _extend_multiline_value(text: str, match_end: int) -> int:
                 pos += 1
             continue
         if ch == "#":
+            # A comment ends the value only at the top level; inside a
+            # bracket collection it decorates the line and the collection
+            # continues on the next line.
+            if depth <= 0:
+                nl = text.find("\n", pos)
+                if nl == -1:
+                    return n
+                return nl + 1
             nl = text.find("\n", pos)
             if nl == -1:
                 return n
-            return nl + 1
+            pos = nl + 1
+            continue
         if ch in ('"', "'"):
             triple = text[pos : pos + 3]
             if triple in ('"""', "'''"):
@@ -248,11 +257,14 @@ def set_pdk_root(text: str, value: str) -> str:
     key_pattern = re.compile(r"^(\s*)root\s*=[^\n]*$", re.MULTILINE)
     key_match = key_pattern.search(section)
     if key_match:
-        new_section = (
-            section[: key_match.start()]
-            + f"{key_match.group(1)}root = {value_str}"
-            + section[key_match.end() :]
-        )
+        # Same value-range logic as set_scoped_key: a multiline value must
+        # be replaced whole, never leaving its tail behind.
+        end = _extend_multiline_value(section, key_match.end())
+        indent = key_match.group(1)
+        new_line = f"{indent}root = {value_str}"
+        if end > key_match.end():
+            new_line += "\n"
+        new_section = section[: key_match.start()] + new_line + section[end:]
     else:
         new_section = f"root = {value_str}\n" + section
     return text[:body_start] + new_section + text[body_end:]
