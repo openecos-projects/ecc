@@ -30,18 +30,8 @@ def register_doc_commands(app: typer.Typer) -> None:
 
 def doc_cmd(
     topic: Annotated[DocTopic, typer.Argument(help="Guide to show")],
-    section: Annotated[
-        str | None,
-        typer.Argument(help="Section token from the guide's numbered headings, e.g. 7 or 8.5"),
-    ] = None,
     *,
     lang: Annotated[DocLanguage, typer.Option("--lang", help="Guide language")] = DocLanguage.en,
-    sections: Annotated[
-        bool,
-        typer.Option(
-            "--sections", help="List the guide's numbered sections with their titles, then exit"
-        ),
-    ] = False,
     plain: Annotated[
         bool,
         typer.Option("--plain", help="Print the raw markdown instead of the rendered layout"),
@@ -49,22 +39,11 @@ def doc_cmd(
 ) -> None:
     try:
         raw = docs.load_guide(topic.value, lang.value)
-        if plain and section is None and not sections:
+        if plain:
             _write_plain(raw)
             return
         text = raw.decode("utf-8")
-        if sections:
-            if section is not None:
-                typer.echo("Error: --sections cannot be combined with SECTION", err=True)
-                raise typer.Exit(1)
-            _write_text(docs.table_of_contents(text))
-            return
-        if section is not None:
-            text = docs.slice_section(text, section)
     except docs.GuideNotFoundError as exc:
-        typer.echo(f"Error: {exc}", err=True)
-        raise typer.Exit(1) from None
-    except docs.SectionNotFoundError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from None
     except UnicodeDecodeError:
@@ -77,14 +56,10 @@ def doc_cmd(
         typer.echo(f"Error: could not read guide: {exc}", err=True)
         raise typer.Exit(1) from None
 
-    if plain:
-        _write_plain(text.encode("utf-8"))
-        return
-
     from chipcompiler.cli.rendering.render import render_markdown
 
     try:
-        render_markdown(text, color=supports_color())
+        render_markdown(text, color=supports_color(), pager=True)
     except UnicodeEncodeError:
         typer.echo(
             "Error: terminal encoding cannot render this guide; try --plain",
@@ -100,11 +75,3 @@ def _write_plain(data: bytes) -> None:
     else:
         stream.write(data)
         stream.flush()
-
-
-def _write_text(text: str) -> None:
-    try:
-        sys.stdout.write(text)
-    except UnicodeEncodeError:
-        typer.echo("Error: terminal encoding cannot render this output", err=True)
-        raise typer.Exit(1) from None

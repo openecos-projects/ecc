@@ -37,14 +37,6 @@ def test_doc_config_plain_is_byte_identical_to_the_guide_file(capsysbinary):
     assert out == (guides_root() / "ecc-cli-config.en.md").read_bytes()
 
 
-def test_doc_config_section_plain_output_is_byte_exact(capsysbinary):
-    rc = cli_main.run(["doc", "config", "7", "--plain"])
-
-    out = capsysbinary.readouterr().out
-    assert rc == 0
-    assert out in (guides_root() / "ecc-cli-config.en.md").read_bytes()
-
-
 def test_doc_plain_preserves_crlf_line_endings(tmp_path, monkeypatch, capsysbinary):
     guide = tmp_path / "docs" / "ecc-cli-config.en.md"
     guide.parent.mkdir()
@@ -56,23 +48,6 @@ def test_doc_plain_preserves_crlf_line_endings(tmp_path, monkeypatch, capsysbina
     out = capsysbinary.readouterr().out
     assert rc == 0
     assert out == b"# Packaged guide\r\n\r\ntext\r\n"
-
-
-def test_doc_section_plain_preserves_crlf_and_trailing_whitespace(
-    tmp_path, monkeypatch, capsysbinary
-):
-    guide = tmp_path / "docs" / "ecc-cli-config.en.md"
-    guide.parent.mkdir()
-    guide.write_bytes(
-        b"# Guide\r\n\r\n## 1. First\r\n\r\ntext   \r\n\r\n\r\n## 2. Second\r\nbody\r\n"
-    )
-    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
-
-    rc = cli_main.run(["doc", "config", "1", "--plain"])
-
-    out = capsysbinary.readouterr().out
-    assert rc == 0
-    assert out == b"## 1. First\r\n\r\ntext   \r\n\r\n\r\n"
 
 
 def test_rendered_output_survives_non_utf8_stdout_via_plain_fallback(tmp_path, monkeypatch, capsys):
@@ -117,141 +92,36 @@ def test_missing_guide_resource_fails_with_exit_1(tmp_path, monkeypatch, capsys)
     assert "Error: doc resource not found: ecc-cli-config.en.md" in captured.err
 
 
-def test_doc_section_slice_selects_exactly_one_section(capsys):
-    rc = cli_main.run(["doc", "config", "7", "--plain"])
-
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "cts_ecc.json" in out
-    assert out.startswith("## 7.")
-    assert "## 8." not in out
-
-
-def test_doc_section_tokens_match_exactly(capsys):
-    rc = cli_main.run(["doc", "ug", "8", "--plain"])
-
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert out.startswith("## 8. config")
-    assert "## 8.5." not in out
-
-    rc = cli_main.run(["doc", "ug", "8.5", "--plain"])
-
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert out.startswith("## 8.5.")
-
-
-def test_doc_sections_lists_tokens_with_titles(capsys):
-    rc = cli_main.run(["doc", "config", "--sections"])
-
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "Configuration System Overview" in out
-    assert "cts (ecc-tools)" in out
-    assert "8.5" not in out
-
-
-def test_heading_parser_handles_empty_titles_and_adjacent_headings():
-    text = "## 1.\n## 2. Next\nbody\n"
-
-    assert docs.heading_entries(text) == [("1", ""), ("2", "Next")]
-    assert docs.slice_section(text, "2") == "## 2. Next\nbody\n"
-    assert "  2  Next" in docs.table_of_contents(text)
-
-
-def test_doc_sections_output_pairs_each_token_with_its_title(capsys):
-    rc = cli_main.run(["doc", "ug", "--sections"])
-
-    out = capsys.readouterr().out
-    entries = {}
-    for line in out.splitlines():
-        parts = line.strip().split(None, 1)
-        if parts:
-            entries[parts[0]] = parts[1] if len(parts) > 1 else ""
-    assert rc == 0
-    assert entries["8"] == "config — view the resolved configuration"
-    assert entries["8.5"] == (
-        "project / workspace — edit project declarations and refresh workspaces"
-    )
-
-
-def test_doc_sections_combination_error_is_single_line_with_empty_stdout(capsys):
-    rc = cli_main.run(["doc", "config", "7", "--sections"])
-
-    captured = capsys.readouterr()
-    assert rc == 1
-    assert captured.out == ""
-    assert len(captured.err.strip().splitlines()) == 1
-
-
-def test_doc_sections_fails_cleanly_on_non_utf8_stdout(tmp_path, monkeypatch, capsys):
-    import io
-
-    guide = tmp_path / "docs" / "ecc-cli-ug.en.md"
-    guide.parent.mkdir()
-    guide.write_bytes("## 1. ünïcode title\n".encode())
-    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
-    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(io.BytesIO(), encoding="ascii"))
-
-    rc = cli_main.run(["doc", "ug", "--sections"])
-
-    captured = capsys.readouterr()
-    assert rc == 1
-    assert "Error:" in captured.err
-
-
-def test_doc_sections_with_chinese_titles(capsys):
-    rc = cli_main.run(["doc", "ug", "--lang", "cn", "--sections"])
-
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "8.5" in out
-    assert any("\u4e00" <= ch <= "\u9fff" for ch in out)
-
-
-def test_doc_sections_rejects_section_combination(capsys):
-    rc = cli_main.run(["doc", "config", "7", "--sections"])
-
-    captured = capsys.readouterr()
-    assert rc == 1
-    assert "Error:" in captured.err
-
-
-def test_doc_unknown_section_lists_available_tokens(capsys):
-    rc = cli_main.run(["doc", "config", "99"])
-
-    captured = capsys.readouterr()
-    assert rc == 1
-    assert "no section 99" in captured.err
-    for token in ("0", "7", "16"):
-        assert token in captured.err
-    assert "Configuration System Overview" in captured.err
-
-
-def test_doc_without_section_shows_the_full_guide(capsys):
-    rc = cli_main.run(["doc", "tutorial", "1", "--plain"])
-
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert out.startswith("## 1.")
-
-
 def test_doc_chinese_language(capsys):
     rc = cli_main.run(["doc", "config", "--lang", "cn", "--plain"])
 
     out = capsys.readouterr().out
     assert rc == 0
-    assert any("\u4e00" <= ch <= "\u9fff" for ch in out)
+    assert any("一" <= ch <= "鿿" for ch in out)
 
 
 def test_doc_default_text_output_keeps_unicode_layout_without_ansi(capsys):
-    rc = cli_main.run(["doc", "config", "1"])
+    rc = cli_main.run(["doc", "config"])
 
     out = capsys.readouterr().out
     assert rc == 0
     assert "\x1b[" not in out
-    assert "\u2500" in out
+    assert "─" in out
+
+
+def test_doc_pages_the_full_guide_when_stdout_is_a_tty(monkeypatch, capsys):
+    import pydoc
+
+    paged = []
+    monkeypatch.setattr(pydoc, "pager", paged.append)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+
+    rc = cli_main.run(["doc", "config"])
+
+    assert rc == 0
+    assert capsys.readouterr().out == ""
+    assert len(paged) == 1
+    assert "cts_ecc.json" in paged[0]
 
 
 @pytest.mark.parametrize(
@@ -261,6 +131,7 @@ def test_doc_default_text_output_keeps_unicode_layout_without_ansi(capsys):
         ["doc", "CONFIG"],
         ["doc"],
         ["doc", "config", "--lang", "jp"],
+        ["doc", "config", "7"],
     ],
     ids=lambda argv: " ".join(argv),
 )

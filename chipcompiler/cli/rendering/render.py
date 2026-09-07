@@ -50,12 +50,20 @@ def _plain_value(value) -> str:
     return s
 
 
-def render_markdown(text: str, file=None, *, color: bool) -> None:
+def render_markdown(text: str, file=None, *, color: bool, pager: bool = False) -> None:
     from rich.console import Console
     from rich.markdown import Markdown
 
-    console = Console(file=file or sys.stdout, force_terminal=True, no_color=not color)
-    console.print(Markdown(text))
+    # force_terminal tracks color: forcing a terminal on a colorless stream
+    # makes rich 15 emit ANSI escapes even with no_color=True.
+    console = Console(file=file or sys.stdout, force_terminal=color, no_color=not color)
+    # Page only on a real terminal: pydoc picks its pager at import time, so
+    # its own isatty check cannot be trusted once the process has been piped.
+    if pager and file is None and sys.stdout.isatty():
+        with console.pager():
+            console.print(Markdown(text))
+    else:
+        console.print(Markdown(text))
 
 
 def render_result(

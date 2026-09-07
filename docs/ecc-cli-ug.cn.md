@@ -120,14 +120,12 @@ Commands:
 
 ```bash
 ecc doc config              # 完整配置参考（渲染输出）
-ecc doc config --sections   # 列出章节编号与标题
-ecc doc config 7            # 仅第 7 节（cts）
-ecc doc ug 8.5 --lang cn    # 小数节按编号精确匹配（8 ≠ 8.5）
+ecc doc ug --lang cn        # 本指南的中文版
 ecc doc config --plain      # 原始 markdown，逐字节输出
 ```
 
 - 主题：`config`、`ug`、`tutorial`、`dev`；`--lang` 选择 `en`（默认）或 `cn`。
-- `section` 与指南的 `## N.` 编号标题精确匹配；未知编号退出码为 1，并列出全部可用编号。
+- 终端下渲染输出会进入分页器（`$PAGER`，回退到 `less`/`more`）翻阅；管道场景直接全量输出。
 - 非法的主题/语言取值由参数校验拒绝（退出码 2）。
 - 管道输出保留 unicode 渲染版式；`--plain` 原样输出原始 markdown，适合脚本处理。
 
