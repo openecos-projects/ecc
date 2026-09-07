@@ -501,7 +501,237 @@ ics55 的 corner 命名：`Cworst/Cbest`=电容最差/最好，`RCworst/RCbest`=
 
 无专属配置文件：复用 `db_ecc.json` 定位输入（STA 输出的 DEF/网表）与输出（`Harden_ecc/output`）。子阶段仅 load data → run harden。产物为 `<设计>_Harden.gds/.lef/.lib/.png`（版图 / 抽象 LEF / 时序 LIB / 版图快照）。
 
-## 15. 配置查看与修改速查
+## 15. 各步骤的 ECC CLI 配置命令
+
+以下清单将前文的配置字段对应到可执行的 ECC CLI 命令。`VALUE` 是待替换的值占位符；列表和对象必须传入 JSON 字面量，例如 `ecc param set cts.routing_layer '[4, 5]'`。命令默认写入项目的 `ecc.toml`；要修改已创建的 workspace，请在命令末尾追加 `--workspace NAME`（PDK 路径参数除外，见 §1.4）。先执行列出的 `ecc param list --step STEP` 可查看当前版本完整的可调字段、默认值和约束。
+
+### 15.1 公共 db 配置与 PDK 路径
+
+`db_ecc.json` 的 DEF、网表、输出目录等路径由步骤调度生成，不能通过 CLI 设置。下列 PDK/设计资源路径会写入相应的 db 字段：
+
+```bash
+ecc param list --step pdk
+ecc param set pdk.tech VALUE
+ecc param set pdk.lefs VALUE
+ecc param set pdk.libs VALUE
+ecc param set pdk.mapping_file VALUE
+ecc param set pdk.sdc VALUE
+ecc param set pdk.spef VALUE
+```
+
+`pdk.root` 使用 `ecc pdk set-root PATH`，不属于 `ecc param`。绕线首层由 routing 步骤的 `route.bottom_layer` 设置，见 §15.6。
+
+### 15.2 synthesis
+
+除目标频率外，`global_var.tcl` 的输入、输出和 PDK 派生变量均不提供逐字段 CLI 覆盖：
+
+```bash
+ecc param list --step synthesis
+ecc param set design.frequency_mhz VALUE
+```
+
+### 15.3 floorplan
+
+`temp_directory_path` 与 `macro_location_path` 为流程生成/保护路径，不能通过 CLI 设置；其余已审核的 `floorplan_ecc.json` 字段使用：
+
+```bash
+ecc param list --step floorplan
+ecc param set floorplan.core_util VALUE
+ecc param set floorplan.core_margin VALUE
+ecc param set floorplan.aspect_ratio VALUE
+ecc param set floorplan.die_builder.die_size.width_micron VALUE
+ecc param set floorplan.die_builder.die_size.height_micron VALUE
+ecc param set floorplan.die_builder.mode VALUE
+ecc param set floorplan.die_builder.site_name VALUE
+ecc param set floorplan.ifp.thread_number VALUE
+ecc param set floorplan.io_placer.io_layer_list VALUE
+ecc param set floorplan.macro_placer.macro_placement_halo VALUE
+ecc param set floorplan.macro_placer.macro_routing_halo VALUE
+ecc param set floorplan.pdn_generator.global_connect VALUE
+ecc param set floorplan.pdn_generator.rail VALUE
+ecc param set floorplan.pdn_generator.stripe VALUE
+ecc param set floorplan.pdn_generator.connect_layers VALUE
+ecc param set floorplan.phy_placer.well_tap.cell_name VALUE
+ecc param set floorplan.phy_placer.well_tap.distance_micron VALUE
+ecc param set floorplan.phy_placer.side_endcap.left_cell_name VALUE
+ecc param set floorplan.phy_placer.side_endcap.right_cell_name VALUE
+ecc param set floorplan.phy_placer.edge_endcap.top_cell_name_list VALUE
+ecc param set floorplan.phy_placer.edge_endcap.bottom_cell_name_list VALUE
+ecc param set floorplan.phy_placer.boundary_tap.top_cell_name_list VALUE
+ecc param set floorplan.phy_placer.boundary_tap.bottom_cell_name_list VALUE
+ecc param set floorplan.phy_placer.boundary_tap.rule_micron VALUE
+```
+
+### 15.4 placement / legalization
+
+placement 与 legalization 共用 `dreamplace_ecc.json`，因此使用同一组 `place.*` 参数。`aux_input`、LEF/DEF/网表输入、结果目录和设计名由流程管理，不提供 CLI 参数；`place.global_right_padding` 仅保存为兼容参数，当前不映射到 DreamPlace JSON。
+
+```bash
+ecc param list --step placement
+ecc param set place.target_density VALUE
+ecc param set place.target_overflow VALUE
+ecc param set place.cell_padding_x VALUE
+ecc param set place.routability_opt VALUE
+ecc param set place.RePlAce_LOWER_PCOF VALUE
+ecc param set place.RePlAce_UPPER_PCOF VALUE
+ecc param set place.RePlAce_ref_hpwl VALUE
+ecc param set place.RePlAce_skip_energy_flag VALUE
+ecc param set place.adjust_nctugr_area_flag VALUE
+ecc param set place.adjust_pin_area_flag VALUE
+ecc param set place.adjust_rudy_area_flag VALUE
+ecc param set place.area_adjust_stop_ratio VALUE
+ecc param set place.auto_adjust_bins VALUE
+ecc param set place.bndry_padding_x VALUE
+ecc param set place.bndry_padding_y VALUE
+ecc param set place.density_weight VALUE
+ecc param set place.detailed_place_command VALUE
+ecc param set place.detailed_place_engine VALUE
+ecc param set place.detailed_place_flag VALUE
+ecc param set place.deterministic_flag VALUE
+ecc param set place.differentiable_timing_obj VALUE
+ecc param set place.dtype VALUE
+ecc param set place.dump_global_place_solution_flag VALUE
+ecc param set place.dump_legalize_solution_flag VALUE
+ecc param set place.enable_fillers VALUE
+ecc param set place.enable_net_weighting VALUE
+ecc param set place.evaluate_pl VALUE
+ecc param set place.gamma VALUE
+ecc param set place.get_congestion_map VALUE
+ecc param set place.global_place_flag VALUE
+ecc param set place.global_place_stages VALUE
+ecc param set place.gp_noise_ratio VALUE
+ecc param set place.gpu VALUE
+ecc param set place.gpu_id VALUE
+ecc param set place.ignore_net_degree VALUE
+ecc param set place.ignore_net_weight VALUE
+ecc param set place.init_loc_perc_x VALUE
+ecc param set place.init_loc_perc_y VALUE
+ecc param set place.legalize_flag VALUE
+ecc param set place.macro_halo_x VALUE
+ecc param set place.macro_halo_y VALUE
+ecc param set place.macro_overlap_flag VALUE
+ecc param set place.macro_overlap_mult_weight VALUE
+ecc param set place.macro_overlap_weight VALUE
+ecc param set place.macro_pin_halo_x VALUE
+ecc param set place.macro_pin_halo_y VALUE
+ecc param set place.macro_place_flag VALUE
+ecc param set place.max_net_weight VALUE
+ecc param set place.max_num_area_adjust VALUE
+ecc param set place.max_pin_opt_adjust_rate VALUE
+ecc param set place.max_route_opt_adjust_rate VALUE
+ecc param set place.momentum_decay_factor VALUE
+ecc param set place.net_weighting_scheme VALUE
+ecc param set place.node_area_adjust_overflow VALUE
+ecc param set place.num_bins_x VALUE
+ecc param set place.num_bins_y VALUE
+ecc param set place.num_threads VALUE
+ecc param set place.pin2pin_accumulate_weight VALUE
+ecc param set place.pin2pin_max_weight VALUE
+ecc param set place.pin2pin_min_weight VALUE
+ecc param set place.pin2pin_net_weighting VALUE
+ecc param set place.pin2pin_weight VALUE
+ecc param set place.pin_area_adjust_stop_ratio VALUE
+ecc param set place.pin_density VALUE
+ecc param set place.pin_stretch_ratio VALUE
+ecc param set place.plot_flag VALUE
+ecc param set place.random_center_init_flag VALUE
+ecc param set place.random_seed VALUE
+ecc param set place.risa_weights VALUE
+ecc param set place.route_area_adjust_stop_ratio VALUE
+ecc param set place.route_info_input VALUE
+ecc param set place.route_num_bins_x VALUE
+ecc param set place.route_num_bins_y VALUE
+ecc param set place.route_opt_adjust_exponent VALUE
+ecc param set place.scale_factor VALUE
+ecc param set place.shift_factor VALUE
+ecc param set place.sort_nets_by_degree VALUE
+ecc param set place.start_iter VALUE
+ecc param set place.timing_eval_flag VALUE
+ecc param set place.timing_opt_flag VALUE
+ecc param set place.two_stage_density_scaler VALUE
+ecc param set place.unit_horizontal_capacity VALUE
+ecc param set place.unit_pin_capacity VALUE
+ecc param set place.unit_vertical_capacity VALUE
+ecc param set place.use_bb VALUE
+ecc param set place.with_sta VALUE
+```
+
+### 15.5 timing optimization
+
+Sizer 没有专属 `ecc param` schema。其内部 DreamPlace 合法化使用 §15.4 的 `place.*` 参数，布线层限制使用 §15.6 的 `route.bottom_layer` / `route.top_layer`；Sizer 的输入、输出和脚本由流程生成，不能单独配置。
+
+### 15.6 cts 与 routing
+
+```bash
+ecc param list --step cts
+ecc param set cts.max_fanout VALUE
+ecc param set cts.skew_bound VALUE
+ecc param set cts.max_buf_tran VALUE
+ecc param set cts.root_input_slew VALUE
+ecc param set cts.max_sink_tran VALUE
+ecc param set cts.max_cap VALUE
+ecc param set cts.max_length VALUE
+ecc param set cts.wirelength_iterations VALUE
+ecc param set cts.slew_steps VALUE
+ecc param set cts.cap_steps VALUE
+ecc param set cts.routing_layer VALUE
+ecc param set cts.buffer_type VALUE
+ecc param set cts.use_netlist VALUE
+ecc param set cts.net_list VALUE
+
+ecc param list --step routing
+ecc param set route.bottom_layer VALUE
+ecc param set route.top_layer VALUE
+ecc param set route.RT.-thread_number VALUE
+ecc param set route.RT.-enable_timing VALUE
+ecc param set route.RT.-output_csv VALUE
+ecc param set route.RT.-output_inter_result VALUE
+```
+
+`route_ecc.json` 的临时目录由步骤调度生成，不能通过 CLI 设置。
+
+### 15.7 lec、drc、lvs 与 postroutelec
+
+这四个步骤没有可由 `ecc param` 修改的步骤配置：`drc_ecc.json` 为空，综合级 LEC、LVS 和 post-route LEC 分别由 Tcl 脚本、工具默认流程和 Tcl 脚本驱动。可用下列命令确认实际配置文件：
+
+```bash
+ecc config lec
+ecc config drc
+ecc config lvs
+ecc config postroutelec
+```
+
+### 15.8 filler
+
+```bash
+ecc param list --step filler
+ecc param set filler.-min_filler_width VALUE
+```
+
+### 15.9 rcx
+
+`output` 是流程生成路径；可调运行参数为：
+
+```bash
+ecc param list --step rcx
+ecc param set rcx.thread_num VALUE
+```
+
+### 15.10 sta
+
+`liberty` 由 PDK 刷新生成，不能通过 STA 参数局部覆盖。STA JSON 的签核 corner 和运行时最大路径数可配置：
+
+```bash
+ecc param list --step sta
+ecc param set sta.signoff VALUE
+ecc param set sta.max_paths VALUE
+```
+
+### 15.11 harden
+
+harden 没有专属 `ecc param` schema；它只复用流程生成的 `db_ecc.json` 输入输出。使用 `ecc config harden` 可确认该步骤没有配置文件。
+
+## 16. 配置查看与修改速查
 
 ```bash
 ecc config floorplan          # 看 floorplan 实际用的配置文件列表
