@@ -43,6 +43,7 @@ class CandidateRerunRequest:
     parameter_card_sha256: str
     seed: int
     parent_candidate_root_ref: str | None = None
+    floorplan_mode: str | None = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,7 @@ _FIELD_ALIASES = {
     "contextSha256": "context_sha256",
     "parameterCardSha256": "parameter_card_sha256",
     "parentCandidateRootRef": "parent_candidate_root_ref",
+    "floorplanMode": "floorplan_mode",
 }
 
 

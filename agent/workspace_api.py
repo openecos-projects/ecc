@@ -33,6 +33,12 @@ from .data.candidate_materialization import (
 )
 from .data.parameter_application_receipt import build_parameter_application_receipt
 from .engine import AgentEngineFlow
+from .floorplan_mode import (
+    FLOORPLAN_MODE_REF,
+    prepare_floorplan_mode,
+    validate_floorplan_mode_request,
+    validate_floorplan_mode_result,
+)
 from .requests import (
     CandidateBindInputRequest,
     CandidateMaterializeRequest,
@@ -184,12 +190,14 @@ class FlowAgentRuntimeApi:
             )
             if not preflight_done:
                 _preflight_candidate_steps(steps)
-            if request.patch:
-                _materialize_candidate_rerun(candidate_workspace, flow, request)
+            prepare_floorplan_mode(candidate_workspace, request)
+            _materialize_candidate_rerun(candidate_workspace, flow, request)
             _prepare_candidate_rerun(candidate_workspace, flow, steps)
             _notify_candidate_rerun_prepared(observer, steps, request)
             if request.patch:
                 _reapply_candidate_input(candidate_workspace, flow, request.target_step)
+            else:
+                reapply_candidate_input_binding(candidate_workspace, flow, request.target_step)
             for step in steps:
                 _run_candidate_step(flow, step, observer=observer)
             return _candidate_rerun_result(
@@ -316,6 +324,7 @@ _IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
 
 def _validate_candidate_rerun_request(request: CandidateRerunRequest) -> None:
+    validate_floorplan_mode_request(request)
     for name in ("workspace_id", "target_step", "end_step", "candidate_id"):
         value = getattr(request, name)
         if not isinstance(value, str) or not value.strip():
@@ -330,19 +339,20 @@ def _validate_candidate_rerun_request(request: CandidateRerunRequest) -> None:
         raise RuntimeApiError(
             "invalid_request", "candidate rerun execution scope must be full_flow"
         )
-    if not isinstance(request.patch, list) or len(request.patch) != 1:
+    mode_only = request.floorplan_mode is not None and request.patch == []
+    if not isinstance(request.patch, list) or (len(request.patch) != 1 and not mode_only):
         raise RuntimeApiError("invalid_request", "candidate rerun requires exactly one patch item")
-    patch_item = request.patch[0]
-    if not isinstance(patch_item, dict) or set(patch_item) != {"knob_id", "value"}:
-        raise RuntimeApiError(
-            "invalid_request", "candidate rerun patch item must contain only knob_id and value"
-        )
-    if not isinstance(patch_item["knob_id"], str) or not patch_item["knob_id"]:
-        raise RuntimeApiError("invalid_request", "candidate rerun knob_id is invalid")
-    try:
-        json.dumps(patch_item["value"], allow_nan=False)
-    except (TypeError, ValueError) as exc:
-        raise RuntimeApiError("invalid_request", "candidate rerun value is not JSON") from exc
+    for patch_item in request.patch:
+        if not isinstance(patch_item, dict) or set(patch_item) != {"knob_id", "value"}:
+            raise RuntimeApiError(
+                "invalid_request", "candidate rerun patch item must contain only knob_id and value"
+            )
+        if not isinstance(patch_item["knob_id"], str) or not patch_item["knob_id"]:
+            raise RuntimeApiError("invalid_request", "candidate rerun knob_id is invalid")
+        try:
+            json.dumps(patch_item["value"], allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeApiError("invalid_request", "candidate rerun value is not JSON") from exc
     if not isinstance(request.idempotency_key, str) or not _IDEMPOTENCY_KEY.fullmatch(
         request.idempotency_key
     ):
@@ -419,6 +429,7 @@ def _create_candidate_workspace(
 
 def _workspace_state_sha256(root: Path) -> str:
     relative_files = (
+        FLOORPLAN_MODE_REF,
         "home/flow.json",
         "home/parameters.json",
         "config/floorplan_ecc.json",
@@ -426,6 +437,8 @@ def _workspace_state_sha256(root: Path) -> str:
         "config/dreamplace_ecc.json",
         "config/dreamplace.json",
     )
+    if (root / FLOORPLAN_MODE_REF).is_file():
+        relative_files += ("home/params.toml",)
     hashes = {
         relative: _required_file_sha256(root / relative, relative)
         for relative in relative_files
@@ -560,6 +573,7 @@ def _candidate_workspace_receipt(
     execution_scope: str,
     terminal_state: str,
 ) -> dict:
+    validate_floorplan_mode_result(workspace, terminal_state)
     candidate_root = Path(workspace.directory).resolve()
     manifest_path = candidate_root / "analysis" / _CANDIDATE_WORKSPACE_MANIFEST
     if manifest_path.parent.is_symlink():
@@ -585,6 +599,7 @@ def _candidate_workspace_receipt(
     }
     artifacts = {}
     for key, relative in (
+        ("floorplan_mode", FLOORPLAN_MODE_REF),
         ("candidate_materialization", "analysis/candidate_materialization.v1.json"),
         ("candidate_input_binding", "analysis/candidate_input_binding.v1.json"),
         ("parameter_runtime_report", "analysis/parameter_runtime_report.v1.json"),
@@ -896,17 +911,22 @@ def _materialize_candidate_rerun(workspace, flow, request: CandidateRerunRequest
         raise RuntimeApiError("command_failed", "candidate DREAMPlace config is invalid")
     dreamplace_config["random_seed"] = request.seed
     write_json_atomic(dreamplace_path, dreamplace_config)
-    materialize_candidate_config(
-        workspace,
-        request.target_step,
-        request.patch,
-        request.candidate_id,
-    )
+    if request.patch:
+        materialize_candidate_config(
+            workspace,
+            request.target_step,
+            request.patch,
+            request.candidate_id,
+        )
 
 
 def _remove_stale_parameter_receipts(workspace_root: Path) -> None:
     analysis = workspace_root / "analysis"
-    for name in ("parameter_runtime_report.v1.json", "parameter_application_receipt.v1.json"):
+    for name in (
+        "parameter_runtime_report.v1.json",
+        "parameter_application_receipt.v1.json",
+        "candidate_materialization.v1.json",
+    ):
         path = analysis / name
         if path.is_symlink():
             raise RuntimeApiError("command_failed", "candidate parameter receipt path is unsafe")

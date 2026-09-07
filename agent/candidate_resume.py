@@ -11,11 +11,13 @@ from chipcompiler.runtime.workspace_api import RuntimeApiError, _state_value
 from chipcompiler.utility.path import path_is_within
 
 from .data.candidate_artifacts import validate_candidate_id
+from .data.candidate_input_binding import reapply_candidate_input_binding
 from .data.candidate_materialization import (
     candidate_written_patch,
     reapply_materialized_candidate_config,
     validate_candidate_materialization_receipt,
 )
+from .floorplan_mode import FLOORPLAN_MODE_REF, validate_floorplan_mode_resume
 from .requests import CandidateRerunRequest, CandidateResumeRequest
 from .workspace_api import (
     _CANDIDATE_WORKSPACE_MANIFEST,
@@ -229,9 +231,12 @@ def _validate_candidate_resume_manifest(
 
 def _validate_candidate_resume_artifacts(candidate_root: Path, artifacts: object) -> None:
     required = {
-        "candidate_materialization": "analysis/candidate_materialization.v1.json",
         "candidate_input_binding": "analysis/candidate_input_binding.v1.json",
     }
+    if isinstance(artifacts, dict) and "floorplan_mode" in artifacts:
+        required["floorplan_mode"] = FLOORPLAN_MODE_REF
+    else:
+        required["candidate_materialization"] = "analysis/candidate_materialization.v1.json"
     if not isinstance(artifacts, dict) or any(
         not isinstance(artifacts.get(key), dict) or artifacts[key].get("ref") != ref
         for key, ref in required.items()
@@ -302,11 +307,22 @@ def _validated_candidate_resume_patch(
 ) -> list[dict]:
     target_step = manifest["target_step"]
     try:
-        reapply_materialized_candidate_config(workspace, target_step)
-        materialization = validate_candidate_materialization_receipt(workspace, target_step)
-        if materialization is None or materialization["candidate_id"] != request.candidate_id:
-            raise ValueError("candidate materialization receipt is missing or mismatched")
-        _reapply_candidate_input(workspace, flow, target_step)
+        mode = validate_floorplan_mode_resume(workspace, request)
+        if mode is not None and mode["target_step"] != target_step:
+            raise ValueError("candidate resume floorplan mode stage is invalid")
+        mode_only = mode is not None and mode["patch"] == []
+        if mode_only:
+            if target_step != "Floorplan" or "candidate_materialization" in manifest["artifacts"]:
+                raise ValueError("mode-only baseline binding is invalid")
+            binding = reapply_candidate_input_binding(workspace, flow, target_step)
+            if binding is None or binding["candidate_id"] != request.candidate_id:
+                raise ValueError("mode-only baseline input binding is invalid")
+        else:
+            reapply_materialized_candidate_config(workspace, target_step)
+            materialization = validate_candidate_materialization_receipt(workspace, target_step)
+            if materialization is None or materialization["candidate_id"] != request.candidate_id:
+                raise ValueError("candidate materialization receipt is missing or mismatched")
+            _reapply_candidate_input(workspace, flow, target_step)
     except ValueError as exc:
         raise RuntimeApiError(
             "command_failed", f"candidate resume receipt binding is invalid: {exc}"
@@ -318,9 +334,13 @@ def _validated_candidate_resume_patch(
         raise RuntimeApiError("command_failed", "candidate resume seed binding is invalid") from exc
     if not isinstance(dreamplace, dict) or dreamplace.get("random_seed") != request.seed:
         raise RuntimeApiError("command_failed", "candidate resume seed binding is invalid")
+    if mode_only:
+        return []
     requested_patch = _candidate_resume_requested_patch(
         workspace, manifest, request, materialization["patch"], target_step
     )
+    if mode is not None and mode["patch"] != requested_patch:
+        raise RuntimeApiError("command_failed", "candidate resume floorplan mode patch is invalid")
     try:
         written_patch = candidate_written_patch(workspace, target_step, requested_patch)
     except ValueError as exc:
@@ -368,6 +388,7 @@ def _candidate_resume_requested_patch(
 def _candidate_resume_config_backups(workspace) -> dict[Path, bytes]:
     root = Path(workspace.directory)
     relatives = (
+        "home/params.toml",
         "home/parameters.json",
         "config/floorplan_ecc.json",
         "config/cts_ecc.json",
@@ -389,7 +410,9 @@ def _restore_candidate_resume_configs(workspace, backups: dict[Path, bytes]) -> 
     parameters = getattr(workspace, "parameters", None)
     parameters_path = getattr(parameters, "path", None)
     if parameters_path and Path(parameters_path) in backups:
-        parameters.data = json.loads(backups[Path(parameters_path)])
+        from chipcompiler.data.parameter import load_parameter
+
+        parameters.data = load_parameter(parameters_path).data
 
 
 def _notify_candidate_resume_prepared(observer, steps: list, target_step: str) -> None:

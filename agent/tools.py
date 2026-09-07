@@ -4,6 +4,7 @@ from chipcompiler.tools.eda import load_eda_module
 
 from .data import reapply_materialized_candidate_config
 from .data.parameter_runtime_observer import run_with_parameter_observation
+from .floorplan_mode import apply_floorplan_mode
 from .plot import AgentECCToolsPlot
 from .runtime_env import isolated_sizer_loader_environment
 from .sta_parallel import run_parallel_sta, sta_workers
@@ -17,6 +18,7 @@ def run_step(workspace: Workspace, step: WorkspaceStep, ecc_module=None) -> bool
         return False
     eda_module.build_step_config(workspace, step)
     materialization = reapply_materialized_candidate_config(workspace, step.name)
+    apply_floorplan_mode(workspace, step.name)
     log_workspace_step(step, workspace.logger)
 
     def run_tool():
