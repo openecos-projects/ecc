@@ -129,6 +129,17 @@ ecc doc config --plain      # 原始 markdown，逐字节输出
 - 非法的主题/语言取值由参数校验拒绝（退出码 2）。
 - 管道输出保留 unicode 渲染版式；`--plain` 原样输出原始 markdown，适合脚本处理。
 
+## 1.6. Shell 补全
+
+`ecc` 内置 bash、zsh、fish、powershell 的 Shell 补全。打印激活脚本并加载到当前会话：
+
+```bash
+eval "$(ecc --show-completion)"     # 自动探测当前 shell
+```
+
+- 把该行写入 `~/.zshrc` / `~/.bashrc`（或 home-manager 的 `initExtra`）即可永久启用。zsh 需要先初始化 `compinit`。
+- 在 NixOS 等声明式管理的环境中，请用上面的 `eval` 方式而不是 `--install-completion`：后者会原地改写 `~/.zshrc` / `~/.bashrc`，对只读 rc 符号链接会失败，且与 home-manager 冲突。
+
 ## 2. version — 查看版本
 
 ```bash

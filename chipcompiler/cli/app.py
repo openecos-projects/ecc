@@ -1,4 +1,5 @@
 import json
+import os
 from collections.abc import Sequence
 from typing import Annotated
 
@@ -18,7 +19,7 @@ from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.version_info import root_version_line, version_payload, version_text
 from chipcompiler.cli.inspection.tool_versions import tool_versions
 
-app = create_app(help="ECC - EDA toolchain for RTL-to-GDS flows")
+app = create_app(help="ECC - EDA toolchain for RTL-to-GDS flows", add_completion=True)
 
 
 def version_callback(value: bool) -> None:  # noqa: FBT001 -- typer invokes Option callbacks positionally
@@ -94,7 +95,8 @@ app.add_typer(rpc_app, name="rpc")
 
 def invoke_typer_app(argv: Sequence[str]) -> int:
     command = typer.main.get_command(app)
-    if not argv:
+    # Shell completion requests carry their arguments in env vars, not argv.
+    if not argv and "_ECC_COMPLETE" not in os.environ:
         typer.echo(command.get_help(typer.Context(command, info_name="ecc")), err=True)
         return 1
 

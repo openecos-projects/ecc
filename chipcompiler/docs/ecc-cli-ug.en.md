@@ -129,6 +129,17 @@ ecc doc config --plain      # raw markdown, byte-for-byte
 - Invalid topic/language values are rejected by argument validation (exit 2).
 - Default output keeps the rendered unicode layout even when piped; `--plain` prints the raw markdown unchanged (script-friendly).
 
+## 1.6. Shell completion
+
+`ecc` ships built-in shell completion for bash, zsh, fish, and powershell. Print the activation script and load it into the current session:
+
+```bash
+eval "$(ecc --show-completion)"     # auto-detects the current shell
+```
+
+- Add that line to `~/.zshrc` / `~/.bashrc` (or home-manager `initExtra`) to enable completion permanently. zsh requires `compinit` to be initialized first.
+- On NixOS or other declaratively managed setups, prefer the `eval` line over `--install-completion`: the latter rewrites `~/.zshrc` / `~/.bashrc` in place, which fails on read-only rc symlinks and conflicts with home-manager.
+
 ## 2. version — show versions
 
 ```bash
