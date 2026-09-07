@@ -164,9 +164,15 @@ def build_project_config_items(
     if prov_error:
         return [{"kind": "error", "status": "invalid_config", "reason": prov_error}], 1
     toml_overrides = dict(cfg.params_overrides)
-    if "design.frequency_mhz" not in toml_overrides and cfg.design_frequency_mhz > 0:
+    if "design.frequency_mhz" not in toml_overrides and "design.frequency_mhz" in getattr(
+        cfg, "_explicit_keys", frozenset()
+    ):
+        # Only an explicit ecc.toml [design] frequency is an ecc.toml-layer
+        # value; a manifest-filled design_frequency_mhz (manifest-only and
+        # filled hybrid configs) must present through the manifest overrides
+        # beneath, or it masks the manifest layer's own type errors.
         toml_overrides["design.frequency_mhz"] = cfg.design_frequency_mhz
-    resolved_params, _ = resolve_parameters(
+    resolved_params, resolve_errors = resolve_parameters(
         toml_overrides=toml_overrides,
         cli_overrides=cli_provenance,
         manifest_overrides=_manifest_parameter_overrides(cfg),
@@ -186,6 +192,17 @@ def build_project_config_items(
                 "inspect_cmd": disclosure_cmd(f"ecc param show {rp.param}", project),
             }
         )
+
+    # Parameter resolution errors (including ecc.toml [params] parse errors)
+    # must not be swallowed: a view that silently shows defaults hides that
+    # the effective values are not what is displayed. They lead the item list
+    # so the handler's error dispatch sees them first.
+    error_records = [
+        {"kind": "error", "status": "invalid_config", "reason": err}
+        for err in [*resolve_errors, *getattr(cfg, "_param_errors", [])]
+    ]
+    if error_records:
+        return [*error_records, *items], 1
 
     return items, 0
 
@@ -298,7 +315,7 @@ def _manifest_parameter_overrides(cfg) -> dict:
     to GUI-flat aliases (utilitization, margin, ...), so the lookup runs on
     the canonical projection whose nested keys match the registry's maps_to.
     """
-    from chipcompiler.cli.project.params import PARAM_REGISTRY
+    from chipcompiler.cli.project.params import PARAM_REGISTRY, manifest_value_for
     from chipcompiler.data.parameter_keys import geometry_to_parameters
 
     manifest_parameters = getattr(cfg, "manifest_parameters", None) or {}
@@ -307,16 +324,7 @@ def _manifest_parameter_overrides(cfg) -> dict:
     canonical = geometry_to_parameters(manifest_parameters)
     overrides = {}
     for schema in PARAM_REGISTRY:
-        maps_to = schema.maps_to
-        value = None
-        if isinstance(maps_to, str):
-            value = canonical.get(maps_to)
-        elif isinstance(maps_to, dict):
-            for subtree, leaf in maps_to.items():
-                node = canonical.get(subtree)
-                if isinstance(node, dict):
-                    value = node.get(leaf)
-                    break
-        if value is not None:
+        value, present = manifest_value_for(canonical, schema.maps_to)
+        if present:
             overrides[schema.param] = value
     return overrides

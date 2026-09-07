@@ -226,6 +226,38 @@ def execute_fresh_run(
     project = ctx.project
     project_dir = ctx.project_dir
 
+    base = None
+    if cfg.manifest_parameters:
+        # Manifest base layer: ecc.toml/--set values overlay it, not the
+        # other way around. Values were validated up front by
+        # effective_config.validate_effective (shared with `ecc check`);
+        # this coercion is defense-in-depth for that contract, so a failure
+        # here must not strand a freshly created run target — and it runs
+        # before filelist materialization so no ecc-rtl-* temp artifacts
+        # can leak either. Keys an ecc.toml/--set override actually
+        # replaces are skipped: their higher-layer value wins anyway.
+        from chipcompiler.cli.project.effective_config import effective_override_keys
+        from chipcompiler.cli.project.params import coerce_manifest_parameters
+        from chipcompiler.data.parameter_keys import geometry_to_parameters
+
+        base, coerce_errors = coerce_manifest_parameters(
+            geometry_to_parameters(cfg.manifest_parameters),
+            skip_params=effective_override_keys(cfg, cli_overrides),
+        )
+        if coerce_errors:
+            if owns_target:
+                shutil.rmtree(run_dir, ignore_errors=True)
+            return CommandResult.err(
+                [
+                    {
+                        "kind": "error",
+                        "error": "config_error",
+                        "reason": f"project.json: {err}",
+                    }
+                    for err in coerce_errors
+                ]
+            )
+
     _, origin_verilog, input_filelist = resolve_rtl(cfg)
     generated_filelist = None
     if len(cfg.design_rtl) > 1:
@@ -243,14 +275,7 @@ def execute_fresh_run(
     parameters = to_parameters(cfg)
     pdk_root = resolve_pdk_root(cfg)
 
-    manifest_parameters = cfg.manifest_parameters
-    if manifest_parameters:
-        # Manifest base layer: ecc.toml/--set values overlay it, not the
-        # other way around. Values were validated up front by
-        # effective_config.validate_effective (shared with `ecc check`).
-        from chipcompiler.data.parameter_keys import geometry_to_parameters
-
-        base = geometry_to_parameters(manifest_parameters)
+    if base is not None:
         update_parameters(parameters, base)
         parameters = base
 

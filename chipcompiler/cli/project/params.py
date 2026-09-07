@@ -1,3 +1,4 @@
+import copy
 from dataclasses import dataclass
 
 
@@ -177,6 +178,17 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         range=(1, 100000),
         example="1000",
     ),
+    ParamSchema(
+        param="flow.run_analysis",
+        group="flow",
+        name="run_analysis",
+        type="bool",
+        default=True,
+        applies="all",
+        maps_to="run_analysis",
+        description="Run per-step analysis (metrics, plots, checklist) after each step",
+        example="false",
+    ),
 )
 
 _REGISTRY_INDEX: dict[str, ParamSchema] = {s.param: s for s in PARAM_REGISTRY}
@@ -306,7 +318,7 @@ class ResolvedParam:
     schema: ParamSchema
 
 
-def _validate_toml_type(value: object, schema: ParamSchema) -> tuple[object, str | None]:
+def _validate_schema_type(value: object, schema: ParamSchema) -> tuple[object, str | None]:
     ptype = schema.type
     key = schema.param
 
@@ -319,7 +331,12 @@ def _validate_toml_type(value: object, schema: ParamSchema) -> tuple[object, str
         if isinstance(value, bool):
             return value, f"expected float for {key}, got bool"
         if isinstance(value, (int, float)):
-            return float(value), None
+            try:
+                return float(value), None
+            except OverflowError:
+                # A huge JSON integer cannot become a float; that is invalid
+                # input, not a crash.
+                return value, f"expected float for {key}, value too large to represent"
         return value, f"expected float for {key}, got {type(value).__name__}"
 
     if ptype == "bool":
@@ -354,7 +371,10 @@ def _validate_toml_type(value: object, schema: ParamSchema) -> tuple[object, str
                 return value, f"expected list[float] for {key}, element {i} is bool"
             if not isinstance(v, (int, float)):
                 return value, f"expected list[float] for {key}, element {i} is {type(v).__name__}"
-        return [float(v) for v in value], None
+        try:
+            return [float(v) for v in value], None
+        except OverflowError:
+            return value, f"expected list[float] for {key}, value too large to represent"
 
     if ptype == "list[str]":
         if not isinstance(value, list):
@@ -396,7 +416,7 @@ def resolve_parameters(
             )
         elif key in toml_overrides:
             value = toml_overrides[key]
-            value, coerce_err = _validate_toml_type(value, schema)
+            value, coerce_err = _validate_schema_type(value, schema)
             if coerce_err:
                 errors.append(coerce_err)
             val_errors = validate_value(value, schema)
@@ -413,6 +433,9 @@ def resolve_parameters(
             )
         elif key in manifest_overrides:
             value = manifest_overrides[key]
+            value, coerce_err = _validate_schema_type(value, schema)
+            if coerce_err:
+                errors.append(coerce_err)
             val_errors = validate_value(value, schema)
             if val_errors:
                 errors.extend(val_errors)
@@ -442,6 +465,60 @@ def resolve_parameters(
 # ---------------------------------------------------------------------------
 # Semantic-to-backend mapping
 # ---------------------------------------------------------------------------
+
+
+def manifest_value_for(canonical: dict, maps_to: str | dict) -> tuple[object, bool]:
+    """Resolve a manifest-layer value via its schema target (presence-keyed).
+
+    A string ``maps_to`` is a top-level canonical key; a dict ``maps_to`` is a
+    single-level (subtree, leaf) path. Returns (value, present): an explicit
+    JSON ``null`` counts as present, an absent key does not.
+    """
+    if isinstance(maps_to, str):
+        if maps_to in canonical:
+            return canonical[maps_to], True
+        return None, False
+    for subtree, leaf in maps_to.items():
+        node = canonical.get(subtree)
+        if isinstance(node, dict) and leaf in node:
+            return node[leaf], True
+    return None, False
+
+
+def coerce_manifest_parameters(
+    canonical: dict,
+    registry: tuple[ParamSchema, ...] = PARAM_REGISTRY,
+    skip_params: frozenset | set = frozenset(),
+) -> tuple[dict, list[str]]:
+    """Coerce manifest-layer parameter values to their schema types.
+
+    Type check/coercion only — range/choice rules stay check-path concerns.
+    Works on a deep copy: coerced values are written back, uncoercible values
+    are left as-is (the caller decides what an error means), and keys outside
+    the registry pass through untouched (forward-compatible).
+    """
+    coerced = copy.deepcopy(canonical)
+    errors: list[str] = []
+    for schema in registry:
+        if schema.param in skip_params:
+            continue
+        value, present = manifest_value_for(coerced, schema.maps_to)
+        if not present:
+            continue
+        new_value, err = _validate_schema_type(value, schema)
+        if err:
+            errors.append(err)
+            continue
+        maps_to = schema.maps_to
+        if isinstance(maps_to, str):
+            coerced[maps_to] = new_value
+        elif isinstance(maps_to, dict):
+            for subtree, leaf in maps_to.items():
+                node = coerced.get(subtree)
+                if isinstance(node, dict) and leaf in node:
+                    node[leaf] = new_value
+                    break
+    return coerced, errors
 
 
 def build_backend_overrides(resolved: list[ResolvedParam]) -> dict:
@@ -515,7 +592,7 @@ def parse_toml_params(params_table: dict) -> tuple[dict[str, object], list[str]]
                 if isinstance(value, str):
                     parsed = parse_value(value, schema)
                 else:
-                    parsed, type_err = _validate_toml_type(value, schema)
+                    parsed, type_err = _validate_schema_type(value, schema)
                     if type_err:
                         errors.append(type_err)
                         continue
