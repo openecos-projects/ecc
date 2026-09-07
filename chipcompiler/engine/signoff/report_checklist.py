@@ -114,9 +114,13 @@ def _pad(text: str, width: int) -> str:
     return text if len(text) >= width else text + " " * (width - len(text))
 
 
-def generate_checklist_report(workspace) -> str:
-    """Render the signoff checklist as a text report."""
-    report = build_checklist_report(workspace)
+def generate_checklist_report(workspace, report=None) -> str:
+    """Render the signoff checklist as a text report.
+
+    Pass a prebuilt *report* to render the exact snapshot the caller
+    already collected instead of re-traversing the workspace.
+    """
+    report = report if report is not None else build_checklist_report(workspace)
     lines: list[str] = []
     title = "  ECC SIGNOFF CHECKLIST REPORT  "
     side = max(0, (WIDTH - len(title)) // 2)

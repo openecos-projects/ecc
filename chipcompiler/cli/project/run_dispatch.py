@@ -150,11 +150,20 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
                 )
             ]
         )
-    except OSError:
+    except OSError as exc:
         if backup_path is not None:
             with contextlib.suppress(OSError):
                 os.replace(backup_path, run_dir)
-        return False
+        return CommandResult.err(
+            [
+                error_record(
+                    "workspace_create_failed",
+                    workspace_id=run_name,
+                    workspace=run_dir,
+                    reason=str(exc),
+                )
+            ]
+        )
 
 
 def _abandon_prepared_target(backup_path: str | None, run_dir: str, *, owns_target: bool) -> None:
@@ -313,6 +322,7 @@ def dispatch_project_run(
                         flow_config=flow_config,
                     )
                     if registration == "conflict":
+                        _abandon_prepared_target(backup_path, run_dir, owns_target=owns_target)
                         return CommandResult.err(
                             [
                                 error_record(

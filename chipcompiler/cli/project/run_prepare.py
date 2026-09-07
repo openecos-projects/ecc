@@ -223,10 +223,25 @@ def execute_fresh_run(
     project = ctx.project
     project_dir = ctx.project_dir
 
+    # Commit point: once the replacement is verified and the backup is
+    # discarded, execution failures are a normal failed run — the new tree
+    # stays, and cleanup must no longer touch it.
+    committed_state = {"value": False}
+
+    def commit_replacement():
+        committed_state["value"] = True
+        if backup_path is not None:
+            shutil.rmtree(backup_path, ignore_errors=True)
+
+    def terminal_failure() -> bool:
+        """A failure marks the entry failed when the target stays; a
+        restored backup keeps its prior manifest status."""
+        return committed_state["value"] or backup_path is None
+
     def cleanup_failed_target():
         """Remove a partially created target and put a renamed-aside
         workspace back, so the previous artifacts survive the failure."""
-        if not owns_target:
+        if not owns_target or committed_state["value"]:
             return
         shutil.rmtree(run_dir, ignore_errors=True)
         if backup_path is not None:
@@ -266,7 +281,7 @@ def execute_fresh_run(
 
     def failed_workspace(reason: str | None) -> CommandResult:
         cleanup_failed_target()
-        if backup_path is None and workspace_registered:
+        if terminal_failure() and workspace_registered:
             # The target is genuinely gone: mark the entry failed. A restored
             # backup keeps its prior status — the refresh never happened.
             _write_back_status(project_dir, run_name, "failed", warning_records)
@@ -405,10 +420,10 @@ def execute_fresh_run(
                 missing = persisted_steps[len(created_steps)].get("name")
                 return failed_workspace(f"step workspace creation failed at {missing}")
 
-            # The replacement is fully constructed: the previous workspace's
-            # backup is obsolete and the new tree owns the target from here on.
-            if backup_path is not None:
-                shutil.rmtree(backup_path, ignore_errors=True)
+            # The replacement is fully constructed and verified: commit it.
+            # The previous workspace's backup is obsolete, the new tree owns
+            # the target, and later failures are a normal failed run.
+            commit_replacement()
 
             if not execute_flow:
                 if workspace_registered:
@@ -452,7 +467,7 @@ def execute_fresh_run(
             from chipcompiler.cli.core.records import error_record
 
             cleanup_failed_target()
-            if backup_path is None and workspace_registered:
+            if terminal_failure() and workspace_registered:
                 _write_back_status(project_dir, run_name, "failed", warning_records)
             return CommandResult.err(
                 warning_records

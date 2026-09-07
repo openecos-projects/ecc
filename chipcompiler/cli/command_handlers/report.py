@@ -56,8 +56,11 @@ def qor(command_input, ctx: CommandContext) -> CommandResult:
     from chipcompiler.engine.qor_report import build_qor_report, generate_qor_report
 
     try:
+        # Build once and render that snapshot: a second traversal could read
+        # a changed workspace, so the record metadata would describe a
+        # different report than the one written.
         report = build_qor_report(workspace)
-        content = generate_qor_report(workspace)
+        content = generate_qor_report(workspace, report)
     except Exception as exc:
         return CommandResult.err([error_record("report_failed", reason=str(exc))])
 
@@ -98,7 +101,7 @@ def checklist(command_input, ctx: CommandContext) -> CommandResult:
 
     try:
         report = build_checklist_report(workspace)
-        content = generate_checklist_report(workspace)
+        content = generate_checklist_report(workspace, report)
     except Exception as exc:
         return CommandResult.err([error_record("report_failed", reason=str(exc))])
 

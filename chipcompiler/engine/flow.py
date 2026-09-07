@@ -708,6 +708,9 @@ class EngineFlow:
 
             if is_non_blocking_step(workspace_step) and state == StateEnum.Imcomplete:
                 state = StateEnum.Warning
+                # Warning is a terminal completion, not a failure: the
+                # observer must not retain a fatal tool error for it.
+                step_error = None
 
             if flow_step is not None and not self.set_state(
                 name=workspace_step.name,
@@ -769,6 +772,7 @@ class EngineFlow:
             )
             if is_non_blocking_step(workspace_step):
                 state = StateEnum.Warning
+                step_error = None
             if flow_step is not None and not self.set_state(
                 name=workspace_step.name,
                 tool=workspace_step.tool,

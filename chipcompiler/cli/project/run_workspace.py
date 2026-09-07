@@ -137,12 +137,18 @@ def execute_workspace_run(
 
         write_status("running")
 
+        def run_failed(kind: str, reason: str | None = None) -> CommandResult:
+            """A failure after the running marker must leave a terminal
+            status, never a workspace stuck as running."""
+            write_status("failed")
+            return error(kind, workspace=workspace_path, **({"reason": reason} if reason else {}))
+
         try:
             engine_flow = EngineFlow(workspace=workspace)
         except Exception as exc:
-            return error("invalid_workspace", workspace=workspace_path, reason=str(exc))
+            return run_failed("invalid_workspace", str(exc))
         if not engine_flow.has_init():
-            return error("missing_flow", workspace=workspace_path)
+            return run_failed("missing_flow")
 
         try:
             selected = rerun.selected_step_names(
@@ -160,7 +166,7 @@ def execute_workspace_run(
                 if target_names:
                     selected = rerun.bounded_resume_names(engine_flow, target_names[-1])
         except ValueError as exc:
-            return error("unknown_step", workspace=workspace_path, reason=str(exc))
+            return run_failed("unknown_step", str(exc))
 
         from chipcompiler.cli.rendering.progress import preserve_cli_stdio
 
@@ -183,9 +189,9 @@ def execute_workspace_run(
                 else:
                     result = rerun.run_resume(engine_flow)
         except ValueError as exc:
-            return error("step_unavailable", workspace=workspace_path, reason=str(exc))
+            return run_failed("step_unavailable", str(exc))
         except Exception as exc:
-            return error("flow_failed", workspace=workspace_path, reason=str(exc))
+            return run_failed("flow_failed", str(exc))
 
     write_status("success" if result.ok else "failed")
     record = {

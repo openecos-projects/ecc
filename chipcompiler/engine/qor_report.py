@@ -513,9 +513,13 @@ def _fmt(value, unit: str = "") -> str:
     return f"{text} {unit}".rstrip() if unit else text
 
 
-def generate_qor_report(workspace) -> str:
-    """Render the overall QoR score report as GUI-parity text."""
-    report = build_qor_report(workspace)
+def generate_qor_report(workspace, report=None) -> str:
+    """Render the overall QoR score report as GUI-parity text.
+
+    Pass a prebuilt *report* to render the exact snapshot the caller
+    already collected instead of re-traversing the workspace.
+    """
+    report = report if report is not None else build_qor_report(workspace)
     lines: list[str] = []
     score_text = f"{report.overall_score:g}" if report.overall_score is not None else "—"
     verdict = (

@@ -76,31 +76,70 @@ def _toml_code_depth(segment: str) -> int:
 
 
 def _extend_multiline_value(text: str, match_end: int) -> int:
-    """Extend match end past continuation lines for multiline TOML values.
+    """Return the end of the (possibly multiline) TOML value at the match.
 
-    After matching `key = ...` on one line, consume subsequent lines if the
-    value has unclosed brackets (arrays or inline tables).
+    A small tokenizer walks the value from its line start: multiline basic
+    and literal strings (``\"\"\"...\"\"\"`` / ``'''...'''``), bracket
+    collections, escapes, and comments each terminate the value correctly.
+    The naive first-line match would leave the tail of a multiline string
+    behind as unparsable text.
     """
-    line_start = text.rfind("\n", 0, match_end) + 1
-    matched_line = text[line_start:match_end]
-
-    depth = _toml_code_depth(matched_line)
-    if depth <= 0:
-        return match_end
-
-    pos = match_end
-    while pos < len(text) and depth > 0:
-        nl = text.find("\n", pos)
-        line_end = len(text) if nl == -1 else nl + 1
-        depth += _toml_code_depth(text[pos:line_end])
-        pos = line_end
-
-    while pos < len(text) and text[pos] in (" ", "\t"):
+    pos = text.rfind("\n", 0, match_end) + 1
+    n = len(text)
+    depth = 0
+    state = None  # None, or the opening quote: '"' | "'" | '"""' | "'''"
+    while pos < n:
+        ch = text[pos]
+        if state in ('"', "'"):
+            if ch == "\\" and state == '"':
+                pos += 2
+                continue
+            if ch == state:
+                state = None
+            pos += 1
+            continue
+        if state in ('"""', "'''"):
+            if text.startswith(state, pos):
+                state = None
+                pos += 3
+            else:
+                pos += 1
+            continue
+        if ch == "#":
+            nl = text.find("\n", pos)
+            if nl == -1:
+                return n
+            return nl + 1
+        if ch in ('"', "'"):
+            triple = text[pos : pos + 3]
+            if triple in ('"""', "'''"):
+                state = triple
+                pos += 3
+            else:
+                state = ch
+                pos += 1
+            continue
+        if ch == "\n" and depth <= 0:
+            # Inside a bracket collection a line break is insignificant; at
+            # the top level the value ends with this physical line.
+            return pos + 1
+        if ch in "[{":
+            depth += 1
+        elif ch in "]}":
+            depth -= 1
         pos += 1
-    if pos < len(text) and text[pos] == "\n":
-        pos += 1
+    return n
 
-    return pos
+
+_ESCAPES = {
+    '"': '\\"',
+    "\\": "\\\\",
+    "\b": "\\b",
+    "\t": "\\t",
+    "\n": "\\n",
+    "\f": "\\f",
+    "\r": "\\r",
+}
 
 
 def format_toml_value(val: object) -> str:
@@ -109,8 +148,16 @@ def format_toml_value(val: object) -> str:
     if isinstance(val, (int, float)):
         return str(val)
     if isinstance(val, str):
-        escaped = val.replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
+        out = []
+        for ch in val:
+            escaped = _ESCAPES.get(ch)
+            if escaped:
+                out.append(escaped)
+            elif ord(ch) < 0x20 or ch == "\x7f":
+                out.append(f"\\u{ord(ch):04X}")
+            else:
+                out.append(ch)
+        return f'"{"".join(out)}"'
     if isinstance(val, (list, tuple)):
         items = ", ".join(format_toml_value(v) for v in val)
         return f"[{items}]"
@@ -164,15 +211,14 @@ def remove_scoped_key(text: str, target_table: str, name: str) -> str | None:
 
     body_start, body_end = span
     section_body = text[body_start:body_end]
-    key_pattern = re.compile(rf"^\s*{re.escape(name)}\s*=[^\n]*\n?", re.MULTILINE)
+    # Match only the value's first line; _extend_multiline_value walks to the
+    # true end of a multiline value, including its terminating newline.
+    key_pattern = re.compile(rf"^\s*{re.escape(name)}\s*=[^\n]*$", re.MULTILINE)
     key_match = key_pattern.search(section_body)
     if not key_match:
         return None
 
     end = _extend_multiline_value(section_body, key_match.end())
-    # Consume trailing newline after multiline value
-    if section_body[end : end + 1] == "\n":
-        end += 1
     new_body = section_body[: key_match.start()] + section_body[end:]
     remaining_keys = [line for line in new_body.strip().split("\n") if line.strip()]
     if not remaining_keys:

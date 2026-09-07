@@ -1,3 +1,9 @@
+# The descriptions below are a vendored mirror of the upstream DreamPlace
+# template metadata (chipcompiler/thirdparty/ecc-dreamplace/dreamplace/params.json,
+# excluded from the wheel). They are copied rather than derived at runtime
+# because deployed packages do not ship the thirdparty tree;
+# test_descriptions.match_upstream_metadata fails the build when the copy
+# drifts from the canonical template.
 from .common import config_param
 
 DREAMPLACE_PARAMETER_DESCRIPTIONS = {

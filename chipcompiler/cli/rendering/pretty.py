@@ -417,18 +417,18 @@ def render_signoff_inspect_text(records, file=None):
     print(f"  report    : {summary['report']}", file=target)
     groups = [r for r in records[1:] if "group" in r]
     if groups:
-        print()
-        print("  groups:")
+        print(file=target)
+        print("  groups:", file=target)
         for group in groups:
             counts = ""
             if group.get("available") is not None:
                 counts = f"  ({group['available']}/{group['expected']})"
-            print(f"    {group['group']:14s} {group['status']:9s}{counts}")
+            print(f"    {group['group']:14s} {group['status']:9s}{counts}", file=target)
     risks = [r for r in records[1:] if "risk" in r]
     if risks:
-        print()
-        print("  risks:")
+        print(file=target)
+        print("  risks:", file=target)
         for risk in risks:
-            print(f"    [{risk['risk']:7s}] {risk['title']}")
+            print(f"    [{risk['risk']:7s}] {risk['title']}", file=target)
             if risk.get("reason"):
-                print(f"              {risk['reason']}")
+                print(f"              {risk['reason']}", file=target)

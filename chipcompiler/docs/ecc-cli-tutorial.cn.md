@@ -628,7 +628,7 @@ ecc run --workspace default --overwrite            # 重建 default（有安全�
 ecc run --workspace default --overwrite --set place.target_density=0.55
 ```
 
-同样的 `--overwrite` 重跑也是已有 workspace 吸收**入口输入、PDK 路径、`flow.preset`** 变更的方式——这些改动会改变 workspace 的输入快照或 flow 结构。若只想按当前 `ecc.toml` 重建 workspace 而**不执行**，用专用命令（适合批量运行前准备，或当前机器缺少所需工具时）：
+同样的 `--overwrite` 重跑也是已有 workspace 吸收**入口输入、PDK 路径、`flow.preset`** 变更的方式——这些改动会改变 workspace 的输入快照或 flow 结构。若只想按当前 `ecc.toml` 重建 workspace 而**不执行**，用专用命令（适合批量运行前准备）。与所有新建 workspace 一样，refresh 仍会对所选流程范围执行启动工具预检，请先安装好对应工具：
 
 ```bash
 ecc workspace refresh default                      # 按 ecc.toml 重建输入/配置，但不运行

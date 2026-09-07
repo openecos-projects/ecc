@@ -629,7 +629,7 @@ ecc run --workspace default --overwrite            # rebuild default (with safet
 ecc run --workspace default --overwrite --set place.target_density=0.55
 ```
 
-The same `--overwrite` rerun is also how an existing workspace picks up changes to its **entry inputs, PDK paths, or `flow.preset`** — those alter the workspace's input snapshot or flow structure. To rebuild the workspace from the current `ecc.toml` *without* running it, use the dedicated command (handy before a batch of runs, or when the required tools aren't on the current machine):
+The same `--overwrite` rerun is also how an existing workspace picks up changes to its **entry inputs, PDK paths, or `flow.preset`** — those alter the workspace's input snapshot or flow structure. To rebuild the workspace from the current `ecc.toml` *without* running it, use the dedicated command (handy before a batch of runs). Like every fresh workspace target, refresh still runs the startup tool preflight for the selected range, so the flow's tools must be installed first:
 
 ```bash
 ecc workspace refresh default                      # rebuild inputs/config from ecc.toml, do not run

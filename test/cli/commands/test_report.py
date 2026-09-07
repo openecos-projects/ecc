@@ -74,9 +74,11 @@ def report_mocks(monkeypatch):
     from chipcompiler.engine.signoff import report_checklist as checklist_module
 
     monkeypatch.setattr(qor_module, "build_qor_report", lambda ws: qor_report)
-    monkeypatch.setattr(qor_module, "generate_qor_report", lambda ws: "QOR BODY")
+    monkeypatch.setattr(qor_module, "generate_qor_report", lambda ws, report=None: "QOR BODY")
     monkeypatch.setattr(checklist_module, "build_checklist_report", lambda ws: checklist_report)
-    monkeypatch.setattr(checklist_module, "generate_checklist_report", lambda ws: "CHECKLIST BODY")
+    monkeypatch.setattr(
+        checklist_module, "generate_checklist_report", lambda ws, report=None: "CHECKLIST BODY"
+    )
     return SimpleNamespace(workspace=workspace, qor=qor_report, checklist=checklist_report)
 
 
@@ -203,7 +205,9 @@ class TestReportChecklist:
             "build_checklist_report",
             lambda ws: checklist_module.ChecklistReport(available=False, workspace="/tmp/x"),
         )
-        monkeypatch.setattr(checklist_module, "generate_checklist_report", lambda ws: "UNAVAILABLE")
+        monkeypatch.setattr(
+            checklist_module, "generate_checklist_report", lambda ws, report=None: "UNAVAILABLE"
+        )
 
         rc = cli_main.run(["report", "checklist", "--project", project_dir, "--plain"])
 
