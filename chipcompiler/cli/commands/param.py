@@ -37,7 +37,7 @@ def _finish_param(
     execute_command("param", command_input, handler, render_key=f"param:{param_command}")
 
 
-@param_app.command("list", help="List parameter overrides")
+@param_app.command("list")
 def list_cmd(
     *,
     project: ProjectOption = None,
@@ -48,6 +48,21 @@ def list_cmd(
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
+    """List parameter overrides.
+
+    By default lists the legacy-semantic parameters (such as
+    `design.frequency_mhz`, `floorplan.core_util`, `cts.max_fanout`) plus
+    direct-config fields that already carry an override. Use `--step STEP` to
+    show the full reviewed schema of one step (field, type, and the JSON
+    config field each value lands in), or `--all` to show every reviewed
+    field.
+
+    ```bash
+    ecc param list --step cts
+    ```
+
+    See 'ecc doc config' for the full reference.
+    """
     command_input = ParamListInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),
@@ -58,7 +73,7 @@ def list_cmd(
     _finish_param("list", command_input, param_list_handler)
 
 
-@param_app.command("show", help="Show one parameter value")
+@param_app.command("show")
 def show_cmd(
     *,
     key: Annotated[str, typer.Argument()],
@@ -68,6 +83,14 @@ def show_cmd(
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
+    """Show one parameter value.
+
+    Reports the current value, default, source, type, and allowed range,
+    plus the write targets (`maps_to`, `config_target`, `pdk_target`) that
+    show where the value lands in the generated tool configuration.
+
+    See 'ecc doc config' for the full reference.
+    """
     command_input = ParamShowInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),
@@ -77,11 +100,7 @@ def show_cmd(
     _finish_param("show", command_input, param_show_handler)
 
 
-@param_app.command(
-    "set",
-    help="Set a parameter override",
-    context_settings={"ignore_unknown_options": True},
-)
+@param_app.command("set", context_settings={"ignore_unknown_options": True})
 def set_cmd(
     *,
     key: Annotated[str, typer.Argument()],
@@ -92,6 +111,30 @@ def set_cmd(
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
+    """Set a parameter override.
+
+    | Scope | Written to | Takes effect |
+    |---|---|---|
+    | project (default) | `ecc.toml` `[params.*]` / `[pdk.overrides]` | next fresh `ecc run` |
+    | `--workspace NAME` | `home/params.toml` `[params]` | immediately; step pending |
+
+    Values: scalars are parsed per the reviewed schema type; list and object
+    values are JSON literals and arrays replace the previous value wholesale.
+    Invalid values fail with `invalid_value` and nothing is written. In the
+    workspace scope the owning step and its suffix are marked pending and a
+    later `ecc run --workspace NAME` resumes from that step.
+
+    ```bash
+    ecc param set cts.skew_bound 0.05
+    ecc param set cts.max_buf_tran 0.30
+    ecc param set cts.routing_layer '[4, 5]'
+    ```
+
+    `pdk.*` path parameters are project-scope only; `pdk.root` is set with
+    `ecc pdk set-root`.
+
+    See 'ecc doc config' for the full reference.
+    """
     command_input = ParamSetInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),
@@ -102,7 +145,7 @@ def set_cmd(
     _finish_param("set", command_input, param_set_handler)
 
 
-@param_app.command("unset", help="Remove a parameter override")
+@param_app.command("unset")
 def unset_cmd(
     *,
     key: Annotated[str, typer.Argument()],
@@ -112,6 +155,15 @@ def unset_cmd(
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
+    """Remove a parameter override.
+
+    Project scope deletes the key from `ecc.toml`, restoring the default.
+    Workspace scope (`--workspace NAME`) restores the pre-edit `baseline` and
+    drops the override record; the owning step and its suffix stay invalid
+    until they run again.
+
+    See 'ecc doc config' for the full reference.
+    """
     command_input = ParamUnsetInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),
@@ -121,7 +173,7 @@ def unset_cmd(
     _finish_param("unset", command_input, param_unset_handler)
 
 
-@param_app.command("diff", help="Compare parameter overrides with defaults")
+@param_app.command("diff")
 def diff_cmd(
     *,
     project: ProjectOption = None,
@@ -130,6 +182,14 @@ def diff_cmd(
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
+    """Compare parameter overrides with defaults.
+
+    Project scope lists parameters whose value differs from the default.
+    Workspace scope (`--workspace NAME`) lists local overrides together with
+    their baselines.
+
+    See 'ecc doc config' for the full reference.
+    """
     command_input = ParamDiffInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),

@@ -69,3 +69,75 @@ def test_option_help_preserves_angle_bracket_placeholder(capsys):
     out = capsys.readouterr().out
     assert rc == 0
     assert "<workspace>/signoff/" in out
+
+
+def test_param_set_help_documents_scopes_and_value_parsing(capsys):
+    rc = cli_main.run(["param", "set", "--help"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "ecc.toml" in out
+    assert "params.toml" in out
+    assert "'[4, 5]'" in out
+    assert "skew_bound" in out
+    assert "max_buf_tran" in out
+    assert "invalid_value" in out
+
+
+def test_run_help_documents_fresh_run_override_rule(capsys):
+    rc = cli_main.run(["run", "--help"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "set_requires_fresh_run" in out
+    assert "cli-param-overrides.json" in out
+
+
+def test_workspace_refresh_help_warns_about_manual_edits(capsys):
+    rc = cli_main.run(["workspace", "refresh", "--help"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "overwritten" in out
+
+
+def test_config_help_names_steps_without_step_specific_config(capsys):
+    rc = cli_main.run(["config", "--help"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    for step in ("lec", "lvs", "postroutelec", "harden"):
+        assert step in out
+
+
+def test_pdk_set_root_help_documents_path_resolution(capsys):
+    rc = cli_main.run(["pdk", "set-root", "--help"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "pdk.sdc" in out
+    assert "pdk.spef" in out
+    assert "project directory" in out
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ["param", "list"],
+        ["param", "show"],
+        ["param", "set"],
+        ["param", "unset"],
+        ["param", "diff"],
+        ["run"],
+        ["config"],
+        ["workspace", "refresh"],
+        ["pdk", "set-root"],
+    ],
+    ids=lambda path: " ".join(path),
+)
+def test_enriched_help_points_to_doc_config(path, capsys):
+    rc = cli_main.run([*path, "--help"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "ecc doc config" in out
