@@ -54,7 +54,7 @@ chipcompiler/engine/qor_report.py # QoR 总分计分（GUI 规则移植，见 §
 
 ## 2. 一次命令调用的完整链路
 
-以 `ecc check --project gcd --json` 为例：
+以 `ecc check --project gcd --plain` 为例：
 
 1. `main.py::run()` 把 `sys.argv[1:]` 交给 `app.py::invoke_typer_app(raw)`（`cli/app.py`）。
 2. typer 解析参数，命中 `commands/project.py::check_cmd`（`cli/commands/project.py`）。命令函数只做一件事：把 typer 参数装进 frozen dataclass `CheckInput`（定义在 `cli/core/inputs.py`），然后调用：
@@ -62,7 +62,7 @@ chipcompiler/engine/qor_report.py # QoR 总分计分（GUI 规则移植，见 §
    execute_command("check", command_input, project_handlers.check)
    ```
 3. `core/invocation.py::execute_command()`（`cli/core/invocation.py`）依次：
-   - `build_context()`：解析项目目录（`--project`，缺省为 cwd）→ 读项目唯一的 `ecc.toml`（不可读时记入 `config_error`）→ `cli/project/manifest.py::classify_project()` 判定项目形态（manifest / legacy / virgin）。manifest 项目只从 `project.json` workspace 表解析 `--workspace NAME`：唯一活跃 workspace 自动选中，多个时必须选择；新的 `ecc run --workspace NAME` 会在创建文件前登记。`--workspace` 是项目内单路径段名称，不是直接路径。legacy 项目必须先迁移才能 `ecc run`；清单损坏为 `manifest_invalid`。随后由 `--json/--jsonl/--plain` 推导 `OutputMode`，组装成带 `project_state` / `manifest_error` 字段的 `CommandContext`（`cli/core/types.py`）。
+   - `build_context()`：解析项目目录（`--project`，缺省为 cwd）→ 读项目唯一的 `ecc.toml`（不可读时记入 `config_error`）→ `cli/project/manifest.py::classify_project()` 判定项目形态（manifest / legacy / virgin）。manifest 项目只从 `project.json` workspace 表解析 `--workspace NAME`：唯一活跃 workspace 自动选中，多个时必须选择；新的 `ecc run --workspace NAME` 会在创建文件前登记。`--workspace` 是项目内单路径段名称，不是直接路径。legacy 项目必须先迁移才能 `ecc run`；清单损坏为 `manifest_invalid`。随后由 `--plain` 推导 `OutputMode`，组装成带 `project_state` / `manifest_error` 字段的 `CommandContext`（`cli/core/types.py`）。
    - 调 handler：`handler(command_input, ctx) -> CommandResult`。
    - handler 返回后按需追加记录（`_with_legacy_hint` / `_with_config_shadow_hint`）：legacy 项目的 `run/check/status` 附加迁移提示（指向 `ecc migrate`）；workspace 的 `home/` 同时存在 `params.toml` 与旧 `parameters.json` 时打 `workspace_config_shadowed` 警告（旧 JSON 已失效）。
    - 渲染：`rendering/renderers.py::render_command_result()` 先查 `RENDERERS[(render_key, output_mode)]` 定制渲染器，没有则落到通用 `rendering/render.py::render_result()`。
@@ -74,15 +74,13 @@ chipcompiler/engine/qor_report.py # QoR 总分计分（GUI 规则移植，见 §
 经 `execute_command()` 分发的命令统一使用「记录列表」：
 
 - handler 返回 `CommandResult.ok(records)` / `CommandResult.err(records, exit_code=1)`（`cli/core/types.py`）；`records` 是 `tuple[dict, ...]`，每个 dict 是一行结构化记录。
-- 四种输出模式（优先级 jsonl > json > plain > text，见 `cli/core/invocation.py`）：
-  - `--json`：`{"records": [...]}` 单个 JSON 对象；
-  - `--jsonl`：每条记录一行 JSON；
+- 两种输出模式（见 `cli/core/invocation.py`）：
   - `--plain`：`key=value` 逐行（含空格的值会加引号），面向脚本 grep；
   - 默认 TEXT：走 pretty 渲染；无定制渲染器时打印 `key=value`，键名去掉 `_cmd` 后缀。
 - 错误记录用 `core/records.py::error_record(...)`，产出 `{"kind": "error", "error": "<机器可读错误码>", ...}`；TEXT 模式下由 `render_error` 打成 `[error]` 块。错误码是稳定契约（如 `missing_config`、`run_exists`、`unknown_parameter`、`invalid_value`），测试会对它们断言。
 - 给用户的「下一步」提示统一用 `core/output.py::disclosure_cmd("ecc status", project, run_id)` 生成可复制的完整命令，记录里放在 `inspect` / `log_cmd` / `run` 等字段。
 
-`ecc version` 直接格式化版本元数据，但也支持 `--json`、`--jsonl` 和 `--plain`，使用版本专用 schema。`ecc rpc serve` 与 `ecc layout-image` 有意不使用 records 渲染器输出模式。
+`ecc version` 直接格式化版本元数据；另有一个隐藏的 `--json` 选项（单对象、版本专用 schema）预留给桌面应用，不出现在 `--help` 中。`ecc rpc serve` 与 `ecc layout-image` 有意不使用 records 渲染器输出模式。
 
 ## 4. 新增一个顶层命令（Step by Step）
 
@@ -119,7 +117,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
 在 `cli/commands/project.py`（或新模块）声明命令函数并注册，共享选项直接用 `cli/core/options.py` 的别名：
 
 ```python
-from chipcompiler.cli.core.options import JsonlOption, JsonOption, PlainOption, ProjectOption
+from chipcompiler.cli.core.options import PlainOption, ProjectOption
 
 def register_project_commands(app: typer.Typer) -> None:
     app.command("check", help="Validate the current project setup")(check_cmd)
@@ -127,12 +125,10 @@ def register_project_commands(app: typer.Typer) -> None:
 def check_cmd(
     *,
     project: ProjectOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     command_input = CheckInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
     )
     execute_command("check", command_input, project_handlers.check)
@@ -147,7 +143,7 @@ def check_cmd(
 - 单命令：在 `cli/rendering/pretty.py` 的 `get_pretty_renderer()` 注册表加一个渲染函数（现有 `init/check/run/status/config` 即此路径）；
 - 子命令组：在 `cli/rendering/renderers.py` 的 `RENDERERS` 字典加 `(render_key, OutputMode)` 条目，`render_key` 通过 `execute_command(..., render_key="param:show")` 传入（param 即此路径）。
 
-JSON/JSONL/PLAIN 无需任何定制。
+PLAIN 无需任何定制。
 
 ### 4.5 补测试
 
@@ -158,9 +154,9 @@ CLI 测试全部位于 `ecc/test/cli/`，目录按所有权划分（仓库 CLAUD
   ```python
   from chipcompiler.cli import main as cli_main
 
-  rc = cli_main.run(["check", "--project", project_dir, "--json"])
+  rc = cli_main.run(["check", "--project", project_dir, "--plain"])
   assert rc == 0
-  data = json.loads(capsys.readouterr().out)
+  records = plain_records(capsys.readouterr().out)  # fixture 来自 test/cli/conftest.py
   ```
 - 复用 `test/cli/conftest.py` 的 fixture：`create_cli_project`（生成带 `ecc.toml` 的临时项目）、`create_flow_json`（伪造 `runs/<id>/home/flow.json`）、`create_step_dir`、`create_workspace_config`、`mock_pdk_validation` 等。**注意 autouse 的 `_stub_run_preflight`**：它把 `env_probe.probe_environment` 打桩为空，保证 CLI 测试不依赖宿主工具（doctor/预检相关测试自行覆盖该补丁即可覆盖生效）。
 - 引擎层报告/签核的测试放顶层 `test/`（如 `test/test_signoff_report.py`、`test/test_qor_report.py`、`test/test_signoff_package.py`），伪造 workspace 复用其 fixture。

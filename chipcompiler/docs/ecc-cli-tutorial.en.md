@@ -243,7 +243,7 @@ $ ecc check
   run: ecc run
   rtl: pass
     path: rtl/gcd.v
-  inspect: ecc check --json
+  inspect: ecc check
 rc=0
 ```
 

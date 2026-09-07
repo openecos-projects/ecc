@@ -168,7 +168,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 |---|---|
 | `--project DIR` | 指定项目目录（缺省为当前目录） |
 | `--workspace NAME` | 切换到 workspace 作用域：操作 project.json 清单中声明的指定 workspace，而不是项目 `ecc.toml` |
-| `--json` / `--jsonl` / `--plain` | 结构化输出：JSON 记录数组 / 每行一条 JSON / `key=value`（便于脚本解析）；缺省为人类可读文本 |
+| `--plain` | 机器可读的 `key=value` 输出（便于脚本解析）；缺省为人类可读文本 |
 
 两种作用域的行为差异：
 

@@ -166,7 +166,7 @@ Options shared by every subcommand:
 |---|---|
 | `--project DIR` | Select the project directory (defaults to the current directory) |
 | `--workspace NAME` | Switch to workspace scope: operate on the named workspace declared in the project.json manifest instead of the project `ecc.toml` |
-| `--json` / `--jsonl` / `--plain` | Structured output: a JSON record array / one JSON object per line / `key=value` (script-friendly); the default is human-readable text |
+| `--plain` | Machine-readable `key=value` output (script-friendly); the default is human-readable text |
 
 Behavior differences between the two scopes:
 
