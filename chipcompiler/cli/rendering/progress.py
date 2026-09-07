@@ -19,7 +19,7 @@ from chipcompiler.cli.inspection.log_view import (
 from chipcompiler.cli.rendering.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
 from chipcompiler.cli.rendering.pretty import style as _style
 from chipcompiler.data import StateEnum, log_flow
-from chipcompiler.utility.log import flush_cstdio, redirect_stdio_to_file
+from chipcompiler.utility.log import capture_stdio_to_file, flush_cstdio
 
 
 def supports_color(stream, mode, env=None):
@@ -463,19 +463,13 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
                         tool=workspace_step.tool,
                         state=StateEnum.Success,
                     ):
-                        init_log_stream = None
-                        if log_path:
-                            try:
-                                abs_log_path = os.path.abspath(log_path)
-                                os.makedirs(os.path.dirname(abs_log_path) or ".", exist_ok=True)
-                                init_log_stream = redirect_stdio_to_file(abs_log_path)
-                            except OSError:
-                                init_log_stream = None
                         try:
+                            abs_log_path = os.path.abspath(log_path) if log_path else ""
+                            os.makedirs(os.path.dirname(abs_log_path) or ".", exist_ok=True)
+                        except OSError:
+                            abs_log_path = ""
+                        with capture_stdio_to_file(abs_log_path):
                             engine_flow.init_db_engine()
-                        finally:
-                            if init_log_stream is not None:
-                                init_log_stream.close()
                     state = engine_flow.run_step(workspace_step)
             finally:
                 _stop_log_monitor(stop_event, monitor)

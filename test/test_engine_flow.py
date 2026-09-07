@@ -1,5 +1,6 @@
 import ctypes
 import json
+import os
 from hashlib import sha256
 from types import SimpleNamespace
 
@@ -291,7 +292,12 @@ class TestStepExceptionForcesIncomplete:
             "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
         }
         engine_flow = EngineFlow(workspace)
-        workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
+        workspace_step = EccStep(
+            name="route",
+            directory=tmp_path,
+            tool="ecc",
+            log=LogPaths(file=tmp_path / "route.log"),
+        )
         engine_flow.workspace_steps = [workspace_step]
         engine_flow.engine_db = SimpleNamespace(engine=None)
 
@@ -301,8 +307,16 @@ class TestStepExceptionForcesIncomplete:
         monkeypatch.setattr(tools, "run_step", raise_on_run)
         monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
 
-        state = engine_flow.run_step(workspace_step)
-        assert state == StateEnum.Imcomplete
+        saved_stdout = os.dup(1)
+        saved_stderr = os.dup(2)
+        try:
+            state = engine_flow.run_step(workspace_step)
+            assert state == StateEnum.Imcomplete
+            assert os.fstat(1) == os.fstat(saved_stdout)
+            assert os.fstat(2) == os.fstat(saved_stderr)
+        finally:
+            os.close(saved_stdout)
+            os.close(saved_stderr)
 
     def test_native_output_precedes_failure_summary(self, monkeypatch, tmp_path):
         workspace = Workspace()

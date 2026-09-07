@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections.abc import Callable
@@ -15,6 +16,7 @@ _RENDER_ACK_RETRY_SECONDS = 5.0
 _RENDER_ACK_PAUSE_SECONDS = 30.0
 _RENDER_ACK_ABORT_SECONDS = 300.0
 _TERMINAL_OPERATION_STATES = frozenset({"succeeded", "failed", "cancelled"})
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -270,6 +272,7 @@ class RuntimeOperationManager:
             operation.updated_at = time.time()
             started_event = self._new_event_locked(operation, "operation.started", {})
         observer = RuntimeFlowObserver(self, operation_id)
+        event = None
         try:
             self._publish(started_event)
             try:
@@ -286,6 +289,7 @@ class RuntimeOperationManager:
                         "operation.completed",
                         {"result": result},
                     )
+                    self._cleanup_workspace_active(operation_id)
             except RuntimeOperationCancelled as exc:
                 with self._lock:
                     operation = self._operations[operation_id]
@@ -305,6 +309,7 @@ class RuntimeOperationManager:
                         event_type,
                         {"error": operation.error},
                     )
+                    self._cleanup_workspace_active(operation_id)
             except Exception as exc:
                 with self._lock:
                     operation = self._operations[operation_id]
@@ -330,16 +335,34 @@ class RuntimeOperationManager:
                             }
                         )
                     event = self._new_event_locked(operation, event_type, payload)
+                    self._cleanup_workspace_active(operation_id)
+            except BaseException as exc:
+                with self._lock:
+                    operation = self._operations[operation_id]
+                    operation.state = "failed"
+                    operation.error = operation.error or {
+                        "message": f"{type(exc).__name__}: {exc}",
+                        "code": "unhandled_exception",
+                    }
+                    operation.updated_at = time.time()
+                    event = self._new_event_locked(
+                        operation,
+                        "operation.failed",
+                        {"error": operation.error},
+                    )
+                    self._cleanup_workspace_active(operation_id)
+                self._publish(event)
+                raise
             self._publish(event)
         finally:
-            try:
-                self._stop_step_log_tail(operation_id)
-            finally:
-                with self._lock:
-                    self._active_by_workspace.pop(
-                        self._operations[operation_id].workspace_id,
-                        None,
-                    )
+            self._stop_step_log_tail(operation_id)
+
+    def _cleanup_workspace_active(self, operation_id: str) -> None:
+        """Remove operation from _active_by_workspace if it is the current one."""
+        with self._lock:
+            workspace_id = self._operations[operation_id].workspace_id
+            if self._active_by_workspace.get(workspace_id) == operation_id:
+                self._active_by_workspace.pop(workspace_id, None)
 
     def step_started(self, operation_id: str, workspace_step: Any) -> None:
         self._stop_step_log_tail(operation_id)
@@ -675,7 +698,10 @@ class RuntimeOperationManager:
     def _publish(self, event: dict[str, Any]) -> None:
         publisher = self._publisher
         if publisher is not None:
-            publisher(event)
+            try:
+                publisher(event)
+            except Exception:
+                logger.exception("Runtime event publisher failed for %s", event.get("type"))
 
 
 class RuntimeFlowObserver:

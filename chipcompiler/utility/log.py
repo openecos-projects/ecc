@@ -14,6 +14,17 @@ from typing import TextIO
 # ponytail: process-wide fds require one lock; move tools to subprocesses for parallel capture.
 stdio_redirect_lock = threading.RLock()
 
+_persistent_redirect: "_StdioRedirect | None" = None
+
+
+def _close_persistent_redirect() -> None:
+    """Close the process-wide persistent redirect if any."""
+    global _persistent_redirect
+    if _persistent_redirect is not None:
+        prev = _persistent_redirect
+        _persistent_redirect = None
+        prev.close()
+
 
 # TODO: Move some functions to Logger Module
 def build_timestamped_log_file(log_file: str, pid: int | None = None) -> str:
@@ -72,49 +83,123 @@ def flush_cstdio() -> None:
         ctypes.CDLL(None).fflush(None)
 
 
-def redirect_stdio_to_file(log_file: str) -> TextIO:
-    """Redirect process stdout/stderr to log_file at file-descriptor level."""
-    # The stream intentionally stays open: its fd is dup2'd onto stdout/stderr below.
-    log_stream = open(log_file, "a", encoding="utf-8", buffering=1)  # noqa: SIM115
+class _StdioRedirect:
+    def __init__(self, log_file: str, *, acquire_lock: bool = True, track_persistent: bool = False):
+        self.log_file = log_file
+        self._acquire_lock = acquire_lock
+        self._track_persistent = track_persistent
+        self._lock_acquired = False
+        self._saved_fds: tuple[int, int] | None = None
+        self._saved_streams: tuple[TextIO, TextIO] | None = None
+        self._log_stream: TextIO | None = None
 
-    for stream in (sys.stdout, sys.stderr):
-        with suppress(Exception):
-            stream.flush()
-    flush_cstdio()
-
-    os.dup2(log_stream.fileno(), 1)
-    os.dup2(log_stream.fileno(), 2)
-    sys.stdout = os.fdopen(1, "w", encoding="utf-8", buffering=1, closefd=False)
-    sys.stderr = os.fdopen(2, "w", encoding="utf-8", buffering=1, closefd=False)
-    return log_stream
-
-
-@contextmanager
-def capture_stdio_to_file(log_file: str | None):
-    """Redirect fd 1/2 for one scope, then restore the original streams."""
-    if not log_file:
-        yield
-        return
-
-    with stdio_redirect_lock:
-        saved_fds = (os.dup(1), os.dup(2))
-        saved_streams = (sys.stdout, sys.stderr)
-        log_stream = None
+    def __enter__(self) -> "_StdioRedirect":
+        global _persistent_redirect
+        if self._acquire_lock:
+            stdio_redirect_lock.acquire()
+            self._lock_acquired = True
         try:
-            log_stream = redirect_stdio_to_file(log_file)
-            yield
-        finally:
+            fd1 = os.dup(1)
+            try:
+                fd2 = os.dup(2)
+            except BaseException:
+                os.close(fd1)
+                raise
+            self._saved_fds = (fd1, fd2)
+            self._saved_streams = (sys.stdout, sys.stderr)
+            self._log_stream = open(self.log_file, "a", encoding="utf-8", buffering=1)
             for stream in (sys.stdout, sys.stderr):
                 with suppress(Exception):
                     stream.flush()
             flush_cstdio()
-            os.dup2(saved_fds[0], 1)
-            os.dup2(saved_fds[1], 2)
-            os.close(saved_fds[0])
-            os.close(saved_fds[1])
-            sys.stdout, sys.stderr = saved_streams
-            if log_stream is not None:
-                log_stream.close()
+            os.dup2(self._log_stream.fileno(), 1)
+            os.dup2(self._log_stream.fileno(), 2)
+            sys.stdout = os.fdopen(1, "w", encoding="utf-8", buffering=1, closefd=False)
+            sys.stderr = os.fdopen(2, "w", encoding="utf-8", buffering=1, closefd=False)
+            if self._track_persistent:
+                _persistent_redirect = self
+            return self
+        except BaseException:
+            self._restore()
+            if self._lock_acquired:
+                stdio_redirect_lock.release()
+                self._lock_acquired = False
+            raise
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        try:
+            self._restore()
+        finally:
+            if self._lock_acquired:
+                stdio_redirect_lock.release()
+                self._lock_acquired = False
+
+    def close(self) -> None:
+        self.__exit__(None, None, None)
+
+    def flush(self) -> None:
+        if self._log_stream is not None:
+            self._log_stream.flush()
+
+    def _restore(self) -> None:
+        global _persistent_redirect
+        if self._saved_fds is None:
+            return
+        if self._track_persistent and _persistent_redirect is self:
+            _persistent_redirect = None
+        for stream in (sys.stdout, sys.stderr):
+            with suppress(Exception):
+                stream.flush()
+        flush_cstdio()
+        with suppress(OSError):
+            os.dup2(self._saved_fds[0], 1)
+            os.dup2(self._saved_fds[1], 2)
+            os.close(self._saved_fds[0])
+            os.close(self._saved_fds[1])
+        if self._saved_streams is not None:
+            sys.stdout, sys.stderr = self._saved_streams
+        if self._log_stream is not None:
+            self._log_stream.close()
+        self._saved_fds = None
+        self._saved_streams = None
+        self._log_stream = None
+
+
+def redirect_stdio_to_file(log_file: str) -> _StdioRedirect:
+    """Redirect process stdout/stderr to log_file at file-descriptor level.
+
+    Does NOT acquire stdio_redirect_lock; callers that need serialized
+    redirects should use capture_stdio_to_file() instead.
+    """
+    _close_persistent_redirect()
+    redirect = _StdioRedirect(log_file, acquire_lock=False, track_persistent=True)
+    redirect.__enter__()
+    return redirect
+
+
+@contextmanager
+def capture_stdio_to_file(log_file: str | None):
+    """Redirect fd 1/2 for one scope, then restore the original streams.
+
+    Yields True when capture succeeded, False when setup failed (bad path,
+    permissions, etc.).  Callers that need Incomplete on capture failure
+    should check the flag.
+    """
+    if not log_file:
+        yield True
+        return
+
+    redirect = _StdioRedirect(log_file)
+    try:
+        redirect.__enter__()
+    except Exception:
+        yield False
+        return
+    try:
+        yield True
+    finally:
+        with suppress(Exception):
+            redirect.__exit__(None, None, None)
 
 
 def init_api_runtime_log(
@@ -198,6 +283,14 @@ class Logger:
         self.logger.info(" " * padding + section + " " * padding)
         self.logger.info("#" * max_len)
         self.logger.info("")
+
+    def write_to_file(self, path: str, msg: str) -> None:
+        """Append a formatted message directly to *path*, bypassing handlers."""
+        record = self.logger.makeRecord(self.logger.name, logging.INFO, "", 0, msg, (), None)
+        formatter = self.logger.handlers[0].formatter if self.logger.handlers else None
+        text = formatter.format(record) if formatter else msg
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(text + "\n")
 
 
 def create_logger(
