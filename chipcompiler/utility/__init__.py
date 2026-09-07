@@ -36,12 +36,17 @@ if TYPE_CHECKING:
     )
 
 
-def __getattr__(name: str):
-    if name in _PLOT_EXPORTS:
-        from . import plot
+else:
+    # Hidden from type checkers so unknown attributes still fail statically.
+    def __getattr__(name: str):
+        if name in _PLOT_EXPORTS:
+            from . import plot
 
-        return getattr(plot, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+            return getattr(plot, name)
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    def __dir__() -> list[str]:
+        return sorted(set(globals()) | _PLOT_EXPORTS)
 
 
 __all__ = [
