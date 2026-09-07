@@ -375,9 +375,7 @@ def _write_param_to_toml(config_path: str, schema, value: object) -> None:
         original = f.read()
 
     new_text = toml_edit.set_scoped_key(original, target_table, name, value)
-
-    with open(config_path, "w") as f:
-        f.write(new_text)
+    toml_edit.write_text_atomic(config_path, new_text)
 
 
 def _remove_param_from_toml(config_path: str, schema) -> bool:
@@ -394,6 +392,5 @@ def _remove_param_from_toml(config_path: str, schema) -> bool:
     if result is None:
         return False
 
-    with open(config_path, "w") as f:
-        f.write(result)
+    toml_edit.write_text_atomic(config_path, result)
     return True

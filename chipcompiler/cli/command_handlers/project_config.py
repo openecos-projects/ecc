@@ -6,7 +6,7 @@ import tomllib
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.project.config_fields import lookup_project_field, parse_project_field_values
-from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_scoped_key
+from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_scoped_key, write_text_atomic
 
 
 def project_set(args, ctx: CommandContext) -> CommandResult:
@@ -37,8 +37,7 @@ def project_unset(args, ctx: CommandContext) -> CommandResult:
         changed = remove_scoped_key(file.read(), field.table, field.name)
     if changed is None:
         return CommandResult.ok([_record(field.key, None, "no_value")])
-    with open(config_path, "w") as file:
-        file.write(changed)
+    write_text_atomic(config_path, changed)
     return CommandResult.ok([_record(field.key, None, "unset")])
 
 
@@ -130,8 +129,7 @@ def _change_rtl(args, ctx: CommandContext, *, add: bool) -> CommandResult:
 def _set_value(config_path: str, field, value: object) -> None:
     with open(config_path) as file:
         updated = set_scoped_key(file.read(), field.table, field.name, value)
-    with open(config_path, "w") as file:
-        file.write(updated)
+    write_text_atomic(config_path, updated)
 
 
 def _field_or_error(key: str):

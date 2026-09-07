@@ -4,7 +4,7 @@ import os
 
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
-from chipcompiler.cli.project.toml_edit import set_pdk_root
+from chipcompiler.cli.project.toml_edit import set_pdk_root, write_text_atomic
 
 
 def _write_pdk_root(config_path: str, value: str) -> None:
@@ -12,10 +12,7 @@ def _write_pdk_root(config_path: str, value: str) -> None:
     with open(config_path) as f:
         original = f.read()
 
-    new_text = set_pdk_root(original, value)
-
-    with open(config_path, "w") as f:
-        f.write(new_text)
+    write_text_atomic(config_path, set_pdk_root(original, value))
 
 
 def _resolve_root_source(cfg, project_dir: str) -> tuple[str, str]:
