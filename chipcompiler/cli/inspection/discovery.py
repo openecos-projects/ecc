@@ -63,6 +63,11 @@ def get_run_status(flow_data: dict) -> str:
         return "success"
     if states == {"unstart"}:
         return "unstart"
+    if states <= {"success", "warning", "unstart"}:
+        # A bounded rerun (--only / --from / --to) leaves the executed
+        # prefix success and the stale suffix unstart until the user
+        # re-runs it: that is partial progress, not a failure.
+        return "partial"
     return "failed"
 
 

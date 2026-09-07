@@ -57,7 +57,7 @@ class TestManifestRunDiscovery:
         assert rc != 0
         (record,) = manifest_stubs.records()
         assert record["kind"] == "error"
-        assert record["error"] == "workspace_not_declared"
+        assert record["error"] == "workspace_required"
         assert "ws_0001" in record["reason"]
         assert "ws_0002" in record["reason"]
 
@@ -431,7 +431,7 @@ class TestCheckManifestSelection:
 
         assert rc != 0
         (record,) = manifest_stubs.records()
-        assert record["error"] == "workspace_not_declared"
+        assert record["error"] == "workspace_required"
 
     def test_check_ok_with_single_workspace(
         self, tmp_path, capsys, minimal_ics55_pdk_factory, manifest_stubs
@@ -470,4 +470,4 @@ class TestHybridCheck:
 
         assert rc != 0
         (record,) = manifest_stubs.records()
-        assert record["error"] == "workspace_not_declared"
+        assert record["error"] == "workspace_required"

@@ -58,10 +58,12 @@ def check_cmd(
     json_output: JsonOption = False,
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
+    workspace: WorkspaceOption = None,
 ) -> None:
     command_input = CheckInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),
+        workspace=workspace,
     )
     execute_command("check", command_input, project_handlers.check)
 

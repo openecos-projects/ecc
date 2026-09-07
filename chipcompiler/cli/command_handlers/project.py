@@ -154,6 +154,27 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
     ]
 
     if cfg.design_rtl:
+        # Every declared RTL source must exist and have a usable shape —
+        # the same rules `ecc run` enforces on entry inputs, so `ecc check`
+        # never passes a project the next run would reject.
+        from chipcompiler.cli.project.effective_config import _validate_rtl_source
+
+        rtl_failures: list[dict] = []
+        for entry in cfg.design_rtl:
+            reasons = _validate_rtl_source(cfg.project_dir, entry)
+            if reasons:
+                rtl_failures.extend(
+                    {
+                        "check": "rtl",
+                        "status": "fail",
+                        "path": entry,
+                        "reason": reason,
+                        "inspect": disclosure_cmd("ecc check --json", project),
+                    }
+                    for reason in reasons
+                )
+        if rtl_failures:
+            return CommandResult.err(rtl_failures)
         records.append(
             {
                 "check": "rtl",

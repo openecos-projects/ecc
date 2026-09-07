@@ -19,7 +19,12 @@ def manifest_error_record(manifest_error: str, **fields) -> dict:
     prefix, _, _ = (manifest_error or "").partition(":")
     kind = (
         prefix
-        if prefix in ("manifest_invalid", "workspace_not_declared", "invalid_workspace")
+        if prefix in (
+            "manifest_invalid",
+            "workspace_required",
+            "workspace_not_declared",
+            "invalid_workspace",
+        )
         else "workspace_not_declared"
     )
     return error_record(kind, reason=manifest_error, **fields)

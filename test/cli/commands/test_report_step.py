@@ -475,9 +475,7 @@ class TestStepDetail:
     def test_detail_analysis_section_with_gate(self, tmp_path, capsys):
         create_step_workspace(tmp_path)
 
-        rc, data = run_step(
-            step_args(tmp_path, "drc", "--section", "analysis", "--json"), capsys
-        )
+        rc, data = run_step(step_args(tmp_path, "drc", "--section", "analysis", "--json"), capsys)
 
         assert rc == 0
         head, summary, metric, gate = data["records"]

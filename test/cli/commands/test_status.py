@@ -174,3 +174,36 @@ class TestCorruptFlowJson:
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
         assert data["records"][0].get("status") == "corrupt"
+
+
+class TestRunStatusStates:
+    def test_partial_rerun_progress_is_not_failed(self):
+        from chipcompiler.cli.inspection.discovery import get_run_status
+
+        def flow(*states):
+            return {"steps": [{"state": state} for state in states]}
+
+        assert get_run_status(flow("Success", "Unstart")) == "partial"
+        assert get_run_status(flow("Success", "Warning", "Unstart")) == "partial"
+        assert get_run_status(flow("Success")) == "success"
+        assert get_run_status(flow("Unstart")) == "unstart"
+        assert get_run_status(flow("Success", "Incomplete")) == "failed"
+        assert get_run_status(flow("Success", "Ongoing")) == "ongoing"
+
+    def test_status_reports_partial_after_bounded_rerun(
+        self, tmp_path, capsys, create_cli_project, create_flow_json
+    ):
+        project_dir = create_cli_project()
+        create_flow_json(
+            os.path.join(project_dir, "default"),
+            [
+                {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+                {"name": "Floorplan", "tool": "ecc", "state": "Unstart"},
+            ],
+        )
+
+        rc = cli_main.run(["status", "--json", "--project", project_dir])
+
+        assert rc == 0
+        records = json.loads(capsys.readouterr().out)["records"]
+        assert records[0]["status"] == "partial"

@@ -117,6 +117,31 @@ class TestSelectedStepNames:
         with pytest.raises(ValueError, match="place.*CTS"):
             rerun.selected_step_names(flow, only="bogus")
 
+    def test_selectors_accept_alias_and_case_spellings(self, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [
+                ("Synthesis", "Success"),
+                ("Floorplan", "Success"),
+                ("place", "Success"),
+                ("CTS", "Unstart"),
+            ],
+        )
+
+        assert rerun.selected_step_names(flow, from_step="floorplan") == [
+            "Floorplan",
+            "place",
+            "CTS",
+        ]
+        assert rerun.selected_step_names(flow, from_step="FLOORPLAN", through="cts") == [
+            "Floorplan",
+            "place",
+            "CTS",
+        ]
+        assert rerun.selected_step_names(flow, only="Place", force=True) == ["place"]
+        # Alias resolution still honors the no-force no-op on a success.
+        assert rerun.selected_step_names(flow, only="synth") == []
+
 
 class TestRunFrom:
     def test_synthesis_lec_warning_does_not_stop_resume(self, monkeypatch, tmp_path):
