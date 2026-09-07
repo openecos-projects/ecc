@@ -13,6 +13,7 @@ migration moves. Imported lazily by the run handler; keep module-level
 imports cheap.
 """
 
+import contextlib
 import os
 from pathlib import Path
 
@@ -86,23 +87,23 @@ def _existing_target_guard(run_dir: str, project_dir: str, run_name: str) -> Com
 
 
 def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str):
-    """Overwrite-delete + atomic create of the run target (the caller holds
+    """Overwrite-backup + atomic create of the run target (the caller holds
     the shared project lock).
 
-    Returns owns_target when the run may proceed, or a CommandResult
-    error (overwrite_refused / run_exists). Only the process that
-    atomically creates the target may proceed or clean up a failed
-    create_workspace: an existing target (pre-existing or won by a
-    concurrent run) is never written into or removed by this invocation.
-    create_workspace re-attempts the creation, so any other error
-    surfaces from there.
+    Returns (owns_target, backup_path) when the run may proceed, or a
+    CommandResult error (overwrite_refused / run_exists). Only the process
+    that atomically creates the target may proceed, restore a backup, or
+    clean up a failed create_workspace: an existing target (pre-existing or
+    won by a concurrent run) is never written into or removed by this
+    invocation. The previous workspace is renamed to a sibling backup
+    instead of deleted, so a failed creation can put it back; the backup is
+    discarded once the replacement is fully constructed.
     """
-    import shutil
-
     from chipcompiler.cli.core.records import error_record
     from chipcompiler.engine.reconcile import _workspace_lock
 
     project_dir = ctx.project_dir
+    backup_path = None
     if command_input.overwrite and os.path.lexists(run_dir):
         if not _resolves_as_spelled(run_dir, project_dir) or not _is_ecc_run_dir(run_dir):
             return CommandResult.err(
@@ -115,28 +116,23 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str):
                     )
                 ]
             )
-        # Serialize the deletion with an active execution of this workspace:
+        # Serialize the rename with an active execution of this workspace:
         # flock blocks until the running engine releases the sibling lock
-        # (<run_dir>.lock, which survives the rmtree), and the fresh engine
+        # (<run_dir>.lock, which survives the rename), and the fresh engine
         # re-acquires it on the recreated tree, so two runs never execute
         # against the same paths.
         with _workspace_lock(Path(run_dir)):
-            for root, dirs, files in os.walk(run_dir):
-                for d in dirs:
-                    dp = os.path.join(root, d)
-                    if not os.path.islink(dp):
-                        os.chmod(dp, 0o755)
-                for f in files:
-                    fp = os.path.join(root, f)
-                    if not os.path.islink(fp):
-                        os.chmod(fp, 0o644)
-            os.chmod(run_dir, 0o755)
-            shutil.rmtree(run_dir)
+            backup_path = f"{run_dir}.overwritten-{os.getpid()}"
+            # An atomic rename, not a delete: until the replacement is fully
+            # constructed the old tree stays on disk and recoverable.
+            os.replace(run_dir, backup_path)
 
     try:
         os.makedirs(run_dir)
-        return True
+        return True, backup_path
     except FileExistsError:
+        if backup_path is not None:
+            os.replace(backup_path, run_dir)
         return CommandResult.err(
             [
                 error_record(
@@ -148,6 +144,9 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str):
             ]
         )
     except OSError:
+        if backup_path is not None:
+            with contextlib.suppress(OSError):
+                os.replace(backup_path, run_dir)
         return False
 
 
@@ -212,7 +211,7 @@ def dispatch_project_run(
             workspace_registered=workspace_registered,
         )
 
-    def fresh_run(*, owns_target: bool) -> CommandResult:
+    def fresh_run(*, owns_target: bool, backup_path: str | None = None) -> CommandResult:
         return execute_fresh_run(
             command_input,
             ctx,
@@ -225,6 +224,7 @@ def dispatch_project_run(
             warning_records,
             workspace_registered=workspace_registered,
             owns_target=owns_target,
+            backup_path=backup_path,
             execute_flow=execute_flow,
         )
 
@@ -247,7 +247,7 @@ def dispatch_project_run(
             prepared = _prepare_run_target(command_input, ctx, run_dir, run_name)
             if isinstance(prepared, CommandResult):
                 return prepared
-            return fresh_run(owns_target=prepared)
+            return fresh_run(owns_target=prepared[0], backup_path=prepared[1])
 
     # The overwrite-delete + atomic create run inside the shared project
     # lock: an `ecc migrate` holding the exclusive lock sees them as one
@@ -298,10 +298,10 @@ def dispatch_project_run(
             prepared = _prepare_run_target(command_input, ctx, run_dir, run_name)
             if isinstance(prepared, CommandResult):
                 return prepared
-            owns_target = prepared
+            owns_target, backup_path = prepared
     if existing:
         # Manifest workspaces live outside runs/ — migration never moves
         # them, so the engine must not pin the shared lock for its whole
         # execution the way the legacy branch intentionally does.
         return existing_workspace_run()
-    return fresh_run(owns_target=owns_target)
+    return fresh_run(owns_target=owns_target, backup_path=backup_path)

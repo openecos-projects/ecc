@@ -189,11 +189,43 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
     return CommandResult.ok(records)
 
 
-def _preflight_environment(preset: str, project: str | None) -> CommandResult | None:
-    """Fail fast when the tools a preset needs are missing. None means ready."""
+def _preflight_environment(preset: str | None, project: str | None) -> CommandResult | None:
+    """Fail fast when the tools a fresh flow target needs are missing.
+
+    None means ready.
+    """
     from chipcompiler.cli.inspection import env_probe
 
     probes = env_probe.probe_environment(env_probe.probe_components_for_preset(preset))
+    return _preflight_failures(probes, project, preset)
+
+
+def _preflight_flow_range(flow_config: dict, project: str | None) -> CommandResult | None:
+    """Fail fast when the tools a fresh flow range needs are missing.
+
+    The selected range already names its tools, so a missing tool is a
+    preflight failure before any manifest registration or workspace
+    creation — not a discovery made mid-creation.
+    """
+    from chipcompiler.cli.inspection import env_probe
+    from chipcompiler.rtl2gds import build_flow_range
+
+    try:
+        steps = build_flow_range(flow_config["start_step"], flow_config["end_step"])
+    except ValueError:
+        # Range spellings are validated where they are declared (CLI ranges
+        # during argument handling, manifest ranges at load time); an
+        # unresolvable range here degrades to no preflight, never a new
+        # failure mode in front of the run.
+        return None
+    probes = env_probe.probe_environment(env_probe.probe_components_for_steps(steps))
+    return _preflight_failures(probes, project, None)
+
+
+def _preflight_failures(probes, project: str | None, preset: str | None) -> CommandResult | None:
+    """Map failed probes to env_not_ready; None means ready."""
+    from chipcompiler.cli.inspection import env_probe
+
     failures = [p for p in probes if p.status == env_probe.FAIL]
     if not failures:
         return None
@@ -452,10 +484,17 @@ def _run_project(
             ]
         )
 
-    # Manifest entries may define only a start/end range. They have no named
-    # preset to probe; EngineFlow uses the persisted range for that case.
-    if fresh_target and flow_config is None and effective_preset:
-        preflight = _preflight_environment(effective_preset, project)
+    # Fresh targets preflight before any mutation. Named presets probe the
+    # tools their builder needs; manifest/CLI flow ranges derive the same
+    # probe set from the selected chain, so a missing tool fails fast
+    # instead of surfacing mid-creation.
+    if fresh_target:
+        if flow_config is not None:
+            preflight = _preflight_flow_range(flow_config, project)
+        elif effective_preset:
+            preflight = _preflight_environment(effective_preset, project)
+        else:
+            preflight = None
         if preflight is not None:
             return preflight
 

@@ -49,7 +49,7 @@ def flow_mocks(monkeypatch):
     `flow` (the DummyFlow class, for instance/state assertions).
     """
     capture = {"create_kwargs": None}
-    workspace_obj = SimpleNamespace(name="workspace")
+    workspace_obj = SimpleNamespace(name="workspace", flow=SimpleNamespace(data={"steps": []}))
 
     DummyFlow.instances = []
     DummyFlow.has_init_value = False

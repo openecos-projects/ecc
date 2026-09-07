@@ -77,7 +77,7 @@ class TestPartialWorkspaceRecovery:
         with open(keep) as f:
             assert f.read() == "precious\n"
 
-    def test_failed_creation_after_overwrite_removes_partial(
+    def test_failed_creation_after_overwrite_restores_previous(
         self,
         tmp_path,
         capsys,
@@ -91,6 +91,8 @@ class TestPartialWorkspaceRecovery:
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "exp1")
         create_flow_json(run_dir)
+        with open(os.path.join(run_dir, "home", "flow.json")) as f:
+            previous_ledger = f.read()
         monkeypatch.setattr("chipcompiler.data.create_workspace", _failing_create_workspace)
 
         rc = cli_main.run(
@@ -107,7 +109,12 @@ class TestPartialWorkspaceRecovery:
                 "reason": "rtl copy failed",
             },
         ]
-        assert not os.path.lexists(run_dir)
+        # The partial replacement is gone, but the previous workspace was
+        # only renamed aside, not deleted: a failed creation puts it back.
+        assert not any("overwritten" in name for name in os.listdir(project_dir))
+        assert not os.path.lexists(os.path.join(run_dir, "home", "params.toml"))
+        with open(os.path.join(run_dir, "home", "flow.json")) as f:
+            assert f.read() == previous_ledger
 
     def test_lost_ownership_race_preserves_active_workspace(
         self,

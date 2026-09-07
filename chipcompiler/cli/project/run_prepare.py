@@ -191,13 +191,17 @@ def execute_fresh_run(
     *,
     workspace_registered: bool,
     owns_target: bool,
+    backup_path: str | None = None,
     execute_flow: bool = True,
 ) -> CommandResult:
     """Create the workspace, seed it, execute the flow, and map the result.
 
     Fresh-run preparation and execution for a project run: parameter
     assembly, workspace creation, flow target seeding, virgin manifest
-    generation, engine execution, and status write-back.
+    generation, engine execution, and status write-back. When *backup_path*
+    is set the invocation overwrote an existing workspace by renaming it
+    aside: a failure before the replacement is fully constructed restores
+    the backup, and only a verified construction discards it.
     """
     import shutil
 
@@ -215,6 +219,16 @@ def execute_fresh_run(
 
     project = ctx.project
     project_dir = ctx.project_dir
+
+    def cleanup_failed_target():
+        """Remove a partially created target and put a renamed-aside
+        workspace back, so the previous artifacts survive the failure."""
+        if not owns_target:
+            return
+        shutil.rmtree(run_dir, ignore_errors=True)
+        if backup_path is not None:
+            with contextlib.suppress(OSError):
+                os.replace(backup_path, run_dir)
 
     base = None
     if cfg.manifest_parameters:
@@ -235,8 +249,7 @@ def execute_fresh_run(
             skip_params=effective_override_keys(cfg, cli_overrides),
         )
         if coerce_errors:
-            if owns_target:
-                shutil.rmtree(run_dir, ignore_errors=True)
+            cleanup_failed_target()
             return CommandResult.err(
                 [
                     {
@@ -249,7 +262,10 @@ def execute_fresh_run(
             )
 
     def failed_workspace(reason: str | None) -> CommandResult:
-        if workspace_registered:
+        cleanup_failed_target()
+        if backup_path is None and workspace_registered:
+            # The target is genuinely gone: mark the entry failed. A restored
+            # backup keeps its prior status — the refresh never happened.
             _write_back_status(project_dir, run_name, "failed", warning_records)
         return _workspace_failed_result(run_name, run_dir, reason)
 
@@ -269,8 +285,6 @@ def execute_fresh_run(
         try:
             generated_filelist = _materialize_rtl_filelist(cfg)
         except Exception as exc:
-            if owns_target:
-                shutil.rmtree(run_dir, ignore_errors=True)
             return failed_workspace(str(exc))
         input_filelist = generated_filelist
         origin_verilog = ""
@@ -333,8 +347,6 @@ def execute_fresh_run(
                     golden_verilog=inputs.golden_netlist,
                 )
             except Exception as exc:
-                if owns_target:
-                    shutil.rmtree(run_dir, ignore_errors=True)
                 return failed_workspace(str(exc))
             finally:
                 if generated_filelist is not None:
@@ -342,8 +354,6 @@ def execute_fresh_run(
                         shutil.rmtree(os.path.dirname(generated_filelist))
 
             if workspace is None:
-                if owns_target:
-                    shutil.rmtree(run_dir, ignore_errors=True)
                 return failed_workspace(None)
 
         if cli_overrides:
@@ -375,6 +385,22 @@ def execute_fresh_run(
                     engine_flow.add_step(step=step, tool=tool, state=state)
 
             engine_flow.create_step_workspaces()
+
+            # create_step_workspaces marks a failed dependency Incomplete and
+            # stops: a ranged workspace can end up only partially constructed,
+            # which is a failed run/refresh, never a success. The ledger read
+            # tolerates stub flows so test doubles stay minimal.
+            flow_ledger = getattr(getattr(engine_flow, "workspace", None), "flow", None)
+            persisted_steps = flow_ledger.data.get("steps", []) if flow_ledger else []
+            created_steps = getattr(engine_flow, "workspace_steps", None) or []
+            if len(created_steps) < len(persisted_steps):
+                missing = persisted_steps[len(created_steps)].get("name")
+                return failed_workspace(f"step workspace creation failed at {missing}")
+
+            # The replacement is fully constructed: the previous workspace's
+            # backup is obsolete and the new tree owns the target from here on.
+            if backup_path is not None:
+                shutil.rmtree(backup_path, ignore_errors=True)
 
             if not execute_flow:
                 if workspace_registered:
@@ -417,7 +443,8 @@ def execute_fresh_run(
         except Exception as exc:
             from chipcompiler.cli.core.records import error_record
 
-            if workspace_registered:
+            cleanup_failed_target()
+            if backup_path is None and workspace_registered:
                 _write_back_status(project_dir, run_name, "failed", warning_records)
             return CommandResult.err(
                 warning_records

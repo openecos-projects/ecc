@@ -199,7 +199,16 @@ def probe_components_for_preset(preset: str) -> tuple[str, ...]:
     """
     from chipcompiler import rtl2gds as rtl2gds_api
 
-    tools = {tool for _step, tool, _state in rtl2gds_api.get_flow_builders()[preset]()}
+    return probe_components_for_steps(rtl2gds_api.get_flow_builders()[preset]())
+
+
+def probe_components_for_steps(steps) -> tuple[str, ...]:
+    """Components a concrete (step, tool, state) chain needs before it can start.
+
+    The same minimum set probe_components_for_preset derives: a fresh flow
+    range resolves to the same kind of chain through build_flow_range.
+    """
+    tools = {tool for _step, tool, _state in steps}
     components = ["ecc-tools"]
     if "yosys" in tools:
         components.append("yosys")
