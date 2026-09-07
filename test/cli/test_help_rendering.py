@@ -84,6 +84,18 @@ def test_param_set_help_documents_scopes_and_value_parsing(capsys):
     assert "invalid_value" in out
 
 
+def test_param_set_help_wraps_at_narrow_width(capsys, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "50")
+
+    rc = cli_main.run(["param", "set", "--help"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "…" not in out
+    for token in ("pdk.overrides", "params.toml", "workspace NAME"):
+        assert token in out
+
+
 def test_run_help_documents_fresh_run_override_rule(capsys):
     rc = cli_main.run(["run", "--help"])
 

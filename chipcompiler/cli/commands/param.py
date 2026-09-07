@@ -53,9 +53,8 @@ def list_cmd(
     By default lists the legacy-semantic parameters (such as
     `design.frequency_mhz`, `floorplan.core_util`, `cts.max_fanout`) plus
     direct-config fields that already carry an override. Use `--step STEP` to
-    show the full reviewed schema of one step (field, type, and the JSON
-    config field each value lands in), or `--all` to show every reviewed
-    field.
+    show the full reviewed schema of one step (field, type, and where each
+    value is written), or `--all` to show every reviewed field.
 
     ```bash
     ecc param list --step cts
@@ -86,8 +85,9 @@ def show_cmd(
     """Show one parameter value.
 
     Reports the current value, default, source, type, and allowed range,
-    plus the write targets (`maps_to`, `config_target`, `pdk_target`) that
-    show where the value lands in the generated tool configuration.
+    plus the applicable write targets (`maps_to`, `config_target`,
+    `pdk_target`). Some parameters (such as `sta.max_paths`) are passed at
+    runtime instead of written to a generated configuration file.
 
     See 'ecc doc config' for the full reference.
     """
@@ -113,10 +113,13 @@ def set_cmd(
 ) -> None:
     """Set a parameter override.
 
-    | Scope | Written to | Takes effect |
-    |---|---|---|
-    | project (default) | `ecc.toml` `[params.*]` / `[pdk.overrides]` | next fresh `ecc run` |
-    | `--workspace NAME` | `home/params.toml` `[params]` | immediately; step pending |
+    Scopes:
+
+    - project (default): the override is written to `ecc.toml`
+      (`[params.*]` / `[pdk.overrides]`) and takes effect on the next
+      fresh `ecc run`.
+    - `--workspace NAME`: written to `home/params.toml` `[params]`;
+      the refresh is immediate and the owning step is marked pending.
 
     Values: scalars are parsed per the reviewed schema type; list and object
     values are JSON literals and arrays replace the previous value wholesale.

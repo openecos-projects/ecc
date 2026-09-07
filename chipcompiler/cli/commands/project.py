@@ -125,7 +125,8 @@ def run_cmd(
 
     Parameterized fields in `config/*.json` are re-refreshed from
     `home/params.toml` and the PDK before every step, so manual edits are
-    overwritten. Each step reads the previous step's `output/`.
+    overwritten. Each step reads the previous step's `output/`; the first
+    step reads the design's origin verilog/DEF.
 
     See 'ecc doc config' for the full reference.
     """
@@ -212,7 +213,7 @@ def config_cmd(
     Without STEP: resolved project-level configuration. With STEP: the
     configuration files actually in effect for that step. `lec`, `lvs`,
     `postroutelec`, and `harden` have no step-specific configuration
-    (Tcl-driven or reusing `db_ecc.json`).
+    (Tcl-driven, tool-default, or reusing `db_ecc.json`).
 
     See 'ecc doc config' for the full reference.
     """
