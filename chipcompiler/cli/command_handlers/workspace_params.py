@@ -101,6 +101,41 @@ def param_diff(args, ctx: CommandContext) -> CommandResult:
     return CommandResult.ok(records or [{"diff_status": "clean", "workspace": ctx.run_id}])
 
 
+def _snapshot_transaction(workspace) -> dict:
+    """Capture every persisted file the mutation sequence may touch.
+
+    The sequence commits three artifacts in turn (params.toml, the derived
+    config/*.json files, and the flow ledger); a failure after the first
+    commit must roll all of them back or the workspace keeps new parameters
+    paired with stale configs and a ledger that lets the next run no-op.
+    """
+    from pathlib import Path
+
+    workspace_dir = Path(workspace.directory)
+    paths = [workspace_dir / "home" / "params.toml", workspace_dir / "home" / "flow.json"]
+    config_dir = workspace_dir / "config"
+    if config_dir.is_dir():
+        paths.extend(path for path in config_dir.iterdir() if path.is_file())
+    snapshot = {}
+    for path in paths:
+        try:
+            snapshot[path] = path.read_bytes() if path.is_file() else None
+        except OSError:
+            continue
+    return snapshot
+
+
+def _restore_transaction(snapshot: dict) -> None:
+    for path, content in snapshot.items():
+        try:
+            if content is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(content)
+        except OSError:
+            continue
+
+
 def _mutate(
     ctx: CommandContext, schema, mutation, requested_value: object, status: str
 ) -> CommandResult:
@@ -126,6 +161,7 @@ def _mutate(
             if result is None:
                 return CommandResult.ok([_record(ctx, schema.param, None, "no_override")])
             value, step = result
+            snapshot = _snapshot_transaction(workspace)
             if not save_parameter(workspace.parameters):
                 return CommandResult.err(
                     [error_record("workspace_param_save_failed", param=schema.param)]
@@ -135,6 +171,7 @@ def _mutate(
                 flow = EngineFlow(workspace=workspace)
                 invalidated = rerun.invalidate_from(flow, step)
             except Exception as exc:
+                _restore_transaction(snapshot)
                 return CommandResult.err(
                     [
                         error_record(

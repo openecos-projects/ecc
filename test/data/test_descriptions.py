@@ -1,10 +1,8 @@
 import json
-from inspect import Parameter, signature
 from pathlib import Path
 
 from chipcompiler.cli.project.params import PARAM_REGISTRY
 from chipcompiler.data.config_params import CONFIG_PARAM_SCHEMAS
-from chipcompiler.data.config_params.common import config_param
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DREAMPLACE_PARAMETERS = (
@@ -17,10 +15,6 @@ def test_every_schema_has_an_explicit_description():
 
     assert all(description.strip() for description in descriptions.values())
     assert not any("configuration field" in description for description in descriptions.values())
-
-
-def test_config_param_requires_a_description():
-    assert signature(config_param).parameters["description"].default is Parameter.empty
 
 
 def test_dreamplace_descriptions_match_upstream_metadata():

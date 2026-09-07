@@ -126,6 +126,50 @@ def test_workspace_param_set_persists_and_invalidates_suffix(
     assert workspace.parameters.data["dreamplace"]["target_density"] == 0.2
 
 
+def test_workspace_param_refresh_failure_rolls_back_params(
+    capsys, create_cli_project, monkeypatch, plain_records
+):
+    project_dir = create_cli_project()
+    workspace_dir = Path(project_dir) / "baseline"
+    _write_manifest(project_dir)
+    workspace = _workspace(workspace_dir)
+    monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _path: workspace)
+
+    def fail_refresh(_workspace):
+        raise RuntimeError("config regeneration exploded")
+
+    monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", fail_refresh)
+    monkeypatch.setattr("chipcompiler.engine.EngineFlow", _Flow)
+
+    rc = cli_main.run(
+        [
+            "param",
+            "set",
+            "place.target_density",
+            "0.65",
+            "--workspace",
+            "baseline",
+            "--project",
+            project_dir,
+            "--plain",
+        ]
+    )
+
+    assert rc == 1
+    record = plain_records(capsys.readouterr().out)[0]
+    assert record["error"] == "workspace_param_refresh_failed"
+    # The parameter mutation was already persisted when the refresh failed;
+    # the rollback must put params.toml back, not leave new parameters
+    # paired with old configs and an untouched ledger. params.toml did not
+    # exist before the mutation, so restoring it means removing it again.
+    assert not workspace.parameters.path.exists()
+    assert [step["state"] for step in workspace.flow.data["steps"]] == [
+        "Success",
+        "Success",
+        "Success",
+    ]
+
+
 def test_workspace_param_list_honors_step_filter(
     capsys, create_cli_project, monkeypatch, plain_records
 ):
