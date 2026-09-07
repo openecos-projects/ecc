@@ -1,8 +1,15 @@
-"""Replay validated direct tool-configuration overrides into workspace JSON files."""
+"""Replay validated direct tool-configuration overrides into workspace JSON files.
 
+Overrides are validated and staged against strict reads of the current
+configurations, then committed atomically per file (sibling temp +
+replace) with rollback of already-written files if a later commit fails,
+so a partial override set can never replace a real tool configuration.
+"""
+
+import json
+import os
+import tempfile
 from pathlib import Path
-
-from chipcompiler.utility import json_read, json_write
 
 CONFIG_OVERRIDES_KEY = "config_overrides"
 _LEGACY_CONFIG_OVERRIDES_KEY = "Config Overrides"
@@ -15,20 +22,58 @@ def apply_config_overrides(config_paths: dict[str, Path], parameters: dict) -> N
     if not isinstance(overrides, dict):
         return
 
-    staged: list[tuple[Path, dict]] = []
+    staged: list[tuple[Path, dict, bytes | None]] = []
     for config_key, patch in overrides.items():
         config_path = _config_path_for_key(config_paths, config_key)
         if config_path is None:
             raise ValueError(f"unknown config override target: {config_key}")
         if not isinstance(patch, dict):
             raise ValueError(f"config override patch must be an object: {config_key}")
-        config = json_read(config_path)
+        # Strict read: json_read's tolerant {} fallback would replace a real
+        # tool configuration with only the patch on a corrupt or missing
+        # file. An unreadable target must abort the whole override set.
+        config = _read_json_strict(config_path)
         _merge_config_patch(config, patch)
-        staged.append((config_path, config))
+        original = config_path.read_bytes() if config_path.is_file() else None
+        staged.append((config_path, config, original))
 
-    for config_path, config in staged:
-        if not json_write(config_path, config):
-            raise OSError(f"Failed to write config override: {config_path}")
+    written: list[tuple[Path, bytes | None]] = []
+    try:
+        for config_path, config, original in staged:
+            _write_json_strict(config_path, config)
+            written.append((config_path, original))
+    except OSError:
+        for config_path, original in reversed(written):
+            if original is None:
+                config_path.unlink(missing_ok=True)
+            else:
+                config_path.write_bytes(original)
+        raise
+
+
+def _read_json_strict(path: Path) -> dict:
+    try:
+        with open(path, encoding="utf-8") as file:
+            data = json.load(file)
+    except FileNotFoundError as exc:
+        raise ValueError(f"config override target does not exist: {path}") from exc
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise ValueError(f"config override target is unreadable or corrupt: {path}: {exc}") from exc
+    return data if isinstance(data, dict) else {}
+
+
+def _write_json_strict(path: Path, config: dict) -> None:
+    fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            json.dump(config, file, indent=2)
+            file.write("\n")
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(tmp_path, path)
+    except BaseException:
+        os.unlink(tmp_path)
+        raise
 
 
 def _config_path_for_key(config_paths: dict[str, Path], config_key: object) -> Path | None:

@@ -176,7 +176,18 @@ def _mutate(
             if result is None:
                 return CommandResult.ok([_record(ctx, schema.param, None, "no_override")])
             value, step = result
-            snapshot = _snapshot_transaction(workspace)
+            try:
+                snapshot = _snapshot_transaction(workspace)
+            except OSError as exc:
+                return CommandResult.err(
+                    [
+                        error_record(
+                            "workspace_param_refresh_failed",
+                            param=schema.param,
+                            reason=f"cannot snapshot workspace for rollback: {exc}",
+                        )
+                    ]
+                )
             if not save_parameter(workspace.parameters):
                 return CommandResult.err(
                     [error_record("workspace_param_save_failed", param=schema.param)]

@@ -44,6 +44,11 @@ def persist_origin_inputs(
     golden_verilog_path = Path(golden_verilog) if golden_verilog else None
     if golden_verilog_path and golden_verilog_path.exists():
         target = origin_dir / f"golden_{golden_verilog_path.name}"
+        if target == workspace.design.origin_verilog or target.exists():
+            # The generated golden name collides with the primary netlist
+            # (or another input): copying would silently overwrite a real
+            # input and could make LEC compare a file with itself.
+            raise ValueError(f"golden netlist name collides with an existing input: {target}")
         shutil.copy(golden_verilog_path, target)
         workspace.design.golden_verilog = target
 

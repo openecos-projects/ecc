@@ -190,6 +190,17 @@ def probe_environment(components, *, cfg=None, include_slang=True) -> list[Probe
     return results
 
 
+# Runtime component each step-tool identifier requires. Tools missing from
+# the mapping need no host component.
+_TOOL_COMPONENTS = {
+    "ecc": "ecc-tools",
+    "yosys": "yosys",
+    "yosys_lec": "yosys",
+    "dreamplace": "dreamplace",
+    "sizer": "sizer",
+}
+
+
 def probe_components_for_preset(preset: str) -> tuple[str, ...]:
     """Components a flow preset needs at minimum before it can start.
 
@@ -205,15 +216,13 @@ def probe_components_for_preset(preset: str) -> tuple[str, ...]:
 def probe_components_for_steps(steps) -> tuple[str, ...]:
     """Components a concrete (step, tool, state) chain needs before it can start.
 
-    The same minimum set probe_components_for_preset derives: a fresh flow
-    range resolves to the same kind of chain through build_flow_range.
+    Derived from the explicit tool-to-runtime mapping, so a Yosys-only
+    range preflights Yosys and an ECC-only range preflights ecc-tools —
+    each exactly once, in stable order.
     """
     tools = {tool for _step, tool, _state in steps}
-    components = ["ecc-tools"]
-    if "yosys" in tools:
-        components.append("yosys")
-    if "dreamplace" in tools:
-        components.append("dreamplace")
-    if "sizer" in tools:
-        components.append("sizer")
+    components = []
+    for component in ("ecc-tools", "yosys", "dreamplace", "sizer"):
+        if component in {_TOOL_COMPONENTS.get(tool) for tool in tools}:
+            components.append(component)
     return tuple(components)

@@ -320,7 +320,6 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
             "trans_violations",
             "transition_violations",
             "max_transition_violations",
-            "max_slew",
             "slew_violation_count",
             "summary.slew.violations",
             "slew.violations",
@@ -335,7 +334,6 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
             "cap_violations",
             "max_cap_violations",
             "cap_viols",
-            "max_cap",
             "capacitance_violations",
             "max_capacitance_violations",
             "cap_violation_count",
@@ -352,18 +350,14 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
             "fanout_violations",
             "max_fanout_violations",
             "fanout_viols",
-            "fanout_max_violations",
-            "max_fanout",
             "fanout_violation_count",
             "summary.fanout.violations",
             "fanout.violations",
             "check_fanout",
         ],
     )[0]
-    if setup_wns_ns is not None and setup_wns_ns >= 0:
-        slew_violations = 0 if slew_violations is None else slew_violations
-        cap_violations = 0 if cap_violations is None else cap_violations
-        fanout_violations = 0 if fanout_violations is None else fanout_violations
+    # A met setup slack does not prove the DRC limits were checked: leave
+    # unmeasured violation counts unknown instead of inventing zeros.
 
     critical_path_delay_ns = q(
         "Timing",

@@ -244,12 +244,15 @@ class TestRunPreflight:
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
             lambda: [
                 ("Synthesis", "yosys", "Unstart"),
+                ("Floorplan", "ecc", "Unstart"),
                 ("place", "dreamplace", "Unstart"),
                 ("Timing optimization", "sizer", "Unstart"),
             ],
         )
 
-        assert env_probe.probe_components_for_preset("syn_sta") == ("ecc-tools", "yosys")
+        # The mapping derives components from the chain's own tools: a
+        # Yosys-only stub chain needs Yosys, not an unconditional ecc-tools.
+        assert env_probe.probe_components_for_preset("syn_sta") == ("yosys",)
         assert env_probe.probe_components_for_preset("rtl2gds") == (
             "ecc-tools",
             "yosys",

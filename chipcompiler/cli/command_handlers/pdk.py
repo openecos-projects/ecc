@@ -252,6 +252,22 @@ def setup(command_input, ctx: CommandContext) -> CommandResult:
             return CommandResult.err(
                 [error_record("missing_tool", reason="required for setup: make")]
             )
+        if not os.path.isdir(os.path.join(path, ".git")):
+            # `make unzip` executes repository-provided commands, so run it
+            # only inside a checkout attributable to the PDK repository —
+            # never in an arbitrary directory that merely fails validation.
+            return CommandResult.err(
+                [
+                    error_record(
+                        "invalid_pdk_dir",
+                        path=path,
+                        reason=(
+                            "directory is not an icsprout55-pdk git checkout; "
+                            "point setup at a fresh clone or an existing checkout"
+                        ),
+                    )
+                ]
+            )
         make_cmd = ["make", "unzip"]
         gh_proxy = os.environ.get("GH_PROXY", "").strip()
         if gh_proxy:

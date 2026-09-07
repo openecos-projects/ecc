@@ -136,6 +136,8 @@ def format_text_report(
             f"{_fmt(timing.setup_wns_ns, 'ns')} / {_fmt(timing.setup_tns_ns, 'ns')}",
             "TIMING MET"
             if timing.setup_wns_ns is not None and timing.setup_wns_ns >= 0
+            else "UNKNOWN"
+            if timing.setup_wns_ns is None
             else "VIOLATION",
         )
     )
@@ -145,6 +147,8 @@ def format_text_report(
             f"{_fmt(timing.hold_wns_ns, 'ns')} / {_fmt(timing.hold_tns_ns, 'ns')}",
             "TIMING MET"
             if timing.hold_wns_ns is not None and timing.hold_wns_ns >= 0
+            else "UNKNOWN"
+            if timing.hold_wns_ns is None
             else "VIOLATION",
         )
     )

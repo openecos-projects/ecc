@@ -379,6 +379,9 @@ def execute_fresh_run(
             if workspace is None:
                 return failed_workspace(None)
 
+        # Seeding writes are part of the replacement construction: they run
+        # before the commit point so a failure here still restores the
+        # renamed-aside previous workspace.
         if cli_overrides:
             import json
 
@@ -392,10 +395,8 @@ def execute_fresh_run(
             workspace_parameters = getattr(workspace, "parameters", None)
             if workspace_parameters is not None:
                 workspace_parameters.data["_flow"] = {"preset": cfg.flow_preset}
-                save_parameter(workspace_parameters)
-
-        if workspace_registered and execute_flow:
-            _write_back_status(project_dir, run_name, "running", warning_records)
+                if not save_parameter(workspace_parameters):
+                    return failed_workspace("failed to persist the flow target in params.toml")
 
         # Engine execution still holds the workspace lock taken before
         # creation: a second `ecc run` taking the existing-workspace path
@@ -424,6 +425,9 @@ def execute_fresh_run(
             # The previous workspace's backup is obsolete, the new tree owns
             # the target, and later failures are a normal failed run.
             commit_replacement()
+
+            if workspace_registered and execute_flow:
+                _write_back_status(project_dir, run_name, "running", warning_records)
 
             if not execute_flow:
                 if workspace_registered:

@@ -239,6 +239,21 @@ class TestPdkSetup:
         assert record["error"] == "missing_tool"
         assert "git" in record["reason"]
 
+    def test_setup_refuses_unrecognized_nonempty_directory(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
+    ):
+        project_dir = create_cli_project(pdk_root="")
+        stranger = tmp_path / "stranger"
+        stranger.mkdir()
+        (stranger / "Makefile").write_text("all:\n\techo pwned\n")
+
+        rc = cli_main.run(["pdk", "setup", str(stranger), "--project", project_dir, "--plain"])
+
+        record = plain_records(capsys.readouterr().out)[0]
+        assert rc == 1
+        assert record["error"] == "invalid_pdk_dir"
+        assert not list(stranger.iterdir()) or list(stranger.iterdir()) == [stranger / "Makefile"]
+
     def test_setup_complete_checkout_only_sets_root(
         self,
         tmp_path,
@@ -281,6 +296,7 @@ class TestPdkSetup:
             if cmd[:2] == ["git", "clone"]:
                 calls["clone"].append(cmd)
                 pdk_dir.mkdir()  # pretend the clone created the checkout
+                (pdk_dir / ".git").mkdir()
                 return _FakeResult()
             if cmd[0] == "make":
                 calls["make"].append((cmd, cwd))
@@ -341,6 +357,7 @@ class TestPdkSetup:
         project_dir = create_cli_project(pdk_root="")
         pdk_dir = tmp_path / "stubborn-pdk"
         pdk_dir.mkdir()
+        (pdk_dir / ".git").mkdir()
         make_calls = []
 
         def fake_run(cmd, cwd=None, **kwargs):
@@ -370,6 +387,7 @@ class TestPdkSetup:
         project_dir = create_cli_project(pdk_root="")
         pdk_dir = tmp_path / "flaky-pdk"
         pdk_dir.mkdir()
+        (pdk_dir / ".git").mkdir()
         attempts = {"n": 0}
 
         def fake_run(cmd, cwd=None, **kwargs):
@@ -401,6 +419,7 @@ class TestPdkSetup:
         project_dir = create_cli_project(pdk_root="")
         pdk_dir = tmp_path / "proxy-pdk"
         pdk_dir.mkdir()
+        (pdk_dir / ".git").mkdir()
         seen = {}
 
         def fake_run(cmd, cwd=None, **kwargs):
