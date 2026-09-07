@@ -17,9 +17,9 @@ reclassify, and mutate.
 Outcomes:
 
 - ``no_op``: persisted == target (or target is a prefix of persisted) and
-  every step succeeded.
-- ``resume``: same shape, but some step is not Success — resume from the
-  first non-Success step.
+  every step finished (Success, or Warning for a non-blocking check).
+- ``resume``: same shape, but some step is not finished — resume from the
+  first unfinished step.
 - ``extended``: persisted was a proper prefix of the target; the missing
   suffix was appended as Unstart and the target adopted into ``[flow]``.
 - ``repaired``: shapes matched but ``[flow]`` was stale (e.g. a crash
@@ -234,9 +234,11 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
 
     if relation == "target_prefix":
         # The persisted flow already covers the target: no-op only when
-        # every step WITHIN the requested target range succeeded; a
-        # non-Success step inside the target resumes. Steps beyond the
-        # target are never the run's business.
+        # every step WITHIN the requested target range finished; a warned
+        # step is finished (non-blocking check), an unfinished one resumes.
+        # Steps beyond the target are never the run's business.
+        from chipcompiler.data.step import FINISHED_STEP_STATES
+
         target_states = {
             str(step.get("state", ""))
             for step in flow_data.get("steps", [])[: len(target)]
@@ -244,17 +246,19 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
         }
         return (
             ReconcileResult(
-                outcome="no_op" if target_states == {"Success"} else "resume",
+                outcome="no_op" if target_states <= FINISHED_STEP_STATES else "resume",
                 persisted=_entry_names(persisted),
                 target=_entry_names(target),
             ),
             {},
         )
 
+    from chipcompiler.data.step import FINISHED_STEP_STATES
+
     states = {
         str(step.get("state", "")) for step in flow_data.get("steps", []) if isinstance(step, dict)
     }
-    outcome = "no_op" if states == {"Success"} else "resume"
+    outcome = "no_op" if states <= FINISHED_STEP_STATES else "resume"
     return (
         ReconcileResult(
             outcome=outcome,
@@ -408,16 +412,18 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
         )
 
     if outcome is None:
+        from chipcompiler.data.step import FINISHED_STEP_STATES
+
         if relation == "target_prefix":
             # The persisted flow already covers the target: no-op only
-            # when every step within the requested target range succeeded.
+            # when every step within the requested target range finished.
             flow_data = _persisted_flow_data(workspace_dir, json_read)
             target_states = {
                 str(step.get("state", ""))
                 for step in flow_data.get("steps", [])[: len(target)]
                 if isinstance(step, dict)
             }
-            outcome = "no_op" if target_states == {"Success"} else "resume"
+            outcome = "no_op" if target_states <= FINISHED_STEP_STATES else "resume"
         else:
             flow_data = _persisted_flow_data(workspace_dir, json_read)
             states = {
@@ -425,7 +431,7 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
                 for step in flow_data.get("steps", [])
                 if isinstance(step, dict)
             }
-            outcome = "repaired" if states == {"Success"} else "resume"
+            outcome = "repaired" if states <= FINISHED_STEP_STATES else "resume"
 
     return ReconcileResult(
         outcome=outcome,

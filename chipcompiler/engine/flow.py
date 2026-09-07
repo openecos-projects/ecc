@@ -564,11 +564,12 @@ class EngineFlow:
         return True
 
     def _normalize_legacy_terminal_state(self, workspace_step, step_tag):
-        """Reset terminal states from pre-guard workspaces to Unstart.
+        """Reset stuck terminal states from pre-guard workspaces to Unstart.
 
-        Pre-guard workspaces may have steps stuck in Incomplete/Warning/Invalid
-        from earlier runs. Batch resets (_invalidate_suffix, clear_states)
-        handle rerun paths; this handles the rerun=False resume path.
+        Pre-guard workspaces may have steps stuck in Incomplete/Invalid from
+        earlier runs. Batch resets (_invalidate_suffix, clear_states) handle
+        rerun paths; this handles the rerun=False resume path. Warning is
+        not reset: it is a finished state a plain resume skips.
         """
         old_step = self.get_step(name=workspace_step.name, tool=workspace_step.tool)
         if old_step is None:
@@ -576,7 +577,6 @@ class EngineFlow:
         persisted = old_step.get("state")
         if persisted in {
             StateEnum.Imcomplete.value,
-            StateEnum.Warning.value,
             StateEnum.Invalid.value,
         }:
             logger.warning(
@@ -613,6 +613,16 @@ class EngineFlow:
             self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
             _notify_flow_observer(observer, "on_step_skipped", workspace_step)
             return StateEnum.Success
+
+        if not rerun and self.check_state(
+            name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Warning
+        ):
+            # A warned non-blocking step (synthesis LEC) is terminal: the
+            # flow continued past it, so a plain resume skips it too.
+            self.workspace.logger.info("[SKIP] %s finished with a non-blocking warning", step_tag)
+            self.clear_db_engine_after_step(workspace_step, StateEnum.Warning)
+            _notify_flow_observer(observer, "on_step_skipped", workspace_step)
+            return StateEnum.Warning
 
         self._normalize_legacy_terminal_state(workspace_step, step_tag)
 

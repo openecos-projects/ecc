@@ -149,6 +149,22 @@ class TestReconcile:
 
         assert result.outcome == "resume"
 
+    def test_equal_with_warned_lec_is_no_op(self, tmp_path):
+        # Warning is a finished state: a completed flow whose synthesis LEC
+        # warned must not reconcile to a resume that reruns the suffix.
+        lec_index = next(
+            index for index, (name, _tool) in enumerate(RTL2GDS_STEPS) if name == "lec"
+        )
+        states = ["Success"] * len(RTL2GDS_STEPS)
+        states[lec_index] = "Warning"
+        workspace_dir = _write_workspace(
+            tmp_path, RTL2GDS_STEPS, states=states, flow_section={"preset": "rtl2gds"}
+        )
+
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
+
+        assert result.outcome == "no_op"
+
     def test_target_prefix_keeps_extra_steps(self, tmp_path):
         workspace_dir = _write_workspace(
             tmp_path,

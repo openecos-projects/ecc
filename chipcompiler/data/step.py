@@ -51,6 +51,20 @@ def is_non_blocking_step(step) -> bool:
     )
 
 
+FINISHED_STEP_STATES = frozenset({StateEnum.Success.value, StateEnum.Warning.value})
+
+
+def is_finished_step_state(state: object) -> bool:
+    """Whether a persisted step state counts as done for selection and skipping.
+
+    Warning is a terminal state: a non-blocking check (the synthesis LEC)
+    that did not prove equivalence still lets the flow continue, so a warned
+    step must not be re-selected by a plain resume. Incomplete/Invalid steps
+    are unfinished: resume and rerun selectors re-execute them.
+    """
+    return state in FINISHED_STEP_STATES
+
+
 ###########################################################################
 # step definition for chip design flow in json format
 # step_definition =

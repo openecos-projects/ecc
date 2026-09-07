@@ -89,6 +89,35 @@ class TestSelectedStepNames:
 
         assert rerun.selected_step_names(flow) == []
 
+    def test_resume_treats_warning_as_finished(self, tmp_path):
+        # A warned synthesis LEC is terminal: a plain resume must not
+        # re-execute it and its physical suffix on every run.
+        flow = _make_run_flow(
+            tmp_path,
+            [
+                ("Synthesis", "Success"),
+                ("lec", "Warning"),
+                ("Floorplan", "Success"),
+                ("CTS", "Success"),
+            ],
+        )
+
+        assert rerun.selected_step_names(flow) == []
+
+    def test_only_warning_step_requires_force(self, tmp_path):
+        flow = _make_run_flow(tmp_path, [("lec", "Warning")])
+
+        assert rerun.selected_step_names(flow, only="lec") == []
+        assert rerun.selected_step_names(flow, only="lec", force=True) == ["lec"]
+
+    def test_resume_still_selects_incomplete_suffix(self, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [("Synthesis", "Success"), ("place", "Incomplete"), ("CTS", "Success")],
+        )
+
+        assert rerun.selected_step_names(flow) == ["place", "CTS"]
+
     def test_from_selects_suffix(self, tmp_path):
         flow = _make_run_flow(
             tmp_path,
