@@ -81,7 +81,11 @@ def show_cmd(
     _finish_param("show", command_input, param_show_handler)
 
 
-@param_app.command("set", help="Set a parameter override")
+@param_app.command(
+    "set",
+    help="Set a parameter override",
+    context_settings={"ignore_unknown_options": True},
+)
 def set_cmd(
     *,
     key: Annotated[str, typer.Argument()],

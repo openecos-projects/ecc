@@ -109,6 +109,15 @@ class TestParamSet:
         rc = cli_main.run(["param", "set", "place.target_density", "1.5", "--project", project_dir])
         assert rc == 1
 
+    def test_param_set_accepts_negative_value(self, tmp_path, capsys, create_cli_project):
+        project_dir = create_cli_project()
+        rc = cli_main.run(
+            ["param", "set", "--project", project_dir, "--json", "place.max_net_weight", "-1"]
+        )
+        assert rc == 0
+        record = json.loads(capsys.readouterr().out)["records"][0]
+        assert record["value"] == "-1"
+
     def test_param_set_preserves_other_sections(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
         cli_main.run(["param", "set", "cts.max_fanout", "16", "--project", project_dir])

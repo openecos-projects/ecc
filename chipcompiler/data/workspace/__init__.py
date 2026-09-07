@@ -697,6 +697,8 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
 
+    _refresh_generated_sdc(workspace)
+
     db = json_read(workspace.config["db"])
     if "INPUT" not in db or "LayerSettings" not in db:
         raise FileNotFoundError(
@@ -1377,3 +1379,19 @@ def create_default_sdc(workspace: Workspace):
 
     with open(workspace.pdk.sdc, "w") as file:
         file.writelines(sdc_content)
+
+
+def _refresh_generated_sdc(workspace: Workspace) -> None:
+    """Refresh an existing SDC created by ECC while preserving user SDC files."""
+    sdc_path = workspace.pdk.sdc
+    if sdc_path is None or not sdc_path.is_file():
+        return
+
+    try:
+        with sdc_path.open(encoding="utf-8") as file:
+            if file.readline().strip() != "# Auto-generated SDC file":
+                return
+    except (OSError, UnicodeError):
+        return
+
+    create_default_sdc(workspace)

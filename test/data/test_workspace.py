@@ -916,6 +916,46 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     assert floorplan["io_placer"] == {"io_layer_list": ["MET3", "MET4"]}
 
 
+def test_refresh_workspace_config_updates_generated_sdc_frequency(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    workspace_dir, workspace = _create_loaded_ics55_workspace(
+        tmp_path,
+        "workspace_generated_sdc",
+        minimal_ics55_pdk_factory,
+        default_ics55_parameters,
+    )
+    parameter_path = workspace_dir / "home" / "params.toml"
+    params = _read_parameters(parameter_path)
+    params["frequency_max"] = 250.0
+    _write_parameters(parameter_path, params)
+
+    refresh_workspace_config(workspace)
+
+    assert "set clk_freq_mhz 250.0" in workspace.pdk.sdc.read_text(encoding="utf-8")
+
+
+def test_refresh_workspace_config_preserves_external_sdc(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    workspace_dir, workspace = _create_loaded_ics55_workspace(
+        tmp_path,
+        "workspace_external_sdc",
+        minimal_ics55_pdk_factory,
+        default_ics55_parameters,
+    )
+    external_sdc = workspace.pdk.sdc
+    external_content = "create_clock -period 1 [get_ports clk]\n"
+    external_sdc.write_text(external_content, encoding="utf-8")
+    params = _read_parameters(workspace_dir / "home" / "params.toml")
+    params["frequency_max"] = 250.0
+    _write_parameters(workspace_dir / "home" / "params.toml", params)
+
+    refresh_workspace_config(workspace)
+
+    assert external_sdc.read_text(encoding="utf-8") == external_content
+
+
 def test_refresh_workspace_config_preserves_routability_flag_string_coercion(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
