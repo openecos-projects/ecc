@@ -42,7 +42,11 @@ def doc_cmd(
     ] = False,
 ) -> None:
     try:
-        text = docs.load_guide(topic.value, lang.value)
+        raw = docs.load_guide(topic.value, lang.value)
+        if plain and section is None:
+            _write_plain(raw)
+            return
+        text = raw.decode("utf-8")
         if section is not None:
             text = docs.slice_section(text, section)
     except docs.GuideNotFoundError as exc:
@@ -51,14 +55,36 @@ def doc_cmd(
     except docs.SectionNotFoundError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from None
-    except (OSError, UnicodeDecodeError) as exc:
+    except UnicodeDecodeError:
+        typer.echo(
+            f"Error: guide is not valid UTF-8: {docs.GUIDE_STEMS[topic.value]}.{lang.value}.md",
+            err=True,
+        )
+        raise typer.Exit(1) from None
+    except OSError as exc:
         typer.echo(f"Error: could not read guide: {exc}", err=True)
         raise typer.Exit(1) from None
 
     if plain:
-        sys.stdout.write(text)
+        _write_plain(text.encode("utf-8"))
         return
 
     from chipcompiler.cli.rendering.render import render_markdown
 
-    render_markdown(text, color=supports_color())
+    try:
+        render_markdown(text, color=supports_color())
+    except UnicodeEncodeError:
+        typer.echo(
+            "Error: terminal encoding cannot render this guide; try --plain",
+            err=True,
+        )
+        raise typer.Exit(1) from None
+
+
+def _write_plain(data: bytes) -> None:
+    stream = getattr(sys.stdout, "buffer", None)
+    if stream is None:
+        sys.stdout.write(data.decode("utf-8"))
+    else:
+        stream.write(data)
+        stream.flush()

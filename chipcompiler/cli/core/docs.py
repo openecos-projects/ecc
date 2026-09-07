@@ -32,12 +32,12 @@ def guides_root() -> Path:
     return Path(chipcompiler.__file__).resolve().parent.parent / "docs"
 
 
-def load_guide(topic: str, lang: str) -> str:
+def load_guide(topic: str, lang: str) -> bytes:
     name = f"{GUIDE_STEMS[topic]}.{lang}.md"
     path = guides_root() / name
     if not path.is_file():
         raise GuideNotFoundError(f"doc resource not found: {name}")
-    return path.read_text(encoding="utf-8")
+    return path.read_bytes()
 
 
 def heading_tokens(text: str) -> list[str]:
