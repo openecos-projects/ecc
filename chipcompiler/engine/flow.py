@@ -12,6 +12,7 @@ from chipcompiler.data import (
     StepEnum,
     Workspace,
     WorkspaceStep,
+    is_finished_step_state,
     is_non_blocking_step,
     log_flow,
 )
@@ -429,17 +430,20 @@ class EngineFlow:
             if self.engine_db.has_init():
                 return True
 
-        # init engine step by last workpsace step data if all step run success
+        # init engine step by last workpsace step data if all steps finished
         workspace_step = None
         for ws_step in self.workspace_steps:
-            if not self.check_state(name=ws_step.name, tool=ws_step.tool, state=StateEnum.Success):
-                # use the first unsuccess step to setup db engine
+            step = self.get_step(name=ws_step.name, tool=ws_step.tool)
+            state = step.get("state") if step is not None else None
+            if not is_finished_step_state(state):
+                # use the first unfinished step to setup db engine
                 workspace_step = ws_step
                 break
 
         # LEC is a netlist comparison step and does not expose an ECC DB
         # input. Keep any existing DB alive, but do not try to initialize one
-        # from the Yosys LEC workspace.
+        # from the Yosys LEC workspace. A warned LEC is finished, so it is
+        # skipped above and never lands here.
         if workspace_step is not None and workspace_step.tool == "yosys_lec":
             return True
 
