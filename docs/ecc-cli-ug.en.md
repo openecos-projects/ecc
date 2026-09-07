@@ -125,7 +125,7 @@ ecc doc config --plain      # raw markdown, byte-for-byte
 ```
 
 - Topics: `config`, `ug`, `tutorial`, `dev`; `--lang` selects `en` (default) or `cn`.
-- On a terminal the rendered guide opens in a pager (`$PAGER`, falling back to `less`/`more`); when piped it prints in full.
+- On a terminal the rendered guide opens in a pager with highlighting (`$PAGER`, falling back to `less`/`more`; `LESS=FRX` is defaulted when unset so colors survive `less`). When piped it prints in full without colors.
 - Invalid topic/language values are rejected by argument validation (exit 2).
 - Default output keeps the rendered unicode layout even when piped; `--plain` prints the raw markdown unchanged (script-friendly).
 

@@ -115,6 +115,7 @@ def test_doc_pages_the_full_guide_when_stdout_is_a_tty(monkeypatch, capsys):
     paged = []
     monkeypatch.setattr(pydoc, "pager", paged.append)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr("chipcompiler.cli.commands.doc.supports_color", lambda: False)
 
     rc = cli_main.run(["doc", "config"])
 
@@ -122,6 +123,39 @@ def test_doc_pages_the_full_guide_when_stdout_is_a_tty(monkeypatch, capsys):
     assert capsys.readouterr().out == ""
     assert len(paged) == 1
     assert "cts_ecc.json" in paged[0]
+    assert "\x1b[" not in paged[0]
+
+
+def test_doc_pager_keeps_styles_when_color_is_supported(monkeypatch, capsys):
+    import pydoc
+
+    paged = []
+    monkeypatch.setattr(pydoc, "pager", paged.append)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr("chipcompiler.cli.commands.doc.supports_color", lambda: True)
+
+    rc = cli_main.run(["doc", "config"])
+
+    assert rc == 0
+    assert capsys.readouterr().out == ""
+    assert len(paged) == 1
+    assert "\x1b[" in paged[0]
+
+
+def test_doc_pager_defaults_less_and_restores_the_environment(monkeypatch, capsys):
+    import os
+    import pydoc
+
+    seen = []
+    monkeypatch.setattr(pydoc, "pager", lambda text: seen.append(os.environ.get("LESS")))
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    monkeypatch.delenv("LESS", raising=False)
+
+    rc = cli_main.run(["doc", "config"])
+
+    assert rc == 0
+    assert seen == ["FRX"]
+    assert "LESS" not in os.environ
 
 
 @pytest.mark.parametrize(

@@ -125,7 +125,7 @@ ecc doc config --plain      # 原始 markdown，逐字节输出
 ```
 
 - 主题：`config`、`ug`、`tutorial`、`dev`；`--lang` 选择 `en`（默认）或 `cn`。
-- 终端下渲染输出会进入分页器（`$PAGER`，回退到 `less`/`more`）翻阅；管道场景直接全量输出。
+- 终端下渲染输出带高亮并进入分页器翻阅（`$PAGER`，回退到 `less`/`more`；未设置 `LESS` 时默认 `LESS=FRX`，保证 `less` 下颜色生效）；管道场景全量直出、不带颜色。
 - 非法的主题/语言取值由参数校验拒绝（退出码 2）。
 - 管道输出保留 unicode 渲染版式；`--plain` 原样输出原始 markdown，适合脚本处理。
 
