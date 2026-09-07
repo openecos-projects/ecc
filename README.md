@@ -144,7 +144,7 @@ Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 | `ecc layout-image` | Render a GDS file into a layout image |
 
 Project commands accept `--project <dir>` (defaults to the current directory).
-Most commands support `--plain`, `--json`, and `--jsonl` output for scripting.
+Most commands support `--plain` output for scripting.
 
 For the full command model — `ecc.toml` reference, flow presets, step-level
 rerun (`--resume`, `--from`, `--only`), and parameter overrides — see the

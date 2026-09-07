@@ -141,7 +141,7 @@ ecc log --project gcd
 | `ecc layout-image` | 将 GDS 文件渲染为版图图像 |
 
 项目命令均接受 `--project <dir>`（默认为当前目录）。大多数命令支持
-`--plain`、`--json` 和 `--jsonl` 输出，便于脚本化。
+`--plain` 输出，便于脚本化。
 
 完整的命令模型——`ecc.toml` 参考、流程预设、步骤级重跑
 （`--resume`、`--from`、`--only`）和参数覆盖——请参阅

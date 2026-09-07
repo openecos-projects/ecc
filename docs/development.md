@@ -270,7 +270,7 @@ preset needs and fails fast with `env_not_ready` before creating a workspace:
 
 ```bash
 uv run ecc doctor                  # inside a project for the PDK probe
-uv run ecc doctor --project gcd --json
+uv run ecc doctor --project gcd --plain
 ```
 
 ### PDK Path
