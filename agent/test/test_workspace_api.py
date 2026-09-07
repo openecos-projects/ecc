@@ -577,40 +577,28 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
     monkeypatch.setattr("agent.workspace_api._reapply_candidate_input", lambda *_args: None)
     tool = {
         "name": "DREAMPlace",
-        "revision": "ecc.agent.dreamplace_parameter_observer.v1",
+        "revision": "ecc.agent.dreamplace_parameter_observer.v2",
         "source_sha256": "sha256:" + "3" * 64,
     }
 
     def run_candidate_step(_flow, step, **_kwargs):
         if step.name == "place":
             report = {
+                "schema_version": "tool.parameter_runtime_report.v2",
                 "knob_id": "place.target_density",
-                "requested_value": 0.6,
+                "written_value": 0.6,
                 "tool": tool,
-                "application_status": "applied",
-                "effective_initial": {"value": 0.6, "unit": "ratio"},
-                "effective_final": {"value": 0.6, "unit": "ratio"},
-                "activation": {
-                    "status": "used",
-                    "consumers": [
-                        {
-                            "consumer_id": "dreamplace.density_objective",
-                            "outcome": "entered",
-                            "evidence_ref": "analysis/parameter_runtime_report.v1.json",
-                            "evidence_sha256": "sha256:" + "4" * 64,
-                        }
-                    ],
-                },
-                "consumer_observation": {
-                    "requested_target_density": 0.6,
-                    "effective_target_density": 0.6,
+                "status": "effective",
+                "actual_value": 0.6,
+                "reason": None,
+                "observation": {
+                    "target_density": 0.6,
                     "density_tensor_value": 0.6,
-                    "placement_iteration_count": 3,
-                    "evidence_complete": True,
+                    "density_operator_call_count": 3,
+                    "utilization_floor": None,
                 },
-                "transitions": [],
             }
-            (candidate / "analysis" / "parameter_runtime_report.v1.json").write_text(
+            (candidate / "analysis" / "parameter_runtime_report.v2.json").write_text(
                 json.dumps(report), encoding="utf-8"
             )
             return
@@ -641,7 +629,7 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
     assert terminal["result"].get("evidenceError") is None, terminal["result"].get("evidenceError")
     assert "parameterApplicationReceipt" in terminal["result"], terminal
     application = terminal["result"]["parameterApplicationReceipt"]
-    assert application["application_status"] == "applied"
+    assert application["status"] == "effective"
     assert application["tool"] == tool
     assert application["context"]["tool_revision"] == tool["revision"]
     assert application["context"]["context_sha256"] == CONTEXT_SHA256
@@ -666,10 +654,10 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
         == terminal["result"]["candidateManifestSha256"]
     )
     assert terminal["result"]["parameterApplicationReceiptRef"] == (
-        ".agent/candidates/candidate-failed/analysis/parameter_application_receipt.v1.json"
+        ".agent/candidates/candidate-failed/analysis/parameter_application_receipt.v2.json"
     )
     assert terminal["result"]["parameterApplicationReceiptSha256"] == sha256_path(
-        candidate / "analysis" / "parameter_application_receipt.v1.json"
+        candidate / "analysis" / "parameter_application_receipt.v2.json"
     )
 
 
@@ -729,7 +717,7 @@ def test_candidate_rerun_removes_stale_top_level_parameter_receipts(monkeypatch,
     dreamplace = tmp_path / "config" / "dreamplace.json"
     dreamplace.parent.mkdir()
     dreamplace.write_text('{"random_seed": 3000}', encoding="utf-8")
-    for name in ("parameter_runtime_report.v1.json", "parameter_application_receipt.v1.json"):
+    for name in ("parameter_runtime_report.v2.json", "parameter_application_receipt.v2.json"):
         (analysis / name).write_text('{"stale": true}', encoding="utf-8")
     flow = SimpleNamespace(
         workspace=SimpleNamespace(
@@ -755,8 +743,8 @@ def test_candidate_rerun_removes_stale_top_level_parameter_receipts(monkeypatch,
         SimpleNamespace(directory=tmp_path, config={"dreamplace": dreamplace}), flow, request
     )
 
-    assert not (analysis / "parameter_runtime_report.v1.json").exists()
-    assert not (analysis / "parameter_application_receipt.v1.json").exists()
+    assert not (analysis / "parameter_runtime_report.v2.json").exists()
+    assert not (analysis / "parameter_application_receipt.v2.json").exists()
     assert json.loads(dreamplace.read_text(encoding="utf-8"))["random_seed"] == 17
 
 

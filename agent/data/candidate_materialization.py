@@ -135,7 +135,7 @@ def candidate_written_patch(
     target_step: str,
     patch: Any,
 ) -> list[dict[str, Any]]:
-    """Validate a surface patch and return the values written by L1."""
+    """Validate a surface patch and return the materialized values."""
     return _prepare_patch(workspace, target_step, patch)[0]
 
 
@@ -529,7 +529,7 @@ def validate_candidate_materialization_receipt(
     workspace: Any,
     target_step: str,
 ) -> dict[str, Any] | None:
-    """Read and strictly bind an immutable L1 receipt to the current workspace."""
+    """Read and strictly bind an immutable materialization receipt to the workspace."""
     receipt_path = _receipt_path(workspace)
     if not receipt_path.exists():
         return None

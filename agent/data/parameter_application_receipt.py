@@ -5,10 +5,9 @@ pass structured consumer facts; this producer only assembles and persists the
 frozen JSON envelope.
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
+import math
 import os
 from collections.abc import Mapping
 from pathlib import Path
@@ -33,11 +32,6 @@ def build_parameter_application_receipt(
     """Aggregate native runtime facts and optionally atomically write the receipt."""
     if not receipt_id or not requested.get("knob_id"):
         raise ValueError("receipt identity is required")
-    activation = runtime_report.get("activation")
-    if not isinstance(activation, Mapping):
-        raise ValueError("native activation facts are required")
-    if activation.get("status") == "used" and not activation.get("consumers"):
-        raise ValueError("used activation requires consumer evidence")
     normalized_tool = dict(tool)
     required_tool = ("name", "revision", "source_sha256")
     if any(
@@ -49,27 +43,37 @@ def build_parameter_application_receipt(
         raise ValueError("bound tool metadata is not allowed")
     if not _is_sha256(normalized_tool["source_sha256"]):
         raise ValueError("tool source_sha256 is invalid")
+    if runtime_report.get("schema_version") != "tool.parameter_runtime_report.v2":
+        raise ValueError("runtime report v2 is required")
+    status = runtime_report.get("status")
+    actual = runtime_report.get("actual_value")
+    if status not in {"effective", "inactive", "unknown"}:
+        raise ValueError("parameter status is invalid")
+    if actual is not None and (
+        type(actual) not in {bool, int, float}
+        or (type(actual) is float and not math.isfinite(actual))
+    ):
+        raise ValueError("actual parameter value is invalid")
+    if status == "effective" and actual is None:
+        raise ValueError("effective parameter requires an actual value")
+    reason = runtime_report.get("reason")
+    observation = runtime_report.get("observation")
+    if (reason is not None and not isinstance(reason, str)) or not isinstance(observation, dict):
+        raise ValueError("parameter observation is invalid")
     normalized_materialization = dict(materialization)
     normalized_materialization.setdefault("parent_ref", None)
     payload: dict[str, Any] = {
-        "schema_version": "tool.parameter_application_receipt.v1",
+        "schema_version": "tool.parameter_application_receipt.v2",
         "receipt_id": receipt_id,
         "tool": normalized_tool,
         "context": dict(context),
         "requested": dict(requested),
         "materialization": normalized_materialization,
-        "effective_initial": runtime_report.get(
-            "effective_initial", {"value": None, "unit": requested.get("unit", "")}
-        ),
-        "transitions": list(runtime_report.get("transitions", [])),
-        "application_status": runtime_report.get("application_status", "unknown"),
-        "activation": dict(activation),
-        "effective_final": runtime_report.get(
-            "effective_final", {"value": None, "unit": requested.get("unit", "")}
-        ),
+        "actual_value": actual,
+        "status": status,
+        "reason": reason,
+        "observation": observation,
     }
-    if "consumer_observation" in runtime_report:
-        payload["consumer_observation"] = runtime_report["consumer_observation"]
     payload["evidence_sha256"] = _sha256(payload)
     if destination is not None:
         destination = Path(destination)

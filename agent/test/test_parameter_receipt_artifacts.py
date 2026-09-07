@@ -23,22 +23,23 @@ HASH = "sha256:" + "a" * 64
 PRODUCER = Path(__file__).parents[1] / "data/parameter_runtime_observer.py"
 TOOL = {
     "name": "DREAMPlace",
-    "revision": "ecc.agent.dreamplace_parameter_observer.v1",
+    "revision": "ecc.agent.dreamplace_parameter_observer.v2",
     "source_sha256": sha256_path(PRODUCER),
 }
 
 
-def _write_unknown_runtime_report(analysis: Path, *, knob_id: str, requested_value: object) -> None:
-    (analysis / "parameter_runtime_report.v1.json").write_text(
+def _write_unknown_runtime_report(analysis: Path, *, knob_id: str, written_value: object) -> None:
+    (analysis / "parameter_runtime_report.v2.json").write_text(
         json.dumps(
             {
                 "knob_id": knob_id,
-                "requested_value": requested_value,
+                "written_value": written_value,
                 "tool": TOOL,
-                "application_status": "unknown",
-                "activation": {"status": "unknown", "consumers": []},
-                "effective_initial": {"value": None, "unit": "ratio"},
-                "effective_final": {"value": None, "unit": "ratio"},
+                "schema_version": "tool.parameter_runtime_report.v2",
+                "status": "unknown",
+                "actual_value": None,
+                "reason": "Required runtime observation is unavailable.",
+                "observation": {},
             }
         ),
         encoding="utf-8",
@@ -100,7 +101,7 @@ def test_candidate_parameter_receipt_is_written_atomically(tmp_path: Path) -> No
     _write_unknown_runtime_report(
         analysis,
         knob_id="place.target_density",
-        requested_value=0.85,
+        written_value=0.85,
     )
     request = SimpleNamespace(
         candidate_id="candidate-1",
@@ -119,7 +120,7 @@ def test_candidate_parameter_receipt_is_written_atomically(tmp_path: Path) -> No
         parent_flow_sha256=HASH,
     )
 
-    receipt_path = analysis / "parameter_application_receipt.v1.json"
+    receipt_path = analysis / "parameter_application_receipt.v2.json"
     assert receipt_path.is_file()
     assert json.loads(receipt_path.read_text(encoding="utf-8")) == receipt
     assert sha256_path(receipt_path) is not None
@@ -217,7 +218,7 @@ def test_cell_padding_receipt_preserves_surface_site_value(tmp_path: Path, monke
     _write_unknown_runtime_report(
         tmp_path / "analysis",
         knob_id="place.cell_padding_x",
-        requested_value=200,
+        written_value=200,
     )
     receipt = _candidate_parameter_receipt(
         workspace,
@@ -231,7 +232,7 @@ def test_cell_padding_receipt_preserves_surface_site_value(tmp_path: Path, monke
     assert receipt["materialization"]["unit"] == "dbu"
 
 
-def test_candidate_parameter_receipt_rejects_incomplete_l1(tmp_path: Path) -> None:
+def test_candidate_parameter_receipt_rejects_incomplete_materialization(tmp_path: Path) -> None:
     analysis = tmp_path / "analysis"
     analysis.mkdir()
     materialization = analysis / "candidate_materialization.v1.json"
@@ -258,7 +259,7 @@ def test_candidate_parameter_receipt_rejects_incomplete_l1(tmp_path: Path) -> No
         )
 
 
-def test_candidate_receipt_preserves_native_consumer_observation_and_transition(
+def test_candidate_receipt_preserves_minimal_runtime_observation(
     tmp_path: Path,
 ) -> None:
     workspace, materialization = _materialized_workspace(
@@ -270,44 +271,22 @@ def test_candidate_receipt_preserves_native_consumer_observation_and_transition(
     )
     analysis = tmp_path / "analysis"
     observation = {
-        "requested_target_density": 0.2,
-        "effective_target_density": 0.8,
+        "target_density": 0.8,
         "density_tensor_value": 0.8,
-        "placement_iteration_count": 4,
-        "evidence_complete": True,
+        "density_operator_call_count": 4,
+        "utilization_floor": 0.8,
     }
-    transition = {
-        "sequence": 0,
-        "from": "materialized",
-        "to": "overridden",
-        "value": 0.8,
-        "reason": "DREAMPlace utilization lower bound",
-        "rule_id": "dreamplace.target_density.utilization_floor",
-        "evidence_ref": "analysis/parameter_runtime_report.v1.json",
-        "evidence_sha256": HASH,
-    }
-    (analysis / "parameter_runtime_report.v1.json").write_text(
+    (analysis / "parameter_runtime_report.v2.json").write_text(
         json.dumps(
             {
+                "schema_version": "tool.parameter_runtime_report.v2",
                 "knob_id": "place.target_density",
-                "requested_value": 0.2,
+                "written_value": 0.2,
                 "tool": TOOL,
-                "application_status": "applied",
-                "effective_initial": {"value": 0.8, "unit": "ratio"},
-                "effective_final": {"value": 0.8, "unit": "ratio"},
-                "activation": {
-                    "status": "used",
-                    "consumers": [
-                        {
-                            "consumer_id": "dreamplace.density_objective",
-                            "outcome": "entered",
-                            "evidence_ref": "analysis/parameter_runtime_report.v1.json",
-                            "evidence_sha256": HASH,
-                        }
-                    ],
-                },
-                "consumer_observation": observation,
-                "transitions": [transition],
+                "status": "effective",
+                "actual_value": 0.8,
+                "reason": None,
+                "observation": observation,
             }
         ),
         encoding="utf-8",
@@ -329,8 +308,10 @@ def test_candidate_receipt_preserves_native_consumer_observation_and_transition(
         parent_flow_sha256=HASH,
     )
 
-    assert receipt["consumer_observation"] == observation
-    assert receipt["transitions"] == [transition]
+    assert receipt["observation"] == observation
+    assert receipt["actual_value"] == 0.8
+    assert receipt["status"] == "effective"
+    assert receipt["schema_version"] == "tool.parameter_application_receipt.v2"
 
 
 def test_candidate_parameter_receipt_rejects_runtime_report_for_another_knob(
@@ -343,31 +324,8 @@ def test_candidate_parameter_receipt_rejects_runtime_report_for_another_knob(
         before=0.5,
         written=0.85,
     )
-    (tmp_path / "analysis" / "parameter_runtime_report.v1.json").write_text(
-        json.dumps(
-            {
-                "knob_id": "place.density_weight",
-                "requested_value": 0.001,
-                "tool": TOOL,
-                "application_status": "applied",
-                "effective_initial": {"value": 0.001, "unit": "objective_weight"},
-                "effective_final": {"value": 0.001, "unit": "objective_weight"},
-                "activation": {
-                    "status": "used",
-                    "consumers": [
-                        {
-                            "consumer_id": "dreamplace.density_preconditioner",
-                            "outcome": "entered",
-                            "evidence_ref": "analysis/parameter_runtime_report.v1.json",
-                            "evidence_sha256": HASH,
-                        }
-                    ],
-                },
-                "consumer_observation": {"evidence_complete": True},
-                "transitions": [],
-            }
-        ),
-        encoding="utf-8",
+    _write_unknown_runtime_report(
+        tmp_path / "analysis", knob_id="place.density_weight", written_value=0.001
     )
     request = SimpleNamespace(
         candidate_id="candidate-density",
@@ -401,7 +359,7 @@ def test_candidate_parameter_receipt_requires_parent_flow_sha256(
     _write_unknown_runtime_report(
         tmp_path / "analysis",
         knob_id="place.target_density",
-        requested_value=0.85,
+        written_value=0.85,
     )
     request = SimpleNamespace(
         candidate_id="candidate-no-parent",
@@ -435,7 +393,7 @@ def test_candidate_parameter_receipt_rejects_stripped_unknown_ecc_revision(
     _write_unknown_runtime_report(
         tmp_path / "analysis",
         knob_id="place.target_density",
-        requested_value=0.85,
+        written_value=0.85,
     )
     request = SimpleNamespace(
         candidate_id="candidate-unknown-revision",
@@ -465,5 +423,11 @@ def test_parameter_receipt_rejects_unbound_tool_metadata() -> None:
             context={"stage": "place"},
             requested={"knob_id": "place.target_density", "value": 0.85, "unit": "ratio"},
             materialization={},
-            runtime_report={"activation": {"status": "unknown", "consumers": []}},
+            runtime_report={
+                "schema_version": "tool.parameter_runtime_report.v2",
+                "status": "unknown",
+                "actual_value": None,
+                "reason": "Not observed.",
+                "observation": {},
+            },
         )

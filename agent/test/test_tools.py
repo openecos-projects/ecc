@@ -155,6 +155,8 @@ def test_tool_runner_owns_candidate_runtime_report(monkeypatch, tmp_path):
         )
         recorder.ppa = {"iteration": 3}
         recorder.probe["density_operator_call_count"] = 2
+        recorder.probe["target_density"] = 0.65
+        recorder.probe["density_tensor_value"] = 0.65
         return True
 
     tool = SimpleNamespace(build_step_config=lambda *_args: None, run_step=run_step)
@@ -168,10 +170,10 @@ def test_tool_runner_owns_candidate_runtime_report(monkeypatch, tmp_path):
     monkeypatch.setattr(runtime_observer, "_capture_dreamplace", capture)
 
     assert eda.run_step(workspace, step, ecc_module=True) is True
-    report = json.loads((tmp_path / "analysis" / "parameter_runtime_report.v1.json").read_text())
-    assert report["tool"]["revision"] == "ecc.agent.dreamplace_parameter_observer.v1"
-    assert report["activation"]["status"] == "used"
-    assert report["consumer_observation"]["density_operator_call_count"] == 2
+    report = json.loads((tmp_path / "analysis" / "parameter_runtime_report.v2.json").read_text())
+    assert report["tool"]["revision"] == "ecc.agent.dreamplace_parameter_observer.v2"
+    assert report["status"] == "effective"
+    assert report["observation"]["density_operator_call_count"] == 2
 
 
 def test_legalization_runner_reapplies_real_dreamplace_overlay(monkeypatch, tmp_path):
