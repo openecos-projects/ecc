@@ -104,6 +104,7 @@ Commands:
   config        Show resolved project or step configuration
   migrate       Migrate a legacy runs/ project to the manifest layout
   doctor        Check host environment: PDK, tools, and components
+  doc           Show a bundled guide (config/ug/tutorial/dev) in the terminal
   param         Manage EDA parameters
   pdk           Show and configure the PDK path used by this project
   project       Edit project declarations in ecc.toml
