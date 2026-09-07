@@ -25,7 +25,7 @@ report_app = create_app(help="Generate design-summary, QoR score, checklist, and
 
 OutputPathOption = Annotated[
     str | None,
-    typer.Option("--output", "-o", help="Report destination (default: <workspace>/signoff/)"),
+    typer.Option("--output", "-o", help="Report destination (default: `<workspace>`/signoff/)"),
 ]
 
 

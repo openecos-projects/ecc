@@ -61,3 +61,11 @@ def test_pdk_set_root_summary_unchanged(capsys):
     out = capsys.readouterr().out
     assert rc == 0
     assert "Set the [pdk] root path in ecc.toml" in out
+
+
+def test_option_help_preserves_angle_bracket_placeholder(capsys):
+    rc = cli_main.run(["report", "qor", "--help"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "<workspace>/signoff/" in out
