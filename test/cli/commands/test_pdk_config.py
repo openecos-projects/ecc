@@ -295,8 +295,11 @@ class TestPdkSetup:
         def fake_run(cmd, cwd=None, *, capture_output=True, text=True, **kwargs):
             if cmd[:2] == ["git", "clone"]:
                 calls["clone"].append(cmd)
-                pdk_dir.mkdir()  # pretend the clone created the checkout
+                pdk_dir.mkdir(exist_ok=True)  # pretend the clone created the checkout
                 (pdk_dir / ".git").mkdir()
+                (pdk_dir / ".git" / "config").write_text(
+                    '[remote "origin"]\n\turl = https://github.com/ecos-studio/icsprout55-pdk.git\n'
+                )
                 return _FakeResult()
             if cmd[0] == "make":
                 calls["make"].append((cmd, cwd))
@@ -358,6 +361,9 @@ class TestPdkSetup:
         pdk_dir = tmp_path / "stubborn-pdk"
         pdk_dir.mkdir()
         (pdk_dir / ".git").mkdir()
+        (pdk_dir / ".git" / "config").write_text(
+            '[remote "origin"]\n\turl = https://github.com/ecos-studio/icsprout55-pdk.git\n'
+        )
         make_calls = []
 
         def fake_run(cmd, cwd=None, **kwargs):
@@ -388,6 +394,9 @@ class TestPdkSetup:
         pdk_dir = tmp_path / "flaky-pdk"
         pdk_dir.mkdir()
         (pdk_dir / ".git").mkdir()
+        (pdk_dir / ".git" / "config").write_text(
+            '[remote "origin"]\n\turl = https://github.com/ecos-studio/icsprout55-pdk.git\n'
+        )
         attempts = {"n": 0}
 
         def fake_run(cmd, cwd=None, **kwargs):
@@ -420,6 +429,9 @@ class TestPdkSetup:
         pdk_dir = tmp_path / "proxy-pdk"
         pdk_dir.mkdir()
         (pdk_dir / ".git").mkdir()
+        (pdk_dir / ".git" / "config").write_text(
+            '[remote "origin"]\n\turl = https://github.com/ecos-studio/icsprout55-pdk.git\n'
+        )
         seen = {}
 
         def fake_run(cmd, cwd=None, **kwargs):

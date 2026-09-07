@@ -9,14 +9,62 @@ import re
 _TABLE_HEADER_RE = re.compile(r"^[ \t]*\[([^\]]+)\][ \t]*(?:#.*)?$", re.MULTILINE)
 
 
+def _mask_strings_and_comments(text: str) -> str:
+    """Return a same-length text with string and comment contents blanked.
+
+    Table-header discovery must not mistake bracket text inside a multiline
+    string for a real ``[table]`` header; masking preserves every index and
+    newline so matches map back onto the original text.
+    """
+    chars = list(text)
+    pos = 0
+    n = len(text)
+    while pos < n:
+        ch = text[pos]
+        if ch == "#":
+            nl = text.find("\n", pos)
+            end = n if nl == -1 else nl
+            for i in range(pos, end):
+                chars[i] = " "
+            pos = end
+            continue
+        if ch in ('"', "'"):
+            triple = text[pos : pos + 3]
+            if triple in ('"""', "'''"):
+                end = pos + 3
+                while end < n:
+                    if text.startswith(triple, end):
+                        end += 3
+                        break
+                    end += 1
+            else:
+                end = pos + 1
+                while end < n:
+                    if ch == '"' and text.startswith("\\", end):
+                        end += 2
+                        continue
+                    if text[end] == ch:
+                        end += 1
+                        break
+                    end += 1
+            for i in range(pos, min(end, n)):
+                if chars[i] != "\n":
+                    chars[i] = " "
+            pos = max(end, pos + 1)
+            continue
+        pos += 1
+    return "".join(chars)
+
+
 def find_table_span(text: str, table_name: str) -> tuple[int, int] | None:
     """Return (body_start, body_end) for a TOML table, or None."""
-    for m in _TABLE_HEADER_RE.finditer(text):
+    masked = _mask_strings_and_comments(text)
+    for m in _TABLE_HEADER_RE.finditer(masked):
         if m.group(1).strip() == table_name:
             header_end = m.end()
             nl = text.find("\n", header_end)
             body_start = len(text) if nl == -1 else nl + 1
-            next_header = _TABLE_HEADER_RE.search(text, body_start)
+            next_header = _TABLE_HEADER_RE.search(masked, body_start)
             body_end = next_header.start() if next_header else len(text)
             return body_start, body_end
     return None

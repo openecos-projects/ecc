@@ -501,8 +501,6 @@ class EngineFlow:
         payload["constraints"] = {"sdc": timing_constraints}
         return json_write(file_path=feature_path, data=payload)
 
-        return True
-
     def run_steps(
         self, *, rerun: bool = False, observer=None, require_full_ledger: bool = True
     ) -> bool:

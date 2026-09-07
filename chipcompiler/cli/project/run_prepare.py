@@ -118,6 +118,27 @@ def _workspace_failed_result(run_name: str, run_dir: str, reason: str | None) ->
     return CommandResult.err([record])
 
 
+def _fresh_entry_step_name(cfg, flow_config) -> str | None:
+    """The canonical first step a fresh workspace target will execute.
+
+    An explicit start step (CLI range or manifest range) wins; otherwise the
+    preset builder's first step. None when the target declares neither.
+    """
+    if isinstance(flow_config, dict) and flow_config.get("start_step"):
+        from chipcompiler.rtl2gds import normalize_flow_step
+
+        return normalize_flow_step(flow_config["start_step"])
+    from chipcompiler import rtl2gds as rtl2gds_api
+
+    builders = rtl2gds_api.get_flow_builders()
+    if cfg.flow_preset in builders:
+        first = next(iter(builders[cfg.flow_preset]()), None)
+        if first is not None:
+            step = first[0]
+            return step.value if hasattr(step, "value") else str(step)
+    return None
+
+
 def _write_back_status(project_dir: str, run_name: str, status: str, warning_records: list) -> None:
     """Best-effort manifest status write-back; degrades to a warning."""
     from chipcompiler.cli.core.records import warning_record
@@ -292,11 +313,17 @@ def execute_fresh_run(
     inputs = resolve_design_inputs(cfg)
     _, origin_verilog, input_filelist = resolve_rtl(cfg)
     origin_def = inputs.def_ or cfg.manifest_origin_def
-    if inputs.netlist:
+
+    # The declared netlist is the synthesis OUTPUT consumed by a
+    # post-synthesis entry step. A flow entering at Synthesis must use the
+    # declared RTL, even when a netlist is also present in ecc.toml.
+    entry_step = _fresh_entry_step_name(cfg, flow_config)
+    uses_netlist_input = bool(inputs.netlist) and entry_step != "Synthesis"
+    if uses_netlist_input:
         origin_verilog = inputs.netlist
         input_filelist = ""
     generated_filelist = None
-    if len(cfg.design_rtl) > 1 and not inputs.netlist:
+    if len(cfg.design_rtl) > 1 and not uses_netlist_input:
         # Manifest-backed projects may declare several RTL sources;
         # materialize them as one generated filelist for creation. A failure
         # here must not strand a partial run target for the next run.

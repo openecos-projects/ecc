@@ -252,7 +252,7 @@ def setup(command_input, ctx: CommandContext) -> CommandResult:
             return CommandResult.err(
                 [error_record("missing_tool", reason="required for setup: make")]
             )
-        if not os.path.isdir(os.path.join(path, ".git")):
+        if not _is_pdk_checkout(path):
             # `make unzip` executes repository-provided commands, so run it
             # only inside a checkout attributable to the PDK repository —
             # never in an arbitrary directory that merely fails validation.
@@ -306,3 +306,17 @@ def setup(command_input, ctx: CommandContext) -> CommandResult:
         "check": "ecc check",
     }
     return CommandResult.ok([summary] + action_records)
+
+
+def _is_pdk_checkout(path: str) -> bool:
+    """Whether `path` looks like an icsprout55-pdk git checkout.
+
+    Provenance heuristic: a .git directory whose config references the PDK
+    repository name. Read-only — no git subprocess is executed.
+    """
+    git_config = os.path.join(path, ".git", "config")
+    try:
+        with open(git_config, encoding="utf-8") as file:
+            return "icsprout55-pdk" in file.read()
+    except OSError:
+        return False

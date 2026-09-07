@@ -59,7 +59,11 @@ def _read_json_strict(path: Path) -> dict:
         raise ValueError(f"config override target does not exist: {path}") from exc
     except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise ValueError(f"config override target is unreadable or corrupt: {path}: {exc}") from exc
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        # A valid JSON scalar/array is not a tool configuration: overwriting
+        # it with only the patch would be destructive data loss.
+        raise ValueError(f"config override target must be a JSON object: {path}")
+    return data
 
 
 def _write_json_strict(path: Path, config: dict) -> None:

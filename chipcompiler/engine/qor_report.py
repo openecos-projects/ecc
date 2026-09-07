@@ -323,6 +323,9 @@ def _resolve_area_scoring_step(records, flow_steps_by_label) -> str | None:
 
 
 def _gate_status(flow_steps_by_label) -> str:
+    # A pass verdict requires every gate step to be present and successful:
+    # a successful DRC with LVS/RCX/STA absent is partial evidence, not a
+    # pass.
     known = [step for step in GATE_STEPS if step in flow_steps_by_label]
     if not known:
         return "unavailable"
@@ -330,6 +333,8 @@ def _gate_status(flow_steps_by_label) -> str:
     if states & {StateEnum.Imcomplete.value, StateEnum.Invalid.value}:
         return "blocked"
     if states - {StateEnum.Success.value}:
+        return "incomplete"
+    if len(known) < len(GATE_STEPS):
         return "incomplete"
     return "pass"
 

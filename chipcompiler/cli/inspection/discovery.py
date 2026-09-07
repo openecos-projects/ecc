@@ -204,8 +204,21 @@ def resolve_command_workspace(workspace_arg, project, workspace_id, run_dir):
 def resolve_loaded_workspace(command_input, ctx: CommandContext):
     """Resolve and load the workspace for handlers that need a Workspace.
 
-    Returns (workspace, failure CommandResult-or-None).
+    Returns (workspace, failure CommandResult-or-None). A malformed manifest
+    is rejected first: silently falling through to ``<project>/default``
+    would report against (and mutate) the wrong workspace.
     """
+    if ctx.manifest_error:
+        from chipcompiler.cli.core.records import error_record
+
+        return None, CommandResult.err(
+            [
+                error_record(
+                    ctx.manifest_error.split(":", 1)[0],
+                    reason=ctx.manifest_error,
+                )
+            ]
+        )
     workspace, error = resolve_command_workspace(
         command_input.workspace, ctx.project, ctx.run_id, ctx.run_dir
     )

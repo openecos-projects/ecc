@@ -5,7 +5,7 @@ from typing import Protocol, TypeVar
 
 import typer
 
-from chipcompiler.cli.core.inputs import OutputOptions, ProjectOptions
+from chipcompiler.cli.core.inputs import OutputOptions, ProjectOptions, RunInput
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
 from chipcompiler.cli.project.config import (
     ConfigUnreadableError,
@@ -118,7 +118,7 @@ def build_context(command_input: CommandInput) -> CommandContext:
             run_dir, run_id, manifest_error = _resolve_manifest_workspace(
                 project_dir,
                 workspace_name,
-                allow_create=command_input.__class__.__name__ == "RunInput",
+                allow_create=isinstance(command_input, RunInput),
             )
         except ManifestError as exc:
             run_dir, run_id = os.path.join(project_dir, "default"), workspace_name

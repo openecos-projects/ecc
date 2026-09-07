@@ -13,6 +13,17 @@ from chipcompiler.cli.inspection.discovery import (
 )
 
 
+def _safe_report_filename(name: str) -> str:
+    """Reduce a design-derived filename to a safe basename.
+
+    Design names reach the default report path, so path separators and
+    dot-prefixed escapes must never survive into the destination.
+    """
+    cleaned = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in name)
+    cleaned = cleaned.strip("._") or "design"
+    return cleaned
+
+
 def _write_report(report_name, default_filename, content, command_input, ctx, extra):
     """Write the report file (default: <workspace>/signoff/) and summarize."""
     from chipcompiler.utility.file import write_text_atomic
@@ -21,7 +32,9 @@ def _write_report(report_name, default_filename, content, command_input, ctx, ex
     if command_input.output_path is not None:
         destination = os.path.abspath(os.path.expanduser(command_input.output_path))
     else:
-        destination = os.path.join(workspace_display_dir, "signoff", default_filename)
+        destination = os.path.join(
+            workspace_display_dir, "signoff", _safe_report_filename(default_filename)
+        )
     try:
         os.makedirs(os.path.dirname(destination), exist_ok=True)
         # An existing report must survive a failed write, so the replacement

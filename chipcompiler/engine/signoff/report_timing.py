@@ -395,7 +395,9 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
 
 
 def _extract_clock(q) -> ClockMetrics:
-    skew_value, skew_key, _ = q(
+    # q() returns (value, stage, source_key): the source key decides the
+    # unit heuristic, so unpack it into skew_key explicitly.
+    skew_value, _stage, skew_key = q(
         "Clock",
         "Clock Skew",
         ["CTS", "STA", "Route"],
