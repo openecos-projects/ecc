@@ -293,7 +293,7 @@ class TestBuildQorReport:
     def test_empty_workspace_report(self, tmp_path):
         report = build_qor_report(_make_workspace(tmp_path, with_metrics=False))
         assert report.overall_score is None
-        assert report.status in ("Blocked", "Green")
+        assert report.status == "Blocked"
         text = generate_qor_report(_make_workspace(tmp_path, with_metrics=False))
         assert "NOT RATED" in text
         assert "no project-level QoR metrics available" in text
@@ -314,6 +314,30 @@ class TestBuildQorReport:
         assert "sta_setup_wns" in text
         assert "END OF QOR REPORT" in text
         assert "weights not renormalized" in text
+
+
+class TestFlowCompletionState:
+    def test_states_are_derived_explicitly(self):
+        from chipcompiler.engine.qor_report import _flow_completion_state
+
+        assert _flow_completion_state([]) == "not_started"
+        assert _flow_completion_state(["Unstart"]) == "not_started"
+        assert _flow_completion_state(["Success", "Ongoing"]) == "running"
+        assert _flow_completion_state(["Success", "Unstart"]) == "in_progress"
+        assert _flow_completion_state(["Success", "Incomplete"]) == "failed"
+        assert _flow_completion_state(["Invalid"]) == "failed"
+        assert _flow_completion_state(["Success"] * 5) == "complete"
+        # Warning is finished: a non-blocking check does not block completion.
+        assert _flow_completion_state(["Success", "Warning"]) == "complete"
+
+    def test_nonterminal_workspaces_are_blocked(self, tmp_path):
+        for state in ("Ongoing", "Unstart", "Pending"):
+            workspace = _make_workspace(tmp_path / state, with_metrics=False)
+            flow = workspace.flow.data
+            for step in flow["steps"][:3]:
+                step["state"] = state
+            report = build_qor_report(workspace)
+            assert report.status == "Blocked", state
 
 
 class TestChecklistReport:

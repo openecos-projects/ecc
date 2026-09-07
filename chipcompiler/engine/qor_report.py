@@ -19,22 +19,32 @@ import dataclasses
 from pathlib import Path
 
 from chipcompiler.data import StateEnum, StepEnum
+from chipcompiler.data.step_dirs import STEP_DIRECTORIES
 from chipcompiler.utility.json import json_read
 
-# GUI FlowStep labels in flow order, mapped to workspace step directories.
+# GUI FlowStep label for each canonical step that owns a scored directory.
+_STEP_ENUM_TO_LABEL = {
+    StepEnum.SYNTHESIS.value: "Synth",
+    StepEnum.FLOORPLAN.value: "Floor",
+    StepEnum.PLACEMENT.value: "Place",
+    StepEnum.CTS.value: "CTS",
+    StepEnum.LEGALIZATION.value: "Legal",
+    StepEnum.ROUTING.value: "Route",
+    StepEnum.DRC.value: "DRC",
+    StepEnum.LVS.value: "LVS",
+    StepEnum.FILLER.value: "Filler",
+    StepEnum.RCX.value: "RCX",
+    StepEnum.STA.value: "STA",
+    StepEnum.HARDEN.value: "Harden",
+}
+
+# GUI FlowStep labels in flow order, derived from the canonical
+# step->directory mapping (lec/postRouteLec and the label-less TimingOpt
+# step carry no scored directory, so they drop out).
 FLOW_STEP_DIRS = {
-    "Synth": "Synthesis_yosys",
-    "Floor": "Floorplan_ecc",
-    "Place": "place_dreamplace",
-    "CTS": "CTS_ecc",
-    "Legal": "legalization_dreamplace",
-    "Route": "route_ecc",
-    "DRC": "drc_ecc",
-    "LVS": "lvs_ecc",
-    "Filler": "filler_ecc",
-    "RCX": "RCX_ecc",
-    "STA": "sta_ecc",
-    "Harden": "Harden_ecc",
+    _STEP_ENUM_TO_LABEL[step]: directory
+    for step, directory in STEP_DIRECTORIES.items()
+    if step in _STEP_ENUM_TO_LABEL
 }
 
 FLOW_STEPS = tuple(FLOW_STEP_DIRS)
@@ -320,6 +330,28 @@ def _gate_status(flow_steps_by_label) -> str:
     return "pass"
 
 
+def _flow_completion_state(states) -> str:
+    """Classify a workspace's step-state set explicitly.
+
+    Warning counts as finished (a non-blocking check warning still lets the
+    flow continue); only an all-finished ledger completes a flow.
+    """
+    from chipcompiler.data.step import FINISHED_STEP_STATES
+
+    values = list(states)
+    if any(state in (StateEnum.Imcomplete.value, StateEnum.Invalid.value) for state in values):
+        return "failed"
+    if not values:
+        return "not_started"
+    if all(state in FINISHED_STEP_STATES for state in values):
+        return "complete"
+    if any(state == StateEnum.Ongoing.value for state in values):
+        return "running"
+    if all(state == StateEnum.Unstart.value for state in values):
+        return "not_started"
+    return "in_progress"
+
+
 def _workspace_status(flow_state: str, score: float | None, gate: str) -> str:
     if flow_state == "failed":
         return "Red"
@@ -384,22 +416,6 @@ def _workspace_parameters(workspace, workspace_root: Path) -> dict:
     return legacy if isinstance(legacy, dict) else {}
 
 
-_STEP_ENUM_TO_LABEL = {
-    StepEnum.SYNTHESIS.value: "Synth",
-    StepEnum.FLOORPLAN.value: "Floor",
-    StepEnum.PLACEMENT.value: "Place",
-    StepEnum.CTS.value: "CTS",
-    StepEnum.LEGALIZATION.value: "Legal",
-    StepEnum.ROUTING.value: "Route",
-    StepEnum.DRC.value: "DRC",
-    StepEnum.LVS.value: "LVS",
-    StepEnum.FILLER.value: "Filler",
-    StepEnum.RCX.value: "RCX",
-    StepEnum.STA.value: "STA",
-    StepEnum.HARDEN.value: "Harden",
-}
-
-
 def build_qor_report(workspace) -> QorScoreReport:
     """Score one workspace's current analysis outputs the way the GUI does."""
     workspace_root = Path(workspace.directory or "")
@@ -438,14 +454,7 @@ def build_qor_report(workspace) -> QorScoreReport:
     overall_score = _round_score(overall) if overall is not None else None
 
     gate = _gate_status(flow_steps_by_label)
-    flow_state = (
-        "failed"
-        if any(
-            state in (StateEnum.Imcomplete.value, StateEnum.Invalid.value)
-            for state in flow_steps_by_label.values()
-        )
-        else ("complete" if flow_steps_by_label else "not_started")
-    )
+    flow_state = _flow_completion_state(flow_steps_by_label.values())
 
     parameters = _workspace_parameters(workspace, workspace_root)
     workspace_design = getattr(workspace, "design", None)
