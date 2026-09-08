@@ -48,6 +48,12 @@ def workspace_param_value(workspace, schema) -> object:
 
 
 def set_workspace_param(workspace, schema, value: object) -> tuple[object, str]:
+    baseline = update_workspace_param_value(workspace, schema, value)
+    return baseline, workspace_param_step(schema)
+
+
+def update_workspace_param_value(workspace, schema, value: object) -> object:
+    """Apply and track one public parameter without choosing invalidation scope."""
     records = _override_records(workspace.parameters.data)
     record = next((item for item in records if item["key"] == schema.param), None)
     if record is None:
@@ -59,7 +65,7 @@ def set_workspace_param(workspace, schema, value: object) -> tuple[object, str]:
     record["value"] = deepcopy(value)
     _set_override_records(workspace.parameters.data, records)
     _apply_workspace_value(workspace, schema, value)
-    return record["baseline"], workspace_param_step(schema)
+    return record["baseline"]
 
 
 def unset_workspace_param(workspace, schema) -> tuple[object, str] | None:

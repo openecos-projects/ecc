@@ -1,10 +1,13 @@
+import hashlib
+import json
 import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
 
 from chipcompiler.cli.project.params import build_backend_overrides, resolve_parameters
-from chipcompiler.data import PDK, create_workspace
+from chipcompiler.data import PDK, create_workspace, load_workspace
+from chipcompiler.engine.snapshot import create_engineering_snapshot
 from chipcompiler.engine.workspace_spec import validate_workspace_spec
 from chipcompiler.rtl2gds import get_flow_builders
 
@@ -22,9 +25,11 @@ def create_workspace_from_spec(
     bindings: object,
     command_id: str = "",
 ):
-    del command_id
     target = Path(target_directory).expanduser().resolve()
+    fingerprint = _workspace_command_fingerprint("create", spec, bindings)
     if target.exists():
+        if command_id and _command_retry_matches(target, command_id, fingerprint):
+            return _load_committed_workspace(target)
         raise WorkspaceLifecycleError("workspace_exists", f"Workspace already exists: {target}")
     validation = validate_workspace_spec(spec, bindings)
     issues = validation["issues"]
@@ -96,6 +101,14 @@ def create_workspace_from_spec(
             raise WorkspaceLifecycleError(
                 "workspace_create_failed", f"Workspace creation failed: {target}"
             )
+        snapshot = create_engineering_snapshot(workspace)
+        _write_workspace_command(
+            target,
+            command_id,
+            fingerprint,
+            snapshot["workspaceId"],
+            snapshot["workspaceRevision"],
+        )
         return workspace
     except Exception:
         shutil.rmtree(target, ignore_errors=True)
@@ -142,3 +155,74 @@ def _string_keyed_dict(value: object) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
     return {str(key): item for key, item in value.items()}
+
+
+def _load_committed_workspace(path: Path):
+    workspace = load_workspace(path)
+    if workspace is None:
+        raise WorkspaceLifecycleError("workspace_invalid", f"Workspace cannot be opened: {path}")
+    return workspace
+
+
+def _workspace_command_fingerprint(
+    kind: str,
+    spec: object,
+    bindings: object,
+    expected_revision: int | None = None,
+) -> str:
+    payload = json.dumps(
+        {
+            "kind": kind,
+            "spec": spec,
+            "bindings": bindings,
+            "expectedWorkspaceRevision": expected_revision,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _workspace_commands(path: Path) -> dict[str, Any]:
+    command_path = path / "home" / "workspace-commands.json"
+    try:
+        payload = json.loads(command_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"schemaVersion": 1, "commands": {}}
+    if payload.get("schemaVersion") != 1 or not isinstance(payload.get("commands"), dict):
+        raise WorkspaceLifecycleError("workspace_invalid", "Invalid Workspace command ledger")
+    return payload
+
+
+def _command_retry_matches(path: Path, command_id: str, fingerprint: str) -> bool:
+    record = _workspace_commands(path)["commands"].get(command_id)
+    if record is None:
+        return False
+    if not isinstance(record, dict) or record.get("fingerprint") != fingerprint:
+        raise WorkspaceLifecycleError(
+            "idempotency_conflict", f"command id reused with different input: {command_id}"
+        )
+    return True
+
+
+def _write_workspace_command(
+    path: Path,
+    command_id: str,
+    fingerprint: str,
+    workspace_id: str,
+    workspace_revision: int,
+) -> None:
+    if not command_id:
+        return
+    from chipcompiler.utility import json_write
+
+    payload = _workspace_commands(path)
+    payload["commands"][command_id] = {
+        "fingerprint": fingerprint,
+        "result": {
+            "workspaceId": workspace_id,
+            "workspaceRevision": workspace_revision,
+        },
+    }
+    if not json_write(path / "home" / "workspace-commands.json", payload):
+        raise OSError("Failed to persist Workspace command ledger")
