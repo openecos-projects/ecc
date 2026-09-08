@@ -26,6 +26,17 @@ def test_help_renders_for_every_command(path, capsys):
     assert "\x1b[" not in captured.out
 
 
+def test_help_keeps_styles_when_color_is_forced(monkeypatch, capsys):
+    monkeypatch.setattr("typer.rich_utils.FORCE_TERMINAL", True)
+
+    rc = cli_main.run(["--help"])
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "\x1b[" in captured.out
+    assert not captured.err
+
+
 def test_root_command_list_keeps_one_line_summaries(capsys):
     rc = cli_main.run(["--help"])
 
