@@ -310,7 +310,13 @@ def _select_project_records(records, area_scoring_step) -> list[QorMetricRecord]
 
 
 def _selection_rank(record: QorMetricRecord) -> tuple:
-    return (_ROLE_PRIORITY[record.project_role], -FLOW_STEPS.index(record.step))
+    try:
+        step_rank = FLOW_STEPS.index(record.step)
+    except ValueError:
+        # Forward-version/custom steps remain presentable but have no
+        # canonical ordering; prefer known flow evidence when deduplicating.
+        step_rank = -1
+    return (_ROLE_PRIORITY.get(record.project_role, len(_ROLE_PRIORITY)), -step_rank)
 
 
 def _resolve_area_scoring_step(records, flow_steps_by_label) -> str | None:
@@ -384,7 +390,7 @@ def _weighted_overall(dimension_scores: dict) -> float | None:
     weighted_total = 0.0
     used_weight = 0.0
     for dimension, score in dimension_scores.items():
-        weight = DIMENSION_WEIGHTS[dimension]
+        weight = DIMENSION_WEIGHTS.get(dimension, 0.0)
         if weight <= 0:
             continue
         weighted_total += score * weight

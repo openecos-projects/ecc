@@ -34,7 +34,12 @@ def build_signoff_assessment(workspace: Any) -> dict[str, Any]:
     if steps and any(str(step.get("state", "")) not in {"Success", "Skipped"} for step in steps):
         return _unavailable_assessment()
     checklist = json_read(Path(workspace.directory) / "home" / "checklist.json")
-    if checklist.get("schema_version") != 3 or checklist.get("kind") != "signoff_checklist":
+    if (
+        not isinstance(checklist, dict)
+        or checklist.get("schema_version") != 3
+        or checklist.get("kind") != "signoff_checklist"
+        or not isinstance(checklist.get("checklist"), list)
+    ):
         return _unavailable_assessment()
 
     groups: dict[str, _ReviewGroup] = {}

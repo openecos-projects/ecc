@@ -226,14 +226,15 @@ def _select_workspace(document: dict, mutation: dict) -> None:
         raise ManifestError(f"Workspace is not active: {workspace_id}")
     field = "qor_baseline" if mutation["type"] == "select_qor_baseline" else "best_workspace"
     document[field] = {"workspace_id": workspace_id, "reason": str(mutation.get("reason") or "")}
-    document["updated_at"] = str(mutation.get("updated_at") or "")
+    document["updated_at"] = str(mutation.get("updated_at") or datetime.now(UTC).isoformat())
 
 
 def _archive_workspace(document: dict, mutation: dict) -> None:
     workspace = _find_workspace(document, _required_string(mutation, "workspace_id"))
     workspace["status"] = "archived"
-    workspace["updated_at"] = str(mutation.get("updated_at") or "")
-    document["updated_at"] = workspace["updated_at"]
+    timestamp = str(mutation.get("updated_at") or datetime.now(UTC).isoformat())
+    workspace["updated_at"] = timestamp
+    document["updated_at"] = timestamp
 
 
 def _delete_workspace(document: dict, mutation: dict) -> None:
@@ -251,7 +252,7 @@ def _delete_workspace(document: dict, mutation: dict) -> None:
         selection = document.get(field)
         if isinstance(selection, dict) and selection.get("workspace_id") == workspace_id:
             document[field] = None
-    document["updated_at"] = str(mutation.get("updated_at") or "")
+    document["updated_at"] = str(mutation.get("updated_at") or datetime.now(UTC).isoformat())
 
 
 def _find_workspace(document: dict, workspace_id: str) -> dict:

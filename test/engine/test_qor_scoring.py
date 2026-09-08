@@ -32,3 +32,14 @@ def test_qor_scoring_selects_latest_area_and_combines_dimension_weights():
         "area_cost": (50.0, 1),
     }
     assert result.overall_score == 42.5
+
+
+def test_qor_scoring_ignores_forward_version_dimensions_and_steps():
+    result = score_qor(
+        [
+            _metric("future-step", "future_metric", 1, "future_dimension"),
+            _metric("Harden", "die_area", 1500, "area_cost"),
+        ]
+    )
+
+    assert result.dimensions == {"area_cost": (50.0, 1)}
