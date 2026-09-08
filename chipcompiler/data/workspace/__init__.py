@@ -1189,19 +1189,21 @@ def _persisted_golden_verilog(workspace_dir: Path) -> tuple[Path | None, bool]:
     return None, True
 
 
-def load_workspace(directory: str | Path) -> Workspace:
+def load_workspace(directory: str | Path, *, read_only: bool = False) -> Workspace:
     workspace_dir = Path(directory).expanduser().resolve()
     origin_dir = workspace_dir / "origin"
     home_dir = workspace_dir / "home"
     if not workspace_dir.exists():
         return None
 
-    migrate_legacy_parameters(workspace_dir)
+    if not read_only:
+        migrate_legacy_parameters(workspace_dir)
 
     # create workspace instance
     workspace = Workspace()
     workspace.directory = workspace_dir
-    migrate_workspace_config_filenames(workspace_dir)
+    if not read_only:
+        migrate_workspace_config_filenames(workspace_dir)
     workspace.config = build_workspace_config_paths(workspace)
 
     config_path = workspace_config_toml_path(workspace_dir)
@@ -1287,19 +1289,27 @@ def load_workspace(directory: str | Path) -> Workspace:
         workspace.design.input_filelist = filelist_path
 
     # set home data
-    home_dir.mkdir(parents=True, exist_ok=True)
-    workspace.config["dir"].mkdir(parents=True, exist_ok=True)
     workspace.flow.path = home_dir / "flow.json"
-    workspace.home.init(path=home_dir / "home.json")
-    workspace.home.set_flow(workspace.flow.path)
-    workspace.home.set_checklist(home_dir / "checklist.json")
-    workspace.home.set_parameters(workspace.parameters.path)
+    if read_only:
+        workspace.home.path = home_dir / "home.json"
+        home_data = json_read(workspace.home.path)
+        workspace.home.data = home_data if isinstance(home_data, dict) else {}
+        workspace.logger = Logger(name=parameters.data["design"])
+    else:
+        home_dir.mkdir(parents=True, exist_ok=True)
+        workspace.config["dir"].mkdir(parents=True, exist_ok=True)
+        workspace.home.init(path=home_dir / "home.json")
+        workspace.home.set_flow(workspace.flow.path)
+        workspace.home.set_checklist(home_dir / "checklist.json")
+        workspace.home.set_parameters(workspace.parameters.path)
 
-    # create logger first (needed for copy operations)
-    workspace.logger = create_logger(name=parameters.data["design"], log_dir=workspace_dir / "log")
+        # create logger first (needed for copy operations)
+        workspace.logger = create_logger(
+            name=parameters.data["design"], log_dir=workspace_dir / "log"
+        )
 
-    log_workspace(workspace)
-    log_parameters(workspace)
+        log_workspace(workspace)
+        log_parameters(workspace)
 
     return workspace
 

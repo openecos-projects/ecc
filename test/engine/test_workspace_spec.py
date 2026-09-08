@@ -153,6 +153,22 @@ def test_validated_workspace_spec_creates_main_compatible_workspace(
     assert reopened.flow.steps()[0]["name"] == "Synthesis"
 
 
+def test_workspace_spec_applies_config_target_parameters(tmp_path, minimal_ics55_pdk_factory):
+    from chipcompiler.data import load_workspace
+    from chipcompiler.engine import create_workspace_from_spec
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    spec = deepcopy(payload["workspaceSpec"])
+    spec["parameters"]["cts.skew_bound"] = "0.12"
+
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings)
+    reopened = load_workspace(workspace.directory)
+    cts = json.loads(reopened.config["CTS"].read_text(encoding="utf-8"))
+
+    assert cts["skew_bound"] == "0.12"
+
+
 def test_manual_pdk_workspace_reopens_through_main_persistence(tmp_path):
     from chipcompiler.data import load_workspace
     from chipcompiler.engine import (
@@ -270,3 +286,30 @@ def test_workspace_spec_update_is_atomic_revisioned_and_idempotent(
         )
     assert conflict.value.code == "revision_conflict"
     assert read_engineering_snapshot(repeated) == after
+
+
+def test_workspace_spec_stale_revision_does_not_create_missing_snapshot(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    from chipcompiler.engine import WorkspaceLifecycleError, create_workspace_from_spec
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    create_workspace_from_spec(target, payload["workspaceSpec"], bindings)
+    snapshot = target / "home" / "engineering-snapshot.json"
+    snapshot.unlink()
+
+    with pytest.raises(WorkspaceLifecycleError) as conflict:
+        from chipcompiler.engine import update_workspace_from_spec
+
+        update_workspace_from_spec(
+            target,
+            2,
+            payload["workspaceSpec"],
+            bindings,
+            "stale-update",
+        )
+
+    assert conflict.value.code == "revision_conflict"
+    assert not snapshot.exists()

@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import Any
 
 from chipcompiler.data import PDK, create_workspace, get_pdk, load_workspace
-from chipcompiler.data.parameter_schema import build_backend_overrides, resolve_parameters
+from chipcompiler.data.parameter_schema import (
+    build_backend_overrides,
+    build_config_overrides,
+    resolve_parameters,
+)
+from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
 from chipcompiler.engine.snapshot import create_engineering_snapshot
 from chipcompiler.engine.workspace_spec import validate_workspace_spec
 from chipcompiler.rtl2gds import get_flow_builders
@@ -127,7 +132,10 @@ def _create_workspace_from_spec(
             "Workspace parameters are invalid",
             {"issues": errors},
         )
-    backend_parameters = build_backend_overrides(parameters)
+    backend_parameters = build_backend_overrides(parameters, include_defaults=True)
+    config_overrides = build_config_overrides(parameters)
+    if config_overrides:
+        backend_parameters[CONFIG_OVERRIDES_KEY] = config_overrides
     backend_parameters.update(
         {
             "design": resolved["design"]["name"],
@@ -232,7 +240,11 @@ def _update_workspace_from_spec(
     bindings: object,
     command_id: str = "",
 ):
-    from chipcompiler.engine.snapshot import ensure_engineering_snapshot
+    from chipcompiler.engine.snapshot import (
+        EngineeringSnapshotError,
+        ensure_engineering_snapshot,
+        read_engineering_snapshot,
+    )
 
     target = Path(target_directory).expanduser().resolve()
     fingerprint = _workspace_command_fingerprint(
@@ -241,7 +253,19 @@ def _update_workspace_from_spec(
     if command_id and _command_retry_matches(target, command_id, fingerprint):
         return _load_committed_workspace(target)
     current = _load_committed_workspace(target)
-    snapshot = ensure_engineering_snapshot(current)
+    try:
+        snapshot = read_engineering_snapshot(current)
+    except EngineeringSnapshotError as exc:
+        if expected_workspace_revision != 1:
+            raise WorkspaceLifecycleError(
+                "revision_conflict",
+                "Workspace Revision does not match",
+                {
+                    "expectedWorkspaceRevision": expected_workspace_revision,
+                    "actualWorkspaceRevision": 1,
+                },
+            ) from exc
+        snapshot = ensure_engineering_snapshot(current)
     if snapshot["workspaceRevision"] != expected_workspace_revision:
         raise WorkspaceLifecycleError(
             "revision_conflict",

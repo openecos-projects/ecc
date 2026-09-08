@@ -4,12 +4,12 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 
-from chipcompiler.cli.project.manifest import (
+from chipcompiler.project.manifest import (
     _CANONICAL_TO_MANIFEST_STEP,
     ManifestError,
     load_manifest,
 )
-from chipcompiler.cli.project.manifest_write import (
+from chipcompiler.project.manifest_write import (
     build_project_document,
     manifest_workspace_entry,
     update_manifest,

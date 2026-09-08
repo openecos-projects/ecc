@@ -97,6 +97,26 @@ def test_workspace_configuration_update_rolls_back_refresh_failure(
     assert read_engineering_snapshot(workspace) == before_snapshot
 
 
+def test_read_workspace_configuration_does_not_materialize_missing_home_files(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings)
+    home_file = workspace.directory / "home" / "home.json"
+    log_dir = workspace.directory / "log"
+    home_file.unlink()
+    if log_dir.exists():
+        import shutil
+
+        shutil.rmtree(log_dir)
+
+    read_workspace_configuration_from_directory(workspace.directory)
+
+    assert not home_file.exists()
+    assert not log_dir.exists()
+
+
 def test_step_configuration_update_invalidates_only_target_suffix(
     tmp_path, minimal_ics55_pdk_factory
 ):
