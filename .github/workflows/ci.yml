@@ -122,7 +122,7 @@ jobs:
           test -f "${CHIPCOMPILER_ECC_SIZER_ROOT}/src/sizer_os.tcl"
 
       - name: Pytest
-        run: uv run --no-sync pytest test/ --ignore=test/examples/test_soc.py --cov=chipcompiler --cov-report=
+        run: uv run --no-sync pytest test/ -v --basetemp=pytest-tmp --cov=chipcompiler --cov-report=
 
       - name: Upload integration flow logs on failure
         if: failure()
@@ -131,8 +131,9 @@ jobs:
           name: integration-flow-logs
           if-no-files-found: ignore
           path: |
-            test/examples/*/home/flow.json
-            test/examples/**/log/**
+            pytest-tmp/**/home/flow.json
+            pytest-tmp/**/log/**
+            pytest-tmp/**/data/**/*.log
 
       - name: Publish coverage summary
         if: always()
