@@ -52,6 +52,17 @@ DREAMPLACE_THIRDPARTY_FILES = (
     "thirdparty/NCTUgr.ICCAD2012/ICCAD12.set",
 )
 
+DOC_GUIDES = (
+    "chipcompiler/docs/ecc-cli-config.en.md",
+    "chipcompiler/docs/ecc-cli-config.cn.md",
+    "chipcompiler/docs/ecc-cli-ug.en.md",
+    "chipcompiler/docs/ecc-cli-ug.cn.md",
+    "chipcompiler/docs/ecc-cli-tutorial.en.md",
+    "chipcompiler/docs/ecc-cli-tutorial.cn.md",
+    "chipcompiler/docs/ecc-cli-dev.en.md",
+    "chipcompiler/docs/ecc-cli-dev.cn.md",
+)
+
 LINUX_RUNTIME_LIBS = (
     "/lib/x86_64-linux-gnu/libgomp.so.1",
     "/lib/x86_64-linux-gnu/libtbb.so.12",
@@ -174,6 +185,20 @@ def collect_dreamplace_thirdparty_files():
     return datas
 
 
+def collect_doc_guides():
+    datas = []
+    for relpath in DOC_GUIDES:
+        src = ECC_DIR / relpath
+        if src.is_file():
+            datas.append((str(src), "docs"))
+        else:
+            warnings.warn(
+                f"Required ECC runtime resource was not collected: {relpath}",
+                stacklevel=2,
+            )
+    return datas
+
+
 def collect_platform_runtime_libs():
     if sys.platform.startswith("linux"):
         binaries = []
@@ -205,6 +230,40 @@ def collect_ecc_tools_extension_binaries():
     )
 
 
+def filter_host_fontconfig(binaries):
+    # PyInstaller pulls libfontconfig in as a DT_NEEDED dependency of the
+    # bundled libcairo. Do not ship it: a bundled library parses the host's
+    # /etc/fonts/conf.d, and version skew against those host configs spams
+    # Fontconfig warnings (and breaks the host fc-list binary with symbol
+    # errors when the bundle lib dir is on its library search path). The
+    # host libfontconfig always matches the host fontconfig data. Applied
+    # to the Analysis output, because input-list filtering cannot stop the
+    # dependency walk from re-collecting it.
+    return [
+        entry
+        for entry in binaries
+        if not any(Path(part).name.startswith("libfontconfig.so") for part in entry[:2])
+    ]
+
+
+def rich_unicode_data_hiddenimports():
+    # rich imports its per-Unicode-version cell-width tables dynamically
+    # (rich._unicode_data.unicode<N>-<N>-<N>), so PyInstaller's static
+    # analysis cannot see them; render-only CJK output needs them at runtime.
+    module_spec = find_spec("rich")
+    if module_spec is None or module_spec.submodule_search_locations is None:
+        return []
+
+    names = []
+    for package_root in module_spec.submodule_search_locations:
+        data_dir = Path(package_root) / "_unicode_data"
+        if data_dir.is_dir():
+            names.extend(
+                f"rich._unicode_data.{path.stem}" for path in sorted(data_dir.glob("unicode*.py"))
+            )
+    return names
+
+
 ecc_datas, ecc_binaries, ecc_hiddenimports = collect_all("chipcompiler")
 ecc_tools_datas, ecc_tools_binaries, ecc_tools_hiddenimports = collect_all("ecc_tools_bin")
 klayout_datas, klayout_binaries, klayout_hiddenimports = collect_all("klayout")
@@ -221,6 +280,7 @@ datas.extend(collect_required_metadata())
 datas.extend(collect_ecc_resources())
 datas.extend(collect_jsonrpcserver_resources())
 datas.extend(collect_dreamplace_thirdparty_files())
+datas.extend(collect_doc_guides())
 
 binaries = []
 binaries.extend(ecc_binaries)
@@ -234,6 +294,7 @@ binaries = filter_collected_payloads(binaries)
 
 hiddenimports = []
 hiddenimports.extend(HIDDENIMPORTS)
+hiddenimports.extend(rich_unicode_data_hiddenimports())
 hiddenimports.extend(ecc_hiddenimports)
 hiddenimports.extend(ecc_tools_hiddenimports)
 hiddenimports.extend(klayout_hiddenimports)
@@ -253,6 +314,8 @@ a = Analysis(
     excludes=EXCLUDES,
     noarchive=False,
 )
+
+a.binaries = filter_host_fontconfig(a.binaries)
 
 pyz = PYZ(a.pure, a.zipped_data)
 

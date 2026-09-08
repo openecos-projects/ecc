@@ -153,6 +153,11 @@ def _stub_run_preflight(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def _disable_typer_terminal_forcing(monkeypatch):
+    monkeypatch.setattr("typer.rich_utils.FORCE_TERMINAL", False)
+
+
 @pytest.fixture(name="create_cli_project")
 def create_cli_project_fixture(tmp_path):
     def factory(name="gcd", pdk_root=None, freq=100.0):

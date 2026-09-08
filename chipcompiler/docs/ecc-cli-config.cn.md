@@ -1,6 +1,6 @@
 # ECC Flow 工具配置参考（按步骤）
 
-本文整理 ECC RTL-to-Harden 流程中**每一步实际使用的工具配置文件、全部参数及其含义**。配置取值与生成逻辑均核对自 v0.1.0-alpha.11 源码（rebase main 之后；模板位于 [chipcompiler/tools/*/configs/](../chipcompiler/tools/ecc/configs/)）与一次真实的 gcd@ics55 harden 运行。
+本文整理 ECC RTL-to-Harden 流程中**每一步实际使用的工具配置文件、全部参数及其含义**。配置取值与生成逻辑均核对自 v0.1.0-alpha.11 源码（rebase main 之后；模板位于 [chipcompiler/tools/*/configs/](../../chipcompiler/tools/ecc/configs/)）与一次真实的 gcd@ics55 harden 运行。
 
 - 想了解命令用法 → [ECC CLI 用户指南](ecc-cli-ug.cn.md)；从零上手 → [入门教程](ecc-cli-tutorial.cn.md)
 - 配置查看命令：`ecc config <step>`（列出该步骤实际生效的配置文件）；参数查看与修改命令：`ecc param`（见 §1.4）
@@ -61,7 +61,7 @@ graph LR
 
 ### 0.3 每个步骤用到哪些配置
 
-`ecc config <step>` 的真实输出归纳（映射源码 `_STEP_CONFIG_KEYS`，位于 [chipcompiler/data/workspace/__init__.py](../chipcompiler/data/workspace/__init__.py)）：
+`ecc config <step>` 的真实输出归纳（映射源码 `_STEP_CONFIG_KEYS`，位于 [chipcompiler/data/workspace/__init__.py](../../chipcompiler/data/workspace/__init__.py)）：
 
 | 步骤 | db_ecc | 专属配置 | 说明 |
 |---|---|---|---|
@@ -85,7 +85,7 @@ graph LR
 
 ### 1.1 旧语义参数（13 个）
 
-来源：[chipcompiler/cli/project/params.py](../chipcompiler/cli/project/params.py) 的 `_LEGACY_PARAM_REGISTRY`（`PARAM_REGISTRY` 的兼容段；直配参数见 §1.2 的 `config_params/` schema）。这些参数保持兼容；优先级：`--set` > `ecc.toml [params]` > 默认值。「写入位置」列为该参数最终落到的工具配置字段。
+来源：[chipcompiler/cli/project/params.py](../../chipcompiler/cli/project/params.py) 的 `_LEGACY_PARAM_REGISTRY`（`PARAM_REGISTRY` 的兼容段；直配参数见 §1.2 的 `config_params/` schema）。这些参数保持兼容；优先级：`--set` > `ecc.toml [params]` > 默认值。「写入位置」列为该参数最终落到的工具配置字段。
 
 | 参数 | 类型 / 范围 | 默认 | 写入位置（config 字段） | 含义 |
 |---|---|---|---|---|
@@ -152,7 +152,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 1.4 参数配置 CLI 命令（`ecc param`）
 
-参数的查看与修改统一走 `ecc param` 子命令（子命令定义：[chipcompiler/cli/commands/param.py](../chipcompiler/cli/commands/param.py)；项目作用域实现：[chipcompiler/cli/command_handlers/param.py](../chipcompiler/cli/command_handlers/param.py)，workspace 作用域实现：[chipcompiler/cli/command_handlers/workspace_params.py](../chipcompiler/cli/command_handlers/workspace_params.py)）：
+参数的查看与修改统一走 `ecc param` 子命令（子命令定义：[chipcompiler/cli/commands/param.py](../../chipcompiler/cli/commands/param.py)；项目作用域实现：[chipcompiler/cli/command_handlers/param.py](../../chipcompiler/cli/command_handlers/param.py)，workspace 作用域实现：[chipcompiler/cli/command_handlers/workspace_params.py](../../chipcompiler/cli/command_handlers/workspace_params.py)）：
 
 | 命令 | 作用 |
 |---|---|
@@ -503,7 +503,7 @@ ics55 的 corner 命名：`Cworst/Cbest`=电容最差/最好，`RCworst/RCbest`=
 
 ## 15. 各步骤的 ECC CLI 配置命令
 
-以下清单将前文的配置字段对应到可执行的 ECC CLI 命令。`VALUE` 是待替换的值占位符；列表和对象必须传入 JSON 字面量，例如 `ecc param set cts.routing_layer '[4, 5]'`。命令默认写入项目的 `ecc.toml`；要修改已创建的 workspace，请在命令末尾追加 `--workspace NAME`（PDK 路径参数除外，见 §1.4）。先执行列出的 `ecc param list --step STEP` 可查看当前版本完整的可调字段、默认值和约束。
+所有字段的设置方式相同——`ecc param set KEY VALUE`——因此每个步骤只给出少量代表性示例；执行列出的 `ecc param list --step STEP` 可查看当前版本完整的可调字段、默认值和约束。`VALUE` 是待替换的值占位符；列表和对象必须传入 JSON 字面量，例如 `ecc param set cts.routing_layer '[4, 5]'`。命令默认写入项目的 `ecc.toml`；要修改已创建的 workspace，请在命令末尾追加 `--workspace NAME`（PDK 路径参数除外，见 §1.4）。
 
 ### 15.1 公共 db 配置与 PDK 路径
 
@@ -511,12 +511,7 @@ ics55 的 corner 命名：`Cworst/Cbest`=电容最差/最好，`RCworst/RCbest`=
 
 ```bash
 ecc param list --step pdk
-ecc param set pdk.tech VALUE
-ecc param set pdk.lefs VALUE
-ecc param set pdk.libs VALUE
-ecc param set pdk.mapping_file VALUE
-ecc param set pdk.sdc VALUE
-ecc param set pdk.spef VALUE
+ecc param set pdk.tech VALUE   # pdk.lefs、pdk.libs、pdk.mapping_file、pdk.sdc、pdk.spef 用法相同
 ```
 
 `pdk.root` 使用 `ecc pdk set-root PATH`，不属于 `ecc param`。绕线首层由 routing 步骤的 `route.bottom_layer` 设置，见 §15.6。
@@ -532,34 +527,13 @@ ecc param set design.frequency_mhz VALUE
 
 ### 15.3 floorplan
 
-`temp_directory_path` 与 `macro_location_path` 为流程生成/保护路径，不能通过 CLI 设置；其余已审核的 `floorplan_ecc.json` 字段使用：
+`temp_directory_path` 与 `macro_location_path` 为流程生成/保护路径，不能通过 CLI 设置；其余已审核的 `floorplan_ecc.json` 字段用法相同，例如：
 
 ```bash
 ecc param list --step floorplan
 ecc param set floorplan.core_util VALUE
-ecc param set floorplan.core_margin VALUE
-ecc param set floorplan.aspect_ratio VALUE
-ecc param set floorplan.die_builder.die_size.width_micron VALUE
-ecc param set floorplan.die_builder.die_size.height_micron VALUE
-ecc param set floorplan.die_builder.mode VALUE
-ecc param set floorplan.die_builder.site_name VALUE
-ecc param set floorplan.ifp.thread_number VALUE
-ecc param set floorplan.io_placer.io_layer_list VALUE
-ecc param set floorplan.macro_placer.macro_placement_halo VALUE
-ecc param set floorplan.macro_placer.macro_routing_halo VALUE
-ecc param set floorplan.pdn_generator.global_connect VALUE
-ecc param set floorplan.pdn_generator.rail VALUE
-ecc param set floorplan.pdn_generator.stripe VALUE
-ecc param set floorplan.pdn_generator.connect_layers VALUE
-ecc param set floorplan.phy_placer.well_tap.cell_name VALUE
+ecc param set floorplan.die_builder.die_size.width_micron VALUE   # 嵌套字段使用点路径
 ecc param set floorplan.phy_placer.well_tap.distance_micron VALUE
-ecc param set floorplan.phy_placer.side_endcap.left_cell_name VALUE
-ecc param set floorplan.phy_placer.side_endcap.right_cell_name VALUE
-ecc param set floorplan.phy_placer.edge_endcap.top_cell_name_list VALUE
-ecc param set floorplan.phy_placer.edge_endcap.bottom_cell_name_list VALUE
-ecc param set floorplan.phy_placer.boundary_tap.top_cell_name_list VALUE
-ecc param set floorplan.phy_placer.boundary_tap.bottom_cell_name_list VALUE
-ecc param set floorplan.phy_placer.boundary_tap.rule_micron VALUE
 ```
 
 ### 15.4 placement / legalization
@@ -569,91 +543,7 @@ placement 与 legalization 共用 `dreamplace_ecc.json`，因此使用同一组 
 ```bash
 ecc param list --step placement
 ecc param set place.target_density VALUE
-ecc param set place.target_overflow VALUE
-ecc param set place.cell_padding_x VALUE
-ecc param set place.routability_opt VALUE
-ecc param set place.RePlAce_LOWER_PCOF VALUE
-ecc param set place.RePlAce_UPPER_PCOF VALUE
-ecc param set place.RePlAce_ref_hpwl VALUE
-ecc param set place.RePlAce_skip_energy_flag VALUE
-ecc param set place.adjust_nctugr_area_flag VALUE
-ecc param set place.adjust_pin_area_flag VALUE
-ecc param set place.adjust_rudy_area_flag VALUE
-ecc param set place.area_adjust_stop_ratio VALUE
-ecc param set place.auto_adjust_bins VALUE
-ecc param set place.bndry_padding_x VALUE
-ecc param set place.bndry_padding_y VALUE
-ecc param set place.density_weight VALUE
-ecc param set place.detailed_place_command VALUE
-ecc param set place.detailed_place_engine VALUE
-ecc param set place.detailed_place_flag VALUE
-ecc param set place.deterministic_flag VALUE
-ecc param set place.differentiable_timing_obj VALUE
-ecc param set place.dtype VALUE
-ecc param set place.dump_global_place_solution_flag VALUE
-ecc param set place.dump_legalize_solution_flag VALUE
-ecc param set place.enable_fillers VALUE
-ecc param set place.enable_net_weighting VALUE
-ecc param set place.evaluate_pl VALUE
-ecc param set place.gamma VALUE
-ecc param set place.get_congestion_map VALUE
-ecc param set place.global_place_flag VALUE
-ecc param set place.global_place_stages VALUE
-ecc param set place.gp_noise_ratio VALUE
-ecc param set place.gpu VALUE
-ecc param set place.gpu_id VALUE
-ecc param set place.ignore_net_degree VALUE
-ecc param set place.ignore_net_weight VALUE
-ecc param set place.init_loc_perc_x VALUE
-ecc param set place.init_loc_perc_y VALUE
-ecc param set place.legalize_flag VALUE
-ecc param set place.macro_halo_x VALUE
-ecc param set place.macro_halo_y VALUE
-ecc param set place.macro_overlap_flag VALUE
-ecc param set place.macro_overlap_mult_weight VALUE
-ecc param set place.macro_overlap_weight VALUE
-ecc param set place.macro_pin_halo_x VALUE
-ecc param set place.macro_pin_halo_y VALUE
-ecc param set place.macro_place_flag VALUE
-ecc param set place.max_net_weight VALUE
-ecc param set place.max_num_area_adjust VALUE
-ecc param set place.max_pin_opt_adjust_rate VALUE
-ecc param set place.max_route_opt_adjust_rate VALUE
-ecc param set place.momentum_decay_factor VALUE
-ecc param set place.net_weighting_scheme VALUE
-ecc param set place.node_area_adjust_overflow VALUE
-ecc param set place.num_bins_x VALUE
-ecc param set place.num_bins_y VALUE
 ecc param set place.num_threads VALUE
-ecc param set place.pin2pin_accumulate_weight VALUE
-ecc param set place.pin2pin_max_weight VALUE
-ecc param set place.pin2pin_min_weight VALUE
-ecc param set place.pin2pin_net_weighting VALUE
-ecc param set place.pin2pin_weight VALUE
-ecc param set place.pin_area_adjust_stop_ratio VALUE
-ecc param set place.pin_density VALUE
-ecc param set place.pin_stretch_ratio VALUE
-ecc param set place.plot_flag VALUE
-ecc param set place.random_center_init_flag VALUE
-ecc param set place.random_seed VALUE
-ecc param set place.risa_weights VALUE
-ecc param set place.route_area_adjust_stop_ratio VALUE
-ecc param set place.route_info_input VALUE
-ecc param set place.route_num_bins_x VALUE
-ecc param set place.route_num_bins_y VALUE
-ecc param set place.route_opt_adjust_exponent VALUE
-ecc param set place.scale_factor VALUE
-ecc param set place.shift_factor VALUE
-ecc param set place.sort_nets_by_degree VALUE
-ecc param set place.start_iter VALUE
-ecc param set place.timing_eval_flag VALUE
-ecc param set place.timing_opt_flag VALUE
-ecc param set place.two_stage_density_scaler VALUE
-ecc param set place.unit_horizontal_capacity VALUE
-ecc param set place.unit_pin_capacity VALUE
-ecc param set place.unit_vertical_capacity VALUE
-ecc param set place.use_bb VALUE
-ecc param set place.with_sta VALUE
 ```
 
 ### 15.5 timing optimization
@@ -666,26 +556,13 @@ Sizer 没有专属 `ecc param` schema。其内部 DreamPlace 合法化使用 §1
 ecc param list --step cts
 ecc param set cts.max_fanout VALUE
 ecc param set cts.skew_bound VALUE
-ecc param set cts.max_buf_tran VALUE
-ecc param set cts.root_input_slew VALUE
-ecc param set cts.max_sink_tran VALUE
-ecc param set cts.max_cap VALUE
-ecc param set cts.max_length VALUE
-ecc param set cts.wirelength_iterations VALUE
-ecc param set cts.slew_steps VALUE
-ecc param set cts.cap_steps VALUE
 ecc param set cts.routing_layer VALUE
 ecc param set cts.buffer_type VALUE
-ecc param set cts.use_netlist VALUE
-ecc param set cts.net_list VALUE
 
 ecc param list --step routing
 ecc param set route.bottom_layer VALUE
 ecc param set route.top_layer VALUE
 ecc param set route.RT.-thread_number VALUE
-ecc param set route.RT.-enable_timing VALUE
-ecc param set route.RT.-output_csv VALUE
-ecc param set route.RT.-output_inter_result VALUE
 ```
 
 `route_ecc.json` 的临时目录由步骤调度生成，不能通过 CLI 设置。

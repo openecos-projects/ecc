@@ -3,6 +3,7 @@ from typing import Annotated
 import typer
 
 from chipcompiler.cli.command_handlers import pdk as pdk_handlers
+from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import (
     PdkSetRootInput,
     PdkSetupInput,
@@ -19,12 +20,7 @@ from chipcompiler.cli.core.options import (
     ProjectOption,
 )
 
-pdk_app = typer.Typer(
-    add_completion=False,
-    no_args_is_help=True,
-    rich_markup_mode=None,
-    help="Show and configure the PDK path used by this project",
-)
+pdk_app = create_app(help="Show and configure the PDK path used by this project")
 
 
 def _finish(subcommand: str, command_input, handler) -> None:
@@ -53,7 +49,7 @@ def setup_cmd(
     _finish("setup", command_input, pdk_handlers.setup)
 
 
-@pdk_app.command("set-root", help="Set the [pdk] root path in ecc.toml")
+@pdk_app.command("set-root")
 def set_root_cmd(
     *,
     path: Annotated[
@@ -65,6 +61,15 @@ def set_root_cmd(
     jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
+    """Set the [pdk] root path in ecc.toml.
+
+    `pdk.root` is the base directory for the PDK content paths `pdk.tech`,
+    `pdk.lefs`, `pdk.libs`, and `pdk.mapping_file`. The design-data paths
+    `pdk.sdc` and `pdk.spef` resolve against the project directory instead.
+    All six get file-existence validation.
+
+    See 'ecc doc config' for the full reference.
+    """
     command_input = PdkSetRootInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),

@@ -2,7 +2,7 @@
 
 This guide is for developers who need to add or modify commands in the `ecc` CLI. It is based on the current source tree (the `chipcompiler` package, v0.1.0-alpha.11). All code paths are relative to the `ecc` repository root.
 
-Related documents: [architecture.md](architecture.md) (architecture), [development.md](development.md) (development workflow), [workspace-cli.md](workspace-cli.md) (RPC sidecar protocol), [../CLAUDE.md](../CLAUDE.md) (repository conventions).
+Related documents: [architecture.md](../../docs/architecture.md) (architecture), [development.md](../../docs/development.md) (development workflow), [workspace-cli.md](../../docs/workspace-cli.md) (RPC sidecar protocol), [../../CLAUDE.md](../../CLAUDE.md) (repository conventions).
 
 ## 1. Entry point and overall structure
 
@@ -227,7 +227,7 @@ Project preset sequences are defined in `chipcompiler/rtl2gds/builder.py` (`buil
 
 ### 5.6 Extending the RPC (`ecc rpc serve`)
 
-`rpc serve --stdio` starts the JSON-RPC 2.0 sidecar (`chipcompiler/runtime/stdio_server.py`). Methods are declared in `chipcompiler/runtime/methods.py::RUNTIME_METHODS` (`method_name` + a pydantic `request_model` + `handler_name`), handler implementations live in `chipcompiler/runtime/workspace_api.py`, and `runtime/server.py` mounts them uniformly; protocol details in [workspace-cli.md](workspace-cli.md). Adding a method = one `RuntimeMethodSpec` + the matching API method + a request model; no CLI-layer changes needed.
+`rpc serve --stdio` starts the JSON-RPC 2.0 sidecar (`chipcompiler/runtime/stdio_server.py`). Methods are declared in `chipcompiler/runtime/methods.py::RUNTIME_METHODS` (`method_name` + a pydantic `request_model` + `handler_name`), handler implementations live in `chipcompiler/runtime/workspace_api.py`, and `runtime/server.py` mounts them uniformly; protocol details in [workspace-cli.md](../../docs/workspace-cli.md). Adding a method = one `RuntimeMethodSpec` + the matching API method + a request model; no CLI-layer changes needed.
 
 ### 5.7 Extending project declarations (`ecc project *` / `ecc workspace refresh`)
 
@@ -250,14 +250,14 @@ rm -rf ~/.local/ecc && mkdir -p ~/.local/ecc && cp -a dist/ecc/. ~/.local/ecc/
 ecc --help            # verify doctor / signoff / report are listed
 ```
 
-To roll back to the official release, re-run the [README](../README.md#installation) installer (`curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh`).
+To roll back to the official release, re-run the [README](../../README.md#installation) installer (`curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh`).
 
 ## 7. Constraints and caveats (from the repository conventions)
 
 - **Module size**: once a file exceeds roughly 800 LoC, put new functionality in a new module instead of growing it (repository CLAUDE.md section 6).
 - **Python 3+**: do not use `__future__`; check `requires-python` in `pyproject.toml` for the minimum version.
 - **Test placement** follows ownership boundaries; prefer whole-object comparisons; do not write tests for statically defined values; do not keep negative tests for removed logic.
-- **Code review** must enforce the additional standards in [review-guidelines.md](review-guidelines.md).
+- **Code review** must enforce the additional standards in [review-guidelines.md](../../docs/review-guidelines.md).
 - `uv.lock` is the source of truth for dependencies; `requirements_lock.txt` is auto-generated and gitignored.
 - ECC-Tools' tool identifier in code is `"ecc"` (not `"ecc-tools"`); every tool module must implement `is_eda_exist / build_step / run_step`; steps execute in `multiprocessing.Process` and state persists in `workspace.flow.json`.
 - After installing dependencies, `ecc` is editable — source changes take effect on the next import, no reinstall needed.

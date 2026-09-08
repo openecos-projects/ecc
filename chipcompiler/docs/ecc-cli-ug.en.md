@@ -2,9 +2,9 @@
 
 `ecc` is the project-oriented command-line entry point of ECOS Chip Compiler, covering the full RTL-to-GDS flow: project creation, validation, execution, status/log/config inspection, parameter management, signoff, and reporting. This guide is based on the current source tree (v0.1.0-alpha.11); all example outputs are real execution results (run states in the examples are hand-crafted demo data).
 
-- Source code: [chipcompiler/cli/](../chipcompiler/cli/)
+- Source code: [chipcompiler/cli/](../../chipcompiler/cli/)
 - For how to extend the CLI with new commands, see [ecc-cli-dev.en.md](ecc-cli-dev.en.md)
-- RPC sidecar protocol: [workspace-cli.md](workspace-cli.md)
+- RPC sidecar protocol: [workspace-cli.md](../../docs/workspace-cli.md)
 
 ## 0. Invocation
 
@@ -104,6 +104,7 @@ Commands:
   config        Show resolved project or step configuration
   migrate       Migrate a legacy runs/ project to the manifest layout
   doctor        Check host environment: PDK, tools, and components
+  doc           Show a bundled guide (config/ug/tutorial/dev) in the terminal
   param         Manage EDA parameters
   pdk           Show and configure the PDK path used by this project
   project       Edit project declarations in ecc.toml
@@ -112,6 +113,32 @@ Commands:
   report        Generate design-summary, QoR score, checklist, and step reports
   rpc           Run the private ECC JSON-RPC runtime
 ```
+
+## 1.5. doc — read the bundled guides in the terminal
+
+`ecc doc` renders the bundled CLI guides directly in the terminal, so the full reference stays available offline inside packaged installations.
+
+```bash
+ecc doc config              # full configuration reference (rendered)
+ecc doc ug --lang cn        # this guide, Chinese edition
+ecc doc config --plain      # raw markdown, byte-for-byte
+```
+
+- Topics: `config`, `ug`, `tutorial`, `dev`; `--lang` selects `en` (default) or `cn`.
+- On a terminal the rendered guide opens in a pager with highlighting (`$PAGER`, falling back to `less`/`more`; `LESS=FRX` is defaulted when unset so colors survive `less`). When piped it prints in full without colors.
+- Invalid topic/language values are rejected by argument validation (exit 2).
+- Default output keeps the rendered unicode layout even when piped; `--plain` prints the raw markdown unchanged (script-friendly).
+
+## 1.6. Shell completion
+
+`ecc` ships built-in shell completion for bash, zsh, fish, and powershell. Print the activation script and load it into the current session:
+
+```bash
+eval "$(ecc --show-completion)"     # auto-detects the current shell
+```
+
+- Add that line to `~/.zshrc` / `~/.bashrc` (or home-manager `initExtra`) to enable completion permanently. zsh requires `compinit` to be initialized first.
+- On NixOS or other declaratively managed setups, prefer the `eval` line over `--install-completion`: the latter rewrites `~/.zshrc` / `~/.bashrc` in place, which fails on read-only rc symlinks and conflicts with home-manager.
 
 ## 2. version — show versions
 
@@ -992,7 +1019,7 @@ $ ecc report step drc --section analysis
 ecc rpc serve --stdio [--persistent-db]
 ```
 
-A JSON-RPC 2.0 service for front ends such as the GUI, framed with `Content-Length` over stdio. `--persistent-db` additionally exposes `db.ensure` / `db.release` plus the `layout.edit.*` / `floorplan.edit.*` method families. Handshake and call examples (full method list and parameters in [workspace-cli.md](workspace-cli.md)):
+A JSON-RPC 2.0 service for front ends such as the GUI, framed with `Content-Length` over stdio. `--persistent-db` additionally exposes `db.ensure` / `db.release` plus the `layout.edit.*` / `floorplan.edit.*` method families. Handshake and call examples (full method list and parameters in [workspace-cli.md](../../docs/workspace-cli.md)):
 
 ```console
 → {"jsonrpc":"2.0","method":"rpc.hello","params":{"version":1},"id":"hello-1"}

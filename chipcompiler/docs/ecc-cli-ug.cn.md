@@ -2,9 +2,9 @@
 
 `ecc` 是 ECOS Chip Compiler 的项目制命令行入口，覆盖 RTL-to-GDS 流水的建项、校验、运行、状态/日志/配置查询、参数管理、签核与报告。本文基于 `ecc/` 子模块当前源码（v0.1.0-alpha.11）整理，所有示例输出均为真实执行结果（示例中的 run 状态为手工构造的演示数据）。
 
-- 源码位置：[chipcompiler/cli/](../chipcompiler/cli/)
+- 源码位置：[chipcompiler/cli/](../../chipcompiler/cli/)
 - 命令扩展开发方式见同目录 [ecc-cli-dev.cn.md](ecc-cli-dev.cn.md)
-- RPC sidecar 协议详见 [workspace-cli.md](workspace-cli.md)
+- RPC sidecar 协议详见 [workspace-cli.md](../../docs/workspace-cli.md)
 
 ## 0. 调用方式
 
@@ -104,6 +104,7 @@ Commands:
   config        Show resolved project or step configuration
   migrate       Migrate a legacy runs/ project to the manifest layout
   doctor        Check host environment: PDK, tools, and components
+  doc           Show a bundled guide (config/ug/tutorial/dev) in the terminal
   param         Manage EDA parameters
   pdk           Show and configure the PDK path used by this project
   project       Edit project declarations in ecc.toml
@@ -112,6 +113,32 @@ Commands:
   report        Generate design-summary, QoR score, checklist, and step reports
   rpc           Run the private ECC JSON-RPC runtime
 ```
+
+## 1.5. doc — 在终端阅读内置指南
+
+`ecc doc` 将随包内置的 CLI 指南直接渲染到终端，因此在打包安装（无源码、无文档目录）的环境中也能离线查阅完整参考。
+
+```bash
+ecc doc config              # 完整配置参考（渲染输出）
+ecc doc ug --lang cn        # 本指南的中文版
+ecc doc config --plain      # 原始 markdown，逐字节输出
+```
+
+- 主题：`config`、`ug`、`tutorial`、`dev`；`--lang` 选择 `en`（默认）或 `cn`。
+- 终端下渲染输出带高亮并进入分页器翻阅（`$PAGER`，回退到 `less`/`more`；未设置 `LESS` 时默认 `LESS=FRX`，保证 `less` 下颜色生效）；管道场景全量直出、不带颜色。
+- 非法的主题/语言取值由参数校验拒绝（退出码 2）。
+- 管道输出保留 unicode 渲染版式；`--plain` 原样输出原始 markdown，适合脚本处理。
+
+## 1.6. Shell 补全
+
+`ecc` 内置 bash、zsh、fish、powershell 的 Shell 补全。打印激活脚本并加载到当前会话：
+
+```bash
+eval "$(ecc --show-completion)"     # 自动探测当前 shell
+```
+
+- 把该行写入 `~/.zshrc` / `~/.bashrc`（或 home-manager 的 `initExtra`）即可永久启用。zsh 需要先初始化 `compinit`。
+- 在 NixOS 等声明式管理的环境中，请用上面的 `eval` 方式而不是 `--install-completion`：后者会原地改写 `~/.zshrc` / `~/.bashrc`，对只读 rc 符号链接会失败，且与 home-manager 冲突。
 
 ## 2. version — 查看版本
 
@@ -944,7 +971,7 @@ $ ecc report step drc --section analysis
 ecc rpc serve --stdio [--persistent-db]
 ```
 
-供 GUI 等前端使用的 JSON-RPC 2.0 服务，`Content-Length` 帧封装于 stdio。`--persistent-db` 额外开放 `db.ensure` / `db.release` 与 `layout.edit.*` / `floorplan.edit.*` 系列方法。握手与调用示例（完整方法列表和参数见 [workspace-cli.md](workspace-cli.md)）：
+供 GUI 等前端使用的 JSON-RPC 2.0 服务，`Content-Length` 帧封装于 stdio。`--persistent-db` 额外开放 `db.ensure` / `db.release` 与 `layout.edit.*` / `floorplan.edit.*` 系列方法。握手与调用示例（完整方法列表和参数见 [workspace-cli.md](../../docs/workspace-cli.md)）：
 
 ```console
 → {"jsonrpc":"2.0","method":"rpc.hello","params":{"version":1},"id":"hello-1"}

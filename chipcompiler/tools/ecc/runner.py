@@ -18,7 +18,6 @@ from chipcompiler.tools.ecc.metrics import (
     save_rcx_spef_feature_facts,
 )
 from chipcompiler.tools.ecc.module import ECCToolsModule
-from chipcompiler.tools.ecc.plot import ECCToolsPlot
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_outputs
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
@@ -534,6 +533,8 @@ def run_analysis(workspace: Workspace, step: EccStep, subflow: EccSubFlow):
     build_step_metrics(workspace=workspace, step=step, subflow=subflow)
 
     # plot layout image
+    from chipcompiler.tools.ecc.plot import ECCToolsPlot
+
     ploter = ECCToolsPlot(workspace=workspace, step=step)
     ploter.plot()
 

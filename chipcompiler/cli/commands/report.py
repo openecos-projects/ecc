@@ -3,6 +3,7 @@ from typing import Annotated
 import typer
 
 from chipcompiler.cli.command_handlers import report as report_handlers
+from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import (
     ReportChecklistInput,
     ReportQorInput,
@@ -20,16 +21,11 @@ from chipcompiler.cli.core.options import (
     WorkspaceOption,
 )
 
-report_app = typer.Typer(
-    add_completion=False,
-    no_args_is_help=True,
-    rich_markup_mode=None,
-    help="Generate design-summary, QoR score, checklist, and step reports",
-)
+report_app = create_app(help="Generate design-summary, QoR score, checklist, and step reports")
 
 OutputPathOption = Annotated[
     str | None,
-    typer.Option("--output", "-o", help="Report destination (default: <workspace>/signoff/)"),
+    typer.Option("--output", "-o", help="Report destination (default: `<workspace>`/signoff/)"),
 ]
 
 

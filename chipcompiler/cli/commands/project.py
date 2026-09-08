@@ -28,12 +28,12 @@ from chipcompiler.cli.core.options import (
 def register_project_commands(app: typer.Typer) -> None:
     app.command("init", help="Create a new ECC project")(init_cmd)
     app.command("check", help="Validate the current project setup")(check_cmd)
-    app.command("run", help="Run the configured RTL-to-GDS flow")(run_cmd)
+    app.command("run")(run_cmd)
     app.command(
         "status", help="Show a quick run/step progress summary (full evidence: 'ecc report step')"
     )(status_cmd)
     app.command("log", help="Show available logs or step log content")(log_cmd)
-    app.command("config", help="Show resolved project or step configuration")(config_cmd)
+    app.command("config")(config_cmd)
     app.command("migrate", help="Migrate a legacy runs/ project to the manifest layout")(
         migrate_cmd
     )
@@ -114,6 +114,22 @@ def run_cmd(
     ] = None,
     plain: PlainOption = False,
 ) -> None:
+    """Run the configured RTL-to-GDS flow.
+
+    `--set KEY=VALUE` applies a one-off parameter override; it is accepted
+    only when the run creates a workspace (including `--overwrite`) and is
+    recorded in `home/cli-param-overrides.json`. On an existing workspace it
+    fails with `set_requires_fresh_run` — use
+    `ecc param set KEY VALUE --workspace NAME` instead. Precedence:
+    `--set` > `ecc.toml` `[params]` > defaults.
+
+    Parameterized fields in `config/*.json` are re-refreshed from
+    `home/params.toml` and the PDK before every step, so manual edits are
+    overwritten. Each step reads the previous step's `output/`; the first
+    step reads the design's origin verilog/DEF.
+
+    See 'ecc doc config' for the full reference.
+    """
     command_input = RunInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),
@@ -192,6 +208,15 @@ def config_cmd(
     plain: PlainOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
+    """Show resolved project or step configuration.
+
+    Without STEP: resolved project-level configuration. With STEP: the
+    configuration files actually in effect for that step. `lec`, `lvs`,
+    `postroutelec`, and `harden` have no step-specific configuration
+    (Tcl-driven, tool-default, or reusing `db_ecc.json`).
+
+    See 'ecc doc config' for the full reference.
+    """
     command_input = ConfigInput(
         output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
         project=project_options(project),

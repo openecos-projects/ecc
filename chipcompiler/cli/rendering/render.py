@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 
 from chipcompiler.cli.core.types import CommandResult, OutputMode
@@ -48,6 +49,32 @@ def _plain_value(value) -> str:
         escaped = s.replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'
     return s
+
+
+def render_markdown(text: str, file=None, *, color: bool, pager: bool = False) -> None:
+    from rich.console import Console
+    from rich.markdown import Markdown
+
+    # force_terminal tracks color: forcing a terminal on a colorless stream
+    # makes rich 15 emit ANSI escapes even with no_color=True.
+    console = Console(file=file or sys.stdout, force_terminal=color, no_color=not color)
+    # Page only on a real terminal: pydoc picks its pager at import time, so
+    # its own isatty check cannot be trusted once the process has been piped.
+    if pager and file is None and sys.stdout.isatty():
+        # pydoc invokes plain `less`, which escapes ANSI; with no user LESS,
+        # default to git's FRX so styled output renders and short docs don't
+        # open the pager UI at all.
+        saved_less = os.environ.get("LESS")
+        if saved_less is None:
+            os.environ["LESS"] = "FRX"
+        try:
+            with console.pager(styles=color):
+                console.print(Markdown(text))
+        finally:
+            if saved_less is None:
+                del os.environ["LESS"]
+    else:
+        console.print(Markdown(text))
 
 
 def render_result(

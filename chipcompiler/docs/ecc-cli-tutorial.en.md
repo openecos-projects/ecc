@@ -1,6 +1,6 @@
 # ECC CLI Tutorial: From Zero to RTL → Harden with a Signoff Package
 
-This tutorial is for first-time ECC users: starting from a bare Linux machine, install the `ecc` command-line tool and drive a Verilog RTL design ([gcd](examples/gcd/gcd.v), a greatest-common-divisor unit) through the full **synthesis → place & route → physical verification → logic equivalence check (LEC) → timing signoff → Harden** flow, ending up with:
+This tutorial is for first-time ECC users: starting from a bare Linux machine, install the `ecc` command-line tool and drive a Verilog RTL design ([gcd](../../docs/examples/gcd/gcd.v), a greatest-common-divisor unit) through the full **synthesis → place & route → physical verification → logic equivalence check (LEC) → timing signoff → Harden** flow, ending up with:
 
 - **Harden deliverables**: GDS layout, abstract LEF, timing LIB, and a layout snapshot PNG;
 - A **signoff package** `gcd_signoff_package.tar.gz` (300+ files: RTL / configs / deliverables / LEC proof / reports);
@@ -59,7 +59,7 @@ The `--with-toolchain` wrapper exports `CHIPCOMPILER_OSS_CAD_DIR` and `CHIPCOMPI
 
 ### 2.2 Running from source (optional)
 
-Clone the repository with `--recursive` as the [README](../README.md#build-from-source) describes (`chipcompiler/thirdparty/` pulls in `ecc-tools` and `ecc-dreamplace`), then set up the `uv` workspace per the [development guide](development.md):
+Clone the repository with `--recursive` as the [README](../../README.md#build-from-source) describes (`chipcompiler/thirdparty/` pulls in `ecc-tools` and `ecc-dreamplace`), then set up the `uv` workspace per the [development guide](../../docs/development.md):
 
 ```bash
 git clone --recursive https://github.com/openecos-projects/ecc.git
@@ -185,7 +185,7 @@ curl -fL -o rtl/gcd.v \
 # cp /path/to/ecc/docs/examples/gcd/gcd.v rtl/
 ```
 
-For multi-file designs, switch to a filelist (`rtl = ["rtl/filelist.f"]`); see [examples/gcd/README.md](examples/gcd/README.md#using-filelist) and the [filelist grammar](specification/filelist-grammar.md).
+For multi-file designs, switch to a filelist (`rtl = ["rtl/filelist.f"]`); see [examples/gcd/README.md](../../docs/examples/gcd/README.md#using-filelist) and the [filelist grammar](../../docs/specification/filelist-grammar.md).
 
 ### 3.3 Understanding ecc.toml
 
@@ -714,10 +714,10 @@ ecc config --plain      # project-level config (key=value + resolved absolute pa
 
 ## 8. Next Steps
 
-- Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](examples/gcd/README.md#using-filelist) for multi-file designs;
+- Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](../../docs/examples/gcd/README.md#using-filelist) for multi-file designs;
 - Preset differences: `rtl2gds` (the complete 15-step synthesis-to-Harden chain, including synthesis-level LEC), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps);
 - Full command details in the **[ECC CLI User Guide](ecc-cli-ug.en.md)**; extending the CLI is covered in [ecc-cli-dev.en.md](ecc-cli-dev.en.md);
-- Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](examples/gcd/ics55flow.py).
+- Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](../../docs/examples/gcd/ics55flow.py).
 
 ---
 

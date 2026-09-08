@@ -113,7 +113,7 @@ def test_run_analysis_switch(parameters, expected_calls, tmp_path, monkeypatch):
     plotter = Mock()
     checklist = Mock()
     monkeypatch.setattr(ecc_runner, "build_step_metrics", metrics)
-    monkeypatch.setattr(ecc_runner, "ECCToolsPlot", plotter)
+    monkeypatch.setattr("chipcompiler.tools.ecc.plot.ECCToolsPlot", plotter)
     monkeypatch.setattr(ecc_runner, "EccChecklist", checklist)
 
     ecc_runner.run_analysis(workspace=workspace, step=step, subflow=FakeSubFlow())
