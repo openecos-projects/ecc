@@ -396,10 +396,10 @@ def coerce_manifest_parameters(canonical: dict, registry=PARAM_REGISTRY, skip_pa
     return coerced, errors
 
 
-def build_backend_overrides(resolved):
+def build_backend_overrides(resolved, *, include_defaults: bool = False):
     overrides = {}
     for item in resolved:
-        if item.source == "default" and item.value == item.default:
+        if not include_defaults and item.source == "default" and item.value == item.default:
             continue
         target, value = item.schema.maps_to, item.value
         if isinstance(target, str):

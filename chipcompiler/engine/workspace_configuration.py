@@ -389,7 +389,7 @@ def read_workspace_configuration_from_directory(
     target_directory: str | Path,
 ) -> dict[str, Any]:
     target = Path(target_directory).expanduser().resolve()
-    workspace = load_workspace(target)
+    workspace = load_workspace(target, read_only=True)
     if workspace is None:
         raise WorkspaceLifecycleError("workspace_missing", f"Workspace not found: {target}")
     return read_workspace_configuration(workspace)
