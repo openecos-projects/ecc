@@ -63,7 +63,7 @@ which ecc && ecc --version          # 任意目录下应输出 ecc <版本号>
 # 升级 = 用新包覆盖解压目录内容；方式 B/C 的软链接无需改动
 ```
 
-> 官方最新 Release（v0.1.0-alpha.11）已包含本文全部命令，含 `doctor`/`signoff`/`report` 与 `run` 的 workspace/范围选择器。当源码领先于最近一次 Release 时（两次发布之间的新行为），按 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli) 的源码开发方式用 `uv run ecc` 即可体验（editable 安装，改源码下次导入即生效）；重新运行安装脚本会装回官方发行版，未发布的新行为随之消失，属预期回退。
+> 截至 v0.1.0-alpha.9 的官方 Release 尚未包含 `doctor`/`signoff`/`report` 命令组与 `run` 的 workspace/范围选择器；在新 Release 发布前，按 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli) 的源码开发方式用 `uv run ecc` 即可体验（editable 安装，改源码下次导入即生效）。重新运行安装脚本会装回官方发行版，未发布的新行为随之消失，属预期回退。
 
 > 注：`ecc` 的项目定位默认取当前目录（`ecc.toml` 所在处），所以「任意文件夹启动」是常态用法；在其他目录操作项目时加 `--project <dir>` 即可。
 
@@ -211,7 +211,7 @@ preset = "rtl2gds"
 ecc check [--project DIR] [--plain]
 ```
 
-校验 `ecc.toml` 必填项（design/pdk/flow）、PDK 名称与内容（tech LEF/LEF/liberty）；声明了多个 RTL 源的 manifest 项目还会逐一校验每个源。单个 RTL 源文件的存在性在 `ecc run` 创建 workspace 时按入口步骤校验（报 `step_input_missing`）：
+校验 `ecc.toml` 必填项（design/pdk/flow）、PDK 名称与内容（tech LEF/LEF/liberty），并逐一校验每个声明的 RTL 源文件（源文件缺失即失败）：
 
 ```console
 $ ecc check        # PDK 未就绪时
@@ -280,7 +280,7 @@ rc=1
 
 ### 手动排查清单（无 doctor 时备用）
 
-`ecc check` 只覆盖「项目配置（design/pdk/flow 必填项）+ **PDK 内容**（tech LEF / LEF / liberty）」，**不检查外部工具**，也不检查单个 RTL 源文件的存在性（后者在 `ecc run` 创建 workspace 时校验）。手动逐项确认：
+`ecc check` 只覆盖「项目配置（design/pdk/flow 必填项）+ **PDK 内容**（tech LEF / LEF / liberty）+ 每个声明的 RTL 源文件」，**不检查外部工具**。手动逐项确认：
 
 | 依赖 | 检查命令 | 就绪标志 |
 |---|---|---|

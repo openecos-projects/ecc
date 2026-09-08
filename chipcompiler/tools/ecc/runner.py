@@ -135,6 +135,12 @@ def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
         return []
     sta_data = json_read(sta_config)
     rcx_output_dir = workspace_dir / f"{StepEnum.RCX.value}_ecc" / "output"
+    # STA-entry workspaces declare their parasitics (design.spef) instead of
+    # producing them with RCX: without an RCX step in the flow, every corner
+    # reads the declared SPEF.
+    flow = getattr(workspace, "flow", None)
+    has_rcx = bool(flow is not None and flow.has_step(StepEnum.RCX))
+    declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
 
     liberty_by_corner = {liberty.get("corner"): liberty for liberty in sta_data.get("liberty", [])}
     spef_design_name = workspace.design.top_module or workspace.design.name
@@ -156,13 +162,18 @@ def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
                 spef_name = (
                     f"{spef_design_name}_{rcx_corner_name}_{temperature_token(temperature)}C.spef"
                 )
+                spef_file = (
+                    str(declared_spef)
+                    if not has_rcx and declared_spef
+                    else str(rcx_output_dir / spef_name)
+                )
                 items.append(
                     {
                         "corner": corner_name,
                         "temperature": temperature,
                         "rcx_corner": rcx_corner_name,
                         "liberty_files": liberty_files,
-                        "spef_file": str(rcx_output_dir / spef_name),
+                        "spef_file": spef_file,
                     }
                 )
 

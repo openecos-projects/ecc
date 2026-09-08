@@ -604,6 +604,37 @@ def test_sta_signoff_items_use_top_module_for_rcx_spef(tmp_path):
     assert items[0]["spef_file"] == str(tmp_path / "RCX_ecc" / "output" / "gcd_Cworst_125C.spef")
 
 
+def test_sta_entry_workspace_uses_declared_spef(tmp_path):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    sta_config = config_dir / "sta_ecc.json"
+    sta_config.write_text(
+        json.dumps(
+            {
+                "liberty": [{"corner": "MAX", "temperature": 125, "path": ["max.lib"]}],
+                "signoff": [{"MAX": ["Cworst"]}],
+            }
+        )
+    )
+    declared_spef = tmp_path / "origin" / "gcd.spef"
+    declared_spef.parent.mkdir()
+    declared_spef.write_text("*SPEF\n", encoding="utf-8")
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        config={"sta": sta_config},
+    )
+    workspace.pdk.spef = declared_spef
+    # An STA-entry flow has no RCX step.
+    workspace.flow.data = {
+        "steps": [{"name": StepEnum.STA.value, "tool": "ecc", "state": "Unstart"}]
+    }
+
+    items = ecc_runner.collect_sta_signoff_items(workspace)
+
+    assert [item["spef_file"] for item in items] == [str(declared_spef)]
+
+
 def test_copy_rcx_spef_outputs_publishes_to_step_output_dir(tmp_path):
     data_dir = tmp_path / "RCX_ecc" / "data"
     output_dir = tmp_path / "RCX_ecc" / "output"

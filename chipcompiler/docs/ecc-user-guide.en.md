@@ -63,7 +63,7 @@ which ecc && ecc --version          # from any directory, should print ecc <vers
 # Upgrading = overwrite the extraction directory with the new bundle; symlinks from options B/C need no change
 ```
 
-> The latest official release (v0.1.0-alpha.11) already ships every command in this guide, including `doctor`/`signoff`/`report` and the `run` workspace/range selectors. When the source tree is ahead of the last release (behavior added between releases), run from source with `uv run ecc` as described in [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli) (editable install — source changes take effect on the next import); re-running the installer reinstalls the official release, and unreleased behavior disappears with it — the expected rollback.
+> Releases up to v0.1.0-alpha.9 predate the `doctor`/`signoff`/`report` command groups and the `run` workspace/range selectors; until a newer release ships, run from source with `uv run ecc` as described in [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli) (editable install — source changes take effect on the next import). Re-running the installer reinstalls the official release, and unreleased behavior disappears with it — the expected rollback.
 
 > `ecc` resolves the project from the current directory by default (wherever `ecc.toml` lives), so "launch from any folder" is the normal usage; to operate on a project from elsewhere, add `--project <dir>`.
 
@@ -212,7 +212,7 @@ preset = "rtl2gds"
 ecc check [--project DIR] [--plain]
 ```
 
-Validates required `ecc.toml` fields (design/pdk/flow), the PDK name and contents (tech LEF/LEF/liberty); manifest projects declaring multiple RTL sources also validate every source. Existence of a single RTL source file is validated by `ecc run` per the entry step when it creates the workspace (reported as `step_input_missing`):
+Validates required `ecc.toml` fields (design/pdk/flow), the PDK name and contents (tech LEF/LEF/liberty), and every declared RTL source file (missing sources fail the check):
 
 ```console
 $ ecc check        # PDK not ready
@@ -281,7 +281,7 @@ Notes:
 
 ### Manual checklist (fallback when doctor is unavailable)
 
-`ecc check` covers only "project config (required design/pdk/flow fields) + **PDK contents** (tech LEF / LEF / liberty)"; it **does not check external tools**, nor the existence of a single RTL source file (that is validated by `ecc run` when it creates the workspace). Verify manually:
+`ecc check` covers only "project config (required design/pdk/flow fields) + **PDK contents** (tech LEF / LEF / liberty) + every declared RTL source"; it **does not check external tools**. Verify manually:
 
 | Dependency | Check command | Ready when |
 |---|---|---|
