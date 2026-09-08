@@ -2,7 +2,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from chipcompiler.cli.project.params import list_schemas, resolve_parameters
+from chipcompiler.data.parameter_schema import list_schemas, resolve_parameters
 from chipcompiler.engine.pdk_binding import pdk_binding_content_hash
 from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
 from chipcompiler.utility.filelist import validate_filelist

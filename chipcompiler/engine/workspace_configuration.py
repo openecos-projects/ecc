@@ -4,25 +4,27 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from chipcompiler.cli.project.params import (
-    _validate_schema_type,
+from chipcompiler.data import load_workspace, save_parameter
+from chipcompiler.data.parameter_schema import (
     list_schemas,
     lookup_schema,
+    validate_schema_type,
     validate_value,
 )
-from chipcompiler.cli.project.workspace_params import (
+from chipcompiler.data.workspace import workspace_config_paths
+from chipcompiler.data.workspace_parameters import (
     update_workspace_param_value,
     workspace_param_value,
 )
-from chipcompiler.data import load_workspace, save_parameter
-from chipcompiler.data.workspace import workspace_config_paths
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.rerun import invalidate_from
 from chipcompiler.engine.snapshot import (
     SNAPSHOT_FILENAME,
     STALE_SNAPSHOT_FILENAME,
+    EngineeringSnapshotError,
     ensure_engineering_snapshot,
     invalidate_engineering_snapshot,
+    read_engineering_snapshot,
 )
 from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
 
@@ -45,18 +47,21 @@ def update_workspace_configuration(
     target = Path(target_directory).expanduser().resolve()
     if not target.is_dir():
         raise WorkspaceLifecycleError("workspace_missing", f"Workspace not found: {target}")
-    before = _snapshot_files(_workspace_file_paths(target))
-    try:
-        return _update_workspace_configuration(
-            target,
-            expected_workspace_revision,
-            configuration,
-            workspace_bindings,
-            command_id,
-        )
-    except BaseException:
-        _restore_files(before)
-        raise
+    from chipcompiler.engine.reconcile import _workspace_lock
+
+    with _workspace_lock(target):
+        before = _snapshot_files(_workspace_file_paths(target))
+        try:
+            return _update_workspace_configuration(
+                target,
+                expected_workspace_revision,
+                configuration,
+                workspace_bindings,
+                command_id,
+            )
+        except BaseException:
+            _restore_files(before)
+            raise
 
 
 def _update_workspace_configuration(
@@ -108,7 +113,7 @@ def _update_workspace_configuration(
         schema = lookup_schema(parameter)
         if schema is None or schema.pdk_target is not None:
             raise WorkspaceLifecycleError("unknown_parameter", f"Unknown parameter: {parameter}")
-        normalized, type_error = _validate_schema_type(value, schema)
+        normalized, type_error = validate_schema_type(value, schema)
         errors = [type_error] if type_error else validate_value(normalized, schema)
         if errors:
             raise WorkspaceLifecycleError("invalid_parameter", str(errors[0]))
@@ -164,7 +169,14 @@ def read_workspace_configuration(workspace: Any) -> dict[str, Any]:
     if flow_names:
         flow.update({"fromStepId": flow_names[0], "throughStepId": flow_names[-1]})
     inputs, input_bindings = _workspace_inputs(workspace)
+    pdk_mode = "manual" if workspace.parameters.data.get("pdk_config") else "default"
+    pdk_files, pdk_file_bindings = (
+        _workspace_pdk_files(workspace) if pdk_mode == "manual" else ([], {})
+    )
+    snapshot = _read_snapshot_metadata(workspace)
     return {
+        "workspaceId": snapshot["workspaceId"],
+        "workspaceRevision": snapshot["workspaceRevision"],
         "workspaceSpec": {
             "schemaVersion": 1,
             "design": {
@@ -172,12 +184,15 @@ def read_workspace_configuration(workspace: Any) -> dict[str, Any]:
                 "topModule": workspace.design.top_module,
                 "clockPort": str(workspace.parameters.data.get("clock", "")),
             },
-            "inputMode": "postSynthesis" if workspace.design.origin_def is not None else "rtl",
+            "inputMode": workspace.parameters.data.get("_input_mode")
+            if workspace.parameters.data.get("_input_mode") in {"rtl", "postSynthesis"}
+            else ("postSynthesis" if workspace.design.origin_def is not None else "rtl"),
             "inputs": inputs,
             "pdk": {
                 "familyId": workspace.pdk.name,
                 "version": workspace.pdk.version,
-                "mode": "default",
+                "mode": pdk_mode,
+                **({"files": pdk_files} if pdk_files else {}),
             },
             "flow": flow,
             "parameters": parameters,
@@ -187,6 +202,7 @@ def read_workspace_configuration(workspace: Any) -> dict[str, Any]:
             "pdk": {
                 "root": str(workspace.pdk.root or ""),
                 "version": workspace.pdk.version,
+                **({"files": pdk_file_bindings} if pdk_file_bindings else {}),
             },
         },
     }
@@ -194,7 +210,7 @@ def read_workspace_configuration(workspace: Any) -> dict[str, Any]:
 
 def read_step_configuration(workspace: Any, step_id: str) -> dict[str, Any]:
     step, schemas = _step_catalog(workspace, step_id)
-    snapshot = ensure_engineering_snapshot(workspace)
+    snapshot = _read_snapshot_metadata(workspace)
     if not schemas:
         raise WorkspaceLifecycleError(
             "step_configuration_unavailable",
@@ -231,18 +247,21 @@ def update_workspace_step_configuration(
     target = Path(target_directory).expanduser().resolve()
     if not target.is_dir():
         raise WorkspaceLifecycleError("workspace_missing", f"Workspace not found: {target}")
-    before = _snapshot_files(_workspace_file_paths(target))
-    try:
-        return _update_workspace_step_configuration(
-            target,
-            expected_workspace_revision,
-            step_id,
-            parameters,
-            command_id,
-        )
-    except BaseException:
-        _restore_files(before)
-        raise
+    from chipcompiler.engine.reconcile import _workspace_lock
+
+    with _workspace_lock(target):
+        before = _snapshot_files(_workspace_file_paths(target))
+        try:
+            return _update_workspace_step_configuration(
+                target,
+                expected_workspace_revision,
+                step_id,
+                parameters,
+                command_id,
+            )
+        except BaseException:
+            _restore_files(before)
+            raise
 
 
 def _update_workspace_step_configuration(
@@ -289,7 +308,7 @@ def _update_workspace_step_configuration(
                 "parameter_not_applicable",
                 f"Parameter {parameter} is not configurable at {step}",
             )
-        normalized, type_error = _validate_schema_type(value, schema)
+        normalized, type_error = validate_schema_type(value, schema)
         errors = [type_error] if type_error else validate_value(normalized, schema)
         if errors:
             raise WorkspaceLifecycleError("invalid_parameter", str(errors[0]))
@@ -378,7 +397,10 @@ def read_workspace_configuration_from_directory(
 
 def _workspace_inputs(workspace: Any) -> tuple[list[dict[str, str]], dict[str, str]]:
     values = []
-    if workspace.design.input_filelist is not None:
+    input_mode = workspace.parameters.data.get("_input_mode")
+    if input_mode == "postSynthesis" and workspace.design.origin_verilog is not None:
+        values.append(("netlist", workspace.design.origin_verilog))
+    elif workspace.design.input_filelist is not None:
         values.append(("filelist", workspace.design.input_filelist))
     elif workspace.design.origin_verilog is not None:
         role = "netlist" if workspace.design.origin_def is not None else "rtl"
@@ -397,11 +419,45 @@ def _workspace_inputs(workspace: Any) -> tuple[list[dict[str, str]], dict[str, s
     )
 
 
+def _workspace_pdk_files(workspace: Any) -> tuple[list[dict[str, str]], dict[str, str]]:
+    grouped = {
+        "tech": [workspace.pdk.tech] if workspace.pdk.tech else [],
+        "lef": list(workspace.pdk.lefs),
+        "liberty": list(workspace.pdk.libs),
+        "mapping": [workspace.pdk.mapping_file] if workspace.pdk.mapping_file else [],
+    }
+    refs = []
+    bindings = {}
+    for role, paths in grouped.items():
+        for index, path in enumerate(paths):
+            file_id = role if len(paths) == 1 else f"{role}-{index}"
+            refs.append({"fileId": file_id, "role": role})
+            bindings[file_id] = str(path)
+    return refs, bindings
+
+
+def _read_snapshot_metadata(workspace: Any) -> dict[str, Any]:
+    try:
+        snapshot = read_engineering_snapshot(workspace)
+    except (EngineeringSnapshotError, OSError):
+        return {"workspaceId": None, "workspaceRevision": None}
+    return {
+        "workspaceId": snapshot["workspaceId"],
+        "workspaceRevision": snapshot["workspaceRevision"],
+    }
+
+
 def _flow_id(names: list[str]) -> str:
     for flow_id, builder in get_flow_builders().items():
         candidate = [str(getattr(step, "value", step)) for step, _tool, _state in builder()]
         if candidate == names:
             return flow_id
+        if flow_id == "rtl2gds" and names:
+            start = next(
+                (index for index, value in enumerate(candidate) if value == names[0]), None
+            )
+            if start is not None and candidate[start : start + len(names)] == names:
+                return flow_id
     return "custom"
 
 
