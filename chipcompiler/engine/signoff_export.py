@@ -59,11 +59,16 @@ def export_signoff_package_archive(
                     raise SignoffExportError("additional file entries require archivePath")
                 if not isinstance(content, str):
                     raise SignoffExportError("additional file entries require string content")
-                path = _additional_file_path(package_dir, archive_path)
-                path.parent.mkdir(parents=True, exist_ok=True)
-                if _has_symlink_parent(package_dir, path):
-                    raise SignoffExportError("additional file path contains a symlink")
-                path.write_text(content, encoding="utf-8")
+                try:
+                    path = _additional_file_path(package_dir, archive_path)
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    if _has_symlink_parent(package_dir, path):
+                        raise SignoffExportError("additional file path contains a symlink")
+                    path.write_text(content, encoding="utf-8")
+                except SignoffExportError:
+                    raise
+                except (OSError, ValueError, TypeError) as exc:
+                    raise SignoffExportError(str(exc)) from exc
 
         archive = package_dir.with_suffix(".tar.gz")
         import tarfile
@@ -88,10 +93,15 @@ def export_signoff_package_archive(
 
 
 def _additional_file_path(package_dir: Path, archive_path: str) -> Path:
+    if not archive_path or "\x00" in archive_path:
+        raise SignoffExportError("additional file path must name a relative file")
     relative = Path(archive_path)
-    if not archive_path or relative.is_absolute() or ".." in relative.parts:
+    if relative == Path(".") or relative.is_absolute() or ".." in relative.parts:
         raise SignoffExportError("additional file path must stay inside the signoff package")
-    destination = (package_dir / relative).resolve()
+    try:
+        destination = (package_dir / relative).resolve()
+    except (OSError, ValueError) as exc:
+        raise SignoffExportError("additional file path must name a relative file") from exc
     if not destination.is_relative_to(package_dir.resolve()):
         raise SignoffExportError("additional file path must stay inside the signoff package")
     return destination

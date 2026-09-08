@@ -313,3 +313,30 @@ def test_workspace_spec_stale_revision_does_not_create_missing_snapshot(
 
     assert conflict.value.code == "revision_conflict"
     assert not snapshot.exists()
+
+
+def test_workspace_spec_rejects_invalid_existing_snapshot(tmp_path, minimal_ics55_pdk_factory):
+    from chipcompiler.engine import (
+        WorkspaceLifecycleError,
+        create_workspace_from_spec,
+        update_workspace_from_spec,
+    )
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    create_workspace_from_spec(target, payload["workspaceSpec"], bindings)
+    snapshot = target / "home" / "engineering-snapshot.json"
+    snapshot.write_text('{"schemaVersion": 2}', encoding="utf-8")
+
+    with pytest.raises(WorkspaceLifecycleError) as invalid:
+        update_workspace_from_spec(
+            target,
+            1,
+            payload["workspaceSpec"],
+            bindings,
+            "invalid-snapshot-update",
+        )
+
+    assert invalid.value.code == "workspace_invalid"
+    assert snapshot.read_text(encoding="utf-8") == '{"schemaVersion": 2}'

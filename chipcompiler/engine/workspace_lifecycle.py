@@ -253,9 +253,14 @@ def _update_workspace_from_spec(
     if command_id and _command_retry_matches(target, command_id, fingerprint):
         return _load_committed_workspace(target)
     current = _load_committed_workspace(target)
+    snapshot_path = target / "home" / "engineering-snapshot.json"
     try:
         snapshot = read_engineering_snapshot(current)
     except EngineeringSnapshotError as exc:
+        if snapshot_path.exists() or snapshot_path.is_symlink():
+            raise WorkspaceLifecycleError(
+                "workspace_invalid", "Invalid Engineering Snapshot"
+            ) from exc
         if expected_workspace_revision != 1:
             raise WorkspaceLifecycleError(
                 "revision_conflict",
