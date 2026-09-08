@@ -1,3 +1,4 @@
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +22,7 @@ from chipcompiler.engine.snapshot import (
     ensure_engineering_snapshot,
     invalidate_engineering_snapshot,
 )
-from chipcompiler.rtl2gds import get_flow_builders
+from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
 
 from .workspace_lifecycle import (
     WorkspaceLifecycleError,
@@ -187,6 +188,180 @@ def read_workspace_configuration(workspace: Any) -> dict[str, Any]:
             },
         },
     }
+
+
+def read_step_configuration(workspace: Any, step_id: str) -> dict[str, Any]:
+    step, schemas = _step_catalog(workspace, step_id)
+    snapshot = ensure_engineering_snapshot(workspace)
+    if not schemas:
+        raise WorkspaceLifecycleError(
+            "step_configuration_unavailable",
+            f"Flow Step has no configurable parameters: {step}",
+            {
+                "workspaceId": snapshot["workspaceId"],
+                "workspaceRevision": snapshot["workspaceRevision"],
+            },
+        )
+    return {
+        "step": step,
+        "stepId": step,
+        "parameters": [_public_parameter_record(workspace, schema) for schema in schemas],
+        "workspaceId": snapshot["workspaceId"],
+        "workspaceRevision": snapshot["workspaceRevision"],
+    }
+
+
+def read_step_configuration_from_directory(
+    target_directory: str | Path,
+    step_id: str,
+) -> dict[str, Any]:
+    workspace = _load_committed_workspace(Path(target_directory).expanduser().resolve())
+    return read_step_configuration(workspace, step_id)
+
+
+def update_workspace_step_configuration(
+    target_directory: str | Path,
+    expected_workspace_revision: int,
+    step_id: str,
+    parameters: object,
+    command_id: str = "",
+):
+    target = Path(target_directory).expanduser().resolve()
+    if not target.is_dir():
+        raise WorkspaceLifecycleError("workspace_missing", f"Workspace not found: {target}")
+    before = _snapshot_files(_workspace_file_paths(target))
+    try:
+        return _update_workspace_step_configuration(
+            target,
+            expected_workspace_revision,
+            step_id,
+            parameters,
+            command_id,
+        )
+    except BaseException:
+        _restore_files(before)
+        raise
+
+
+def _update_workspace_step_configuration(
+    target: Path,
+    expected_workspace_revision: int,
+    step_id: str,
+    parameters: object,
+    command_id: str,
+):
+    if not isinstance(step_id, str) or not step_id.strip() or not isinstance(parameters, dict):
+        raise WorkspaceLifecycleError(
+            "workspace_spec_invalid", "Step identity and parameters object are required"
+        )
+    patch = {str(key): value for key, value in parameters.items()}
+    fingerprint = _workspace_command_fingerprint(
+        "step_configuration",
+        {"stepId": step_id, "parameters": patch},
+        {},
+        expected_workspace_revision,
+    )
+    if command_id and _command_retry_matches(target, command_id, fingerprint):
+        return _load_committed_workspace(target)
+
+    workspace = _load_committed_workspace(target)
+    snapshot = ensure_engineering_snapshot(workspace)
+    if snapshot["workspaceRevision"] != expected_workspace_revision:
+        raise WorkspaceLifecycleError(
+            "revision_conflict",
+            "Workspace Revision does not match",
+            {
+                "expectedWorkspaceRevision": expected_workspace_revision,
+                "actualWorkspaceRevision": snapshot["workspaceRevision"],
+            },
+        )
+    step, schemas = _step_catalog(workspace, step_id)
+    allowed = {schema.param: schema for schema in schemas}
+    changed = False
+    for parameter, value in patch.items():
+        schema = lookup_schema(parameter)
+        if schema is None or schema.pdk_target is not None:
+            raise WorkspaceLifecycleError("unknown_parameter", f"Unknown parameter: {parameter}")
+        if parameter not in allowed:
+            raise WorkspaceLifecycleError(
+                "parameter_not_applicable",
+                f"Parameter {parameter} is not configurable at {step}",
+            )
+        normalized, type_error = _validate_schema_type(value, schema)
+        errors = [type_error] if type_error else validate_value(normalized, schema)
+        if errors:
+            raise WorkspaceLifecycleError("invalid_parameter", str(errors[0]))
+        if workspace_param_value(workspace, schema) != normalized:
+            update_workspace_param_value(workspace, schema, normalized)
+            changed = True
+
+    if not changed:
+        _write_workspace_command(
+            target,
+            command_id,
+            fingerprint,
+            snapshot["workspaceId"],
+            snapshot["workspaceRevision"],
+        )
+        return workspace
+    if not save_parameter(workspace.parameters):
+        raise OSError("Failed to save Workspace parameters")
+    from chipcompiler.data import refresh_workspace_config
+
+    refresh_workspace_config(workspace)
+    invalidate_from(EngineFlow(workspace), step)
+    updated = invalidate_engineering_snapshot(
+        workspace,
+        workspace_id=snapshot["workspaceId"],
+        cause="workspace.step_configuration_updated",
+        first_invalidated_step=step,
+    )
+    _write_workspace_command(
+        target,
+        command_id,
+        fingerprint,
+        updated["workspaceId"],
+        updated["workspaceRevision"],
+    )
+    return _load_committed_workspace(target)
+
+
+def _step_catalog(workspace: Any, step_id: str):
+    identity = normalize_flow_step(step_id).casefold()
+    steps = [str(step.get("name", "")) for step in workspace.flow.steps() if step.get("name")]
+    step = next(
+        (candidate for candidate in steps if normalize_flow_step(candidate).casefold() == identity),
+        None,
+    )
+    if step is None:
+        raise WorkspaceLifecycleError("unknown_flow_step", f"Flow Step not found: {step_id}")
+    first = normalize_flow_step(steps[0]).casefold()
+    schemas = tuple(
+        schema
+        for schema in list_schemas()
+        if schema.pdk_target is None
+        and (
+            normalize_flow_step(schema.applies).casefold() == identity
+            or (schema.applies == "all" and identity == first)
+        )
+    )
+    return step, schemas
+
+
+def _public_parameter_record(workspace: Any, schema) -> dict[str, Any]:
+    record = {
+        "param": schema.param,
+        "type": schema.type,
+        "value": workspace_param_value(workspace, schema),
+        "default": deepcopy(schema.default),
+        "applies": schema.applies,
+        "description": schema.description,
+    }
+    for field in ("range", "choices", "unit"):
+        value = getattr(schema, field)
+        if value is not None:
+            record[field] = list(value) if isinstance(value, tuple) else value
+    return record
 
 
 def read_workspace_configuration_from_directory(
