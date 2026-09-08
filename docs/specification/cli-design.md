@@ -475,7 +475,7 @@ and stop session-scoped DB reuse explicitly; `workspace.open`,
 reuse for a session that has not called `db.ensure`.
 
 The former custom workspace JSON object is not part of the supported output
-contract. See `docs/workspace-cli.md` for framing examples and method payloads.
+contract. See `docs/rpc-guide.md` for framing examples and method payloads.
 
 ## Output Contracts
 
