@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass
 from threading import Event, Thread
 
-from chipcompiler.data import Workspace, WorkspaceStep
+from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
 from chipcompiler.engine.db import EngineDB
 from chipcompiler.utility.log import capture_stdio_to_file, flush_cstdio
 
@@ -87,6 +87,8 @@ def execute_tool_step(
                     ecc_module=engine_db.engine,
                 )
                 workspace.logger.info(f"[STEP] {step_tag} finished result={result}")
+                if result is not True and result is not StateEnum.Success:
+                    step_error = f"{step_tag} reported failure (run_step returned {result!r})."
             except (Exception, SystemExit) as exc:
                 step_error = record_tool_failure(workspace.logger, step_tag, exc)
     except (Exception, SystemExit) as exc:
