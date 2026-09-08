@@ -1,4 +1,3 @@
-import json
 import os
 
 from chipcompiler.cli import main as cli_main
@@ -13,6 +12,7 @@ class TestOverwriteGuard:
         create_cli_project,
         mock_pdk_validation,
         spy_mutations,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -25,11 +25,11 @@ class TestOverwriteGuard:
 
         mutations = spy_mutations()
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--json"]
+            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--plain"]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "overwrite_refused",
@@ -52,6 +52,7 @@ class TestOverwriteGuard:
         mock_pdk_validation,
         monkeypatch,
         spy_mutations,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -70,11 +71,11 @@ class TestOverwriteGuard:
         mutations = spy_mutations()
 
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--json"]
+            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--plain"]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "overwrite_refused",
@@ -93,6 +94,7 @@ class TestOverwriteGuard:
         create_cli_project,
         create_flow_json,
         mock_pdk_validation,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -102,11 +104,11 @@ class TestOverwriteGuard:
         os.symlink(real_run, link)
 
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--json"]
+            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--plain"]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "overwrite_refused",
@@ -119,7 +121,12 @@ class TestOverwriteGuard:
         assert os.path.isfile(os.path.join(real_run, "home", "flow.json"))
 
     def test_refuses_non_directory_target(
-        self, tmp_path, capsys, create_cli_project, mock_pdk_validation
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        mock_pdk_validation,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -128,11 +135,11 @@ class TestOverwriteGuard:
             f.write("not a directory\n")
 
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--json"]
+            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--plain"]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "overwrite_refused",
@@ -150,7 +157,7 @@ class TestOverwriteGuard:
         os.makedirs(run_dir)
 
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--json"]
+            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--plain"]
         )
 
         assert rc == 0
@@ -165,7 +172,7 @@ class TestOverwriteGuard:
         run_dir = os.path.join(link, "default")
         create_flow_json(run_dir, profile="main")
 
-        rc = cli_main.run(["run", "--project", link, "--overwrite", "--json"])
+        rc = cli_main.run(["run", "--project", link, "--overwrite", "--plain"])
 
         assert rc == 0
         assert flow_mocks.capture["create_kwargs"]["directory"] == run_dir
@@ -177,6 +184,7 @@ class TestOverwriteGuard:
         create_cli_project,
         create_flow_json,
         mock_pdk_validation,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -190,11 +198,11 @@ class TestOverwriteGuard:
         os.symlink(os.path.join(real_run, "home"), os.path.join(run_dir, "home"))
 
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--json"]
+            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--plain"]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "overwrite_refused",
@@ -214,6 +222,7 @@ class TestOverwriteGuard:
         create_cli_project,
         create_flow_json,
         mock_pdk_validation,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -230,11 +239,11 @@ class TestOverwriteGuard:
         )
 
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--json"]
+            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--plain"]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "overwrite_refused",
@@ -254,6 +263,7 @@ class TestOverwriteGuard:
         create_cli_project,
         mock_pdk_validation,
         spy_mutations,
+        plain_records,
     ):
         """A multi-segment target would leave the project through a symlinked
         ancestor; the workspace name is rejected before anything is touched."""
@@ -272,12 +282,12 @@ class TestOverwriteGuard:
                 "--workspace",
                 "sweeps/victim",
                 "--overwrite",
-                "--json",
+                "--plain",
             ]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "invalid_workspace",
@@ -295,6 +305,7 @@ class TestOverwriteGuard:
         create_flow_json,
         mock_pdk_validation,
         spy_mutations,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -314,12 +325,12 @@ class TestOverwriteGuard:
                 "--workspace",
                 "sweeps/victim",
                 "--overwrite",
-                "--json",
+                "--plain",
             ]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "invalid_workspace",
@@ -340,6 +351,7 @@ class TestOverwriteGuard:
         create_flow_json,
         mock_pdk_validation,
         spy_mutations,
+        plain_records,
     ):
         """A ".." after a symlink component would reach a victim outside the
         project; the multi-segment spelling is rejected as a workspace name."""
@@ -358,11 +370,11 @@ class TestOverwriteGuard:
         run_id = os.path.join("sweeps", "jump", "..", "victim")
         mutations = spy_mutations()
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--workspace", run_id, "--overwrite", "--json"]
+            ["run", "--project", project_dir, "--workspace", run_id, "--overwrite", "--plain"]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "invalid_workspace",
@@ -383,6 +395,7 @@ class TestOverwriteGuard:
         create_flow_json,
         mock_pdk_validation,
         spy_mutations,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -399,11 +412,11 @@ class TestOverwriteGuard:
         run_id = os.path.join("..", "victim")
         mutations = spy_mutations()
         rc = cli_main.run(
-            ["run", "--project", link, "--workspace", run_id, "--overwrite", "--json"]
+            ["run", "--project", link, "--workspace", run_id, "--overwrite", "--plain"]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "invalid_workspace",

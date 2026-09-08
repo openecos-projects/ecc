@@ -56,8 +56,8 @@ RTL2GDS_NAMES = [
 ]
 
 
-def _records(capsys):
-    return json.loads(capsys.readouterr().out)["records"]
+def _records(capsys, plain_records):
+    return plain_records(capsys.readouterr().out)
 
 
 class TestFlowContinuation:
@@ -68,6 +68,7 @@ class TestFlowContinuation:
         create_cli_project,
         minimal_ics55_pdk_factory,
         monkeypatch,
+        plain_records,
     ):
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
@@ -87,12 +88,12 @@ class TestFlowContinuation:
 
         monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
         assert rc == 0
-        records = _records(capsys)
+        records = _records(capsys, plain_records)
         assert records[0]["status"] == "success"
-        assert records[0]["no_op"] is True
+        assert records[0]["no_op"] == "True"
 
     def test_set_rejected_on_existing_run(
         self,
@@ -101,6 +102,7 @@ class TestFlowContinuation:
         create_cli_project,
         minimal_ics55_pdk_factory,
         monkeypatch,
+        plain_records,
     ):
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
@@ -112,10 +114,12 @@ class TestFlowContinuation:
         _write_existing_workspace(run_dir, RTL2GDS_NAMES, pdk_root=pdk_root)
         flow_before = Path(run_dir, "home", "flow.json").read_bytes()
 
-        rc = cli_main.run(["run", "--project", project_dir, "--set", "cts.max_fanout=16", "--json"])
+        rc = cli_main.run(
+            ["run", "--project", project_dir, "--set", "cts.max_fanout=16", "--plain"]
+        )
 
         assert rc != 0
-        (record,) = _records(capsys)
+        (record,) = _records(capsys, plain_records)
         assert record["error"] == "set_requires_fresh_run"
         assert Path(run_dir, "home", "flow.json").read_bytes() == flow_before
 
@@ -126,6 +130,7 @@ class TestFlowContinuation:
         create_cli_project,
         minimal_ics55_pdk_factory,
         monkeypatch,
+        plain_records,
     ):
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
@@ -147,10 +152,10 @@ class TestFlowContinuation:
 
         monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
         assert rc == 0
-        records = _records(capsys)
+        records = _records(capsys, plain_records)
         warning = [r for r in records if r.get("warning") == "params_ignored_on_existing_run"]
         assert len(warning) == 1
 
@@ -161,6 +166,7 @@ class TestFlowContinuation:
         create_cli_project,
         minimal_ics55_pdk_factory,
         monkeypatch,
+        plain_records,
     ):
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
@@ -172,10 +178,10 @@ class TestFlowContinuation:
         _write_existing_workspace(run_dir, RTL2GDS_NAMES, pdk_root=pdk_root)
         Path(run_dir, "home", "params.toml").write_text("[params\nbroken =")
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
         assert rc != 0
-        (record,) = _records(capsys)
+        (record,) = _records(capsys, plain_records)
         assert record["error"] == "workspace_config_invalid"
 
 
@@ -231,7 +237,7 @@ def _write_manifest_with_workspace(project_dir, run_dir, pdk_root):
 
 class TestFlowMismatchZeroMutation:
     def test_manifest_backed_mismatch_leaves_every_surface_untouched(
-        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
     ):
         """AC-14: a divergent persisted flow fails with flow_mismatch and zero
         mutation — the whole workspace tree (paths and bytes, lock files and
@@ -252,16 +258,16 @@ class TestFlowMismatchZeroMutation:
         tree_before = _tree_snapshot(run_dir)
         manifest_before = Path(manifest_path).read_bytes()
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
         assert rc != 0
-        errors = [r for r in _records(capsys) if r.get("error") == "flow_mismatch"]
+        errors = [r for r in _records(capsys, plain_records) if r.get("error") == "flow_mismatch"]
         assert len(errors) == 1
         assert _tree_snapshot(run_dir) == tree_before
         assert Path(manifest_path).read_bytes() == manifest_before
 
     def test_legacy_parameters_mismatch_never_migrates(
-        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
     ):
         """AC-14 with a legacy-parameters workspace: the mismatch refusal must
         not migrate parameters.json, create params.toml/lock/home.json, or touch
@@ -305,16 +311,22 @@ class TestFlowMismatchZeroMutation:
         tree_before = _tree_snapshot(run_dir)
         manifest_before = Path(manifest_path).read_bytes()
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
         assert rc != 0
-        errors = [r for r in _records(capsys) if r.get("error") == "flow_mismatch"]
+        errors = [r for r in _records(capsys, plain_records) if r.get("error") == "flow_mismatch"]
         assert len(errors) == 1
         assert _tree_snapshot(run_dir) == tree_before
         assert Path(manifest_path).read_bytes() == manifest_before
 
     def test_existing_run_rejects_symlinked_legacy_target(
-        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, monkeypatch
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        monkeypatch,
+        plain_records,
     ):
         """A symlinked run target must never be executed or mutated: the run
         fails loud with run_target_unsafe and the external workspace behind
@@ -330,15 +342,17 @@ class TestFlowMismatchZeroMutation:
         os.symlink(str(external), os.path.join(project_dir, "default"))
 
         flow_before = (external / "home" / "flow.json").read_bytes()
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
         assert rc != 0
-        errors = [r for r in _records(capsys) if r.get("error") == "run_target_unsafe"]
+        errors = [
+            r for r in _records(capsys, plain_records) if r.get("error") == "run_target_unsafe"
+        ]
         assert len(errors) == 1
         assert (external / "home" / "flow.json").read_bytes() == flow_before
 
     def test_existing_run_rejects_symlinked_manifest_target(
-        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
     ):
         """A declared workspace whose directory is a symlink into an
         external tree never reaches the engine: the manifest layer rejects it
@@ -353,19 +367,25 @@ class TestFlowMismatchZeroMutation:
         _write_manifest_with_workspace(project_dir, run_dir, pdk_root)
 
         flow_before = (external / "home" / "flow.json").read_bytes()
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
         assert rc != 0
         errors = [
             r
-            for r in _records(capsys)
+            for r in _records(capsys, plain_records)
             if r.get("error") in {"manifest_invalid", "run_target_unsafe"}
         ]
         assert len(errors) == 1
         assert (external / "home" / "flow.json").read_bytes() == flow_before
 
     def test_flow_exception_marks_manifest_status_failed(
-        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, monkeypatch
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        monkeypatch,
+        plain_records,
     ):
         """A handled engine exception must not leave the manifest status at
         running: the write-back records failed."""
@@ -396,12 +416,12 @@ class TestFlowMismatchZeroMutation:
 
         monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
         assert rc != 0
         manifest = json.loads(Path(manifest_path).read_text())
         assert manifest["workspaces"][0]["status"] == "failed"
-        errors = [r for r in _records(capsys) if r.get("error") == "flow_failed"]
+        errors = [r for r in _records(capsys, plain_records) if r.get("error") == "flow_failed"]
         assert len(errors) == 1
 
 
@@ -431,7 +451,7 @@ def _hold_workspace_lock_briefly(workspace_dir, seconds=0.4):
 
 class TestWorkspaceRunLock:
     def test_workspace_run_waits_for_an_active_workspace_lock(
-        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
     ):
         """Two runs of the same workspace serialize on the sibling lock."""
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
@@ -440,7 +460,7 @@ class TestWorkspaceRunLock:
         _write_existing_workspace(run_dir, RTL2GDS_NAMES, pdk_root=pdk_root)
         thread, released = _hold_workspace_lock_briefly(run_dir)
 
-        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "ws", "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "ws"])
 
         thread.join()
         assert rc == 0

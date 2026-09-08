@@ -57,13 +57,11 @@ def get_run_status(flow_data: dict) -> str:
         return "ongoing"
     if states & {"incomplete", "invalid"}:
         return "failed"
-    if "warning" in states and states <= {"success", "warning"}:
-        return "warning"
     if states == {"success"}:
         return "success"
     if states == {"unstart"}:
         return "unstart"
-    if states <= {"success", "warning", "unstart"}:
+    if states <= {"success", "unstart"}:
         # A bounded rerun (--only / --from / --to) leaves the executed
         # prefix success and the stale suffix unstart until the user
         # re-runs it: that is partial progress, not a failure.
@@ -204,8 +202,21 @@ def resolve_command_workspace(workspace_arg, project, workspace_id, run_dir):
 def resolve_loaded_workspace(command_input, ctx: CommandContext):
     """Resolve and load the workspace for handlers that need a Workspace.
 
-    Returns (workspace, failure CommandResult-or-None).
+    Returns (workspace, failure CommandResult-or-None). A malformed manifest
+    is rejected first: silently falling through to ``<project>/default``
+    would report against (and mutate) the wrong workspace.
     """
+    if ctx.manifest_error:
+        from chipcompiler.cli.core.records import error_record
+
+        return None, CommandResult.err(
+            [
+                error_record(
+                    ctx.manifest_error.split(":", 1)[0],
+                    reason=ctx.manifest_error,
+                )
+            ]
+        )
     workspace, error = resolve_command_workspace(
         command_input.workspace, ctx.project, ctx.run_id, ctx.run_dir
     )

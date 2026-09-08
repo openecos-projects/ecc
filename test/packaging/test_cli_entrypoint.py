@@ -43,9 +43,9 @@ class TestPackaging:
             source = f.read()
 
         assert "datas.extend(collect_doc_guides())" in source
-        for stem in ("config", "ug", "tutorial", "dev"):
+        for stem in ("config-ref", "user-guide", "tutorial"):
             for lang in ("en", "cn"):
-                assert f"chipcompiler/docs/ecc-cli-{stem}.{lang}.md" in source
+                assert f"chipcompiler/docs/ecc-{stem}.{lang}.md" in source
 
     def test_pyinstaller_spec_collects_rich_unicode_data_modules(self):
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))

@@ -89,6 +89,34 @@ class TestSelectedStepNames:
 
         assert rerun.selected_step_names(flow) == []
 
+    def test_resume_reexecutes_legacy_warning_steps(self, tmp_path):
+        # The removed terminal Warning state (pre-rework synthesis LEC) is not
+        # a finished state: a plain resume re-executes it and its suffix.
+        flow = _make_run_flow(
+            tmp_path,
+            [
+                ("Synthesis", "Success"),
+                ("lec", "Warning"),
+                ("Floorplan", "Success"),
+                ("CTS", "Success"),
+            ],
+        )
+
+        assert rerun.selected_step_names(flow) == ["lec", "Floorplan", "CTS"]
+
+    def test_only_legacy_warning_step_does_not_require_force(self, tmp_path):
+        flow = _make_run_flow(tmp_path, [("lec", "Warning")])
+
+        assert rerun.selected_step_names(flow, only="lec") == ["lec"]
+
+    def test_resume_still_selects_incomplete_suffix(self, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [("Synthesis", "Success"), ("place", "Incomplete"), ("CTS", "Success")],
+        )
+
+        assert rerun.selected_step_names(flow) == ["place", "CTS"]
+
     def test_from_selects_suffix(self, tmp_path):
         flow = _make_run_flow(
             tmp_path,
@@ -144,20 +172,6 @@ class TestSelectedStepNames:
 
 
 class TestRunFrom:
-    def test_synthesis_lec_warning_does_not_stop_resume(self, monkeypatch, tmp_path):
-        flow = _make_run_flow(
-            tmp_path,
-            [("lec", "Unstart"), ("route", "Unstart")],
-            tools_by_name={"lec": "yosys_lec"},
-        )
-        calls = _fake_execution(flow, monkeypatch, outcomes={"lec": StateEnum.Warning})
-
-        result = rerun.run_from(flow, "lec")
-
-        assert result.ok
-        assert result.executed == ("lec", "route")
-        assert calls == [("lec", True), ("route", True)]
-
     def test_reexecutes_suffix_and_clears_only_executed_outputs(self, monkeypatch, tmp_path):
         flow = _make_run_flow(
             tmp_path,
@@ -400,6 +414,23 @@ class TestInitDbEngineForStep:
 
         assert flow.init_db_engine_for_step(flow.workspace_steps[0]) is True
         assert flow.engine_db is engine_db
+
+    def test_lec_step_never_initializes_a_native_db(self, tmp_path, monkeypatch):
+        from chipcompiler.engine import EngineDB
+
+        # LEC compares netlists and has no ECC DB: explicit reruns
+        # (--only lec) must not build one from the LEC workspace.
+        flow = _make_run_flow(tmp_path, [("lec", "Incomplete")], tools_by_name={"lec": "yosys_lec"})
+        created = []
+
+        def create_db_engine(self, step):
+            created.append(step)
+            return True
+
+        monkeypatch.setattr(EngineDB, "create_db_engine", create_db_engine)
+
+        assert flow.init_db_engine_for_step(flow.workspace_steps[0]) is True
+        assert created == []
 
 
 class TestBoundedResume:

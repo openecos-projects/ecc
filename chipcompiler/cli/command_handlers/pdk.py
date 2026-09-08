@@ -5,17 +5,39 @@ import os
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.project.toml_edit import set_pdk_root
+from chipcompiler.utility.file import write_text_atomic
 
 
 def _write_pdk_root(config_path: str, value: str) -> None:
-    """Set `root = "<value>"` under the existing [pdk] table, preserving layout."""
+    """Set `root = "<value>"` under the existing [pdk] table, preserving layout.
+
+    Raises OSError when the config cannot be read or replaced; handlers map
+    that to a structured config_error at the command boundary.
+    """
     with open(config_path) as f:
         original = f.read()
 
-    new_text = set_pdk_root(original, value)
+    write_text_atomic(config_path, set_pdk_root(original, value))
 
-    with open(config_path, "w") as f:
-        f.write(new_text)
+
+def _write_root_or_error(config_path: str, value: str, project: str | None) -> CommandResult | None:
+    """Persist the PDK root; maps I/O failures to a structured config_error."""
+    from chipcompiler.cli.core.output import disclosure_cmd
+
+    try:
+        _write_pdk_root(config_path, value)
+    except OSError as exc:
+        return CommandResult.err(
+            [
+                error_record(
+                    "config_error",
+                    path=config_path,
+                    reason=str(exc),
+                    inspect=disclosure_cmd("ecc check", project),
+                )
+            ]
+        )
+    return None
 
 
 def _resolve_root_source(cfg, project_dir: str) -> tuple[str, str]:
@@ -67,7 +89,9 @@ def set_root(command_input, ctx: CommandContext) -> CommandResult:
                 )
             ]
         )
-    _write_pdk_root(config_path, path)
+    error = _write_root_or_error(config_path, path, ctx.project)
+    if error is not None:
+        return error
 
     records = [
         {
@@ -161,7 +185,9 @@ def unset(command_input, ctx: CommandContext) -> CommandResult:
     config_path = find_config_path(ctx.project_dir)
     if config_path is None:
         return CommandResult.err([error_record("missing_config")])
-    _write_pdk_root(config_path, "")
+    error = _write_root_or_error(config_path, "", ctx.project)
+    if error is not None:
+        return error
     return CommandResult.ok(
         [
             {
@@ -171,119 +197,3 @@ def unset(command_input, ctx: CommandContext) -> CommandResult:
             }
         ]
     )
-
-
-PDK_URL = "https://github.com/openecos-projects/icsprout55-pdk.git"
-DEFAULT_PDK_DIR = "~/.local/icsprout55-pdk"
-_UNZIP_ATTEMPTS = 3
-
-
-def setup(command_input, ctx: CommandContext) -> CommandResult:
-    """Clone + `make unzip` a PDK checkout, then set it as the project root.
-
-    Only the missing parts run: an existing complete checkout is only
-    wired in via set-root. Downloads honor `GH_PROXY` (proxy-prefixed
-    clone URL, USE_PROXY=true).
-    """
-    import shutil
-    import subprocess
-
-    from chipcompiler.cli.project.config import (
-        _validate_pdk_contents,
-        find_config_path,
-        load_project_config,
-    )
-
-    config_path = find_config_path(ctx.project_dir)
-    if config_path is None:
-        return CommandResult.err(
-            [error_record("missing_config", path=os.path.join(ctx.project_dir, "ecc.toml"))]
-        )
-    cfg = load_project_config(config_path)
-    pdk_name = cfg.pdk_name if cfg is not None and cfg.pdk_name else "ics55"
-
-    raw = (command_input.path or DEFAULT_PDK_DIR).strip()
-    path = os.path.abspath(os.path.expanduser(raw))
-    action_records: list[dict] = []
-    actions: list[str] = []
-
-    def contents_problem() -> str | None:
-        return _validate_pdk_contents(pdk_name, path, None)
-
-    if not os.path.isdir(path):
-        missing_tools = [tool for tool in ("git", "make") if shutil.which(tool) is None]
-        if missing_tools:
-            return CommandResult.err(
-                [
-                    error_record(
-                        "missing_tool",
-                        reason=f"required for setup: {', '.join(missing_tools)}",
-                    )
-                ]
-            )
-        clone_url = PDK_URL
-        gh_proxy = os.environ.get("GH_PROXY", "").strip()
-        if gh_proxy:
-            clone_url = f"{gh_proxy}{PDK_URL}"
-        result = subprocess.run(
-            ["git", "clone", "--depth", "1", clone_url, path],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            return CommandResult.err(
-                [
-                    error_record(
-                        "clone_failed",
-                        path=path,
-                        reason=(result.stderr or result.stdout or "").strip()[-400:],
-                    )
-                ]
-            )
-        actions.append("clone")
-        action_records.append({"pdk": "clone", "status": "cloned", "path": path})
-
-    problem = contents_problem()
-    if problem is not None:
-        if shutil.which("make") is None:
-            return CommandResult.err(
-                [error_record("missing_tool", reason="required for setup: make")]
-            )
-        make_cmd = ["make", "unzip"]
-        gh_proxy = os.environ.get("GH_PROXY", "").strip()
-        if gh_proxy:
-            make_cmd += ["USE_PROXY=true", f"GH_PROXY={gh_proxy}"]
-        extracted = False
-        for attempt in range(1, _UNZIP_ATTEMPTS + 1):
-            result = subprocess.run(make_cmd, cwd=path, capture_output=True, text=True)
-            if result.returncode == 0:
-                extracted = True
-                break
-            action_records.append(
-                {
-                    "pdk": "unzip",
-                    "status": "failed",
-                    "attempt": attempt,
-                    "reason": (result.stderr or result.stdout or "").strip()[-200:],
-                }
-            )
-        if not extracted:
-            return CommandResult.err([error_record("unzip_failed", path=path)] + action_records)
-        still_incomplete = contents_problem()
-        if still_incomplete is not None:
-            return CommandResult.err(
-                [error_record("unzip_failed", path=path, reason=still_incomplete)]
-            )
-        actions.append("unzip")
-        action_records.append({"pdk": "unzip", "status": "extracted", "path": path})
-
-    _write_pdk_root(config_path, path)
-    summary = {
-        "pdk": "setup",
-        "status": "ready",
-        "path": path,
-        "actions": actions,
-        "config": "ecc.toml",
-        "check": "ecc check",
-    }
-    return CommandResult.ok([summary] + action_records)

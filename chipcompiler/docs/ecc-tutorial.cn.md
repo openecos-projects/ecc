@@ -1,6 +1,6 @@
 # ECC CLI 入门教程：从零跑通 RTL → Harden 并产出签核包
 
-本教程面向第一次接触 ECC 的用户：从一台只有 Linux 系统的机器开始，安装 `ecc` 命令行工具，把一个 Verilog RTL 设计（[gcd](../../docs/examples/gcd/gcd.v)，最大公约数计算单元）一路跑完 **综合 → 布局布线 → 物理验证 → 逻辑等价性检查（LEC）→ 时序签核 → Harden** 全流程，最终拿到：
+本教程面向第一次接触 ECC 的用户：从一台只有 Linux 系统的机器开始，安装 `ecc` 命令行工具，把一个 Verilog RTL 设计（[gcd](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/gcd.v)，最大公约数计算单元）一路跑完 **综合 → 布局布线 → 物理验证 → 逻辑等价性检查（LEC）→ 时序签核 → Harden** 全流程，最终拿到：
 
 - **Harden 交付物**：GDS 版图、抽象 LEF、时序 LIB、版图快照 PNG；
 - **签核包** `gcd_signoff_package.tar.gz`（含 RTL/配置/交付物/LEC 证明/报告等 300+ 文件）；
@@ -29,7 +29,7 @@ graph LR
 |---|---|
 | 操作系统 | Linux x86_64（其他架构需自行交叉验证） |
 | 基础命令 | `bash`、`curl` 或 `wget`、`tar`、`git`、`make`、`bzip2` |
-| 磁盘空间 | ≥ 10 GB 空闲（安装后实测：ecc CLI ≈ 3.6 GB + OSS CAD Suite ≈ 2.9 GB + PDK ≈ 1.9 GB） |
+| 磁盘空间 | ≥ 10 GB 空闲（安装后实测：ecc CLI ≈ 0.9 GB + OSS CAD Suite ≈ 2.9 GB + PDK ≈ 1.9 GB） |
 | 网络 | 能访问 release.openecos.com（安装脚本）与 GitHub（PDK / OSS CAD Suite） |
 | Python / 依赖 | **无需**。ecc-tools、DreamPlace 等已捆绑在 CLI 包内 |
 
@@ -37,7 +37,9 @@ graph LR
 
 ### 2.1 一键安装（推荐）
 
-使用官方安装脚本安装 `ecc` CLI（Linux x86_64，glibc 2.34+）：
+使用官方安装脚本安装 `ecc` CLI（Linux x86_64，glibc 2.34+，fontconfig）：
+
+> 本教程随 v0.1.0-alpha.12 版本发布可用：其中用到的命令（`ecc doctor`、`ecc doc`、`signoff`/`report` 命令组、`run` 的 workspace/范围选择器）不在更早的 Release 中。在 alpha.12 发布前，请按 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli) 从源码运行。
 
 ```bash
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
@@ -59,7 +61,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ### 2.2 从源码运行（可选）
 
-按 [README](../../README.cn.md#源码构建) 带 `--recursive` 克隆仓库（`chipcompiler/thirdparty/` 会拉取 `ecc-tools` 和 `ecc-dreamplace`），再参照 [开发指南](../../docs/development.md) 配置 `uv` 工作区：
+按 [README](https://github.com/openecos-projects/ecc/blob/main/README.cn.md#源码构建) 带 `--recursive` 克隆仓库（`chipcompiler/thirdparty/` 会拉取 `ecc-tools` 和 `ecc-dreamplace`），再参照 [开发指南](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md) 配置 `uv` 工作区：
 
 ```bash
 git clone --recursive https://github.com/openecos-projects/ecc.git
@@ -91,10 +93,9 @@ tar -xzf oss-cad-suite-*.tgz -C ~/.local && mv ~/.local/oss-cad-suite* ~/.local/
 export CHIPCOMPILER_OSS_CAD_DIR=~/.local/oss-cad-suite
 ```
 
-也可以在建项目后用 CLI 自带的 PDK 子命令接入（二选一）：
+也可以在建项目后用 CLI 自带的 PDK 子命令接入已就绪的 PDK：
 
 ```bash
-ecc pdk setup                    # clone + make unzip + 接入，一条到位
 ecc pdk set-root ~/pdk/icsprout55-pdk   # 已就绪的 PDK 直接接入（写入 ecc.toml）
 ecc pdk show                     # 查看生效的 PDK root 与来源
 ecc pdk unset                    # 清除 ecc.toml 的 pdk.root，回落到环境变量/仓库默认
@@ -140,7 +141,7 @@ $ ecc doctor
   ...
 ```
 
-必需项（yosys、yosys-slang、ecc-tools、dreamplace、sizer、pdk）全部 `pass` 后，`ecc doctor` 才会成功。就绪的 Sizer 同时需要可执行文件和 runtime root。完整 `rtl2gds` 流包含 Timing optimization 步骤；新建或 `--overwrite` 的 `rtl2gds` 会在启动预检中检查 Sizer，缺失时以 `env_not_ready` 失败。已有 workspace 或 `--workspace` 重跑不预检，缺 Sizer 时仍可能在流中段失败。缺组件时按 `ecc doctor` 的 remediation 提示补齐（如 `ecc pdk setup`，或重新运行 §2.1 安装脚本加 `--with-toolchain`）。
+必需项（yosys、yosys-slang、ecc-tools、dreamplace、sizer、pdk）全部 `pass` 后，`ecc doctor` 才会成功。就绪的 Sizer 同时需要可执行文件和 runtime root。完整 `rtl2gds` 流包含 Timing optimization 步骤；新建或 `--overwrite` 的 `rtl2gds` 会在启动预检中检查 Sizer，缺失时以 `env_not_ready` 失败。已有 workspace 或 `--workspace` 重跑不预检，缺 Sizer 时仍可能在流中段失败。缺组件时按 `ecc doctor` 的 remediation 提示补齐（如重新运行 §2.1 安装脚本加 `--with-toolchain`）。
 
 ## 3. 创建第一个项目
 
@@ -184,7 +185,7 @@ curl -fL -o rtl/gcd.v \
 # cp /path/to/ecc/docs/examples/gcd/gcd.v rtl/
 ```
 
-多文件设计请改用 filelist（`rtl = ["rtl/filelist.f"]`），语法见 [examples/gcd/README.md](../../docs/examples/gcd/README.md#using-filelist) 与 [filelist 语法](../../docs/specification/filelist-grammar.md)。
+多文件设计请改用 filelist（`rtl = ["rtl/filelist.f"]`），语法见 [examples/gcd/README.md](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist) 与 [filelist 语法](https://github.com/openecos-projects/ecc/blob/main/docs/specification/filelist-grammar.md)。
 
 ### 3.3 认识 ecc.toml
 
@@ -213,7 +214,7 @@ preset = "rtl2gds"       # 本教程使用的完整 RTL-to-Harden 流程
 
 对 gcd 示例来说，`init` 生成的默认值恰好全部正确（顶层就叫 `gcd`，时钟端口 `clk`），**一个字都不用改**。换你自己的设计时，需要核对 `top`、`rtl`、`clock_port`、`frequency_mhz` 四项。
 
-除了用编辑器改 `ecc.toml`，也可以用 `ecc project` 命令组直接改声明（写入 `ecc.toml`，保留注释；详见[用户指南 §8.5](ecc-cli-ug.cn.md#85-project--workspace--编辑项目资源与刷新-workspace)）：
+除了用编辑器改 `ecc.toml`，也可以用 `ecc project` 命令组直接改声明（写入 `ecc.toml`，保留注释；详见[用户指南 §8.5](ecc-user-guide.cn.md#85-project--workspace--编辑项目资源与刷新-workspace)（终端：`ecc doc ug --lang cn`））：
 
 ```bash
 ecc project set design.top my_chip            # 设置一条声明
@@ -242,7 +243,7 @@ $ ecc check
   run: ecc run
   rtl: pass
     path: rtl/gcd.v
-  inspect: ecc check --json
+  inspect: ecc check
 rc=0
 ```
 
@@ -593,7 +594,7 @@ ecc param diff --workspace exp1                            # 与 exp1 创建时�
 ecc param unset place.target_density --workspace exp1      # 恢复 exp1 的原值
 ```
 
-常用旧参数：`design.frequency_mhz`、`floorplan.core_util`、`place.target_density`、`route.top_layer`、`sta.max_paths`。其余静态工具字段通过每步 schema 提供，用 `--step` / `--all` 查找。workspace 的输入、输出、临时和生成路径不允许修改；PDK 路径参数可用 `ecc param set KEY VALUE` 设置：`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file` 相对 `pdk.root` 解析，`pdk.sdc`/`pdk.spef` 是设计数据、相对项目目录解析，`pdk.root` 使用 `ecc pdk set-root`。完整说明见[用户指南 §9](ecc-cli-ug.cn.md#9-param--参数管理)。
+常用旧参数：`design.frequency_mhz`、`floorplan.core_util`、`place.target_density`、`route.top_layer`、`sta.max_paths`。其余静态工具字段通过每步 schema 提供，用 `--step` / `--all` 查找。workspace 的输入、输出、临时和生成路径不允许修改；PDK 路径参数可用 `ecc param set KEY VALUE` 设置：`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file` 相对 `pdk.root` 解析，`pdk.sdc`/`pdk.spef` 是设计数据、相对项目目录解析，`pdk.root` 使用 `ecc pdk set-root`。完整说明见[用户指南 §9](ecc-user-guide.cn.md#9-param--参数管理)（终端：`ecc doc ug --lang cn`）。
 
 `--workspace` 局部设置会把参数所属步骤及其后缀标记为待执行，下一次 `ecc run --workspace exp1` 只重跑这一段——只想微调一个参数时，比 `--overwrite` 整体重建便宜得多。注意只支持已审核参数（`ecc param list --all`），且参数所属步骤必须存在于该 workspace 的 flow 中。
 
@@ -628,7 +629,7 @@ ecc run --workspace default --overwrite            # 重建 default（有安全�
 ecc run --workspace default --overwrite --set place.target_density=0.55
 ```
 
-同样的 `--overwrite` 重跑也是已有 workspace 吸收**入口输入、PDK 路径、`flow.preset`** 变更的方式——这些改动会改变 workspace 的输入快照或 flow 结构。若只想按当前 `ecc.toml` 重建 workspace 而**不执行**，用专用命令（适合批量运行前准备，或当前机器缺少所需工具时）：
+同样的 `--overwrite` 重跑也是已有 workspace 吸收**入口输入、PDK 路径、`flow.preset`** 变更的方式——这些改动会改变 workspace 的输入快照或 flow 结构。若只想按当前 `ecc.toml` 重建 workspace 而**不执行**，用专用命令（适合批量运行前准备）。与所有新建 workspace 一样，refresh 仍会对所选流程范围执行启动工具预检，请先安装好对应工具：
 
 ```bash
 ecc workspace refresh default                      # 按 ecc.toml 重建输入/配置，但不运行
@@ -675,12 +676,12 @@ $ ecc run --from cts --to route
 rc=1
 ```
 
-> **步骤名怎么写**：`ecc status`/`ecc log` 展示的是小写展示名（如 `placement`、`timing_optimization`）；而 **已有** workspace 上的 `--from`/`--only`/`--to` 要用 `home/flow.json` 里的持久化名（如 `place`、`CTS`、`Timing optimization`）；只有**新建**范围（`--from A --to B` 成对出现）接受小写别名。记不住没关系——拼错时会报 `unknown_step` 并列出全部可用名，照抄即可：
+> **步骤名怎么写**：`ecc status`/`ecc log` 展示的是小写展示名（如 `placement`、`timing_optimization`）；`--from`/`--only`/`--to` 选择器同时接受 `home/flow.json` 里的持久化名（如 `place`、`CTS`、`Timing optimization`）和小写别名（如 `placement`、`routing`）。记不住没关系——两者都不匹配时报 `unknown_step` 并列出全部可用名，照抄即可：
 >
 > ```console
-> $ ecc run --workspace default --only placement   # 持久化名是 "place"
+> $ ecc run --workspace default --only placemen   # 拼错了：既不是持久化名也不是别名
 > [error]
->   unknown_step unknown step 'placement'; available steps: Synthesis, lec, Floorplan,
+>   unknown_step unknown step 'placemen'; available steps: Synthesis, lec, Floorplan,
 >   place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
 >   postRouteLec, drc, Harden
 > ```
@@ -700,11 +701,11 @@ ecc config --plain      # 项目级配置（键值 + 解析后绝对路径）
 | `[error] env_not_ready`（run 时） | preset 必需工具缺失 | 按 `ecc doctor` 输出补齐；通常是 yosys/slang，重新运行 §2.1 安装脚本加 `--with-toolchain` |
 | `[error] run_exists` | workspace 目录已存在但不是有效 ECC workspace | `ecc run --overwrite`，或换 `--workspace NAME`。注意：**跑完再执行 `ecc run` 不会报这个错**——已成功时是 no_op，中断时自动续跑 |
 | `[error] workspace_required` | 项目里有多个活跃 workspace，没指明用哪个 | 按报错列出的名称传 `--workspace NAME` |
-| `[error] unknown_step` | `--from`/`--only` 的步骤名拼写与 `home/flow.json` 持久化名不符（如写了 `placement`，持久化名是 `place`） | 照抄报错列出的可用步骤名；详见 §6.3 的「步骤名怎么写」 |
+| `[error] unknown_step` | `--from`/`--only` 的步骤名既不匹配 `home/flow.json` 持久化名也不匹配别名（如把 `place` 写成 `placemen`） | 照抄报错列出的可用步骤名；详见 §6.3 的「步骤名怎么写」 |
 | `[error] set_requires_fresh_run` | 对已有 workspace 用 `--set` | `--set` 只在新建时生效；改用 `--overwrite` 或新 `--workspace` |
 | run 汇总带 `warning: ecc.toml values override different project.json base values`（`config_layer_diverged`） | `ecc.toml` 与首次运行记录到 `project.json` 的基线实际不一致：`pdk.root` 解析到了与首次运行不同的 PDK（如环境变量改指向），或 `flow.preset` 与 workspace 声明的范围不一致（如用 `--preset synthesis_lec` 建的 workspace 配 `rtl2gds` 的 ecc.toml） | 不影响执行结果，可忽略；对齐两边即消失（`ecc pdk set-root` 或修正 `flow.preset`） |
 | `[error] signoff_incomplete`（export 时） | 必需交付物缺失（如某步失败） | `ecc signoff inspect` 看 blocked 项；`ecc status`/`ecc log` 排查失败步骤后重跑 |
-| `ecc check` 报 `pdk.root is required` | 未找到 PDK | `ecc pdk setup` 或 `ecc pdk set-root <路径>`，或设 `CHIPCOMPILER_ICS55_PDK_ROOT` |
+| `ecc check` 报 `pdk.root is required` | 未找到 PDK | `ecc pdk set-root <路径>` 或设 `CHIPCOMPILER_ICS55_PDK_ROOT` |
 | PDK liberty 缺失 | 只 clone 了 PDK 没下数据 | `make -C ~/.local/icsprout55-pdk unzip`（可加 `USE_PROXY=true GH_PROXY=...`） |
 | 下载超时 | 网络受限 | 重试安装脚本；或按 §2.3 手动安装（PDK 的 `make unzip` 支持 `USE_PROXY=true GH_PROXY=...`） |
 | doctor 显示 `sizer: fail` | 必需的 Sizer 组件未安装 | `ecc doctor` 返回非零。完整 `rtl2gds` 链含 Timing optimization 步骤，运行前应安装 Sizer。按 remediation 提示源码构建 |
@@ -713,10 +714,10 @@ ecc config --plain      # 项目级配置（键值 + 解析后绝对路径）
 
 ## 8. 下一步
 
-- 换你自己的设计：改 `ecc.toml` 的 `top`/`rtl`/`clock_port`/`frequency_mhz`，多文件用 [filelist](../../docs/examples/gcd/README.md#using-filelist)；
+- 换你自己的设计：改 `ecc.toml` 的 `top`/`rtl`/`clock_port`/`frequency_mhz`，多文件用 [filelist](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist)；
 - 了解 preset 差异：`rtl2gds`（完整 15 步综合到 Harden 链，含综合级 LEC）、`syn_sta`（仅综合）、`synthesis_lec`（综合 + LEC，两步）；
-- 全部命令细节见 **[ECC CLI 用户指南](ecc-cli-ug.cn.md)**；CLI 扩展开发见 [ecc-cli-dev.cn.md](ecc-cli-dev.cn.md)；
-- 用 Python API 直接编排 flow（`EngineFlow`）见 [examples/gcd/ics55flow.py](../../docs/examples/gcd/ics55flow.py)。
+- 全部命令细节见 **[ECC CLI 用户指南](ecc-user-guide.cn.md)**（终端：`ecc doc ug --lang cn`）；CLI 扩展开发见 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli)；
+- 用 Python API 直接编排 flow（`EngineFlow`）见 [examples/gcd/ics55flow.py](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/ics55flow.py)。
 
 ---
 

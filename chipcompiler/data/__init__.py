@@ -11,10 +11,11 @@ from .parameter import (
 )
 from .pdk import PDK, get_pdk
 from .step import (
+    FINISHED_STEP_STATES,
     StateEnum,
     StepEnum,
     StepMetrics,
-    is_non_blocking_step,
+    is_finished_step_state,
     load_metrics,
     save_metrics,
 )
@@ -96,7 +97,8 @@ __all__ = [
     "YosysReport",
     "YosysLecReport",
     "EccReport",
-    "is_non_blocking_step",
+    "FINISHED_STEP_STATES",
+    "is_finished_step_state",
     "LogPaths",
     "ScriptPaths",
     "EccScript",

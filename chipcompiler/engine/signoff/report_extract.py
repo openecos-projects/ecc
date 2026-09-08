@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from chipcompiler.data import StepEnum
+from chipcompiler.data.step_dirs import STEP_DIRECTORIES as STEP_DIRS
 from chipcompiler.engine.signoff.report_data import (
     DesignReportData,
     EvidenceProvenanceRecord,
@@ -331,25 +332,6 @@ def _parse_corner_attributes(name: str):
             rc_corner = trimmed
     return process, temperature, voltage, rc_corner
 
-
-# Mirrors SignoffPackageCollector._step_dirs() in engine/signoff.py; kept
-# local to avoid an import cycle between the two signoff modules.
-STEP_DIRS = {
-    StepEnum.SYNTHESIS.value: "Synthesis_yosys",
-    StepEnum.LEC.value: "lec_yosys_lec",
-    StepEnum.FLOORPLAN.value: "Floorplan_ecc",
-    StepEnum.PLACEMENT.value: "place_dreamplace",
-    StepEnum.CTS.value: "CTS_ecc",
-    StepEnum.LEGALIZATION.value: "legalization_dreamplace",
-    StepEnum.ROUTING.value: "route_ecc",
-    StepEnum.DRC.value: "drc_ecc",
-    StepEnum.LVS.value: "lvs_ecc",
-    StepEnum.FILLER.value: "filler_ecc",
-    StepEnum.POST_ROUTE_LEC.value: "postRouteLec_yosys_lec",
-    StepEnum.RCX.value: "RCX_ecc",
-    StepEnum.STA.value: "sta_ecc",
-    StepEnum.HARDEN.value: "Harden_ecc",
-}
 
 # ---------------------------------------------------------------------------
 # Workspace collection

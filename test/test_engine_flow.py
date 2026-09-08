@@ -115,7 +115,7 @@ def test_engine_flow_does_not_delay_short_step_before_return(monkeypatch, tmp_pa
     assert sleep_calls == []
 
 
-def test_failed_synthesis_lec_is_persisted_as_warning(monkeypatch, tmp_path):
+def test_failed_synthesis_lec_is_persisted_as_incomplete(monkeypatch, tmp_path):
     workspace = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
@@ -136,11 +136,11 @@ def test_failed_synthesis_lec_is_persisted_as_warning(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: False)
 
-    assert engine_flow.run_step(workspace_step) is StateEnum.Warning
-    assert workspace.flow.data["steps"][0]["state"] == StateEnum.Warning.value
+    assert engine_flow.run_step(workspace_step) is StateEnum.Imcomplete
+    assert workspace.flow.data["steps"][0]["state"] == StateEnum.Imcomplete.value
 
 
-def test_run_steps_continues_after_synthesis_lec_warning(monkeypatch, tmp_path):
+def test_run_steps_stops_after_synthesis_lec_failure(monkeypatch, tmp_path):
     workspace = Workspace(directory=tmp_path)
     workspace.flow.data = {
         "steps": [
@@ -157,14 +157,14 @@ def test_run_steps_continues_after_synthesis_lec_warning(monkeypatch, tmp_path):
 
     def fake_run_step(step, **_kwargs):
         calls.append(step.name)
-        return StateEnum.Warning if step.name == StepEnum.LEC.value else StateEnum.Success
+        return StateEnum.Imcomplete if step.name == StepEnum.LEC.value else StateEnum.Success
 
     monkeypatch.setattr(engine_flow, "run_step", fake_run_step)
     monkeypatch.setattr(engine_flow, "init_db_engine", lambda: True)
     monkeypatch.setattr(flow_module, "log_flow", lambda **_kwargs: None)
 
-    assert engine_flow.run_steps() is True
-    assert calls == [StepEnum.LEC.value, StepEnum.FLOORPLAN.value]
+    assert engine_flow.run_steps() is False
+    assert calls == [StepEnum.LEC.value]
 
 
 def test_check_step_result_synthesis_uses_common_verilog(tmp_path):

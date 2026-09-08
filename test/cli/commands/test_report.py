@@ -1,4 +1,4 @@
-import json
+import ast
 import os
 from types import SimpleNamespace
 
@@ -74,47 +74,80 @@ def report_mocks(monkeypatch):
     from chipcompiler.engine.signoff import report_checklist as checklist_module
 
     monkeypatch.setattr(qor_module, "build_qor_report", lambda ws: qor_report)
-    monkeypatch.setattr(qor_module, "generate_qor_report", lambda ws: "QOR BODY")
+    monkeypatch.setattr(qor_module, "generate_qor_report", lambda ws, report=None: "QOR BODY")
     monkeypatch.setattr(checklist_module, "build_checklist_report", lambda ws: checklist_report)
-    monkeypatch.setattr(checklist_module, "generate_checklist_report", lambda ws: "CHECKLIST BODY")
+    monkeypatch.setattr(
+        checklist_module, "generate_checklist_report", lambda ws, report=None: "CHECKLIST BODY"
+    )
     return SimpleNamespace(workspace=workspace, qor=qor_report, checklist=checklist_report)
 
 
 class TestReportQor:
     def test_qor_writes_default_destination(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, report_mocks
+        self, tmp_path, capsys, monkeypatch, create_cli_project, report_mocks, plain_records
     ):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         os.makedirs(run_dir)
         report_mocks.workspace.directory = run_dir
 
-        rc = cli_main.run(["report", "qor", "--project", project_dir, "--json"])
+        rc = cli_main.run(["report", "qor", "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 0
-        record = data["records"][0]
         assert record["report"] == "qor"
         assert record["status"] == "written"
-        assert record["overall_score"] == 72.5
-        assert record["dimensions"][0]["dimension"] == "Timing"
+        assert record["overall_score"] == "72.5"
+        assert ast.literal_eval(record["dimensions"])[0]["dimension"] == "Timing"
         expected = os.path.join(run_dir, "signoff", "gcd_qor_report.txt")
         assert record["path"] == expected
         with open(expected) as f:
             assert f.read() == "QOR BODY"
 
+    def test_qor_write_failure_is_a_structured_error_not_a_traceback(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, report_mocks, plain_records
+    ):
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "default")
+        os.makedirs(run_dir)
+        report_mocks.workspace.directory = run_dir
+        # An existing report must survive a failed write, and the failure
+        # must surface as a structured record, never a traceback.
+        existing = os.path.join(run_dir, "signoff", "gcd_qor_report.txt")
+        os.makedirs(os.path.dirname(existing))
+        with open(existing, "w") as f:
+            f.write("PREVIOUS REPORT")
+
+        real_replace = os.replace
+
+        def failing_replace(src, dst):
+            if str(dst).endswith("gcd_qor_report.txt"):
+                raise OSError(28, "No space left on device")
+            real_replace(src, dst)
+
+        monkeypatch.setattr(os, "replace", failing_replace)
+
+        rc = cli_main.run(["report", "qor", "--project", project_dir, "--plain"])
+
+        record = plain_records(capsys.readouterr().out)[0]
+        assert rc == 1
+        assert record["error"] == "report_write_failed"
+        assert "No space left" in record["reason"]
+        with open(existing) as f:
+            assert f.read() == "PREVIOUS REPORT"
+
     def test_qor_output_override(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, report_mocks
+        self, tmp_path, capsys, monkeypatch, create_cli_project, report_mocks, plain_records
     ):
         project_dir = create_cli_project()
         os.makedirs(os.path.join(project_dir, "default"))
         override = str(tmp_path / "qor.txt")
 
-        rc = cli_main.run(["report", "qor", "-o", override, "--project", project_dir, "--json"])
+        rc = cli_main.run(["report", "qor", "-o", override, "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 0
-        assert data["records"][0]["path"] == override
+        assert record["path"] == override
         assert os.path.isfile(override)
 
     def test_qor_with_workspace_flag(self, tmp_path, capsys, monkeypatch, report_mocks):
@@ -130,31 +163,30 @@ class TestReportQor:
 
 class TestReportChecklist:
     def test_checklist_records_summary(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, report_mocks
+        self, tmp_path, capsys, monkeypatch, create_cli_project, report_mocks, plain_records
     ):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         os.makedirs(run_dir)
         report_mocks.workspace.directory = run_dir
 
-        rc = cli_main.run(["report", "checklist", "--project", project_dir, "--json"])
+        rc = cli_main.run(["report", "checklist", "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 0
-        record = data["records"][0]
         assert record["report"] == "checklist"
         assert record["status"] == "written"
         assert record["checklist_status"] == "attention"
-        assert record["blocked"] == 1
-        assert record["attention"] == 1
-        assert record["items"] == 2
+        assert record["blocked"] == "1"
+        assert record["attention"] == "1"
+        assert record["items"] == "2"
         expected = os.path.join(run_dir, "signoff", "checklist_report.txt")
         assert record["path"] == expected
         with open(expected) as f:
             assert f.read() == "CHECKLIST BODY"
 
     def test_checklist_unavailable_maps_to_error(
-        self, tmp_path, capsys, monkeypatch, create_cli_project
+        self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
     ):
         project_dir = create_cli_project()
         os.makedirs(os.path.join(project_dir, "default"))
@@ -173,18 +205,20 @@ class TestReportChecklist:
             "build_checklist_report",
             lambda ws: checklist_module.ChecklistReport(available=False, workspace="/tmp/x"),
         )
-        monkeypatch.setattr(checklist_module, "generate_checklist_report", lambda ws: "UNAVAILABLE")
+        monkeypatch.setattr(
+            checklist_module, "generate_checklist_report", lambda ws, report=None: "UNAVAILABLE"
+        )
 
-        rc = cli_main.run(["report", "checklist", "--project", project_dir, "--json"])
+        rc = cli_main.run(["report", "checklist", "--project", project_dir, "--plain"])
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == "checklist_unavailable"
 
 
 class TestReportSummary:
     def test_summary_writes_default_destination(
-        self, capsys, monkeypatch, create_cli_project, report_mocks
+        self, capsys, monkeypatch, create_cli_project, report_mocks, plain_records
     ):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
@@ -198,15 +232,14 @@ class TestReportSummary:
 
         monkeypatch.setattr("chipcompiler.engine.signoff.generate_text_report", generate_summary)
 
-        rc = cli_main.run(["report", "summary", "--project", project_dir, "--json"])
+        rc = cli_main.run(["report", "summary", "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 0
-        record = data["records"][0]
         assert record["report"] == "summary"
         assert record["status"] == "written"
         assert record["design"] == "gcd"
-        assert record["bytes"] == len(b"LINE1\nLINE2")
+        assert record["bytes"] == str(len(b"LINE1\nLINE2"))
         expected_path = os.path.join(run_dir, "signoff", "gcd_design_summary.txt")
         assert record["path"] == expected_path
         with open(expected_path) as f:
@@ -214,7 +247,7 @@ class TestReportSummary:
         assert calls == [report_mocks.workspace]
 
     def test_summary_output_override(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, report_mocks
+        self, tmp_path, capsys, monkeypatch, create_cli_project, report_mocks, plain_records
     ):
         project_dir = create_cli_project()
         os.makedirs(os.path.join(project_dir, "default"))
@@ -223,15 +256,17 @@ class TestReportSummary:
         )
         override = str(tmp_path / "custom.txt")
 
-        rc = cli_main.run(["report", "summary", "-o", override, "--project", project_dir, "--json"])
+        rc = cli_main.run(
+            ["report", "summary", "-o", override, "--project", project_dir, "--plain"]
+        )
 
-        data = json.loads(capsys.readouterr().out)
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 0
-        assert data["records"][0]["path"] == override
+        assert record["path"] == override
         assert os.path.isfile(override)
 
     def test_summary_failure_maps_to_error(
-        self, capsys, monkeypatch, create_cli_project, report_mocks
+        self, capsys, monkeypatch, create_cli_project, report_mocks, plain_records
     ):
         project_dir = create_cli_project()
         os.makedirs(os.path.join(project_dir, "default"))
@@ -241,16 +276,16 @@ class TestReportSummary:
 
         monkeypatch.setattr("chipcompiler.engine.signoff.generate_text_report", fail)
 
-        rc = cli_main.run(["report", "summary", "--project", project_dir, "--json"])
+        rc = cli_main.run(["report", "summary", "--project", project_dir, "--plain"])
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == "report_failed"
 
 
 class TestReportWorkspaceResolution:
     def test_unresolved_workspace_rejected_before_load(
-        self, tmp_path, capsys, monkeypatch, create_cli_project
+        self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
     ):
         monkeypatch.setattr(
             "chipcompiler.data.load_workspace",
@@ -258,19 +293,21 @@ class TestReportWorkspaceResolution:
         )
 
         rc = cli_main.run(
-            ["report", "qor", "--project", str(tmp_path), "--workspace", "absent", "--json"]
+            ["report", "qor", "--project", str(tmp_path), "--workspace", "absent", "--plain"]
         )
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == "missing_workspace"
         assert record["workspace"] == str(tmp_path / "absent")
 
-    def test_missing_run_workspace(self, tmp_path, capsys, monkeypatch, create_cli_project):
+    def test_missing_run_workspace(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project()  # no runs/default
 
-        rc = cli_main.run(["report", "qor", "--project", project_dir, "--json"])
+        rc = cli_main.run(["report", "qor", "--project", project_dir, "--plain"])
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == "missing_workspace"

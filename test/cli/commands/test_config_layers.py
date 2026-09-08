@@ -56,7 +56,7 @@ class TestDivergenceProjectionFields:
         )
         (project_dir / "rtl" / "other.v").write_text("module other; endmodule\n")
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -80,7 +80,7 @@ class TestDivergenceProjectionFields:
             '\n[flow]\npreset = "rtl2gds"\n',
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -147,7 +147,7 @@ class TestExplicitEmptyStaysExplicit:
     ):
         project_dir = self._hybrid(manifest_stubs, tmp_path, monkeypatch, toml_text)
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
@@ -166,12 +166,12 @@ class TestExplicitEmptyStaysExplicit:
             _HYBRID_TOML.replace('rtl = ["rtl/gcd.v"]', "rtl = []"),
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         capsys.readouterr()
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
@@ -184,7 +184,7 @@ class TestExplicitEmptyStaysExplicit:
     ):
         project_dir = self._hybrid(manifest_stubs, tmp_path, monkeypatch, toml_text)
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
@@ -205,7 +205,7 @@ class TestExplicitEmptyStaysExplicit:
         )
         monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(project_dir / "pdk"))
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -226,7 +226,7 @@ class TestExplicitEmptyStaysExplicit:
         other_root.mkdir()
         monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(other_root))
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -276,7 +276,7 @@ class TestLowerLayerDivergence:
             entry_range=("Synth", "Harden"),
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -294,7 +294,7 @@ class TestLowerLayerDivergence:
             entry_range=("Synth", "Harden"),
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -312,7 +312,7 @@ class TestLowerLayerDivergence:
             entry_range=("Place", "Route"),
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -330,7 +330,7 @@ class TestLowerLayerDivergence:
             entry_range=("Place", "Route"),
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -349,7 +349,7 @@ class TestLowerLayerDivergence:
             entry_range=("Synth", "Harden"),
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         assert _divergences(manifest_stubs.records()) == []
@@ -365,7 +365,7 @@ class TestLowerLayerDivergence:
             entry_range=("Synth", "Harden"),
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         assert _divergences(manifest_stubs.records()) == []
@@ -407,7 +407,7 @@ class TestOrderedRtlDivergence:
     def test_check_warns_on_reordered_rtl(self, manifest_stubs, tmp_path, capsys, monkeypatch):
         project_dir = self._hybrid(manifest_stubs, tmp_path, monkeypatch, '"rtl/b.v", "rtl/gcd.v"')
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -419,7 +419,7 @@ class TestOrderedRtlDivergence:
     ):
         project_dir = self._hybrid(manifest_stubs, tmp_path, monkeypatch, '"rtl/b.v", "rtl/gcd.v"')
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -429,7 +429,7 @@ class TestOrderedRtlDivergence:
     def test_same_order_stays_silent(self, manifest_stubs, tmp_path, capsys, monkeypatch):
         project_dir = self._hybrid(manifest_stubs, tmp_path, monkeypatch, '"rtl/gcd.v", "rtl/b.v"')
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         assert _divergences(manifest_stubs.records()) == []
@@ -454,7 +454,7 @@ class TestConfigResolvedManifestLayering:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["config", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["config", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         by_key = self._records_by_key(manifest_stubs.records())
@@ -487,7 +487,7 @@ class TestConfigResolvedManifestLayering:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["config", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["config", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         by_key = self._records_by_key(manifest_stubs.records())
@@ -517,7 +517,7 @@ def test_check_tolerates_huge_manifest_frequency(tmp_path, capsys, manifest_stub
         },
     )
 
-    rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+    rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
     assert rc != 0
     records = manifest_stubs.records()
@@ -548,7 +548,7 @@ class TestSetDivergence:
         )
 
         rc = cli_main.run(
-            ["run", "--project", str(project_dir), "--set", "cts.max_fanout=32", "--json"]
+            ["run", "--project", str(project_dir), "--set", "cts.max_fanout=32", "--plain"]
         )
 
         assert rc == 0
@@ -580,7 +580,7 @@ class TestSetDivergence:
         )
 
         rc = cli_main.run(
-            ["run", "--project", str(project_dir), "--set", "cts.max_fanout=20", "--json"]
+            ["run", "--project", str(project_dir), "--set", "cts.max_fanout=20", "--plain"]
         )
 
         assert rc == 0

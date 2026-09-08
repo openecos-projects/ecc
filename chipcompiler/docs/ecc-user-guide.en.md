@@ -2,9 +2,9 @@
 
 `ecc` is the project-oriented command-line entry point of ECOS Chip Compiler, covering the full RTL-to-GDS flow: project creation, validation, execution, status/log/config inspection, parameter management, signoff, and reporting. This guide is based on the current source tree (v0.1.0-alpha.11); all example outputs are real execution results (run states in the examples are hand-crafted demo data).
 
-- Source code: [chipcompiler/cli/](../../chipcompiler/cli/)
-- For how to extend the CLI with new commands, see [ecc-cli-dev.en.md](ecc-cli-dev.en.md)
-- RPC sidecar protocol: [workspace-cli.md](../../docs/workspace-cli.md)
+- Source code: [chipcompiler/cli/](https://github.com/openecos-projects/ecc/tree/main/chipcompiler/cli/)
+- For how to extend the CLI with new commands, see [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli)
+- RPC sidecar protocol: [rpc-guide.md](https://github.com/openecos-projects/ecc/blob/main/docs/rpc-guide.md)
 
 ## 0. Invocation
 
@@ -63,7 +63,7 @@ which ecc && ecc --version          # from any directory, should print ecc <vers
 # Upgrading = overwrite the extraction directory with the new bundle; symlinks from options B/C need no change
 ```
 
-> The latest official release (v0.1.0-alpha.11) already ships every command in this guide, including `doctor`/`signoff`/`report` and the `run` workspace/range selectors. When the source tree is ahead of the last release (behavior added between releases), run from source with `uv run ecc` as described in [ecc-cli-dev.en.md](ecc-cli-dev.en.md) (editable install — source changes take effect on the next import); re-running the installer reinstalls the official release, and unreleased behavior disappears with it — the expected rollback.
+> This guide and the features it documents — the bundled `ecc doc` guides, the `doctor`/`signoff`/`report` command groups, and the `run` workspace/range selectors — ship with release v0.1.0-alpha.12; earlier releases (up to v0.1.0-alpha.9) do not include them. Until alpha.12 is out, run from source with `uv run ecc` as described in [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli) (editable install — source changes take effect on the next import). Re-running the installer reinstalls the official release, and unreleased behavior disappears with it — the expected rollback.
 
 > `ecc` resolves the project from the current directory by default (wherever `ecc.toml` lives), so "launch from any folder" is the normal usage; to operate on a project from elsewhere, add `--project <dir>`.
 
@@ -81,7 +81,7 @@ uv run ecc --help
 
 - Global: `ecc --version` (single version line), `ecc --help`.
 - Project location: project-scoped commands accept `--project <dir>` (defaults to the current directory). `--workspace <name>` is a managed, non-empty single path segment in that project, never a filesystem path. A fresh project creates `default` on bare `ecc run`; a project with one active workspace auto-selects it, while one with multiple active workspaces requires `--workspace`. A named workspace is created and registered in `project.json` before its files are created. Legacy `runs/` projects must be upgraded with `ecc migrate` before running a flow. Each project has one `ecc.toml`; workspace inputs are copied to its own `origin/` directory at creation time.
-- Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `param`, `pdk`, `project`, `workspace`, `signoff`, and `report` accept `--json` (`{"records":[...]}`), `--jsonl` (one JSON record per line), and `--plain` (`key=value`, for scripting), with human-readable TEXT by default. `ecc version` supports the same flags with its version-specific schema; `rpc serve` and `layout-image` use their own protocols instead.
+- Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `param`, `pdk`, `project`, `workspace`, `signoff`, and `report` accept `--plain` (`key=value`, for scripting), with human-readable TEXT by default. `rpc serve` and `layout-image` use their own protocols instead.
 - Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`).
 - Step tokens come in three vocabularies, distinguished by context:
   - **display names** (output and input of `ecc status` / `ecc log` / `ecc report step`, uniformly lowercase/underscore): `synthesis / lec / floorplan / placement / cts / legalization / timing_optimization / routing / filler / rcx / sta / lvs / postroutelec / drc / harden`;
@@ -95,6 +95,7 @@ Command overview:
 $ ecc --help
 Commands:
   version       Show ECC runtime, component, and installed tool versions
+  doc           Show a bundled guide (config = config reference, ug = user guide, tutorial)
   layout-image  Render a GDS file into a layout image
   init          Create a new ECC project
   check         Validate the current project setup
@@ -104,7 +105,6 @@ Commands:
   config        Show resolved project or step configuration
   migrate       Migrate a legacy runs/ project to the manifest layout
   doctor        Check host environment: PDK, tools, and components
-  doc           Show a bundled guide (config/ug/tutorial/dev) in the terminal
   param         Manage EDA parameters
   pdk           Show and configure the PDK path used by this project
   project       Edit project declarations in ecc.toml
@@ -124,7 +124,7 @@ ecc doc ug --lang cn        # this guide, Chinese edition
 ecc doc config --plain      # raw markdown, byte-for-byte
 ```
 
-- Topics: `config`, `ug`, `tutorial`, `dev`; `--lang` selects `en` (default) or `cn`.
+- Topics: `config` (config reference), `ug` (user guide), `tutorial`; `--lang` selects `en` (default) or `cn`.
 - On a terminal the rendered guide opens in a pager with highlighting (`$PAGER`, falling back to `less`/`more`; `LESS=FRX` is defaulted when unset so colors survive `less`). When piped it prints in full without colors.
 - Invalid topic/language values are rejected by argument validation (exit 2).
 - Default output keeps the rendered unicode layout even when piped; `--plain` prints the raw markdown unchanged (script-friendly).
@@ -144,9 +144,6 @@ eval "$(ecc --show-completion)"     # auto-detects the current shell
 
 ```bash
 ecc version           # text
-ecc version --json    # JSON (schema_version/ecc/dreamplace/ecc_tools/tools)
-ecc version --jsonl   # one {"component", "version"} object per line
-ecc version --plain   # one key=value record
 ecc --version         # single ecc version line
 ```
 
@@ -164,15 +161,12 @@ runtime ECC CLI
 yosys 0.68+132
 sizer 0.1.0-alpha
 klayout 0.30.2
-
-$ ecc version --json
-{"schema_version": 1, "runtime": "ECC CLI", "ecc": "0.1.0a11", "dreamplace": "0.1.0a7", "ecc_tools": "0.1.0a12", "tools": {"yosys": "0.68+132", "sizer": "not installed", "klayout": "0.30.2"}}
 ```
 
 ## 3. init — create a project
 
 ```bash
-ecc init <NAME> [--json | --jsonl | --plain]
+ecc init <NAME> [--plain]
 ```
 
 Creates an `ecc.toml`, `rtl/`, and `constraints/` skeleton under `NAME/` (the workspace is created by the first `ecc run`):
@@ -215,16 +209,16 @@ preset = "rtl2gds"
 ## 4. check — validate the project configuration
 
 ```bash
-ecc check [--project DIR] [--json | --jsonl | --plain]
+ecc check [--project DIR] [--plain]
 ```
 
-Validates required `ecc.toml` fields (design/pdk/flow), the PDK name and contents (tech LEF/LEF/liberty); manifest projects declaring multiple RTL sources also validate every source. Existence of a single RTL source file is validated by `ecc run` per the entry step when it creates the workspace (reported as `step_input_missing`):
+Validates required `ecc.toml` fields (design/pdk/flow), the PDK name and contents (tech LEF/LEF/liberty), and every declared RTL source file (missing sources fail the check):
 
 ```console
 $ ecc check        # PDK not ready
 [check]
   fail pdk.root is required
-  inspect: ecc check --json
+  inspect: ecc check
 rc=1
 
 $ ecc check        # once everything is ready
@@ -236,7 +230,7 @@ $ ecc check        # once everything is ready
   run: ecc run
   rtl: pass
     path: rtl/gcd.v
-  inspect: ecc check --json
+  inspect: ecc check
 rc=0
 ```
 
@@ -245,7 +239,7 @@ rc=0
 `ecc doctor` checks every dependency in one command (PDK, yosys including the slang frontend, bundled ecc-tools/dreamplace, required Sizer, and optional KLayout), reporting pass/fail/skip per component with remediation hints; only **required** failures produce a non-zero exit:
 
 ```bash
-ecc doctor [--project DIR] [--json | --jsonl | --plain]
+ecc doctor [--project DIR] [--plain]
 ```
 
 ```console
@@ -287,7 +281,7 @@ Notes:
 
 ### Manual checklist (fallback when doctor is unavailable)
 
-`ecc check` covers only "project config (required design/pdk/flow fields) + **PDK contents** (tech LEF / LEF / liberty)"; it **does not check external tools**, nor the existence of a single RTL source file (that is validated by `ecc run` when it creates the workspace). Verify manually:
+`ecc check` covers only "project config (required design/pdk/flow fields) + **PDK contents** (tech LEF / LEF / liberty) + every declared RTL source"; it **does not check external tools**. Verify manually:
 
 | Dependency | Check command | Ready when |
 |---|---|---|
@@ -331,7 +325,7 @@ ecc run [OPTIONS]
   --preset TEXT      flow preset override for this run only (not written back to ecc.toml), e.g. --preset syn_sta
   --overwrite        overwrite an existing run (only deletes genuine ECC run directories, with safety checks)
   --set KEY=VALUE    parameter override, repeatable (e.g. --set place.target_density=0.65), recorded in the run provenance
-  --json / --jsonl / --plain
+  --plain            key=value output for scripting
 ```
 
 For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full 15-step chain (Synthesis→LEC (Yosys equivalence check)→Floorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→RCX→sta→LVS→postRouteLec (Yosys equivalence check)→DRC→Harden; Harden emits GDS + abstract LEF + timing LIB).
@@ -356,7 +350,7 @@ $ ecc run --workspace default          # everything already succeeded → nothin
   log: ecc log --workspace default
 ```
 
-The `--json` output carries `no_op: true` (the `--resume`/`--only` selector paths also carry an `executed_steps` list). If `ecc.toml` and the baseline values recorded in `project.json` effectively disagree (for example `pdk.root` resolving to a different PDK than the one recorded by the first run, or `flow.preset` differing from the workspace's declared range), a `warning: ...` line (`config_layer_diverged`) is prepended to the summary block; it does not affect the execution result.
+The run summary record carries `no_op: true` (visible in `--plain` output; the `--resume`/`--only` selector paths also carry an `executed_steps` list). If `ecc.toml` and the baseline values recorded in `project.json` effectively disagree (for example `pdk.root` resolving to a different PDK than the one recorded by the first run, or `flow.preset` differing from the workspace's declared range), a `warning: ...` line (`config_layer_diverged`) is prepended to the summary block; it does not affect the execution result.
 
 **Target reconciliation on an existing workspace**: on a repeat `ecc run`, the CLI aligns the workspace's persisted flow with the current target (the `flow.preset` from `ecc.toml`, or the start/end range declared for that workspace in `project.json`):
 
@@ -502,7 +496,7 @@ $ ecc run --workspace a/b     # a workspace must be a single name, never a path
 ### 5.4 migrate — legacy-layout migration (transitional command)
 
 ```bash
-ecc migrate [--project DIR] [--yes] [--json | --jsonl | --plain]
+ecc migrate [--project DIR] [--yes] [--plain]
 ```
 
 Migrates a legacy `runs/`-layout project to the manifest layout: each safe `runs/<id>` workspace is moved to `<project>/<id>`, its workspace-internal paths are rebased, and it is registered in a generated or updated `project.json`. By default it prints the migration plan and asks for confirmation; `--yes` skips the prompt. The command is kept for the transition period (marked deprecated in code) and can be retired once existing projects have migrated. `run`/`check`/`status` attach a migration-hint record to their output on legacy projects.
@@ -510,7 +504,7 @@ Migrates a legacy `runs/`-layout project to the manifest layout: each safe `runs
 ## 6. status — show run and step status
 
 ```bash
-ecc status [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
+ecc status [--project DIR] [--workspace NAME] [--plain]
 ```
 
 `status` is the lightweight progress check; for the full per-step evidence
@@ -539,19 +533,19 @@ $ ecc status
       log: ecc log cts --workspace default
     ...
 
-$ ecc status --jsonl
-{"workspace_id": "default", "status": "failed", "workspace": "/tmp/gcd/default", "inspect_cmd": "ecc status --workspace default", "log_cmd": "ecc log --workspace default"}
-{"step": "synthesis", "tool": "yosys", "status": "success", "runtime": "0:0:17", "log_cmd": "ecc log synthesis --workspace default"}
-{"step": "lec", "tool": "yosys_lec", "status": "success", "runtime": "0:0:1", "log_cmd": "ecc log lec --workspace default"}
+$ ecc status --plain
+workspace_id=default status=failed workspace=/tmp/gcd/default inspect_cmd="ecc status --workspace default" log_cmd="ecc log --workspace default"
+step=synthesis tool=yosys status=success runtime=0:0:17 log_cmd="ecc log synthesis --workspace default"
+step=lec tool=yosys_lec status=success runtime=0:0:1 log_cmd="ecc log lec --workspace default"
 ...
 ```
 
-The run-level status aggregates all steps: `success / warning / failed / ongoing / unstart` (`missing / corrupt` when flow.json is absent or damaged); the step-level states are `success / warning / incomplete / unstart / ongoing / pending / invalid`. An unproven synthesis-level LEC is reported as `warning`, while its evidence is retained and the physical flow continues.
+The run-level status aggregates all steps: `success / partial / failed / ongoing / unstart` (`missing / corrupt` when flow.json is absent or damaged; `partial` when a bounded rerun leaves a mix of successful and unstarted steps); the step-level states are `success / incomplete / unstart / ongoing / pending / invalid`. An unproven synthesis-level LEC fails the step and stops the flow.
 
 ## 7. log — view logs
 
 ```bash
-ecc log [STEP] [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
+ecc log [STEP] [--project DIR] [--workspace NAME] [--plain]
 ```
 
 Without STEP it lists all log files (the run-level flow log plus each step's log, with tail previews); with STEP it prints that step's log content (TEXT mode highlights ERROR/WARNING lines). STEP accepts both the display name (`synthesis`) and the persisted name (`Synthesis`); a step that has not run yet (no log file) reports `log status: missing`, and a misspelled name reports `unknown_step`.
@@ -588,7 +582,7 @@ rc=1
 ## 8. config — view the resolved configuration
 
 ```bash
-ecc config [STEP] [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
+ecc config [STEP] [--project DIR] [--workspace NAME] [--plain]
 ```
 
 `--workspace` scopes the step view to an existing managed workspace; the project-level view remains
@@ -608,10 +602,10 @@ $ ecc config floorplan  # step level
   step:
     db_ecc.json (config)
       path: default/config/db_ecc.json
-  inspect: ecc config floorplan --json
+  inspect: ecc config floorplan
     floorplan_ecc.json (config)
       path: default/config/floorplan_ecc.json
-  inspect: ecc config floorplan --json
+  inspect: ecc config floorplan
 ```
 
 ## 8.5. project / workspace — edit project declarations and refresh workspaces
@@ -626,7 +620,7 @@ ecc project remove design.rtl <FILES...>  # remove RTL sources (design.rtl only)
 ecc project show [KEY]                # show declarations stored in ecc.toml
 ```
 
-All subcommands accept `--project DIR` and `--json/--jsonl/--plain`. Real outputs:
+All subcommands accept `--project DIR` and `--plain`. Real outputs:
 
 ```console
 $ ecc project set design.def inputs/gcd.def
@@ -700,7 +694,7 @@ ecc param diff                      # show only parameters that differ from thei
 ecc param set KEY VALUE --workspace NAME   # workspace-local override; ecc.toml is not touched
 ```
 
-Common options: `--project DIR`, `--json / --jsonl / --plain`. `list`, `show`, `set`, `unset`, and `diff` also accept `--workspace NAME`. With the selector, the value is written to that workspace's `home/params.toml` (not `ecc.toml`), its generated step configuration is refreshed, and the owning step plus its suffix are marked for re-run; a later `ecc run --workspace NAME` continues from that step. Workspace-local values are recorded in `workspace_param_overrides` with the pre-edit `baseline` — `param diff --workspace NAME` compares against that baseline and `param unset KEY --workspace NAME` restores it. Only reviewed parameters from `ecc param list --all` can be set locally, the parameter's owning step must exist in the workspace's persisted flow (otherwise `workspace_param_refresh_failed` — e.g. `place.*` on a synthesis-only workspace), and `pdk.*` path fields still require changing `ecc.toml` plus `ecc workspace refresh`:
+Common options: `--project DIR`, `--plain`. `list`, `show`, `set`, `unset`, and `diff` also accept `--workspace NAME`. With the selector, the value is written to that workspace's `home/params.toml` (not `ecc.toml`), its generated step configuration is refreshed, and the owning step plus its suffix are marked for re-run; a later `ecc run --workspace NAME` continues from that step. Workspace-local values are recorded in `workspace_param_overrides` with the pre-edit `baseline` — `param diff --workspace NAME` compares against that baseline and `param unset KEY --workspace NAME` restores it. Only reviewed parameters from `ecc param list --all` can be set locally, the parameter's owning step must exist in the workspace's persisted flow (otherwise `workspace_param_refresh_failed` — e.g. `place.*` on a synthesis-only workspace), and `pdk.*` path fields still require changing `ecc.toml` plus `ecc workspace refresh`:
 
 ```console
 $ ecc param set design.frequency_mhz 150 --workspace default --plain
@@ -811,17 +805,16 @@ Priority: CLI `--set` > `ecc.toml` `[params.*]` > template defaults. `pdk.*` pat
 
 ## 10. pdk — PDK path configuration
 
-Two ways to attach a PDK: `ecc pdk setup` does everything (auto clone + `make unzip`,
-skipping downloads for an already-complete checkout), or `ecc pdk set-root` wires in
-a ready-made checkout directly — `[pdk] root` in `ecc.toml` (the path is expanded to
+The PDK itself comes from the install script (`--with-toolchain`; see the
+tutorial) or a manual clone. Wire a ready checkout into the project with
+`ecc pdk set-root` — `[pdk] root` in `ecc.toml` (the path is expanded to
 absolute form; the directory must already exist). Incomplete contents (e.g.
 `make unzip` not run yet) do not block the setting — a hint is emitted instead:
 
-All `pdk` subcommands accept `--project DIR` and `--json/--jsonl/--plain`.
+All `pdk` subcommands accept `--project DIR` and `--plain`.
 
 ```bash
-ecc pdk setup [~/pdk/icsprout55-pdk]     # all-in-one: clone (if missing) -> make unzip (if liberty missing, honors GH_PROXY + retries) -> wire in; defaults to ~/.local/icsprout55-pdk
-ecc pdk set-root ~/pdk/icsprout55-pdk   # wire in only (for an already-ready PDK)
+ecc pdk set-root ~/pdk/icsprout55-pdk   # wire in a ready PDK checkout
 ecc pdk show                             # effective root, its source (ecc.toml / env / repo default), contents check
 ecc pdk unset                            # clear root; falls back to env vars / repo default
 ecc pdk set-root /bad/path               # -> [error] invalid_pdk_path (not a directory)
@@ -841,12 +834,12 @@ The resolution priority is unchanged: `ecc.toml [pdk] root` > `CHIPCOMPILER_ICS5
 
 ## 11. signoff — signoff package
 
-`ecc signoff export` requires a ready Harden signoff package. `ecc signoff inspect` can assess a partially completed workspace. Both subcommands accept `--project DIR` and an optional managed `--workspace NAME`, plus `--json/--jsonl/--plain`.
+`ecc signoff export` requires a ready Harden signoff package. `ecc signoff inspect` can assess a partially completed workspace. Both subcommands accept `--project DIR` and an optional managed `--workspace NAME`, plus `--plain`.
 
 ### 11.1 inspect — readiness review
 
 ```bash
-ecc signoff inspect [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
+ecc signoff inspect [--project DIR] [--workspace NAME] [--plain]
 ```
 
 Refreshes completed-step analysis and `home/checklist.json`, then prints the signoff package readiness status (`ready / attention / blocked`), the seven groups (initial/config/harden/final_design/sta/spef/reports), and the risk list. **blocked still exits with rc=0** (inspection is advisory; the gate lives in export):
@@ -874,7 +867,7 @@ $ ecc signoff inspect --workspace default
 ### 11.2 export — export the signoff package tar.gz (gated)
 
 ```bash
-ecc signoff export -o <path>.tar.gz [--include-debug] [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
+ecc signoff export -o <path>.tar.gz [--include-debug] [--project DIR] [--workspace NAME] [--plain]
 ```
 
 For an existing workspace, for example:
@@ -902,8 +895,8 @@ $ ecc signoff export -o gcd.tar.gz --project gcd     # once ready
 ## 12. report — design summary, QoR score, checklist, and step evidence
 
 ```bash
-ecc report summary    [-o PATH] [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
-ecc report qor        [-o PATH] [--project DIR] [--workspace NAME] [--json | --jsonl | --plain]
+ecc report summary    [-o PATH] [--project DIR] [--workspace NAME] [--plain]
+ecc report qor        [-o PATH] [--project DIR] [--workspace NAME] [--plain]
 ecc report checklist  [-o PATH] [same selector and output options]
 ecc report step       [STEP] [--section feature|analysis|checklist]... [same selector and output options]
 ```
@@ -1019,7 +1012,7 @@ $ ecc report step drc --section analysis
 ecc rpc serve --stdio [--persistent-db]
 ```
 
-A JSON-RPC 2.0 service for front ends such as the GUI, framed with `Content-Length` over stdio. `--persistent-db` additionally exposes `db.ensure` / `db.release` plus the `layout.edit.*` / `floorplan.edit.*` method families. Handshake and call examples (full method list and parameters in [workspace-cli.md](../../docs/workspace-cli.md)):
+A JSON-RPC 2.0 service for front ends such as the GUI, framed with `Content-Length` over stdio. `--persistent-db` additionally exposes `db.ensure` / `db.release` plus the `layout.edit.*` / `floorplan.edit.*` method families. Handshake and call examples (full method list and parameters in [rpc-guide.md](https://github.com/openecos-projects/ecc/blob/main/docs/rpc-guide.md)):
 
 ```console
 → {"jsonrpc":"2.0","method":"rpc.hello","params":{"version":1},"id":"hello-1"}

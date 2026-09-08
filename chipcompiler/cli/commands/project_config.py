@@ -15,7 +15,7 @@ from chipcompiler.cli.core.inputs import (
     project_options,
 )
 from chipcompiler.cli.core.invocation import execute_command
-from chipcompiler.cli.core.options import JsonlOption, JsonOption, PlainOption, ProjectOption
+from chipcompiler.cli.core.options import PlainOption, ProjectOption
 
 project_app = create_app(help="Edit project declarations in ecc.toml")
 
@@ -30,14 +30,12 @@ def set_cmd(
     key: Annotated[str, typer.Argument()],
     values: Annotated[list[str], typer.Argument()],
     project: ProjectOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     _finish(
         "set",
         ProjectSetInput(
-            output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+            output=output_options(plain=plain),
             project=project_options(project),
             key=key,
             values=tuple(values),
@@ -51,14 +49,12 @@ def unset_cmd(
     *,
     key: Annotated[str, typer.Argument()],
     project: ProjectOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     _finish(
         "unset",
         ProjectUnsetInput(
-            output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+            output=output_options(plain=plain),
             project=project_options(project),
             key=key,
         ),
@@ -72,14 +68,12 @@ def add_cmd(
     key: Annotated[str, typer.Argument()],
     values: Annotated[list[str], typer.Argument()],
     project: ProjectOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     _finish(
         "add",
         ProjectAddInput(
-            output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+            output=output_options(plain=plain),
             project=project_options(project),
             key=key,
             values=tuple(values),
@@ -94,14 +88,12 @@ def remove_cmd(
     key: Annotated[str, typer.Argument()],
     values: Annotated[list[str], typer.Argument()],
     project: ProjectOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     _finish(
         "remove",
         ProjectAddInput(
-            output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+            output=output_options(plain=plain),
             project=project_options(project),
             key=key,
             values=tuple(values),
@@ -115,14 +107,12 @@ def show_cmd(
     *,
     key: Annotated[str | None, typer.Argument()] = None,
     project: ProjectOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     _finish(
         "show",
         ProjectShowInput(
-            output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+            output=output_options(plain=plain),
             project=project_options(project),
             key=key,
         ),

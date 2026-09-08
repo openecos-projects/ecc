@@ -76,6 +76,18 @@ def export(command_input, ctx: CommandContext) -> CommandResult:
                 )
             ]
         )
+    except OSError as exc:
+        # An unwritable destination, a directory in place of the output
+        # path, or a full disk is a failed export, never a traceback.
+        return CommandResult.err(
+            [
+                error_record(
+                    "signoff_export_failed",
+                    reason=str(exc),
+                    inspect=disclosure_cmd("ecc signoff inspect", ctx.project, ctx.run_id),
+                )
+            ]
+        )
     return CommandResult.ok(
         [
             {

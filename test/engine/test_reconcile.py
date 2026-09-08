@@ -2,29 +2,16 @@
 
 import json
 
+from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
 from chipcompiler.engine.reconcile import (
     compare_flows,
     reconcile_workspace,
     resolve_target_section,
 )
 
-RTL2GDS_STEPS = [
-    ("Synthesis", "yosys"),
-    ("lec", "yosys_lec"),
-    ("Floorplan", "ecc"),
-    ("place", "dreamplace"),
-    ("CTS", "ecc"),
-    ("legalization", "dreamplace"),
-    ("Timing optimization", "sizer"),
-    ("route", "ecc"),
-    ("filler", "ecc"),
-    ("RCX", "ecc"),
-    ("sta", "ecc"),
-    ("lvs", "ecc"),
-    ("postRouteLec", "yosys_lec"),
-    ("drc", "ecc"),
-    ("Harden", "ecc"),
-]
+# Derived from the canonical builder so reconciliation tests always
+# exercise the real current topology, never a stale hand-copied chain.
+RTL2GDS_STEPS = [(name, tool) for name, tool, _state in _canonical_rtl2gds_flow_entries()]
 LEGACY_RTL2GDS_STEPS = RTL2GDS_STEPS[:-3]
 FULL_FLOW_SUFFIX = RTL2GDS_STEPS[-3:]
 LEGACY_SYNTH_LEC_STEPS = [entry for entry in RTL2GDS_STEPS if entry[0] != "lec"]
@@ -148,6 +135,100 @@ class TestReconcile:
         result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
 
         assert result.outcome == "resume"
+
+    def test_equal_with_legacy_warned_lec_resumes(self, tmp_path):
+        # The removed terminal Warning state is not finished: a persisted
+        # warned LEC reconciles to a resume that re-runs it and its suffix.
+        lec_index = next(
+            index for index, (name, _tool) in enumerate(RTL2GDS_STEPS) if name == "lec"
+        )
+        states = ["Success"] * len(RTL2GDS_STEPS)
+        states[lec_index] = "Warning"
+        workspace_dir = _write_workspace(
+            tmp_path, RTL2GDS_STEPS, states=states, flow_section={"preset": "rtl2gds"}
+        )
+
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
+
+        assert result.outcome == "resume"
+
+    # The pre-reorder chain: DRC/LVS before filler, RCX/STA/Harden as
+    # preset-only suffixes.
+    LEGACY_RTL2GDS_ORDER = [
+        ("Synthesis", "yosys"),
+        ("lec", "yosys_lec"),
+        ("Floorplan", "ecc"),
+        ("place", "dreamplace"),
+        ("CTS", "ecc"),
+        ("legalization", "dreamplace"),
+        ("Timing optimization", "sizer"),
+        ("route", "ecc"),
+        ("drc", "ecc"),
+        ("lvs", "ecc"),
+        ("filler", "ecc"),
+        ("postRouteLec", "yosys_lec"),
+    ]
+
+    def test_legacy_prereorder_ledger_migrates_instead_of_mismatch(self, tmp_path):
+        workspace_dir = _write_workspace(
+            tmp_path,
+            self.LEGACY_RTL2GDS_ORDER,
+            flow_section={"preset": "rtl2gds"},
+        )
+
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
+
+        assert result.outcome == "resume"
+        steps = _flow_steps(workspace_dir)
+        assert [(s["name"], s["tool"]) for s in steps] == RTL2GDS_STEPS
+        route_index = next(
+            index for index, (name, _tool) in enumerate(RTL2GDS_STEPS) if name == "route"
+        )
+        # The identical Synthesis..route prefix keeps its Success states;
+        # post-route steps ran with pre-reorder inputs and restart.
+        assert all(s["state"] == "Success" for s in steps[: route_index + 1])
+        assert [s["state"] for s in steps[route_index + 1 :]] == ["Unstart"] * (
+            len(steps) - route_index - 1
+        )
+        assert set(result.appended) == {"RCX", "sta", "Harden"}
+
+    def test_legacy_prereorder_rcx_preset_migrates_to_legacy_alias_range(self, tmp_path):
+        workspace_dir = _write_workspace(
+            tmp_path,
+            self.LEGACY_RTL2GDS_ORDER + [("RCX", "ecc"), ("sta", "ecc")],
+            flow_section={"preset": "rcx"},
+        )
+
+        result = reconcile_workspace(workspace_dir, {"preset": "rcx"})
+
+        assert result.outcome == "resume"
+        steps = _flow_steps(workspace_dir)
+        assert [(s["name"], s["tool"]) for s in steps] == [
+            ("Synthesis", "yosys"),
+            ("lec", "yosys_lec"),
+            ("Floorplan", "ecc"),
+            ("place", "dreamplace"),
+            ("CTS", "ecc"),
+            ("legalization", "dreamplace"),
+            ("Timing optimization", "sizer"),
+            ("route", "ecc"),
+            ("filler", "ecc"),
+            ("RCX", "ecc"),
+            ("sta", "ecc"),
+        ]
+        assert _flow_section(workspace_dir) == {"preset": "rcx"}
+
+    def test_ledger_starting_off_synthesis_is_still_a_mismatch(self, tmp_path):
+        # Legacy presets always began at Synthesis: a ledger starting
+        # elsewhere is a foreign shape, not a migratable legacy one.
+        workspace_dir = _write_workspace(
+            tmp_path, [("place", "dreamplace")], flow_section={"preset": "rtl2gds"}
+        )
+
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
+
+        assert result.outcome == "mismatch"
+        assert result.error == "flow_mismatch"
 
     def test_target_prefix_keeps_extra_steps(self, tmp_path):
         workspace_dir = _write_workspace(

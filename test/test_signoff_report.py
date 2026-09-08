@@ -166,7 +166,21 @@ class TestExtractDesignReportData:
         assert data.multi_corner_timing[0].temperature_c == 125.0
         assert data.multi_corner_timing[1].temperature_c == -40.0
         assert data.timing.setup_wns_ns == -0.3  # min rollup
-        assert data.timing.violating_endpoints_setup == 0.0
+        # No corner reported an endpoint count, so none is invented.
+        assert data.timing.violating_endpoints_setup is None
+
+    def test_corner_without_slack_is_unknown(self):
+        data = extract_design_report_data(
+            self._inputs(
+                sta_corner_reports={
+                    "MAX_125/RCworst": {"frequency_mhz": 200.0},
+                }
+            )
+        )
+        (corner,) = data.multi_corner_timing
+        assert corner.status == "unknown"
+        assert corner.setup_wns_ns is None
+        assert corner.violating_endpoints_setup is None
 
     def test_drc_status_from_metrics(self):
         data = extract_design_report_data(
@@ -364,7 +378,9 @@ class TestCollectWorkspaceReport:
             seen["workspace"] = workspace
             return "REPORT"
 
-        monkeypatch.setattr("chipcompiler.engine.signoff.generate_text_report", fake_generate)
+        monkeypatch.setattr(
+            "chipcompiler.engine.signoff.collector.generate_text_report", fake_generate
+        )
         workspace = _make_workspace(tmp_path)
         assert SignoffPackageCollector(workspace).text_report() == "REPORT"
         assert seen["workspace"] is workspace

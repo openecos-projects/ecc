@@ -24,7 +24,7 @@ def _set_design_inputs(project_dir: str) -> tuple[Path, Path]:
 
 
 def test_new_workspace_range_uses_ecc_toml_inputs_and_registers_before_execution(
-    monkeypatch, tmp_path, capsys, create_cli_project, flow_mocks
+    monkeypatch, tmp_path, capsys, create_cli_project, flow_mocks, plain_records
 ):
     project_dir = create_cli_project()
     design_def, netlist = _set_design_inputs(project_dir)
@@ -44,7 +44,7 @@ def test_new_workspace_range_uses_ecc_toml_inputs_and_registers_before_execution
             "CTS",
             "--to",
             "CTS",
-            "--json",
+            "--plain",
         ]
     )
 
@@ -59,26 +59,28 @@ def test_new_workspace_range_uses_ecc_toml_inputs_and_registers_before_execution
     assert entry["workspace_id"] == "cts-only"
     assert entry["status"] == "success"
     assert "input_snapshot" not in entry
-    result = json.loads(capsys.readouterr().out)["records"][0]
+    result = plain_records(capsys.readouterr().out)[0]
     assert result["workspace_id"] == "cts-only"
     assert result["status"] == "success"
 
 
-def test_fresh_workspace_requires_a_complete_flow_range(tmp_path, capsys, create_cli_project):
+def test_fresh_workspace_requires_a_complete_flow_range(
+    tmp_path, capsys, create_cli_project, plain_records
+):
     project_dir = create_cli_project()
 
     rc = cli_main.run(
-        ["run", "--project", project_dir, "--workspace", "cts-only", "--from", "CTS", "--json"]
+        ["run", "--project", project_dir, "--workspace", "cts-only", "--from", "CTS", "--plain"]
     )
 
     assert rc == 1
-    assert json.loads(capsys.readouterr().out)["records"] == [
+    assert plain_records(capsys.readouterr().out) == [
         {"kind": "error", "error": "flow_range_requires_pair"}
     ]
     assert not (Path(project_dir) / "project.json").exists()
 
 
-def test_flow_range_rejects_overwrite(tmp_path, capsys, create_cli_project):
+def test_flow_range_rejects_overwrite(tmp_path, capsys, create_cli_project, plain_records):
     project_dir = create_cli_project()
 
     rc = cli_main.run(
@@ -93,11 +95,11 @@ def test_flow_range_rejects_overwrite(tmp_path, capsys, create_cli_project):
             "--to",
             "CTS",
             "--overwrite",
-            "--json",
+            "--plain",
         ]
     )
 
     assert rc == 1
-    assert json.loads(capsys.readouterr().out)["records"] == [
+    assert plain_records(capsys.readouterr().out) == [
         {"kind": "error", "error": "selector_conflict"}
     ]

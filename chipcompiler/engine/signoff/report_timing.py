@@ -59,9 +59,16 @@ def _extract_corner_records(store, inputs) -> list[CornerTimingRecord]:
         corner_hold_wns = pick(
             corner_data.get("hold_wns"), hold_obj.get("wns"), summary_hold.get("wns")
         )
-        passed = (corner_setup_wns is None or corner_setup_wns >= 0) and (
-            corner_hold_wns is None or corner_hold_wns >= 0
-        )
+        # Missing evidence is never a pass: a corner only passes when a
+        # measured slack exists and is non-negative; with no slack at all
+        # the corner stays unknown.
+        measured = [s for s in (corner_setup_wns, corner_hold_wns) if s is not None]
+        if any(s < 0 for s in measured):
+            corner_status = "fail"
+        elif measured:
+            corner_status = "pass"
+        else:
+            corner_status = "unknown"
         records.append(
             CornerTimingRecord(
                 corner=corner_name,
@@ -98,7 +105,7 @@ def _extract_corner_records(store, inputs) -> list[CornerTimingRecord]:
                     hold_obj.get("nvp"),
                     summary_hold.get("nvp"),
                 ),
-                status="pass" if passed else "fail",
+                status=corner_status,
             )
         )
     return records
@@ -120,13 +127,21 @@ def _rollup_from_corners(corners, values: dict) -> None:
             ]
             values[key] = min(valid) if valid else None
     if values.get("violating_endpoints_setup") is None:
-        values["violating_endpoints_setup"] = float(
-            sum(corner.violating_endpoints_setup or 0 for corner in corners)
-        )
+        # Aggregate only measured counts: summing absent values as zero
+        # would present missing timing evidence as zero violations.
+        measured_setup = [
+            corner.violating_endpoints_setup
+            for corner in corners
+            if corner.violating_endpoints_setup is not None
+        ]
+        values["violating_endpoints_setup"] = float(sum(measured_setup)) if measured_setup else None
     if values.get("violating_endpoints_hold") is None:
-        values["violating_endpoints_hold"] = float(
-            sum(corner.violating_endpoints_hold or 0 for corner in corners)
-        )
+        measured_hold = [
+            corner.violating_endpoints_hold
+            for corner in corners
+            if corner.violating_endpoints_hold is not None
+        ]
+        values["violating_endpoints_hold"] = float(sum(measured_hold)) if measured_hold else None
 
 
 def _timing_targets(q, inputs):
@@ -305,7 +320,6 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
             "trans_violations",
             "transition_violations",
             "max_transition_violations",
-            "max_slew",
             "slew_violation_count",
             "summary.slew.violations",
             "slew.violations",
@@ -320,7 +334,6 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
             "cap_violations",
             "max_cap_violations",
             "cap_viols",
-            "max_cap",
             "capacitance_violations",
             "max_capacitance_violations",
             "cap_violation_count",
@@ -337,18 +350,14 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
             "fanout_violations",
             "max_fanout_violations",
             "fanout_viols",
-            "fanout_max_violations",
-            "max_fanout",
             "fanout_violation_count",
             "summary.fanout.violations",
             "fanout.violations",
             "check_fanout",
         ],
     )[0]
-    if setup_wns_ns is not None and setup_wns_ns >= 0:
-        slew_violations = 0 if slew_violations is None else slew_violations
-        cap_violations = 0 if cap_violations is None else cap_violations
-        fanout_violations = 0 if fanout_violations is None else fanout_violations
+    # A met setup slack does not prove the DRC limits were checked: leave
+    # unmeasured violation counts unknown instead of inventing zeros.
 
     critical_path_delay_ns = q(
         "Timing",
@@ -386,7 +395,9 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
 
 
 def _extract_clock(q) -> ClockMetrics:
-    skew_value, skew_key, _ = q(
+    # q() returns (value, stage, source_key): the source key decides the
+    # unit heuristic, so unpack it into skew_key explicitly.
+    skew_value, _stage, skew_key = q(
         "Clock",
         "Clock Skew",
         ["CTS", "STA", "Route"],

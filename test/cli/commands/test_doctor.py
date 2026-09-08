@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 import pytest
@@ -21,7 +20,9 @@ def _patch_probes(monkeypatch, results_by_component, *, slang_called=None):
 
 
 class TestDoctorCommand:
-    def test_doctor_all_pass(self, tmp_path, capsys, monkeypatch, create_cli_project):
+    def test_doctor_all_pass(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.inspection.env_probe.ALL_COMPONENTS",
@@ -35,20 +36,20 @@ class TestDoctorCommand:
             },
         )
 
-        rc = cli_main.run(["doctor", "--project", project_dir, "--json"])
+        rc = cli_main.run(["doctor", "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        records = plain_records(capsys.readouterr().out)
         assert rc == 0
-        summary = data["records"][0]
+        summary = records[0]
         assert summary["doctor"] == "environment"
         assert summary["status"] == "ok"
-        assert summary["checked"] == 2
-        assert summary["failed"] == 0
-        assert summary["attention"] == 0
-        assert {r["component"] for r in data["records"][1:]} == {"yosys", "ecc-tools"}
+        assert summary["checked"] == "2"
+        assert summary["failed"] == "0"
+        assert summary["attention"] == "0"
+        assert {r["component"] for r in records[1:]} == {"yosys", "ecc-tools"}
 
     def test_doctor_required_failure_exits_nonzero(
-        self, tmp_path, capsys, monkeypatch, create_cli_project
+        self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
     ):
         project_dir = create_cli_project()
         monkeypatch.setattr(
@@ -62,17 +63,17 @@ class TestDoctorCommand:
             },
         )
 
-        rc = cli_main.run(["doctor", "--project", project_dir, "--json"])
+        rc = cli_main.run(["doctor", "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        records = plain_records(capsys.readouterr().out)
         assert rc == 1
-        assert data["records"][0]["status"] == "failed"
-        assert data["records"][0]["failed"] == 1
-        assert data["records"][0]["attention"] == 0
-        assert data["records"][1]["remediation"] == "install yosys"
+        assert records[0]["status"] == "failed"
+        assert records[0]["failed"] == "1"
+        assert records[0]["attention"] == "0"
+        assert records[1]["remediation"] == "install yosys"
 
     def test_doctor_optional_failure_stays_zero(
-        self, tmp_path, capsys, monkeypatch, create_cli_project
+        self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
     ):
         project_dir = create_cli_project()
         monkeypatch.setattr(
@@ -88,17 +89,17 @@ class TestDoctorCommand:
             },
         )
 
-        rc = cli_main.run(["doctor", "--project", project_dir, "--json"])
+        rc = cli_main.run(["doctor", "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        records = plain_records(capsys.readouterr().out)
         assert rc == 0
-        summary = data["records"][0]
+        summary = records[0]
         assert summary["status"] == "attention"
-        assert summary["failed"] == 0  # optional failure never inflates `failed`
-        assert summary["attention"] == 1
+        assert summary["failed"] == "0"  # optional failure never inflates `failed`
+        assert summary["attention"] == "1"
 
     def test_doctor_sizer_failure_exits_nonzero(
-        self, tmp_path, capsys, monkeypatch, create_cli_project
+        self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
     ):
         project_dir = create_cli_project()
         monkeypatch.setattr(
@@ -110,13 +111,13 @@ class TestDoctorCommand:
             {"sizer": ProbeResult("sizer", FAIL, remediation="install sizer")},
         )
 
-        rc = cli_main.run(["doctor", "--project", project_dir, "--json"])
+        rc = cli_main.run(["doctor", "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        records = plain_records(capsys.readouterr().out)
         assert rc == 1
-        assert data["records"][0]["status"] == "failed"
-        assert data["records"][0]["failed"] == 1
-        assert data["records"][1]["required"] is True
+        assert records[0]["status"] == "failed"
+        assert records[0]["failed"] == "1"
+        assert records[1]["required"] == "True"
 
     def test_sizer_probe_is_required(self, monkeypatch):
         monkeypatch.setattr(
@@ -141,7 +142,7 @@ class TestDoctorCommand:
         assert result.status == FAIL
         assert result.required is True
 
-    def test_doctor_without_project_skips_pdk(self, tmp_path, capsys, monkeypatch):
+    def test_doctor_without_project_skips_pdk(self, tmp_path, capsys, monkeypatch, plain_records):
         monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(
             "chipcompiler.cli.inspection.env_probe.ALL_COMPONENTS",
@@ -152,14 +153,14 @@ class TestDoctorCommand:
             {"pdk": ProbeResult("pdk", "skip", detail="no ecc.toml")},
         )
 
-        rc = cli_main.run(["doctor", "--json"])
+        rc = cli_main.run(["doctor", "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        records = plain_records(capsys.readouterr().out)
         assert rc == 0
-        assert data["records"][1]["status"] == "skip"
+        assert records[1]["status"] == "skip"
 
     def test_doctor_real_pdk_failure_names_problem(
-        self, tmp_path, capsys, monkeypatch, create_cli_project
+        self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
     ):
         project_dir = create_cli_project()
         monkeypatch.setattr(
@@ -177,11 +178,11 @@ class TestDoctorCommand:
             lambda name, root, overrides=None: "PDK has no liberty files",
         )
 
-        rc = cli_main.run(["doctor", "--project", project_dir, "--json"])
+        rc = cli_main.run(["doctor", "--project", project_dir, "--plain"])
 
-        data = json.loads(capsys.readouterr().out)
+        records = plain_records(capsys.readouterr().out)
         assert rc == 1
-        pdk_record = data["records"][1]
+        pdk_record = records[1]
         assert pdk_record["component"] == "pdk"
         assert pdk_record["status"] == "fail"
         assert pdk_record["remediation"] == "PDK has no liberty files"
@@ -200,7 +201,7 @@ class TestDoctorCommand:
 
 class TestRunPreflight:
     def test_run_blocks_when_required_tool_missing(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, flow_mocks
+        self, tmp_path, capsys, monkeypatch, create_cli_project, flow_mocks, plain_records
     ):
         project_dir = create_cli_project()
         monkeypatch.setattr(
@@ -210,9 +211,9 @@ class TestRunPreflight:
             ],
         )
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == "env_not_ready"
         assert record["preset"] == "rtl2gds"
@@ -243,12 +244,15 @@ class TestRunPreflight:
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
             lambda: [
                 ("Synthesis", "yosys", "Unstart"),
+                ("Floorplan", "ecc", "Unstart"),
                 ("place", "dreamplace", "Unstart"),
                 ("Timing optimization", "sizer", "Unstart"),
             ],
         )
 
-        assert env_probe.probe_components_for_preset("syn_sta") == ("ecc-tools", "yosys")
+        # The mapping derives components from the chain's own tools: a
+        # Yosys-only stub chain needs Yosys, not an unconditional ecc-tools.
+        assert env_probe.probe_components_for_preset("syn_sta") == ("yosys",)
         assert env_probe.probe_components_for_preset("rtl2gds") == (
             "ecc-tools",
             "yosys",
@@ -316,9 +320,7 @@ class TestRunPreflight:
         workspace = Path(project_dir) / "ws"
         (workspace / "home").mkdir(parents=True)
         (workspace / "home" / "flow.json").write_text('{"steps": []}')
-        rc = cli_main.run(
-            ["run", "--project", project_dir, "--workspace", "ws", "--resume", "--json"]
-        )
+        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "ws", "--resume"])
 
         assert rc == 0
 

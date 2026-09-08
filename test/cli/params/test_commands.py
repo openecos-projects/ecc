@@ -12,23 +12,6 @@ class TestParamList:
         out = capsys.readouterr().out
         assert "place.target_density" in out
 
-    def test_param_list_json(self, tmp_path, capsys, create_cli_project):
-        project_dir = create_cli_project()
-        rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
-        assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert "records" in data
-        params = [r["param"] for r in data["records"]]
-        assert "place.target_density" in params
-
-    def test_param_list_jsonl(self, tmp_path, capsys, create_cli_project):
-        project_dir = create_cli_project()
-        rc = cli_main.run(["param", "list", "--project", project_dir, "--jsonl"])
-        assert rc == 0
-        lines = capsys.readouterr().out.strip().split("\n")
-        objects = [json.loads(ln) for ln in lines]
-        assert len(objects) == 14
-
     def test_param_list_plain(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
         rc = cli_main.run(["param", "list", "--project", project_dir, "--plain"])
@@ -52,16 +35,15 @@ class TestParamShow:
         out = capsys.readouterr().out
         assert "place.target_density" in out
 
-    def test_param_show_json(self, tmp_path, capsys, create_cli_project):
+    def test_param_show_records(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project()
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--json"]
+            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
         )
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        record = data["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert record["param"] == "place.target_density"
-        assert record["default"] == 0.2
+        assert record["default"] == "0.2"
         assert "source" in record
         assert "maps_to" in record
 
@@ -85,18 +67,17 @@ class TestParamSet:
         assert "target_density" in content
         assert "0.65" in content
 
-    def test_param_set_then_show(self, tmp_path, capsys, create_cli_project):
+    def test_param_set_then_show(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project()
         cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
         capsys.readouterr()  # flush set output
 
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--json"]
+            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
         )
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        record = data["records"][0]
-        assert record["value"] == 0.65
+        record = plain_records(capsys.readouterr().out)[0]
+        assert record["value"] == "0.65"
         assert record["source"] == "ecc.toml"
 
     def test_param_set_rejects_unknown_key(self, tmp_path, capsys, create_cli_project):
@@ -109,13 +90,15 @@ class TestParamSet:
         rc = cli_main.run(["param", "set", "place.target_density", "1.5", "--project", project_dir])
         assert rc == 1
 
-    def test_param_set_accepts_negative_value(self, tmp_path, capsys, create_cli_project):
+    def test_param_set_accepts_negative_value(
+        self, tmp_path, capsys, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project()
         rc = cli_main.run(
-            ["param", "set", "--project", project_dir, "--json", "place.max_net_weight", "-1"]
+            ["param", "set", "--project", project_dir, "--plain", "place.max_net_weight", "-1"]
         )
         assert rc == 0
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert record["value"] == "-1"
 
     def test_param_set_preserves_other_sections(self, tmp_path, capsys, create_cli_project):
@@ -147,7 +130,7 @@ class TestParamSet:
         assert 'mode = "die_size"' in content
 
     def test_pdk_path_param_writes_pdk_overrides(
-        self, tmp_path, monkeypatch, capsys, create_cli_project
+        self, tmp_path, monkeypatch, capsys, create_cli_project, plain_records
     ):
         project_dir = create_cli_project()
         monkeypatch.setattr(
@@ -167,9 +150,9 @@ class TestParamSet:
         assert 'tech = "prtech/custom.lef"' in content
         capsys.readouterr()
 
-        rc = cli_main.run(["param", "show", "pdk.tech", "--project", project_dir, "--json"])
+        rc = cli_main.run(["param", "show", "pdk.tech", "--project", project_dir, "--plain"])
         assert rc == 0
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert record["value"] == "prtech/custom.lef"
         assert record["pdk_target"] == "pdk.overrides:tech"
 
@@ -180,7 +163,9 @@ class TestParamSet:
 
 
 class TestParamUnset:
-    def test_param_unset_removes_override(self, tmp_path, capsys, create_cli_project):
+    def test_param_unset_removes_override(
+        self, tmp_path, capsys, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project()
         cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
         capsys.readouterr()  # flush set output
@@ -190,11 +175,10 @@ class TestParamUnset:
         capsys.readouterr()  # flush unset output
 
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--json"]
+            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
         )
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        record = data["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert record["source"] == "default"
 
     def test_param_unset_noop_when_absent(self, tmp_path, capsys, create_cli_project):
@@ -206,24 +190,25 @@ class TestParamUnset:
 
 
 class TestParamDiff:
-    def test_param_diff_shows_overrides(self, tmp_path, capsys, create_cli_project):
+    def test_param_diff_shows_overrides(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project()
         cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
         capsys.readouterr()  # flush set output
 
-        rc = cli_main.run(["param", "diff", "--project", project_dir, "--json"])
+        rc = cli_main.run(["param", "diff", "--project", project_dir, "--plain"])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        records = data["records"]
+        records = plain_records(capsys.readouterr().out)
         assert len(records) == 1
         assert records[0]["param"] == "place.target_density"
 
-    def test_param_diff_clean_when_no_overrides(self, tmp_path, capsys, create_cli_project):
+    def test_param_diff_clean_when_no_overrides(
+        self, tmp_path, capsys, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project()
-        rc = cli_main.run(["param", "diff", "--project", project_dir, "--json"])
+        rc = cli_main.run(["param", "diff", "--project", project_dir, "--plain"])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert data["records"][0].get("diff_status") == "clean"
+        records = plain_records(capsys.readouterr().out)
+        assert records[0].get("diff_status") == "clean"
 
 
 class TestRunSet:
@@ -427,28 +412,6 @@ class TestOutputContracts:
         out = capsys.readouterr().out
         assert "\033[" not in out
 
-    def test_json_no_ansi(self, tmp_path, capsys, create_cli_project):
-        project_dir = create_cli_project()
-        rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "\033[" not in out
-
-    def test_jsonl_no_ansi(self, tmp_path, capsys, create_cli_project):
-        project_dir = create_cli_project()
-        rc = cli_main.run(["param", "list", "--project", project_dir, "--jsonl"])
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "\033[" not in out
-
-    def test_json_uses_records_envelope(self, tmp_path, capsys, create_cli_project):
-        project_dir = create_cli_project()
-        rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
-        assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert "records" in data
-        assert isinstance(data["records"], list)
-
     def test_plain_is_line_oriented(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
         rc = cli_main.run(["param", "list", "--project", project_dir, "--plain"])
@@ -460,7 +423,7 @@ class TestOutputContracts:
 
 class TestConfigResolved:
     def test_config_resolved_includes_param_records(
-        self, tmp_path, monkeypatch, capsys, create_cli_project
+        self, tmp_path, monkeypatch, capsys, create_cli_project, plain_records
     ):
         project_dir = create_cli_project()
         monkeypatch.setattr(
@@ -473,10 +436,9 @@ class TestConfigResolved:
         with open(os.path.join(home, "flow.json"), "w") as f:
             json.dump({"steps": []}, f)
 
-        rc = cli_main.run(["config", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--plain"])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        records = data["records"]
+        records = plain_records(capsys.readouterr().out)
         param_records = [r for r in records if r.get("kind") == "param"]
         assert len(param_records) == 14
         first_param = param_records[0]
@@ -484,7 +446,7 @@ class TestConfigResolved:
         assert "maps_to" in first_param
 
     def test_config_resolved_shows_toml_source(
-        self, tmp_path, monkeypatch, capsys, create_cli_project
+        self, tmp_path, monkeypatch, capsys, create_cli_project, plain_records
     ):
         project_dir = create_cli_project()
         monkeypatch.setattr(
@@ -500,16 +462,17 @@ class TestConfigResolved:
         with open(os.path.join(home, "flow.json"), "w") as f:
             json.dump({"steps": []}, f)
 
-        rc = cli_main.run(["config", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--plain"])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        param_records = [r for r in data["records"] if r.get("kind") == "param"]
+        param_records = [
+            r for r in plain_records(capsys.readouterr().out) if r.get("kind") == "param"
+        ]
         density = next(r for r in param_records if r["key"] == "place.target_density")
-        assert density["value"] == 0.65
+        assert density["value"] == "0.65"
         assert density["source"] == "ecc.toml"
 
     def test_config_resolved_seeds_design_frequency(
-        self, tmp_path, monkeypatch, capsys, create_cli_project
+        self, tmp_path, monkeypatch, capsys, create_cli_project, plain_records
     ):
         project_dir = create_cli_project(freq=200.0)
         monkeypatch.setattr(
@@ -522,12 +485,13 @@ class TestConfigResolved:
         with open(os.path.join(home, "flow.json"), "w") as f:
             json.dump({"steps": []}, f)
 
-        rc = cli_main.run(["config", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--plain"])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        param_records = [r for r in data["records"] if r.get("kind") == "param"]
+        param_records = [
+            r for r in plain_records(capsys.readouterr().out) if r.get("kind") == "param"
+        ]
         freq = next(r for r in param_records if r["key"] == "design.frequency_mhz")
-        assert freq["value"] == 200.0
+        assert freq["value"] == "200.0"
 
 
 class TestPrettyOutput:
@@ -577,30 +541,30 @@ class TestPrettyOutput:
 
 
 class TestResolvedListValues:
-    def test_param_list_json_has_value_and_source(self, tmp_path, capsys, create_cli_project):
+    def test_param_list_records_have_value_and_source(
+        self, tmp_path, capsys, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project()
         cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
         capsys.readouterr()
 
-        rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
+        rc = cli_main.run(["param", "list", "--project", project_dir, "--plain"])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        records = data["records"]
+        records = plain_records(capsys.readouterr().out)
         density = next(r for r in records if r["param"] == "place.target_density")
-        assert density["value"] == 0.65
+        assert density["value"] == "0.65"
         assert density["source"] == "ecc.toml"
         assert "default" in density
         assert "maps_to" in density
         assert "inspect" in density
 
     def test_param_list_default_source_when_no_overrides(
-        self, tmp_path, capsys, create_cli_project
+        self, tmp_path, capsys, create_cli_project, plain_records
     ):
         project_dir = create_cli_project()
-        rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
+        rc = cli_main.run(["param", "list", "--project", project_dir, "--plain"])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        for r in data["records"]:
+        for r in plain_records(capsys.readouterr().out):
             if r["param"] == "design.frequency_mhz":
                 assert r["source"] == "ecc.toml"
             else:
@@ -608,21 +572,24 @@ class TestResolvedListValues:
 
 
 class TestDiffFiltering:
-    def test_diff_only_shows_values_that_differ(self, tmp_path, capsys, create_cli_project):
+    def test_diff_only_shows_values_that_differ(
+        self, tmp_path, capsys, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project()
         cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
         capsys.readouterr()
 
-        rc = cli_main.run(["param", "diff", "--project", project_dir, "--json"])
+        rc = cli_main.run(["param", "diff", "--project", project_dir, "--plain"])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        records = data["records"]
+        records = plain_records(capsys.readouterr().out)
         assert len(records) == 1
         assert records[0]["param"] == "place.target_density"
-        assert records[0]["value"] == 0.65
-        assert records[0]["default"] != 0.65
+        assert records[0]["value"] == "0.65"
+        assert records[0]["default"] != records[0]["value"]
 
-    def test_diff_clean_when_set_to_default(self, tmp_path, capsys, create_cli_project):
+    def test_diff_clean_when_set_to_default(
+        self, tmp_path, capsys, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project()
         schema_default = 0.2
         cli_main.run(
@@ -630,23 +597,24 @@ class TestDiffFiltering:
         )
         capsys.readouterr()
 
-        rc = cli_main.run(["param", "diff", "--project", project_dir, "--json"])
+        rc = cli_main.run(["param", "diff", "--project", project_dir, "--plain"])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert data["records"][0].get("diff_status") == "clean"
+        records = plain_records(capsys.readouterr().out)
+        assert records[0].get("diff_status") == "clean"
 
 
 class TestParamShowDisclosureCommands:
     """param show must include disclosure command fields."""
 
-    def test_show_json_has_disclosure_commands(self, tmp_path, capsys, create_cli_project):
+    def test_show_records_have_disclosure_commands(
+        self, tmp_path, capsys, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project()
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--json"]
+            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
         )
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        record = data["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert "inspect" in record
         assert "set" in record
         assert "run" in record
@@ -665,60 +633,63 @@ class TestParamShowDisclosureCommands:
 class TestListDefaultDiffFiltering:
     """param diff must not report list values equal to defaults."""
 
-    def test_list_default_not_in_diff(self, tmp_path, capsys, create_cli_project):
+    def test_list_default_not_in_diff(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project()
         cli_main.run(["param", "set", "floorplan.core_margin", "[2,2]", "--project", project_dir])
         capsys.readouterr()
 
-        rc = cli_main.run(["param", "diff", "--project", project_dir, "--json"])
+        rc = cli_main.run(["param", "diff", "--project", project_dir, "--plain"])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert data["records"][0].get("diff_status") == "clean"
+        records = plain_records(capsys.readouterr().out)
+        assert records[0].get("diff_status") == "clean"
 
-    def test_list_changed_value_in_diff(self, tmp_path, capsys, create_cli_project):
+    def test_list_changed_value_in_diff(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project()
         cli_main.run(["param", "set", "floorplan.core_margin", "[4,4]", "--project", project_dir])
         capsys.readouterr()
 
-        rc = cli_main.run(["param", "diff", "--project", project_dir, "--json"])
+        rc = cli_main.run(["param", "diff", "--project", project_dir, "--plain"])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert len(data["records"]) >= 1
-        margin = next(
-            (r for r in data["records"] if r.get("param") == "floorplan.core_margin"), None
-        )
+        records = plain_records(capsys.readouterr().out)
+        assert len(records) >= 1
+        margin = next((r for r in records if r.get("param") == "floorplan.core_margin"), None)
         assert margin is not None
-        assert margin["value"] == [4, 4]
+        assert margin["value"] == "[4, 4]"
 
 
 class TestDesignFrequencySeeded:
     """ecc param list/show must reflect [design] frequency_mhz."""
 
-    def test_list_shows_design_frequency(self, tmp_path, capsys, create_cli_project):
+    def test_list_shows_design_frequency(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project(freq=200.0)
-        rc = cli_main.run(["param", "list", "--project", project_dir, "--json"])
+        rc = cli_main.run(["param", "list", "--project", project_dir, "--plain"])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        freq = next(r for r in data["records"] if r["param"] == "design.frequency_mhz")
-        assert freq["value"] == 200.0
+        freq = next(
+            r
+            for r in plain_records(capsys.readouterr().out)
+            if r["param"] == "design.frequency_mhz"
+        )
+        assert freq["value"] == "200.0"
 
-    def test_show_shows_design_frequency(self, tmp_path, capsys, create_cli_project):
+    def test_show_shows_design_frequency(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project(freq=200.0)
         rc = cli_main.run(
-            ["param", "show", "design.frequency_mhz", "--project", project_dir, "--json"]
+            ["param", "show", "design.frequency_mhz", "--project", project_dir, "--plain"]
         )
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert data["records"][0]["value"] == 200.0
+        records = plain_records(capsys.readouterr().out)
+        assert records[0]["value"] == "200.0"
 
-    def test_param_override_beats_design_frequency(self, tmp_path, capsys, create_cli_project):
+    def test_param_override_beats_design_frequency(
+        self, tmp_path, capsys, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project(freq=200.0)
         cli_main.run(["param", "set", "design.frequency_mhz", "300", "--project", project_dir])
         capsys.readouterr()
         rc = cli_main.run(
-            ["param", "show", "design.frequency_mhz", "--project", project_dir, "--json"]
+            ["param", "show", "design.frequency_mhz", "--project", project_dir, "--plain"]
         )
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert data["records"][0]["value"] == 300.0
-        assert data["records"][0]["source"] == "ecc.toml"
+        records = plain_records(capsys.readouterr().out)
+        assert records[0]["value"] == "300.0"
+        assert records[0]["source"] == "ecc.toml"

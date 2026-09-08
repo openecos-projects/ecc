@@ -13,6 +13,7 @@ migration moves. Imported lazily by the run handler; keep module-level
 imports cheap.
 """
 
+import contextlib
 import os
 from pathlib import Path
 
@@ -85,24 +86,30 @@ def _existing_target_guard(run_dir: str, project_dir: str, run_name: str) -> Com
     return None
 
 
-def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str):
-    """Overwrite-delete + atomic create of the run target (the caller holds
+def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_locks):
+    """Overwrite-backup + atomic create of the run target (the caller holds
     the shared project lock).
 
-    Returns owns_target when the run may proceed, or a CommandResult
-    error (overwrite_refused / run_exists). Only the process that
-    atomically creates the target may proceed or clean up a failed
-    create_workspace: an existing target (pre-existing or won by a
-    concurrent run) is never written into or removed by this invocation.
-    create_workspace re-attempts the creation, so any other error
-    surfaces from there.
-    """
-    import shutil
+    Enters the sibling workspace lock into *ws_locks* BEFORE the rename and
+    leaves it held: the caller keeps it through the replacement's
+    construction, so two concurrent overwrite runs serialize end-to-end and
+    one's failure cleanup can never destroy the other's completed
+    workspace.
 
+    Returns (owns_target, backup_path) when the run may proceed, or a
+    CommandResult error (overwrite_refused / run_exists). Only the process
+    that atomically creates the target may proceed, restore a backup, or
+    clean up a failed create_workspace: an existing target (pre-existing or
+    won by a concurrent run) is never written into or removed by this
+    invocation. The previous workspace is renamed to a sibling backup
+    instead of deleted, so a failed creation can put it back; the backup is
+    discarded once the replacement is fully constructed.
+    """
     from chipcompiler.cli.core.records import error_record
     from chipcompiler.engine.reconcile import _workspace_lock
 
     project_dir = ctx.project_dir
+    backup_path = None
     if command_input.overwrite and os.path.lexists(run_dir):
         if not _resolves_as_spelled(run_dir, project_dir) or not _is_ecc_run_dir(run_dir):
             return CommandResult.err(
@@ -115,28 +122,24 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str):
                     )
                 ]
             )
-        # Serialize the deletion with an active execution of this workspace:
+        # Serialize the rename with an active execution of this workspace:
         # flock blocks until the running engine releases the sibling lock
-        # (<run_dir>.lock, which survives the rmtree), and the fresh engine
+        # (<run_dir>.lock, which survives the rename), and the fresh engine
         # re-acquires it on the recreated tree, so two runs never execute
-        # against the same paths.
-        with _workspace_lock(Path(run_dir)):
-            for root, dirs, files in os.walk(run_dir):
-                for d in dirs:
-                    dp = os.path.join(root, d)
-                    if not os.path.islink(dp):
-                        os.chmod(dp, 0o755)
-                for f in files:
-                    fp = os.path.join(root, f)
-                    if not os.path.islink(fp):
-                        os.chmod(fp, 0o644)
-            os.chmod(run_dir, 0o755)
-            shutil.rmtree(run_dir)
+        # against the same paths. The lock stays entered in *ws_locks* until
+        # the replacement is built.
+        ws_locks.enter_context(_workspace_lock(Path(run_dir)))
+        backup_path = f"{run_dir}.overwritten-{os.getpid()}"
+        # An atomic rename, not a delete: until the replacement is fully
+        # constructed the old tree stays on disk and recoverable.
+        os.replace(run_dir, backup_path)
 
     try:
         os.makedirs(run_dir)
-        return True
+        return True, backup_path
     except FileExistsError:
+        if backup_path is not None:
+            os.replace(backup_path, run_dir)
         return CommandResult.err(
             [
                 error_record(
@@ -147,8 +150,33 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str):
                 )
             ]
         )
-    except OSError:
-        return False
+    except OSError as exc:
+        if backup_path is not None:
+            with contextlib.suppress(OSError):
+                os.replace(backup_path, run_dir)
+        return CommandResult.err(
+            [
+                error_record(
+                    "workspace_create_failed",
+                    workspace_id=run_name,
+                    workspace=run_dir,
+                    reason=str(exc),
+                )
+            ]
+        )
+
+
+def _abandon_prepared_target(backup_path: str | None, run_dir: str, *, owns_target: bool) -> None:
+    """Undo a prepared-but-unregistered target: remove the empty directory
+    and put a renamed-aside previous workspace back."""
+    import shutil
+
+    if not owns_target:
+        return
+    shutil.rmtree(run_dir, ignore_errors=True)
+    if backup_path is not None:
+        with contextlib.suppress(OSError):
+            os.replace(backup_path, run_dir)
 
 
 def _stale_project_state(project_dir: str, expected: str) -> CommandResult | None:
@@ -212,7 +240,13 @@ def dispatch_project_run(
             workspace_registered=workspace_registered,
         )
 
-    def fresh_run(*, owns_target: bool) -> CommandResult:
+    def fresh_run(
+        *,
+        owns_target: bool,
+        backup_path: str | None = None,
+        ws_locks=None,
+        registration_created: bool = False,
+    ) -> CommandResult:
         return execute_fresh_run(
             command_input,
             ctx,
@@ -225,6 +259,9 @@ def dispatch_project_run(
             warning_records,
             workspace_registered=workspace_registered,
             owns_target=owns_target,
+            backup_path=backup_path,
+            ws_locks=ws_locks,
+            registration_created=registration_created,
             execute_flow=execute_flow,
         )
 
@@ -235,73 +272,95 @@ def dispatch_project_run(
         # Legacy runs create inside runs/ — the very paths a migration
         # moves — so state revalidation, the existing/fresh decision,
         # creation, AND the engine all hold the shared project lock.
+        ws_locks = contextlib.ExitStack()
+        try:
+            with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
+                stale = _stale_project_state(project_dir, "legacy")
+                if stale is not None:
+                    return stale
+                if os.path.exists(flow_json) and not command_input.overwrite:
+                    unsafe = _existing_target_guard(run_dir, project_dir, run_name)
+                    if unsafe is not None:
+                        return unsafe
+                    return existing_workspace_run()
+                prepared = _prepare_run_target(command_input, ctx, run_dir, run_name, ws_locks)
+                if isinstance(prepared, CommandResult):
+                    return prepared
+                return fresh_run(
+                    owns_target=prepared[0], backup_path=prepared[1], ws_locks=ws_locks
+                )
+        finally:
+            ws_locks.close()
+
+    # The ownership decision (overwrite rename + create) runs inside the
+    # shared project lock, and the workspace lock taken for the rename stays
+    # held until the replacement is fully built: two concurrent overwrite
+    # runs can no longer interleave so that one's failure cleanup destroys
+    # the other's completed workspace. The engine still runs outside the
+    # project-wide lock so a run never holds it for minutes.
+    owns_target = False
+    backup_path = None
+    created_registration = False
+    ws_locks = contextlib.ExitStack()
+    try:
         with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
-            stale = _stale_project_state(project_dir, "legacy")
-            if stale is not None:
-                return stale
-            if os.path.exists(flow_json) and not command_input.overwrite:
+            existing = os.path.exists(flow_json) and not command_input.overwrite
+            if existing:
                 unsafe = _existing_target_guard(run_dir, project_dir, run_name)
                 if unsafe is not None:
                     return unsafe
-                return existing_workspace_run()
-            prepared = _prepare_run_target(command_input, ctx, run_dir, run_name)
-            if isinstance(prepared, CommandResult):
-                return prepared
-            return fresh_run(owns_target=prepared)
+            else:
+                prepared = _prepare_run_target(command_input, ctx, run_dir, run_name, ws_locks)
+                if isinstance(prepared, CommandResult):
+                    return prepared
+                owns_target, backup_path = prepared
+                if not workspace_registered:
+                    from chipcompiler.cli.core.records import error_record
+                    from chipcompiler.cli.project.config import resolve_pdk_root
+                    from chipcompiler.cli.project.manifest_write import pre_register_workspace
 
-    # The overwrite-delete + atomic create run inside the shared project
-    # lock: an `ecc migrate` holding the exclusive lock sees them as one
-    # serialized section instead of racing the target's appearance. The
-    # engine runs outside the lock so a run never holds it for minutes.
-    owns_target = False
-    with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
-        existing = os.path.exists(flow_json) and not command_input.overwrite
+                    registration = pre_register_workspace(
+                        project_dir,
+                        cfg=cfg,
+                        pdk_root=resolve_pdk_root(cfg),
+                        workspace_id=run_name,
+                        workspace_path=run_dir,
+                        flow_config=flow_config,
+                    )
+                    if registration == "conflict":
+                        _abandon_prepared_target(backup_path, run_dir, owns_target=owns_target)
+                        return CommandResult.err(
+                            [
+                                error_record(
+                                    "workspace_conflict",
+                                    workspace_id=run_name,
+                                    workspace=run_dir,
+                                )
+                            ]
+                        )
+                    if registration != "registered":
+                        _abandon_prepared_target(backup_path, run_dir, owns_target=owns_target)
+                        return CommandResult.err(
+                            [
+                                error_record(
+                                    "workspace_registration_failed",
+                                    workspace_id=run_name,
+                                    workspace=run_dir,
+                                )
+                            ]
+                        )
+                    workspace_registered = True
+                    created_registration = True
         if existing:
-            unsafe = _existing_target_guard(run_dir, project_dir, run_name)
-            if unsafe is not None:
-                return unsafe
-        else:
-            if not workspace_registered:
-                from chipcompiler.cli.core.records import error_record
-                from chipcompiler.cli.project.config import resolve_pdk_root
-                from chipcompiler.cli.project.manifest import pre_register_workspace
-
-                registration = pre_register_workspace(
-                    project_dir,
-                    cfg=cfg,
-                    pdk_root=resolve_pdk_root(cfg),
-                    workspace_id=run_name,
-                    workspace_path=run_dir,
-                    flow_config=flow_config,
-                )
-                if registration == "conflict":
-                    return CommandResult.err(
-                        [
-                            error_record(
-                                "workspace_conflict",
-                                workspace_id=run_name,
-                                workspace=run_dir,
-                            )
-                        ]
-                    )
-                if registration != "registered":
-                    return CommandResult.err(
-                        [
-                            error_record(
-                                "workspace_registration_failed",
-                                workspace_id=run_name,
-                                workspace=run_dir,
-                            )
-                        ]
-                    )
-                workspace_registered = True
-            prepared = _prepare_run_target(command_input, ctx, run_dir, run_name)
-            if isinstance(prepared, CommandResult):
-                return prepared
-            owns_target = prepared
-    if existing:
-        # Manifest workspaces live outside runs/ — migration never moves
-        # them, so the engine must not pin the shared lock for its whole
-        # execution the way the legacy branch intentionally does.
-        return existing_workspace_run()
-    return fresh_run(owns_target=owns_target)
+            # Manifest workspaces live outside runs/ — migration never moves
+            # them, so the engine must not pin the shared lock for its whole
+            # execution the way the legacy branch intentionally does.
+            return existing_workspace_run()
+        return fresh_run(
+            owns_target=owns_target,
+            backup_path=backup_path,
+            ws_locks=ws_locks,
+            registration_created=created_registration,
+        )
+    finally:
+        ws_locks.close()

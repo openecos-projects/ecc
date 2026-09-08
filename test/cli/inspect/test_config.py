@@ -19,47 +19,32 @@ class TestConfigResolved:
         assert "pdk.name" in out
         assert "run_dir" in out
 
-    def test_config_resolved_json(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, mock_pdk_validation
-    ):
-        mock_pdk_validation()
-        project_dir = create_cli_project()
-
-        rc = cli_main.run(["config", "--json", "--project", project_dir])
-        assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert "records" in data
-        keys = [item["config"] for item in data["records"]]
-        assert "design.name" in keys
-        assert "pdk.name" in keys
-        assert "run_dir" in keys
-
     def test_config_resolved_default_run_dir_value(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, mock_pdk_validation
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        mock_pdk_validation,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
 
-        rc = cli_main.run(["config", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "--plain", "--project", project_dir])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        run_item = next(i for i in data["records"] if i["config"] == "run_dir")
+        records = plain_records(capsys.readouterr().out)
+        run_item = next(i for i in records if i["config"] == "run_dir")
         assert run_item["value"] == "default"
 
-    def test_config_resolved_jsonl(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, mock_pdk_validation
-    ):
-        mock_pdk_validation()
-        project_dir = create_cli_project()
-
-        rc = cli_main.run(["config", "--jsonl", "--project", project_dir])
-        assert rc == 0
-        objects = [json.loads(ln) for ln in capsys.readouterr().out.strip().split("\n")]
-        keys = [o["config"] for o in objects]
-        assert "design.name" in keys
-
     def test_config_resolved_pdk_root_from_env(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, mock_pdk_validation
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        mock_pdk_validation,
+        plain_records,
     ):
         mock_pdk_validation()
         pdk_root = tmp_path / "ics55_env"
@@ -68,14 +53,20 @@ class TestConfigResolved:
 
         project_dir = create_cli_project(pdk_root="")
 
-        rc = cli_main.run(["config", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "--plain", "--project", project_dir])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        pdk_item = next(i for i in data["records"] if i["config"] == "pdk.root")
+        records = plain_records(capsys.readouterr().out)
+        pdk_item = next(i for i in records if i["config"] == "pdk.root")
         assert pdk_item["source"] == "env"
 
     def test_config_resolved_workspace(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, mock_pdk_validation
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        mock_pdk_validation,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -85,14 +76,14 @@ class TestConfigResolved:
                 "config",
                 "--workspace",
                 "sweep_004",
-                "--json",
+                "--plain",
                 "--project",
                 project_dir,
             ]
         )
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        run_item = next(i for i in data["records"] if i["config"] == "run_dir")
+        records = plain_records(capsys.readouterr().out)
+        run_item = next(i for i in records if i["config"] == "run_dir")
         assert run_item["value"] == "sweep_004"
 
     def test_config_missing_config(self, tmp_path, capsys):
@@ -102,24 +93,14 @@ class TestConfigResolved:
         rc = cli_main.run(["config", "--project", str(project_dir)])
         assert rc == 1
 
-    def test_config_missing_config_json_has_kind_error(self, tmp_path, capsys):
+    def test_config_missing_config_plain_has_kind_error(self, tmp_path, capsys, plain_records):
         project_dir = tmp_path / "empty_project"
         project_dir.mkdir()
 
-        rc = cli_main.run(["config", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["config", "--project", str(project_dir), "--plain"])
         assert rc == 1
-        data = json.loads(capsys.readouterr().out)
-        record = data["records"][0]
-        assert record["kind"] == "error"
-        assert record["error"] == "missing_config"
-
-    def test_config_missing_config_jsonl_has_kind_error(self, tmp_path, capsys):
-        project_dir = tmp_path / "empty_project"
-        project_dir.mkdir()
-
-        rc = cli_main.run(["config", "--project", str(project_dir), "--jsonl"])
-        assert rc == 1
-        record = json.loads(capsys.readouterr().out.strip())
+        records = plain_records(capsys.readouterr().out)
+        record = records[0]
         assert record["kind"] == "error"
         assert record["error"] == "missing_config"
 
@@ -138,7 +119,12 @@ class TestConfigResolved:
 
 class TestConfigStepResolved:
     def test_config_accepts_extended_rtl2gds_step_token(
-        self, tmp_path, capsys, create_cli_project, create_flow_json
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        create_flow_json,
+        plain_records,
     ):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
@@ -153,10 +139,10 @@ class TestConfigStepResolved:
             ],
         )
 
-        rc = cli_main.run(["config", "timing_optimization", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "timing_optimization", "--plain", "--project", project_dir])
 
         assert rc == 0
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {"step": "timing_optimization", "config_status": "none"}
         ]
 
@@ -192,7 +178,7 @@ class TestConfigStepResolved:
         assert "default/config/db_ecc.json" in out
         assert "cts_ecc.json" in out
 
-    def test_config_step_json(
+    def test_config_step_plain_records(
         self,
         tmp_path,
         capsys,
@@ -202,6 +188,7 @@ class TestConfigStepResolved:
         create_step_dir,
         create_workspace_config,
         mock_pdk_validation,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -216,11 +203,9 @@ class TestConfigStepResolved:
             },
         )
 
-        rc = cli_main.run(["config", "cts", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "cts", "--plain", "--project", project_dir])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert "records" in data
-        records = data["records"]
+        records = plain_records(capsys.readouterr().out)
         assert all(item["scope"] == "step" for item in records)
         assert all(item["step"] == "cts" for item in records)
         assert all(item["source"] == "workspace_config" for item in records)
@@ -239,6 +224,7 @@ class TestConfigStepResolved:
         create_step_dir,
         create_cts_workspace_config,
         mock_pdk_validation,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -247,12 +233,12 @@ class TestConfigStepResolved:
         create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
         create_cts_workspace_config(run_dir)
 
-        rc = cli_main.run(["config", "cts", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "cts", "--plain", "--project", project_dir])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
+        records = plain_records(capsys.readouterr().out)
         assert all(
-            item["inspect"] == f"ecc config cts --json --project {project_dir} --workspace default"
-            for item in data["records"]
+            item["inspect"] == f"ecc config cts --project {project_dir} --workspace default"
+            for item in records
         )
 
     def test_config_step_unknown_step(self, tmp_path, capsys, create_cli_project):
@@ -284,6 +270,7 @@ class TestConfigStepResolved:
         create_step_dir,
         create_dreamplace_workspace_config,
         mock_pdk_validation,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -302,13 +289,13 @@ class TestConfigStepResolved:
         create_step_dir(run_dir, "legalization", "dreamplace", subdirs=["output"])
         create_dreamplace_workspace_config(run_dir)
 
-        rc = cli_main.run(["config", "legalization", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "legalization", "--plain", "--project", project_dir])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert [item["path"] for item in data["records"]] == [
+        records = plain_records(capsys.readouterr().out)
+        assert [item["path"] for item in records] == [
             "default/config/dreamplace_ecc.json",
         ]
-        assert data["records"][0]["source"] == "workspace_config"
+        assert records[0]["source"] == "workspace_config"
 
     def test_config_sizer_timing_opt_uses_db_and_dreamplace_configs(
         self,
@@ -318,6 +305,7 @@ class TestConfigStepResolved:
         create_flow_json,
         create_step_dir,
         create_workspace_config,
+        plain_records,
     ):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
@@ -341,15 +329,15 @@ class TestConfigStepResolved:
             },
         )
 
-        rc = cli_main.run(["config", "timing optimization", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "timing optimization", "--plain", "--project", project_dir])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert [item["path"] for item in data["records"]] == [
+        records = plain_records(capsys.readouterr().out)
+        assert [item["path"] for item in records] == [
             "default/config/db_ecc.json",
             "default/config/dreamplace_ecc.json",
         ]
-        assert all(item["source"] == "workspace_config" for item in data["records"])
-        assert all(item["step"] == "timing optimization" for item in data["records"])
+        assert all(item["source"] == "workspace_config" for item in records)
+        assert all(item["step"] == "timing optimization" for item in records)
 
     def test_config_cli_tokens_use_internal_flow_step_names(
         self,
@@ -358,6 +346,7 @@ class TestConfigStepResolved:
         create_flow_json,
         create_step_dir,
         create_ecc_workspace_config,
+        plain_records,
     ):
         cases = [
             ("place", "placement", None),
@@ -380,16 +369,16 @@ class TestConfigStepResolved:
             create_step_dir(run_dir, step_name, "ecc", subdirs=["output"])
             create_ecc_workspace_config(run_dir, step_config or "filler_ecc.json")
 
-            rc = cli_main.run(["config", step_token, "--json", "--project", project_dir])
+            rc = cli_main.run(["config", step_token, "--plain", "--project", project_dir])
             assert rc == 0
-            data = json.loads(capsys.readouterr().out)
+            records = plain_records(capsys.readouterr().out)
             expected = [
                 "default/config/db_ecc.json",
             ]
             if step_config:
                 expected.append(f"default/config/{step_config}")
-            assert [item["path"] for item in data["records"]] == expected
-            assert all(item["step"] == step_token for item in data["records"])
+            assert [item["path"] for item in records] == expected
+            assert all(item["step"] == step_token for item in records)
 
     def test_config_sta_uses_rcx_and_sta_workspace_configs(
         self,
@@ -399,6 +388,7 @@ class TestConfigStepResolved:
         create_flow_json,
         create_step_dir,
         create_workspace_config,
+        plain_records,
     ):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
@@ -423,15 +413,15 @@ class TestConfigStepResolved:
             },
         )
 
-        rc = cli_main.run(["config", "sta", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "sta", "--plain", "--project", project_dir])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert [item["path"] for item in data["records"]] == [
+        records = plain_records(capsys.readouterr().out)
+        assert [item["path"] for item in records] == [
             "default/config/db_ecc.json",
             "default/config/rcx_ecc.json",
             "default/config/sta_ecc.json",
         ]
-        assert all(item["source"] == "workspace_config" for item in data["records"])
+        assert all(item["source"] == "workspace_config" for item in records)
 
     def test_config_yosys_synthesis_does_not_report_ecc_workspace_configs(
         self,
@@ -441,6 +431,7 @@ class TestConfigStepResolved:
         create_flow_json,
         create_step_dir,
         create_workspace_config,
+        plain_records,
     ):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
@@ -458,13 +449,13 @@ class TestConfigStepResolved:
         create_step_dir(run_dir, "Synthesis", "yosys", subdirs=["output"])
         create_workspace_config(run_dir, {"db_ecc.json": "{}"})
 
-        rc = cli_main.run(["config", "synthesis", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "synthesis", "--plain", "--project", project_dir])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert len(data["records"]) == 1
-        assert data["records"][0]["step"] == "synthesis"
-        assert data["records"][0]["config_status"] == "none"
-        assert "path" not in data["records"][0]
+        records = plain_records(capsys.readouterr().out)
+        assert len(records) == 1
+        assert records[0]["step"] == "synthesis"
+        assert records[0]["config_status"] == "none"
+        assert "path" not in records[0]
 
 
 class TestEmptyStepConfigSentinel:
@@ -485,19 +476,25 @@ class TestEmptyStepConfigSentinel:
         assert "ecc artifacts" not in out
 
     def test_step_no_config_emits_sentinel_json(
-        self, tmp_path, capsys, create_cli_project, create_flow_json, create_step_dir
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        create_flow_json,
+        create_step_dir,
+        plain_records,
     ):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir)
         create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
 
-        rc = cli_main.run(["config", "cts", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "cts", "--plain", "--project", project_dir])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert data["records"][0]["step"] == "cts"
-        assert data["records"][0]["config_status"] == "none"
-        assert "artifacts" not in data["records"][0]
+        records = plain_records(capsys.readouterr().out)
+        assert records[0]["step"] == "cts"
+        assert records[0]["config_status"] == "none"
+        assert "artifacts" not in records[0]
 
 
 class TestDirectoryOnlyStepConfig:
@@ -509,6 +506,7 @@ class TestDirectoryOnlyStepConfig:
         create_flow_json,
         create_step_dir,
         create_cts_workspace_config,
+        plain_records,
     ):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
@@ -521,10 +519,10 @@ class TestDirectoryOnlyStepConfig:
         create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
         create_cts_workspace_config(run_dir)
 
-        rc = cli_main.run(["config", "cts", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "cts", "--plain", "--project", project_dir])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert [item["path"] for item in data["records"]] == [
+        records = plain_records(capsys.readouterr().out)
+        assert [item["path"] for item in records] == [
             "default/config/db_ecc.json",
             "default/config/cts_ecc.json",
         ]
@@ -536,6 +534,7 @@ class TestDirectoryOnlyStepConfig:
         create_flow_json,
         create_step_dir,
         create_ecc_workspace_config,
+        plain_records,
     ):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
@@ -548,10 +547,10 @@ class TestDirectoryOnlyStepConfig:
         create_step_dir(run_dir, "route", "ecc", subdirs=["output"])
         create_ecc_workspace_config(run_dir, "route_ecc.json")
 
-        rc = cli_main.run(["config", "routing", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "routing", "--plain", "--project", project_dir])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        assert [item["path"] for item in data["records"]] == [
+        records = plain_records(capsys.readouterr().out)
+        assert [item["path"] for item in records] == [
             "default/config/db_ecc.json",
             "default/config/route_ecc.json",
         ]
@@ -565,6 +564,7 @@ class TestAbsoluteWorkspaceSelector:
         monkeypatch,
         create_cli_project,
         mock_pdk_validation,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
@@ -575,13 +575,13 @@ class TestAbsoluteWorkspaceSelector:
                 "config",
                 "--workspace",
                 str(external_run),
-                "--json",
+                "--plain",
                 "--project",
                 project_dir,
             ]
         )
         assert rc == 1
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert record["error"] == "invalid_workspace"
         assert "invalid_workspace" in record["reason"]
 
@@ -602,15 +602,21 @@ class TestConfigTextUsesItemInspectCmd:
 
 class TestConfigJsonDisclosure:
     def test_project_config_json_has_inspect_cmd(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, mock_pdk_validation
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        mock_pdk_validation,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
 
-        rc = cli_main.run(["config", "--json", "--project", project_dir])
+        rc = cli_main.run(["config", "--plain", "--project", project_dir])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        for item in data["records"]:
+        records = plain_records(capsys.readouterr().out)
+        for item in records:
             assert "inspect" in item, f"Missing inspect in item: {item['config']}"
 
 
@@ -660,7 +666,9 @@ run = "{defaults["flow_run"]}"
         assert rc == 1
         assert "invalid_config" in capsys.readouterr().out
 
-    def test_invalid_flow_run_rejected(self, tmp_path, capsys, monkeypatch, mock_pdk_validation):
+    def test_invalid_flow_run_rejected(
+        self, tmp_path, capsys, monkeypatch, mock_pdk_validation, plain_records
+    ):
         mock_pdk_validation()
         project_dir = tmp_path / "bad_run"
         project_dir.mkdir()
@@ -670,9 +678,9 @@ run = "{defaults["flow_run"]}"
         assert rc == 1
         assert "invalid_config" in capsys.readouterr().out
 
-        rc = cli_main.run(["check", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["check", "--plain", "--project", str(project_dir)])
         assert rc == 1
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         reasons = [record.get("reason", "") for record in records]
         assert any("[flow].run is not supported" in reason for reason in reasons)
 
@@ -706,7 +714,12 @@ run = "{defaults["flow_run"]}"
 
 class TestRtlPathResolution:
     def test_absolute_rtl_resolved_correctly(
-        self, tmp_path, capsys, monkeypatch, mock_pdk_validation
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        mock_pdk_validation,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = tmp_path / "proj"
@@ -729,10 +742,10 @@ root = "{tmp_path / "pdk"}"
 preset = "rtl2gds"
 ''')
         (tmp_path / "pdk").mkdir(exist_ok=True)
-        rc = cli_main.run(["config", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--plain", "--project", str(project_dir)])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        rtl_item = next(i for i in data["records"] if i["config"] == "design.rtl.0")
+        records = plain_records(capsys.readouterr().out)
+        rtl_item = next(i for i in records if i["config"] == "design.rtl.0")
         assert rtl_item["resolved"] == str(rtl_dir / "gcd.v")
 
 
@@ -742,6 +755,7 @@ def test_config_resolved_pdk_overrides_present(
     monkeypatch,
     create_cli_project,
     mock_pdk_validation,
+    plain_records,
 ):
     mock_pdk_validation()
     project_dir = create_cli_project()
@@ -749,13 +763,13 @@ def test_config_resolved_pdk_overrides_present(
     with open(toml_path, "a") as f:
         f.write('\n[pdk.overrides]\ndont_use = ["ICG*", "DFFSRQX*"]\n')
 
-    rc = cli_main.run(["config", "--json", "--project", project_dir])
+    rc = cli_main.run(["config", "--plain", "--project", project_dir])
     assert rc == 0
-    data = json.loads(capsys.readouterr().out)
-    keys = [item["config"] for item in data["records"]]
+    records = plain_records(capsys.readouterr().out)
+    keys = [item["config"] for item in records]
     assert "pdk.overrides" in keys
-    overrides_item = next(i for i in data["records"] if i["config"] == "pdk.overrides")
-    assert overrides_item["value"] == {"dont_use": ["ICG*", "DFFSRQX*"]}
+    overrides_item = next(i for i in records if i["config"] == "pdk.overrides")
+    assert overrides_item["value"] == "{'dont_use': ['ICG*', 'DFFSRQX*']}"
 
 
 def test_config_resolved_pdk_overrides_absent(
@@ -764,17 +778,18 @@ def test_config_resolved_pdk_overrides_absent(
     monkeypatch,
     create_cli_project,
     mock_pdk_validation,
+    plain_records,
 ):
     mock_pdk_validation()
     project_dir = create_cli_project()
 
-    rc = cli_main.run(["config", "--json", "--project", project_dir])
+    rc = cli_main.run(["config", "--plain", "--project", project_dir])
     assert rc == 0
-    data = json.loads(capsys.readouterr().out)
-    keys = [item["config"] for item in data["records"]]
+    records = plain_records(capsys.readouterr().out)
+    keys = [item["config"] for item in records]
     assert "pdk.overrides" not in keys
 
-    def test_config_resolved_renders_manifest_only_project(self, tmp_path, capsys):
+    def test_config_resolved_renders_manifest_only_project(self, tmp_path, capsys, plain_records):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         (project_dir / "rtl").mkdir()
@@ -801,10 +816,10 @@ def test_config_resolved_pdk_overrides_absent(
         }
         (project_dir / "project.json").write_text(json.dumps(manifest))
 
-        rc = cli_main.run(["config", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["config", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         by_key = {r.get("key"): r for r in records if r.get("kind") == "config"}
         assert by_key["design.top"]["resolved"] == "gcd"
         assert by_key["design.top"]["source"] == "project.json"

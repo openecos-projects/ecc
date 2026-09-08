@@ -28,8 +28,10 @@ from ..workspace_config import (
 from ..workspace_config import (
     workspace_config_path as workspace_config_toml_path,
 )
-from .filelist_copy import copy_filelist_with_sources
+from .filelist_copy import copy_filelist_with_sources as copy_filelist_with_sources
 from .layout import EccData, WorkspaceStepBase
+from .sdc import create_default_sdc as create_default_sdc
+from .sdc import refresh_generated_sdc
 
 # The shared step type used as the annotation/constructor across the codebase.
 WorkspaceStep = WorkspaceStepBase
@@ -697,7 +699,7 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
 
-    _refresh_generated_sdc(workspace)
+    refresh_generated_sdc(workspace)
 
     db = json_read(workspace.config["db"])
     if "INPUT" not in db or "LayerSettings" not in db:
@@ -1103,62 +1105,17 @@ def create_workspace(
     # update orign files to workspace origin folder
     origin_dir.mkdir(parents=True, exist_ok=True)
     workspace.config["dir"].mkdir(parents=True, exist_ok=True)
-    origin_def_path = Path(origin_def) if origin_def else None
-    if origin_def_path and origin_def_path.exists():
-        target = origin_dir / origin_def_path.name
-        shutil.copy(origin_def_path, target)
-        workspace.design.origin_def = target
-    else:
-        workspace.design.origin_def = origin_dir / f"{workspace.design.name}.def"
+    from .inputs import persist_origin_inputs
 
-    origin_verilog_path = Path(origin_verilog) if origin_verilog else None
-    if origin_verilog_path and origin_verilog_path.exists():
-        target = origin_dir / origin_verilog_path.name
-        shutil.copy(origin_verilog_path, target)
-        workspace.design.origin_verilog = target
-    else:
-        workspace.design.origin_verilog = origin_dir / f"{workspace.design.name}.v"
-
-    golden_verilog_path = Path(golden_verilog) if golden_verilog else None
-    if golden_verilog_path and golden_verilog_path.exists():
-        target = origin_dir / f"golden_{golden_verilog_path.name}"
-        shutil.copy(golden_verilog_path, target)
-        workspace.design.golden_verilog = target
-
-    # Copy filelist and all referenced source files
-    input_filelist_path = Path(input_filelist) if input_filelist else None
-    if input_filelist_path and input_filelist_path.exists():
-        try:
-            # Use new copy_filelist_with_sources to copy filelist + all RTL files
-            workspace.design.input_filelist = Path(
-                copy_filelist_with_sources(
-                    input_filelist=str(input_filelist_path),
-                    workspace_dir=str(workspace_dir),
-                    logger=workspace.logger,
-                )
-            )
-        except Exception as e:
-            workspace.logger.error(f"Failed to copy filelist sources: {e}")
-            workspace.logger.warning("Falling back to copying only filelist file")
-            # Fallback: copy only filelist file (backward compatibility)
-            target = origin_dir / input_filelist_path.name
-            shutil.copy(input_filelist_path, target)
-            workspace.design.input_filelist = target
-
-    if workspace.pdk.sdc and workspace.pdk.sdc.exists():
-        sdc_target = origin_dir / workspace.pdk.sdc.name
-        shutil.copy(workspace.pdk.sdc, sdc_target)
-        workspace.pdk.sdc = sdc_target
-    else:
-        # create default sdc file
-        workspace.pdk.sdc = origin_dir / f"{workspace.design.name}.sdc"
-        create_default_sdc(workspace)
-
-    if workspace.pdk.spef and workspace.pdk.spef.exists():
-        spef_target = origin_dir / workspace.pdk.spef.name
-        shutil.copy(workspace.pdk.spef, spef_target)
-        workspace.pdk.spef = spef_target
-
+    persist_origin_inputs(
+        workspace,
+        origin_dir,
+        workspace_dir,
+        origin_def=origin_def,
+        origin_verilog=origin_verilog,
+        input_filelist=input_filelist,
+        golden_verilog=golden_verilog,
+    )
     init_workspace_config(workspace)
 
     # set home data
@@ -1204,6 +1161,32 @@ def create_workspace(
     log_parameters(workspace)
 
     return workspace
+
+
+def _persisted_golden_verilog(workspace_dir: Path) -> tuple[Path | None, bool]:
+    """Golden netlist recorded at workspace creation.
+
+    Returns ``(path, True)`` when the flow ledger declares a golden netlist,
+    ``(None, True)`` when a current-format ledger declares none, and
+    ``(None, False)`` for legacy ledgers without step info, where the
+    ``golden_*`` filename convention still applies.
+    """
+    from chipcompiler.utility import json_read
+
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    steps = flow_data.get("steps", []) if isinstance(flow_data, dict) else []
+    if not steps or not isinstance(steps[0], dict):
+        return None, False
+    if not isinstance(steps[0].get("info"), dict):
+        return None, False
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        info = step.get("info")
+        golden = info.get("golden_verilog") if isinstance(info, dict) else None
+        if golden and Path(golden).is_file():
+            return Path(golden), True
+    return None, True
 
 
 def load_workspace(directory: str | Path) -> Workspace:
@@ -1278,18 +1261,26 @@ def load_workspace(directory: str | Path) -> Workspace:
     if len(def_gz_path) > 0:
         workspace.design.origin_def = def_gz_path[0]
 
-    verilog_path = [path for path in origin_dir.rglob("*.v") if not path.name.startswith("golden_")]
-    verilog_gz_path = [
-        path for path in origin_dir.rglob("*.v.gz") if not path.name.startswith("golden_")
-    ]
+    # The golden netlist path is persisted in the first flow step's info at
+    # creation; trust it over the golden_* filename convention so a primary
+    # netlist whose name merely starts with "golden_" keeps its role. Only
+    # legacy ledgers without step info fall back to the filename convention.
+    golden, golden_declared = _persisted_golden_verilog(workspace_dir)
+    if golden is None and not golden_declared:
+        golden_paths = list(origin_dir.rglob("golden_*.v")) + list(
+            origin_dir.rglob("golden_*.v.gz")
+        )
+        golden = golden_paths[0] if golden_paths else None
+
+    verilog_path = [path for path in origin_dir.rglob("*.v") if path != golden]
+    verilog_gz_path = [path for path in origin_dir.rglob("*.v.gz") if path != golden]
     if len(verilog_path) > 0:
         workspace.design.origin_verilog = verilog_path[0]
     if len(verilog_gz_path) > 0:
         workspace.design.origin_verilog = verilog_gz_path[0]
 
-    golden_paths = list(origin_dir.rglob("golden_*.v")) + list(origin_dir.rglob("golden_*.v.gz"))
-    if golden_paths:
-        workspace.design.golden_verilog = golden_paths[0]
+    if golden is not None:
+        workspace.design.golden_verilog = golden
 
     filelist_path = origin_dir / "filelist"
     if filelist_path.exists():
@@ -1358,40 +1349,3 @@ def log_flow(workspace: Workspace):
             format_string(step.get("state", "")),
             format_string(step.get("runtime", "")),
         )
-
-
-def create_default_sdc(workspace: Workspace):
-    """
-    Create SDC file based on PDK and workspace parameters.
-    """
-    sdc_content = []
-    sdc_content.append("# Auto-generated SDC file\n")
-    sdc_content.append("\n")
-    sdc_content.append("set clk_name {} \n".format(workspace.parameters.data.get("clock", "")))
-    sdc_content.append("set clk_port_name {}\n".format(workspace.parameters.data.get("clock", "")))
-    sdc_content.append(
-        "set clk_freq_mhz {}\n".format(workspace.parameters.data.get("frequency_max", 100))
-    )
-    sdc_content.append("set clk_period [expr 1000.0 / $clk_freq_mhz]\n")
-    sdc_content.append("set clk_io_pct 0.2\n")
-    sdc_content.append("set clk_port [get_ports $clk_port_name]\n")
-    sdc_content.append("create_clock -name $clk_name -period $clk_period $clk_port\n")
-
-    with open(workspace.pdk.sdc, "w") as file:
-        file.writelines(sdc_content)
-
-
-def _refresh_generated_sdc(workspace: Workspace) -> None:
-    """Refresh an existing SDC created by ECC while preserving user SDC files."""
-    sdc_path = workspace.pdk.sdc
-    if sdc_path is None or not sdc_path.is_file():
-        return
-
-    try:
-        with sdc_path.open(encoding="utf-8") as file:
-            if file.readline().strip() != "# Auto-generated SDC file":
-                return
-    except (OSError, UnicodeError):
-        return
-
-    create_default_sdc(workspace)

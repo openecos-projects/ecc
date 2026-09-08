@@ -187,7 +187,7 @@ def _review_group_for_item(item: dict) -> str:
         return "sta"
     if step == "RCX" or path.startswith(("RCX_ecc/", "final/timing/spef/")):
         return "spef"
-    if step in {"Route", "drc", "lvs", "filler"} or path.startswith(
+    if step in {"route", "drc", "lvs", "filler"} or path.startswith(
         ("route_ecc/", "drc_ecc/", "lvs_ecc/", "filler_ecc/", "final/design/")
     ):
         return "final_design"

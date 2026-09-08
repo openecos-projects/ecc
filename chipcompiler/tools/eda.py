@@ -67,7 +67,7 @@ def create_step(
     # Unselected optional tools only need a path-only step to preserve the
     # positional input chain; importing them can trigger expensive native
     # builds before the selected-step dependency check even runs.
-    if not check_dependency and eda in {"dreamplace", "sizer"}:
+    if not check_dependency and eda in _DEFERRED_EDA_TOOLS:
         return _build_deferred_step(
             workspace,
             step,
@@ -106,6 +106,12 @@ def create_step(
     return workspace_step
 
 
+# Optional tools whose unselected steps are built deferred (no EDA package
+# import). Each tool owns a dependency-free deferred builder in its builder
+# module; this set only names them.
+_DEFERRED_EDA_TOOLS = frozenset({"dreamplace", "sizer"})
+
+
 def _build_deferred_step(
     workspace: Workspace,
     step_name: str,
@@ -127,26 +133,18 @@ def _build_deferred_step(
     from chipcompiler.tools.ecc import builder as ecc_builder
 
     if eda == "sizer":
-        safe_name = "_".join(step_name.split()).lower()
-        step_directory = Path(workspace.directory or ".") / f"{safe_name}_sizer"
-        output_def = (
-            output_def or step_directory / "output" / f"{workspace.design.name}_{safe_name}.def.gz"
-        )
-        output_verilog = (
-            output_verilog
-            or step_directory / "output" / f"{workspace.design.name}_{safe_name}.v.gz"
-        )
-        return ecc_builder.build_step(
-            workspace=workspace,
-            step_name=step_name,
-            input_def=input_def,
-            input_verilog=input_verilog,
-            input_db=input_db,
-            output_def=output_def,
-            output_verilog=output_verilog,
-            output_gds=output_gds,
-            tool=eda,
-            step_directory=step_directory,
+        # The sizer builder module owns its step shape; importing it is safe
+        # (rosettakit is imported lazily inside its functions).
+        from chipcompiler.tools.ecc_sizer.builder import deferred_step
+
+        return deferred_step(
+            workspace,
+            step_name,
+            input_def,
+            input_verilog,
+            input_db,
+            output_def,
+            output_verilog,
         )
 
     return ecc_builder.build_step(

@@ -202,7 +202,9 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
                         "blocked": True,
                         "summary": "drc_count=2 (required == 0)",
                         "source": {},
-                        "evidence": ["drc_ecc/analysis/qor_summary.json"],
+                        "evidence": [
+                            {"kind": "feature", "path": "drc_ecc/analysis/qor_summary.json"}
+                        ],
                     },
                     {
                         "id": "harden.gds",
@@ -290,10 +292,24 @@ class TestBuildQorReport:
         by_label = {d.label: d for d in report.dimension_scores}
         assert by_label["Routability / Physical"].metric_count == 1
 
+    def test_stale_metrics_of_unstarted_steps_do_not_score(self, tmp_path):
+        # Invalidation resets a step to Unstart but keeps its analysis
+        # outputs on disk; the obsolete metrics must not score.
+        workspace = _make_workspace(tmp_path)
+        for step in workspace.flow.data["steps"]:
+            if step["name"] == "drc":
+                step["state"] = "Unstart"
+
+        report = build_qor_report(workspace)
+
+        assert [m for m in report.metrics if m.step == "DRC"] == []
+        by_label = {d.label: d for d in report.dimension_scores}
+        assert "Routability / Physical" not in by_label
+
     def test_empty_workspace_report(self, tmp_path):
         report = build_qor_report(_make_workspace(tmp_path, with_metrics=False))
         assert report.overall_score is None
-        assert report.status in ("Blocked", "Green")
+        assert report.status == "Blocked"
         text = generate_qor_report(_make_workspace(tmp_path, with_metrics=False))
         assert "NOT RATED" in text
         assert "no project-level QoR metrics available" in text
@@ -314,6 +330,66 @@ class TestBuildQorReport:
         assert "sta_setup_wns" in text
         assert "END OF QOR REPORT" in text
         assert "weights not renormalized" in text
+
+
+class TestFlowStepOrder:
+    def test_flow_steps_follow_the_canonical_chain_order(self):
+        from chipcompiler.engine.qor_report import FLOW_STEPS
+
+        assert FLOW_STEPS == (
+            "Synth",
+            "Floor",
+            "Place",
+            "CTS",
+            "Legal",
+            "Route",
+            "Filler",
+            "RCX",
+            "STA",
+            "LVS",
+            "DRC",
+            "Harden",
+        )
+
+    def test_area_scoring_uses_the_latest_scored_step_in_chain_order(self):
+        from chipcompiler.engine.qor_report import QorMetricRecord, _resolve_area_scoring_step
+
+        def record(step):
+            return QorMetricRecord(
+                step=step,
+                metric_name="die_area",
+                display_name="die_area",
+                value=1.0,
+                dimension="area_cost",
+                rating_score=True,
+            )
+
+        flow_states = {"STA": "Success", "DRC": "Success"}
+        assert _resolve_area_scoring_step([record("STA"), record("DRC")], flow_states) == "DRC"
+
+
+class TestFlowCompletionState:
+    def test_states_are_derived_explicitly(self):
+        from chipcompiler.engine.qor_report import _flow_completion_state
+
+        assert _flow_completion_state([]) == "not_started"
+        assert _flow_completion_state(["Unstart"]) == "not_started"
+        assert _flow_completion_state(["Success", "Ongoing"]) == "running"
+        assert _flow_completion_state(["Success", "Unstart"]) == "in_progress"
+        assert _flow_completion_state(["Success", "Incomplete"]) == "failed"
+        assert _flow_completion_state(["Invalid"]) == "failed"
+        assert _flow_completion_state(["Success"] * 5) == "complete"
+        # A legacy persisted Warning (removed terminal state) is unfinished.
+        assert _flow_completion_state(["Success", "Warning"]) == "in_progress"
+
+    def test_nonterminal_workspaces_are_blocked(self, tmp_path):
+        for state in ("Ongoing", "Unstart", "Pending"):
+            workspace = _make_workspace(tmp_path / state, with_metrics=False)
+            flow = workspace.flow.data
+            for step in flow["steps"][:3]:
+                step["state"] = state
+            report = build_qor_report(workspace)
+            assert report.status == "Blocked", state
 
 
 class TestChecklistReport:

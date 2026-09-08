@@ -1,6 +1,6 @@
 # ECC CLI Tutorial: From Zero to RTL → Harden with a Signoff Package
 
-This tutorial is for first-time ECC users: starting from a bare Linux machine, install the `ecc` command-line tool and drive a Verilog RTL design ([gcd](../../docs/examples/gcd/gcd.v), a greatest-common-divisor unit) through the full **synthesis → place & route → physical verification → logic equivalence check (LEC) → timing signoff → Harden** flow, ending up with:
+This tutorial is for first-time ECC users: starting from a bare Linux machine, install the `ecc` command-line tool and drive a Verilog RTL design ([gcd](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/gcd.v), a greatest-common-divisor unit) through the full **synthesis → place & route → physical verification → logic equivalence check (LEC) → timing signoff → Harden** flow, ending up with:
 
 - **Harden deliverables**: GDS layout, abstract LEF, timing LIB, and a layout snapshot PNG;
 - A **signoff package** `gcd_signoff_package.tar.gz` (300+ files: RTL / configs / deliverables / LEC proof / reports);
@@ -29,7 +29,7 @@ graph LR
 |---|---|
 | OS | Linux x86_64 (other architectures are untested) |
 | Basic commands | `bash`, `curl` or `wget`, `tar`, `git`, `make`, `bzip2` |
-| Disk | ≥ 10 GB free (measured after install: ecc CLI ≈ 3.6 GB + OSS CAD Suite ≈ 2.9 GB + PDK ≈ 1.9 GB) |
+| Disk | ≥ 10 GB free (measured after install: ecc CLI ≈ 0.9 GB + OSS CAD Suite ≈ 2.9 GB + PDK ≈ 1.9 GB) |
 | Network | Access to release.openecos.com (installer) and GitHub (PDK / OSS CAD Suite) |
 | Python / deps | **None**. ecc-tools, DreamPlace, etc. are bundled inside the CLI package |
 
@@ -37,7 +37,9 @@ graph LR
 
 ### 2.1 One-shot installer (recommended)
 
-Install the `ecc` CLI (Linux x86_64, glibc 2.34+) with the official installer:
+Install the `ecc` CLI (Linux x86_64, glibc 2.34+, fontconfig) with the official installer:
+
+> This tutorial ships with release v0.1.0-alpha.12: the commands it uses (`ecc doctor`, `ecc doc`, the `signoff`/`report` groups, and the `run` workspace/range selectors) are not in earlier releases. Until alpha.12 is out, run from source per [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli).
 
 ```bash
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
@@ -59,7 +61,7 @@ The `--with-toolchain` wrapper exports `CHIPCOMPILER_OSS_CAD_DIR` and `CHIPCOMPI
 
 ### 2.2 Running from source (optional)
 
-Clone the repository with `--recursive` as the [README](../../README.md#build-from-source) describes (`chipcompiler/thirdparty/` pulls in `ecc-tools` and `ecc-dreamplace`), then set up the `uv` workspace per the [development guide](../../docs/development.md):
+Clone the repository with `--recursive` as the [README](https://github.com/openecos-projects/ecc/blob/main/README.md#build-from-source) describes (`chipcompiler/thirdparty/` pulls in `ecc-tools` and `ecc-dreamplace`), then set up the `uv` workspace per the [development guide](https://github.com/openecos-projects/ecc/blob/main/docs/development.md):
 
 ```bash
 git clone --recursive https://github.com/openecos-projects/ecc.git
@@ -91,10 +93,9 @@ tar -xzf oss-cad-suite-*.tgz -C ~/.local && mv ~/.local/oss-cad-suite* ~/.local/
 export CHIPCOMPILER_OSS_CAD_DIR=~/.local/oss-cad-suite
 ```
 
-Alternatively, hook the PDK up with the CLI's own `pdk` subcommands after creating a project:
+Alternatively, wire a provisioned PDK into a project with the CLI's own `pdk` subcommands:
 
 ```bash
-ecc pdk setup                    # clone + make unzip + wire up, all in one
 ecc pdk set-root ~/pdk/icsprout55-pdk   # attach an already-provisioned PDK (written to ecc.toml)
 ecc pdk show                     # show the effective PDK root and where it came from
 ecc pdk unset                    # clear pdk.root in ecc.toml (falls back to env vars / repo default)
@@ -140,7 +141,7 @@ $ ecc doctor
   ...
 ```
 
-All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, and pdk) must `pass` before `ecc doctor` succeeds. A ready Sizer has both its executable and runtime root. The complete `rtl2gds` flow contains Timing optimization; fresh or `--overwrite` `rtl2gds` targets check Sizer during startup preflight and return `env_not_ready` when it is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail mid-flow. When a component is missing, follow the `ecc doctor` remediation hint (e.g. `ecc pdk setup`, or re-run the §2.1 installer with `--with-toolchain`).
+All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, and pdk) must `pass` before `ecc doctor` succeeds. A ready Sizer has both its executable and runtime root. The complete `rtl2gds` flow contains Timing optimization; fresh or `--overwrite` `rtl2gds` targets check Sizer during startup preflight and return `env_not_ready` when it is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail mid-flow. When a component is missing, follow the `ecc doctor` remediation hint (e.g. re-run the §2.1 installer with `--with-toolchain`).
 
 ## 3. Creating Your First Project
 
@@ -185,7 +186,7 @@ curl -fL -o rtl/gcd.v \
 # cp /path/to/ecc/docs/examples/gcd/gcd.v rtl/
 ```
 
-For multi-file designs, switch to a filelist (`rtl = ["rtl/filelist.f"]`); see [examples/gcd/README.md](../../docs/examples/gcd/README.md#using-filelist) and the [filelist grammar](../../docs/specification/filelist-grammar.md).
+For multi-file designs, switch to a filelist (`rtl = ["rtl/filelist.f"]`); see [examples/gcd/README.md](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist) and the [filelist grammar](https://github.com/openecos-projects/ecc/blob/main/docs/specification/filelist-grammar.md).
 
 ### 3.3 Understanding ecc.toml
 
@@ -214,7 +215,7 @@ preset = "rtl2gds"       # the complete RTL-to-Harden flow used in this tutorial
 
 For the gcd example, the defaults produced by `init` happen to be exactly right (the top module is literally `gcd`, the clock port is `clk`) — **you don't need to change a single character**. For your own design, check the four fields `top`, `rtl`, `clock_port`, and `frequency_mhz`.
 
-You can edit `ecc.toml` in an editor, or set the same declarations from the command line with the `ecc project` group (writes `ecc.toml`, comments preserved; see [User Guide §8.5](ecc-cli-ug.en.md#85-project--workspace--edit-project-declarations-and-refresh-workspaces)):
+You can edit `ecc.toml` in an editor, or set the same declarations from the command line with the `ecc project` group (writes `ecc.toml`, comments preserved; see [User Guide §8.5](ecc-user-guide.en.md#85-project--workspace--edit-project-declarations-and-refresh-workspaces) (`ecc doc ug`)):
 
 ```bash
 ecc project set design.top my_chip            # set one declaration
@@ -243,7 +244,7 @@ $ ecc check
   run: ecc run
   rtl: pass
     path: rtl/gcd.v
-  inspect: ecc check --json
+  inspect: ecc check
 rc=0
 ```
 
@@ -594,7 +595,7 @@ ecc param diff --workspace exp1                            # vs. the values exp1
 ecc param unset place.target_density --workspace exp1      # restore exp1's original value
 ```
 
-Frequently used legacy parameters are `design.frequency_mhz`, `floorplan.core_util`, `place.target_density`, `route.top_layer`, and `sta.max_paths`. Other static tool fields are supplied by per-step schemas; find them with `--step` or `--all`. Workspace input, output, temporary, and generated paths cannot be changed. PDK path parameters use `ecc param set KEY VALUE`: `pdk.tech`, `pdk.lefs`, `pdk.libs`, and `pdk.mapping_file` resolve against `pdk.root`, while `pdk.sdc`/`pdk.spef` are design data resolved against the project directory; keep `pdk.root` on `ecc pdk set-root`. See [User Guide §9](ecc-cli-ug.en.md#9-param--parameter-management) for the full contract.
+Frequently used legacy parameters are `design.frequency_mhz`, `floorplan.core_util`, `place.target_density`, `route.top_layer`, and `sta.max_paths`. Other static tool fields are supplied by per-step schemas; find them with `--step` or `--all`. Workspace input, output, temporary, and generated paths cannot be changed. PDK path parameters use `ecc param set KEY VALUE`: `pdk.tech`, `pdk.lefs`, `pdk.libs`, and `pdk.mapping_file` resolve against `pdk.root`, while `pdk.sdc`/`pdk.spef` are design data resolved against the project directory; keep `pdk.root` on `ecc pdk set-root`. See [User Guide §9](ecc-user-guide.en.md#9-param--parameter-management) (`ecc doc ug`) for the full contract.
 
 A `--workspace` override marks the parameter's owning step (and everything after it) as pending, so the next `ecc run --workspace exp1` re-runs just that suffix — cheaper than an `--overwrite` rebuild when you only want to tweak one knob. It only works for reviewed parameters (`ecc param list --all`) whose owning step exists in that workspace's flow.
 
@@ -629,7 +630,7 @@ ecc run --workspace default --overwrite            # rebuild default (with safet
 ecc run --workspace default --overwrite --set place.target_density=0.55
 ```
 
-The same `--overwrite` rerun is also how an existing workspace picks up changes to its **entry inputs, PDK paths, or `flow.preset`** — those alter the workspace's input snapshot or flow structure. To rebuild the workspace from the current `ecc.toml` *without* running it, use the dedicated command (handy before a batch of runs, or when the required tools aren't on the current machine):
+The same `--overwrite` rerun is also how an existing workspace picks up changes to its **entry inputs, PDK paths, or `flow.preset`** — those alter the workspace's input snapshot or flow structure. To rebuild the workspace from the current `ecc.toml` *without* running it, use the dedicated command (handy before a batch of runs). Like every fresh workspace target, refresh still runs the startup tool preflight for the selected range, so the flow's tools must be installed first:
 
 ```bash
 ecc workspace refresh default                      # rebuild inputs/config from ecc.toml, do not run
@@ -676,12 +677,12 @@ $ ecc run --from cts --to route
 rc=1
 ```
 
-> **How to spell step names**: `ecc status`/`ecc log` show lowercase display names (e.g. `placement`, `timing_optimization`), while `--from`/`--only`/`--to` on an **existing** workspace must use the persisted names from `home/flow.json` (e.g. `place`, `CTS`, `Timing optimization`); only **creating** a new range (`--from A --to B` given as a pair) accepts the lowercase aliases. Don't worry about memorizing this — a misspelled name fails with `unknown_step` and lists every accepted name, so just copy one:
+> **How to spell step names**: `ecc status`/`ecc log` show lowercase display names (e.g. `placement`, `timing_optimization`); the `--from`/`--only`/`--to` selectors accept the persisted names from `home/flow.json` (e.g. `place`, `CTS`, `Timing optimization`) and the lowercase aliases (e.g. `placement`, `routing`) alike. Don't worry about memorizing this — a name matching neither fails with `unknown_step` and lists every accepted name, so just copy one:
 >
 > ```console
-> $ ecc run --workspace default --only placement   # the persisted name is "place"
+> $ ecc run --workspace default --only placemen   # typo: neither a persisted name nor an alias
 > [error]
->   unknown_step unknown step 'placement'; available steps: Synthesis, lec, Floorplan,
+>   unknown_step unknown step 'placemen'; available steps: Synthesis, lec, Floorplan,
 >   place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
 >   postRouteLec, drc, Harden
 > ```
@@ -701,11 +702,11 @@ ecc config --plain      # project-level config (key=value + resolved absolute pa
 | `[error] env_not_ready` (at run) | tools required by the preset are missing | Follow `ecc doctor`; usually yosys/slang — re-run the §2.1 installer with `--with-toolchain` |
 | `[error] run_exists` | the workspace directory already exists but is not a valid ECC workspace | `ecc run --overwrite`, or select a different `--workspace NAME`. Note: **running `ecc run` again after the flow completed does NOT raise this error** — it no-ops when everything succeeded, and auto-resumes after an interruption |
 | `[error] workspace_required` | the project has multiple active workspaces and none was specified | pass `--workspace NAME` with one of the names listed in the error |
-| `[error] unknown_step` | a step name passed to `--from`/`--only` doesn't match the persisted names in `home/flow.json` (e.g. you wrote `placement`; the persisted name is `place`) | copy one of the available step names listed in the error; see the "How to spell step names" note in §6.3 |
+| `[error] unknown_step` | a step name passed to `--from`/`--only` matches neither a persisted name in `home/flow.json` nor an alias (e.g. you wrote `placemen` for `place`) | copy one of the available step names listed in the error; see the "How to spell step names" note in §6.3 |
 | `[error] set_requires_fresh_run` | `--set` used on an existing workspace | `--set` applies only at creation; use `--overwrite` or a new `--workspace` instead |
 | run summary carries `warning: ecc.toml values override different project.json base values` (`config_layer_diverged`) | `ecc.toml` effectively disagrees with the baseline the first run recorded in `project.json`: `pdk.root` resolves to a different PDK than the first run used (e.g. the env var was repointed), or `flow.preset` differs from the workspace's declared range (e.g. a workspace created with `--preset synthesis_lec` under an `rtl2gds` ecc.toml) | does not affect the run result — safe to ignore; aligning the two sides makes it go away (`ecc pdk set-root`, or fix `flow.preset`) |
 | `[error] signoff_incomplete` (at export) | required deliverables missing (e.g. a failed step) | `ecc signoff inspect` for blocked items; debug with `ecc status`/`ecc log`, then rerun |
-| `ecc check` reports `pdk.root is required` | no PDK found | `ecc pdk setup` or `ecc pdk set-root <path>`, or set `CHIPCOMPILER_ICS55_PDK_ROOT` |
+| `ecc check` reports `pdk.root is required` | no PDK found | `ecc pdk set-root <path>` or set `CHIPCOMPILER_ICS55_PDK_ROOT` |
 | PDK liberty missing | PDK cloned without data files | `make -C ~/.local/icsprout55-pdk unzip` (add `USE_PROXY=true GH_PROXY=...` if needed) |
 | Downloads time out | restricted network | retry the installer; or install manually per §2.3 (the PDK's `make unzip` supports `USE_PROXY=true GH_PROXY=...`) |
 | doctor shows `sizer: fail` | required Sizer component not installed | `ecc doctor` exits non-zero. The complete `rtl2gds` chain contains Timing optimization, so install Sizer before running it. Build ecc-sizer per the remediation hint |
@@ -714,10 +715,10 @@ ecc config --plain      # project-level config (key=value + resolved absolute pa
 
 ## 8. Next Steps
 
-- Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](../../docs/examples/gcd/README.md#using-filelist) for multi-file designs;
+- Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist) for multi-file designs;
 - Preset differences: `rtl2gds` (the complete 15-step synthesis-to-Harden chain, including synthesis-level LEC), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps);
-- Full command details in the **[ECC CLI User Guide](ecc-cli-ug.en.md)**; extending the CLI is covered in [ecc-cli-dev.en.md](ecc-cli-dev.en.md);
-- Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](../../docs/examples/gcd/ics55flow.py).
+- Full command details in the **[ECC CLI User Guide](ecc-user-guide.en.md)** (`ecc doc ug`); extending the CLI is covered in [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli);
+- Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/ics55flow.py).
 
 ---
 

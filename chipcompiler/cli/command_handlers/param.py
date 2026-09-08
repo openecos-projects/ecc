@@ -11,6 +11,7 @@ from chipcompiler.cli.project.params import (
     validate_pdk_target,
     validate_value,
 )
+from chipcompiler.utility.file import write_text_atomic
 
 
 def _manifest_mode_error(ctx: CommandContext) -> CommandResult | None:
@@ -207,7 +208,12 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
                 [error_record("invalid_value", param=key, reason=problem)], exit_code=1
             )
 
-    _write_param_to_toml(config_path, schema, value)
+    try:
+        _write_param_to_toml(config_path, schema, value)
+    except (OSError, ValueError) as exc:
+        return CommandResult.err(
+            [error_record("config_error", param=key, reason=str(exc))], exit_code=1
+        )
 
     return CommandResult.ok(
         [
@@ -255,7 +261,12 @@ def param_unset(args, ctx: CommandContext) -> CommandResult:
             ]
         )
 
-    removed = _remove_param_from_toml(config_path, schema)
+    try:
+        removed = _remove_param_from_toml(config_path, schema)
+    except (OSError, ValueError) as exc:
+        return CommandResult.err(
+            [error_record("config_error", param=key, reason=str(exc))], exit_code=1
+        )
 
     if removed:
         return CommandResult.ok(
@@ -375,9 +386,7 @@ def _write_param_to_toml(config_path: str, schema, value: object) -> None:
         original = f.read()
 
     new_text = toml_edit.set_scoped_key(original, target_table, name, value)
-
-    with open(config_path, "w") as f:
-        f.write(new_text)
+    write_text_atomic(config_path, new_text)
 
 
 def _remove_param_from_toml(config_path: str, schema) -> bool:
@@ -394,6 +403,5 @@ def _remove_param_from_toml(config_path: str, schema) -> bool:
     if result is None:
         return False
 
-    with open(config_path, "w") as f:
-        f.write(result)
+    write_text_atomic(config_path, result)
     return True

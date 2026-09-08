@@ -507,3 +507,10 @@ class TestManifestCoercion:
         coerced, errors = coerce_manifest_parameters(canonical)
         assert errors == []
         assert coerced == {"design": "gcd"}
+
+
+def test_every_param_registry_entry_has_an_explicit_description():
+    descriptions = {schema.param: schema.description for schema in PARAM_REGISTRY}
+
+    assert all(description.strip() for description in descriptions.values())
+    assert not any("configuration field" in description for description in descriptions.values())

@@ -14,6 +14,7 @@ from pathlib import Path
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandResult
 from chipcompiler.cli.project.run_prepare import _write_back_status
+from chipcompiler.data import is_finished_step_state
 
 
 def run_existing_workspace(
@@ -203,7 +204,7 @@ def run_existing_workspace(
                     for step in flow_data.get("steps", [])
                     if isinstance(step, dict)
                     and isinstance(step.get("name"), str)
-                    and step.get("state") != "Success"
+                    and not is_finished_step_state(step.get("state"))
                     and step["name"] in target_names
                 }
                 engine_flow.create_step_workspaces(executable_steps=executable)

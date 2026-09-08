@@ -247,6 +247,58 @@ def test_create_workspace_copies_external_lec_and_sta_inputs(
     assert (workspace_dir / "origin" / "gcd.spef").is_file()
 
 
+def test_load_workspace_keeps_golden_prefixed_primary_netlist(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    # A primary netlist whose name starts with golden_ must keep its role:
+    # creation never declared a golden netlist, and the persisted flow
+    # ledger says so.
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "golden_gcd.v"
+    rtl_path.write_text("module gcd; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=workspace_dir,
+        origin_def="",
+        origin_verilog=rtl_path,
+        pdk="ics55",
+        parameters=deepcopy(default_ics55_parameters),
+        pdk_root=pdk_root,
+        flow_config={"start_step": "Synthesis", "end_step": "Floorplan"},
+    )
+
+    loaded = load_workspace(str(workspace_dir))
+    assert loaded.design.origin_verilog == workspace_dir / "origin" / "golden_gcd.v"
+    assert loaded.design.golden_verilog is None
+
+
+def test_load_workspace_restores_golden_from_persisted_flow_info(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    netlist = tmp_path / "gcd.v"
+    golden = tmp_path / "gcd_golden.v"
+    netlist.write_text("module gcd; endmodule\n")
+    golden.write_text("module gcd; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=workspace_dir,
+        origin_def="",
+        origin_verilog=netlist,
+        golden_verilog=golden,
+        pdk="ics55",
+        parameters=deepcopy(default_ics55_parameters),
+        pdk_root=pdk_root,
+        flow_config={"start_step": "lec", "end_step": "lec"},
+    )
+
+    loaded = load_workspace(str(workspace_dir))
+    assert loaded.design.origin_verilog == workspace_dir / "origin" / "gcd.v"
+    assert loaded.design.golden_verilog == workspace_dir / "origin" / "golden_gcd_golden.v"
+
+
 def test_create_workspace_non_contiguous_flow_seeds_both_stores_contiguous(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, caplog
 ):
@@ -1001,6 +1053,25 @@ def test_refresh_workspace_config_preserves_nested_dreamplace_override_precedenc
     dreamplace = json_read(workspace.config["dreamplace"])
     assert dreamplace["target_density"] == 0.88
     assert dreamplace["routability_opt_flag"] == 0
+
+
+def test_apply_config_overrides_validates_every_target_before_writing(tmp_path):
+    from chipcompiler.data.workspace.config_overrides import apply_config_overrides
+
+    cts_path = tmp_path / "cts.json"
+    json_write(cts_path, {"skew_bound": "0.05"})
+    parameters = {
+        "config_overrides": {
+            "cts.json": {"skew_bound": "0.20"},
+            "bogus.json": {"threads": 1},
+        }
+    }
+
+    with pytest.raises(ValueError, match="unknown config override target"):
+        apply_config_overrides({"cts.json": cts_path}, parameters)
+
+    # The valid first override is not persisted when a later target is invalid.
+    assert json_read(cts_path) == {"skew_bound": "0.05"}
 
 
 def test_refresh_workspace_config_reapplies_direct_config_overrides(

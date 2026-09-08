@@ -53,14 +53,12 @@ DREAMPLACE_THIRDPARTY_FILES = (
 )
 
 DOC_GUIDES = (
-    "chipcompiler/docs/ecc-cli-config.en.md",
-    "chipcompiler/docs/ecc-cli-config.cn.md",
-    "chipcompiler/docs/ecc-cli-ug.en.md",
-    "chipcompiler/docs/ecc-cli-ug.cn.md",
-    "chipcompiler/docs/ecc-cli-tutorial.en.md",
-    "chipcompiler/docs/ecc-cli-tutorial.cn.md",
-    "chipcompiler/docs/ecc-cli-dev.en.md",
-    "chipcompiler/docs/ecc-cli-dev.cn.md",
+    "chipcompiler/docs/ecc-config-ref.en.md",
+    "chipcompiler/docs/ecc-config-ref.cn.md",
+    "chipcompiler/docs/ecc-user-guide.en.md",
+    "chipcompiler/docs/ecc-user-guide.cn.md",
+    "chipcompiler/docs/ecc-tutorial.en.md",
+    "chipcompiler/docs/ecc-tutorial.cn.md",
 )
 
 LINUX_RUNTIME_LIBS = (
@@ -239,6 +237,13 @@ def filter_host_fontconfig(binaries):
     # host libfontconfig always matches the host fontconfig data. Applied
     # to the Analysis output, because input-list filtering cannot stop the
     # dependency walk from re-collecting it.
+    #
+    # Consequence (verified host prerequisite): the bundle keeps libcairo
+    # (PyInstaller dependency) and DreamPlace's draw_place_cpp loads
+    # fontconfig through it, so a supported host must provide
+    # libfontconfig.so.1 itself (any glibc-based distro with fontconfig
+    # installed qualifies; a bare container without fontconfig will fail
+    # placement with a loader error).
     return [
         entry
         for entry in binaries

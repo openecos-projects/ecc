@@ -13,7 +13,13 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
-from chipcompiler.data import StateEnum, Workspace, WorkspaceStep, is_non_blocking_step, log_flow
+from chipcompiler.data import (
+    StateEnum,
+    Workspace,
+    WorkspaceStep,
+    is_finished_step_state,
+    log_flow,
+)
 from chipcompiler.utility.log import redirect_stdio_to_file
 from chipcompiler.utility.path import path_is_within
 
@@ -41,7 +47,7 @@ def selected_step_names(
     steps = flow.workspace.flow.data.get("steps", [])
     if only is not None:
         index = _require_step_index(flow, only)
-        if not force and steps[index].get("state") == StateEnum.Success.value:
+        if not force and is_finished_step_state(steps[index].get("state")):
             return []
         return [steps[index]["name"]]
     if from_step is not None:
@@ -51,7 +57,7 @@ def selected_step_names(
             raise ValueError(f"step '{through}' is before '{from_step}'")
         return [step["name"] for step in steps[first : last + 1]]
     for index, step in enumerate(steps):
-        if step.get("state") != StateEnum.Success.value:
+        if not is_finished_step_state(step.get("state")):
             return [step["name"] for step in steps[index:]]
     return []
 
@@ -61,7 +67,7 @@ def bounded_resume_names(flow: "EngineFlow", through: str) -> list[str]:
     steps = flow.workspace.flow.data.get("steps", [])
     last_index = _require_step_index(flow, through)
     for index, step in enumerate(steps):
-        if step.get("state") != StateEnum.Success.value:
+        if not is_finished_step_state(step.get("state")):
             if index > last_index:
                 return []
             return [step["name"] for step in steps[index : last_index + 1]]
@@ -69,14 +75,14 @@ def bounded_resume_names(flow: "EngineFlow", through: str) -> list[str]:
 
 
 def run_resume(flow: "EngineFlow", *, through: str | None = None) -> StepRunResult:
-    """Resume from the first non-successful step, re-executing the persisted suffix.
+    """Resume from the first non-finished step, re-executing the persisted suffix.
 
     *through* bounds the resume to the reconciled target's last step: a
     persisted ledger wider than the target is neither re-executed nor
     invalidated past it.
     """
     for step in flow.workspace.flow.data.get("steps", []):
-        if step.get("state") != StateEnum.Success.value:
+        if not is_finished_step_state(step.get("state")):
             return run_from(flow, step["name"], through=through)
     return StepRunResult(ok=True, executed=())
 
@@ -107,10 +113,10 @@ def invalidate_from(flow: "EngineFlow", name: str) -> list[str]:
 
 
 def run_only(flow: "EngineFlow", name: str, *, force: bool = False) -> StepRunResult:
-    """Run exactly one persisted step; a successful step is re-run only with force."""
+    """Run exactly one persisted step; a finished step is re-run only with force."""
     steps = flow.workspace.flow.data.get("steps", [])
     index = _require_step_index(flow, name)
-    if not force and steps[index].get("state") == StateEnum.Success.value:
+    if not force and is_finished_step_state(steps[index].get("state")):
         return StepRunResult(ok=True, executed=())
     _require_steps_available(flow, index)
     workspace_step = flow.get_workspace_step(name)
@@ -189,18 +195,9 @@ def _run_selected(flow: "EngineFlow", selected: list[tuple[WorkspaceStep, Path]]
         flow.workspace.logger.log_section(
             f"{workspace_step.tool} - end step - {workspace_step.name}"
         )
-        if state not in {StateEnum.Success, StateEnum.Warning} and not is_non_blocking_step(
-            workspace_step
-        ):
+        if state is not StateEnum.Success:
+            # A persisted Incomplete blocks the rerun.
             return StepRunResult(ok=False, executed=tuple(executed), failed=workspace_step.name)
-        if state != StateEnum.Success:
-            flow.workspace.logger.warning(
-                "[WARNING] %s %s; continuing flow",
-                workspace_step.name,
-                "did not prove equivalence"
-                if is_non_blocking_step(workspace_step)
-                else "completed with warnings",
-            )
         executed.append(workspace_step.name)
     return StepRunResult(ok=True, executed=tuple(executed))
 

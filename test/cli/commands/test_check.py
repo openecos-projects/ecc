@@ -1,4 +1,3 @@
-import json
 import os
 
 import pytest
@@ -47,7 +46,7 @@ class TestCheck:
 
         monkeypatch.setattr("chipcompiler.cli.project.config.load_project_config", counting_load)
 
-        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        rc = cli_main.run(["check", "--project", project_dir])
 
         assert rc == 0
         assert len(calls) == 1
@@ -63,7 +62,14 @@ class TestCheck:
         rc = cli_main.run(["check", "--project", str(project_dir)])
         assert rc == 1
 
-    def test_check_fails_missing_rtl(self, tmp_path, capsys, create_cli_project, monkeypatch):
+    def test_check_fails_missing_rtl(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        monkeypatch,
+        plain_records,
+    ):
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: None,
@@ -75,13 +81,18 @@ class TestCheck:
         content = content.replace('rtl = ["rtl/gcd.v"]', 'rtl = ["rtl/missing.v"]')
         with open(toml_path, "w") as f:
             f.write(content)
-        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        rc = cli_main.run(["check", "--project", project_dir, "--plain"])
         assert rc == 1
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         assert any(r.get("check") == "rtl" and r.get("status") == "fail" for r in records)
 
     def test_check_fails_second_missing_rtl(
-        self, tmp_path, capsys, create_cli_project, monkeypatch
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        monkeypatch,
+        plain_records,
     ):
         # Only the second of two declared sources is missing; the first
         # must not mask it.
@@ -96,9 +107,9 @@ class TestCheck:
         content = content.replace('rtl = ["rtl/gcd.v"]', 'rtl = ["rtl/gcd.v", "rtl/missing.v"]')
         with open(toml_path, "w") as f:
             f.write(content)
-        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        rc = cli_main.run(["check", "--project", project_dir, "--plain"])
         assert rc == 1
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         assert any(r.get("check") == "rtl" and r.get("status") == "fail" for r in records)
 
     def test_check_fails_empty_pdk_root(self, tmp_path, create_cli_project, monkeypatch):
@@ -137,6 +148,22 @@ class TestCheck:
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1
 
+    def test_check_accepts_legacy_preset_aliases(
+        self, tmp_path, create_cli_project, monkeypatch, minimal_ics55_pdk_factory
+    ):
+        # Presets folded into the canonical chain stay valid for existing
+        # configs: they resolve as legacy ranges.
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content = content.replace('preset = "rtl2gds"', 'preset = "harden"')
+        with open(toml_path, "w") as f:
+            f.write(content)
+        rc = cli_main.run(["check", "--project", project_dir])
+        assert rc == 0
+
     def test_check_fails_non_positive_frequency(self, tmp_path, create_cli_project):
         project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
@@ -173,19 +200,19 @@ class TestCheck:
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1
 
-    def test_check_json_output(self, tmp_path, monkeypatch, capsys, create_cli_project):
+    def test_check_json_output(
+        self, tmp_path, monkeypatch, capsys, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: None,
         )
-        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        rc = cli_main.run(["check", "--project", project_dir, "--plain"])
         assert rc == 0
-        out = capsys.readouterr().out
-        data = json.loads(out)
-        assert "records" in data
-        assert data["records"][0]["status"] == "checked"
-        assert data["records"][0]["project"] == "gcd"
+        records = plain_records(capsys.readouterr().out)
+        assert records[0]["status"] == "checked"
+        assert records[0]["project"] == "gcd"
 
 
 class TestCheckFilelistValidation:
@@ -265,14 +292,6 @@ run = "default"
 
 
 class TestMissingConfigErrorRecord:
-    def test_check_missing_config_has_kind_error_json(self, tmp_path, capsys):
-        rc = cli_main.run(["check", "--project", str(tmp_path), "--json"])
-        assert rc == 1
-        data = json.loads(capsys.readouterr().out)
-        record = data["records"][0]
-        assert record["kind"] == "error"
-        assert record["error"] == "missing_config"
-
     def test_check_missing_config_has_kind_error_text(self, tmp_path, capsys):
         rc = cli_main.run(["check", "--project", str(tmp_path)])
         assert rc == 1
@@ -280,11 +299,11 @@ class TestMissingConfigErrorRecord:
         assert "[error]" in out
         assert "missing_config" in out
 
-    def test_check_missing_config_has_disclosure_command(self, tmp_path, capsys):
-        rc = cli_main.run(["check", "--project", str(tmp_path), "--json"])
+    def test_check_missing_config_has_disclosure_command(self, tmp_path, capsys, plain_records):
+        rc = cli_main.run(["check", "--project", str(tmp_path), "--plain"])
         assert rc == 1
-        data = json.loads(capsys.readouterr().out)
-        record = data["records"][0]
+        records = plain_records(capsys.readouterr().out)
+        record = records[0]
         assert "inspect" in record or "inspect_cmd" in record
 
     def test_check_pdk_overrides_valid(
@@ -495,7 +514,15 @@ class TestCheckFlowRunShape:
         ],
     )
     def test_check_rejects_well_formed_run_shapes(
-        self, tmp_path, monkeypatch, capsys, create_cli_project, set_flow_run, run_line, value
+        self,
+        tmp_path,
+        monkeypatch,
+        capsys,
+        create_cli_project,
+        set_flow_run,
+        run_line,
+        value,
+        plain_records,
     ):
         project_dir = create_cli_project()
         set_flow_run(project_dir, run_line)
@@ -504,10 +531,10 @@ class TestCheckFlowRunShape:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        rc = cli_main.run(["check", "--project", project_dir, "--plain"])
 
         assert rc == 1
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         reason = f"unsupported_flow_run: [flow].run is not supported ({value!r})"
         assert any(record.get("reason") == reason for record in records)
 
@@ -522,21 +549,33 @@ class TestCheckFlowRunShape:
         ],
     )
     def test_check_rejects_degenerate_run_shapes(
-        self, tmp_path, capsys, create_cli_project, set_flow_run, run_line, reason
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        set_flow_run,
+        run_line,
+        reason,
+        plain_records,
     ):
         project_dir = create_cli_project()
         set_flow_run(project_dir, run_line)
 
-        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        rc = cli_main.run(["check", "--project", project_dir, "--plain"])
 
         assert rc == 1
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         assert any(record.get("reason") == reason for record in records)
 
 
 class TestCheckWorkspaceDisplay:
     def test_check_reports_default_workspace(
-        self, tmp_path, monkeypatch, capsys, create_cli_project
+        self,
+        tmp_path,
+        monkeypatch,
+        capsys,
+        create_cli_project,
+        plain_records,
     ):
         project_dir = create_cli_project()
         monkeypatch.setattr(
@@ -544,10 +583,10 @@ class TestCheckWorkspaceDisplay:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        rc = cli_main.run(["check", "--project", project_dir, "--plain"])
 
         assert rc == 0
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         assert records[0] == {
             "project": "gcd",
             "status": "checked",
@@ -558,17 +597,22 @@ class TestCheckWorkspaceDisplay:
         }
 
     def test_check_reports_declared_workspace(
-        self, tmp_path, capsys, minimal_ics55_pdk_factory, manifest_stubs
+        self,
+        tmp_path,
+        capsys,
+        minimal_ics55_pdk_factory,
+        manifest_stubs,
+        plain_records,
     ):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
         minimal_ics55_pdk_factory(project_dir / "pdk")
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         assert records[0] == {
             "project": "gcd",
             "status": "checked",
@@ -579,7 +623,12 @@ class TestCheckWorkspaceDisplay:
         }
 
     def test_check_reports_declared_workspace_via_symlinked_project(
-        self, tmp_path, capsys, minimal_ics55_pdk_factory, manifest_stubs
+        self,
+        tmp_path,
+        capsys,
+        minimal_ics55_pdk_factory,
+        manifest_stubs,
+        plain_records,
     ):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
@@ -588,16 +637,21 @@ class TestCheckWorkspaceDisplay:
         project_link = str(tmp_path / "project_link")
         os.symlink(str(project_dir), project_link)
 
-        rc = cli_main.run(["check", "--project", project_link, "--json"])
+        rc = cli_main.run(["check", "--project", project_link, "--plain"])
 
         assert rc == 0
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         assert records[0]["workspace"] == "ws_0001"
         assert records[0]["run"] == f"ecc run --project {project_link}"
         assert records[0]["inspect_cmd"] == f"ecc status --project {project_link}"
 
     def test_check_manifest_multi_workspace_requires_selector(
-        self, tmp_path, capsys, minimal_ics55_pdk_factory, manifest_stubs
+        self,
+        tmp_path,
+        capsys,
+        minimal_ics55_pdk_factory,
+        manifest_stubs,
+        plain_records,
     ):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
@@ -607,15 +661,20 @@ class TestCheckWorkspaceDisplay:
         )
         minimal_ics55_pdk_factory(project_dir / "pdk")
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 1
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         assert records[0]["error"] == "workspace_required"
         assert "ws_a" in records[0]["reason"] and "ws_b" in records[0]["reason"]
 
     def test_check_manifest_accepts_workspace_selector(
-        self, tmp_path, capsys, minimal_ics55_pdk_factory, manifest_stubs
+        self,
+        tmp_path,
+        capsys,
+        minimal_ics55_pdk_factory,
+        manifest_stubs,
+        plain_records,
     ):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
@@ -625,9 +684,11 @@ class TestCheckWorkspaceDisplay:
         )
         minimal_ics55_pdk_factory(project_dir / "pdk")
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--workspace", "ws_b", "--json"])
+        rc = cli_main.run(
+            ["check", "--project", str(project_dir), "--workspace", "ws_b", "--plain"]
+        )
 
         assert rc == 0
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         assert records[0]["status"] == "checked"
         assert records[0]["workspace"] == "ws_b"

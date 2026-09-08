@@ -15,7 +15,7 @@ class TestManifestRunDiscovery:
         (run_dir / "home").mkdir(parents=True)
         (run_dir / "home" / "flow.json").write_text('{"steps": []}')
 
-        rc = cli_main.run(["status", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["status", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         assert manifest_stubs.records()[0]["workspace"] == str(run_dir)
@@ -35,7 +35,7 @@ class TestManifestRunDiscovery:
         (run_dir / "home" / "flow.json").write_text('{"steps": []}')
 
         rc = cli_main.run(
-            ["status", "--project", str(project_dir), "--workspace", "ws_0002", "--json"]
+            ["status", "--project", str(project_dir), "--workspace", "ws_0002", "--plain"]
         )
 
         assert rc == 0
@@ -52,7 +52,7 @@ class TestManifestRunDiscovery:
             ],
         )
 
-        rc = cli_main.run(["status", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["status", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
         (record,) = manifest_stubs.records()
@@ -69,7 +69,7 @@ class TestManifestRunDiscovery:
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
 
         rc = cli_main.run(
-            ["status", "--project", str(project_dir), "--workspace", "sweeps/s1", "--json"]
+            ["status", "--project", str(project_dir), "--workspace", "sweeps/s1", "--plain"]
         )
 
         assert rc != 0
@@ -86,7 +86,7 @@ class TestManifestRunDiscovery:
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
 
         rc = cli_main.run(
-            ["status", "--project", str(project_dir), "--workspace", "/tmp/x", "--json"]
+            ["status", "--project", str(project_dir), "--workspace", "/tmp/x", "--plain"]
         )
 
         assert rc != 0
@@ -101,7 +101,7 @@ class TestManifestRunDiscovery:
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
 
         rc = cli_main.run(
-            ["status", "--project", str(project_dir), "--workspace", "nope", "--json"]
+            ["status", "--project", str(project_dir), "--workspace", "nope", "--plain"]
         )
 
         assert rc != 0
@@ -123,7 +123,7 @@ class TestManifestRunDiscovery:
         (run_dir / "home").mkdir(parents=True)
         (run_dir / "home" / "flow.json").write_text('{"steps": []}')
 
-        rc = cli_main.run(["status", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["status", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         assert manifest_stubs.records()[0]["workspace"] == str(run_dir)
@@ -133,7 +133,7 @@ class TestManifestRunDiscovery:
         project_dir.mkdir()
         (project_dir / "project.json").write_text("{broken")
 
-        rc = cli_main.run(["status", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["status", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
         (record,) = manifest_stubs.records()
@@ -149,7 +149,7 @@ class TestManifestCheck:
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
         minimal_ics55_pdk_factory(project_dir / "pdk")
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         records = manifest_stubs.records()
@@ -165,7 +165,7 @@ class TestLegacyHint:
         project_dir = create_cli_project(pdk_root=pdk_root)
         os.makedirs(os.path.join(project_dir, "runs", "default"))
 
-        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        rc = cli_main.run(["check", "--project", project_dir, "--plain"])
 
         assert rc == 0
         records = manifest_stubs.records()
@@ -179,7 +179,7 @@ class TestLegacyHint:
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
 
-        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        rc = cli_main.run(["check", "--project", project_dir, "--plain"])
 
         assert rc == 0
         records = manifest_stubs.records()
@@ -193,7 +193,7 @@ class TestLegacyHint:
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
         minimal_ics55_pdk_factory(project_dir / "pdk")
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         records = manifest_stubs.records()
@@ -206,7 +206,7 @@ class TestLegacyHint:
         run_dir = os.path.join(project_dir, "runs", "default")
         create_flow_json(run_dir, profile="main")
 
-        rc = cli_main.run(["status", "--project", project_dir, "--json"])
+        rc = cli_main.run(["status", "--project", project_dir, "--plain"])
 
         # Read-only commands resolve the managed path, not runs/<id>: the
         # legacy workspace is reported missing, with the migration hint.
@@ -241,7 +241,7 @@ class TestLegacyHintBoundary:
         project_dir = create_cli_project(pdk_root=pdk_root)
         create_flow_json(os.path.join(project_dir, "runs", "default"), profile="main")
 
-        rc = cli_main.run([command, "--project", project_dir, "--json"])
+        rc = cli_main.run([command, "--project", project_dir, "--plain"])
 
         records = manifest_stubs.records()
         assert len(self._hints(records)) == 1
@@ -266,7 +266,7 @@ class TestLegacyHintBoundary:
         project_dir = create_cli_project(pdk_root=pdk_root)
         os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
         # Legacy projects must migrate first: run refuses before any work.
         assert rc != 0
@@ -280,7 +280,7 @@ class TestLegacyHintBoundary:
         project_dir = create_cli_project()
         os.makedirs(os.path.join(project_dir, "runs", "default"))
 
-        rc = cli_main.run(["status", "--project", project_dir, "--json"])
+        rc = cli_main.run(["status", "--project", project_dir, "--plain"])
 
         assert rc != 0
         records = manifest_stubs.records()
@@ -296,7 +296,7 @@ class TestLegacyHintBoundary:
         with open(os.path.join(home, "flow.json"), "w") as f:
             f.write("{broken")
 
-        rc = cli_main.run(["status", "--project", project_dir, "--json"])
+        rc = cli_main.run(["status", "--project", project_dir, "--plain"])
 
         # The corrupt legacy ledger is never read: status resolves the
         # managed path and reports the workspace missing.
@@ -319,7 +319,7 @@ class TestLegacyHintBoundary:
         os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         flow_mocks.flow.run_steps_value = False
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
         # The engine never starts on a legacy project — not even to fail.
         assert rc != 0
@@ -338,7 +338,7 @@ class TestLegacyHintBoundary:
         with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
             f.write("\n[params.cts]\nmax_fanout = 0\n")
 
-        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        rc = cli_main.run(["check", "--project", project_dir, "--plain"])
 
         assert rc != 0
         assert len(self._hints(manifest_stubs.records())) == 1
@@ -360,7 +360,7 @@ class TestLegacyHintBoundary:
         home.mkdir(parents=True)
         (home / "flow.json").write_text('{"steps": []}')
 
-        rc = cli_main.run([command, "--project", str(project_dir), "--json"])
+        rc = cli_main.run([command, "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         assert self._hints(manifest_stubs.records()) == []
@@ -378,7 +378,7 @@ class TestLegacyHintBoundary:
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
         minimal_ics55_pdk_factory(project_dir / "pdk")
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         assert self._hints(manifest_stubs.records()) == []
@@ -394,7 +394,7 @@ class TestParamManifestMode:
     def test_param_list_requires_ecc_toml(self, tmp_path, capsys, manifest_stubs):
         project_dir = self._manifest_project(manifest_stubs, tmp_path)
 
-        rc = cli_main.run(["param", "list", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["param", "list", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
         (record,) = manifest_stubs.records()
@@ -404,7 +404,7 @@ class TestParamManifestMode:
         project_dir = self._manifest_project(manifest_stubs, tmp_path)
 
         rc = cli_main.run(
-            ["param", "set", "cts.max_fanout", "16", "--project", str(project_dir), "--json"]
+            ["param", "set", "cts.max_fanout", "16", "--project", str(project_dir), "--plain"]
         )
 
         assert rc != 0
@@ -427,7 +427,7 @@ class TestCheckManifestSelection:
             ],
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
         (record,) = manifest_stubs.records()
@@ -441,7 +441,7 @@ class TestCheckManifestSelection:
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
         minimal_ics55_pdk_factory(project_dir / "pdk")
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir)])
 
         assert rc == 0
 
@@ -466,7 +466,7 @@ class TestHybridCheck:
             )
         )
 
-        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        rc = cli_main.run(["check", "--project", project_dir, "--plain"])
 
         assert rc != 0
         (record,) = manifest_stubs.records()

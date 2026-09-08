@@ -14,7 +14,7 @@ also provide explicit commands for deeper inspection.
 - Keep default output concise and stable.
 - Make output easy to parse with simple tools such as `rg`, `awk`, and shell
   scripts.
-- Provide structured output for agents through `--json` and `--jsonl`.
+- Provide structured output for agents through `--plain`.
 - Preserve the existing Python API for advanced integration.
 - Build CLI behavior as a wrapper around the current Python APIs.
 
@@ -92,7 +92,7 @@ Recommended style:
 workspace_id=default status=failed workspace=gcd/default inspect_cmd="ecc status" log_cmd="ecc log"
 step=synthesis tool=yosys status=success runtime=0:00:18 log_cmd="ecc log synthesis"
 step=floorplan tool=ecc status=success runtime=0:00:04 log_cmd="ecc log floorplan"
-config=place_default_config.json scope=step step=placement role=config path=gcd/default/config/place_default_config.json inspect="ecc config placement --json"
+config=place_default_config.json scope=step step=placement role=config path=gcd/default/config/place_default_config.json inspect="ecc config placement"
 ```
 
 Current implementation note: `--plain` provides this stable key-value output.
@@ -108,43 +108,39 @@ interface.
 
 ### Structured Output
 
-Every inspection command should support:
-
-```bash
---json
---jsonl
-```
-
-Use `--json` for object-level output and `--jsonl` for stream or list output.
+Every record-producing command supports `--plain`, which prints one stable
+key-value record per line for scripting.
 
 Example:
 
-```jsonl
-{"step":"synthesis","tool":"yosys","status":"success","runtime":"0:00:18","log_cmd":"ecc log synthesis"}
-{"config":"place_default_config.json","scope":"step","step":"placement","role":"config","path":"gcd/default/config/place_default_config.json","inspect":"ecc config placement --json"}
+```text
+step=routing tool=ecc status=failed runtime=0:03:42 log_cmd="ecc log routing"
+config=route_ecc.json scope=step step=routing role=config path=gcd/default/config/route_ecc.json inspect="ecc config routing"
 ```
 
-Text output and JSON output should describe the same objects. The text output is
-the human and shell interface; JSON is the strict machine interface.
+Text output and plain output describe the same objects: pretty text is the
+human interface, `--plain` is the strict machine interface.
 
 Current implementation status:
 
 | Command family | Structured options |
 | --- | --- |
-| `ecc init` | `--json`, `--jsonl`, `--plain` |
-| `ecc check`, `ecc doctor` | `--json`, `--jsonl`, `--plain` |
-| `ecc run`, `ecc status`, `ecc log`, `ecc config`, `ecc migrate` | `--json`, `--jsonl`, `--plain` |
-| `ecc param list/show/set/unset/diff` | `--json`, `--jsonl`, `--plain` |
-| `ecc pdk setup/set-root/show/unset` | `--json`, `--jsonl`, `--plain` |
-| `ecc signoff inspect/export` | `--json`, `--jsonl`, `--plain` |
-| `ecc report summary/qor/checklist/step` | `--json`, `--jsonl`, `--plain` |
-| `ecc version` | `--json`, `--jsonl`, `--plain` |
+| `ecc init` | `--plain` |
+| `ecc check`, `ecc doctor` | `--plain` |
+| `ecc run`, `ecc status`, `ecc log`, `ecc config`, `ecc migrate` | `--plain` |
+| `ecc param list/show/set/unset/diff` | `--plain` |
+| `ecc pdk set-root/show/unset` | `--plain` |
+| `ecc project set/unset/add/remove/show` | `--plain` |
+| `ecc workspace refresh` | `--plain` |
+| `ecc signoff inspect/export` | `--plain` |
+| `ecc report summary/qor/checklist/step` | `--plain` |
+| `ecc doc` | `--plain` |
+| `ecc version` | hidden `--json` only (desktop app contract) |
 | `ecc rpc serve` | none (machine protocol) |
 | `ecc layout-image` | none (tool invocation; produces a file) |
 
-When multiple project output options are provided, the implementation selects
-`--jsonl` first, then `--json`, then `--plain`, and otherwise renders pretty
-text.
+When `--plain` is given, the implementation renders plain records; otherwise it
+renders pretty text.
 
 ### Object-Oriented CLI Model
 
@@ -231,7 +227,7 @@ Responsibilities:
 | `ecc config` | Show the resolved project or step configuration |
 | `ecc migrate` | Migrate a legacy `runs/` project to the manifest layout |
 | `ecc param` | List, inspect, set, unset, and diff parameter overrides |
-| `ecc pdk` | `setup` clones + `make unzip`s + wires in a PDK checkout; also `set-root`/`show`/`unset` for the `[pdk] root` path |
+| `ecc pdk` | `set-root`/`show`/`unset` manage the `[pdk] root` path |
 | `ecc project` | Edit declared design, PDK, and flow resource fields in `ecc.toml` |
 | `ecc workspace` | Refresh a declared workspace from current `ecc.toml` without running it |
 | `ecc signoff` | Inspect package readiness and export the tar.gz package |
@@ -258,7 +254,7 @@ implementation detail:
 | --- | --- | --- |
 | `ecc signoff` | `inspect`, `export` | Signoff package readiness and archive generation |
 | `ecc report` | `summary`, `qor`, `checklist`, `step` | File reports and per-step evidence viewing |
-| `ecc pdk` | `setup`, `set-root`, `show`, `unset` | Project PDK configuration |
+| `ecc pdk` | `set-root`, `show`, `unset` | Project PDK configuration |
 | `ecc param` | `list`, `show`, `set`, `unset`, `diff` | Project parameter overrides |
 | `ecc project` | `set`, `unset`, `add`, `remove`, `show` | Project design, PDK, and flow declarations in `ecc.toml` |
 | `ecc workspace` | `refresh` | Recreate one declared workspace from `ecc.toml`, without execution |
@@ -269,9 +265,8 @@ only through the project's `project.json`; it is not a direct filesystem path.
 Run-scoped inspection and reporting commands (`run`, `status`, `log`,
 `config`, `report *`, `signoff *`) may combine the two options, and the read-only
 commands (`status`, `log`, `config`, `report step`) never load or mutate the
-workspace. Record-producing commands use default human text,
-`--plain` for stable key-value records, `--json` for a record envelope, and
-`--jsonl` for one record per line. Commands that only create, configure, or
+workspace. Record-producing commands use default human text and `--plain`
+for stable key-value records. Commands that only create, configure, or
 serve a process expose only the options meaningful for that operation.
 
 ### Unified CLI Standard
@@ -284,7 +279,7 @@ The command graph follows these rules; new commands must follow them too:
   reporting live in noun groups (`param`, `pdk`, `project`, `workspace`,
   `signoff`, `report`, `rpc`).
 - **Subcommand verbs.** Mutable resources use the CRUD set
-  (`list`, `show`, `set`, `unset`, `diff`, plus `setup` for pdk). The `report`
+  (`list`, `show`, `set`, `unset`, `diff`). The `report`
   group names its artifacts instead (`summary`, `qor`, `checklist`, `step`)
   because `report <artifact>` reads as one action.
 - **Naming.** Lowercase single words; multi-word names use kebab-case
@@ -480,7 +475,7 @@ and stop session-scoped DB reuse explicitly; `workspace.open`,
 reuse for a session that has not called `db.ensure`.
 
 The former custom workspace JSON object is not part of the supported output
-contract. See `docs/workspace-cli.md` for framing examples and method payloads.
+contract. See `docs/rpc-guide.md` for framing examples and method payloads.
 
 ## Output Contracts
 
@@ -497,7 +492,7 @@ Examples:
 ```text
 workspace_id=default status=success workspace=gcd/default inspect_cmd="ecc status" log_cmd="ecc log"
 step=routing tool=ecc status=failed runtime=0:03:42 log_cmd="ecc log routing"
-config=route_ecc.json scope=step step=routing role=config path=gcd/default/config/route_ecc.json inspect="ecc config routing --json"
+config=route_ecc.json scope=step step=routing role=config path=gcd/default/config/route_ecc.json inspect="ecc config routing"
 ```
 
 Rules:
@@ -519,8 +514,6 @@ Current output modes:
 | --- | --- | --- |
 | Pretty text | default | Human-oriented grouped output with disclosure commands |
 | Plain text | `--plain` | Stable one-record-per-line key-value output |
-| JSON | `--json` | Project and `param` JSON envelope with `records`; `version` and `workspace` use their own root-level schemas |
-| JSONL | `--jsonl` | One JSON object per record |
 
 Plain output preserves record keys exactly. Pretty text may normalize labels for
 display, for example rendering `inspect_cmd` as `inspect`.
@@ -721,7 +714,6 @@ commands.
 - [x] `ecc status`
 - [x] `ecc log`
 - [x] Stable grep-friendly summary output through `--plain`
-- [x] `--json` and `--jsonl` for status, log, run, config, and param commands
 
 Success criteria:
 
@@ -742,8 +734,8 @@ Success criteria:
 
 - [x] A failed step can be investigated through status, log, and resolved config
   output.
-- [x] Agent frameworks can follow disclosure commands from `--plain`, `--json`,
-  or `--jsonl` output without parsing prose.
+- [x] Agent frameworks can follow disclosure commands from `--plain` output
+  without parsing prose.
 
 ### Phase 3: Exploration And Assistance
 

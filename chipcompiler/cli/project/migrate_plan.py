@@ -20,9 +20,11 @@ from typing_extensions import deprecated
 
 from chipcompiler.cli.project.manifest import (
     base_design_from_config,
-    build_manifest_document,
     find_manifest,
     load_manifest,
+)
+from chipcompiler.cli.project.manifest_write import (
+    build_manifest_document,
     manifest_workspace_entry,
 )
 
@@ -112,7 +114,7 @@ def _flow_status(steps: list[dict]) -> str:
         return "failed"
     if states & {"Ongoing", "Pending"}:
         return "in_progress"
-    if states and states <= {"Success", "Warning"}:
+    if states == {"Success"}:
         return "success"
     return "not_started"
 

@@ -58,7 +58,7 @@ def test_oversize_payload_is_transport_error():
 
 
 def test_workspace_rpc_doc_content_lengths_match_payloads():
-    source = Path("docs/workspace-cli.md").read_text(encoding="utf-8")
+    source = Path("docs/rpc-guide.md").read_text(encoding="utf-8")
     frames = re.findall(r"Content-Length: (\d+)\n\n({\"jsonrpc\"[^\n]+})", source)
 
     assert frames
@@ -67,7 +67,7 @@ def test_workspace_rpc_doc_content_lengths_match_payloads():
 
 
 def test_workspace_rpc_docs_cover_opt_in_persistent_db_surface():
-    source = Path("docs/workspace-cli.md").read_text(encoding="utf-8")
+    source = Path("docs/rpc-guide.md").read_text(encoding="utf-8")
     cli_design = Path("docs/specification/cli-design.md").read_text(encoding="utf-8")
 
     for text in (source, cli_design):

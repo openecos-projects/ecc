@@ -17,8 +17,6 @@ from chipcompiler.cli.core.inputs import (
 )
 from chipcompiler.cli.core.invocation import execute_command
 from chipcompiler.cli.core.options import (
-    JsonlOption,
-    JsonOption,
     PlainOption,
     ProjectOption,
     WorkspaceOption,
@@ -42,26 +40,20 @@ def register_project_commands(app: typer.Typer) -> None:
 def init_cmd(
     *,
     name: Annotated[str, typer.Argument()],
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
-    command_input = InitInput(
-        name=name, output=output_options(json_output=json_output, jsonl=jsonl, plain=plain)
-    )
+    command_input = InitInput(name=name, output=output_options(plain=plain))
     execute_command("init", command_input, project_handlers.init)
 
 
 def check_cmd(
     *,
     project: ProjectOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
     command_input = CheckInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         workspace=workspace,
     )
@@ -103,8 +95,6 @@ def run_cmd(
             help="Flow preset for this run only, e.g. --preset syn_sta (does not edit ecc.toml)",
         ),
     ] = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     param_set: Annotated[
         list[str] | None,
         typer.Option(
@@ -131,7 +121,7 @@ def run_cmd(
     See 'ecc doc config' for the full reference.
     """
     command_input = RunInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         overwrite=overwrite,
         param_set=tuple(param_set or ()),
@@ -149,13 +139,11 @@ def run_cmd(
 def status_cmd(
     *,
     project: ProjectOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
     command_input = StatusInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         workspace=workspace,
     )
@@ -166,13 +154,11 @@ def log_cmd(
     *,
     step: Annotated[str | None, typer.Argument()] = None,
     project: ProjectOption = None,
-    json_output: JsonOption = False,
     plain: PlainOption = False,
-    jsonl: JsonlOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
     command_input = LogInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         step=step,
         workspace=workspace,
@@ -187,12 +173,10 @@ def migrate_cmd(
         bool,
         typer.Option("--yes", help="Migrate without interactive confirmation"),
     ] = False,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
 ) -> None:
     command_input = MigrateInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         yes=yes,
     )
@@ -203,8 +187,6 @@ def config_cmd(
     *,
     step: Annotated[str | None, typer.Argument()] = None,
     project: ProjectOption = None,
-    json_output: JsonOption = False,
-    jsonl: JsonlOption = False,
     plain: PlainOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
@@ -218,7 +200,7 @@ def config_cmd(
     See 'ecc doc config' for the full reference.
     """
     command_input = ConfigInput(
-        output=output_options(json_output=json_output, jsonl=jsonl, plain=plain),
+        output=output_options(plain=plain),
         project=project_options(project),
         step=step,
         workspace=workspace,

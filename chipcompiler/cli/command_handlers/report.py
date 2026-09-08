@@ -13,16 +13,43 @@ from chipcompiler.cli.inspection.discovery import (
 )
 
 
+def _safe_report_filename(name: str) -> str:
+    """Reduce a design-derived filename to a safe basename.
+
+    Design names reach the default report path, so path separators and
+    dot-prefixed escapes must never survive into the destination.
+    """
+    cleaned = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in name)
+    cleaned = cleaned.strip("._") or "design"
+    return cleaned
+
+
 def _write_report(report_name, default_filename, content, command_input, ctx, extra):
     """Write the report file (default: <workspace>/signoff/) and summarize."""
+    from chipcompiler.utility.file import write_text_atomic
+
     workspace_display_dir = workspace_display(command_input, ctx)
     if command_input.output_path is not None:
         destination = os.path.abspath(os.path.expanduser(command_input.output_path))
     else:
-        destination = os.path.join(workspace_display_dir, "signoff", default_filename)
-    os.makedirs(os.path.dirname(destination), exist_ok=True)
-    with open(destination, "w", encoding="utf-8") as f:
-        f.write(content)
+        destination = os.path.join(
+            workspace_display_dir, "signoff", _safe_report_filename(default_filename)
+        )
+    try:
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
+        # An existing report must survive a failed write, so the replacement
+        # lands atomically instead of truncating in place.
+        write_text_atomic(destination, content)
+    except OSError as exc:
+        return CommandResult.err(
+            [
+                error_record(
+                    "report_write_failed",
+                    path=destination,
+                    reason=str(exc),
+                )
+            ]
+        )
     record = {
         "report": report_name,
         "path": destination,
@@ -42,8 +69,11 @@ def qor(command_input, ctx: CommandContext) -> CommandResult:
     from chipcompiler.engine.qor_report import build_qor_report, generate_qor_report
 
     try:
+        # Build once and render that snapshot: a second traversal could read
+        # a changed workspace, so the record metadata would describe a
+        # different report than the one written.
         report = build_qor_report(workspace)
-        content = generate_qor_report(workspace)
+        content = generate_qor_report(workspace, report)
     except Exception as exc:
         return CommandResult.err([error_record("report_failed", reason=str(exc))])
 
@@ -84,7 +114,7 @@ def checklist(command_input, ctx: CommandContext) -> CommandResult:
 
     try:
         report = build_checklist_report(workspace)
-        content = generate_checklist_report(workspace)
+        content = generate_checklist_report(workspace, report)
     except Exception as exc:
         return CommandResult.err([error_record("report_failed", reason=str(exc))])
 

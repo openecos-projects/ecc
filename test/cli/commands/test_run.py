@@ -62,17 +62,17 @@ class TestRun:
         assert rc == 0
 
     def test_run_fails_if_target_dir_exists_without_overwrite(
-        self, tmp_path, create_cli_project, capsys, mock_pdk_validation
+        self, tmp_path, create_cli_project, capsys, mock_pdk_validation, plain_records
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         os.makedirs(run_dir)
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
         assert rc == 1
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert record["error"] == "run_exists"
         assert record["workspace_id"] == "default"
 
@@ -102,47 +102,35 @@ class TestRun:
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 1
 
-    def test_run_json_uses_non_progress_path(
+    def test_run_plain_uses_non_progress_path(
+        self, tmp_path, capsys, create_cli_project, flow_mocks, plain_records
+    ):
+        project_dir = create_cli_project()
+
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
+        assert rc == 0
+        records = plain_records(capsys.readouterr().out)
+        assert records[0]["status"] == "success"
+        assert flow_mocks.flow.instances[0].run_called
+
+    def test_run_plain_no_progress_on_stderr(
         self, tmp_path, capsys, create_cli_project, flow_mocks
     ):
         project_dir = create_cli_project()
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
-        assert rc == 0
-        out = capsys.readouterr().out
-        data = json.loads(out)
-        assert "records" in data
-        assert data["records"][0]["status"] == "success"
-        assert flow_mocks.flow.instances[0].run_called
-
-    def test_run_jsonl_uses_non_progress_path(
-        self, tmp_path, capsys, create_cli_project, flow_mocks
-    ):
-        project_dir = create_cli_project()
-
-        rc = cli_main.run(["run", "--project", project_dir, "--jsonl"])
-        assert rc == 0
-        out = capsys.readouterr().out
-        objects = [json.loads(ln) for ln in out.strip().split("\n")]
-        assert any("status" in obj for obj in objects)
-        assert flow_mocks.flow.instances[0].run_called
-
-    def test_run_json_no_progress_on_stderr(self, tmp_path, capsys, create_cli_project, flow_mocks):
-        project_dir = create_cli_project()
-
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
         assert rc == 0
         err = capsys.readouterr().err
         assert "step=" not in err
 
-    def test_run_preserves_final_records(self, tmp_path, capsys, create_cli_project, flow_mocks):
+    def test_run_preserves_final_records(
+        self, tmp_path, capsys, create_cli_project, flow_mocks, plain_records
+    ):
         project_dir = create_cli_project()
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
         assert rc == 0
-        out = capsys.readouterr().out
-        data = json.loads(out)
-        record = data["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert record["workspace_id"] == "default"
         assert record["status"] == "success"
         assert "inspect_cmd" in record
@@ -212,14 +200,14 @@ class TestRunFlowPreset:
             assert f.read() == before
 
     def test_run_preset_flag_rejects_unknown_preset(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, flow_mocks
+        self, tmp_path, capsys, monkeypatch, create_cli_project, flow_mocks, plain_records
     ):
         project_dir = create_cli_project()
         _patch_all_flow_builders(monkeypatch)
 
-        rc = cli_main.run(["run", "--project", project_dir, "--preset", "bogus", "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--preset", "bogus", "--plain"])
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == "unsupported_preset"
         assert record["preset"] == "bogus"
@@ -384,7 +372,7 @@ class TestWorkspaceRun:
         )
         return seen
 
-    def test_only_force_wiring(self, workspace_mocks, capsys):
+    def test_only_force_wiring(self, workspace_mocks, capsys, plain_records):
         rc = cli_main.run(
             [
                 "run",
@@ -395,11 +383,11 @@ class TestWorkspaceRun:
                 "--only",
                 "place",
                 "--force",
-                "--json",
+                "--plain",
             ]
         )
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 0
         assert workspace_mocks.load_path == workspace_mocks.run_dir
         assert workspace_mocks.selected == {"from_step": None, "only": "place", "force": True}
@@ -408,8 +396,8 @@ class TestWorkspaceRun:
         assert record["workspace_id"] == "workspace"
         assert record["status"] == "success"
         assert record["workspace"] == workspace_mocks.run_dir
-        assert record["executed_steps"] == ["place"]
-        assert record["no_op"] is False
+        assert record["executed_steps"] == "[place]"
+        assert record["no_op"] == "False"
 
     def test_default_selector_is_resume(self, workspace_mocks):
         rc = cli_main.run(
@@ -420,7 +408,6 @@ class TestWorkspaceRun:
                 "--workspace",
                 "workspace",
                 "--resume",
-                "--plain",
             ]
         )
 
@@ -448,7 +435,7 @@ class TestWorkspaceRun:
         assert workspace_mocks.from_step == "CTS"
         assert workspace_mocks.executable == {"CTS"}
 
-    def test_noop_selection_skips_workspace_rebuild(self, workspace_mocks, capsys):
+    def test_noop_selection_skips_workspace_rebuild(self, workspace_mocks, capsys, plain_records):
         workspace_mocks.result = StepRunResult(ok=True, executed=())
 
         rc = cli_main.run(
@@ -460,11 +447,11 @@ class TestWorkspaceRun:
                 "workspace",
                 "--only",
                 "place",
-                "--json",
+                "--plain",
             ]
         )
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 0
         assert workspace_mocks.create_calls == 0
         assert workspace_mocks.only == ("place", False)
@@ -472,11 +459,13 @@ class TestWorkspaceRun:
             "workspace_id": "workspace",
             "status": "success",
             "workspace": workspace_mocks.run_dir,
-            "executed_steps": [],
-            "no_op": True,
+            "executed_steps": "[]",
+            "no_op": "True",
         }
 
-    def test_failed_run_reports_failed_step_and_resume(self, workspace_mocks, capsys):
+    def test_failed_run_reports_failed_step_and_resume(
+        self, workspace_mocks, capsys, plain_records
+    ):
         workspace_mocks.result = StepRunResult(ok=False, executed=(), failed="place")
 
         rc = cli_main.run(
@@ -488,30 +477,30 @@ class TestWorkspaceRun:
                 "workspace",
                 "--only",
                 "place",
-                "--json",
+                "--plain",
             ]
         )
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record == {
             "workspace_id": "workspace",
             "status": "failed",
             "workspace": workspace_mocks.run_dir,
-            "executed_steps": [],
-            "no_op": False,
+            "executed_steps": "[]",
+            "no_op": "False",
             "failed_step": "place",
             "resume_cmd": "ecc run --workspace workspace --resume",
         }
 
-    def test_invalid_workspace(self, tmp_path, capsys):
-        rc = cli_main.run(["run", "--workspace", str(tmp_path / "missing"), "--json"])
+    def test_invalid_workspace(self, tmp_path, capsys, plain_records):
+        rc = cli_main.run(["run", "--workspace", str(tmp_path / "missing"), "--plain"])
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == "invalid_workspace"
 
-    def test_missing_flow(self, workspace_mocks, capsys):
+    def test_missing_flow(self, workspace_mocks, capsys, plain_records):
         workspace_mocks.has_init = False
 
         rc = cli_main.run(
@@ -522,15 +511,15 @@ class TestWorkspaceRun:
                 "--workspace",
                 "workspace",
                 "--resume",
-                "--json",
+                "--plain",
             ]
         )
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == "missing_flow"
 
-    def test_unknown_step(self, workspace_mocks, capsys):
+    def test_unknown_step(self, workspace_mocks, capsys, plain_records):
         workspace_mocks.selected_error = ValueError("unknown step 'bogus'")
 
         rc = cli_main.run(
@@ -542,11 +531,11 @@ class TestWorkspaceRun:
                 "workspace",
                 "--only",
                 "bogus",
-                "--json",
+                "--plain",
             ]
         )
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == "unknown_step"
         assert "bogus" in record["reason"]
@@ -580,23 +569,31 @@ class TestWorkspaceRun:
             (["--from", "place"], "flow_range_requires_pair"),
         ],
     )
-    def test_option_conflicts(self, argv, error, tmp_path, capsys, monkeypatch, create_cli_project):
+    def test_option_conflicts(
+        self, argv, error, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
+    ):
         project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.data.load_workspace",
             lambda _path: pytest.fail("conflicts must be rejected before workspace load"),
         )
 
-        rc = cli_main.run(["run", "--project", project_dir, *argv, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, *argv, "--plain"])
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == error
 
 
 class TestWorkspaceNoOp:
     def test_complete_workspace_resume_is_noop(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, minimal_ics55_pdk_factory
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        plain_records,
     ):
         import json as _json
 
@@ -639,13 +636,13 @@ class TestWorkspaceNoOp:
         )
 
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--workspace", "workspace", "--resume", "--json"]
+            ["run", "--project", project_dir, "--workspace", "workspace", "--resume", "--plain"]
         )
 
         assert rc == 0
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert record["status"] == "success"
-        assert record["no_op"] is True
+        assert record["no_op"] == "True"
         # The adopted narrower target replaced the stale wider one.
         from chipcompiler.data.workspace_config import load_workspace_config
 

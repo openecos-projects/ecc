@@ -101,6 +101,60 @@ def param_diff(args, ctx: CommandContext) -> CommandResult:
     return CommandResult.ok(records or [{"diff_status": "clean", "workspace": ctx.run_id}])
 
 
+def _snapshot_transaction(workspace) -> dict:
+    """Capture every declared output file of the mutation sequence.
+
+    The sequence commits three artifacts in turn (params.toml, the derived
+    config/*.json files, and the flow ledger); a failure after the first
+    commit must roll all of them back or the workspace keeps new parameters
+    paired with stale configs and a ledger that lets the next run no-op.
+    The declared config set is snapshotted even when a file does not exist
+    yet — refresh_workspace_config may create it, and the rollback must
+    remove it again. The auto-generated SDC is rewritten by the refresh
+    before config validation can fail, so it belongs to the same
+    transaction. Values are bytes, or None for not-yet-existing paths.
+    """
+    from pathlib import Path
+
+    from chipcompiler.data.workspace import workspace_config_paths
+
+    workspace_dir = Path(workspace.directory)
+    paths = [workspace_dir / "home" / "params.toml", workspace_dir / "home" / "flow.json"]
+    paths.extend(
+        path for key, path in workspace_config_paths(workspace_dir).items() if key != "dir"
+    )
+    sdc = getattr(getattr(workspace, "pdk", None), "sdc", None)
+    if sdc:
+        paths.append(Path(sdc))
+    snapshot: dict = {}
+    for path in paths:
+        if not path.is_file():
+            snapshot[path] = None
+            continue
+        try:
+            snapshot[path] = path.read_bytes()
+        except OSError as exc:
+            # A file that exists but cannot be read must abort the
+            # transaction before any mutation: restoring it as absent would
+            # delete a real configuration.
+            raise OSError(f"cannot snapshot {path}: {exc}") from exc
+    return snapshot
+
+
+def _restore_transaction(snapshot: dict) -> list[str]:
+    """Write every snapshotted file back; returns human-readable failures."""
+    failures: list[str] = []
+    for path, content in snapshot.items():
+        try:
+            if content is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(content)
+        except OSError as exc:
+            failures.append(f"{path}: {exc}")
+    return failures
+
+
 def _mutate(
     ctx: CommandContext, schema, mutation, requested_value: object, status: str
 ) -> CommandResult:
@@ -126,6 +180,18 @@ def _mutate(
             if result is None:
                 return CommandResult.ok([_record(ctx, schema.param, None, "no_override")])
             value, step = result
+            try:
+                snapshot = _snapshot_transaction(workspace)
+            except OSError as exc:
+                return CommandResult.err(
+                    [
+                        error_record(
+                            "workspace_param_refresh_failed",
+                            param=schema.param,
+                            reason=f"cannot snapshot workspace for rollback: {exc}",
+                        )
+                    ]
+                )
             if not save_parameter(workspace.parameters):
                 return CommandResult.err(
                     [error_record("workspace_param_save_failed", param=schema.param)]
@@ -135,10 +201,14 @@ def _mutate(
                 flow = EngineFlow(workspace=workspace)
                 invalidated = rerun.invalidate_from(flow, step)
             except Exception as exc:
+                rollback_failures = _restore_transaction(snapshot)
+                reason = str(exc)
+                if rollback_failures:
+                    reason += "; rollback incomplete: " + "; ".join(rollback_failures)
                 return CommandResult.err(
                     [
                         error_record(
-                            "workspace_param_refresh_failed", param=schema.param, reason=str(exc)
+                            "workspace_param_refresh_failed", param=schema.param, reason=reason
                         )
                     ]
                 )

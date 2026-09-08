@@ -55,7 +55,8 @@ def get_sizer_command() -> list[str]:
     override = os.environ.get("CHIPCOMPILER_ECC_SIZER_ROOT", "").strip()
     if override:
         binary = Path(override).expanduser() / "bin" / "Sizer"
-        if binary.is_file():
+        # A non-executable override must not shadow a working PATH install.
+        if binary.is_file() and os.access(binary, os.X_OK):
             return [str(binary.resolve())]
     sizer = shutil.which("Sizer")
     return [str(Path(sizer).resolve())] if sizer else []

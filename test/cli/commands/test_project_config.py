@@ -1,21 +1,19 @@
-import json
-
 from chipcompiler.cli import main as cli_main
 
 
-def _records(capsys):
-    return json.loads(capsys.readouterr().out)["records"]
+def _records(capsys, plain_records):
+    return plain_records(capsys.readouterr().out)
 
 
-def test_project_set_and_show_design_resource(capsys, create_cli_project):
+def test_project_set_and_show_design_resource(capsys, create_cli_project, plain_records):
     project_dir = create_cli_project()
 
     rc = cli_main.run(
-        ["project", "set", "design.def", "inputs/gcd.def", "--project", project_dir, "--json"]
+        ["project", "set", "design.def", "inputs/gcd.def", "--project", project_dir, "--plain"]
     )
 
     assert rc == 0
-    assert _records(capsys) == [
+    assert _records(capsys, plain_records) == [
         {
             "project_field": "design.def",
             "value": "inputs/gcd.def",
@@ -24,13 +22,15 @@ def test_project_set_and_show_design_resource(capsys, create_cli_project):
         }
     ]
 
-    rc = cli_main.run(["project", "show", "design.def", "--project", project_dir, "--json"])
+    rc = cli_main.run(["project", "show", "design.def", "--project", project_dir, "--plain"])
 
     assert rc == 0
-    assert _records(capsys)[0]["value"] == "inputs/gcd.def"
+    assert _records(capsys, plain_records)[0]["value"] == "inputs/gcd.def"
 
 
-def test_project_rtl_list_replacement_and_incremental_changes(capsys, create_cli_project):
+def test_project_rtl_list_replacement_and_incremental_changes(
+    capsys, create_cli_project, plain_records
+):
     project_dir = create_cli_project()
 
     rc = cli_main.run(
@@ -42,33 +42,35 @@ def test_project_rtl_list_replacement_and_incremental_changes(capsys, create_cli
             "rtl/alu.sv",
             "--project",
             project_dir,
-            "--json",
+            "--plain",
         ]
     )
     assert rc == 0
-    assert _records(capsys)[0]["value"] == ["rtl/gcd.sv", "rtl/alu.sv"]
+    assert _records(capsys, plain_records)[0]["value"] == "['rtl/gcd.sv', 'rtl/alu.sv']"
 
     rc = cli_main.run(
-        ["project", "add", "design.rtl", "rtl/fifo.sv", "--project", project_dir, "--json"]
+        ["project", "add", "design.rtl", "rtl/fifo.sv", "--project", project_dir, "--plain"]
     )
     assert rc == 0
-    assert _records(capsys)[0]["value"] == ["rtl/gcd.sv", "rtl/alu.sv", "rtl/fifo.sv"]
+    assert (
+        _records(capsys, plain_records)[0]["value"] == "['rtl/gcd.sv', 'rtl/alu.sv', 'rtl/fifo.sv']"
+    )
 
     rc = cli_main.run(
-        ["project", "remove", "design.rtl", "rtl/alu.sv", "--project", project_dir, "--json"]
+        ["project", "remove", "design.rtl", "rtl/alu.sv", "--project", project_dir, "--plain"]
     )
     assert rc == 0
-    assert _records(capsys)[0]["value"] == ["rtl/gcd.sv", "rtl/fifo.sv"]
+    assert _records(capsys, plain_records)[0]["value"] == "['rtl/gcd.sv', 'rtl/fifo.sv']"
 
 
-def test_project_set_rejects_unknown_field(capsys, create_cli_project):
+def test_project_set_rejects_unknown_field(capsys, create_cli_project, plain_records):
     project_dir = create_cli_project()
 
     rc = cli_main.run(
-        ["project", "set", "design.unknown", "value", "--project", project_dir, "--json"]
+        ["project", "set", "design.unknown", "value", "--project", project_dir, "--plain"]
     )
 
     assert rc == 1
-    assert _records(capsys) == [
+    assert _records(capsys, plain_records) == [
         {"kind": "error", "error": "unknown_project_field", "key": "design.unknown"}
     ]
