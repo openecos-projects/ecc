@@ -51,6 +51,41 @@ def read_stale_engineering_snapshot(workspace: Any) -> dict[str, Any] | None:
     return _read_snapshot(path) if path.is_file() else None
 
 
+def commit_engineering_snapshot(
+    workspace: Any,
+    *,
+    workspace_id: str,
+    cause: str,
+) -> dict[str, Any]:
+    current = read_engineering_snapshot(workspace)
+    if current["workspaceId"] != workspace_id:
+        raise EngineeringSnapshotError("Workspace identity changed before commit")
+    snapshot = _build_snapshot(
+        workspace,
+        workspace_id=workspace_id,
+        workspace_revision=current["workspaceRevision"] + 1,
+        cause=cause,
+    )
+    stale = current.get("stalePredecessor")
+    if isinstance(stale, dict):
+        states = {
+            str(step.get("name")): step.get("state")
+            for step in snapshot.get("flow", {}).get("steps", [])
+            if isinstance(step, dict) and step.get("name")
+        }
+        remaining = [
+            step_id
+            for step_id in stale.get("invalidatedStepIds", [])
+            if states.get(step_id) not in {"Success", "Skipped"}
+        ]
+        if remaining:
+            snapshot["stalePredecessor"] = {**deepcopy(stale), "invalidatedStepIds": remaining}
+        else:
+            _stale_snapshot_path(workspace).unlink(missing_ok=True)
+    _write_snapshot(_snapshot_path(workspace), snapshot)
+    return snapshot
+
+
 def invalidate_engineering_snapshot(
     workspace: Any,
     *,
