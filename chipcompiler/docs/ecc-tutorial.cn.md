@@ -676,12 +676,12 @@ $ ecc run --from cts --to route
 rc=1
 ```
 
-> **步骤名怎么写**：`ecc status`/`ecc log` 展示的是小写展示名（如 `placement`、`timing_optimization`）；而 **已有** workspace 上的 `--from`/`--only`/`--to` 要用 `home/flow.json` 里的持久化名（如 `place`、`CTS`、`Timing optimization`）；只有**新建**范围（`--from A --to B` 成对出现）接受小写别名。记不住没关系——拼错时会报 `unknown_step` 并列出全部可用名，照抄即可：
+> **步骤名怎么写**：`ecc status`/`ecc log` 展示的是小写展示名（如 `placement`、`timing_optimization`）；`--from`/`--only`/`--to` 选择器同时接受 `home/flow.json` 里的持久化名（如 `place`、`CTS`、`Timing optimization`）和小写别名（如 `placement`、`routing`）。记不住没关系——两者都不匹配时报 `unknown_step` 并列出全部可用名，照抄即可：
 >
 > ```console
-> $ ecc run --workspace default --only placement   # 持久化名是 "place"
+> $ ecc run --workspace default --only placemen   # 拼错了：既不是持久化名也不是别名
 > [error]
->   unknown_step unknown step 'placement'; available steps: Synthesis, lec, Floorplan,
+>   unknown_step unknown step 'placemen'; available steps: Synthesis, lec, Floorplan,
 >   place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
 >   postRouteLec, drc, Harden
 > ```
@@ -701,7 +701,7 @@ ecc config --plain      # 项目级配置（键值 + 解析后绝对路径）
 | `[error] env_not_ready`（run 时） | preset 必需工具缺失 | 按 `ecc doctor` 输出补齐；通常是 yosys/slang，重新运行 §2.1 安装脚本加 `--with-toolchain` |
 | `[error] run_exists` | workspace 目录已存在但不是有效 ECC workspace | `ecc run --overwrite`，或换 `--workspace NAME`。注意：**跑完再执行 `ecc run` 不会报这个错**——已成功时是 no_op，中断时自动续跑 |
 | `[error] workspace_required` | 项目里有多个活跃 workspace，没指明用哪个 | 按报错列出的名称传 `--workspace NAME` |
-| `[error] unknown_step` | `--from`/`--only` 的步骤名拼写与 `home/flow.json` 持久化名不符（如写了 `placement`，持久化名是 `place`） | 照抄报错列出的可用步骤名；详见 §6.3 的「步骤名怎么写」 |
+| `[error] unknown_step` | `--from`/`--only` 的步骤名既不匹配 `home/flow.json` 持久化名也不匹配别名（如把 `place` 写成 `placemen`） | 照抄报错列出的可用步骤名；详见 §6.3 的「步骤名怎么写」 |
 | `[error] set_requires_fresh_run` | 对已有 workspace 用 `--set` | `--set` 只在新建时生效；改用 `--overwrite` 或新 `--workspace` |
 | run 汇总带 `warning: ecc.toml values override different project.json base values`（`config_layer_diverged`） | `ecc.toml` 与首次运行记录到 `project.json` 的基线实际不一致：`pdk.root` 解析到了与首次运行不同的 PDK（如环境变量改指向），或 `flow.preset` 与 workspace 声明的范围不一致（如用 `--preset synthesis_lec` 建的 workspace 配 `rtl2gds` 的 ecc.toml） | 不影响执行结果，可忽略；对齐两边即消失（`ecc pdk set-root` 或修正 `flow.preset`） |
 | `[error] signoff_incomplete`（export 时） | 必需交付物缺失（如某步失败） | `ecc signoff inspect` 看 blocked 项；`ecc status`/`ecc log` 排查失败步骤后重跑 |

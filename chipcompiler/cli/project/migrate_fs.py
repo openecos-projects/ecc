@@ -284,6 +284,41 @@ def _rebase_home_pointers(workspace_dir: str, old_prefix: str, new_prefix: str) 
     "after the transition period",
     category=None,
 )
+def _rebase_flow_step_info(workspace_dir: str, old_prefix: str, new_prefix: str) -> None:
+    """Rewrite flow.json step-info paths (golden netlist, SPEF) to the new location."""
+    flow_path = os.path.join(workspace_dir, "home", "flow.json")
+    if not os.path.exists(flow_path):
+        return
+    with open(flow_path, encoding="utf-8") as f:
+        data = json.load(f)
+    steps = data.get("steps") if isinstance(data, dict) else None
+    if not isinstance(steps, list):
+        return
+    changed = False
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        info = step.get("info")
+        if not isinstance(info, dict):
+            continue
+        for key in ("golden_verilog", "spef"):
+            value = info.get(key)
+            if isinstance(value, str) and value.startswith(old_prefix + os.sep):
+                info[key] = new_prefix + value[len(old_prefix) :]
+                changed = True
+    if not changed:
+        return
+    from chipcompiler.utility import json_write
+
+    if not json_write(flow_path, data):
+        raise OSError(f"failed to write rebased flow.json: {flow_path}")
+
+
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def _rollback_workspace(entry, container_fd: int, project_fd: int) -> bool:
     """Undo a failed move when identity permits; touch nothing otherwise.
 
@@ -308,6 +343,7 @@ def _rollback_workspace(entry, container_fd: int, project_fd: int) -> bool:
         # all-or-nothing covers the legacy "PDK Config" pointer too.
         _pre_rebase_legacy_config_paths(entry.source, entry.target, entry.source)
         _rebase_home_pointers(entry.source, entry.target, entry.source)
+        _rebase_flow_step_info(entry.source, entry.target, entry.source)
     except (OSError, ValueError):
         # ValueError covers JSONDecodeError/UnicodeDecodeError and the
         # not-an-object guard: a malformed state file only downgrades the
@@ -451,6 +487,7 @@ def _move_workspace(entry, container_fd: int, project_fd: int) -> tuple[str, str
             if workspace is None:
                 raise ValueError(f"moved workspace fails to load: {entry.target}")
             _rebase_home_pointers(entry.target, entry.source, entry.target)
+            _rebase_flow_step_info(entry.target, entry.source, entry.target)
             workspace = load_workspace(entry.target)
             refresh_workspace_config(workspace)
         except Exception as exc:

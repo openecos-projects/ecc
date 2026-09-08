@@ -677,12 +677,12 @@ $ ecc run --from cts --to route
 rc=1
 ```
 
-> **How to spell step names**: `ecc status`/`ecc log` show lowercase display names (e.g. `placement`, `timing_optimization`), while `--from`/`--only`/`--to` on an **existing** workspace must use the persisted names from `home/flow.json` (e.g. `place`, `CTS`, `Timing optimization`); only **creating** a new range (`--from A --to B` given as a pair) accepts the lowercase aliases. Don't worry about memorizing this — a misspelled name fails with `unknown_step` and lists every accepted name, so just copy one:
+> **How to spell step names**: `ecc status`/`ecc log` show lowercase display names (e.g. `placement`, `timing_optimization`); the `--from`/`--only`/`--to` selectors accept the persisted names from `home/flow.json` (e.g. `place`, `CTS`, `Timing optimization`) and the lowercase aliases (e.g. `placement`, `routing`) alike. Don't worry about memorizing this — a name matching neither fails with `unknown_step` and lists every accepted name, so just copy one:
 >
 > ```console
-> $ ecc run --workspace default --only placement   # the persisted name is "place"
+> $ ecc run --workspace default --only placemen   # typo: neither a persisted name nor an alias
 > [error]
->   unknown_step unknown step 'placement'; available steps: Synthesis, lec, Floorplan,
+>   unknown_step unknown step 'placemen'; available steps: Synthesis, lec, Floorplan,
 >   place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
 >   postRouteLec, drc, Harden
 > ```
@@ -702,7 +702,7 @@ ecc config --plain      # project-level config (key=value + resolved absolute pa
 | `[error] env_not_ready` (at run) | tools required by the preset are missing | Follow `ecc doctor`; usually yosys/slang — re-run the §2.1 installer with `--with-toolchain` |
 | `[error] run_exists` | the workspace directory already exists but is not a valid ECC workspace | `ecc run --overwrite`, or select a different `--workspace NAME`. Note: **running `ecc run` again after the flow completed does NOT raise this error** — it no-ops when everything succeeded, and auto-resumes after an interruption |
 | `[error] workspace_required` | the project has multiple active workspaces and none was specified | pass `--workspace NAME` with one of the names listed in the error |
-| `[error] unknown_step` | a step name passed to `--from`/`--only` doesn't match the persisted names in `home/flow.json` (e.g. you wrote `placement`; the persisted name is `place`) | copy one of the available step names listed in the error; see the "How to spell step names" note in §6.3 |
+| `[error] unknown_step` | a step name passed to `--from`/`--only` matches neither a persisted name in `home/flow.json` nor an alias (e.g. you wrote `placemen` for `place`) | copy one of the available step names listed in the error; see the "How to spell step names" note in §6.3 |
 | `[error] set_requires_fresh_run` | `--set` used on an existing workspace | `--set` applies only at creation; use `--overwrite` or a new `--workspace` instead |
 | run summary carries `warning: ecc.toml values override different project.json base values` (`config_layer_diverged`) | `ecc.toml` effectively disagrees with the baseline the first run recorded in `project.json`: `pdk.root` resolves to a different PDK than the first run used (e.g. the env var was repointed), or `flow.preset` differs from the workspace's declared range (e.g. a workspace created with `--preset synthesis_lec` under an `rtl2gds` ecc.toml) | does not affect the run result — safe to ignore; aligning the two sides makes it go away (`ecc pdk set-root`, or fix `flow.preset`) |
 | `[error] signoff_incomplete` (at export) | required deliverables missing (e.g. a failed step) | `ecc signoff inspect` for blocked items; debug with `ecc status`/`ecc log`, then rerun |

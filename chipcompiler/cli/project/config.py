@@ -185,8 +185,9 @@ def load_run_config(project_dir: str) -> ProjectConfig | None:
 
 def _supported_flow_presets() -> set[str]:
     from chipcompiler import rtl2gds as rtl2gds_api
+    from chipcompiler.data.workspace_config import LEGACY_PRESET_RANGES
 
-    return set(rtl2gds_api.get_flow_builders())
+    return set(rtl2gds_api.get_flow_builders()) | set(LEGACY_PRESET_RANGES)
 
 
 def validate_project_config(cfg: ProjectConfig) -> list[str]:

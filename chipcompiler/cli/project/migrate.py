@@ -496,8 +496,10 @@ def _migrate_project_impl(command_input, ctx):
             problems.append("flow.preset is required")
         else:
             from chipcompiler import rtl2gds as rtl2gds_api
+            from chipcompiler.data.workspace_config import LEGACY_PRESET_RANGES
 
-            if cfg.flow_preset not in rtl2gds_api.get_flow_builders():
+            supported = set(rtl2gds_api.get_flow_builders()) | set(LEGACY_PRESET_RANGES)
+            if cfg.flow_preset not in supported:
                 problems.append(f"unsupported flow.preset: {cfg.flow_preset}")
         if problems:
             return CommandResult.err(

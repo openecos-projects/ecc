@@ -380,6 +380,39 @@ class TestMigrate:
         moved = lp(Path(project_dir, "exp1", "home", "params.toml"))
         assert moved.data["pdk_config"] == os.path.join(project_dir, "exp1", "home", "pdk.json")
 
+    def test_flow_step_info_paths_rebased_after_move(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+    ):
+        # STA-entry workspaces persist the declared SPEF (and LEC workspaces
+        # the golden netlist) as absolute origin/ paths in flow.json step
+        # info; the move must rebase them or the reloaded workspace reads
+        # files that no longer exist.
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        flow_path = Path(run_dir, "home", "flow.json")
+        flow_data = json.loads(flow_path.read_text())
+        flow_data["steps"][0].setdefault("info", {})["spef"] = os.path.join(
+            run_dir, "origin", "gcd.spef"
+        )
+        flow_data["steps"][0]["info"]["golden_verilog"] = os.path.join(
+            run_dir, "origin", "golden_gcd.v"
+        )
+        flow_path.write_text(json.dumps(flow_data))
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
+
+        assert rc == 0
+        moved = json.loads(Path(project_dir, "exp1", "home", "flow.json").read_text())
+        info = moved["steps"][0]["info"]
+        assert info["spef"] == os.path.join(project_dir, "exp1", "origin", "gcd.spef")
+        assert info["golden_verilog"] == os.path.join(project_dir, "exp1", "origin", "golden_gcd.v")
+
 
 class TestMigrationPlanningRobustness:
     """Malformed workspace state never crashes planning: a MISSING ledger

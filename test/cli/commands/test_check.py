@@ -148,6 +148,22 @@ class TestCheck:
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1
 
+    def test_check_accepts_legacy_preset_aliases(
+        self, tmp_path, create_cli_project, monkeypatch, minimal_ics55_pdk_factory
+    ):
+        # Presets folded into the canonical chain stay valid for existing
+        # configs: they resolve as legacy ranges.
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content = content.replace('preset = "rtl2gds"', 'preset = "harden"')
+        with open(toml_path, "w") as f:
+            f.write(content)
+        rc = cli_main.run(["check", "--project", project_dir])
+        assert rc == 0
+
     def test_check_fails_non_positive_frequency(self, tmp_path, create_cli_project):
         project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")

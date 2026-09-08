@@ -415,6 +415,23 @@ class TestInitDbEngineForStep:
         assert flow.init_db_engine_for_step(flow.workspace_steps[0]) is True
         assert flow.engine_db is engine_db
 
+    def test_lec_step_never_initializes_a_native_db(self, tmp_path, monkeypatch):
+        from chipcompiler.engine import EngineDB
+
+        # LEC compares netlists and has no ECC DB: explicit reruns
+        # (--only lec) must not build one from the LEC workspace.
+        flow = _make_run_flow(tmp_path, [("lec", "Incomplete")], tools_by_name={"lec": "yosys_lec"})
+        created = []
+
+        def create_db_engine(self, step):
+            created.append(step)
+            return True
+
+        monkeypatch.setattr(EngineDB, "create_db_engine", create_db_engine)
+
+        assert flow.init_db_engine_for_step(flow.workspace_steps[0]) is True
+        assert created == []
+
 
 class TestBoundedResume:
     def test_resume_bounded_to_target_end_keeps_beyond_target_outputs(self, monkeypatch, tmp_path):

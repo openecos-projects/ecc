@@ -540,7 +540,7 @@ step=lec tool=yosys_lec status=success runtime=0:0:1 log_cmd="ecc log lec --work
 ...
 ```
 
-The run-level status aggregates all steps: `success / failed / ongoing / unstart` (`missing / corrupt` when flow.json is absent or damaged); the step-level states are `success / incomplete / unstart / ongoing / pending / invalid`. An unproven synthesis-level LEC fails the step and stops the flow.
+The run-level status aggregates all steps: `success / partial / failed / ongoing / unstart` (`missing / corrupt` when flow.json is absent or damaged; `partial` when a bounded rerun leaves a mix of successful and unstarted steps); the step-level states are `success / incomplete / unstart / ongoing / pending / invalid`. An unproven synthesis-level LEC fails the step and stops the flow.
 
 ## 7. log — view logs
 

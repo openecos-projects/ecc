@@ -791,6 +791,11 @@ class EngineFlow:
         elif self.engine_db.has_init():
             return True
 
+        if workspace_step.tool == "yosys_lec":
+            # LEC is a netlist comparison step with no ECC DB input; the
+            # batch path (init_db_engine) skips it the same way.
+            return True
+
         return self.engine_db.create_db_engine(step=workspace_step)
 
 
