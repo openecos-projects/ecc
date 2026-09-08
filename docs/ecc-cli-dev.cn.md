@@ -2,7 +2,7 @@
 
 本文面向需要在 `ecc` CLI 中新增/修改命令的开发者，基于 `ecc/` 子模块当前源码（`chipcompiler` 包，v0.1.0-alpha.11）整理。代码路径均相对 `ecc/` 子模块根目录。
 
-相关文档：[architecture.md](../../docs/architecture.md)（架构）、[development.md](../../docs/development.md)（开发工作流）、[workspace-cli.md](../../docs/workspace-cli.md)（RPC sidecar 协议）、[../../CLAUDE.md](../../CLAUDE.md)（仓库约定）。
+相关文档：[architecture.md](architecture.md)（架构）、[development.md](development.md)（开发工作流）、[workspace-cli.md](workspace-cli.md)（RPC sidecar 协议）、[../CLAUDE.md](../CLAUDE.md)（仓库约定）。
 
 ## 1. 入口与整体结构
 
@@ -14,7 +14,7 @@ chipcompiler/cli/commands/        # typer 命令定义层（薄）
   ├── project.py                  # init/check/run/status/log/config/migrate 的注册与参数声明
   ├── doctor.py                   # doctor 顶层命令（环境体检）
   ├── param.py                    # param 子应用（list/show/set/unset/diff）
-  ├── pdk.py                      # pdk 子应用（setup/set-root/show/unset）
+  ├── pdk.py                      # pdk 子应用（set-root/show/unset）
   ├── project_config.py           # project 子应用（set/unset/add/remove/show）
   ├── workspace.py                # workspace 子应用（refresh）
   ├── signoff.py                  # signoff 子应用（inspect/export）
@@ -25,7 +25,7 @@ chipcompiler/cli/command_handlers/  # 业务处理层（唯一的处理器包，
   ├── inspect.py                  # status / log / config
   ├── doctor.py                   # doctor（组装 env_probe 结果为 records）
   ├── param.py                    # param 五子命令（校验 + 经 cli/project/toml_edit.py 做 TOML 定点改写）
-  ├── pdk.py                      # pdk 四子命令（TOML 定点改写 + root 来源解析）
+  ├── pdk.py                      # pdk 三子命令（TOML 定点改写 + root 来源解析）
   ├── project_config.py           # project 五子命令（声明 schema + 经 cli/project/config_fields.py 做 TOML 定点改写）
   ├── workspace_params.py         # workspace 局部 param set/unset/list/diff（改 home/params.toml + 失效后缀步骤）
   ├── signoff.py                  # signoff inspect/export
@@ -223,7 +223,7 @@ config_param(
 
 ### 5.6 扩展 RPC（`ecc rpc serve`）
 
-`rpc serve --stdio` 启动 JSON-RPC 2.0 sidecar（`chipcompiler/runtime/stdio_server.py`）。方法在 `chipcompiler/runtime/methods.py::RUNTIME_METHODS` 声明（`method_name` + pydantic `request_model` + `handler_name`），handler 实现在 `chipcompiler/runtime/workspace_api.py`，由 `runtime/server.py` 统一挂载；协议细节见 [workspace-cli.md](../../docs/workspace-cli.md)。新增方法 = 加一个 `RuntimeMethodSpec` + 对应 API 方法 + 请求模型，无需改 CLI 层。
+`rpc serve --stdio` 启动 JSON-RPC 2.0 sidecar（`chipcompiler/runtime/stdio_server.py`）。方法在 `chipcompiler/runtime/methods.py::RUNTIME_METHODS` 声明（`method_name` + pydantic `request_model` + `handler_name`），handler 实现在 `chipcompiler/runtime/workspace_api.py`，由 `runtime/server.py` 统一挂载；协议细节见 [workspace-cli.md](workspace-cli.md)。新增方法 = 加一个 `RuntimeMethodSpec` + 对应 API 方法 + 请求模型，无需改 CLI 层。
 
 ### 5.7 扩展项目声明（`ecc project *` / `ecc workspace refresh`）
 
@@ -246,14 +246,14 @@ rm -rf ~/.local/ecc && mkdir -p ~/.local/ecc && cp -a dist/ecc/. ~/.local/ecc/
 ecc --help            # 验证 doctor / signoff / report 已列出
 ```
 
-回退官方发行版：重新运行 [README](../../README.cn.md#安装) 的安装脚本（`curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh`）。
+回退官方发行版：重新运行 [README](../README.cn.md#安装) 的安装脚本（`curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh`）。
 
 ## 7. 约束与注意事项（来自仓库约定）
 
-- **模块体积**：文件超过约 800 LoC 时新功能放新模块，不要继续堆（[../../CLAUDE.md](../../CLAUDE.md) 第 6 节）。
+- **模块体积**：文件超过约 800 LoC 时新功能放新模块，不要继续堆（[../CLAUDE.md](../CLAUDE.md) 第 6 节）。
 - **Python 3+**：不用 `__future__`；最低版本看 `pyproject.toml` 的 `requires-python`。
 - **测试放置**按所有权边界；优先整对象比较；不为静态定义的值写测试；不为已删除的逻辑保留负向测试。
-- **代码评审**必须执行 [review-guidelines.md](../../docs/review-guidelines.md) 的附加标准。
+- **代码评审**必须执行 [review-guidelines.md](review-guidelines.md) 的附加标准。
 - `uv.lock` 是依赖事实源；`requirements_lock.txt` 自动生成且被 gitignore。
 - ECC-Tools 在代码里的工具标识是 `"ecc"`（不是 `"ecc-tools"`）；每个工具模块需实现 `is_eda_exist / build_step / run_step`；步骤在 `multiprocessing.Process` 中执行，状态持久化在 `workspace.flow.json`。
 - 依赖安装后 `ecc` 以 editable 方式生效，改源码下次导入即生效，无需重装。

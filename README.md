@@ -137,7 +137,7 @@ Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 | `ecc config [step]` | Show resolved project or step configuration |
 | `ecc migrate` | Migrate a legacy `runs/` project to the manifest layout |
 | `ecc param` | Manage parameter overrides (`list`, `show`, `set`, `unset`, `diff`) |
-| `ecc pdk` | PDK path setup (`setup` clones + unzips, `set-root`, `show`, `unset`) |
+| `ecc pdk` | Manage the PDK path (`set-root`, `show`, `unset`) |
 | `ecc signoff` | Inspect readiness and export the signoff package |
 | `ecc report` | Write design-summary, QoR, checklist, and step reports |
 | `ecc version` | Show ECC runtime and component versions |

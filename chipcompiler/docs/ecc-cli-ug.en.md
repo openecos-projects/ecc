@@ -3,7 +3,7 @@
 `ecc` is the project-oriented command-line entry point of ECOS Chip Compiler, covering the full RTL-to-GDS flow: project creation, validation, execution, status/log/config inspection, parameter management, signoff, and reporting. This guide is based on the current source tree (v0.1.0-alpha.11); all example outputs are real execution results (run states in the examples are hand-crafted demo data).
 
 - Source code: [chipcompiler/cli/](../../chipcompiler/cli/)
-- For how to extend the CLI with new commands, see [ecc-cli-dev.en.md](ecc-cli-dev.en.md)
+- For how to extend the CLI with new commands, see [ecc-cli-dev.en.md](../../docs/ecc-cli-dev.en.md)
 - RPC sidecar protocol: [workspace-cli.md](../../docs/workspace-cli.md)
 
 ## 0. Invocation
@@ -63,7 +63,7 @@ which ecc && ecc --version          # from any directory, should print ecc <vers
 # Upgrading = overwrite the extraction directory with the new bundle; symlinks from options B/C need no change
 ```
 
-> The latest official release (v0.1.0-alpha.11) already ships every command in this guide, including `doctor`/`signoff`/`report` and the `run` workspace/range selectors. When the source tree is ahead of the last release (behavior added between releases), run from source with `uv run ecc` as described in [ecc-cli-dev.en.md](ecc-cli-dev.en.md) (editable install — source changes take effect on the next import); re-running the installer reinstalls the official release, and unreleased behavior disappears with it — the expected rollback.
+> The latest official release (v0.1.0-alpha.11) already ships every command in this guide, including `doctor`/`signoff`/`report` and the `run` workspace/range selectors. When the source tree is ahead of the last release (behavior added between releases), run from source with `uv run ecc` as described in [ecc-cli-dev.en.md](../../docs/ecc-cli-dev.en.md) (editable install — source changes take effect on the next import); re-running the installer reinstalls the official release, and unreleased behavior disappears with it — the expected rollback.
 
 > `ecc` resolves the project from the current directory by default (wherever `ecc.toml` lives), so "launch from any folder" is the normal usage; to operate on a project from elsewhere, add `--project <dir>`.
 
@@ -104,7 +104,7 @@ Commands:
   config        Show resolved project or step configuration
   migrate       Migrate a legacy runs/ project to the manifest layout
   doctor        Check host environment: PDK, tools, and components
-  doc           Show a bundled guide (config/ug/tutorial/dev) in the terminal
+  doc           Show a bundled guide (config/ug/tutorial) in the terminal
   param         Manage EDA parameters
   pdk           Show and configure the PDK path used by this project
   project       Edit project declarations in ecc.toml
@@ -124,7 +124,7 @@ ecc doc ug --lang cn        # this guide, Chinese edition
 ecc doc config --plain      # raw markdown, byte-for-byte
 ```
 
-- Topics: `config`, `ug`, `tutorial`, `dev`; `--lang` selects `en` (default) or `cn`.
+- Topics: `config`, `ug`, `tutorial`; `--lang` selects `en` (default) or `cn`.
 - On a terminal the rendered guide opens in a pager with highlighting (`$PAGER`, falling back to `less`/`more`; `LESS=FRX` is defaulted when unset so colors survive `less`). When piped it prints in full without colors.
 - Invalid topic/language values are rejected by argument validation (exit 2).
 - Default output keeps the rendered unicode layout even when piped; `--plain` prints the raw markdown unchanged (script-friendly).

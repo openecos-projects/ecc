@@ -9,7 +9,6 @@ GUIDE_STEMS = {
     "config": "ecc-cli-config",
     "ug": "ecc-cli-ug",
     "tutorial": "ecc-cli-tutorial",
-    "dev": "ecc-cli-dev",
 }
 
 

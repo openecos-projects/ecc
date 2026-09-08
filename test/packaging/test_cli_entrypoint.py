@@ -43,7 +43,7 @@ class TestPackaging:
             source = f.read()
 
         assert "datas.extend(collect_doc_guides())" in source
-        for stem in ("config", "ug", "tutorial", "dev"):
+        for stem in ("config", "ug", "tutorial"):
             for lang in ("en", "cn"):
                 assert f"chipcompiler/docs/ecc-cli-{stem}.{lang}.md" in source
 

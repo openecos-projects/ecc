@@ -715,7 +715,7 @@ ecc config --plain      # project-level config (key=value + resolved absolute pa
 
 - Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](../../docs/examples/gcd/README.md#using-filelist) for multi-file designs;
 - Preset differences: `rtl2gds` (the complete 15-step synthesis-to-Harden chain, including synthesis-level LEC), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps);
-- Full command details in the **[ECC CLI User Guide](ecc-cli-ug.en.md)**; extending the CLI is covered in [ecc-cli-dev.en.md](ecc-cli-dev.en.md);
+- Full command details in the **[ECC CLI User Guide](ecc-cli-ug.en.md)**; extending the CLI is covered in [ecc-cli-dev.en.md](../../docs/ecc-cli-dev.en.md);
 - Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](../../docs/examples/gcd/ics55flow.py).
 
 ---

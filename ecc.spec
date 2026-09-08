@@ -59,8 +59,6 @@ DOC_GUIDES = (
     "chipcompiler/docs/ecc-cli-ug.cn.md",
     "chipcompiler/docs/ecc-cli-tutorial.en.md",
     "chipcompiler/docs/ecc-cli-tutorial.cn.md",
-    "chipcompiler/docs/ecc-cli-dev.en.md",
-    "chipcompiler/docs/ecc-cli-dev.cn.md",
 )
 
 LINUX_RUNTIME_LIBS = (

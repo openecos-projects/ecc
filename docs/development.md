@@ -275,9 +275,7 @@ uv run ecc doctor --project gcd --plain
 
 ### PDK Path
 
-`ecc pdk setup [path]` does everything: clone icsprout55-pdk when missing,
-`make unzip` when liberty files are missing (honors `GH_PROXY`, retries 3x), then
-writes the root. `ecc pdk set-root <path>` wires an already-ready ics55 PDK into the
+`ecc pdk set-root <path>` wires an already-ready ics55 PDK into the
 project (writes `[pdk] root` in `ecc.toml` as an absolute path; incomplete
 contents are advisory). `ecc pdk show` reports the effective root, which
 resolver won (ecc.toml / `CHIPCOMPILER_ICS55_PDK_ROOT` / `ICS55_PDK_ROOT` /
@@ -510,4 +508,5 @@ For Python-level debugging, invoke the same CLI module directly:
 ## Related Documentation
 
 - [Architecture](architecture.md) - System design and patterns
+- [ECC CLI Command Extension Developer Guide](ecc-cli-dev.en.md) / [中文](ecc-cli-dev.cn.md) - Adding or modifying CLI commands
 - [Examples](examples/) - Example projects and CLI usage

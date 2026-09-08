@@ -134,7 +134,7 @@ ecc log --project gcd
 | `ecc config [step]` | 显示解析后的项目或步骤配置 |
 | `ecc migrate` | 将旧版 `runs/` 项目迁移到 manifest 布局 |
 | `ecc param` | 管理参数覆盖（`list`、`show`、`set`、`unset`、`diff`） |
-| `ecc pdk` | 管理 PDK 路径（`setup`、`set-root`、`show`、`unset`） |
+| `ecc pdk` | 管理 PDK 路径（`set-root`、`show`、`unset`） |
 | `ecc signoff` | 检查签核就绪度并导出签核包 |
 | `ecc report` | 生成设计总结、QoR、签核清单和步骤报告 |
 | `ecc version` | 显示 ECC 运行时和组件版本 |

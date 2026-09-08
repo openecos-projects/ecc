@@ -15,7 +15,7 @@ def test_guides_root_points_at_repository_docs_in_dev_mode():
     assert (guides_root() / "ecc-cli-config.en.md").is_file()
 
 
-def test_all_four_topics_resolve_in_both_languages():
+def test_all_topics_resolve_in_both_languages():
     for topic in docs.GUIDE_STEMS:
         for lang in ("en", "cn"):
             text = docs.load_guide(topic, lang).decode("utf-8")
@@ -166,6 +166,7 @@ def test_doc_pager_defaults_less_and_restores_the_environment(monkeypatch, capsy
     "argv",
     [
         ["doc", "bogus"],
+        ["doc", "dev"],
         ["doc", "CONFIG"],
         ["doc"],
         ["doc", "config", "--lang", "jp"],

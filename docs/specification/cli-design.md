@@ -129,7 +129,7 @@ Current implementation status:
 | `ecc check`, `ecc doctor` | `--plain` |
 | `ecc run`, `ecc status`, `ecc log`, `ecc config`, `ecc migrate` | `--plain` |
 | `ecc param list/show/set/unset/diff` | `--plain` |
-| `ecc pdk setup/set-root/show/unset` | `--plain` |
+| `ecc pdk set-root/show/unset` | `--plain` |
 | `ecc project set/unset/add/remove/show` | `--plain` |
 | `ecc workspace refresh` | `--plain` |
 | `ecc signoff inspect/export` | `--plain` |
@@ -227,7 +227,7 @@ Responsibilities:
 | `ecc config` | Show the resolved project or step configuration |
 | `ecc migrate` | Migrate a legacy `runs/` project to the manifest layout |
 | `ecc param` | List, inspect, set, unset, and diff parameter overrides |
-| `ecc pdk` | `setup` clones + `make unzip`s + wires in a PDK checkout; also `set-root`/`show`/`unset` for the `[pdk] root` path |
+| `ecc pdk` | `set-root`/`show`/`unset` manage the `[pdk] root` path |
 | `ecc project` | Edit declared design, PDK, and flow resource fields in `ecc.toml` |
 | `ecc workspace` | Refresh a declared workspace from current `ecc.toml` without running it |
 | `ecc signoff` | Inspect package readiness and export the tar.gz package |
@@ -254,7 +254,7 @@ implementation detail:
 | --- | --- | --- |
 | `ecc signoff` | `inspect`, `export` | Signoff package readiness and archive generation |
 | `ecc report` | `summary`, `qor`, `checklist`, `step` | File reports and per-step evidence viewing |
-| `ecc pdk` | `setup`, `set-root`, `show`, `unset` | Project PDK configuration |
+| `ecc pdk` | `set-root`, `show`, `unset` | Project PDK configuration |
 | `ecc param` | `list`, `show`, `set`, `unset`, `diff` | Project parameter overrides |
 | `ecc project` | `set`, `unset`, `add`, `remove`, `show` | Project design, PDK, and flow declarations in `ecc.toml` |
 | `ecc workspace` | `refresh` | Recreate one declared workspace from `ecc.toml`, without execution |
@@ -279,7 +279,7 @@ The command graph follows these rules; new commands must follow them too:
   reporting live in noun groups (`param`, `pdk`, `project`, `workspace`,
   `signoff`, `report`, `rpc`).
 - **Subcommand verbs.** Mutable resources use the CRUD set
-  (`list`, `show`, `set`, `unset`, `diff`, plus `setup` for pdk). The `report`
+  (`list`, `show`, `set`, `unset`, `diff`). The `report`
   group names its artifacts instead (`summary`, `qor`, `checklist`, `step`)
   because `report <artifact>` reads as one action.
 - **Naming.** Lowercase single words; multi-word names use kebab-case

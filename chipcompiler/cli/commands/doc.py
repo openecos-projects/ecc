@@ -14,7 +14,6 @@ class DocTopic(str, Enum):
     config = "config"
     ug = "ug"
     tutorial = "tutorial"
-    dev = "dev"
 
 
 class DocLanguage(str, Enum):
@@ -23,9 +22,7 @@ class DocLanguage(str, Enum):
 
 
 def register_doc_commands(app: typer.Typer) -> None:
-    app.command("doc", help="Show a bundled guide (config/ug/tutorial/dev) in the terminal")(
-        doc_cmd
-    )
+    app.command("doc", help="Show a bundled guide (config/ug/tutorial) in the terminal")(doc_cmd)
 
 
 def doc_cmd(

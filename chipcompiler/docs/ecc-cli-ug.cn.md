@@ -3,7 +3,7 @@
 `ecc` 是 ECOS Chip Compiler 的项目制命令行入口，覆盖 RTL-to-GDS 流水的建项、校验、运行、状态/日志/配置查询、参数管理、签核与报告。本文基于 `ecc/` 子模块当前源码（v0.1.0-alpha.11）整理，所有示例输出均为真实执行结果（示例中的 run 状态为手工构造的演示数据）。
 
 - 源码位置：[chipcompiler/cli/](../../chipcompiler/cli/)
-- 命令扩展开发方式见同目录 [ecc-cli-dev.cn.md](ecc-cli-dev.cn.md)
+- 命令扩展开发方式见 [ecc-cli-dev.cn.md](../../docs/ecc-cli-dev.cn.md)
 - RPC sidecar 协议详见 [workspace-cli.md](../../docs/workspace-cli.md)
 
 ## 0. 调用方式
@@ -63,7 +63,7 @@ which ecc && ecc --version          # 任意目录下应输出 ecc <版本号>
 # 升级 = 用新包覆盖解压目录内容；方式 B/C 的软链接无需改动
 ```
 
-> 官方最新 Release（v0.1.0-alpha.11）已包含本文全部命令，含 `doctor`/`signoff`/`report` 与 `run` 的 workspace/范围选择器。当源码领先于最近一次 Release 时（两次发布之间的新行为），按 [ecc-cli-dev.cn.md](ecc-cli-dev.cn.md) 的源码开发方式用 `uv run ecc` 即可体验（editable 安装，改源码下次导入即生效）；重新运行安装脚本会装回官方发行版，未发布的新行为随之消失，属预期回退。
+> 官方最新 Release（v0.1.0-alpha.11）已包含本文全部命令，含 `doctor`/`signoff`/`report` 与 `run` 的 workspace/范围选择器。当源码领先于最近一次 Release 时（两次发布之间的新行为），按 [ecc-cli-dev.cn.md](../../docs/ecc-cli-dev.cn.md) 的源码开发方式用 `uv run ecc` 即可体验（editable 安装，改源码下次导入即生效）；重新运行安装脚本会装回官方发行版，未发布的新行为随之消失，属预期回退。
 
 > 注：`ecc` 的项目定位默认取当前目录（`ecc.toml` 所在处），所以「任意文件夹启动」是常态用法；在其他目录操作项目时加 `--project <dir>` 即可。
 
@@ -104,7 +104,7 @@ Commands:
   config        Show resolved project or step configuration
   migrate       Migrate a legacy runs/ project to the manifest layout
   doctor        Check host environment: PDK, tools, and components
-  doc           Show a bundled guide (config/ug/tutorial/dev) in the terminal
+  doc           Show a bundled guide (config/ug/tutorial) in the terminal
   param         Manage EDA parameters
   pdk           Show and configure the PDK path used by this project
   project       Edit project declarations in ecc.toml
@@ -124,7 +124,7 @@ ecc doc ug --lang cn        # 本指南的中文版
 ecc doc config --plain      # 原始 markdown，逐字节输出
 ```
 
-- 主题：`config`、`ug`、`tutorial`、`dev`；`--lang` 选择 `en`（默认）或 `cn`。
+- 主题：`config`、`ug`、`tutorial`；`--lang` 选择 `en`（默认）或 `cn`。
 - 终端下渲染输出带高亮并进入分页器翻阅（`$PAGER`，回退到 `less`/`more`；未设置 `LESS` 时默认 `LESS=FRX`，保证 `less` 下颜色生效）；管道场景全量直出、不带颜色。
 - 非法的主题/语言取值由参数校验拒绝（退出码 2）。
 - 管道输出保留 unicode 渲染版式；`--plain` 原样输出原始 markdown，适合脚本处理。
