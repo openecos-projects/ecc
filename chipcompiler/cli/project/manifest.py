@@ -45,6 +45,10 @@ PRESET_MANIFEST_RANGE = {
     "syn_sta": ("Synth", "Synth"),
     "rtl2gds": ("Synth", "Harden"),
     "synthesis_lec": ("Synth", "LEC"),
+    # Legacy presets removed from the builder; keep resolving them so
+    # persisted projects still load.
+    "rcx": ("Synth", "STA"),
+    "harden": ("Synth", "Harden"),
 }
 
 _CANONICAL_TO_MANIFEST_STEP = {

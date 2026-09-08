@@ -101,7 +101,13 @@ class EngineFlow:
         steps = []
 
         steps.append(self.init_flow_step(StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.LEC, "yosys_lec", StateEnum.Unstart))
+        # Persist the golden netlist on the LEC step so reloads do not have
+        # to guess roles from the golden_* filename convention.
+        golden = getattr(self.workspace.design, "golden_verilog", None)
+        lec_info = {"golden_verilog": str(golden)} if golden else None
+        steps.append(
+            self.init_flow_step(StepEnum.LEC, "yosys_lec", StateEnum.Unstart, info=lec_info)
+        )
         steps.append(self.init_flow_step(StepEnum.FLOORPLAN, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.CTS, "ecc", StateEnum.Unstart))

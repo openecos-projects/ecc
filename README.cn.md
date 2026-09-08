@@ -125,7 +125,6 @@ root = "/path/to/icsprout55-pdk"
 
 [flow]
 preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
-run = "default"
 ```
 
 然后校验并运行：

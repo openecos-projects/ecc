@@ -1163,6 +1163,32 @@ def create_workspace(
     return workspace
 
 
+def _persisted_golden_verilog(workspace_dir: Path) -> tuple[Path | None, bool]:
+    """Golden netlist recorded at workspace creation.
+
+    Returns ``(path, True)`` when the flow ledger declares a golden netlist,
+    ``(None, True)`` when a current-format ledger declares none, and
+    ``(None, False)`` for legacy ledgers without step info, where the
+    ``golden_*`` filename convention still applies.
+    """
+    from chipcompiler.utility import json_read
+
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    steps = flow_data.get("steps", []) if isinstance(flow_data, dict) else []
+    if not steps or not isinstance(steps[0], dict):
+        return None, False
+    if not isinstance(steps[0].get("info"), dict):
+        return None, False
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        info = step.get("info")
+        golden = info.get("golden_verilog") if isinstance(info, dict) else None
+        if golden and Path(golden).is_file():
+            return Path(golden), True
+    return None, True
+
+
 def load_workspace(directory: str | Path) -> Workspace:
     workspace_dir = Path(directory).expanduser().resolve()
     origin_dir = workspace_dir / "origin"
@@ -1235,18 +1261,26 @@ def load_workspace(directory: str | Path) -> Workspace:
     if len(def_gz_path) > 0:
         workspace.design.origin_def = def_gz_path[0]
 
-    verilog_path = [path for path in origin_dir.rglob("*.v") if not path.name.startswith("golden_")]
-    verilog_gz_path = [
-        path for path in origin_dir.rglob("*.v.gz") if not path.name.startswith("golden_")
-    ]
+    # The golden netlist path is persisted in the first flow step's info at
+    # creation; trust it over the golden_* filename convention so a primary
+    # netlist whose name merely starts with "golden_" keeps its role. Only
+    # legacy ledgers without step info fall back to the filename convention.
+    golden, golden_declared = _persisted_golden_verilog(workspace_dir)
+    if golden is None and not golden_declared:
+        golden_paths = list(origin_dir.rglob("golden_*.v")) + list(
+            origin_dir.rglob("golden_*.v.gz")
+        )
+        golden = golden_paths[0] if golden_paths else None
+
+    verilog_path = [path for path in origin_dir.rglob("*.v") if path != golden]
+    verilog_gz_path = [path for path in origin_dir.rglob("*.v.gz") if path != golden]
     if len(verilog_path) > 0:
         workspace.design.origin_verilog = verilog_path[0]
     if len(verilog_gz_path) > 0:
         workspace.design.origin_verilog = verilog_gz_path[0]
 
-    golden_paths = list(origin_dir.rglob("golden_*.v")) + list(origin_dir.rglob("golden_*.v.gz"))
-    if golden_paths:
-        workspace.design.golden_verilog = golden_paths[0]
+    if golden is not None:
+        workspace.design.golden_verilog = golden
 
     filelist_path = origin_dir / "filelist"
     if filelist_path.exists():

@@ -318,6 +318,42 @@ class TestBuildQorReport:
         assert "weights not renormalized" in text
 
 
+class TestFlowStepOrder:
+    def test_flow_steps_follow_the_canonical_chain_order(self):
+        from chipcompiler.engine.qor_report import FLOW_STEPS
+
+        assert FLOW_STEPS == (
+            "Synth",
+            "Floor",
+            "Place",
+            "CTS",
+            "Legal",
+            "Route",
+            "Filler",
+            "RCX",
+            "STA",
+            "LVS",
+            "DRC",
+            "Harden",
+        )
+
+    def test_area_scoring_uses_the_latest_scored_step_in_chain_order(self):
+        from chipcompiler.engine.qor_report import QorMetricRecord, _resolve_area_scoring_step
+
+        def record(step):
+            return QorMetricRecord(
+                step=step,
+                metric_name="die_area",
+                display_name="die_area",
+                value=1.0,
+                dimension="area_cost",
+                rating_score=True,
+            )
+
+        flow_states = {"STA": "Success", "DRC": "Success"}
+        assert _resolve_area_scoring_step([record("STA"), record("DRC")], flow_states) == "DRC"
+
+
 class TestFlowCompletionState:
     def test_states_are_derived_explicitly(self):
         from chipcompiler.engine.qor_report import _flow_completion_state

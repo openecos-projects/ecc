@@ -247,6 +247,58 @@ def test_create_workspace_copies_external_lec_and_sta_inputs(
     assert (workspace_dir / "origin" / "gcd.spef").is_file()
 
 
+def test_load_workspace_keeps_golden_prefixed_primary_netlist(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    # A primary netlist whose name starts with golden_ must keep its role:
+    # creation never declared a golden netlist, and the persisted flow
+    # ledger says so.
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "golden_gcd.v"
+    rtl_path.write_text("module gcd; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=workspace_dir,
+        origin_def="",
+        origin_verilog=rtl_path,
+        pdk="ics55",
+        parameters=deepcopy(default_ics55_parameters),
+        pdk_root=pdk_root,
+        flow_config={"start_step": "Synthesis", "end_step": "Floorplan"},
+    )
+
+    loaded = load_workspace(str(workspace_dir))
+    assert loaded.design.origin_verilog == workspace_dir / "origin" / "golden_gcd.v"
+    assert loaded.design.golden_verilog is None
+
+
+def test_load_workspace_restores_golden_from_persisted_flow_info(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    netlist = tmp_path / "gcd.v"
+    golden = tmp_path / "gcd_golden.v"
+    netlist.write_text("module gcd; endmodule\n")
+    golden.write_text("module gcd; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=workspace_dir,
+        origin_def="",
+        origin_verilog=netlist,
+        golden_verilog=golden,
+        pdk="ics55",
+        parameters=deepcopy(default_ics55_parameters),
+        pdk_root=pdk_root,
+        flow_config={"start_step": "lec", "end_step": "lec"},
+    )
+
+    loaded = load_workspace(str(workspace_dir))
+    assert loaded.design.origin_verilog == workspace_dir / "origin" / "gcd.v"
+    assert loaded.design.golden_verilog == workspace_dir / "origin" / "golden_gcd_golden.v"
+
+
 def test_create_workspace_non_contiguous_flow_seeds_both_stores_contiguous(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, caplog
 ):

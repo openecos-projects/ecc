@@ -47,6 +47,13 @@ _PDK_SECTION_KEYS = {
     "pdk_config": "config",
 }
 
+# Ranges for presets removed when RCX/STA/Harden folded into the canonical
+# rtl2gds chain. Persisted configs may still name them.
+LEGACY_PRESET_RANGES = {
+    "rcx": ("Synthesis", "sta"),
+    "harden": ("Synthesis", "Harden"),
+}
+
 
 class WorkspaceConfigError(ValueError):
     """Invalid ``home/params.toml`` content (parse failure or rule violation)."""
@@ -157,7 +164,12 @@ def flow_range_for_preset(preset: str) -> tuple[str, str]:
 
     builder = rtl2gds_api.get_flow_builders().get(preset)
     if builder is None:
-        raise WorkspaceFlowTargetError(f"unknown flow preset: {preset}")
+        # Presets removed when RCX/STA/Harden folded into the rtl2gds chain
+        # still resolve so existing ecc.toml/params.toml files keep working.
+        legacy = LEGACY_PRESET_RANGES.get(preset)
+        if legacy is None:
+            raise WorkspaceFlowTargetError(f"unknown flow preset: {preset}")
+        return legacy
     steps = builder()
     if not steps:
         raise WorkspaceFlowTargetError(f"flow preset has no steps: {preset}")
