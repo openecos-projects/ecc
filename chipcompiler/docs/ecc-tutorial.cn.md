@@ -39,6 +39,8 @@ graph LR
 
 使用官方安装脚本安装 `ecc` CLI（Linux x86_64，glibc 2.34+，fontconfig）：
 
+> 本教程随 v0.1.0-alpha.12 版本发布可用：其中用到的命令（`ecc doctor`、`ecc doc`、`signoff`/`report` 命令组、`run` 的 workspace/范围选择器）不在更早的 Release 中。在 alpha.12 发布前，请按 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli) 从源码运行。
+
 ```bash
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
 ```

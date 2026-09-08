@@ -39,6 +39,8 @@ graph LR
 
 Install the `ecc` CLI (Linux x86_64, glibc 2.34+, fontconfig) with the official installer:
 
+> This tutorial ships with release v0.1.0-alpha.12: the commands it uses (`ecc doctor`, `ecc doc`, the `signoff`/`report` groups, and the `run` workspace/range selectors) are not in earlier releases. Until alpha.12 is out, run from source per [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli).
+
 ```bash
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
 ```

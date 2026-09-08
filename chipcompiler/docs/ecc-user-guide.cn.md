@@ -63,7 +63,7 @@ which ecc && ecc --version          # 任意目录下应输出 ecc <版本号>
 # 升级 = 用新包覆盖解压目录内容；方式 B/C 的软链接无需改动
 ```
 
-> 截至 v0.1.0-alpha.9 的官方 Release 尚未包含 `doctor`/`signoff`/`report` 命令组与 `run` 的 workspace/范围选择器；在新 Release 发布前，按 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli) 的源码开发方式用 `uv run ecc` 即可体验（editable 安装，改源码下次导入即生效）。重新运行安装脚本会装回官方发行版，未发布的新行为随之消失，属预期回退。
+> 本文及其记载的功能——内置 `ecc doc` 文档、`doctor`/`signoff`/`report` 命令组、`run` 的 workspace/范围选择器——随 v0.1.0-alpha.12 版本发布可用；更早的 Release（截至 v0.1.0-alpha.9）不包含它们。在 alpha.12 发布前，按 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli) 的源码开发方式用 `uv run ecc` 即可体验（editable 安装，改源码下次导入即生效）。重新运行安装脚本会装回官方发行版，未发布的新行为随之消失，属预期回退。
 
 > 注：`ecc` 的项目定位默认取当前目录（`ecc.toml` 所在处），所以「任意文件夹启动」是常态用法；在其他目录操作项目时加 `--project <dir>` 即可。
 

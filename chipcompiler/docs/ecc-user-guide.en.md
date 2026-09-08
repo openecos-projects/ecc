@@ -63,7 +63,7 @@ which ecc && ecc --version          # from any directory, should print ecc <vers
 # Upgrading = overwrite the extraction directory with the new bundle; symlinks from options B/C need no change
 ```
 
-> Releases up to v0.1.0-alpha.9 predate the `doctor`/`signoff`/`report` command groups and the `run` workspace/range selectors; until a newer release ships, run from source with `uv run ecc` as described in [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli) (editable install — source changes take effect on the next import). Re-running the installer reinstalls the official release, and unreleased behavior disappears with it — the expected rollback.
+> This guide and the features it documents — the bundled `ecc doc` guides, the `doctor`/`signoff`/`report` command groups, and the `run` workspace/range selectors — ship with release v0.1.0-alpha.12; earlier releases (up to v0.1.0-alpha.9) do not include them. Until alpha.12 is out, run from source with `uv run ecc` as described in [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli) (editable install — source changes take effect on the next import). Re-running the installer reinstalls the official release, and unreleased behavior disappears with it — the expected rollback.
 
 > `ecc` resolves the project from the current directory by default (wherever `ecc.toml` lives), so "launch from any folder" is the normal usage; to operate on a project from elsewhere, add `--project <dir>`.
 
