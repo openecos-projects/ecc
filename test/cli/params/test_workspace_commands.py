@@ -200,3 +200,34 @@ def test_workspace_param_list_honors_step_filter(
     assert plain_records(capsys.readouterr().out) == [
         {"param": "list", "status": "clean", "workspace": "baseline"}
     ]
+
+
+def test_workspace_param_list_matches_first_step_configuration(
+    capsys, create_cli_project, monkeypatch, plain_records
+):
+    project_dir = create_cli_project()
+    workspace_dir = Path(project_dir) / "baseline"
+    _write_manifest(project_dir)
+    workspace = _workspace(workspace_dir)
+    monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _path: workspace)
+
+    rc = cli_main.run(
+        [
+            "param",
+            "list",
+            "--workspace",
+            "baseline",
+            "--step",
+            "synthesis",
+            "--all",
+            "--project",
+            project_dir,
+            "--plain",
+        ]
+    )
+
+    assert rc == 0
+    assert [record["param"] for record in plain_records(capsys.readouterr().out)] == [
+        "design.frequency_mhz",
+        "flow.run_analysis",
+    ]
