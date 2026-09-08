@@ -1,58 +1,19 @@
 from dataclasses import dataclass
 from typing import Any
 
-QOR_SCORE_THRESHOLD = 60
-
-DIMENSION_WEIGHTS = {
-    "timing": 0.35,
-    "power_integrity": 0.25,
-    "routability_physical": 0.2,
-    "area_cost": 0.1,
-    "clock_robustness_dfm": 0.1,
-    "runtime": 0.0,
-}
-
-METRIC_FAIL_VALUES = {
-    "drc_count": 10,
-    "lvs_count": 10,
-    "route_wirelength": 6000,
-    "route_via_count": 2000,
-    "cts_buffer_count": 20,
-    "cts_buffer_area": 40,
-    "clock_wirelength": 400000,
-    "cts_clock_wirelength_max": 100000,
-    "cts_clock_tree_max_level": 20,
-    "die_area": 3000,
-    "core_area": 2500,
-    "core_utilization": 0.85,
-    "synthesis_cell_area": 3000,
-    "fanout_max": 100,
-    "place_hpwl": 10000,
-    "place_grwl": 12000,
-    "place_flute_wirelength": 10000,
-    "place_congestion_egr_overflow_total": 100,
-    "place_congestion_egr_overflow_max": 20,
-    "place_rudy_utilization_max": 1,
-    "place_lutrudy_utilization_max": 1,
-    "route_dr_total_violation_count": 50,
-    "route_dr_total_patch_count": 100,
-    "route_dr_total_wirelength": 6000,
-    "route_dr_total_via_count": 2000,
-    "route_la_total_overflow": 100,
-    "rcx_missing_corner_count": 9,
-    "sta_setup_wns": -0.2,
-    "sta_setup_tns": -1,
-    "sta_hold_wns": -0.2,
-    "sta_hold_tns": -1,
-    "sta_frequency_mhz": 100,
-    "sta_setup_violation_count": 1,
-    "sta_hold_violation_count": 1,
-    "sta_missing_corner_count": 1,
-    "harden_artifact_missing_count": 6,
-}
-
-_SLACK_METRICS = {"sta_setup_wns", "sta_setup_tns", "sta_hold_wns", "sta_hold_tns"}
-_ROLE_PRIORITY = {"final": 0, "gate": 1, "trend": 2, "none": 3}
+from .qor_report import (
+    _STEP_ENUM_TO_LABEL,
+    QorMetricRecord,
+    _select_project_records,
+    _weighted_overall,
+    score_record,
+)
+from .qor_report import (
+    DIMENSION_WEIGHTS as DIMENSION_WEIGHTS,
+)
+from .qor_report import (
+    QOR_SCORE_THRESHOLD as QOR_SCORE_THRESHOLD,
+)
 
 
 @dataclass(frozen=True)
@@ -71,7 +32,7 @@ class QorScoringMetric:
 
 @dataclass(frozen=True)
 class ScoredQorMetric:
-    metric: QorScoringMetric
+    metric: QorMetricRecord
     score: float | None
 
 
@@ -84,80 +45,53 @@ class QorScoringResult:
 
 
 def score_qor(records: list[QorScoringMetric]) -> QorScoringResult:
+    canonical = tuple(_canonical_record(record) for record in records)
     area_step = next(
         (
             record.step
-            for record in reversed(records)
+            for record in reversed(canonical)
             if record.dimension == "area_cost" and record.rating_score
         ),
         None,
     )
-    selected: dict[tuple[str, str, str], tuple[int, int, QorScoringMetric]] = {}
-    for order, record in enumerate(records):
-        if record.project_role == "none":
-            continue
-        if record.dimension == "area_cost" and record.step != area_step:
-            continue
-        key = (record.metric_id, record.scope, record.corner or "")
-        candidate = (_ROLE_PRIORITY.get(record.project_role, 3), -order, record)
-        if key not in selected or candidate[:2] < selected[key][:2]:
-            selected[key] = candidate
-
+    selected = _select_project_records(canonical, area_step)
     scored = tuple(
-        ScoredQorMetric(record, score_metric(record) if record.rating_score else None)
-        for _role, _order, record in sorted(selected.values(), key=lambda item: item[2].metric_id)
+        ScoredQorMetric(record, score_record(record) if record.rating_score else None)
+        for record in selected
     )
     by_dimension: dict[str, list[float]] = {}
     for item in scored:
         if item.score is not None:
             by_dimension.setdefault(item.metric.dimension, []).append(item.score)
     dimensions = {
-        dimension: (
-            round(sum(by_dimension[dimension]) / len(by_dimension[dimension]), 1),
-            len(by_dimension[dimension]),
-        )
-        for dimension in DIMENSION_WEIGHTS
-        if dimension in by_dimension
+        dimension: (round(sum(values) / len(values), 1), len(values))
+        for dimension, values in by_dimension.items()
     }
-    weighted = sum(
-        score * DIMENSION_WEIGHTS[dimension]
-        for dimension, (score, _count) in dimensions.items()
-        if DIMENSION_WEIGHTS[dimension] > 0
+    return QorScoringResult(
+        area_step,
+        scored,
+        dimensions,
+        round(_weighted_overall({key: value[0] for key, value in dimensions.items()}), 1)
+        if dimensions
+        else None,
     )
-    overall = (
-        round(weighted, 1)
-        if any(DIMENSION_WEIGHTS[dimension] > 0 for dimension in dimensions)
-        else None
-    )
-    return QorScoringResult(area_step, scored, dimensions, overall)
 
 
 def score_metric(record: QorScoringMetric) -> float | None:
-    if record.direction == "trend_only":
-        return None
-    fail = METRIC_FAIL_VALUES.get(record.metric_id)
-    if fail is None:
-        return None
-    if record.metric_id in _SLACK_METRICS:
-        if fail >= 0:
-            return None
-        return 100.0 if record.value >= 0 else _clamp(100 * (record.value - fail) / -fail)
-    if record.direction == "target_range":
-        if record.metric_id != "core_utilization":
-            return None
-        if 0.45 <= record.value <= 0.7:
-            return 100.0
-        if record.value < 0.45:
-            return _clamp(100 * record.value / 0.45)
-        return _clamp(100 * (fail - record.value) / (fail - 0.7))
-    if fail <= 0:
-        return None
-    if record.direction == "lower_is_better":
-        return _clamp(100 * (fail - record.value) / fail)
-    if record.direction == "higher_is_better":
-        return _clamp(100 * record.value / fail)
-    return None
+    return score_record(_canonical_record(record))
 
 
-def _clamp(value: float) -> float:
-    return max(0.0, min(100.0, value))
+def _canonical_record(record: QorScoringMetric) -> QorMetricRecord:
+    return QorMetricRecord(
+        step=_STEP_ENUM_TO_LABEL.get(record.step, record.step),
+        metric_name=record.metric_id,
+        display_name=record.metric_id,
+        value=record.value,
+        dimension=record.dimension,
+        polarity=record.direction,
+        scope=record.scope,
+        corner=record.corner,
+        project_role=record.project_role,
+        step_role="detail",
+        rating_score=record.rating_score,
+    )
