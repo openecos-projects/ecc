@@ -3,8 +3,8 @@
 `ecc` is the project-oriented command-line entry point of ECOS Chip Compiler, covering the full RTL-to-GDS flow: project creation, validation, execution, status/log/config inspection, parameter management, signoff, and reporting. This guide is based on the current source tree (v0.1.0-alpha.11); all example outputs are real execution results (run states in the examples are hand-crafted demo data).
 
 - Source code: [chipcompiler/cli/](../../chipcompiler/cli/)
-- For how to extend the CLI with new commands, see [ecc-cli-dev.en.md](../../docs/ecc-cli-dev.en.md)
-- RPC sidecar protocol: [workspace-cli.md](../../docs/workspace-cli.md)
+- For how to extend the CLI with new commands, see [development.md](../../docs/development.md#extending-the-cli)
+- RPC sidecar protocol: [rpc-guide.md](../../docs/rpc-guide.md)
 
 ## 0. Invocation
 
@@ -63,7 +63,7 @@ which ecc && ecc --version          # from any directory, should print ecc <vers
 # Upgrading = overwrite the extraction directory with the new bundle; symlinks from options B/C need no change
 ```
 
-> The latest official release (v0.1.0-alpha.11) already ships every command in this guide, including `doctor`/`signoff`/`report` and the `run` workspace/range selectors. When the source tree is ahead of the last release (behavior added between releases), run from source with `uv run ecc` as described in [ecc-cli-dev.en.md](../../docs/ecc-cli-dev.en.md) (editable install — source changes take effect on the next import); re-running the installer reinstalls the official release, and unreleased behavior disappears with it — the expected rollback.
+> The latest official release (v0.1.0-alpha.11) already ships every command in this guide, including `doctor`/`signoff`/`report` and the `run` workspace/range selectors. When the source tree is ahead of the last release (behavior added between releases), run from source with `uv run ecc` as described in [development.md](../../docs/development.md#extending-the-cli) (editable install — source changes take effect on the next import); re-running the installer reinstalls the official release, and unreleased behavior disappears with it — the expected rollback.
 
 > `ecc` resolves the project from the current directory by default (wherever `ecc.toml` lives), so "launch from any folder" is the normal usage; to operate on a project from elsewhere, add `--project <dir>`.
 
@@ -1012,7 +1012,7 @@ $ ecc report step drc --section analysis
 ecc rpc serve --stdio [--persistent-db]
 ```
 
-A JSON-RPC 2.0 service for front ends such as the GUI, framed with `Content-Length` over stdio. `--persistent-db` additionally exposes `db.ensure` / `db.release` plus the `layout.edit.*` / `floorplan.edit.*` method families. Handshake and call examples (full method list and parameters in [workspace-cli.md](../../docs/workspace-cli.md)):
+A JSON-RPC 2.0 service for front ends such as the GUI, framed with `Content-Length` over stdio. `--persistent-db` additionally exposes `db.ensure` / `db.release` plus the `layout.edit.*` / `floorplan.edit.*` method families. Handshake and call examples (full method list and parameters in [rpc-guide.md](../../docs/rpc-guide.md)):
 
 ```console
 → {"jsonrpc":"2.0","method":"rpc.hello","params":{"version":1},"id":"hello-1"}

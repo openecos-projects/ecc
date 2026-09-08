@@ -3,8 +3,8 @@
 `ecc` 是 ECOS Chip Compiler 的项目制命令行入口，覆盖 RTL-to-GDS 流水的建项、校验、运行、状态/日志/配置查询、参数管理、签核与报告。本文基于 `ecc/` 子模块当前源码（v0.1.0-alpha.11）整理，所有示例输出均为真实执行结果（示例中的 run 状态为手工构造的演示数据）。
 
 - 源码位置：[chipcompiler/cli/](../../chipcompiler/cli/)
-- 命令扩展开发方式见 [ecc-cli-dev.cn.md](../../docs/ecc-cli-dev.cn.md)
-- RPC sidecar 协议详见 [workspace-cli.md](../../docs/workspace-cli.md)
+- 命令扩展开发方式见 [development.cn.md](../../docs/development.cn.md#扩展-cli)
+- RPC sidecar 协议详见 [rpc-guide.md](../../docs/rpc-guide.md)
 
 ## 0. 调用方式
 
@@ -63,7 +63,7 @@ which ecc && ecc --version          # 任意目录下应输出 ecc <版本号>
 # 升级 = 用新包覆盖解压目录内容；方式 B/C 的软链接无需改动
 ```
 
-> 官方最新 Release（v0.1.0-alpha.11）已包含本文全部命令，含 `doctor`/`signoff`/`report` 与 `run` 的 workspace/范围选择器。当源码领先于最近一次 Release 时（两次发布之间的新行为），按 [ecc-cli-dev.cn.md](../../docs/ecc-cli-dev.cn.md) 的源码开发方式用 `uv run ecc` 即可体验（editable 安装，改源码下次导入即生效）；重新运行安装脚本会装回官方发行版，未发布的新行为随之消失，属预期回退。
+> 官方最新 Release（v0.1.0-alpha.11）已包含本文全部命令，含 `doctor`/`signoff`/`report` 与 `run` 的 workspace/范围选择器。当源码领先于最近一次 Release 时（两次发布之间的新行为），按 [development.cn.md](../../docs/development.cn.md#扩展-cli) 的源码开发方式用 `uv run ecc` 即可体验（editable 安装，改源码下次导入即生效）；重新运行安装脚本会装回官方发行版，未发布的新行为随之消失，属预期回退。
 
 > 注：`ecc` 的项目定位默认取当前目录（`ecc.toml` 所在处），所以「任意文件夹启动」是常态用法；在其他目录操作项目时加 `--project <dir>` 即可。
 
@@ -964,7 +964,7 @@ $ ecc report step drc --section analysis
 ecc rpc serve --stdio [--persistent-db]
 ```
 
-供 GUI 等前端使用的 JSON-RPC 2.0 服务，`Content-Length` 帧封装于 stdio。`--persistent-db` 额外开放 `db.ensure` / `db.release` 与 `layout.edit.*` / `floorplan.edit.*` 系列方法。握手与调用示例（完整方法列表和参数见 [workspace-cli.md](../../docs/workspace-cli.md)）：
+供 GUI 等前端使用的 JSON-RPC 2.0 服务，`Content-Length` 帧封装于 stdio。`--persistent-db` 额外开放 `db.ensure` / `db.release` 与 `layout.edit.*` / `floorplan.edit.*` 系列方法。握手与调用示例（完整方法列表和参数见 [rpc-guide.md](../../docs/rpc-guide.md)）：
 
 ```console
 → {"jsonrpc":"2.0","method":"rpc.hello","params":{"version":1},"id":"hello-1"}

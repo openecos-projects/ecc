@@ -29,7 +29,7 @@ graph LR
 |---|---|
 | OS | Linux x86_64 (other architectures are untested) |
 | Basic commands | `bash`, `curl` or `wget`, `tar`, `git`, `make`, `bzip2` |
-| Disk | ≥ 10 GB free (measured after install: ecc CLI ≈ 3.6 GB + OSS CAD Suite ≈ 2.9 GB + PDK ≈ 1.9 GB) |
+| Disk | ≥ 10 GB free (measured after install: ecc CLI ≈ 0.9 GB + OSS CAD Suite ≈ 2.9 GB + PDK ≈ 1.9 GB) |
 | Network | Access to release.openecos.com (installer) and GitHub (PDK / OSS CAD Suite) |
 | Python / deps | **None**. ecc-tools, DreamPlace, etc. are bundled inside the CLI package |
 
@@ -715,7 +715,7 @@ ecc config --plain      # project-level config (key=value + resolved absolute pa
 
 - Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](../../docs/examples/gcd/README.md#using-filelist) for multi-file designs;
 - Preset differences: `rtl2gds` (the complete 15-step synthesis-to-Harden chain, including synthesis-level LEC), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps);
-- Full command details in the **[ECC CLI User Guide](ecc-cli-ug.en.md)**; extending the CLI is covered in [ecc-cli-dev.en.md](../../docs/ecc-cli-dev.en.md);
+- Full command details in the **[ECC CLI User Guide](ecc-cli-ug.en.md)**; extending the CLI is covered in [development.md](../../docs/development.md#extending-the-cli);
 - Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](../../docs/examples/gcd/ics55flow.py).
 
 ---

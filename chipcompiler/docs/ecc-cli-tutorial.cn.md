@@ -29,7 +29,7 @@ graph LR
 |---|---|
 | 操作系统 | Linux x86_64（其他架构需自行交叉验证） |
 | 基础命令 | `bash`、`curl` 或 `wget`、`tar`、`git`、`make`、`bzip2` |
-| 磁盘空间 | ≥ 10 GB 空闲（安装后实测：ecc CLI ≈ 3.6 GB + OSS CAD Suite ≈ 2.9 GB + PDK ≈ 1.9 GB） |
+| 磁盘空间 | ≥ 10 GB 空闲（安装后实测：ecc CLI ≈ 0.9 GB + OSS CAD Suite ≈ 2.9 GB + PDK ≈ 1.9 GB） |
 | 网络 | 能访问 release.openecos.com（安装脚本）与 GitHub（PDK / OSS CAD Suite） |
 | Python / 依赖 | **无需**。ecc-tools、DreamPlace 等已捆绑在 CLI 包内 |
 
@@ -714,7 +714,7 @@ ecc config --plain      # 项目级配置（键值 + 解析后绝对路径）
 
 - 换你自己的设计：改 `ecc.toml` 的 `top`/`rtl`/`clock_port`/`frequency_mhz`，多文件用 [filelist](../../docs/examples/gcd/README.md#using-filelist)；
 - 了解 preset 差异：`rtl2gds`（完整 15 步综合到 Harden 链，含综合级 LEC）、`syn_sta`（仅综合）、`synthesis_lec`（综合 + LEC，两步）；
-- 全部命令细节见 **[ECC CLI 用户指南](ecc-cli-ug.cn.md)**；CLI 扩展开发见 [ecc-cli-dev.cn.md](../../docs/ecc-cli-dev.cn.md)；
+- 全部命令细节见 **[ECC CLI 用户指南](ecc-cli-ug.cn.md)**；CLI 扩展开发见 [development.cn.md](../../docs/development.cn.md#扩展-cli)；
 - 用 Python API 直接编排 flow（`EngineFlow`）见 [examples/gcd/ics55flow.py](../../docs/examples/gcd/ics55flow.py)。
 
 ---

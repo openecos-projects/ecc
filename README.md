@@ -72,8 +72,28 @@ git submodule update --init --recursive
 ### Build from source
 
 For Python development with `uv`, clone the repository as above (with
-`--recursive`), then follow the [Development Guide](docs/development.md) to
-set up the workspace.
+`--recursive`), then set up the workspace — the recommended way to develop
+from source:
+
+```bash
+uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package ecc-tools-bin --verbose
+```
+
+See the [Development Guide](docs/development.md) for the full setup.
+
+To build the installable CLI bundle yourself (the same PyInstaller pipeline
+as the official release):
+
+```bash
+ECOS_PYINSTALLER_MODE=onedir uv run --no-sync --managed-python \
+  pyinstaller ecc.spec --clean --noconfirm
+# rebuilds dist/ecc/ (onedir, ~0.9G; the first run triggers dreamplace's cmake install, which is normal)
+
+# Install locally (overwrite your install location, e.g. ~/.local/ecc;
+# a PATH symlink pointing at it needs no change)
+rm -rf ~/.local/ecc && mkdir -p ~/.local/ecc && cp -a dist/ecc/. ~/.local/ecc/
+ecc --help            # verify the expected commands are listed
+```
 
 ## Quick Start
 
@@ -170,7 +190,6 @@ rerun (`--resume`, `--from`, `--only`), and parameter overrides — see the
 
 - [Documentation Index](docs/index.md) - Complete navigation
 - [CLI Design Specification](docs/specification/cli-design.md) - Command surface and `ecc.toml` reference
-- [Architecture](docs/architecture.md) - System design and patterns
 - [Development Guide](docs/development.md) - Setup and workflows
 - [Examples](docs/examples/) - Usage examples
 

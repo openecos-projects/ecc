@@ -14,22 +14,16 @@ The `ecc` command-line tool ships bilingual guides (`.en.md` / `.cn.md`):
   - Every command and option: `init`/`check`/`run`/`status`/`log`/`config`/`doctor`/`param`/`pdk`/`project`/`workspace`/`signoff`/`report`/`rpc`/`layout-image`
   - Run selectors (`--resume`/`--from`/`--to`/`--only`), error-code reference, end-to-end workflows
 - **[CLI Config Reference](../chipcompiler/docs/ecc-cli-config.en.md)** / **[中文配置参考](../chipcompiler/docs/ecc-cli-config.cn.md)** - `ecc.toml`, workspace files, and the parameter system
-- **[CLI Dev Guide](ecc-cli-dev.en.md)** / **[中文开发指南](ecc-cli-dev.cn.md)** - Adding or modifying CLI commands
-- **[Workspace CLI Guide](workspace-cli.md)** - Private JSON-RPC runtime sidecar protocol (`ecc rpc serve`)
+- **[RPC Guide](rpc-guide.md)** - Private JSON-RPC runtime sidecar protocol (`ecc rpc serve`)
 
 ## Core Documentation
 
-- **[Architecture](architecture.md)** - Detailed system architecture and design patterns
-  - Layered architecture explanation
-  - Core design patterns
-  - Data flow and execution paths
-  - Module details
-
-- **[Development Guide](development.md)** - Development environment setup and workflows
+- **[Development Guide](development.md)** / **[中文开发指南](development.cn.md)** - Development environment setup and workflows
   - Environment configuration
   - Code quality tools
   - Adding new EDA tools
   - Debugging and testing
+  - Extending the `ecc` CLI
 
 - **[Release Guide](release.md)** - Release branch and hotfix release workflow
   - Preparing `release/v*` branches
@@ -61,9 +55,8 @@ ChipCompiler supports various EDA file formats. Technical specifications for par
 - **Run my first RTL-to-GDS flow** → [CLI Tutorial](../chipcompiler/docs/ecc-cli-tutorial.en.md) / [中文教程](../chipcompiler/docs/ecc-cli-tutorial.cn.md)
 - **Look up an `ecc` command or option** → [CLI User Guide](../chipcompiler/docs/ecc-cli-ug.en.md) / [中文用户指南](../chipcompiler/docs/ecc-cli-ug.cn.md)
 - **Understand `ecc.toml` / workspace files / parameters** → [CLI Config Reference](../chipcompiler/docs/ecc-cli-config.en.md) / [中文配置参考](../chipcompiler/docs/ecc-cli-config.cn.md)
-- **Extend the CLI with new commands** → [CLI Dev Guide](ecc-cli-dev.en.md)
-- **Use legacy workspace commands** → [Workspace CLI Guide](workspace-cli.md)
-- **Understand the architecture** → [Architecture](architecture.md)
+- **Extend the CLI with new commands** → [CLI Dev Guide](development.md#extending-the-cli)
+- **Use legacy workspace commands** → [RPC Guide](rpc-guide.md)
 - **Set up development environment** → [Development Guide](development.md)
 - **Create a release** → [Release Guide](release.md)
 - **Add new tools** → [Development Guide - Adding EDA Tools](development.md#add-a-new-eda-tool)

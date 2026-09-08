@@ -71,7 +71,25 @@ git submodule update --init --recursive
 ### 源码构建
 
 使用 `uv` 进行 Python 开发时，按上述方式（带 `--recursive`）克隆仓库，
-然后参照 [开发指南](docs/development.md) 配置工作区。
+然后配置工作区（源码开发的推荐方式）：
+
+```bash
+uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package ecc-tools-bin --verbose
+```
+
+完整搭建见 [开发指南](docs/development.cn.md)。
+
+如需自己编译可安装的 CLI 包（与官方 release 相同的 PyInstaller 流程）：
+
+```bash
+ECOS_PYINSTALLER_MODE=onedir uv run --no-sync --managed-python \
+  pyinstaller ecc.spec --clean --noconfirm
+# 重建 dist/ecc/（onedir，约 0.9G；首跑会触发 dreamplace 的 cmake 安装，属正常）
+
+# 安装到本机（覆盖现有安装位，如 ~/.local/ecc；PATH 中指向它的软链无需改动）
+rm -rf ~/.local/ecc && mkdir -p ~/.local/ecc && cp -a dist/ecc/. ~/.local/ecc/
+ecc --help            # 验证应有的命令已列出
+```
 
 ## 快速开始
 
@@ -167,13 +185,12 @@ ecc log --project gcd
 
 - [文档索引](docs/index.md) - 完整导航
 - [CLI 设计规范](docs/specification/cli-design.md) - 命令接口和 `ecc.toml` 参考
-- [架构](docs/architecture.md) - 系统设计和模式
-- [开发指南](docs/development.md) - 配置和工作流
+- [开发指南](docs/development.cn.md) - 配置和工作流
 - [示例](docs/examples/) - 使用示例
 
 ## 参与贡献
 
-欢迎贡献！配置说明请参阅 [开发指南](docs/development.md)。
+欢迎贡献！配置说明请参阅 [开发指南](docs/development.cn.md)。
 
 ## 致谢
 
