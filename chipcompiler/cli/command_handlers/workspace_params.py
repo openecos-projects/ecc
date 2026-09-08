@@ -12,6 +12,7 @@ from chipcompiler.cli.project.workspace_params import (
     workspace_param_step,
     workspace_param_value,
 )
+from chipcompiler.rtl2gds import normalize_flow_step
 
 
 def param_set(args, ctx: CommandContext) -> CommandResult:
@@ -62,15 +63,19 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
     if workspace_error is not None:
         return workspace_error
     overrides = {record["key"] for record in workspace_param_diff(workspace)}
-    selected_step = (args.step or "").casefold()
+    selected_step = normalize_flow_step(args.step or "").casefold()
+    flow_steps = workspace.flow.data.get("steps", [])
+    first_step = normalize_flow_step(flow_steps[0]["name"]).casefold() if flow_steps else ""
     records = []
     for schema in list_schemas():
         if schema.pdk_target is not None or (not args.all and schema.param not in overrides):
             continue
-        if selected_step and selected_step not in {
-            schema.group.casefold(),
-            schema.applies.casefold(),
-        }:
+        schema_steps = {
+            normalize_flow_step(schema.group).casefold(),
+            normalize_flow_step(schema.applies).casefold(),
+        }
+        global_at_first_step = schema.applies == "all" and selected_step == first_step
+        if selected_step and selected_step not in schema_steps and not global_at_first_step:
             continue
         try:
             value = workspace_param_value(workspace, schema)
