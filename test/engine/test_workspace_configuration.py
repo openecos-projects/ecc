@@ -100,6 +100,8 @@ def test_workspace_configuration_update_rolls_back_refresh_failure(
 def test_read_workspace_configuration_does_not_materialize_missing_home_files(
     tmp_path, minimal_ics55_pdk_factory
 ):
+    import shutil
+
     spec, bindings = _workspace_spec_fixture()
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
     workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings)
@@ -107,12 +109,12 @@ def test_read_workspace_configuration_does_not_materialize_missing_home_files(
     log_dir = workspace.directory / "log"
     home_file.unlink()
     if log_dir.exists():
-        import shutil
-
         shutil.rmtree(log_dir)
+    shutil.rmtree(Path(bindings["pdk"]["root"]))
 
-    read_workspace_configuration_from_directory(workspace.directory)
+    configuration = read_workspace_configuration_from_directory(workspace.directory)
 
+    assert configuration["workspaceSpec"]["pdk"]["familyId"] == "ics55"
     assert not home_file.exists()
     assert not log_dir.exists()
 

@@ -44,7 +44,7 @@ def test_signoff_additional_file_path_rejects_escape(tmp_path):
     package = tmp_path / "package"
     package.mkdir()
 
-    for value in ("/tmp/escape", "../escape", ""):
+    for value in ("/tmp/escape", "../escape", "", ".", "bad\x00path"):
         try:
             _additional_file_path(package, value)
         except SignoffExportError:

@@ -1233,6 +1233,7 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Workspa
         pdk_name=parameters.data.get("pdk", ""),
         pdk_root=parameters.data.get("pdk_root", ""),
         pdk_config=parameters.data.get("pdk_config", ""),
+        validate=not read_only,
     )
     sdc_path = list(origin_dir.rglob("*.sdc"))
     if len(sdc_path) > 0:

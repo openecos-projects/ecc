@@ -249,6 +249,8 @@ def get_pdk(
     pdk_root: str | Path = "",
     pdk_config: str | Path = "",
     overrides: dict | None = None,
+    *,
+    validate: bool = True,
 ) -> PDK:
     """
     Return the PDK instance based on the given pdk name.
@@ -273,15 +275,16 @@ def get_pdk(
         pdk = _builtin_pdk(pdk_name_normalized, pdk_root=pdk_root) or PDK(name=pdk_name_normalized)
     overrides = overrides or {}
     pdk = apply_pdk_overrides(pdk, overrides)
-    pdk.validate()
-    errors = []
-    for key, label in _OPTIONAL_PATH_LABELS.items():
-        if key not in overrides:
-            continue
-        path = getattr(pdk, key)
-        if path and not path.is_file():
-            errors.append(f"{label}: {path}")
-    _raise_pdk_validation_error(errors)
+    if validate:
+        pdk.validate()
+        errors = []
+        for key, label in _OPTIONAL_PATH_LABELS.items():
+            if key not in overrides:
+                continue
+            path = getattr(pdk, key)
+            if path and not path.is_file():
+                errors.append(f"{label}: {path}")
+        _raise_pdk_validation_error(errors)
     return pdk
 
 
