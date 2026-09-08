@@ -42,26 +42,38 @@ STATE_MAP: dict[StateEnum, int] = {
     StateEnum.Ongoing: 2,
     StateEnum.Success: 3,
     StateEnum.Imcomplete: 4,
-    StateEnum.Invalid: 5,
+    StateEnum.Warning: 5,
+    StateEnum.Invalid: 6,
 }
 
 STATE_COUNT: int = len(STATE_MAP)
 
 # Reference transition graph from spec.
 # Key = source state, value = set of valid target states.
-# Terminal states (Success, Incomplete, Invalid) have no outgoing transitions.
+# Terminal states (Success, Incomplete, Warning, Invalid) have no outgoing transitions.
 # Batch resets (clear_states, _invalidate_suffix) bypass set_state() and
 # can assign Unstart directly, including for terminal states.
 VALID_TRANSITIONS: dict[StateEnum, set[StateEnum]] = {
-    StateEnum.Unstart: {StateEnum.Ongoing, StateEnum.Imcomplete},
-    StateEnum.Pending: {StateEnum.Ongoing, StateEnum.Imcomplete},
-    StateEnum.Ongoing: {StateEnum.Success, StateEnum.Imcomplete, StateEnum.Invalid},
+    StateEnum.Unstart: {StateEnum.Ongoing, StateEnum.Imcomplete, StateEnum.Warning},
+    StateEnum.Pending: {StateEnum.Ongoing, StateEnum.Imcomplete, StateEnum.Warning},
+    StateEnum.Ongoing: {
+        StateEnum.Success,
+        StateEnum.Imcomplete,
+        StateEnum.Warning,
+        StateEnum.Invalid,
+    },
     StateEnum.Success: set(),  # terminal
     StateEnum.Imcomplete: set(),  # terminal
+    StateEnum.Warning: set(),  # terminal
     StateEnum.Invalid: set(),  # terminal
 }
 
-TERMINAL_STATES: set[StateEnum] = {StateEnum.Success, StateEnum.Imcomplete, StateEnum.Invalid}
+TERMINAL_STATES: set[StateEnum] = {
+    StateEnum.Success,
+    StateEnum.Imcomplete,
+    StateEnum.Warning,
+    StateEnum.Invalid,
+}
 
 
 def _valid_transition_constraint(s_old: ArithRef, s_new: ArithRef) -> BoolRef | bool:

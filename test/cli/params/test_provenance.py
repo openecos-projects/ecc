@@ -11,7 +11,7 @@ class TestCliProvenance:
         from types import SimpleNamespace
 
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
+        os.makedirs(os.path.join(project_dir), exist_ok=True)
         workspace_obj = SimpleNamespace(name="workspace")
 
         def fake_create(**kwargs):
@@ -60,9 +60,7 @@ class TestCliProvenance:
         capsys.readouterr()
 
         # Verify provenance file was written
-        provenance = os.path.join(
-            project_dir, "runs", "default", "home", "cli-param-overrides.json"
-        )
+        provenance = os.path.join(project_dir, "default", "home", "cli-param-overrides.json")
         assert os.path.isfile(provenance)
         with open(provenance) as f:
             data = json.load(f)
@@ -74,7 +72,7 @@ class TestCliProvenance:
         from types import SimpleNamespace
 
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
+        os.makedirs(os.path.join(project_dir), exist_ok=True)
         workspace_obj = SimpleNamespace(name="workspace")
 
         def fake_create(**kwargs):
@@ -123,8 +121,8 @@ class TestCliProvenance:
         assert rc == 0
         capsys.readouterr()
 
-        # Now inspect config --resolved
-        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        # Now inspect config
+        rc = cli_main.run(["config", "--project", project_dir, "--json"])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         param_records = [r for r in data["records"] if r.get("kind") == "param"]
@@ -138,7 +136,7 @@ class TestCliProvenance:
         from types import SimpleNamespace
 
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
+        os.makedirs(os.path.join(project_dir), exist_ok=True)
         workspace_obj = SimpleNamespace(name="workspace")
 
         # Set a TOML override first
@@ -191,7 +189,7 @@ class TestCliProvenance:
         assert rc == 0
         capsys.readouterr()
 
-        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--json"])
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
         param_records = [r for r in data["records"] if r.get("kind") == "param"]

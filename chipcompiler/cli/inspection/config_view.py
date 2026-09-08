@@ -79,9 +79,8 @@ def build_project_config_items(
         )
     else:
         entries.append(("flow.preset", cfg.flow_preset, cfg.flow_preset, source_of("flow.preset")))
-    entries.append(("flow.run", cfg.flow_run, cfg.flow_run, source_of("flow.run")))
 
-    inspect = disclosure_cmd("ecc config --resolved --json", project, run_id)
+    inspect = disclosure_cmd("ecc config --json", project, run_id)
 
     for key, value, resolved, source in entries:
         items.append(
@@ -177,9 +176,11 @@ def build_project_config_items(
         cli_overrides=cli_provenance,
         manifest_overrides=_manifest_parameter_overrides(cfg),
     )
-    from chipcompiler.cli.handlers.param import _maps_to_str
+    from chipcompiler.cli.command_handlers.param import _maps_to_str
 
     for rp in resolved_params:
+        if rp.schema.has_direct_target and not rp.is_explicit:
+            continue
         items.append(
             {
                 "kind": "param",
@@ -248,9 +249,11 @@ def build_step_config_items(
     from chipcompiler.data import step_config_paths
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
+    requested_step_token = step_token or ""
+    step_token = normalize_step_name(requested_step_token)
     flow_data = read_flow_json(run_dir)
     if flow_data is None:
-        return [{"kind": "error", "status": "unknown_step", "step": step_token}], 1
+        return [{"kind": "error", "status": "unknown_step", "step": requested_step_token}], 1
     if flow_data is CORRUPT_FLOW_JSON:
         return [{"kind": "error", "status": "invalid_flow_json"}], 1
 
@@ -259,7 +262,7 @@ def build_step_config_items(
     flow_step_by_token = {normalize_step_name(s.get("name", "")): s for s in steps}
 
     if step_token not in flow_step_by_token and step_token not in step_dirs:
-        return [{"kind": "error", "status": "unknown_step", "step": step_token}], 1
+        return [{"kind": "error", "status": "unknown_step", "step": requested_step_token}], 1
 
     step_info = flow_step_by_token.get(step_token, {})
     data_step = step_info.get("name")
@@ -282,13 +285,13 @@ def build_step_config_items(
             {
                 "kind": "config",
                 "scope": "step",
-                "step": step_token,
+                "step": requested_step_token,
                 "role": "config",
-                "run": display_run,
+                "workspace_id": display_run,
                 "path": os.path.relpath(str(fpath), base_dir),
                 "source": "workspace_config",
                 "inspect_cmd": disclosure_cmd(
-                    f"ecc config {step_token} --resolved --json", project, run_id
+                    f"ecc config {requested_step_token} --json", project, run_id
                 ),
             }
         )
@@ -298,7 +301,7 @@ def build_step_config_items(
             {
                 "kind": "config",
                 "scope": "step",
-                "step": step_token,
+                "step": requested_step_token,
                 "config_status": "none",
             }
         ], 0

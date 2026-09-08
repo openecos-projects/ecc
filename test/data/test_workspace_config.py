@@ -58,6 +58,28 @@ def test_save_load_round_trip_sg13g2_nested_subtrees(tmp_path):
     assert loaded["_flow"] == {}
 
 
+def test_save_load_round_trip_preserves_reserved_payloads(tmp_path):
+    payload = {
+        "design": "gcd",
+        "config_overrides": {
+            "route": {"RT": {"-thread_number": "16"}},
+            "dreamplace": {
+                "RePlAce_LOWER_PCOF": 1.2,
+                "global_place_stages": [{"Llambda_density_weight_iteration": 2}],
+            },
+            "sta": {"signoff": [{"MAX": ["Cworst"], "MIN": ["Cbest"]}]},
+        },
+        "workspace_param_overrides": [
+            {"key": "route.RT.-thread_number", "baseline": "50", "value": "16"}
+        ],
+    }
+    assert save_workspace_config(tmp_path, payload)
+
+    loaded = load_workspace_config(tmp_path)
+    assert loaded["config_overrides"] == payload["config_overrides"]
+    assert loaded["workspace_param_overrides"] == payload["workspace_param_overrides"]
+
+
 def test_design_section_mirrors_identity_keys(tmp_path):
     payload = _flat_template(ICS55_PARAMETERS_TEMPLATE)
     payload.update({"design": "gcd", "top_module": "gcd", "clock": "clk"})
@@ -211,15 +233,13 @@ def test_canonical_chain_and_preset_ranges():
     assert chain[-1] == "Harden"
     assert "RCX" in chain and "sta" in chain
 
-    assert flow_range_for_preset("rtl2gds") == ("Synthesis", "postRouteLec")
-    assert flow_range_for_preset("rcx") == ("Synthesis", "sta")
-    assert flow_range_for_preset("harden") == ("Synthesis", "Harden")
+    assert flow_range_for_preset("rtl2gds") == ("Synthesis", "Harden")
     assert flow_range_for_preset("synthesis_lec") == ("Synthesis", "lec")
 
 
 def test_flow_range_of_section_forms():
     assert flow_range_of({}) is None
-    assert flow_range_of({"preset": "rcx"}) == ("Synthesis", "sta")
+    assert flow_range_of({"preset": "rtl2gds"}) == ("Synthesis", "Harden")
     assert flow_range_of({"start": "place", "end": "route"}) == ("place", "route")
 
 

@@ -19,6 +19,13 @@ logger = logging.getLogger(__name__)
 _UNIT_SUFFIX = re.compile(r"\[[^\]]*\]")
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
+# Machine-state payloads whose dict keys are literal identifiers from tool
+# config files (JSON paths, tool config keys, cell names). Normalizing them
+# would redirect config_override patches onto bogus keys (e.g. "RT" -> "rt",
+# "-thread_number" -> "thread_number") and rewrite JSON values such as
+# sta.signoff corner names, so their subtrees round-trip untouched.
+_RESERVED_PAYLOAD_KEYS = frozenset({"config_overrides", "workspace_param_overrides"})
+
 # Positional GUI geometry aliases and where they live in the canonical tree.
 # (alias, subtree, key, list index or None)
 _GEOMETRY_TO_PARAMETERS = {
@@ -61,6 +68,10 @@ def _normalize_dict(data: dict, path: str) -> dict:
     collisions = []
     for key, value in data.items():
         canonical = normalize_key(key)
+        if canonical in _RESERVED_PAYLOAD_KEYS:
+            # Literal tool-config identifiers must survive the round-trip.
+            result[canonical] = deepcopy(value)
+            continue
         normalized_value = normalize_keys(value, f"{path}{canonical}.")
         if canonical in result:
             collisions.append(canonical)

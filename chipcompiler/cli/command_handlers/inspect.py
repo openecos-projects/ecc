@@ -12,7 +12,6 @@ from chipcompiler.cli.core.output import (
 )
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
-from chipcompiler.cli.project.config import InvalidFlowRun, config_run_id_from
 
 
 def _config_error_result(ctx: CommandContext, reason: str) -> CommandResult:
@@ -40,7 +39,16 @@ def _manifest_error_result(ctx: CommandContext) -> CommandResult:
     )
 
 
+def _resolve_readonly_run_dir(command_input, ctx: CommandContext):
+    """Return the manifest-selected workspace without loading it."""
+    _ = command_input
+    return ctx.run_dir, None
+
+
 def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
+    run_dir, failure = _resolve_readonly_run_dir(command_input, ctx)
+    if failure is not None:
+        return failure
     if ctx.config_error:
         return _config_error_result(ctx, ctx.config_error)
     if ctx.manifest_error:
@@ -53,17 +61,17 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
         read_flow_json,
     )
 
-    flow_data = read_flow_json(ctx.run_dir)
-    display_run = ctx.run_id or "default"
+    flow_data = read_flow_json(run_dir)
+    display_run = ctx.run_id or os.path.basename(run_dir)
     project = ctx.project
 
     if flow_data is None:
         return CommandResult.err(
             [
                 {
-                    "run": display_run,
+                    "workspace_id": display_run,
                     "status": "missing",
-                    "workspace": ctx.run_dir,
+                    "workspace": run_dir,
                     "start_cmd": disclosure_cmd("ecc run", project, ctx.run_id),
                 }
             ]
@@ -73,9 +81,9 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
         return CommandResult.err(
             [
                 {
-                    "run": display_run,
+                    "workspace_id": display_run,
                     "status": "corrupt",
-                    "workspace": ctx.run_dir,
+                    "workspace": run_dir,
                     "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
                     "log_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
                 }
@@ -85,9 +93,9 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
     run_status = get_run_status(flow_data)
     records = [
         {
-            "run": display_run,
+            "workspace_id": display_run,
             "status": run_status,
-            "workspace": ctx.run_dir,
+            "workspace": run_dir,
             "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
             "log_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
         }
@@ -109,6 +117,9 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
 
 
 def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
+    run_dir, failure = _resolve_readonly_run_dir(command_input, ctx)
+    if failure is not None:
+        return failure
     if ctx.config_error:
         return _config_error_result(ctx, ctx.config_error)
     if ctx.manifest_error:
@@ -122,26 +133,26 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
     )
     from chipcompiler.cli.inspection.log_view import build_log_records
 
-    step_token = command_input.step
+    requested_step_token = command_input.step
     project = ctx.project
 
-    if step_token is None:
+    if requested_step_token is None:
         records = []
 
-        for lf in discover_logs(ctx.run_dir):
+        for lf in discover_logs(run_dir):
             records.append(
                 {
-                    "log": os.path.relpath(lf, ctx.run_dir),
+                    "log": os.path.relpath(lf, run_dir),
                     "inspect_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
                 }
             )
 
-        for token in listing_step_order(ctx.run_dir):
-            for lf in discover_logs(ctx.run_dir, token):
+        for token in listing_step_order(run_dir):
+            for lf in discover_logs(run_dir, token):
                 records.append(
                     {
                         "step": token,
-                        "source": os.path.relpath(lf, ctx.run_dir),
+                        "source": os.path.relpath(lf, run_dir),
                         "inspect_cmd": disclosure_cmd(f"ecc log {token}", project, ctx.run_id),
                     }
                 )
@@ -151,57 +162,62 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
                 [
                     {
                         "log_status": "no_logs",
-                        "workspace": ctx.run_dir,
+                        "workspace": run_dir,
                         "run": disclosure_cmd("ecc run", project, ctx.run_id),
                     }
                 ]
             )
         return CommandResult.ok(records)
 
-    step_dirs = discover_step_dirs(ctx.run_dir)
+    step_token = normalize_step_name(requested_step_token)
+    step_dirs = discover_step_dirs(run_dir)
     if step_token not in step_dirs:
-        flow_steps = get_flow_step_names(ctx.run_dir)
+        flow_steps = get_flow_step_names(run_dir)
         if step_token in flow_steps:
             return CommandResult.err(
                 [
                     {
-                        "step": step_token,
+                        "step": requested_step_token,
                         "log_status": "missing",
-                        "inspect_cmd": disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id),
+                        "inspect_cmd": disclosure_cmd(
+                            f"ecc log {requested_step_token}", project, ctx.run_id
+                        ),
                     }
                 ]
             )
         return CommandResult.err(
             [
-                {
-                    "step": step_token,
-                    "status": "unknown_step",
-                    "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
-                }
+                error_record(
+                    "unknown_step",
+                    step=requested_step_token,
+                    inspect_cmd=disclosure_cmd("ecc status", project, ctx.run_id),
+                )
             ]
         )
 
-    log_files = discover_logs(ctx.run_dir, step_token)
+    log_files = discover_logs(run_dir, step_token)
     if not log_files:
         return CommandResult.err(
             [
                 {
-                    "step": step_token,
+                    "step": requested_step_token,
                     "log_status": "missing",
                     "source": os.path.relpath(
                         os.path.join(step_dirs[step_token], "log"),
-                        ctx.run_dir,
+                        run_dir,
                     ),
-                    "inspect_cmd": disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id),
+                    "inspect_cmd": disclosure_cmd(
+                        f"ecc log {requested_step_token}", project, ctx.run_id
+                    ),
                 }
             ]
         )
 
-    inspect_cmd = disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id)
+    inspect_cmd = disclosure_cmd(f"ecc log {requested_step_token}", project, ctx.run_id)
 
     all_records = []
     for lf in log_files:
-        source = os.path.relpath(lf, ctx.run_dir)
+        source = os.path.relpath(lf, run_dir)
         try:
             with open(lf, errors="replace") as f:
                 raw = f.read().splitlines()
@@ -209,7 +225,7 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
             return CommandResult.err(
                 [
                     {
-                        "step": step_token,
+                        "step": requested_step_token,
                         "log_status": "unreadable",
                         "source": source,
                         "error": str(exc),
@@ -219,13 +235,13 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
             )
         if not raw:
             continue
-        all_records.extend(build_log_records(step_token, source, raw, inspect_cmd))
+        all_records.extend(build_log_records(requested_step_token, source, raw, inspect_cmd))
 
     if not all_records:
         return CommandResult.ok(
             [
                 {
-                    "step": step_token,
+                    "step": requested_step_token,
                     "log_status": "empty",
                     "inspect_cmd": inspect_cmd,
                 }
@@ -236,11 +252,11 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
 
 
 def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
+    run_dir, failure = _resolve_readonly_run_dir(command_input, ctx)
+    if failure is not None:
+        return failure
     if ctx.manifest_error:
         return _manifest_error_result(ctx)
-    configured = config_run_id_from(ctx.config)
-    if isinstance(configured, InvalidFlowRun):
-        return _config_error_result(ctx, configured.problem)
 
     from chipcompiler.cli.inspection.config_view import (
         build_project_config_items,
@@ -266,7 +282,7 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
 
     if step_token is not None:
         items, rc = build_step_config_items(
-            ctx.run_dir,
+            run_dir,
             step_token,
             project,
             ctx.run_id,
@@ -275,7 +291,7 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
     else:
         items, rc = build_project_config_items(
             ctx.project_dir,
-            ctx.run_dir,
+            run_dir,
             project,
             ctx.run_id,
             resolved=resolved,
@@ -287,11 +303,11 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
         if status_value == "unknown_step":
             return CommandResult.err(
                 [
-                    {
-                        "step": first.get("step", ""),
-                        "status": "unknown_step",
-                        "inspect": disclosure_cmd("ecc status", project, ctx.run_id),
-                    }
+                    error_record(
+                        "unknown_step",
+                        step=first.get("step", ""),
+                        inspect=disclosure_cmd("ecc status", project, ctx.run_id),
+                    )
                 ]
             )
         if status_value == "missing_config":
@@ -366,7 +382,7 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
                     "scope": "step",
                     "step": item["step"],
                     "role": item["role"],
-                    "run": item.get("run", "default"),
+                    "workspace_id": item.get("workspace_id", "default"),
                     "path": item["path"],
                     "source": item["source"],
                     "inspect": item.get("inspect_cmd"),

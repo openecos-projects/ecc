@@ -46,6 +46,17 @@ def get_sizer_root() -> Path | None:
 
 
 def get_sizer_command() -> list[str]:
+    """
+    Resolve the Sizer executable: CHIPCOMPILER_ECC_SIZER_ROOT/bin first, then PATH.
+
+    Mirrors yosys resolution (CHIPCOMPILER_OSS_CAD_DIR before PATH) so the
+    version/doctor/run probes find the install even when its bin/ is not on PATH.
+    """
+    override = os.environ.get("CHIPCOMPILER_ECC_SIZER_ROOT", "").strip()
+    if override:
+        binary = Path(override).expanduser() / "bin" / "Sizer"
+        if binary.is_file():
+            return [str(binary.resolve())]
     sizer = shutil.which("Sizer")
     return [str(Path(sizer).resolve())] if sizer else []
 

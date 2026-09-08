@@ -109,7 +109,7 @@ name = "ics55"
 root = "/path/to/icsprout55-pdk"
 
 [flow]
-preset = "rtl2gds" # rtl2gds | rcx | harden | syn_sta
+preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
 run = "default"
 ```
 
@@ -130,11 +130,16 @@ Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 | --- | --- |
 | `ecc init <name>` | Create a project skeleton and `ecc.toml` |
 | `ecc check` | Validate RTL, constraints, PDK, tools, and config |
-| `ecc run` | Run the configured RTL-to-GDS flow |
-| `ecc status` | Show run and step status |
+| `ecc doctor` | Probe host environment: PDK, yosys (+slang), bundled tools |
+| `ecc run` | Run the configured RTL-to-GDS flow (`--preset` overrides for one run) |
+| `ecc status` | Show a quick run/step progress summary |
 | `ecc log [step]` | Show available logs or step log content |
-| `ecc config [step] --resolved` | Show resolved project or step configuration |
+| `ecc config [step]` | Show resolved project or step configuration |
+| `ecc migrate` | Migrate a legacy `runs/` project to the manifest layout |
 | `ecc param` | Manage parameter overrides (`list`, `show`, `set`, `unset`, `diff`) |
+| `ecc pdk` | PDK path setup (`setup` clones + unzips, `set-root`, `show`, `unset`) |
+| `ecc signoff` | Inspect readiness and export the signoff package |
+| `ecc report` | Write design-summary, QoR, checklist, and step reports |
 | `ecc version` | Show ECC runtime and component versions |
 | `ecc layout-image` | Render a GDS file into a layout image |
 

@@ -112,7 +112,7 @@ def _flow_status(steps: list[dict]) -> str:
         return "failed"
     if states & {"Ongoing", "Pending"}:
         return "in_progress"
-    if states == {"Success"}:
+    if states and states <= {"Success", "Warning"}:
         return "success"
     return "not_started"
 
@@ -160,6 +160,12 @@ def _is_contiguous_flow(names: list[str]) -> bool:
     chain = canonical_flow_chain()
     for start in range(len(chain) - len(names) + 1):
         if chain[start : start + len(names)] == names:
+            return True
+    # Workspaces created before synthesis-level LEC was added omit only this
+    # newly inserted step; retain their migration compatibility.
+    legacy_chain = [name for name in chain if name != "lec"]
+    for start in range(len(legacy_chain) - len(names) + 1):
+        if legacy_chain[start : start + len(names)] == names:
             return True
     return False
 

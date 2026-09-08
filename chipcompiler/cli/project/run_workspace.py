@@ -18,8 +18,10 @@ from pathlib import Path
 from chipcompiler.cli.core.types import CommandResult
 
 
-def execute_workspace_run(command_input) -> CommandResult:
-    """Reconcile and execute an explicit workspace target.
+def execute_workspace_run(
+    command_input, workspace_path: str, workspace_id: str | None = None
+) -> CommandResult:
+    """Reconcile and execute a registered project workspace.
 
     Selector validity was already checked by the handler. Explicit
     selectors (--from/--only) re-execute on request; the default resume
@@ -40,7 +42,7 @@ def execute_workspace_run(command_input) -> CommandResult:
     def error(kind: str, **fields) -> CommandResult:
         return CommandResult.err([{"kind": "error", "error": kind, **fields}])
 
-    workspace_path = os.path.abspath(os.path.expanduser(command_input.workspace))
+    workspace_path = os.path.abspath(workspace_path)
 
     def mismatch_error(reason: str) -> CommandResult:
         if reason.startswith("workspace_config_invalid"):
@@ -101,7 +103,7 @@ def execute_workspace_run(command_input) -> CommandResult:
             return CommandResult.ok(
                 [
                     {
-                        "run": "workspace",
+                        "workspace_id": workspace_id or "default",
                         "status": "success",
                         "workspace": workspace_path,
                         "executed_steps": [],
@@ -121,6 +123,7 @@ def execute_workspace_run(command_input) -> CommandResult:
             selected = rerun.selected_step_names(
                 engine_flow,
                 from_step=command_input.from_step,
+                through=command_input.to_step,
                 only=command_input.only,
                 force=command_input.force,
             )
@@ -145,7 +148,11 @@ def execute_workspace_run(command_input) -> CommandResult:
                         engine_flow, command_input.only, force=command_input.force
                     )
                 elif command_input.from_step is not None:
-                    result = rerun.run_from(engine_flow, command_input.from_step)
+                    result = rerun.run_from(
+                        engine_flow,
+                        command_input.from_step,
+                        through=command_input.to_step,
+                    )
                 elif reconcile_result.target:
                     result = rerun.run_resume(engine_flow, through=reconcile_result.target[-1])
                 else:
@@ -156,7 +163,7 @@ def execute_workspace_run(command_input) -> CommandResult:
             return error("flow_failed", workspace=workspace_path, reason=str(exc))
 
     record = {
-        "run": "workspace",
+        "workspace_id": workspace_id or "default",
         "status": "success" if result.ok else "failed",
         "workspace": workspace_path,
         "executed_steps": list(result.executed),
@@ -165,5 +172,5 @@ def execute_workspace_run(command_input) -> CommandResult:
     if result.ok:
         return CommandResult.ok([record])
     record["failed_step"] = result.failed
-    record["resume_cmd"] = f"ecc run --workspace {shlex.quote(workspace_path)} --resume"
+    record["resume_cmd"] = f"ecc run --workspace {shlex.quote(workspace_id or 'default')} --resume"
     return CommandResult.err([record])

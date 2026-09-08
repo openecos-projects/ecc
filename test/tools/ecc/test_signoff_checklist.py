@@ -16,6 +16,7 @@ from chipcompiler.data import (
 from chipcompiler.tools.ecc.metrics import _quality_gates, build_qor_summary_payload
 from chipcompiler.tools.ecc.signoff_checklist import (
     _flow_items,
+    _lec_artifact_items,
     _workspace_items,
     rebuild_home_checklist,
     refresh_step_checklist,
@@ -85,6 +86,28 @@ def test_quality_gates_only_include_final_drc_lvs_rcx_and_sta(tmp_path):
         )
         == []
     )
+
+
+def test_synthesis_lec_failure_is_warning_but_post_route_lec_stays_blocking(monkeypatch, tmp_path):
+    result = tmp_path / "lec-result.json"
+    result.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "chipcompiler.tools.yosys_lec.utility.lec_result_status",
+        lambda *args, **kwargs: "incomplete",
+    )
+    workspace = Workspace(directory=tmp_path)
+
+    synthesis_item = _lec_artifact_items(workspace, StepEnum.LEC.value, result, None, None)[0]
+    post_route_item = _lec_artifact_items(
+        workspace, StepEnum.POST_ROUTE_LEC.value, result, None, None
+    )[0]
+
+    assert synthesis_item["state"] == "warning"
+    assert synthesis_item["policy"] == "warn"
+    assert synthesis_item["blocked"] is False
+    assert post_route_item["state"] == "failed"
+    assert post_route_item["policy"] == "block"
+    assert post_route_item["blocked"] is True
 
 
 def test_sta_quality_gates_require_all_corner_coverage_and_closure(tmp_path):

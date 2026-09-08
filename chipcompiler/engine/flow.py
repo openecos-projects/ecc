@@ -4,8 +4,17 @@ import logging
 import os
 import time
 from copy import deepcopy
+from pathlib import Path
 
-from chipcompiler.data import EccOutput, StateEnum, StepEnum, Workspace, WorkspaceStep, log_flow
+from chipcompiler.data import (
+    EccOutput,
+    StateEnum,
+    StepEnum,
+    Workspace,
+    WorkspaceStep,
+    is_non_blocking_step,
+    log_flow,
+)
 from chipcompiler.engine import EngineDB
 from chipcompiler.engine.signoff import (
     SignoffPackageCollector,
@@ -23,11 +32,20 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _VALID_TRANSITIONS: dict[str, set[str]] = {
-    StateEnum.Unstart.value: {StateEnum.Ongoing.value, StateEnum.Imcomplete.value},
-    StateEnum.Pending.value: {StateEnum.Ongoing.value, StateEnum.Imcomplete.value},
+    StateEnum.Unstart.value: {
+        StateEnum.Ongoing.value,
+        StateEnum.Imcomplete.value,
+        StateEnum.Warning.value,
+    },
+    StateEnum.Pending.value: {
+        StateEnum.Ongoing.value,
+        StateEnum.Imcomplete.value,
+        StateEnum.Warning.value,
+    },
     StateEnum.Ongoing.value: {
         StateEnum.Success.value,
         StateEnum.Imcomplete.value,
+        StateEnum.Warning.value,
         StateEnum.Invalid.value,
     },
     # Terminal states — no outgoing lifecycle transitions.
@@ -35,6 +53,7 @@ _VALID_TRANSITIONS: dict[str, set[str]] = {
     # can assign any state directly, including Unstart for terminal states.
     StateEnum.Success.value: set(),
     StateEnum.Imcomplete.value: set(),
+    StateEnum.Warning.value: set(),
     StateEnum.Invalid.value: set(),
 }
 
@@ -86,6 +105,7 @@ class EngineFlow:
         steps = []
 
         steps.append(self.init_flow_step(StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
+        steps.append(self.init_flow_step(StepEnum.LEC, "yosys_lec", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.FLOORPLAN, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.CTS, "ecc", StateEnum.Unstart))
@@ -346,6 +366,8 @@ class EngineFlow:
                 explicit_golden = step_info.get("golden_verilog") or None
                 if explicit_golden:
                     input_db = explicit_golden
+                elif pre_step is None and self.workspace.design.golden_verilog is not None:
+                    input_db = self.workspace.design.golden_verilog
                 elif step["name"] == StepEnum.POST_ROUTE_LEC.value:
                     input_db = synthesis_gate_verilog or self.workspace.design.origin_verilog
                 elif pre_step is not None and pre_step.name == StepEnum.SYNTHESIS.value:
@@ -364,6 +386,13 @@ class EngineFlow:
             )
             # save workspace step
             if eda_step is not None:
+                step_info = step.get("info", {}) or {}
+                if (
+                    eda_step.name == StepEnum.STA.value
+                    and step_info.get("spef")
+                    and isinstance(eda_step.output, EccOutput)
+                ):
+                    eda_step.output.spef = [Path(step_info["spef"])]
                 if (
                     pre_step is not None
                     and pre_step.name == StepEnum.RCX.value
@@ -407,6 +436,12 @@ class EngineFlow:
                 # use the first unsuccess step to setup db engine
                 workspace_step = ws_step
                 break
+
+        # LEC is a netlist comparison step and does not expose an ECC DB
+        # input. Keep any existing DB alive, but do not try to initialize one
+        # from the Yosys LEC workspace.
+        if workspace_step is not None and workspace_step.tool == "yosys_lec":
+            return True
 
         return self.engine_db.create_db_engine(step=workspace_step)
 
@@ -499,7 +534,19 @@ class EngineFlow:
                 case StateEnum.Unstart:
                     return False
                 case StateEnum.Imcomplete:
+                    if is_non_blocking_step(workspace_step):
+                        self.workspace.logger.warning(
+                            "[WARNING] %s did not prove equivalence; continuing flow",
+                            workspace_step.name,
+                        )
+                        continue
                     return False
+                case StateEnum.Warning:
+                    self.workspace.logger.warning(
+                        "[WARNING] %s completed with warnings; continuing flow",
+                        workspace_step.name,
+                    )
+                    continue
                 case StateEnum.Pending:
                     return False
                 case StateEnum.Ongoing:
@@ -519,9 +566,9 @@ class EngineFlow:
     def _normalize_legacy_terminal_state(self, workspace_step, step_tag):
         """Reset terminal states from pre-guard workspaces to Unstart.
 
-        Pre-guard workspaces may have steps stuck in Incomplete/Invalid from
-        crashed runs.  Batch resets (_invalidate_suffix, clear_states) handle
-        rerun paths; this handles the rerun=False resume path.
+        Pre-guard workspaces may have steps stuck in Incomplete/Warning/Invalid
+        from earlier runs. Batch resets (_invalidate_suffix, clear_states)
+        handle rerun paths; this handles the rerun=False resume path.
         """
         old_step = self.get_step(name=workspace_step.name, tool=workspace_step.tool)
         if old_step is None:
@@ -529,6 +576,7 @@ class EngineFlow:
         persisted = old_step.get("state")
         if persisted in {
             StateEnum.Imcomplete.value,
+            StateEnum.Warning.value,
             StateEnum.Invalid.value,
         }:
             logger.warning(
@@ -635,13 +683,17 @@ class EngineFlow:
                 )
 
             # Run fallible post-success work BEFORE the terminal commit: a
-            # failure here must still transition Ongoing -> Imcomplete —
+            # failure here must still transition Ongoing -> a terminal failure
+            # state; a synthesis LEC failure is normalized to Warning below.
             # after a persisted Success the transition table forbids the
             # rollback and the ledger would claim a failed step succeeded.
             if state == StateEnum.Success:
                 from chipcompiler.tools import save_layout_image
 
                 save_layout_image(workspace=self.workspace, step=workspace_step)
+
+            if is_non_blocking_step(workspace_step) and state == StateEnum.Imcomplete:
+                state = StateEnum.Warning
 
             if flow_step is not None and not self.set_state(
                 name=workspace_step.name,
@@ -701,6 +753,8 @@ class EngineFlow:
                 runtime,
                 peak_memory_mb,
             )
+            if is_non_blocking_step(workspace_step):
+                state = StateEnum.Warning
             if flow_step is not None and not self.set_state(
                 name=workspace_step.name,
                 tool=workspace_step.tool,

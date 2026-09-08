@@ -79,7 +79,7 @@ def render_generic_block(records, file=None, *, color=True, tag=None):
 
 
 def _infer_tag(record):
-    for key in ("status", "run", "project", "kind"):
+    for key in ("status", "workspace_id", "run", "project", "kind"):
         if key in record:
             return key
     return "result"
@@ -105,6 +105,7 @@ _STATUS_COLORS = {
     "incomplete": YELLOW,
     "ongoing": YELLOW,
     "pending": YELLOW,
+    "partial": YELLOW,
 }
 
 
@@ -150,7 +151,7 @@ def render_check(records, file=None, *, color=True):
     target.write(f"  project: {r.get('project', '')}\n")
     target.write(f"  status: {status_style(r.get('status', ''), color=color)}\n")
     target.write(f"  config: {r.get('config', '')}\n")
-    _render_disclosure_fields(target, r, color)
+    _render_disclosure_fields(target, r, color, skip=("config",))
 
     for r in records[1:]:
         label = r.get("check", "")
@@ -166,11 +167,16 @@ def render_check(records, file=None, *, color=True):
 
 def render_run_summary(records, file=None, *, color=True):
     target = file or sys.stdout
-    r = records[0]
+    # Layer warnings may precede the workspace record; the summary describes
+    # the workspace, not the first record.
+    r = next((rec for rec in records if "workspace_id" in rec), records[0])
     st = r.get("status", "")
-    tag = "run"
+    tag = "workspace"
     target.write(f"{render_header(tag, color=color)}\n")
-    target.write(f"  run: {r.get('run', '')}\n")
+    for warning in (rec for rec in records if rec.get("kind") == "warning"):
+        message = warning.get("reason") or warning.get("warning") or ""
+        target.write(f"  {style('warning', YELLOW if color else None, enabled=color)}: {message}\n")
+    target.write(f"  workspace id: {r.get('workspace_id', '')}\n")
     target.write(f"  status: {status_style(st, color=color)}\n")
     target.write(f"  workspace: {r.get('workspace', '')}\n")
     _render_disclosure_fields(target, r, color)
@@ -187,11 +193,11 @@ def render_status(records, file=None, *, color=True):
 
     st = first.get("status", "")
     target.write(f"{render_header('status', color=color)}\n")
-    target.write(f"  run: {first.get('run', '')}\n")
+    target.write(f"  workspace id: {first.get('workspace_id', '')}\n")
     target.write(f"  status: {status_style(st, color=color)}\n")
     if first.get("workspace"):
         target.write(f"  workspace: {first['workspace']}\n")
-    _render_disclosure_fields(target, first, color)
+    _render_disclosure_fields(target, first, color, skip=("workspace_id",))
 
     step_records = [r for r in records if "step" in r]
     if step_records:
@@ -295,8 +301,10 @@ def render_error(records, file=None, *, color=True):
 # --- Internal helpers ---
 
 
-def _render_disclosure_fields(target, record, color):
+def _render_disclosure_fields(target, record, color, *, skip=()):
     for key in sorted(record.keys()):
+        if key in skip:
+            continue
         if not key.endswith("_cmd") and key not in (
             "inspect",
             "check",
@@ -323,15 +331,104 @@ def _render_step_disclosure(target, record, color, indent="      "):
         target.write(f"{indent}{dim_label} {value}\n")
 
 
-# --- Renderer registry ---
+# ---------------------------------------------------------------------------
+# Pretty rendering for param and signoff commands
+# ---------------------------------------------------------------------------
 
 
-def get_pretty_renderer(command):
-    registry = {
-        "init": render_init,
-        "check": render_check,
-        "run": render_run_summary,
-        "status": render_status,
-        "config": render_config,
-    }
-    return registry.get(command)
+def render_param_list_text(records, file=None):
+    target = file or sys.stdout
+    groups: dict[str, list] = {}
+    for r in records:
+        g = r.get("group", "")
+        groups.setdefault(g, []).append(r)
+
+    for group_name, group_records in groups.items():
+        print(f"  {group_name}", file=target)
+        for r in group_records:
+            val = r.get("value")
+            src = r.get("source", "default")
+            line = f"    {r['param']:30s} {val}"
+            if src != "default":
+                line += f"  ({src})"
+            print(line, file=target)
+
+
+def render_param_show_text(records, file=None):
+    target = file or sys.stdout
+    r = records[0]
+
+    print(f"  {r['param']}", file=target)
+    for field in (
+        "value",
+        "default",
+        "source",
+        "type",
+        "applies",
+        "maps_to",
+        "config_target",
+        "pdk_target",
+        "description",
+        "range",
+        "choices",
+        "unit",
+        "inspect",
+        "set",
+        "run",
+    ):
+        val = r.get(field)
+        if val is not None:
+            label = field.replace("_", " ")
+            print(f"    {label:14s} {val}", file=target)
+
+
+def render_param_set_text(records, file=None):
+    target = file or sys.stdout
+    r = records[0]
+    status = r.get("status", "")
+    if status == "set":
+        print(f"  set {r['param']} = {r['value']} (ecc.toml)", file=target)
+    elif status == "no_override":
+        print(f"  {r['param']}: no override to remove", file=target)
+    elif status == "unset":
+        print(f"  unset {r['param']} (now default: {r['value']})", file=target)
+    else:
+        from chipcompiler.cli.rendering.render import render_text
+
+        render_text(records, file=target)
+
+
+def render_param_diff_text(records, file=None):
+    target = file or sys.stdout
+    if len(records) == 1 and records[0].get("diff_status") == "clean":
+        print("  No overrides.", file=target)
+        return
+    for r in records:
+        print(f"  {r['param']:30s} {r['value']} (was {r['default']}, {r['source']})", file=target)
+
+
+def render_signoff_inspect_text(records, file=None):
+    target = file or sys.stdout
+    summary = records[0]
+    print("[signoff]", file=target)
+    print(f"  status    : {summary['status']}", file=target)
+    print(f"  workspace : {summary['workspace']}", file=target)
+    print(f"  export    : {summary['export']}", file=target)
+    print(f"  report    : {summary['report']}", file=target)
+    groups = [r for r in records[1:] if "group" in r]
+    if groups:
+        print()
+        print("  groups:")
+        for group in groups:
+            counts = ""
+            if group.get("available") is not None:
+                counts = f"  ({group['available']}/{group['expected']})"
+            print(f"    {group['group']:14s} {group['status']:9s}{counts}")
+    risks = [r for r in records[1:] if "risk" in r]
+    if risks:
+        print()
+        print("  risks:")
+        for risk in risks:
+            print(f"    [{risk['risk']:7s}] {risk['title']}")
+            if risk.get("reason"):
+                print(f"              {risk['reason']}")

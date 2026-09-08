@@ -55,9 +55,9 @@ workspace_step/
 ### 3. State Machine
 ```
 Unstart → Ongoing → Success
-                  ↘ Incomplete
+                  ↘ Incomplete / Warning
 ```
-States: Unstart (not started), Ongoing (running), Success (completed), Incomplete (failed), Invalid, Ignored, Pending.
+States: Unstart (not started), Ongoing (running), Success (completed), Warning (non-blocking check failed), Incomplete (blocking failure), Invalid, Ignored, Pending.
 
 ### 4. Configuration as Data
 - `workspace.flow.json` - Flow state persistence
@@ -105,7 +105,7 @@ Routing → input/design.def → ...
 | `WorkspaceStep` | Per-step workspace: inputs, outputs, configs, logs, reports |
 | `Parameters` | Design specs: die size, clock frequency, buffer/filler/tie cells |
 | `PDK` | Tech library paths: LEF, liberty, timing, SPEF |
-| `StepEnum` | Flow steps: SYNTHESIS, PLACEMENT, CTS, LEGALIZATION, TIMING_OPT (sizer + inner legalize), ROUTING, FILLER |
+| `StepEnum` | Flow steps: SYNTHESIS, LEC, PLACEMENT, CTS, LEGALIZATION, TIMING_OPT (sizer + inner legalize), ROUTING, FILLER |
 | `StateEnum` | Step states: Unstart, Ongoing, Success, Incomplete, Invalid, Ignored, Pending |
 
 ### Engine Layer (chipcompiler/engine/)
@@ -160,7 +160,7 @@ Script `scripts/autopatch-ecc-py.sh` collects `.so` dependencies, copies to `bin
 
 ### RTL2GDS Layer (chipcompiler/rtl2gds/)
 
-`build_rtl2gds_flow()` returns complete flow: SYNTHESIS → FLOORPLAN → PLACEMENT → CTS → LEGALIZATION → TIMING_OPT → ROUTING → DRC → FILLER.
+`build_rtl2gds_flow()` returns the complete flow: SYNTHESIS → synthesis-level LEC → FLOORPLAN → PLACEMENT → CTS → LEGALIZATION → TIMING_OPT → ROUTING → FILLER → RCX → STA → LVS → post-route LEC → DRC → HARDEN.
 
 Timing Opt (`TIMING_OPT`, tool `sizer`) sits **after legalization and before routing**. CTS dirties legality, so the post-CTS `legalization` sibling still runs first. Sizer then sizes cells and Timing Opt legalizes internally before publishing DEF/Verilog. Missing Sizer does not prevent building the rest of the flow; the Timing Opt step is marked Invalid and later steps still chain from its declared outputs.
 

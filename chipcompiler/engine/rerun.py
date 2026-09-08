@@ -13,7 +13,7 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
-from chipcompiler.data import StateEnum, Workspace, WorkspaceStep, log_flow
+from chipcompiler.data import StateEnum, Workspace, WorkspaceStep, is_non_blocking_step, log_flow
 from chipcompiler.utility.log import redirect_stdio_to_file
 from chipcompiler.utility.path import path_is_within
 
@@ -30,7 +30,12 @@ class StepRunResult(NamedTuple):
 
 
 def selected_step_names(
-    flow: "EngineFlow", *, from_step: str = None, only: str = None, force: bool = False
+    flow: "EngineFlow",
+    *,
+    from_step: str = None,
+    through: str | None = None,
+    only: str = None,
+    force: bool = False,
 ) -> list[str]:
     """Resolve a run selector to the persisted step names it would execute."""
     steps = flow.workspace.flow.data.get("steps", [])
@@ -40,7 +45,11 @@ def selected_step_names(
             return []
         return [steps[index]["name"]]
     if from_step is not None:
-        return [step["name"] for step in steps[_require_step_index(flow, from_step) :]]
+        first = _require_step_index(flow, from_step)
+        last = _require_step_index(flow, through) if through is not None else len(steps) - 1
+        if last < first:
+            raise ValueError(f"step '{through}' is before '{from_step}'")
+        return [step["name"] for step in steps[first : last + 1]]
     for index, step in enumerate(steps):
         if step.get("state") != StateEnum.Success.value:
             return [step["name"] for step in steps[index:]]
@@ -83,8 +92,18 @@ def run_from(flow: "EngineFlow", name: str, *, through: str | None = None) -> St
     _require_steps_available(flow, last_index)
     suffix = flow.workspace_steps[index : last_index + 1]
     output_dirs = _validated_output_dirs(flow.workspace, suffix)
-    _invalidate_suffix(flow, index, last_index)
+    # A bounded rerun executes only the requested interval, but all later
+    # states become stale because their input chain changed. Their outputs are
+    # deliberately retained until the user chooses to run them.
+    _invalidate_suffix(flow, index)
     return _run_selected(flow, list(zip(suffix, output_dirs, strict=True)))
+
+
+def invalidate_from(flow: "EngineFlow", name: str) -> list[str]:
+    """Persist an invalidated suffix without executing or deleting outputs."""
+    index = _require_step_index(flow, name)
+    _invalidate_suffix(flow, index)
+    return [step["name"] for step in flow.workspace.flow.data.get("steps", [])[index:]]
 
 
 def run_only(flow: "EngineFlow", name: str, *, force: bool = False) -> StepRunResult:
@@ -104,6 +123,19 @@ def _require_step_index(flow: "EngineFlow", name: str) -> int:
     steps = flow.workspace.flow.data.get("steps", [])
     for index, step in enumerate(steps):
         if step.get("name") == name:
+            return index
+    # Selectors accept any CLI spelling of a persisted step ("floorplan",
+    # "Floorplan", "FLOORPLAN", "synth", ...) — only an unambiguous
+    # canonical form may not be guessed at.
+    from chipcompiler.rtl2gds.builder import normalize_flow_step
+
+    canonical = normalize_flow_step(name)
+    for index, step in enumerate(steps):
+        if step.get("name") == canonical:
+            return index
+    folded = str(name or "").casefold()
+    for index, step in enumerate(steps):
+        if str(step.get("name", "")).casefold() == folded:
             return index
     available = ", ".join(str(step.get("name")) for step in steps)
     raise ValueError(f"unknown step '{name}'; available steps: {available}")
@@ -157,8 +189,18 @@ def _run_selected(flow: "EngineFlow", selected: list[tuple[WorkspaceStep, Path]]
         flow.workspace.logger.log_section(
             f"{workspace_step.tool} - end step - {workspace_step.name}"
         )
-        if state != StateEnum.Success:
+        if state not in {StateEnum.Success, StateEnum.Warning} and not is_non_blocking_step(
+            workspace_step
+        ):
             return StepRunResult(ok=False, executed=tuple(executed), failed=workspace_step.name)
+        if state != StateEnum.Success:
+            flow.workspace.logger.warning(
+                "[WARNING] %s %s; continuing flow",
+                workspace_step.name,
+                "did not prove equivalence"
+                if is_non_blocking_step(workspace_step)
+                else "completed with warnings",
+            )
         executed.append(workspace_step.name)
     return StepRunResult(ok=True, executed=tuple(executed))
 

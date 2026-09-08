@@ -1,0 +1,724 @@
+# ECC CLI Tutorial: From Zero to RTL → Harden with a Signoff Package
+
+This tutorial is for first-time ECC users: starting from a bare Linux machine, install the `ecc` command-line tool and drive a Verilog RTL design ([gcd](examples/gcd/gcd.v), a greatest-common-divisor unit) through the full **synthesis → place & route → physical verification → logic equivalence check (LEC) → timing signoff → Harden** flow, ending up with:
+
+- **Harden deliverables**: GDS layout, abstract LEF, timing LIB, and a layout snapshot PNG;
+- A **signoff package** `gcd_signoff_package.tar.gz` (300+ files: RTL / configs / deliverables / LEC proof / reports);
+- **Three reports**: design summary (text), QoR score, and signoff checklist.
+
+The target process is the official [ICS55 PDK](https://github.com/openecos-projects/icsprout55-pdk) (an open-source 55 nm educational PDK). Every command output in this tutorial is a real execution result (captured on v0.1.0-alpha.11; example paths are written as `~/ecc-demo`).
+
+> Reference timing: first-time install (downloads the PDK and OSS CAD Suite, roughly 3 GB total) takes 20–60 minutes depending on network; the gcd flow itself runs in about **4–5 minutes**.
+
+## The Big Picture
+
+```mermaid
+graph LR
+    A[Install ecc CLI<br/>+ PDK + Yosys] --> B[ecc init gcd<br/>create project, add RTL]
+    B --> C[ecc doctor / check<br/>environment & config checks]
+    C --> D[ecc run --preset rtl2gds<br/>15-step flow]
+    D --> E[ecc status / log<br/>inspect results & logs]
+    E --> F[ecc signoff export<br/>signoff tar.gz]
+    E --> G[ecc report summary<br/>design summary]
+    E --> H[ecc report qor / checklist<br/>QoR & signoff checklist]
+```
+
+## 1. Requirements
+
+| Item | Requirement |
+|---|---|
+| OS | Linux x86_64 (other architectures are untested) |
+| Basic commands | `bash`, `curl` or `wget`, `tar`, `git`, `make`, `bzip2` |
+| Disk | ≥ 10 GB free (measured after install: ecc CLI ≈ 3.6 GB + OSS CAD Suite ≈ 2.9 GB + PDK ≈ 1.9 GB) |
+| Network | Access to release.openecos.com (installer) and GitHub (PDK / OSS CAD Suite) |
+| Python / deps | **None**. ecc-tools, DreamPlace, etc. are bundled inside the CLI package |
+
+## 2. Installing the ecc CLI (from zero)
+
+### 2.1 One-shot installer (recommended)
+
+Install the `ecc` CLI (Linux x86_64, glibc 2.34+) with the official installer:
+
+```bash
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
+```
+
+Install Yosys (OSS CAD Suite with the slang frontend built in) and the ICS55 PDK as well (recommended; the flow in this tutorial works out of the box):
+
+```bash
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --with-toolchain
+```
+
+The wrapper installs to `~/.local/bin`. If that directory is not on your `PATH`, add it (effective in the current terminal immediately; new terminals pick it up automatically):
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+The `--with-toolchain` wrapper exports `CHIPCOMPILER_OSS_CAD_DIR` and `CHIPCOMPILER_ICS55_PDK_ROOT`, so Yosys and the ICS55 PDK are configured by the wrapper; when the toolchain is missing later, re-run the installer with `--with-toolchain`. Check the environment with `ecc doctor` (see §2.4).
+
+### 2.2 Running from source (optional)
+
+Clone the repository with `--recursive` as the [README](../README.md#build-from-source) describes (`chipcompiler/thirdparty/` pulls in `ecc-tools` and `ecc-dreamplace`), then set up the `uv` workspace per the [development guide](development.md):
+
+```bash
+git clone --recursive https://github.com/openecos-projects/ecc.git
+cd ecc
+uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package ecc-tools-bin
+uv run ecc --help
+```
+
+### 2.3 Manual install (optional)
+
+If you prefer not to use the script, the same result takes three steps:
+
+```bash
+# ① ecc CLI: download the prebuilt package from Releases
+mkdir -p ~/.local/ecc
+curl -fL -o ecc-cli.tar.gz \
+  https://github.com/openecos-projects/ecc/releases/latest/download/ecc-cli-linux-x86_64.tar.gz
+tar -xzf ecc-cli.tar.gz -C ~/.local/ecc
+mkdir -p ~/.local/bin && ln -sf ~/.local/ecc/ecc ~/.local/bin/ecc   # ~/.local/bin must be on PATH
+
+# ② PDK: icsprout55-pdk; liberty/GDS need `make unzip` (~1 GB, from the PDK's own Releases)
+git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git ~/.local/icsprout55-pdk
+make -C ~/.local/icsprout55-pdk unzip
+export CHIPCOMPILER_ICS55_PDK_ROOT=~/.local/icsprout55-pdk   # recommended: add to ~/.bashrc
+
+# ③ Yosys: OSS CAD Suite (needs yosys ≥ v0.67 for the built-in slang frontend)
+#    Download the linux-x64 package from https://github.com/YosysHQ/oss-cad-suite-build/releases, then:
+tar -xzf oss-cad-suite-*.tgz -C ~/.local && mv ~/.local/oss-cad-suite* ~/.local/oss-cad-suite
+export CHIPCOMPILER_OSS_CAD_DIR=~/.local/oss-cad-suite
+```
+
+Alternatively, hook the PDK up with the CLI's own `pdk` subcommands after creating a project:
+
+```bash
+ecc pdk setup                    # clone + make unzip + wire up, all in one
+ecc pdk set-root ~/pdk/icsprout55-pdk   # attach an already-provisioned PDK (written to ecc.toml)
+ecc pdk show                     # show the effective PDK root and where it came from
+ecc pdk unset                    # clear pdk.root in ecc.toml (falls back to env vars / repo default)
+```
+
+### 2.4 Verify the installation
+
+```console
+$ ecc version
+ecc 0.1.0a11
+dreamplace 0.1.0a7
+ecc_tools 0.1.0a12
+runtime ECC CLI
+yosys 0.68+132
+sizer 0.1.0-alpha
+klayout 0.30.2
+```
+
+Then run an environment check (works from any directory; only **required** failures produce a non-zero exit code):
+
+```console
+$ ecc doctor
+[status]
+  doctor: environment
+  status: failed             # a missing required component returns rc=1
+  checked: 7
+  failed: 1
+  attention: 0
+  run: ecc run
+  component: yosys
+  status: pass
+  required: True
+  detail: ~/.local/oss-cad-suite/bin/yosys
+  component: yosys-slang
+  status: pass
+  required: True
+  detail: read_slang frontend available
+  component: ecc-tools       # dreamplace / klayout / pdk are listed the same way, one by one
+  ...
+  component: sizer
+  status: fail
+  required: True             # required by doctor and by Timing optimization
+  ...
+```
+
+All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, and pdk) must `pass` before `ecc doctor` succeeds. A ready Sizer has both its executable and runtime root. The complete `rtl2gds` flow contains Timing optimization; fresh or `--overwrite` `rtl2gds` targets check Sizer during startup preflight and return `env_not_ready` when it is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail mid-flow. When a component is missing, follow the `ecc doctor` remediation hint (e.g. `ecc pdk setup`, or re-run the §2.1 installer with `--with-toolchain`).
+
+## 3. Creating Your First Project
+
+### 3.1 Initialize
+
+```console
+$ mkdir ~/ecc-demo && cd ~/ecc-demo
+$ ecc init gcd
+[init]
+  project: gcd
+  status: created
+  path: gcd
+  check: ecc check --project gcd
+  run: ecc run --project gcd
+
+$ cd gcd
+```
+
+This generates the project skeleton:
+
+```
+gcd/
+├── ecc.toml       # project config (edit as needed in the next step)
+├── rtl/           # put Verilog sources or a filelist here
+└── constraints/   # reserved for constraints (none needed in this tutorial, see §3.3)
+
+# the workspace is created by the first `ecc run`: `gcd/default/` by default and
+# registered in `project.json`. Create another managed workspace with
+# `ecc run --workspace <name>`. Legacy `runs/<id>/` projects require `ecc migrate`.
+```
+
+### 3.2 Add the RTL
+
+This tutorial uses the bundled gcd example — a 16/16-bit subtractive GCD unit (FSM controller + datapath, a few hundred standard cells after synthesis). Small but complete, it is a classic teaching design for exercising a backend flow:
+
+```bash
+# Download the gcd example shipped in the repository (or use any .v file of your own)
+curl -fL -o rtl/gcd.v \
+  https://raw.githubusercontent.com/openecos-projects/ecc/main/docs/examples/gcd/gcd.v
+
+# With a local clone, copying the file works too:
+# cp /path/to/ecc/docs/examples/gcd/gcd.v rtl/
+```
+
+For multi-file designs, switch to a filelist (`rtl = ["rtl/filelist.f"]`); see [examples/gcd/README.md](examples/gcd/README.md#using-filelist) and the [filelist grammar](specification/filelist-grammar.md).
+
+### 3.3 Understanding ecc.toml
+
+```toml
+[design]
+name = "gcd"
+top = "gcd"              # top module name
+rtl = ["rtl/gcd.v"]      # a single Verilog file, or a filelist for multi-source designs
+# Optional entry inputs for a non-RTL range:
+# netlist = "inputs/gcd.v"
+# golden_netlist = "inputs/gcd-golden.v"
+# def = "inputs/gcd.def"
+# sdc = "constraints/gcd.sdc"
+# spef = "inputs/gcd.spef"
+clock_port = "clk"       # clock port name
+frequency_mhz = 100.0    # target frequency (MHz)
+
+[pdk]
+name = "ics55"           # ics55 is currently the only supported PDK
+root = ""                # empty = fall back to the CHIPCOMPILER_ICS55_PDK_ROOT env var
+
+[flow]
+# preset: rtl2gds | syn_sta | synthesis_lec
+preset = "rtl2gds"       # the complete RTL-to-Harden flow used in this tutorial
+```
+
+For the gcd example, the defaults produced by `init` happen to be exactly right (the top module is literally `gcd`, the clock port is `clk`) — **you don't need to change a single character**. For your own design, check the four fields `top`, `rtl`, `clock_port`, and `frequency_mhz`.
+
+You can edit `ecc.toml` in an editor, or set the same declarations from the command line with the `ecc project` group (writes `ecc.toml`, comments preserved; see [User Guide §8.5](ecc-cli-ug.en.md#85-project--workspace--edit-project-declarations-and-refresh-workspaces)):
+
+```bash
+ecc project set design.top my_chip            # set one declaration
+ecc project set design.rtl rtl/cpu.v rtl/uart.v   # replace the whole RTL list
+ecc project add design.rtl rtl/sram.v         # append one more RTL source
+ecc project remove design.rtl rtl/sram.v      # drop an RTL source
+ecc project set design.clock_port clk_i       # rename the clock port
+ecc project set flow.preset syn_sta           # switch preset
+ecc project show                              # list what ecc.toml declares
+```
+
+Two things worth knowing:
+
+- **No hand-written SDC needed**: the flow generates constraints automatically from `clock_port` and `frequency_mhz` (`create_clock` + an I/O delay ratio); the generated SDC lands in the workspace's `origin/gcd.sdc`;
+- **PDK resolution order**: `pdk.root` in `ecc.toml` > env var `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`. `ecc pdk show` also reports a repository-default path for convenience, but `ecc check` and `ecc run` require one of the three explicit sources. If you used the one-shot installer, the env var is already set, so leaving `root` empty is fine.
+
+### 3.4 Validate
+
+```console
+$ ecc check
+[check]
+  project: gcd
+  status: checked
+  config: ecc.toml
+  inspect: ecc status
+  run: ecc run
+  rtl: pass
+    path: rtl/gcd.v
+  inspect: ecc check --json
+rc=0
+```
+
+`ecc check` validates required config fields and PDK contents (tech LEF / LEF / liberty); RTL source existence is checked by `ecc run` per the entry step when it creates the workspace. **Always check before run** — config mistakes surface here instead of failing the flow halfway through.
+
+## 4. Running the RTL → Harden Flow
+
+### 4.1 Start
+
+The `rtl2gds` preset is the full 15-step chain, running all the way through Harden (which produces the GDS + abstract LEF + timing LIB):
+
+```bash
+ecc run --preset rtl2gds
+```
+
+(The generated `ecc.toml` already selects `rtl2gds`; `--preset` applies to this run only and is not written back.)
+
+In an interactive terminal the CLI renders live per-step progress and log tails; with output redirected to a file it runs silently and prints a summary at the end. The 15 `rtl2gds` steps are:
+
+| # | Step | Tool | What it does |
+|---|------|------|--------------|
+| 1 | synthesis | yosys | RTL synthesis and technology mapping (slang frontend reads SystemVerilog) |
+| 2 | lec | yosys_lec | Logic equivalence check: synthesis netlist vs its golden netlist |
+| 3 | floorplan | ecc | Floorplan: die/core regions, IO pin placement |
+| 4 | placement | dreamplace | Global placement |
+| 5 | cts | ecc | Clock tree synthesis (incl. fanout limits) |
+| 6 | legalization | dreamplace | Placement legalization |
+| 7 | timing optimization | sizer | Timing optimization (cell sizing) |
+| 8 | routing | ecc | Routing |
+| 9 | filler | ecc | Filler cell insertion |
+| 10 | rcx | ecc | Parasitic extraction (multi-corner SPEF) |
+| 11 | sta | ecc | Multi-corner static timing analysis |
+| 12 | lvs | ecc | Layout-vs-schematic check |
+| 13 | postroutelec | yosys_lec | Logic equivalence check: synthesis netlist vs post-route netlist |
+| 14 | drc | ecc | Design rule check |
+| 15 | harden | ecc | Hardened handoff: GDS + abstract LEF + timing LIB + layout snapshot |
+
+```mermaid
+graph LR
+    A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Floorplan] --> D[Placement<br/>dreamplace]
+    D --> E[CTS] --> F[Legalization<br/>dreamplace] --> T[Timing Opt<br/>sizer] --> G[Routing]
+    G --> J[Filler] --> K[RCX] --> L[STA] --> I[LVS] --> N[LEC<br/>yosys_lec] --> H[DRC] --> M[Harden<br/>GDS/LEF/LIB]
+```
+
+For a fresh or `--overwrite` target, `ecc run` pre-checks bundled ecc-tools plus preset-selected Yosys, DreamPlace, and Sizer (Sizer only for flows containing Timing optimization, such as `rtl2gds`), and returns `env_not_ready` with a pointer to `ecc doctor` when a component is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail at Timing optimization.
+
+### 4.2 Watching progress (in a second terminal)
+
+```bash
+ecc status                 # overview: run status + per-step status and runtime
+ecc log                    # list all log files (with tail previews)
+ecc log placement          # print a step's log (ERROR/WARNING lines are highlighted)
+```
+
+```console
+$ ecc status
+[status]
+  workspace id: default
+  status: ongoing
+  workspace: /home/user/ecc-demo/gcd/default
+  inspect: ecc status --workspace default
+  log: ecc log --workspace default
+
+  steps:
+    synthesis (yosys) success 0:0:17
+      log: ecc log synthesis --workspace default
+    lec (yosys_lec) success 0:0:1
+      log: ecc log lec --workspace default
+    floorplan (ecc) success 0:0:1
+      log: ecc log floorplan --workspace default
+    placement (dreamplace) ongoing 0:0:40
+      log: ecc log placement --workspace default
+    cts (ecc) unstart
+      log: ecc log cts --workspace default
+    ...
+```
+
+### 4.3 Completion
+
+When the run finishes (reference machine for this article: total flow time **4 min 23 s**, peak memory ~1.5 GB, dominated by DreamPlace placement and multi-corner STA):
+
+```console
+$ ecc status
+[status]
+  workspace id: default
+  status: success
+  workspace: /home/user/ecc-demo/gcd/default
+  inspect: ecc status --workspace default
+  log: ecc log --workspace default
+
+  steps:
+    synthesis (yosys) success 0:0:17
+      log: ecc log synthesis --workspace default
+    lec (yosys_lec) success 0:0:1
+    floorplan (ecc) success 0:0:1
+    placement (dreamplace) success 0:0:47
+    cts (ecc) success 0:0:19
+    legalization (dreamplace) success 0:0:1
+    timing_optimization (sizer) success 0:0:4
+    routing (ecc) success 0:0:6
+    filler (ecc) success 0:0:2
+    rcx (ecc) success 0:0:0
+    sta (ecc) success 0:2:35
+    lvs (ecc) success 0:0:1
+    postroutelec (yosys_lec) success 0:0:1
+    drc (ecc) success 0:0:2
+    harden (ecc) success 0:0:11
+rc=0
+```
+
+The end-of-run summary points you to the next commands the same way (excerpt from the real output):
+
+```console
+$ ecc run --preset rtl2gds
+[workspace]
+  workspace id: default
+  status: success
+  workspace: /home/user/ecc-demo/gcd/default
+  inspect: ecc status --workspace default
+  log: ecc log --workspace default
+```
+
+If a step fails, `status` shows `failed`; locate the cause with `ecc log <step>` — remedies in §6 and §7. Running `ecc run` again is a no-op when every step has already succeeded; after an interruption or a failure it automatically resumes from the first non-successful step — steps that already succeeded are not rerun.
+
+### 4.4 Where everything lands
+
+Each managed workspace is isolated under `gcd/<workspace-name>/`; `project.json` records it before creation, and each workspace keeps its copied declared inputs in `origin/`. There is no per-workspace project input manifest. Each step has one subdirectory:
+
+```
+default/
+├── home/               # flow.json (step states) + params.toml + checklist.json
+├── origin/             # frozen inputs: gcd.v + the auto-generated gcd.sdc
+├── config/             # configs actually in effect per step (view: ecc config <step>)
+├── Synthesis_yosys/    # each step dir is organized into log/ script/ output/ report/ ...
+├── lec_yosys_lec/       # synthesis-level LEC equivalence check
+├── Floorplan_ecc/
+├── ...
+├── postRouteLec_yosys_lec/   # LEC equivalence check (output/<design>_postRouteLec_result.json)
+├── Harden_ecc/
+│   └── output/
+│       ├── gcd_Harden.gds     # final layout
+│       ├── gcd_Harden.lef     # abstract LEF (routing blockage for chip-level integration)
+│       ├── gcd_Harden.lib     # timing LIB (for STA at the integration level)
+│       └── gcd_Harden.png     # layout snapshot
+├── log/                # global log
+└── signoff/            # reports from §5 land here
+```
+
+Harden deliverables (real artifacts):
+
+```console
+$ ls -la default/Harden_ecc/output/
+gcd_Harden.gds    7.3 KB   # GDSII layout
+gcd_Harden.lef     14 KB   # abstract LEF
+gcd_Harden.lib    7.7 KB   # timing LIB
+gcd_Harden.png    211 KB   # layout snapshot
+```
+
+## 5. Producing the Signoff Package and Reports
+
+Once every step reports Success, finish with the `signoff` / `report` command groups.
+
+The commands below run from the `gcd/` project directory, so they need no selector. From another directory, select the project and managed workspace name:
+
+```bash
+ecc signoff inspect --project /path/to/gcd --workspace default
+ecc signoff export --project /path/to/gcd --workspace default -o /path/to/gcd_signoff_package.tar.gz
+```
+
+### 5.1 Check signoff readiness: ecc signoff inspect
+
+First refresh completed-step analysis and inspect deliverable completeness (even `blocked` returns rc=0 — the real gate is at export):
+
+```console
+$ ecc signoff inspect
+[signoff]
+  status    : attention
+  workspace : default
+  export    : ecc signoff export -o <path>
+  report    : ecc report summary
+
+  groups:
+    initial        ready      (2/2)     # original RTL + SDC
+    config         attention  (3/4)     # per-step configs
+    harden         ready      (4/4)     # GDS / LEF / LIB / PNG
+    final_design   ready      (10/10)   # final DEF/GDS/netlist + per-step reports
+    sta            ready      (6/6)     # multi-corner timing reports
+    spef           ready      (4/4)     # parasitic files
+    reports        attention  (4/6)
+
+  risks:
+    [warning] Config signoff attention
+              Optional file is missing or empty
+    [warning] Reports signoff attention
+              Optional file is missing or empty
+```
+
+Both `attention` items come from **optional** files being absent: `config.macro_locations` (not needed for a pure digital design) and the LEC debug dumps (`lec.failed_rtlil` / `lec.failed_verilog`, which only exist when LEC *fails* — their absence after a proven run is expected). They do not block export; only `blocked` (a missing *required* item) gets rejected at export time.
+
+### 5.2 Export the signoff package: ecc signoff export
+
+```console
+$ ecc signoff export -o gcd_signoff_package.tar.gz
+[status]
+  signoff: export
+  status: exported
+  path: /home/user/ecc-demo/gcd/gcd_signoff_package.tar.gz
+  inspect: ecc signoff inspect
+rc=0
+```
+
+The package contains 356 files, grouped by handoff logic:
+
+```
+gcd_signoff_package/
+├── README.md / manifest.json / summary.json   # package readme & manifests
+├── initial/          # design inputs: gcd.v, gcd.sdc, params.toml
+├── config/           # all step configs (db/floorplan/cts/route/sta/... — 9 json files)
+├── harden/           # Harden deliverables: gcd.gds / gcd.lef / gcd.lib / gcd.png
+├── synthesis/        # intermediate handoffs such as the mapped netlist
+└── final/
+    ├── design/       # final DEF, GDS, netlist, layout snapshot
+    ├── timing/       # per-corner STA reports + spef/ (multi-corner parasitics)
+    └── reports/      # per-step QoR metrics + lec/ and postRouteLec/ proofs
+```
+
+### 5.3 Design summary report: ecc report summary
+
+Same source as the GUI's "export text report", with 8 sections (physical & area / timing closure / clock tree / multi-corner / routing / power / physical verification / execution cost):
+
+```console
+$ ecc report summary
+[status]
+  report: summary
+  status: written
+  path: /home/user/ecc-demo/gcd/default/signoff/gcd_design_summary.txt
+  design: gcd
+  bytes: 5894
+  view: cat default/signoff/gcd_design_summary.txt
+```
+
+Excerpts from this gcd run (full report: `cat` the file above):
+
+```
+[ 1. PHYSICAL & AREA METRICS ]
+  Die Area                2342.40 um² (0.0023 mm²)
+  Core Utilization        40 %
+  Total Instances         457                  Cells placed
+
+[ 2. TIMING CLOSURE & PERFORMANCE ]
+  Target Clock Period     10 ns                Target freq: 100 MHz
+  Achieved Fmax           562 MHz              Max operating frequency
+  Setup Slack (WNS / TNS) 8.22 ns / 0 ns       TIMING MET
+  Hold Slack (WNS / TNS)  0.11 ns / 0 ns       TIMING MET
+
+[ 4. MULTI-CORNER TIMING ]
+  Corner                     Setup WNS   Setup TNS    Hold WNS    Hold TNS  Status
+  MAX_125/Cworst               8.22 ns        0 ns     0.34 ns        0 ns  PASS
+  ...(13 corners in total, all PASS)
+
+[ 7. PHYSICAL VERIFICATION ]
+  DRC Status               CLEAN (0 violations)  PASS
+  LVS Status               MATCHED (Clean)       PASS
+
+[ 8. FLOW EXECUTION COST ]
+  Total Runtime            4m 23s
+  Peak Memory Usage        1501.14 MB
+```
+
+> The report does not require the flow to be complete — it summarizes whatever has run so far; metrics without data show `—`.
+
+### 5.4 QoR score: ecc report qor
+
+Scores the workspace with the same rules as the GUI project dashboard: each metric maps to 0–100, dimensions are weighted (Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1), 60 is the pass line; absent dimensions are not renormalized (absence drags the overall score down):
+
+```console
+$ ecc report qor
+[status]
+  report: qor
+  path: default/signoff/gcd_qor_report.txt
+  bytes: 9661
+  view: cat default/signoff/gcd_qor_report.txt
+  design: gcd
+  overall score: 58.1
+  qor status: Green
+  gate status: pass
+  dimensions: [{'dimension': 'Timing', 'score': 100.0, 'weight': 0.35, 'metrics': 7},
+               {'dimension': 'Routability / Physical', 'score': 56.8, 'weight': 0.2, 'metrics': 14},
+               {'dimension': 'Area', 'score': 44.0, 'weight': 0.1, 'metrics': 3},
+               {'dimension': 'Clock / DFM', 'score': 73.5, 'weight': 0.1, 'metrics': 8}]
+  status: written
+```
+
+How to read this:
+
+- **Flow status: Green, gate: pass** is the key conclusion — all four quality gates (DRC/LVS/RCX/STA) passed and Timing scored full marks; the design is signoff-ready;
+- The overall 58.1 sits slightly below the 60 pass line, mostly because small designs lose out on **absolute Area / wirelength metrics** (core area and clock wirelength are scored against fixed thresholds) and because the **Power dimension is absent** (this flow has no power analysis step, so that 0.25 weight goes to waste). This is normal for a design the size of gcd, not a flow problem;
+- Per-metric details are in the `[ METRIC SCORES ]` section of the report file.
+
+### 5.5 Signoff checklist: ecc report checklist
+
+Renders `home/checklist.json` (the v3 signoff checklist) into a status report focused on **BLOCKED items**:
+
+```console
+$ ecc report checklist
+[status]
+  report: checklist
+  path: default/signoff/checklist_report.txt
+  bytes: 3334
+  checklist status: attention
+  items: 36
+  blocked: 0
+  attention: 3
+  summary counts: {'passed': 33, 'blocked': 0, 'attention': 3, 'unavailable': 0}
+  status: written
+```
+
+Of the 36 items, 33 PASS (mapped netlist, DRC clean, LVS clean, **LEC equivalence proven**, SPEF integrity, setup/hold closure, Harden GDS/LEF/LIB, ...); the 3 ATTENTION items are all missing optional files (`config.macro_locations` and the LEC debug dumps `lec.failed_rtlil`/`lec.failed_verilog`, which only exist when LEC fails).
+
+### 5.6 Render a layout image (optional): ecc layout-image
+
+With KLayout available in the environment, any GDS can be rendered to a snapshot (the Harden step already auto-generates `gcd_Harden.png`; use this command for other GDS files or custom sizes):
+
+```bash
+ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds \
+                 --image gcd_layout.png --width 2560 --height 1600
+```
+
+## 6. Tuning Parameters and Rerunning
+
+Getting through once is only the start — the daily backend loop is "tweak → rerun → compare".
+
+### 6.1 Viewing and changing parameters
+
+```bash
+ecc param list                          # concise list: legacy parameters and explicit overrides
+ecc param list --step cts               # all reviewed CTS fields
+ecc param list --all                    # complete schema for every step
+ecc param show place.target_density     # one parameter: value/default/range/tool mapping
+ecc param diff                          # only those differing from defaults
+ecc param set place.target_density 0.55 # written to ecc.toml (comments & formatting preserved)
+ecc param set cts.skew_bound 0.05       # change a direct CTS configuration field
+ecc param set cts.routing_layer '[4, 5]' # lists use JSON literals
+ecc param unset place.target_density    # back to default
+# Workspace-local overrides — same commands with --workspace; ecc.toml is NOT touched:
+ecc param set place.target_density 0.60 --workspace exp1   # writes home/params.toml of exp1
+ecc param diff --workspace exp1                            # vs. the values exp1 was created with
+ecc param unset place.target_density --workspace exp1      # restore exp1's original value
+```
+
+Frequently used legacy parameters are `design.frequency_mhz`, `floorplan.core_util`, `place.target_density`, `route.top_layer`, and `sta.max_paths`. Other static tool fields are supplied by per-step schemas; find them with `--step` or `--all`. Workspace input, output, temporary, and generated paths cannot be changed. PDK path parameters use `ecc param set KEY VALUE`: `pdk.tech`, `pdk.lefs`, `pdk.libs`, and `pdk.mapping_file` resolve against `pdk.root`, while `pdk.sdc`/`pdk.spef` are design data resolved against the project directory; keep `pdk.root` on `ecc pdk set-root`. See [User Guide §9](ecc-cli-ug.en.md#9-param--parameter-management) for the full contract.
+
+A `--workspace` override marks the parameter's owning step (and everything after it) as pending, so the next `ecc run --workspace exp1` re-runs just that suffix — cheaper than an `--overwrite` rebuild when you only want to tweak one knob. It only works for reviewed parameters (`ecc param list --all`) whose owning step exists in that workspace's flow.
+
+### 6.2 Creating a managed workspace
+
+Name a workspace when creating it; it is automatically registered in `project.json`:
+
+```bash
+ecc run --workspace exp1 --preset rtl2gds --set place.target_density=0.55
+ecc status --workspace exp1
+ecc report qor --workspace exp1
+```
+
+`--set KEY=VALUE` applies to that workspace creation only (recorded in its provenance) and does not modify `ecc.toml`. Once `project.json` exists, project-scoped inspection, signoff, and report commands select declared workspaces; specify `--workspace NAME` when more than one is active.
+
+### 6.3 Rerunning
+
+Four rerun scenarios come up all the time in backend iteration (the examples all target the `default` workspace):
+
+**① Resume after an interruption** (the most common): continue from the first non-successful step; steps that already succeeded are reused as-is, never rerun.
+
+```bash
+ecc run --workspace default --resume
+# A bare `ecc run --workspace default` (no --resume) behaves the same:
+# all steps succeeded → no_op; failed/unstarted steps remain → automatically resume from where it stopped
+```
+
+**② Full rebuild after a parameter change**: `--set` applies only when a workspace is created; to change parameters on an existing workspace, rerun it with `--overwrite` (or simply create a new workspace for comparison, see §6.2). Cheaper still, the `--workspace`-scoped `param set` from §6.1 invalidates only the affected suffix.
+
+```bash
+ecc run --workspace default --overwrite            # rebuild default (with safety checks; deletes only the actual ECC workspace directory)
+ecc run --workspace default --overwrite --set place.target_density=0.55
+```
+
+The same `--overwrite` rerun is also how an existing workspace picks up changes to its **entry inputs, PDK paths, or `flow.preset`** — those alter the workspace's input snapshot or flow structure. To rebuild the workspace from the current `ecc.toml` *without* running it, use the dedicated command (handy before a batch of runs, or when the required tools aren't on the current machine):
+
+```bash
+ecc workspace refresh default                      # rebuild inputs/config from ecc.toml, do not run
+ecc run --workspace default                        # then run when ready
+```
+
+**③ Rerun a range or a single step in place** (when debugging a step's tool behavior): the rerun steps' `output/` is replaced, and their downstream steps are marked for rerun (outputs kept).
+
+```bash
+ecc run --workspace default --from CTS --to route  # rerun the CTS→route range (both ends inclusive)
+ecc run --workspace default --from CTS             # rerun everything from CTS on
+ecc run --workspace default --only place           # run just the place step (no_op if it already succeeded)
+ecc run --workspace default --only place --force   # rerun this step even if it already succeeded
+```
+
+**④ Create a new range workspace from a mid-flow step** (when you already have a netlist/DEF at hand): creation requires both `--from` and `--to`, and the step names at both ends may then be written with lowercase aliases too (e.g. `cts`, `route`):
+
+```bash
+ecc run --workspace cts-only --from cts --to cts     # a workspace that runs only the CTS step
+ecc run --workspace pnr --from floorplan --to route  # floorplan through routing
+```
+
+**Complete example: reuse existing Floorplan outputs.** To create a placement-through-routing workspace from the Floorplan output of existing workspace `2`, do not pass the DEF directly to `ecc run`. The placement entry requires matching `design.def` and `design.netlist`; write those project declarations first, then create the new range:
+
+```bash
+PROJECT=~/projects/benchmark/gcd
+SOURCE="$PROJECT/2/Floorplan_ecc/output"
+
+ecc project set design.def "$SOURCE/gcd_Floorplan.def.gz" --project "$PROJECT"
+ecc project set design.netlist "$SOURCE/gcd_Floorplan.v.gz" --project "$PROJECT"
+ecc run --project "$PROJECT" --workspace floorplan-2-place-route \
+  --from placement --to routing
+```
+
+This copies the DEF/netlist into the new workspace's `origin/`, runs placement through routing, and does not rerun Floorplan; `placement` and `routing` are accepted aliases when creating a range. `ecc project set` changes project-level `ecc.toml`, which also affects later fresh workspaces. If the two fields were previously unset, restore the original project entry after creation with `ecc project unset design.def --project "$PROJECT"` and `ecc project unset design.netlist --project "$PROJECT"`.
+
+The declared entry files are validated against the first step's requirements: `rtl` for Synthesis; `netlist` plus `golden_netlist` for LEC; `netlist` for Floorplan; `def` plus `netlist` for the physical steps (place/CTS/legalization/timing optimization/route/filler/rcx/drc/lvs/harden); and `def`, `netlist`, and `spef` for STA. `sdc` is optional. Anything missing fails with a clear error:
+
+```console
+$ ecc run --from cts --to route
+[error]
+  step_input_missing step_input_missing: cts requires design.def
+  step_input_missing step_input_missing: cts requires design.netlist
+rc=1
+```
+
+> **How to spell step names**: `ecc status`/`ecc log` show lowercase display names (e.g. `placement`, `timing_optimization`), while `--from`/`--only`/`--to` on an **existing** workspace must use the persisted names from `home/flow.json` (e.g. `place`, `CTS`, `Timing optimization`); only **creating** a new range (`--from A --to B` given as a pair) accepts the lowercase aliases. Don't worry about memorizing this — a misspelled name fails with `unknown_step` and lists every accepted name, so just copy one:
+>
+> ```console
+> $ ecc run --workspace default --only placement   # the persisted name is "place"
+> [error]
+>   unknown_step unknown step 'placement'; available steps: Synthesis, lec, Floorplan,
+>   place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
+>   postRouteLec, drc, Harden
+> ```
+
+### 6.4 Inspecting a step's effective configuration
+
+```bash
+ecc config placement    # config files actually used by that step under the workspace's config/
+ecc config --plain      # project-level config (key=value + resolved absolute paths)
+```
+
+## 7. Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `ecc: command not found` | PATH not effective | `export PATH="$HOME/.local/bin:$PATH"`; or open a new terminal |
+| `[error] env_not_ready` (at run) | tools required by the preset are missing | Follow `ecc doctor`; usually yosys/slang — re-run the §2.1 installer with `--with-toolchain` |
+| `[error] run_exists` | the workspace directory already exists but is not a valid ECC workspace | `ecc run --overwrite`, or select a different `--workspace NAME`. Note: **running `ecc run` again after the flow completed does NOT raise this error** — it no-ops when everything succeeded, and auto-resumes after an interruption |
+| `[error] workspace_required` | the project has multiple active workspaces and none was specified | pass `--workspace NAME` with one of the names listed in the error |
+| `[error] unknown_step` | a step name passed to `--from`/`--only` doesn't match the persisted names in `home/flow.json` (e.g. you wrote `placement`; the persisted name is `place`) | copy one of the available step names listed in the error; see the "How to spell step names" note in §6.3 |
+| `[error] set_requires_fresh_run` | `--set` used on an existing workspace | `--set` applies only at creation; use `--overwrite` or a new `--workspace` instead |
+| run summary carries `warning: ecc.toml values override different project.json base values` (`config_layer_diverged`) | `ecc.toml` effectively disagrees with the baseline the first run recorded in `project.json`: `pdk.root` resolves to a different PDK than the first run used (e.g. the env var was repointed), or `flow.preset` differs from the workspace's declared range (e.g. a workspace created with `--preset synthesis_lec` under an `rtl2gds` ecc.toml) | does not affect the run result — safe to ignore; aligning the two sides makes it go away (`ecc pdk set-root`, or fix `flow.preset`) |
+| `[error] signoff_incomplete` (at export) | required deliverables missing (e.g. a failed step) | `ecc signoff inspect` for blocked items; debug with `ecc status`/`ecc log`, then rerun |
+| `ecc check` reports `pdk.root is required` | no PDK found | `ecc pdk setup` or `ecc pdk set-root <path>`, or set `CHIPCOMPILER_ICS55_PDK_ROOT` |
+| PDK liberty missing | PDK cloned without data files | `make -C ~/.local/icsprout55-pdk unzip` (add `USE_PROXY=true GH_PROXY=...` if needed) |
+| Downloads time out | restricted network | retry the installer; or install manually per §2.3 (the PDK's `make unzip` supports `USE_PROXY=true GH_PROXY=...`) |
+| doctor shows `sizer: fail` | required Sizer component not installed | `ecc doctor` exits non-zero. The complete `rtl2gds` chain contains Timing optimization, so install Sizer before running it. Build ecc-sizer per the remediation hint |
+| synthesis log says `yosys slang frontend check failed` | yosys lacks the slang frontend | use an OSS CAD Suite yosys ≥ v0.67; debug with `ecc log synthesis` |
+| synthesis aborts at DFFLIBMAP with `uncaught exception during Yosys command invoked from TCL` | the current shell never loaded the ecc env (e.g. a non-interactive terminal), so ecc fell back to an old yosys on system PATH, which crashes parsing the ics55 liberty (the TCL wrapper swallows the exception detail) | verify `which yosys` points at the OSS CAD Suite; open a new terminal (or re-run the installer with `--with-toolchain`) and rerun |
+
+## 8. Next Steps
+
+- Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](examples/gcd/README.md#using-filelist) for multi-file designs;
+- Preset differences: `rtl2gds` (the complete 15-step synthesis-to-Harden chain, including synthesis-level LEC), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps);
+- Full command details in the **[ECC CLI User Guide](ecc-cli-ug.en.md)**; extending the CLI is covered in [ecc-cli-dev.en.md](ecc-cli-dev.en.md);
+- Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](examples/gcd/ics55flow.py).
+
+---
+
+*Outputs in this tutorial were captured from a real run of v0.1.0-alpha.11 + the ICS55 PDK on Linux x86_64.*

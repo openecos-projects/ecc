@@ -5,14 +5,14 @@ from pathlib import Path
 from chipcompiler.cli import main as cli_main
 
 
-def _write_existing_workspace(run_dir, step_names, states=None, preset="rtl2gds"):
+def _write_existing_workspace(run_dir, step_names, states=None, preset="rtl2gds", pdk_root=None):
     """A valid existing workspace: home/params.toml + flow.json with given steps."""
     from chipcompiler.data.workspace_config import save_workspace_config
-    from chipcompiler.rtl2gds.builder import build_harden_flow
+    from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
 
     chain = [
         (step.value if hasattr(step, "value") else str(step), str(tool))
-        for step, tool, _state in build_harden_flow()
+        for step, tool, _state in build_rtl2gds_flow()
     ]
     tools = dict(chain)
     states = states or ["Success"] * len(step_names)
@@ -31,47 +31,29 @@ def _write_existing_workspace(run_dir, step_names, states=None, preset="rtl2gds"
     os.makedirs(home, exist_ok=True)
     with open(os.path.join(home, "flow.json"), "w") as f:
         json.dump({"steps": steps}, f)
-    assert save_workspace_config(
-        run_dir,
-        {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
-        {"preset": preset},
-    )
+    parameters = {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"}
+    if pdk_root is not None:
+        parameters["pdk_root"] = str(pdk_root)
+    assert save_workspace_config(run_dir, parameters, {"preset": preset})
 
 
-def _set_flow_preset(project_dir, preset):
-    toml_path = os.path.join(project_dir, "ecc.toml")
-    with open(toml_path) as f:
-        content = f.read()
-    content = content.replace('preset = "rtl2gds"', f'preset = "{preset}"')
-    with open(toml_path, "w") as f:
-        f.write(content)
-
-
-def _preset_names(preset):
-    from chipcompiler.rtl2gds.builder import get_flow_builders
-
-    return [step.value for step, _tool, _state in get_flow_builders()[preset]()]
-
-
-RTL2GDS_NAMES = _preset_names("rtl2gds")
-RCX_NAMES = _preset_names("rcx")
-
-
-def _success_through(names, last):
-    """Success states up to and including *last*; Unstart after."""
-    cut = names.index(last) + 1
-    return ["Success"] * cut + ["Unstart"] * (len(names) - cut)
-
-
-def _flow_states(run_dir):
-    with open(os.path.join(run_dir, "home", "flow.json")) as f:
-        return {s["name"]: s["state"] for s in json.load(f)["steps"]}
-
-
-def _flow_section(run_dir):
-    from chipcompiler.data.workspace_config import load_workspace_config
-
-    return load_workspace_config(run_dir)["_flow"]
+RTL2GDS_NAMES = [
+    "Synthesis",
+    "lec",
+    "Floorplan",
+    "place",
+    "CTS",
+    "legalization",
+    "Timing optimization",
+    "route",
+    "filler",
+    "RCX",
+    "sta",
+    "lvs",
+    "postRouteLec",
+    "drc",
+    "Harden",
+]
 
 
 def _records(capsys):
@@ -79,54 +61,6 @@ def _records(capsys):
 
 
 class TestFlowContinuation:
-    def test_prefix_extension_appends_suffix_and_runs_only_it(
-        self,
-        tmp_path,
-        capsys,
-        create_cli_project,
-        minimal_ics55_pdk_factory,
-        monkeypatch,
-    ):
-        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-        project_dir = create_cli_project(pdk_root=pdk_root)
-        monkeypatch.setattr(
-            "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root, overrides=None: None,
-        )
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
-        _set_flow_preset(project_dir, "rcx")
-        run_dir = os.path.join(project_dir, "runs", "default")
-        _write_existing_workspace(run_dir, RTL2GDS_NAMES)
-
-        created = {}
-
-        class Flow:
-            def __init__(self, workspace):
-                self.workspace = workspace
-
-            def create_step_workspaces(self, *, executable_steps=None):
-                created["executable"] = executable_steps
-
-            def run_steps(self, **_kwargs):
-                return True
-
-        monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
-
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
-
-        assert rc == 0
-        states = _flow_states(run_dir)
-        # Exactly RCX + sta appended as Unstart; prefix states untouched.
-        assert list(states) == RCX_NAMES
-        assert all(states[name] == "Success" for name in RTL2GDS_NAMES)
-        # The adopted target is the widened preset.
-        assert _flow_section(run_dir) == {"preset": "rcx"}
-        # Only the suffix was scheduled for execution.
-        assert created["executable"] == {"RCX", "sta"}
-        records = _records(capsys)
-        assert records[0]["status"] == "success"
-        assert records[0]["appended_steps"] == ["RCX", "sta"]
-
     def test_noop_when_flow_already_complete(
         self,
         tmp_path,
@@ -141,9 +75,8 @@ class TestFlowContinuation:
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: None,
         )
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
-        run_dir = os.path.join(project_dir, "runs", "default")
-        _write_existing_workspace(run_dir, RTL2GDS_NAMES)
+        run_dir = os.path.join(project_dir, "default")
+        _write_existing_workspace(run_dir, RTL2GDS_NAMES, pdk_root=pdk_root)
 
         class Flow:
             def __init__(self, workspace):
@@ -175,17 +108,15 @@ class TestFlowContinuation:
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: None,
         )
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
-        run_dir = os.path.join(project_dir, "runs", "default")
-        _write_existing_workspace(run_dir, RTL2GDS_NAMES)
+        run_dir = os.path.join(project_dir, "default")
+        _write_existing_workspace(run_dir, RTL2GDS_NAMES, pdk_root=pdk_root)
         flow_before = Path(run_dir, "home", "flow.json").read_bytes()
 
         rc = cli_main.run(["run", "--project", project_dir, "--set", "cts.max_fanout=16", "--json"])
 
         assert rc != 0
-        record, hint = _records(capsys)
+        (record,) = _records(capsys)
         assert record["error"] == "set_requires_fresh_run"
-        assert hint["warning"] == "legacy_layout_detected"
         assert Path(run_dir, "home", "flow.json").read_bytes() == flow_before
 
     def test_params_warning_on_existing_run(
@@ -202,11 +133,10 @@ class TestFlowContinuation:
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: None,
         )
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
             f.write("\n[params.cts]\nmax_fanout = 16\n")
-        run_dir = os.path.join(project_dir, "runs", "default")
-        _write_existing_workspace(run_dir, RTL2GDS_NAMES)
+        run_dir = os.path.join(project_dir, "default")
+        _write_existing_workspace(run_dir, RTL2GDS_NAMES, pdk_root=pdk_root)
 
         class Flow:
             def __init__(self, workspace):
@@ -234,17 +164,19 @@ class TestFlowContinuation:
     ):
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
-        run_dir = os.path.join(project_dir, "runs", "default")
-        _write_existing_workspace(run_dir, RTL2GDS_NAMES)
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        run_dir = os.path.join(project_dir, "default")
+        _write_existing_workspace(run_dir, RTL2GDS_NAMES, pdk_root=pdk_root)
         Path(run_dir, "home", "params.toml").write_text("[params\nbroken =")
 
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
 
         assert rc != 0
-        record, hint = _records(capsys)
+        (record,) = _records(capsys)
         assert record["error"] == "workspace_config_invalid"
-        assert hint["warning"] == "legacy_layout_detected"
 
 
 def _tree_snapshot(root):
@@ -384,9 +316,9 @@ class TestFlowMismatchZeroMutation:
     def test_existing_run_rejects_symlinked_legacy_target(
         self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, monkeypatch
     ):
-        """A symlinked legacy run target must never be executed or mutated:
-        the run fails loud with run_target_unsafe and the external workspace
-        behind the link is left byte-identical."""
+        """A symlinked run target must never be executed or mutated: the run
+        fails loud with run_target_unsafe and the external workspace behind
+        the link is left byte-identical."""
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
         monkeypatch.setattr(
@@ -395,7 +327,7 @@ class TestFlowMismatchZeroMutation:
         )
         external = tmp_path / "external-ws"
         _write_existing_workspace(str(external), RTL2GDS_NAMES)
-        os.symlink(str(external), os.path.join(project_dir, "runs", "default"))
+        os.symlink(str(external), os.path.join(project_dir, "default"))
 
         flow_before = (external / "home" / "flow.json").read_bytes()
         rc = cli_main.run(["run", "--project", project_dir, "--json"])
@@ -444,7 +376,12 @@ class TestFlowMismatchZeroMutation:
             lambda name, root, overrides=None: None,
         )
         run_dir = os.path.join(project_dir, "ws_0001")
-        _write_existing_workspace(run_dir, RTL2GDS_NAMES, states=["Unstart"] * len(RTL2GDS_NAMES))
+        _write_existing_workspace(
+            run_dir,
+            RTL2GDS_NAMES,
+            states=["Unstart"] * len(RTL2GDS_NAMES),
+            pdk_root=pdk_root,
+        )
         manifest_path = _write_manifest_with_workspace(project_dir, run_dir, pdk_root)
 
         class Flow:
@@ -466,48 +403,6 @@ class TestFlowMismatchZeroMutation:
         assert manifest["workspaces"][0]["status"] == "failed"
         errors = [r for r in _records(capsys) if r.get("error") == "flow_failed"]
         assert len(errors) == 1
-
-    def test_resume_runs_only_steps_within_the_target_range(
-        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, monkeypatch
-    ):
-        """Persisted flow wider than the target: resume must not execute the
-        steps that lie beyond the requested end."""
-        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-        project_dir = create_cli_project(pdk_root=pdk_root)
-        monkeypatch.setattr(
-            "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root, overrides=None: None,
-        )
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
-        _set_flow_preset(project_dir, "rtl2gds")
-        run_dir = os.path.join(project_dir, "runs", "default")
-        _write_existing_workspace(
-            run_dir,
-            RCX_NAMES,
-            states=_success_through(RTL2GDS_NAMES, "place")
-            + ["Unstart"] * (len(RCX_NAMES) - len(RTL2GDS_NAMES)),
-            preset="rtl2gds",
-        )
-
-        created = {}
-
-        class Flow:
-            def __init__(self, workspace):
-                self.workspace = workspace
-
-            def create_step_workspaces(self, *, executable_steps=None):
-                created["executable"] = executable_steps
-
-            def run_steps(self, **_kwargs):
-                return True
-
-        monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
-
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
-
-        assert rc == 0
-        assert "RCX" not in created["executable"]
-        assert "sta" not in created["executable"]
 
 
 def _hold_workspace_lock_briefly(workspace_dir, seconds=0.4):
@@ -534,63 +429,19 @@ def _hold_workspace_lock_briefly(workspace_dir, seconds=0.4):
     return thread, released
 
 
-class TestWorkspaceRunLockAndTargetBound:
-    def test_workspace_run_waits_for_an_active_workspace_lock(self, tmp_path, capsys):
+class TestWorkspaceRunLock:
+    def test_workspace_run_waits_for_an_active_workspace_lock(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory
+    ):
         """Two runs of the same workspace serialize on the sibling lock."""
-        run_dir = os.path.join(str(tmp_path), "ws")
-        _write_existing_workspace(run_dir, RTL2GDS_NAMES)
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = os.path.join(project_dir, "ws")
+        _write_existing_workspace(run_dir, RTL2GDS_NAMES, pdk_root=pdk_root)
         thread, released = _hold_workspace_lock_briefly(run_dir)
 
-        rc = cli_main.run(["run", "--workspace", run_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "ws", "--json"])
 
         thread.join()
         assert rc == 0
         assert released.is_set()
-
-    def test_workspace_resume_is_bounded_to_the_reconciled_target(
-        self, tmp_path, capsys, monkeypatch
-    ):
-        """A persisted ledger wider than the flow target: the default resume
-        never selects or executes steps beyond the target end."""
-        from chipcompiler.engine import rerun
-
-        run_dir = os.path.join(str(tmp_path), "ws")
-        _write_existing_workspace(
-            run_dir,
-            RCX_NAMES,
-            states=_success_through(RTL2GDS_NAMES, "place")
-            + ["Success"] * (len(RCX_NAMES) - len(RTL2GDS_NAMES)),
-            preset="rtl2gds",
-        )
-        captured = {}
-
-        class Flow:
-            def __init__(self, workspace):
-                self.workspace = workspace
-                from chipcompiler.utility import json_read
-
-                # The real EngineFlow loads the persisted ledger on build.
-                workspace.flow.data = json_read(workspace.flow.path)
-
-            def has_init(self):
-                return True
-
-            def create_step_workspaces(self, *, executable_steps=None):
-                captured["executable"] = executable_steps
-
-        monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
-
-        def spy_resume(flow, *, through=None):
-            captured["through"] = through
-            return rerun.StepRunResult(ok=True, executed=("place",))
-
-        monkeypatch.setattr(rerun, "run_resume", spy_resume)
-
-        rc = cli_main.run(["run", "--workspace", run_dir, "--json"])
-
-        assert rc == 0
-        assert captured["through"] == "postRouteLec"
-        # Synthesis..place are Success; the bounded selection covers exactly
-        # the remaining Unstart steps and never reaches RCX/sta beyond the
-        # target end.
-        assert captured["executable"] == set(RTL2GDS_NAMES[RTL2GDS_NAMES.index("place") + 1 :])

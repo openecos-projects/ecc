@@ -10,8 +10,9 @@ from chipcompiler.engine import rerun
 from chipcompiler.engine.flow import EngineFlow
 
 
-def _make_run_flow(tmp_path, steps):
+def _make_run_flow(tmp_path, steps, tools_by_name=None):
     """EngineFlow over a persisted flow.json plus aligned workspace steps."""
+    tools_by_name = tools_by_name or {}
     home = tmp_path / "home"
     home.mkdir()
     workspace = Workspace(directory=tmp_path, flow=Flow(path=home / "flow.json"))
@@ -20,7 +21,7 @@ def _make_run_flow(tmp_path, steps):
         "steps": [
             {
                 "name": name,
-                "tool": "ecc",
+                "tool": tools_by_name.get(name, "ecc"),
                 "state": state,
                 "runtime": "",
                 "peak memory (mb)": 0,
@@ -36,7 +37,7 @@ def _make_run_flow(tmp_path, steps):
         engine_flow.workspace_steps.append(
             EccStep(
                 name=name,
-                tool="ecc",
+                tool=tools_by_name.get(name, "ecc"),
                 directory=directory,
                 output=EccOutput(dir=directory / "output"),
             )
@@ -96,6 +97,14 @@ class TestSelectedStepNames:
 
         assert rerun.selected_step_names(flow, from_step="place") == ["place", "CTS"]
 
+    def test_from_through_selects_an_inclusive_bounded_range(self, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [("Synthesis", "Success"), ("place", "Success"), ("CTS", "Success")],
+        )
+
+        assert rerun.selected_step_names(flow, from_step="place", through="place") == ["place"]
+
     def test_only_success_step_requires_force(self, tmp_path):
         flow = _make_run_flow(tmp_path, [("place", "Success")])
 
@@ -108,8 +117,47 @@ class TestSelectedStepNames:
         with pytest.raises(ValueError, match="place.*CTS"):
             rerun.selected_step_names(flow, only="bogus")
 
+    def test_selectors_accept_alias_and_case_spellings(self, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [
+                ("Synthesis", "Success"),
+                ("Floorplan", "Success"),
+                ("place", "Success"),
+                ("CTS", "Unstart"),
+            ],
+        )
+
+        assert rerun.selected_step_names(flow, from_step="floorplan") == [
+            "Floorplan",
+            "place",
+            "CTS",
+        ]
+        assert rerun.selected_step_names(flow, from_step="FLOORPLAN", through="cts") == [
+            "Floorplan",
+            "place",
+            "CTS",
+        ]
+        assert rerun.selected_step_names(flow, only="Place", force=True) == ["place"]
+        # Alias resolution still honors the no-force no-op on a success.
+        assert rerun.selected_step_names(flow, only="synth") == []
+
 
 class TestRunFrom:
+    def test_synthesis_lec_warning_does_not_stop_resume(self, monkeypatch, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [("lec", "Unstart"), ("route", "Unstart")],
+            tools_by_name={"lec": "yosys_lec"},
+        )
+        calls = _fake_execution(flow, monkeypatch, outcomes={"lec": StateEnum.Warning})
+
+        result = rerun.run_from(flow, "lec")
+
+        assert result.ok
+        assert result.executed == ("lec", "route")
+        assert calls == [("lec", True), ("route", True)]
+
     def test_reexecutes_suffix_and_clears_only_executed_outputs(self, monkeypatch, tmp_path):
         flow = _make_run_flow(
             tmp_path,
@@ -129,6 +177,25 @@ class TestRunFrom:
         assert keep.read_text(encoding="utf-8") == "old"
         assert not stale_place.exists()
         assert not stale_cts.exists()
+
+    def test_bounded_range_marks_downstream_stale_without_deleting_its_output(
+        self, monkeypatch, tmp_path
+    ):
+        flow = _make_run_flow(
+            tmp_path,
+            [("Synthesis", "Success"), ("place", "Success"), ("CTS", "Success")],
+        )
+        stale_place = _write_output(flow, "place")
+        retained_cts = _write_output(flow, "CTS")
+        calls = _fake_execution(flow, monkeypatch)
+
+        result = rerun.run_from(flow, "place", through="place")
+
+        assert result.ok
+        assert calls == [("place", True)]
+        assert not stale_place.exists()
+        assert retained_cts.read_text(encoding="utf-8") == "old"
+        assert _flow_states(flow) == ["Success", "Success", "Unstart"]
 
     def test_failure_stops_suffix_and_keeps_downstream_output(self, monkeypatch, tmp_path):
         flow = _make_run_flow(

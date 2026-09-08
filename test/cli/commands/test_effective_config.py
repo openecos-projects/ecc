@@ -6,11 +6,14 @@ from chipcompiler.cli import main as cli_main
 
 class TestHybridManifestFallbacks:
     def test_flowless_ecc_toml_existing_run_uses_workspace_flow(
-        self, tmp_path, capsys, flow_mocks, monkeypatch, manifest_stubs
+        self, tmp_path, capsys, flow_mocks, monkeypatch, manifest_stubs, minimal_ics55_pdk_factory
     ):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
+        # load_workspace validates PDK contents; give the recorded root a
+        # minimal valid tree so the no-op rerun reaches the flow target.
+        minimal_ics55_pdk_factory(project_dir / "pdk")
         # Hybrid ecc.toml WITHOUT [flow].
         (project_dir / "ecc.toml").write_text(
             '[design]\nname = "gcd"\ntop = "gcd"\n'
@@ -33,7 +36,13 @@ class TestHybridManifestFallbacks:
 
         assert save_workspace_config(
             run_dir,
-            {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
+            {
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "design": "gcd",
+                "top_module": "gcd",
+                "clock": "clk",
+            },
             {"start": "Synthesis", "end": "Synthesis"},
         )
 
@@ -270,7 +279,7 @@ class TestEffectiveConfigValidation:
             '\n[pdk]\nname = "ics55"\nroot = "' + str(project_dir / "pdk") + '"\n'
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--run-id", "sweep1", "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--workspace", "sweep1", "--json"])
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
@@ -324,7 +333,7 @@ class TestEffectiveConfigValidation:
         # The entry declares the same range rtl2gds maps to, isolating the
         # path-spelling comparison.
         entry = manifest_stubs.entry(project_dir, "ws_0001")
-        entry["start_step"], entry["end_step"] = "Synth", "PostRouteLEC"
+        entry["start_step"], entry["end_step"] = "Synth", "Harden"
         manifest_stubs.write(project_dir, [entry])
         (project_dir / "ecc.toml").write_text(
             '[design]\nname = "gcd"\ntop = "gcd"\n'
@@ -935,7 +944,7 @@ class TestManifestFlatGeometryValidation:
 
 
 class TestManifestResolvedConfigView:
-    """`ecc config --resolved` presents manifest-layer parameters through the
+    """`ecc config` presents manifest-layer parameters through the
     same canonical projection the run uses (GUI-flat aliases included)."""
 
     def test_config_resolved_shows_gui_flat_manifest_geometry(
@@ -956,7 +965,7 @@ class TestManifestResolvedConfigView:
             },
         )
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--json", "--project", str(project_dir)])
 
         assert rc == 0
         data = json.loads(capsys.readouterr().out)
@@ -982,7 +991,7 @@ class TestManifestResolvedConfigView:
             },
         )
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--json", "--project", str(project_dir)])
 
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
@@ -1013,7 +1022,7 @@ class TestManifestResolvedConfigView:
             },
         )
 
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--project", str(project_dir)])
 
         assert rc == 1
         assert "expected bool for flow.run_analysis" in capsys.readouterr().out
@@ -1036,7 +1045,7 @@ class TestManifestResolvedConfigView:
             },
         )
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--json", "--project", str(project_dir)])
 
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
@@ -1056,7 +1065,7 @@ class TestManifestResolvedConfigView:
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
         (project_dir / "ecc.toml").write_text('\n[params.flow]\nrun_analysis = "maybe"\n')
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--json", "--project", str(project_dir)])
 
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
@@ -1074,7 +1083,7 @@ class TestManifestResolvedConfigView:
             '\n[params.flow]\nrun_analysis = "maybe"\n\n[params.cts]\nmax_fanout = "nope"\n'
         )
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--json", "--project", str(project_dir)])
 
         assert rc == 1
         data = json.loads(capsys.readouterr().out)
@@ -1093,7 +1102,7 @@ class TestManifestResolvedConfigView:
             },
         ]
 
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--project", str(project_dir)])
 
         assert rc == 1
         out = capsys.readouterr().out

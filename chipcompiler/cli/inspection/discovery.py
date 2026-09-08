@@ -2,9 +2,12 @@ import json
 import os
 
 from chipcompiler.cli.core.output import (
+    disclosure_cmd,
     normalize_state,
     normalize_step_name,
 )
+from chipcompiler.cli.core.records import error_record
+from chipcompiler.cli.core.types import CommandContext, CommandResult
 
 
 def resolve_run_dir(project_dir: str, run_id: str | None = None) -> tuple[str, str | None]:
@@ -54,10 +57,17 @@ def get_run_status(flow_data: dict) -> str:
         return "ongoing"
     if states & {"incomplete", "invalid"}:
         return "failed"
+    if "warning" in states and states <= {"success", "warning"}:
+        return "warning"
     if states == {"success"}:
         return "success"
     if states == {"unstart"}:
         return "unstart"
+    if states <= {"success", "warning", "unstart"}:
+        # A bounded rerun (--only / --from / --to) leaves the executed
+        # prefix success and the stale suffix unstart until the user
+        # re-runs it: that is partial progress, not a failure.
+        return "partial"
     return "failed"
 
 
@@ -65,14 +75,26 @@ def discover_step_dirs(run_dir: str) -> dict[str, str]:
     result = {}
     if not os.path.isdir(run_dir):
         return result
+
+    flow_data = read_flow_json(run_dir)
+    flow_dir_tokens = {}
+    if isinstance(flow_data, dict):
+        flow_dir_tokens = {
+            f"{step['name']}_{step['tool']}": normalize_step_name(step["name"])
+            for step in _safe_steps(flow_data)
+            if isinstance(step.get("name"), str) and isinstance(step.get("tool"), str)
+        }
+
     for entry in os.listdir(run_dir):
         full = os.path.join(run_dir, entry)
         if not os.path.isdir(full):
             continue
-        name = step_dir_step_name(full)
-        if name is None:
-            continue
-        token = normalize_step_name(name)
+        token = flow_dir_tokens.get(entry)
+        if token is None:
+            name = step_dir_step_name(full)
+            if name is None:
+                continue
+            token = normalize_step_name(name)
         result[token] = full
     return result
 
@@ -119,14 +141,6 @@ def discover_logs(run_dir: str, step_token: str | None = None) -> list[str]:
     return _list_files(os.path.join(step_dirs[step_token], "log"))
 
 
-def read_log_file(path: str) -> list[str]:
-    try:
-        with open(path, errors="replace") as f:
-            return f.read().splitlines()
-    except OSError:
-        return []
-
-
 def listing_step_order(run_dir: str) -> list[str]:
     """Return step tokens in flow.json order, with undiscovered extras alphabetically after."""
     step_dirs = discover_step_dirs(run_dir)
@@ -144,3 +158,62 @@ def listing_step_order(run_dir: str) -> list[str]:
         return result
 
     return sorted(step_dirs)
+
+
+def resolve_workspace_path(workspace_arg, project, workspace_id, run_dir):
+    """Return the managed workspace directory already selected by the context.
+
+    ``--workspace`` is a project-local name, not an arbitrary filesystem path.
+    The context resolves it through ``project.json`` before a handler reaches
+    this helper, so no command may bypass the manifest with a raw directory.
+    """
+    _ = workspace_arg
+    if not os.path.isdir(run_dir):
+        return None, error_record(
+            "missing_workspace",
+            workspace=run_dir,
+            run=disclosure_cmd("ecc run", project, workspace_id),
+        )
+    return run_dir, None
+
+
+def resolve_command_workspace(workspace_arg, project, workspace_id, run_dir):
+    """Load the workspace a command should operate on.
+
+    The project workspace directory (`run_dir`) is already resolved by the
+    command context. Wraps resolve_workspace_path with
+    load_workspace, which appends a workspace log entry and may migrate
+    workspace configs — read-only commands must use resolve_workspace_path
+    instead. Returns (workspace, error-record-or-None); the caller maps a
+    non-None record to a CommandResult.err.
+    """
+    from chipcompiler.data import load_workspace
+
+    path, error = resolve_workspace_path(workspace_arg, project, workspace_id, run_dir)
+    if error is not None:
+        return None, error
+    try:
+        workspace = load_workspace(path)
+    except Exception as exc:
+        return None, error_record("invalid_workspace", workspace=path, reason=str(exc))
+    if workspace is None:
+        return None, error_record("invalid_workspace", workspace=path)
+    return workspace, None
+
+
+def resolve_loaded_workspace(command_input, ctx: CommandContext):
+    """Resolve and load the workspace for handlers that need a Workspace.
+
+    Returns (workspace, failure CommandResult-or-None).
+    """
+    workspace, error = resolve_command_workspace(
+        command_input.workspace, ctx.project, ctx.run_id, ctx.run_dir
+    )
+    if error is not None:
+        return None, CommandResult.err([error])
+    return workspace, None
+
+
+def workspace_display(command_input, ctx: CommandContext) -> str:
+    """Human-facing managed workspace path."""
+    return ctx.run_dir

@@ -22,13 +22,18 @@ def test_root_help_returns_zero_and_lists_commands(capsys):
         "status",
         "log",
         "config",
+        "doctor",
         "param",
+        "pdk",
+        "project",
+        "workspace",
+        "signoff",
+        "report",
         "rpc",
     ):
         assert command in out
     for removed_command in ("metrics", "artifacts", "diagnose"):
         assert removed_command not in out
-    assert "workspace" not in out
 
 
 def test_root_version_returns_single_line(capsys):
@@ -41,26 +46,82 @@ def test_root_version_returns_single_line(capsys):
     assert len(out.splitlines()) == 1
 
 
-def test_version_command_returns_stable_text_lines(capsys):
+def test_version_command_returns_stable_text_lines(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "chipcompiler.cli.app.tool_versions",
+        lambda: {"yosys": "0.68", "sizer": "not installed", "klayout": "0.30.2"},
+    )
+
     rc = cli_main.run(["version"])
 
     lines = capsys.readouterr().out.splitlines()
     assert rc == 0
-    assert len(lines) == 4
+    assert len(lines) == 7
     assert lines[0].startswith("ecc ")
     assert lines[1].startswith("dreamplace ")
     assert lines[2].startswith("ecc_tools ")
     assert lines[3] == "runtime ECC CLI"
+    assert lines[4] == "yosys 0.68"
+    assert lines[5] == "sizer not installed"
+    assert lines[6] == "klayout 0.30.2"
 
 
-def test_version_command_returns_json_payload(capsys):
+def test_version_command_returns_json_payload(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "chipcompiler.cli.app.tool_versions",
+        lambda: {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"},
+    )
+
     rc = cli_main.run(["version", "--json"])
 
     data = json.loads(capsys.readouterr().out)
     assert rc == 0
-    assert set(data) == {"schema_version", "runtime", "ecc", "dreamplace", "ecc_tools"}
+    assert set(data) == {"schema_version", "runtime", "ecc", "dreamplace", "ecc_tools", "tools"}
     assert data["schema_version"] == 1
     assert data["runtime"] == "ECC CLI"
+    assert data["tools"] == {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"}
+
+
+def test_version_command_returns_jsonl_lines(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "chipcompiler.cli.app.tool_versions",
+        lambda: {"yosys": "0.68", "sizer": "unknown", "klayout": "0.30.2"},
+    )
+
+    rc = cli_main.run(["version", "--jsonl"])
+
+    lines = capsys.readouterr().out.splitlines()
+    assert rc == 0
+    records = [json.loads(ln) for ln in lines]
+    assert [r["component"] for r in records] == [
+        "ecc",
+        "dreamplace",
+        "ecc_tools",
+        "yosys",
+        "sizer",
+        "klayout",
+    ]
+    assert all(set(r) == {"component", "version"} for r in records)
+    assert records[3] == {"component": "yosys", "version": "0.68"}
+    assert records[4] == {"component": "sizer", "version": "unknown"}
+    assert records[5] == {"component": "klayout", "version": "0.30.2"}
+
+
+def test_version_command_returns_plain_line(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "chipcompiler.cli.app.tool_versions",
+        lambda: {"yosys": "0.68", "sizer": "unknown", "klayout": "0.30.2"},
+    )
+
+    rc = cli_main.run(["version", "--plain"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "schema_version=1" in out
+    assert 'runtime="ECC CLI"' in out
+    assert "yosys=0.68" in out
+    assert "sizer=unknown" in out
+    assert "klayout=0.30.2" in out
 
 
 def test_version_metadata_missing_uses_unknown(monkeypatch, capsys):
@@ -69,6 +130,10 @@ def test_version_metadata_missing_uses_unknown(monkeypatch, capsys):
 
     monkeypatch.setattr("chipcompiler.cli.core.version_info.metadata.version", missing_version)
     monkeypatch.setattr("chipcompiler.__version__", "source-fallback")
+    monkeypatch.setattr(
+        "chipcompiler.cli.app.tool_versions",
+        lambda: {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"},
+    )
 
     rc = cli_main.run(["version", "--json"])
 
@@ -80,6 +145,7 @@ def test_version_metadata_missing_uses_unknown(monkeypatch, capsys):
         "ecc": "source-fallback",
         "dreamplace": "unknown",
         "ecc_tools": "unknown",
+        "tools": {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"},
     }
 
 
@@ -114,14 +180,35 @@ def test_invalid_option_returns_nonzero_without_system_exit(capsys):
     assert "No such option" in capsys.readouterr().err
 
 
-def test_config_requires_resolved_without_system_exit(tmp_path, capsys):
+def test_config_without_resolved_reaches_the_config_handler(tmp_path, capsys):
     project = tmp_path / "project"
     project.mkdir()
 
-    rc = cli_main.run(["config", "--project", str(project)])
+    rc = cli_main.run(["config", "--project", str(project), "--json"])
+
+    assert rc == 1
+    assert json.loads(capsys.readouterr().out)["records"][0]["error"] == "missing_config"
+
+
+def test_removed_config_resolved_option_returns_unknown_option(capsys):
+    rc = cli_main.run(["config", "--resolved"])
 
     assert rc != 0
-    assert "--resolved" in capsys.readouterr().err
+    assert "No such option" in capsys.readouterr().err
+
+
+def test_removed_log_errors_option_returns_unknown_option(capsys):
+    rc = cli_main.run(["log", "synthesis", "--errors"])
+
+    assert rc != 0
+    assert "No such option" in capsys.readouterr().err
+
+
+def test_removed_signoff_report_command_returns_unknown_command(capsys):
+    rc = cli_main.run(["signoff", "report"])
+
+    assert rc != 0
+    assert "No such command" in capsys.readouterr().err
 
 
 def test_output_mode_priority_prefers_jsonl(monkeypatch, tmp_path, capsys):
@@ -129,9 +216,6 @@ def test_output_mode_priority_prefers_jsonl(monkeypatch, tmp_path, capsys):
 
     def fake_resolve_project_dir(project):
         return str(tmp_path)
-
-    def fake_resolve_run_dir(project_dir, run_id):
-        return (str(tmp_path / "runs" / "default"), run_id)
 
     def fake_status(command_input, ctx):
         seen["input_type"] = type(command_input).__name__
@@ -146,7 +230,6 @@ def test_output_mode_priority_prefers_jsonl(monkeypatch, tmp_path, capsys):
         "chipcompiler.cli.core.invocation.resolve_project_dir",
         fake_resolve_project_dir,
     )
-    monkeypatch.setattr("chipcompiler.cli.core.invocation.resolve_run_dir", fake_resolve_run_dir)
     monkeypatch.setattr("chipcompiler.cli.command_handlers.inspect.status", fake_status)
 
     rc = cli_main.run(["status", "--jsonl", "--json", "--plain"])
@@ -171,10 +254,6 @@ def test_run_set_remains_repeatable(monkeypatch, tmp_path):
         "chipcompiler.cli.core.invocation.resolve_project_dir",
         lambda project: str(tmp_path),
     )
-    monkeypatch.setattr(
-        "chipcompiler.cli.core.invocation.resolve_run_dir",
-        lambda project_dir, run_id: (str(tmp_path / "runs" / "default"), run_id),
-    )
 
     def fake_run(command_input, ctx):
         seen["input_type"] = type(command_input).__name__
@@ -190,31 +269,6 @@ def test_run_set_remains_repeatable(monkeypatch, tmp_path):
         "input_type": "RunInput",
         "param_set": ("place.target_density=0.65", "cts.max_fanout=16"),
     }
-
-
-def test_run_accepts_run_id_option(monkeypatch, tmp_path):
-    seen = {}
-
-    monkeypatch.setattr(
-        "chipcompiler.cli.core.invocation.resolve_project_dir",
-        lambda project: str(tmp_path),
-    )
-    monkeypatch.setattr(
-        "chipcompiler.cli.core.invocation.resolve_run_dir",
-        lambda project_dir, run_id: (str(tmp_path / "runs" / "default"), run_id),
-    )
-
-    def fake_run(command_input, ctx):
-        seen["input_type"] = type(command_input).__name__
-        seen["run_id"] = command_input.project.run_id
-        return CommandResult.ok([{"status": "ok"}])
-
-    monkeypatch.setattr("chipcompiler.cli.command_handlers.project.run", fake_run)
-
-    rc = cli_main.run(["run", "--run-id", "run_004"])
-
-    assert rc == 0
-    assert seen == {"input_type": "RunInput", "run_id": "run_004"}
 
 
 def test_rpc_routes_through_root_typer(monkeypatch):
@@ -277,7 +331,7 @@ def test_old_top_level_workspace_form_is_root_parser_error(capsys):
 
 
 def test_run_workspace_flag_reaches_workspace_validation(capsys):
-    rc = cli_main.run(["run", "--workspace", "gcd"])
+    rc = cli_main.run(["run", "--workspace", "gcd/rtl"])
 
     assert rc != 0
     assert "invalid_workspace" in capsys.readouterr().out
@@ -287,10 +341,6 @@ def test_status_command_handler_still_returns_command_result(monkeypatch, tmp_pa
     monkeypatch.setattr(
         "chipcompiler.cli.core.invocation.resolve_project_dir",
         lambda project: str(tmp_path),
-    )
-    monkeypatch.setattr(
-        "chipcompiler.cli.core.invocation.resolve_run_dir",
-        lambda project_dir, run_id: (str(tmp_path / "runs" / "default"), run_id),
     )
 
     def fake_status(command_input, ctx):
@@ -310,10 +360,6 @@ def test_param_callback_passes_typed_input(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(
         "chipcompiler.cli.core.invocation.resolve_project_dir",
         lambda project: str(tmp_path),
-    )
-    monkeypatch.setattr(
-        "chipcompiler.cli.core.invocation.resolve_run_dir",
-        lambda project_dir, run_id: (str(tmp_path / "runs" / "default"), run_id),
     )
 
     def fake_show(command_input, ctx):
@@ -350,9 +396,6 @@ def test_execute_command_uses_renderer_registry(monkeypatch, tmp_path, capsys):
     def fake_resolve_project_dir(project):
         return str(tmp_path)
 
-    def fake_resolve_run_dir(project_dir, run_id):
-        return (str(tmp_path / "runs" / "default"), run_id)
-
     def fake_handler(command_input, ctx):
         return CommandResult.ok([{"status": "ok"}])
 
@@ -363,7 +406,6 @@ def test_execute_command_uses_renderer_registry(monkeypatch, tmp_path, capsys):
         "chipcompiler.cli.core.invocation.resolve_project_dir",
         fake_resolve_project_dir,
     )
-    monkeypatch.setattr("chipcompiler.cli.core.invocation.resolve_run_dir", fake_resolve_run_dir)
     monkeypatch.setitem(
         __import__("chipcompiler.cli.rendering.renderers", fromlist=["RENDERERS"]).RENDERERS,
         ("custom", OutputMode.TEXT),

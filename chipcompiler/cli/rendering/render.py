@@ -67,7 +67,6 @@ def render_result(
 
 def _render_pretty(result: CommandResult, file=None, command=None, *, color=True) -> None:
     from chipcompiler.cli.rendering.pretty import (
-        get_pretty_renderer,
         render_error,
         render_generic_block,
     )
@@ -82,8 +81,6 @@ def _render_pretty(result: CommandResult, file=None, command=None, *, color=True
         render_error(records, file=file, color=color)
         return
 
-    renderer = get_pretty_renderer(command) if command else None
-    if renderer:
-        renderer(records, file=file, color=color)
-    else:
-        render_generic_block(records, file=file, color=color)
+    # Command-specific pretty renderers dispatch via the RENDERERS registry
+    # (keyed by full command path) before this fallback is reached.
+    render_generic_block(records, file=file, color=color)

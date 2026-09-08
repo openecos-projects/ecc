@@ -39,4 +39,4 @@ def _resolve_ics55_root(pdk_root: str = "") -> str:
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.dirname(current_dir)
-    return os.path.join(repo_root, "chipcompiler", "thirdparty", "icsprout55-pdk")
+    return os.path.join(os.path.dirname(repo_root), "pdk", "icsprout55-pdk")

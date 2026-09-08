@@ -1,12 +1,12 @@
 import shlex
 
 
-def disclosure_cmd(command: str, project: str | None = None, run_id: str | None = None) -> str:
+def disclosure_cmd(command: str, project: str | None = None, workspace: str | None = None) -> str:
     parts = [command]
     if project:
         parts.append(f"--project {shlex.quote(project)}")
-    if run_id is not None:
-        parts.append(f"--run-id {shlex.quote(run_id)}")
+    if workspace is not None:
+        parts.append(f"--workspace {shlex.quote(workspace)}")
     return " ".join(parts)
 
 
@@ -17,9 +17,12 @@ def normalize_step_name(internal: str) -> str:
         "place": "placement",
         "CTS": "cts",
         "legalization": "legalization",
+        "Timing optimization": "timing_optimization",
+        "timing optimization": "timing_optimization",
         "route": "routing",
         "drc": "drc",
         "filler": "filler",
+        "postRouteLec": "postroutelec",
     }
     return mapping.get(internal, internal.lower())
 
@@ -27,6 +30,7 @@ def normalize_step_name(internal: str) -> str:
 def normalize_state(internal: str) -> str:
     mapping = {
         "Success": "success",
+        "Warning": "warning",
         "Incomplete": "incomplete",
         "Unstart": "unstart",
         "Ongoing": "ongoing",
