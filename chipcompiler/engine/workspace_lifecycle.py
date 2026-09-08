@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from chipcompiler.cli.project.params import build_backend_overrides, resolve_parameters
-from chipcompiler.data import PDK, create_workspace, load_workspace
+from chipcompiler.data import PDK, create_workspace, get_pdk, load_workspace
 from chipcompiler.engine.snapshot import create_engineering_snapshot
 from chipcompiler.engine.workspace_spec import validate_workspace_spec
 from chipcompiler.rtl2gds import get_flow_builders
@@ -17,6 +17,51 @@ class WorkspaceLifecycleError(RuntimeError):
         super().__init__(message)
         self.code = code
         self.details = details or {}
+
+
+def describe_workspace_binding_requirement(
+    workspace_directory: str | Path,
+) -> dict[str, Any]:
+    workspace = _load_committed_workspace(Path(workspace_directory).expanduser().resolve())
+    return {
+        "familyId": workspace.pdk.name,
+        "version": workspace.pdk.version or "unversioned",
+        "mode": "default",
+    }
+
+
+def assess_execution_readiness(
+    workspace_directory: str | Path,
+    bindings: object | None,
+) -> dict[str, Any]:
+    try:
+        workspace = _load_committed_workspace(Path(workspace_directory).expanduser().resolve())
+    except (OSError, ValueError, WorkspaceLifecycleError):
+        return {"ready": False, "code": "workspace_invalid"}
+    binding_map = _string_keyed_dict(bindings)
+    pdk_binding = _string_keyed_dict(binding_map.get("pdk"))
+    root = pdk_binding.get("root")
+    if not isinstance(root, str) or not Path(root).is_dir():
+        return {"ready": False, "code": "pdk_binding_missing"}
+    try:
+        get_pdk(workspace.pdk.name, pdk_root=root).validate()
+    except (OSError, ValueError):
+        return {"ready": False, "code": "pdk_binding_mismatch"}
+    return {"ready": True}
+
+
+def apply_workspace_bindings(workspace, bindings: object) -> None:
+    binding_map = _string_keyed_dict(bindings)
+    pdk_binding = _string_keyed_dict(binding_map.get("pdk"))
+    root = pdk_binding.get("root")
+    if not isinstance(root, str) or not Path(root).is_dir():
+        raise WorkspaceLifecycleError("pdk_binding_missing", "PDK binding root is required")
+    sdc, spef = workspace.pdk.sdc, workspace.pdk.spef
+    workspace.pdk = get_pdk(workspace.pdk.name, pdk_root=root)
+    workspace.pdk.sdc, workspace.pdk.spef = sdc, spef
+    from chipcompiler.data import refresh_workspace_config
+
+    refresh_workspace_config(workspace)
 
 
 def create_workspace_from_spec(
