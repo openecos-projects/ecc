@@ -330,6 +330,45 @@ class TestMultilineTomlValues:
 class TestSafeTomlSectionParsing:
     """Scoped TOML edits must handle comments and indented headers safely."""
 
+    def test_set_does_not_insert_before_header_like_text_in_a_string(self):
+        text = '[params]\nnote = """\nheader-like text:\n[flow]\n"""\n\n[pdk]\nname = "ics55"\n'
+
+        result = set_scoped_key(text, "params.place", "target_density", 0.7)
+
+        parsed = tomllib.loads(result)
+        assert parsed["params"]["place"]["target_density"] == 0.7
+        assert parsed["params"]["note"].strip() == "header-like text:\n[flow]"
+        # The new table must land before the real [pdk] header, not the
+        # header-like line inside the multiline string.
+        assert result.index("[params.place]") > result.index('"""')
+
+    def test_set_matches_quoted_table_header(self):
+        text = '[params."place"]\ntarget_density = 0.65\n'
+
+        result = set_scoped_key(text, "params.place", "target_density", 0.7)
+
+        parsed = tomllib.loads(result)
+        assert parsed["params"]["place"]["target_density"] == 0.7
+        assert result.count("[params") == 1
+
+    def test_set_replaces_quoted_assignment_key(self):
+        text = '[params.place]\n"target_density" = 0.65\n'
+
+        result = set_scoped_key(text, "params.place", "target_density", 0.7)
+
+        parsed = tomllib.loads(result)
+        assert parsed["params"]["place"]["target_density"] == 0.7
+        assert result.count("target_density") == 1
+
+    def test_unset_removes_quoted_assignment_key(self):
+        text = '[params.place]\n"target_density" = 0.65\nother = 1\n'
+
+        result = remove_scoped_key(text, "params.place", "target_density")
+
+        parsed = tomllib.loads(result)
+        assert "target_density" not in parsed["params"]["place"]
+        assert parsed["params"]["place"]["other"] == 1
+
     def test_set_ignores_commented_section_header(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")

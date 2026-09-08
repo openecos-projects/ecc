@@ -10,7 +10,7 @@ materialization stay in collector.py and discovery.py; shared helpers
 import importlib
 from pathlib import Path
 
-from chipcompiler.data import StateEnum, StepEnum
+from chipcompiler.data import EccOutput, StateEnum, StepEnum
 from chipcompiler.engine.signoff.models import SIGNOFF_REQUIRED_QOR_STEPS, SignoffPackageIssue
 
 
@@ -98,13 +98,24 @@ class CollectorAnalysisMixin:
             input_def = previous_step.output.def_
             input_verilog = previous_step.output.verilog
             input_db = previous_step.output.db
-        return build_step(
+        workspace_step = build_step(
             workspace=self.workspace,
             step_name=step_name,
             input_def=input_def,
             input_verilog=input_verilog,
             input_db=input_db,
         )
+        if workspace_step is not None:
+            # Mirror the execution-side projection (engine/flow.py): a
+            # persisted info.spef overrides the STA step's chained SPEFs.
+            step_info = flow_step.get("info") or {}
+            if (
+                step_name == StepEnum.STA.value
+                and step_info.get("spef")
+                and isinstance(workspace_step.output, EccOutput)
+            ):
+                workspace_step.output.spef = [Path(step_info["spef"])]
+        return workspace_step
 
     def _refresh_step_analysis(self, step) -> None:
         if step.tool == "yosys":

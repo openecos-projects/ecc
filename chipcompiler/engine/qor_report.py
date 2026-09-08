@@ -435,6 +435,11 @@ def build_qor_report(workspace) -> QorScoreReport:
     records: list[QorMetricRecord] = []
     analyzed_steps = []
     for step, dir_name in FLOW_STEP_DIRS.items():
+        # Only currently successful steps score: invalidation keeps a step's
+        # analysis outputs on disk, so without this gate a stale suffix would
+        # report its obsolete metrics as current.
+        if flow_steps_by_label.get(step) != StateEnum.Success.value:
+            continue
         payload = json_read(workspace_root / dir_name / "analysis" / "qor_metrics.json")
         if not payload:
             continue

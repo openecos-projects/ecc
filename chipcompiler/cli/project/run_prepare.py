@@ -308,10 +308,7 @@ def execute_fresh_run(
                 ]
             )
 
-    def failed_workspace(reason: str | None) -> CommandResult:
-        rollback_problems = cleanup_failed_target()
-        if rollback_problems:
-            reason = f"{reason}; rollback incomplete: {'; '.join(rollback_problems)}"
+    def rollback_failed_registration() -> None:
         if terminal_failure() and workspace_registered:
             # The target is genuinely gone: mark the entry failed. A restored
             # backup keeps its prior status — the refresh never happened.
@@ -322,6 +319,12 @@ def execute_fresh_run(
             from chipcompiler.cli.project.manifest_write import remove_workspace_registration
 
             remove_workspace_registration(project_dir, run_name)
+
+    def failed_workspace(reason: str | None) -> CommandResult:
+        rollback_problems = cleanup_failed_target()
+        if rollback_problems:
+            reason = f"{reason}; rollback incomplete: {'; '.join(rollback_problems)}"
+        rollback_failed_registration()
         return _workspace_failed_result(run_name, run_dir, reason)
 
     from chipcompiler.cli.project.design_inputs import resolve_design_inputs
@@ -516,9 +519,11 @@ def execute_fresh_run(
         except Exception as exc:
             from chipcompiler.cli.core.records import error_record
 
-            cleanup_failed_target()
-            if terminal_failure() and workspace_registered:
-                _write_back_status(project_dir, run_name, "failed", warning_records)
+            rollback_problems = cleanup_failed_target()
+            reason = str(exc)
+            if rollback_problems:
+                reason = f"{reason}; rollback incomplete: {'; '.join(rollback_problems)}"
+            rollback_failed_registration()
             return CommandResult.err(
                 warning_records
                 + [
@@ -526,7 +531,7 @@ def execute_fresh_run(
                         "flow_failed",
                         workspace_id=run_name,
                         workspace=run_dir,
-                        reason=str(exc),
+                        reason=reason,
                     )
                 ]
             )

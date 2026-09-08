@@ -208,7 +208,12 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
                 [error_record("invalid_value", param=key, reason=problem)], exit_code=1
             )
 
-    _write_param_to_toml(config_path, schema, value)
+    try:
+        _write_param_to_toml(config_path, schema, value)
+    except (OSError, ValueError) as exc:
+        return CommandResult.err(
+            [error_record("config_error", param=key, reason=str(exc))], exit_code=1
+        )
 
     return CommandResult.ok(
         [
@@ -256,7 +261,12 @@ def param_unset(args, ctx: CommandContext) -> CommandResult:
             ]
         )
 
-    removed = _remove_param_from_toml(config_path, schema)
+    try:
+        removed = _remove_param_from_toml(config_path, schema)
+    except (OSError, ValueError) as exc:
+        return CommandResult.err(
+            [error_record("config_error", param=key, reason=str(exc))], exit_code=1
+        )
 
     if removed:
         return CommandResult.ok(

@@ -496,6 +496,9 @@ def refresh_step_checklist(workspace: Workspace, step: WorkspaceStep) -> bool:
 
 def _post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | None]:
     design = getattr(getattr(workspace, "design", None), "name", "") or ""
+    # Golden precedence mirrors the execution wiring (engine/flow.py): the
+    # synthesis output when the flow contains Synthesis, else the declared
+    # golden netlist, else the origin RTL.
     golden = getattr(getattr(workspace, "design", None), "origin_verilog", None)
     gate = None
     workspace_dir = Path(workspace.directory) if getattr(workspace, "directory", None) else None
@@ -506,6 +509,8 @@ def _post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | 
         gate = workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz"
         if flow is not None and flow.has_step(StepEnum.SYNTHESIS):
             golden = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
+        else:
+            golden = getattr(workspace.design, "golden_verilog", None) or golden
     return golden, gate
 
 

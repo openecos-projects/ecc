@@ -484,7 +484,9 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
         # failure is an error, not a tolerated partial state. Roll the
         # ledger back too — leaving the appended suffix behind would
         # report failure while the persisted flow is wider than the target.
-        if appended:
+        # The reordered-chain migration can rewrite the ledger without
+        # appending a single name, so the rollback keys on the snapshot.
+        if "flow_data_original" in context:
             json_write(workspace_dir / "home" / "flow.json", context["flow_data_original"])
         return ReconcileResult(
             outcome="mismatch",

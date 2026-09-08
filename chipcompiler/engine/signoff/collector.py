@@ -124,7 +124,13 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
 
         has_synthesis = self.workspace.flow.has_step(StepEnum.SYNTHESIS)
         synthesis_verilog = self._synthesis_output_verilog() if has_synthesis else None
-        lec_golden = synthesis_verilog or getattr(self.workspace.design, "origin_verilog", None)
+        # Golden precedence mirrors the execution wiring: synthesis output,
+        # then the declared golden netlist, then the origin RTL.
+        lec_golden = (
+            synthesis_verilog
+            or getattr(self.workspace.design, "golden_verilog", None)
+            or getattr(self.workspace.design, "origin_verilog", None)
+        )
         filler_verilog = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
         # The canonical chain wires postRouteLec's gate input to the LVS output.
         lec_gate = workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz"

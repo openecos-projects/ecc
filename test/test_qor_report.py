@@ -292,6 +292,20 @@ class TestBuildQorReport:
         by_label = {d.label: d for d in report.dimension_scores}
         assert by_label["Routability / Physical"].metric_count == 1
 
+    def test_stale_metrics_of_unstarted_steps_do_not_score(self, tmp_path):
+        # Invalidation resets a step to Unstart but keeps its analysis
+        # outputs on disk; the obsolete metrics must not score.
+        workspace = _make_workspace(tmp_path)
+        for step in workspace.flow.data["steps"]:
+            if step["name"] == "drc":
+                step["state"] = "Unstart"
+
+        report = build_qor_report(workspace)
+
+        assert [m for m in report.metrics if m.step == "DRC"] == []
+        by_label = {d.label: d for d in report.dimension_scores}
+        assert "Routability / Physical" not in by_label
+
     def test_empty_workspace_report(self, tmp_path):
         report = build_qor_report(_make_workspace(tmp_path, with_metrics=False))
         assert report.overall_score is None

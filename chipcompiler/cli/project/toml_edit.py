@@ -8,6 +8,53 @@ import re
 
 _TABLE_HEADER_RE = re.compile(r"^[ \t]*\[([^\]]+)\][ \t]*(?:#.*)?$", re.MULTILINE)
 
+# Generic assignment line; the key span may be blanked by string masking, so
+# callers compare the ORIGINAL text's key token, not the masked match.
+# Group 1 is the line indent.
+_ASSIGNMENT_LINE_RE = re.compile(r"^([ \t]*)[^=\n]+=[^\n]*$", re.MULTILINE)
+
+
+def _split_dotted_key(raw: str) -> list[str]:
+    """Semantic segments of a TOML dotted key (quotes stripped, dots in quotes kept)."""
+    segments = []
+    current = []
+    quote = None
+    for ch in raw.strip():
+        if quote is not None:
+            if ch == quote:
+                quote = None
+            else:
+                current.append(ch)
+        elif ch in "\"'":
+            quote = ch
+        elif ch == ".":
+            segments.append("".join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+    segments.append("".join(current).strip())
+    return segments
+
+
+def _header_matches(text: str, match: re.Match, table_name: str) -> bool:
+    """Compare the ORIGINAL header text at a masked match position semantically."""
+    raw_header = text[match.start(1) : match.end(1)]
+    return _split_dotted_key(raw_header) == table_name.split(".")
+
+
+def _find_assignment(masked_body: str, original_body: str, name: str) -> re.Match | None:
+    """Locate ``name = ...`` in a masked section body, matching the key semantically.
+
+    String masking blanks quoted keys, so candidate lines come from the masked
+    body while the key token is read from the original text at the same offsets.
+    """
+    for m in _ASSIGNMENT_LINE_RE.finditer(masked_body):
+        key_token = original_body[m.start() : m.end()].split("=", 1)[0]
+        segments = _split_dotted_key(key_token)
+        if len(segments) == 1 and segments[0] == name:
+            return m
+    return None
+
 
 def _mask_strings_and_comments(text: str) -> str:
     """Return a same-length text with string and comment contents blanked.
@@ -60,7 +107,7 @@ def find_table_span(text: str, table_name: str) -> tuple[int, int] | None:
     """Return (body_start, body_end) for a TOML table, or None."""
     masked = _mask_strings_and_comments(text)
     for m in _TABLE_HEADER_RE.finditer(masked):
-        if m.group(1).strip() == table_name:
+        if _header_matches(text, m, table_name):
             header_end = m.end()
             nl = text.find("\n", header_end)
             body_start = len(text) if nl == -1 else nl + 1
@@ -240,7 +287,7 @@ def set_scoped_key(text: str, target_table: str, name: str, value: object) -> st
             return text.rstrip() + f"\n\n[{target_table}]\n{name} = {value_str}\n"
         body_start, body_end = params_span
         insert = f"\n\n[{target_table}]\n{name} = {value_str}"
-        next_header = _TABLE_HEADER_RE.search(text, body_start)
+        next_header = _TABLE_HEADER_RE.search(_mask_strings_and_comments(text), body_start)
         if next_header:
             pos = next_header.start()
             return text[:pos] + insert + "\n" + text[pos:]
@@ -249,10 +296,11 @@ def set_scoped_key(text: str, target_table: str, name: str, value: object) -> st
     body_start, body_end = span
     section_body = text[body_start:body_end]
     # Match assignments on the masked body: key-like text inside a multiline
-    # string must never be edited as if it were a real assignment.
+    # string must never be edited as if it were a real assignment. The key
+    # token itself is compared semantically on the original text so quoted
+    # keys ("timeout" = ...) are recognized.
     masked_body = _mask_strings_and_comments(section_body)
-    key_pattern = re.compile(rf"^(\s*){re.escape(name)}\s*=[^\n]*$", re.MULTILINE)
-    key_match = key_pattern.search(masked_body)
+    key_match = _find_assignment(masked_body, section_body, name)
 
     if key_match:
         indent = key_match.group(1)
@@ -278,8 +326,7 @@ def remove_scoped_key(text: str, target_table: str, name: str) -> str | None:
     # true end of a multiline value, including its terminating newline.
     # Assignments are located on the masked body (see set_scoped_key).
     masked_body = _mask_strings_and_comments(section_body)
-    key_pattern = re.compile(rf"^\s*{re.escape(name)}\s*=[^\n]*$", re.MULTILINE)
-    key_match = key_pattern.search(masked_body)
+    key_match = _find_assignment(masked_body, section_body, name)
     if not key_match:
         return None
 
@@ -287,9 +334,10 @@ def remove_scoped_key(text: str, target_table: str, name: str) -> str | None:
     new_body = section_body[: key_match.start()] + section_body[end:]
     remaining_keys = [line for line in new_body.strip().split("\n") if line.strip()]
     if not remaining_keys:
+        masked = _mask_strings_and_comments(text)
         header_match = None
-        for m in _TABLE_HEADER_RE.finditer(text):
-            if m.group(1).strip() == target_table:
+        for m in _TABLE_HEADER_RE.finditer(masked):
+            if _header_matches(text, m, target_table):
                 header_match = m
                 break
         if header_match is None:
@@ -311,8 +359,7 @@ def set_pdk_root(text: str, value: str) -> str:
     body_start, body_end = span
     section = text[body_start:body_end]
     masked_section = _mask_strings_and_comments(section)
-    key_pattern = re.compile(r"^(\s*)root\s*=[^\n]*$", re.MULTILINE)
-    key_match = key_pattern.search(masked_section)
+    key_match = _find_assignment(masked_section, section, "root")
     if key_match:
         # Same value-range logic as set_scoped_key: a multiline value must
         # be replaced whole, never leaving its tail behind.
