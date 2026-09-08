@@ -53,12 +53,12 @@ DREAMPLACE_THIRDPARTY_FILES = (
 )
 
 DOC_GUIDES = (
-    "chipcompiler/docs/ecc-cli-config.en.md",
-    "chipcompiler/docs/ecc-cli-config.cn.md",
-    "chipcompiler/docs/ecc-cli-ug.en.md",
-    "chipcompiler/docs/ecc-cli-ug.cn.md",
-    "chipcompiler/docs/ecc-cli-tutorial.en.md",
-    "chipcompiler/docs/ecc-cli-tutorial.cn.md",
+    "chipcompiler/docs/ecc-config-ref.en.md",
+    "chipcompiler/docs/ecc-config-ref.cn.md",
+    "chipcompiler/docs/ecc-user-guide.en.md",
+    "chipcompiler/docs/ecc-user-guide.cn.md",
+    "chipcompiler/docs/ecc-tutorial.en.md",
+    "chipcompiler/docs/ecc-tutorial.cn.md",
 )
 
 LINUX_RUNTIME_LIBS = (

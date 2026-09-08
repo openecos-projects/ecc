@@ -104,7 +104,7 @@ Commands:
   config        Show resolved project or step configuration
   migrate       Migrate a legacy runs/ project to the manifest layout
   doctor        Check host environment: PDK, tools, and components
-  doc           Show a bundled guide (config/ug/tutorial) in the terminal
+  doc           Show a bundled guide (config = config reference, ug = user guide, tutorial)
   param         Manage EDA parameters
   pdk           Show and configure the PDK path used by this project
   project       Edit project declarations in ecc.toml
@@ -124,7 +124,7 @@ ecc doc ug --lang cn        # 本指南的中文版
 ecc doc config --plain      # 原始 markdown，逐字节输出
 ```
 
-- 主题：`config`、`ug`、`tutorial`；`--lang` 选择 `en`（默认）或 `cn`。
+- 主题：`config`（配置参考）、`ug`（用户指南，即 user guide）、`tutorial`（教程）；`--lang` 选择 `en`（默认）或 `cn`。
 - 终端下渲染输出带高亮并进入分页器翻阅（`$PAGER`，回退到 `less`/`more`；未设置 `LESS` 时默认 `LESS=FRX`，保证 `less` 下颜色生效）；管道场景全量直出、不带颜色。
 - 非法的主题/语言取值由参数校验拒绝（退出码 2）。
 - 管道输出保留 unicode 渲染版式；`--plain` 原样输出原始 markdown，适合脚本处理。

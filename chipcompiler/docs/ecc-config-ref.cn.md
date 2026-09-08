@@ -2,7 +2,7 @@
 
 本文整理 ECC RTL-to-Harden 流程中**每一步实际使用的工具配置文件、全部参数及其含义**。配置取值与生成逻辑均核对自 v0.1.0-alpha.11 源码（rebase main 之后；模板位于 [chipcompiler/tools/*/configs/](https://github.com/openecos-projects/ecc/blob/main/chipcompiler/tools/ecc/configs/)）与一次真实的 gcd@ics55 harden 运行。
 
-- 想了解命令用法 → [ECC CLI 用户指南](ecc-cli-ug.cn.md)（终端：`ecc doc ug`）；从零上手 → [入门教程](ecc-cli-tutorial.cn.md)（终端：`ecc doc tutorial`）
+- 想了解命令用法 → [ECC CLI 用户指南](ecc-user-guide.cn.md)（终端：`ecc doc ug`）；从零上手 → [入门教程](ecc-tutorial.cn.md)（终端：`ecc doc tutorial`）
 - 配置查看命令：`ecc config <step>`（列出该步骤实际生效的配置文件）；参数查看与修改命令：`ecc param`（见 §1.4）
 
 ## 0. 配置体系总览
@@ -184,7 +184,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 一次性覆盖用 `ecc run --set KEY=VALUE`：仅在**新建**（含 `--overwrite`）workspace 时生效并记录到 `home/cli-param-overrides.json`；对已有 workspace 使用会报 `set_requires_fresh_run`，此时应改用 `ecc param set KEY VALUE --workspace NAME` 或 `--overwrite` 重建。
 
-完整命令输出示例见 [ECC CLI 用户指南 §9](ecc-cli-ug.cn.md)（终端：`ecc doc ug`）。
+完整命令输出示例见 [ECC CLI 用户指南 §9](ecc-user-guide.cn.md)（终端：`ecc doc ug`）。
 
 ## 2. 公共配置：db_ecc.json
 

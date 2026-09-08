@@ -22,11 +22,17 @@ class DocLanguage(str, Enum):
 
 
 def register_doc_commands(app: typer.Typer) -> None:
-    app.command("doc", help="Show a bundled guide (config/ug/tutorial) in the terminal")(doc_cmd)
+    app.command(
+        "doc",
+        help="Show a bundled guide (config = config reference, ug = user guide, tutorial)",
+    )(doc_cmd)
 
 
 def doc_cmd(
-    topic: Annotated[DocTopic, typer.Argument(help="Guide to show")],
+    topic: Annotated[
+        DocTopic,
+        typer.Argument(help="Guide to show: config reference, user guide (ug), or tutorial"),
+    ],
     *,
     lang: Annotated[DocLanguage, typer.Option("--lang", help="Guide language")] = DocLanguage.en,
     plain: Annotated[

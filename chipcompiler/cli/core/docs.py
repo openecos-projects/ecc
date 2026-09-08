@@ -6,9 +6,9 @@ from importlib.resources.abc import Traversable
 from pathlib import Path
 
 GUIDE_STEMS = {
-    "config": "ecc-cli-config",
-    "ug": "ecc-cli-ug",
-    "tutorial": "ecc-cli-tutorial",
+    "config": "ecc-config-ref",
+    "ug": "ecc-user-guide",
+    "tutorial": "ecc-tutorial",
 }
 
 

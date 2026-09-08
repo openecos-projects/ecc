@@ -213,7 +213,7 @@ preset = "rtl2gds"       # the complete RTL-to-Harden flow used in this tutorial
 
 For the gcd example, the defaults produced by `init` happen to be exactly right (the top module is literally `gcd`, the clock port is `clk`) — **you don't need to change a single character**. For your own design, check the four fields `top`, `rtl`, `clock_port`, and `frequency_mhz`.
 
-You can edit `ecc.toml` in an editor, or set the same declarations from the command line with the `ecc project` group (writes `ecc.toml`, comments preserved; see [User Guide §8.5](ecc-cli-ug.en.md#85-project--workspace--edit-project-declarations-and-refresh-workspaces) (`ecc doc ug`)):
+You can edit `ecc.toml` in an editor, or set the same declarations from the command line with the `ecc project` group (writes `ecc.toml`, comments preserved; see [User Guide §8.5](ecc-user-guide.en.md#85-project--workspace--edit-project-declarations-and-refresh-workspaces) (`ecc doc ug`)):
 
 ```bash
 ecc project set design.top my_chip            # set one declaration
@@ -593,7 +593,7 @@ ecc param diff --workspace exp1                            # vs. the values exp1
 ecc param unset place.target_density --workspace exp1      # restore exp1's original value
 ```
 
-Frequently used legacy parameters are `design.frequency_mhz`, `floorplan.core_util`, `place.target_density`, `route.top_layer`, and `sta.max_paths`. Other static tool fields are supplied by per-step schemas; find them with `--step` or `--all`. Workspace input, output, temporary, and generated paths cannot be changed. PDK path parameters use `ecc param set KEY VALUE`: `pdk.tech`, `pdk.lefs`, `pdk.libs`, and `pdk.mapping_file` resolve against `pdk.root`, while `pdk.sdc`/`pdk.spef` are design data resolved against the project directory; keep `pdk.root` on `ecc pdk set-root`. See [User Guide §9](ecc-cli-ug.en.md#9-param--parameter-management) (`ecc doc ug`) for the full contract.
+Frequently used legacy parameters are `design.frequency_mhz`, `floorplan.core_util`, `place.target_density`, `route.top_layer`, and `sta.max_paths`. Other static tool fields are supplied by per-step schemas; find them with `--step` or `--all`. Workspace input, output, temporary, and generated paths cannot be changed. PDK path parameters use `ecc param set KEY VALUE`: `pdk.tech`, `pdk.lefs`, `pdk.libs`, and `pdk.mapping_file` resolve against `pdk.root`, while `pdk.sdc`/`pdk.spef` are design data resolved against the project directory; keep `pdk.root` on `ecc pdk set-root`. See [User Guide §9](ecc-user-guide.en.md#9-param--parameter-management) (`ecc doc ug`) for the full contract.
 
 A `--workspace` override marks the parameter's owning step (and everything after it) as pending, so the next `ecc run --workspace exp1` re-runs just that suffix — cheaper than an `--overwrite` rebuild when you only want to tweak one knob. It only works for reviewed parameters (`ecc param list --all`) whose owning step exists in that workspace's flow.
 
@@ -715,7 +715,7 @@ ecc config --plain      # project-level config (key=value + resolved absolute pa
 
 - Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist) for multi-file designs;
 - Preset differences: `rtl2gds` (the complete 15-step synthesis-to-Harden chain, including synthesis-level LEC), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps);
-- Full command details in the **[ECC CLI User Guide](ecc-cli-ug.en.md)** (`ecc doc ug`); extending the CLI is covered in [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli);
+- Full command details in the **[ECC CLI User Guide](ecc-user-guide.en.md)** (`ecc doc ug`); extending the CLI is covered in [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli);
 - Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/ics55flow.py).
 
 ---

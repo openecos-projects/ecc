@@ -104,7 +104,7 @@ Commands:
   config        Show resolved project or step configuration
   migrate       Migrate a legacy runs/ project to the manifest layout
   doctor        Check host environment: PDK, tools, and components
-  doc           Show a bundled guide (config/ug/tutorial) in the terminal
+  doc           Show a bundled guide (config = config reference, ug = user guide, tutorial)
   param         Manage EDA parameters
   pdk           Show and configure the PDK path used by this project
   project       Edit project declarations in ecc.toml
@@ -124,7 +124,7 @@ ecc doc ug --lang cn        # this guide, Chinese edition
 ecc doc config --plain      # raw markdown, byte-for-byte
 ```
 
-- Topics: `config`, `ug`, `tutorial`; `--lang` selects `en` (default) or `cn`.
+- Topics: `config` (config reference), `ug` (user guide), `tutorial`; `--lang` selects `en` (default) or `cn`.
 - On a terminal the rendered guide opens in a pager with highlighting (`$PAGER`, falling back to `less`/`more`; `LESS=FRX` is defaulted when unset so colors survive `less`). When piped it prints in full without colors.
 - Invalid topic/language values are rejected by argument validation (exit 2).
 - Default output keeps the rendered unicode layout even when piped; `--plain` prints the raw markdown unchanged (script-friendly).

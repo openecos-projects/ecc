@@ -19,6 +19,6 @@ def test_wheel_ships_all_doc_guides(tmp_path):
 
     wheel = next(tmp_path.glob("ecc-*.whl"))
     names = zipfile.ZipFile(wheel).namelist()
-    for stem in ("config", "ug", "tutorial"):
+    for stem in ("config-ref", "user-guide", "tutorial"):
         for lang in ("en", "cn"):
-            assert f"chipcompiler/docs/ecc-cli-{stem}.{lang}.md" in names
+            assert f"chipcompiler/docs/ecc-{stem}.{lang}.md" in names

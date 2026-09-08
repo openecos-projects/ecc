@@ -12,7 +12,7 @@ def test_guides_root_points_at_repository_docs_in_dev_mode():
     repo_docs = Path(__file__).parents[2] / "chipcompiler" / "docs"
 
     assert guides_root() == repo_docs
-    assert (guides_root() / "ecc-cli-config.en.md").is_file()
+    assert (guides_root() / "ecc-config-ref.en.md").is_file()
 
 
 def test_all_topics_resolve_in_both_languages():
@@ -34,11 +34,11 @@ def test_doc_config_plain_is_byte_identical_to_the_guide_file(capsysbinary):
 
     out = capsysbinary.readouterr().out
     assert rc == 0
-    assert out == (guides_root() / "ecc-cli-config.en.md").read_bytes()
+    assert out == (guides_root() / "ecc-config-ref.en.md").read_bytes()
 
 
 def test_doc_plain_preserves_crlf_line_endings(tmp_path, monkeypatch, capsysbinary):
-    guide = tmp_path / "docs" / "ecc-cli-config.en.md"
+    guide = tmp_path / "docs" / "ecc-config-ref.en.md"
     guide.parent.mkdir()
     guide.write_bytes(b"# Packaged guide\r\n\r\ntext\r\n")
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
@@ -53,7 +53,7 @@ def test_doc_plain_preserves_crlf_line_endings(tmp_path, monkeypatch, capsysbina
 def test_rendered_output_survives_non_utf8_stdout_via_plain_fallback(tmp_path, monkeypatch, capsys):
     import io
 
-    guide = tmp_path / "docs" / "ecc-cli-config.en.md"
+    guide = tmp_path / "docs" / "ecc-config-ref.en.md"
     guide.parent.mkdir()
     guide.write_bytes("# Packaged guide\n\ntext with ünïcode\n".encode())
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
@@ -70,7 +70,7 @@ def test_rendered_output_survives_non_utf8_stdout_via_plain_fallback(tmp_path, m
 
 
 def test_doc_uses_packaged_docs_when_frozen(tmp_path, monkeypatch, capsys):
-    guide = tmp_path / "docs" / "ecc-cli-config.en.md"
+    guide = tmp_path / "docs" / "ecc-config-ref.en.md"
     guide.parent.mkdir()
     guide.write_text("# Packaged guide\n", encoding="utf-8")
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
@@ -89,7 +89,7 @@ def test_missing_guide_resource_fails_with_exit_1(tmp_path, monkeypatch, capsys)
 
     captured = capsys.readouterr()
     assert rc == 1
-    assert "Error: doc resource not found: ecc-cli-config.en.md" in captured.err
+    assert "Error: doc resource not found: ecc-config-ref.en.md" in captured.err
 
 
 def test_doc_chinese_language(capsys):
