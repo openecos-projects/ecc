@@ -443,6 +443,20 @@ def _run_project(
         return error("flow_range_requires_pair")
     if fresh_target and (command_input.resume or command_input.only is not None):
         return error("selector_requires_workspace")
+    if not fresh_target and ctx.project_state == "manifest" and cfg.manifest_driven:
+        return run_dispatch.dispatch_project_run(
+            command_input,
+            ctx,
+            cfg,
+            run_dir,
+            run_name,
+            cli_overrides,
+            flow_config,
+            project_state,
+            warning_records,
+            workspace_registered=workspace_registered,
+            execute_flow=execute_flow,
+        )
     errors = effective_config.validate_effective(
         ctx,
         cfg,
