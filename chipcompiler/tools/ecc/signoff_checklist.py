@@ -692,7 +692,7 @@ def rebuild_home_checklist(
         # Recover home.json files whose checklist path was cleared by an older
         # home.reset(); persist so later checklist updates resolve as well.
         checklist_path = workspace_dir / "home" / "checklist.json"
-        if workspace.home.path is not None:
+        if persist and workspace.home.path is not None:
             workspace.home.set_checklist(checklist_path)
     from chipcompiler.tools.ecc.checklist_render import render_checklist
 

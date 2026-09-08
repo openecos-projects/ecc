@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from chipcompiler.data import load_workspace
 from chipcompiler.engine import (
     EngineFlow,
     WorkspaceLifecycleError,
@@ -106,16 +107,23 @@ def test_read_workspace_configuration_does_not_materialize_missing_home_files(
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
     workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings)
     home_file = workspace.directory / "home" / "home.json"
+    checklist_file = workspace.directory / "home" / "checklist.json"
     log_dir = workspace.directory / "log"
     home_file.unlink()
+    checklist_file.unlink()
     if log_dir.exists():
         shutil.rmtree(log_dir)
     shutil.rmtree(Path(bindings["pdk"]["root"]))
 
     configuration = read_workspace_configuration_from_directory(workspace.directory)
+    readonly_workspace = load_workspace(workspace.directory, read_only=True)
+    from chipcompiler.tools.ecc.signoff_checklist import rebuild_home_checklist
+
+    rebuild_home_checklist(readonly_workspace, persist=False)
 
     assert configuration["workspaceSpec"]["pdk"]["familyId"] == "ics55"
     assert not home_file.exists()
+    assert not checklist_file.exists()
     assert not log_dir.exists()
 
 
