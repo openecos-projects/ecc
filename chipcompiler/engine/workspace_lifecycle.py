@@ -8,8 +8,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from chipcompiler.cli.project.params import build_backend_overrides, resolve_parameters
 from chipcompiler.data import PDK, create_workspace, get_pdk, load_workspace
+from chipcompiler.data.parameter_schema import build_backend_overrides, resolve_parameters
 from chipcompiler.engine.snapshot import create_engineering_snapshot
 from chipcompiler.engine.workspace_spec import validate_workspace_spec
 from chipcompiler.rtl2gds import get_flow_builders
@@ -83,6 +83,20 @@ def create_workspace_from_spec(
     bindings: object,
     command_id: str = "",
 ):
+    """Create a Workspace Spec target while serializing sibling creators."""
+    from chipcompiler.engine.reconcile import _workspace_lock
+
+    target = Path(target_directory).expanduser().resolve()
+    with _workspace_lock(target):
+        return _create_workspace_from_spec(target, spec, bindings, command_id)
+
+
+def _create_workspace_from_spec(
+    target_directory: str | Path,
+    spec: object,
+    bindings: object,
+    command_id: str = "",
+):
     target = Path(target_directory).expanduser().resolve()
     fingerprint = _workspace_command_fingerprint("create", spec, bindings)
     if target.exists():
@@ -122,9 +136,11 @@ def create_workspace_from_spec(
         }
     )
     flow_steps = get_flow_builders()[resolved["flow"]["flowId"]]()
+    flow_start = resolved["flow"].get("fromStepId")
+    flow_end = resolved["flow"].get("throughStepId")
     flow_config = {
-        "start_step": str(getattr(flow_steps[0][0], "value", flow_steps[0][0])),
-        "end_step": str(getattr(flow_steps[-1][0], "value", flow_steps[-1][0])),
+        "start_step": flow_start or str(getattr(flow_steps[0][0], "value", flow_steps[0][0])),
+        "end_step": flow_end or str(getattr(flow_steps[-1][0], "value", flow_steps[-1][0])),
     }
     pdk, pdk_root, pdk_overrides = _bound_pdk(
         resolved["pdk"], _string_keyed_dict(binding_map["pdk"])
@@ -167,6 +183,11 @@ def create_workspace_from_spec(
             raise WorkspaceLifecycleError(
                 "workspace_create_failed", f"Workspace creation failed: {target}"
             )
+        workspace.parameters.data["_input_mode"] = resolved["inputMode"]
+        from chipcompiler.data import save_parameter
+
+        if not save_parameter(workspace.parameters):
+            raise OSError(f"Failed to persist input mode: {workspace.parameters.path}")
         snapshot = create_engineering_snapshot(workspace)
         _write_workspace_command(
             target,
@@ -187,6 +208,24 @@ def create_workspace_from_spec(
 
 
 def update_workspace_from_spec(
+    target_directory: str | Path,
+    expected_workspace_revision: int,
+    spec: object,
+    bindings: object,
+    command_id: str = "",
+):
+    target = Path(target_directory).expanduser().resolve()
+    if not target.is_dir():
+        raise WorkspaceLifecycleError("workspace_missing", f"Workspace not found: {target}")
+    from chipcompiler.engine.reconcile import _workspace_lock
+
+    with _workspace_lock(target):
+        return _update_workspace_from_spec(
+            target, expected_workspace_revision, spec, bindings, command_id
+        )
+
+
+def _update_workspace_from_spec(
     target_directory: str | Path,
     expected_workspace_revision: int,
     spec: object,
