@@ -497,22 +497,24 @@ def refresh_step_checklist(workspace: Workspace, step: WorkspaceStep) -> bool:
 def _post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | None]:
     design = getattr(getattr(workspace, "design", None), "name", "") or ""
     golden = getattr(getattr(workspace, "design", None), "origin_verilog", None)
-    filler = None
+    gate = None
     workspace_dir = Path(workspace.directory) if getattr(workspace, "directory", None) else None
     flow = getattr(workspace, "flow", None)
     if workspace_dir is not None:
-        filler = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
+        # The canonical chain wires postRouteLec's gate input to the LVS
+        # output netlist (the step immediately before it), not the filler one.
+        gate = workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz"
         if flow is not None and flow.has_step(StepEnum.SYNTHESIS):
             golden = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
-    return golden, filler
+    return golden, gate
 
 
 def _requires_post_route_lec(workspace: Workspace) -> bool:
     flow = getattr(workspace, "flow", None)
-    if flow is None or not flow.has_step(StepEnum.FILLER):
+    if flow is None or not flow.has_step(StepEnum.LVS):
         return False
-    golden, filler = _post_route_lec_netlists(workspace)
-    return bool(golden and Path(golden).is_file() and filler and Path(filler).is_file())
+    golden, gate = _post_route_lec_netlists(workspace)
+    return bool(golden and Path(golden).is_file() and gate and Path(gate).is_file())
 
 
 def _flow_items(workspace: Workspace) -> list[dict]:

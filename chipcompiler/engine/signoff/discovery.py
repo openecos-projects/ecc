@@ -119,8 +119,8 @@ class CollectorDiscoveryMixin:
     def _requires_post_route_lec(
         self,
         golden_verilog: Path | None,
-        filler_verilog: Path | None,
+        gate_verilog: Path | None,
     ) -> bool:
         if golden_verilog is None or not Path(golden_verilog).is_file():
             return False
-        return bool(filler_verilog and Path(filler_verilog).is_file())
+        return bool(gate_verilog and Path(gate_verilog).is_file())

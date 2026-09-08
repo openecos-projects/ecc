@@ -202,7 +202,9 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
                         "blocked": True,
                         "summary": "drc_count=2 (required == 0)",
                         "source": {},
-                        "evidence": ["drc_ecc/analysis/qor_summary.json"],
+                        "evidence": [
+                            {"kind": "feature", "path": "drc_ecc/analysis/qor_summary.json"}
+                        ],
                     },
                     {
                         "id": "harden.gds",

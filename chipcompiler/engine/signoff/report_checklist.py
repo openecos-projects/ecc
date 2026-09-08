@@ -22,6 +22,15 @@ STATE_MARKS = {
 }
 
 
+def _evidence_path(entry) -> str | None:
+    """Schema-v3 evidence entries are {kind, path} objects; tolerate plain strings."""
+    if isinstance(entry, str):
+        return entry
+    if isinstance(entry, dict) and entry.get("path"):
+        return str(entry["path"])
+    return None
+
+
 @dataclasses.dataclass(frozen=True)
 class ChecklistItemView:
     id: str
@@ -85,7 +94,9 @@ def build_checklist_report(workspace) -> ChecklistReport:
                     raw.get("blocked", policy == "block" and state in ("failed", "unavailable"))
                 ),
                 summary=str(raw.get("summary") or raw.get("info") or ""),
-                evidence=tuple(e for e in evidence if isinstance(e, str))
+                evidence=tuple(
+                    entry for entry in (_evidence_path(e) for e in evidence) if entry is not None
+                )
                 if isinstance(evidence, list)
                 else (),
             )

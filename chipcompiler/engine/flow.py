@@ -437,8 +437,7 @@ class EngineFlow:
 
         # LEC is a netlist comparison step and does not expose an ECC DB
         # input. Keep any existing DB alive, but do not try to initialize one
-        # from the Yosys LEC workspace. A warned LEC is finished, so it is
-        # skipped above and never lands here.
+        # from the Yosys LEC workspace.
         if workspace_step is not None and workspace_step.tool == "yosys_lec":
             return True
 

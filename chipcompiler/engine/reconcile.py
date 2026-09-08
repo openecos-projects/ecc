@@ -234,9 +234,9 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
 
     if relation == "target_prefix":
         # The persisted flow already covers the target: no-op only when
-        # every step WITHIN the requested target range finished; a warned
-        # step is finished (non-blocking check), an unfinished one resumes.
-        # Steps beyond the target are never the run's business.
+        # every step WITHIN the requested target range finished; an
+        # unfinished one resumes. Steps beyond the target are never the
+        # run's business.
         from chipcompiler.data.step import FINISHED_STEP_STATES
 
         target_states = {

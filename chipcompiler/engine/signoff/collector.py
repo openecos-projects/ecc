@@ -126,7 +126,9 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         synthesis_verilog = self._synthesis_output_verilog() if has_synthesis else None
         lec_golden = synthesis_verilog or getattr(self.workspace.design, "origin_verilog", None)
         filler_verilog = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
-        require_lec = self._requires_post_route_lec(lec_golden, filler_verilog)
+        # The canonical chain wires postRouteLec's gate input to the LVS output.
+        lec_gate = workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz"
+        require_lec = self._requires_post_route_lec(lec_golden, lec_gate)
         required_steps = self._required_step_states(require_lec=require_lec)
         for step_name, state in required_steps.items():
             if state != StateEnum.Success.value:
@@ -394,7 +396,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             lec_status = lec_result_status(
                 lec_result,
                 golden_verilog=lec_golden,
-                gate_verilog=filler_verilog,
+                gate_verilog=lec_gate,
             )
             if lec_result.is_file() and lec_status != "proven":
                 missing_required.append("final/reports/postRouteLec/result.json")
