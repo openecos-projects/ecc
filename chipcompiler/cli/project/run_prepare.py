@@ -353,6 +353,9 @@ def execute_fresh_run(
         input_filelist = generated_filelist
         origin_verilog = ""
     parameters = to_parameters(cfg)
+    if uses_netlist_input:
+        # Preserve the creator's input role for Studio/CLI reopen symmetry.
+        parameters["_input_mode"] = "postSynthesis"
     pdk_root = resolve_pdk_root(cfg)
 
     if base is not None:

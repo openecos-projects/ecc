@@ -200,6 +200,27 @@ def test_manual_pdk_workspace_reopens_through_main_persistence(tmp_path):
     assert assess_execution_readiness(target, bindings) == {"ready": True}
 
 
+def test_partial_flow_spec_preserves_requested_boundaries(tmp_path, minimal_ics55_pdk_factory):
+    from chipcompiler.data import load_workspace
+    from chipcompiler.engine import create_workspace_from_spec
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    spec = deepcopy(payload["workspaceSpec"])
+    spec["flow"] = {
+        "flowId": "rtl2gds",
+        "fromStepId": "Synthesis",
+        "throughStepId": "lec",
+    }
+    spec["parameters"] = {"design.frequency_mhz": 200.0}
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings)
+
+    assert [step["name"] for step in load_workspace(workspace.directory).flow.steps()] == [
+        "Synthesis",
+        "lec",
+    ]
+
+
 def test_workspace_spec_update_is_atomic_revisioned_and_idempotent(
     tmp_path, minimal_ics55_pdk_factory
 ):

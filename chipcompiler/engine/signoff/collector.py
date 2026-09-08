@@ -578,6 +578,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         checklist_data = rebuild_home_checklist(
             self.workspace,
             resource_issues=[*issues, *analysis_issues],
+            persist=options.materialize,
         )
         add_file(
             "status.checklist",

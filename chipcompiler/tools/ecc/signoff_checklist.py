@@ -639,7 +639,9 @@ def _package_items(resource_issues) -> list[dict]:
     return items
 
 
-def rebuild_home_checklist(workspace: Workspace, resource_issues=None) -> dict:
+def rebuild_home_checklist(
+    workspace: Workspace, resource_issues=None, *, persist: bool = True
+) -> dict:
     """Replace the aggregate workspace checklist from current step snapshots."""
     workspace_directory = getattr(workspace, "directory", None)
     if not workspace_directory:
@@ -692,6 +694,17 @@ def rebuild_home_checklist(workspace: Workspace, resource_issues=None) -> dict:
         checklist_path = workspace_dir / "home" / "checklist.json"
         if workspace.home.path is not None:
             workspace.home.set_checklist(checklist_path)
-    checklist = Checklist(checklist_path)
-    checklist.replace(list(deduplicated.values()))
+    if persist:
+        checklist = Checklist(checklist_path)
+        checklist.replace(list(deduplicated.values()))
+    else:
+        # Build the same normalized payload without Checklist.__init__ or
+        # replace(), both of which intentionally write to home/checklist.json.
+        checklist = object.__new__(Checklist)
+        checklist.path = Path(checklist_path)
+        checklist.data = checklist._default_data()
+        checklist.data["checklist"] = [
+            checklist._normalize_item(item) for item in deduplicated.values()
+        ]
+        Checklist._refresh_summary(checklist.data)
     return checklist.data

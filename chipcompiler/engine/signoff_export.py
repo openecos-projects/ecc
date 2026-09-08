@@ -44,11 +44,23 @@ def export_signoff_package_archive(
 
         package_dir = Path(result.package_dir)
 
+        if additional_files is not None and not isinstance(additional_files, list):
+            raise SignoffExportError("additional_files must be a list")
         if additional_files:
             for file_info in additional_files:
-                p = package_dir / file_info["archivePath"]
-                p.parent.mkdir(parents=True, exist_ok=True)
-                p.write_text(file_info["content"], encoding="utf-8")
+                if not isinstance(file_info, dict):
+                    raise SignoffExportError("additional file entries must be objects")
+                archive_path = file_info.get("archivePath")
+                content = file_info.get("content")
+                if not isinstance(archive_path, str) or not archive_path:
+                    raise SignoffExportError("additional file entries require archivePath")
+                if not isinstance(content, str):
+                    raise SignoffExportError("additional file entries require string content")
+                path = _additional_file_path(package_dir, archive_path)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                if _has_symlink_parent(package_dir, path):
+                    raise SignoffExportError("additional file path contains a symlink")
+                path.write_text(content, encoding="utf-8")
 
         archive = package_dir.with_suffix(".tar.gz")
         import tarfile
@@ -70,3 +82,22 @@ def export_signoff_package_archive(
             staged_path.unlink(missing_ok=True)
 
     return str(destination)
+
+
+def _additional_file_path(package_dir: Path, archive_path: str) -> Path:
+    relative = Path(archive_path)
+    if not archive_path or relative.is_absolute() or ".." in relative.parts:
+        raise SignoffExportError("additional file path must stay inside the signoff package")
+    destination = (package_dir / relative).resolve()
+    if not destination.is_relative_to(package_dir.resolve()):
+        raise SignoffExportError("additional file path must stay inside the signoff package")
+    return destination
+
+
+def _has_symlink_parent(package_dir: Path, path: Path) -> bool:
+    current = package_dir
+    for component in path.relative_to(package_dir).parts:
+        current /= component
+        if current.is_symlink():
+            return True
+    return False

@@ -62,14 +62,28 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
 
     selected_step = normalize_flow_step(getattr(args, "step", None) or "").casefold()
     show_all = bool(getattr(args, "all", False))
+    preset = getattr(ctx.config, "flow_preset", "")
+    builder = get_flow_builders().get(preset)
+    flow_step_names = (
+        [normalize_flow_step(step).casefold() for step, _tool, _state in builder()]
+        if builder is not None
+        else []
+    )
+    flow_steps = set(flow_step_names)
+    first_flow_step = flow_step_names[0] if flow_step_names else ""
+    if selected_step and flow_steps and selected_step not in flow_steps:
+        return CommandResult.ok([])
     records = []
     for rp in resolved:
         s = rp.schema
+        applies = normalize_flow_step(s.applies).casefold()
+        if flow_steps and s.applies != "all" and applies not in flow_steps:
+            continue
         schema_steps = {
             normalize_flow_step(s.group).casefold(),
             normalize_flow_step(s.applies).casefold(),
         }
-        global_at_first_step = s.applies == "all" and selected_step == "synthesis"
+        global_at_first_step = s.applies == "all" and selected_step == first_flow_step
         if selected_step and selected_step not in schema_steps and not global_at_first_step:
             continue
         if not selected_step and not show_all and s.has_direct_target and not rp.is_explicit:
