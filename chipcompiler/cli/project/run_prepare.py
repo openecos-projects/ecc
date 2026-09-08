@@ -214,6 +214,7 @@ def execute_fresh_run(
     owns_target: bool,
     backup_path: str | None = None,
     ws_locks=None,
+    registration_created: bool = False,
     execute_flow: bool = True,
 ) -> CommandResult:
     """Create the workspace, seed it, execute the flow, and map the result.
@@ -306,6 +307,12 @@ def execute_fresh_run(
             # The target is genuinely gone: mark the entry failed. A restored
             # backup keeps its prior status — the refresh never happened.
             _write_back_status(project_dir, run_name, "failed", warning_records)
+        elif registration_created and backup_path is not None:
+            # This invocation pre-registered an undeclared workspace and then
+            # restored the previous tree: the fresh entry must not shadow it.
+            from chipcompiler.cli.project.manifest_write import remove_workspace_registration
+
+            remove_workspace_registration(project_dir, run_name)
         return _workspace_failed_result(run_name, run_dir, reason)
 
     from chipcompiler.cli.project.design_inputs import resolve_design_inputs

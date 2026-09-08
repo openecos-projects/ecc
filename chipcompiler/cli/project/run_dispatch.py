@@ -241,7 +241,11 @@ def dispatch_project_run(
         )
 
     def fresh_run(
-        *, owns_target: bool, backup_path: str | None = None, ws_locks=None
+        *,
+        owns_target: bool,
+        backup_path: str | None = None,
+        ws_locks=None,
+        registration_created: bool = False,
     ) -> CommandResult:
         return execute_fresh_run(
             command_input,
@@ -257,6 +261,7 @@ def dispatch_project_run(
             owns_target=owns_target,
             backup_path=backup_path,
             ws_locks=ws_locks,
+            registration_created=registration_created,
             execute_flow=execute_flow,
         )
 
@@ -295,6 +300,7 @@ def dispatch_project_run(
     # project-wide lock so a run never holds it for minutes.
     owns_target = False
     backup_path = None
+    created_registration = False
     ws_locks = contextlib.ExitStack()
     try:
         with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
@@ -344,6 +350,7 @@ def dispatch_project_run(
                             ]
                         )
                     workspace_registered = True
+                    created_registration = True
         if existing:
             # Manifest workspaces live outside runs/ — migration never moves
             # them, so the engine must not pin the shared lock for its whole
@@ -353,6 +360,7 @@ def dispatch_project_run(
             owns_target=owns_target,
             backup_path=backup_path,
             ws_locks=ws_locks,
+            registration_created=created_registration,
         )
     finally:
         ws_locks.close()

@@ -9,11 +9,35 @@ from chipcompiler.utility.file import write_text_atomic
 
 
 def _write_pdk_root(config_path: str, value: str) -> None:
-    """Set `root = "<value>"` under the existing [pdk] table, preserving layout."""
+    """Set `root = "<value>"` under the existing [pdk] table, preserving layout.
+
+    Raises OSError when the config cannot be read or replaced; handlers map
+    that to a structured config_error at the command boundary.
+    """
     with open(config_path) as f:
         original = f.read()
 
     write_text_atomic(config_path, set_pdk_root(original, value))
+
+
+def _write_root_or_error(config_path: str, value: str, project: str | None) -> CommandResult | None:
+    """Persist the PDK root; maps I/O failures to a structured config_error."""
+    from chipcompiler.cli.core.output import disclosure_cmd
+
+    try:
+        _write_pdk_root(config_path, value)
+    except OSError as exc:
+        return CommandResult.err(
+            [
+                error_record(
+                    "config_error",
+                    path=config_path,
+                    reason=str(exc),
+                    inspect=disclosure_cmd("ecc check", project),
+                )
+            ]
+        )
+    return None
 
 
 def _resolve_root_source(cfg, project_dir: str) -> tuple[str, str]:
@@ -159,7 +183,9 @@ def unset(command_input, ctx: CommandContext) -> CommandResult:
     config_path = find_config_path(ctx.project_dir)
     if config_path is None:
         return CommandResult.err([error_record("missing_config")])
-    _write_pdk_root(config_path, "")
+    error = _write_root_or_error(config_path, "", ctx.project)
+    if error is not None:
+        return error
     return CommandResult.ok(
         [
             {
@@ -296,7 +322,9 @@ def setup(command_input, ctx: CommandContext) -> CommandResult:
         actions.append("unzip")
         action_records.append({"pdk": "unzip", "status": "extracted", "path": path})
 
-    _write_pdk_root(config_path, path)
+    error = _write_root_or_error(config_path, path, ctx.project)
+    if error is not None:
+        return error
     summary = {
         "pdk": "setup",
         "status": "ready",

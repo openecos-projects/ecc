@@ -259,6 +259,27 @@ def write_back_workspace_status(project_dir: str, workspace_id: str, status: str
     return update_manifest(project_dir, mutate)
 
 
+def remove_workspace_registration(project_dir: str, workspace_id: str) -> bool:
+    """Roll back a pre-registration: drop the freshly added entry.
+
+    Used when an overwrite run against an undeclared workspace fails before
+    the replacement is constructed: the restored previous workspace must not
+    be shadowed by a stale ``not_started`` entry this invocation created.
+    """
+
+    def mutate(document: dict) -> None:
+        workspaces = document.get("workspaces")
+        if isinstance(workspaces, list):
+            document["workspaces"] = [
+                entry
+                for entry in workspaces
+                if not (isinstance(entry, dict) and entry.get("workspace_id") == workspace_id)
+            ]
+            document["updated_at"] = _now_iso()
+
+    return update_manifest(project_dir, mutate)
+
+
 def manifest_range_for_flow(cfg, flow_config: dict | None) -> tuple[str, str]:
     """Return the GUI manifest range for a workspace's effective target."""
     if isinstance(flow_config, dict) and flow_config.get("start_step"):

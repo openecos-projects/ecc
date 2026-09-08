@@ -219,9 +219,12 @@ def format_toml_value(val: object) -> str:
         items = ", ".join(format_toml_value(v) for v in val)
         return f"[{items}]"
     if isinstance(val, dict):
-        items = ", ".join(f'"{key}" = {format_toml_value(value)}' for key, value in val.items())
+        items = ", ".join(
+            f"{format_toml_value(str(key))} = {format_toml_value(value)}"
+            for key, value in val.items()
+        )
         return f"{{{items}}}"
-    return str(val)
+    raise ValueError(f"value has no TOML representation: {val!r}")
 
 
 # TODO: Move ecc.toml parameter editing into chipcompiler.data.project_config_edit
@@ -245,8 +248,11 @@ def set_scoped_key(text: str, target_table: str, name: str, value: object) -> st
 
     body_start, body_end = span
     section_body = text[body_start:body_end]
+    # Match assignments on the masked body: key-like text inside a multiline
+    # string must never be edited as if it were a real assignment.
+    masked_body = _mask_strings_and_comments(section_body)
     key_pattern = re.compile(rf"^(\s*){re.escape(name)}\s*=[^\n]*$", re.MULTILINE)
-    key_match = key_pattern.search(section_body)
+    key_match = key_pattern.search(masked_body)
 
     if key_match:
         indent = key_match.group(1)
@@ -270,8 +276,10 @@ def remove_scoped_key(text: str, target_table: str, name: str) -> str | None:
     section_body = text[body_start:body_end]
     # Match only the value's first line; _extend_multiline_value walks to the
     # true end of a multiline value, including its terminating newline.
+    # Assignments are located on the masked body (see set_scoped_key).
+    masked_body = _mask_strings_and_comments(section_body)
     key_pattern = re.compile(rf"^\s*{re.escape(name)}\s*=[^\n]*$", re.MULTILINE)
-    key_match = key_pattern.search(section_body)
+    key_match = key_pattern.search(masked_body)
     if not key_match:
         return None
 
@@ -302,8 +310,9 @@ def set_pdk_root(text: str, value: str) -> str:
 
     body_start, body_end = span
     section = text[body_start:body_end]
+    masked_section = _mask_strings_and_comments(section)
     key_pattern = re.compile(r"^(\s*)root\s*=[^\n]*$", re.MULTILINE)
-    key_match = key_pattern.search(section)
+    key_match = key_pattern.search(masked_section)
     if key_match:
         # Same value-range logic as set_scoped_key: a multiline value must
         # be replaced whole, never leaving its tail behind.

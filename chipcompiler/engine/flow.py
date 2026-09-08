@@ -670,6 +670,9 @@ class EngineFlow:
             started_at=start_time,
         )
         step_error = execution.error
+        # An infrastructure failure (missing binary, spawn error, nonzero
+        # exit) is distinct from a produced-but-failed check result.
+        tool_failed = step_error is not None
         elapsed = execution.elapsed_seconds
         peak_memory_mb = execution.peak_memory_mb
         runtime = execution.runtime
@@ -704,7 +707,14 @@ class EngineFlow:
 
                 save_layout_image(workspace=self.workspace, step=workspace_step)
 
-            if is_non_blocking_step(workspace_step) and state == StateEnum.Imcomplete:
+            # Only a completed-but-inequivalent LEC check is a non-blocking
+            # warning. An infrastructure failure (tool_failed) stays
+            # Incomplete and blocks the flow like any other step.
+            if (
+                is_non_blocking_step(workspace_step)
+                and state == StateEnum.Imcomplete
+                and not tool_failed
+            ):
                 state = StateEnum.Warning
                 # Warning is a terminal completion, not a failure: the
                 # observer must not retain a fatal tool error for it.
@@ -768,9 +778,6 @@ class EngineFlow:
                 runtime,
                 peak_memory_mb,
             )
-            if is_non_blocking_step(workspace_step):
-                state = StateEnum.Warning
-                step_error = None
             if flow_step is not None and not self.set_state(
                 name=workspace_step.name,
                 tool=workspace_step.tool,
