@@ -301,6 +301,18 @@ def test_collect_signoff_package_requires_synthesis_verilog(tmp_path):
     )
 
 
+def test_read_only_signoff_collection_does_not_rewrite_home_checklist(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    checklist = workspace_dir / "home" / "checklist.json"
+    before = file_digest(checklist)
+
+    _make_engine_flow(workspace_dir).collect_signoff_package(
+        SignoffPackageOptions(archive=False, materialize=False)
+    )
+
+    assert file_digest(checklist) == before
+
+
 def test_collect_signoff_package_rejects_stale_post_route_lec_proof(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
     gate = workspace_dir / "lvs_ecc" / "output" / "gcd_lvs.v.gz"

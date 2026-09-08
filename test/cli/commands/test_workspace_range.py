@@ -53,6 +53,7 @@ def test_new_workspace_range_uses_ecc_toml_inputs_and_registers_before_execution
     assert create_kwargs["directory"] == str(Path(project_dir) / "cts-only")
     assert create_kwargs["origin_def"] == str(design_def)
     assert create_kwargs["origin_verilog"] == str(netlist)
+    assert create_kwargs["parameters"]["_input_mode"] == "postSynthesis"
     assert create_kwargs["flow_config"] == {"start_step": "CTS", "end_step": "CTS"}
     manifest = json.loads((Path(project_dir) / "project.json").read_text())
     entry = manifest["workspaces"][0]
