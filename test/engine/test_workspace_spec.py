@@ -2,6 +2,8 @@ import json
 from copy import deepcopy
 from pathlib import Path
 
+import pytest
+
 from chipcompiler.engine.workspace_spec import (
     describe_workspace_spec,
     validate_workspace_spec,
@@ -149,3 +151,101 @@ def test_validated_workspace_spec_creates_main_compatible_workspace(
     assert reopened.design.name == "gcd"
     assert reopened.parameters.data["frequency_max"] == 200.0
     assert reopened.flow.steps()[0]["name"] == "Synthesis"
+
+
+def test_manual_pdk_workspace_reopens_through_main_persistence(tmp_path):
+    from chipcompiler.data import load_workspace
+    from chipcompiler.engine import (
+        assess_execution_readiness,
+        create_workspace_from_spec,
+        describe_workspace_binding_requirement,
+    )
+
+    rtl = tmp_path / "gcd.v"
+    rtl.write_text("module gcd(input clk); endmodule\n")
+    pdk_root = tmp_path / "pdk"
+    pdk_root.mkdir()
+    for name in ("tech.lef", "cells.lef", "typ.lib"):
+        (pdk_root / name).write_text(name)
+    spec = _valid_spec()
+    spec["flow"] = {"flowId": "syn_sta"}
+    spec["pdk"] = {
+        "familyId": "ics55",
+        "mode": "manual",
+        "files": [
+            {"fileId": "tech", "role": "tech"},
+            {"fileId": "cells", "role": "lef"},
+            {"fileId": "lib", "role": "liberty"},
+        ],
+    }
+    bindings = {
+        "inputs": {"rtl-main": str(rtl)},
+        "pdk": {
+            "root": str(pdk_root),
+            "files": {
+                "tech": str(pdk_root / "tech.lef"),
+                "cells": str(pdk_root / "cells.lef"),
+                "lib": str(pdk_root / "typ.lib"),
+            },
+        },
+    }
+    target = tmp_path / "workspace"
+
+    create_workspace_from_spec(target, spec, bindings)
+    reopened = load_workspace(target)
+
+    assert reopened.pdk.tech == pdk_root / "tech.lef"
+    assert reopened.pdk.lefs == [pdk_root / "cells.lef"]
+    assert describe_workspace_binding_requirement(target)["mode"] == "manual"
+    assert assess_execution_readiness(target, bindings) == {"ready": True}
+
+
+def test_workspace_spec_update_is_atomic_revisioned_and_idempotent(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    from chipcompiler.engine import (
+        WorkspaceLifecycleError,
+        create_workspace_from_spec,
+        update_workspace_from_spec,
+    )
+    from chipcompiler.engine.snapshot import read_engineering_snapshot
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    created = create_workspace_from_spec(target, payload["workspaceSpec"], bindings, "create-1")
+    before = read_engineering_snapshot(created)
+    updated_spec = deepcopy(payload["workspaceSpec"])
+    updated_spec["parameters"]["design.frequency_mhz"] = 250.0
+
+    updated = update_workspace_from_spec(
+        target,
+        before["workspaceRevision"],
+        updated_spec,
+        bindings,
+        "update-1",
+    )
+    after = read_engineering_snapshot(updated)
+    repeated = update_workspace_from_spec(
+        target,
+        before["workspaceRevision"],
+        updated_spec,
+        bindings,
+        "update-1",
+    )
+
+    assert after["workspaceId"] == before["workspaceId"]
+    assert after["workspaceRevision"] == before["workspaceRevision"] + 1
+    assert read_engineering_snapshot(repeated) == after
+    assert repeated.parameters.data["frequency_max"] == 250.0
+
+    with pytest.raises(WorkspaceLifecycleError) as conflict:
+        update_workspace_from_spec(
+            target,
+            before["workspaceRevision"],
+            payload["workspaceSpec"],
+            bindings,
+            "update-2",
+        )
+    assert conflict.value.code == "revision_conflict"
+    assert read_engineering_snapshot(repeated) == after

@@ -17,6 +17,7 @@ from .workspace_lifecycle import (
     assess_execution_readiness,
     create_workspace_from_spec,
     describe_workspace_binding_requirement,
+    update_workspace_from_spec,
 )
 from .workspace_spec import describe_workspace_spec, validate_workspace_spec
 
@@ -39,6 +40,7 @@ __all__ = [
     "read_step_configuration_from_directory",
     "read_workspace_configuration",
     "read_workspace_configuration_from_directory",
+    "update_workspace_from_spec",
     "update_workspace_step_configuration",
     "update_workspace_configuration",
     "validate_workspace_spec",

@@ -1,5 +1,8 @@
+import ctypes
+import errno
 import hashlib
 import json
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -26,7 +29,7 @@ def describe_workspace_binding_requirement(
     return {
         "familyId": workspace.pdk.name,
         "version": workspace.pdk.version or "unversioned",
-        "mode": "default",
+        "mode": "manual" if workspace.parameters.data.get("pdk_config") else "default",
     }
 
 
@@ -44,7 +47,12 @@ def assess_execution_readiness(
     if not isinstance(root, str) or not Path(root).is_dir():
         return {"ready": False, "code": "pdk_binding_missing"}
     try:
-        get_pdk(workspace.pdk.name, pdk_root=root).validate()
+        if workspace.parameters.data.get("pdk_config"):
+            if workspace.pdk.root is None or Path(root).resolve() != workspace.pdk.root.resolve():
+                return {"ready": False, "code": "pdk_binding_mismatch"}
+            workspace.pdk.validate()
+        else:
+            get_pdk(workspace.pdk.name, pdk_root=root).validate()
     except (OSError, ValueError):
         return {"ready": False, "code": "pdk_binding_mismatch"}
     return {"ready": True}
@@ -57,7 +65,12 @@ def apply_workspace_bindings(workspace, bindings: object) -> None:
     if not isinstance(root, str) or not Path(root).is_dir():
         raise WorkspaceLifecycleError("pdk_binding_missing", "PDK binding root is required")
     sdc, spef = workspace.pdk.sdc, workspace.pdk.spef
-    workspace.pdk = get_pdk(workspace.pdk.name, pdk_root=root)
+    if workspace.parameters.data.get("pdk_config"):
+        if workspace.pdk.root is None or Path(root).resolve() != workspace.pdk.root.resolve():
+            raise WorkspaceLifecycleError("pdk_binding_mismatch", "PDK binding root does not match")
+        workspace.pdk.validate()
+    else:
+        workspace.pdk = get_pdk(workspace.pdk.name, pdk_root=root)
     workspace.pdk.sdc, workspace.pdk.spef = sdc, spef
     from chipcompiler.data import refresh_workspace_config
 
@@ -118,12 +131,19 @@ def create_workspace_from_spec(
     )
 
     generated_filelist: str | None = None
+    generated_pdk_config: str | None = None
     if len(rtl_paths) > 1:
         with tempfile.NamedTemporaryFile(
             "w", encoding="utf-8", suffix=".f", delete=False
         ) as handle:
             handle.write("\n".join(rtl_paths) + "\n")
             generated_filelist = handle.name
+    if isinstance(pdk, PDK):
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", suffix=".json", delete=False
+        ) as handle:
+            json.dump(_pdk_config(pdk), handle)
+            generated_pdk_config = handle.name
 
     try:
         workspace = create_workspace(
@@ -136,8 +156,9 @@ def create_workspace_from_spec(
             golden_verilog=input_paths.get("goldenNetlist", ""),
             sdc=input_paths.get("sdc", ""),
             spef=input_paths.get("spef", ""),
-            pdk=pdk,
+            pdk=pdk.name if isinstance(pdk, PDK) else pdk,
             pdk_root=pdk_root,
+            pdk_json=generated_pdk_config or "",
             pdk_overrides=pdk_overrides,
             parameters=backend_parameters,
             flow_config=flow_config,
@@ -161,6 +182,78 @@ def create_workspace_from_spec(
     finally:
         if generated_filelist is not None:
             Path(generated_filelist).unlink(missing_ok=True)
+        if generated_pdk_config is not None:
+            Path(generated_pdk_config).unlink(missing_ok=True)
+
+
+def update_workspace_from_spec(
+    target_directory: str | Path,
+    expected_workspace_revision: int,
+    spec: object,
+    bindings: object,
+    command_id: str = "",
+):
+    from chipcompiler.engine.snapshot import ensure_engineering_snapshot
+
+    target = Path(target_directory).expanduser().resolve()
+    fingerprint = _workspace_command_fingerprint(
+        "update", spec, bindings, expected_workspace_revision
+    )
+    if command_id and _command_retry_matches(target, command_id, fingerprint):
+        return _load_committed_workspace(target)
+    current = _load_committed_workspace(target)
+    snapshot = ensure_engineering_snapshot(current)
+    if snapshot["workspaceRevision"] != expected_workspace_revision:
+        raise WorkspaceLifecycleError(
+            "revision_conflict",
+            "Workspace Revision does not match",
+            {
+                "expectedWorkspaceRevision": expected_workspace_revision,
+                "actualWorkspaceRevision": snapshot["workspaceRevision"],
+            },
+        )
+
+    staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=target.parent))
+    staging.rmdir()
+    try:
+        staged = create_workspace_from_spec(staging, spec, bindings)
+        create_engineering_snapshot(
+            staged,
+            workspace_id=snapshot["workspaceId"],
+            workspace_revision=snapshot["workspaceRevision"] + 1,
+            cause="workspace.updated",
+        )
+        _copy_workspace_commands(target, staging)
+        _write_workspace_command(
+            staging,
+            command_id,
+            fingerprint,
+            snapshot["workspaceId"],
+            snapshot["workspaceRevision"] + 1,
+        )
+        _rewrite_workspace_paths(staging, target)
+        _exchange_directories(target, staging)
+        try:
+            return _load_committed_workspace(target)
+        except Exception:
+            _exchange_directories(target, staging)
+            raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+def _pdk_config(pdk: PDK) -> dict[str, Any]:
+    return {
+        "name": pdk.name,
+        "version": pdk.version,
+        "root": str(pdk.root or ""),
+        "tech": str(pdk.tech or ""),
+        "lefs": [str(path) for path in pdk.lefs],
+        "libs": [str(path) for path in pdk.libs],
+        "mapping_file": str(pdk.mapping_file or ""),
+        "dont_use": pdk.dont_use,
+        "abc_load": pdk.abc_load,
+    }
 
 
 def _bound_pdk(spec: dict, binding: dict) -> tuple[PDK | str, str, dict | None]:
@@ -271,3 +364,45 @@ def _write_workspace_command(
     }
     if not json_write(path / "home" / "workspace-commands.json", payload):
         raise OSError("Failed to persist Workspace command ledger")
+
+
+def _copy_workspace_commands(source: Path, destination: Path) -> None:
+    source_path = source / "home" / "workspace-commands.json"
+    if source_path.is_file():
+        shutil.copy2(source_path, destination / "home" / "workspace-commands.json")
+
+
+def _rewrite_workspace_paths(source_root: Path, target_root: Path) -> None:
+    from chipcompiler.utility import json_write
+
+    source = str(source_root)
+    target = str(target_root)
+    for path in source_root.rglob("*.json"):
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        rewritten = _replace_string_prefix(value, source, target)
+        if rewritten != value and not json_write(path, rewritten):
+            raise OSError(f"Failed to rewrite staged Workspace path: {path}")
+
+
+def _replace_string_prefix(value: Any, source: str, target: str) -> Any:
+    if isinstance(value, str):
+        return target + value[len(source) :] if value.startswith(source) else value
+    if isinstance(value, list):
+        return [_replace_string_prefix(item, source, target) for item in value]
+    if isinstance(value, dict):
+        return {key: _replace_string_prefix(item, source, target) for key, item in value.items()}
+    return value
+
+
+def _exchange_directories(left: Path, right: Path) -> None:
+    libc = ctypes.CDLL(None, use_errno=True)
+    renameat2 = getattr(libc, "renameat2", None)
+    if os.name != "posix" or renameat2 is None:
+        raise OSError(errno.ENOTSUP, "atomic Workspace Update is unavailable")
+    if renameat2(-100, os.fsencode(left), -100, os.fsencode(right), 2) == 0:
+        return
+    error = ctypes.get_errno()
+    raise OSError(error, os.strerror(error))
