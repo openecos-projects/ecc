@@ -9,7 +9,7 @@ def inspect(command_input, ctx: CommandContext) -> CommandResult:
     if failure is not None:
         return failure
 
-    from chipcompiler.runtime.signoff_export import inspect_signoff_package
+    from chipcompiler.engine.signoff_export import inspect_signoff_package
 
     review = inspect_signoff_package(workspace)
     project = ctx.project
@@ -56,17 +56,18 @@ def export(command_input, ctx: CommandContext) -> CommandResult:
     if failure is not None:
         return failure
 
-    from chipcompiler.runtime.workspace_api import RuntimeApiError
-
     try:
-        from chipcompiler.runtime.signoff_export import export_signoff_package_archive
+        from chipcompiler.engine.signoff_export import (
+            SignoffExportError,
+            export_signoff_package_archive,
+        )
 
         output_path = export_signoff_package_archive(
             workspace,
             command_input.output_path,
             include_debug=command_input.include_debug,
         )
-    except RuntimeApiError as exc:
+    except SignoffExportError as exc:
         return CommandResult.err(
             [
                 error_record(

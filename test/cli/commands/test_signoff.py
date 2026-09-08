@@ -63,7 +63,7 @@ REVIEW = {
 
 def _patch_inspect(monkeypatch, review=REVIEW):
     monkeypatch.setattr(
-        "chipcompiler.runtime.signoff_export.inspect_signoff_package",
+        "chipcompiler.engine.signoff_export.inspect_signoff_package",
         lambda workspace: review,
     )
 
@@ -85,7 +85,7 @@ def _patch_export(monkeypatch, destination="/tmp/pkg.tar.gz", error=None):
         return destination
 
     monkeypatch.setattr(
-        "chipcompiler.runtime.signoff_export.export_signoff_package_archive", fake_export
+        "chipcompiler.engine.signoff_export.export_signoff_package_archive", fake_export
     )
     return calls
 
@@ -226,13 +226,13 @@ class TestSignoffExport:
     def test_export_incomplete_maps_to_error(
         self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub, plain_records
     ):
-        from chipcompiler.runtime.workspace_api import RuntimeApiError
+        from chipcompiler.engine.signoff_export import SignoffExportError
 
         project_dir = create_cli_project()
         os.makedirs(os.path.join(project_dir, "default"))
         _patch_export(
             monkeypatch,
-            error=RuntimeApiError("command_failed", "signoff package is incomplete: x"),
+            error=SignoffExportError("signoff package is incomplete: x"),
         )
 
         rc = cli_main.run(
