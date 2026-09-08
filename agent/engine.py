@@ -10,7 +10,7 @@ from chipcompiler.engine.flow import (
     _wait_for_step_rendered,
 )
 from chipcompiler.engine.step_execution import get_process_rss_mb, track_current_process_memory
-from chipcompiler.utility.log import redirect_stdio_to_file
+from chipcompiler.utility.log import redirect_stdio_to_file, stdio_redirect_lock
 
 from .plot import _is_candidate_workspace
 from .sta_parallel import track_sta_process_memory
@@ -102,7 +102,13 @@ class AgentEngineFlow(EngineFlow):
         try:
             log_file = os.path.abspath(log_file)
             os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
-            redirect_stdio_to_file(log_file)
+            # ponytail: fd-level redirect is process-global; the lock only
+            # keeps the dup2+rebind atomic across concurrent candidate steps.
+            # A parent-process print during an overlap may still land in the
+            # other candidate's log; step tools inherit fds at spawn, so
+            # per-candidate tool logs stay correctly routed.
+            with stdio_redirect_lock:
+                redirect_stdio_to_file(log_file)
         except Exception:
             traceback.print_exc()
 

@@ -54,6 +54,17 @@ def _stable_hash(value) -> str:
     return f"sha256:{sha256(payload).hexdigest()}"
 
 
+def candidate_operation_workspace_id(workspace_id: str, candidate_id: str) -> str:
+    """Stable operation identity of one isolated candidate workspace.
+
+    Candidate reruns register their operation under the cloned candidate's own
+    identity instead of the source workspace id, so sibling candidates get
+    independent execution lifecycles while the source workspace keeps its
+    exclusive active-operation slot for real source mutations.
+    """
+    return f"{workspace_id}::candidate::{candidate_id}"
+
+
 def _parameter_unit(knob_id: str) -> str:
     if knob_id.endswith("routability_opt"):
         return "boolean"
@@ -140,19 +151,19 @@ class FlowAgentRuntimeApi:
 
     def candidate_rerun(self, request: CandidateRerunRequest) -> dict:
         _validate_candidate_rerun_request(request)
-        self.ecc_api._get_session(request.workspace_id)
+        session = self.ecc_api._get_session(request.workspace_id)
+        self._reject_active_source_operation(request.workspace_id)
         try:
             return self.ecc_api.operations.start(
-                workspace_id=request.workspace_id,
+                workspace_id=candidate_operation_workspace_id(
+                    request.workspace_id, request.candidate_id
+                ),
                 kind="candidate_rerun",
                 origin="agent",
                 rerun=True,
                 step=request.target_step,
                 idempotency_key=request.idempotency_key,
-                runner=lambda observer: self._with_workspace_lock(
-                    request.workspace_id,
-                    lambda session: self._candidate_rerun(session, request, observer),
-                ),
+                runner=lambda observer: self._candidate_rerun(session, request, observer),
             )
         except RuntimeOperationConflict as exc:
             raise RuntimeApiError("command_failed", str(exc)) from exc
@@ -168,16 +179,17 @@ class FlowAgentRuntimeApi:
         parent = None
         flow = None
         try:
-            preflight_done = self._preflight_candidate_rerun_before_clone(
-                session.workspace, request
+            # Snapshot phase: preflight and clone the verified parent under the
+            # source mutation lock so the parent cannot mutate mid-copy.
+            preflight_done, candidate_workspace, candidate_root_ref, parent = (
+                self._with_workspace_lock(
+                    request.workspace_id,
+                    lambda locked: self._clone_candidate_snapshot(locked, request),
+                )
             )
-            candidate_workspace, candidate_root_ref, parent = _create_candidate_workspace(
-                self.ecc_api,
-                session.workspace,
-                request.candidate_id,
-                request.parent_candidate_root_ref,
-                request.target_step,
-            )
+            # Execution phase: the clone owns an isolated lifecycle and never
+            # holds the source lock, so sibling candidates and source
+            # operations can run while these steps execute.
             flow = self._build_flow(candidate_workspace, create_step_workspaces=False)
             create_step_workspaces = getattr(flow, "create_step_workspaces", None)
             if callable(create_step_workspaces):
@@ -230,6 +242,36 @@ class FlowAgentRuntimeApi:
         finally:
             if flow is not None:
                 self.ecc_api._close_transient_flow_db(flow)
+
+    def _clone_candidate_snapshot(self, session, request: CandidateRerunRequest):
+        preflight_done = self._preflight_candidate_rerun_before_clone(session.workspace, request)
+        cloned = _create_candidate_workspace(
+            self.ecc_api,
+            session.workspace,
+            request.candidate_id,
+            request.parent_candidate_root_ref,
+            request.target_step,
+        )
+        return (preflight_done, *cloned)
+
+    def _reject_active_source_operation(self, workspace_id: str) -> None:
+        """Keep parent snapshot preparation exclusive with source operations.
+
+        Isolated candidates execute concurrently under their own operation
+        identity, but cloning a verified parent refuses while the source
+        workspace owns an active operation; the agent retries the same
+        idempotent start once the source is idle.
+        """
+        operations = self.ecc_api.operations.workspace_snapshot(workspace_id)["operations"]
+        active = next(
+            (operation for operation in operations if operation.get("shutdownBarrier")),
+            None,
+        )
+        if active is not None:
+            raise RuntimeApiError(
+                "command_failed",
+                f"workspace already has an active operation: {active.get('operationId', '')}",
+            )
 
     def _build_flow(self, workspace, *, create_step_workspaces: bool = True):
         try:

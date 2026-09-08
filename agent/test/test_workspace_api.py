@@ -1048,3 +1048,208 @@ def _wait_for_terminal(operations, operation_id, expected_state="succeeded"):
             return status
         deadline.wait(0.01)
     raise AssertionError("candidate operation did not reach a terminal state")
+
+
+def _seed_candidate_source_workspace(tmp_path: Path) -> tuple[Path, Path, object]:
+    flow_data = {
+        "steps": [
+            {"name": "Floorplan", "tool": "ecc", "state": "Success"},
+            {"name": "place", "tool": "dreamplace", "state": "Success"},
+            {"name": "CTS", "tool": "ecc", "state": "Success"},
+            {"name": "Harden", "tool": "ecc", "state": "Success"},
+        ]
+    }
+    flow_path = tmp_path / "home" / "flow.json"
+    flow_path.parent.mkdir()
+    flow_path.write_text(json.dumps(flow_data), encoding="utf-8")
+    config_path = tmp_path / "config" / "dreamplace.json"
+    config_path.parent.mkdir()
+    config_path.write_text('{"target_density": 0.5}\n', encoding="utf-8")
+    for directory in (
+        tmp_path / "place_dreamplace" / "output",
+        tmp_path / "CTS_ecc" / "output",
+        tmp_path / "Harden_ecc" / "output",
+    ):
+        directory.mkdir(parents=True)
+        (directory / "stale").write_text("stale", encoding="utf-8")
+    workspace = SimpleNamespace(
+        directory=tmp_path,
+        flow=SimpleNamespace(data=flow_data, path=flow_path),
+    )
+    return flow_path, config_path, workspace
+
+
+def _fake_candidate_flow_factory(flows: list):
+    def build_flow(candidate_workspace, *, create_step_workspaces=True):
+        assert create_step_workspaces is False
+        root = Path(candidate_workspace.directory)
+        flow = _Flow(
+            candidate_workspace,
+            (
+                SimpleNamespace(name="Floorplan", tool="ecc", output={}),
+                SimpleNamespace(
+                    name="place",
+                    tool="dreamplace",
+                    output=EccOutput(dir=root / "place_dreamplace" / "output"),
+                    analysis={"dir": root / "place_dreamplace" / "analysis"},
+                ),
+                SimpleNamespace(
+                    name="CTS",
+                    tool="ecc",
+                    output={"dir": root / "CTS_ecc" / "output"},
+                ),
+                SimpleNamespace(
+                    name="Harden",
+                    tool="ecc",
+                    output=EccOutput(
+                        dir=root / "Harden_ecc" / "output",
+                        gds=root / "Harden_ecc" / "output" / "gcd_Harden.gds",
+                        lef=root / "Harden_ecc" / "output" / "gcd_Harden.lef",
+                        lib=root / "Harden_ecc" / "output" / "gcd_Harden.lib",
+                    ),
+                ),
+            ),
+        )
+        flows.append(flow)
+        return flow
+
+    return build_flow
+
+
+def test_two_isolated_candidates_execute_concurrently_without_touching_the_source(
+    monkeypatch, tmp_path
+):
+    flow_path, config_path, workspace = _seed_candidate_source_workspace(tmp_path)
+    parent_flow_bytes = flow_path.read_bytes()
+    api = FlowAgentRuntimeApi(_EccApi(workspace))
+    flows = []
+    monkeypatch.setattr(
+        "agent.workspace_api.build_agent_flow_for_workspace",
+        _fake_candidate_flow_factory(flows),
+    )
+    monkeypatch.setattr(
+        "agent.workspace_api.bind_candidate_input",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "agent.workspace_api.materialize_candidate_config",
+        lambda candidate_workspace, _target, patch, _candidate: (
+            Path(candidate_workspace.directory) / "config" / "dreamplace.json"
+        ).write_text(
+            json.dumps(
+                {
+                    "random_seed": 17,
+                    patch[0]["knob_id"].removeprefix("place."): patch[0]["value"],
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        ),
+    )
+    monkeypatch.setattr(
+        "agent.workspace_api.validate_candidate_step_contract",
+        lambda _ws, _target: "candidate",
+    )
+    monkeypatch.setattr(
+        "agent.workspace_api.reapply_candidate_input_binding",
+        lambda *_args, **_kwargs: None,
+    )
+    executing_roots = []
+    step_barrier = threading.Barrier(2, timeout=30)
+
+    def run_candidate_step(flow, step, *, observer):
+        if step.name == "Harden":
+            # Both candidates must be inside step execution at the same
+            # moment; a serialized backend times the barrier out and fails
+            # both operations instead of passing silently.
+            step_barrier.wait()
+            executing_roots.append(Path(flow.workspace.directory).name)
+            for artifact in (step.output.gds, step.output.lef, step.output.lib):
+                Path(artifact).write_text(step.name, encoding="utf-8")
+
+    monkeypatch.setattr("agent.workspace_api._run_candidate_step", run_candidate_step)
+
+    first = api.candidate_rerun(
+        CandidateRerunRequest(
+            workspace_id="workspace-1",
+            target_step="place",
+            end_step="Harden",
+            candidate_id="candidate-1",
+            patch=[{"knob_id": "place.target_density", "value": 0.6}],
+            execution_scope="full_flow",
+            idempotency_key="episode-1.intervention-1",
+            context_sha256=CONTEXT_SHA256,
+            parameter_card_sha256=CONTEXT_SHA256,
+            seed=17,
+        )
+    )
+    second = api.candidate_rerun(
+        CandidateRerunRequest(
+            workspace_id="workspace-1",
+            target_step="place",
+            end_step="Harden",
+            candidate_id="candidate-2",
+            patch=[{"knob_id": "place.routability_opt", "value": True}],
+            execution_scope="full_flow",
+            idempotency_key="episode-1.intervention-2",
+            context_sha256=CONTEXT_SHA256,
+            parameter_card_sha256=CONTEXT_SHA256,
+            seed=17,
+        )
+    )
+    assert first["operationId"] != second["operationId"]
+    # Isolated candidate operations never occupy the source workspace slot,
+    # so plain source operations stay available while candidates execute.
+    assert api.ecc_api.operations.workspace_snapshot("workspace-1")["operations"] == []
+    _wait_for_terminal(api.ecc_api.operations, first["operationId"])
+    _wait_for_terminal(api.ecc_api.operations, second["operationId"])
+    assert sorted(executing_roots) == ["candidate-1", "candidate-2"]
+    for candidate in ("candidate-1", "candidate-2"):
+        candidate_root = tmp_path / ".agent" / "candidates" / candidate
+        assert (candidate_root / "analysis" / "candidate_workspace.v1.json").is_file()
+        assert (candidate_root / "Harden_ecc" / "output" / "gcd_Harden.gds").is_file()
+    assert flow_path.read_bytes() == parent_flow_bytes
+    assert config_path.read_text(encoding="utf-8") == '{"target_density": 0.5}\n'
+    assert (tmp_path / "place_dreamplace" / "output" / "stale").is_file()
+
+
+def test_candidate_snapshot_refuses_while_a_source_operation_is_active(tmp_path):
+    flow_path, _config_path, workspace = _seed_candidate_source_workspace(tmp_path)
+    api = FlowAgentRuntimeApi(_EccApi(workspace))
+    release = threading.Event()
+
+    def source_runner(observer):
+        release.wait(30)
+        return {}
+
+    source = api.ecc_api.operations.start(
+        workspace_id="workspace-1",
+        kind="flow",
+        origin="gui",
+        rerun=False,
+        step="",
+        idempotency_key="gui-flow-1",
+        runner=source_runner,
+    )
+    try:
+        with pytest.raises(RuntimeApiError) as excinfo:
+            api.candidate_rerun(
+                CandidateRerunRequest(
+                    workspace_id="workspace-1",
+                    target_step="place",
+                    end_step="Harden",
+                    candidate_id="candidate-1",
+                    patch=[{"knob_id": "place.target_density", "value": 0.6}],
+                    execution_scope="full_flow",
+                    idempotency_key="episode-1.intervention-1",
+                    context_sha256=CONTEXT_SHA256,
+                    parameter_card_sha256=CONTEXT_SHA256,
+                    seed=17,
+                )
+            )
+        assert "already has an active operation" in str(excinfo.value)
+        assert not (tmp_path / ".agent" / "candidates" / "candidate-1").exists()
+    finally:
+        release.set()
+        _wait_for_terminal(api.ecc_api.operations, source["operationId"])

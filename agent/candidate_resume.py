@@ -32,24 +32,25 @@ from .workspace_api import (
     _required_file_sha256,
     _run_candidate_step,
     _workspace_state_sha256,
+    candidate_operation_workspace_id,
 )
 
 
 def candidate_resume(api, request: CandidateResumeRequest) -> dict:
     _validate_candidate_resume_request(request)
-    api.ecc_api._get_session(request.workspace_id)
+    session = api.ecc_api._get_session(request.workspace_id)
+    api._reject_active_source_operation(request.workspace_id)
     try:
         return api.ecc_api.operations.start(
-            workspace_id=request.workspace_id,
+            workspace_id=candidate_operation_workspace_id(
+                request.workspace_id, request.candidate_id
+            ),
             kind="candidate_resume",
             origin="agent",
             rerun=True,
             step="Harden",
             idempotency_key=request.idempotency_key,
-            runner=lambda observer: api._with_workspace_lock(
-                request.workspace_id,
-                lambda session: _candidate_resume(api, session, request, observer),
-            ),
+            runner=lambda observer: _candidate_resume(api, session, request, observer),
         )
     except RuntimeOperationConflict as exc:
         raise RuntimeApiError("command_failed", str(exc)) from exc
@@ -61,8 +62,14 @@ def _candidate_resume(api, session, request: CandidateResumeRequest, observer) -
     resume_step = None
     evidence_ready = False
     try:
-        candidate_workspace, manifest, parent = _load_candidate_resume(
-            api.ecc_api, session.workspace, request.candidate_id
+        # Snapshot phase: load and verify the existing candidate under the
+        # source mutation lock; execution then proceeds in the isolated
+        # candidate workspace without holding the source lock.
+        candidate_workspace, manifest, parent = api._with_workspace_lock(
+            request.workspace_id,
+            lambda locked: _load_candidate_resume(
+                api.ecc_api, locked.workspace, request.candidate_id
+            ),
         )
         flow = api._build_flow(candidate_workspace, create_step_workspaces=False)
         create_step_workspaces = getattr(flow, "create_step_workspaces", None)
