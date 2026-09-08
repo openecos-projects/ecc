@@ -6,7 +6,6 @@ from chipcompiler.cli.command_handlers import pdk as pdk_handlers
 from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import (
     PdkSetRootInput,
-    PdkSetupInput,
     PdkShowInput,
     PdkUnsetInput,
     output_options,
@@ -23,26 +22,6 @@ pdk_app = create_app(help="Show and configure the PDK path used by this project"
 
 def _finish(subcommand: str, command_input, handler) -> None:
     execute_command("pdk", command_input, handler, render_key=f"pdk:{subcommand}")
-
-
-@pdk_app.command("setup", help="Clone + make unzip a PDK checkout, then set it as root")
-def setup_cmd(
-    *,
-    path: Annotated[
-        str | None,
-        typer.Argument(
-            help="PDK checkout path (default: ~/.local/icsprout55-pdk); cloned when missing",
-        ),
-    ] = None,
-    project: ProjectOption = None,
-    plain: PlainOption = False,
-) -> None:
-    command_input = PdkSetupInput(
-        output=output_options(plain=plain),
-        project=project_options(project),
-        path=path,
-    )
-    _finish("setup", command_input, pdk_handlers.setup)
 
 
 @pdk_app.command("set-root")

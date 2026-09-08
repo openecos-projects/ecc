@@ -91,10 +91,9 @@ tar -xzf oss-cad-suite-*.tgz -C ~/.local && mv ~/.local/oss-cad-suite* ~/.local/
 export CHIPCOMPILER_OSS_CAD_DIR=~/.local/oss-cad-suite
 ```
 
-也可以在建项目后用 CLI 自带的 PDK 子命令接入（二选一）：
+也可以在建项目后用 CLI 自带的 PDK 子命令接入已就绪的 PDK：
 
 ```bash
-ecc pdk setup                    # clone + make unzip + 接入，一条到位
 ecc pdk set-root ~/pdk/icsprout55-pdk   # 已就绪的 PDK 直接接入（写入 ecc.toml）
 ecc pdk show                     # 查看生效的 PDK root 与来源
 ecc pdk unset                    # 清除 ecc.toml 的 pdk.root，回落到环境变量/仓库默认
@@ -140,7 +139,7 @@ $ ecc doctor
   ...
 ```
 
-必需项（yosys、yosys-slang、ecc-tools、dreamplace、sizer、pdk）全部 `pass` 后，`ecc doctor` 才会成功。就绪的 Sizer 同时需要可执行文件和 runtime root。完整 `rtl2gds` 流包含 Timing optimization 步骤；新建或 `--overwrite` 的 `rtl2gds` 会在启动预检中检查 Sizer，缺失时以 `env_not_ready` 失败。已有 workspace 或 `--workspace` 重跑不预检，缺 Sizer 时仍可能在流中段失败。缺组件时按 `ecc doctor` 的 remediation 提示补齐（如 `ecc pdk setup`，或重新运行 §2.1 安装脚本加 `--with-toolchain`）。
+必需项（yosys、yosys-slang、ecc-tools、dreamplace、sizer、pdk）全部 `pass` 后，`ecc doctor` 才会成功。就绪的 Sizer 同时需要可执行文件和 runtime root。完整 `rtl2gds` 流包含 Timing optimization 步骤；新建或 `--overwrite` 的 `rtl2gds` 会在启动预检中检查 Sizer，缺失时以 `env_not_ready` 失败。已有 workspace 或 `--workspace` 重跑不预检，缺 Sizer 时仍可能在流中段失败。缺组件时按 `ecc doctor` 的 remediation 提示补齐（如重新运行 §2.1 安装脚本加 `--with-toolchain`）。
 
 ## 3. 创建第一个项目
 
@@ -704,7 +703,7 @@ ecc config --plain      # 项目级配置（键值 + 解析后绝对路径）
 | `[error] set_requires_fresh_run` | 对已有 workspace 用 `--set` | `--set` 只在新建时生效；改用 `--overwrite` 或新 `--workspace` |
 | run 汇总带 `warning: ecc.toml values override different project.json base values`（`config_layer_diverged`） | `ecc.toml` 与首次运行记录到 `project.json` 的基线实际不一致：`pdk.root` 解析到了与首次运行不同的 PDK（如环境变量改指向），或 `flow.preset` 与 workspace 声明的范围不一致（如用 `--preset synthesis_lec` 建的 workspace 配 `rtl2gds` 的 ecc.toml） | 不影响执行结果，可忽略；对齐两边即消失（`ecc pdk set-root` 或修正 `flow.preset`） |
 | `[error] signoff_incomplete`（export 时） | 必需交付物缺失（如某步失败） | `ecc signoff inspect` 看 blocked 项；`ecc status`/`ecc log` 排查失败步骤后重跑 |
-| `ecc check` 报 `pdk.root is required` | 未找到 PDK | `ecc pdk setup` 或 `ecc pdk set-root <路径>`，或设 `CHIPCOMPILER_ICS55_PDK_ROOT` |
+| `ecc check` 报 `pdk.root is required` | 未找到 PDK | `ecc pdk set-root <路径>` 或设 `CHIPCOMPILER_ICS55_PDK_ROOT` |
 | PDK liberty 缺失 | 只 clone 了 PDK 没下数据 | `make -C ~/.local/icsprout55-pdk unzip`（可加 `USE_PROXY=true GH_PROXY=...`） |
 | 下载超时 | 网络受限 | 重试安装脚本；或按 §2.3 手动安装（PDK 的 `make unzip` 支持 `USE_PROXY=true GH_PROXY=...`） |
 | doctor 显示 `sizer: fail` | 必需的 Sizer 组件未安装 | `ecc doctor` 返回非零。完整 `rtl2gds` 链含 Timing optimization 步骤，运行前应安装 Sizer。按 remediation 提示源码构建 |

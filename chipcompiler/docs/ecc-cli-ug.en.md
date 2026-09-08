@@ -805,17 +805,16 @@ Priority: CLI `--set` > `ecc.toml` `[params.*]` > template defaults. `pdk.*` pat
 
 ## 10. pdk — PDK path configuration
 
-Two ways to attach a PDK: `ecc pdk setup` does everything (auto clone + `make unzip`,
-skipping downloads for an already-complete checkout), or `ecc pdk set-root` wires in
-a ready-made checkout directly — `[pdk] root` in `ecc.toml` (the path is expanded to
+The PDK itself comes from the install script (`--with-toolchain`; see the
+tutorial) or a manual clone. Wire a ready checkout into the project with
+`ecc pdk set-root` — `[pdk] root` in `ecc.toml` (the path is expanded to
 absolute form; the directory must already exist). Incomplete contents (e.g.
 `make unzip` not run yet) do not block the setting — a hint is emitted instead:
 
 All `pdk` subcommands accept `--project DIR` and `--plain`.
 
 ```bash
-ecc pdk setup [~/pdk/icsprout55-pdk]     # all-in-one: clone (if missing) -> make unzip (if liberty missing, honors GH_PROXY + retries) -> wire in; defaults to ~/.local/icsprout55-pdk
-ecc pdk set-root ~/pdk/icsprout55-pdk   # wire in only (for an already-ready PDK)
+ecc pdk set-root ~/pdk/icsprout55-pdk   # wire in a ready PDK checkout
 ecc pdk show                             # effective root, its source (ecc.toml / env / repo default), contents check
 ecc pdk unset                            # clear root; falls back to env vars / repo default
 ecc pdk set-root /bad/path               # -> [error] invalid_pdk_path (not a directory)

@@ -91,10 +91,9 @@ tar -xzf oss-cad-suite-*.tgz -C ~/.local && mv ~/.local/oss-cad-suite* ~/.local/
 export CHIPCOMPILER_OSS_CAD_DIR=~/.local/oss-cad-suite
 ```
 
-Alternatively, hook the PDK up with the CLI's own `pdk` subcommands after creating a project:
+Alternatively, wire a provisioned PDK into a project with the CLI's own `pdk` subcommands:
 
 ```bash
-ecc pdk setup                    # clone + make unzip + wire up, all in one
 ecc pdk set-root ~/pdk/icsprout55-pdk   # attach an already-provisioned PDK (written to ecc.toml)
 ecc pdk show                     # show the effective PDK root and where it came from
 ecc pdk unset                    # clear pdk.root in ecc.toml (falls back to env vars / repo default)
@@ -140,7 +139,7 @@ $ ecc doctor
   ...
 ```
 
-All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, and pdk) must `pass` before `ecc doctor` succeeds. A ready Sizer has both its executable and runtime root. The complete `rtl2gds` flow contains Timing optimization; fresh or `--overwrite` `rtl2gds` targets check Sizer during startup preflight and return `env_not_ready` when it is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail mid-flow. When a component is missing, follow the `ecc doctor` remediation hint (e.g. `ecc pdk setup`, or re-run the §2.1 installer with `--with-toolchain`).
+All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, and pdk) must `pass` before `ecc doctor` succeeds. A ready Sizer has both its executable and runtime root. The complete `rtl2gds` flow contains Timing optimization; fresh or `--overwrite` `rtl2gds` targets check Sizer during startup preflight and return `env_not_ready` when it is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail mid-flow. When a component is missing, follow the `ecc doctor` remediation hint (e.g. re-run the §2.1 installer with `--with-toolchain`).
 
 ## 3. Creating Your First Project
 
@@ -705,7 +704,7 @@ ecc config --plain      # project-level config (key=value + resolved absolute pa
 | `[error] set_requires_fresh_run` | `--set` used on an existing workspace | `--set` applies only at creation; use `--overwrite` or a new `--workspace` instead |
 | run summary carries `warning: ecc.toml values override different project.json base values` (`config_layer_diverged`) | `ecc.toml` effectively disagrees with the baseline the first run recorded in `project.json`: `pdk.root` resolves to a different PDK than the first run used (e.g. the env var was repointed), or `flow.preset` differs from the workspace's declared range (e.g. a workspace created with `--preset synthesis_lec` under an `rtl2gds` ecc.toml) | does not affect the run result — safe to ignore; aligning the two sides makes it go away (`ecc pdk set-root`, or fix `flow.preset`) |
 | `[error] signoff_incomplete` (at export) | required deliverables missing (e.g. a failed step) | `ecc signoff inspect` for blocked items; debug with `ecc status`/`ecc log`, then rerun |
-| `ecc check` reports `pdk.root is required` | no PDK found | `ecc pdk setup` or `ecc pdk set-root <path>`, or set `CHIPCOMPILER_ICS55_PDK_ROOT` |
+| `ecc check` reports `pdk.root is required` | no PDK found | `ecc pdk set-root <path>` or set `CHIPCOMPILER_ICS55_PDK_ROOT` |
 | PDK liberty missing | PDK cloned without data files | `make -C ~/.local/icsprout55-pdk unzip` (add `USE_PROXY=true GH_PROXY=...` if needed) |
 | Downloads time out | restricted network | retry the installer; or install manually per §2.3 (the PDK's `make unzip` supports `USE_PROXY=true GH_PROXY=...`) |
 | doctor shows `sizer: fail` | required Sizer component not installed | `ecc doctor` exits non-zero. The complete `rtl2gds` chain contains Timing optimization, so install Sizer before running it. Build ecc-sizer per the remediation hint |

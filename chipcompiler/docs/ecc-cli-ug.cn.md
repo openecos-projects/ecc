@@ -763,13 +763,12 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ## 10. pdk — PDK 路径配置
 
-接入 PDK 有两条路：`ecc pdk setup` 一条到位（自动 clone + `make unzip`，已就绪的目录则跳过下载只接入），或对已就绪的 PDK 用 `ecc pdk set-root` 直接接入（写入 `ecc.toml` 的 `[pdk] root`，自动展开为绝对路径；目录必须已存在）。内容不完整（如还没 `make unzip`）不阻断设置，会给出提示：
+PDK 本体由安装脚本（`--with-toolchain`，见教程）或手动 clone 获取。已就绪的 PDK 用 `ecc pdk set-root` 接入（写入 `ecc.toml` 的 `[pdk] root`，自动展开为绝对路径；目录必须已存在）。内容不完整（如还没 `make unzip`）不阻断设置，会给出提示：
 
 全部 `pdk` 子命令都支持 `--project DIR` 和 `--plain`。
 
 ```bash
-ecc pdk setup [~/pdk/icsprout55-pdk]     # 一条到位：clone（缺时）→ make unzip（缺 liberty 时，支持 GH_PROXY+重试）→ 接入；缺省装到 ~/.local/icsprout55-pdk
-ecc pdk set-root ~/pdk/icsprout55-pdk   # 仅设置（已就绪的 PDK）
+ecc pdk set-root ~/pdk/icsprout55-pdk   # 接入已就绪的 PDK checkout
 ecc pdk show                             # 查看生效 root 与来源（ecc.toml / 环境变量 / 仓库默认）及内容校验
 ecc pdk unset                            # 清空 root，回落环境变量 / 仓库默认
 ecc pdk set-root /bad/path               # → [error] invalid_pdk_path（目录不存在）

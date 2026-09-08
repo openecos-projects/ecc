@@ -84,13 +84,6 @@ class PdkSetRootInput:
 
 
 @dataclass(frozen=True)
-class PdkSetupInput:
-    output: OutputOptions
-    project: ProjectOptions = ProjectOptions()
-    path: str | None = None
-
-
-@dataclass(frozen=True)
 class PdkShowInput:
     output: OutputOptions
     project: ProjectOptions = ProjectOptions()
