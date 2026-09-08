@@ -192,7 +192,7 @@ ecc log --project gcd
 
 ## 参与贡献
 
-欢迎贡献！配置说明请参阅 [开发指南](docs/development.cn.md)。
+欢迎贡献！贡献规则与评审要求见 [CONTRIBUTING.md](CONTRIBUTING.md)，环境搭建见 [开发指南](docs/development.cn.md)。
 
 ## 致谢
 

@@ -198,7 +198,9 @@ The full guides ship with the CLI and work offline: `ecc doc ug` (user guide,
 
 ## Contributing
 
-Contributions welcome! See [Development Guide](docs/development.md) for setup instructions.
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for the rules
+and review expectations, and the [Development Guide](docs/development.md) for
+setup instructions.
 
 ## Acknowledgments
 

@@ -107,7 +107,13 @@ uv run prek install
 
 This registers both the `pre-commit` stage (ruff lint + ruff format) and the
 `commit-msg` stage (conventional commit message check) from
-`.pre-commit-config.yaml`.
+`.pre-commit-config.yaml` (via its `default_install_hook_types`). If hooks
+were already installed — or an older install lacks the commit-msg hook —
+reinstall explicitly with:
+
+```bash
+uv run prek install --config .pre-commit-config.yaml --hook-type pre-commit --hook-type commit-msg --overwrite
+```
 
 ## Testing
 

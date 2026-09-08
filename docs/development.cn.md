@@ -96,7 +96,11 @@ uv run isort chipcompiler/ test/
 uv run prek install
 ```
 
-这会注册 `.pre-commit-config.yaml` 中的 `pre-commit` 阶段（ruff lint + ruff format）和 `commit-msg` 阶段（约定式提交检查）。
+这会注册 `.pre-commit-config.yaml` 中的 `pre-commit` 阶段（ruff lint + ruff format）和 `commit-msg` 阶段（约定式提交检查）（由其 `default_install_hook_types` 声明）。如果已装过钩子——或旧安装缺 commit-msg 钩子——用显式命令重装：
+
+```bash
+uv run prek install --config .pre-commit-config.yaml --hook-type pre-commit --hook-type commit-msg --overwrite
+```
 
 ## 测试
 
