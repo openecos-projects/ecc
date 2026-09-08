@@ -1,4 +1,5 @@
 import json
+import re
 from importlib import metadata
 
 import pytest
@@ -33,6 +34,21 @@ def test_root_help_returns_zero_and_lists_commands(capsys):
         assert command in out
     for removed_command in ("metrics", "artifacts", "diagnose"):
         assert removed_command not in out
+
+
+def test_root_help_lists_doc_right_after_version(capsys):
+    rc = cli_main.run(["--help"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    # Command rows look like "│ <name>   <help>"; wrapped help lines start
+    # with whitespace after the border and never match this pattern.
+    order = [
+        match.group(1)
+        for line in out.splitlines()
+        if (match := re.match(r"^│ (\w[\w-]*)  +\S", line))
+    ]
+    assert order[:3] == ["version", "doc", "layout-image"]
 
 
 def test_root_version_returns_single_line(capsys):
