@@ -536,6 +536,9 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
 
 
 def run_analysis(workspace: Workspace, step: EccStep, subflow: EccSubFlow):
+    if not workspace.parameters.data.get("run_analysis", True):
+        return
+
     # save metrics
     build_step_metrics(workspace=workspace, step=step, subflow=subflow)
 

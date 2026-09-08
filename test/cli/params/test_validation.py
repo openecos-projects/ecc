@@ -90,6 +90,45 @@ class TestNativeTomlTypeValidation:
         assert rc == 0
 
 
+class TestBoolParamValidation:
+    def _append_flow_param(self, create_cli_project, value):
+        project_dir = create_cli_project()
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            content = f.read()
+        content += f"\n[params.flow]\nrun_analysis = {value}\n"
+        with open(toml_path, "w") as f:
+            f.write(content)
+        return project_dir
+
+    def test_check_rejects_bad_bool_string(self, tmp_path, capsys, create_cli_project):
+        project_dir = self._append_flow_param(create_cli_project, '"maybe"')
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        assert rc == 1
+        data = json.loads(capsys.readouterr().out)
+        reasons = [r.get("reason", "") for r in data["records"]]
+        assert any("params" in r for r in reasons)
+
+    def test_bool_like_string_accepted_and_coerced(
+        self, tmp_path, capsys, monkeypatch, create_cli_project
+    ):
+        project_dir = self._append_flow_param(create_cli_project, '"false"')
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: [],
+        )
+        rc = cli_main.run(["check", "--project", project_dir, "--json"])
+        assert rc == 0
+        capsys.readouterr()
+        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        records = [r for r in data["records"] if r.get("key") == "flow.run_analysis"]
+        assert len(records) == 1
+        assert records[0]["value"] is False
+        assert records[0]["source"] == "ecc.toml"
+
+
 class TestParamHandlersRejectInvalidToml:
     """Param list/show/diff must return errors when ecc.toml has invalid [params.*]."""
 

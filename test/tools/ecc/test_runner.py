@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -99,6 +100,29 @@ class FakeSubFlow:
 
     def update_step(self, **kwargs):
         self.updates.append(kwargs)
+
+
+@pytest.mark.parametrize(
+    ("parameters", "expected_calls"),
+    [({}, 1), ({"run_analysis": True}, 1), ({"run_analysis": False}, 0)],
+)
+def test_run_analysis_switch(parameters, expected_calls, tmp_path, monkeypatch):
+    workspace = Workspace(directory=tmp_path, parameters=Parameters(data=parameters))
+    step = EccStep(name=StepEnum.FLOORPLAN.value)
+    metrics = Mock()
+    plotter = Mock()
+    checklist = Mock()
+    monkeypatch.setattr(ecc_runner, "build_step_metrics", metrics)
+    monkeypatch.setattr(ecc_runner, "ECCToolsPlot", plotter)
+    monkeypatch.setattr(ecc_runner, "EccChecklist", checklist)
+
+    ecc_runner.run_analysis(workspace=workspace, step=step, subflow=FakeSubFlow())
+
+    assert metrics.call_count == expected_calls
+    assert plotter.call_count == expected_calls
+    assert plotter.return_value.plot.call_count == expected_calls
+    assert checklist.call_count == expected_calls
+    assert checklist.return_value.check.call_count == expected_calls
 
 
 class FakeCtsModule:

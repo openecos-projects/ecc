@@ -5,6 +5,7 @@ from chipcompiler.cli.project.params import (
     ParamSchema,
     ResolvedParam,
     build_backend_overrides,
+    coerce_manifest_parameters,
     is_known_key,
     list_groups,
     lookup_schema,
@@ -29,6 +30,7 @@ REQUIRED_KEYS = [
     "place.routability_opt",
     "route.bottom_layer",
     "route.top_layer",
+    "flow.run_analysis",
 ]
 
 
@@ -103,6 +105,7 @@ class TestSchemaRegistry:
         assert "cts" in groups
         assert "place" in groups
         assert "route" in groups
+        assert "flow" in groups
 
 
 class TestValueParsing:
@@ -273,6 +276,19 @@ class TestSourceAwareResolution:
         resolved, errors = resolve_parameters(toml_overrides=toml)
         assert len(errors) > 0
 
+    def test_manifest_bool_string_coerced(self):
+        manifest = {"flow.run_analysis": "false"}
+        resolved, errors = resolve_parameters(manifest_overrides=manifest)
+        assert errors == []
+        rp = next(r for r in resolved if r.param == "flow.run_analysis")
+        assert rp.value is False
+        assert rp.source == "project.json"
+
+    def test_manifest_bad_bool_produces_error(self):
+        manifest = {"flow.run_analysis": "maybe"}
+        resolved, errors = resolve_parameters(manifest_overrides=manifest)
+        assert len(errors) > 0
+
 
 class TestBackendMapping:
     def test_flat_key_mapping(self):
@@ -322,6 +338,18 @@ class TestBackendMapping:
         )
         result = build_backend_overrides([rp])
         assert result == {"top_layer": "MET4"}
+
+    def test_flow_bool_top_level_mapping(self):
+        schema = lookup_schema("flow.run_analysis")
+        rp = ResolvedParam(
+            param="flow.run_analysis",
+            value=False,
+            default=True,
+            source="cli",
+            schema=schema,
+        )
+        result = build_backend_overrides([rp])
+        assert result == {"run_analysis": False}
 
     def test_default_values_excluded(self):
         resolved, _ = resolve_parameters()
@@ -388,3 +416,59 @@ class TestTomlParams:
         table = {"place": "not_a_table"}
         flat, errors = parse_toml_params(table)
         assert len(errors) > 0
+
+
+class TestManifestCoercion:
+    def test_bool_string_coerced(self):
+        canonical = {"run_analysis": "false", "frequency_max": 100}
+        coerced, errors = coerce_manifest_parameters(canonical)
+        assert errors == []
+        assert coerced["run_analysis"] is False
+
+    def test_bad_bool_value_preserved_with_error(self):
+        canonical = {"run_analysis": "maybe"}
+        coerced, errors = coerce_manifest_parameters(canonical)
+        assert coerced["run_analysis"] == "maybe"
+        assert len(errors) == 1
+        assert "expected bool for flow.run_analysis" in errors[0]
+
+    def test_explicit_none_reported_as_type_error(self):
+        canonical = {"run_analysis": None}
+        coerced, errors = coerce_manifest_parameters(canonical)
+        assert coerced["run_analysis"] is None
+        assert len(errors) == 1
+        assert "NoneType" in errors[0]
+
+    def test_skip_params_bypassed(self):
+        canonical = {"run_analysis": "maybe"}
+        coerced, errors = coerce_manifest_parameters(
+            canonical, skip_params=frozenset({"flow.run_analysis"})
+        )
+        assert errors == []
+        assert coerced["run_analysis"] == "maybe"
+
+    def test_unknown_keys_pass_through(self):
+        canonical = {"custom_key": "false"}
+        coerced, errors = coerce_manifest_parameters(canonical)
+        assert errors == []
+        assert coerced == {"custom_key": "false"}
+
+    def test_nested_coercion_does_not_mutate_input(self):
+        canonical = {"core": {"utilitization": 1}, "frequency_max": 100}
+        coerced, errors = coerce_manifest_parameters(canonical)
+        assert errors == []
+        assert isinstance(coerced["core"]["utilitization"], float)
+        assert isinstance(canonical["core"]["utilitization"], int)
+
+    def test_huge_int_degrades_to_error(self):
+        canonical = {"frequency_max": 10**400}
+        coerced, errors = coerce_manifest_parameters(canonical)
+        assert coerced["frequency_max"] == 10**400
+        assert len(errors) == 1
+        assert "too large to represent" in errors[0]
+
+    def test_absent_keys_untouched(self):
+        canonical = {"design": "gcd"}
+        coerced, errors = coerce_manifest_parameters(canonical)
+        assert errors == []
+        assert coerced == {"design": "gcd"}
