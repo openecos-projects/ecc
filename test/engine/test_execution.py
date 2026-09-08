@@ -48,3 +48,30 @@ def test_execution_failure_keeps_main_blocking_semantics():
 
     assert not result.succeeded
     assert result.state == StateEnum.Imcomplete.value
+
+
+def test_default_execution_observer_commits_completed_steps(monkeypatch, tmp_path):
+    from chipcompiler.engine import execution
+
+    committed = []
+
+    class Flow:
+        workspace = SimpleNamespace(directory=tmp_path)
+
+        def run_steps(self, *, rerun=False, observer=None):
+            observer.on_step_completed(SimpleNamespace(name="synthesis"), StateEnum.Success)
+            return True
+
+    monkeypatch.setattr(
+        execution,
+        "_EngineeringCommitSink",
+        lambda workspace: SimpleNamespace(
+            snapshot={"workspaceId": "workspace-1", "workspaceRevision": 1},
+            on_step_completed=lambda step, state, error=None: committed.append((step.name, state)),
+        ),
+    )
+
+    result = execution.execute(Flow(), execution.ExecutionPlan(intent="run"))
+
+    assert result.succeeded
+    assert committed == [("synthesis", StateEnum.Success)]

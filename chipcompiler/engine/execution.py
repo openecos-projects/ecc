@@ -61,7 +61,7 @@ class _EngineeringCommitSink:
         self.workspace = workspace
         self.snapshot = ensure_engineering_snapshot(workspace)
 
-    def commit_step(self, _step: Any, state: Any, _error: str | None = None) -> None:
+    def on_step_completed(self, _step: Any, state: Any, _error: str | None = None) -> None:
         from chipcompiler.engine.snapshot import commit_engineering_snapshot
 
         self.snapshot = commit_engineering_snapshot(
