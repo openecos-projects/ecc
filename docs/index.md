@@ -11,10 +11,9 @@ The `ecc` command-line tool ships bilingual guides (`.en.md` / `.cn.md`):
   - First project, the 15-step `rtl2gds` flow, signoff package, and reports
   - Tuning parameters, workspaces, and rerun scenarios
 - **[CLI User Guide](../chipcompiler/docs/ecc-user-guide.en.md)** / **[中文用户指南](../chipcompiler/docs/ecc-user-guide.cn.md)** - All currently supported commands
-  - Every command and option: `init`/`check`/`run`/`status`/`log`/`config`/`doctor`/`param`/`pdk`/`project`/`workspace`/`signoff`/`report`/`rpc`/`layout-image`
+  - Every command and option: `init`/`check`/`run`/`status`/`log`/`config`/`doctor`/`param`/`pdk`/`project`/`workspace`/`signoff`/`report`/`layout-image`
   - Run selectors (`--resume`/`--from`/`--to`/`--only`), error-code reference, end-to-end workflows
 - **[CLI Config Reference](../chipcompiler/docs/ecc-config-ref.en.md)** / **[中文配置参考](../chipcompiler/docs/ecc-config-ref.cn.md)** - `ecc.toml`, workspace files, and the parameter system
-- **[RPC Guide](rpc-guide.md)** - Private JSON-RPC runtime sidecar protocol (`ecc rpc serve`)
 
 ## Core Documentation
 
@@ -56,7 +55,6 @@ ChipCompiler supports various EDA file formats. Technical specifications for par
 - **Look up an `ecc` command or option** → [CLI User Guide](../chipcompiler/docs/ecc-user-guide.en.md) / [中文用户指南](../chipcompiler/docs/ecc-user-guide.cn.md)
 - **Understand `ecc.toml` / workspace files / parameters** → [CLI Config Reference](../chipcompiler/docs/ecc-config-ref.en.md) / [中文配置参考](../chipcompiler/docs/ecc-config-ref.cn.md)
 - **Extend the CLI with new commands** → [CLI Dev Guide](development.md#extending-the-cli)
-- **Use legacy workspace commands** → [RPC Guide](rpc-guide.md)
 - **Set up development environment** → [Development Guide](development.md)
 - **Create a release** → [Release Guide](release.md)
 - **Add new tools** → [Development Guide - Adding EDA Tools](development.md#add-a-new-eda-tool)

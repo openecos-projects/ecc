@@ -136,7 +136,6 @@ Current implementation status:
 | `ecc report summary/qor/checklist/step` | `--plain` |
 | `ecc doc` | `--plain` |
 | `ecc version` | hidden `--json` only (desktop app contract) |
-| `ecc rpc serve` | none (machine protocol) |
 | `ecc layout-image` | none (tool invocation; produces a file) |
 
 When `--plain` is given, the implementation renders plain records; otherwise it
@@ -294,10 +293,10 @@ The command graph follows these rules; new commands must follow them too:
   registration in `cli/commands/`, framework in `cli/core/`, read-only probing
   in `cli/inspection/`, all rendering in `cli/rendering/` behind a single
   registry keyed by full command path (top-level name, or `group:sub`).
-- **Frozen surfaces.** The GUI invokes `ecc rpc serve --stdio
-  [--persistent-db]`, `ecc version --json` (schema: `schema_version`, `runtime`,
-  `ecc`, `dreamplace`, `ecc_tools`, `tools`), the `ecc --version` single line,
-  and `ecc layout-image --gds <gds> --image <png>` as subprocess contracts.
+- **Frozen surfaces.** The GUI invokes `ecc version --json` (schema:
+  `schema_version`, `runtime`, `ecc`, `dreamplace`, `ecc_tools`, `tools`), the
+  `ecc --version` single line, and
+  `ecc layout-image --gds <gds> --image <png>` as subprocess contracts.
   Additive optional flags are allowed; these names, flags, and output schemas
   must not change.
 
@@ -426,56 +425,6 @@ version` prints fixed-order text lines for `ecc`, `dreamplace`, `ecc_tools`, and
 `ecc`, `dreamplace`, and `ecc_tools` fields. Missing distribution metadata is
 reported as `unknown`, except the `ecc` field may fall back to the source
 package `__version__`.
-
-### Runtime Sidecar RPC
-
-The old workspace create/run compatibility commands are not exposed as a public
-CLI namespace. The supported runtime session surface is the private stdio
-sidecar:
-
-```bash
-ecc rpc serve --stdio
-ecc rpc serve --stdio --persistent-db
-```
-
-The sidecar uses JSON-RPC 2.0 payloads framed with `Content-Length` headers.
-After `workspace.create` or `workspace.open`, follow-up calls use the returned
-`workspaceId` rather than repeatedly passing the workspace directory. The
-default sidecar does not advertise or persist native DB handles.
-
-First-slice runtime methods include:
-
-```text
-rpc.hello
-rpc.ping
-rpc.shutdown
-workspace.create
-workspace.open
-workspace.close
-workspace.home
-workspace.info
-workspace.refresh_config
-workspace.sync_config
-workspace.reset_flow
-flow.run
-flow.run_step
-```
-
-`--persistent-db` is an opt-in process capability. When enabled, `rpc.hello`
-also advertises:
-
-```text
-db.ensure
-db.release
-```
-
-These DB methods are not part of the default first-slice method list. They start
-and stop session-scoped DB reuse explicitly; `workspace.open`,
-`workspace.create`, `flow.run`, and `flow.run_step` must not start persistent DB
-reuse for a session that has not called `db.ensure`.
-
-The former custom workspace JSON object is not part of the supported output
-contract. See `docs/rpc-guide.md` for framing examples and method payloads.
 
 ## Output Contracts
 
@@ -727,7 +676,6 @@ Success criteria:
 - [x] `ecc config`
 - [x] Managed workspace selection for inspection commands with `--workspace NAME`
 - [x] Parameter overrides with `ecc param` and `ecc run --set`
-- [x] Private runtime sidecar under `ecc rpc serve --stdio`
 - [ ] Run tags and run comparison basics
 
 Success criteria:

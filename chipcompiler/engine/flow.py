@@ -805,7 +805,7 @@ def _finalize_interrupted_subflow(
     peak_memory_mb: float,
 ) -> None:
     try:
-        from chipcompiler.runtime.subflow_events import finalize_interrupted_subflow
+        from chipcompiler.engine.subflow_events import finalize_interrupted_subflow
 
         for subflow_step in finalize_interrupted_subflow(
             workspace_step,

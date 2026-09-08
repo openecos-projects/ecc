@@ -12,7 +12,6 @@ from chipcompiler.cli.commands.pdk import pdk_app
 from chipcompiler.cli.commands.project import register_project_commands
 from chipcompiler.cli.commands.project_config import project_app
 from chipcompiler.cli.commands.report import report_app
-from chipcompiler.cli.commands.rpc import rpc_app
 from chipcompiler.cli.commands.signoff import signoff_app
 from chipcompiler.cli.commands.workspace import workspace_app
 from chipcompiler.cli.core.apps import create_app
@@ -82,7 +81,6 @@ app.add_typer(project_app, name="project")
 app.add_typer(workspace_app, name="workspace")
 app.add_typer(signoff_app, name="signoff")
 app.add_typer(report_app, name="report")
-app.add_typer(rpc_app, name="rpc")
 
 
 def invoke_typer_app(argv: Sequence[str]) -> int:

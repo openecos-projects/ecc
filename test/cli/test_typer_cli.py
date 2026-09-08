@@ -29,7 +29,6 @@ def test_root_help_returns_zero_and_lists_commands(capsys):
         "workspace",
         "signoff",
         "report",
-        "rpc",
     ):
         assert command in out
     for removed_command in ("metrics", "artifacts", "diagnose"):
@@ -208,19 +207,11 @@ def test_run_set_remains_repeatable(monkeypatch, tmp_path):
     }
 
 
-def test_rpc_routes_through_root_typer(monkeypatch):
-    seen = {}
-
-    def fake_invoke(argv):
-        seen["argv"] = argv
-        return 17
-
-    monkeypatch.setattr("chipcompiler.cli.app.invoke_typer_app", fake_invoke)
-
+def test_removed_rpc_command_returns_unknown_command(capsys):
     rc = cli_main.run(["rpc", "serve", "--stdio"])
 
-    assert rc == 17
-    assert seen["argv"] == ["rpc", "serve", "--stdio"]
+    assert rc != 0
+    assert "No such command" in capsys.readouterr().err
 
 
 def test_run_default_argv_uses_sys_argv(monkeypatch):
@@ -230,13 +221,13 @@ def test_run_default_argv_uses_sys_argv(monkeypatch):
         seen["argv"] = argv
         return 17
 
-    monkeypatch.setattr(cli_main.sys, "argv", ["ecc", "rpc", "serve", "--stdio"])
+    monkeypatch.setattr(cli_main.sys, "argv", ["ecc", "status"])
     monkeypatch.setattr("chipcompiler.cli.app.invoke_typer_app", fake_invoke)
 
     rc = cli_main.run()
 
     assert rc == 17
-    assert seen["argv"] == ["rpc", "serve", "--stdio"]
+    assert seen["argv"] == ["status"]
 
 
 def test_main_exits_with_run_code(monkeypatch):
@@ -246,7 +237,7 @@ def test_main_exits_with_run_code(monkeypatch):
         seen["argv"] = argv
         return 17
 
-    monkeypatch.setattr(cli_main.sys, "argv", ["ecc", "rpc", "serve", "--stdio"])
+    monkeypatch.setattr(cli_main.sys, "argv", ["ecc", "status"])
     monkeypatch.setattr("chipcompiler.cli.app.invoke_typer_app", fake_invoke)
 
     try:
@@ -257,7 +248,7 @@ def test_main_exits_with_run_code(monkeypatch):
         raise AssertionError("main() did not exit")
 
     assert code == 17
-    assert seen["argv"] == ["rpc", "serve", "--stdio"]
+    assert seen["argv"] == ["status"]
 
 
 def test_old_top_level_workspace_form_is_root_parser_error(capsys):

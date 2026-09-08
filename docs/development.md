@@ -276,8 +276,7 @@ chipcompiler/cli/commands/        # typer command definition layer (thin)
   ├── project_config.py           # project sub-app (set/unset/add/remove/show)
   ├── workspace.py                # workspace sub-app (refresh)
   ├── signoff.py                  # signoff sub-app (inspect/export)
-  ├── report.py                   # report sub-app (summary/qor/checklist/step)
-  └── rpc.py                      # rpc sub-app (serve)
+  └── report.py                   # report sub-app (summary/qor/checklist/step)
 chipcompiler/cli/command_handlers/  # business logic layer (stateful / heavy)
   ├── project.py                  # init / check / run / migrate / workspace refresh (preset resolution and environment preflight)
   ├── inspect.py                  # status / log / config
@@ -350,8 +349,8 @@ Commands dispatched through `execute_command()` use a "list of records":
 
 `ecc version` formats version metadata directly; it also has a hidden `--json`
 flag (a single object with a version-specific schema) reserved for the desktop
-app and kept out of `--help`. `ecc rpc serve` and `ecc layout-image`
-intentionally do not use record-renderer output modes.
+app and kept out of `--help`. `ecc layout-image` intentionally does not use
+record-renderer output modes.
 
 ### Adding A New Command
 
@@ -554,9 +553,9 @@ required by doctor.
 - **CLI layer**: `cli/commands/signoff.py` + `cli/command_handlers/signoff.py`.
   `inspection/discovery.py::resolve_loaded_workspace()` resolves a managed
   `--workspace NAME` in the selected project (or its sole active workspace).
-  inspect reuses `runtime/signoff_export.py::inspect_signoff_package` (blocked
+  inspect reuses `engine/signoff_export.py::inspect_signoff_package` (blocked
   still exits 0); export reuses `export_signoff_package_archive`
-  (`RuntimeApiError` → `signoff_incomplete`).
+  (`SignoffExportError` → `signoff_incomplete`).
 - **Engine layer**: the `chipcompiler/engine/signoff/` package owns the signoff
   collector `SignoffPackageCollector` and the package-export APIs used by
   readiness inspection and archive generation.
@@ -585,17 +584,6 @@ required by doctor.
   resolution reuses `inspection/discovery.py` (`resolve_workspace_path` =
   side-effect-free core, `resolve_command_workspace` = core + `load_workspace`;
   shared by signoff, report, and the read-only status/log/config commands).
-
-#### Extending the RPC (`ecc rpc serve`)
-
-`rpc serve --stdio` starts the JSON-RPC 2.0 sidecar
-(`chipcompiler/runtime/stdio_server.py`). Methods are declared in
-`chipcompiler/runtime/methods.py::RUNTIME_METHODS` (`method_name` + a pydantic
-`request_model` + `handler_name`), handler implementations live in
-`chipcompiler/runtime/workspace_api.py`, and `runtime/server.py` mounts them
-uniformly; protocol details in [rpc-guide.md](rpc-guide.md). Adding a
-method = one `RuntimeMethodSpec` + the matching API method + a request model;
-no CLI-layer changes needed.
 
 #### Extending project declarations (`ecc project *` / `ecc workspace refresh`)
 
@@ -890,6 +878,5 @@ standards).
 
 ## Related Documentation
 
-- [RPC Guide](rpc-guide.md) - RPC sidecar protocol
 - [Examples](examples/) - Example projects and CLI usage
 - [中文开发指南](development.cn.md)

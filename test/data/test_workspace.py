@@ -521,7 +521,7 @@ def test_build_flow_for_dynamic_workspace_initializes_step_metadata_files(
         },
     )
 
-    from chipcompiler.runtime.workspace_api import build_flow_for_workspace
+    from chipcompiler.engine.workspace_flow import build_flow_for_workspace
 
     build_flow_for_workspace(workspace)
 

@@ -309,7 +309,7 @@ chipcompiler/engine/qor_report.py # QoR 总分计分（GUI 规则移植）
 - 错误记录用 `core/records.py::error_record(...)`，产出 `{"kind": "error", "error": "<机器可读错误码>", ...}`；TEXT 模式下由 `render_error` 打成 `[error]` 块。错误码是稳定契约（如 `missing_config`、`run_exists`、`unknown_parameter`、`invalid_value`），测试会对它们断言。
 - 给用户的「下一步」提示统一用 `core/output.py::disclosure_cmd("ecc status", project, run_id)` 生成可复制的完整命令，记录里放在 `inspect` / `log_cmd` / `run` 等字段。
 
-`ecc version` 直接格式化版本元数据；另有一个隐藏的 `--json` 选项（单对象、版本专用 schema）预留给桌面应用，不出现在 `--help` 中。`ecc rpc serve` 与 `ecc layout-image` 有意不使用 records 渲染器输出模式。
+`ecc version` 直接格式化版本元数据；另有一个隐藏的 `--json` 选项（单对象、版本专用 schema）预留给桌面应用，不出现在 `--help` 中。`ecc layout-image` 有意不使用 records 渲染器输出模式。
 
 ### 新增一个命令
 
@@ -422,7 +422,7 @@ config_param(
 
 #### 扩展签核（`ecc signoff inspect/export`）
 
-- **CLI 层**：`cli/commands/signoff.py` + `cli/command_handlers/signoff.py`。`inspection/discovery.py::resolve_loaded_workspace()` 在选定项目中解析受管 `--workspace NAME`（或唯一活跃 workspace）。inspect 复用 `runtime/signoff_export.py::inspect_signoff_package`（blocked 也 rc=0）；export 复用 `export_signoff_package_archive`（`RuntimeApiError` → `signoff_incomplete`）。
+- **CLI 层**：`cli/commands/signoff.py` + `cli/command_handlers/signoff.py`。`inspection/discovery.py::resolve_loaded_workspace()` 在选定项目中解析受管 `--workspace NAME`（或唯一活跃 workspace）。inspect 复用 `engine/signoff_export.py::inspect_signoff_package`（blocked 也 rc=0）；export 复用 `export_signoff_package_archive`（`SignoffExportError` → `signoff_incomplete`）。
 - **引擎层**：`chipcompiler/engine/signoff/` 包负责签核收集器 `SignoffPackageCollector`，以及就绪度检查和归档导出所使用的包级 API。
 
 #### 扩展报告（`ecc report summary/qor/checklist/step`）
@@ -431,10 +431,6 @@ config_param(
 - `engine/qor_report.py`：GUI `projectQorTrend.ts` 的单 workspace 移植——常量表（`METRIC_FAIL_VALUES`/`DIMENSION_WEIGHTS`/`QOR_SCORE_THRESHOLD`）+ 归一化 + 项目级记录选择（role 优先级 final>gate>trend、area_cost 只取最后成功的 area 步）+ `score_record` 计分公式 + 维度加权（不重归一化）。新增可计分指标 = 在 GUI 与 `METRIC_FAIL_VALUES` 同步加阈值。
 - `engine/signoff/report_checklist.py`：只读渲染 `home/checklist.json`（不合法时报 unavailable，绝不回写文件）。
 - CLI：`cli/commands/report.py` + `cli/command_handlers/report.py`；workspace 解析复用 `inspection/discovery.py`（`resolve_workspace_path` 是无副作用核心，`resolve_command_workspace` 是核心加 `load_workspace`；signoff、report 与只读的 status/log/config 共用）。
-
-#### 扩展 RPC（`ecc rpc serve`）
-
-`rpc serve --stdio` 启动 JSON-RPC 2.0 sidecar（`chipcompiler/runtime/stdio_server.py`）。方法在 `chipcompiler/runtime/methods.py::RUNTIME_METHODS` 声明（`method_name` + pydantic `request_model` + `handler_name`），handler 实现在 `chipcompiler/runtime/workspace_api.py`，由 `runtime/server.py` 统一挂载；协议细节见 [rpc-guide.md](rpc-guide.md)。新增方法 = 加一个 `RuntimeMethodSpec` + 对应 API 方法 + 请求模型，无需改 CLI 层。
 
 #### 扩展项目声明（`ecc project *` / `ecc workspace refresh`）
 
@@ -670,6 +666,5 @@ Python 层调试可直接调同一 CLI 模块：
 
 ## 相关文档
 
-- [rpc-guide.md](rpc-guide.md) - RPC sidecar 协议
 - [examples/](examples/) - 示例项目与 CLI 用法
 - [English version](development.md)
