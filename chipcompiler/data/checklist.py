@@ -46,6 +46,18 @@ class Checklist:
         self.path = Path(path)
         self.data = self._load_current_data()
 
+    @classmethod
+    def from_items(cls, path: Path | str, items) -> dict:
+        """Build normalized checklist data without reading or writing a file."""
+        checklist = cls.__new__(cls)
+        checklist.path = Path(path)
+        checklist.data = checklist._default_data()
+        checklist.data["checklist"] = [
+            cls._normalize_item(item) for item in items if isinstance(item, dict)
+        ]
+        cls._refresh_summary(checklist.data)
+        return checklist.data
+
     @staticmethod
     def _timestamp() -> str:
         return datetime.now(UTC).isoformat().replace("+00:00", "Z")
