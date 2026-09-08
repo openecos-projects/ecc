@@ -1,8 +1,8 @@
 # ECC Flow 工具配置参考（按步骤）
 
-本文整理 ECC RTL-to-Harden 流程中**每一步实际使用的工具配置文件、全部参数及其含义**。配置取值与生成逻辑均核对自 v0.1.0-alpha.11 源码（rebase main 之后；模板位于 [chipcompiler/tools/*/configs/](../../chipcompiler/tools/ecc/configs/)）与一次真实的 gcd@ics55 harden 运行。
+本文整理 ECC RTL-to-Harden 流程中**每一步实际使用的工具配置文件、全部参数及其含义**。配置取值与生成逻辑均核对自 v0.1.0-alpha.11 源码（rebase main 之后；模板位于 [chipcompiler/tools/*/configs/](https://github.com/openecos-projects/ecc/blob/main/chipcompiler/tools/ecc/configs/)）与一次真实的 gcd@ics55 harden 运行。
 
-- 想了解命令用法 → [ECC CLI 用户指南](ecc-cli-ug.cn.md)；从零上手 → [入门教程](ecc-cli-tutorial.cn.md)
+- 想了解命令用法 → [ECC CLI 用户指南](ecc-cli-ug.cn.md)（终端：`ecc doc ug`）；从零上手 → [入门教程](ecc-cli-tutorial.cn.md)（终端：`ecc doc tutorial`）
 - 配置查看命令：`ecc config <step>`（列出该步骤实际生效的配置文件）；参数查看与修改命令：`ecc param`（见 §1.4）
 
 ## 0. 配置体系总览
@@ -61,7 +61,7 @@ graph LR
 
 ### 0.3 每个步骤用到哪些配置
 
-`ecc config <step>` 的真实输出归纳（映射源码 `_STEP_CONFIG_KEYS`，位于 [chipcompiler/data/workspace/__init__.py](../../chipcompiler/data/workspace/__init__.py)）：
+`ecc config <step>` 的真实输出归纳（映射源码 `_STEP_CONFIG_KEYS`，位于 [chipcompiler/data/workspace/__init__.py](https://github.com/openecos-projects/ecc/blob/main/chipcompiler/data/workspace/__init__.py)）：
 
 | 步骤 | db_ecc | 专属配置 | 说明 |
 |---|---|---|---|
@@ -85,7 +85,7 @@ graph LR
 
 ### 1.1 旧语义参数（13 个）
 
-来源：[chipcompiler/cli/project/params.py](../../chipcompiler/cli/project/params.py) 的 `_LEGACY_PARAM_REGISTRY`（`PARAM_REGISTRY` 的兼容段；直配参数见 §1.2 的 `config_params/` schema）。这些参数保持兼容；优先级：`--set` > `ecc.toml [params]` > 默认值。「写入位置」列为该参数最终落到的工具配置字段。
+来源：[chipcompiler/cli/project/params.py](https://github.com/openecos-projects/ecc/blob/main/chipcompiler/cli/project/params.py) 的 `_LEGACY_PARAM_REGISTRY`（`PARAM_REGISTRY` 的兼容段；直配参数见 §1.2 的 `config_params/` schema）。这些参数保持兼容；优先级：`--set` > `ecc.toml [params]` > 默认值。「写入位置」列为该参数最终落到的工具配置字段。
 
 | 参数 | 类型 / 范围 | 默认 | 写入位置（config 字段） | 含义 |
 |---|---|---|---|---|
@@ -152,7 +152,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 1.4 参数配置 CLI 命令（`ecc param`）
 
-参数的查看与修改统一走 `ecc param` 子命令（子命令定义：[chipcompiler/cli/commands/param.py](../../chipcompiler/cli/commands/param.py)；项目作用域实现：[chipcompiler/cli/command_handlers/param.py](../../chipcompiler/cli/command_handlers/param.py)，workspace 作用域实现：[chipcompiler/cli/command_handlers/workspace_params.py](../../chipcompiler/cli/command_handlers/workspace_params.py)）：
+参数的查看与修改统一走 `ecc param` 子命令（子命令定义：[chipcompiler/cli/commands/param.py](https://github.com/openecos-projects/ecc/blob/main/chipcompiler/cli/commands/param.py)；项目作用域实现：[chipcompiler/cli/command_handlers/param.py](https://github.com/openecos-projects/ecc/blob/main/chipcompiler/cli/command_handlers/param.py)，workspace 作用域实现：[chipcompiler/cli/command_handlers/workspace_params.py](https://github.com/openecos-projects/ecc/blob/main/chipcompiler/cli/command_handlers/workspace_params.py)）：
 
 | 命令 | 作用 |
 |---|---|
@@ -184,7 +184,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 一次性覆盖用 `ecc run --set KEY=VALUE`：仅在**新建**（含 `--overwrite`）workspace 时生效并记录到 `home/cli-param-overrides.json`；对已有 workspace 使用会报 `set_requires_fresh_run`，此时应改用 `ecc param set KEY VALUE --workspace NAME` 或 `--overwrite` 重建。
 
-完整命令输出示例见 [ECC CLI 用户指南 §9](ecc-cli-ug.cn.md)。
+完整命令输出示例见 [ECC CLI 用户指南 §9](ecc-cli-ug.cn.md)（终端：`ecc doc ug`）。
 
 ## 2. 公共配置：db_ecc.json
 

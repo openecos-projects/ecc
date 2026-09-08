@@ -1,6 +1,6 @@
 # ECC CLI Tutorial: From Zero to RTL → Harden with a Signoff Package
 
-This tutorial is for first-time ECC users: starting from a bare Linux machine, install the `ecc` command-line tool and drive a Verilog RTL design ([gcd](../../docs/examples/gcd/gcd.v), a greatest-common-divisor unit) through the full **synthesis → place & route → physical verification → logic equivalence check (LEC) → timing signoff → Harden** flow, ending up with:
+This tutorial is for first-time ECC users: starting from a bare Linux machine, install the `ecc` command-line tool and drive a Verilog RTL design ([gcd](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/gcd.v), a greatest-common-divisor unit) through the full **synthesis → place & route → physical verification → logic equivalence check (LEC) → timing signoff → Harden** flow, ending up with:
 
 - **Harden deliverables**: GDS layout, abstract LEF, timing LIB, and a layout snapshot PNG;
 - A **signoff package** `gcd_signoff_package.tar.gz` (300+ files: RTL / configs / deliverables / LEC proof / reports);
@@ -59,7 +59,7 @@ The `--with-toolchain` wrapper exports `CHIPCOMPILER_OSS_CAD_DIR` and `CHIPCOMPI
 
 ### 2.2 Running from source (optional)
 
-Clone the repository with `--recursive` as the [README](../../README.md#build-from-source) describes (`chipcompiler/thirdparty/` pulls in `ecc-tools` and `ecc-dreamplace`), then set up the `uv` workspace per the [development guide](../../docs/development.md):
+Clone the repository with `--recursive` as the [README](https://github.com/openecos-projects/ecc/blob/main/README.md#build-from-source) describes (`chipcompiler/thirdparty/` pulls in `ecc-tools` and `ecc-dreamplace`), then set up the `uv` workspace per the [development guide](https://github.com/openecos-projects/ecc/blob/main/docs/development.md):
 
 ```bash
 git clone --recursive https://github.com/openecos-projects/ecc.git
@@ -184,7 +184,7 @@ curl -fL -o rtl/gcd.v \
 # cp /path/to/ecc/docs/examples/gcd/gcd.v rtl/
 ```
 
-For multi-file designs, switch to a filelist (`rtl = ["rtl/filelist.f"]`); see [examples/gcd/README.md](../../docs/examples/gcd/README.md#using-filelist) and the [filelist grammar](../../docs/specification/filelist-grammar.md).
+For multi-file designs, switch to a filelist (`rtl = ["rtl/filelist.f"]`); see [examples/gcd/README.md](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist) and the [filelist grammar](https://github.com/openecos-projects/ecc/blob/main/docs/specification/filelist-grammar.md).
 
 ### 3.3 Understanding ecc.toml
 
@@ -213,7 +213,7 @@ preset = "rtl2gds"       # the complete RTL-to-Harden flow used in this tutorial
 
 For the gcd example, the defaults produced by `init` happen to be exactly right (the top module is literally `gcd`, the clock port is `clk`) — **you don't need to change a single character**. For your own design, check the four fields `top`, `rtl`, `clock_port`, and `frequency_mhz`.
 
-You can edit `ecc.toml` in an editor, or set the same declarations from the command line with the `ecc project` group (writes `ecc.toml`, comments preserved; see [User Guide §8.5](ecc-cli-ug.en.md#85-project--workspace--edit-project-declarations-and-refresh-workspaces)):
+You can edit `ecc.toml` in an editor, or set the same declarations from the command line with the `ecc project` group (writes `ecc.toml`, comments preserved; see [User Guide §8.5](ecc-cli-ug.en.md#85-project--workspace--edit-project-declarations-and-refresh-workspaces) (`ecc doc ug`)):
 
 ```bash
 ecc project set design.top my_chip            # set one declaration
@@ -593,7 +593,7 @@ ecc param diff --workspace exp1                            # vs. the values exp1
 ecc param unset place.target_density --workspace exp1      # restore exp1's original value
 ```
 
-Frequently used legacy parameters are `design.frequency_mhz`, `floorplan.core_util`, `place.target_density`, `route.top_layer`, and `sta.max_paths`. Other static tool fields are supplied by per-step schemas; find them with `--step` or `--all`. Workspace input, output, temporary, and generated paths cannot be changed. PDK path parameters use `ecc param set KEY VALUE`: `pdk.tech`, `pdk.lefs`, `pdk.libs`, and `pdk.mapping_file` resolve against `pdk.root`, while `pdk.sdc`/`pdk.spef` are design data resolved against the project directory; keep `pdk.root` on `ecc pdk set-root`. See [User Guide §9](ecc-cli-ug.en.md#9-param--parameter-management) for the full contract.
+Frequently used legacy parameters are `design.frequency_mhz`, `floorplan.core_util`, `place.target_density`, `route.top_layer`, and `sta.max_paths`. Other static tool fields are supplied by per-step schemas; find them with `--step` or `--all`. Workspace input, output, temporary, and generated paths cannot be changed. PDK path parameters use `ecc param set KEY VALUE`: `pdk.tech`, `pdk.lefs`, `pdk.libs`, and `pdk.mapping_file` resolve against `pdk.root`, while `pdk.sdc`/`pdk.spef` are design data resolved against the project directory; keep `pdk.root` on `ecc pdk set-root`. See [User Guide §9](ecc-cli-ug.en.md#9-param--parameter-management) (`ecc doc ug`) for the full contract.
 
 A `--workspace` override marks the parameter's owning step (and everything after it) as pending, so the next `ecc run --workspace exp1` re-runs just that suffix — cheaper than an `--overwrite` rebuild when you only want to tweak one knob. It only works for reviewed parameters (`ecc param list --all`) whose owning step exists in that workspace's flow.
 
@@ -713,10 +713,10 @@ ecc config --plain      # project-level config (key=value + resolved absolute pa
 
 ## 8. Next Steps
 
-- Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](../../docs/examples/gcd/README.md#using-filelist) for multi-file designs;
+- Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist) for multi-file designs;
 - Preset differences: `rtl2gds` (the complete 15-step synthesis-to-Harden chain, including synthesis-level LEC), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps);
-- Full command details in the **[ECC CLI User Guide](ecc-cli-ug.en.md)**; extending the CLI is covered in [development.md](../../docs/development.md#extending-the-cli);
-- Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](../../docs/examples/gcd/ics55flow.py).
+- Full command details in the **[ECC CLI User Guide](ecc-cli-ug.en.md)** (`ecc doc ug`); extending the CLI is covered in [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli);
+- Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/ics55flow.py).
 
 ---
 

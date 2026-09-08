@@ -1,6 +1,6 @@
 # ECC CLI 入门教程：从零跑通 RTL → Harden 并产出签核包
 
-本教程面向第一次接触 ECC 的用户：从一台只有 Linux 系统的机器开始，安装 `ecc` 命令行工具，把一个 Verilog RTL 设计（[gcd](../../docs/examples/gcd/gcd.v)，最大公约数计算单元）一路跑完 **综合 → 布局布线 → 物理验证 → 逻辑等价性检查（LEC）→ 时序签核 → Harden** 全流程，最终拿到：
+本教程面向第一次接触 ECC 的用户：从一台只有 Linux 系统的机器开始，安装 `ecc` 命令行工具，把一个 Verilog RTL 设计（[gcd](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/gcd.v)，最大公约数计算单元）一路跑完 **综合 → 布局布线 → 物理验证 → 逻辑等价性检查（LEC）→ 时序签核 → Harden** 全流程，最终拿到：
 
 - **Harden 交付物**：GDS 版图、抽象 LEF、时序 LIB、版图快照 PNG；
 - **签核包** `gcd_signoff_package.tar.gz`（含 RTL/配置/交付物/LEC 证明/报告等 300+ 文件）；
@@ -59,7 +59,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ### 2.2 从源码运行（可选）
 
-按 [README](../../README.cn.md#源码构建) 带 `--recursive` 克隆仓库（`chipcompiler/thirdparty/` 会拉取 `ecc-tools` 和 `ecc-dreamplace`），再参照 [开发指南](../../docs/development.md) 配置 `uv` 工作区：
+按 [README](https://github.com/openecos-projects/ecc/blob/main/README.cn.md#源码构建) 带 `--recursive` 克隆仓库（`chipcompiler/thirdparty/` 会拉取 `ecc-tools` 和 `ecc-dreamplace`），再参照 [开发指南](https://github.com/openecos-projects/ecc/blob/main/docs/development.md) 配置 `uv` 工作区：
 
 ```bash
 git clone --recursive https://github.com/openecos-projects/ecc.git
@@ -183,7 +183,7 @@ curl -fL -o rtl/gcd.v \
 # cp /path/to/ecc/docs/examples/gcd/gcd.v rtl/
 ```
 
-多文件设计请改用 filelist（`rtl = ["rtl/filelist.f"]`），语法见 [examples/gcd/README.md](../../docs/examples/gcd/README.md#using-filelist) 与 [filelist 语法](../../docs/specification/filelist-grammar.md)。
+多文件设计请改用 filelist（`rtl = ["rtl/filelist.f"]`），语法见 [examples/gcd/README.md](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist) 与 [filelist 语法](https://github.com/openecos-projects/ecc/blob/main/docs/specification/filelist-grammar.md)。
 
 ### 3.3 认识 ecc.toml
 
@@ -212,7 +212,7 @@ preset = "rtl2gds"       # 本教程使用的完整 RTL-to-Harden 流程
 
 对 gcd 示例来说，`init` 生成的默认值恰好全部正确（顶层就叫 `gcd`，时钟端口 `clk`），**一个字都不用改**。换你自己的设计时，需要核对 `top`、`rtl`、`clock_port`、`frequency_mhz` 四项。
 
-除了用编辑器改 `ecc.toml`，也可以用 `ecc project` 命令组直接改声明（写入 `ecc.toml`，保留注释；详见[用户指南 §8.5](ecc-cli-ug.cn.md#85-project--workspace--编辑项目资源与刷新-workspace)）：
+除了用编辑器改 `ecc.toml`，也可以用 `ecc project` 命令组直接改声明（写入 `ecc.toml`，保留注释；详见[用户指南 §8.5](ecc-cli-ug.cn.md#85-project--workspace--编辑项目资源与刷新-workspace)（终端：`ecc doc ug`））：
 
 ```bash
 ecc project set design.top my_chip            # 设置一条声明
@@ -592,7 +592,7 @@ ecc param diff --workspace exp1                            # 与 exp1 创建时�
 ecc param unset place.target_density --workspace exp1      # 恢复 exp1 的原值
 ```
 
-常用旧参数：`design.frequency_mhz`、`floorplan.core_util`、`place.target_density`、`route.top_layer`、`sta.max_paths`。其余静态工具字段通过每步 schema 提供，用 `--step` / `--all` 查找。workspace 的输入、输出、临时和生成路径不允许修改；PDK 路径参数可用 `ecc param set KEY VALUE` 设置：`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file` 相对 `pdk.root` 解析，`pdk.sdc`/`pdk.spef` 是设计数据、相对项目目录解析，`pdk.root` 使用 `ecc pdk set-root`。完整说明见[用户指南 §9](ecc-cli-ug.cn.md#9-param--参数管理)。
+常用旧参数：`design.frequency_mhz`、`floorplan.core_util`、`place.target_density`、`route.top_layer`、`sta.max_paths`。其余静态工具字段通过每步 schema 提供，用 `--step` / `--all` 查找。workspace 的输入、输出、临时和生成路径不允许修改；PDK 路径参数可用 `ecc param set KEY VALUE` 设置：`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file` 相对 `pdk.root` 解析，`pdk.sdc`/`pdk.spef` 是设计数据、相对项目目录解析，`pdk.root` 使用 `ecc pdk set-root`。完整说明见[用户指南 §9](ecc-cli-ug.cn.md#9-param--参数管理)（终端：`ecc doc ug`）。
 
 `--workspace` 局部设置会把参数所属步骤及其后缀标记为待执行，下一次 `ecc run --workspace exp1` 只重跑这一段——只想微调一个参数时，比 `--overwrite` 整体重建便宜得多。注意只支持已审核参数（`ecc param list --all`），且参数所属步骤必须存在于该 workspace 的 flow 中。
 
@@ -712,10 +712,10 @@ ecc config --plain      # 项目级配置（键值 + 解析后绝对路径）
 
 ## 8. 下一步
 
-- 换你自己的设计：改 `ecc.toml` 的 `top`/`rtl`/`clock_port`/`frequency_mhz`，多文件用 [filelist](../../docs/examples/gcd/README.md#using-filelist)；
+- 换你自己的设计：改 `ecc.toml` 的 `top`/`rtl`/`clock_port`/`frequency_mhz`，多文件用 [filelist](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist)；
 - 了解 preset 差异：`rtl2gds`（完整 15 步综合到 Harden 链，含综合级 LEC）、`syn_sta`（仅综合）、`synthesis_lec`（综合 + LEC，两步）；
-- 全部命令细节见 **[ECC CLI 用户指南](ecc-cli-ug.cn.md)**；CLI 扩展开发见 [development.cn.md](../../docs/development.cn.md#扩展-cli)；
-- 用 Python API 直接编排 flow（`EngineFlow`）见 [examples/gcd/ics55flow.py](../../docs/examples/gcd/ics55flow.py)。
+- 全部命令细节见 **[ECC CLI 用户指南](ecc-cli-ug.cn.md)**（终端：`ecc doc ug`）；CLI 扩展开发见 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli)；
+- 用 Python API 直接编排 flow（`EngineFlow`）见 [examples/gcd/ics55flow.py](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/ics55flow.py)。
 
 ---
 
