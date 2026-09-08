@@ -164,8 +164,8 @@ ecc log --project gcd
 项目命令均接受 `--project <dir>`（默认为当前目录）。大多数命令支持
 `--plain` 输出，便于脚本化。
 
-完整指南随 CLI 分发、可离线阅读：`ecc doc ug`（用户指南）、
-`ecc doc config`（配置参考）、`ecc doc tutorial`（从零上手的教程）。
+完整指南随 CLI 分发、可离线阅读：`ecc doc ug --lang cn`（用户指南）、
+`ecc doc config --lang cn`（配置参考）、`ecc doc tutorial --lang cn`（从零上手的教程）。
 
 
 ## 功能特性

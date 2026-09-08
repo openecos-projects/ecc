@@ -1,6 +1,6 @@
 # ECC Flow Tool Configuration Reference (by step)
 
-This document consolidates **the tool configuration files actually used by each step of the ECC RTL-to-Harden flow, all of their parameters, and what each parameter means**. Configuration values and generation logic were verified against the v0.1.0-alpha.11 source (after the rebase onto main; templates live in [chipcompiler/tools/*/configs/](https://github.com/openecos-projects/ecc/blob/main/chipcompiler/tools/ecc/configs/)) and a real gcd@ics55 harden run.
+This document consolidates **the tool configuration files actually used by each step of the ECC RTL-to-Harden flow, all of their parameters, and what each parameter means**. Configuration values and generation logic were verified against the v0.1.0-alpha.11 source (after the rebase onto main; templates live in [chipcompiler/tools/*/configs/](https://github.com/openecos-projects/ecc/tree/main/chipcompiler/tools/ecc/configs/)) and a real gcd@ics55 harden run.
 
 - For command usage, see the [ECC CLI User Guide](ecc-user-guide.en.md) (`ecc doc ug`); to get started from scratch, see the [Tutorial](ecc-tutorial.en.md) (`ecc doc tutorial`)
 - Config inspection command: `ecc config <step>` (lists the configuration files actually in effect for that step); parameter inspection/modification command: `ecc param` (see §1.4)

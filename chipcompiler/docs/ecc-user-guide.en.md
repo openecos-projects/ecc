@@ -2,7 +2,7 @@
 
 `ecc` is the project-oriented command-line entry point of ECOS Chip Compiler, covering the full RTL-to-GDS flow: project creation, validation, execution, status/log/config inspection, parameter management, signoff, and reporting. This guide is based on the current source tree (v0.1.0-alpha.11); all example outputs are real execution results (run states in the examples are hand-crafted demo data).
 
-- Source code: [chipcompiler/cli/](https://github.com/openecos-projects/ecc/blob/main/chipcompiler/cli/)
+- Source code: [chipcompiler/cli/](https://github.com/openecos-projects/ecc/tree/main/chipcompiler/cli/)
 - For how to extend the CLI with new commands, see [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli)
 - RPC sidecar protocol: [rpc-guide.md](https://github.com/openecos-projects/ecc/blob/main/docs/rpc-guide.md)
 

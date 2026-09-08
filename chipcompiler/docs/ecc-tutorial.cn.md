@@ -59,7 +59,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ### 2.2 从源码运行（可选）
 
-按 [README](https://github.com/openecos-projects/ecc/blob/main/README.cn.md#源码构建) 带 `--recursive` 克隆仓库（`chipcompiler/thirdparty/` 会拉取 `ecc-tools` 和 `ecc-dreamplace`），再参照 [开发指南](https://github.com/openecos-projects/ecc/blob/main/docs/development.md) 配置 `uv` 工作区：
+按 [README](https://github.com/openecos-projects/ecc/blob/main/README.cn.md#源码构建) 带 `--recursive` 克隆仓库（`chipcompiler/thirdparty/` 会拉取 `ecc-tools` 和 `ecc-dreamplace`），再参照 [开发指南](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md) 配置 `uv` 工作区：
 
 ```bash
 git clone --recursive https://github.com/openecos-projects/ecc.git
@@ -212,7 +212,7 @@ preset = "rtl2gds"       # 本教程使用的完整 RTL-to-Harden 流程
 
 对 gcd 示例来说，`init` 生成的默认值恰好全部正确（顶层就叫 `gcd`，时钟端口 `clk`），**一个字都不用改**。换你自己的设计时，需要核对 `top`、`rtl`、`clock_port`、`frequency_mhz` 四项。
 
-除了用编辑器改 `ecc.toml`，也可以用 `ecc project` 命令组直接改声明（写入 `ecc.toml`，保留注释；详见[用户指南 §8.5](ecc-user-guide.cn.md#85-project--workspace--编辑项目资源与刷新-workspace)（终端：`ecc doc ug`））：
+除了用编辑器改 `ecc.toml`，也可以用 `ecc project` 命令组直接改声明（写入 `ecc.toml`，保留注释；详见[用户指南 §8.5](ecc-user-guide.cn.md#85-project--workspace--编辑项目资源与刷新-workspace)（终端：`ecc doc ug --lang cn`））：
 
 ```bash
 ecc project set design.top my_chip            # 设置一条声明
@@ -592,7 +592,7 @@ ecc param diff --workspace exp1                            # 与 exp1 创建时�
 ecc param unset place.target_density --workspace exp1      # 恢复 exp1 的原值
 ```
 
-常用旧参数：`design.frequency_mhz`、`floorplan.core_util`、`place.target_density`、`route.top_layer`、`sta.max_paths`。其余静态工具字段通过每步 schema 提供，用 `--step` / `--all` 查找。workspace 的输入、输出、临时和生成路径不允许修改；PDK 路径参数可用 `ecc param set KEY VALUE` 设置：`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file` 相对 `pdk.root` 解析，`pdk.sdc`/`pdk.spef` 是设计数据、相对项目目录解析，`pdk.root` 使用 `ecc pdk set-root`。完整说明见[用户指南 §9](ecc-user-guide.cn.md#9-param--参数管理)（终端：`ecc doc ug`）。
+常用旧参数：`design.frequency_mhz`、`floorplan.core_util`、`place.target_density`、`route.top_layer`、`sta.max_paths`。其余静态工具字段通过每步 schema 提供，用 `--step` / `--all` 查找。workspace 的输入、输出、临时和生成路径不允许修改；PDK 路径参数可用 `ecc param set KEY VALUE` 设置：`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file` 相对 `pdk.root` 解析，`pdk.sdc`/`pdk.spef` 是设计数据、相对项目目录解析，`pdk.root` 使用 `ecc pdk set-root`。完整说明见[用户指南 §9](ecc-user-guide.cn.md#9-param--参数管理)（终端：`ecc doc ug --lang cn`）。
 
 `--workspace` 局部设置会把参数所属步骤及其后缀标记为待执行，下一次 `ecc run --workspace exp1` 只重跑这一段——只想微调一个参数时，比 `--overwrite` 整体重建便宜得多。注意只支持已审核参数（`ecc param list --all`），且参数所属步骤必须存在于该 workspace 的 flow 中。
 
@@ -714,7 +714,7 @@ ecc config --plain      # 项目级配置（键值 + 解析后绝对路径）
 
 - 换你自己的设计：改 `ecc.toml` 的 `top`/`rtl`/`clock_port`/`frequency_mhz`，多文件用 [filelist](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist)；
 - 了解 preset 差异：`rtl2gds`（完整 15 步综合到 Harden 链，含综合级 LEC）、`syn_sta`（仅综合）、`synthesis_lec`（综合 + LEC，两步）；
-- 全部命令细节见 **[ECC CLI 用户指南](ecc-user-guide.cn.md)**（终端：`ecc doc ug`）；CLI 扩展开发见 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli)；
+- 全部命令细节见 **[ECC CLI 用户指南](ecc-user-guide.cn.md)**（终端：`ecc doc ug --lang cn`）；CLI 扩展开发见 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli)；
 - 用 Python API 直接编排 flow（`EngineFlow`）见 [examples/gcd/ics55flow.py](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/ics55flow.py)。
 
 ---
