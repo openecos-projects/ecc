@@ -327,8 +327,8 @@ class TestFlowCompletionState:
         assert _flow_completion_state(["Success", "Incomplete"]) == "failed"
         assert _flow_completion_state(["Invalid"]) == "failed"
         assert _flow_completion_state(["Success"] * 5) == "complete"
-        # Warning is finished: a non-blocking check does not block completion.
-        assert _flow_completion_state(["Success", "Warning"]) == "complete"
+        # A legacy persisted Warning (removed terminal state) is unfinished.
+        assert _flow_completion_state(["Success", "Warning"]) == "in_progress"
 
     def test_nonterminal_workspaces_are_blocked(self, tmp_path):
         for state in ("Ongoing", "Unstart", "Pending"):

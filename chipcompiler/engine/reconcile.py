@@ -17,7 +17,7 @@ reclassify, and mutate.
 Outcomes:
 
 - ``no_op``: persisted == target (or target is a prefix of persisted) and
-  every step finished (Success, or Warning for a non-blocking check).
+  every step finished (Success).
 - ``resume``: same shape, but some step is not finished — resume from the
   first unfinished step.
 - ``extended``: persisted was a proper prefix of the target; the missing

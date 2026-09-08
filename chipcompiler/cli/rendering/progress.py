@@ -16,9 +16,9 @@ from chipcompiler.cli.inspection.log_view import (
     LineKind,
     extract_error_context,
 )
-from chipcompiler.cli.rendering.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET, YELLOW
+from chipcompiler.cli.rendering.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
 from chipcompiler.cli.rendering.pretty import style as _style
-from chipcompiler.data import StateEnum, is_non_blocking_step, log_flow
+from chipcompiler.data import StateEnum, log_flow
 from chipcompiler.utility.log import flush_cstdio, redirect_stdio_to_file
 
 
@@ -338,16 +338,10 @@ class RunProgressRenderer:
         self._stream.flush()
         self._step_started = True
 
-    def finish_step(
-        self, step, tool, status, runtime, log_path, inspect_cmd, success, *, warning=False
-    ):
+    def finish_step(self, step, tool, status, runtime, log_path, inspect_cmd, success):
         self.clear()
         if success:
             line = style(f"✓ {step} ({tool}) {runtime}", GREEN, self._color)
-        elif warning:
-            sym = style("!", YELLOW, self._color)
-            status_styled = style("warning", YELLOW, self._color)
-            line = f"{sym} {step} ({tool}) {status_styled} {runtime}"
         else:
             sym = style("✗", RED, self._color)
             status_styled = style(status, RED, self._color)
@@ -510,27 +504,8 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
             inspect = disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id)
 
             is_success = state == StateEnum.Success
-            is_warning = state == StateEnum.Warning
-            renderer.finish_step(
-                step_token,
-                tool,
-                status,
-                runtime,
-                rel_log,
-                inspect,
-                is_success,
-                warning=is_warning,
-            )
+            renderer.finish_step(step_token, tool, status, runtime, rel_log, inspect, is_success)
 
-            if is_warning:
-                engine_flow.workspace.logger.warning(
-                    "[WARNING] %s %s; continuing flow",
-                    workspace_step.name,
-                    "did not prove equivalence"
-                    if is_non_blocking_step(workspace_step)
-                    else "completed with warnings",
-                )
-                continue
             if not is_success:
                 _maybe_render_failure_context(
                     renderer, log_path, rel_log, step_token, project, ctx.run_id, color

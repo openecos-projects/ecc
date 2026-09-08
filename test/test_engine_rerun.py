@@ -89,9 +89,9 @@ class TestSelectedStepNames:
 
         assert rerun.selected_step_names(flow) == []
 
-    def test_resume_treats_warning_as_finished(self, tmp_path):
-        # A warned synthesis LEC is terminal: a plain resume must not
-        # re-execute it and its physical suffix on every run.
+    def test_resume_reexecutes_legacy_warning_steps(self, tmp_path):
+        # The removed terminal Warning state (pre-rework synthesis LEC) is not
+        # a finished state: a plain resume re-executes it and its suffix.
         flow = _make_run_flow(
             tmp_path,
             [
@@ -102,13 +102,12 @@ class TestSelectedStepNames:
             ],
         )
 
-        assert rerun.selected_step_names(flow) == []
+        assert rerun.selected_step_names(flow) == ["lec", "Floorplan", "CTS"]
 
-    def test_only_warning_step_requires_force(self, tmp_path):
+    def test_only_legacy_warning_step_does_not_require_force(self, tmp_path):
         flow = _make_run_flow(tmp_path, [("lec", "Warning")])
 
-        assert rerun.selected_step_names(flow, only="lec") == []
-        assert rerun.selected_step_names(flow, only="lec", force=True) == ["lec"]
+        assert rerun.selected_step_names(flow, only="lec") == ["lec"]
 
     def test_resume_still_selects_incomplete_suffix(self, tmp_path):
         flow = _make_run_flow(
@@ -173,20 +172,6 @@ class TestSelectedStepNames:
 
 
 class TestRunFrom:
-    def test_synthesis_lec_warning_does_not_stop_resume(self, monkeypatch, tmp_path):
-        flow = _make_run_flow(
-            tmp_path,
-            [("lec", "Unstart"), ("route", "Unstart")],
-            tools_by_name={"lec": "yosys_lec"},
-        )
-        calls = _fake_execution(flow, monkeypatch, outcomes={"lec": StateEnum.Warning})
-
-        result = rerun.run_from(flow, "lec")
-
-        assert result.ok
-        assert result.executed == ("lec", "route")
-        assert calls == [("lec", True), ("route", True)]
-
     def test_reexecutes_suffix_and_clears_only_executed_outputs(self, monkeypatch, tmp_path):
         flow = _make_run_flow(
             tmp_path,

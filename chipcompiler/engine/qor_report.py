@@ -342,8 +342,7 @@ def _gate_status(flow_steps_by_label) -> str:
 def _flow_completion_state(states) -> str:
     """Classify a workspace's step-state set explicitly.
 
-    Warning counts as finished (a non-blocking check warning still lets the
-    flow continue); only an all-finished ledger completes a flow.
+    Only an all-Success ledger completes a flow.
     """
     from chipcompiler.data.step import FINISHED_STEP_STATES
 

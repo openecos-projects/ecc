@@ -411,6 +411,22 @@ class TestLegacyStateNormalization:
         persisted = json.loads((tmp_path / "home" / "flow.json").read_text())
         assert persisted["steps"][1]["state"] == StateEnum.Success.value
 
+    def test_legacy_warning_step_normalized_on_resume(self, tmp_path, monkeypatch):
+        """Persisted Warning state from the removed LEC downgrade — resume normalizes it."""
+        flow = _make_resume_workspace(
+            tmp_path,
+            [("Synthesis", "Success"), ("Floorplan", "Warning")],
+        )
+        monkeypatch.setattr(tools, "run_step", lambda **_kw: True)
+        monkeypatch.setattr(flow, "check_step_result", lambda **_kw: True)
+
+        # This must NOT raise ValueError
+        result = flow.run_step(flow.workspace_steps[1], rerun=False)
+        assert result == StateEnum.Success
+
+        persisted = json.loads((tmp_path / "home" / "flow.json").read_text())
+        assert persisted["steps"][1]["state"] == StateEnum.Success.value
+
     def test_ongoing_step_not_normalized(self, tmp_path, monkeypatch):
         """Ongoing step is NOT a terminal state — no normalization needed."""
         flow = _make_resume_workspace(

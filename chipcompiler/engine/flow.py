@@ -13,7 +13,6 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
     is_finished_step_state,
-    is_non_blocking_step,
     log_flow,
 )
 from chipcompiler.engine import EngineDB
@@ -36,17 +35,14 @@ _VALID_TRANSITIONS: dict[str, set[str]] = {
     StateEnum.Unstart.value: {
         StateEnum.Ongoing.value,
         StateEnum.Imcomplete.value,
-        StateEnum.Warning.value,
     },
     StateEnum.Pending.value: {
         StateEnum.Ongoing.value,
         StateEnum.Imcomplete.value,
-        StateEnum.Warning.value,
     },
     StateEnum.Ongoing.value: {
         StateEnum.Success.value,
         StateEnum.Imcomplete.value,
-        StateEnum.Warning.value,
         StateEnum.Invalid.value,
     },
     # Terminal states — no outgoing lifecycle transitions.
@@ -54,7 +50,6 @@ _VALID_TRANSITIONS: dict[str, set[str]] = {
     # can assign any state directly, including Unstart for terminal states.
     StateEnum.Success.value: set(),
     StateEnum.Imcomplete.value: set(),
-    StateEnum.Warning.value: set(),
     StateEnum.Invalid.value: set(),
 }
 
@@ -537,16 +532,8 @@ class EngineFlow:
                     return False
                 case StateEnum.Imcomplete:
                     # An Incomplete step is an infrastructure or check
-                    # failure: it blocks the flow. Only the terminal Warning
-                    # state (a completed LEC reporting inequivalence)
-                    # continues.
+                    # failure: it blocks the flow.
                     return False
-                case StateEnum.Warning:
-                    self.workspace.logger.warning(
-                        "[WARNING] %s completed with warnings; continuing flow",
-                        workspace_step.name,
-                    )
-                    continue
                 case StateEnum.Pending:
                     return False
                 case StateEnum.Ongoing:
@@ -567,9 +554,9 @@ class EngineFlow:
         """Reset stuck terminal states from pre-guard workspaces to Unstart.
 
         Pre-guard workspaces may have steps stuck in Incomplete/Invalid from
-        earlier runs. Batch resets (_invalidate_suffix, clear_states) handle
-        rerun paths; this handles the rerun=False resume path. Warning is
-        not reset: it is a finished state a plain resume skips.
+        earlier runs, or in the removed terminal Warning state of the
+        synthesis LEC. Batch resets (_invalidate_suffix, clear_states) handle
+        rerun paths; this handles the rerun=False resume path.
         """
         old_step = self.get_step(name=workspace_step.name, tool=workspace_step.tool)
         if old_step is None:
@@ -578,6 +565,7 @@ class EngineFlow:
         if persisted in {
             StateEnum.Imcomplete.value,
             StateEnum.Invalid.value,
+            "Warning",
         }:
             logger.warning(
                 "Normalizing legacy %s state '%s' → Unstart before rerun",
@@ -613,16 +601,6 @@ class EngineFlow:
             self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
             _notify_flow_observer(observer, "on_step_skipped", workspace_step)
             return StateEnum.Success
-
-        if not rerun and self.check_state(
-            name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Warning
-        ):
-            # A warned non-blocking step (synthesis LEC) is terminal: the
-            # flow continued past it, so a plain resume skips it too.
-            self.workspace.logger.info("[SKIP] %s finished with a non-blocking warning", step_tag)
-            self.clear_db_engine_after_step(workspace_step, StateEnum.Warning)
-            _notify_flow_observer(observer, "on_step_skipped", workspace_step)
-            return StateEnum.Warning
 
         self._normalize_legacy_terminal_state(workspace_step, step_tag)
 
@@ -668,9 +646,6 @@ class EngineFlow:
             started_at=start_time,
         )
         step_error = execution.error
-        # An infrastructure failure (missing binary, spawn error, nonzero
-        # exit) is distinct from a produced-but-failed check result.
-        tool_failed = step_error is not None
         elapsed = execution.elapsed_seconds
         peak_memory_mb = execution.peak_memory_mb
         runtime = execution.runtime
@@ -697,26 +672,12 @@ class EngineFlow:
 
             # Run fallible post-success work BEFORE the terminal commit: a
             # failure here must still transition Ongoing -> a terminal failure
-            # state; a synthesis LEC failure is normalized to Warning below.
-            # after a persisted Success the transition table forbids the
-            # rollback and the ledger would claim a failed step succeeded.
+            # state; after a persisted Success the transition table forbids
+            # the rollback and the ledger would claim a failed step succeeded.
             if state == StateEnum.Success:
                 from chipcompiler.tools import save_layout_image
 
                 save_layout_image(workspace=self.workspace, step=workspace_step)
-
-            # Only a completed-but-inequivalent LEC check is a non-blocking
-            # warning. An infrastructure failure (tool_failed) stays
-            # Incomplete and blocks the flow like any other step.
-            if (
-                is_non_blocking_step(workspace_step)
-                and state == StateEnum.Imcomplete
-                and not tool_failed
-            ):
-                state = StateEnum.Warning
-                # Warning is a terminal completion, not a failure: the
-                # observer must not retain a fatal tool error for it.
-                step_error = None
 
             if flow_step is not None and not self.set_state(
                 name=workspace_step.name,

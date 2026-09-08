@@ -39,28 +39,19 @@ class StateEnum(Enum):
     Ongoing = "Ongoing"  # step is running
     Pending = "Pending"  # step is pending
     Imcomplete = "Incomplete"  # step is failed
-    Warning = "Warning"  # step completed with a non-blocking check warning
     # Ignored = "Ignored" # step result do not affect flow step
 
 
-def is_non_blocking_step(step) -> bool:
-    """Return whether a failed step may be recorded as a warning."""
-    return (
-        getattr(step, "name", None) == StepEnum.LEC.value
-        and getattr(step, "tool", None) == "yosys_lec"
-    )
-
-
-FINISHED_STEP_STATES = frozenset({StateEnum.Success.value, StateEnum.Warning.value})
+FINISHED_STEP_STATES = frozenset({StateEnum.Success.value})
 
 
 def is_finished_step_state(state: object) -> bool:
     """Whether a persisted step state counts as done for selection and skipping.
 
-    Warning is a terminal state: a non-blocking check (the synthesis LEC)
-    that did not prove equivalence still lets the flow continue, so a warned
-    step must not be re-selected by a plain resume. Incomplete/Invalid steps
-    are unfinished: resume and rerun selectors re-execute them.
+    Incomplete/Invalid steps are unfinished: resume and rerun selectors
+    re-execute them. A legacy ``Warning`` state (removed terminal state for
+    the synthesis LEC) is not finished and is normalized to Unstart on
+    resume.
     """
     return state in FINISHED_STEP_STATES
 

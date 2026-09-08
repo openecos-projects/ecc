@@ -16,7 +16,6 @@ from .step import (
     StepEnum,
     StepMetrics,
     is_finished_step_state,
-    is_non_blocking_step,
     load_metrics,
     save_metrics,
 )
@@ -100,7 +99,6 @@ __all__ = [
     "EccReport",
     "FINISHED_STEP_STATES",
     "is_finished_step_state",
-    "is_non_blocking_step",
     "LogPaths",
     "ScriptPaths",
     "EccScript",

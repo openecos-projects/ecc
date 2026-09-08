@@ -18,7 +18,6 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
     is_finished_step_state,
-    is_non_blocking_step,
     log_flow,
 )
 from chipcompiler.utility.log import redirect_stdio_to_file
@@ -196,18 +195,9 @@ def _run_selected(flow: "EngineFlow", selected: list[tuple[WorkspaceStep, Path]]
         flow.workspace.logger.log_section(
             f"{workspace_step.tool} - end step - {workspace_step.name}"
         )
-        if state not in {StateEnum.Success, StateEnum.Warning}:
-            # A persisted Incomplete blocks the rerun: only a terminal
-            # Warning may continue.
+        if state is not StateEnum.Success:
+            # A persisted Incomplete blocks the rerun.
             return StepRunResult(ok=False, executed=tuple(executed), failed=workspace_step.name)
-        if state != StateEnum.Success:
-            flow.workspace.logger.warning(
-                "[WARNING] %s %s; continuing flow",
-                workspace_step.name,
-                "did not prove equivalence"
-                if is_non_blocking_step(workspace_step)
-                else "completed with warnings",
-            )
         executed.append(workspace_step.name)
     return StepRunResult(ok=True, executed=tuple(executed))
 

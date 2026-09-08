@@ -114,7 +114,7 @@ def _flow_status(steps: list[dict]) -> str:
         return "failed"
     if states & {"Ongoing", "Pending"}:
         return "in_progress"
-    if states and states <= {"Success", "Warning"}:
+    if states == {"Success"}:
         return "success"
     return "not_started"
 

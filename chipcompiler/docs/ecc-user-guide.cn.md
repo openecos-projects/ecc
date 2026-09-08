@@ -538,7 +538,7 @@ step=lec tool=yosys_lec status=success runtime=0:0:1 log_cmd="ecc log lec --work
 ...
 ```
 
-run 级状态取全部步骤的聚合：`success / warning / failed / ongoing / unstart`（flow.json 缺失/损坏时为 `missing / corrupt`）；步骤级状态为 `success / warning / incomplete / unstart / ongoing / pending / invalid`。综合级 LEC 未证明时为 `warning`，但仍保留 LEC 证据并继续物理流程。
+run 级状态取全部步骤的聚合：`success / failed / ongoing / unstart`（flow.json 缺失/损坏时为 `missing / corrupt`）；步骤级状态为 `success / incomplete / unstart / ongoing / pending / invalid`。综合级 LEC 未证明时步骤失败并终止流程。
 
 ## 7. log — 查看日志
 
