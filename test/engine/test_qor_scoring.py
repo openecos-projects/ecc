@@ -1,0 +1,34 @@
+from chipcompiler.engine.qor_scoring import QorScoringMetric, score_qor
+
+
+def _metric(step, metric_id, value, dimension, direction="lower_is_better", **kwargs):
+    return QorScoringMetric(
+        step=step,
+        metric_id=metric_id,
+        value=value,
+        dimension=dimension,
+        direction=direction,
+        scope="workspace",
+        corner=None,
+        project_role=kwargs.get("project_role", "final"),
+        rating_score=kwargs.get("rating_score", True),
+    )
+
+
+def test_qor_scoring_selects_latest_area_and_combines_dimension_weights():
+    result = score_qor(
+        [
+            _metric("Floor", "die_area", 300, "area_cost"),
+            _metric("STA", "sta_setup_wns", -0.1, "timing", "higher_is_better"),
+            _metric("Harden", "die_area", 1500, "area_cost"),
+            _metric("DRC", "drc_count", 0, "routability_physical"),
+        ]
+    )
+
+    assert result.area_scoring_step == "Harden"
+    assert result.dimensions == {
+        "timing": (50.0, 1),
+        "routability_physical": (100.0, 1),
+        "area_cost": (50.0, 1),
+    }
+    assert result.overall_score == 42.5
