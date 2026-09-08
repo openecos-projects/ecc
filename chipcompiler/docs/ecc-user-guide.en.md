@@ -96,6 +96,7 @@ $ ecc --help
 Commands:
   version       Show ECC runtime, component, and installed tool versions
   layout-image  Render a GDS file into a layout image
+  doc           Show a bundled guide (config = config reference, ug = user guide, tutorial)
   init          Create a new ECC project
   check         Validate the current project setup
   run           Run the configured RTL-to-GDS flow
@@ -104,7 +105,6 @@ Commands:
   config        Show resolved project or step configuration
   migrate       Migrate a legacy runs/ project to the manifest layout
   doctor        Check host environment: PDK, tools, and components
-  doc           Show a bundled guide (config = config reference, ug = user guide, tutorial)
   param         Manage EDA parameters
   pdk           Show and configure the PDK path used by this project
   project       Edit project declarations in ecc.toml

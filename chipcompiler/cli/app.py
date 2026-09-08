@@ -71,9 +71,9 @@ def layout_image_cmd(
         raise typer.Exit(1)
 
 
+register_doc_commands(app)
 register_project_commands(app)
 register_doctor_commands(app)
-register_doc_commands(app)
 app.add_typer(param_app, name="param")
 app.add_typer(pdk_app, name="pdk")
 app.add_typer(project_app, name="project")
