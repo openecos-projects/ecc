@@ -88,7 +88,7 @@ def test_quality_gates_only_include_final_drc_lvs_rcx_and_sta(tmp_path):
     )
 
 
-def test_synthesis_lec_failure_is_warning_but_post_route_lec_stays_blocking(monkeypatch, tmp_path):
+def test_lec_failure_blocks_export_for_both_lec_steps(monkeypatch, tmp_path):
     result = tmp_path / "lec-result.json"
     result.write_text("{}", encoding="utf-8")
     monkeypatch.setattr(
@@ -102,12 +102,10 @@ def test_synthesis_lec_failure_is_warning_but_post_route_lec_stays_blocking(monk
         workspace, StepEnum.POST_ROUTE_LEC.value, result, None, None
     )[0]
 
-    assert synthesis_item["state"] == "warning"
-    assert synthesis_item["policy"] == "warn"
-    assert synthesis_item["blocked"] is False
-    assert post_route_item["state"] == "failed"
-    assert post_route_item["policy"] == "block"
-    assert post_route_item["blocked"] is True
+    for item in (synthesis_item, post_route_item):
+        assert item["state"] == "failed"
+        assert item["policy"] == "block"
+        assert item["blocked"] is True
 
 
 def test_sta_quality_gates_require_all_corner_coverage_and_closure(tmp_path):
