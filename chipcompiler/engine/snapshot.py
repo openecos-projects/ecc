@@ -154,6 +154,12 @@ def _build_snapshot(
     home = _data_mapping(getattr(workspace, "home", None))
     checklist_path = home.get("checklist")
     checklist = json_read(checklist_path) if isinstance(checklist_path, (str, Path)) else {}
+    from chipcompiler.engine.analysis import build_workspace_analysis
+    from chipcompiler.engine.qor import build_workspace_qor_assessment
+    from chipcompiler.engine.signoff_assessment import build_signoff_assessment
+
+    analysis, artifacts = build_workspace_analysis(workspace, workspace_id)
+    qor_assessment = build_workspace_qor_assessment(analysis)
     return {
         "schemaVersion": SNAPSHOT_SCHEMA_VERSION,
         "workspaceId": workspace_id,
@@ -162,11 +168,11 @@ def _build_snapshot(
         "flow": flow,
         "parameters": _data_mapping(getattr(workspace, "parameters", None)),
         "checklist": checklist if isinstance(checklist, dict) else {},
-        "analysis": {"steps": []},
-        "metrics": {},
-        "qorAssessment": {"status": "unavailable", "metrics": {}, "dimensions": {}},
-        "signoffAssessment": {"status": "blocked", "groups": [], "risks": []},
-        "artifacts": [],
+        "analysis": analysis,
+        "metrics": deepcopy(qor_assessment["metrics"]),
+        "qorAssessment": qor_assessment,
+        "signoffAssessment": build_signoff_assessment(workspace),
+        "artifacts": artifacts,
     }
 
 
