@@ -96,16 +96,51 @@ def build_manifest_document(
 ) -> dict:
     """Assemble a schema-v1 manifest for a virgin project's first run."""
     now = _now_iso()
-    name = os.path.basename(os.path.normpath(project_dir)) or "project"
-    document: dict[str, Any] = {
+    document = build_project_document(
+        project_dir,
+        design_name=design_name,
+        base_design=base_design,
+        now=now,
+    )
+    document["workspaces"] = [
+        manifest_workspace_entry(
+            workspace_id,
+            name=design_name,
+            workspace_path=workspace_path,
+            start_step=start_step,
+            end_step=end_step,
+            status=status,
+            now=now,
+        )
+    ]
+    document["qor_baseline"] = {
+        "workspace_id": workspace_id,
+        "reason": "Default project QoR baseline",
+    }
+    return document
+
+
+def build_project_document(
+    project_dir: str,
+    *,
+    design_name: str,
+    base_design: dict,
+    name: str | None = None,
+    now: str | None = None,
+    mpc: dict | None = None,
+) -> dict[str, Any]:
+    """Assemble a schema-v1 Project Manifest without a Workspace."""
+    timestamp = now or _now_iso()
+    project_name = name or os.path.basename(os.path.normpath(project_dir)) or "project"
+    return {
         "schema_version": 1,
-        "project_id": f"proj_{_slugify(name)}",
-        "name": name,
+        "project_id": f"proj_{_slugify(project_name)}",
+        "name": project_name,
         "design_name": design_name,
         "description": "",
         "root_path": project_dir,
-        "created_at": now,
-        "updated_at": now,
+        "created_at": timestamp,
+        "updated_at": timestamp,
         "base_design": {
             **{key: value for key, value in base_design.items() if key != "parameters" and value},
             "parameters": _record(base_design.get("parameters")),
@@ -114,22 +149,11 @@ def build_manifest_document(
             ],
         },
         "objectives": json.loads(json.dumps(DEFAULT_OBJECTIVES)),
-        "workspaces": [
-            manifest_workspace_entry(
-                workspace_id,
-                name=design_name,
-                workspace_path=workspace_path,
-                start_step=start_step,
-                end_step=end_step,
-                status=status,
-                now=now,
-            )
-        ],
-        "mpc": None,
+        "workspaces": [],
+        "mpc": deepcopy(mpc),
         "best_workspace": None,
-        "qor_baseline": {"workspace_id": workspace_id, "reason": "Default project QoR baseline"},
+        "qor_baseline": None,
     }
-    return document
 
 
 def write_manifest_if_absent(project_dir: str, document: dict) -> bool:
