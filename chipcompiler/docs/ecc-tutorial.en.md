@@ -37,7 +37,7 @@ graph LR
 
 ### 2.1 One-shot installer (recommended)
 
-Install the `ecc` CLI (Linux x86_64, glibc 2.34+) with the official installer:
+Install the `ecc` CLI (Linux x86_64, glibc 2.34+, fontconfig) with the official installer:
 
 ```bash
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh

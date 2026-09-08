@@ -143,24 +143,36 @@ touch chipcompiler/tools/<tool_name>/{__init__.py,builder.py,runner.py,utility.p
 `builder.py`:
 
 ```python
-from chipcompiler.data import Workspace, WorkspaceStep, StepEnum
+from pathlib import Path
 
-def build_step(workspace: Workspace, step: StepEnum) -> WorkspaceStep:
-    return WorkspaceStep(workspace=workspace, step=step, tool="<tool_name>")
+from chipcompiler.data import Workspace, WorkspaceStep
+
+def build_step(
+    workspace: Workspace,
+    step_name: str,
+    input_def: Path | None,
+    input_verilog: Path | None,
+    input_db: Path | str | None = None,
+    output_def: Path | None = None,
+    output_verilog: Path | None = None,
+    output_gds: Path | None = None,
+) -> WorkspaceStep:
+    directory = Path(workspace.directory) / f"{step_name}_<tool_name>"
+    return WorkspaceStep(name=step_name, tool="<tool_name>", directory=directory)
 
 def build_step_space(workspace_step: WorkspaceStep) -> None:
-    workspace_step.create_directories()
+    Path(workspace_step.directory).mkdir(parents=True, exist_ok=True)
 
-def build_step_config(workspace_step: WorkspaceStep) -> None:
-    config = {"input": workspace_step.input_path, "output": workspace_step.output_path}
-    workspace_step.write_config(config)
+def build_step_config(workspace: Workspace, workspace_step: WorkspaceStep) -> None:
+    ...  # write the step's config files from the workspace parameters
 ```
 
 `runner.py`:
 
 ```python
 import subprocess
-from chipcompiler.data import WorkspaceStep, StateEnum
+
+from chipcompiler.data import Workspace, WorkspaceStep
 
 def is_eda_exist() -> bool:
     try:
@@ -169,18 +181,13 @@ def is_eda_exist() -> bool:
     except (subprocess.CalledProcessError, FileNotFoundError):
         return False
 
-def run_step(workspace_step: WorkspaceStep) -> StateEnum:
-    try:
-        result = subprocess.run(
-            ["<tool_name>", "-c", workspace_step.config_file],
-            cwd=workspace_step.path,
-            capture_output=True,
-            timeout=workspace_step.timeout,
-        )
-        return StateEnum.Success if result.returncode == 0 else StateEnum.Incomplete
-    except Exception as e:
-        workspace_step.log_error(str(e))
-        return StateEnum.Incomplete
+def run_step(workspace: Workspace, step: WorkspaceStep, ecc_module=None) -> bool:
+    result = subprocess.run(
+        ["<tool_name>", str(step.script.main)],
+        cwd=step.directory,
+        capture_output=True,
+    )
+    return result.returncode == 0
 ```
 
 `__init__.py`:
@@ -438,7 +445,8 @@ are mandatory, the last 2 as needed):
      ```
    - Reuse the fixtures in `test/cli/conftest.py`: `create_cli_project`
      (creates a temporary project with `ecc.toml`), `create_flow_json`
-     (fabricates `runs/<id>/home/flow.json`), `create_step_dir`,
+     (fabricates `home/flow.json` beneath the given workspace directory),
+     `create_step_dir`,
      `create_workspace_config`, `mock_pdk_validation`, and others. **Note the
      autouse `_stub_run_preflight`**: it stubs `env_probe.probe_environment` to
      return nothing, so CLI tests never depend on host tools (doctor/preflight

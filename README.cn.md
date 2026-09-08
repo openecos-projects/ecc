@@ -32,7 +32,7 @@ GUI（ECOS Studio）已迁移至 [ecos-studio](https://github.com/0xharry/ecos-s
 
 ### 安装脚本（推荐）
 
-安装 `ecc` CLI（Linux x86_64，glibc 2.34+）：
+安装 `ecc` CLI（Linux x86_64，glibc 2.34+，fontconfig）：
 
 ```sh
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh

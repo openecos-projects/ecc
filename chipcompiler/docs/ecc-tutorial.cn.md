@@ -37,7 +37,7 @@ graph LR
 
 ### 2.1 一键安装（推荐）
 
-使用官方安装脚本安装 `ecc` CLI（Linux x86_64，glibc 2.34+）：
+使用官方安装脚本安装 `ecc` CLI（Linux x86_64，glibc 2.34+，fontconfig）：
 
 ```bash
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
