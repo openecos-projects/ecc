@@ -694,17 +694,6 @@ def rebuild_home_checklist(
         checklist_path = workspace_dir / "home" / "checklist.json"
         if workspace.home.path is not None:
             workspace.home.set_checklist(checklist_path)
-    if persist:
-        checklist = Checklist(checklist_path)
-        checklist.replace(list(deduplicated.values()))
-    else:
-        # Build the same normalized payload without Checklist.__init__ or
-        # replace(), both of which intentionally write to home/checklist.json.
-        checklist = object.__new__(Checklist)
-        checklist.path = Path(checklist_path)
-        checklist.data = checklist._default_data()
-        checklist.data["checklist"] = [
-            checklist._normalize_item(item) for item in deduplicated.values()
-        ]
-        Checklist._refresh_summary(checklist.data)
-    return checklist.data
+    from chipcompiler.tools.ecc.checklist_render import render_checklist
+
+    return render_checklist(checklist_path, deduplicated.values(), persist=persist)
