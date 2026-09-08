@@ -63,9 +63,7 @@ class TestCheck:
         rc = cli_main.run(["check", "--project", str(project_dir)])
         assert rc == 1
 
-    def test_check_fails_missing_rtl(
-        self, tmp_path, capsys, create_cli_project, monkeypatch
-    ):
+    def test_check_fails_missing_rtl(self, tmp_path, capsys, create_cli_project, monkeypatch):
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: None,
@@ -80,9 +78,7 @@ class TestCheck:
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
         assert rc == 1
         records = json.loads(capsys.readouterr().out)["records"]
-        assert any(
-            r.get("check") == "rtl" and r.get("status") == "fail" for r in records
-        )
+        assert any(r.get("check") == "rtl" and r.get("status") == "fail" for r in records)
 
     def test_check_fails_second_missing_rtl(
         self, tmp_path, capsys, create_cli_project, monkeypatch
@@ -97,17 +93,13 @@ class TestCheck:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content = content.replace(
-            'rtl = ["rtl/gcd.v"]', 'rtl = ["rtl/gcd.v", "rtl/missing.v"]'
-        )
+        content = content.replace('rtl = ["rtl/gcd.v"]', 'rtl = ["rtl/gcd.v", "rtl/missing.v"]')
         with open(toml_path, "w") as f:
             f.write(content)
         rc = cli_main.run(["check", "--project", project_dir, "--json"])
         assert rc == 1
         records = json.loads(capsys.readouterr().out)["records"]
-        assert any(
-            r.get("check") == "rtl" and r.get("status") == "fail" for r in records
-        )
+        assert any(r.get("check") == "rtl" and r.get("status") == "fail" for r in records)
 
     def test_check_fails_empty_pdk_root(self, tmp_path, create_cli_project, monkeypatch):
         monkeypatch.delenv("CHIPCOMPILER_ICS55_PDK_ROOT", raising=False)
@@ -633,9 +625,7 @@ class TestCheckWorkspaceDisplay:
         )
         minimal_ics55_pdk_factory(project_dir / "pdk")
 
-        rc = cli_main.run(
-            ["check", "--project", str(project_dir), "--workspace", "ws_b", "--json"]
-        )
+        rc = cli_main.run(["check", "--project", str(project_dir), "--workspace", "ws_b", "--json"])
 
         assert rc == 0
         records = json.loads(capsys.readouterr().out)["records"]
