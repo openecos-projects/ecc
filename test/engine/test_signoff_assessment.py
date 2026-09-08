@@ -29,6 +29,17 @@ def test_stale_checklist_cannot_make_incomplete_flow_ready(tmp_path):
     assert result["status"] == "blocked"
 
 
+def test_malformed_checklist_is_reported_as_unavailable(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "checklist.json").write_text("[]")
+    workspace = SimpleNamespace(directory=Path(tmp_path), flow=None)
+
+    result = build_signoff_assessment(workspace)
+
+    assert result["status"] == "blocked"
+
+
 def test_signoff_additional_file_path_rejects_escape(tmp_path):
     package = tmp_path / "package"
     package.mkdir()

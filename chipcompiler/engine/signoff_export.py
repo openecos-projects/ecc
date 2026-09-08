@@ -27,15 +27,18 @@ def export_signoff_package_archive(
     destination = raw_destination.parent.resolve() / raw_destination.name
 
     with tempfile.TemporaryDirectory(prefix="ecc-signoff-") as temporary_root:
-        result = EngineFlow(workspace).collect_signoff_package(
-            SignoffPackageOptions(
-                output_dir=temporary_root,
-                archive=False,
-                include_debug=include_debug,
-                materialize=False,
-                refresh_analysis=False,
+        try:
+            result = EngineFlow(workspace).collect_signoff_package(
+                SignoffPackageOptions(
+                    output_dir=temporary_root,
+                    archive=False,
+                    include_debug=include_debug,
+                    materialize=False,
+                    refresh_analysis=False,
+                )
             )
-        )
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            raise SignoffExportError(str(exc)) from exc
         if not result.ok:
             missing = ", ".join(result.missing_required) or "unknown required resources"
             raise SignoffExportError(f"signoff package is incomplete: {missing}")

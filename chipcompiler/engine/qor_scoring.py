@@ -32,7 +32,7 @@ class QorScoringMetric:
 
 @dataclass(frozen=True)
 class ScoredQorMetric:
-    metric: QorMetricRecord
+    metric: QorScoringMetric
     score: float | None
 
 
@@ -45,7 +45,8 @@ class QorScoringResult:
 
 
 def score_qor(records: list[QorScoringMetric]) -> QorScoringResult:
-    canonical = tuple(_canonical_record(record) for record in records)
+    canonical_pairs = tuple((record, _canonical_record(record)) for record in records)
+    canonical = tuple(item[1] for item in canonical_pairs)
     area_step = next(
         (
             record.step
@@ -55,8 +56,14 @@ def score_qor(records: list[QorScoringMetric]) -> QorScoringResult:
         None,
     )
     selected = _select_project_records(canonical, area_step)
+    original_by_canonical_id = {
+        id(canonical_record): original for original, canonical_record in canonical_pairs
+    }
     scored = tuple(
-        ScoredQorMetric(record, score_record(record) if record.rating_score else None)
+        ScoredQorMetric(
+            original_by_canonical_id.get(id(record), _restore_record(record)),
+            score_record(record) if record.rating_score else None,
+        )
         for record in selected
     )
     by_dimension: dict[str, list[float]] = {}
@@ -93,5 +100,19 @@ def _canonical_record(record: QorScoringMetric) -> QorMetricRecord:
         corner=record.corner,
         project_role=record.project_role,
         step_role="detail",
+        rating_score=record.rating_score,
+    )
+
+
+def _restore_record(record: QorMetricRecord) -> QorScoringMetric:
+    return QorScoringMetric(
+        step=record.step,
+        metric_id=record.metric_name,
+        value=record.value,
+        dimension=record.dimension,
+        direction=record.polarity,
+        scope=record.scope,
+        corner=record.corner,
+        project_role=record.project_role,
         rating_score=record.rating_score,
     )

@@ -51,3 +51,27 @@ def test_register_workspace_uses_main_manifest_shape(tmp_path):
     assert updated == load_project_manifest(tmp_path)
     assert updated["workspaces"][0]["start_step"] == "Synth"
     assert updated["workspaces"][0]["end_step"] == "Synth"
+
+
+def test_manifest_mutation_without_timestamp_keeps_audit_timestamp(tmp_path):
+    workspace = tmp_path / "experiment"
+    (workspace / "home").mkdir(parents=True)
+    (workspace / "home" / "flow.json").write_text(json.dumps({"steps": []}))
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+    mutate_project_manifest(
+        tmp_path,
+        {
+            "type": "register_workspace",
+            "workspace_id": "experiment",
+            "workspace_path": str(workspace),
+            "name": "Experiment",
+        },
+    )
+
+    updated = mutate_project_manifest(
+        tmp_path,
+        {"type": "archive_workspace", "workspace_id": "experiment"},
+    )
+
+    assert updated["updated_at"]
+    assert updated["workspaces"][0]["updated_at"]
