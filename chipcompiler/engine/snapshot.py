@@ -80,9 +80,9 @@ def commit_engineering_snapshot(
         ]
         if remaining:
             snapshot["stalePredecessor"] = {**deepcopy(stale), "invalidatedStepIds": remaining}
-        else:
-            _stale_snapshot_path(workspace).unlink(missing_ok=True)
     _write_snapshot(_snapshot_path(workspace), snapshot)
+    if isinstance(stale, dict) and "stalePredecessor" not in snapshot:
+        _stale_snapshot_path(workspace).unlink(missing_ok=True)
     return snapshot
 
 

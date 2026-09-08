@@ -1,3 +1,5 @@
+import os
+import tempfile
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -425,4 +427,15 @@ def _restore_files(snapshot: dict[Path, bytes | None]) -> None:
             path.unlink(missing_ok=True)
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(content)
+            fd, temporary = tempfile.mkstemp(
+                dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
+            )
+            try:
+                with os.fdopen(fd, "wb") as handle:
+                    handle.write(content)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temporary, path)
+            except BaseException:
+                os.unlink(temporary)
+                raise
