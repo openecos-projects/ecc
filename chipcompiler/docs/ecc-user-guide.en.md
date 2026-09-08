@@ -110,7 +110,6 @@ Commands:
   workspace     Refresh managed workspaces from project configuration
   signoff       Inspect and export signoff packages
   report        Generate design-summary, QoR score, checklist, and step reports
-  rpc           Run the private ECC JSON-RPC runtime
 ```
 
 ## 1.5. doc — read the bundled guides in the terminal

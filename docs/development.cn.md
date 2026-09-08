@@ -247,8 +247,7 @@ chipcompiler/cli/commands/        # typer 命令定义层（薄）
   ├── project_config.py           # project 子应用（set/unset/add/remove/show）
   ├── workspace.py                # workspace 子应用（refresh）
   ├── signoff.py                  # signoff 子应用（inspect/export）
-  ├── report.py                   # report 子应用（summary/qor/checklist/step）
-  └── rpc.py                      # rpc 子应用（serve）
+  └── report.py                   # report 子应用（summary/qor/checklist/step）
 chipcompiler/cli/command_handlers/  # 业务处理层（唯一的处理器包，有状态/重逻辑）
   ├── project.py                  # init / check / run / migrate / workspace refresh（含 preset 解析与环境预检）
   ├── inspect.py                  # status / log / config

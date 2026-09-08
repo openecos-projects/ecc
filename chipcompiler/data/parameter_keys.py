@@ -6,7 +6,7 @@ The canonical parameter vocabulary is flat snake_case (``frequency_max``,
 ``top_module``, ``die``/``core`` subtrees, ...). Older workspaces persisted
 display-oriented keys (``"Frequency max [MHz]"``, ``"Top module"``, ...) and
 the GUI sends flat keys plus a handful of positional geometry aliases at the
-project/RPC boundary. This module is the only place that knows the legacy
+project/adapter boundary. This module is the only place that knows the legacy
 vocabulary; everything else consumes the canonical form.
 """
 

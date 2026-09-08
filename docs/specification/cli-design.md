@@ -187,8 +187,8 @@ agent-specific disclosure fields inside core flow APIs.
 ### Core Commands
 
 The current root surface is a Typer command graph. The project-first command
-surface stays small, with version reporting and the private runtime sidecar
-available as explicit root entries:
+surface stays small, with version reporting and layout rendering as explicit
+root entries:
 
 ```bash
 ecc --version
@@ -207,7 +207,6 @@ ecc project
 ecc workspace
 ecc signoff
 ecc report
-ecc rpc
 ecc layout-image
 ```
 
@@ -231,7 +230,6 @@ Responsibilities:
 | `ecc workspace` | Refresh a declared workspace from current `ecc.toml` without running it |
 | `ecc signoff` | Inspect package readiness and export the tar.gz package |
 | `ecc report` | Write design-summary, QoR, and checklist reports; show step evidence |
-| `ecc rpc` | Serve the private JSON-RPC runtime sidecar over stdio |
 | `ecc layout-image` | Render a GDS file into an image |
 
 `ecc run` preflights the tools its preset needs (yosys for synthesis,
@@ -276,7 +274,7 @@ The command graph follows these rules; new commands must follow them too:
   `check`, `run`, `status`, `log`, `config`, `doctor`, `migrate`, `version`)
   plus the frozen tool invocations (`layout-image`). Resource management and
   reporting live in noun groups (`param`, `pdk`, `project`, `workspace`,
-  `signoff`, `report`, `rpc`).
+  `signoff`, `report`).
 - **Subcommand verbs.** Mutable resources use the CRUD set
   (`list`, `show`, `set`, `unset`, `diff`). The `report`
   group names its artifacts instead (`summary`, `qor`, `checklist`, `step`)
@@ -715,9 +713,8 @@ NAME` for a workspace declared in the project manifest. It persists a
 workspace-local override and refreshes the affected configuration without
 running the flow. PDK resources and input references are project-level values:
 edit `ecc.toml` through `ecc project` (or the matching `ecc pdk`/`ecc param`
-commands), then use `ecc workspace refresh NAME`. Old workspace create/run
-automation should use the private JSON-RPC runtime sidecar. The long-term
-default is project-oriented and configuration-driven through `ecc.toml` and
+commands), then use `ecc workspace refresh NAME`. The supported integration
+surface is project-oriented and configuration-driven through `ecc.toml` and
 subcommands such as `ecc run --project <dir>`.
 
 The project-level Python APIs should remain compatible with existing Python

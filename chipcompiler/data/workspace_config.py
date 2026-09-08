@@ -140,7 +140,7 @@ def validate_flow_config(flow: object) -> dict[str, str]:
         if not isinstance(value, str):
             raise WorkspaceFlowTargetError(f"[flow] {key} must be a string: {value!r}")
         # Workspace files carry canonical step names only; display-name
-        # aliases are translated at the manifest/RPC boundary, never here.
+        # aliases are translated at the manifest/adapter boundary, never here.
         if value not in canonical_names:
             raise WorkspaceFlowTargetError(f"[flow] unknown step name: {value!r}")
         normalized[key] = value

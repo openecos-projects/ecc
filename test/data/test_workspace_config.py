@@ -144,7 +144,7 @@ def test_flow_validation_accepts_canonical_names():
 
 def test_flow_validation_rejects_display_name_aliases():
     # Workspace files carry canonical names only; aliases translate at the
-    # manifest/RPC boundary.
+    # manifest/adapter boundary.
     with pytest.raises(WorkspaceFlowTargetError):
         validate_flow_config({"start": "Synth", "end": "Filler"})
 
