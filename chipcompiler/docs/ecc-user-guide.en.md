@@ -95,8 +95,8 @@ Command overview:
 $ ecc --help
 Commands:
   version       Show ECC runtime, component, and installed tool versions
-  layout-image  Render a GDS file into a layout image
   doc           Show a bundled guide (config = config reference, ug = user guide, tutorial)
+  layout-image  Render a GDS file into a layout image
   init          Create a new ECC project
   check         Validate the current project setup
   run           Run the configured RTL-to-GDS flow

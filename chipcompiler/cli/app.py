@@ -57,6 +57,9 @@ def version_cmd(
         typer.echo(version_text(payload, tools))
 
 
+register_doc_commands(app)
+
+
 @app.command("layout-image", help="Render a GDS file into a layout image")
 def layout_image_cmd(
     gds: Annotated[str, typer.Option("--gds", help="Input GDS path")],
@@ -71,7 +74,6 @@ def layout_image_cmd(
         raise typer.Exit(1)
 
 
-register_doc_commands(app)
 register_project_commands(app)
 register_doctor_commands(app)
 app.add_typer(param_app, name="param")
