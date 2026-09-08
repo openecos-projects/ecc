@@ -510,9 +510,7 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
             inspect = disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id)
 
             is_success = state == StateEnum.Success
-            is_warning = state != StateEnum.Success and (
-                state == StateEnum.Warning or is_non_blocking_step(workspace_step)
-            )
+            is_warning = state == StateEnum.Warning
             renderer.finish_step(
                 step_token,
                 tool,

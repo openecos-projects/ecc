@@ -2,29 +2,16 @@
 
 import json
 
+from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
 from chipcompiler.engine.reconcile import (
     compare_flows,
     reconcile_workspace,
     resolve_target_section,
 )
 
-RTL2GDS_STEPS = [
-    ("Synthesis", "yosys"),
-    ("lec", "yosys_lec"),
-    ("Floorplan", "ecc"),
-    ("place", "dreamplace"),
-    ("CTS", "ecc"),
-    ("legalization", "dreamplace"),
-    ("Timing optimization", "sizer"),
-    ("route", "ecc"),
-    ("filler", "ecc"),
-    ("RCX", "ecc"),
-    ("sta", "ecc"),
-    ("lvs", "ecc"),
-    ("postRouteLec", "yosys_lec"),
-    ("drc", "ecc"),
-    ("Harden", "ecc"),
-]
+# Derived from the canonical builder so reconciliation tests always
+# exercise the real current topology, never a stale hand-copied chain.
+RTL2GDS_STEPS = [(name, tool) for name, tool, _state in _canonical_rtl2gds_flow_entries()]
 LEGACY_RTL2GDS_STEPS = RTL2GDS_STEPS[:-3]
 FULL_FLOW_SUFFIX = RTL2GDS_STEPS[-3:]
 LEGACY_SYNTH_LEC_STEPS = [entry for entry in RTL2GDS_STEPS if entry[0] != "lec"]

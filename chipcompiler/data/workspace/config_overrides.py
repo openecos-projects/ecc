@@ -43,11 +43,13 @@ def apply_config_overrides(config_paths: dict[str, Path], parameters: dict) -> N
             _write_json_strict(config_path, config)
             written.append((config_path, original))
     except OSError:
+        # Roll back with the same atomic replace discipline as the forward
+        # writes: a truncated non-atomic restore is its own data loss.
         for config_path, original in reversed(written):
             if original is None:
                 config_path.unlink(missing_ok=True)
             else:
-                config_path.write_bytes(original)
+                _atomic_write_bytes(config_path, original)
         raise
 
 
@@ -64,6 +66,19 @@ def _read_json_strict(path: Path) -> dict:
         # it with only the patch would be destructive data loss.
         raise ValueError(f"config override target must be a JSON object: {path}")
     return data
+
+
+def _atomic_write_bytes(path: Path, content: bytes) -> None:
+    fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as file:
+            file.write(content)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(tmp_path, path)
+    except BaseException:
+        os.unlink(tmp_path)
+        raise
 
 
 def _write_json_strict(path: Path, config: dict) -> None:

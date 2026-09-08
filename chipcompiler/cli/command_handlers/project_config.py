@@ -138,16 +138,16 @@ def _change_rtl(args, ctx: CommandContext, *, add: bool) -> CommandResult:
 
 
 def _set_value(config_path: str, field, value: object) -> CommandResult | None:
-    """Apply one field edit; returns a structured error when the edit fails."""
+    """Apply one field edit; returns a failed CommandResult when the edit fails."""
     try:
         with open(config_path) as file:
             updated = set_scoped_key(file.read(), field.table, field.name, value)
     except (OSError, UnicodeDecodeError) as exc:
-        return _io_error(config_path, exc)
+        return CommandResult.err([_io_error(config_path, exc)])
     try:
         write_text_atomic(config_path, updated)
     except OSError as exc:
-        return _io_error(config_path, exc)
+        return CommandResult.err([_io_error(config_path, exc)])
     return None
 
 

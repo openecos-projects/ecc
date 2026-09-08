@@ -89,7 +89,9 @@ def set_root(command_input, ctx: CommandContext) -> CommandResult:
                 )
             ]
         )
-    _write_pdk_root(config_path, path)
+    error = _write_root_or_error(config_path, path, ctx.project)
+    if error is not None:
+        return error
 
     records = [
         {

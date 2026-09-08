@@ -196,9 +196,9 @@ def _run_selected(flow: "EngineFlow", selected: list[tuple[WorkspaceStep, Path]]
         flow.workspace.logger.log_section(
             f"{workspace_step.tool} - end step - {workspace_step.name}"
         )
-        if state not in {StateEnum.Success, StateEnum.Warning} and not is_non_blocking_step(
-            workspace_step
-        ):
+        if state not in {StateEnum.Success, StateEnum.Warning}:
+            # A persisted Incomplete blocks the rerun: only a terminal
+            # Warning may continue.
             return StepRunResult(ok=False, executed=tuple(executed), failed=workspace_step.name)
         if state != StateEnum.Success:
             flow.workspace.logger.warning(

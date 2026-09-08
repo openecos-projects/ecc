@@ -260,15 +260,22 @@ def execute_fresh_run(
         restored backup keeps its prior manifest status."""
         return committed_state["value"] or backup_path is None
 
-    def cleanup_failed_target():
+    def cleanup_failed_target() -> list[str]:
         """Remove a partially created target and put a renamed-aside
-        workspace back, so the previous artifacts survive the failure."""
+        workspace back, so the previous artifacts survive the failure.
+        Returns problems encountered while rolling back."""
+        problems: list[str] = []
         if not owns_target or committed_state["value"]:
-            return
+            return problems
         shutil.rmtree(run_dir, ignore_errors=True)
+        if os.path.lexists(run_dir):
+            problems.append(f"partial target could not be removed: {run_dir}")
         if backup_path is not None:
-            with contextlib.suppress(OSError):
+            try:
                 os.replace(backup_path, run_dir)
+            except OSError as exc:
+                problems.append(f"previous workspace left at {backup_path}: {exc}")
+        return problems
 
     base = None
     if cfg.manifest_parameters:
@@ -302,7 +309,9 @@ def execute_fresh_run(
             )
 
     def failed_workspace(reason: str | None) -> CommandResult:
-        cleanup_failed_target()
+        rollback_problems = cleanup_failed_target()
+        if rollback_problems:
+            reason = f"{reason}; rollback incomplete: {'; '.join(rollback_problems)}"
         if terminal_failure() and workspace_registered:
             # The target is genuinely gone: mark the entry failed. A restored
             # backup keeps its prior status — the refresh never happened.

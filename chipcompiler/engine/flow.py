@@ -536,12 +536,10 @@ class EngineFlow:
                 case StateEnum.Unstart:
                     return False
                 case StateEnum.Imcomplete:
-                    if is_non_blocking_step(workspace_step):
-                        self.workspace.logger.warning(
-                            "[WARNING] %s did not prove equivalence; continuing flow",
-                            workspace_step.name,
-                        )
-                        continue
+                    # An Incomplete step is an infrastructure or check
+                    # failure: it blocks the flow. Only the terminal Warning
+                    # state (a completed LEC reporting inequivalence)
+                    # continues.
                     return False
                 case StateEnum.Warning:
                     self.workspace.logger.warning(

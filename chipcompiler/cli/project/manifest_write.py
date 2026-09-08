@@ -238,6 +238,10 @@ def _update_manifest_locked(path: str, mutator) -> bool:
             f.write("\n")
             f.flush()
             os.fsync(f.fileno())
+        # Preserve the existing manifest's permissions: mkstemp's 0600 must
+        # not silently narrow a shared project.json.
+        if target.exists():
+            os.chmod(tmp_path, target.stat().st_mode & 0o7777)
         os.replace(tmp_path, target)
         return True
     except OSError as exc:

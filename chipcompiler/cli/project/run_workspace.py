@@ -193,7 +193,9 @@ def execute_workspace_run(
         except Exception as exc:
             return run_failed("flow_failed", str(exc))
 
-    write_status("success" if result.ok else "failed")
+        # Written inside the workspace lock: a second run acquiring the lock
+        # afterwards must observe this terminal status, not overwrite it.
+        write_status("success" if result.ok else "failed")
     record = {
         "workspace_id": workspace_id or "default",
         "status": "success" if result.ok else "failed",
