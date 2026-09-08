@@ -1,0 +1,68 @@
+{
+  "cliConfig": {
+    "design_clock_port": "clk",
+    "design_frequency_mhz": 200,
+    "design_name": "gcd",
+    "design_rtl": ["input/gcd.v"],
+    "design_top": "gcd",
+    "flow_preset": "rtl2gds",
+    "params_overrides": {
+      "floorplan.core_util": 0.6,
+      "place.target_density": 0.7
+    },
+    "pdk_name": "ics55",
+    "pdk_root": "pdk"
+  },
+  "studioDraft": {
+    "commandId": "workspace-create-shared-fixture",
+    "designInputMode": "rtl",
+    "directory": "workspace",
+    "originVerilog": "input/gcd.v",
+    "parameters": {
+      "clock": "clk",
+      "core_utilization": 0.6,
+      "design": "gcd",
+      "frequency_max": 200,
+      "target_density": 0.7,
+      "top_module": "gcd"
+    },
+    "pdk": "ics55",
+    "pdkConfigMode": "default",
+    "pdkRoot": "pdk"
+  },
+  "workspaceBindings": {
+    "inputs": {
+      "rtl-main": "input/gcd.v"
+    },
+    "pdk": {
+      "root": "pdk"
+    }
+  },
+  "workspaceSpec": {
+    "design": {
+      "clockPort": "clk",
+      "name": "gcd",
+      "topModule": "gcd"
+    },
+    "flow": {
+      "flowId": "rtl2gds"
+    },
+    "inputMode": "rtl",
+    "inputs": [
+      {
+        "inputId": "rtl-main",
+        "role": "rtl"
+      }
+    ],
+    "parameters": {
+      "design.frequency_mhz": 200.0,
+      "floorplan.core_util": 0.6,
+      "place.target_density": 0.7
+    },
+    "pdk": {
+      "familyId": "ics55",
+      "mode": "default"
+    },
+    "schemaVersion": 1
+  }
+}

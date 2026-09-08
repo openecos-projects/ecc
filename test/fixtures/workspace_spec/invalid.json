@@ -1,0 +1,67 @@
+{
+  "cliConfig": {
+    "design_name": "gcd",
+    "design_rtl": ["input/gcd.v"],
+    "design_top": "gcd",
+    "flow_preset": "rtl2gds",
+    "pdk_name": "ics55",
+    "pdk_overrides": {
+      "mystery": "unsupported"
+    },
+    "pdk_root": "pdk"
+  },
+  "expectedCliError": "unsupported_legacy_field: pdk.overrides.mystery",
+  "expectedIssueCodes": [
+    "conflicting_input_roles",
+    "filelist_source_missing"
+  ],
+  "expectedStudioError": "unsupported_legacy_field: parameters.mystery_knob",
+  "studioDraft": {
+    "commandId": "workspace-create-invalid-shared-fixture",
+    "designInputMode": "rtl",
+    "directory": "workspace",
+    "originVerilog": "input/gcd.v",
+    "parameters": {
+      "design": "gcd",
+      "mystery_knob": 3,
+      "top_module": "gcd"
+    },
+    "pdk": "ics55",
+    "pdkRoot": "pdk"
+  },
+  "workspaceBindings": {
+    "inputs": {
+      "filelist": "input/sources.f",
+      "rtl-main": "input/gcd.v"
+    },
+    "pdk": {
+      "root": "pdk"
+    }
+  },
+  "workspaceSpec": {
+    "design": {
+      "name": "gcd",
+      "topModule": "gcd"
+    },
+    "flow": {
+      "flowId": "rtl2gds"
+    },
+    "inputMode": "rtl",
+    "inputs": [
+      {
+        "inputId": "rtl-main",
+        "role": "rtl"
+      },
+      {
+        "inputId": "filelist",
+        "role": "filelist"
+      }
+    ],
+    "parameters": {},
+    "pdk": {
+      "familyId": "ics55",
+      "mode": "default"
+    },
+    "schemaVersion": 1
+  }
+}
