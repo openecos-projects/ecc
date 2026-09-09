@@ -477,7 +477,30 @@ if {[info exists golden_netlist_file] && $golden_netlist_file ne ""} {
 # technology mapping for clockgate
 clockgate {*}$tech_cells_args {*}$exclude_cells
 
+# Avoid QN-only (inverted-output) DFF cells: their functional Q net is renamed
+# through the output inverter, so the mapped netlist loses the FF output wire
+# names that yosys LEC uses as induction cut-points. dfflibmap -info reports
+# only one candidate per FF type, so iterate: exclude each inv pick until every
+# type maps to a non-inv cell or only inv variants remain. FF types without a
+# Q-output alternative are still mapped by the second pass below.
+set no_inv_cells [list]
+while {1} {
+    set dffmap_info [tee -q -s result.string dfflibmap -info {*}$tech_cells_args {*}$exclude_cells {*}$no_inv_cells]
+    set added 0
+    foreach line [split $dffmap_info \n] {
+        if {[regexp {^\s*cell (\S+) \(inv,} $line -> inv_cell]
+            && [lsearch -exact $no_inv_cells $inv_cell] < 0} {
+            lappend no_inv_cells -dont_use $inv_cell
+            set added 1
+        }
+    }
+    if {!$added} {
+        break
+    }
+}
+
 # technology mapping for flip-flops
+dfflibmap {*}$tech_cells_args {*}$exclude_cells {*}$no_inv_cells
 dfflibmap {*}$tech_cells_args {*}$exclude_cells
 
 # Follow mapped DFF cell names, not library filenames. For designs without
