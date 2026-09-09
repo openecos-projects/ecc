@@ -12,7 +12,7 @@ from typing import Any
 from .candidate_artifacts import sha256_path, write_json_atomic
 from .observed_callable import ObservedCallable
 
-DREAMPLACE_OBSERVER_REVISION = "ecc.agent.dreamplace_parameter_observer.v2"
+DREAMPLACE_OBSERVER_REVISION = "ecc.agent.dreamplace_parameter_observer.v3"
 RUNTIME_REPORT_REF = "analysis/parameter_runtime_report.v2.json"
 DREAMPLACE_KNOBS = frozenset(
     {
@@ -267,9 +267,9 @@ def _build_dreamplace_report(patch, engine, ppa, probe, *, engine_succeeded):
         }
         observation["density_operator_call_count"] = probe.get("density_operator_call_count", 0)
         value = observation["target_density"]
-        if observation["density_operator_call_count"] > 0 and _same_number(
-            value, observation["density_tensor_value"]
-        ):
+        # The density tensor ramps adaptively toward the configured target, so
+        # its live value tracks placement progress, not the parameter state.
+        if observation["density_operator_call_count"] > 0 and value is not None:
             actual, status, reason = value, "effective", None
     elif knob_id == "place.target_overflow":
         threshold = _scalar_value(getattr(params, "stop_overflow", None))
@@ -347,11 +347,3 @@ def _scalar_value(value):
     if type(value) in {bool, int}:
         return value
     return value if type(value) is float and math.isfinite(value) else None
-
-
-def _same_number(left, right):
-    return (
-        type(left) in {int, float}
-        and type(right) in {int, float}
-        and math.isclose(left, right, rel_tol=1e-6, abs_tol=1e-7)
-    )

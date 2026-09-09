@@ -573,7 +573,7 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
     monkeypatch.setattr("agent.workspace_api._reapply_candidate_input", lambda *_args: None)
     tool = {
         "name": "DREAMPlace",
-        "revision": "ecc.agent.dreamplace_parameter_observer.v2",
+        "revision": "ecc.agent.dreamplace_parameter_observer.v3",
         "source_sha256": "sha256:" + "3" * 64,
     }
 

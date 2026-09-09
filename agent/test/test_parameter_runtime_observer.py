@@ -50,6 +50,22 @@ def test_configured_density_without_consumer_is_unknown():
     assert (report["status"], report["actual_value"]) == ("unknown", None)
 
 
+def test_adaptive_density_tensor_does_not_revoke_effectiveness():
+    report = _report(
+        "place.target_density",
+        0.2,
+        {},
+        {
+            "target_density": 0.55,
+            "density_tensor_value": 0.709,
+            "density_operator_call_count": 569,
+            "utilization_floor": 0.5196,
+        },
+    )
+    assert (report["status"], report["actual_value"]) == ("effective", 0.55)
+    assert report["observation"]["density_tensor_value"] == 0.709
+
+
 def test_completed_placement_preserves_overflow_before_later_failure():
     recorder = DreamplaceRecorder({"knob_id": "place.target_overflow", "value": 0.1})
     engine = SimpleNamespace(params=SimpleNamespace(stop_overflow=0.1))

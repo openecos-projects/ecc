@@ -23,7 +23,7 @@ HASH = "sha256:" + "a" * 64
 PRODUCER = Path(__file__).parents[1] / "data/parameter_runtime_observer.py"
 TOOL = {
     "name": "DREAMPlace",
-    "revision": "ecc.agent.dreamplace_parameter_observer.v2",
+    "revision": "ecc.agent.dreamplace_parameter_observer.v3",
     "source_sha256": sha256_path(PRODUCER),
 }
 

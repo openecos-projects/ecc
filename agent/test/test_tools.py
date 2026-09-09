@@ -171,7 +171,7 @@ def test_tool_runner_owns_candidate_runtime_report(monkeypatch, tmp_path):
 
     assert eda.run_step(workspace, step, ecc_module=True) is True
     report = json.loads((tmp_path / "analysis" / "parameter_runtime_report.v2.json").read_text())
-    assert report["tool"]["revision"] == "ecc.agent.dreamplace_parameter_observer.v2"
+    assert report["tool"]["revision"] == "ecc.agent.dreamplace_parameter_observer.v3"
     assert report["status"] == "effective"
     assert report["observation"]["density_operator_call_count"] == 2
 
