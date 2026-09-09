@@ -86,16 +86,16 @@ def qor(command_input, ctx: CommandContext) -> CommandResult:
         extra={
             "design": report.design,
             "overall_score": report.overall_score,
-            "qor_status": report.status,
-            "gate_status": report.gate_status,
+            "qor_status": report.scalar_summary.status,
+            "gate_status": report.feasibility.status,
             "dimensions": [
                 {
-                    "dimension": d.label,
-                    "score": d.score,
-                    "weight": d.weight,
-                    "metrics": d.metric_count,
+                    "dimension": dimension.key,
+                    "score": dimension.value,
+                    "state": dimension.state,
+                    "features": len(dimension.features),
                 }
-                for d in report.dimension_scores
+                for dimension in report.dimension_scores
             ],
             "inspect": disclosure_cmd("ecc signoff inspect", ctx.project, ctx.run_id),
         },

@@ -19,17 +19,16 @@ def report_mocks(monkeypatch):
     )
     monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _path: workspace)
 
-    from chipcompiler.engine.qor_report import QorDimensionScore, QorScoreReport
+    from types import SimpleNamespace as NS
 
-    qor_report = QorScoreReport(
+    qor_report = NS(
         workspace="/tmp/ws",
         design="gcd",
         overall_score=72.5,
-        status="Green",
-        gate_status="pass",
-        area_scoring_step="Harden",
+        scalar_summary=NS(score=72.5, status="GREEN", profile="balanced", weights={}),
+        feasibility=NS(status="PASS", gates=[]),
         dimension_scores=[
-            QorDimensionScore("timing", "Timing", 0.35, 80.0, 2),
+            NS(key="timing", value=80.0, state="PASS", features=[NS(), NS()]),
         ],
     )
 
@@ -98,7 +97,7 @@ class TestReportQor:
         assert record["report"] == "qor"
         assert record["status"] == "written"
         assert record["overall_score"] == "72.5"
-        assert ast.literal_eval(record["dimensions"])[0]["dimension"] == "Timing"
+        assert ast.literal_eval(record["dimensions"])[0]["dimension"] == "timing"
         expected = os.path.join(run_dir, "signoff", "gcd_qor_report.txt")
         assert record["path"] == expected
         with open(expected) as f:

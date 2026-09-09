@@ -731,6 +731,19 @@ class EngineFlow:
                         "[QOR] %s failed to save run facts after the step succeeded",
                         step_tag,
                     )
+
+            # The workspace QoR report renders the per-step analysis
+            # artifacts refreshed above, so it runs after they exist; a
+            # failure degrades to a warning like the facts refresh.
+            if state == StateEnum.Success:
+                try:
+                    from chipcompiler.analysis.qor import refresh_workspace_qor_report
+
+                    refresh_workspace_qor_report(self.workspace)
+                except Exception:
+                    self.workspace.logger.exception(
+                        "[QOR] %s failed to refresh the workspace QoR report", step_tag
+                    )
         except (Exception, SystemExit) as exc:
             failure_message = record_tool_failure(self.workspace.logger, step_tag, exc)
             step_error = step_error or failure_message
