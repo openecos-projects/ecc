@@ -7,13 +7,16 @@ disk, and stale suffixes must not report obsolete metrics as current.
 """
 
 import dataclasses
+from math import isfinite
 from pathlib import Path
 
 from chipcompiler.analysis.qor.metric_registry import SCORED_STEP_VALUES
 from chipcompiler.data import StateEnum, StepEnum
 from chipcompiler.data.step_dirs import STEP_DIRECTORIES
 from chipcompiler.tools.ecc.sta_qor import (
+    POST_SYNTHESIS_STA_CORNER,
     STA_POWER_SUMMARY_FILENAME,
+    configured_sta_artifact_directories,
     read_sta_power_summary_json,
     read_sta_qor_summary,
 )
@@ -33,15 +36,17 @@ class MetricRecord:
     project_role: str
     corner: str | None
     source: dict
+    scope: str | None = None
+    endpoint_population: float | None = None
 
 
 @dataclasses.dataclass(frozen=True)
 class CornerSlack:
     corner: str
     setup_ws: float
-    hold_ws: float
-    setup_nvp: int
-    hold_nvp: int
+    hold_ws: float | None
+    setup_nvp: int | None
+    hold_nvp: int | None
 
 
 @dataclasses.dataclass
@@ -58,6 +63,8 @@ class QorInputs:
     rcx_spef_count: float | None = None
     rcx_expected_spef: float | None = None
     power_total_uw: float | None = None
+    power_source_path: str | None = None
+    sta_setup_only: bool = False
     tclk_ns: float | None = None
     profile: str = "balanced"
     power_budget_uw: float | None = None
@@ -119,7 +126,11 @@ def _select_metrics(step_payloads: list) -> dict:
             value = raw.get("value")
             if not isinstance(metric_id, str) or not metric_id:
                 continue
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not isfinite(value)
+            ):
                 continue
             role = raw.get("project_role")
             if role not in _ROLE_PRIORITY or role == "none":
@@ -132,6 +143,13 @@ def _select_metrics(step_payloads: list) -> dict:
                 project_role=role,
                 corner=raw.get("corner") if isinstance(raw.get("corner"), str) else None,
                 source=raw.get("source") if isinstance(raw.get("source"), dict) else {},
+                scope=raw.get("scope") if isinstance(raw.get("scope"), str) else None,
+                endpoint_population=(
+                    float(raw["endpoint_population"])
+                    if isinstance(raw.get("endpoint_population"), (int, float))
+                    and not isinstance(raw.get("endpoint_population"), bool)
+                    else None
+                ),
             )
             rank = (_ROLE_PRIORITY[role], -index)
             current = selected.get(metric_id)
@@ -140,15 +158,30 @@ def _select_metrics(step_payloads: list) -> dict:
     return {metric_id: rank_record[1] for metric_id, rank_record in selected.items()}
 
 
-def _corner_slack(workspace_root: Path) -> list:
+def _corner_slack(workspace, workspace_root: Path, flow_states: dict) -> tuple[list, bool]:
+    if flow_states.get(StepEnum.STA.value) != StateEnum.Success.value:
+        return [], False
     corners = []
     feature_root = workspace_root / _STA_FEATURE_DIR
     if not feature_root.is_dir():
-        return corners
-    for path in sorted(feature_root.glob("*/*/qor_summary.json")):
-        summary = read_sta_qor_summary(path.parts[-3], path)
+        return corners, False
+
+    configured = configured_sta_artifact_directories(workspace, feature_root)
+    if configured:
+        candidates = [(label, path / "qor_summary.json") for label, path in configured]
+    else:
+        # Test stand-ins may omit workspace.config. Real workspaces are always
+        # constrained by configured STA directories above.
+        candidates = [
+            (path.parts[-3], path) for path in sorted(feature_root.glob("*/*/qor_summary.json"))
+        ]
+
+    setup_only = False
+    for corner, path in candidates:
+        summary = read_sta_qor_summary(corner, path, require_hold=False)
         if summary is None:
             continue
+        setup_only = setup_only or summary.hold_wns is None
         corners.append(
             CornerSlack(
                 corner=summary.corner,
@@ -158,7 +191,34 @@ def _corner_slack(workspace_root: Path) -> list:
                 hold_nvp=summary.hold_nvp,
             )
         )
-    return corners
+    return corners, setup_only
+
+
+def _power_summary(workspace, workspace_root: Path, flow_states: dict):
+    """Select the worst available signoff power, with synthesis fallback."""
+    if flow_states.get(StepEnum.STA.value) == StateEnum.Success.value:
+        feature_root = workspace_root / _STA_FEATURE_DIR
+        totals = []
+        for _, directory in configured_sta_artifact_directories(workspace, feature_root):
+            path = directory / STA_POWER_SUMMARY_FILENAME
+            summary = read_sta_power_summary_json(path)
+            if summary is not None:
+                totals.append((summary.dynamic_uw + summary.leakage_uw, path))
+        if totals:
+            return max(totals, key=lambda item: item[0])
+
+    if flow_states.get(StepEnum.SYNTHESIS.value) == StateEnum.Success.value:
+        path = (
+            workspace_root
+            / STEP_DIRECTORIES[StepEnum.SYNTHESIS.value]
+            / "feature"
+            / POST_SYNTHESIS_STA_CORNER
+            / STA_POWER_SUMMARY_FILENAME
+        )
+        summary = read_sta_power_summary_json(path)
+        if summary is not None:
+            return summary.dynamic_uw + summary.leakage_uw, path
+    return None, None
 
 
 def _resolve_parameters(parameters: dict, warnings: list) -> tuple:
@@ -228,12 +288,8 @@ def load_workspace_qor_inputs(workspace) -> QorInputs:
         record = metrics.get(metric_id)
         return record.value if record is not None else None
 
-    power_total_uw = None
-    power_summary = read_sta_power_summary_json(
-        workspace_root / _STA_FEATURE_DIR / STA_POWER_SUMMARY_FILENAME
-    )
-    if power_summary is not None:
-        power_total_uw = power_summary.dynamic_uw + power_summary.leakage_uw
+    power_total_uw, power_source = _power_summary(workspace, workspace_root, flow_states)
+    corners, sta_setup_only = _corner_slack(workspace, workspace_root, flow_states)
 
     return QorInputs(
         design=design,
@@ -243,11 +299,13 @@ def load_workspace_qor_inputs(workspace) -> QorInputs:
         analyzed_steps=analyzed_steps,
         parse_failures=parse_failures,
         invalid_selector_count=invalid_selector_count,
-        corners=_corner_slack(workspace_root),
+        corners=corners,
         sta_expected_corners=_metric_value("sta_expected_corner_count"),
         rcx_spef_count=_metric_value("rcx_spef_file_count"),
         rcx_expected_spef=_metric_value("rcx_expected_corner_count"),
         power_total_uw=power_total_uw,
+        power_source_path=str(power_source) if power_source is not None else None,
+        sta_setup_only=sta_setup_only,
         tclk_ns=tclk_ns,
         profile=profile,
         power_budget_uw=power_budget_uw,

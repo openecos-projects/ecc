@@ -3836,7 +3836,9 @@ def build_metrics_sta(workspace: Workspace, step: EccStep) -> StepMetrics:
         if hold_tns is None or summary.hold_tns < hold_tns:
             hold_tns = summary.hold_tns
             hold_tns_corner = summary.corner
-        if frequency is None or summary.frequency_mhz < frequency:
+        if summary.frequency_mhz is not None and (
+            frequency is None or summary.frequency_mhz < frequency
+        ):
             frequency = summary.frequency_mhz
             frequency_corner = summary.corner
         setup_violation_count += summary.setup_nvp

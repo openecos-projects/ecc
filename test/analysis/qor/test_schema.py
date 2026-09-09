@@ -41,6 +41,22 @@ class TestSchemaParity:
         errors = validate_report(payload)
         assert any("score out of range" in error for error in errors)
 
+    def test_malformed_nested_blocks_return_errors_without_raising(self):
+        from unittest import mock
+
+        inputs = make_inputs(gcd_metrics(), corners=gcd_corners(), tclk_ns=20.0)
+        with mock.patch(
+            "chipcompiler.analysis.qor.load_workspace_qor_inputs",
+            lambda workspace: inputs,
+        ):
+            payload = build_qor_analysis(workspace=None).to_dict()
+        payload["feasibility"] = None
+        assert validate_report(payload)
+
+        payload["feasibility"] = {"status": "PASS", "gates": []}
+        payload["diagnoses"] = [{"diagnosis_id": "broken", "interventions": [None]}]
+        assert validate_report(payload)
+
     def test_invalid_gate_state_is_detected(self):
         from unittest import mock
 
