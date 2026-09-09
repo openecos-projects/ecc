@@ -4,6 +4,7 @@ from chipcompiler.data.parameter_keys import (
     geometry_to_parameters,
     normalize_key,
     normalize_keys,
+    normalize_parameter_dict,
     parameters_to_geometry,
 )
 
@@ -63,6 +64,39 @@ def test_normalize_keys_collision_long_key_wins(caplog):
         result = normalize_keys(payload)
     assert result == {"frequency_max": 100}
     assert any("frequency_max" in record.message for record in caplog.records)
+
+
+def test_normalize_parameter_dict_preserves_reserved_payloads():
+    payload = {
+        "Config Overrides": {
+            "CTS": {"skew_bound": "0.1"},
+            "route": {"RT": {"-thread_number": "16"}},
+        },
+        "workspace_param_overrides": [
+            {
+                "key": "sta.signoff",
+                "baseline": [{"MAX": ["Cworst"]}],
+                "value": [{"MIN": ["Cbest"]}],
+            }
+        ],
+        "DreamPlace": {"Target Density": 0.5},
+    }
+    result = normalize_parameter_dict(payload)
+    # Reserved payloads fold onto their canonical key but keep every literal
+    # identifier inside: tool config keys, JSON paths, corner names.
+    assert result["config_overrides"] == {
+        "CTS": {"skew_bound": "0.1"},
+        "route": {"RT": {"-thread_number": "16"}},
+    }
+    assert result["workspace_param_overrides"] == [
+        {
+            "key": "sta.signoff",
+            "baseline": [{"MAX": ["Cworst"]}],
+            "value": [{"MIN": ["Cbest"]}],
+        }
+    ]
+    # Ordinary keys still normalize.
+    assert result["dreamplace"] == {"target_density": 0.5}
 
 
 def test_geometry_to_parameters_folds_aliases_into_subtrees():

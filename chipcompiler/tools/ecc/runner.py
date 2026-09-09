@@ -18,7 +18,11 @@ from chipcompiler.tools.ecc.metrics import (
     save_rcx_spef_feature_facts,
 )
 from chipcompiler.tools.ecc.module import ECCToolsModule
-from chipcompiler.tools.ecc.plot import ECCToolsPlot
+from chipcompiler.tools.ecc.rcx_artifacts import (
+    copy_rcx_spef_outputs,
+    resolve_rcx_dirs,
+    wipe_stale_spef_artifacts,
+)
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_outputs
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
@@ -66,49 +70,6 @@ def _workspace_sta_config_path(workspace: Workspace) -> str | None:
     return os.fspath(config_path) if config_path is not None else None
 
 
-def copy_rcx_spef_outputs(workspace: Workspace, step: EccStep):
-    data_dir_text = os.fspath(step.data.dir or "")
-    output_dir_text = os.fspath(step.output.dir or "")
-    workspace_dir = workspace.directory
-    if not data_dir_text or not output_dir_text or workspace_dir is None:
-        return
-
-    data_dir = Path(data_dir_text)
-    if data_dir_text.startswith("/"):
-        relative_data_dir = data_dir_text[1:]
-        if relative_data_dir.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
-            data_dir = workspace_dir / relative_data_dir
-
-    output_dir = Path(output_dir_text)
-    if output_dir_text.startswith("/"):
-        relative_output_dir = output_dir_text[1:]
-        if relative_output_dir.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
-            output_dir = workspace_dir / relative_output_dir
-
-    spef_writer_dir = data_dir / "spef_writer"
-    if not spef_writer_dir.is_dir():
-        return
-
-    output_paths = [output_dir / spef_path.name for spef_path in step.output.spef if spef_path]
-
-    if not output_paths:
-        output_paths = [
-            output_dir / spef_path.name for spef_path in sorted(spef_writer_dir.glob("*.spef"))
-        ]
-
-    for output_path in output_paths:
-        source_path = spef_writer_dir / output_path.name
-        if not source_path.is_file():
-            continue
-
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source_path, output_path)
-        workspace.logger.info("Copied RCX SPEF %s to %s", source_path, output_path)
-
-    if isinstance(step.output.spef, list):
-        step.output.spef[:] = output_paths
-
-
 def copy_lvs_outputs(workspace: Workspace, step: EccStep):
     output_dir_text = os.fspath((step.data.steps or {}).get(StepEnum.LVS.value, ""))
     if not output_dir_text:
@@ -136,6 +97,12 @@ def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
         return []
     sta_data = json_read(sta_config)
     rcx_output_dir = workspace_dir / f"{StepEnum.RCX.value}_ecc" / "output"
+    # STA-entry workspaces declare their parasitics (design.spef) instead of
+    # producing them with RCX: without an RCX step in the flow, every corner
+    # reads the declared SPEF.
+    flow = getattr(workspace, "flow", None)
+    has_rcx = bool(flow is not None and flow.has_step(StepEnum.RCX))
+    declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
 
     liberty_by_corner = {liberty.get("corner"): liberty for liberty in sta_data.get("liberty", [])}
     spef_design_name = workspace.design.top_module or workspace.design.name
@@ -157,13 +124,18 @@ def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
                 spef_name = (
                     f"{spef_design_name}_{rcx_corner_name}_{temperature_token(temperature)}C.spef"
                 )
+                spef_file = (
+                    str(declared_spef)
+                    if not has_rcx and declared_spef
+                    else str(rcx_output_dir / spef_name)
+                )
                 items.append(
                     {
                         "corner": corner_name,
                         "temperature": temperature,
                         "rcx_corner": rcx_corner_name,
                         "liberty_files": liberty_files,
-                        "spef_file": str(rcx_output_dir / spef_name),
+                        "spef_file": spef_file,
                     }
                 )
 
@@ -290,18 +262,9 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
 
     if not is_eda_exist() or not is_enable_setup():
         return None
-    if step.name == StepEnum.LVS.value or not step.input.db:
-        return load_design()
-
-    ecc_module = None
-    try:
-        ecc_module = load_data()
-    except Exception as e:
-        workspace.logger.warning("Failed to load ECC data; falling back to design input: %s", e)
-        ecc_module = None
-    if ecc_module is None:
-        ecc_module = load_design()
-    return ecc_module
+    # Loading serialized ECC data is deliberately disabled. Always rebuild the
+    # database from the current design inputs.
+    return load_design()
 
 
 def get_eda_instance(
@@ -436,7 +399,7 @@ def save_data(
     ecc_module.def_save(def_path=step.output.def_ or "")
     ecc_module.verilog_save(output_verilog=step.output.verilog or "")
     ecc_module.gds_save(output_path=step.output.gds or "")
-    ecc_module.save_data(path=step.output.db or "")
+    # ecc_module.save_data(path=step.output.db or "")
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
         geometry_manifest = step.output.geometry_manifest
@@ -543,6 +506,8 @@ def run_analysis(workspace: Workspace, step: EccStep, subflow: EccSubFlow):
     build_step_metrics(workspace=workspace, step=step, subflow=subflow)
 
     # plot layout image
+    from chipcompiler.tools.ecc.plot import ECCToolsPlot
+
     ploter = ECCToolsPlot(workspace=workspace, step=step)
     ploter.plot()
 
@@ -838,12 +803,37 @@ def run_rcx(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        ecc_module.init_rcx(
-            config=workspace.config.get(StepEnum.RCX.value, ""), pdk=workspace.pdk.name
-        )
-        ecc_module.run_rcx()
-        ecc_module.destroy_rcx()
-        copy_rcx_spef_outputs(workspace, step)
+        # A rerun keeps the step directory, so drop previously extracted SPEFs
+        # first; stale artifacts left behind by an earlier run must not be
+        # mistaken for fresh extraction output.
+        data_dir, _ = resolve_rcx_dirs(workspace, step)
+        if data_dir is not None:
+            wipe_stale_spef_artifacts(data_dir)
+
+        try:
+            if not ecc_module.init_rcx(
+                config=workspace.config.get(StepEnum.RCX.value, ""), pdk=workspace.pdk.name
+            ):
+                workspace.logger.error("Failed to initialize RCX extraction")
+                sub_flow.update_step(
+                    step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Imcomplete
+                )
+                return False
+            if not ecc_module.run_rcx():
+                workspace.logger.error("RCX extraction failed")
+                sub_flow.update_step(
+                    step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Imcomplete
+                )
+                return False
+        finally:
+            try:
+                ecc_module.destroy_rcx()
+            except Exception as exc:
+                workspace.logger.error("Failed to release the RCX extractor: %s", exc)
+
+        if not copy_rcx_spef_outputs(workspace, step):
+            sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Imcomplete)
+            return False
         sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Success)
 
         if not save_data(

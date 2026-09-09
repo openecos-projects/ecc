@@ -1,4 +1,3 @@
-import json
 import os
 
 from chipcompiler.cli import main as cli_main
@@ -13,12 +12,11 @@ class TestOverwriteGuard:
         create_cli_project,
         mock_pdk_validation,
         spy_mutations,
-        legacy_hint,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
-        run_dir = os.path.join(project_dir, "runs", "exp1")
+        run_dir = os.path.join(project_dir, "exp1")
         os.makedirs(run_dir)
         keep = os.path.join(run_dir, "keep.txt")
         with open(keep, "w") as f:
@@ -27,19 +25,18 @@ class TestOverwriteGuard:
 
         mutations = spy_mutations()
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--run-id", "exp1", "--overwrite", "--json"]
+            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--plain"]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "overwrite_refused",
-                "run": "exp1",
+                "workspace_id": "exp1",
                 "workspace": run_dir,
-                "reason": "target is not an ECC run directory",
-            },
-            legacy_hint(project_dir),
+                "reason": "target is not an ECC workspace directory",
+            }
         ]
         assert mutations == {"chmod": [], "rmtree": []}
         with open(keep) as f:
@@ -55,12 +52,11 @@ class TestOverwriteGuard:
         mock_pdk_validation,
         monkeypatch,
         spy_mutations,
-        legacy_hint,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
-        run_dir = os.path.join(project_dir, "runs", "exp1")
+        run_dir = os.path.join(project_dir, "exp1")
         os.makedirs(run_dir)
         real_listdir = os.listdir
 
@@ -75,19 +71,18 @@ class TestOverwriteGuard:
         mutations = spy_mutations()
 
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--run-id", "exp1", "--overwrite", "--json"]
+            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--plain"]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "overwrite_refused",
-                "run": "exp1",
+                "workspace_id": "exp1",
                 "workspace": run_dir,
-                "reason": "target is not an ECC run directory",
-            },
-            legacy_hint(project_dir),
+                "reason": "target is not an ECC workspace directory",
+            }
         ]
         assert mutations == {"chmod": [], "rmtree": []}
         assert real_listdir(run_dir) == []
@@ -99,70 +94,70 @@ class TestOverwriteGuard:
         create_cli_project,
         create_flow_json,
         mock_pdk_validation,
-        legacy_hint,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         real_run = str(tmp_path / "real_run")
         create_flow_json(real_run)
-        link = os.path.join(project_dir, "runs", "exp1")
+        link = os.path.join(project_dir, "exp1")
         os.symlink(real_run, link)
 
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--run-id", "exp1", "--overwrite", "--json"]
+            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--plain"]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "overwrite_refused",
-                "run": "exp1",
+                "workspace_id": "exp1",
                 "workspace": link,
-                "reason": "target is not an ECC run directory",
-            },
-            legacy_hint(project_dir),
+                "reason": "target is not an ECC workspace directory",
+            }
         ]
         assert os.path.islink(link)
         assert os.path.isfile(os.path.join(real_run, "home", "flow.json"))
 
     def test_refuses_non_directory_target(
-        self, tmp_path, capsys, create_cli_project, mock_pdk_validation, legacy_hint
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        mock_pdk_validation,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
-        target = os.path.join(project_dir, "runs", "exp1")
+        target = os.path.join(project_dir, "exp1")
         with open(target, "w") as f:
             f.write("not a directory\n")
 
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--run-id", "exp1", "--overwrite", "--json"]
+            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--plain"]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "overwrite_refused",
-                "run": "exp1",
+                "workspace_id": "exp1",
                 "workspace": target,
-                "reason": "target is not an ECC run directory",
-            },
-            legacy_hint(project_dir),
+                "reason": "target is not an ECC workspace directory",
+            }
         ]
         with open(target) as f:
             assert f.read() == "not a directory\n"
 
     def test_allows_empty_dir(self, tmp_path, capsys, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
-        run_dir = os.path.join(project_dir, "runs", "exp1")
+        run_dir = os.path.join(project_dir, "exp1")
         os.makedirs(run_dir)
 
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--run-id", "exp1", "--overwrite", "--json"]
+            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--plain"]
         )
 
         assert rc == 0
@@ -172,13 +167,12 @@ class TestOverwriteGuard:
         self, tmp_path, capsys, create_cli_project, create_flow_json, flow_mocks
     ):
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         link = str(tmp_path / "project_link")
         os.symlink(project_dir, link)
-        run_dir = os.path.join(link, "runs", "default")
+        run_dir = os.path.join(link, "default")
         create_flow_json(run_dir, profile="main")
 
-        rc = cli_main.run(["run", "--project", link, "--overwrite", "--json"])
+        rc = cli_main.run(["run", "--project", link, "--overwrite", "--plain"])
 
         assert rc == 0
         assert flow_mocks.capture["create_kwargs"]["directory"] == run_dir
@@ -190,14 +184,13 @@ class TestOverwriteGuard:
         create_cli_project,
         create_flow_json,
         mock_pdk_validation,
-        legacy_hint,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         real_run = str(tmp_path / "real_run")
         create_flow_json(real_run)
-        run_dir = os.path.join(project_dir, "runs", "exp1")
+        run_dir = os.path.join(project_dir, "exp1")
         os.makedirs(run_dir)
         keep = os.path.join(run_dir, "keep.txt")
         with open(keep, "w") as f:
@@ -205,19 +198,18 @@ class TestOverwriteGuard:
         os.symlink(os.path.join(real_run, "home"), os.path.join(run_dir, "home"))
 
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--run-id", "exp1", "--overwrite", "--json"]
+            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--plain"]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "overwrite_refused",
-                "run": "exp1",
+                "workspace_id": "exp1",
                 "workspace": run_dir,
-                "reason": "target is not an ECC run directory",
-            },
-            legacy_hint(project_dir),
+                "reason": "target is not an ECC workspace directory",
+            }
         ]
         with open(keep) as f:
             assert f.read() == "precious\n"
@@ -230,14 +222,13 @@ class TestOverwriteGuard:
         create_cli_project,
         create_flow_json,
         mock_pdk_validation,
-        legacy_hint,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         real_run = str(tmp_path / "real_run")
         create_flow_json(real_run)
-        run_dir = os.path.join(project_dir, "runs", "exp1")
+        run_dir = os.path.join(project_dir, "exp1")
         os.makedirs(os.path.join(run_dir, "home"))
         keep = os.path.join(run_dir, "keep.txt")
         with open(keep, "w") as f:
@@ -248,19 +239,18 @@ class TestOverwriteGuard:
         )
 
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--run-id", "exp1", "--overwrite", "--json"]
+            ["run", "--project", project_dir, "--workspace", "exp1", "--overwrite", "--plain"]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "overwrite_refused",
-                "run": "exp1",
+                "workspace_id": "exp1",
                 "workspace": run_dir,
-                "reason": "target is not an ECC run directory",
-            },
-            legacy_hint(project_dir),
+                "reason": "target is not an ECC workspace directory",
+            }
         ]
         with open(keep) as f:
             assert f.read() == "precious\n"
@@ -273,11 +263,12 @@ class TestOverwriteGuard:
         create_cli_project,
         mock_pdk_validation,
         spy_mutations,
-        legacy_hint,
+        plain_records,
     ):
+        """A multi-segment target would leave the project through a symlinked
+        ancestor; the workspace name is rejected before anything is touched."""
         mock_pdk_validation()
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         victim = tmp_path / "external" / "victim"
         victim.mkdir(parents=True)
         os.symlink(str(tmp_path / "external"), os.path.join(project_dir, "sweeps"))
@@ -288,23 +279,20 @@ class TestOverwriteGuard:
                 "run",
                 "--project",
                 project_dir,
-                "--run-id",
+                "--workspace",
                 "sweeps/victim",
                 "--overwrite",
-                "--json",
+                "--plain",
             ]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
-                "error": "overwrite_refused",
-                "run": "sweeps/victim",
-                "workspace": os.path.join(project_dir, "sweeps", "victim"),
-                "reason": "target is not an ECC run directory",
-            },
-            legacy_hint(project_dir),
+                "error": "invalid_workspace",
+                "reason": "invalid_workspace: 'sweeps/victim' is not a single workspace name",
+            }
         ]
         assert mutations == {"chmod": [], "rmtree": []}
         assert victim.is_dir()
@@ -317,11 +305,10 @@ class TestOverwriteGuard:
         create_flow_json,
         mock_pdk_validation,
         spy_mutations,
-        legacy_hint,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         victim = tmp_path / "external" / "victim"
         create_flow_json(str(victim))
         keep = victim / "keep.txt"
@@ -335,23 +322,20 @@ class TestOverwriteGuard:
                 "run",
                 "--project",
                 project_dir,
-                "--run-id",
+                "--workspace",
                 "sweeps/victim",
                 "--overwrite",
-                "--json",
+                "--plain",
             ]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
-                "error": "overwrite_refused",
-                "run": "sweeps/victim",
-                "workspace": os.path.join(project_dir, "sweeps", "victim"),
-                "reason": "target is not an ECC run directory",
-            },
-            legacy_hint(project_dir),
+                "error": "invalid_workspace",
+                "reason": "invalid_workspace: 'sweeps/victim' is not a single workspace name",
+            }
         ]
         assert mutations == {"chmod": [], "rmtree": []}
         assert keep.read_text() == "precious\n"
@@ -367,11 +351,12 @@ class TestOverwriteGuard:
         create_flow_json,
         mock_pdk_validation,
         spy_mutations,
-        legacy_hint,
+        plain_records,
     ):
+        """A ".." after a symlink component would reach a victim outside the
+        project; the multi-segment spelling is rejected as a workspace name."""
         mock_pdk_validation()
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         child = tmp_path / "outside" / "child"
         child.mkdir(parents=True)
         victim = tmp_path / "outside" / "victim"
@@ -385,19 +370,16 @@ class TestOverwriteGuard:
         run_id = os.path.join("sweeps", "jump", "..", "victim")
         mutations = spy_mutations()
         rc = cli_main.run(
-            ["run", "--project", project_dir, "--run-id", run_id, "--overwrite", "--json"]
+            ["run", "--project", project_dir, "--workspace", run_id, "--overwrite", "--plain"]
         )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
-                "error": "overwrite_refused",
-                "run": run_id,
-                "workspace": os.path.join(project_dir, run_id),
-                "reason": "target is not an ECC run directory",
-            },
-            legacy_hint(project_dir),
+                "error": "invalid_workspace",
+                "reason": f"invalid_workspace: {run_id!r} is not a single workspace name",
+            }
         ]
         assert mutations == {"chmod": [], "rmtree": []}
         assert keep.read_text() == "precious\n"
@@ -413,11 +395,10 @@ class TestOverwriteGuard:
         create_flow_json,
         mock_pdk_validation,
         spy_mutations,
-        legacy_hint,
+        plain_records,
     ):
         mock_pdk_validation()
         project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
         link_dir = tmp_path / "link_dir"
         link_dir.mkdir()
         link = str(link_dir / "project_link")
@@ -430,18 +411,17 @@ class TestOverwriteGuard:
 
         run_id = os.path.join("..", "victim")
         mutations = spy_mutations()
-        rc = cli_main.run(["run", "--project", link, "--run-id", run_id, "--overwrite", "--json"])
+        rc = cli_main.run(
+            ["run", "--project", link, "--workspace", run_id, "--overwrite", "--plain"]
+        )
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
-                "error": "overwrite_refused",
-                "run": run_id,
-                "workspace": os.path.join(link, "..", "victim"),
-                "reason": "target is not an ECC run directory",
-            },
-            legacy_hint(link),
+                "error": "invalid_workspace",
+                "reason": f"invalid_workspace: {run_id!r} is not a single workspace name",
+            }
         ]
         assert mutations == {"chmod": [], "rmtree": []}
         assert keep.read_text() == "precious\n"

@@ -11,19 +11,30 @@ same workspace (or an overwrite/migration replacing it) serialize on the
 lock. Imported lazily by the run handler; keep module-level imports cheap.
 """
 
+import logging
 import os
 import shlex
 from pathlib import Path
 
 from chipcompiler.cli.core.types import CommandResult
 
+logger = logging.getLogger(__name__)
 
-def execute_workspace_run(command_input) -> CommandResult:
-    """Reconcile and execute an explicit workspace target.
+
+def execute_workspace_run(
+    command_input,
+    workspace_path: str,
+    workspace_id: str | None = None,
+    *,
+    project_dir: str | None = None,
+) -> CommandResult:
+    """Reconcile and execute a registered project workspace.
 
     Selector validity was already checked by the handler. Explicit
     selectors (--from/--only) re-execute on request; the default resume
-    runs only within the reconciled target range.
+    runs only within the reconciled target range. When *project_dir* names
+    a manifest project, the run lifecycle is written back to project.json
+    (running, then the terminal status) so the GUI never reads a stale one.
     """
     from chipcompiler.data import load_workspace
     from chipcompiler.data.workspace_config import (
@@ -40,7 +51,18 @@ def execute_workspace_run(command_input) -> CommandResult:
     def error(kind: str, **fields) -> CommandResult:
         return CommandResult.err([{"kind": "error", "error": kind, **fields}])
 
-    workspace_path = os.path.abspath(os.path.expanduser(command_input.workspace))
+    def write_status(status: str) -> None:
+        """Best-effort manifest status write-back; degrades to a log."""
+        from chipcompiler.cli.project.manifest_write import write_back_workspace_status
+
+        if project_dir is None or not workspace_id:
+            return
+        if not write_back_workspace_status(project_dir, workspace_id, status):
+            logger.warning(
+                "manifest write-back failed: %s: %s -> %s", project_dir, workspace_id, status
+            )
+
+    workspace_path = os.path.abspath(workspace_path)
 
     def mismatch_error(reason: str) -> CommandResult:
         if reason.startswith("workspace_config_invalid"):
@@ -95,13 +117,16 @@ def execute_workspace_run(command_input) -> CommandResult:
             and command_input.from_step is None
             and command_input.only is None
         ):
-            # The persisted flow already covers the target and succeeded;
+            # The persisted flow already covers the target and finished;
             # resume has nothing to do. Explicit selectors (--from/--only)
-            # still re-execute on request.
+            # still re-execute on request. The flow is complete, so the
+            # manifest entry reads success even if a previous failed state
+            # is stale.
+            write_status("success")
             return CommandResult.ok(
                 [
                     {
-                        "run": "workspace",
+                        "workspace_id": workspace_id or "default",
                         "status": "success",
                         "workspace": workspace_path,
                         "executed_steps": [],
@@ -110,17 +135,26 @@ def execute_workspace_run(command_input) -> CommandResult:
                 ]
             )
 
+        write_status("running")
+
+        def run_failed(kind: str, reason: str | None = None) -> CommandResult:
+            """A failure after the running marker must leave a terminal
+            status, never a workspace stuck as running."""
+            write_status("failed")
+            return error(kind, workspace=workspace_path, **({"reason": reason} if reason else {}))
+
         try:
             engine_flow = EngineFlow(workspace=workspace)
         except Exception as exc:
-            return error("invalid_workspace", workspace=workspace_path, reason=str(exc))
+            return run_failed("invalid_workspace", str(exc))
         if not engine_flow.has_init():
-            return error("missing_flow", workspace=workspace_path)
+            return run_failed("missing_flow")
 
         try:
             selected = rerun.selected_step_names(
                 engine_flow,
                 from_step=command_input.from_step,
+                through=command_input.to_step,
                 only=command_input.only,
                 force=command_input.force,
             )
@@ -132,7 +166,7 @@ def execute_workspace_run(command_input) -> CommandResult:
                 if target_names:
                     selected = rerun.bounded_resume_names(engine_flow, target_names[-1])
         except ValueError as exc:
-            return error("unknown_step", workspace=workspace_path, reason=str(exc))
+            return run_failed("unknown_step", str(exc))
 
         from chipcompiler.cli.rendering.progress import preserve_cli_stdio
 
@@ -145,18 +179,25 @@ def execute_workspace_run(command_input) -> CommandResult:
                         engine_flow, command_input.only, force=command_input.force
                     )
                 elif command_input.from_step is not None:
-                    result = rerun.run_from(engine_flow, command_input.from_step)
+                    result = rerun.run_from(
+                        engine_flow,
+                        command_input.from_step,
+                        through=command_input.to_step,
+                    )
                 elif reconcile_result.target:
                     result = rerun.run_resume(engine_flow, through=reconcile_result.target[-1])
                 else:
                     result = rerun.run_resume(engine_flow)
         except ValueError as exc:
-            return error("step_unavailable", workspace=workspace_path, reason=str(exc))
+            return run_failed("step_unavailable", str(exc))
         except Exception as exc:
-            return error("flow_failed", workspace=workspace_path, reason=str(exc))
+            return run_failed("flow_failed", str(exc))
 
+        # Written inside the workspace lock: a second run acquiring the lock
+        # afterwards must observe this terminal status, not overwrite it.
+        write_status("success" if result.ok else "failed")
     record = {
-        "run": "workspace",
+        "workspace_id": workspace_id or "default",
         "status": "success" if result.ok else "failed",
         "workspace": workspace_path,
         "executed_steps": list(result.executed),
@@ -165,5 +206,5 @@ def execute_workspace_run(command_input) -> CommandResult:
     if result.ok:
         return CommandResult.ok([record])
     record["failed_step"] = result.failed
-    record["resume_cmd"] = f"ecc run --workspace {shlex.quote(workspace_path)} --resume"
+    record["resume_cmd"] = f"ecc run --workspace {shlex.quote(workspace_id or 'default')} --resume"
     return CommandResult.err([record])

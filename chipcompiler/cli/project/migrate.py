@@ -16,7 +16,8 @@ import sys
 
 from typing_extensions import deprecated
 
-from chipcompiler.cli.project.manifest import find_manifest, load_manifest, update_manifest
+from chipcompiler.cli.project.manifest import find_manifest, load_manifest
+from chipcompiler.cli.project.manifest_write import update_manifest
 from chipcompiler.cli.project.migrate_plan import (
     MigrationEntry,
     MigrationPreview,
@@ -91,7 +92,7 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
     that actually moved.
     """
     from chipcompiler.cli.project import migrate_fs
-    from chipcompiler.cli.project.manifest import write_manifest_if_absent
+    from chipcompiler.cli.project.manifest_write import write_manifest_if_absent
 
     plan = preview.plan
     records: list[dict] = []
@@ -495,8 +496,10 @@ def _migrate_project_impl(command_input, ctx):
             problems.append("flow.preset is required")
         else:
             from chipcompiler import rtl2gds as rtl2gds_api
+            from chipcompiler.data.workspace_config import LEGACY_PRESET_RANGES
 
-            if cfg.flow_preset not in rtl2gds_api.get_flow_builders():
+            supported = set(rtl2gds_api.get_flow_builders()) | set(LEGACY_PRESET_RANGES)
+            if cfg.flow_preset not in supported:
                 problems.append(f"unsupported flow.preset: {cfg.flow_preset}")
         if problems:
             return CommandResult.err(

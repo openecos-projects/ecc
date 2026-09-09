@@ -1,4 +1,3 @@
-import json
 import os
 
 import pytest
@@ -6,51 +5,53 @@ import pytest
 from chipcompiler.cli import main as cli_main
 
 
-class TestStepConfigInvalidFlowRun:
-    @pytest.mark.parametrize("run_id", ("default", ""))
-    @pytest.mark.parametrize(
-        ("toml_line", "reason"),
-        [
-            ('run = ""', "unsupported flow.run: "),
-            ("run = 42", "unsupported flow.run: 42"),
-        ],
-    )
-    def test_step_config_errors_on_invalid_flow_run_with_selector(
+class TestStepConfigIgnoresLegacyFlowRun:
+    @pytest.mark.parametrize("selector", ("default", None))
+    @pytest.mark.parametrize("toml_line", ('run = ""', "run = 42"))
+    def test_step_config_ignores_legacy_flow_run_with_selector(
         self,
         tmp_path,
         capsys,
         create_cli_project,
         create_flow_json,
         create_step_dir,
+        create_cts_workspace_config,
         set_flow_run,
         toml_line,
-        reason,
-        run_id,
+        selector,
+        plain_records,
     ):
+        """The step view reads only the workspace; a legacy [flow].run key
+        in ecc.toml must not break step-scoped config listing."""
         project_dir = create_cli_project()
         set_flow_run(project_dir, toml_line)
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir)
         create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        create_cts_workspace_config(run_dir)
 
-        rc = cli_main.run(
-            ["config", "cts", "--resolved", "--run-id", run_id, "--project", project_dir, "--json"]
-        )
+        args = ["config", "cts"]
+        if selector is not None:
+            args += ["--workspace", selector]
+        args += ["--project", project_dir, "--plain"]
+        rc = cli_main.run(args)
 
-        assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
-            {
-                "kind": "error",
-                "error": "config_error",
-                "reason": reason,
-                "inspect": f"ecc check --project {project_dir}",
-            }
+        assert rc == 0
+        records = plain_records(capsys.readouterr().out)
+        assert [item["path"] for item in records] == [
+            "default/config/db_ecc.json",
+            "default/config/cts_ecc.json",
         ]
 
 
 class TestConfigUnreadableFallback:
     def test_config_resolved_reports_invalid_config_on_unreadable_toml(
-        self, tmp_path, capsys, create_cli_project, monkeypatch
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        monkeypatch,
+        plain_records,
     ):
         project_dir = create_cli_project()
 
@@ -59,10 +60,10 @@ class TestConfigUnreadableFallback:
 
         monkeypatch.setattr("chipcompiler.cli.project.config.load_project_config", deny)
 
-        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--plain"])
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "invalid_config",
@@ -71,16 +72,20 @@ class TestConfigUnreadableFallback:
         ]
 
     def test_config_resolved_reports_invalid_config_on_non_utf8_toml(
-        self, tmp_path, capsys, create_cli_project
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        plain_records,
     ):
         project_dir = create_cli_project()
         with open(os.path.join(project_dir, "ecc.toml"), "wb") as f:
             f.write(b'[flow]\nrun = "\xff\xfe"\n')
 
-        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--plain"])
 
         assert rc == 1
-        assert json.loads(capsys.readouterr().out)["records"] == [
+        assert plain_records(capsys.readouterr().out) == [
             {
                 "kind": "error",
                 "error": "invalid_config",

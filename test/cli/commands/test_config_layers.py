@@ -56,7 +56,7 @@ class TestDivergenceProjectionFields:
         )
         (project_dir / "rtl" / "other.v").write_text("module other; endmodule\n")
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -80,7 +80,7 @@ class TestDivergenceProjectionFields:
             '\n[flow]\npreset = "rtl2gds"\n',
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -125,11 +125,6 @@ class TestExplicitEmptyStaysExplicit:
             id="empty-clock",
         ),
         pytest.param(
-            _HYBRID_TOML.replace('rtl = ["rtl/gcd.v"]', "rtl = []"),
-            "design.rtl must have at least one entry",
-            id="empty-rtl",
-        ),
-        pytest.param(
             _HYBRID_TOML.replace('name = "ics55"', 'name = ""'),
             "pdk.name is required",
             id="empty-pdk-name",
@@ -152,11 +147,36 @@ class TestExplicitEmptyStaysExplicit:
     ):
         project_dir = self._hybrid(manifest_stubs, tmp_path, monkeypatch, toml_text)
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
         assert expected in reasons
+
+    def test_check_explicit_empty_rtl_allowed_until_run(
+        self, manifest_stubs, tmp_path, capsys, monkeypatch, flow_mocks
+    ):
+        # An explicitly empty rtl list is a legal spelling (netlist-driven
+        # flows declare no RTL); check accepts it and the gate moves to the
+        # run preflight, where the Synthesis entry step demands design.rtl.
+        project_dir = self._hybrid(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            _HYBRID_TOML.replace('rtl = ["rtl/gcd.v"]', "rtl = []"),
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
+
+        assert rc == 0
+        capsys.readouterr()
+
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
+
+        assert rc != 0
+        reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
+        assert "step_input_missing: Synthesis requires design.rtl" in reasons
+        assert flow_mocks.capture["create_kwargs"] is None
 
     @pytest.mark.parametrize("toml_text,expected", _CASES)
     def test_run_explicit_empty_fails_before_mutation(
@@ -164,19 +184,19 @@ class TestExplicitEmptyStaysExplicit:
     ):
         project_dir = self._hybrid(manifest_stubs, tmp_path, monkeypatch, toml_text)
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
         assert expected in reasons
         assert flow_mocks.capture["create_kwargs"] is None
 
-    def test_check_explicit_empty_pdk_root_diverges_with_env_root(
+    def test_check_explicit_empty_pdk_root_matches_env_base_quietly(
         self, manifest_stubs, tmp_path, capsys, monkeypatch
     ):
-        # An explicit empty root resolves through the env fallback (valid
-        # here) — the explicit override must surface as a divergence, not
-        # be hidden by the emptiness skip.
+        # The init-template spelling (root = "") resolves through the env
+        # fallback; when that effective root equals the manifest base there
+        # is no divergence to surface — the default flow stays warning-free.
         project_dir = self._hybrid(
             manifest_stubs,
             tmp_path,
@@ -185,7 +205,28 @@ class TestExplicitEmptyStaysExplicit:
         )
         monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(project_dir / "pdk"))
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
+
+        assert rc == 0
+        warnings = _divergences(manifest_stubs.records())
+        assert warnings == []
+
+    def test_check_explicit_empty_pdk_root_diverges_with_env_root(
+        self, manifest_stubs, tmp_path, capsys, monkeypatch
+    ):
+        # An explicit empty root that resolves through the env fallback to a
+        # DIFFERENT directory than the manifest base is a real divergence.
+        project_dir = self._hybrid(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            _HYBRID_TOML.replace('root = "{ROOT}"', 'root = ""'),
+        )
+        other_root = project_dir / "pdk-env"
+        other_root.mkdir()
+        monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(other_root))
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -232,10 +273,10 @@ class TestLowerLayerDivergence:
             tmp_path,
             monkeypatch,
             base_parameters={"design": "gcd", "frequency_max": 0},
-            entry_range=("Synth", "PostRouteLEC"),
+            entry_range=("Synth", "Harden"),
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -250,10 +291,10 @@ class TestLowerLayerDivergence:
             tmp_path,
             monkeypatch,
             base_parameters={"design": "gcd", "frequency_max": 0},
-            entry_range=("Synth", "PostRouteLEC"),
+            entry_range=("Synth", "Harden"),
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -271,7 +312,7 @@ class TestLowerLayerDivergence:
             entry_range=("Place", "Route"),
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -289,7 +330,7 @@ class TestLowerLayerDivergence:
             entry_range=("Place", "Route"),
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -299,16 +340,16 @@ class TestLowerLayerDivergence:
     def test_check_equivalent_flow_range_stays_silent(
         self, manifest_stubs, tmp_path, capsys, monkeypatch
     ):
-        # rtl2gds maps to (Synth, Filler) — the same range the entry declares.
+        # rtl2gds maps to (Synth, Harden) — the same range the entry declares.
         project_dir = self._hybrid(
             manifest_stubs,
             tmp_path,
             monkeypatch,
             base_parameters={"design": "gcd", "frequency_max": 100},
-            entry_range=("Synth", "PostRouteLEC"),
+            entry_range=("Synth", "Harden"),
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         assert _divergences(manifest_stubs.records()) == []
@@ -321,10 +362,10 @@ class TestLowerLayerDivergence:
             tmp_path,
             monkeypatch,
             base_parameters={"design": "gcd", "frequency_max": 100},
-            entry_range=("Synth", "PostRouteLEC"),
+            entry_range=("Synth", "Harden"),
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         assert _divergences(manifest_stubs.records()) == []
@@ -338,7 +379,7 @@ class TestOrderedRtlDivergence:
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         entry = manifest_stubs.entry(project_dir, "ws_0001")
-        entry["start_step"], entry["end_step"] = "Synth", "PostRouteLEC"
+        entry["start_step"], entry["end_step"] = "Synth", "Harden"
         manifest_stubs.write(
             project_dir,
             [entry],
@@ -366,7 +407,7 @@ class TestOrderedRtlDivergence:
     def test_check_warns_on_reordered_rtl(self, manifest_stubs, tmp_path, capsys, monkeypatch):
         project_dir = self._hybrid(manifest_stubs, tmp_path, monkeypatch, '"rtl/b.v", "rtl/gcd.v"')
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -378,7 +419,7 @@ class TestOrderedRtlDivergence:
     ):
         project_dir = self._hybrid(manifest_stubs, tmp_path, monkeypatch, '"rtl/b.v", "rtl/gcd.v"')
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = _divergences(manifest_stubs.records())
@@ -388,14 +429,14 @@ class TestOrderedRtlDivergence:
     def test_same_order_stays_silent(self, manifest_stubs, tmp_path, capsys, monkeypatch):
         project_dir = self._hybrid(manifest_stubs, tmp_path, monkeypatch, '"rtl/gcd.v", "rtl/b.v"')
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         assert _divergences(manifest_stubs.records()) == []
 
 
 class TestConfigResolvedManifestLayering:
-    """ecc config --resolved shows the EFFECTIVE config: the same manifest
+    """ecc config shows the EFFECTIVE config: the same manifest
     layering check/run resolve, with source labels following the layers."""
 
     def _records_by_key(self, records):
@@ -413,7 +454,7 @@ class TestConfigResolvedManifestLayering:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["config", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         by_key = self._records_by_key(manifest_stubs.records())
@@ -446,7 +487,7 @@ class TestConfigResolvedManifestLayering:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["config", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         by_key = self._records_by_key(manifest_stubs.records())
@@ -476,7 +517,7 @@ def test_check_tolerates_huge_manifest_frequency(tmp_path, capsys, manifest_stub
         },
     )
 
-    rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+    rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
     assert rc != 0
     records = manifest_stubs.records()
@@ -507,7 +548,7 @@ class TestSetDivergence:
         )
 
         rc = cli_main.run(
-            ["run", "--project", str(project_dir), "--set", "cts.max_fanout=32", "--json"]
+            ["run", "--project", str(project_dir), "--set", "cts.max_fanout=32", "--plain"]
         )
 
         assert rc == 0
@@ -539,7 +580,7 @@ class TestSetDivergence:
         )
 
         rc = cli_main.run(
-            ["run", "--project", str(project_dir), "--set", "cts.max_fanout=20", "--json"]
+            ["run", "--project", str(project_dir), "--set", "cts.max_fanout=20", "--plain"]
         )
 
         assert rc == 0

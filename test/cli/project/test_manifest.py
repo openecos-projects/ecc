@@ -7,13 +7,9 @@ import pytest
 from chipcompiler.cli.project.manifest import (
     ManifestError,
     assemble_config,
-    build_manifest_document,
     classify_project,
     load_manifest,
     resolved_base_parameters,
-    update_manifest,
-    write_back_workspace_status,
-    write_manifest_if_absent,
 )
 
 
@@ -126,7 +122,7 @@ def test_load_manifest_rejects_workspace_outside_root(tmp_path):
         load_manifest(str(tmp_path))
 
 
-def test_find_workspace_matches_id_and_path_tail(tmp_path):
+def test_find_workspace_matches_only_declared_id(tmp_path):
     _write_manifest(
         tmp_path,
         _minimal_document(
@@ -142,7 +138,7 @@ def test_find_workspace_matches_id_and_path_tail(tmp_path):
     manifest = load_manifest(str(tmp_path))
 
     assert manifest.find_workspace("ws_0001") is manifest.workspaces[0]
-    assert manifest.find_workspace("custom_dir") is manifest.workspaces[0]
+    assert manifest.find_workspace("custom_dir") is None
     assert manifest.find_workspace("nope") is None
 
 
@@ -192,78 +188,6 @@ def test_classify_project(tmp_path):
     assert classify_project(str(tmp_path)) == "manifest"
 
 
-def test_write_manifest_if_absent_wins_and_loses_race(tmp_path):
-    document = build_manifest_document(
-        str(tmp_path),
-        design_name="gcd",
-        base_design={"pdk": "ics55", "parameters": {"design": "gcd"}},
-        workspace_id="default",
-        workspace_path=str(tmp_path / "default"),
-        start_step="Synth",
-        end_step="Filler",
-    )
-    assert write_manifest_if_absent(str(tmp_path), document) is True
-    assert write_manifest_if_absent(str(tmp_path), document) is False
-
-    written = json.loads((tmp_path / "project.json").read_text())
-    assert written["schema_version"] == 1
-    assert written["design_name"] == "gcd"
-    assert written["root_path"] == str(tmp_path)
-    assert written["qor_baseline"]["workspace_id"] == "default"
-    (entry,) = written["workspaces"]
-    assert entry["workspace_id"] == "default"
-    assert entry["start_step"] == "Synth"
-    assert entry["end_step"] == "Filler"
-    assert entry["status"] == "running"
-
-
-def test_update_manifest_preserves_unrelated_fields(tmp_path):
-    document = build_manifest_document(
-        str(tmp_path),
-        design_name="gcd",
-        base_design={"parameters": {"design": "gcd"}},
-        workspace_id="default",
-        workspace_path=str(tmp_path / "default"),
-        start_step="Synth",
-        end_step="Filler",
-    )
-    write_manifest_if_absent(str(tmp_path), document)
-
-    def mutate(doc):
-        doc["workspaces"][0]["status"] = "success"
-        doc["custom_gui_field"] = {"kept": True}
-
-    assert update_manifest(str(tmp_path), mutate) is True
-
-    written = json.loads((tmp_path / "project.json").read_text())
-    assert written["workspaces"][0]["status"] == "success"
-    assert written["custom_gui_field"] == {"kept": True}
-
-
-def test_update_manifest_missing_file_returns_false(tmp_path):
-    assert update_manifest(str(tmp_path), lambda doc: None) is False
-
-
-def test_write_back_workspace_status(tmp_path):
-    document = build_manifest_document(
-        str(tmp_path),
-        design_name="gcd",
-        base_design={"parameters": {"design": "gcd"}},
-        workspace_id="default",
-        workspace_path=str(tmp_path / "default"),
-        start_step="Synth",
-        end_step="Filler",
-    )
-    write_manifest_if_absent(str(tmp_path), document)
-
-    assert write_back_workspace_status(str(tmp_path), "default", "failed") is True
-    written = json.loads((tmp_path / "project.json").read_text())
-    assert written["workspaces"][0]["status"] == "failed"
-
-    # Unknown workspace ids degrade to a no-op, not an error.
-    assert write_back_workspace_status(str(tmp_path), "unknown", "failed") is True
-
-
 def test_load_manifest_rejects_malformed_mpc(tmp_path):
     _write_manifest(tmp_path, _minimal_document(tmp_path, mpc={"resource_id": "bogus"}))
     with pytest.raises(ManifestError):
@@ -298,61 +222,6 @@ def test_resolved_base_parameters_gui_flat_vocabulary():
     # Exclusive GUI-flat shape: no canonical geometry subtrees survive.
     assert "die" not in parameters
     assert "core" not in parameters
-
-
-def test_update_manifest_preserves_interleaved_unrelated_change(tmp_path):
-    document = build_manifest_document(
-        str(tmp_path),
-        design_name="gcd",
-        base_design={"parameters": {"design": "gcd"}},
-        workspace_id="default",
-        workspace_path=str(tmp_path / "default"),
-        start_step="Synth",
-        end_step="Filler",
-    )
-    write_manifest_if_absent(str(tmp_path), document)
-
-    def mutate(doc):
-        # A concurrent writer lands an unrelated edit mid-update.
-        fresh = json.loads((tmp_path / "project.json").read_text())
-        fresh["custom_gui_field"] = {"concurrent": True}
-        (tmp_path / "project.json").write_text(json.dumps(fresh))
-        doc["workspaces"][0]["status"] = "failed"
-
-    assert update_manifest(str(tmp_path), mutate) is True
-
-    written = json.loads((tmp_path / "project.json").read_text())
-    # Both our status change and the interleaved GUI edit survive.
-    assert written["workspaces"][0]["status"] == "failed"
-    assert written["custom_gui_field"] == {"concurrent": True}
-
-
-def test_status_write_back_touches_only_target_entry(tmp_path):
-    document = build_manifest_document(
-        str(tmp_path),
-        design_name="gcd",
-        base_design={"parameters": {"design": "gcd"}},
-        workspace_id="default",
-        workspace_path=str(tmp_path / "default"),
-        start_step="Synth",
-        end_step="Filler",
-    )
-    write_manifest_if_absent(str(tmp_path), document)
-    before = json.loads((tmp_path / "project.json").read_text())
-
-    assert write_back_workspace_status(str(tmp_path), "default", "success") is True
-
-    after = json.loads((tmp_path / "project.json").read_text())
-    changed = []
-    for key in after:
-        if after[key] != before[key]:
-            changed.append(key)
-    # Only the workspaces array changes, and within it only status/updated_at.
-    assert changed == ["workspaces"]
-    entry_before, entry_after = before["workspaces"][0], after["workspaces"][0]
-    changed_entry_keys = [k for k in entry_after if entry_after[k] != entry_before.get(k)]
-    assert sorted(changed_entry_keys) == ["status", "updated_at"]
-    assert entry_after["status"] == "success"
 
 
 def test_resolved_base_parameters_whole_object():
@@ -509,15 +378,6 @@ def test_load_manifest_tolerates_huge_integer_mpc_design_index(tmp_path):
     assert manifest.design_name == "gcd"
 
 
-def test_update_manifest_degrades_when_lock_is_unopenable(tmp_path):
-    _write_manifest(tmp_path, _minimal_document(tmp_path))
-    # A directory at the lock path: flock cannot be taken — degrade to
-    # False (callers warn/roll back), never an uncaught OSError.
-    (tmp_path / ".manifest.lock").mkdir()
-
-    assert update_manifest(str(tmp_path), lambda document: None) is False
-
-
 def test_load_manifest_stores_canonical_workspace_path_through_symlink(tmp_path):
     real_dir = tmp_path / "proj" / "ws_0001"
     real_dir.mkdir(parents=True)
@@ -558,7 +418,7 @@ def test_load_manifest_symlink_loop_is_a_manifest_error_not_a_traceback(tmp_path
         load_manifest(str(project_dir))
 
 
-def test_find_workspace_selects_by_declared_tail_not_canonical_alias(tmp_path):
+def test_find_workspace_does_not_select_a_declared_path_tail(tmp_path):
     real_dir = tmp_path / "proj" / "actual"
     real_dir.mkdir(parents=True)
     (tmp_path / "proj" / "linked").symlink_to(real_dir)
@@ -574,9 +434,9 @@ def test_find_workspace_selects_by_declared_tail_not_canonical_alias(tmp_path):
 
     manifest = load_manifest(str(tmp_path / "proj"))
 
-    # Execution uses the canonical path; selection spells the document.
+    # Execution uses the canonical path, but CLI selection uses the managed ID.
     assert manifest.workspaces[0].workspace_path == str(real_dir.resolve())
-    assert manifest.find_workspace("linked") == manifest.workspaces[0]
+    assert manifest.find_workspace("linked") is None
     assert manifest.find_workspace("actual") is None
     assert manifest.find_workspace("ws_0001") == manifest.workspaces[0]
 

@@ -13,7 +13,13 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
-from chipcompiler.data import StateEnum, Workspace, WorkspaceStep, log_flow
+from chipcompiler.data import (
+    StateEnum,
+    Workspace,
+    WorkspaceStep,
+    is_finished_step_state,
+    log_flow,
+)
 from chipcompiler.utility.log import redirect_stdio_to_file
 from chipcompiler.utility.path import path_is_within
 
@@ -30,19 +36,28 @@ class StepRunResult(NamedTuple):
 
 
 def selected_step_names(
-    flow: "EngineFlow", *, from_step: str = None, only: str = None, force: bool = False
+    flow: "EngineFlow",
+    *,
+    from_step: str = None,
+    through: str | None = None,
+    only: str = None,
+    force: bool = False,
 ) -> list[str]:
     """Resolve a run selector to the persisted step names it would execute."""
     steps = flow.workspace.flow.data.get("steps", [])
     if only is not None:
         index = _require_step_index(flow, only)
-        if not force and steps[index].get("state") == StateEnum.Success.value:
+        if not force and is_finished_step_state(steps[index].get("state")):
             return []
         return [steps[index]["name"]]
     if from_step is not None:
-        return [step["name"] for step in steps[_require_step_index(flow, from_step) :]]
+        first = _require_step_index(flow, from_step)
+        last = _require_step_index(flow, through) if through is not None else len(steps) - 1
+        if last < first:
+            raise ValueError(f"step '{through}' is before '{from_step}'")
+        return [step["name"] for step in steps[first : last + 1]]
     for index, step in enumerate(steps):
-        if step.get("state") != StateEnum.Success.value:
+        if not is_finished_step_state(step.get("state")):
             return [step["name"] for step in steps[index:]]
     return []
 
@@ -52,7 +67,7 @@ def bounded_resume_names(flow: "EngineFlow", through: str) -> list[str]:
     steps = flow.workspace.flow.data.get("steps", [])
     last_index = _require_step_index(flow, through)
     for index, step in enumerate(steps):
-        if step.get("state") != StateEnum.Success.value:
+        if not is_finished_step_state(step.get("state")):
             if index > last_index:
                 return []
             return [step["name"] for step in steps[index : last_index + 1]]
@@ -60,14 +75,14 @@ def bounded_resume_names(flow: "EngineFlow", through: str) -> list[str]:
 
 
 def run_resume(flow: "EngineFlow", *, through: str | None = None) -> StepRunResult:
-    """Resume from the first non-successful step, re-executing the persisted suffix.
+    """Resume from the first non-finished step, re-executing the persisted suffix.
 
     *through* bounds the resume to the reconciled target's last step: a
     persisted ledger wider than the target is neither re-executed nor
     invalidated past it.
     """
     for step in flow.workspace.flow.data.get("steps", []):
-        if step.get("state") != StateEnum.Success.value:
+        if not is_finished_step_state(step.get("state")):
             return run_from(flow, step["name"], through=through)
     return StepRunResult(ok=True, executed=())
 
@@ -83,15 +98,25 @@ def run_from(flow: "EngineFlow", name: str, *, through: str | None = None) -> St
     _require_steps_available(flow, last_index)
     suffix = flow.workspace_steps[index : last_index + 1]
     output_dirs = _validated_output_dirs(flow.workspace, suffix)
-    _invalidate_suffix(flow, index, last_index)
+    # A bounded rerun executes only the requested interval, but all later
+    # states become stale because their input chain changed. Their outputs are
+    # deliberately retained until the user chooses to run them.
+    _invalidate_suffix(flow, index)
     return _run_selected(flow, list(zip(suffix, output_dirs, strict=True)))
 
 
+def invalidate_from(flow: "EngineFlow", name: str) -> list[str]:
+    """Persist an invalidated suffix without executing or deleting outputs."""
+    index = _require_step_index(flow, name)
+    _invalidate_suffix(flow, index)
+    return [step["name"] for step in flow.workspace.flow.data.get("steps", [])[index:]]
+
+
 def run_only(flow: "EngineFlow", name: str, *, force: bool = False) -> StepRunResult:
-    """Run exactly one persisted step; a successful step is re-run only with force."""
+    """Run exactly one persisted step; a finished step is re-run only with force."""
     steps = flow.workspace.flow.data.get("steps", [])
     index = _require_step_index(flow, name)
-    if not force and steps[index].get("state") == StateEnum.Success.value:
+    if not force and is_finished_step_state(steps[index].get("state")):
         return StepRunResult(ok=True, executed=())
     _require_steps_available(flow, index)
     workspace_step = flow.get_workspace_step(name)
@@ -104,6 +129,19 @@ def _require_step_index(flow: "EngineFlow", name: str) -> int:
     steps = flow.workspace.flow.data.get("steps", [])
     for index, step in enumerate(steps):
         if step.get("name") == name:
+            return index
+    # Selectors accept any CLI spelling of a persisted step ("floorplan",
+    # "Floorplan", "FLOORPLAN", "synth", ...) — only an unambiguous
+    # canonical form may not be guessed at.
+    from chipcompiler.rtl2gds.builder import normalize_flow_step
+
+    canonical = normalize_flow_step(name)
+    for index, step in enumerate(steps):
+        if step.get("name") == canonical:
+            return index
+    folded = str(name or "").casefold()
+    for index, step in enumerate(steps):
+        if str(step.get("name", "")).casefold() == folded:
             return index
     available = ", ".join(str(step.get("name")) for step in steps)
     raise ValueError(f"unknown step '{name}'; available steps: {available}")
@@ -157,7 +195,8 @@ def _run_selected(flow: "EngineFlow", selected: list[tuple[WorkspaceStep, Path]]
         flow.workspace.logger.log_section(
             f"{workspace_step.tool} - end step - {workspace_step.name}"
         )
-        if state != StateEnum.Success:
+        if state is not StateEnum.Success:
+            # A persisted Incomplete blocks the rerun.
             return StepRunResult(ok=False, executed=tuple(executed), failed=workspace_step.name)
         executed.append(workspace_step.name)
     return StepRunResult(ok=True, executed=tuple(executed))

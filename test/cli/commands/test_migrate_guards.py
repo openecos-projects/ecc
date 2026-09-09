@@ -7,8 +7,8 @@ import pytest
 from chipcompiler.cli import main as cli_main
 
 
-def _records(capsys):
-    return json.loads(capsys.readouterr().out)["records"]
+def _records(capsys, plain_records):
+    return plain_records(capsys.readouterr().out)
 
 
 def _tree_snapshot(root):
@@ -52,6 +52,7 @@ class TestMigrationFailLoud:
         minimal_ics55_pdk_factory,
         monkeypatch,
         create_legacy_workspace,
+        plain_records,
     ):
         import shutil
 
@@ -76,10 +77,12 @@ class TestMigrationFailLoud:
 
         monkeypatch.setattr(migrate_fs, "_unsafe_workspace_source", swapping_screen)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
-        (failure,) = [r for r in _records(capsys) if r.get("error") == "migration_failed"]
+        (failure,) = [
+            r for r in _records(capsys, plain_records) if r.get("error") == "migration_failed"
+        ]
         assert "replaced during migration" in failure["reason"]
         # The pre-content gate fired: the replacement was never loaded or
         # registered, and sits untouched for manual inspection.
@@ -94,6 +97,7 @@ class TestMigrationFailLoud:
         minimal_ics55_pdk_factory,
         monkeypatch,
         create_legacy_workspace,
+        plain_records,
     ):
         import shutil
 
@@ -119,10 +123,10 @@ class TestMigrationFailLoud:
 
         monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", swapping_refresh)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
-        records = _records(capsys)
+        records = _records(capsys, plain_records)
         (failure,) = [r for r in records if r.get("error") == "migration_failed"]
         assert "NOT registered" in failure["reason"]
         # The registration gate caught the identity change: project.json was
@@ -139,6 +143,7 @@ class TestMigrationFailLoud:
         minimal_ics55_pdk_factory,
         monkeypatch,
         create_legacy_workspace,
+        plain_records,
     ):
         import shutil
 
@@ -158,10 +163,12 @@ class TestMigrationFailLoud:
 
         monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", failing_refresh)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
-        (failure,) = [r for r in _records(capsys) if r.get("error") == "migration_failed"]
+        (failure,) = [
+            r for r in _records(capsys, plain_records) if r.get("error") == "migration_failed"
+        ]
         assert "rollback incomplete" in failure["reason"]
         # The unconfirmed replacement was never reverse-rebased.
         current = json.loads((Path(run_dir) / "home" / "home.json").read_text())
@@ -208,7 +215,7 @@ class TestMigrationProjectLock:
         create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
         thread, released = _hold_lock_briefly(project_dir)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         thread.join()
         assert rc == 0
@@ -223,7 +230,7 @@ class TestMigrationProjectLock:
         project_dir = create_cli_project()
         thread, released = _hold_lock_briefly(project_dir)
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
         thread.join()
         assert rc == 0
@@ -247,9 +254,8 @@ class TestRunMigrationRace:
         minimal_ics55_pdk_factory,
         create_legacy_workspace,
         monkeypatch,
+        plain_records,
     ):
-        from chipcompiler.cli.project import effective_config
-
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
         create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
@@ -262,25 +268,20 @@ class TestRunMigrationRace:
 
         monkeypatch.setattr("chipcompiler.data.create_workspace", fake_create_workspace)
 
-        def migrating_validate(*args, **kwargs):
-            # A concurrent migration completes between context construction
-            # and the run's locked decision.
-            rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
-            assert rc == 0
-            capsys.readouterr()  # drop the migration's own output
-            return []
-
-        monkeypatch.setattr(effective_config, "validate_effective", migrating_validate)
-
-        rc = cli_main.run(["run", "--project", project_dir, "--run-id", "exp1", "--json"])
+        # A legacy project is refused BEFORE any locked decision, so no
+        # stale-classification window exists: the run never mutates the
+        # tree, and the legacy workspace stays exactly where it was.
+        rc = cli_main.run(["run", "--project", project_dir, "--workspace", "exp1", "--plain"])
 
         assert rc != 0
-        (failure,) = [r for r in _records(capsys) if r.get("error") == "project_state_changed"]
-        assert "retry" in failure["reason"]
-        # The moved workspace was not shadowed by a recreated runs/exp1,
-        # and workspace creation never ran for the stale target.
-        assert not os.path.exists(os.path.join(project_dir, "runs", "exp1"))
-        assert os.path.isfile(os.path.join(project_dir, "exp1", "home", "flow.json"))
+        records = _records(capsys, plain_records)
+        assert any(r.get("error") == "legacy_workspace_migration_required" for r in records)
+        assert any(
+            r.get("warning") == "legacy_layout_detected" and "ecc migrate" in r.get("migrate", "")
+            for r in records
+        )
+        assert os.path.isfile(os.path.join(project_dir, "runs", "exp1", "home", "flow.json"))
+        assert not os.path.exists(os.path.join(project_dir, "exp1"))
         assert created == []
 
 
@@ -293,6 +294,7 @@ class TestDestinationBinding:
         minimal_ics55_pdk_factory,
         create_legacy_workspace,
         monkeypatch,
+        plain_records,
     ):
         import chipcompiler.cli.project.migrate_plan as migrate_module
 
@@ -317,10 +319,12 @@ class TestDestinationBinding:
 
         monkeypatch.setattr(migrate_module, "plan_migration", retargeting_plan)
 
-        rc = cli_main.run(["migrate", "--project", link, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", link, "--yes", "--plain"])
 
         assert rc != 0
-        (failure,) = [r for r in _records(capsys) if r.get("error") == "migration_failed"]
+        (failure,) = [
+            r for r in _records(capsys, plain_records) if r.get("error") == "migration_failed"
+        ]
         assert failure["reason"] == "project directory changed after preview"
         # Nothing was moved into the retargeted destination and nothing was
         # written anywhere: the real workspace stays under runs/.
@@ -345,6 +349,7 @@ class TestRollbackMalformedState:
         create_legacy_workspace,
         monkeypatch,
         payload,
+        plain_records,
     ):
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
@@ -359,10 +364,10 @@ class TestRollbackMalformedState:
 
         monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", corrupting_refresh)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
-        records = _records(capsys)
+        records = _records(capsys, plain_records)
         assert any(r.get("error") == "migration_failed" for r in records)
         # The move was rolled back; nothing was registered.
         assert os.path.isfile(os.path.join(project_dir, "runs", "exp1", "home", "flow.json"))
@@ -376,6 +381,7 @@ class TestRollbackMalformedState:
         minimal_ics55_pdk_factory,
         create_legacy_workspace,
         manifest_stubs,
+        plain_records,
     ):
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
@@ -385,10 +391,10 @@ class TestRollbackMalformedState:
         # to False and the moved workspace rolls back instead of stranding.
         os.mkdir(os.path.join(project_dir, ".manifest.lock"))
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
-        records = _records(capsys)
+        records = _records(capsys, plain_records)
         assert any(r.get("error") == "manifest_update_failed" for r in records)
         assert any(r.get("error") == "migration_rolled_back" for r in records)
         assert os.path.isfile(os.path.join(project_dir, "runs", "exp1", "home", "flow.json"))
@@ -436,7 +442,7 @@ class TestMigrationExecutionLock:
         create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
         thread, released = _hold_workspace_lock_briefly(os.path.join(project_dir, "runs", "exp1"))
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         thread.join()
         assert rc == 0
@@ -452,6 +458,7 @@ class TestMigrationExecutionLock:
         create_legacy_workspace,
         manifest_stubs,
         monkeypatch,
+        plain_records,
     ):
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
@@ -468,10 +475,10 @@ class TestMigrationExecutionLock:
 
         monkeypatch.setattr("chipcompiler.cli.project.migrate.update_manifest", corrupting_update)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
-        records = _records(capsys)
+        records = _records(capsys, plain_records)
         assert any(r.get("error") == "migration_rollback_incomplete" for r in records)
         assert not any(r.get("error") == "migration_rolled_back" for r in records)
         assert os.path.isfile(os.path.join(project_dir, "runs", "exp1", "home", "flow.json"))

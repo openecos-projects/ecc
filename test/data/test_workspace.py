@@ -190,6 +190,11 @@ def test_create_workspace_persists_dynamic_flow_steps(
         "legalization",
         "Timing optimization",
         "route",
+        "filler",
+        "RCX",
+        "sta",
+        "lvs",
+        "postRouteLec",
         "drc",
     ]
     assert [step["tool"] for step in flow_data["steps"]] == [
@@ -199,10 +204,99 @@ def test_create_workspace_persists_dynamic_flow_steps(
         "sizer",
         "ecc",
         "ecc",
+        "ecc",
+        "ecc",
+        "ecc",
+        "yosys_lec",
+        "ecc",
     ]
     assert all(step["state"] == "Unstart" for step in flow_data["steps"])
     assert all(step["runtime"] == "" for step in flow_data["steps"])
     assert all(step["peak memory (mb)"] == 0 for step in flow_data["steps"])
+
+
+def test_create_workspace_copies_external_lec_and_sta_inputs(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    netlist = tmp_path / "gcd.v"
+    golden = tmp_path / "gcd_golden.v"
+    spef = tmp_path / "gcd.spef"
+    netlist.write_text("module gcd; endmodule\n")
+    golden.write_text("module gcd; endmodule\n")
+    spef.write_text('*SPEF "IEEE 1481-1998"\n')
+
+    workspace_dir = tmp_path / "workspace"
+    workspace = create_workspace(
+        directory=workspace_dir,
+        origin_def="",
+        origin_verilog=netlist,
+        golden_verilog=golden,
+        spef=spef,
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_root=pdk_root,
+        flow_config={"start_step": "lec", "end_step": "lec"},
+    )
+
+    assert workspace is not None
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    assert flow_data["steps"][0]["info"]["golden_verilog"] == str(
+        workspace_dir / "origin" / "golden_gcd_golden.v"
+    )
+    assert (workspace_dir / "origin" / "gcd.spef").is_file()
+
+
+def test_load_workspace_keeps_golden_prefixed_primary_netlist(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    # A primary netlist whose name starts with golden_ must keep its role:
+    # creation never declared a golden netlist, and the persisted flow
+    # ledger says so.
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "golden_gcd.v"
+    rtl_path.write_text("module gcd; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=workspace_dir,
+        origin_def="",
+        origin_verilog=rtl_path,
+        pdk="ics55",
+        parameters=deepcopy(default_ics55_parameters),
+        pdk_root=pdk_root,
+        flow_config={"start_step": "Synthesis", "end_step": "Floorplan"},
+    )
+
+    loaded = load_workspace(str(workspace_dir))
+    assert loaded.design.origin_verilog == workspace_dir / "origin" / "golden_gcd.v"
+    assert loaded.design.golden_verilog is None
+
+
+def test_load_workspace_restores_golden_from_persisted_flow_info(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    netlist = tmp_path / "gcd.v"
+    golden = tmp_path / "gcd_golden.v"
+    netlist.write_text("module gcd; endmodule\n")
+    golden.write_text("module gcd; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=workspace_dir,
+        origin_def="",
+        origin_verilog=netlist,
+        golden_verilog=golden,
+        pdk="ics55",
+        parameters=deepcopy(default_ics55_parameters),
+        pdk_root=pdk_root,
+        flow_config={"start_step": "lec", "end_step": "lec"},
+    )
+
+    loaded = load_workspace(str(workspace_dir))
+    assert loaded.design.origin_verilog == workspace_dir / "origin" / "gcd.v"
+    assert loaded.design.golden_verilog == workspace_dir / "origin" / "golden_gcd_golden.v"
 
 
 def test_create_workspace_non_contiguous_flow_seeds_both_stores_contiguous(
@@ -270,22 +364,22 @@ def test_create_workspace_derives_dynamic_flow_from_boundaries(
         "legalization",
         "Timing optimization",
         "route",
-        "drc",
-        "lvs",
         "filler",
-        "postRouteLec",
         "RCX",
         "sta",
+        "lvs",
+        "postRouteLec",
+        "drc",
         "Harden",
     ]
 
 
 POST_ROUTE_LEC_STEP_ALIAS_CASES = (
-    ["filler", "postRouteLec", "RCX"],
-    ["filler", "postlec", "RCX"],
-    ["filler", "postroutelec", "RCX"],
-    ["filler", "post_route_lec", "RCX"],
-    ["filler", "Post-Route-LEC", "RCX"],
+    ["lvs", "postRouteLec", "DRC"],
+    ["lvs", "postlec", "DRC"],
+    ["lvs", "postroutelec", "DRC"],
+    ["lvs", "post_route_lec", "DRC"],
+    ["lvs", "Post-Route-LEC", "DRC"],
 )
 
 
@@ -308,17 +402,17 @@ def test_create_workspace_normalizes_post_route_lec_step_aliases(
         parameters=default_ics55_parameters,
         pdk_root=pdk_root,
         flow_config={
-            "start_step": "filler",
-            "end_step": "RCX",
+            "start_step": "lvs",
+            "end_step": "DRC",
             "steps": steps,
         },
     )
 
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [(step["name"], step["tool"]) for step in flow_data["steps"]] == [
-        ("filler", "ecc"),
+        ("lvs", "ecc"),
         ("postRouteLec", "yosys_lec"),
-        ("RCX", "ecc"),
+        ("drc", "ecc"),
     ]
 
 
@@ -874,6 +968,46 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     assert floorplan["io_placer"] == {"io_layer_list": ["MET3", "MET4"]}
 
 
+def test_refresh_workspace_config_updates_generated_sdc_frequency(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    workspace_dir, workspace = _create_loaded_ics55_workspace(
+        tmp_path,
+        "workspace_generated_sdc",
+        minimal_ics55_pdk_factory,
+        default_ics55_parameters,
+    )
+    parameter_path = workspace_dir / "home" / "params.toml"
+    params = _read_parameters(parameter_path)
+    params["frequency_max"] = 250.0
+    _write_parameters(parameter_path, params)
+
+    refresh_workspace_config(workspace)
+
+    assert "set clk_freq_mhz 250.0" in workspace.pdk.sdc.read_text(encoding="utf-8")
+
+
+def test_refresh_workspace_config_preserves_external_sdc(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    workspace_dir, workspace = _create_loaded_ics55_workspace(
+        tmp_path,
+        "workspace_external_sdc",
+        minimal_ics55_pdk_factory,
+        default_ics55_parameters,
+    )
+    external_sdc = workspace.pdk.sdc
+    external_content = "create_clock -period 1 [get_ports clk]\n"
+    external_sdc.write_text(external_content, encoding="utf-8")
+    params = _read_parameters(workspace_dir / "home" / "params.toml")
+    params["frequency_max"] = 250.0
+    _write_parameters(workspace_dir / "home" / "params.toml", params)
+
+    refresh_workspace_config(workspace)
+
+    assert external_sdc.read_text(encoding="utf-8") == external_content
+
+
 def test_refresh_workspace_config_preserves_routability_flag_string_coercion(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
@@ -919,6 +1053,63 @@ def test_refresh_workspace_config_preserves_nested_dreamplace_override_precedenc
     dreamplace = json_read(workspace.config["dreamplace"])
     assert dreamplace["target_density"] == 0.88
     assert dreamplace["routability_opt_flag"] == 0
+
+
+def test_apply_config_overrides_validates_every_target_before_writing(tmp_path):
+    from chipcompiler.data.workspace.config_overrides import apply_config_overrides
+
+    cts_path = tmp_path / "cts.json"
+    json_write(cts_path, {"skew_bound": "0.05"})
+    parameters = {
+        "config_overrides": {
+            "cts.json": {"skew_bound": "0.20"},
+            "bogus.json": {"threads": 1},
+        }
+    }
+
+    with pytest.raises(ValueError, match="unknown config override target"):
+        apply_config_overrides({"cts.json": cts_path}, parameters)
+
+    # The valid first override is not persisted when a later target is invalid.
+    assert json_read(cts_path) == {"skew_bound": "0.05"}
+
+
+def test_refresh_workspace_config_reapplies_direct_config_overrides(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    workspace_dir = tmp_path / "workspace"
+    workspace = create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters={
+            **default_ics55_parameters,
+            "Config Overrides": {
+                "CTS": {"skew_bound": "0.05"},
+                "dreamplace": {"num_threads": 12},
+            },
+        },
+        pdk_root=str(pdk_root),
+    )
+
+    cts = json_read(workspace.config[StepEnum.CTS.value])
+    dreamplace = json_read(workspace.config["dreamplace"])
+    assert cts["skew_bound"] == "0.05"
+    assert dreamplace["num_threads"] == 12
+
+    cts["skew_bound"] = "0.20"
+    dreamplace["num_threads"] = 1
+    json_write(workspace.config[StepEnum.CTS.value], cts)
+    json_write(workspace.config["dreamplace"], dreamplace)
+
+    refresh_workspace_config(workspace)
+
+    assert json_read(workspace.config[StepEnum.CTS.value])["skew_bound"] == "0.05"
+    assert json_read(workspace.config["dreamplace"])["num_threads"] == 12
 
 
 def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshes_peers(

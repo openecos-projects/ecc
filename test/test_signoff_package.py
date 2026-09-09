@@ -8,7 +8,10 @@ from chipcompiler.utility import file_digest
 
 STA_REPORT_NAMES = (
     "qor_summary.rpt",
-    "timing_max.rpt",
+    "timing_max_in2out.rpt",
+    "timing_max_in2reg.rpt",
+    "timing_max_reg2out.rpt",
+    "timing_max_reg2reg.rpt",
     "power.rpt",
 )
 
@@ -100,9 +103,10 @@ def _make_signoff_workspace(
     _write(workspace_dir / "filler_ecc" / "output" / f"{design}_filler.def.gz")
     _write(workspace_dir / "filler_ecc" / "output" / f"{design}_filler.gds")
     _write(workspace_dir / "filler_ecc" / "output" / f"{design}_filler.png")
+    _write(workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz")
     _write(workspace_dir / "RCX_ecc" / "output" / f"{top_module}_RCworst_125C.spef")
     golden = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
-    gate = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
+    gate = workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz"
     golden_digest = file_digest(golden)
     gate_digest = file_digest(gate)
     _write_json(
@@ -299,8 +303,8 @@ def test_collect_signoff_package_requires_synthesis_verilog(tmp_path):
 
 def test_collect_signoff_package_rejects_stale_post_route_lec_proof(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
-    filler = workspace_dir / "filler_ecc" / "output" / "gcd_filler.v.gz"
-    filler.write_text("module gcd; updated\n")
+    gate = workspace_dir / "lvs_ecc" / "output" / "gcd_lvs.v.gz"
+    gate.write_text("module gcd; updated\n")
 
     result = _make_engine_flow(workspace_dir).collect_signoff_package(
         SignoffPackageOptions(archive=False, materialize=False)
@@ -319,9 +323,9 @@ def test_collect_signoff_package_rejects_stale_post_route_lec_proof(tmp_path):
 def test_collect_signoff_package_rejects_lec_proof_bound_to_copied_netlists(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
     old_golden = tmp_path / "old" / "gcd_Synthesis.v.gz"
-    old_gate = tmp_path / "old" / "gcd_filler.v.gz"
+    old_gate = tmp_path / "old" / "gcd_lvs.v.gz"
     current_golden = workspace_dir / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz"
-    current_gate = workspace_dir / "filler_ecc" / "output" / "gcd_filler.v.gz"
+    current_gate = workspace_dir / "lvs_ecc" / "output" / "gcd_lvs.v.gz"
     _write(old_golden, current_golden.read_text())
     _write(old_gate, current_gate.read_text())
     golden_digest = file_digest(old_golden)
@@ -459,7 +463,7 @@ def test_collect_signoff_package_uses_origin_rtl_for_floorplan_start(tmp_path):
     )
     engine_flow = _make_engine_flow(workspace_dir)
     engine_flow.workspace.design.origin_verilog = origin
-    gate = workspace_dir / "filler_ecc" / "output" / "gcd_filler.v.gz"
+    gate = workspace_dir / "lvs_ecc" / "output" / "gcd_lvs.v.gz"
     _bind_post_route_lec(workspace_dir, origin, gate)
 
     result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
@@ -488,7 +492,7 @@ def test_collect_signoff_package_ignores_leftover_synthesis_for_floorplan_start(
     )
     engine_flow = _make_engine_flow(workspace_dir)
     engine_flow.workspace.design.origin_verilog = origin
-    gate = workspace_dir / "filler_ecc" / "output" / "gcd_filler.v.gz"
+    gate = workspace_dir / "lvs_ecc" / "output" / "gcd_lvs.v.gz"
     _bind_post_route_lec(workspace_dir, origin, gate)
 
     result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
@@ -550,7 +554,7 @@ def test_collect_signoff_package_requires_qor_summary_for_each_sta_corner(tmp_pa
 
 def test_collect_signoff_package_requires_each_sta_path_report(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
-    report_name = "timing_max.rpt"
+    report_name = "timing_max_reg2reg.rpt"
     (workspace_dir / "sta_ecc" / "report" / "MAX_125" / "RCworst" / report_name).unlink()
 
     result = _make_engine_flow(workspace_dir).collect_signoff_package(

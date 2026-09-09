@@ -6,11 +6,14 @@ from chipcompiler.cli import main as cli_main
 
 class TestHybridManifestFallbacks:
     def test_flowless_ecc_toml_existing_run_uses_workspace_flow(
-        self, tmp_path, capsys, flow_mocks, monkeypatch, manifest_stubs
+        self, tmp_path, capsys, flow_mocks, monkeypatch, manifest_stubs, minimal_ics55_pdk_factory
     ):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
+        # load_workspace validates PDK contents; give the recorded root a
+        # minimal valid tree so the no-op rerun reaches the flow target.
+        minimal_ics55_pdk_factory(project_dir / "pdk")
         # Hybrid ecc.toml WITHOUT [flow].
         (project_dir / "ecc.toml").write_text(
             '[design]\nname = "gcd"\ntop = "gcd"\n'
@@ -33,16 +36,22 @@ class TestHybridManifestFallbacks:
 
         assert save_workspace_config(
             run_dir,
-            {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
+            {
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "design": "gcd",
+                "top_module": "gcd",
+                "clock": "clk",
+            },
             {"start": "Synthesis", "end": "Synthesis"},
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         records = manifest_stubs.records()
         assert records[0]["status"] == "success"
-        assert records[0]["no_op"] is True
+        assert records[0]["no_op"] == "True"
 
     def test_multi_rtl_manifest_materializes_filelist(
         self, tmp_path, capsys, flow_mocks, monkeypatch, manifest_stubs
@@ -79,7 +88,7 @@ class TestHybridManifestFallbacks:
 
         monkeypatch.setattr(run_prepare, "_materialize_rtl_filelist", capture_materialize)
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir)])
 
         assert rc == 0
         lines = generated["content"].splitlines()
@@ -108,7 +117,7 @@ class TestHybridManifestFallbacks:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         records = manifest_stubs.records()
@@ -131,7 +140,7 @@ class TestCheckHybridEffectiveValidation:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         records = manifest_stubs.records()
@@ -160,7 +169,7 @@ class TestCheckHybridEffectiveValidation:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         records = manifest_stubs.records()
@@ -194,7 +203,7 @@ class TestEffectiveConfigValidation:
             base_design=self._manifest_base(project_dir, top_module="", clock=""),
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
@@ -223,7 +232,7 @@ class TestEffectiveConfigValidation:
                 # declared source is the missing one.
                 (project_dir / "rtl" / "gcd.v").unlink()
 
-            rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+            rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
             assert rc != 0
             reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
@@ -248,7 +257,7 @@ class TestEffectiveConfigValidation:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         records = manifest_stubs.records()
@@ -270,7 +279,9 @@ class TestEffectiveConfigValidation:
             '\n[pdk]\nname = "ics55"\nroot = "' + str(project_dir / "pdk") + '"\n'
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--run-id", "sweep1", "--json"])
+        rc = cli_main.run(
+            ["run", "--project", str(project_dir), "--workspace", "sweep1", "--plain"]
+        )
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
@@ -305,7 +316,7 @@ class TestEffectiveConfigValidation:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         warnings = [
@@ -324,7 +335,7 @@ class TestEffectiveConfigValidation:
         # The entry declares the same range rtl2gds maps to, isolating the
         # path-spelling comparison.
         entry = manifest_stubs.entry(project_dir, "ws_0001")
-        entry["start_step"], entry["end_step"] = "Synth", "PostRouteLEC"
+        entry["start_step"], entry["end_step"] = "Synth", "Harden"
         manifest_stubs.write(project_dir, [entry])
         (project_dir / "ecc.toml").write_text(
             '[design]\nname = "gcd"\ntop = "gcd"\n'
@@ -338,7 +349,7 @@ class TestEffectiveConfigValidation:
             lambda name, root, overrides=None: None,
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         records = manifest_stubs.records()
@@ -385,7 +396,7 @@ class TestHybridFrequencyProvenance:
             manifest_stubs, tmp_path, monkeypatch, self._FULL_DESIGN_NO_FREQUENCY
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         assert manifest_stubs.records()[0]["status"] == "checked"
@@ -400,7 +411,7 @@ class TestHybridFrequencyProvenance:
             self._FULL_DESIGN_NO_FREQUENCY + "\nfrequency_mhz = 0",
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
@@ -413,7 +424,7 @@ class TestHybridFrequencyProvenance:
             manifest_stubs, tmp_path, monkeypatch, self._FULL_DESIGN_NO_FREQUENCY
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir)])
 
         assert rc == 0
         parameters = flow_mocks.capture["create_kwargs"]["parameters"]
@@ -429,7 +440,7 @@ class TestHybridFrequencyProvenance:
             self._FULL_DESIGN_NO_FREQUENCY + "\nfrequency_mhz = 0",
         )
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
@@ -437,7 +448,7 @@ class TestHybridFrequencyProvenance:
         assert flow_mocks.capture["create_kwargs"] is None
 
     def test_check_rejects_unreadable_ecc_toml_instead_of_manifest_fallback(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
+        self, tmp_path, capsys, monkeypatch, manifest_stubs, plain_records
     ):
         """An existing but unreadable ecc.toml is the highest-precedence
         config: check must fail loud, not silently run on the manifest."""
@@ -451,14 +462,14 @@ class TestHybridFrequencyProvenance:
 
         monkeypatch.setattr("chipcompiler.cli.project.config.load_project_config", deny)
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         assert any(r.get("error") == "config_error" for r in records)
 
     def test_check_rejects_symlink_loop_ecc_toml_instead_of_manifest_fallback(
-        self, tmp_path, capsys, manifest_stubs
+        self, tmp_path, capsys, manifest_stubs, plain_records
     ):
         """Discovery itself must not swallow the config: a symlink loop at
         ecc.toml is PRESENT but unreadable — config_error, not a silent
@@ -468,10 +479,10 @@ class TestHybridFrequencyProvenance:
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
         (project_dir / "ecc.toml").symlink_to("ecc.toml")
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
-        records = json.loads(capsys.readouterr().out)["records"]
+        records = plain_records(capsys.readouterr().out)
         assert any(r.get("error") == "config_error" for r in records)
 
     def test_multi_rtl_manifest_expands_nested_filelists(
@@ -511,7 +522,7 @@ class TestHybridFrequencyProvenance:
 
         monkeypatch.setattr(run_prepare, "_materialize_rtl_filelist", capture_materialize)
 
-        rc = cli_main.run(["run", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["run", "--project", str(project_dir)])
 
         assert rc == 0
         lines = generated["content"].splitlines()
@@ -580,7 +591,7 @@ class TestManifestParameterValidation:
     ):
         project_dir = _write_manifest_project(manifest_stubs, tmp_path, monkeypatch, 99999)
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
@@ -594,7 +605,7 @@ class TestManifestParameterValidation:
         toml_text = self._hybrid_toml(project_dir, frequency=True)
         _write_manifest_project(manifest_stubs, tmp_path, monkeypatch, 99999, ecc_toml=toml_text)
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         records = manifest_stubs.records()
@@ -616,7 +627,6 @@ class TestManifestParameterValidation:
                 str(project_dir),
                 "--set",
                 "design.frequency_mhz=100",
-                "--json",
             ]
         )
 
@@ -665,7 +675,7 @@ class TestManifestBoolTypeSafety:
             extra_parameters={"run_analysis": "maybe"},
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
@@ -682,7 +692,7 @@ class TestManifestBoolTypeSafety:
             extra_parameters={"run_analysis": "false"},
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         assert manifest_stubs.records()[0]["status"] == "checked"
@@ -701,7 +711,7 @@ class TestManifestBoolTypeSafety:
             extra_parameters={"run_analysis": "maybe"},
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         assert manifest_stubs.records()[0]["status"] == "checked"
@@ -720,7 +730,7 @@ class TestManifestBoolTypeSafety:
             extra_parameters={"run_analysis": "maybe"},
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
@@ -740,7 +750,7 @@ class TestManifestBoolTypeSafety:
             extra_parameters={"run_analysis": "false"},
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         diverged = [
@@ -762,7 +772,7 @@ class TestManifestBoolTypeSafety:
             extra_parameters={"run_analysis": 0},
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         diverged = [
@@ -784,7 +794,7 @@ class TestManifestBoolTypeSafety:
             extra_parameters={"run_analysis": {"bad": True}},
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         diverged = [
@@ -814,7 +824,7 @@ class TestManifestBoolTypeSafety:
                 str(project_dir),
                 "--set",
                 "flow.run_analysis=false",
-                "--json",
+                "--plain",
             ]
         )
 
@@ -847,7 +857,7 @@ class TestManifestBoolTypeSafety:
                 str(project_dir),
                 "--set",
                 "design.frequency_mhz=200",
-                "--json",
+                "--plain",
             ]
         )
 
@@ -869,7 +879,7 @@ class TestManifestBoolTypeSafety:
         )
         _write_manifest_project(manifest_stubs, tmp_path, monkeypatch, 100, ecc_toml=toml_text)
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         diverged = [
@@ -894,7 +904,7 @@ class TestManifestFlatGeometryValidation:
             extra_parameters={"utilitization": 5.0},
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
@@ -911,7 +921,7 @@ class TestManifestFlatGeometryValidation:
             extra_parameters={"max_fanout": "abc"},
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
@@ -928,18 +938,18 @@ class TestManifestFlatGeometryValidation:
             extra_parameters={"utilitization": 0.6, "aspect_ratio": 1.0, "margin": 2},
         )
 
-        rc = cli_main.run(["check", "--project", str(project_dir), "--json"])
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
         assert rc == 0
         assert manifest_stubs.records()[0]["status"] == "checked"
 
 
 class TestManifestResolvedConfigView:
-    """`ecc config --resolved` presents manifest-layer parameters through the
+    """`ecc config` presents manifest-layer parameters through the
     same canonical projection the run uses (GUI-flat aliases included)."""
 
     def test_config_resolved_shows_gui_flat_manifest_geometry(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
+        self, tmp_path, capsys, monkeypatch, manifest_stubs, plain_records
     ):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
@@ -956,16 +966,16 @@ class TestManifestResolvedConfigView:
             },
         )
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--plain", "--project", str(project_dir)])
 
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        params = {r["key"]: r for r in data["records"] if r.get("kind") == "param"}
-        assert params["floorplan.core_util"]["value"] == 0.6
+        data = plain_records(capsys.readouterr().out)
+        params = {r["key"]: r for r in data if r.get("kind") == "param"}
+        assert params["floorplan.core_util"]["value"] == "0.6"
         assert params["floorplan.core_util"]["source"] == "project.json"
 
     def test_config_resolved_surfaces_null_manifest_bool(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
+        self, tmp_path, capsys, monkeypatch, manifest_stubs, plain_records
     ):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
@@ -982,15 +992,15 @@ class TestManifestResolvedConfigView:
             },
         )
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--plain", "--project", str(project_dir)])
 
         assert rc == 1
-        data = json.loads(capsys.readouterr().out)
+        data = plain_records(capsys.readouterr().out)
         # The view's records never leak raw; errors use the standard record
         # contract, not the view's internal status field. The NoneType reason
         # proves the explicit null was seen — not silently read as the
         # default True while the runtime value is falsy.
-        records = data["records"]
+        records = data
         assert all(r.get("kind") == "error" for r in records)
         assert all(r.get("error") == "invalid_config" for r in records)
         assert any("expected bool for flow.run_analysis" in r["reason"] for r in records)
@@ -1013,13 +1023,13 @@ class TestManifestResolvedConfigView:
             },
         )
 
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--project", str(project_dir)])
 
         assert rc == 1
         assert "expected bool for flow.run_analysis" in capsys.readouterr().out
 
     def test_config_resolved_reports_manifest_frequency_type_error(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
+        self, tmp_path, capsys, monkeypatch, manifest_stubs, plain_records
     ):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
@@ -1036,36 +1046,36 @@ class TestManifestResolvedConfigView:
             },
         )
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--plain", "--project", str(project_dir)])
 
         assert rc == 1
-        data = json.loads(capsys.readouterr().out)
+        data = plain_records(capsys.readouterr().out)
         # The manifest-supplied string must not be masked by a phantom
         # ecc.toml-layer frequency injection.
-        errors = [r for r in data["records"] if r.get("kind") == "error"]
+        errors = [r for r in data if r.get("kind") == "error"]
         assert all(r.get("error") == "invalid_config" for r in errors)
         assert any(
             "expected float for design.frequency_mhz, got str" in r["reason"] for r in errors
         )
 
     def test_config_resolved_surfaces_param_errors_for_hybrid_project(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
+        self, tmp_path, capsys, monkeypatch, manifest_stubs, plain_records
     ):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
         (project_dir / "ecc.toml").write_text('\n[params.flow]\nrun_analysis = "maybe"\n')
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--plain", "--project", str(project_dir)])
 
         assert rc == 1
-        data = json.loads(capsys.readouterr().out)
-        errors = [r for r in data["records"] if r.get("kind") == "error"]
+        data = plain_records(capsys.readouterr().out)
+        errors = [r for r in data if r.get("kind") == "error"]
         assert all(r.get("error") == "invalid_config" for r in errors)
         assert any("expected bool for flow.run_analysis" in r["reason"] for r in errors)
 
     def test_config_resolved_error_records_full_contract(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
+        self, tmp_path, capsys, monkeypatch, manifest_stubs, plain_records
     ):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
@@ -1074,11 +1084,11 @@ class TestManifestResolvedConfigView:
             '\n[params.flow]\nrun_analysis = "maybe"\n\n[params.cts]\nmax_fanout = "nope"\n'
         )
 
-        rc = cli_main.run(["config", "--resolved", "--json", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--plain", "--project", str(project_dir)])
 
         assert rc == 1
-        data = json.loads(capsys.readouterr().out)
-        assert data["records"] == [
+        data = plain_records(capsys.readouterr().out)
+        assert data == [
             {
                 "kind": "error",
                 "error": "invalid_config",
@@ -1093,7 +1103,7 @@ class TestManifestResolvedConfigView:
             },
         ]
 
-        rc = cli_main.run(["config", "--resolved", "--project", str(project_dir)])
+        rc = cli_main.run(["config", "--project", str(project_dir)])
 
         assert rc == 1
         out = capsys.readouterr().out

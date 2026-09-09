@@ -16,6 +16,7 @@ from chipcompiler.data import (
 from chipcompiler.tools.ecc.metrics import _quality_gates, build_qor_summary_payload
 from chipcompiler.tools.ecc.signoff_checklist import (
     _flow_items,
+    _lec_artifact_items,
     _workspace_items,
     rebuild_home_checklist,
     refresh_step_checklist,
@@ -85,6 +86,26 @@ def test_quality_gates_only_include_final_drc_lvs_rcx_and_sta(tmp_path):
         )
         == []
     )
+
+
+def test_lec_failure_blocks_export_for_both_lec_steps(monkeypatch, tmp_path):
+    result = tmp_path / "lec-result.json"
+    result.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "chipcompiler.tools.yosys_lec.utility.lec_result_status",
+        lambda *args, **kwargs: "incomplete",
+    )
+    workspace = Workspace(directory=tmp_path)
+
+    synthesis_item = _lec_artifact_items(workspace, StepEnum.LEC.value, result, None, None)[0]
+    post_route_item = _lec_artifact_items(
+        workspace, StepEnum.POST_ROUTE_LEC.value, result, None, None
+    )[0]
+
+    for item in (synthesis_item, post_route_item):
+        assert item["state"] == "failed"
+        assert item["policy"] == "block"
+        assert item["blocked"] is True
 
 
 def test_sta_quality_gates_require_all_corner_coverage_and_closure(tmp_path):
@@ -599,9 +620,9 @@ def test_home_checklist_uses_origin_golden_when_flow_has_no_synthesis(tmp_path):
     leftover = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz"
     leftover.parent.mkdir(parents=True)
     leftover.write_text("module gcd; leftover synthesis\nendmodule\n", encoding="utf-8")
-    filler = tmp_path / "filler_ecc" / "output" / "gcd_filler.v.gz"
-    filler.parent.mkdir(parents=True)
-    filler.write_text("module gcd; filler\nendmodule\n", encoding="utf-8")
+    gate = tmp_path / "lvs_ecc" / "output" / "gcd_lvs.v.gz"
+    gate.parent.mkdir(parents=True)
+    gate.write_text("module gcd; lvs\nendmodule\n", encoding="utf-8")
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", origin_verilog=origin),
@@ -657,23 +678,23 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
     origin = tmp_path / "origin" / "gcd.v"
     origin.parent.mkdir()
     origin.write_text("module gcd; imported mapped netlist\nendmodule\n", encoding="utf-8")
-    filler = tmp_path / "filler_ecc" / "output" / "gcd_filler.v.gz"
-    filler.parent.mkdir(parents=True)
-    filler.write_text("module gcd; filler\nendmodule\n", encoding="utf-8")
+    gate = tmp_path / "lvs_ecc" / "output" / "gcd_lvs.v.gz"
+    gate.parent.mkdir(parents=True)
+    gate.write_text("module gcd; lvs\nendmodule\n", encoding="utf-8")
     result_json = tmp_path / "postRouteLec_yosys_lec" / "output" / "gcd_postRouteLec_result.json"
     result_json.parent.mkdir(parents=True)
     origin_digest = file_digest(origin)
-    filler_digest = file_digest(filler)
+    gate_digest = file_digest(gate)
     result_json.write_text(
         json.dumps(
             {
                 "status": "proven",
                 "golden_verilog": str(origin),
-                "gate_verilog": str(filler),
+                "gate_verilog": str(gate),
                 "golden_sha256": origin_digest[0],
-                "gate_sha256": filler_digest[0],
+                "gate_sha256": gate_digest[0],
                 "golden_size_bytes": origin_digest[1],
-                "gate_size_bytes": filler_digest[1],
+                "gate_size_bytes": gate_digest[1],
             }
         ),
         encoding="utf-8",
@@ -713,12 +734,13 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
             {"name": step.value, "tool": "ecc", "state": StateEnum.Success.value}
             for step in (
                 StepEnum.FILLER,
+                StepEnum.LVS,
                 StepEnum.POST_ROUTE_LEC,
                 StepEnum.HARDEN,
             )
         ]
     }
-    workspace.flow.data["steps"][1]["tool"] = "yosys_lec"
+    workspace.flow.data["steps"][2]["tool"] = "yosys_lec"
 
     home_items = {item["id"]: item for item in rebuild_home_checklist(workspace)["checklist"]}
     assert home_items["artifact.postroutelec.result"]["state"] == "pass"

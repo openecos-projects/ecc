@@ -14,6 +14,7 @@ from pathlib import Path
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandResult
 from chipcompiler.cli.project.run_prepare import _write_back_status
+from chipcompiler.data import is_finished_step_state
 
 
 def run_existing_workspace(
@@ -43,9 +44,12 @@ def run_existing_workspace(
             [
                 error_record(
                     "set_requires_fresh_run",
-                    run=run_name,
+                    workspace_id=run_name,
                     workspace=run_dir,
-                    reason="--set applies only to fresh runs; use --overwrite or a new --run-id",
+                    reason=(
+                        "--set applies only to fresh workspaces; use --overwrite "
+                        "or a new --workspace"
+                    ),
                 )
             ]
         )
@@ -73,7 +77,7 @@ def run_existing_workspace(
                 [
                     error_record(
                         "workspace_config_invalid",
-                        run=run_name,
+                        workspace_id=run_name,
                         workspace=run_dir,
                         reason=reason,
                     )
@@ -84,7 +88,7 @@ def run_existing_workspace(
                 [
                     error_record(
                         "flow_adopt_failed",
-                        run=run_name,
+                        workspace_id=run_name,
                         workspace=run_dir,
                         reason=reason,
                     )
@@ -94,11 +98,11 @@ def run_existing_workspace(
             [
                 error_record(
                     "flow_mismatch",
-                    run=run_name,
+                    workspace_id=run_name,
                     workspace=run_dir,
                     reason="the configured flow diverges from the persisted one",
                     overwrite=disclosure_cmd("ecc run --overwrite", project, ctx.run_id),
-                    hint="use --overwrite to wipe the run, or a new --run-id",
+                    hint="use --overwrite to rebuild the workspace, or choose a new --workspace",
                 )
             ]
         )
@@ -133,7 +137,21 @@ def run_existing_workspace(
                 [
                     error_record(
                         "workspace_config_invalid",
-                        run=run_name,
+                        workspace_id=run_name,
+                        workspace=run_dir,
+                        reason=str(exc),
+                    )
+                ]
+            )
+        except Exception as exc:
+            # Mirrors run_workspace.py: an unloadable workspace (e.g. PDK
+            # validation failing inside load_workspace) is a clean error
+            # record, never a traceback.
+            return CommandResult.err(
+                [
+                    error_record(
+                        "invalid_workspace",
+                        workspace_id=run_name,
                         workspace=run_dir,
                         reason=str(exc),
                     )
@@ -144,7 +162,7 @@ def run_existing_workspace(
                 [
                     error_record(
                         "invalid_workspace",
-                        run=run_name,
+                        workspace_id=run_name,
                         workspace=run_dir,
                     )
                 ]
@@ -161,7 +179,7 @@ def run_existing_workspace(
                 [
                     error_record(
                         "invalid_flow_json",
-                        run=run_name,
+                        workspace_id=run_name,
                         workspace=run_dir,
                         reason="the persisted flow has no steps",
                         overwrite=disclosure_cmd("ecc run --overwrite", project, ctx.run_id),
@@ -186,7 +204,7 @@ def run_existing_workspace(
                     for step in flow_data.get("steps", [])
                     if isinstance(step, dict)
                     and isinstance(step.get("name"), str)
-                    and step.get("state") != "Success"
+                    and not is_finished_step_state(step.get("state"))
                     and step["name"] in target_names
                 }
                 engine_flow.create_step_workspaces(executable_steps=executable)
@@ -220,7 +238,7 @@ def run_existing_workspace(
                 + [
                     error_record(
                         "flow_failed",
-                        run=run_name,
+                        workspace_id=run_name,
                         workspace=run_dir,
                         reason=str(exc),
                     )
@@ -231,7 +249,7 @@ def run_existing_workspace(
             _write_back_status(project_dir, run_name, "success" if flow_ok else "failed", warnings)
 
         record: dict = {
-            "run": run_name,
+            "workspace_id": run_name,
             "status": "success" if flow_ok else "failed",
             "workspace": run_dir,
             "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),

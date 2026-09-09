@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 
 from chipcompiler.data import Checklist, StateEnum, StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data.step_dirs import STEP_DIRECTORIES
 from chipcompiler.tools.ecc.sta_qor import (
     STA_QOR_SUMMARY_FILENAME,
     STA_REPORT_FILENAMES,
@@ -19,22 +20,6 @@ from chipcompiler.tools.ecc.sta_qor import (
 )
 from chipcompiler.utility import json_read
 from chipcompiler.utility.filelist import resolve_initial_rtl
-
-_STEP_DIRECTORIES = {
-    StepEnum.SYNTHESIS.value: "Synthesis_yosys",
-    StepEnum.FLOORPLAN.value: "Floorplan_ecc",
-    StepEnum.PLACEMENT.value: "place_dreamplace",
-    StepEnum.CTS.value: "CTS_ecc",
-    StepEnum.LEGALIZATION.value: "legalization_dreamplace",
-    StepEnum.ROUTING.value: "route_ecc",
-    StepEnum.DRC.value: "drc_ecc",
-    StepEnum.LVS.value: "lvs_ecc",
-    StepEnum.FILLER.value: "filler_ecc",
-    StepEnum.POST_ROUTE_LEC.value: "postRouteLec_yosys_lec",
-    StepEnum.RCX.value: "RCX_ecc",
-    StepEnum.STA.value: "sta_ecc",
-    StepEnum.HARDEN.value: "Harden_ecc",
-}
 
 _QUALITY_GATES_BY_STEP = {
     StepEnum.DRC.value: ("qor.drc.clean",),
@@ -142,7 +127,7 @@ def _prefixed_evidence(step_directory: str, evidence: list) -> list[dict]:
         path = item.get("path")
         is_workspace_step_path = isinstance(path, str) and any(
             path == directory or path.startswith(directory + "/")
-            for directory in _STEP_DIRECTORIES.values()
+            for directory in STEP_DIRECTORIES.values()
         )
         if (
             isinstance(path, str)
@@ -473,9 +458,11 @@ def _lec_artifact_items(
     if status == "proven":
         state, summary = "pass", "Yosys LEC proved equivalence."
     elif status == "stale":
-        state, summary = "failed", "Yosys LEC proof is stale; golden or gate netlist changed."
+        state = "failed"
+        summary = "Yosys LEC proof is stale; golden or gate netlist changed."
     elif result_json and Path(result_json).is_file():
-        state, summary = "failed", "Yosys LEC did not prove equivalence."
+        state = "failed"
+        summary = "Yosys LEC did not prove equivalence."
     else:
         state, summary = _file_state(result_json)
     result_path = _path_text(workspace, result_json)
@@ -509,23 +496,30 @@ def refresh_step_checklist(workspace: Workspace, step: WorkspaceStep) -> bool:
 
 def _post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | None]:
     design = getattr(getattr(workspace, "design", None), "name", "") or ""
+    # Golden precedence mirrors the execution wiring (engine/flow.py): the
+    # synthesis output when the flow contains Synthesis, else the declared
+    # golden netlist, else the origin RTL.
     golden = getattr(getattr(workspace, "design", None), "origin_verilog", None)
-    filler = None
+    gate = None
     workspace_dir = Path(workspace.directory) if getattr(workspace, "directory", None) else None
     flow = getattr(workspace, "flow", None)
     if workspace_dir is not None:
-        filler = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
+        # The canonical chain wires postRouteLec's gate input to the LVS
+        # output netlist (the step immediately before it), not the filler one.
+        gate = workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz"
         if flow is not None and flow.has_step(StepEnum.SYNTHESIS):
             golden = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
-    return golden, filler
+        else:
+            golden = getattr(workspace.design, "golden_verilog", None) or golden
+    return golden, gate
 
 
 def _requires_post_route_lec(workspace: Workspace) -> bool:
     flow = getattr(workspace, "flow", None)
-    if flow is None or not flow.has_step(StepEnum.FILLER):
+    if flow is None or not flow.has_step(StepEnum.LVS):
         return False
-    golden, filler = _post_route_lec_netlists(workspace)
-    return bool(golden and Path(golden).is_file() and filler and Path(filler).is_file())
+    golden, gate = _post_route_lec_netlists(workspace)
+    return bool(golden and Path(golden).is_file() and gate and Path(gate).is_file())
 
 
 def _flow_items(workspace: Workspace) -> list[dict]:
@@ -652,8 +646,8 @@ def rebuild_home_checklist(workspace: Workspace, resource_issues=None) -> dict:
         return {}
     workspace_dir = Path(workspace_directory)
     items = []
-    post_route_lec_dir = _STEP_DIRECTORIES[StepEnum.POST_ROUTE_LEC.value]
-    for directory in _STEP_DIRECTORIES.values():
+    post_route_lec_dir = STEP_DIRECTORIES[StepEnum.POST_ROUTE_LEC.value]
+    for directory in STEP_DIRECTORIES.values():
         if directory == post_route_lec_dir:
             continue
         data = json_read(workspace_dir / directory / "checklist.json")
@@ -672,7 +666,7 @@ def rebuild_home_checklist(workspace: Workspace, resource_issues=None) -> dict:
             _lec_artifact_items(workspace, StepEnum.POST_ROUTE_LEC.value, result_json, golden, gate)
         )
     for step_name in _QUALITY_GATES_BY_STEP:
-        step_directory = workspace_dir / _STEP_DIRECTORIES[step_name]
+        step_directory = workspace_dir / STEP_DIRECTORIES[step_name]
         items.extend(
             _quality_gate_items_from_summary(
                 workspace,

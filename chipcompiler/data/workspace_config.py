@@ -47,6 +47,13 @@ _PDK_SECTION_KEYS = {
     "pdk_config": "config",
 }
 
+# Ranges for presets removed when RCX/STA/Harden folded into the canonical
+# rtl2gds chain. Persisted configs may still name them.
+LEGACY_PRESET_RANGES = {
+    "rcx": ("Synthesis", "sta"),
+    "harden": ("Synthesis", "Harden"),
+}
+
 
 class WorkspaceConfigError(ValueError):
     """Invalid ``home/params.toml`` content (parse failure or rule violation)."""
@@ -125,9 +132,9 @@ def validate_flow_config(flow: object) -> dict[str, str]:
         result["preset"] = preset
         return result
 
-    from chipcompiler.data.workspace import _canonical_harden_flow_entries
+    from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
 
-    canonical_names = [name for name, _tool, _state in _canonical_harden_flow_entries()]
+    canonical_names = [name for name, _tool, _state in _canonical_rtl2gds_flow_entries()]
     normalized: dict[str, str] = {}
     for key, value in (("start", start), ("end", end)):
         if not isinstance(value, str):
@@ -145,10 +152,10 @@ def validate_flow_config(flow: object) -> dict[str, str]:
 
 
 def canonical_flow_chain() -> list[str]:
-    """The canonical harden chain's step names, in order."""
-    from chipcompiler.data.workspace import _canonical_harden_flow_entries
+    """The canonical rtl2gds chain's step names, in order."""
+    from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
 
-    return [name for name, _tool, _state in _canonical_harden_flow_entries()]
+    return [name for name, _tool, _state in _canonical_rtl2gds_flow_entries()]
 
 
 def flow_range_for_preset(preset: str) -> tuple[str, str]:
@@ -157,7 +164,12 @@ def flow_range_for_preset(preset: str) -> tuple[str, str]:
 
     builder = rtl2gds_api.get_flow_builders().get(preset)
     if builder is None:
-        raise WorkspaceFlowTargetError(f"unknown flow preset: {preset}")
+        # Presets removed when RCX/STA/Harden folded into the rtl2gds chain
+        # still resolve so existing ecc.toml/params.toml files keep working.
+        legacy = LEGACY_PRESET_RANGES.get(preset)
+        if legacy is None:
+            raise WorkspaceFlowTargetError(f"unknown flow preset: {preset}")
+        return legacy
     steps = builder()
     if not steps:
         raise WorkspaceFlowTargetError(f"flow preset has no steps: {preset}")
@@ -202,9 +214,9 @@ def flow_section_from_flow_config(flow_config: dict | None) -> dict[str, str]:
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
 
-    from chipcompiler.data.workspace import _canonical_harden_flow_entries
+    from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
 
-    selected, _degraded = resolve_flow_selection(flow_config, _canonical_harden_flow_entries())
+    selected, _degraded = resolve_flow_selection(flow_config, _canonical_rtl2gds_flow_entries())
     if not selected:
         return {}
 

@@ -104,12 +104,6 @@ class TestSupportsColor:
         env = {"TERM": "dumb"}
         assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.TEXT, env) is False
 
-    def test_disabled_json(self):
-        assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.JSON) is False
-
-    def test_disabled_jsonl(self):
-        assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.JSONL) is False
-
     def test_enabled_with_clean_env(self):
         env = {"TERM": "xterm-256color"}
         assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.TEXT, env) is True
@@ -134,14 +128,6 @@ class TestShouldEnableRunProgress:
     def test_enabled_text_tty(self):
         ctx = _make_ctx(OutputMode.TEXT)
         assert should_enable_run_progress(ctx, FakeTTYStderr(isatty_value=True)) is True
-
-    def test_disabled_json(self):
-        ctx = _make_ctx(OutputMode.JSON)
-        assert should_enable_run_progress(ctx, FakeTTYStderr(isatty_value=True)) is False
-
-    def test_disabled_jsonl(self):
-        ctx = _make_ctx(OutputMode.JSONL)
-        assert should_enable_run_progress(ctx, FakeTTYStderr(isatty_value=True)) is False
 
     def test_disabled_plain(self):
         ctx = _make_ctx(OutputMode.PLAIN)
@@ -631,6 +617,7 @@ def _make_ws(directory="/tmp", log_section_fn=None):
                 (),
                 {
                     "info": lambda *a, **k: None,
+                    "warning": lambda *a, **k: None,
                     "log_section": section_fn,
                     "log_separator": lambda *a, **k: None,
                 },
@@ -792,7 +779,7 @@ class TestRunFlowWithProgress:
         buf = FakeTTYStderr(isatty_value=True)
         run_flow_with_progress(flow, _make_ctx(run_id="exp1"), "myproject", buf)
         plain = _strip_ansi("".join(buf.written))
-        assert "  inspect: ecc log synthesis --project myproject --run-id exp1\n" in plain
+        assert "  inspect: ecc log synthesis --project myproject --workspace exp1\n" in plain
 
     def test_step_headers_emitted(self):
         flow = _make_flow(

@@ -13,6 +13,7 @@ from chipcompiler.data import (
     EccStep,
     OriginDesign,
     Parameters,
+    StateEnum,
     StepEnum,
     StepInput,
     Workspace,
@@ -21,6 +22,7 @@ from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
 from chipcompiler.tools.ecc.checklist import EccRcxChecklist
+from chipcompiler.tools.ecc.subflow import EccSubFlowEnum
 
 
 class FakeEccModule:
@@ -86,12 +88,16 @@ class FakeLogger:
     def __init__(self):
         self.infos = []
         self.warnings = []
+        self.errors = []
 
     def info(self, message, *args):
         self.infos.append((message, args))
 
     def warning(self, message, *args):
         self.warnings.append((message, args))
+
+    def error(self, message, *args):
+        self.errors.append((message, args))
 
 
 class FakeSubFlow:
@@ -113,7 +119,7 @@ def test_run_analysis_switch(parameters, expected_calls, tmp_path, monkeypatch):
     plotter = Mock()
     checklist = Mock()
     monkeypatch.setattr(ecc_runner, "build_step_metrics", metrics)
-    monkeypatch.setattr(ecc_runner, "ECCToolsPlot", plotter)
+    monkeypatch.setattr("chipcompiler.tools.ecc.plot.ECCToolsPlot", plotter)
     monkeypatch.setattr(ecc_runner, "EccChecklist", checklist)
 
     ecc_runner.run_analysis(workspace=workspace, step=step, subflow=FakeSubFlow())
@@ -123,6 +129,27 @@ def test_run_analysis_switch(parameters, expected_calls, tmp_path, monkeypatch):
     assert plotter.return_value.plot.call_count == expected_calls
     assert checklist.call_count == expected_calls
     assert checklist.return_value.check.call_count == expected_calls
+
+
+class FakeRcxModule:
+    def __init__(self, *, init_ok=True, run_ok=True):
+        self.calls = []
+        self.init_ok = init_ok
+        self.run_ok = run_ok
+
+    def update_step_paths(self, **kwargs):
+        self.calls.append(("update_step_paths", kwargs))
+
+    def init_rcx(self, **kwargs):
+        self.calls.append(("init_rcx", kwargs))
+        return self.init_ok
+
+    def run_rcx(self):
+        self.calls.append(("run_rcx",))
+        return self.run_ok
+
+    def destroy_rcx(self):
+        self.calls.append(("destroy_rcx",))
 
 
 class FakeCtsModule:
@@ -256,7 +283,7 @@ def test_create_db_engine_uses_def_input_for_lvs_even_when_db_exists(tmp_path, m
     assert not any(call[0] == "read_lvs_verilog" for call in module.calls)
 
 
-def test_create_db_engine_reads_replaced_step_input_without_db(tmp_path, monkeypatch):
+def test_create_db_engine_reads_replaced_step_input_despite_db(tmp_path, monkeypatch):
     step_def = tmp_path / "step" / "old.def"
     staging_def = tmp_path / "data" / "to" / "sizer.def.gz"
     staging_verilog = tmp_path / "data" / "to" / "sizer.v.gz"
@@ -277,7 +304,7 @@ def test_create_db_engine_reads_replaced_step_input_without_db(tmp_path, monkeyp
         input=StepInput(
             def_=staging_def,
             verilog=staging_verilog,
-            db=None,
+            db=tmp_path / "input_db",
         ),
         data=EccData(dir=tmp_path / "timing_optimization_sizer" / "data"),
         feature=EccFeature(dir=tmp_path / "timing_optimization_sizer" / "feature"),
@@ -291,6 +318,7 @@ def test_create_db_engine_reads_replaced_step_input_without_db(tmp_path, monkeyp
     module = ecc_runner.create_db_engine(workspace, step)
 
     assert module is FakeEccModule.instances[-1]
+    assert not any(call[0] == "is_db_data_exists" for call in module.calls)
     assert not any(call[0] == "load_data" for call in module.calls)
     assert ("read_def", str(staging_def)) in module.calls
     assert not any(call[0] == "read_def" and call[1] == str(step_def) for call in module.calls)
@@ -603,27 +631,149 @@ def test_sta_signoff_items_use_top_module_for_rcx_spef(tmp_path):
     assert items[0]["spef_file"] == str(tmp_path / "RCX_ecc" / "output" / "gcd_Cworst_125C.spef")
 
 
-def test_copy_rcx_spef_outputs_publishes_to_step_output_dir(tmp_path):
-    data_dir = tmp_path / "RCX_ecc" / "data"
-    output_dir = tmp_path / "RCX_ecc" / "output"
-    source_path = data_dir / "spef_writer" / "gcd_Cworst_125C.spef"
-    source_path.parent.mkdir(parents=True)
-    source_path.write_text("*SPEF\n", encoding="utf-8")
-    spef_outputs = [data_dir / source_path.name]
-    step = EccStep(
-        name=StepEnum.RCX.value,
-        data=EccData(dir=data_dir),
-        output=EccOutput(dir=output_dir, spef=spef_outputs),
+def test_sta_entry_workspace_uses_declared_spef(tmp_path):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    sta_config = config_dir / "sta_ecc.json"
+    sta_config.write_text(
+        json.dumps(
+            {
+                "liberty": [{"corner": "MAX", "temperature": 125, "path": ["max.lib"]}],
+                "signoff": [{"MAX": ["Cworst"]}],
+            }
+        )
     )
+    declared_spef = tmp_path / "origin" / "gcd.spef"
+    declared_spef.parent.mkdir()
+    declared_spef.write_text("*SPEF\n", encoding="utf-8")
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        config={"sta": sta_config},
+    )
+    workspace.pdk.spef = declared_spef
+    # An STA-entry flow has no RCX step.
+    workspace.flow.data = {
+        "steps": [{"name": StepEnum.STA.value, "tool": "ecc", "state": "Unstart"}]
+    }
+
+    items = ecc_runner.collect_sta_signoff_items(workspace)
+
+    assert [item["spef_file"] for item in items] == [str(declared_spef)]
+
+
+def _make_rcx_step(tmp_path):
+    return EccStep(
+        name=StepEnum.RCX.value,
+        data=EccData(dir=tmp_path / "RCX_ecc" / "data"),
+        output=EccOutput(dir=tmp_path / "RCX_ecc" / "output"),
+    )
+
+
+def test_run_rcx_propagates_init_failure(tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, logger=FakeLogger())
+    step = _make_rcx_step(tmp_path)
+    module = FakeRcxModule(init_ok=False)
+    sub_flow = FakeSubFlow()
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", lambda **kwargs: sub_flow)
 
-    ecc_runner.copy_rcx_spef_outputs(workspace, step)
+    assert ecc_runner.run_rcx(workspace, step, module) is False
 
-    destination = output_dir / source_path.name
-    assert destination.read_text(encoding="utf-8") == "*SPEF\n"
-    assert not (data_dir / source_path.name).exists()
-    assert step.output.spef is spef_outputs
-    assert step.output.spef == [destination]
+    call_names = [call[0] for call in module.calls]
+    assert "init_rcx" in call_names
+    assert "run_rcx" not in call_names
+    assert call_names.count("destroy_rcx") == 1
+    assert {
+        "step_name": EccSubFlowEnum.run_rcx.value,
+        "state": StateEnum.Imcomplete,
+    } in sub_flow.updates
+
+
+def test_run_rcx_propagates_native_run_failure(tmp_path, monkeypatch):
+    workspace = Workspace(directory=tmp_path, logger=FakeLogger())
+    step = _make_rcx_step(tmp_path)
+    module = FakeRcxModule(run_ok=False)
+    sub_flow = FakeSubFlow()
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", lambda **kwargs: sub_flow)
+
+    assert ecc_runner.run_rcx(workspace, step, module) is False
+
+    call_names = [call[0] for call in module.calls]
+    assert "init_rcx" in call_names
+    assert "run_rcx" in call_names
+    assert call_names.count("destroy_rcx") == 1
+    assert {
+        "step_name": EccSubFlowEnum.run_rcx.value,
+        "state": StateEnum.Imcomplete,
+    } in sub_flow.updates
+
+
+def test_run_rcx_publishes_fresh_spef_and_releases_extractor_once(tmp_path, monkeypatch):
+    workspace = Workspace(directory=tmp_path, logger=FakeLogger())
+    step = _make_rcx_step(tmp_path)
+    spef_writer = tmp_path / "RCX_ecc" / "data" / "spef_writer"
+    spef_writer.mkdir(parents=True)
+    module = FakeRcxModule()
+
+    def run_native_extraction():
+        module.calls.append(("run_rcx",))
+        (spef_writer / "gcd_Cworst_125C.spef").write_text("*SPEF\n", encoding="utf-8")
+        return True
+
+    module.run_rcx = run_native_extraction
+    sub_flow = FakeSubFlow()
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", lambda **kwargs: sub_flow)
+    monkeypatch.setattr(ecc_runner, "save_data", lambda **kwargs: True)
+    monkeypatch.setattr(ecc_runner, "save_rcx_spef_feature_facts", lambda **kwargs: True)
+    monkeypatch.setattr(ecc_runner, "run_analysis", lambda **kwargs: None)
+
+    assert ecc_runner.run_rcx(workspace, step, module) is True
+
+    published = tmp_path / "RCX_ecc" / "output" / "gcd_Cworst_125C.spef"
+    assert published.read_text(encoding="utf-8") == "*SPEF\n"
+    assert step.output.spef == [published]
+    call_names = [call[0] for call in module.calls]
+    assert call_names.count("destroy_rcx") == 1
+    assert {
+        "step_name": EccSubFlowEnum.run_rcx.value,
+        "state": StateEnum.Success,
+    } in sub_flow.updates
+
+
+def test_run_rcx_wipes_stale_spef_and_fails_when_extraction_produces_nothing(tmp_path, monkeypatch):
+    workspace = Workspace(directory=tmp_path, logger=FakeLogger())
+    step = _make_rcx_step(tmp_path)
+    spef_writer = tmp_path / "RCX_ecc" / "data" / "spef_writer"
+    spef_writer.mkdir(parents=True)
+    stale_spef = spef_writer / "stale.spef"
+    stale_spef.write_text("*SPEF\nstale\n", encoding="utf-8")
+    module = FakeRcxModule()
+    sub_flow = FakeSubFlow()
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", lambda **kwargs: sub_flow)
+
+    assert ecc_runner.run_rcx(workspace, step, module) is False
+
+    assert not stale_spef.exists()
+    assert not (tmp_path / "RCX_ecc" / "output" / "stale.spef").exists()
+    assert {
+        "step_name": EccSubFlowEnum.run_rcx.value,
+        "state": StateEnum.Imcomplete,
+    } in sub_flow.updates
+
+
+def test_run_rcx_fails_when_spef_writer_dir_is_missing(tmp_path, monkeypatch):
+    workspace = Workspace(directory=tmp_path, logger=FakeLogger())
+    step = _make_rcx_step(tmp_path)
+    module = FakeRcxModule()
+    sub_flow = FakeSubFlow()
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", lambda **kwargs: sub_flow)
+
+    assert ecc_runner.run_rcx(workspace, step, module) is False
+
+    assert {
+        "step_name": EccSubFlowEnum.run_rcx.value,
+        "state": StateEnum.Imcomplete,
+    } in sub_flow.updates
 
 
 def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, monkeypatch):

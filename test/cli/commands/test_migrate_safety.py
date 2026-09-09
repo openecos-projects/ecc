@@ -7,8 +7,8 @@ import pytest
 from chipcompiler.cli import main as cli_main
 
 
-def _records(capsys):
-    return json.loads(capsys.readouterr().out)["records"]
+def _records(capsys, plain_records):
+    return plain_records(capsys.readouterr().out)
 
 
 def _manifest(project_dir):
@@ -56,17 +56,21 @@ class TestMigrationSymlinkSafety:
     project-external tree — at discovery, at move time, and after rename."""
 
     def test_symlinked_run_source_never_mutates_external_tree(
-        self, tmp_path, capsys, create_cli_project
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        plain_records,
     ):
         project_dir = create_cli_project()
         external = _external_workspace(tmp_path)
         os.symlink(external, os.path.join(project_dir, "runs", "linked"))
         before = _tree_snapshot(external)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
-        records = _records(capsys)
+        records = _records(capsys, plain_records)
         (failure,) = [r for r in records if r.get("error") == "migration_failed"]
         assert failure["run"] == "linked"
         # The external tree is untouched (bytes, dirs, and symlinks), the
@@ -83,6 +87,7 @@ class TestMigrationSymlinkSafety:
         create_cli_project,
         minimal_ics55_pdk_factory,
         create_legacy_workspace,
+        plain_records,
     ):
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
@@ -91,10 +96,10 @@ class TestMigrationSymlinkSafety:
         os.symlink(external, os.path.join(project_dir, "runs", "linked"))
         before = _tree_snapshot(external)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
-        records = _records(capsys)
+        records = _records(capsys, plain_records)
         assert any(
             r.get("error") == "migration_failed" and r.get("run") == "linked" for r in records
         )
@@ -116,6 +121,7 @@ class TestMigrationSymlinkSafety:
         minimal_ics55_pdk_factory,
         monkeypatch,
         create_legacy_workspace,
+        plain_records,
     ):
         import shutil
 
@@ -138,10 +144,10 @@ class TestMigrationSymlinkSafety:
         monkeypatch.setattr(migrate_module, "plan_migration", swapping_plan)
         before = _tree_snapshot(external)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
-        records = _records(capsys)
+        records = _records(capsys, plain_records)
         (failure,) = [r for r in records if r.get("error") == "migration_failed"]
         assert "unsafe run source" in failure["reason"]
         # The execution-time revalidation rejected the swapped source
@@ -178,7 +184,11 @@ class TestMigrationIdentityBinding:
     sources, and absent targets — across the plan→confirm→execute window."""
 
     def test_symlinked_runs_container_refused_before_enumeration(
-        self, tmp_path, capsys, create_cli_project
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        plain_records,
     ):
         project_dir = create_cli_project()
         external_runs = _external_runs_with_workspace(tmp_path)
@@ -186,10 +196,12 @@ class TestMigrationIdentityBinding:
         os.symlink(external_runs, os.path.join(project_dir, "runs"))
         before = _tree_snapshot(external_runs)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
-        (failure,) = [r for r in _records(capsys) if r.get("error") == "migration_failed"]
+        (failure,) = [
+            r for r in _records(capsys, plain_records) if r.get("error") == "migration_failed"
+        ]
         assert "unsafe runs container" in failure["reason"]
         # Nothing enumerated or moved: the external tree is identical,
         # nothing landed at the project root, no manifest was written.
@@ -206,6 +218,7 @@ class TestMigrationIdentityBinding:
         minimal_ics55_pdk_factory,
         monkeypatch,
         create_legacy_workspace,
+        plain_records,
     ):
         import shutil
 
@@ -230,10 +243,12 @@ class TestMigrationIdentityBinding:
 
         monkeypatch.setattr(migrate_module, "plan_migration", swapping_plan)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
-        (failure,) = [r for r in _records(capsys) if r.get("error") == "migration_failed"]
+        (failure,) = [
+            r for r in _records(capsys, plain_records) if r.get("error") == "migration_failed"
+        ]
         assert failure["reason"] == "run source changed after preview"
         # The substitute was never migrated or rebased: it sits unchanged
         # at the runs/ path, and no manifest was written.
@@ -250,6 +265,7 @@ class TestMigrationIdentityBinding:
         minimal_ics55_pdk_factory,
         monkeypatch,
         create_legacy_workspace,
+        plain_records,
     ):
         import chipcompiler.cli.project.migrate_plan as migrate_module
 
@@ -275,10 +291,10 @@ class TestMigrationIdentityBinding:
 
         monkeypatch.setattr(migrate_module, "plan_migration", appearing_plan)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
-        records = _records(capsys)
+        records = _records(capsys, plain_records)
         (collision,) = [r for r in records if r.get("error") == "migration_collision"]
         assert collision["run"] == "exp1"
         # The appearing object is UNTOUCHED and the source stays under runs/.
@@ -306,6 +322,7 @@ class TestMigrationIdentityBinding:
         minimal_ics55_pdk_factory,
         monkeypatch,
         create_legacy_workspace,
+        plain_records,
     ):
         import shutil
 
@@ -329,10 +346,12 @@ class TestMigrationIdentityBinding:
 
         monkeypatch.setattr(migrate_fs, "move_noreplace", swapping_move)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
-        (failure,) = [r for r in _records(capsys) if r.get("error") == "migration_failed"]
+        (failure,) = [
+            r for r in _records(capsys, plain_records) if r.get("error") == "migration_failed"
+        ]
         assert "identity changed after rename" in failure["reason"]
         # The post-move rejection moved the substitute back untouched:
         # no rebase/refresh reached it, and nothing stayed at the root.
@@ -348,6 +367,7 @@ class TestMigrationIdentityBinding:
         minimal_ics55_pdk_factory,
         monkeypatch,
         create_legacy_workspace,
+        plain_records,
     ):
         import shutil
 
@@ -372,10 +392,12 @@ class TestMigrationIdentityBinding:
 
         monkeypatch.setattr(migrate_module, "plan_migration", swapping_plan)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
-        (failure,) = [r for r in _records(capsys) if r.get("error") == "migration_failed"]
+        (failure,) = [
+            r for r in _records(capsys, plain_records) if r.get("error") == "migration_failed"
+        ]
         assert failure["reason"] == "runs/ container changed after preview"
         # The batch was refused before any move: nothing at the root, no
         # manifest, and the replacement container is untouched.
@@ -391,6 +413,7 @@ class TestMigrationIdentityBinding:
         minimal_ics55_pdk_factory,
         monkeypatch,
         create_legacy_workspace,
+        plain_records,
     ):
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
@@ -406,10 +429,12 @@ class TestMigrationIdentityBinding:
 
         monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", failing_refresh)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
-        (failure,) = [r for r in _records(capsys) if r.get("error") == "migration_failed"]
+        (failure,) = [
+            r for r in _records(capsys, plain_records) if r.get("error") == "migration_failed"
+        ]
         assert "rollback incomplete" in failure["reason"]
         # The replacement was NEVER reverse-rebased or refreshed, and the
         # honestly-reported moved workspace stays at the root untouched.
@@ -427,6 +452,7 @@ class TestMigrationIdentityBinding:
         minimal_ics55_pdk_factory,
         monkeypatch,
         create_legacy_workspace,
+        plain_records,
     ):
         import shutil
 
@@ -462,10 +488,12 @@ class TestMigrationIdentityBinding:
         monkeypatch.setattr(migrate_fs, "move_noreplace", swapping_move)
         monkeypatch.setattr(migrate_fs, "_unsafe_workspace_source", swapping_screen)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
-        (failure,) = [r for r in _records(capsys) if r.get("error") == "migration_failed"]
+        (failure,) = [
+            r for r in _records(capsys, plain_records) if r.get("error") == "migration_failed"
+        ]
         assert "rollback incomplete" in failure["reason"]
         # The move-back refused to move the wrong object: the third-party
         # directory stays at the root untouched, and no manifest was written.

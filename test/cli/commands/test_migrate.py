@@ -1,3 +1,4 @@
+import ast
 import json
 import os
 from pathlib import Path
@@ -6,7 +7,21 @@ from chipcompiler.cli import main as cli_main
 
 
 def _records(capsys):
-    return json.loads(capsys.readouterr().out)["records"]
+    import shlex
+
+    records = []
+    buffer = ""
+    for line in capsys.readouterr().out.splitlines():
+        buffer = f"{buffer}\n{line}" if buffer else line
+        try:
+            fields = shlex.split(buffer)
+        except ValueError:
+            continue
+        records.append(dict(field.split("=", 1) for field in fields))
+        buffer = ""
+    if buffer:
+        raise ValueError(f"unparseable --plain output: {buffer!r}")
+    return records
 
 
 def _manifest(project_dir):
@@ -27,7 +42,7 @@ class TestMigrate:
         project_dir = create_cli_project(pdk_root=pdk_root)
         run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc == 0
         target = os.path.join(project_dir, "exp1")
@@ -85,7 +100,7 @@ class TestMigrate:
         run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--plain"])
 
         assert rc != 0
         records = _records(capsys)
@@ -127,7 +142,7 @@ class TestMigrate:
         with open(os.path.join(project_dir, "project.json"), "w") as f:
             json.dump(document, f)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes"])
 
         assert rc == 0
         manifest = _manifest(project_dir)
@@ -148,7 +163,7 @@ class TestMigrate:
         with open(os.path.join(project_dir, "project.json"), "w") as f:
             json.dump(document, f)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc == 0
         (record,) = _records(capsys)
@@ -161,7 +176,7 @@ class TestMigrate:
         with open(os.path.join(project_dir, "project.json"), "w") as f:
             f.write('{"schema_version": 1, "workspaces": "not-a-list"}')
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc == 1
         (record,) = _records(capsys)
@@ -180,7 +195,7 @@ class TestMigrate:
         run_dir = create_legacy_workspace(project_dir, pdk_root, "rtl", ["Success", "Success"])
         create_legacy_workspace(project_dir, pdk_root, "exp2", ["Success", "Success"])
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
         records = _records(capsys)
@@ -213,7 +228,7 @@ class TestMigrate:
             failing_refresh,
         )
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
         records = _records(capsys)
@@ -242,7 +257,7 @@ class TestMigrate:
         with open(f"{project_dir}/ecc.toml", "a") as f:
             f.write('\n[params.cts]\nmax_fanout = "loud"\n')
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
         records = _records(capsys)
@@ -265,7 +280,7 @@ class TestMigrate:
         run2 = create_legacy_workspace(project_dir, pdk_root, "exp2", ["Success", "Success"])
 
         monkeypatch.setattr(
-            "chipcompiler.cli.project.manifest.write_manifest_if_absent",
+            "chipcompiler.cli.project.manifest_write.write_manifest_if_absent",
             lambda *a, **k: False,
         )
         monkeypatch.setattr(
@@ -273,7 +288,7 @@ class TestMigrate:
             lambda _dir: None,
         )
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
         records = _records(capsys)
@@ -301,7 +316,7 @@ class TestMigrate:
         with open(os.path.join(project_dir, "project.json"), "w") as f:
             f.write("{broken")
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
         (record,) = _records(capsys)
@@ -320,7 +335,7 @@ class TestMigrate:
         project_dir = create_cli_project(pdk_root=pdk_root)
         create_legacy_workspace(project_dir, pdk_root, "exp1", ["Ongoing", "Incomplete"])
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes"])
 
         assert rc == 0
         manifest = _manifest(project_dir)
@@ -347,17 +362,56 @@ class TestMigrate:
         os.unlink(os.path.join(run_dir, "home", "params.toml"))
         import json as _json
 
-        long_keys = {"Design": "gcd", "Top module": "gcd", "Clock": "clk", "PDK": "ics55"}
+        long_keys = {
+            "Design": "gcd",
+            "Top module": "gcd",
+            "Clock": "clk",
+            "PDK": "ics55",
+            "PDK Root": str(pdk_root),
+        }
         long_keys["PDK Config"] = legacy["PDK Config"]
         Path(run_dir, "home", "parameters.json").write_text(_json.dumps(long_keys))
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc == 0
         from chipcompiler.data.parameter import load_parameter as lp
 
         moved = lp(Path(project_dir, "exp1", "home", "params.toml"))
         assert moved.data["pdk_config"] == os.path.join(project_dir, "exp1", "home", "pdk.json")
+
+    def test_flow_step_info_paths_rebased_after_move(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+    ):
+        # STA-entry workspaces persist the declared SPEF (and LEC workspaces
+        # the golden netlist) as absolute origin/ paths in flow.json step
+        # info; the move must rebase them or the reloaded workspace reads
+        # files that no longer exist.
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        flow_path = Path(run_dir, "home", "flow.json")
+        flow_data = json.loads(flow_path.read_text())
+        flow_data["steps"][0].setdefault("info", {})["spef"] = os.path.join(
+            run_dir, "origin", "gcd.spef"
+        )
+        flow_data["steps"][0]["info"]["golden_verilog"] = os.path.join(
+            run_dir, "origin", "golden_gcd.v"
+        )
+        flow_path.write_text(json.dumps(flow_data))
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
+
+        assert rc == 0
+        moved = json.loads(Path(project_dir, "exp1", "home", "flow.json").read_text())
+        info = moved["steps"][0]["info"]
+        assert info["spef"] == os.path.join(project_dir, "exp1", "origin", "gcd.spef")
+        assert info["golden_verilog"] == os.path.join(project_dir, "exp1", "origin", "golden_gcd.v")
 
 
 class TestMigrationPlanningRobustness:
@@ -389,7 +443,7 @@ class TestMigrationPlanningRobustness:
         run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
         Path(run_dir, "home", "flow.json").unlink()
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes"])
 
         assert rc == 0
         assert not os.path.exists(run_dir)
@@ -410,7 +464,7 @@ class TestMigrationPlanningRobustness:
         # JSON-valid but not an object: unreadable as a flow ledger.
         Path(run_dir, "home", "flow.json").write_text("[]")
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         self._assert_blocked(rc, capsys, project_dir, run_dir)
 
@@ -427,7 +481,7 @@ class TestMigrationPlanningRobustness:
         run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
         Path(run_dir, "home", "flow.json").write_bytes(b"\xff")
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         self._assert_blocked(rc, capsys, project_dir, run_dir)
 
@@ -446,7 +500,7 @@ class TestMigrationPlanningRobustness:
             json.dumps({"steps": [{"name": "", "state": "Success"}]})
         )
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         self._assert_blocked(rc, capsys, project_dir, run_dir)
 
@@ -465,7 +519,7 @@ class TestMigrationPlanningRobustness:
         # one, so this is hand-made or corrupt state.
         Path(run_dir, "home", "flow.json").write_text("{}")
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         self._assert_blocked(rc, capsys, project_dir, run_dir)
 
@@ -484,7 +538,7 @@ class TestMigrationPlanningRobustness:
         Path(run_dir, "home", "flow.json").write_bytes(b"\xff")
         manifest_stubs.write(Path(project_dir), [])
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         # Blocked workspaces ARE left in runs/: reporting already_migrated
         # would claim otherwise.
@@ -511,7 +565,7 @@ class TestMigrationPlanningRobustness:
         # fail BEFORE the first rename, not escape as UnicodeDecodeError.
         Path(project_dir, "project.json").write_bytes(b"\xff")
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc != 0
         (failure,) = [r for r in _records(capsys) if r.get("error") == "manifest_invalid"]
@@ -536,7 +590,7 @@ class TestMigrationPreview:
         project_dir = create_cli_project(pdk_root=pdk_root)
         create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc == 0
         records = _records(capsys)
@@ -550,7 +604,7 @@ class TestMigrationPreview:
         ]
         (create,) = [r for r in records if r.get("manifest") == "create"]
         # Execution consumed the previewed document byte-for-byte.
-        assert create["document"] == _manifest(project_dir)
+        assert ast.literal_eval(create["document"]) == _manifest(project_dir)
 
     def test_non_tty_refusal_discloses_preview_without_mutation(
         self,
@@ -566,12 +620,13 @@ class TestMigrationPreview:
         run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
         monkeypatch.setattr("sys.stdin.isatty", lambda: False)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--plain"])
 
         assert rc != 0
         records = _records(capsys)
         (create,) = [r for r in records if r.get("manifest") == "create"]
-        assert [w["workspace_id"] for w in create["document"]["workspaces"]] == ["exp1"]
+        document = ast.literal_eval(create["document"])
+        assert [w["workspace_id"] for w in document["workspaces"]] == ["exp1"]
         assert records[-1]["error"] == "confirmation_required"
         # Disclosure only: nothing moved, nothing created.
         assert os.path.exists(run_dir)
@@ -592,7 +647,7 @@ class TestMigrationPreview:
         monkeypatch.setattr("sys.stdin.isatty", lambda: True)
         monkeypatch.setattr("builtins.input", lambda prompt="": "y")
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir])
 
         assert rc == 0
         # The TTY render shows the full manifest document, not an id summary.
@@ -631,7 +686,7 @@ class TestMigrationPreview:
         with open(os.path.join(project_dir, "project.json"), "w") as f:
             json.dump(document, f)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc == 0
         records = _records(capsys)
@@ -640,7 +695,7 @@ class TestMigrationPreview:
             w for w in _manifest(project_dir)["workspaces"] if w["workspace_id"] == "exp2"
         ]
         # The applied entry IS the previewed entry, complete and verbatim.
-        (previewed,) = append["workspaces"]
+        (previewed,) = ast.literal_eval(append["workspaces"])
         assert appended == previewed
 
     def test_mixed_result_baseline_follows_first_success(
@@ -670,7 +725,7 @@ class TestMigrationPreview:
 
         monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", selective_refresh)
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes"])
 
         assert rc != 0
         manifest = _manifest(project_dir)
@@ -708,7 +763,7 @@ class TestMigrationPreview:
             },
         )
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes"])
 
         assert rc == 0
         assert not os.path.exists(os.path.join(project_dir, "runs", "exp1"))
@@ -767,7 +822,7 @@ class TestMigrationPreview:
             )
         )
 
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--json"])
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
 
         assert rc == 1
         errors = [r for r in _records(capsys) if r.get("error") == "migration_unsupported"]

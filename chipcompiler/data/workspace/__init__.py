@@ -28,8 +28,10 @@ from ..workspace_config import (
 from ..workspace_config import (
     workspace_config_path as workspace_config_toml_path,
 )
-from .filelist_copy import copy_filelist_with_sources
+from .filelist_copy import copy_filelist_with_sources as copy_filelist_with_sources
 from .layout import EccData, WorkspaceStepBase
+from .sdc import create_default_sdc as create_default_sdc
+from .sdc import refresh_generated_sdc
 
 # The shared step type used as the annotation/constructor across the codebase.
 WorkspaceStep = WorkspaceStepBase
@@ -45,6 +47,7 @@ class OriginDesign:
     top_module: str = ""  # top module name
     origin_def: Path | None = None  # original def file path
     origin_verilog: Path | None = None  # original verilog file path
+    golden_verilog: Path | None = None  # optional external golden netlist for LEC
     input_filelist: Path | None = None  # input filelist for synthesis
 
 
@@ -276,24 +279,29 @@ def build_dynamic_flow_data(flow_config: dict | None) -> dict:
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
 
-    canonical_steps = _canonical_harden_flow_entries()
+    canonical_steps = _canonical_rtl2gds_flow_entries()
     from ..workspace_config import resolve_flow_selection
 
     selected_names, _degraded = resolve_flow_selection(flow_config, canonical_steps)
     if not selected_names:
         return {}
 
-    selected = set(selected_names)
+    import chipcompiler.rtl2gds as rtl2gds_api
+
+    selected = rtl2gds_api.build_flow_range(selected_names[0], selected_names[-1])
     return {
         "steps": [
-            _flow_step_template(name, tool, state)
-            for name, tool, state in canonical_steps
-            if name in selected
+            _flow_step_template(
+                name.value if isinstance(name, StepEnum) else str(name),
+                str(tool),
+                state.value if isinstance(state, StateEnum) else str(state),
+            )
+            for name, tool, state in selected
         ]
     }
 
 
-def _canonical_harden_flow_entries() -> list[tuple[str, str, str]]:
+def _canonical_rtl2gds_flow_entries() -> list[tuple[str, str, str]]:
     import chipcompiler.rtl2gds as rtl2gds_api
 
     return [
@@ -302,7 +310,7 @@ def _canonical_harden_flow_entries() -> list[tuple[str, str, str]]:
             str(tool),
             state.value if isinstance(state, StateEnum) else str(state),
         )
-        for step, tool, state in rtl2gds_api.build_harden_flow()
+        for step, tool, state in rtl2gds_api.build_rtl2gds_flow()
     ]
 
 
@@ -338,35 +346,9 @@ def _selected_dynamic_flow_step_names(
 
 
 def _normalize_flow_step_name(value) -> str:
-    token = str(value or "").strip()
-    if not token:
-        return ""
-    alias_key = token.lower().replace("_", "").replace("-", "").replace(" ", "")
-    aliases = {
-        "synth": StepEnum.SYNTHESIS.value,
-        "synthesis": StepEnum.SYNTHESIS.value,
-        "floor": StepEnum.FLOORPLAN.value,
-        "floorplan": StepEnum.FLOORPLAN.value,
-        "place": StepEnum.PLACEMENT.value,
-        "placement": StepEnum.PLACEMENT.value,
-        "cts": StepEnum.CTS.value,
-        "legal": StepEnum.LEGALIZATION.value,
-        "legalization": StepEnum.LEGALIZATION.value,
-        "timingopt": StepEnum.TIMING_OPT.value,
-        "timingoptimization": StepEnum.TIMING_OPT.value,
-        "route": StepEnum.ROUTING.value,
-        "routing": StepEnum.ROUTING.value,
-        "drc": StepEnum.DRC.value,
-        "lvs": StepEnum.LVS.value,
-        "filler": StepEnum.FILLER.value,
-        "lec": StepEnum.LEC.value,
-        "postlec": StepEnum.POST_ROUTE_LEC.value,
-        "postroutelec": StepEnum.POST_ROUTE_LEC.value,
-        "rcx": StepEnum.RCX.value,
-        "sta": StepEnum.STA.value,
-        "harden": StepEnum.HARDEN.value,
-    }
-    return aliases.get(alias_key, token)
+    from chipcompiler.rtl2gds import normalize_flow_step
+
+    return normalize_flow_step(value)
 
 
 def _flow_step_template(name: str, tool: str, state: str) -> dict:
@@ -717,6 +699,8 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
 
+    refresh_generated_sdc(workspace)
+
     db = json_read(workspace.config["db"])
     if "INPUT" not in db or "LayerSettings" not in db:
         raise FileNotFoundError(
@@ -799,6 +783,10 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     dreamplace = apply_parameter_overrides(dreamplace, workspace.parameters.data)
     _coerce_legacy_dreamplace_routability_flag(workspace, dreamplace)
     json_write(workspace.config["dreamplace"], dreamplace)
+
+    from .config_overrides import apply_config_overrides
+
+    apply_config_overrides(workspace.config, workspace.parameters.data)
 
 
 def sync_workspace_config_to_parameters(workspace: Workspace, config_path: Path) -> bool:
@@ -1030,6 +1018,8 @@ def create_workspace(
     pdk_json: str | Path = "",
     flow_config: dict | None = None,
     sdc: str | Path = "",
+    spef: str | Path = "",
+    golden_verilog: str | Path = "",
     pdk_overrides: dict | None = None,
 ) -> Workspace:
     """
@@ -1042,6 +1032,8 @@ def create_workspace(
         pdk: PDK information (LEF, Liberty, SDC, etc.)
         parameters: Design parameters (clock, frequency, etc.)
         sdc: Optional timing constraints file copied into workspace/origin/
+        spef: Optional extracted parasitics copied into workspace/origin/
+        golden_verilog: Optional comparison netlist copied for an LEC entry step
         input_filelist: Optional filelist for synthesis (SystemVerilog sources)
 
     Returns:
@@ -1083,6 +1075,9 @@ def create_workspace(
     explicit_sdc_path = Path(sdc).expanduser().resolve() if sdc else None
     if explicit_sdc_path is not None:
         workspace.pdk.sdc = explicit_sdc_path
+    explicit_spef_path = Path(spef).expanduser().resolve() if spef else None
+    if explicit_spef_path is not None:
+        workspace.pdk.spef = explicit_spef_path
 
     # update config
     if isinstance(parameters, Parameters):
@@ -1110,56 +1105,17 @@ def create_workspace(
     # update orign files to workspace origin folder
     origin_dir.mkdir(parents=True, exist_ok=True)
     workspace.config["dir"].mkdir(parents=True, exist_ok=True)
-    origin_def_path = Path(origin_def) if origin_def else None
-    if origin_def_path and origin_def_path.exists():
-        target = origin_dir / origin_def_path.name
-        shutil.copy(origin_def_path, target)
-        workspace.design.origin_def = target
-    else:
-        workspace.design.origin_def = origin_dir / f"{workspace.design.name}.def"
+    from .inputs import persist_origin_inputs
 
-    origin_verilog_path = Path(origin_verilog) if origin_verilog else None
-    if origin_verilog_path and origin_verilog_path.exists():
-        target = origin_dir / origin_verilog_path.name
-        shutil.copy(origin_verilog_path, target)
-        workspace.design.origin_verilog = target
-    else:
-        workspace.design.origin_verilog = origin_dir / f"{workspace.design.name}.v"
-
-    # Copy filelist and all referenced source files
-    input_filelist_path = Path(input_filelist) if input_filelist else None
-    if input_filelist_path and input_filelist_path.exists():
-        try:
-            # Use new copy_filelist_with_sources to copy filelist + all RTL files
-            workspace.design.input_filelist = Path(
-                copy_filelist_with_sources(
-                    input_filelist=str(input_filelist_path),
-                    workspace_dir=str(workspace_dir),
-                    logger=workspace.logger,
-                )
-            )
-        except Exception as e:
-            workspace.logger.error(f"Failed to copy filelist sources: {e}")
-            workspace.logger.warning("Falling back to copying only filelist file")
-            # Fallback: copy only filelist file (backward compatibility)
-            target = origin_dir / input_filelist_path.name
-            shutil.copy(input_filelist_path, target)
-            workspace.design.input_filelist = target
-
-    if workspace.pdk.sdc and workspace.pdk.sdc.exists():
-        sdc_target = origin_dir / workspace.pdk.sdc.name
-        shutil.copy(workspace.pdk.sdc, sdc_target)
-        workspace.pdk.sdc = sdc_target
-    else:
-        # create default sdc file
-        workspace.pdk.sdc = origin_dir / f"{workspace.design.name}.sdc"
-        create_default_sdc(workspace)
-
-    if workspace.pdk.spef and workspace.pdk.spef.exists():
-        spef_target = origin_dir / workspace.pdk.spef.name
-        shutil.copy(workspace.pdk.spef, spef_target)
-        workspace.pdk.spef = spef_target
-
+    persist_origin_inputs(
+        workspace,
+        origin_dir,
+        workspace_dir,
+        origin_def=origin_def,
+        origin_verilog=origin_verilog,
+        input_filelist=input_filelist,
+        golden_verilog=golden_verilog,
+    )
     init_workspace_config(workspace)
 
     # set home data
@@ -1175,14 +1131,20 @@ def create_workspace(
         from chipcompiler.utility import json_write
 
         workspace.flow.data = dynamic_flow_data
-        if not json_write(workspace.flow.path, workspace.flow.data):
-            raise OSError(f"Failed to write initial flow.json: {workspace.flow.path}")
-
         from ..workspace_config import flow_section_from_flow_config
 
         flow_section = flow_section_from_flow_config(flow_config)
         if flow_section:
             workspace.parameters.data["_flow"] = flow_section
+
+        if workspace.design.golden_verilog is not None:
+            dynamic_flow_data["steps"][0]["info"]["golden_verilog"] = str(
+                workspace.design.golden_verilog
+            )
+        if workspace.pdk.spef is not None:
+            dynamic_flow_data["steps"][0]["info"]["spef"] = str(workspace.pdk.spef)
+        if not json_write(workspace.flow.path, workspace.flow.data):
+            raise OSError(f"Failed to write initial flow.json: {workspace.flow.path}")
 
     if workspace.pdk.root:
         workspace.parameters.data["pdk_root"] = str(workspace.pdk.root)
@@ -1199,6 +1161,32 @@ def create_workspace(
     log_parameters(workspace)
 
     return workspace
+
+
+def _persisted_golden_verilog(workspace_dir: Path) -> tuple[Path | None, bool]:
+    """Golden netlist recorded at workspace creation.
+
+    Returns ``(path, True)`` when the flow ledger declares a golden netlist,
+    ``(None, True)`` when a current-format ledger declares none, and
+    ``(None, False)`` for legacy ledgers without step info, where the
+    ``golden_*`` filename convention still applies.
+    """
+    from chipcompiler.utility import json_read
+
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    steps = flow_data.get("steps", []) if isinstance(flow_data, dict) else []
+    if not steps or not isinstance(steps[0], dict):
+        return None, False
+    if not isinstance(steps[0].get("info"), dict):
+        return None, False
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        info = step.get("info")
+        golden = info.get("golden_verilog") if isinstance(info, dict) else None
+        if golden and Path(golden).is_file():
+            return Path(golden), True
+    return None, True
 
 
 def load_workspace(directory: str | Path) -> Workspace:
@@ -1273,12 +1261,26 @@ def load_workspace(directory: str | Path) -> Workspace:
     if len(def_gz_path) > 0:
         workspace.design.origin_def = def_gz_path[0]
 
-    verilog_path = list(origin_dir.rglob("*.v"))
-    verilog_gz_path = list(origin_dir.rglob("*.v.gz"))
+    # The golden netlist path is persisted in the first flow step's info at
+    # creation; trust it over the golden_* filename convention so a primary
+    # netlist whose name merely starts with "golden_" keeps its role. Only
+    # legacy ledgers without step info fall back to the filename convention.
+    golden, golden_declared = _persisted_golden_verilog(workspace_dir)
+    if golden is None and not golden_declared:
+        golden_paths = list(origin_dir.rglob("golden_*.v")) + list(
+            origin_dir.rglob("golden_*.v.gz")
+        )
+        golden = golden_paths[0] if golden_paths else None
+
+    verilog_path = [path for path in origin_dir.rglob("*.v") if path != golden]
+    verilog_gz_path = [path for path in origin_dir.rglob("*.v.gz") if path != golden]
     if len(verilog_path) > 0:
         workspace.design.origin_verilog = verilog_path[0]
     if len(verilog_gz_path) > 0:
         workspace.design.origin_verilog = verilog_gz_path[0]
+
+    if golden is not None:
+        workspace.design.golden_verilog = golden
 
     filelist_path = origin_dir / "filelist"
     if filelist_path.exists():
@@ -1314,6 +1316,7 @@ def log_workspace(workspace: Workspace):
     workspace.logger.info("top module     : %s", workspace.design.top_module)
     workspace.logger.info("origin def     : %s", workspace.design.origin_def)
     workspace.logger.info("origin verilog : %s", workspace.design.origin_verilog)
+    workspace.logger.info("golden verilog : %s", workspace.design.golden_verilog)
     workspace.logger.info("input filelist : %s", workspace.design.input_filelist)
     workspace.logger.info("sdc            : %s", workspace.pdk.sdc)
     workspace.logger.info("spef           : %s", workspace.pdk.spef)
@@ -1346,24 +1349,3 @@ def log_flow(workspace: Workspace):
             format_string(step.get("state", "")),
             format_string(step.get("runtime", "")),
         )
-
-
-def create_default_sdc(workspace: Workspace):
-    """
-    Create SDC file based on PDK and workspace parameters.
-    """
-    sdc_content = []
-    sdc_content.append("# Auto-generated SDC file\n")
-    sdc_content.append("\n")
-    sdc_content.append("set clk_name {} \n".format(workspace.parameters.data.get("clock", "")))
-    sdc_content.append("set clk_port_name {}\n".format(workspace.parameters.data.get("clock", "")))
-    sdc_content.append(
-        "set clk_freq_mhz {}\n".format(workspace.parameters.data.get("frequency_max", 100))
-    )
-    sdc_content.append("set clk_period [expr 1000.0 / $clk_freq_mhz]\n")
-    sdc_content.append("set clk_io_pct 0.2\n")
-    sdc_content.append("set clk_port [get_ports $clk_port_name]\n")
-    sdc_content.append("create_clock -name $clk_name -period $clk_period $clk_port\n")
-
-    with open(workspace.pdk.sdc, "w") as file:
-        file.writelines(sdc_content)

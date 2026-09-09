@@ -3,10 +3,10 @@
 """``project.json`` manifest support for the CLI.
 
 The manifest is the GUI's project descriptor (schema v1). The CLI reads it
-for configuration layering and run discovery, generates it for virgin
-projects, and writes back run status. All writes go through one
-read-modify-write helper so status write-back and migration entry-append
-share the same atomicity story.
+for configuration layering and run discovery, and projects it into
+configuration payloads. Write operations (generation, status write-back,
+registration) live in chipcompiler.cli.project.manifest_write, which
+routes every write through one read-modify-write helper.
 
 This module sits on the CLI startup path (imported by
 cli/core/invocation.py): keep module-level imports cheap — no
@@ -14,62 +14,64 @@ chipcompiler.data imports here.
 """
 
 import json
-import logging
 import os
 import re
-import tempfile
-from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 MANIFEST_FILENAME = "project.json"
 
-# GUI display names for the canonical chain; presets are named prefixes.
+# GUI display names for the canonical rtl2gds chain.
 MANIFEST_FLOW_STEPS = (
     "Synth",
+    "LEC",
     "Floor",
     "Place",
     "CTS",
     "Legal",
     "TimingOpt",
     "Route",
-    "DRC",
-    "LVS",
     "Filler",
-    "PostRouteLEC",
     "RCX",
     "STA",
+    "LVS",
+    "PostRouteLEC",
+    "DRC",
     "Harden",
-    "LEC",
 )
 
 PRESET_MANIFEST_RANGE = {
     "syn_sta": ("Synth", "Synth"),
-    "rtl2gds": ("Synth", "PostRouteLEC"),
+    "rtl2gds": ("Synth", "Harden"),
+    "synthesis_lec": ("Synth", "LEC"),
+    # Legacy presets removed from the builder; keep resolving them so
+    # persisted projects still load.
     "rcx": ("Synth", "STA"),
     "harden": ("Synth", "Harden"),
-    "synthesis_lec": ("Synth", "LEC"),
+}
+
+_CANONICAL_TO_MANIFEST_STEP = {
+    "Synthesis": "Synth",
+    "lec": "LEC",
+    "Floorplan": "Floor",
+    "place": "Place",
+    "CTS": "CTS",
+    "legalization": "Legal",
+    "Timing optimization": "TimingOpt",
+    "route": "Route",
+    "filler": "Filler",
+    "RCX": "RCX",
+    "sta": "STA",
+    "lvs": "LVS",
+    "postRouteLec": "PostRouteLEC",
+    "drc": "DRC",
+    "Harden": "Harden",
 }
 
 _WORKSPACE_STATUSES = frozenset(
     {"success", "failed", "running", "in_progress", "not_started", "archived"}
 )
-
-DEFAULT_OBJECTIVES = {
-    "primary": "timing",
-    "directions": {
-        "wns": "maximize",
-        "tns": "maximize",
-        "area": "minimize",
-        "drc_count": "minimize",
-        "lvs_count": "minimize",
-        "power": "minimize",
-    },
-}
 
 
 class ManifestError(ValueError):
@@ -103,20 +105,10 @@ class ProjectManifest:
     def active_workspaces(self) -> list[ManifestWorkspace]:
         return [w for w in self.workspaces if w.status != "archived"]
 
-    def find_workspace(self, run_id: str) -> ManifestWorkspace | None:
-        """Match a run id against workspace_id, or a declared path tail.
-
-        The stored workspace_path is canonical (symlinks resolved) for
-        execution, but selection spells the DECLARED document: a symlinked
-        declared path is selected by its declared name, and the canonical
-        target name never becomes an alias the document does not contain.
-        """
+    def find_workspace(self, workspace_id: str) -> ManifestWorkspace | None:
+        """Match a managed workspace by its declared identifier only."""
         for workspace in self.workspaces:
-            if workspace.workspace_id == run_id:
-                return workspace
-        for workspace in self.workspaces:
-            declared = str(workspace.raw.get("workspace_path", "")).rstrip("/")
-            if declared and os.path.basename(declared) == run_id:
+            if workspace.workspace_id == workspace_id:
                 return workspace
         return None
 
@@ -348,6 +340,10 @@ def assemble_config(manifest: ProjectManifest, workspace: ManifestWorkspace | No
         "rtl_list": [item for item in rtl_list if isinstance(item, str)],
         "origin_verilog": _optional_str(manifest.base_design.get("origin_verilog")),
         "origin_def": _optional_str(manifest.base_design.get("origin_def")),
+        "netlist": _optional_str(manifest.base_design.get("netlist")),
+        "golden_netlist": _optional_str(manifest.base_design.get("golden_netlist")),
+        "sdc": _optional_str(manifest.base_design.get("sdc")),
+        "spef": _optional_str(manifest.base_design.get("spef")),
         "parameters": parameters,
     }
 
@@ -413,222 +409,15 @@ def base_design_from_config(cfg, pdk_root: str) -> dict:
         "clock": cfg.design_clock_port,
         "rtl_list": cfg.design_rtl,
         "origin_verilog": cfg.design_rtl[0] if origin_verilog else "",
+        "origin_def": cfg.design_def,
+        "netlist": cfg.design_netlist,
+        "golden_netlist": cfg.design_golden_netlist,
+        "sdc": cfg.design_sdc,
+        "spef": cfg.design_spef,
         "parameters": resolved_base_parameters(cfg),
-    }
-
-
-def manifest_workspace_entry(
-    workspace_id: str,
-    *,
-    name: str,
-    workspace_path: str,
-    start_step: str,
-    end_step: str,
-    status: str,
-    now: str,
-) -> dict:
-    """One complete schema-v1 workspaces[] entry, every field materialized.
-
-    The single builder for generated manifests and migration previews, so
-    the previewed entry and the applied entry are the same object shape.
-    """
-    return {
-        "workspace_id": workspace_id,
-        "name": name,
-        "workspace_path": workspace_path,
-        "source_workspace_id": None,
-        "branch_from": None,
-        "start_step": start_step,
-        "end_step": end_step,
-        "status": status,
-        "created_at": now,
-        "updated_at": now,
-        "parameter_patch": {},
-        "metrics_summary": {},
-        "step_metrics": {},
     }
 
 
 def _slugify(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
     return slug or "project"
-
-
-def _now_iso() -> str:
-    return datetime.now(UTC).isoformat()
-
-
-def build_manifest_document(
-    project_dir: str,
-    *,
-    design_name: str,
-    base_design: dict,
-    workspace_id: str,
-    workspace_path: str,
-    start_step: str,
-    end_step: str,
-    status: str = "running",
-) -> dict:
-    """Assemble a schema-v1 manifest for a virgin project's first run."""
-    now = _now_iso()
-    name = os.path.basename(os.path.normpath(project_dir)) or "project"
-    document: dict[str, Any] = {
-        "schema_version": 1,
-        "project_id": f"proj_{_slugify(name)}",
-        "name": name,
-        "design_name": design_name,
-        "description": "",
-        "root_path": project_dir,
-        "created_at": now,
-        "updated_at": now,
-        "base_design": {
-            **{key: value for key, value in base_design.items() if key != "parameters" and value},
-            "parameters": _record(base_design.get("parameters")),
-            "rtl_list": [
-                item for item in base_design.get("rtl_list") or [] if isinstance(item, str)
-            ],
-        },
-        "objectives": json.loads(json.dumps(DEFAULT_OBJECTIVES)),
-        "workspaces": [
-            manifest_workspace_entry(
-                workspace_id,
-                name=design_name,
-                workspace_path=workspace_path,
-                start_step=start_step,
-                end_step=end_step,
-                status=status,
-                now=now,
-            )
-        ],
-        "mpc": None,
-        "best_workspace": None,
-        "qor_baseline": {"workspace_id": workspace_id, "reason": "Default project QoR baseline"},
-    }
-    return document
-
-
-def write_manifest_if_absent(project_dir: str, document: dict) -> bool:
-    """Write the manifest only when it does not exist (virgin generation race).
-
-    Fully written and fsynced at a temp path, then linked into place:
-    readers never see a partial file, and a concurrent creator wins the
-    link — ours is discarded and the caller continues read-only.
-    """
-    path = os.path.join(project_dir, MANIFEST_FILENAME)
-    content = json.dumps(document, indent=2) + "\n"
-    tmp_path = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            "w",
-            dir=project_dir,
-            delete=False,
-            prefix=f".{MANIFEST_FILENAME}.",
-            suffix=".tmp",
-            encoding="utf-8",
-        ) as f:
-            tmp_path = f.name
-            f.write(content)
-            f.flush()
-            os.fsync(f.fileno())
-        # Mode stays the tempfile default (0600), matching json_write's
-        # convention for newly created state files.
-        os.link(tmp_path, path)
-        return True
-    except FileExistsError:
-        return False
-    except OSError as exc:
-        logger.warning("manifest write failed: %s: %s", path, exc)
-        return False
-    finally:
-        if tmp_path is not None:
-            Path(tmp_path).unlink(missing_ok=True)
-
-
-def _read_manifest_document(path: str):
-    try:
-        with open(path, encoding="utf-8") as f:
-            document = json.load(f)
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-        return None
-    return document if isinstance(document, dict) else None
-
-
-def update_manifest(project_dir: str, mutator) -> bool:
-    """Read-modify-write the manifest atomically (locked re-read + patch + replace).
-
-    The whole read-modify-replace runs under ``.manifest.lock`` (flock):
-    two cooperating writers can no longer both complete the fresh read
-    before either replaces, so neither loses the other's update. The
-    mutator receives the parsed document and edits it in place. When an
-    unrelated change lands between the read and the write, the mutator is
-    re-applied to the freshest document instead of overwriting the change.
-    Project-level fields (including updated_at) are owned by the mutator.
-    Returns False (with a warning) when the manifest is missing, unreadable,
-    the lock cannot be taken, or the write fails — callers degrade to a
-    warning, never a run failure.
-    """
-    from chipcompiler.cli.project.migrate_fs import flock_file
-
-    path = os.path.join(project_dir, MANIFEST_FILENAME)
-    try:
-        with flock_file(os.path.join(project_dir, ".manifest.lock"), exclusive=True):
-            return _update_manifest_locked(path, mutator)
-    except OSError as exc:
-        # An untakeable lock (e.g. a directory at the lock path) degrades
-        # like any write failure: a warning, never an uncaught exception —
-        # the migration registration path relies on False to roll back.
-        logger.warning("manifest update failed: %s: %s", path, exc)
-        return False
-
-
-def _update_manifest_locked(path: str, mutator) -> bool:
-    base = _read_manifest_document(path)
-    if base is None:
-        logger.warning("manifest update skipped (unreadable): %s", path)
-        return False
-
-    document = deepcopy(base)
-    mutator(document)
-
-    fresh = _read_manifest_document(path)
-    if fresh is not None and fresh != base:
-        # An unrelated edit landed after our read: re-apply the mutator to
-        # the freshest document so the interleaved change survives.
-        document = fresh
-        mutator(document)
-
-    target = Path(path)
-    tmp_path = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            "w",
-            dir=target.parent,
-            delete=False,
-            prefix=f".{target.name}.",
-            suffix=".tmp",
-            encoding="utf-8",
-        ) as f:
-            tmp_path = Path(f.name)
-            json.dump(document, f, indent=2)
-            f.write("\n")
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_path, target)
-        return True
-    except OSError as exc:
-        logger.warning("manifest update failed: %s: %s", path, exc)
-        if tmp_path is not None:
-            tmp_path.unlink(missing_ok=True)
-        return False
-
-
-def write_back_workspace_status(project_dir: str, workspace_id: str, status: str) -> bool:
-    """Update one workspace entry's status (and updated_at) after a run."""
-
-    def mutate(document: dict) -> None:
-        for entry in document.get("workspaces", []):
-            if isinstance(entry, dict) and entry.get("workspace_id") == workspace_id:
-                entry["status"] = status
-                entry["updated_at"] = _now_iso()
-
-    return update_manifest(project_dir, mutate)

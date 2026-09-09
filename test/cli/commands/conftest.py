@@ -49,7 +49,7 @@ def flow_mocks(monkeypatch):
     `flow` (the DummyFlow class, for instance/state assertions).
     """
     capture = {"create_kwargs": None}
-    workspace_obj = SimpleNamespace(name="workspace")
+    workspace_obj = SimpleNamespace(name="workspace", flow=SimpleNamespace(data={"steps": []}))
 
     DummyFlow.instances = []
     DummyFlow.has_init_value = False
@@ -74,9 +74,9 @@ def flow_mocks(monkeypatch):
 
 
 @pytest.fixture
-def manifest_stubs(capsys):
+def manifest_stubs(capsys, plain_records):
     """Shared manifest-project scaffolding: project.json writer, workspace
-    entry builder, and JSON record reader bound to capsys."""
+    entry builder, and record reader bound to capsys."""
 
     def _write(project_dir, workspaces, **overrides):
         rtl = project_dir / "rtl" / "gcd.v"
@@ -108,7 +108,7 @@ def manifest_stubs(capsys):
         }
 
     def _records():
-        return json.loads(capsys.readouterr().out)["records"]
+        return plain_records(capsys.readouterr().out)
 
     return SimpleNamespace(write=_write, entry=_entry, records=_records)
 
@@ -166,7 +166,7 @@ def create_legacy_workspace():
     def _create(project_dir, pdk_root, run_id, states):
         from chipcompiler.data import create_workspace
         from chipcompiler.data.workspace_config import flow_steps_in_range
-        from chipcompiler.rtl2gds.builder import build_harden_flow
+        from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
 
         rtl_path = os.path.join(project_dir, "rtl", "gcd.v")
         os.makedirs(os.path.dirname(rtl_path), exist_ok=True)
@@ -186,7 +186,7 @@ def create_legacy_workspace():
 
         chain = [
             (step.value if hasattr(step, "value") else str(step), str(tool))
-            for step, tool, _state in build_harden_flow()
+            for step, tool, _state in build_rtl2gds_flow()
         ]
         tools = dict(chain)
         names = flow_steps_in_range("Synthesis", "Floorplan")

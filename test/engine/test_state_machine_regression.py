@@ -286,7 +286,7 @@ class TestTransitionTableCompleteness:
     """All transitions in _VALID_TRANSITIONS are documented and tested."""
 
     def test_all_source_states_covered(self):
-        """_VALID_TRANSITIONS covers all 6 StateEnum string values."""
+        """_VALID_TRANSITIONS covers all StateEnum string values."""
         all_states = {s.value for s in StateEnum}
         assert set(_VALID_TRANSITIONS.keys()) == all_states
 
@@ -405,6 +405,22 @@ class TestLegacyStateNormalization:
         monkeypatch.setattr(tools, "run_step", lambda **_kw: True)
         monkeypatch.setattr(flow, "check_step_result", lambda **_kw: True)
 
+        result = flow.run_step(flow.workspace_steps[1], rerun=False)
+        assert result == StateEnum.Success
+
+        persisted = json.loads((tmp_path / "home" / "flow.json").read_text())
+        assert persisted["steps"][1]["state"] == StateEnum.Success.value
+
+    def test_legacy_warning_step_normalized_on_resume(self, tmp_path, monkeypatch):
+        """Persisted Warning state from the removed LEC downgrade — resume normalizes it."""
+        flow = _make_resume_workspace(
+            tmp_path,
+            [("Synthesis", "Success"), ("Floorplan", "Warning")],
+        )
+        monkeypatch.setattr(tools, "run_step", lambda **_kw: True)
+        monkeypatch.setattr(flow, "check_step_result", lambda **_kw: True)
+
+        # This must NOT raise ValueError
         result = flow.run_step(flow.workspace_steps[1], rerun=False)
         assert result == StateEnum.Success
 

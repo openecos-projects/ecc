@@ -42,6 +42,20 @@ class StateEnum(Enum):
     # Ignored = "Ignored" # step result do not affect flow step
 
 
+FINISHED_STEP_STATES = frozenset({StateEnum.Success.value})
+
+
+def is_finished_step_state(state: object) -> bool:
+    """Whether a persisted step state counts as done for selection and skipping.
+
+    Incomplete/Invalid steps are unfinished: resume and rerun selectors
+    re-execute them. A legacy ``Warning`` state (removed terminal state for
+    the synthesis LEC) is not finished and is normalized to Unstart on
+    resume.
+    """
+    return state in FINISHED_STEP_STATES
+
+
 ###########################################################################
 # step definition for chip design flow in json format
 # step_definition =

@@ -55,13 +55,21 @@ STATE_COUNT: int = len(STATE_MAP)
 VALID_TRANSITIONS: dict[StateEnum, set[StateEnum]] = {
     StateEnum.Unstart: {StateEnum.Ongoing, StateEnum.Imcomplete},
     StateEnum.Pending: {StateEnum.Ongoing, StateEnum.Imcomplete},
-    StateEnum.Ongoing: {StateEnum.Success, StateEnum.Imcomplete, StateEnum.Invalid},
+    StateEnum.Ongoing: {
+        StateEnum.Success,
+        StateEnum.Imcomplete,
+        StateEnum.Invalid,
+    },
     StateEnum.Success: set(),  # terminal
     StateEnum.Imcomplete: set(),  # terminal
     StateEnum.Invalid: set(),  # terminal
 }
 
-TERMINAL_STATES: set[StateEnum] = {StateEnum.Success, StateEnum.Imcomplete, StateEnum.Invalid}
+TERMINAL_STATES: set[StateEnum] = {
+    StateEnum.Success,
+    StateEnum.Imcomplete,
+    StateEnum.Invalid,
+}
 
 
 def _valid_transition_constraint(s_old: ArithRef, s_new: ArithRef) -> BoolRef | bool:
