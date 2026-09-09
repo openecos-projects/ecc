@@ -14,6 +14,7 @@ def make_metric(metric_id, value, step="sta", role="final", unit="", corner=None
         project_role=role,
         corner=corner,
         source={"kind": "analysis", "path": f"{step}_ecc/analysis/qor_metrics.json"},
+        scope="project",
     )
 
 

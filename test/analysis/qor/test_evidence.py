@@ -2,6 +2,7 @@ import pytest
 
 from chipcompiler.analysis.qor.evidence import evaluate_evidence
 from chipcompiler.analysis.qor.features import compute_features
+from chipcompiler.analysis.qor.loader import CornerSlack
 from test.analysis.qor.helpers import gcd_metrics, make_inputs
 
 
@@ -55,6 +56,23 @@ class TestEvidenceIndex:
         evidence = _evidence(make_inputs(gcd_metrics()))
         # Route side is INCOMPATIBLE (CTS ran), so C1 drops out.
         assert evidence.consistency == pytest.approx(1.0)
+
+    def test_c2_is_not_applied_across_different_scopes(self):
+        metrics = gcd_metrics()
+        metrics["sta_setup_wns"].scope = "project"
+        metrics["sta_setup_violation_count"].scope = "corner"
+        evidence = _evidence(make_inputs(metrics))
+        assert evidence.consistency == pytest.approx(1.0)
+
+    def test_setup_only_corners_cap_evidence_at_moderate(self):
+        evidence = _evidence(
+            make_inputs(
+                gcd_metrics(),
+                corners=[CornerSlack("single", 1.0, None, None, None)],
+                sta_setup_only=True,
+            )
+        )
+        assert evidence.state == "MODERATE"
 
     def test_zero_expected_corners_is_not_a_division_error(self):
         metrics = gcd_metrics()

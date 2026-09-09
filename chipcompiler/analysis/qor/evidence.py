@@ -42,9 +42,12 @@ def evaluate_evidence(inputs, bundle) -> Evidence:
     index = 100.0
     for component in active:
         index *= component
+    state = _state(index)
+    if inputs.sta_setup_only and state == _HIGH:
+        state = _MODERATE
     return Evidence(
         index=index,
-        state=_state(index),
+        state=state,
         integrity=integrity,
         coverage=coverage,
         consistency=consistency,
@@ -107,9 +110,18 @@ def _consistency(inputs, bundle):
 
     # C2: (WS >= 0) <=> (NVP == 0) under one scope — both metrics come
     # from the same STA payload over the same configured corners.
-    ws = inputs.value("sta_setup_wns")
-    nvp = inputs.value("sta_setup_violation_count")
-    if ws is not None and nvp is not None:
+    ws_record = inputs.metrics.get("sta_setup_wns")
+    nvp_record = inputs.metrics.get("sta_setup_violation_count")
+    if (
+        ws_record is not None
+        and nvp_record is not None
+        and ws_record.scope is not None
+        and ws_record.scope == nvp_record.scope
+        and ws_record.corner == nvp_record.corner
+        and _population_compatible(ws_record.endpoint_population, nvp_record.endpoint_population)
+    ):
+        ws = ws_record.value
+        nvp = nvp_record.value
         checks.append((ws >= 0.0) == (nvp == 0))
 
     # C3: vias imply routed wirelength (one-way topological sanity).
@@ -121,3 +133,10 @@ def _consistency(inputs, bundle):
     if not checks:
         return None
     return sum(1.0 for passed in checks if passed) / len(checks)
+
+
+def _population_compatible(left, right) -> bool:
+    """C2 is applicable only when endpoint populations are comparable."""
+    if left is None or right is None:
+        return True
+    return left == right

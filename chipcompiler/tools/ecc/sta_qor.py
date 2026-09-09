@@ -32,10 +32,10 @@ class StaQorSummary:
     setup_wns: float
     setup_tns: float
     setup_nvp: int
-    frequency_mhz: float
-    hold_wns: float
-    hold_tns: float
-    hold_nvp: int
+    frequency_mhz: float | None
+    hold_wns: float | None
+    hold_tns: float | None
+    hold_nvp: int | None
 
 
 @dataclass(frozen=True)
@@ -165,7 +165,9 @@ def _nonnegative_int(value) -> int | None:
     return value
 
 
-def read_sta_qor_summary(corner: str, path: Path) -> StaQorSummary | None:
+def read_sta_qor_summary(
+    corner: str, path: Path, *, require_hold: bool = True
+) -> StaQorSummary | None:
     if not path.is_file() or path.stat().st_size <= 0:
         return None
 
@@ -178,25 +180,22 @@ def read_sta_qor_summary(corner: str, path: Path) -> StaQorSummary | None:
         return None
     setup = summary.get("setup")
     hold = summary.get("hold")
-    if not isinstance(setup, dict) or not isinstance(hold, dict):
+    if not isinstance(setup, dict):
         return None
 
     setup_wns = _finite_number(setup.get("wns"))
     setup_tns = _finite_number(setup.get("tns"))
     setup_nvp = _nonnegative_int(setup.get("nvp"))
     frequency_mhz = _finite_number(setup.get("frequency_mhz"))
-    hold_wns = _finite_number(hold.get("wns"))
-    hold_tns = _finite_number(hold.get("tns"))
-    hold_nvp = _nonnegative_int(hold.get("nvp"))
+    hold_wns = _finite_number(hold.get("wns")) if isinstance(hold, dict) else None
+    hold_tns = _finite_number(hold.get("tns")) if isinstance(hold, dict) else None
+    hold_nvp = _nonnegative_int(hold.get("nvp")) if isinstance(hold, dict) else None
     if (
         setup_wns is None
         or setup_tns is None
         or setup_nvp is None
-        or frequency_mhz is None
-        or frequency_mhz <= 0
-        or hold_wns is None
-        or hold_tns is None
-        or hold_nvp is None
+        or (require_hold and (frequency_mhz is None or frequency_mhz <= 0))
+        or (require_hold and (hold_wns is None or hold_tns is None or hold_nvp is None))
     ):
         return None
 

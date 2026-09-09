@@ -604,6 +604,14 @@ class EngineFlow:
             self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
             self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
             _notify_flow_observer(observer, "on_step_skipped", workspace_step)
+            try:
+                from chipcompiler.analysis.qor import refresh_workspace_qor_report
+
+                refresh_workspace_qor_report(self.workspace)
+            except Exception:
+                self.workspace.logger.exception(
+                    "[QOR] %s failed to refresh the workspace QoR report after skip", step_tag
+                )
             return StateEnum.Success
 
         self._normalize_legacy_terminal_state(workspace_step, step_tag)

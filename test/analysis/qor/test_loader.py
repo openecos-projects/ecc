@@ -207,6 +207,113 @@ class TestCornerLoading:
         inputs = load_workspace_qor_inputs(workspace)
         assert [corner.setup_ws for corner in inputs.corners] == [16.622, 18.98]
 
+    def test_failed_sta_does_not_load_stale_corner_files(self, tmp_path):
+        steps = dict(_FULL_FLOW)
+        steps["sta"] = "Imcomplete"
+        workspace = _make_workspace(tmp_path, steps)
+        _write(
+            os.path.join(
+                workspace.directory,
+                "sta_ecc",
+                "feature",
+                "MAX_125_t125",
+                "Cworst",
+                "qor_summary.json",
+            ),
+            {
+                "path_groups": [],
+                "summary": {
+                    "setup": {"wns": 1.0, "tns": 0.0, "nvp": 0, "frequency_mhz": 50.0},
+                    "hold": {"wns": 1.0, "tns": 0.0, "nvp": 0},
+                },
+            },
+        )
+        inputs = load_workspace_qor_inputs(workspace)
+        assert inputs.corners == []
+
+    def test_synthesis_power_summary_is_loaded(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write(
+            os.path.join(
+                workspace.directory,
+                "Synthesis_yosys",
+                "feature",
+                "post_synthesis",
+                "power_summary.json",
+            ),
+            {
+                "schema_version": 1,
+                "dynamic_uw": 3.0,
+                "leakage_uw": 4.0,
+                "internal_uw": 1.0,
+                "switching_uw": 2.0,
+            },
+        )
+        inputs = load_workspace_qor_inputs(workspace)
+        assert inputs.power_total_uw == 7.0
+        assert inputs.power_source_path.endswith(
+            "Synthesis_yosys/feature/post_synthesis/power_summary.json"
+        )
+
+    def test_signoff_power_uses_worst_configured_corner(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        sta_config_path = os.path.join(workspace.directory, "home", "sta_ecc.json")
+        _write(
+            sta_config_path,
+            {
+                "liberty": [
+                    {"corner": "MAX", "temperature": 125},
+                    {"corner": "MIN", "temperature": -40},
+                ],
+                "signoff": [{"MAX": ["Cworst"]}, {"MIN": ["Cbest"]}],
+            },
+        )
+        workspace.config = {"sta": sta_config_path}
+        for corner_dir, rcx_dir, total in (
+            ("MAX_125", "Cworst", 5.0),
+            ("MIN_m40", "Cbest", 9.0),
+        ):
+            _write(
+                os.path.join(
+                    workspace.directory,
+                    "sta_ecc",
+                    "feature",
+                    corner_dir,
+                    rcx_dir,
+                    "power_summary.json",
+                ),
+                {
+                    "schema_version": 1,
+                    "dynamic_uw": total - 1.0,
+                    "leakage_uw": 1.0,
+                    "internal_uw": 1.0,
+                    "switching_uw": total - 1.0,
+                },
+            )
+        inputs = load_workspace_qor_inputs(workspace)
+        assert inputs.power_total_uw == 9.0
+        assert inputs.power_source_path.endswith("MIN_m40/Cbest/power_summary.json")
+
+    def test_setup_only_corner_is_loaded_with_fallback_marker(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write(
+            os.path.join(
+                workspace.directory,
+                "sta_ecc",
+                "feature",
+                "MAX_125_t125",
+                "Cworst",
+                "qor_summary.json",
+            ),
+            {
+                "path_groups": [],
+                "summary": {"setup": {"wns": 1.0, "tns": 0.0, "nvp": 0}},
+            },
+        )
+        inputs = load_workspace_qor_inputs(workspace)
+        assert len(inputs.corners) == 1
+        assert inputs.sta_setup_only is True
+
 
 class TestDesignResolution:
     def test_design_falls_back_to_parameters(self, tmp_path):

@@ -93,7 +93,7 @@ def compute_features(inputs) -> FeatureBundle:
 
     leak = inputs.value("synthesis_power_leakage_uw")
     dynamic = inputs.value("synthesis_power_dynamic_uw")
-    leak_frac = _ratio(leak, (dynamic + leak) if dynamic is not None and dynamic > 0 else None)
+    leak_frac = _ratio(leak, dynamic + leak if dynamic is not None and leak is not None else None)
     _record(
         f,
         inputs,
@@ -238,15 +238,28 @@ def compute_features(inputs) -> FeatureBundle:
         "Normalized signed setup slack headroom.",
     )
 
+    frequency_margin = None
+    if ws is not None and tclk and tclk - ws > 0:
+        target_frequency = 1000.0 / tclk
+        achieved_frequency = 1000.0 / (tclk - ws)
+        frequency_margin = (achieved_frequency - target_frequency) / target_frequency
+    _record(
+        f,
+        inputs,
+        "F_STA_FREQ_MARGIN",
+        frequency_margin,
+        "OPPORTUNITY" if frequency_margin is not None and frequency_margin >= 0 else "UNKNOWN",
+        "Derived frequency margin relative to the target clock period.",
+    )
+
     setup_ws_values = [corner.setup_ws for corner in inputs.corners]
-    hold_ws_values = [corner.hold_ws for corner in inputs.corners]
-    delta_setup = max(setup_ws_values) - min(setup_ws_values) if len(setup_ws_values) >= 2 else None
+    hold_ws_values = [corner.hold_ws for corner in inputs.corners if corner.hold_ws is not None]
+    delta_setup = max(setup_ws_values) - min(setup_ws_values) if setup_ws_values else None
     delta_hold = max(hold_ws_values) - min(hold_ws_values) if len(hold_ws_values) >= 2 else None
     pvt_setup = _ratio(delta_setup, tclk) if tclk else None
     pvt_hold = _ratio(delta_hold, tclk) if tclk else None
-    pvt_max: float | None = None
-    if pvt_setup is not None and pvt_hold is not None:
-        pvt_max = max(pvt_setup, pvt_hold)
+    pvt_values = [value for value in (pvt_setup, pvt_hold) if value is not None]
+    pvt_max: float | None = max(pvt_values) if pvt_values else None
     _record(
         f,
         inputs,

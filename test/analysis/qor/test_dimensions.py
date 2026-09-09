@@ -3,6 +3,7 @@ import pytest
 from chipcompiler.analysis.qor.calibration import TAU_AREA_FAIL, psi_cost
 from chipcompiler.analysis.qor.dimensions import evaluate_dimensions
 from chipcompiler.analysis.qor.features import compute_features
+from chipcompiler.analysis.qor.loader import CornerSlack
 from test.analysis.qor.helpers import gcd_corners, gcd_metrics, make_inputs, make_metric
 
 
@@ -125,6 +126,19 @@ class TestRobustnessQuality:
         _, dims = _dimensions(make_inputs(metrics, tclk_ns=20.0))
         # imbalance = (5-1)/5 = 0.8; the single contributor renormalizes to w=1.
         assert dims["robustness"].value == pytest.approx(20.0)
+
+    def test_single_corner_uses_zero_pvt_fallback(self):
+        metrics = gcd_metrics()
+        metrics["clock_path_max_buffer"].value = 100
+        metrics["clock_path_min_buffer"].value = 20
+        _, dims = _dimensions(
+            make_inputs(
+                metrics,
+                corners=[CornerSlack("single", 0.0, None, None, None)],
+                tclk_ns=20.0,
+            )
+        )
+        assert dims["robustness"].value == pytest.approx(60.0)
 
     def test_missing_both_contributors_is_unknown(self):
         metrics = gcd_metrics()
