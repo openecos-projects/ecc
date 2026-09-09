@@ -29,7 +29,9 @@ proc normalize_design {top_design} {
     yosys async2sync
     yosys flatten
     yosys splitnets -ports -format _
-    yosys opt_clean -purge
+    # Keep public wire names: equiv_make uses them to create internal $equiv
+    # cut-points; -purge would strip them and leave induction without invariants.
+    yosys opt_clean
 }
 
 proc build_design {stash_name top_design netlist_file} {
