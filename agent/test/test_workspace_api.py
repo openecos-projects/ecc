@@ -213,7 +213,7 @@ def test_floorplan_candidate_uses_synthesis_checkpoint_across_lec() -> None:
     assert _candidate_source_step(flow, "Floorplan") == "Synthesis"
 
 
-def test_agent_flow_defaults_to_harden_flow(monkeypatch):
+def test_agent_flow_defaults_to_full_rtl2gds_flow(monkeypatch):
     class RecordingFlow:
         def __init__(self, workspace):
             self.workspace = workspace
@@ -233,14 +233,10 @@ def test_agent_flow_defaults_to_harden_flow(monkeypatch):
         "chipcompiler.rtl2gds.build_rtl2gds_flow",
         lambda: [("rtl2gds", "ecc", "Unstart")],
     )
-    monkeypatch.setattr(
-        "chipcompiler.rtl2gds.build_harden_flow",
-        lambda: [("Harden", "ecc", "Unstart")],
-    )
 
     flow = build_agent_flow_for_workspace(SimpleNamespace())
 
-    assert flow.added_steps == [("Harden", "ecc", "Unstart")]
+    assert flow.added_steps == [("rtl2gds", "ecc", "Unstart")]
 
 
 def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(

@@ -228,10 +228,6 @@ def test_runtime_workspace_defaults_to_rtl2gds_flow(monkeypatch):
         "chipcompiler.rtl2gds.build_rtl2gds_flow",
         lambda: [("rtl2gds", "ecc", "Unstart")],
     )
-    monkeypatch.setattr(
-        "chipcompiler.rtl2gds.build_harden_flow",
-        lambda: [("Harden", "ecc", "Unstart")],
-    )
 
     flow = build_flow_for_workspace(workspace)
 
