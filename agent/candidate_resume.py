@@ -30,9 +30,9 @@ from .workspace_api import (
     _prepare_candidate_rerun,
     _reapply_candidate_input,
     _required_file_sha256,
-    _run_candidate_step,
     _workspace_state_sha256,
     candidate_operation_workspace_id,
+    run_candidate_steps_isolated,
 )
 
 
@@ -82,8 +82,7 @@ def _candidate_resume(api, session, request: CandidateResumeRequest, observer) -
         evidence_ready = True
         _prepare_candidate_rerun(candidate_workspace, flow, steps)
         _notify_candidate_resume_prepared(observer, steps, manifest["target_step"])
-        for step in steps:
-            _run_candidate_step(flow, step, observer=observer)
+        run_candidate_steps_isolated(flow, steps, observer=observer)
         result = _candidate_rerun_result(
             candidate_workspace,
             rerun_request,

@@ -106,7 +106,7 @@ def test_candidate_resume_runs_in_place_and_preserves_successful_target_artifact
     )
     run_steps = []
     monkeypatch.setattr(
-        "agent.candidate_resume._run_candidate_step",
+        "agent.workspace_api._run_candidate_step",
         lambda _flow, step, **_kwargs: run_steps.append(step.name),
     )
     monkeypatch.setattr(

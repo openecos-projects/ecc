@@ -17,6 +17,7 @@ from chipcompiler.runtime.workspace_api import (
 from chipcompiler.utility.path import path_is_within
 
 from .candidate_clone import candidate_clone_ignore
+from .candidate_worker import run_candidate_steps_isolated
 from .data import (
     FoundationExtractor,
     bind_candidate_input,
@@ -210,8 +211,7 @@ class FlowAgentRuntimeApi:
                 _reapply_candidate_input(candidate_workspace, flow, request.target_step)
             else:
                 reapply_candidate_input_binding(candidate_workspace, flow, request.target_step)
-            for step in steps:
-                _run_candidate_step(flow, step, observer=observer)
+            run_candidate_steps_isolated(flow, steps, observer=observer)
             return _candidate_rerun_result(
                 candidate_workspace,
                 request,
