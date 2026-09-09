@@ -32,6 +32,12 @@ proc normalize_design {top_design} {
     # Keep public wire names: equiv_make uses them to create internal $equiv
     # cut-points; -purge would strip them and leave induction without invariants.
     yosys opt_clean
+    # Never name-match FF D-input nets: with the clock enable emulated by a
+    # mux in the gate-side D cone, same-named D nets are not equivalent, and
+    # such false cut-points are unprovable. FF equivalence is carried by the
+    # Q-output wire matches instead.
+    yosys rename -hide t:*DFF* %x:+\[D\] t:*DFF* %d
+    yosys rename -hide t:*DLATCH* %x:+\[D\] t:*DLATCH* %d
 }
 
 proc build_design {stash_name top_design netlist_file} {
