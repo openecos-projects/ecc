@@ -60,7 +60,7 @@ def build_rtl2gds_flow(*, skip: Collection[str] = ()) -> list:
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
-    steps.append((SkippableStepEnum.LEC, "yosys_lec", StateEnum.Unstart))
+    steps.append((SkippableStepEnum.LEC, "kepler_formal", StateEnum.Unstart))
     steps.append((StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart))
@@ -74,7 +74,7 @@ def build_rtl2gds_flow(*, skip: Collection[str] = ()) -> list:
     steps.append((StepEnum.STA, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.POWER_ANALYSIS, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.LVS, "ecc", StateEnum.Unstart))
-    steps.append((SkippableStepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart))
+    steps.append((SkippableStepEnum.POST_ROUTE_LEC, "kepler_formal", StateEnum.Unstart))
     steps.append((StepEnum.DRC, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.HARDEN, "ecc", StateEnum.Unstart))
 
@@ -165,7 +165,7 @@ def build_synthesis_lec_flow() -> list:
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
-    steps.append((SkippableStepEnum.LEC, "yosys_lec", StateEnum.Unstart))
+    steps.append((SkippableStepEnum.LEC, "kepler_formal", StateEnum.Unstart))
 
     return steps
 

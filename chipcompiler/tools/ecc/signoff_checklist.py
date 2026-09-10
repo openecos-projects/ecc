@@ -16,7 +16,7 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
 )
-from chipcompiler.data.step import STEP_DIRECTORIES
+from chipcompiler.data.step import STEP_DIRECTORIES, all_step_directories, flow_step_directory
 from chipcompiler.tools.ecc.lec_gates import (
     post_route_lec_netlists as _post_route_lec_netlists,
 )
@@ -140,7 +140,7 @@ def _prefixed_evidence(step_directory: str, evidence: list) -> list[dict]:
         path = item.get("path")
         is_workspace_step_path = isinstance(path, str) and any(
             path == directory or path.startswith(directory + "/")
-            for directory in STEP_DIRECTORIES.values()
+            for directory in all_step_directories()
         )
         if (
             isinstance(path, str)
@@ -469,13 +469,13 @@ def _lec_artifact_items(
         gate_verilog=gate_verilog,
     )
     if status == "proven":
-        state, summary = "pass", "Yosys LEC proved equivalence."
+        state, summary = "pass", "LEC proved equivalence."
     elif status == "stale":
         state = "failed"
-        summary = "Yosys LEC proof is stale; golden or gate netlist changed."
+        summary = "LEC proof is stale; golden or gate netlist changed."
     elif result_json and Path(result_json).is_file():
         state = "failed"
-        summary = "Yosys LEC did not prove equivalence."
+        summary = "LEC did not prove equivalence."
     else:
         state, summary = _file_state(result_json)
     result_path = _path_text(workspace, result_json)
@@ -487,7 +487,7 @@ def _lec_artifact_items(
             owner="checklist",
             policy="block",
             state=state,
-            title="Yosys LEC result",
+            title="LEC result",
             summary=summary,
             source={"kind": "output", "path": result_path},
             evidence=[{"kind": "output", "path": result_path}] if result_json else [],
@@ -635,8 +635,13 @@ def rebuild_home_checklist(
         return {}
     workspace_dir = Path(workspace_directory)
     items = []
-    post_route_lec_dir = STEP_DIRECTORIES[SkippableStepEnum.POST_ROUTE_LEC.value]
-    for directory in STEP_DIRECTORIES.values():
+    # postRouteLec artifacts live under the engine the flow recorded
+    # (yosys_lec historically, kepler_formal today).
+    flow = getattr(workspace, "flow", None)
+    post_route_lec_dir = flow_step_directory(
+        flow.steps() if flow is not None else None, SkippableStepEnum.POST_ROUTE_LEC.value
+    )
+    for directory in all_step_directories():
         if directory == post_route_lec_dir:
             continue
         data = json_read(workspace_dir / directory / "checklist.json")

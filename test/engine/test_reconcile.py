@@ -120,6 +120,22 @@ class TestReconcile:
 
         assert result.outcome == "resume"
 
+    def test_equal_with_legacy_warned_lec_resumes(self, tmp_path):
+        # The removed terminal Warning state is not finished: a persisted
+        # warned LEC reconciles to a resume that re-runs it and its suffix.
+        lec_index = next(
+            index for index, (name, _tool) in enumerate(RTL2GDS_STEPS) if name == "lec"
+        )
+        states = ["Success"] * len(RTL2GDS_STEPS)
+        states[lec_index] = "Warning"
+        workspace_dir = _write_workspace(
+            tmp_path, RTL2GDS_STEPS, states=states, flow_section={"preset": "rtl2gds"}
+        )
+
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
+
+        assert result.outcome == "resume"
+
     def test_ledger_starting_off_synthesis_is_still_a_mismatch(self, tmp_path):
         workspace_dir = _write_workspace(
             tmp_path, [("place", "dreamplace")], flow_section={"preset": "rtl2gds"}

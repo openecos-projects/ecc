@@ -7,6 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from chipcompiler.data import (
+    LEC_STEP_TOOLS,
     EccOutput,
     SkippableStepEnum,
     StateEnum,
@@ -291,7 +292,7 @@ class EngineFlow:
         output = workspace_step.output
         # HARDEN/RCX/GDS results live on the place-and-route (ecc) output leaves.
         ecc_output = output if isinstance(output, EccOutput) else None
-        if workspace_step.tool == "yosys_lec" or workspace_step.name in (
+        if workspace_step.tool in LEC_STEP_TOOLS or workspace_step.name in (
             SkippableStepEnum.LEC.value,
             SkippableStepEnum.POST_ROUTE_LEC.value,
         ):
@@ -389,7 +390,7 @@ class EngineFlow:
 
             from chipcompiler.tools import create_step
 
-            if step["tool"] == "yosys_lec":
+            if step["tool"] in LEC_STEP_TOOLS:
                 step_info = step.get("info", {}) or {}
                 explicit_golden = step_info.get("golden_verilog") or None
                 if explicit_golden:
@@ -430,7 +431,7 @@ class EngineFlow:
                 ):
                     eda_step.output.spef = pre_step.output.spef
                 self.workspace_steps.append(eda_step)
-                if eda_step.tool != "yosys_lec":
+                if eda_step.tool not in LEC_STEP_TOOLS:
                     pre_step = eda_step
                 if eda_step.name == StepEnum.SYNTHESIS.value:
                     synthesis_gate_verilog = eda_step.output.verilog
@@ -469,8 +470,8 @@ class EngineFlow:
 
         # LEC is a netlist comparison step and does not expose an ECC DB
         # input. Keep any existing DB alive, but do not try to initialize one
-        # from the Yosys LEC workspace.
-        if workspace_step is not None and workspace_step.tool == "yosys_lec":
+        # from the LEC workspace.
+        if workspace_step is not None and workspace_step.tool in LEC_STEP_TOOLS:
             return True
 
         return self.engine_db.create_db_engine(step=workspace_step)
@@ -793,7 +794,7 @@ class EngineFlow:
         elif self.engine_db.has_init():
             return True
 
-        if workspace_step.tool == "yosys_lec":
+        if workspace_step.tool in LEC_STEP_TOOLS:
             # LEC is a netlist comparison step with no ECC DB input; the
             # batch path (init_db_engine) skips it the same way.
             return True
