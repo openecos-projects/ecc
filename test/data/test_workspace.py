@@ -965,7 +965,51 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
         "die_util": {"aspect_ratio": 1, "utilization": 0.4},
         "die_size": {"width_micron": 100.1, "height_micron": 246.6},
     }
-    assert floorplan["io_placer"] == {"io_layer_list": ["MET3", "MET4"]}
+    assert floorplan["macro_placer"] == {
+        "mode": "auto",
+        "file_path": "",
+        "macro_placement_halo": 3.0,
+        "macro_routing_halo": 3.0,
+    }
+    assert floorplan["io_placer"] == {
+        "mode": "auto",
+        "file_path": "",
+        "io_layer_list": ["MET3", "MET4"],
+    }
+
+
+def test_refresh_workspace_config_migrates_legacy_floorplan_schema(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    _, workspace = _create_loaded_ics55_workspace(
+        tmp_path,
+        "workspace_legacy_floorplan",
+        minimal_ics55_pdk_factory,
+        default_ics55_parameters,
+    )
+    config_path = workspace.config[StepEnum.FLOORPLAN.value]
+    floorplan = json_read(config_path)
+    floorplan["macro_placer"].pop("mode")
+    floorplan["macro_placer"].pop("file_path")
+    floorplan["macro_placer"]["macro_location_path"] = "macro_locations.txt"
+    floorplan["io_placer"].pop("mode")
+    floorplan["io_placer"].pop("file_path")
+    json_write(config_path, floorplan)
+
+    refresh_workspace_config(workspace)
+
+    refreshed = json_read(config_path)
+    assert refreshed["macro_placer"] == {
+        "mode": "auto",
+        "file_path": "",
+        "macro_placement_halo": 3.0,
+        "macro_routing_halo": 3.0,
+    }
+    assert refreshed["io_placer"] == {
+        "mode": "auto",
+        "file_path": "",
+        "io_layer_list": ["MET3", "MET4"],
+    }
 
 
 def test_refresh_workspace_config_updates_generated_sdc_frequency(
