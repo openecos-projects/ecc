@@ -18,6 +18,7 @@ from .step import (
     is_finished_step_state,
     load_metrics,
     save_metrics,
+    step_storage_name,
 )
 from .workspace import (
     OriginDesign,
@@ -138,6 +139,7 @@ __all__ = [
     "get_design_parameters",
     "get_pdk",
     "StepEnum",
+    "step_storage_name",
     "StateEnum",
     "CheckState",
     "StepMetrics",

@@ -45,6 +45,17 @@ class StateEnum(Enum):
 FINISHED_STEP_STATES = frozenset({StateEnum.Success.value})
 
 
+def step_storage_name(step_name: str, tool_name: str) -> str:
+    """Directory stem for ``{stem}_{tool}`` workspace step folders.
+
+    Sizer stores Timing Opt as ``timing_optimization_sizer`` instead of
+    ``Timing optimization_sizer``. Other tools keep the flow step name.
+    """
+    if tool_name.lower() == "sizer":
+        return "_".join(step_name.split()).lower()
+    return step_name
+
+
 def is_finished_step_state(state: object) -> bool:
     """Whether a persisted step state counts as done for selection and skipping.
 
