@@ -237,4 +237,3 @@ def test_lvs_qor_metrics_include_connectivity_summary(tmp_path):
             },
         ],
     }
-
