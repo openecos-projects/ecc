@@ -127,6 +127,18 @@ def probe_sizer() -> ProbeResult:
     )
 
 
+def probe_kepler_formal() -> ProbeResult:
+    from chipcompiler.tools.kepler_formal.utility import (
+        get_kepler_formal_command,
+        get_kepler_formal_not_found_error,
+    )
+
+    command = get_kepler_formal_command()
+    if command:
+        return ProbeResult("kepler-formal", PASS, detail=" ".join(command))
+    return ProbeResult("kepler-formal", FAIL, remediation=get_kepler_formal_not_found_error())
+
+
 def probe_pdk(cfg) -> ProbeResult:
     if cfg is None:
         return ProbeResult(
@@ -165,6 +177,7 @@ _PROBES = {
     "dreamplace": probe_dreamplace,
     "klayout": probe_klayout,
     "sizer": probe_sizer,
+    "kepler-formal": probe_kepler_formal,
 }
 
 ALL_COMPONENTS = (*_PROBES, "pdk")
@@ -196,6 +209,7 @@ _TOOL_COMPONENTS = {
     "ecc": "ecc-tools",
     "yosys": "yosys",
     "yosys_lec": "yosys",
+    "kepler_formal": "kepler-formal",
     "dreamplace": "dreamplace",
     "sizer": "sizer",
 }
