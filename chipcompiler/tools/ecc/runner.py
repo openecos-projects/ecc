@@ -883,7 +883,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Imcomplete)
         return False
 
-    if not os.path.exists(workspace.pdk.sdc):
+    if not workspace.pdk.sdc or not os.path.exists(workspace.pdk.sdc):
         workspace.logger.error("STA SDC does not exist: %s", workspace.pdk.sdc)
         sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Imcomplete)
         return False

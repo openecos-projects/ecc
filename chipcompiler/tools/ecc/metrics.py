@@ -5,6 +5,7 @@ from math import ceil, isfinite
 from pathlib import Path
 
 from chipcompiler.data import EccStep, StateEnum, StepEnum, StepMetrics, Workspace, WorkspaceStep
+from chipcompiler.tools.ecc.qor_detail_facts import database_fact_summary, lvs_detail_summary
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
     STA_POWER_SUMMARY_FILENAME,
@@ -138,11 +139,74 @@ QOR_METRIC_MAP = {
         "dimension": "area_cost",
         "polarity": "trend_only",
     },
+    "instance_area": {
+        "name": "instance_area",
+        "display_name": "Instance Area",
+        "unit": "um^2",
+        "dimension": "area_cost",
+        "polarity": "trend_only",
+    },
     "Total nets": {
         "name": "net_count",
         "display_name": "Net Count",
         "unit": "count",
         "dimension": "routability_physical",
+        "polarity": "trend_only",
+    },
+    "macro_count": {
+        "name": "macro_count",
+        "display_name": "Macro Count",
+        "unit": "count",
+        "dimension": "area_cost",
+        "polarity": "trend_only",
+    },
+    "macro_area": {
+        "name": "macro_area",
+        "display_name": "Macro Area",
+        "unit": "um^2",
+        "dimension": "area_cost",
+        "polarity": "trend_only",
+    },
+    "std_cell_count": {
+        "name": "std_cell_count",
+        "display_name": "Standard Cell Count",
+        "unit": "count",
+        "dimension": "area_cost",
+        "polarity": "trend_only",
+    },
+    "std_cell_area": {
+        "name": "std_cell_area",
+        "display_name": "Standard Cell Area",
+        "unit": "um^2",
+        "dimension": "area_cost",
+        "polarity": "trend_only",
+    },
+    "clock_count": {
+        "name": "clock_count",
+        "display_name": "Clock Cell Count",
+        "unit": "count",
+        "dimension": "area_cost",
+        "polarity": "trend_only",
+    },
+    "clock_area": {
+        "name": "clock_area",
+        "display_name": "Clock Cell Area",
+        "unit": "um^2",
+        "dimension": "area_cost",
+        "polarity": "trend_only",
+    },
+    "io_pad_count": {
+        "name": "io_pad_count",
+        "display_name": "IO Pad Count",
+        "unit": "count",
+        "dimension": "routability_physical",
+        "polarity": "trend_only",
+    },
+    "io_pad_area": {
+        "name": "io_pad_area",
+        "display_name": "IO Pad Area",
+        "unit": "um^2",
+        "dimension": "area_cost",
         "polarity": "trend_only",
     },
     "GP HPWL": {
@@ -1856,7 +1920,16 @@ _DB_FEATURE_SELECTORS = {
     "core_utilization": "/Design Layout/core_usage",
     "io_pin_count": "/Design Statis/num_iopins",
     "instance_count": "/Design Statis/num_instances",
+    "instance_area": "/Instances/total/area",
     "net_count": "/Design Statis/num_nets",
+    "macro_count": "/Instances/macros/num",
+    "macro_area": "/Instances/macros/area",
+    "std_cell_count": "/Instances/logic/num",
+    "std_cell_area": "/Instances/logic/area",
+    "clock_count": "/Instances/clock/num",
+    "clock_area": "/Instances/clock/area",
+    "io_pad_count": "/Instances/iopads/num",
+    "io_pad_area": "/Instances/iopads/area",
 }
 
 
@@ -2099,6 +2172,22 @@ def _metric_feature_source(
 
 def _qor_detail_records(step: WorkspaceStep, step_metrics: StepMetrics) -> list[dict]:
     details = []
+    database_path = getattr(step.feature, "db", None)
+    database_summary = database_fact_summary(database_path)
+    database_source = _relative_step_path(step, database_path)
+    if database_summary is not None and database_source is not None:
+        details.append(
+            {
+                "id": "database_facts",
+                "presentation": "database_facts",
+                "summary": database_summary,
+                "feature_source": {
+                    "kind": "feature",
+                    "path": database_source,
+                    "selector": "",
+                },
+            }
+        )
     detail_specs = (
         ("place_map_metrics", "place_map_summary", getattr(step.feature, "map", None)),
         ("cts_clock_skew_metrics", "cts_clock_skew_table", getattr(step.feature, "step", None)),
@@ -2162,6 +2251,23 @@ def _qor_detail_records(step: WorkspaceStep, step_metrics: StepMetrics) -> list[
                         "kind": "feature",
                         "path": source_path,
                         "selector": "/drc/distribution",
+                    },
+                }
+            )
+    if step.name == StepEnum.LVS.value:
+        feature_path = getattr(step.feature, "step", None)
+        source_path = _relative_step_path(step, feature_path)
+        summary = lvs_detail_summary(feature_path)
+        if source_path is not None and summary is not None:
+            details.append(
+                {
+                    "id": "lvs_connectivity_summary",
+                    "presentation": "lvs_connectivity_tables",
+                    "summary": summary,
+                    "feature_source": {
+                        "kind": "feature",
+                        "path": source_path,
+                        "selector": "/lvs",
                     },
                 }
             )
@@ -3504,6 +3610,23 @@ def build_metrics_db(workspace: Workspace, step: EccStep) -> dict:
             ("Total nets", "num_nets"),
         ):
             _add_number_metric(metrics, label, statistics.get(key))
+
+        instances = data.get("Instances", {})
+        instances = instances if isinstance(instances, dict) else {}
+        for metric_id, instance_kind, key in (
+            ("instance_area", "total", "area"),
+            ("macro_count", "macros", "num"),
+            ("macro_area", "macros", "area"),
+            ("std_cell_count", "logic", "num"),
+            ("std_cell_area", "logic", "area"),
+            ("clock_count", "clock", "num"),
+            ("clock_area", "clock", "area"),
+            ("io_pad_count", "iopads", "num"),
+            ("io_pad_area", "iopads", "area"),
+        ):
+            values = instances.get(instance_kind, {})
+            if isinstance(values, dict):
+                _add_number_metric(metrics, metric_id, values.get(key))
 
     metrics.update(build_metrics_timing(workspace=workspace, step=step))
 
