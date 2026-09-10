@@ -12,6 +12,7 @@ from chipcompiler.data import (
     workspace_config_path,
 )
 from chipcompiler.tools.ecc.checklist import EccChecklist
+from chipcompiler.tools.ecc.drc_artifacts import save_drc_feature
 from chipcompiler.tools.ecc.metrics import (
     build_step_metrics,
     save_cts_timing_feature_facts,
@@ -608,18 +609,23 @@ def run_drc(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
         ecc_module.init_drc(output_dir=(step.data.steps or {}).get(StepEnum.DRC.value, ""))
-        ecc_module.run_drc(
-            config=workspace.config.get(f"{StepEnum.DRC.value}", ""),
-            report_path=step.report.step or "",
-        )
+        ecc_module.run_drc()
+        ecc_module.destroy_drc()
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_DRC.value, state=StateEnum.Success)
 
         reslut = save_data(
-            workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False
+            workspace=workspace,
+            step=step,
+            ecc_module=ecc_module,
+            feature_step=False,
+            report_timing=False,
         )
-
-        ecc_module.save_drc(feature_path=step.feature.step or "")
+        if not reslut:
+            return False
+        if not save_drc_feature(step):
+            workspace.logger.error("Failed to save DRC feature: %s", step.feature.step)
+            return False
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
