@@ -4,8 +4,11 @@ from pathlib import Path
 from typing import Any, TypeGuard
 
 from chipcompiler.data.step_dirs import STEP_DIRECTORIES
+from chipcompiler.engine.qor_scoring import DIMENSION_WEIGHTS
 from chipcompiler.tools.ecc.sta_qor import STA_POWER_REPORT_FILENAME, STA_REPORT_FILENAMES
 from chipcompiler.utility import JsonReadError, file_digest, json_read_strict
+
+_LEGACY_METRIC_CATEGORIES = {"power": "power_integrity"}
 
 _ANALYSIS_FILES = (
     ("metrics", "qor_metrics", "qor_metrics.json", 3),
@@ -310,7 +313,32 @@ def _analysis_file(path: Path, artifact_id: str, schema_version: int, root: Path
             "reasonCode": "ANALYSIS_SCHEMA_UNSUPPORTED",
             "data": None,
         }
+    if schema_version == 3 and isinstance(data.get("metrics"), list):
+        data = _canonical_metrics_payload(data)
     return {"artifactId": artifact_id, "status": "available", "data": data}
+
+
+def _canonical_metrics_payload(data: dict[str, Any]) -> dict[str, Any]:
+    records = data.get("metrics")
+    if not isinstance(records, list):
+        return data
+    updated = []
+    changed = False
+    for record in records:
+        if not isinstance(record, dict):
+            updated.append(record)
+            continue
+        category = record.get("category")
+        mapped = _LEGACY_METRIC_CATEGORIES.get(category, category)
+        if mapped != category and mapped in DIMENSION_WEIGHTS:
+            record = {**record, "category": mapped}
+            changed = True
+        updated.append(record)
+    if not changed:
+        return data
+    payload = dict(data)
+    payload["metrics"] = updated
+    return payload
 
 
 def _subflow_summary(path: Path, root: Path) -> dict[str, Any]:
