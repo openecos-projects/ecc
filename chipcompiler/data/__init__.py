@@ -40,6 +40,7 @@ from .workspace import (
     update_step_config,
     workspace_config_path,
     workspace_config_paths,
+    workspace_no_clock,
 )
 from .workspace.layout import (
     AnalysisPaths,
@@ -75,6 +76,7 @@ __all__ = [
     "create_workspace",
     "load_workspace",
     "create_default_sdc",
+    "workspace_no_clock",
     "Workspace",
     "WorkspaceStep",
     "WorkspaceStepBase",

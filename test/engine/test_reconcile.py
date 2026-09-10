@@ -376,3 +376,35 @@ def test_adoption_failure_is_an_error_not_a_tolerated_stale_target(tmp_path, mon
     assert result.outcome == "mismatch"
     assert result.error is not None
     assert result.error.startswith("flow_adopt_failed")
+
+
+NO_CLOCK_RTL2GDS_STEPS = [
+    (name, tool) for name, tool, _state in _canonical_rtl2gds_flow_entries(no_clock=True)
+]
+
+
+def test_reconcile_no_clock_preset_omits_cts(tmp_path):
+    workspace_dir = _write_workspace(
+        tmp_path,
+        NO_CLOCK_RTL2GDS_STEPS[:3],
+        flow_section={"preset": "rtl2gds", "no_clock": True},
+        params={"pdk": "ics55", "design": "gcd", "top_module": "gcd", "no_clock": True},
+    )
+
+    result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds", "no_clock": True})
+
+    assert result.outcome == "extended"
+    names = [step["name"] for step in _flow_steps(workspace_dir)]
+    assert "CTS" not in names
+    assert names.index("place") < names.index("legalization")
+    assert _flow_section(workspace_dir).get("no_clock") is True
+
+
+def test_resolve_target_section_no_clock_place_to_legal():
+    assert resolve_target_section(
+        None, {"start": "place", "end": "legalization", "no_clock": True}
+    ) == {
+        "start": "place",
+        "end": "legalization",
+        "no_clock": True,
+    }

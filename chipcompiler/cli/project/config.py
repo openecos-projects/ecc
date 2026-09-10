@@ -33,6 +33,7 @@ class ProjectConfig:
     pdk_overrides: dict[str, object] = field(default_factory=dict)
 
     flow_preset: str = ""
+    flow_no_clock: bool = False
     config_path: str = ""
     project_dir: str = ""
 
@@ -100,6 +101,8 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
 
     raw_run = flow.get("run")
 
+    from chipcompiler.data.workspace_config import coerce_bool
+
     cfg = ProjectConfig(
         design_name=_str(design.get("name", "")),
         design_top=_str(design.get("top", "")),
@@ -115,6 +118,7 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         pdk_root=_str(pdk.get("root", "")),
         pdk_overrides=pdk_overrides,
         flow_preset=_str(flow.get("preset", "")),
+        flow_no_clock=coerce_bool(flow.get("no_clock", False)),
         config_path=config_path,
         project_dir=project_dir,
     )
@@ -206,9 +210,9 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         errors.append("design.name is required")
     if not cfg.design_top:
         errors.append("design.top is required")
-    if not cfg.design_clock_port:
+    if not cfg.flow_no_clock and not cfg.design_clock_port:
         errors.append("design.clock_port is required")
-    if cfg.design_frequency_mhz <= 0:
+    if not cfg.flow_no_clock and cfg.design_frequency_mhz <= 0:
         errors.append("design.frequency_mhz must be greater than 0")
     if not cfg.pdk_name:
         errors.append("pdk.name is required")

@@ -104,6 +104,37 @@ def _create_loaded_ics55_workspace(
     return workspace_dir, load_workspace(str(workspace_dir))
 
 
+def test_create_workspace_no_clock_writes_minimal_sdc(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "top.v"
+    rtl_path.write_text("module top(input a, output b); assign b = a; endmodule\n")
+
+    workspace = create_workspace(
+        directory=tmp_path / "no_clock_ws",
+        origin_def="",
+        origin_verilog=rtl_path,
+        pdk="ics55",
+        parameters={
+            **default_ics55_parameters,
+            "design": "top",
+            "top_module": "top",
+            "clock": "",
+            "no_clock": True,
+            "frequency_max": 0,
+        },
+        pdk_root=pdk_root,
+        flow_config={"no_clock": True},
+    )
+
+    assert workspace is not None
+    assert data_api.workspace_no_clock(workspace)
+    sdc_text = Path(workspace.pdk.sdc).read_text()
+    assert "no-clock" in sdc_text
+    assert "create_clock" not in sdc_text
+
+
 def test_create_workspace_returns_path_fields_and_persists_string_paths(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):

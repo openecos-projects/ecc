@@ -2064,10 +2064,13 @@ def _artifact_fingerprint(paths: tuple[Path, ...]) -> str:
 def build_flow_for_workspace(workspace, *, create_step_workspaces: bool = True):
     import chipcompiler.engine as engine_api
     import chipcompiler.rtl2gds as rtl2gds_api
+    from chipcompiler.data.workspace import workspace_no_clock
 
     engine_flow = engine_api.EngineFlow(workspace=workspace)
     if not engine_flow.has_init():
-        for step, tool, state in rtl2gds_api.build_rtl2gds_flow():
+        for step, tool, state in rtl2gds_api.build_rtl2gds_flow(
+            no_clock=workspace_no_clock(workspace)
+        ):
             engine_flow.add_step(step=step, tool=tool, state=state)
 
     if create_step_workspaces:

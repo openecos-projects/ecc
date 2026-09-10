@@ -12,6 +12,7 @@ Layout::
     [design]   name / top / clock_port / frequency_mhz
     [pdk]      name / root (absolute) / config (workspace-relative)
     [flow]     preset = "rtl2gds"  OR  start = "...", end = "..."
+               optional no_clock = true  (omit CTS; accept empty/minimal SDC)
     [params]   flat snake_case parameters; nested dicts map to subtables
 """
 
@@ -53,6 +54,33 @@ LEGACY_PRESET_RANGES = {
     "rcx": ("Synthesis", "sta"),
     "harden": ("Synthesis", "Harden"),
 }
+
+
+def coerce_bool(value: object) -> bool:
+    """Best-effort bool coercion for TOML / RPC / CLI flag payloads."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def flow_no_clock(flow: object) -> bool:
+    """True when a ``[flow]`` section requests the no-clock variant."""
+    if not isinstance(flow, dict):
+        return False
+    return coerce_bool(flow.get("no_clock", False))
+
+
+def _with_no_clock(section: dict[str, Any], no_clock: bool) -> dict[str, Any]:
+    result = dict(section)
+    if no_clock:
+        result["no_clock"] = True
+    else:
+        result.pop("no_clock", None)
+    return result
 
 
 class WorkspaceConfigError(ValueError):
@@ -102,18 +130,20 @@ def parameters_have_chip_identity(data: object) -> bool:
     return False
 
 
-def validate_flow_config(flow: object) -> dict[str, str]:
-    """Validate a ``[flow]`` section; return it as a plain string dict.
+def validate_flow_config(flow: object) -> dict[str, Any]:
+    """Validate a ``[flow]`` section; return it as a plain dict.
 
     Raises WorkspaceFlowTargetError on any rule violation: ``preset`` mixed
     with ``start``/``end``, only one of ``start``/``end``, unknown step
     names, or ``start`` positioned after ``end`` in the canonical chain.
+    Optional ``no_clock`` selects the no-CTS canonical chain.
     """
     if flow is None:
         return {}
     if not isinstance(flow, dict):
         raise WorkspaceFlowTargetError(f"[flow] must be a table, not {type(flow).__name__}")
     section: dict = dict(flow)
+    no_clock = flow_no_clock(section)
     preset = section.get("preset")
     start = section.get("start")
     end = section.get("end")
@@ -122,19 +152,21 @@ def validate_flow_config(flow: object) -> dict[str, str]:
     if (start is None) != (end is None):
         raise WorkspaceFlowTargetError("[flow] start and end must be set together")
     if preset is None and start is None:
-        return {}
+        return _with_no_clock({}, no_clock) if no_clock else {}
 
-    result: dict[str, str] = {}
+    result: dict[str, Any] = {}
     if preset is not None:
         if not isinstance(preset, str) or not preset.strip():
             raise WorkspaceFlowTargetError(f"[flow] preset must be a non-empty string: {preset!r}")
-        flow_range_for_preset(preset)  # raises on unknown presets
+        flow_range_for_preset(preset, no_clock=no_clock)  # raises on unknown presets
         result["preset"] = preset
-        return result
+        return _with_no_clock(result, no_clock)
 
     from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
 
-    canonical_names = [name for name, _tool, _state in _canonical_rtl2gds_flow_entries()]
+    canonical_names = [
+        name for name, _tool, _state in _canonical_rtl2gds_flow_entries(no_clock=no_clock)
+    ]
     normalized: dict[str, str] = {}
     for key, value in (("start", start), ("end", end)):
         if not isinstance(value, str):
@@ -148,17 +180,17 @@ def validate_flow_config(flow: object) -> dict[str, str]:
         raise WorkspaceFlowTargetError(
             f"[flow] start {normalized['start']!r} is after end {normalized['end']!r}"
         )
-    return normalized
+    return _with_no_clock(normalized, no_clock)
 
 
-def canonical_flow_chain() -> list[str]:
+def canonical_flow_chain(*, no_clock: bool = False) -> list[str]:
     """The canonical rtl2gds chain's step names, in order."""
     from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
 
-    return [name for name, _tool, _state in _canonical_rtl2gds_flow_entries()]
+    return [name for name, _tool, _state in _canonical_rtl2gds_flow_entries(no_clock=no_clock)]
 
 
-def flow_range_for_preset(preset: str) -> tuple[str, str]:
+def flow_range_for_preset(preset: str, *, no_clock: bool = False) -> tuple[str, str]:
     """(first, last) canonical step names of a named preset."""
     from chipcompiler import rtl2gds as rtl2gds_api
 
@@ -170,7 +202,10 @@ def flow_range_for_preset(preset: str) -> tuple[str, str]:
         if legacy is None:
             raise WorkspaceFlowTargetError(f"unknown flow preset: {preset}")
         return legacy
-    steps = builder()
+    try:
+        steps = builder(no_clock=no_clock)
+    except TypeError:
+        steps = builder()
     if not steps:
         raise WorkspaceFlowTargetError(f"flow preset has no steps: {preset}")
     first, last = steps[0][0], steps[-1][0]
@@ -183,10 +218,10 @@ def flow_range_for_preset(preset: str) -> tuple[str, str]:
 def flow_range_of(flow: dict) -> tuple[str, str] | None:
     """(start, end) canonical names for a validated [flow] section."""
     flow = validate_flow_config(flow)
-    if not flow:
+    if not flow or ("preset" not in flow and "start" not in flow):
         return None
     if "preset" in flow:
-        return flow_range_for_preset(flow["preset"])
+        return flow_range_for_preset(flow["preset"], no_clock=flow_no_clock(flow))
     return (flow["start"], flow["end"])
 
 
@@ -195,16 +230,16 @@ def _contiguous_range(chain: list[str], first: str, last: str) -> list[str]:
     return chain[chain.index(first) : chain.index(last) + 1]
 
 
-def flow_steps_in_range(start: str, end: str) -> list[str]:
+def flow_steps_in_range(start: str, end: str, *, no_clock: bool = False) -> list[str]:
     """Canonical step names from *start* to *end* inclusive."""
-    chain = canonical_flow_chain()
+    chain = canonical_flow_chain(no_clock=no_clock)
     try:
         return _contiguous_range(chain, start, end)
     except ValueError as exc:
         raise WorkspaceFlowTargetError(f"flow range outside the canonical chain: {exc}") from exc
 
 
-def flow_section_from_flow_config(flow_config: dict | None) -> dict[str, str]:
+def flow_section_from_flow_config(flow_config: dict | None) -> dict[str, Any]:
     """Derive the [flow] section (start/end canonical form) from a flow_config.
 
     Uses the same selection resolution as the flow.json seeding, so both
@@ -216,13 +251,17 @@ def flow_section_from_flow_config(flow_config: dict | None) -> dict[str, str]:
 
     from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
 
-    selected, _degraded = resolve_flow_selection(flow_config, _canonical_rtl2gds_flow_entries())
+    no_clock = flow_no_clock(flow_config)
+    selected, _degraded = resolve_flow_selection(
+        flow_config, _canonical_rtl2gds_flow_entries(no_clock=no_clock)
+    )
     if not selected:
-        return {}
+        return _with_no_clock({}, no_clock) if no_clock else {}
 
     # Names are already canonical here; validate to keep the contract explicit.
-    return validate_flow_config({"start": selected[0], "end": selected[-1]})
-
+    return validate_flow_config(
+        _with_no_clock({"start": selected[0], "end": selected[-1]}, no_clock)
+    )
 
 def _split_payload(data: dict) -> dict[str, Any]:
     """Split a canonical flat parameter payload into the TOML section shape."""
@@ -326,8 +365,9 @@ def load_workspace_config(workspace_dir: str | Path) -> dict:
     return _decode_workspace_config(workspace_config_path(workspace_dir), workspace_dir)
 
 
-def _derive_flow_from_ledger(workspace_dir: str | Path) -> dict[str, str]:
+def _derive_flow_from_ledger(workspace_dir: str | Path) -> dict[str, Any]:
     """The [flow] section implied by the persisted flow.json, or {}."""
+    from chipcompiler.data.step import StepEnum
     from chipcompiler.utility import json_read
 
     data = json_read(Path(workspace_dir) / "home" / "flow.json")
@@ -343,8 +383,15 @@ def _derive_flow_from_ledger(workspace_dir: str | Path) -> dict[str, str]:
     ]
     if not names:
         return {}
+    no_clock = (
+        StepEnum.PLACEMENT.value in names
+        and StepEnum.LEGALIZATION.value in names
+        and StepEnum.CTS.value not in names
+    )
     try:
-        return validate_flow_config({"start": names[0], "end": names[-1]})
+        return validate_flow_config(
+            _with_no_clock({"start": names[0], "end": names[-1]}, no_clock)
+        )
     except WorkspaceFlowTargetError:
         return {}
 

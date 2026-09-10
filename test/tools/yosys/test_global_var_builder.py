@@ -229,6 +229,20 @@ def test_validation_errors_are_preserved(tmp_path, case, message):
         yosys_builder.generate_global_var_tcl(workspace, step)
 
 
+@pytest.mark.parametrize("frequency_max", [None, 0, -1])
+def test_no_clock_allows_non_positive_frequency(tmp_path, frequency_max):
+    workspace, step, _ = _build_workspace_and_step(tmp_path)
+    workspace.parameters.data["no_clock"] = True
+    if frequency_max is None:
+        workspace.parameters.data.pop("frequency_max")
+    else:
+        workspace.parameters.data["frequency_max"] = frequency_max
+
+    text = yosys_builder.generate_global_var_tcl(workspace, step)
+    assert "set clk_freq_mhz 100" in text
+    assert "set clk_period_ps [expr {1000000.0 / $clk_freq_mhz}]" in text
+
+
 def test_paths_with_spaces_remain_single_tcl_list_element(tmp_path):
     if shutil.which("tclsh") is None:
         pytest.skip("tclsh is not available")

@@ -482,7 +482,7 @@ def _migrate_project_impl(command_input, ctx):
             problems.append("design.name is required")
         if not cfg.design_top:
             problems.append("design.top is required")
-        if not cfg.design_clock_port:
+        if not getattr(cfg, "flow_no_clock", False) and not cfg.design_clock_port:
             problems.append("design.clock_port is required")
         if not cfg.design_rtl:
             problems.append("design.rtl must have at least one entry")

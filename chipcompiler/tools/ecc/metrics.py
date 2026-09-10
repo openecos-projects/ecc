@@ -3054,6 +3054,11 @@ def _quality_gates(
         ]
 
     if step.name == StepEnum.STA.value:
+        if workspace is not None:
+            from chipcompiler.data.workspace import workspace_no_clock
+
+            if workspace_no_clock(workspace):
+                return []
         signoff = feature.get("sta", {}).get("signoff_metrics", {})
         coverage = signoff.get("coverage", {}) if isinstance(signoff, dict) else {}
         setup = signoff.get("setup", {}) if isinstance(signoff, dict) else {}

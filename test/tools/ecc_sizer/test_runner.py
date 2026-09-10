@@ -250,3 +250,38 @@ def test_public_sizer_run_marks_invalid_when_runtime_missing(tmp_path, monkeypat
     assert _subflow_states(step)["run sizer"] == StateEnum.Invalid.value
     with open(str(step.script.sizer_env), encoding="utf-8") as file:
         assert "-tclFile" not in file.read()
+
+
+def test_sizer_runner_passthrough_for_no_clock(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+    from chipcompiler.tools.ecc_sizer import runner as sizer_runner
+
+    workspace = _workspace(tmp_path)
+    workspace.parameters.data["no_clock"] = True
+    input_def = tmp_path / "input.def"
+    input_verilog = tmp_path / "input.v"
+    input_def.write_text("DESIGN input ;\n", encoding="utf-8")
+    input_verilog.write_text("module gcd; endmodule\n", encoding="utf-8")
+
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def=input_def,
+        input_verilog=input_verilog,
+    )
+    sizer_builder.build_step_space(step)
+
+    def boom(*args, **kwargs):
+        raise AssertionError("no-clock timing opt must not invoke sizer")
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    monkeypatch.setattr(sizer_runner, "legalize_layout", boom)
+
+    assert sizer_runner.run_step(workspace, step) == StateEnum.Success
+    states = _subflow_states(step)
+    assert states["run sizer"] == StateEnum.Success.value
+    assert states["run legalization"] == StateEnum.Success.value
+    assert states["save data"] == StateEnum.Success.value
+    assert Path(step.output.def_).read_text(encoding="utf-8") == "DESIGN input ;\n"
+    assert Path(step.output.verilog).read_text(encoding="utf-8") == "module gcd; endmodule\n"
+    assert Path(step.output.geometry_manifest).is_file()
