@@ -485,17 +485,17 @@ class ECCToolsModule:
         """
         self.ecc.init_drc(temp_directory_path=path_text(output_dir), thread_number=therad_number)
 
-    def run_drc(self, config: str, report_path: PathArg = "") -> bool:
+    def run_drc(self) -> bool:
         """
         run drc check
         """
-        self.ecc.run_drc(config=path_text(config), report=path_text(report_path))
+        return self.ecc.run_drc()
 
-    def save_drc(self, feature_path: PathArg):
+    def destroy_drc(self) -> bool:
         """
-        generate drc result
+        release drc resources
         """
-        self.ecc.save_drc(path=path_text(feature_path))
+        return self.ecc.destroy_drc()
 
     ########################################################################
     # LVS api
