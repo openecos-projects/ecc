@@ -33,6 +33,9 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
         return None
 
     if not read_only:
+        from ..workspace_transaction import recover_workspace_file_transaction
+
+        recover_workspace_file_transaction(workspace_dir)
         migrate_legacy_parameters(workspace_dir)
 
     workspace = Workspace()

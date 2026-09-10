@@ -70,6 +70,10 @@ from .workspace.layout import (
     YosysReport,
     YosysStep,
 )
+from .workspace_transaction import (
+    WorkspaceFileTransaction,
+    recover_workspace_file_transaction,
+)
 
 __all__ = [
     "create_workspace",
@@ -109,6 +113,8 @@ __all__ = [
     "build_workspace_config_paths",
     "workspace_config_paths",
     "workspace_config_path",
+    "WorkspaceFileTransaction",
+    "recover_workspace_file_transaction",
     "step_config_keys",
     "step_config_paths",
     "init_workspace_config",

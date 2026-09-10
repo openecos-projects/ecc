@@ -1,4 +1,5 @@
 import json
+import os
 from copy import deepcopy
 from pathlib import Path
 
@@ -96,6 +97,86 @@ def test_workspace_configuration_update_rolls_back_refresh_failure(
 
     assert (workspace.directory / "home" / "params.toml").read_bytes() == before_config
     assert read_engineering_snapshot(workspace) == before_snapshot
+
+
+def test_configuration_update_recovers_after_process_exit_before_snapshot(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
+    before = read_engineering_snapshot(workspace)
+
+    child = os.fork()
+    if child == 0:
+        import chipcompiler.engine.workspace_configuration as configuration_module
+
+        configuration_module.invalidate_engineering_snapshot = lambda *_args, **_kwargs: os._exit(
+            23
+        )
+        update_workspace_configuration(
+            workspace.directory,
+            before["workspaceRevision"],
+            {"parameters": {"design.frequency_mhz": 250.0}},
+            bindings,
+            "configuration-crash",
+        )
+        os._exit(99)
+
+    _pid, status = os.waitpid(child, 0)
+    assert os.waitstatus_to_exitcode(status) == 23
+
+    updated = update_workspace_configuration(
+        workspace.directory,
+        before["workspaceRevision"],
+        {"parameters": {"design.frequency_mhz": 250.0}},
+        bindings,
+        "configuration-crash",
+    )
+
+    assert updated.parameters.data["frequency_max"] == 250.0
+    assert read_engineering_snapshot(updated)["workspaceRevision"] == (
+        before["workspaceRevision"] + 1
+    )
+
+
+def test_configuration_update_recovers_after_process_exit_during_commit_cleanup(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
+    before = read_engineering_snapshot(workspace)
+
+    child = os.fork()
+    if child == 0:
+        import chipcompiler.data.workspace_transaction as transaction_module
+
+        original_rmtree = transaction_module.shutil.rmtree
+
+        def crash_cleanup(path, *args, **kwargs):
+            if Path(path).name == ".workspace-configuration-backup.discard":
+                os._exit(24)
+            return original_rmtree(path, *args, **kwargs)
+
+        transaction_module.shutil.rmtree = crash_cleanup
+        update_workspace_configuration(
+            workspace.directory,
+            before["workspaceRevision"],
+            {"parameters": {"design.frequency_mhz": 250.0}},
+            bindings,
+            "configuration-cleanup-crash",
+        )
+        os._exit(99)
+
+    _pid, status = os.waitpid(child, 0)
+    assert os.waitstatus_to_exitcode(status) == 24
+
+    recovered = load_workspace(workspace.directory)
+    assert recovered.parameters.data["frequency_max"] == 250.0
+    assert read_engineering_snapshot(recovered)["workspaceRevision"] == (
+        before["workspaceRevision"] + 1
+    )
 
 
 def test_read_workspace_configuration_does_not_materialize_missing_home_files(
