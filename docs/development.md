@@ -766,22 +766,27 @@ The `lec` and `postRouteLec` steps run the kepler-formal equivalence checker
    `kepler-formal` launcher, then `bin/kepler-formal`).
 2. System PATH through `kepler-formal`.
 
-Manual install from the release archive:
+Manual install builds from source: kepler-formal is GPL-3.0-only, so ECOS
+does not redistribute built binaries — each user builds their own copy (see
+the upstream [build instructions](https://github.com/keplertech/kepler-formal#build-instructions)):
 
 ```bash
-curl -fsSL -o /tmp/kf.tar.gz \
-  https://github.com/openecos-projects/ecos-resource-assets/releases/download/kepler-formal-v1.0.0/kepler-formal-1.0.0-linux-x86_64.tar.gz
-mkdir -p ~/.local/kepler-formal
-tar -xzf /tmp/kf.tar.gz -C ~/.local/kepler-formal --strip-components=1
-export CHIPCOMPILER_KEPLER_FORMAL_ROOT=~/.local/kepler-formal
+git clone --recurse-submodules https://github.com/keplertech/kepler-formal.git
+cd kepler-formal
+sudo apt-get install g++ cmake ninja-build bison flex pkg-config \
+  libcapnp-dev libtbb-dev libboost-iostreams-dev zlib1g-dev
+cmake -B build -GNinja -DCMAKE_BUILD_TYPE=Release -DPYTHON_INTERFACE=OFF
+cmake --build build -j "$(nproc)"
+export CHIPCOMPILER_KEPLER_FORMAL_ROOT="$PWD/build/src"   # provides bin/kepler-formal
 ecc doctor   # kepler-formal should report pass
 ```
 
-ECOS Studio installs the same archive through the Resource Manager and
-exports `CHIPCOMPILER_KEPLER_FORMAL_ROOT` for the ECC sidecar automatically.
-Verdict parsing relies on the tool's stdout evidence (`No difference was
-found.`); upgrading kepler-formal requires rerunning the LEC integration
-tests, because the tool exits 0 even for an unequal design pair.
+ECOS Studio detects a Resource Manager installation of kepler-formal and
+exports `CHIPCOMPILER_KEPLER_FORMAL_ROOT` for the ECC sidecar automatically;
+the env var above is the CLI-only equivalent. Verdict parsing relies on the
+tool's stdout evidence (`No difference was found.`); upgrading kepler-formal
+requires rerunning the LEC integration tests, because the tool exits 0 even
+for an unequal design pair.
 
 
 ### Sizer
