@@ -53,7 +53,48 @@ def _write_gcd_netlist_pair(gate: Path) -> None:
     gate.with_name("gcd_Synthesis_golden.v").write_text(gcd_text)
 
 
-def test_yosys_build_step_exposes_rtl_derived_golden_path(tmp_path):
+def test_lec_config_wires_cutpoints_contract_for_synthesis_lec(tmp_path):
+    from chipcompiler.tools.yosys_lec import builder
+
+    workspace = _workspace(tmp_path)
+    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    _write_gcd_netlist_pair(gate)
+
+    step = builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.LEC.value,
+        input_def=None,
+        input_verilog=gate,
+    )
+    builder.build_step_space(step)
+    builder.build_step_config(workspace=workspace, step=step)
+
+    config = step.data.config.read_text()
+    assert f"set cutpoints_file {gate.parent / 'lec_cutpoints.txt'}" in config
+    assert "set cutpoints_golden_column golden" in config
+
+
+def test_lec_config_selects_gate_column_for_post_route_lec(tmp_path):
+    from chipcompiler.tools.yosys_lec import builder
+
+    workspace = _workspace(tmp_path)
+    gate = tmp_path / "route_ecc" / "output" / "gcd_Routing.v"
+    gate.parent.mkdir(parents=True)
+    gate.write_text(GCD_RTL.read_text())
+
+    step = builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.POST_ROUTE_LEC.value,
+        input_def=None,
+        input_verilog=gate,
+        input_db=tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v",
+    )
+    builder.build_step_space(step)
+    builder.build_step_config(workspace=workspace, step=step)
+
+    config = step.data.config.read_text()
+    assert "set cutpoints_golden_column gate" in config
+
     from chipcompiler.tools.yosys import builder
 
     workspace = _workspace(tmp_path)

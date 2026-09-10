@@ -470,14 +470,92 @@ select -write ${timing_cell_stat_rpt} t:*DFF*
 tee -q -o ${timing_cell_count_rpt} select -count t:*DFF*
 tee -q -a ${timing_cell_count_rpt} select -count */t:*_DLATCH*_ */t:*_SR*_
 
+# Record FF instance -> Q net name on a flattened throwaway copy of the
+# current design. Structural FF detection (D + clock + Q ports), so it does
+# not depend on cell type naming. Returns a flat list: {cell qnet ...}.
+proc lec_record_ff_qnets {} {
+    design -push-copy
+    flatten
+    splitnets -ports -format _
+    set dump [tee -q -s result.string dump]
+    design -pop
+    set records [list]
+    set cur_name ""
+    set cur_qnet ""
+    set cur_has_d 0
+    set cur_has_clk 0
+    set cur_has_qn 0
+    foreach line [split $dump \n] {
+        if {[regexp {^[[:space:]]*cell (\S+) (\S+)[[:space:]]*$} $line -> ctype cname]} {
+            set cur_name $cname
+            set cur_qnet ""
+            set cur_has_d 0
+            set cur_has_clk 0
+            set cur_has_qn 0
+            continue
+        }
+        if {$cur_name eq ""} {
+            continue
+        }
+        if {[regexp {^[[:space:]]*connect \\(\S+) +\\?(\S+?)[[:space:]]*$} $line -> port net]} {
+            switch -- $port {
+                Q        { set cur_qnet $net }
+                QN       { set cur_has_qn 1 }
+                D        { set cur_has_d 1 }
+                C - CK - CLK { set cur_has_clk 1 }
+            }
+            continue
+        }
+        if {[regexp {^[[:space:]]*end[[:space:]]*$} $line]} {
+            if {$cur_qnet ne "" && $cur_has_d && $cur_has_clk && !$cur_has_qn} {
+                lappend records $cur_name $cur_qnet
+            }
+            set cur_name ""
+        }
+    }
+    return $records
+}
+
 if {[info exists golden_netlist_file] && $golden_netlist_file ne ""} {
+    # LEC cut-point contract: name-based matching in yosys LEC depends on
+    # incidental net names that change between yosys versions. Record an
+    # explicit contract instead: for every flip-flop (stable instance name
+    # from the rename above), the Q-output net name now (golden side) and at
+    # final-netlist time (gate side). yosys_lec replays the pairs with
+    # equiv_add. Recording runs on a flattened throwaway copy so the names
+    # match what the LEC script sees after its own flatten.
+    set lec_cutpoints_file [file join [file dirname $golden_netlist_file] lec_cutpoints.txt]
+    set lec_golden_records [lec_record_ff_qnets]
     yosys write_verilog -noattr -noexpr -nohex -nodec ${golden_netlist_file}
 }
 
 # technology mapping for clockgate
 clockgate {*}$tech_cells_args {*}$exclude_cells
 
+# Avoid QN-only (inverted-output) DFF cells: their functional Q net is renamed
+# through the output inverter, so the mapped netlist loses the FF output wire
+# names that yosys LEC uses as induction cut-points. dfflibmap -info reports
+# only one candidate per FF type, so iterate: exclude each inv pick until every
+# type maps to a non-inv cell or only inv variants remain. FF types without a
+# Q-output alternative are still mapped by the second pass below.
+set no_inv_cells [list]
+while {1} {
+    set dffmap_info [tee -q -s result.string dfflibmap -info {*}$tech_cells_args {*}$exclude_cells {*}$no_inv_cells]
+    set added 0
+    foreach line [split $dffmap_info \n] {
+        if {[regexp {^\s*cell (\S+) \(inv,} $line -> inv_cell]
+            && [lsearch -exact $no_inv_cells $inv_cell] < 0} {
+            lappend no_inv_cells -dont_use $inv_cell
+            set added 1
+        }
+    }
+    if {!$added} {
+        break
+    }
+}
+
 # technology mapping for flip-flops
+dfflibmap {*}$tech_cells_args {*}$exclude_cells {*}$no_inv_cells
 dfflibmap {*}$tech_cells_args {*}$exclude_cells
 
 # Follow mapped DFF cell names, not library filenames. For designs without
@@ -643,4 +721,20 @@ tee -q -o "${synth_stat_json}" stat -json -top $top_design {*}$liberty_args
 tee -q -o "${synth_check_rpt}" check -mapped
 
 # write synthesized design
+if {[info exists lec_cutpoints_file]} {
+    # Complete the LEC cut-point contract with the gate-side Q nets and write
+    # it next to the golden netlist for the yosys_lec step.
+    array set lec_gate_qnets {}
+    foreach {cname qnet} [lec_record_ff_qnets] {
+        set lec_gate_qnets($cname) $qnet
+    }
+    set lec_cutpoints_fh [open $lec_cutpoints_file w]
+    puts $lec_cutpoints_fh "# ff_cell golden_q_net gate_q_net"
+    foreach {cname qnet} $lec_golden_records {
+        set gate_qnet [expr {[info exists lec_gate_qnets($cname)] ? $lec_gate_qnets($cname) : "-"}]
+        puts $lec_cutpoints_fh "$cname $qnet $gate_qnet"
+    }
+    close $lec_cutpoints_fh
+    log "LEC cut-point contract written to $lec_cutpoints_file"
+}
 write_verilog -attr2comment -noexpr -nohex -nodec -defparam ${final_netlist_file}

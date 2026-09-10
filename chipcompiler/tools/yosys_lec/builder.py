@@ -126,6 +126,13 @@ def build_step_config(workspace: Workspace, step: YosysLecStep) -> None:
     config.set("top_design", tcl.word(workspace.design.top_module))
     config.set_path("golden_file", _path_text(step.input.golden_verilog))
     config.set_path("gate_file", _path_text(step.input.gate_verilog))
+    golden = step.input.golden_verilog
+    cutpoints = Path(golden).parent / "lec_cutpoints.txt" if golden else None
+    config.set_path("cutpoints_file", _path_text(cutpoints))
+    # postRouteLec's golden side is the mapped synthesis netlist, whose FF
+    # Q-net names live in the gate column of the cut-point contract.
+    golden_column = "gate" if step.name == "postRouteLec" else "golden"
+    config.set("cutpoints_golden_column", tcl.word(golden_column))
     config.set_path("report_dir", _path_text(step.report.dir))
     config.set_path("result_json", _path_text(step.output.json))
     config.set_path("status_file", _path_text(step.report.status))
