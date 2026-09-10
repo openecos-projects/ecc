@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 
 from chipcompiler.data import SkippableStepEnum, StateEnum, StepEnum, Workspace
+from chipcompiler.data.step import flow_step_directory
 from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
 from chipcompiler.engine.signoff.discovery import CollectorDiscoveryMixin
 from chipcompiler.engine.signoff.models import (
@@ -370,7 +371,11 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 required=True,
             )
 
-        lec_dir = workspace_dir / self._step_dirs()[SkippableStepEnum.POST_ROUTE_LEC.value]
+        lec_flow = getattr(self.workspace, "flow", None)
+        lec_dir = workspace_dir / flow_step_directory(
+            lec_flow.steps() if lec_flow is not None else None,
+            SkippableStepEnum.POST_ROUTE_LEC.value,
+        )
         lec_result = (
             lec_dir / "output" / f"{design}_{SkippableStepEnum.POST_ROUTE_LEC.value}_result.json"
         )

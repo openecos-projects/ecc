@@ -67,6 +67,12 @@ class SkippableStepEnum(StepBaseEnum):
 DEFAULT_SKIP_STEPS: Final = (SkippableStepEnum.LEC.value,)
 
 
+# Tool identifiers that can own the lec/postRouteLec steps. Workspaces keep
+# the engine their ledger recorded, so every LEC-aware branch (input wiring,
+# result checks, DB skips) matches this set instead of one literal.
+LEC_STEP_TOOLS: Final = frozenset({"yosys_lec", "kepler_formal"})
+
+
 _STEP_ENUMS: tuple[type[StepBaseEnum], ...] = (StepEnum, SkippableStepEnum)
 
 
