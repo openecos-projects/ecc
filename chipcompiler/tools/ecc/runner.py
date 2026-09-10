@@ -309,6 +309,14 @@ def run_sta_without_spef(
         if root:
             discard_sta_outputs(Path(root) / POST_SYNTHESIS_STA_CORNER)
 
+    from chipcompiler.data.workspace import workspace_no_clock
+
+    if workspace_no_clock(workspace):
+        workspace.logger.info(
+            "No-clock workspace: skipping post-synthesis STA (empty/minimal SDC)"
+        )
+        return True
+
     try:
         netlist_path = step.output.verilog or ""
         liberty_paths = workspace.pdk.libs
@@ -877,6 +885,24 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         return result
 
     sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
+
+    from chipcompiler.data.workspace import workspace_no_clock
+
+    if workspace_no_clock(workspace):
+        workspace.logger.info(
+            "No-clock workspace: skipping signoff STA timing analysis; publishing layout only"
+        )
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Success)
+        result = save_data(
+            workspace=workspace,
+            step=step,
+            ecc_module=ecc_module,
+            feature_step=False,
+            report_timing=False,
+        )
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
+        run_analysis(workspace=workspace, step=step, subflow=sub_flow)
+        return result
 
     signoff_items = collect_sta_signoff_items(workspace)
     if not signoff_items:

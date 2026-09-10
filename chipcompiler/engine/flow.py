@@ -98,25 +98,17 @@ class EngineFlow:
 
     def build_default_steps(self):
         # Flow step sequences
-        steps = []
+        from chipcompiler.data.workspace import workspace_no_clock
+        from chipcompiler.rtl2gds import build_rtl2gds_flow
 
-        steps.append(self.init_flow_step(StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
         # Persist the golden netlist on the LEC step so reloads do not have
         # to guess roles from the golden_* filename convention.
         golden = getattr(self.workspace.design, "golden_verilog", None)
         lec_info = {"golden_verilog": str(golden)} if golden else None
-        steps.append(
-            self.init_flow_step(StepEnum.LEC, "yosys_lec", StateEnum.Unstart, info=lec_info)
-        )
-        steps.append(self.init_flow_step(StepEnum.FLOORPLAN, "ecc", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.CTS, "ecc", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.TIMING_OPT, "sizer", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.ROUTING, "ecc", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.FILLER, "ecc", StateEnum.Unstart))
-        # steps.append(self.init_flow_step(StepEnum.GDS, "klayout", StateEnum.Unstart))
-        # steps.append(self.init_flow_step(StepEnum.SIGNOFF, "ecc", StateEnum.Unstart))
+        steps = []
+        for step, tool, state in build_rtl2gds_flow(no_clock=workspace_no_clock(self.workspace)):
+            info = lec_info if step == StepEnum.LEC else None
+            steps.append(self.init_flow_step(step, tool, state, info=info))
 
         self.workspace.flow.data = {"steps": steps}
 

@@ -144,13 +144,13 @@ def _is_legacy_reordered_chain(persisted: list[tuple[str, str]]) -> bool:
 def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
     """(name, tool) entries for a [flow] section, over the canonical chain."""
     from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
-    from chipcompiler.data.workspace_config import flow_range_of
+    from chipcompiler.data.workspace_config import flow_no_clock, flow_range_of
 
     flow_range = flow_range_of(flow_section)
     if flow_range is None:
         return []
     start, end = flow_range
-    chain = _canonical_rtl2gds_flow_entries()
+    chain = _canonical_rtl2gds_flow_entries(no_clock=flow_no_clock(flow_section))
     names = [name for name, _tool, _state in chain]
     return [(name, tool) for name, tool, _state in chain[names.index(start) : names.index(end) + 1]]
 
@@ -159,7 +159,16 @@ def _derive_section_from_persisted(persisted: list[tuple[str, str]]) -> dict:
     """The [flow] section describing exactly the persisted step list."""
     if not persisted:
         return {}
-    return {"start": persisted[0][0], "end": persisted[-1][0]}
+    from chipcompiler.data.step import StepEnum
+    from chipcompiler.data.workspace_config import _with_no_clock
+
+    names = [name for name, _tool in persisted]
+    no_clock = (
+        StepEnum.PLACEMENT.value in names
+        and StepEnum.LEGALIZATION.value in names
+        and StepEnum.CTS.value not in names
+    )
+    return _with_no_clock({"start": persisted[0][0], "end": persisted[-1][0]}, no_clock)
 
 
 def _persisted_flow_data(workspace_dir: Path, json_read) -> dict:

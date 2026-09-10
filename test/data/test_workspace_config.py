@@ -266,6 +266,29 @@ def test_flow_section_from_flow_config_empty():
     assert flow_section_from_flow_config({}) == {}
 
 
+def test_validate_flow_config_accepts_no_clock_preset():
+    assert validate_flow_config({"preset": "rtl2gds", "no_clock": True}) == {
+        "preset": "rtl2gds",
+        "no_clock": True,
+    }
+
+
+def test_flow_section_from_flow_config_no_clock_skips_cts():
+    section = flow_section_from_flow_config(
+        {"start_step": "Place", "end_step": "Legal", "no_clock": True}
+    )
+    assert section["no_clock"] is True
+    steps = flow_steps_in_range(section["start"], section["end"], no_clock=True)
+    assert "CTS" not in steps
+    assert steps[0] == section["start"]
+    assert steps[-1] == section["end"]
+
+
+def test_canonical_flow_chain_no_clock_omits_cts():
+    assert "CTS" in canonical_flow_chain()
+    assert "CTS" not in canonical_flow_chain(no_clock=True)
+
+
 def test_flow_validation_rejects_unknown_preset():
     with pytest.raises(WorkspaceFlowTargetError):
         validate_flow_config({"preset": "does_not_exist"})

@@ -4,14 +4,15 @@ from collections.abc import Callable
 from chipcompiler.data import StateEnum, StepEnum
 
 
-def build_rtl2gds_flow() -> list:
+def build_rtl2gds_flow(*, no_clock: bool = False) -> list:
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
     steps.append((StepEnum.LEC, "yosys_lec", StateEnum.Unstart))
     steps.append((StepEnum.FLOORPLAN, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
-    steps.append((StepEnum.CTS, "ecc", StateEnum.Unstart))
+    if not no_clock:
+        steps.append((StepEnum.CTS, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.TIMING_OPT, "sizer", StateEnum.Unstart))
     steps.append((StepEnum.ROUTING, "ecc", StateEnum.Unstart))
@@ -61,13 +62,15 @@ def normalize_flow_step(value: str | StepEnum) -> str:
     return aliases.get(alias_key, token)
 
 
-def build_flow_range(from_step: str | StepEnum, to_step: str | StepEnum) -> list:
+def build_flow_range(
+    from_step: str | StepEnum, to_step: str | StepEnum, *, no_clock: bool = False
+) -> list:
     """Return the inclusive canonical RTL-to-GDS range requested by a workspace.
 
     The RTL-to-GDS chain is owned by :func:`build_rtl2gds_flow`; partial flows
     are always slices of that chain rather than a second hand-maintained list.
     """
-    steps = build_rtl2gds_flow()
+    steps = build_rtl2gds_flow(no_clock=no_clock)
     names = [
         step.value if isinstance(step, StepEnum) else str(step) for step, _tool, _state in steps
     ]
@@ -85,7 +88,8 @@ def build_flow_range(from_step: str | StepEnum, to_step: str | StepEnum) -> list
     return steps[start_index : end_index + 1]
 
 
-def build_syn_sta_flow() -> list:
+def build_syn_sta_flow(*, no_clock: bool = False) -> list:
+    del no_clock  # preset has no physical CTS stage
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
@@ -93,7 +97,8 @@ def build_syn_sta_flow() -> list:
     return steps
 
 
-def build_synthesis_lec_flow() -> list:
+def build_synthesis_lec_flow(*, no_clock: bool = False) -> list:
+    del no_clock  # preset has no physical CTS stage
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
@@ -102,7 +107,7 @@ def build_synthesis_lec_flow() -> list:
     return steps
 
 
-def get_flow_builders() -> dict[str, Callable[[], list]]:
+def get_flow_builders() -> dict[str, Callable[..., list]]:
     """Discover flow presets from the build_*_flow defs in this module."""
     builders = {}
     for name, fn in globals().items():

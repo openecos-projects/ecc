@@ -279,8 +279,10 @@ def build_dynamic_flow_data(flow_config: dict | None) -> dict:
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
 
-    canonical_steps = _canonical_rtl2gds_flow_entries()
-    from ..workspace_config import resolve_flow_selection
+    from ..workspace_config import flow_no_clock, resolve_flow_selection
+
+    no_clock = flow_no_clock(flow_config)
+    canonical_steps = _canonical_rtl2gds_flow_entries(no_clock=no_clock)
 
     selected_names, _degraded = resolve_flow_selection(flow_config, canonical_steps)
     if not selected_names:
@@ -288,7 +290,9 @@ def build_dynamic_flow_data(flow_config: dict | None) -> dict:
 
     import chipcompiler.rtl2gds as rtl2gds_api
 
-    selected = rtl2gds_api.build_flow_range(selected_names[0], selected_names[-1])
+    selected = rtl2gds_api.build_flow_range(
+        selected_names[0], selected_names[-1], no_clock=no_clock
+    )
     return {
         "steps": [
             _flow_step_template(
@@ -301,7 +305,7 @@ def build_dynamic_flow_data(flow_config: dict | None) -> dict:
     }
 
 
-def _canonical_rtl2gds_flow_entries() -> list[tuple[str, str, str]]:
+def _canonical_rtl2gds_flow_entries(*, no_clock: bool = False) -> list[tuple[str, str, str]]:
     import chipcompiler.rtl2gds as rtl2gds_api
 
     return [
@@ -310,8 +314,20 @@ def _canonical_rtl2gds_flow_entries() -> list[tuple[str, str, str]]:
             str(tool),
             state.value if isinstance(state, StateEnum) else str(state),
         )
-        for step, tool, state in rtl2gds_api.build_rtl2gds_flow()
+        for step, tool, state in rtl2gds_api.build_rtl2gds_flow(no_clock=no_clock)
     ]
+
+
+def workspace_no_clock(workspace: Workspace) -> bool:
+    """True when the workspace is configured for a no-clock (no-CTS) flow."""
+    from ..workspace_config import coerce_bool, flow_no_clock
+
+    data = getattr(getattr(workspace, "parameters", None), "data", None)
+    if not isinstance(data, dict):
+        return False
+    if coerce_bool(data.get("no_clock")):
+        return True
+    return flow_no_clock(data.get("_flow"))
 
 
 def _selected_dynamic_flow_step_names(
@@ -1086,6 +1102,14 @@ def create_workspace(
         workspace.design.name = workspace.parameters.data["design"]
         workspace.design.top_module = workspace.parameters.data["top_module"]
 
+    from ..workspace_config import coerce_bool, flow_no_clock
+
+    if flow_no_clock(flow_config) or coerce_bool(workspace.parameters.data.get("no_clock")):
+        workspace.parameters.data["no_clock"] = True
+        flow = dict(workspace.parameters.data.get("_flow") or {})
+        flow["no_clock"] = True
+        workspace.parameters.data["_flow"] = flow
+
     # update path
     workspace.directory = workspace_dir
     workspace.config = build_workspace_config_paths(workspace)
@@ -1128,6 +1152,8 @@ def create_workspace(
         flow_section = flow_section_from_flow_config(flow_config)
         if flow_section:
             workspace.parameters.data["_flow"] = flow_section
+            if flow_section.get("no_clock"):
+                workspace.parameters.data["no_clock"] = True
 
         if workspace.design.golden_verilog is not None:
             dynamic_flow_data["steps"][0]["info"]["golden_verilog"] = str(

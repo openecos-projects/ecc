@@ -447,6 +447,30 @@ class TestHybridFrequencyProvenance:
         assert "design.frequency_mhz must be greater than 0" in reasons
         assert flow_mocks.capture["create_kwargs"] is None
 
+    def test_check_no_clock_allows_empty_clock_and_zero_frequency(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs
+    ):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        (project_dir / "rtl").mkdir()
+        (project_dir / "rtl" / "gcd.v").write_text("module gcd; endmodule\n")
+        (project_dir / "pdk").mkdir()
+        (project_dir / "ecc.toml").write_text(
+            '[design]\nname = "gcd"\ntop = "gcd"\nrtl = ["rtl/gcd.v"]\n'
+            "frequency_mhz = 0\n"
+            f'\n[pdk]\nname = "ics55"\nroot = "{project_dir / "pdk"}"\n'
+            '\n[flow]\npreset = "rtl2gds"\nno_clock = true\n'
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
+
+        assert rc == 0
+        assert manifest_stubs.records()[0]["status"] == "checked"
+
     def test_check_rejects_unreadable_ecc_toml_instead_of_manifest_fallback(
         self, tmp_path, capsys, monkeypatch, manifest_stubs, plain_records
     ):

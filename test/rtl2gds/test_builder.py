@@ -92,3 +92,34 @@ def test_build_flow_range_normalizes_aliases_and_rejects_reverse_ranges():
 
     with pytest.raises(ValueError, match="reversed"):
         builder_module.build_flow_range("route", "CTS")
+
+
+def test_build_rtl2gds_flow_no_clock_omits_cts():
+    flow = builder_module.build_rtl2gds_flow(no_clock=True)
+
+    assert flow == [
+        (StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart),
+        (StepEnum.LEC, "yosys_lec", StateEnum.Unstart),
+        (StepEnum.FLOORPLAN, "ecc", StateEnum.Unstart),
+        (StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart),
+        (StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart),
+        (StepEnum.TIMING_OPT, "sizer", StateEnum.Unstart),
+        (StepEnum.ROUTING, "ecc", StateEnum.Unstart),
+        (StepEnum.FILLER, "ecc", StateEnum.Unstart),
+        (StepEnum.RCX, "ecc", StateEnum.Unstart),
+        (StepEnum.STA, "ecc", StateEnum.Unstart),
+        (StepEnum.LVS, "ecc", StateEnum.Unstart),
+        (StepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart),
+        (StepEnum.DRC, "ecc", StateEnum.Unstart),
+        (StepEnum.HARDEN, "ecc", StateEnum.Unstart),
+    ]
+    assert StepEnum.CTS not in [step for step, _tool, _state in flow]
+
+
+def test_build_flow_range_no_clock_omits_cts_between_place_and_legal():
+    flow = builder_module.build_flow_range("place", "legalization", no_clock=True)
+
+    assert [step for step, _tool, _state in flow] == [
+        StepEnum.PLACEMENT,
+        StepEnum.LEGALIZATION,
+    ]

@@ -157,6 +157,11 @@ def _gate_summary(gate: dict) -> str:
 
 def _expected_quality_gate_ids(workspace: Workspace, step_name: str) -> tuple[str, ...]:
     gate_ids = _QUALITY_GATES_BY_STEP.get(step_name, ())
+    if step_name == StepEnum.STA.value:
+        from chipcompiler.data.workspace import workspace_no_clock
+
+        if workspace_no_clock(workspace):
+            return ()
     if step_name != StepEnum.HARDEN.value:
         return gate_ids
 
@@ -287,6 +292,12 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
             )
         ]
     elif step.name == StepEnum.STA.value:
+        from chipcompiler.data.workspace import workspace_no_clock
+
+        if workspace_no_clock(workspace):
+            # Timing reports are not produced for no-clock designs; layout
+            # publication is enough for the STA step success contract.
+            return []
         report_dir = step.report.dir
         feature_dir = step.feature.dir
         report_corners = configured_sta_artifact_directories(workspace, report_dir)

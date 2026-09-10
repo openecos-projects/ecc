@@ -71,12 +71,44 @@ def _delete_staging_outputs(step: EccStep) -> None:
     _delete_path(sizer_staging_verilog(step))
 
 
+def _publish_passthrough_outputs(step: EccStep) -> bool:
+    """Copy input DEF/Verilog to step outputs (no-clock timing-opt degrade)."""
+    input_def = step.input.def_ or ""
+    input_verilog = step.input.verilog or ""
+    output_def = step.output.def_ or ""
+    output_verilog = step.output.verilog or ""
+    if not input_def or not os.path.isfile(input_def):
+        logger.error("Timing Opt passthrough missing input DEF: %s", input_def)
+        return False
+    if not input_verilog or not os.path.isfile(input_verilog):
+        logger.error("Timing Opt passthrough missing input Verilog: %s", input_verilog)
+        return False
+    if not output_def or not output_verilog:
+        logger.error("Timing Opt passthrough missing output paths")
+        return False
+    os.makedirs(os.path.dirname(output_def), exist_ok=True)
+    shutil.copy2(input_def, output_def)
+    shutil.copy2(input_verilog, output_verilog)
+    # Engine success contract for Timing Opt includes a geometry manifest when
+    # the step declares one; passthrough does not run ecc geometry export.
+    geometry_manifest = getattr(step.output, "geometry_manifest", None)
+    if geometry_manifest is not None:
+        geometry_dir = getattr(step.output, "geometry", None)
+        if geometry_dir:
+            Path(geometry_dir).mkdir(parents=True, exist_ok=True)
+        Path(geometry_manifest).parent.mkdir(parents=True, exist_ok=True)
+        Path(geometry_manifest).write_text("schema=ecc.geometry.v1\n", encoding="utf-8")
+    return True
+
+
 def run_step(
     workspace: Workspace,
     step: EccStep,
     ecc_module: object | None = None,
 ) -> StateEnum:
     del ecc_module
+
+    from chipcompiler.data.workspace import workspace_no_clock
 
     sub_flow = SizerSubFlow(workspace=workspace, workspace_step=step)
     run_sizer_step = SizerSubFlowEnum.run_sizer.value
@@ -85,6 +117,20 @@ def run_step(
 
     sub_flow.reset_stages()
     _delete_published_outputs(step)
+
+    if workspace_no_clock(workspace):
+        logger.info(
+            "No-clock workspace: skipping OpenSTA sizing for %s; copying DEF/Verilog through",
+            step.name,
+        )
+        sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Ongoing)
+        if not _publish_passthrough_outputs(step):
+            sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Imcomplete)
+            return StateEnum.Imcomplete
+        sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Success)
+        sub_flow.update_step(step_name=run_legalization_step, state=StateEnum.Success)
+        sub_flow.update_step(step_name=save_data_step, state=StateEnum.Success)
+        return StateEnum.Success
 
     if not is_eda_exist() or not is_sizer_runtime_exist():
         logger.error("Sizer tools not available for step %s", step.name)

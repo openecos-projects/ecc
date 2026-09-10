@@ -15,7 +15,21 @@ if TYPE_CHECKING:
 def create_default_sdc(workspace: "Workspace") -> None:
     """
     Create SDC file based on PDK and workspace parameters.
+
+    No-clock designs get a minimal placeholder SDC (no create_clock).
     """
+    from chipcompiler.data.workspace_config import coerce_bool, flow_no_clock
+
+    data = getattr(getattr(workspace, "parameters", None), "data", None)
+    no_clock = False
+    if isinstance(data, dict):
+        no_clock = coerce_bool(data.get("no_clock")) or flow_no_clock(data.get("_flow"))
+
+    if no_clock:
+        with open(workspace.pdk.sdc, "w") as file:
+            file.write("# Auto-generated SDC for no-clock design\n")
+        return
+
     sdc_content = []
     sdc_content.append("# Auto-generated SDC file\n")
     sdc_content.append("\n")
@@ -41,7 +55,11 @@ def refresh_generated_sdc(workspace: "Workspace") -> None:
 
     try:
         with sdc_path.open(encoding="utf-8") as file:
-            if file.readline().strip() != "# Auto-generated SDC file":
+            first_line = file.readline().strip()
+            if first_line not in {
+                "# Auto-generated SDC file",
+                "# Auto-generated SDC for no-clock design",
+            }:
                 return
     except (OSError, UnicodeError):
         return

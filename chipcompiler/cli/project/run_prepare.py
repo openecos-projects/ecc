@@ -353,11 +353,15 @@ def execute_fresh_run(
         input_filelist = generated_filelist
         origin_verilog = ""
     parameters = to_parameters(cfg)
+    if cfg.flow_no_clock:
+        parameters["no_clock"] = True
     pdk_root = resolve_pdk_root(cfg)
 
     if base is not None:
         update_parameters(parameters, base)
         parameters = base
+        if cfg.flow_no_clock:
+            parameters["no_clock"] = True
 
     if cfg.params_overrides or cli_overrides:
         from chipcompiler.cli.project.params import (
@@ -378,6 +382,11 @@ def execute_fresh_run(
         pdk_cli_overrides = build_pdk_overrides(resolved)
     else:
         pdk_cli_overrides = {}
+
+    create_flow_config = flow_config
+    if cfg.flow_no_clock:
+        create_flow_config = dict(flow_config or {})
+        create_flow_config["no_clock"] = True
 
     from chipcompiler.cli.project import migrate_fs
     from chipcompiler.engine.reconcile import _workspace_lock
@@ -410,7 +419,7 @@ def execute_fresh_run(
                     input_filelist=input_filelist,
                     pdk_root=pdk_root,
                     pdk_overrides=resolve_pdk_overrides(cfg, pdk_cli_overrides),
-                    flow_config=flow_config,
+                    flow_config=create_flow_config,
                     sdc=inputs.sdc,
                     spef=inputs.spef,
                     golden_verilog=inputs.golden_netlist,
@@ -441,7 +450,11 @@ def execute_fresh_run(
                 # CLI-born workspaces persist the named prefix chain as their target.
                 workspace_parameters = getattr(workspace, "parameters", None)
                 if workspace_parameters is not None:
-                    workspace_parameters.data["_flow"] = {"preset": cfg.flow_preset}
+                    flow_section = {"preset": cfg.flow_preset}
+                    if cfg.flow_no_clock:
+                        flow_section["no_clock"] = True
+                        workspace_parameters.data["no_clock"] = True
+                    workspace_parameters.data["_flow"] = flow_section
                     if not save_parameter(workspace_parameters):
                         return failed_workspace("failed to persist the flow target in params.toml")
         except Exception as exc:
@@ -454,7 +467,12 @@ def execute_fresh_run(
             engine_flow = EngineFlow(workspace=workspace)
             flow_builders = rtl2gds_api.get_flow_builders()
             if not engine_flow.has_init():
-                for step, tool, state in flow_builders[cfg.flow_preset]():
+                builder = flow_builders[cfg.flow_preset]
+                try:
+                    steps = builder(no_clock=cfg.flow_no_clock)
+                except TypeError:
+                    steps = builder()
+                for step, tool, state in steps:
                     engine_flow.add_step(step=step, tool=tool, state=state)
 
             engine_flow.create_step_workspaces()

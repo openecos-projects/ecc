@@ -99,16 +99,26 @@ def _yosys_source_config(workspace: Workspace, step: WorkspaceStep) -> tuple[boo
     return True, [], ""
 
 
+# Synthetic ABC delay target when no_clock leaves frequency unset or non-positive.
+_NO_CLOCK_SYNTH_FREQ_MHZ = 100
+
+
 def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:
     """Generate global_var.tcl content dynamically from workspace configuration."""
     if not workspace.design.top_module:
         raise ValueError("TOP_NAME (workspace.design.top_module) not set")
 
+    from chipcompiler.data.workspace import workspace_no_clock
+
     freq_mhz = workspace.parameters.data.get("frequency_max")
-    if freq_mhz is None:
-        raise ValueError("CLK_FREQ_MHZ (Frequency max [MHz]) not set")
-    if not isinstance(freq_mhz, (int, float)) or freq_mhz <= 0:
-        raise ValueError(f"CLK_FREQ_MHZ must be positive number, got {freq_mhz}")
+    if workspace_no_clock(workspace):
+        if not isinstance(freq_mhz, (int, float)) or freq_mhz <= 0:
+            freq_mhz = _NO_CLOCK_SYNTH_FREQ_MHZ
+    else:
+        if freq_mhz is None:
+            raise ValueError("CLK_FREQ_MHZ (Frequency max [MHz]) not set")
+        if not isinstance(freq_mhz, (int, float)) or freq_mhz <= 0:
+            raise ValueError(f"CLK_FREQ_MHZ must be positive number, got {freq_mhz}")
 
     rtl_file = step.input.verilog or ""
     filelist = (
