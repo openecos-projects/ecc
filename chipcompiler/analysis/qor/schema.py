@@ -35,6 +35,7 @@ SCHEMA = {
         "feasibility",
         "evidence",
         "qor_record",
+        "power",
         "scalar_summary",
         "diagnoses",
         "inflation",
@@ -203,6 +204,27 @@ def validate_report(report: dict) -> list:
                         isinstance(feature.get("input_source_artifacts"), list),
                         "feature.input_source_artifacts invalid",
                     )
+
+    power = report["power"]
+    require(isinstance(power, dict), "power must be an object")
+    if isinstance(power, dict):
+        for field in ("total_uw", "budget_uw"):
+            require(
+                finite_number(power.get(field), low=0, nullable=True),
+                f"power.{field} invalid",
+            )
+        require(
+            power.get("source_path") is None or isinstance(power.get("source_path"), str),
+            "power.source_path invalid",
+        )
+        require(
+            power.get("source_kind") in (None, "signoff", "synthesis"),
+            "power.source_kind invalid",
+        )
+        require(
+            power.get("corner") is None or isinstance(power.get("corner"), str),
+            "power.corner invalid",
+        )
 
     summary = report["scalar_summary"]
     require(isinstance(summary, dict), "scalar_summary must be an object")

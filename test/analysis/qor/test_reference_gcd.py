@@ -9,6 +9,7 @@ test_scoring.test_spec_reference_weighted_mean_formula).
 
 import json
 import os
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -19,6 +20,7 @@ from chipcompiler.analysis.qor import (
     render_qor_analysis,
 )
 from chipcompiler.analysis.qor.loader import load_workspace_qor_inputs
+from chipcompiler.analysis.qor.models import PowerObservation
 from chipcompiler.analysis.qor.schema import validate_report
 
 SUCCESS = "Success"
@@ -236,3 +238,17 @@ class TestReferenceGcd:
         assert "WS: +16.622ns" in text
         assert "[PRIORITIZED INTERVENTION HYPOTHESES]" in text
         assert "diag.timing.over_provisioned" in text
+
+    def test_renderer_includes_observed_power_without_budget(self, analysis):
+        report = replace(
+            analysis,
+            power=PowerObservation(
+                total_uw=12_400.0,
+                budget_uw=None,
+                source_path="/ws/sta_ecc/feature/MAX_125/Cworst/power_summary.json",
+                source_kind="signoff",
+                corner="MAX_125/Cworst",
+            ),
+        )
+        text = render_qor_analysis(report)
+        assert "Ptotal: 0.012W; no budget declared" in text

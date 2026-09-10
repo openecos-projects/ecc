@@ -20,6 +20,7 @@ from chipcompiler.analysis.qor.models import (
     SCHEMA_VERSION,
     SCORING_ENGINE,
     InflationView,
+    PowerObservation,
     QorAnalysis,
 )
 from chipcompiler.analysis.qor.scoring import evaluate_scalar_summary
@@ -59,6 +60,13 @@ def build_qor_analysis(workspace) -> QorAnalysis:
             compatibility_status=(
                 bundle.compatibility.status if bundle.compatibility else "INCOMPATIBLE"
             ),
+        ),
+        power=PowerObservation(
+            total_uw=inputs.power_total_uw,
+            budget_uw=inputs.power_budget_uw,
+            source_path=inputs.power_source_path,
+            source_kind=inputs.power_source_kind,
+            corner=inputs.power_corner,
         ),
         flow_steps=dict(inputs.flow_states),
         config_warnings=list(inputs.config_warnings),

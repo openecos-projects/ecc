@@ -254,6 +254,8 @@ class TestCornerLoading:
         assert inputs.power_source_path.endswith(
             "Synthesis_yosys/feature/post_synthesis/power_summary.json"
         )
+        assert inputs.power_source_kind == "synthesis"
+        assert inputs.power_corner == "post_synthesis"
 
     def test_signoff_power_uses_worst_configured_corner(self, tmp_path):
         workspace = _make_workspace(tmp_path, _FULL_FLOW)
@@ -293,6 +295,8 @@ class TestCornerLoading:
         inputs = load_workspace_qor_inputs(workspace)
         assert inputs.power_total_uw == 9.0
         assert inputs.power_source_path.endswith("MIN_m40/Cbest/power_summary.json")
+        assert inputs.power_source_kind == "signoff"
+        assert inputs.power_corner == "MIN_m40/Cbest"
 
     def test_setup_only_corner_is_loaded_with_fallback_marker(self, tmp_path):
         workspace = _make_workspace(tmp_path, _FULL_FLOW)

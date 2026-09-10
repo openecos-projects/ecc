@@ -14,6 +14,13 @@ class TestSchemaParity:
         ):
             analysis = build_qor_analysis(workspace=None)
         assert validate_report(analysis.to_dict()) == []
+        assert analysis.to_dict()["power"] == {
+            "total_uw": None,
+            "budget_uw": None,
+            "source_path": None,
+            "source_kind": None,
+            "corner": None,
+        }
 
     def test_missing_required_key_is_detected(self):
         from unittest import mock
@@ -69,3 +76,16 @@ class TestSchemaParity:
         payload["feasibility"]["gates"][0]["state"] = "maybe"
         errors = validate_report(payload)
         assert any("gate state invalid" in error for error in errors)
+
+    def test_invalid_power_observation_is_detected(self):
+        from unittest import mock
+
+        inputs = make_inputs(gcd_metrics(), corners=gcd_corners(), tclk_ns=20.0)
+        with mock.patch(
+            "chipcompiler.analysis.qor.load_workspace_qor_inputs",
+            lambda workspace: inputs,
+        ):
+            payload = build_qor_analysis(workspace=None).to_dict()
+        payload["power"]["source_kind"] = "estimated"
+        errors = validate_report(payload)
+        assert any("power.source_kind invalid" in error for error in errors)

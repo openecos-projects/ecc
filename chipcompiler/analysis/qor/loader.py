@@ -64,6 +64,8 @@ class QorInputs:
     rcx_expected_spef: float | None = None
     power_total_uw: float | None = None
     power_source_path: str | None = None
+    power_source_kind: str | None = None
+    power_corner: str | None = None
     sta_setup_only: bool = False
     tclk_ns: float | None = None
     profile: str = "balanced"
@@ -199,13 +201,28 @@ def _power_summary(workspace, workspace_root: Path, flow_states: dict):
     if flow_states.get(StepEnum.STA.value) == StateEnum.Success.value:
         feature_root = workspace_root / _STA_FEATURE_DIR
         totals = []
-        for _, directory in configured_sta_artifact_directories(workspace, feature_root):
+        configured = configured_sta_artifact_directories(workspace, feature_root)
+        if configured:
+            candidates = configured
+        else:
+            # Keep report generation useful for fixtures and workspaces whose
+            # STA config is unavailable: only persisted feature artifacts are
+            # considered, and the selected path remains auditable.
+            candidates = [
+                (
+                    path.parent.relative_to(feature_root).as_posix(),
+                    path.parent,
+                )
+                for path in sorted(feature_root.glob("*/*/" + STA_POWER_SUMMARY_FILENAME))
+            ]
+        for corner, directory in candidates:
             path = directory / STA_POWER_SUMMARY_FILENAME
             summary = read_sta_power_summary_json(path)
             if summary is not None:
-                totals.append((summary.dynamic_uw + summary.leakage_uw, path))
+                totals.append((summary.dynamic_uw + summary.leakage_uw, path, corner))
         if totals:
-            return max(totals, key=lambda item: item[0])
+            total, path, corner = max(totals, key=lambda item: item[0])
+            return total, path, "signoff", corner
 
     if flow_states.get(StepEnum.SYNTHESIS.value) == StateEnum.Success.value:
         path = (
@@ -217,8 +234,13 @@ def _power_summary(workspace, workspace_root: Path, flow_states: dict):
         )
         summary = read_sta_power_summary_json(path)
         if summary is not None:
-            return summary.dynamic_uw + summary.leakage_uw, path
-    return None, None
+            return (
+                summary.dynamic_uw + summary.leakage_uw,
+                path,
+                "synthesis",
+                POST_SYNTHESIS_STA_CORNER,
+            )
+    return None, None, None, None
 
 
 def _resolve_parameters(parameters: dict, warnings: list) -> tuple:
@@ -288,7 +310,9 @@ def load_workspace_qor_inputs(workspace) -> QorInputs:
         record = metrics.get(metric_id)
         return record.value if record is not None else None
 
-    power_total_uw, power_source = _power_summary(workspace, workspace_root, flow_states)
+    power_total_uw, power_source, power_source_kind, power_corner = _power_summary(
+        workspace, workspace_root, flow_states
+    )
     corners, sta_setup_only = _corner_slack(workspace, workspace_root, flow_states)
 
     return QorInputs(
@@ -305,6 +329,8 @@ def load_workspace_qor_inputs(workspace) -> QorInputs:
         rcx_expected_spef=_metric_value("rcx_expected_corner_count"),
         power_total_uw=power_total_uw,
         power_source_path=str(power_source) if power_source is not None else None,
+        power_source_kind=power_source_kind,
+        power_corner=power_corner,
         sta_setup_only=sta_setup_only,
         tclk_ns=tclk_ns,
         profile=profile,
