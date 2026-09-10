@@ -10,11 +10,20 @@ import logging
 import os
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
 from chipcompiler import tools
-from chipcompiler.data import EccOutput, EccStep, OriginDesign, StateEnum, StepEnum, Workspace
+from chipcompiler.data import (
+    EccOutput,
+    EccStep,
+    LogPaths,
+    OriginDesign,
+    StateEnum,
+    StepEnum,
+    Workspace,
+)
 from chipcompiler.data.workspace import Flow
 from chipcompiler.engine.flow import _VALID_TRANSITIONS, EngineFlow
 from chipcompiler.tools.ecc.runner import EccDesignReadError
@@ -487,6 +496,103 @@ class TestLegacyStateNormalization:
 
         persisted = json.loads((tmp_path / "home" / "flow.json").read_text())
         assert persisted["steps"][1]["state"] == StateEnum.Success.value
+
+
+def test_agent_flow_unusable_log_path_does_not_block_execution(tmp_path, monkeypatch):
+    """AgentEngineFlow: unusable step-log path must not block tool execution."""
+    import agent.engine as agent_engine
+
+    step_dir = tmp_path / "Floorplan_ecc"
+    step_dir.mkdir()
+
+    workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "flow.json"))
+    workspace.flow.data = {
+        "steps": [
+            {
+                "name": "Floorplan",
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+                "runtime": "",
+                "peak memory (mb)": 0,
+                "info": {},
+            }
+        ]
+    }
+    workspace.logger = Logger()
+
+    agent_flow = agent_engine.AgentEngineFlow.__new__(agent_engine.AgentEngineFlow)
+    agent_flow.workspace = workspace
+    agent_flow.workspace_steps = [
+        EccStep(
+            name="Floorplan",
+            tool="ecc",
+            directory=step_dir,
+            output=EccOutput(verilog=step_dir / "design.v"),
+            log=LogPaths(file=tmp_path),  # directory — open() raises IsADirectoryError
+        )
+    ]
+    agent_flow.engine_db = SimpleNamespace(engine=None)
+
+    mock_run = MagicMock(return_value=True)
+    monkeypatch.setattr(agent_engine, "run_agent_step", mock_run)
+    monkeypatch.setattr(agent_flow, "check_step_result", lambda **_kw: True)
+
+    result = agent_flow.run_step(agent_flow.workspace_steps[0], rerun=False)
+
+    assert mock_run.call_count == 1
+    assert result == StateEnum.Success
+
+    persisted = json.loads((tmp_path / "flow.json").read_text())
+    assert persisted["steps"][0]["state"] != StateEnum.Ongoing.value
+
+
+def test_agent_flow_step_failure_not_silently_swallowed(tmp_path, monkeypatch):
+    """AgentEngineFlow: run_agent_step() failure must not be swallowed."""
+    import agent.engine as agent_engine
+
+    log_file = tmp_path / "agent_step.log"
+    step_dir = tmp_path / "Floorplan_ecc"
+    step_dir.mkdir()
+
+    workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "flow.json"))
+    workspace.flow.data = {
+        "steps": [
+            {
+                "name": "Floorplan",
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+                "runtime": "",
+                "peak memory (mb)": 0,
+                "info": {},
+            }
+        ]
+    }
+    workspace.logger = Logger()
+
+    agent_flow = agent_engine.AgentEngineFlow.__new__(agent_engine.AgentEngineFlow)
+    agent_flow.workspace = workspace
+    agent_flow.workspace_steps = [
+        EccStep(
+            name="Floorplan",
+            tool="ecc",
+            directory=step_dir,
+            output=EccOutput(verilog=step_dir / "design.v"),
+            log=LogPaths(file=log_file),
+        )
+    ]
+    agent_flow.engine_db = SimpleNamespace(engine=None)
+
+    def _raise(**_kw):
+        raise RuntimeError("tool crashed")
+
+    monkeypatch.setattr(agent_engine, "run_agent_step", _raise)
+
+    result = agent_flow.run_step(agent_flow.workspace_steps[0], rerun=False)
+
+    assert result == StateEnum.Imcomplete
+
+    persisted = json.loads((tmp_path / "flow.json").read_text())
+    assert persisted["steps"][0]["state"] != StateEnum.Ongoing.value
 
 
 class TestRunStepsLedgerCompleteness:
