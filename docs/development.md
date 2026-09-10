@@ -756,6 +756,34 @@ installer wrapper exports `CHIPCOMPILER_OSS_CAD_DIR` and
 export CHIPCOMPILER_OSS_CAD_DIR=/path/to/oss-cad-suite
 ```
 
+### Kepler Formal (LEC engine)
+
+The `lec` and `postRouteLec` steps run the kepler-formal equivalence checker
+(GPL-3.0, invoked as a separate process). Resolution priority in
+`chipcompiler/tools/kepler_formal/utility.py`:
+
+1. Release root through `CHIPCOMPILER_KEPLER_FORMAL_ROOT` (root-level
+   `kepler-formal` launcher, then `bin/kepler-formal`).
+2. System PATH through `kepler-formal`.
+
+Manual install from the release archive:
+
+```bash
+curl -fsSL -o /tmp/kf.tar.gz \
+  https://github.com/openecos-projects/ecos-resource-assets/releases/download/kepler-formal-v1.0.0/kepler-formal-1.0.0-linux-x86_64.tar.gz
+mkdir -p ~/.local/kepler-formal
+tar -xzf /tmp/kf.tar.gz -C ~/.local/kepler-formal --strip-components=1
+export CHIPCOMPILER_KEPLER_FORMAL_ROOT=~/.local/kepler-formal
+ecc doctor   # kepler-formal should report pass
+```
+
+ECOS Studio installs the same archive through the Resource Manager and
+exports `CHIPCOMPILER_KEPLER_FORMAL_ROOT` for the ECC sidecar automatically.
+Verdict parsing relies on the tool's stdout evidence (`No difference was
+found.`); upgrading kepler-formal requires rerunning the LEC integration
+tests, because the tool exits 0 even for an unequal design pair.
+
+
 ### Sizer
 
 Sizer integration expects the external
