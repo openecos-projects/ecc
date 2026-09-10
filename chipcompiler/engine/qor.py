@@ -1,3 +1,9 @@
+"""Assemble Snapshot `qorAssessment` from committed analysis.
+
+Scoring rules live in `qor_scoring`; this module only validates metric
+records, calls `score_qor`, and attaches gate status from step summaries.
+"""
+
 import math
 from typing import Any
 

@@ -1,4 +1,4 @@
-from chipcompiler.engine.qor_scoring import QorScoringMetric, score_qor
+from chipcompiler.engine.qor_scoring import QorScoringMetric, score_metric, score_qor
 
 
 def _metric(step, metric_id, value, dimension, direction="lower_is_better", **kwargs):
@@ -43,3 +43,24 @@ def test_qor_scoring_ignores_forward_version_dimensions_and_steps():
     )
 
     assert result.dimensions == {"area_cost": (50.0, 1)}
+
+
+def test_qor_scoring_uses_flow_order_for_area_step_when_provided():
+    result = score_qor(
+        [
+            _metric("Harden", "die_area", 1500, "area_cost"),
+            _metric("DRC", "die_area", 300, "area_cost"),
+        ],
+        flow_order=("STA", "DRC", "Harden"),
+    )
+
+    assert result.area_scoring_step == "Harden"
+    assert result.dimensions == {"area_cost": (50.0, 1)}
+
+
+def test_score_metric_matches_fail_threshold_formulas():
+    slack = _metric("STA", "sta_setup_wns", -0.1, "timing", "higher_is_better")
+    assert score_metric(slack) == 50.0
+    assert score_metric(_metric("DRC", "drc_count", 0, "routability_physical")) == 100.0
+    utilization = _metric("Harden", "core_utilization", 0.55, "area_cost", "target_range")
+    assert score_metric(utilization) == 100.0

@@ -31,7 +31,7 @@ def _finish(subcommand: str, command_input, handler) -> None:
     execute_command("report", command_input, handler, render_key=f"report:{subcommand}")
 
 
-@report_app.command("qor", help="Show the overall QoR score report (GUI scoring rules)")
+@report_app.command("qor", help="Show the overall QoR score report")
 def qor_cmd(
     *,
     output_path: OutputPathOption = None,
