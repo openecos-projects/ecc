@@ -52,10 +52,6 @@ def _workspace(tmp_path: Path):
         {"Floorplan": {"Tap distance": 58}},
     )
     _write_json(
-        tmp_path / "config" / "fixfanout_ecc.json",
-        {"insert_buffer": "BUF_1", "max_fanout": 32},
-    )
-    _write_json(
         tmp_path / "config" / "dreamplace_ecc.json",
         {
             "target_density": 0.8,
@@ -82,7 +78,6 @@ def _workspace(tmp_path: Path):
         config={
             "CTS": cts_path,
             "Floorplan": tmp_path / "config" / "floorplan_ecc.json",
-            "fixFanout": tmp_path / "config" / "fixfanout_ecc.json",
             "dreamplace": tmp_path / "config" / "dreamplace_ecc.json",
             "legalization": pl_path,
             "filler": pl_path,
@@ -94,7 +89,6 @@ def _workspace(tmp_path: Path):
             data={
                 "steps": [
                     {"name": "Floorplan", "tool": "ecc"},
-                    {"name": "fixFanout", "tool": "ecc"},
                     {"name": "place", "tool": "dreamplace"},
                     {"name": "CTS", "tool": "ecc"},
                     {"name": "legalization", "tool": "dreamplace"},
@@ -113,8 +107,7 @@ def test_registry_covers_the_declared_public_physical_knobs():
         "floorplan.core_util",
         "floorplan.aspect_ratio",
         "floorplan.core_margin",
-        "synth.max_fanout",
-        "fixfanout.insert_buffer",
+        "cts.max_fanout",
         "place.target_density",
         "place.target_overflow",
         "place.cell_padding_x",
@@ -403,4 +396,46 @@ def test_duplicate_workspace_target_is_fail_closed_for_candidates(tmp_path):
             "legalization",
             [{"knob_id": "legalization.bndry_padding_x", "value": 4}],
             candidate_id="duplicate-legalization-candidate",
+        )
+
+
+def test_materialize_floorplan_patch_preserves_the_canonical_core_tree(tmp_path):
+    """A parameters patch lands in the canonical core subtree: no parallel
+    Core key, and the untouched members survive the save/load round trip."""
+    workspace = _workspace(tmp_path)
+
+    materialize_candidate_config(
+        workspace,
+        "Floorplan",
+        [
+            {"knob_id": "floorplan.core_util", "value": 0.7},
+            {"knob_id": "floorplan.aspect_ratio", "value": 1.1},
+            {"knob_id": "floorplan.core_margin", "value": [3, 3]},
+            {"knob_id": "floorplan.tap_distance", "value": 5},
+        ],
+        candidate_id="floorplan-candidate",
+    )
+
+    from chipcompiler.data.parameter import load_parameter
+
+    reloaded = load_parameter(Path(workspace.parameters.path)).data
+    assert "Core" not in reloaded
+    assert reloaded["core"] == {"utilitization": 0.7, "aspect_ratio": 1.1, "margin": [3, 3]}
+    assert "Core" not in workspace.parameters.data
+    assert workspace.parameters.data["core"]["utilitization"] == 0.7
+
+
+def test_materialize_rejects_missing_parameters_base_config(tmp_path):
+    """A missing canonical config is not an empty base: patching it would
+    recreate the TOML with only the patch keys, dropping the workspace
+    identity — fail closed instead."""
+    workspace = _workspace(tmp_path)
+    Path(workspace.parameters.path).unlink()
+
+    with pytest.raises(CandidateMaterializationError, match="missing candidate base config"):
+        materialize_candidate_config(
+            workspace,
+            "Floorplan",
+            [{"knob_id": "floorplan.core_util", "value": 0.7}],
+            candidate_id="missing-base",
         )

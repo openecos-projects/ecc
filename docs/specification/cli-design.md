@@ -14,7 +14,7 @@ also provide explicit commands for deeper inspection.
 - Keep default output concise and stable.
 - Make output easy to parse with simple tools such as `rg`, `awk`, and shell
   scripts.
-- Provide structured output for agents through `--json` and `--jsonl`.
+- Provide structured output for agents through `--plain`.
 - Preserve the existing Python API for advanced integration.
 - Build CLI behavior as a wrapper around the current Python APIs.
 
@@ -47,7 +47,7 @@ Examples:
 ```bash
 ecc status
 ecc log cts
-ecc config cts --resolved
+ecc config cts
 ```
 
 ### Disclosure Commands On Summary Lines
@@ -89,10 +89,10 @@ mode.
 Recommended style:
 
 ```text
-run=default status=failed workspace=runs/default inspect_cmd="ecc status" log_cmd="ecc log"
+workspace_id=default status=failed workspace=gcd/default inspect_cmd="ecc status" log_cmd="ecc log"
 step=synthesis tool=yosys status=success runtime=0:00:18 log_cmd="ecc log synthesis"
 step=floorplan tool=ecc status=success runtime=0:00:04 log_cmd="ecc log floorplan"
-config=place_default_config.json scope=step step=placement role=config path=runs/default/config/place_default_config.json inspect="ecc config placement --resolved --json"
+config=place_default_config.json scope=step step=placement role=config path=gcd/default/config/place_default_config.json inspect="ecc config placement"
 ```
 
 Current implementation note: `--plain` provides this stable key-value output.
@@ -108,38 +108,39 @@ interface.
 
 ### Structured Output
 
-Every inspection command should support:
-
-```bash
---json
---jsonl
-```
-
-Use `--json` for object-level output and `--jsonl` for stream or list output.
+Every record-producing command supports `--plain`, which prints one stable
+key-value record per line for scripting.
 
 Example:
 
-```jsonl
-{"step":"synthesis","tool":"yosys","status":"success","runtime":"0:00:18","log_cmd":"ecc log synthesis"}
-{"config":"place_default_config.json","scope":"step","step":"placement","role":"config","path":"runs/default/config/place_default_config.json","inspect":"ecc config placement --resolved --json"}
+```text
+step=routing tool=ecc status=failed runtime=0:03:42 log_cmd="ecc log routing"
+config=route_ecc.json scope=step step=routing role=config path=gcd/default/config/route_ecc.json inspect="ecc config routing"
 ```
 
-Text output and JSON output should describe the same objects. The text output is
-the human and shell interface; JSON is the strict machine interface.
+Text output and plain output describe the same objects: pretty text is the
+human interface, `--plain` is the strict machine interface.
 
 Current implementation status:
 
 | Command family | Structured options |
 | --- | --- |
 | `ecc init` | `--plain` |
-| `ecc check` | `--json`, `--plain` |
-| `ecc run`, `ecc status`, `ecc log`, `ecc config` | `--json`, `--jsonl`, `--plain` |
-| `ecc param list/show/set/unset/diff` | `--json`, `--jsonl`, `--plain` |
-| `ecc version` | `--json` |
+| `ecc check`, `ecc doctor` | `--plain` |
+| `ecc run`, `ecc status`, `ecc log`, `ecc config`, `ecc migrate` | `--plain` |
+| `ecc param list/show/set/unset/diff` | `--plain` |
+| `ecc pdk set-root/show/unset` | `--plain` |
+| `ecc project set/unset/add/remove/show` | `--plain` |
+| `ecc workspace refresh` | `--plain` |
+| `ecc signoff inspect/export` | `--plain` |
+| `ecc report summary/qor/checklist/step` | `--plain` |
+| `ecc doc` | `--plain` |
+| `ecc version` | hidden `--json` only (desktop app contract) |
+| `ecc rpc serve` | none (machine protocol) |
+| `ecc layout-image` | none (tool invocation; produces a file) |
 
-When multiple project output options are provided, the implementation selects
-`--jsonl` first, then `--json`, then `--plain`, and otherwise renders pretty
-text.
+When `--plain` is given, the implementation renders plain records; otherwise it
+renders pretty text.
 
 ### Object-Oriented CLI Model
 
@@ -148,7 +149,7 @@ Commands should be organized around flow objects instead of internal tools:
 | Object | Description |
 | --- | --- |
 | Project | User design directory and `ecc.toml` |
-| Run | One execution instance with a stable run id or tag |
+| Workspace | One managed execution environment identified by its project-local name |
 | Step | A flow step such as synthesis, placement, CTS, routing |
 | Artifact | DEF, GDS, Verilog, SPEF, reports, logs, scripts |
 | Metric | QoR values such as WNS, TNS, area, HPWL, DRC count |
@@ -195,12 +196,20 @@ ecc --version
 ecc version
 ecc init
 ecc check
+ecc doctor
 ecc run
 ecc status
 ecc log
 ecc config
+ecc migrate
 ecc param
+ecc pdk
+ecc project
+ecc workspace
+ecc signoff
+ecc report
 ecc rpc
+ecc layout-image
 ```
 
 Responsibilities:
@@ -211,16 +220,86 @@ Responsibilities:
 | `ecc version` | Show ECC runtime and component versions |
 | `ecc init` | Create a project skeleton and `ecc.toml` |
 | `ecc check` | Validate RTL, constraints, PDK, tools, and config |
-| `ecc run` | Execute the configured default flow |
+| `ecc doctor` | Probe host environment (PDK, yosys+slang, bundled tools); optional failures do not exit non-zero |
+| `ecc run` | Execute the configured flow (`--preset` overrides `[flow] preset` for one run) |
 | `ecc status` | Summarize run and step state |
 | `ecc log` | Show available logs or complete step log content |
-| `ecc config` | Show user or resolved configuration |
+| `ecc config` | Show the resolved project or step configuration |
+| `ecc migrate` | Migrate a legacy `runs/` project to the manifest layout |
 | `ecc param` | List, inspect, set, unset, and diff parameter overrides |
+| `ecc pdk` | `set-root`/`show`/`unset` manage the `[pdk] root` path |
+| `ecc project` | Edit declared design, PDK, and flow resource fields in `ecc.toml` |
+| `ecc workspace` | Refresh a declared workspace from current `ecc.toml` without running it |
+| `ecc signoff` | Inspect package readiness and export the tar.gz package |
+| `ecc report` | Write design-summary, QoR, and checklist reports; show step evidence |
 | `ecc rpc` | Serve the private JSON-RPC runtime sidecar over stdio |
+| `ecc layout-image` | Render a GDS file into an image |
+
+`ecc run` preflights the tools its preset needs (yosys for synthesis,
+dreamplace for placement/legalization, ecc-tools always) and fails with
+`env_not_ready` before creating a workspace. `ecc signoff inspect` is
+advisory — a blocked readiness review still exits 0; `ecc signoff export`
+enforces completeness (`signoff_incomplete` on missing required resources).
 
 The former standalone metrics, artifact listing, and diagnosis commands are no
 longer part of the public root command surface. Metrics files and generated
 artifacts remain part of the workspace data model and flow outputs.
+
+### Interface Conventions
+
+The public command graph is organized by the resource it owns rather than by
+implementation detail:
+
+| Group | Subcommands | Scope |
+| --- | --- | --- |
+| `ecc signoff` | `inspect`, `export` | Signoff package readiness and archive generation |
+| `ecc report` | `summary`, `qor`, `checklist`, `step` | File reports and per-step evidence viewing |
+| `ecc pdk` | `set-root`, `show`, `unset` | Project PDK configuration |
+| `ecc param` | `list`, `show`, `set`, `unset`, `diff` | Project parameter overrides |
+| `ecc project` | `set`, `unset`, `add`, `remove`, `show` | Project design, PDK, and flow declarations in `ecc.toml` |
+| `ecc workspace` | `refresh` | Recreate one declared workspace from `ecc.toml`, without execution |
+
+Commands that consume a workspace use `--project DIR` (default: current
+directory) and, when selection matters, `--workspace NAME`. The name resolves
+only through the project's `project.json`; it is not a direct filesystem path.
+Run-scoped inspection and reporting commands (`run`, `status`, `log`,
+`config`, `report *`, `signoff *`) may combine the two options, and the read-only
+commands (`status`, `log`, `config`, `report step`) never load or mutate the
+workspace. Record-producing commands use default human text and `--plain`
+for stable key-value records. Commands that only create, configure, or
+serve a process expose only the options meaningful for that operation.
+
+### Unified CLI Standard
+
+The command graph follows these rules; new commands must follow them too:
+
+- **Architecture.** Top-level commands are workflow-scale verbs (`init`,
+  `check`, `run`, `status`, `log`, `config`, `doctor`, `migrate`, `version`)
+  plus the frozen tool invocations (`layout-image`). Resource management and
+  reporting live in noun groups (`param`, `pdk`, `project`, `workspace`,
+  `signoff`, `report`, `rpc`).
+- **Subcommand verbs.** Mutable resources use the CRUD set
+  (`list`, `show`, `set`, `unset`, `diff`). The `report`
+  group names its artifacts instead (`summary`, `qor`, `checklist`, `step`)
+  because `report <artifact>` reads as one action.
+- **Naming.** Lowercase single words; multi-word names use kebab-case
+  (`set-root`, `layout-image`). Help strings start with an imperative verb.
+- **Selectors.** `--workspace NAME` selects a declared or newly-created
+  project-local workspace and may be combined with `--project`. File-producing
+  commands use `-o/--output`.
+- **Status vs full evidence.** `ecc status` is the lightweight progress check;
+  `ecc report step` is the full per-step evidence report (features, analysis,
+  checklist). Both are read-only.
+- **Module layout.** One handler package (`cli/command_handlers/`), command
+  registration in `cli/commands/`, framework in `cli/core/`, read-only probing
+  in `cli/inspection/`, all rendering in `cli/rendering/` behind a single
+  registry keyed by full command path (top-level name, or `group:sub`).
+- **Frozen surfaces.** The GUI invokes `ecc rpc serve --stdio
+  [--persistent-db]`, `ecc version --json` (schema: `schema_version`, `runtime`,
+  `ecc`, `dreamplace`, `ecc_tools`, `tools`), the `ecc --version` single line,
+  and `ecc layout-image --gds <gds> --image <png>` as subprocess contracts.
+  Additive optional flags are allowed; these names, flags, and output schemas
+  must not change.
 
 ### Project-Oriented Entry
 
@@ -239,95 +318,97 @@ gcd/
 ├── ecc.toml
 ├── rtl/
 ├── constraints/
-└── runs/
+├── project.json       # written when the first workspace is registered
+└── default/           # the default managed workspace after `ecc run`
 ```
 
 Command-line arguments may override configuration values, but `ecc.toml` should
 be the primary user-facing interface.
 
-Current implementation supports `--project` on project and `param` commands.
+Current implementation supports `--project` on project and `param` commands;
+workspace-consuming commands accept a managed `--workspace NAME` in that
+project.
 When omitted, the current working directory is treated as the project directory.
 
 ### Step-Level Execution
 
-Back-end flow work is iterative. An existing workspace can be resumed or
-re-executed in place through `ecc run --workspace`:
+Back-end flow work is iterative. An existing managed workspace can be resumed
+or re-executed in place:
 
 ```bash
-ecc run --workspace /path/to/workspace
-ecc run --workspace /path/to/workspace --resume
-ecc run --workspace /path/to/workspace --from CTS
-ecc run --workspace /path/to/workspace --only place
-ecc run --workspace /path/to/workspace --only place --force
+ecc run --workspace default
+ecc run --workspace default --resume
+ecc run --workspace default --from CTS --to route
+ecc run --workspace default --only place
+ecc run --workspace default --only place --force
 ```
 
 Step names and order come from the workspace's persisted `home/flow.json`.
 Omitting a selector has resume semantics: execution starts at the first step
 whose state is not `Success` and reuses the successful prefix. `--from <step>`
-re-executes the named step and its persisted suffix. `--only <step>` runs
-exactly that step; an already successful step is a no-op unless `--force` is
-given. Re-executing a step marks downstream steps `Unstart`, replaces the
-executed step's `output/`, and regenerates `workspace/config/*.json` from the
-persisted parameters.
+re-executes the named step and its persisted suffix; with `--to <step>` it
+executes the inclusive range. `--only <step>` runs exactly that step; an
+already successful step is a no-op unless `--force` is given. Re-executing a
+step marks downstream steps `Unstart` while retaining their output files.
 
-`--resume`, `--from`, and `--only` are mutually exclusive, `--force` requires
-`--only`, and workspace mode cannot be combined with `--project`, `--run-id`,
-`--overwrite`, or `--set`. Arbitrary step sequences, step ranges (`--to`,
-`--after`), and run-time parameter overlays remain planned work.
-
-Project mode creates a fresh `runs/<run_id>` workspace and supports:
-
-```bash
-ecc run --overwrite
-ecc run --set place.target_density=0.65
-```
-
-Each run should have a stable run id and may have a user tag:
-
-```bash
-ecc run --tag baseline
-ecc run --tag dense_place
-ecc diff baseline dense_place
-```
-
-The run writer and the inspection commands resolve the run directory through
-the same rule: `--run-id` wins over `[flow] run` in `ecc.toml`, which falls
-back to `runs/default`. Accepted forms are a bare name (`runs/<name>`), a
-project-relative path with a separator, or an absolute path used verbatim:
-
-```bash
-ecc run --run-id exp1
-ecc run --run-id sweeps/sweep_001/run_004 --overwrite
-ecc status --run-id default
-ecc log cts --run-id run_005
-ecc config cts --resolved --run-id sweeps/sweep_001/run_004
-```
-
-With `[flow] run = "exp1"` in `ecc.toml`, bare `ecc run`, `ecc status`,
-`ecc log`, and `ecc config` all target `runs/exp1`. A run id that resolves to
-the project directory or the `runs/` container is rejected outright.
-`--overwrite` deletes only a directory ECC recognizes: the target must not
-exist yet, be an empty directory, or contain a real `home/flow.json`, and it
-must resolve canonically where its spelling claims — no symlink component may
-redirect it, even behind `..` segments (the project directory is the trusted
-anchor). Refusals happen before any `chmod` or `rmtree`.
-
-Run tags and `ecc diff` remain planned work.
+`--resume`, `--only`, and a range are mutually exclusive; `--force` requires
+`--only`. A new bounded workspace requires both `--from` and `--to` and cannot
+combine with `--preset`, `--overwrite`, `--resume`, `--only`, or `--force`.
+The builder dynamically slices the canonical RTL-to-GDS flow for that range.
+`--workspace` is a project-local single path segment and can be combined with
+`--project`; no direct workspace paths or run ids are supported. Bare `ecc run`
+creates `default` for a project with no workspace, resumes its sole active
+workspace, and reports `workspace_required` when several are active.
 
 ### Parameter Management
 
-Parameters are part of the implemented CLI surface. Project-level overrides can
-be stored in `ecc.toml` under `[params]`, set persistently with `ecc param set`,
-or applied to a single run with repeated `ecc run --set key=value` flags.
+Parameters are part of the implemented CLI surface. Legacy semantic parameters
+and reviewed static tool-template fields share `ecc param`. Project-level
+overrides are stored in `ecc.toml` under nested `[params.*]` tables, set
+persistently with `ecc param set`, or applied to a single run with repeated
+`ecc run --set key=value` flags. The concise default listing shows legacy
+parameters and explicit overrides; `--step <owner>` and `--all` enumerate the
+reviewed direct schemas.
 
 ```bash
 ecc param list
+ecc param list --step cts
+ecc param list --all
 ecc param show place.target_density
 ecc param set place.target_density 0.65
+ecc param set cts.skew_bound 0.05
+ecc param set cts.routing_layer '[4, 5]'
 ecc param unset place.target_density
 ecc param diff
-ecc run --set synth.max_fanout=16
+ecc param set place.target_density 0.65 --workspace baseline
+ecc param diff --workspace baseline
+ecc run --set cts.max_fanout=16
 ```
+
+With `--workspace NAME`, `ecc param` changes only the selected existing
+workspace's `home/params.toml`. It immediately refreshes the generated
+configuration and invalidates the owning flow step plus its suffix, but does
+not run those steps. PDK resource paths and references require a complete
+reconstruction instead:
+
+```bash
+ecc project set design.def inputs/gcd.def
+ecc project set design.sdc constraints/gcd.sdc
+ecc project set design.rtl rtl/gcd.sv rtl/alu.sv
+ecc project add design.rtl rtl/fifo.sv
+ecc project set pdk.root /path/to/ics55
+ecc project set flow.preset rtl2gds
+ecc workspace refresh baseline
+```
+
+`ecc project` edits only `ecc.toml`: the field registry covers the `[design]`
+inputs (`name`, `top`, `rtl`, `netlist`, `golden_netlist`, `def`, `sdc`,
+`spef`, `clock_port`, `frequency_mhz`), `[pdk] name/root`, and `[flow] preset`.
+`ecc param` continues to own all `[params.*]` and `[pdk.overrides]` fields.
+`ecc workspace refresh NAME` accepts only a workspace declared in
+`project.json`, recreates it with the existing overwrite safeguards, records
+status `not_started`, and never executes the flow. `ecc run --workspace NAME
+--overwrite` remains the refresh-and-run form.
 
 ### Version Information
 
@@ -348,8 +429,9 @@ package `__version__`.
 
 ### Runtime Sidecar RPC
 
-Workspace operations are no longer exposed as a compatibility command namespace.
-The supported runtime surface is the private stdio sidecar:
+The old workspace create/run compatibility commands are not exposed as a public
+CLI namespace. The supported runtime session surface is the private stdio
+sidecar:
 
 ```bash
 ecc rpc serve --stdio
@@ -393,7 +475,7 @@ and stop session-scoped DB reuse explicitly; `workspace.open`,
 reuse for a session that has not called `db.ensure`.
 
 The former custom workspace JSON object is not part of the supported output
-contract. See `docs/workspace-cli.md` for framing examples and method payloads.
+contract. See `docs/rpc-guide.md` for framing examples and method payloads.
 
 ## Output Contracts
 
@@ -408,9 +490,9 @@ kind=<object-kind> key=value ... disclosure_key="ecc command ..."
 Examples:
 
 ```text
-run=default status=success workspace=runs/default inspect_cmd="ecc status" log_cmd="ecc log"
+workspace_id=default status=success workspace=gcd/default inspect_cmd="ecc status" log_cmd="ecc log"
 step=routing tool=ecc status=failed runtime=0:03:42 log_cmd="ecc log routing"
-config=route_ecc.json scope=step step=routing role=config path=runs/default/config/route_ecc.json inspect="ecc config routing --resolved --json"
+config=route_ecc.json scope=step step=routing role=config path=gcd/default/config/route_ecc.json inspect="ecc config routing"
 ```
 
 Rules:
@@ -432,8 +514,6 @@ Current output modes:
 | --- | --- | --- |
 | Pretty text | default | Human-oriented grouped output with disclosure commands |
 | Plain text | `--plain` | Stable one-record-per-line key-value output |
-| JSON | `--json` | Project and `param` JSON envelope with `records`; `version` and `workspace` use their own root-level schemas |
-| JSONL | `--jsonl` | One JSON object per record |
 
 Plain output preserves record keys exactly. Pretty text may normalize labels for
 display, for example rendering `inspect_cmd` as `inspect`.
@@ -444,7 +524,7 @@ Errors should also follow progressive disclosure. A failing command should print
 a concise summary and actionable disclosure commands:
 
 ```text
-kind=error error=run_exists run=default workspace=runs/default overwrite="ecc run --overwrite"
+kind=error error=run_exists workspace_id=default workspace=gcd/default overwrite="ecc run --overwrite"
 step=routing status=unknown_step inspect="ecc status"
 ```
 
@@ -460,6 +540,12 @@ The CLI should move toward a single project configuration file:
 name = "gcd"
 top = "gcd"
 rtl = ["rtl/gcd.v"]
+# Optional inputs for a non-RTL entry range:
+# netlist = "inputs/gcd.v"
+# golden_netlist = "inputs/gcd-golden.v"
+# def = "inputs/gcd.def"
+# sdc = "constraints/gcd.sdc"
+# spef = "inputs/gcd.spef"
 clock_port = "clk"
 frequency_mhz = 100.0
 
@@ -468,40 +554,50 @@ name = "ics55"
 root = "/path/to/ics55"
 
 [flow]
-preset = "rtl2gds" # rtl2gds | rcx | harden | syn_sta
-run = "default"
+preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
 
 [params.place]
 target_density = 0.65
 
 [params.sta]
 max_paths = 1000
+
+[params.cts]
+skew_bound = "0.05"
+
+[params.floorplan.phy_placer.well_tap]
+distance_micron = 30.0
+
+[pdk.overrides]
+tech = "prtech/techLEF/N551P6M_ecos.lef"
 ```
 
-Current validation supports the `ics55` PDK. `flow.run` selects the run
-directory and accepts the same forms as `--run-id`: a bare name, a
-project-relative path, or an absolute path; `"default"` (or an absent key)
-keeps `runs/default`. Values that cannot name a run directory — empty,
-whitespace-padded, NUL-containing, or non-string — are rejected, and
-inspection commands fail with a config error when `[flow] run` is present but
-invalid. Valid
+Current validation supports the `ics55` PDK. `[flow].run` is rejected with
+`unsupported_flow_run`; workspace selection belongs to `--workspace NAME`.
+The project-level `[design]` declarations are resolved only for fresh creation,
+then copied into that workspace's `origin/`; `project.json` carries source
+declarations but no per-workspace input snapshot. Valid
 flow presets are discovered from the `build_*_flow` defs in
-`chipcompiler/rtl2gds/builder.py` (currently `rtl2gds`, `rcx`, `harden`, and
-`syn_sta`). The preset selects the flow builder: `rcx` appends the RCX and STA
-steps to the rtl2gds flow, `harden` additionally appends the Harden step, and
-`syn_sta` runs synthesis only, with a best-effort netlist-level STA report
+`chipcompiler/rtl2gds/builder.py` (currently `rtl2gds`, `syn_sta`, and
+`synthesis_lec`). The `rtl2gds` preset includes synthesis-level LEC immediately
+after synthesis, followed by every physical-design step
+through RCX, STA, and Harden; `syn_sta` runs synthesis only, with a best-effort netlist-level STA report
 (an STA failure does not fail the step). Switching
 presets on an existing run requires `ecc run --overwrite` to rebuild the
 workspace.
-`design.rtl` must contain exactly one entry; use a
-filelist (`.f`, `.fl`, or `.filelist`) for multi-source RTL designs. If
-`pdk.root` is empty, the CLI falls back to `CHIPCOMPILER_ICS55_PDK_ROOT` or
+`design.rtl` accepts one or more source entries. A filelist (`.f`, `.fl`, or
+`.filelist`) is also accepted; multiple direct source entries are assembled
+into a generated filelist when the workspace is created. If `pdk.root` is
+empty, the CLI falls back to `CHIPCOMPILER_ICS55_PDK_ROOT` or
 `ICS55_PDK_ROOT`.
 
 ### PDK Field Overrides
 
 Users can override individual fields of a built-in PDK (such as `ics55`) directly
-from `ecc.toml` without authoring a complete external PDK JSON:
+from `ecc.toml` without authoring a complete external PDK JSON. The CLI exposes
+the allowed content paths as `pdk.tech`, `pdk.lefs`, `pdk.libs`,
+`pdk.mapping_file`, `pdk.sdc`, and `pdk.spef`; these commands write the same
+`[pdk.overrides]` fields. `pdk.root` remains `ecc pdk set-root`.
 
 ```toml
 [pdk]
@@ -521,15 +617,15 @@ The override delta reaches the Yosys builder and other tool steps within a singl
   `tap_cell`, `end_cap`, `buffers`, `fillers`, `tie_high_cell`, `tie_high_port`,
   `tie_low_cell`, `tie_low_port`, `dont_use`, `abc_driver_cell`, `abc_load`):
   Applied in memory and consumed within the run (e.g., baked into generated Yosys
-  scripts). Not written to `parameters.json`. On `load_workspace` (e.g., `ecc status`
-  or subsequent run without `[pdk.overrides]` in `ecc.toml`), these fields are
+  scripts). Not written to `home/params.toml`. On `load_workspace` (e.g., a subsequent
+  `ecc run` without `[pdk.overrides]` in `ecc.toml`), these fields are
   recomputed from the base built-in PDK. Effect: single-run only, dropped on reload
   unless the override is present in `ecc.toml` for the next run. `corners` is the
   exception in this list: no tool step currently consumes it (PDK-to-RCX propagation
   is not wired in `refresh_workspace_config`), so a `corners` override only changes
   the in-memory PDK — exactly like the base PDK's own `corners`.
 
-- **`root`**: Written to `parameters.json` as `PDK Root` and re-read by `load_workspace`.
+- **`root`**: Written to `home/params.toml` as `pdk_root` and re-read by `load_workspace`.
   `root` cannot be overridden; set `pdk.root` in `[pdk]` instead.
 
 - **Path fields** (`tech`, `lefs`, `libs`): Written to `db.json` at build time and
@@ -546,6 +642,14 @@ The override delta reaches the Yosys builder and other tool steps within a singl
 The primary use case is tuning cell lists (`dont_use`) and synthesis parameters
 (`abc_load`), which are scalar/list fields consumed within a run.
 
+Direct tool configuration is deliberately schema-bound: every JSON template
+field is either represented by one reviewed per-step schema, covered by an
+existing legacy mapping, or listed as a protected workspace path. Workspace
+input, output, temporary, generated-artifact, and STA multi-corner liberty
+paths are not valid `ecc param` keys. Direct overrides are persisted as a
+structured `config_overrides` patch in `home/params.toml` and replayed
+after each workspace configuration refresh.
+
 Overrides are validated at `ecc check` time — unknown keys, type mismatches, and
 path-existence failures are caught before any run begins. Relative path values in
 overrides resolve by field semantics: PDK-content paths (`tech`, `lefs`, `libs`,
@@ -558,19 +662,17 @@ sets: the required `tech`, `lefs`, and `libs` (checked for every PDK by
 when an override supplies them). A non-empty value pointing at a missing file
 fails `ecc check` regardless of whether that field is later persisted or
 regenerated.
-`ecc config --resolved` surfaces the raw `[pdk.overrides]` input as a project
+`ecc config` surfaces the raw `[pdk.overrides]` input as a project
 configuration entry.
 
 The resolved configuration used by each step should be inspectable:
 
 ```bash
-ecc config --resolved
-ecc config placement --resolved
+ecc config
+ecc config placement
 ecc param list
 ecc param show place.target_density
 ```
-
-The current `ecc config` command requires `--resolved`.
 
 ## AI-Native Behavior
 
@@ -612,7 +714,6 @@ commands.
 - [x] `ecc status`
 - [x] `ecc log`
 - [x] Stable grep-friendly summary output through `--plain`
-- [x] `--json` and `--jsonl` for status, log, run, config, and param commands
 
 Success criteria:
 
@@ -623,8 +724,8 @@ Success criteria:
 
 ### Phase 2: Debug And Traceability
 
-- [x] `ecc config --resolved`
-- [x] Run selection for inspection commands with `--run-id`
+- [x] `ecc config`
+- [x] Managed workspace selection for inspection commands with `--workspace NAME`
 - [x] Parameter overrides with `ecc param` and `ecc run --set`
 - [x] Private runtime sidecar under `ecc rpc serve --stdio`
 - [ ] Run tags and run comparison basics
@@ -633,8 +734,8 @@ Success criteria:
 
 - [x] A failed step can be investigated through status, log, and resolved config
   output.
-- [x] Agent frameworks can follow disclosure commands from `--plain`, `--json`,
-  or `--jsonl` output without parsing prose.
+- [x] Agent frameworks can follow disclosure commands from `--plain` output
+  without parsing prose.
 
 ### Phase 3: Exploration And Assistance
 
@@ -661,12 +762,15 @@ implementation refactors. Integrations should invoke the packaged `ecc` command
 or call `chipcompiler.cli.main.run(argv)` rather than importing CLI helper
 modules directly.
 
-The legacy top-level parameter-only invocation with `--workspace` is no longer
-part of the CLI contract. Old-workspace automation should use the private
-JSON-RPC runtime sidecar, open or create a workspace session, and pass the
-returned `workspaceId` to follow-up runtime calls. The long-term default is
-project-oriented and configuration-driven through `ecc.toml` and subcommands
-such as `ecc run --project <dir>`.
+The supported workspace parameter form is `ecc param <verb> KEY --workspace
+NAME` for a workspace declared in the project manifest. It persists a
+workspace-local override and refreshes the affected configuration without
+running the flow. PDK resources and input references are project-level values:
+edit `ecc.toml` through `ecc project` (or the matching `ecc pdk`/`ecc param`
+commands), then use `ecc workspace refresh NAME`. Old workspace create/run
+automation should use the private JSON-RPC runtime sidecar. The long-term
+default is project-oriented and configuration-driven through `ecc.toml` and
+subcommands such as `ecc run --project <dir>`.
 
 The project-level Python APIs should remain compatible with existing Python
 users. Changes needed for the CLI should be additive and should not force

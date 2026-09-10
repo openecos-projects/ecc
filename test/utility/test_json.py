@@ -107,6 +107,12 @@ class TestJsonReadStrict:
         with pytest.raises(JsonReadError, match="Invalid JSON"):
             json_read_strict(path)
 
+    def test_raises_on_invalid_utf8(self, tmp_path):
+        path = tmp_path / "undecodable.json"
+        path.write_bytes(b"\xff")
+        with pytest.raises(JsonReadError, match="Invalid JSON"):
+            json_read_strict(path)
+
     @pytest.mark.skipif(os.getuid() == 0, reason="root bypasses file permissions")
     def test_raises_on_io_error(self, tmp_path):
         path = tmp_path / "unreadable.json"

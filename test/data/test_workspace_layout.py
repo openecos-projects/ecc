@@ -20,6 +20,7 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
     WorkspaceStepBase,
+    YosysLecStep,
     YosysOutput,
     YosysStep,
 )
@@ -32,11 +33,13 @@ from chipcompiler.utility.log import Logger
 def test_workspace_step_is_base_alias():
     assert WorkspaceStep is WorkspaceStepBase
     assert issubclass(YosysStep, WorkspaceStep)
+    assert issubclass(YosysLecStep, WorkspaceStep)
     assert issubclass(EccStep, WorkspaceStep)
 
 
 def test_variants_are_isinstance_of_base():
     assert isinstance(YosysStep(), WorkspaceStep)
+    assert isinstance(YosysLecStep(), WorkspaceStep)
     assert isinstance(EccStep(), WorkspaceStep)
 
 
@@ -58,7 +61,7 @@ def test_def_keyword_is_exposed_as_def_attribute():
 
 
 def test_no_value_coercion_str_stays_str():
-    # `db` legitimately holds a str (sizer uses ""); the layout must not coerce it.
+    # `db` legitimately holds a str; the layout must not coerce it.
     output = EccOutput(db="/some/str/path")
     assert output.db == "/some/str/path"
     assert isinstance(output.db, str)
@@ -158,7 +161,7 @@ def test_log_projection_yosys_shape_has_no_foreign_keys(tmp_path):
     step = yosys_builder.build_step(workspace, "Synthesis", None, tmp_path / "in.v")
     keys = _shape_keys(step)
     assert keys["output"] == sorted(
-        ["dir", "def", "verilog", "sim_verilog", "json", "report", "image"]
+        ["dir", "def", "verilog", "sim_verilog", "golden_verilog", "json", "report", "image"]
     )
     assert keys["data"] == sorted(["dir", "tmp"])
     assert keys["feature"] == sorted(["dir", "step", "generic_stat", "stat"])
@@ -219,7 +222,7 @@ def test_log_projection_sizer_shape_includes_sizer_script_keys(tmp_path):
     keys = _shape_keys(step)
     # sizer is the only shape that populates sizer_env/sizer_cmd.
     assert keys["script"] == sorted(["dir", "main", "sizer_env", "sizer_cmd"])
-    assert step.output.db == ""
+    assert isinstance(step.output.db, Path)
 
 
 class _CapturingLogger(Logger):

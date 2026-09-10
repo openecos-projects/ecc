@@ -23,8 +23,6 @@ class ECCToolsPlot:
         match self.step.name:
             case StepEnum.FLOORPLAN.value:
                 state = state & self.default_plot()
-            case StepEnum.NETLIST_OPT.value:
-                state = state & self.default_plot()
             case StepEnum.PLACEMENT.value:
                 state = state & self.default_plot() & self.plot_placement_heatmap()
             case StepEnum.CTS.value:

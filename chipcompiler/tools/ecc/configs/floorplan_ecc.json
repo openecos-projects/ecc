@@ -4,9 +4,10 @@
         "thread_number": 16
     },
     "macro_placer": {
+        "mode": "auto",
+        "file_path": "",
         "macro_placement_halo": 3.0,
-        "macro_routing_halo": 3.0,
-        "macro_location_path": "macro_locations.txt"
+        "macro_routing_halo": 3.0
     },
     "die_builder": {
         "mode": "die_util",
@@ -27,6 +28,8 @@
         }
     },
     "io_placer": {
+        "mode": "auto",
+        "file_path": "",
         "io_layer_list": [
             "MET3",
             "MET4"

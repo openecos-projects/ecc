@@ -127,6 +127,7 @@
         rosettakit
         scipy
         torch
+        tomli-w
         tqdm
         typer
         uvicorn

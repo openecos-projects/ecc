@@ -30,19 +30,26 @@ The GUI (ECOS Studio) has been moved to the [ecos-studio](https://github.com/0xh
 
 ## Installation
 
-### Pre-built CLI bundle (recommended)
+### Installer (recommended)
 
-Download `ecc-cli-linux-x86_64.tar.gz` (PyInstaller bundle, Linux x86_64) from
-[GitHub Releases](https://github.com/openecos-projects/ecc/releases) and
-extract it:
+Install the `ecc` CLI (Linux x86_64, glibc 2.34+, fontconfig):
 
-```bash
-mkdir -p ~/.local/ecc
-tar -xzf ecc-cli-linux-x86_64.tar.gz -C ~/.local/ecc
-~/.local/ecc/ecc --help
+```sh
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
 ```
 
-Add `~/.local/ecc` to your `PATH` to run `ecc` from anywhere.
+To also install Yosys (OSS CAD Suite) and the ICS55 PDK:
+
+```sh
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --with-toolchain
+```
+
+The wrapper is installed to `~/.local/bin` by default. If that directory is not
+on `PATH`, add it:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
 
 ### Nix
 
@@ -65,39 +72,38 @@ git submodule update --init --recursive
 ### Build from source
 
 For Python development with `uv`, clone the repository as above (with
-`--recursive`), then follow the [Development Guide](docs/development.md) to
-set up the workspace.
+`--recursive`), then set up the workspace — the recommended way to develop
+from source:
+
+```bash
+uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package ecc-tools-bin --verbose
+```
+
+See the [Development Guide](docs/development.md) for the full setup.
+
+To build the installable CLI bundle yourself (the same PyInstaller pipeline
+as the official release):
+
+```bash
+ECOS_PYINSTALLER_MODE=onedir uv run --no-sync --managed-python \
+  pyinstaller ecc.spec --clean --noconfirm
+# rebuilds dist/ecc/ (onedir, ~0.9G; the first run triggers dreamplace's cmake install, which is normal)
+
+# Install locally (overwrite your install location, e.g. ~/.local/ecc;
+# a PATH symlink pointing at it needs no change)
+rm -rf ~/.local/ecc && mkdir -p ~/.local/ecc && cp -a dist/ecc/. ~/.local/ecc/
+ecc --help            # verify the expected commands are listed
+```
 
 ## Quick Start
 
 The commands below use the installed `ecc`. Without installing, prefix each
 command with `nix run . --` (e.g. `nix run . -- init gcd`).
 
-### Prerequisites
-
-A flow run needs Yosys and a PDK:
-
-**Yosys** — download the latest
-[OSS CAD Suite](https://github.com/YosysHQ/oss-cad-suite-build/releases)
-release for your platform, extract it, and point ECC at the extracted
-directory:
-
-```bash
-export CHIPCOMPILER_OSS_CAD_DIR=/path/to/oss-cad-suite
-```
-
-(Not needed when running through the Nix flake — it provides Yosys itself.)
-
-**PDK** — clone [icsprout55-pdk](https://github.com/openecos-projects/icsprout55-pdk)
-and run `make unzip` to download the liberty files:
-
-```bash
-git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git
-cd icsprout55-pdk && make unzip && cd ..
-```
-
-Then set `pdk.root` in your `ecc.toml` to the PDK path (or export
-`CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/icsprout55-pdk`).
+If you installed with `--with-toolchain`, Yosys and the ICS55 PDK are already
+configured by the `ecc` wrapper. Otherwise re-run the installer with
+`--with-toolchain`. The Nix flake provides Yosys itself; set `pdk.root` if you
+are not using the installer toolchain.
 
 Create a project and add your RTL:
 
@@ -106,7 +112,9 @@ ecc init gcd
 cp /path/to/gcd.v gcd/rtl/gcd.v  # example design: docs/examples/gcd/gcd.v
 ```
 
-`ecc init` generates `gcd/ecc.toml` — edit it and set your PDK path:
+`ecc init` generates `gcd/ecc.toml`. Edit it as needed. `pdk.root` is required
+unless `CHIPCOMPILER_ICS55_PDK_ROOT` is already set (the installer
+`--with-toolchain` wrapper does this):
 
 ```toml
 [design]
@@ -121,8 +129,7 @@ name = "ics55"
 root = "/path/to/icsprout55-pdk"
 
 [flow]
-preset = "rtl2gds" # rtl2gds | rcx | harden | syn_sta
-run = "default"
+preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
 ```
 
 Then validate and run:
@@ -142,27 +149,36 @@ Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 | --- | --- |
 | `ecc init <name>` | Create a project skeleton and `ecc.toml` |
 | `ecc check` | Validate RTL, constraints, PDK, tools, and config |
-| `ecc run` | Run the configured RTL-to-GDS flow |
-| `ecc status` | Show run and step status |
+| `ecc doctor` | Probe host environment: PDK, yosys (+slang), bundled tools |
+| `ecc doc <topic>` | Read the bundled guides (`config` reference, `ug` user guide, `tutorial`) in the terminal |
+| `ecc run` | Run the configured RTL-to-GDS flow (`--preset` overrides for one run) |
+| `ecc status` | Show a quick run/step progress summary |
 | `ecc log [step]` | Show available logs or step log content |
-| `ecc config [step] --resolved` | Show resolved project or step configuration |
+| `ecc config [step]` | Show resolved project or step configuration |
+| `ecc migrate` | Migrate a legacy `runs/` project to the manifest layout |
 | `ecc param` | Manage parameter overrides (`list`, `show`, `set`, `unset`, `diff`) |
+| `ecc pdk` | Manage the PDK path (`set-root`, `show`, `unset`) |
+| `ecc project` | Edit project declarations in `ecc.toml` (`set`, `unset`, `add`, `remove`, `show`) |
+| `ecc workspace` | Refresh managed workspaces from project configuration |
+| `ecc signoff` | Inspect readiness and export the signoff package |
+| `ecc report` | Write design-summary, QoR, checklist, and step reports |
 | `ecc version` | Show ECC runtime and component versions |
 | `ecc layout-image` | Render a GDS file into a layout image |
 
 Project commands accept `--project <dir>` (defaults to the current directory).
-Most commands support `--plain`, `--json`, and `--jsonl` output for scripting.
+Most commands support `--plain` output for scripting.
 
-For the full command model — `ecc.toml` reference, flow presets, step-level
-rerun (`--resume`, `--from`, `--only`), and parameter overrides — see the
-[CLI Design Specification](docs/specification/cli-design.md).
+The full guides ship with the CLI and work offline: `ecc doc ug` (user guide,
+`--lang cn` for 中文), `ecc doc config` (configuration reference), and
+`ecc doc tutorial` (step-by-step first flow).
+
 
 ## Features
 
 - **Complete RTL-to-GDS Flow** - Synthesis, placement, routing, timing optimization
 - **Open-Source EDA Integration** - Yosys (synthesis), ECC-DreamPlace (placement), ECC-Tools (CTS, routing, signoff), KLayout (viewer)
 - **CLI Automation** - Scriptable flow execution from command line
-- **Portable Deployment** - Pre-built CLI bundles or Nix
+- **Portable Deployment** - Installer or Nix
 
 ## 🛠️ Integrated Tools
 
@@ -176,14 +192,14 @@ rerun (`--resume`, `--from`, `--only`), and parameter overrides — see the
 ## Documentation
 
 - [Documentation Index](docs/index.md) - Complete navigation
-- [CLI Design Specification](docs/specification/cli-design.md) - Command surface and `ecc.toml` reference
-- [Architecture](docs/architecture.md) - System design and patterns
 - [Development Guide](docs/development.md) - Setup and workflows
 - [Examples](docs/examples/) - Usage examples
 
 ## Contributing
 
-Contributions welcome! See [Development Guide](docs/development.md) for setup instructions.
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for the rules
+and review expectations, and the [Development Guide](docs/development.md) for
+setup instructions.
 
 ## Acknowledgments
 

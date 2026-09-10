@@ -34,3 +34,24 @@ class TestPackaging:
 
         assert datas_filter_index < analysis_index
         assert binaries_filter_index < analysis_index
+
+    def test_pyinstaller_spec_collects_doc_guides(self):
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        spec_path = os.path.join(project_root, "ecc.spec")
+
+        with open(spec_path, encoding="utf-8") as f:
+            source = f.read()
+
+        assert "datas.extend(collect_doc_guides())" in source
+        for stem in ("config-ref", "user-guide", "tutorial"):
+            for lang in ("en", "cn"):
+                assert f"chipcompiler/docs/ecc-{stem}.{lang}.md" in source
+
+    def test_pyinstaller_spec_collects_rich_unicode_data_modules(self):
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        spec_path = os.path.join(project_root, "ecc.spec")
+
+        with open(spec_path, encoding="utf-8") as f:
+            source = f.read()
+
+        assert "hiddenimports.extend(rich_unicode_data_hiddenimports())" in source

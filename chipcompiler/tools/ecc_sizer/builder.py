@@ -2,12 +2,61 @@ import os
 import shutil
 from pathlib import Path
 
-from rosettakit import cmdfile
-
 from chipcompiler.data import EccStep, Workspace
 from chipcompiler.tools.ecc import builder as ecc_builder
 
 from .utility import find_sizer_root
+
+SIZER_STAGING_DEF_NAME = "sizer.def.gz"
+SIZER_STAGING_VERILOG_NAME = "sizer.v.gz"
+
+
+def step_shape(
+    workspace: Workspace,
+    step_name: str,
+    output_def: Path | None = None,
+    output_verilog: Path | None = None,
+) -> tuple[Path, Path, Path]:
+    """Canonical sizer step directory and default outputs.
+
+    Dependency-free (no rosettakit import at module scope of this module's
+    callers) so deferred creation and selected creation share one shape.
+    """
+    safe_step_name = "_".join(step_name.split()).lower()
+    step_directory = Path(workspace.directory) / f"{safe_step_name}_sizer"
+    if output_def is None:
+        output_def = step_directory / "output" / f"{workspace.design.name}_{safe_step_name}.def.gz"
+    if output_verilog is None:
+        output_verilog = (
+            step_directory / "output" / f"{workspace.design.name}_{safe_step_name}.v.gz"
+        )
+    return step_directory, output_def, output_verilog
+
+
+def deferred_step(
+    workspace: Workspace,
+    step_name: str,
+    input_def: Path | None,
+    input_verilog: Path | None,
+    input_db: Path | str | None,
+    output_def: Path | None = None,
+    output_verilog: Path | None = None,
+) -> EccStep:
+    """Path-only sizer step for deferred creation (no config files)."""
+    step_directory, output_def, output_verilog = step_shape(
+        workspace, step_name, output_def, output_verilog
+    )
+    return ecc_builder.build_step(
+        workspace=workspace,
+        step_name=step_name,
+        input_def=input_def,
+        input_verilog=input_verilog,
+        input_db=input_db,
+        output_def=output_def,
+        output_verilog=output_verilog,
+        tool="sizer",
+        step_directory=step_directory,
+    )
 
 
 def build_step(
@@ -20,14 +69,9 @@ def build_step(
     output_verilog: Path | None = None,
     output_gds: Path | None = None,
 ) -> EccStep:
-    safe_step_name = "_".join(step_name.split()).lower()
-    step_directory = Path(workspace.directory) / f"{safe_step_name}_sizer"
-    if output_def is None:
-        output_def = step_directory / "output" / f"{workspace.design.name}_{safe_step_name}.def.gz"
-    if output_verilog is None:
-        output_verilog = (
-            step_directory / "output" / f"{workspace.design.name}_{safe_step_name}.v.gz"
-        )
+    step_directory, output_def, output_verilog = step_shape(
+        workspace, step_name, output_def, output_verilog
+    )
 
     step = ecc_builder.build_step(
         workspace=workspace,
@@ -41,11 +85,6 @@ def build_step(
         tool="sizer",
         step_directory=step_directory,
     )
-    step.output.db = ""
-    # Sizer produces no geometry snapshot; leave the destination undeclared so
-    # it is not part of this step's success contract (see EngineFlow.check_step_result).
-    step.output.geometry = None
-    step.output.geometry_manifest = None
     script_dir = step.script.dir or step_directory / "script"
     step.script.sizer_env = script_dir / f"{workspace.design.name}.env_file"
     step.script.sizer_cmd = script_dir / f"{workspace.design.name}.cmd_file"
@@ -96,6 +135,8 @@ def _sizer_env_template() -> Path | None:
 
 def _tech_text(workspace: Workspace) -> str:
     sizer_root = find_sizer_root()
+    from rosettakit import cmdfile
+
     env = cmdfile.CommandFile(prefix="-", dialect=cmdfile.PLAIN_DIALECT)
     env.option("lef", workspace.pdk.tech, value_type=cmdfile.ValueType.PATH, omit_empty=True)
     env.options("lef", workspace.pdk.lefs, value_type=cmdfile.ValueType.PATH)
@@ -107,9 +148,9 @@ def _tech_text(workspace: Workspace) -> str:
     return env.build()
 
 
-def _append_route_layer_options(command: cmdfile.CommandFile, workspace: Workspace) -> None:
-    bottom = workspace.parameters.data.get("Bottom layer", "")
-    top = workspace.parameters.data.get("Top layer", "")
+def _append_route_layer_options(command, workspace: Workspace) -> None:
+    bottom = workspace.parameters.data.get("bottom_layer", "")
+    top = workspace.parameters.data.get("top_layer", "")
 
     if bottom:
         command.option("min_route_layer", bottom)
@@ -117,7 +158,23 @@ def _append_route_layer_options(command: cmdfile.CommandFile, workspace: Workspa
         command.option("max_route_layer", top)
 
 
+def sizer_staging_def(step: EccStep) -> Path:
+    workdir = step.data.workdir_for(step.name)
+    if workdir is None:
+        raise ValueError("sizer step is missing a Timing optimization workdir")
+    return Path(workdir) / SIZER_STAGING_DEF_NAME
+
+
+def sizer_staging_verilog(step: EccStep) -> Path:
+    workdir = step.data.workdir_for(step.name)
+    if workdir is None:
+        raise ValueError("sizer step is missing a Timing optimization workdir")
+    return Path(workdir) / SIZER_STAGING_VERILOG_NAME
+
+
 def _cmd_text(workspace: Workspace, step: EccStep) -> str:
+    from rosettakit import cmdfile
+
     output_dir = step.data.workdir_for(step.name) or ""
     command = cmdfile.CommandFile(prefix="-", dialect=cmdfile.PLAIN_DIALECT)
 
@@ -150,12 +207,12 @@ def _cmd_text(workspace: Workspace, step: EccStep) -> str:
     command.option("outputPath", ".")
     command.option(
         "def_out_path",
-        os.path.relpath(step.output.def_ or "", output_dir),
+        os.path.relpath(sizer_staging_def(step), output_dir),
         value_type=cmdfile.ValueType.PATH,
     )
     command.option(
         "verilog_out_path",
-        os.path.relpath(step.output.verilog or "", output_dir),
+        os.path.relpath(sizer_staging_verilog(step), output_dir),
         value_type=cmdfile.ValueType.PATH,
     )
     _append_route_layer_options(command, workspace)

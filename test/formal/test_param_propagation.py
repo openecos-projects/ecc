@@ -32,7 +32,7 @@ BUILDER_PARAM_KEYS: list[tuple[str, str, str]] = [
     ("Bottom layer", "ecc/builder.py:244", "db.LayerSettings.routing_layer_1st"),
     ("Bottom layer", "ecc/builder.py:329", "RT.-bottom_routing_layer"),
     ("Top layer", "ecc/builder.py:330", "RT.-top_routing_layer"),
-    ("Max fanout", "ecc/builder.py:259", "no.max_fanout"),
+    ("Max fanout", "data/workspace/__init__.py:695", "cts.max_fanout"),
     (
         "Target density",
         "ecc_dreamplace/parameter_overrides.py:8",
@@ -96,7 +96,7 @@ PARAM_CONFIG_DEFAULTS: list[tuple[str, float, float, str]] = [
     ("Target overflow", 0.1, 0.1, "dreamplace.stop_overflow"),
     ("Cell padding x", 300, 300, "dreamplace.cell_padding_x"),
     ("Routability opt flag", 1, 1, "dreamplace.routability_opt_flag"),
-    ("Max fanout", 20, 32, "no.max_fanout"),
+    ("Max fanout", 20, 32, "cts.max_fanout"),
 ]
 
 
@@ -223,7 +223,7 @@ PROPAGATION_MAP: list[tuple[str, str, bool]] = [
     ("Routability opt flag", "dreamplace.routability_opt_flag", True),
     ("Bottom layer", "RT.-bottom_routing_layer", True),
     ("Top layer", "RT.-top_routing_layer", True),
-    ("Max fanout", "no.max_fanout", True),
+    ("Max fanout", "cts.max_fanout", True),
     ("Frequency max [MHz]", "yosys.clk_freq_mhz", True),
 ]
 

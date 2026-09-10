@@ -2,6 +2,8 @@ from pathlib import Path
 
 import pytest
 
+from chipcompiler.data.workspace_config import WORKSPACE_CONFIG_FILENAME
+
 
 def create_minimal_sg13g2_pdk(root: Path) -> Path:
     tech_path = root / "libs.ref" / "sg13g2_stdcell" / "lef" / "sg13g2_tech.lef"
@@ -20,21 +22,21 @@ def create_minimal_sg13g2_pdk(root: Path) -> Path:
 
 def ics55_parameters() -> dict:
     return {
-        "PDK": "ics55",
-        "Design": "gcd",
-        "Top module": "gcd",
-        "Clock": "clk",
-        "Frequency max [MHz]": 100,
+        "pdk": "ics55",
+        "design": "gcd",
+        "top_module": "gcd",
+        "clock": "clk",
+        "frequency_max": 100,
     }
 
 
 def sg13g2_parameters() -> dict:
     return {
-        "PDK": "sg13g2",
-        "Design": "gcd",
-        "Top module": "gcd",
-        "Clock": "clk",
-        "Frequency max [MHz]": 100,
+        "pdk": "sg13g2",
+        "design": "gcd",
+        "top_module": "gcd",
+        "clock": "clk",
+        "frequency_max": 100,
     }
 
 
@@ -58,3 +60,17 @@ def gcd_rtl_file(tmp_path):
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
     return rtl_path
+
+
+@pytest.fixture
+def stubborn_candidate_unlink(monkeypatch):
+    """Make Path.unlink raise OSError on staged workspace-config temp files."""
+    real_unlink = Path.unlink
+    prefix = f".{WORKSPACE_CONFIG_FILENAME}."
+
+    def stubborn_unlink(self, *args, **kwargs):
+        if self.name.startswith(prefix) and self.name.endswith(".tmp"):
+            raise OSError("injected cleanup failure")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", stubborn_unlink)

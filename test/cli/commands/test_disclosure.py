@@ -28,7 +28,7 @@ class TestDisclosureCommands:
         self, tmp_path, capsys, create_cli_project, create_flow_json, has_disclosure
     ):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir, profile="main")
 
         rc = cli_main.run(["status", "--project", project_dir])
@@ -38,7 +38,7 @@ class TestDisclosureCommands:
 
     def test_log_error_lines_have_disclosure(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
 
         step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
@@ -54,7 +54,7 @@ class TestDisclosureCommands:
         self, tmp_path, capsys, create_cli_project, create_flow_json
     ):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir, profile="main")
 
         rc = cli_main.run(["status", "--project", project_dir])
@@ -64,7 +64,7 @@ class TestDisclosureCommands:
 
     def test_output_lowercase_tokens(self, tmp_path, capsys, create_cli_project, create_flow_json):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         create_flow_json(
             run_dir,
             [

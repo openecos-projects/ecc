@@ -95,7 +95,9 @@ def run_step(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
                 stderr=subprocess.STDOUT,
             )
 
-        if os.path.exists(step.output.verilog or ""):
+        golden_path = step.output.golden_verilog or ""
+        golden_exists = not golden_path or os.path.exists(golden_path)
+        if os.path.exists(step.output.verilog or "") and golden_exists:
             sub_flow.update_step(step_name="run yosys", state=StateEnum.Success)
 
             _run_ecc_synthesis_sta(
@@ -116,8 +118,10 @@ def run_step(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
             sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
 
             logger.error(
-                "Output netlist not generated at %s. yosys exit code: %s",
+                "Output netlist not generated at %s or golden netlist not generated at %s. "
+                "yosys exit code: %s",
                 step.output.verilog,
+                golden_path,
                 result.returncode,
             )
             return False

@@ -1,26 +1,11 @@
+import copy
+import json
 from dataclasses import dataclass
 
+from chipcompiler.data.config_params import CONFIG_PARAM_SCHEMAS
+from chipcompiler.data.config_params.common import ParamSchema
 
-# TODO: Move parameter schemas, resolution, TOML validation, and backend mapping
-# into chipcompiler.data.parameter_schema. Keep only CLI "--set key=value" string
-# parsing glue in the CLI layer.
-@dataclass(frozen=True)
-class ParamSchema:
-    param: str
-    group: str
-    name: str
-    type: str
-    default: object
-    applies: str
-    maps_to: str | dict
-    description: str
-    range: tuple[float, float] | None = None
-    choices: tuple[str, ...] | None = None
-    unit: str | None = None
-    example: str | None = None
-
-
-PARAM_REGISTRY: tuple[ParamSchema, ...] = (
+_LEGACY_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
     ParamSchema(
         param="design.frequency_mhz",
         group="design",
@@ -28,7 +13,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="float",
         default=100.0,
         applies="synthesis",
-        maps_to="Frequency max [MHz]",
+        maps_to="frequency_max",
         description="Target clock frequency in MHz",
         range=(1e-6, 10000.0),
         unit="MHz",
@@ -41,7 +26,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="float",
         default=0.4,
         applies="floorplan",
-        maps_to={"Core": "Utilitization"},
+        maps_to={"core": "utilitization"},
         description="Core utilization ratio",
         range=(0.01, 1.0),
         example="0.45",
@@ -53,7 +38,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="list[int]",
         default=[2, 2],
         applies="floorplan",
-        maps_to={"Core": "Margin"},
+        maps_to={"core": "margin"},
         description="Core margin in micrometers [horizontal, vertical]",
         example="[2, 2]",
     ),
@@ -64,20 +49,20 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="float",
         default=1.0,
         applies="floorplan",
-        maps_to={"Core": "Aspect ratio"},
+        maps_to={"core": "aspect_ratio"},
         description="Core aspect ratio (width/height)",
         range=(0.1, 10.0),
         example="1.0",
     ),
     ParamSchema(
-        param="synth.max_fanout",
-        group="synth",
+        param="cts.max_fanout",
+        group="cts",
         name="max_fanout",
         type="int",
         default=20,
-        applies="fixfanout",
-        maps_to="Max fanout",
-        description="Maximum fanout for netlist optimization",
+        applies="cts",
+        maps_to="max_fanout",
+        description="Maximum fanout for clock tree synthesis",
         range=(1, 200),
         example="16",
     ),
@@ -88,7 +73,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="float",
         default=0.2,
         applies="placement",
-        maps_to={"DreamPlace": "target_density"},
+        maps_to={"dreamplace": "target_density"},
         description="Target placement density",
         range=(0.1, 0.95),
         example="0.65",
@@ -100,7 +85,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="float",
         default=0.1,
         applies="placement",
-        maps_to={"DreamPlace": "stop_overflow"},
+        maps_to={"dreamplace": "stop_overflow"},
         description="Target overflow for global placement",
         range=(0.0, 1.0),
         example="0.08",
@@ -112,7 +97,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="int",
         default=0,
         applies="placement",
-        maps_to="Global right padding",
+        maps_to="global_right_padding",
         description="Global right padding for placement sites",
         range=(0, 100),
         example="8",
@@ -124,7 +109,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="int",
         default=300,
         applies="placement",
-        maps_to={"DreamPlace": "cell_padding_x"},
+        maps_to={"dreamplace": "cell_padding_x"},
         description="Cell padding in x-direction in database units",
         range=(0, 10000),
         example="400",
@@ -136,7 +121,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="int",
         default=1,
         applies="placement",
-        maps_to={"DreamPlace": "routability_opt_flag"},
+        maps_to={"dreamplace": "routability_opt_flag"},
         description="Enable routability-driven placement optimization",
         choices=("0", "1"),
         example="1",
@@ -148,7 +133,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="str",
         default="MET2",
         applies="routing",
-        maps_to="Bottom layer",
+        maps_to="bottom_layer",
         description="Bottom routing layer",
         choices=("MET1", "MET2", "MET3", "MET4", "MET5"),
         example="MET2",
@@ -160,7 +145,7 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="str",
         default="MET5",
         applies="routing",
-        maps_to="Top layer",
+        maps_to="top_layer",
         description="Top routing layer",
         choices=("MET2", "MET3", "MET4", "MET5", "MET6"),
         example="MET5",
@@ -172,12 +157,25 @@ PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         type="int",
         default=1000,
         applies="sta",
-        maps_to="STA max paths",
+        maps_to="sta_max_paths",
         description="Maximum number of paths in each STA timing report",
         range=(1, 100000),
         example="1000",
     ),
+    ParamSchema(
+        param="flow.run_analysis",
+        group="flow",
+        name="run_analysis",
+        type="bool",
+        default=True,
+        applies="all",
+        maps_to="run_analysis",
+        description="Run per-step analysis (metrics, plots, checklist) after each step",
+        example="false",
+    ),
 )
+
+PARAM_REGISTRY = _LEGACY_PARAM_REGISTRY + CONFIG_PARAM_SCHEMAS
 
 _REGISTRY_INDEX: dict[str, ParamSchema] = {s.param: s for s in PARAM_REGISTRY}
 _REQUIRED_FIELDS = (
@@ -187,7 +185,6 @@ _REQUIRED_FIELDS = (
     "type",
     "default",
     "applies",
-    "maps_to",
     "description",
 )
 
@@ -214,7 +211,9 @@ def is_known_key(key: str) -> bool:
 
 def validate_schema_record(schema: ParamSchema) -> list[str]:
     return [
-        f"missing required field: {f}" for f in _REQUIRED_FIELDS if not getattr(schema, f, None)
+        f"missing required field: {f}"
+        for f in _REQUIRED_FIELDS
+        if getattr(schema, f, None) is None or (f != "default" and getattr(schema, f) == "")
     ]
 
 
@@ -250,6 +249,16 @@ def parse_value(raw: str, schema: ParamSchema) -> object:
         return raw
 
     if ptype in ("list[int]", "list[float]", "list[str]"):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            parsed = None
+        if parsed is not None:
+            value, error = _validate_schema_type(parsed, schema)
+            if error is None:
+                return value
+            raise ValueError(error)
+
         stripped = raw.strip("[]() ")
         if not stripped:
             return []
@@ -266,6 +275,12 @@ def parse_value(raw: str, schema: ParamSchema) -> object:
                 raise ValueError(f"expected list[float] for {schema.param}, got '{raw}'") from exc
         return [p for p in parts if p]
 
+    if ptype == "json":
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"expected JSON for {schema.param}, got '{raw}'") from exc
+
     raise ValueError(f"unsupported type '{ptype}' for {schema.param}")
 
 
@@ -274,7 +289,12 @@ def validate_value(value: object, schema: ParamSchema) -> list[str]:
 
     if schema.range is not None:
         lo, hi = schema.range
-        if isinstance(value, (int, float)) and (value < lo or value > hi):
+        if not isinstance(value, (int, float)):
+            # Raw layers (e.g. project.json parameters) reach this without
+            # the typed parsing --set/[params] get: a string must fail loud
+            # instead of silently skipping the range check.
+            errors.append(f"value {value!r} is not numeric for {schema.param}")
+        elif value < lo or value > hi:
             errors.append(f"value {value} out of range [{lo}, {hi}] for {schema.param}")
 
     if schema.choices is not None:
@@ -300,8 +320,12 @@ class ResolvedParam:
     source: str
     schema: ParamSchema
 
+    @property
+    def is_explicit(self) -> bool:
+        return self.source != "default"
 
-def _validate_toml_type(value: object, schema: ParamSchema) -> tuple[object, str | None]:
+
+def _validate_schema_type(value: object, schema: ParamSchema) -> tuple[object, str | None]:
     ptype = schema.type
     key = schema.param
 
@@ -314,7 +338,12 @@ def _validate_toml_type(value: object, schema: ParamSchema) -> tuple[object, str
         if isinstance(value, bool):
             return value, f"expected float for {key}, got bool"
         if isinstance(value, (int, float)):
-            return float(value), None
+            try:
+                return float(value), None
+            except OverflowError:
+                # A huge JSON integer cannot become a float; that is invalid
+                # input, not a crash.
+                return value, f"expected float for {key}, value too large to represent"
         return value, f"expected float for {key}, got {type(value).__name__}"
 
     if ptype == "bool":
@@ -349,7 +378,10 @@ def _validate_toml_type(value: object, schema: ParamSchema) -> tuple[object, str
                 return value, f"expected list[float] for {key}, element {i} is bool"
             if not isinstance(v, (int, float)):
                 return value, f"expected list[float] for {key}, element {i} is {type(v).__name__}"
-        return [float(v) for v in value], None
+        try:
+            return [float(v) for v in value], None
+        except OverflowError:
+            return value, f"expected list[float] for {key}, value too large to represent"
 
     if ptype == "list[str]":
         if not isinstance(value, list):
@@ -359,15 +391,22 @@ def _validate_toml_type(value: object, schema: ParamSchema) -> tuple[object, str
                 return value, f"expected list[str] for {key}, element {i} is {type(v).__name__}"
         return value, None
 
+    if ptype == "json":
+        if isinstance(value, (dict, list)):
+            return value, None
+        return value, f"expected JSON object or array for {key}, got {type(value).__name__}"
+
     return value, None
 
 
 def resolve_parameters(
     toml_overrides: dict[str, object] | None = None,
     cli_overrides: dict[str, object] | None = None,
+    manifest_overrides: dict[str, object] | None = None,
 ) -> tuple[list[ResolvedParam], list[str]]:
     toml_overrides = toml_overrides or {}
     cli_overrides = cli_overrides or {}
+    manifest_overrides = manifest_overrides or {}
     resolved: list[ResolvedParam] = []
     errors: list[str] = []
 
@@ -389,7 +428,7 @@ def resolve_parameters(
             )
         elif key in toml_overrides:
             value = toml_overrides[key]
-            value, coerce_err = _validate_toml_type(value, schema)
+            value, coerce_err = _validate_schema_type(value, schema)
             if coerce_err:
                 errors.append(coerce_err)
             val_errors = validate_value(value, schema)
@@ -401,6 +440,23 @@ def resolve_parameters(
                     value=value,
                     default=schema.default,
                     source="ecc.toml",
+                    schema=schema,
+                )
+            )
+        elif key in manifest_overrides:
+            value = manifest_overrides[key]
+            value, coerce_err = _validate_schema_type(value, schema)
+            if coerce_err:
+                errors.append(coerce_err)
+            val_errors = validate_value(value, schema)
+            if val_errors:
+                errors.extend(val_errors)
+            resolved.append(
+                ResolvedParam(
+                    param=key,
+                    value=value,
+                    default=schema.default,
+                    source="project.json",
                     schema=schema,
                 )
             )
@@ -423,6 +479,62 @@ def resolve_parameters(
 # ---------------------------------------------------------------------------
 
 
+def manifest_value_for(canonical: dict, maps_to: str | dict | None) -> tuple[object, bool]:
+    """Resolve a manifest-layer value via its schema target (presence-keyed).
+
+    A string ``maps_to`` is a top-level canonical key; a dict ``maps_to`` is a
+    single-level (subtree, leaf) path. Returns (value, present): an explicit
+    JSON ``null`` counts as present, an absent key does not.
+    """
+    if isinstance(maps_to, str):
+        if maps_to in canonical:
+            return canonical[maps_to], True
+        return None, False
+    if maps_to is None:
+        return None, False
+    for subtree, leaf in maps_to.items():
+        node = canonical.get(subtree)
+        if isinstance(node, dict) and leaf in node:
+            return node[leaf], True
+    return None, False
+
+
+def coerce_manifest_parameters(
+    canonical: dict,
+    registry: tuple[ParamSchema, ...] = PARAM_REGISTRY,
+    skip_params: frozenset | set = frozenset(),
+) -> tuple[dict, list[str]]:
+    """Coerce manifest-layer parameter values to their schema types.
+
+    Type check/coercion only — range/choice rules stay check-path concerns.
+    Works on a deep copy: coerced values are written back, uncoercible values
+    are left as-is (the caller decides what an error means), and keys outside
+    the registry pass through untouched (forward-compatible).
+    """
+    coerced = copy.deepcopy(canonical)
+    errors: list[str] = []
+    for schema in registry:
+        if schema.param in skip_params:
+            continue
+        value, present = manifest_value_for(coerced, schema.maps_to)
+        if not present:
+            continue
+        new_value, err = _validate_schema_type(value, schema)
+        if err:
+            errors.append(err)
+            continue
+        maps_to = schema.maps_to
+        if isinstance(maps_to, str):
+            coerced[maps_to] = new_value
+        elif isinstance(maps_to, dict):
+            for subtree, leaf in maps_to.items():
+                node = coerced.get(subtree)
+                if isinstance(node, dict) and leaf in node:
+                    node[leaf] = new_value
+                    break
+    return coerced, errors
+
+
 def build_backend_overrides(resolved: list[ResolvedParam]) -> dict:
     overrides: dict = {}
     for rp in resolved:
@@ -438,6 +550,36 @@ def build_backend_overrides(resolved: list[ResolvedParam]) -> dict:
                     overrides[parent_key] = {}
                 overrides[parent_key][child_key] = value
     return overrides
+
+
+def build_config_overrides(resolved: list[ResolvedParam]) -> dict[str, object]:
+    overrides: dict[str, object] = {}
+    for rp in resolved:
+        target = rp.schema.config_target
+        if target is None or not rp.is_explicit:
+            continue
+        config_overrides = overrides.setdefault(target.config_key, {})
+        _set_nested_value(config_overrides, target.json_path, rp.value)
+    return overrides
+
+
+def build_pdk_overrides(resolved: list[ResolvedParam]) -> dict[str, object]:
+    return {
+        rp.schema.pdk_target: rp.value
+        for rp in resolved
+        if rp.schema.pdk_target is not None and rp.is_explicit
+    }
+
+
+def _set_nested_value(data: dict, path: tuple[str, ...], value: object) -> None:
+    current = data
+    for key in path[:-1]:
+        child = current.get(key)
+        if not isinstance(child, dict):
+            child = {}
+            current[key] = child
+        current = child
+    current[path[-1]] = value
 
 
 def parse_cli_overrides(pairs: list[str]) -> tuple[dict[str, object], list[str]]:
@@ -474,39 +616,67 @@ def parse_cli_overrides(pairs: list[str]) -> tuple[dict[str, object], list[str]]
     return result, errors
 
 
+def validate_pdk_target(schema: ParamSchema, value: object, cfg) -> str | None:
+    """Validate a PDK-target value using the existing PDK resolver and checks."""
+    if schema.pdk_target is None:
+        return None
+
+    from dataclasses import replace
+
+    from chipcompiler.cli.project.config import (
+        _validate_pdk_contents,
+        resolve_pdk_overrides,
+        resolve_pdk_root,
+    )
+
+    raw_overrides = dict(cfg.pdk_overrides)
+    raw_overrides[schema.pdk_target] = value
+    candidate = replace(cfg, pdk_overrides=raw_overrides)
+    return _validate_pdk_contents(
+        candidate.pdk_name,
+        resolve_pdk_root(candidate),
+        resolve_pdk_overrides(candidate),
+    )
+
+
 def parse_toml_params(params_table: dict) -> tuple[dict[str, object], list[str]]:
     flat: dict[str, object] = {}
     errors: list[str] = []
+
+    def visit(path: tuple[str, ...], value: object) -> None:
+        param_key = ".".join(path)
+        schema = lookup_schema(param_key)
+        if schema is not None:
+            try:
+                if isinstance(value, str):
+                    parsed = parse_value(value, schema)
+                else:
+                    parsed, type_err = _validate_schema_type(value, schema)
+                    if type_err:
+                        errors.append(type_err)
+                        return
+            except ValueError as exc:
+                errors.append(str(exc))
+                return
+
+            val_errors = validate_value(parsed, schema)
+            if val_errors:
+                errors.extend(val_errors)
+                return
+            flat[param_key] = parsed
+            return
+
+        if isinstance(value, dict):
+            for key, child in value.items():
+                visit((*path, key), child)
+            return
+
+        errors.append(f"unknown parameter in ecc.toml: '{param_key}'")
 
     for group_key, group_val in params_table.items():
         if not isinstance(group_val, dict):
             errors.append(f"[params.{group_key}] must be a table, got {type(group_val).__name__}")
             continue
-
-        for name_key, value in group_val.items():
-            param_key = f"{group_key}.{name_key}"
-            schema = lookup_schema(param_key)
-            if schema is None:
-                errors.append(f"unknown parameter in ecc.toml: '{param_key}'")
-                continue
-
-            try:
-                if isinstance(value, str):
-                    parsed = parse_value(value, schema)
-                else:
-                    parsed, type_err = _validate_toml_type(value, schema)
-                    if type_err:
-                        errors.append(type_err)
-                        continue
-            except ValueError as exc:
-                errors.append(str(exc))
-                continue
-
-            val_errors = validate_value(parsed, schema)
-            if val_errors:
-                errors.extend(val_errors)
-                continue
-
-            flat[param_key] = parsed
+        visit((group_key,), group_val)
 
     return flat, errors

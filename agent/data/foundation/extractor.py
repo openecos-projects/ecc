@@ -196,7 +196,7 @@ class FoundationExtractor:
         )
         parameters = self._run_logged_stage(
             "read_parameters",
-            lambda: self._read_json(self.workspace_dir / "home" / "parameters.json"),
+            self._read_workspace_parameters,
         )
         self._lef_macros = self._run_logged_stage(
             "load_lef", lambda: self._load_lef_macros(parameters)
@@ -574,6 +574,30 @@ class FoundationExtractor:
         if unknown:
             raise ValueError(f"unknown foundation extraction stage: {', '.join(unknown)}")
         return [by_name[name] for name in requested_names]
+
+    def _workspace_config_path(self) -> Path:
+        """The workspace's persisted configuration: home/params.toml
+        preferred, legacy home/parameters.json as the fallback."""
+        from chipcompiler.data.workspace_config import workspace_config_path
+
+        toml_path = workspace_config_path(self.workspace_dir)
+        if toml_path.exists():
+            return toml_path
+        return self.workspace_dir / "home" / "parameters.json"
+
+    def _workspace_config_rel_path(self) -> str:
+        return str(self._workspace_config_path().relative_to(self.workspace_dir))
+
+    def _read_workspace_parameters(self) -> dict[str, Any]:
+        """Read workspace parameters in whichever format the workspace
+        persists them: canonical flat keys from home/params.toml, or the
+        legacy display-key JSON with display/flat fallback reads downstream."""
+        config_path = self._workspace_config_path()
+        if config_path.suffix == ".json":
+            return self._read_json(config_path)
+        from chipcompiler.data.workspace_config import load_workspace_config
+
+        return load_workspace_config(self.workspace_dir)
 
     def _load_lef_macros(self, parameters: dict[str, Any]) -> dict[str, LefMacro]:
         pdk_root = parameters.get("PDK Root") or parameters.get("pdk_root")
@@ -2940,18 +2964,24 @@ class FoundationExtractor:
 
     @staticmethod
     def _engineer_settable_parameters(parameters: dict[str, Any]) -> dict[str, Any]:
-        normalized = json.loads(json.dumps(parameters))
-        normalized.pop("PDK Root", None)
-        normalized.pop("Die", None)
-        core = normalized.get("Core")
+        from chipcompiler.data.parameter_keys import normalize_parameter_dict
+
+        # One canonical schema regardless of the on-disk format: legacy
+        # display keys normalize first, then environment keys and the flow
+        # target are dropped and core keeps only the tunables. The flow
+        # target surfaces as "flow" after normalization ("_flow").
+        normalized = json.loads(json.dumps(normalize_parameter_dict(parameters)))
+        for key in ("pdk_root", "die", "flow"):
+            normalized.pop(key, None)
+        core = normalized.get("core")
         if isinstance(core, dict):
             allowed_core = {
-                key: core[key] for key in ("Utilitization", "Margin", "Aspect ratio") if key in core
+                key: core[key] for key in ("utilitization", "margin", "aspect_ratio") if key in core
             }
             if allowed_core:
-                normalized["Core"] = allowed_core
+                normalized["core"] = allowed_core
             else:
-                normalized.pop("Core", None)
+                normalized.pop("core", None)
         return normalized
 
     def _collect_control_knobs(self, stages: list[StageInfo]) -> dict[str, Any]:
@@ -2979,13 +3009,6 @@ class FoundationExtractor:
         )
         if dreamplace:
             knobs["dreamplace"] = dreamplace
-        fix_fanout = self._first_config_values(
-            [stage for stage in stages if stage.name == "fixFanout"],
-            "fixfanout_ecc.json",
-            {"insert_buffer": ("insert_buffer",)},
-        )
-        if fix_fanout:
-            knobs["fix_fanout"] = fix_fanout
         cts = self._first_config_values(
             [stage for stage in stages if stage.name == "CTS"],
             "cts_ecc.json",
@@ -3351,7 +3374,7 @@ class FoundationExtractor:
                     "availability": "available" if path.exists() else "missing",
                 }
             )
-        for rel_path in ("home/flow.json", "home/parameters.json"):
+        for rel_path in ("home/flow.json", self._workspace_config_rel_path()):
             if rel_path in seen:
                 continue
             path = self.workspace_dir / rel_path
@@ -4944,7 +4967,7 @@ class FoundationExtractor:
     def _compute_source_signature(self) -> list[str]:
         paths = [
             self.workspace_dir / "home" / "flow.json",
-            self.workspace_dir / "home" / "parameters.json",
+            self._workspace_config_path(),
         ]
         for stage_dir in self.workspace_dir.glob("*_*"):
             if not stage_dir.is_dir():
@@ -6630,11 +6653,9 @@ def _attach_net_progressive_metadata(stages: list[StageInfo], nets_dir: Path) ->
             )
             record["progressive_metadata"] = {
                 "available_from": first,
-                "created_stage": "Synthesis"
-                if first in {"Floorplan", "fixFanout", "place"}
-                else first,
+                "created_stage": "Synthesis" if first in {"Floorplan", "place"} else first,
                 "created_stage_source": "def_net"
-                if first in {"Floorplan", "fixFanout", "place"}
+                if first in {"Floorplan", "place"}
                 else "first_observed",
                 "exists_in_prev_stage": previous is not None,
                 "exists_in_place": key in place_keys,
@@ -6709,11 +6730,9 @@ def _attach_net_progressive_metadata_in_memory(
             )
             record["progressive_metadata"] = {
                 "available_from": first,
-                "created_stage": "Synthesis"
-                if first in {"Floorplan", "fixFanout", "place"}
-                else first,
+                "created_stage": "Synthesis" if first in {"Floorplan", "place"} else first,
                 "created_stage_source": "def_net"
-                if first in {"Floorplan", "fixFanout", "place"}
+                if first in {"Floorplan", "place"}
                 else "first_observed",
                 "exists_in_prev_stage": previous is not None,
                 "exists_in_place": key in place_keys,
@@ -7889,7 +7908,6 @@ def _workspace_relative_artifact_path(value: Any) -> str:
     for marker in (
         "Synthesis_yosys",
         "Floorplan_ecc",
-        "fixFanout_ecc",
         "place_dreamplace",
         "CTS_ecc",
         "legalization_dreamplace",
@@ -8012,7 +8030,6 @@ def _stage_directory_name(stage_name: str) -> str:
     mapping = {
         "Synthesis": "Synthesis_yosys",
         "Floorplan": "Floorplan_ecc",
-        "fixFanout": "fixFanout_ecc",
         "place": "place_dreamplace",
         "CTS": "CTS_ecc",
         "legalization": "legalization_dreamplace",
@@ -9142,7 +9159,6 @@ def _attach_timing_progressive_metadata(
     stage_order = [
         "Synthesis",
         "Floorplan",
-        "fixFanout",
         "place",
         "CTS",
         "legalization",
@@ -9820,7 +9836,6 @@ def _workspace_relative_from_parsed_def(parsed_def: DefData) -> str:
         "route_ecc",
         "drc_ecc",
         "filler_ecc",
-        "fixFanout_ecc",
         "legalization_dreamplace",
     ):
         if marker in parts:

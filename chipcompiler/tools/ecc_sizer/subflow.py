@@ -7,6 +7,8 @@ from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
 
 class SizerSubFlowEnum(Enum):
     run_sizer = "run sizer"
+    run_legalization = "run legalization"
+    save_data = "save data"
 
 
 class SizerSubFlow:
@@ -23,26 +25,68 @@ class SizerSubFlow:
         data = json_read(self.workspace_step.subflow.path or "")
         if len(data) > 0:
             self.workspace_step.subflow.steps = data.get("steps", [])
-        else:
-            self.build_sub_flow()
+        self.build_sub_flow()
 
-    def build_sub_flow(self) -> list[dict]:
-        if len(self.workspace_step.subflow.steps or []) > 0:
-            return self.workspace_step.subflow.steps
-
-        steps = [
+    def _canonical_steps(self) -> list[dict]:
+        return [
             {
-                "name": SizerSubFlowEnum.run_sizer.value,
+                "name": stage.value,
                 "state": StateEnum.Unstart.value,
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
             }
+            for stage in SizerSubFlowEnum
         ]
 
-        self.workspace_step.subflow.steps = steps
+    def build_sub_flow(self) -> list[dict]:
+        expected = [stage.value for stage in SizerSubFlowEnum]
+        current = [step_dict.get("name") for step_dict in self.workspace_step.subflow.steps or []]
+        if current != expected:
+            self.workspace_step.subflow.steps = self._canonical_steps()
+            self.save()
+            self._invalidate_owner_and_suffix()
+        return self.workspace_step.subflow.steps
+
+    def _invalidate_owner_and_suffix(self) -> None:
+        steps = self.workspace.flow.data.get("steps", [])
+        start = next(
+            (
+                index
+                for index, step in enumerate(steps)
+                if isinstance(step, dict)
+                and step.get("name") == self.workspace_step.name
+                and step.get("tool") == self.workspace_step.tool
+            ),
+            None,
+        )
+        if start is None:
+            return
+        for step in steps[start:]:
+            if not isinstance(step, dict):
+                continue
+            step["state"] = StateEnum.Unstart.value
+            step["runtime"] = ""
+            step["peak memory (mb)"] = 0
+        if self.workspace.flow.path is None:
+            return
+        from chipcompiler.utility import json_write
+
+        json_write(self.workspace.flow.path, self.workspace.flow.data)
+
+    def reset_stages(self) -> list[dict]:
+        expected = [stage.value for stage in SizerSubFlowEnum]
+        current = [step_dict.get("name") for step_dict in self.workspace_step.subflow.steps or []]
+        if current != expected:
+            self.workspace_step.subflow.steps = self._canonical_steps()
+        else:
+            for step_dict in self.workspace_step.subflow.steps or []:
+                step_dict["state"] = StateEnum.Unstart.value
+                step_dict["runtime"] = ""
+                step_dict["peak memory (mb)"] = 0
+                step_dict["info"] = {}
         self.save()
-        return steps
+        return self.workspace_step.subflow.steps
 
     def save(self) -> bool:
         from chipcompiler.utility import json_write

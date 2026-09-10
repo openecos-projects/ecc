@@ -254,7 +254,7 @@ def test_create_workspace_returns_plain_runtime_result_and_session(monkeypatch, 
             pdk="ics55",
             pdk_root="/pdk",
             pdk_json={"name": "ics55"},
-            parameters={"Design": "gcd"},
+            parameters={"design": "gcd"},
             rtl_list=["a.v"],
             sdc="/constraints/top.sdc",
         )
@@ -302,7 +302,7 @@ def test_create_workspace_writes_rtl_list_filelist_outside_workspace(
         WorkspaceCreateRequest(
             directory=str(ws),
             pdk="ics55",
-            parameters={"Design": "gcd"},
+            parameters={"design": "gcd"},
             rtl_list=rtl_paths,
         )
     )
@@ -367,9 +367,9 @@ def test_create_workspace_with_inline_pdk_json_uses_real_data_api(monkeypatch, t
                 "libs": [str(liberty)],
             },
             parameters={
-                "Design": "gcd",
-                "Top module": "gcd",
-                "Clock": "clk",
+                "design": "gcd",
+                "top_module": "gcd",
+                "clock": "clk",
             },
         )
     )
@@ -377,15 +377,15 @@ def test_create_workspace_with_inline_pdk_json_uses_real_data_api(monkeypatch, t
     assert result["directory"] == str(workspace_dir.resolve())
     pdk_config_path = workspace_dir / "home" / "pdk.json"
     assert pdk_config_path.is_file()
-    parameters = json.loads((workspace_dir / "home" / "parameters.json").read_text())
-    assert parameters["PDK Config"] == str(pdk_config_path.resolve())
-    fixfanout = json.loads((workspace_dir / "config" / "fixfanout_ecc.json").read_text())
+    from chipcompiler.data.parameter import load_parameter
+
+    parameters = load_parameter(workspace_dir / "home" / "params.toml").data
+    assert parameters["pdk_config"] == str(pdk_config_path.resolve())
     session = api.sessions.get_session(result["workspaceId"])
     assert session.workspace.pdk.tech == tech
     assert session.workspace.pdk.lefs == [lef]
     assert session.workspace.pdk.libs == [liberty]
     assert session.workspace.pdk.buffers
-    assert fixfanout["insert_buffer"] == session.workspace.pdk.buffers[0]
     assert session.directory == workspace_dir.resolve()
 
 

@@ -15,8 +15,6 @@ class EccSubFlowEnum(Enum):
     tap_cell = "tap cell"
     PDN = "PDN"
     set_clock_net = "set clock net"
-    run_net_optimization = "run net optimization"
-    run_macro_placement = "run macro placement"
     run_placement = "run placement"
     run_CTS = "run CTS"
     run_legalization = "run legalization"
@@ -78,20 +76,9 @@ class EccSubFlow:
                 steps.append(subflow_template(EccSubFlowEnum.set_clock_net.value))
                 steps.append(subflow_template(EccSubFlowEnum.save_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.analysis.value))
-            case StepEnum.NETLIST_OPT:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.set_clock_net.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_net_optimization.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
             case StepEnum.PLACEMENT:
                 steps.append(subflow_template(EccSubFlowEnum.load_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.run_placement.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
-            case StepEnum.MACRO_PLACEMENT:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_macro_placement.value))
                 steps.append(subflow_template(EccSubFlowEnum.save_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.analysis.value))
             case StepEnum.CTS:

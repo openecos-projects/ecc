@@ -76,4 +76,6 @@ runs:
         "$SMOKE_DIR/ecc" --help
         "$SMOKE_DIR/ecc" --version
         "$SMOKE_DIR/ecc" version --json
+        "$SMOKE_DIR/ecc" doc config --plain > /dev/null
+        "$SMOKE_DIR/ecc" doc ug --lang cn --plain > /dev/null
         test -x "$SMOKE_DIR/_internal/torch/bin/torch_shm_manager"

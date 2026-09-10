@@ -1,8 +1,36 @@
 import json
 import os
 import re
+import shlex
 
 import pytest
+
+
+def parse_plain_records(out: str) -> list[dict[str, str]]:
+    """Parse `--plain` output (one key=value record per line) into dicts.
+
+    All values come back as strings; compare against "3" rather than 3.
+    Quoted values may span multiple physical lines (e.g. multi-line reasons),
+    so lines accumulate until shlex can close the quotation.
+    """
+    records = []
+    buffer = ""
+    for line in out.splitlines():
+        buffer = f"{buffer}\n{line}" if buffer else line
+        try:
+            fields = shlex.split(buffer)
+        except ValueError:
+            continue
+        records.append(dict(field.split("=", 1) for field in fields))
+        buffer = ""
+    if buffer:
+        raise ValueError(f"unparseable --plain output: {buffer!r}")
+    return records
+
+
+@pytest.fixture
+def plain_records():
+    return parse_plain_records
 
 
 def create_cli_project(tmp_path, name="gcd", pdk_root=None, freq=100.0):
@@ -32,7 +60,6 @@ root = "{pdk_root}"
 
 [flow]
 preset = "rtl2gds"
-run = "default"
 '''
     (project_dir / "ecc.toml").write_text(toml)
     return str(project_dir)
@@ -90,7 +117,6 @@ def create_cts_workspace_config(run_dir):
     create_workspace_config(
         run_dir,
         {
-            "flow_ecc.json": "{}",
             "db_ecc.json": "{}",
             "cts_ecc.json": "{}",
         },
@@ -105,7 +131,6 @@ def create_ecc_workspace_config(run_dir, step_config):
     create_workspace_config(
         run_dir,
         {
-            "flow_ecc.json": "{}",
             "db_ecc.json": "{}",
             step_config: "{}",
         },
@@ -113,7 +138,7 @@ def create_ecc_workspace_config(run_dir, step_config):
 
 
 def set_flow_run(project_dir, run_line):
-    """Replace the [flow] run line of a create_cli_project ecc.toml.
+    """Inject or remove the legacy [flow] run line in a test ecc.toml.
 
     run_line is the full TOML line (e.g. 'run = "exp1"'); pass None to remove
     the key entirely.
@@ -121,8 +146,9 @@ def set_flow_run(project_dir, run_line):
     toml_path = os.path.join(project_dir, "ecc.toml")
     with open(toml_path) as f:
         content = f.read()
-    replacement = "" if run_line is None else f"{run_line}\n"
-    content = content.replace('run = "default"\n', replacement)
+    content = content.replace('run = "default"\n', "")
+    if run_line is not None:
+        content = content.replace('preset = "rtl2gds"\n', f'preset = "rtl2gds"\n{run_line}\n')
     with open(toml_path, "w") as f:
         f.write(content)
 
@@ -140,6 +166,24 @@ def mock_pdk_validation(monkeypatch):
         "chipcompiler.cli.project.config._validate_pdk_contents",
         lambda name, root, overrides=None: None,
     )
+
+
+@pytest.fixture(autouse=True)
+def _stub_run_preflight(monkeypatch):
+    """CLI tests must not depend on host tools: stub the run preflight probes.
+
+    Tests that exercise doctor/preflight logic patch probe_environment (or
+    the individual probe functions) themselves, which overrides this stub.
+    """
+    monkeypatch.setattr(
+        "chipcompiler.cli.inspection.env_probe.probe_environment",
+        lambda components, *, cfg=None, include_slang=True: [],
+    )
+
+
+@pytest.fixture(autouse=True)
+def _disable_typer_terminal_forcing(monkeypatch):
+    monkeypatch.setattr("typer.rich_utils.FORCE_TERMINAL", False)
 
 
 @pytest.fixture(name="create_cli_project")

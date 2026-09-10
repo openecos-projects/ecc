@@ -2,6 +2,8 @@ import json
 from copy import deepcopy
 from pathlib import Path
 
+import pytest
+
 import chipcompiler.data as data_api
 import chipcompiler.data.workspace as workspace_data
 from chipcompiler.data import (
@@ -10,6 +12,7 @@ from chipcompiler.data import (
     load_workspace,
 )
 from chipcompiler.data.workspace import (
+    Flow,
     Workspace,
     build_workspace_config_paths,
     init_workspace_config,
@@ -20,12 +23,10 @@ from chipcompiler.data.workspace import (
 from chipcompiler.utility import json_read, json_write
 
 EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
-    "flow": "flow_ecc.json",
     "db": "db_ecc.json",
     StepEnum.CTS.value: "cts_ecc.json",
     StepEnum.DRC.value: "drc_ecc.json",
     StepEnum.FLOORPLAN.value: "floorplan_ecc.json",
-    StepEnum.NETLIST_OPT.value: "fixfanout_ecc.json",
     StepEnum.ROUTING.value: "route_ecc.json",
     StepEnum.FILLER.value: "filler_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",
@@ -39,6 +40,45 @@ ROUTABILITY_FLAG_STRING_CASES = (
     ("2", 2),
     ("maybe", 1),
 )
+
+
+def test_flow_has_step_uses_cached_data_and_path(tmp_path):
+    flow = Flow(
+        data={
+            "steps": [
+                {"name": StepEnum.SYNTHESIS.value, "tool": "yosys"},
+                {"name": StepEnum.FLOORPLAN.value, "tool": "ecc"},
+            ]
+        }
+    )
+    assert flow.has_step(StepEnum.SYNTHESIS)
+    assert flow.has_step("Synthesis", "yosys")
+    assert not flow.has_step(StepEnum.SYNTHESIS, "ecc")
+    assert flow.get_step(StepEnum.FLOORPLAN)["tool"] == "ecc"
+    assert flow.get_step(StepEnum.PLACEMENT) is None
+
+    path = tmp_path / "flow.json"
+    path.write_text(
+        json.dumps({"steps": [{"name": StepEnum.FLOORPLAN.value, "tool": "ecc"}]}),
+        encoding="utf-8",
+    )
+    loaded = Flow(path=path)
+    assert loaded.has_step(StepEnum.FLOORPLAN)
+    assert not loaded.has_step(StepEnum.SYNTHESIS)
+
+
+def _read_parameters(path):
+    """Read a workspace config (home/params.toml) as a flat parameter dict."""
+    from chipcompiler.data.parameter import load_parameter
+
+    return load_parameter(Path(path)).data
+
+
+def _write_parameters(path, data):
+    """Write a flat parameter dict back to a workspace config (home/params.toml)."""
+    from chipcompiler.data.parameter import Parameters, save_parameter
+
+    assert save_parameter(Parameters(path=Path(path), data=dict(data)))
 
 
 def _create_loaded_ics55_workspace(
@@ -77,7 +117,7 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
         origin_def="",
         origin_verilog=rtl_path,
         pdk="ics55",
-        parameters={**default_ics55_parameters, "Max fanout": 37},
+        parameters={**default_ics55_parameters, "max_fanout": 37},
         pdk_root=pdk_root,
     )
 
@@ -96,10 +136,6 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
     assert home_data["parameters"] == str(workspace.parameters.path)
     assert home_data["checklist"] == str(workspace_dir.resolve() / "home" / "checklist.json")
     assert isinstance(home_data["flow"], str)
-
-    flow_config = json_read(workspace.config["flow"])
-    assert flow_config["ConfigPath"]["idb_path"] == str(workspace.config["db"])
-    assert isinstance(flow_config["ConfigPath"]["idb_path"], str)
 
     cts = json_read(workspace.config[StepEnum.CTS.value])
     assert cts["max_fanout"] == 37
@@ -140,33 +176,162 @@ def test_create_workspace_persists_dynamic_flow_steps(
         parameters=default_ics55_parameters,
         pdk_root=pdk_root,
         flow_config={
-            "start_step": "Fanout",
+            "start_step": "Placement",
             "end_step": "DRC",
-            "steps": ["Fanout", "Placement", "CTS", "legal", "Route", "DRC"],
+            "steps": ["Placement", "CTS", "legal", "Route", "DRC"],
         },
     )
 
     assert workspace is not None
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [step["name"] for step in flow_data["steps"]] == [
-        "fixFanout",
         "place",
         "CTS",
         "legalization",
+        "Timing optimization",
         "route",
+        "filler",
+        "RCX",
+        "sta",
+        "lvs",
+        "postRouteLec",
         "drc",
     ]
     assert [step["tool"] for step in flow_data["steps"]] == [
-        "ecc",
         "dreamplace",
         "ecc",
         "dreamplace",
+        "sizer",
         "ecc",
+        "ecc",
+        "ecc",
+        "ecc",
+        "ecc",
+        "yosys_lec",
         "ecc",
     ]
     assert all(step["state"] == "Unstart" for step in flow_data["steps"])
     assert all(step["runtime"] == "" for step in flow_data["steps"])
     assert all(step["peak memory (mb)"] == 0 for step in flow_data["steps"])
+
+
+def test_create_workspace_copies_external_lec_and_sta_inputs(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    netlist = tmp_path / "gcd.v"
+    golden = tmp_path / "gcd_golden.v"
+    spef = tmp_path / "gcd.spef"
+    netlist.write_text("module gcd; endmodule\n")
+    golden.write_text("module gcd; endmodule\n")
+    spef.write_text('*SPEF "IEEE 1481-1998"\n')
+
+    workspace_dir = tmp_path / "workspace"
+    workspace = create_workspace(
+        directory=workspace_dir,
+        origin_def="",
+        origin_verilog=netlist,
+        golden_verilog=golden,
+        spef=spef,
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_root=pdk_root,
+        flow_config={"start_step": "lec", "end_step": "lec"},
+    )
+
+    assert workspace is not None
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    assert flow_data["steps"][0]["info"]["golden_verilog"] == str(
+        workspace_dir / "origin" / "golden_gcd_golden.v"
+    )
+    assert (workspace_dir / "origin" / "gcd.spef").is_file()
+
+
+def test_load_workspace_keeps_golden_prefixed_primary_netlist(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    # A primary netlist whose name starts with golden_ must keep its role:
+    # creation never declared a golden netlist, and the persisted flow
+    # ledger says so.
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "golden_gcd.v"
+    rtl_path.write_text("module gcd; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=workspace_dir,
+        origin_def="",
+        origin_verilog=rtl_path,
+        pdk="ics55",
+        parameters=deepcopy(default_ics55_parameters),
+        pdk_root=pdk_root,
+        flow_config={"start_step": "Synthesis", "end_step": "Floorplan"},
+    )
+
+    loaded = load_workspace(str(workspace_dir))
+    assert loaded.design.origin_verilog == workspace_dir / "origin" / "golden_gcd.v"
+    assert loaded.design.golden_verilog is None
+
+
+def test_load_workspace_restores_golden_from_persisted_flow_info(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    netlist = tmp_path / "gcd.v"
+    golden = tmp_path / "gcd_golden.v"
+    netlist.write_text("module gcd; endmodule\n")
+    golden.write_text("module gcd; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=workspace_dir,
+        origin_def="",
+        origin_verilog=netlist,
+        golden_verilog=golden,
+        pdk="ics55",
+        parameters=deepcopy(default_ics55_parameters),
+        pdk_root=pdk_root,
+        flow_config={"start_step": "lec", "end_step": "lec"},
+    )
+
+    loaded = load_workspace(str(workspace_dir))
+    assert loaded.design.origin_verilog == workspace_dir / "origin" / "gcd.v"
+    assert loaded.design.golden_verilog == workspace_dir / "origin" / "golden_gcd_golden.v"
+
+
+def test_create_workspace_non_contiguous_flow_seeds_both_stores_contiguous(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, caplog
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    def_path = tmp_path / "gcd.def"
+    def_path.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
+    netlist_path = tmp_path / "gcd.v"
+    netlist_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    with caplog.at_level("WARNING"):
+        workspace = create_workspace(
+            directory=workspace_dir,
+            origin_def=def_path,
+            origin_verilog=netlist_path,
+            pdk="ics55",
+            parameters=default_ics55_parameters,
+            pdk_root=pdk_root,
+            flow_config={"steps": ["Synth", "Place", "CTS"]},
+        )
+
+    assert workspace is not None
+    # Both stores carry the same contiguous first..last range.
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    assert [step["name"] for step in flow_data["steps"]] == [
+        "Synthesis",
+        "lec",
+        "Floorplan",
+        "place",
+        "CTS",
+    ]
+    assert workspace.parameters.data["_flow"] == {"start": "Synthesis", "end": "CTS"}
+    assert any("non-contiguous" in record.message for record in caplog.records)
 
 
 def test_create_workspace_derives_dynamic_flow_from_boundaries(
@@ -187,24 +352,96 @@ def test_create_workspace_derives_dynamic_flow_from_boundaries(
         parameters=default_ics55_parameters,
         pdk_root=pdk_root,
         flow_config={
-            "start_step": "fixFanout",
+            "start_step": "Placement",
             "end_step": "Harden",
         },
     )
 
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [step["name"] for step in flow_data["steps"]] == [
-        "fixFanout",
         "place",
         "CTS",
         "legalization",
+        "Timing optimization",
         "route",
-        "drc",
-        "lvs",
         "filler",
         "RCX",
         "sta",
+        "lvs",
+        "postRouteLec",
+        "drc",
         "Harden",
+    ]
+
+
+POST_ROUTE_LEC_STEP_ALIAS_CASES = (
+    ["lvs", "postRouteLec", "DRC"],
+    ["lvs", "postlec", "DRC"],
+    ["lvs", "postroutelec", "DRC"],
+    ["lvs", "post_route_lec", "DRC"],
+    ["lvs", "Post-Route-LEC", "DRC"],
+)
+
+
+@pytest.mark.parametrize("steps", POST_ROUTE_LEC_STEP_ALIAS_CASES)
+def test_create_workspace_normalizes_post_route_lec_step_aliases(
+    steps, tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    def_path = tmp_path / "gcd.def"
+    def_path.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
+    netlist_path = tmp_path / "gcd.v"
+    netlist_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=workspace_dir,
+        origin_def=def_path,
+        origin_verilog=netlist_path,
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_root=pdk_root,
+        flow_config={
+            "start_step": "lvs",
+            "end_step": "DRC",
+            "steps": steps,
+        },
+    )
+
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    assert [(step["name"], step["tool"]) for step in flow_data["steps"]] == [
+        ("lvs", "ecc"),
+        ("postRouteLec", "yosys_lec"),
+        ("drc", "ecc"),
+    ]
+
+
+def test_create_workspace_normalizes_post_route_lec_boundary_aliases(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    def_path = tmp_path / "gcd.def"
+    def_path.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
+    netlist_path = tmp_path / "gcd.v"
+    netlist_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=workspace_dir,
+        origin_def=def_path,
+        origin_verilog=netlist_path,
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_root=pdk_root,
+        flow_config={
+            "start_step": "postlec",
+            "end_step": "post route lec",
+        },
+    )
+
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    assert [(step["name"], step["tool"]) for step in flow_data["steps"]] == [
+        ("postRouteLec", "yosys_lec"),
     ]
 
 
@@ -238,7 +475,7 @@ def test_create_workspace_from_step_output_copies_only_origin_inputs_and_rebuild
         parameters=default_ics55_parameters,
         pdk_root=pdk_root,
         flow_config={
-            "start_step": "fixFanout",
+            "start_step": "Placement",
             "end_step": "legalization",
         },
     )
@@ -252,7 +489,6 @@ def test_create_workspace_from_step_output_copies_only_origin_inputs_and_rebuild
 
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [step["name"] for step in flow_data["steps"]] == [
-        "fixFanout",
         "place",
         "CTS",
         "legalization",
@@ -337,7 +573,7 @@ def test_load_workspace_restores_path_fields_from_existing_json(
     assert loaded.design.origin_verilog == workspace_dir.resolve() / "origin" / "gcd.v"
     assert loaded.design.origin_def == workspace_dir.resolve() / "origin" / "gcd.def"
     assert loaded.flow.path == workspace_dir.resolve() / "home" / "flow.json"
-    assert loaded.parameters.path == workspace_dir.resolve() / "home" / "parameters.json"
+    assert loaded.parameters.path == workspace_dir.resolve() / "home" / "params.toml"
     assert loaded.home.path == workspace_dir.resolve() / "home" / "home.json"
     assert all(isinstance(path, Path) for path in loaded.config.values())
 
@@ -360,22 +596,8 @@ def test_load_workspace_migrates_legacy_config_filenames(
 
     config_dir = workspace_dir / "config"
     legacy_filenames = workspace_data._LEGACY_WORKSPACE_CONFIG_FILENAMES
-    canonical_to_legacy = {
-        workspace.config[config_key].name: legacy_filename
-        for config_key, legacy_filename in legacy_filenames.items()
-    }
     for config_key, legacy_filename in legacy_filenames.items():
         workspace.config[config_key].rename(config_dir / legacy_filename)
-
-    legacy_flow_path = config_dir / legacy_filenames["flow"]
-    legacy_flow = json_read(legacy_flow_path)
-    for config_path_key, config_path_value in legacy_flow["ConfigPath"].items():
-        legacy_filename = canonical_to_legacy.get(Path(config_path_value).name)
-        if legacy_filename is not None:
-            legacy_flow["ConfigPath"][config_path_key] = str(
-                Path(config_path_value).with_name(legacy_filename)
-            )
-    json_write(legacy_flow_path, legacy_flow)
 
     loaded = load_workspace(workspace_dir)
 
@@ -387,15 +609,6 @@ def test_load_workspace_migrates_legacy_config_filenames(
         )
         assert loaded.config[config_key].is_file()
 
-    migrated_flow = json_read(loaded.config["flow"])
-    assert {Path(config_path).name for config_path in migrated_flow["ConfigPath"].values()} == {
-        EXPECTED_WORKSPACE_CONFIG_FILENAMES["db"],
-        EXPECTED_WORKSPACE_CONFIG_FILENAMES[StepEnum.FLOORPLAN.value],
-        EXPECTED_WORKSPACE_CONFIG_FILENAMES[StepEnum.ROUTING.value],
-        EXPECTED_WORKSPACE_CONFIG_FILENAMES[StepEnum.DRC.value],
-        EXPECTED_WORKSPACE_CONFIG_FILENAMES[StepEnum.CTS.value],
-    }
-
 
 def test_build_workspace_config_paths_returns_path_objects(tmp_path):
     workspace = Workspace(directory=tmp_path / "workspace")
@@ -403,7 +616,7 @@ def test_build_workspace_config_paths_returns_path_objects(tmp_path):
     paths = build_workspace_config_paths(workspace)
 
     assert paths["dir"] == tmp_path / "workspace" / "config"
-    assert paths["flow"] == tmp_path / "workspace" / "config" / "flow_ecc.json"
+    assert paths["db"] == tmp_path / "workspace" / "config" / "db_ecc.json"
     assert all(isinstance(path, Path) for path in paths.values())
 
 
@@ -424,8 +637,8 @@ def test_workspace_config_paths_match_build_workspace_config_paths(tmp_path):
 def test_workspace_config_path_handles_known_and_unknown_keys(tmp_path):
     workspace_dir = tmp_path / "workspace"
 
-    assert data_api.workspace_config_path(str(workspace_dir), "flow") == (
-        workspace_dir / "config" / "flow_ecc.json"
+    assert data_api.workspace_config_path(str(workspace_dir), "db") == (
+        workspace_dir / "config" / "db_ecc.json"
     )
     assert data_api.workspace_config_path(workspace_dir, StepEnum.FILLER.value) == (
         workspace_dir / "config" / "filler_ecc.json"
@@ -436,33 +649,23 @@ def test_workspace_config_path_handles_known_and_unknown_keys(tmp_path):
 
 
 def test_step_config_keys_return_workspace_config_keys():
-    assert data_api.step_config_keys("CTS", "ecc") == ("flow", "db", StepEnum.CTS.value)
-    assert data_api.step_config_keys("place", "ecc") == (
-        "flow",
-        "db",
-    )
-    assert data_api.step_config_keys(StepEnum.PLACEMENT, "ecc") == (
-        "flow",
-        "db",
-    )
-    assert data_api.step_config_keys("legalization", "ecc") == (
-        "flow",
-        "db",
-    )
+    assert data_api.step_config_keys("CTS", "ecc") == ("db", StepEnum.CTS.value)
+    assert data_api.step_config_keys("place", "ecc") == ("db",)
+    assert data_api.step_config_keys(StepEnum.PLACEMENT, "ecc") == ("db",)
+    assert data_api.step_config_keys("legalization", "ecc") == ("db",)
     assert data_api.step_config_keys("filler", "ecc") == (
-        "flow",
         "db",
         StepEnum.FILLER.value,
     )
     assert data_api.step_config_keys("sta", "ecc") == (
-        "flow",
         "db",
         StepEnum.RCX.value,
         StepEnum.STA.value,
     )
     assert data_api.step_config_keys("place", "dreamplace") == ("dreamplace",)
-    assert data_api.step_config_keys("macroPlacement", "dreamplace") == ("dreamplace",)
     assert data_api.step_config_keys("legalization", "dreamplace") == ("dreamplace",)
+    assert data_api.step_config_keys("Timing optimization", "sizer") == ("db", "dreamplace")
+    assert data_api.step_config_keys(StepEnum.TIMING_OPT, "sizer") == ("db", "dreamplace")
     assert data_api.step_config_keys("synthesis", "yosys") == ()
     assert data_api.step_config_keys("place", None) == ()
 
@@ -470,7 +673,6 @@ def test_step_config_keys_return_workspace_config_keys():
 def test_step_config_keys_accept_exact_internal_step_names_only():
     cases = [
         (StepEnum.FLOORPLAN.value, StepEnum.FLOORPLAN.value),
-        (StepEnum.NETLIST_OPT.value, StepEnum.NETLIST_OPT.value),
         (StepEnum.ROUTING.value, StepEnum.ROUTING.value),
         (StepEnum.RCX.value, StepEnum.RCX.value),
         ("sta", StepEnum.STA.value),
@@ -478,12 +680,11 @@ def test_step_config_keys_accept_exact_internal_step_names_only():
 
     for token, config_key in cases:
         keys = data_api.step_config_keys(token, "ecc")
-        assert keys[:2] == ("flow", "db")
+        assert keys[0] == "db"
         assert config_key in keys
 
     for cli_token in (
         "floorplan",
-        "fixfanout",
         "placement",
         "routing",
         "cts",
@@ -492,40 +693,30 @@ def test_step_config_keys_accept_exact_internal_step_names_only():
         assert data_api.step_config_keys(cli_token, "ecc") == ()
 
     assert data_api.step_config_keys("place", "ECC") == ()
-    assert data_api.step_config_keys("place", "DreamPlace") == ()
-
-
-def test_dynamic_flow_normalizes_macro_placement_aliases(monkeypatch):
-    canonical = [
-        (StepEnum.MACRO_PLACEMENT.value, "dreamplace", "Unstart"),
-    ]
-    monkeypatch.setattr(workspace_data, "_canonical_harden_flow_entries", lambda: canonical)
-
-    for alias in ("macroplace", "macroplacement", "macro_placement"):
-        flow = workspace_data.build_dynamic_flow_data({"steps": [alias]})
-        assert [step["name"] for step in flow["steps"]] == [StepEnum.MACRO_PLACEMENT.value]
+    assert data_api.step_config_keys("place", "not-a-tool") == ()
 
 
 def test_step_config_paths_return_expected_and_existing_paths(tmp_path):
     workspace_dir = tmp_path / "workspace"
     config_dir = workspace_dir / "config"
     config_dir.mkdir(parents=True)
-    (config_dir / "flow_ecc.json").write_text("{}")
     (config_dir / "cts_ecc.json").write_text("{}")
 
     assert data_api.step_config_paths(workspace_dir, "CTS", "ecc") == (
-        config_dir / "flow_ecc.json",
         config_dir / "db_ecc.json",
         config_dir / "cts_ecc.json",
     )
     assert data_api.step_config_paths(workspace_dir, "CTS", "ecc", existing_only=True) == (
-        config_dir / "flow_ecc.json",
         config_dir / "cts_ecc.json",
     )
     assert data_api.step_config_paths(str(workspace_dir), "place", "dreamplace") == (
         config_dir / "dreamplace_ecc.json",
     )
     assert data_api.step_config_paths(workspace_dir, "legalization", "dreamplace") == (
+        config_dir / "dreamplace_ecc.json",
+    )
+    assert data_api.step_config_paths(workspace_dir, StepEnum.TIMING_OPT, "sizer") == (
+        config_dir / "db_ecc.json",
         config_dir / "dreamplace_ecc.json",
     )
     assert data_api.step_config_paths(workspace_dir, "place", "ECC") == ()
@@ -593,10 +784,10 @@ def test_create_workspace_persists_pdk_root_in_parameters(
     assert workspace is not None
     resolved_root = pdk_root.resolve()
     assert workspace.pdk.root == resolved_root
-    assert workspace.parameters.data.get("PDK Root") == str(resolved_root)
+    assert workspace.parameters.data.get("pdk_root") == str(resolved_root)
 
-    parameters_data = json.loads((workspace_dir / "home" / "parameters.json").read_text())
-    assert parameters_data.get("PDK Root") == str(resolved_root)
+    parameters_data = _read_parameters(workspace_dir / "home" / "params.toml")
+    assert parameters_data.get("pdk_root") == str(resolved_root)
 
 
 def test_load_workspace_restores_pdk_root_from_parameters(
@@ -621,7 +812,7 @@ def test_load_workspace_restores_pdk_root_from_parameters(
     assert loaded is not None
     resolved_root = pdk_root.resolve()
     assert loaded.pdk.root == resolved_root
-    assert loaded.parameters.data.get("PDK Root") == str(resolved_root)
+    assert loaded.parameters.data.get("pdk_root") == str(resolved_root)
     assert all(path.is_relative_to(resolved_root) for path in loaded.pdk.libs)
 
 
@@ -696,17 +887,15 @@ def test_workspace_config_refresh_uses_updated_parameters(
     )
 
     workspace = load_workspace(str(workspace_dir))
-    parameter_path = workspace_dir / "home" / "parameters.json"
-    params = json_read(parameter_path)
-    params["Max fanout"] = 88
-    params["Global right padding"] = 13
-    json_write(parameter_path, params)
+    parameter_path = workspace_dir / "home" / "params.toml"
+    params = _read_parameters(parameter_path)
+    params["max_fanout"] = 88
+    params["global_right_padding"] = 13
+    _write_parameters(parameter_path, params)
 
     init_workspace_config(workspace)
 
-    fixfanout = json_read(workspace.config["fixFanout"])
     filler = json_read(workspace.config["filler"])
-    assert fixfanout["max_fanout"] == 88
     assert filler == {"-min_filler_width": 1}
 
 
@@ -728,17 +917,17 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     )
 
     workspace = load_workspace(str(workspace_dir))
-    parameter_path = workspace_dir / "home" / "parameters.json"
-    params = json_read(parameter_path)
-    params["Max fanout"] = 91
-    params["Global right padding"] = 17
-    params["Bottom layer"] = "MET3"
-    params["Top layer"] = "MET6"
-    params["Target density"] = 0.42
-    params["Target overflow"] = 0.07
-    params["Cell padding x"] = 444
-    params["Routability opt flag"] = 0
-    json_write(parameter_path, params)
+    parameter_path = workspace_dir / "home" / "params.toml"
+    params = _read_parameters(parameter_path)
+    params["max_fanout"] = 91
+    params["global_right_padding"] = 17
+    params["bottom_layer"] = "MET3"
+    params["top_layer"] = "MET6"
+    params["target_density"] = 0.42
+    params["target_overflow"] = 0.07
+    params["cell_padding_x"] = 444
+    params["routability_opt_flag"] = 0
+    _write_parameters(parameter_path, params)
 
     cts = json_read(workspace.config[StepEnum.CTS.value])
     cts["skew_bound"] = "0.13"
@@ -746,7 +935,6 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
 
     refresh_workspace_config(workspace)
 
-    fixfanout = json_read(workspace.config["fixFanout"])
     filler = json_read(workspace.config["filler"])
     db = json_read(workspace.config["db"])
     floorplan = json_read(workspace.config[StepEnum.FLOORPLAN.value])
@@ -754,7 +942,6 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     cts = json_read(workspace.config[StepEnum.CTS.value])
     dreamplace = json_read(workspace.config["dreamplace"])
 
-    assert fixfanout["max_fanout"] == 91
     assert cts["max_fanout"] == 91
     assert cts["buffer_type"] == workspace.pdk.buffers
     assert cts["skew_bound"] == "0.13"
@@ -778,7 +965,91 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
         "die_util": {"aspect_ratio": 1, "utilization": 0.4},
         "die_size": {"width_micron": 100.1, "height_micron": 246.6},
     }
-    assert floorplan["io_placer"] == {"io_layer_list": ["MET3", "MET4"]}
+    assert floorplan["macro_placer"] == {
+        "mode": "auto",
+        "file_path": "",
+        "macro_placement_halo": 3.0,
+        "macro_routing_halo": 3.0,
+    }
+    assert floorplan["io_placer"] == {
+        "mode": "auto",
+        "file_path": "",
+        "io_layer_list": ["MET3", "MET4"],
+    }
+
+
+def test_refresh_workspace_config_migrates_legacy_floorplan_schema(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    _, workspace = _create_loaded_ics55_workspace(
+        tmp_path,
+        "workspace_legacy_floorplan",
+        minimal_ics55_pdk_factory,
+        default_ics55_parameters,
+    )
+    config_path = workspace.config[StepEnum.FLOORPLAN.value]
+    floorplan = json_read(config_path)
+    floorplan["macro_placer"].pop("mode")
+    floorplan["macro_placer"].pop("file_path")
+    floorplan["macro_placer"]["macro_location_path"] = "macro_locations.txt"
+    floorplan["io_placer"].pop("mode")
+    floorplan["io_placer"].pop("file_path")
+    json_write(config_path, floorplan)
+
+    refresh_workspace_config(workspace)
+
+    refreshed = json_read(config_path)
+    assert refreshed["macro_placer"] == {
+        "mode": "auto",
+        "file_path": "",
+        "macro_placement_halo": 3.0,
+        "macro_routing_halo": 3.0,
+    }
+    assert refreshed["io_placer"] == {
+        "mode": "auto",
+        "file_path": "",
+        "io_layer_list": ["MET3", "MET4"],
+    }
+
+
+def test_refresh_workspace_config_updates_generated_sdc_frequency(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    workspace_dir, workspace = _create_loaded_ics55_workspace(
+        tmp_path,
+        "workspace_generated_sdc",
+        minimal_ics55_pdk_factory,
+        default_ics55_parameters,
+    )
+    parameter_path = workspace_dir / "home" / "params.toml"
+    params = _read_parameters(parameter_path)
+    params["frequency_max"] = 250.0
+    _write_parameters(parameter_path, params)
+
+    refresh_workspace_config(workspace)
+
+    assert "set clk_freq_mhz 250.0" in workspace.pdk.sdc.read_text(encoding="utf-8")
+
+
+def test_refresh_workspace_config_preserves_external_sdc(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    workspace_dir, workspace = _create_loaded_ics55_workspace(
+        tmp_path,
+        "workspace_external_sdc",
+        minimal_ics55_pdk_factory,
+        default_ics55_parameters,
+    )
+    external_sdc = workspace.pdk.sdc
+    external_content = "create_clock -period 1 [get_ports clk]\n"
+    external_sdc.write_text(external_content, encoding="utf-8")
+    params = _read_parameters(workspace_dir / "home" / "params.toml")
+    params["frequency_max"] = 250.0
+    _write_parameters(workspace_dir / "home" / "params.toml", params)
+
+    refresh_workspace_config(workspace)
+
+    assert external_sdc.read_text(encoding="utf-8") == external_content
 
 
 def test_refresh_workspace_config_preserves_routability_flag_string_coercion(
@@ -791,10 +1062,10 @@ def test_refresh_workspace_config_preserves_routability_flag_string_coercion(
             minimal_ics55_pdk_factory,
             default_ics55_parameters,
         )
-        parameter_path = workspace_dir / "home" / "parameters.json"
-        params = json_read(parameter_path)
-        params["Routability opt flag"] = raw_value
-        json_write(parameter_path, params)
+        parameter_path = workspace_dir / "home" / "params.toml"
+        params = _read_parameters(parameter_path)
+        params["routability_opt_flag"] = raw_value
+        _write_parameters(parameter_path, params)
 
         refresh_workspace_config(workspace)
 
@@ -811,21 +1082,78 @@ def test_refresh_workspace_config_preserves_nested_dreamplace_override_precedenc
         minimal_ics55_pdk_factory,
         default_ics55_parameters,
     )
-    parameter_path = workspace_dir / "home" / "parameters.json"
-    params = json_read(parameter_path)
-    params["Target density"] = 0.25
-    params["Routability opt flag"] = "true"
-    params["DreamPlace"] = {
+    parameter_path = workspace_dir / "home" / "params.toml"
+    params = _read_parameters(parameter_path)
+    params["target_density"] = 0.25
+    params["routability_opt_flag"] = "true"
+    params["dreamplace"] = {
         "target_density": 0.88,
         "routability_opt_flag": 0,
     }
-    json_write(parameter_path, params)
+    _write_parameters(parameter_path, params)
 
     refresh_workspace_config(workspace)
 
     dreamplace = json_read(workspace.config["dreamplace"])
     assert dreamplace["target_density"] == 0.88
     assert dreamplace["routability_opt_flag"] == 0
+
+
+def test_apply_config_overrides_validates_every_target_before_writing(tmp_path):
+    from chipcompiler.data.workspace.config_overrides import apply_config_overrides
+
+    cts_path = tmp_path / "cts.json"
+    json_write(cts_path, {"skew_bound": "0.05"})
+    parameters = {
+        "config_overrides": {
+            "cts.json": {"skew_bound": "0.20"},
+            "bogus.json": {"threads": 1},
+        }
+    }
+
+    with pytest.raises(ValueError, match="unknown config override target"):
+        apply_config_overrides({"cts.json": cts_path}, parameters)
+
+    # The valid first override is not persisted when a later target is invalid.
+    assert json_read(cts_path) == {"skew_bound": "0.05"}
+
+
+def test_refresh_workspace_config_reapplies_direct_config_overrides(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    workspace_dir = tmp_path / "workspace"
+    workspace = create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters={
+            **default_ics55_parameters,
+            "Config Overrides": {
+                "CTS": {"skew_bound": "0.05"},
+                "dreamplace": {"num_threads": 12},
+            },
+        },
+        pdk_root=str(pdk_root),
+    )
+
+    cts = json_read(workspace.config[StepEnum.CTS.value])
+    dreamplace = json_read(workspace.config["dreamplace"])
+    assert cts["skew_bound"] == "0.05"
+    assert dreamplace["num_threads"] == 12
+
+    cts["skew_bound"] = "0.20"
+    dreamplace["num_threads"] = 1
+    json_write(workspace.config[StepEnum.CTS.value], cts)
+    json_write(workspace.config["dreamplace"], dreamplace)
+
+    refresh_workspace_config(workspace)
+
+    assert json_read(workspace.config[StepEnum.CTS.value])["skew_bound"] == "0.05"
+    assert json_read(workspace.config["dreamplace"])["num_threads"] == 12
 
 
 def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshes_peers(
@@ -854,10 +1182,10 @@ def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshe
     assert sync_workspace_config_to_parameters(workspace, workspace.config["route"]) is True
     refresh_workspace_config(workspace)
 
-    params = json_read(workspace_dir / "home" / "parameters.json")
+    params = _read_parameters(workspace_dir / "home" / "params.toml")
     db = json_read(workspace.config["db"])
-    assert params["Bottom layer"] == "MET4"
-    assert params["Top layer"] == "MET7"
+    assert params["bottom_layer"] == "MET4"
+    assert params["top_layer"] == "MET7"
     assert db["LayerSettings"]["routing_layer_1st"] == "MET4"
 
 
@@ -878,11 +1206,11 @@ def test_sync_workspace_config_to_parameters_propagates_cts_max_fanout(
     assert sync_workspace_config_to_parameters(workspace, cts_path) is True
     refresh_workspace_config(workspace)
 
-    parameters = json_read(workspace_dir / "home" / "parameters.json")
-    fixfanout = json_read(workspace.config[StepEnum.NETLIST_OPT.value])
+    from chipcompiler.data.parameter import load_parameter
+
+    parameters = load_parameter(workspace_dir / "home" / "params.toml")
     cts = json_read(cts_path)
-    assert parameters["Max fanout"] == 48
-    assert fixfanout["max_fanout"] == 48
+    assert parameters.data["max_fanout"] == 48
     assert cts["max_fanout"] == 48
 
 
@@ -896,10 +1224,10 @@ def test_sync_workspace_config_to_parameters_preserves_routability_flag_string_c
             minimal_ics55_pdk_factory,
             default_ics55_parameters,
         )
-        parameter_path = workspace_dir / "home" / "parameters.json"
-        params = json_read(parameter_path)
-        params["Routability opt flag"] = -1
-        json_write(parameter_path, params)
+        parameter_path = workspace_dir / "home" / "params.toml"
+        params = _read_parameters(parameter_path)
+        params["routability_opt_flag"] = -1
+        _write_parameters(parameter_path, params)
 
         dreamplace = json_read(workspace.config["dreamplace"])
         dreamplace["routability_opt_flag"] = raw_value
@@ -909,8 +1237,8 @@ def test_sync_workspace_config_to_parameters_preserves_routability_flag_string_c
             sync_workspace_config_to_parameters(workspace, workspace.config["dreamplace"]) is True
         )
 
-        params = json_read(parameter_path)
-        assert params["Routability opt flag"] == expected
+        params = _read_parameters(parameter_path)
+        assert params["routability_opt_flag"] == expected
 
 
 def test_sync_workspace_config_to_parameters_ignores_unmanaged_fields(
@@ -934,12 +1262,12 @@ def test_sync_workspace_config_to_parameters_ignores_unmanaged_fields(
     cts = json_read(workspace.config["CTS"])
     cts["skew_bound"] = 0.12
     json_write(workspace.config["CTS"], cts)
-    parameter_path = workspace_dir / "home" / "parameters.json"
-    before = json_read(parameter_path)
+    parameter_path = workspace_dir / "home" / "params.toml"
+    before = _read_parameters(parameter_path)
 
     assert sync_workspace_config_to_parameters(workspace, workspace.config["CTS"]) is False
 
-    after = json_read(parameter_path)
+    after = _read_parameters(parameter_path)
     assert after == before
 
 
@@ -960,8 +1288,8 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
         pdk_root=str(pdk_root),
     )
 
-    parameters_before = (workspace_dir / "home" / "parameters.json").read_text()
-    config_before = (workspace_dir / "config" / "flow_ecc.json").read_text()
+    parameters_before = _read_parameters(workspace_dir / "home" / "params.toml")
+    config_before = (workspace_dir / "config" / "filler_ecc.json").read_text()
     origin_before = (workspace_dir / "origin" / "gcd.v").read_text()
 
     step_dir = workspace_dir / "floorplan_ecc"
@@ -1005,7 +1333,7 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
             "checklist": [
                 {
                     "step": "Floorplan",
-                    "type": "Area",
+                    "type": "area",
                     "item": "check DIE area",
                     "state": "Success",
                 }
@@ -1045,32 +1373,32 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     assert not (step_dir / "output" / "gcd_floorplan.png").exists()
     assert not (step_dir / "feature" / "floorplan.db.inst_dist.png").exists()
     assert not (step_dir / "log" / "floorplan.log").exists()
-    assert (workspace_dir / "config" / "flow_ecc.json").read_text() == config_before
+    assert (workspace_dir / "config" / "filler_ecc.json").read_text() == config_before
     assert (workspace_dir / "origin" / "gcd.v").read_text() == origin_before
     assert (workspace_dir / "log").exists()
 
-    reset_parameters = json.loads((workspace_dir / "home" / "parameters.json").read_text())
-    parameters_before_json = json.loads(parameters_before)
-    assert reset_parameters["PDK"] == parameters_before_json["PDK"]
-    assert reset_parameters["Design"] == parameters_before_json["Design"]
-    assert reset_parameters["Top module"] == parameters_before_json["Top module"]
-    assert reset_parameters["Clock"] == parameters_before_json["Clock"]
-    assert reset_parameters["Frequency max [MHz]"] == parameters_before_json["Frequency max [MHz]"]
+    reset_parameters = _read_parameters(workspace_dir / "home" / "params.toml")
+    parameters_before_json = parameters_before
+    assert reset_parameters["pdk"] == parameters_before_json["pdk"]
+    assert reset_parameters["design"] == parameters_before_json["design"]
+    assert reset_parameters["top_module"] == parameters_before_json["top_module"]
+    assert reset_parameters["clock"] == parameters_before_json["clock"]
+    assert reset_parameters["frequency_max"] == parameters_before_json["frequency_max"]
     assert (
-        reset_parameters["Core"]["Utilitization"] == parameters_before_json["Core"]["Utilitization"]
+        reset_parameters["core"]["utilitization"] == parameters_before_json["core"]["utilitization"]
     )
-    assert reset_parameters["Core"]["Margin"] == parameters_before_json["Core"]["Margin"]
+    assert reset_parameters["core"]["margin"] == parameters_before_json["core"]["margin"]
     assert (
-        reset_parameters["Core"]["Aspect ratio"] == parameters_before_json["Core"]["Aspect ratio"]
+        reset_parameters["core"]["aspect_ratio"] == parameters_before_json["core"]["aspect_ratio"]
     )
-    assert reset_parameters["Die"]["Size"] == []
-    assert reset_parameters["Die"]["Area"] == 0
-    assert reset_parameters["Core"]["Size"] == []
-    assert reset_parameters["Core"]["Area"] == 0
-    assert reset_parameters["Core"]["Bounding box"] == ""
+    assert reset_parameters["die"]["size"] == []
+    assert reset_parameters["die"]["area"] == 0
+    assert reset_parameters["core"]["size"] == []
+    assert reset_parameters["core"]["area"] == 0
+    assert reset_parameters["core"]["bounding_box"] == ""
 
     reset_home = json_read(home_path)
-    assert reset_home["parameters"] == str(workspace_dir / "home" / "parameters.json")
+    assert reset_home["parameters"] == str(workspace_dir / "home" / "params.toml")
     assert reset_home["flow"] == str(flow_path)
     assert reset_home["checklist"] == str(checklist_path)
     assert reset_home["layout"] == ""
@@ -1089,18 +1417,19 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     assert engine_flow.clear_calls == 1
     assert engine_flow.create_calls == 1
 
-    parameter_path = workspace_dir / "home" / "parameters.json"
-    preserved_parameters = json_read(parameter_path)
-    preserved_parameters["Die"] = {"Size": [120.0, 80.0], "Area": 9600.0}
-    preserved_parameters["Core"] = {
-        **preserved_parameters["Core"],
-        "Size": [100.0, 60.0],
-        "Area": 6000.0,
-        "Bounding box": "0 0 100 60",
+    parameter_path = workspace_dir / "home" / "params.toml"
+    preserved_parameters = _read_parameters(parameter_path)
+    preserved_parameters["die"] = {"size": [120.0, 80.0], "area": 9600.0}
+    preserved_parameters["core"] = {
+        **preserved_parameters["core"],
+        "size": [100.0, 60.0],
+        "area": 6000.0,
+        "bounding_box": "0 0 100 60",
     }
-    json_write(parameter_path, preserved_parameters)
+    _write_parameters(parameter_path, preserved_parameters)
     workspace.parameters.data = preserved_parameters
     preserved_parameter_text = parameter_path.read_text()
+    assert preserved_parameter_text
 
     workspace.parameters.path = None
     prepare_workspace_for_rerun(
@@ -1112,7 +1441,7 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     assert parameter_path.read_text() == preserved_parameter_text
     assert workspace.parameters.path == parameter_path
     assert json_read(home_path)["parameters"] == str(parameter_path)
-    assert (workspace_dir / "config" / "flow_ecc.json").read_text() == config_before
+    assert (workspace_dir / "config" / "filler_ecc.json").read_text() == config_before
 
 
 def test_create_workspace_sg13g2_persists_pdk_root_in_parameters(
@@ -1135,10 +1464,10 @@ def test_create_workspace_sg13g2_persists_pdk_root_in_parameters(
     assert workspace is not None
     resolved_root = pdk_root.resolve()
     assert workspace.pdk.root == resolved_root
-    assert workspace.parameters.data.get("PDK Root") == str(resolved_root)
+    assert workspace.parameters.data.get("pdk_root") == str(resolved_root)
 
-    parameters_data = json.loads((workspace_dir / "home" / "parameters.json").read_text())
-    assert parameters_data.get("PDK Root") == str(resolved_root)
+    parameters_data = _read_parameters(workspace_dir / "home" / "params.toml")
+    assert parameters_data.get("pdk_root") == str(resolved_root)
 
 
 def test_load_workspace_sg13g2_restores_pdk_root_from_parameters(
@@ -1163,7 +1492,7 @@ def test_load_workspace_sg13g2_restores_pdk_root_from_parameters(
     assert loaded is not None
     resolved_root = pdk_root.resolve()
     assert loaded.pdk.root == resolved_root
-    assert loaded.parameters.data.get("PDK Root") == str(resolved_root)
+    assert loaded.parameters.data.get("pdk_root") == str(resolved_root)
     assert all(path.is_relative_to(resolved_root) for path in loaded.pdk.libs)
 
 

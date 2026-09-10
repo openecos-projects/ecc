@@ -1,4 +1,4 @@
-import json
+import os
 import sys
 
 from chipcompiler.cli.core.types import CommandResult, OutputMode
@@ -20,17 +20,6 @@ def render_text(records: tuple[dict, ...], file=None) -> None:
         print(" ".join(parts), file=target)
 
 
-def render_json(result: CommandResult, file=None) -> None:
-    target = file or sys.stdout
-    print(json.dumps({"records": list(result.records)}, ensure_ascii=False), file=target)
-
-
-def render_jsonl(result: CommandResult, file=None) -> None:
-    target = file or sys.stdout
-    for record in result.records:
-        print(json.dumps(record, ensure_ascii=False), file=target)
-
-
 def render_plain(records: tuple[dict, ...], file=None) -> None:
     target = file or sys.stdout
     for record in records:
@@ -50,14 +39,36 @@ def _plain_value(value) -> str:
     return s
 
 
+def render_markdown(text: str, file=None, *, color: bool, pager: bool = False) -> None:
+    from rich.console import Console
+    from rich.markdown import Markdown
+
+    # force_terminal tracks color: forcing a terminal on a colorless stream
+    # makes rich 15 emit ANSI escapes even with no_color=True.
+    console = Console(file=file or sys.stdout, force_terminal=color, no_color=not color)
+    # Page only on a real terminal: pydoc picks its pager at import time, so
+    # its own isatty check cannot be trusted once the process has been piped.
+    if pager and file is None and sys.stdout.isatty():
+        # pydoc invokes plain `less`, which escapes ANSI; with no user LESS,
+        # default to git's FRX so styled output renders and short docs don't
+        # open the pager UI at all.
+        saved_less = os.environ.get("LESS")
+        if saved_less is None:
+            os.environ["LESS"] = "FRX"
+        try:
+            with console.pager(styles=color):
+                console.print(Markdown(text))
+        finally:
+            if saved_less is None:
+                del os.environ["LESS"]
+    else:
+        console.print(Markdown(text))
+
+
 def render_result(
     result: CommandResult, mode: OutputMode, file=None, command=None, *, color=True
 ) -> None:
-    if mode == OutputMode.JSON:
-        render_json(result, file=file)
-    elif mode == OutputMode.JSONL:
-        render_jsonl(result, file=file)
-    elif mode == OutputMode.PLAIN:
+    if mode == OutputMode.PLAIN:
         render_plain(result.records, file=file)
     elif mode == OutputMode.TEXT:
         _render_pretty(result, file=file, command=command, color=color)
@@ -67,7 +78,6 @@ def render_result(
 
 def _render_pretty(result: CommandResult, file=None, command=None, *, color=True) -> None:
     from chipcompiler.cli.rendering.pretty import (
-        get_pretty_renderer,
         render_error,
         render_generic_block,
     )
@@ -82,8 +92,6 @@ def _render_pretty(result: CommandResult, file=None, command=None, *, color=True
         render_error(records, file=file, color=color)
         return
 
-    renderer = get_pretty_renderer(command) if command else None
-    if renderer:
-        renderer(records, file=file, color=color)
-    else:
-        render_generic_block(records, file=file, color=color)
+    # Command-specific pretty renderers dispatch via the RENDERERS registry
+    # (keyed by full command path) before this fallback is reached.
+    render_generic_block(records, file=file, color=color)

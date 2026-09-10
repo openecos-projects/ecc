@@ -2,7 +2,7 @@
 
 ## Installation
 
-Ensure you have installed all dependencies as described in the **[README](../../../README.md#Install-All-Dependencies)**.
+Ensure you have installed ECC as described in the **[README](../../../README.md#installation)**.
 
 ## Usage Example
 
@@ -52,7 +52,7 @@ The workspace will be created from scratch, the structure is as follows:
 ```
 gcd_workspace/
 ├── flow.json       # Flow state file
-├── parameters.json # Design parameters file
+├── params.toml        # Workspace configuration (parameters, flow target)
 ├── CTS_ecc         # CTS step workspace
 │   ├── analysis    # Analysis files extract from metrics
 │   ├── config      # Configuration files
@@ -66,9 +66,6 @@ gcd_workspace/
 │   ...             # Similar structure as above, same below
 │   └── script
 ├── filler_ecc
-│   ...
-│   └── script
-├── fixFanout_ecc
 │   ...
 │   └── script
 ├── Floorplan_ecc
@@ -105,7 +102,6 @@ if not engine_flow.has_init():
     # Use `add_step` to add steps to the flow
     engine_flow.add_step(step=StepEnum.SYNTHESIS, tool="Yosys", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.NETLIST_OPT, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.PLACEMENT, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.CTS, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.LEGALIZATION, tool="ecc", state=StateEnum.Unstart)
@@ -122,8 +118,7 @@ The flow we defined is:
 ```mermaid
 graph LR
     A[Synthesis<br/>Yosys] --> B[Floorplan<br/>ECC-Tools]
-    B --> C[Netlist Opt<br/>ECC-Tools]
-    C --> D[Placement<br/>ECC-Tools]
+    B --> C[Placement<br/>ECC-Tools]
     D --> E[CTS<br/>ECC-Tools]
     E --> F[Legalization<br/>ECC-Tools]
     F --> G[Routing<br/>ECC-Tools]

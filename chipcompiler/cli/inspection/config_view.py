@@ -4,7 +4,12 @@ from chipcompiler.cli.core.output import disclosure_cmd
 
 
 def build_project_config_items(
-    project_dir: str, run_dir: str, project: str | None = None, run_id: str | None = None
+    project_dir: str,
+    run_dir: str,
+    project: str | None = None,
+    run_id: str | None = None,
+    *,
+    resolved: tuple | None = None,
 ) -> tuple[list[dict], int]:
     from chipcompiler.cli.project.config import (
         _resolve_path,
@@ -14,35 +19,68 @@ def build_project_config_items(
         validate_project_config,
     )
 
-    config_path = find_config_path(project_dir)
-    if config_path is None:
-        return [{"kind": "error", "status": "missing_config"}], 1
+    flow_config = None
+    if resolved is not None:
+        # The effective (manifest-layered) config, resolved by the handler.
+        cfg, flow_config = resolved
+    else:
+        config_path = find_config_path(project_dir)
+        if config_path is None:
+            return [{"kind": "error", "status": "missing_config"}], 1
 
-    try:
-        cfg = load_project_config(config_path)
-    except (OSError, UnicodeDecodeError):
-        return [{"kind": "error", "status": "invalid_config"}], 1
-    if getattr(cfg, "_toml_error", None):
-        return [{"kind": "error", "status": "invalid_config"}], 1
+        try:
+            cfg = load_project_config(config_path)
+        except (OSError, UnicodeDecodeError):
+            return [{"kind": "error", "status": "invalid_config"}], 1
+        if getattr(cfg, "_toml_error", None):
+            return [{"kind": "error", "status": "invalid_config"}], 1
 
-    errors = validate_project_config(cfg)
-    if errors:
-        return [{"kind": "error", "status": "invalid_config"}], 1
+        errors = validate_project_config(cfg)
+        if errors:
+            return [{"kind": "error", "status": "invalid_config"}], 1
 
     pdk_root = resolve_pdk_root(cfg)
 
+    # Source labels follow the effective layering: values the manifest
+    # supplied (or filled beneath an ecc.toml that does not set them) read
+    # "project.json"; explicit ecc.toml keys read "ecc.toml".
+    explicit = getattr(cfg, "_explicit_keys", frozenset())
+
+    def source_of(dotted: str) -> str:
+        if resolved is not None and dotted not in explicit:
+            return "project.json"
+        return "ecc.toml"
+
     items = []
     entries = [
-        ("design.name", cfg.design_name, cfg.design_name, "ecc.toml"),
-        ("design.top", cfg.design_top, cfg.design_top, "ecc.toml"),
-        ("design.clock_port", cfg.design_clock_port, cfg.design_clock_port, "ecc.toml"),
-        ("design.frequency_mhz", cfg.design_frequency_mhz, cfg.design_frequency_mhz, "ecc.toml"),
-        ("pdk.name", cfg.pdk_name, cfg.pdk_name, "ecc.toml"),
-        ("flow.preset", cfg.flow_preset, cfg.flow_preset, "ecc.toml"),
-        ("flow.run", cfg.flow_run, cfg.flow_run, "ecc.toml"),
+        ("design.name", cfg.design_name, cfg.design_name, source_of("design.name")),
+        ("design.top", cfg.design_top, cfg.design_top, source_of("design.top")),
+        (
+            "design.clock_port",
+            cfg.design_clock_port,
+            cfg.design_clock_port,
+            source_of("design.clock_port"),
+        ),
+        (
+            "design.frequency_mhz",
+            cfg.design_frequency_mhz,
+            cfg.design_frequency_mhz,
+            source_of("design.frequency_mhz"),
+        ),
+        ("pdk.name", cfg.pdk_name, cfg.pdk_name, source_of("pdk.name")),
     ]
+    if flow_config is not None and "flow.preset" not in explicit:
+        # The selected manifest entry's range is the flow target.
+        entries.append(
+            ("flow.start", flow_config["start_step"], flow_config["start_step"], "project.json")
+        )
+        entries.append(
+            ("flow.end", flow_config["end_step"], flow_config["end_step"], "project.json")
+        )
+    else:
+        entries.append(("flow.preset", cfg.flow_preset, cfg.flow_preset, source_of("flow.preset")))
 
-    inspect = disclosure_cmd("ecc config --resolved --json", project, run_id)
+    inspect = disclosure_cmd("ecc config", project, run_id)
 
     for key, value, resolved, source in entries:
         items.append(
@@ -67,13 +105,13 @@ def build_project_config_items(
                 "key": f"design.rtl.{i}",
                 "value": rtl,
                 "resolved": rtl_resolved,
-                "source": "ecc.toml",
+                "source": source_of("design.rtl"),
                 "inspect_cmd": inspect,
             }
         )
 
     # PDK root with resolution
-    pdk_source = "ecc.toml" if cfg.pdk_root else "env"
+    pdk_source = source_of("pdk.root") if cfg.pdk_root else "env"
     items.append(
         {
             "kind": "config",
@@ -125,15 +163,24 @@ def build_project_config_items(
     if prov_error:
         return [{"kind": "error", "status": "invalid_config", "reason": prov_error}], 1
     toml_overrides = dict(cfg.params_overrides)
-    if "design.frequency_mhz" not in toml_overrides and cfg.design_frequency_mhz > 0:
+    if "design.frequency_mhz" not in toml_overrides and "design.frequency_mhz" in getattr(
+        cfg, "_explicit_keys", frozenset()
+    ):
+        # Only an explicit ecc.toml [design] frequency is an ecc.toml-layer
+        # value; a manifest-filled design_frequency_mhz (manifest-only and
+        # filled hybrid configs) must present through the manifest overrides
+        # beneath, or it masks the manifest layer's own type errors.
         toml_overrides["design.frequency_mhz"] = cfg.design_frequency_mhz
-    resolved_params, _ = resolve_parameters(
+    resolved_params, resolve_errors = resolve_parameters(
         toml_overrides=toml_overrides,
         cli_overrides=cli_provenance,
+        manifest_overrides=_manifest_parameter_overrides(cfg),
     )
-    from chipcompiler.cli.handlers.param import _maps_to_str
+    from chipcompiler.cli.command_handlers.param import _maps_to_str
 
     for rp in resolved_params:
+        if rp.schema.has_direct_target and not rp.is_explicit:
+            continue
         items.append(
             {
                 "kind": "param",
@@ -146,6 +193,17 @@ def build_project_config_items(
                 "inspect_cmd": disclosure_cmd(f"ecc param show {rp.param}", project),
             }
         )
+
+    # Parameter resolution errors (including ecc.toml [params] parse errors)
+    # must not be swallowed: a view that silently shows defaults hides that
+    # the effective values are not what is displayed. They lead the item list
+    # so the handler's error dispatch sees them first.
+    error_records = [
+        {"kind": "error", "status": "invalid_config", "reason": err}
+        for err in [*resolve_errors, *getattr(cfg, "_param_errors", [])]
+    ]
+    if error_records:
+        return [*error_records, *items], 1
 
     return items, 0
 
@@ -191,9 +249,11 @@ def build_step_config_items(
     from chipcompiler.data import step_config_paths
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
+    requested_step_token = step_token or ""
+    step_token = normalize_step_name(requested_step_token)
     flow_data = read_flow_json(run_dir)
     if flow_data is None:
-        return [{"kind": "error", "status": "unknown_step", "step": step_token}], 1
+        return [{"kind": "error", "status": "unknown_step", "step": requested_step_token}], 1
     if flow_data is CORRUPT_FLOW_JSON:
         return [{"kind": "error", "status": "invalid_flow_json"}], 1
 
@@ -202,7 +262,7 @@ def build_step_config_items(
     flow_step_by_token = {normalize_step_name(s.get("name", "")): s for s in steps}
 
     if step_token not in flow_step_by_token and step_token not in step_dirs:
-        return [{"kind": "error", "status": "unknown_step", "step": step_token}], 1
+        return [{"kind": "error", "status": "unknown_step", "step": requested_step_token}], 1
 
     step_info = flow_step_by_token.get(step_token, {})
     data_step = step_info.get("name")
@@ -225,13 +285,13 @@ def build_step_config_items(
             {
                 "kind": "config",
                 "scope": "step",
-                "step": step_token,
+                "step": requested_step_token,
                 "role": "config",
-                "run": display_run,
+                "workspace_id": display_run,
                 "path": os.path.relpath(str(fpath), base_dir),
                 "source": "workspace_config",
                 "inspect_cmd": disclosure_cmd(
-                    f"ecc config {step_token} --resolved --json", project, run_id
+                    f"ecc config {requested_step_token}", project, run_id
                 ),
             }
         )
@@ -241,9 +301,33 @@ def build_step_config_items(
             {
                 "kind": "config",
                 "scope": "step",
-                "step": step_token,
+                "step": requested_step_token,
                 "config_status": "none",
             }
         ], 0
 
     return items, 0
+
+
+def _manifest_parameter_overrides(cfg) -> dict:
+    """The manifest layer's parameter values in dotted registry-key form.
+
+    Execution layers ``base_design.parameters`` / ``parameter_patch`` beneath
+    ecc.toml and CLI overrides; the resolved view must present them instead
+    of reporting registry defaults. Generated manifests hoist geometry values
+    to GUI-flat aliases (utilitization, margin, ...), so the lookup runs on
+    the canonical projection whose nested keys match the registry's maps_to.
+    """
+    from chipcompiler.cli.project.params import PARAM_REGISTRY, manifest_value_for
+    from chipcompiler.data.parameter_keys import geometry_to_parameters
+
+    manifest_parameters = getattr(cfg, "manifest_parameters", None) or {}
+    if not isinstance(manifest_parameters, dict):
+        return {}
+    canonical = geometry_to_parameters(manifest_parameters)
+    overrides = {}
+    for schema in PARAM_REGISTRY:
+        value, present = manifest_value_for(canonical, schema.maps_to)
+        if present:
+            overrides[schema.param] = value
+    return overrides

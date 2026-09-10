@@ -5,6 +5,8 @@ from chipcompiler.cli.project.params import (
     ParamSchema,
     ResolvedParam,
     build_backend_overrides,
+    build_config_overrides,
+    coerce_manifest_parameters,
     is_known_key,
     list_groups,
     lookup_schema,
@@ -21,7 +23,7 @@ REQUIRED_KEYS = [
     "floorplan.core_util",
     "floorplan.core_margin",
     "floorplan.aspect_ratio",
-    "synth.max_fanout",
+    "cts.max_fanout",
     "place.target_density",
     "place.target_overflow",
     "place.global_right_padding",
@@ -29,6 +31,7 @@ REQUIRED_KEYS = [
     "place.routability_opt",
     "route.bottom_layer",
     "route.top_layer",
+    "flow.run_analysis",
 ]
 
 
@@ -46,32 +49,36 @@ class TestSchemaRegistry:
             "type",
             "default",
             "applies",
-            "maps_to",
             "description",
         )
         for schema in PARAM_REGISTRY:
             for field_name in required:
                 val = getattr(schema, field_name, None)
-                assert val is not None and val != "", (
-                    f"{schema.param} missing required field: {field_name}"
-                )
+                assert val is not None, f"{schema.param} missing required field: {field_name}"
+            assert (
+                schema.maps_to or schema.config_target is not None or schema.pdk_target is not None
+            )
 
     def test_optional_fields_present_when_relevant(self):
         for schema in PARAM_REGISTRY:
-            if schema.type in ("float", "int") and schema.choices is None:
+            if (
+                schema.config_target is None
+                and schema.type in ("float", "int")
+                and schema.choices is None
+            ):
                 assert schema.range is not None, (
                     f"{schema.param}: numeric param without range or choices should have range"
                 )
 
     def test_cli_keys_map_to_backend_names(self):
         density = lookup_schema("place.target_density")
-        assert density.maps_to == {"DreamPlace": "target_density"}
+        assert density.maps_to == {"dreamplace": "target_density"}
 
-        fanout = lookup_schema("synth.max_fanout")
-        assert fanout.maps_to == "Max fanout"
+        fanout = lookup_schema("cts.max_fanout")
+        assert fanout.maps_to == "max_fanout"
 
         util = lookup_schema("floorplan.core_util")
-        assert util.maps_to == {"Core": "Utilitization"}
+        assert util.maps_to == {"core": "utilitization"}
 
     def test_internal_keys_not_accepted_as_cli_keys(self):
         assert not is_known_key("Core.Utilitization")
@@ -96,13 +103,21 @@ class TestSchemaRegistry:
     def test_lookup_schema_returns_none_for_unknown(self):
         assert lookup_schema("nonexistent.key") is None
 
+    def test_config_schema_has_direct_target(self):
+        schema = lookup_schema("cts.skew_bound")
+        assert schema is not None
+        assert schema.config_target is not None
+        assert schema.config_target.config_key == "CTS"
+        assert schema.config_target.json_path == ("skew_bound",)
+
     def test_list_groups_returns_ordered_groups(self):
         groups = list_groups()
         assert "design" in groups
         assert "floorplan" in groups
-        assert "synth" in groups
+        assert "cts" in groups
         assert "place" in groups
         assert "route" in groups
+        assert "flow" in groups
 
 
 class TestValueParsing:
@@ -117,6 +132,7 @@ class TestValueParsing:
             ("1.5,2.5", "list[float]", [1.5, 2.5]),
             ("1,2,3", "list[int]", [1, 2, 3]),
             ("a,b,c", "list[str]", ["a", "b", "c"]),
+            ('["MET3", "MET4"]', "list[str]", ["MET3", "MET4"]),
         ],
     )
     def test_parse_value_correct_types(self, raw, ptype, expected):
@@ -133,6 +149,18 @@ class TestValueParsing:
         )
         result = parse_value(raw, schema)
         assert result == expected
+
+    def test_parse_json_value(self):
+        schema = ParamSchema(
+            param="test",
+            group="test",
+            name="test",
+            type="json",
+            default=[],
+            applies="test",
+            description="test",
+        )
+        assert parse_value('[{"name": "stage"}]', schema) == [{"name": "stage"}]
 
     def test_parse_int_rejects_alpha(self):
         schema = ParamSchema(
@@ -199,7 +227,7 @@ class TestValueParsing:
         assert len(errors) > 0
 
     def test_type_mismatch_rejected(self):
-        result, errors = parse_cli_overrides(["synth.max_fanout=abc"])
+        result, errors = parse_cli_overrides(["cts.max_fanout=abc"])
         assert len(errors) > 0
 
 
@@ -236,17 +264,17 @@ class TestSourceAwareResolution:
         assert density.source == "cli"
 
     def test_invalid_toml_type_produces_error(self):
-        toml = {"synth.max_fanout": "not_int"}
+        toml = {"cts.max_fanout": "not_int"}
         resolved, errors = resolve_parameters(toml_overrides=toml)
         assert len(errors) > 0
 
     def test_float_rejected_for_int_schema(self):
-        toml = {"synth.max_fanout": 16.5}
+        toml = {"cts.max_fanout": 16.5}
         resolved, errors = resolve_parameters(toml_overrides=toml)
         assert len(errors) > 0
 
     def test_bool_rejected_for_int_schema(self):
-        toml = {"synth.max_fanout": True}
+        toml = {"cts.max_fanout": True}
         resolved, errors = resolve_parameters(toml_overrides=toml)
         assert len(errors) > 0
 
@@ -269,8 +297,21 @@ class TestSourceAwareResolution:
         assert len(errors) > 0
 
     def test_str_rejected_for_int_schema(self):
-        toml = {"synth.max_fanout": "abc"}
+        toml = {"cts.max_fanout": "abc"}
         resolved, errors = resolve_parameters(toml_overrides=toml)
+        assert len(errors) > 0
+
+    def test_manifest_bool_string_coerced(self):
+        manifest = {"flow.run_analysis": "false"}
+        resolved, errors = resolve_parameters(manifest_overrides=manifest)
+        assert errors == []
+        rp = next(r for r in resolved if r.param == "flow.run_analysis")
+        assert rp.value is False
+        assert rp.source == "project.json"
+
+    def test_manifest_bad_bool_produces_error(self):
+        manifest = {"flow.run_analysis": "maybe"}
+        resolved, errors = resolve_parameters(manifest_overrides=manifest)
         assert len(errors) > 0
 
 
@@ -285,7 +326,7 @@ class TestBackendMapping:
             schema=schema,
         )
         result = build_backend_overrides([rp])
-        assert result == {"DreamPlace": {"target_density": 0.65}}
+        assert result == {"dreamplace": {"target_density": 0.65}}
 
     def test_nested_key_mapping(self):
         schema = lookup_schema("floorplan.core_util")
@@ -297,7 +338,7 @@ class TestBackendMapping:
             schema=schema,
         )
         result = build_backend_overrides([rp])
-        assert result == {"Core": {"Utilitization": 0.45}}
+        assert result == {"core": {"utilitization": 0.45}}
 
     def test_nested_list_mapping(self):
         schema = lookup_schema("floorplan.core_margin")
@@ -309,7 +350,7 @@ class TestBackendMapping:
             schema=schema,
         )
         result = build_backend_overrides([rp])
-        assert result == {"Core": {"Margin": (3, 3)}}
+        assert result == {"core": {"margin": (3, 3)}}
 
     def test_string_key_mapping(self):
         schema = lookup_schema("route.top_layer")
@@ -321,12 +362,29 @@ class TestBackendMapping:
             schema=schema,
         )
         result = build_backend_overrides([rp])
-        assert result == {"Top layer": "MET4"}
+        assert result == {"top_layer": "MET4"}
+
+    def test_flow_bool_top_level_mapping(self):
+        schema = lookup_schema("flow.run_analysis")
+        rp = ResolvedParam(
+            param="flow.run_analysis",
+            value=False,
+            default=True,
+            source="cli",
+            schema=schema,
+        )
+        result = build_backend_overrides([rp])
+        assert result == {"run_analysis": False}
 
     def test_default_values_excluded(self):
         resolved, _ = resolve_parameters()
         result = build_backend_overrides(resolved)
         assert result == {}
+
+    def test_config_overrides_omit_defaults(self):
+        resolved, errors = resolve_parameters(toml_overrides={"cts.skew_bound": "0.05"})
+        assert errors == []
+        assert build_config_overrides(resolved) == {"CTS": {"skew_bound": "0.05"}}
 
     def test_mapping_does_not_mutate_schema_defaults(self):
         schema = lookup_schema("place.target_density")
@@ -347,11 +405,11 @@ class TestCliOverrides:
         result, errors = parse_cli_overrides(
             [
                 "place.target_density=0.65",
-                "synth.max_fanout=16",
+                "cts.max_fanout=16",
             ]
         )
         assert errors == []
-        assert result == {"place.target_density": 0.65, "synth.max_fanout": 16}
+        assert result == {"place.target_density": 0.65, "cts.max_fanout": 16}
 
     def test_malformed_rejected(self):
         result, errors = parse_cli_overrides(["noequals"])
@@ -378,6 +436,11 @@ class TestTomlParams:
         assert errors == []
         assert flat == {"place.target_density": 0.65}
 
+    def test_nested_toml_parsing(self):
+        flat, errors = parse_toml_params({"floorplan": {"die_builder": {"mode": "die_size"}}})
+        assert errors == []
+        assert flat == {"floorplan.die_builder.mode": "die_size"}
+
     def test_unknown_toml_key_rejected(self):
         table = {"bogus": {"key": 5}}
         flat, errors = parse_toml_params(table)
@@ -388,3 +451,66 @@ class TestTomlParams:
         table = {"place": "not_a_table"}
         flat, errors = parse_toml_params(table)
         assert len(errors) > 0
+
+
+class TestManifestCoercion:
+    def test_bool_string_coerced(self):
+        canonical = {"run_analysis": "false", "frequency_max": 100}
+        coerced, errors = coerce_manifest_parameters(canonical)
+        assert errors == []
+        assert coerced["run_analysis"] is False
+
+    def test_bad_bool_value_preserved_with_error(self):
+        canonical = {"run_analysis": "maybe"}
+        coerced, errors = coerce_manifest_parameters(canonical)
+        assert coerced["run_analysis"] == "maybe"
+        assert len(errors) == 1
+        assert "expected bool for flow.run_analysis" in errors[0]
+
+    def test_explicit_none_reported_as_type_error(self):
+        canonical = {"run_analysis": None}
+        coerced, errors = coerce_manifest_parameters(canonical)
+        assert coerced["run_analysis"] is None
+        assert len(errors) == 1
+        assert "NoneType" in errors[0]
+
+    def test_skip_params_bypassed(self):
+        canonical = {"run_analysis": "maybe"}
+        coerced, errors = coerce_manifest_parameters(
+            canonical, skip_params=frozenset({"flow.run_analysis"})
+        )
+        assert errors == []
+        assert coerced["run_analysis"] == "maybe"
+
+    def test_unknown_keys_pass_through(self):
+        canonical = {"custom_key": "false"}
+        coerced, errors = coerce_manifest_parameters(canonical)
+        assert errors == []
+        assert coerced == {"custom_key": "false"}
+
+    def test_nested_coercion_does_not_mutate_input(self):
+        canonical = {"core": {"utilitization": 1}, "frequency_max": 100}
+        coerced, errors = coerce_manifest_parameters(canonical)
+        assert errors == []
+        assert isinstance(coerced["core"]["utilitization"], float)
+        assert isinstance(canonical["core"]["utilitization"], int)
+
+    def test_huge_int_degrades_to_error(self):
+        canonical = {"frequency_max": 10**400}
+        coerced, errors = coerce_manifest_parameters(canonical)
+        assert coerced["frequency_max"] == 10**400
+        assert len(errors) == 1
+        assert "too large to represent" in errors[0]
+
+    def test_absent_keys_untouched(self):
+        canonical = {"design": "gcd"}
+        coerced, errors = coerce_manifest_parameters(canonical)
+        assert errors == []
+        assert coerced == {"design": "gcd"}
+
+
+def test_every_param_registry_entry_has_an_explicit_description():
+    descriptions = {schema.param: schema.description for schema in PARAM_REGISTRY}
+
+    assert all(description.strip() for description in descriptions.values())
+    assert not any("configuration field" in description for description in descriptions.values())

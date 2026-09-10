@@ -10,13 +10,23 @@ import logging
 import os
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
 from chipcompiler import tools
-from chipcompiler.data import EccOutput, EccStep, OriginDesign, StateEnum, Workspace
+from chipcompiler.data import (
+    EccOutput,
+    EccStep,
+    LogPaths,
+    OriginDesign,
+    StateEnum,
+    StepEnum,
+    Workspace,
+)
 from chipcompiler.data.workspace import Flow
 from chipcompiler.engine.flow import _VALID_TRANSITIONS, EngineFlow
+from chipcompiler.tools.ecc.runner import EccDesignReadError
 from chipcompiler.utility import Logger
 
 
@@ -285,7 +295,7 @@ class TestTransitionTableCompleteness:
     """All transitions in _VALID_TRANSITIONS are documented and tested."""
 
     def test_all_source_states_covered(self):
-        """_VALID_TRANSITIONS covers all 6 StateEnum string values."""
+        """_VALID_TRANSITIONS covers all StateEnum string values."""
         all_states = {s.value for s in StateEnum}
         assert set(_VALID_TRANSITIONS.keys()) == all_states
 
@@ -293,6 +303,45 @@ class TestTransitionTableCompleteness:
         """No state transitions to itself (except implicitly via idempotency)."""
         for src, targets in _VALID_TRANSITIONS.items():
             assert src not in targets, f"{src} should not transition to itself"
+
+
+def test_design_read_failure_stops_flow_despite_stale_outputs(tmp_path, monkeypatch):
+    ws = _make_workspace(tmp_path, num_steps=2)
+    first_name = StepEnum.FLOORPLAN.value
+    second_name = StepEnum.PLACEMENT.value
+    ws.flow.data = {
+        "steps": [
+            {"name": first_name, "tool": "ecc", "state": StateEnum.Unstart.value},
+            {"name": second_name, "tool": "ecc", "state": StateEnum.Unstart.value},
+        ]
+    }
+    Path(ws.flow.path).write_text(json.dumps(ws.flow.data), encoding="utf-8")
+
+    stale_output = Path(ws.directory) / "floorplan_ecc" / "output" / "design.def"
+    stale_output.parent.mkdir(parents=True)
+    stale_output.write_text("stale", encoding="utf-8")
+    flow = EngineFlow(ws)
+    flow.workspace_steps = [
+        EccStep(
+            name=first_name,
+            tool="ecc",
+            directory=stale_output.parent.parent,
+            output=EccOutput(def_=stale_output),
+        ),
+        EccStep(name=second_name, tool="ecc", directory=Path(ws.directory) / "placement_ecc"),
+    ]
+    tool_runs = []
+    monkeypatch.setattr("chipcompiler.tools.load_eda_module", lambda _tool: object())
+    monkeypatch.setattr(
+        "chipcompiler.tools.ecc.create_db_engine",
+        lambda *_args: (_ for _ in ()).throw(EccDesignReadError("missing PDK master")),
+    )
+    monkeypatch.setattr(tools, "run_step", lambda **_kwargs: tool_runs.append(True))
+
+    assert flow.run_steps() is False
+    assert tool_runs == []
+    assert flow.get_step(first_name, "ecc")["state"] == StateEnum.Imcomplete.value
+    assert flow.get_step(second_name, "ecc")["state"] == StateEnum.Unstart.value
 
 
 # ---------------------------------------------------------------------------
@@ -371,6 +420,22 @@ class TestLegacyStateNormalization:
         persisted = json.loads((tmp_path / "home" / "flow.json").read_text())
         assert persisted["steps"][1]["state"] == StateEnum.Success.value
 
+    def test_legacy_warning_step_normalized_on_resume(self, tmp_path, monkeypatch):
+        """Persisted Warning state from the removed LEC downgrade — resume normalizes it."""
+        flow = _make_resume_workspace(
+            tmp_path,
+            [("Synthesis", "Success"), ("Floorplan", "Warning")],
+        )
+        monkeypatch.setattr(tools, "run_step", lambda **_kw: True)
+        monkeypatch.setattr(flow, "check_step_result", lambda **_kw: True)
+
+        # This must NOT raise ValueError
+        result = flow.run_step(flow.workspace_steps[1], rerun=False)
+        assert result == StateEnum.Success
+
+        persisted = json.loads((tmp_path / "home" / "flow.json").read_text())
+        assert persisted["steps"][1]["state"] == StateEnum.Success.value
+
     def test_ongoing_step_not_normalized(self, tmp_path, monkeypatch):
         """Ongoing step is NOT a terminal state — no normalization needed."""
         flow = _make_resume_workspace(
@@ -431,3 +496,127 @@ class TestLegacyStateNormalization:
 
         persisted = json.loads((tmp_path / "home" / "flow.json").read_text())
         assert persisted["steps"][1]["state"] == StateEnum.Success.value
+
+
+def test_agent_flow_unusable_log_path_does_not_block_execution(tmp_path, monkeypatch):
+    """AgentEngineFlow: unusable step-log path must not block tool execution."""
+    import agent.engine as agent_engine
+
+    step_dir = tmp_path / "Floorplan_ecc"
+    step_dir.mkdir()
+
+    workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "flow.json"))
+    workspace.flow.data = {
+        "steps": [
+            {
+                "name": "Floorplan",
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+                "runtime": "",
+                "peak memory (mb)": 0,
+                "info": {},
+            }
+        ]
+    }
+    workspace.logger = Logger()
+
+    agent_flow = agent_engine.AgentEngineFlow.__new__(agent_engine.AgentEngineFlow)
+    agent_flow.workspace = workspace
+    agent_flow.workspace_steps = [
+        EccStep(
+            name="Floorplan",
+            tool="ecc",
+            directory=step_dir,
+            output=EccOutput(verilog=step_dir / "design.v"),
+            log=LogPaths(file=tmp_path),  # directory — open() raises IsADirectoryError
+        )
+    ]
+    agent_flow.engine_db = SimpleNamespace(engine=None)
+
+    mock_run = MagicMock(return_value=True)
+    monkeypatch.setattr(agent_engine, "run_agent_step", mock_run)
+    monkeypatch.setattr(agent_flow, "check_step_result", lambda **_kw: True)
+
+    result = agent_flow.run_step(agent_flow.workspace_steps[0], rerun=False)
+
+    assert mock_run.call_count == 1
+    assert result == StateEnum.Success
+
+    persisted = json.loads((tmp_path / "flow.json").read_text())
+    assert persisted["steps"][0]["state"] != StateEnum.Ongoing.value
+
+
+def test_agent_flow_step_failure_not_silently_swallowed(tmp_path, monkeypatch):
+    """AgentEngineFlow: run_agent_step() failure must not be swallowed."""
+    import agent.engine as agent_engine
+
+    log_file = tmp_path / "agent_step.log"
+    step_dir = tmp_path / "Floorplan_ecc"
+    step_dir.mkdir()
+
+    workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "flow.json"))
+    workspace.flow.data = {
+        "steps": [
+            {
+                "name": "Floorplan",
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+                "runtime": "",
+                "peak memory (mb)": 0,
+                "info": {},
+            }
+        ]
+    }
+    workspace.logger = Logger()
+
+    agent_flow = agent_engine.AgentEngineFlow.__new__(agent_engine.AgentEngineFlow)
+    agent_flow.workspace = workspace
+    agent_flow.workspace_steps = [
+        EccStep(
+            name="Floorplan",
+            tool="ecc",
+            directory=step_dir,
+            output=EccOutput(verilog=step_dir / "design.v"),
+            log=LogPaths(file=log_file),
+        )
+    ]
+    agent_flow.engine_db = SimpleNamespace(engine=None)
+
+    def _raise(**_kw):
+        raise RuntimeError("tool crashed")
+
+    monkeypatch.setattr(agent_engine, "run_agent_step", _raise)
+
+    result = agent_flow.run_step(agent_flow.workspace_steps[0], rerun=False)
+
+    assert result == StateEnum.Imcomplete
+
+    persisted = json.loads((tmp_path / "flow.json").read_text())
+    assert persisted["steps"][0]["state"] != StateEnum.Ongoing.value
+
+
+class TestRunStepsLedgerCompleteness:
+    """run_steps verifies full-ledger coverage by default; callers binding
+    execution to a reconciled range narrower than the persisted ledger opt
+    out explicitly."""
+
+    def _bound_flow(self, tmp_path, monkeypatch, ledger_steps: int, created_steps: int):
+        ws = _make_workspace(tmp_path, num_steps=ledger_steps)
+        flow = EngineFlow(workspace=ws)
+        flow.workspace_steps = [
+            SimpleNamespace(name=f"step_{i}", tool="mock") for i in range(created_steps)
+        ]
+        monkeypatch.setattr(flow, "init_db_engine", lambda: True)
+        monkeypatch.setattr(flow, "run_step", lambda *args, **kwargs: StateEnum.Success)
+        monkeypatch.setattr("chipcompiler.engine.flow.log_flow", lambda workspace: None)
+        return flow
+
+    def test_narrowed_execution_fails_full_ledger_check_by_default(self, tmp_path, monkeypatch):
+        flow = self._bound_flow(tmp_path, monkeypatch, ledger_steps=3, created_steps=2)
+
+        assert flow.run_steps() is False
+
+    def test_narrowed_execution_passes_when_full_ledger_not_required(self, tmp_path, monkeypatch):
+        flow = self._bound_flow(tmp_path, monkeypatch, ledger_steps=3, created_steps=2)
+
+        assert flow.run_steps(require_full_ledger=False) is True

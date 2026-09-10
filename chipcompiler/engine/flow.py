@@ -1,12 +1,20 @@
 #!/usr/bin/env python
 
-import hashlib
 import logging
 import os
 import time
 from copy import deepcopy
+from pathlib import Path
 
-from chipcompiler.data import EccOutput, StateEnum, StepEnum, Workspace, WorkspaceStep, log_flow
+from chipcompiler.data import (
+    EccOutput,
+    StateEnum,
+    StepEnum,
+    Workspace,
+    WorkspaceStep,
+    is_finished_step_state,
+    log_flow,
+)
 from chipcompiler.engine import EngineDB
 from chipcompiler.engine.signoff import (
     SignoffPackageCollector,
@@ -14,6 +22,7 @@ from chipcompiler.engine.signoff import (
     SignoffPackageResult,
 )
 from chipcompiler.engine.step_execution import execute_tool_step, record_tool_failure
+from chipcompiler.utility import file_digest
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +32,14 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _VALID_TRANSITIONS: dict[str, set[str]] = {
-    StateEnum.Unstart.value: {StateEnum.Ongoing.value, StateEnum.Imcomplete.value},
-    StateEnum.Pending.value: {StateEnum.Ongoing.value, StateEnum.Imcomplete.value},
+    StateEnum.Unstart.value: {
+        StateEnum.Ongoing.value,
+        StateEnum.Imcomplete.value,
+    },
+    StateEnum.Pending.value: {
+        StateEnum.Ongoing.value,
+        StateEnum.Imcomplete.value,
+    },
     StateEnum.Ongoing.value: {
         StateEnum.Success.value,
         StateEnum.Imcomplete.value,
@@ -60,8 +75,6 @@ def _validate_transition(old_state: str | None, new_state: str, step_name: str, 
 _GEOMETRY_SNAPSHOT_STEPS = frozenset(
     {
         StepEnum.FLOORPLAN.value,
-        StepEnum.NETLIST_OPT.value,
-        StepEnum.MACRO_PLACEMENT.value,
         StepEnum.PLACEMENT.value,
         StepEnum.CTS.value,
         StepEnum.TIMING_OPT.value,
@@ -88,11 +101,18 @@ class EngineFlow:
         steps = []
 
         steps.append(self.init_flow_step(StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
+        # Persist the golden netlist on the LEC step so reloads do not have
+        # to guess roles from the golden_* filename convention.
+        golden = getattr(self.workspace.design, "golden_verilog", None)
+        lec_info = {"golden_verilog": str(golden)} if golden else None
+        steps.append(
+            self.init_flow_step(StepEnum.LEC, "yosys_lec", StateEnum.Unstart, info=lec_info)
+        )
         steps.append(self.init_flow_step(StepEnum.FLOORPLAN, "ecc", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.NETLIST_OPT, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.CTS, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart))
+        steps.append(self.init_flow_step(StepEnum.TIMING_OPT, "sizer", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.ROUTING, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.FILLER, "ecc", StateEnum.Unstart))
         # steps.append(self.init_flow_step(StepEnum.GDS, "klayout", StateEnum.Unstart))
@@ -105,7 +125,13 @@ class EngineFlow:
     def has_init(self):
         return self.workspace is not None and len(self.workspace.flow.data.get("steps", [])) > 0
 
-    def init_flow_step(self, step: StepEnum | str, tool: str, state: str | StateEnum):
+    def init_flow_step(
+        self,
+        step: StepEnum | str,
+        tool: str,
+        state: str | StateEnum,
+        info: dict | None = None,
+    ):
         step_value = step.value if isinstance(step, StepEnum) else step
         state_value = state.value if isinstance(state, StateEnum) else state
         return {
@@ -114,12 +140,18 @@ class EngineFlow:
             "state": state_value,  # step state
             "runtime": "",  # step run time
             "peak memory (mb)": 0,  # step peak memory
-            "info": {},  # step additional infomation
+            "info": info or {},  # step additional infomation
         }
 
-    def add_step(self, step: StepEnum | str, tool: str, state: str | StateEnum):
+    def add_step(
+        self,
+        step: StepEnum | str,
+        tool: str,
+        state: str | StateEnum,
+        info: dict | None = None,
+    ):
         steps = self.workspace.flow.data.get("steps", [])
-        steps.append(self.init_flow_step(step, tool, state))
+        steps.append(self.init_flow_step(step, tool, state, info=info))
 
         self.workspace.flow.data = {"steps": steps}
 
@@ -233,12 +265,23 @@ class EngineFlow:
         """
         check step output exist
         """
-        import os
 
         success = False
         output = workspace_step.output
         # HARDEN/RCX/GDS results live on the place-and-route (ecc) output leaves.
         ecc_output = output if isinstance(output, EccOutput) else None
+        if workspace_step.tool == "yosys_lec" or workspace_step.name in (
+            StepEnum.LEC.value,
+            StepEnum.POST_ROUTE_LEC.value,
+        ):
+            from chipcompiler.tools.yosys_lec.utility import lec_result_is_proven
+
+            step_input = workspace_step.input
+            return lec_result_is_proven(
+                output.json,
+                golden_verilog=getattr(step_input, "golden_verilog", None),
+                gate_verilog=getattr(step_input, "gate_verilog", None),
+            )
         match workspace_step.name:
             case StepEnum.SYNTHESIS.value:
                 if os.path.exists(output.verilog or ""):
@@ -261,11 +304,10 @@ class EngineFlow:
                 ):
                     success = True
             case StepEnum.RCX.value:
-                success = True
-                for spef in ecc_output.spef if ecc_output else []:
-                    if not os.path.exists(spef):
-                        success = False
-                        break
+                spef_list = ecc_output.spef if ecc_output else []
+                success = bool(spef_list) and all(
+                    os.path.isfile(spef) and os.path.getsize(spef) > 0 for spef in spef_list
+                )
             case StepEnum.TIMING_OPT.value:
                 if os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""):
                     success = True
@@ -304,6 +346,8 @@ class EngineFlow:
         """
         self.workspace_steps = []
         pre_step = None
+        synthesis_gate_verilog = ""
+        synthesis_golden_verilog = ""
         for step in self.workspace.flow.data.get("steps", []):
             if pre_step is None:
                 # use the origin def and verilog in workspace for the first step.
@@ -318,6 +362,18 @@ class EngineFlow:
 
             from chipcompiler.tools import create_step
 
+            if step["tool"] == "yosys_lec":
+                step_info = step.get("info", {}) or {}
+                explicit_golden = step_info.get("golden_verilog") or None
+                if explicit_golden:
+                    input_db = explicit_golden
+                elif pre_step is None and self.workspace.design.golden_verilog is not None:
+                    input_db = self.workspace.design.golden_verilog
+                elif step["name"] == StepEnum.POST_ROUTE_LEC.value:
+                    input_db = synthesis_gate_verilog or self.workspace.design.origin_verilog
+                elif pre_step is not None and pre_step.name == StepEnum.SYNTHESIS.value:
+                    input_db = synthesis_golden_verilog or None
+
             # create workspace step
             eda_step = create_step(
                 workspace=self.workspace,
@@ -331,6 +387,13 @@ class EngineFlow:
             )
             # save workspace step
             if eda_step is not None:
+                step_info = step.get("info", {}) or {}
+                if (
+                    eda_step.name == StepEnum.STA.value
+                    and step_info.get("spef")
+                    and isinstance(eda_step.output, EccOutput)
+                ):
+                    eda_step.output.spef = [Path(step_info["spef"])]
                 if (
                     pre_step is not None
                     and pre_step.name == StepEnum.RCX.value
@@ -340,7 +403,11 @@ class EngineFlow:
                 ):
                     eda_step.output.spef = pre_step.output.spef
                 self.workspace_steps.append(eda_step)
-                pre_step = eda_step
+                if eda_step.tool != "yosys_lec":
+                    pre_step = eda_step
+                if eda_step.name == StepEnum.SYNTHESIS.value:
+                    synthesis_gate_verilog = eda_step.output.verilog
+                    synthesis_golden_verilog = getattr(eda_step.output, "golden_verilog", None)
             else:
                 self.set_state(name=step["name"], tool=step["tool"], state=StateEnum.Imcomplete)
                 logger.error(
@@ -363,18 +430,27 @@ class EngineFlow:
             if self.engine_db.has_init():
                 return True
 
-        # init engine step by last workpsace step data if all step run success
+        # init engine step by last workpsace step data if all steps finished
         workspace_step = None
         for ws_step in self.workspace_steps:
-            if not self.check_state(name=ws_step.name, tool=ws_step.tool, state=StateEnum.Success):
-                # use the first unsuccess step to setup db engine
+            step = self.get_step(name=ws_step.name, tool=ws_step.tool)
+            state = step.get("state") if step is not None else None
+            if not is_finished_step_state(state):
+                # use the first unfinished step to setup db engine
                 workspace_step = ws_step
                 break
+
+        # LEC is a netlist comparison step and does not expose an ECC DB
+        # input. Keep any existing DB alive, but do not try to initialize one
+        # from the Yosys LEC workspace.
+        if workspace_step is not None and workspace_step.tool == "yosys_lec":
+            return True
 
         return self.engine_db.create_db_engine(step=workspace_step)
 
     def clear_db_engine_after_step(self, workspace_step: WorkspaceStep, state: StateEnum) -> None:
-        if workspace_step.tool == "sizer" and state == StateEnum.Success:
+        _ = state
+        if workspace_step.tool == "sizer":
             engine_db = self.engine_db
             self.engine_db = None
             if engine_db is not None:
@@ -387,19 +463,13 @@ class EngineFlow:
         if sdc_path is None:
             return {"availability": "missing_source"}
 
-        try:
-            path = os.fspath(sdc_path)
-            size_bytes = os.path.getsize(path)
-            digest = hashlib.sha256()
-            with open(path, "rb") as sdc_file:
-                for chunk in iter(lambda: sdc_file.read(1024 * 1024), b""):
-                    digest.update(chunk)
-        except OSError:
+        digest = file_digest(sdc_path)
+        if digest is None:
             return {"availability": "unreadable"}
-
+        sha256, size_bytes = digest
         return {
             "availability": "available",
-            "sha256": digest.hexdigest(),
+            "sha256": sha256,
             "size_bytes": size_bytes,
         }
 
@@ -430,11 +500,15 @@ class EngineFlow:
         payload["constraints"] = {"sdc": timing_constraints}
         return json_write(file_path=feature_path, data=payload)
 
-        return True
-
-    def run_steps(self, *, rerun: bool = False, observer=None) -> bool:
+    def run_steps(
+        self, *, rerun: bool = False, observer=None, require_full_ledger: bool = True
+    ) -> bool:
         """
         run all flow steps
+
+        require_full_ledger: verify at the end that every persisted ledger
+        step had a workspace step. Callers that intentionally bind execution
+        to a range narrower than the persisted ledger pass False.
         """
 
         for workspace_step in self.workspace_steps:
@@ -461,6 +535,8 @@ class EngineFlow:
                 case StateEnum.Unstart:
                     return False
                 case StateEnum.Imcomplete:
+                    # An Incomplete step is an infrastructure or check
+                    # failure: it blocks the flow.
                     return False
                 case StateEnum.Pending:
                     return False
@@ -468,7 +544,7 @@ class EngineFlow:
                     return False
 
         total_steps = len(self.workspace.flow.data.get("steps", []))
-        if len(self.workspace_steps) < total_steps:
+        if require_full_ledger and len(self.workspace_steps) < total_steps:
             self.workspace.logger.error(
                 "Flow incomplete: %d of %d steps were created; remaining steps could not be set up",
                 len(self.workspace_steps),
@@ -479,10 +555,11 @@ class EngineFlow:
         return True
 
     def _normalize_legacy_terminal_state(self, workspace_step, step_tag):
-        """Reset terminal states from pre-guard workspaces to Unstart.
+        """Reset stuck terminal states from pre-guard workspaces to Unstart.
 
         Pre-guard workspaces may have steps stuck in Incomplete/Invalid from
-        crashed runs.  Batch resets (_invalidate_suffix, clear_states) handle
+        earlier runs, or in the removed terminal Warning state of the
+        synthesis LEC. Batch resets (_invalidate_suffix, clear_states) handle
         rerun paths; this handles the rerun=False resume path.
         """
         old_step = self.get_step(name=workspace_step.name, tool=workspace_step.tool)
@@ -492,6 +569,7 @@ class EngineFlow:
         if persisted in {
             StateEnum.Imcomplete.value,
             StateEnum.Invalid.value,
+            "Warning",
         }:
             logger.warning(
                 "Normalizing legacy %s state '%s' → Unstart before rerun",
@@ -596,6 +674,15 @@ class EngineFlow:
                     peak_memory_mb,
                 )
 
+            # Run fallible post-success work BEFORE the terminal commit: a
+            # failure here must still transition Ongoing -> a terminal failure
+            # state; after a persisted Success the transition table forbids
+            # the rollback and the ledger would claim a failed step succeeded.
+            if state == StateEnum.Success:
+                from chipcompiler.tools import save_layout_image
+
+                save_layout_image(workspace=self.workspace, step=workspace_step)
+
             if flow_step is not None and not self.set_state(
                 name=workspace_step.name,
                 tool=workspace_step.tool,
@@ -607,39 +694,43 @@ class EngineFlow:
                 raise RuntimeError(f"failed to persist terminal state for {step_tag}")
             terminal_persisted = True
 
-            # save layout snapshot on success
+            # QoR facts persist only after the ledger commits: a refresh
+            # failure degrades to a warning, never a state rollback attempt.
             if state == StateEnum.Success:
-                if self.save_step_flow_facts(
-                    workspace_step=workspace_step,
-                    state=state,
-                    runtime_seconds=elapsed,
-                    peak_memory_mb=peak_memory_mb,
-                    timing_constraints=timing_constraints,
-                ):
-                    try:
-                        from chipcompiler.tools import build_step_metrics
+                try:
+                    if self.save_step_flow_facts(
+                        workspace_step=workspace_step,
+                        state=state,
+                        runtime_seconds=elapsed,
+                        peak_memory_mb=peak_memory_mb,
+                        timing_constraints=timing_constraints,
+                    ):
+                        try:
+                            from chipcompiler.tools import build_step_metrics
 
-                        if (
-                            build_step_metrics(workspace=self.workspace, step=workspace_step)
-                            is None
-                        ):
-                            self.workspace.logger.warning(
-                                "[QOR] %s run facts were saved but analysis refresh is unavailable",
+                            if (
+                                build_step_metrics(workspace=self.workspace, step=workspace_step)
+                                is None
+                            ):
+                                self.workspace.logger.warning(
+                                    "[QOR] %s run facts saved; analysis refresh unavailable",
+                                    step_tag,
+                                )
+                        except Exception:
+                            self.workspace.logger.exception(
+                                "[QOR] %s failed to refresh analysis after saving run facts",
                                 step_tag,
                             )
-                    except Exception:
-                        self.workspace.logger.exception(
-                            "[QOR] %s failed to refresh analysis after saving run facts",
+                    else:
+                        self.workspace.logger.warning(
+                            "[QOR] %s has no step feature path; run facts were not saved",
                             step_tag,
                         )
-                else:
-                    self.workspace.logger.warning(
-                        "[QOR] %s has no step feature path; run facts were not saved",
+                except Exception:
+                    self.workspace.logger.exception(
+                        "[QOR] %s failed to save run facts after the step succeeded",
                         step_tag,
                     )
-                from chipcompiler.tools import save_layout_image
-
-                save_layout_image(workspace=self.workspace, step=workspace_step)
         except (Exception, SystemExit) as exc:
             failure_message = record_tool_failure(self.workspace.logger, step_tag, exc)
             step_error = step_error or failure_message
@@ -697,6 +788,11 @@ class EngineFlow:
         if self.engine_db is None:
             self.engine_db = EngineDB(workspace=self.workspace)
         elif self.engine_db.has_init():
+            return True
+
+        if workspace_step.tool == "yosys_lec":
+            # LEC is a netlist comparison step with no ECC DB input; the
+            # batch path (init_db_engine) skips it the same way.
             return True
 
         return self.engine_db.create_db_engine(step=workspace_step)

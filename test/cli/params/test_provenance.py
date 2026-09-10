@@ -11,6 +11,7 @@ class TestCliProvenance:
         from types import SimpleNamespace
 
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir), exist_ok=True)
         workspace_obj = SimpleNamespace(name="workspace")
 
         def fake_create(**kwargs):
@@ -52,27 +53,31 @@ class TestCliProvenance:
                 "--project",
                 project_dir,
                 "--set",
-                "synth.max_fanout=16",
+                "cts.max_fanout=16",
             ]
         )
         assert rc == 0
         capsys.readouterr()
 
         # Verify provenance file was written
-        provenance = os.path.join(
-            project_dir, "runs", "default", "home", "cli-param-overrides.json"
-        )
+        provenance = os.path.join(project_dir, "default", "home", "cli-param-overrides.json")
         assert os.path.isfile(provenance)
         with open(provenance) as f:
             data = json.load(f)
-        assert data["synth.max_fanout"] == 16
+        assert data["cts.max_fanout"] == 16
 
     def test_config_resolved_shows_cli_source(
-        self, tmp_path, monkeypatch, capsys, create_cli_project
+        self,
+        tmp_path,
+        monkeypatch,
+        capsys,
+        create_cli_project,
+        plain_records,
     ):
         from types import SimpleNamespace
 
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir), exist_ok=True)
         workspace_obj = SimpleNamespace(name="workspace")
 
         def fake_create(**kwargs):
@@ -115,31 +120,37 @@ class TestCliProvenance:
                 "--project",
                 project_dir,
                 "--set",
-                "synth.max_fanout=16",
+                "cts.max_fanout=16",
             ]
         )
         assert rc == 0
         capsys.readouterr()
 
-        # Now inspect config --resolved
-        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        # Now inspect config
+        rc = cli_main.run(["config", "--project", project_dir, "--plain"])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        param_records = [r for r in data["records"] if r.get("kind") == "param"]
-        fanout = next(r for r in param_records if r["key"] == "synth.max_fanout")
-        assert fanout["value"] == 16
+        records = plain_records(capsys.readouterr().out)
+        param_records = [r for r in records if r.get("kind") == "param"]
+        fanout = next(r for r in param_records if r["key"] == "cts.max_fanout")
+        assert fanout["value"] == "16"
         assert fanout["source"] == "cli"
 
     def test_config_resolved_toml_plus_cli_precedence(
-        self, tmp_path, monkeypatch, capsys, create_cli_project
+        self,
+        tmp_path,
+        monkeypatch,
+        capsys,
+        create_cli_project,
+        plain_records,
     ):
         from types import SimpleNamespace
 
         project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir), exist_ok=True)
         workspace_obj = SimpleNamespace(name="workspace")
 
         # Set a TOML override first
-        cli_main.run(["param", "set", "synth.max_fanout", "16", "--project", project_dir])
+        cli_main.run(["param", "set", "cts.max_fanout", "16", "--project", project_dir])
         capsys.readouterr()
 
         def fake_create(**kwargs):
@@ -182,16 +193,16 @@ class TestCliProvenance:
                 "--project",
                 project_dir,
                 "--set",
-                "synth.max_fanout=32",
+                "cts.max_fanout=32",
             ]
         )
         assert rc == 0
         capsys.readouterr()
 
-        rc = cli_main.run(["config", "--resolved", "--project", project_dir, "--json"])
+        rc = cli_main.run(["config", "--project", project_dir, "--plain"])
         assert rc == 0
-        data = json.loads(capsys.readouterr().out)
-        param_records = [r for r in data["records"] if r.get("kind") == "param"]
-        fanout = next(r for r in param_records if r["key"] == "synth.max_fanout")
-        assert fanout["value"] == 32
+        records = plain_records(capsys.readouterr().out)
+        param_records = [r for r in records if r.get("kind") == "param"]
+        fanout = next(r for r in param_records if r["key"] == "cts.max_fanout")
+        assert fanout["value"] == "32"
         assert fanout["source"] == "cli"

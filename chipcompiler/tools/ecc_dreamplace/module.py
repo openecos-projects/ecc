@@ -12,6 +12,13 @@ from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.utility.path import optional_path, path_text
 
+_LEGALIZE_OWNERS = frozenset(
+    {
+        StepEnum.LEGALIZATION.value,
+        StepEnum.TIMING_OPT.value,
+    }
+)
+
 
 class DreamplaceRunMode(Enum):
     PLACEMENT = "placement"
@@ -87,13 +94,18 @@ class DreamplaceModule:
         }[mode]
         return os.path.join(self.result_dir, log_name)
 
+    def _file_handler_path(self, *, mode: DreamplaceRunMode) -> str:
+        if mode is DreamplaceRunMode.LEGALIZATION and self.step.name != StepEnum.LEGALIZATION.value:
+            return self._log_path(mode=mode)
+        return str(self.step.log.file or self._log_path(mode=mode))
+
     @contextmanager
     def _configure_root_logging(self, *, mode: DreamplaceRunMode):
         root_logger = logging.getLogger()
         original_handlers = root_logger.handlers[:]
         original_level = root_logger.level
 
-        log_file = self.step.log.file or self._log_path(mode=mode)
+        log_file = self._file_handler_path(mode=mode)
         os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
 
         formatter = logging.Formatter("[%(levelname)-7s] %(message)s")
@@ -151,7 +163,7 @@ class DreamplaceModule:
         return self._run(mode=DreamplaceRunMode.MACRO_PLACEMENT)
 
     def run_legalization(self) -> bool:
-        if self.step.name != StepEnum.LEGALIZATION.value:
+        if self.step.name not in _LEGALIZE_OWNERS:
             return False
         return self._run(mode=DreamplaceRunMode.LEGALIZATION)
 

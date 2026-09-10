@@ -2,12 +2,9 @@ from typing import Annotated
 
 import typer
 
-rpc_app = typer.Typer(
-    add_completion=False,
-    no_args_is_help=True,
-    rich_markup_mode=None,
-    help="Run the private ECC JSON-RPC runtime",
-)
+from chipcompiler.cli.core.apps import create_app
+
+rpc_app = create_app(help="Run the private ECC JSON-RPC runtime")
 
 
 @rpc_app.command("serve", help="Serve the private ECC JSON-RPC runtime")

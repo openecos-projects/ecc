@@ -1,26 +1,30 @@
 import json
+import os
 from collections.abc import Sequence
 from typing import Annotated
 
-import click
 import typer
 
+from chipcompiler.cli.commands.doc import register_doc_commands
+from chipcompiler.cli.commands.doctor import register_doctor_commands
 from chipcompiler.cli.commands.param import param_app
+from chipcompiler.cli.commands.pdk import pdk_app
 from chipcompiler.cli.commands.project import register_project_commands
+from chipcompiler.cli.commands.project_config import project_app
+from chipcompiler.cli.commands.report import report_app
 from chipcompiler.cli.commands.rpc import rpc_app
+from chipcompiler.cli.commands.signoff import signoff_app
+from chipcompiler.cli.commands.workspace import workspace_app
+from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.version_info import root_version_line, version_payload, version_text
+from chipcompiler.cli.inspection.tool_versions import tool_versions
 
-app = typer.Typer(
-    add_completion=False,
-    no_args_is_help=True,
-    rich_markup_mode=None,
-    help="ECC - EDA toolchain for RTL-to-GDS flows",
-)
+app = create_app(help="ECC - EDA toolchain for RTL-to-GDS flows", add_completion=True)
 
 
 def version_callback(value: bool) -> None:  # noqa: FBT001 -- typer invokes Option callbacks positionally
     if value:
-        click.echo(root_version_line())
+        typer.echo(root_version_line())
         raise typer.Exit()
 
 
@@ -39,16 +43,21 @@ def root_callback(
     pass
 
 
-@app.command("version", help="Show ECC runtime and component versions")
+@app.command("version", help="Show ECC runtime, component, and installed tool versions")
 def version_cmd(
     *,
-    json_output: Annotated[bool, typer.Option("--json")] = False,
+    # Machine-readable output for the desktop app; not part of the documented CLI surface.
+    json_output: Annotated[bool, typer.Option("--json", hidden=True)] = False,
 ) -> None:
     payload = version_payload()
+    tools = tool_versions()
     if json_output:
-        click.echo(json.dumps(payload))
+        typer.echo(json.dumps({**payload, "tools": tools}))
     else:
-        click.echo(version_text(payload))
+        typer.echo(version_text(payload, tools))
+
+
+register_doc_commands(app)
 
 
 @app.command("layout-image", help="Render a GDS file into a layout image")
@@ -61,30 +70,30 @@ def layout_image_cmd(
     from chipcompiler.tools.klayout_tool.image import save_snapshot_image
 
     if not save_snapshot_image(gds_file=gds, img_file=image, width=width, height=height):
-        raise click.ClickException(f"Failed to render layout image from {gds} to {image}")
+        typer.echo(f"Error: Failed to render layout image from {gds} to {image}", err=True)
+        raise typer.Exit(1)
 
 
 register_project_commands(app)
+register_doctor_commands(app)
 app.add_typer(param_app, name="param")
+app.add_typer(pdk_app, name="pdk")
+app.add_typer(project_app, name="project")
+app.add_typer(workspace_app, name="workspace")
+app.add_typer(signoff_app, name="signoff")
+app.add_typer(report_app, name="report")
 app.add_typer(rpc_app, name="rpc")
 
 
 def invoke_typer_app(argv: Sequence[str]) -> int:
-    if not argv:
-        command = typer.main.get_command(app)
-        click.echo(command.get_help(click.Context(command, info_name="ecc")), err=True)
+    command = typer.main.get_command(app)
+    # Shell completion requests carry their arguments in env vars, not argv.
+    if not argv and "_ECC_COMPLETE" not in os.environ:
+        typer.echo(command.get_help(typer.Context(command, info_name="ecc")), err=True)
         return 1
 
-    command = typer.main.get_command(app)
     try:
-        result = command.main(
-            args=list(argv),
-            prog_name="ecc",
-            standalone_mode=False,
-        )
-    except click.exceptions.Exit as exc:
-        return int(exc.exit_code or 0)
-    except click.ClickException as exc:
-        exc.show()
-        return int(exc.exit_code or 1)
-    return int(result or 0)
+        command.main(args=list(argv), prog_name="ecc")
+    except SystemExit as exc:
+        return int(exc.code or 0)
+    return 0

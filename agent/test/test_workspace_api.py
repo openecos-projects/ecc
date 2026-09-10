@@ -24,7 +24,7 @@ def test_candidate_rerun_uses_the_agent_flow_and_replays_its_receipts(monkeypatc
         flow=SimpleNamespace(
             data={
                 "steps": [
-                    {"name": "fixFanout", "tool": "ecc", "state": "Success"},
+                    {"name": "Floorplan", "tool": "ecc", "state": "Success"},
                     {"name": "place", "tool": "dreamplace", "state": "Success"},
                     {"name": "CTS", "tool": "ecc", "state": "Success"},
                 ]
@@ -40,7 +40,7 @@ def test_candidate_rerun_uses_the_agent_flow_and_replays_its_receipts(monkeypatc
     flow = _Flow(
         workspace,
         (
-            SimpleNamespace(name="fixFanout", tool="ecc", output={}),
+            SimpleNamespace(name="Floorplan", tool="ecc", output={}),
             SimpleNamespace(
                 name="place",
                 tool="dreamplace",
@@ -95,7 +95,7 @@ def test_candidate_rerun_uses_the_agent_flow_and_replays_its_receipts(monkeypatc
         "execution_scope": "full_flow",
     }
     assert calls == [
-        ("bind", "place", "fixFanout", "candidate-1"),
+        ("bind", "place", "Floorplan", "candidate-1"),
         (
             "materialize",
             "place",

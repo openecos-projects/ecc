@@ -12,8 +12,6 @@ class StepEnum(Enum):
     INIT = "Init"
     SYNTHESIS = "Synthesis"
     FLOORPLAN = "Floorplan"
-    NETLIST_OPT = "fixFanout"
-    MACRO_PLACEMENT = "macroPlacement"
     PLACEMENT = "place"
     CTS = "CTS"
     TIMING_OPT = "Timing optimization"
@@ -22,6 +20,8 @@ class StepEnum(Enum):
     FILLER = "filler"
     GDS = "GDS"
     SIGNOFF = "Signoff"
+    LEC = "lec"
+    POST_ROUTE_LEC = "postRouteLec"
     STA = "sta"
     DRC = "drc"
     LVS = "lvs"
@@ -40,6 +40,20 @@ class StateEnum(Enum):
     Pending = "Pending"  # step is pending
     Imcomplete = "Incomplete"  # step is failed
     # Ignored = "Ignored" # step result do not affect flow step
+
+
+FINISHED_STEP_STATES = frozenset({StateEnum.Success.value})
+
+
+def is_finished_step_state(state: object) -> bool:
+    """Whether a persisted step state counts as done for selection and skipping.
+
+    Incomplete/Invalid steps are unfinished: resume and rerun selectors
+    re-execute them. A legacy ``Warning`` state (removed terminal state for
+    the synthesis LEC) is not finished and is normalized to Unstart on
+    resume.
+    """
+    return state in FINISHED_STEP_STATES
 
 
 ###########################################################################

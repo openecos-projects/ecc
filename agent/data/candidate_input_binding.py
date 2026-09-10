@@ -20,8 +20,7 @@ INPUT_BINDING_FILENAME = "candidate_input_binding.v1.json"
 CANONICAL_INPUT_EDGES = frozenset(
     {
         ("Floorplan", "initial"),
-        ("fixFanout", "Floorplan"),
-        ("place", "fixFanout"),
+        ("place", "Floorplan"),
         ("CTS", "place"),
         ("legalization", "CTS"),
         ("route", "legalization"),

@@ -1,61 +1,133 @@
+import os
 import sys
 from collections.abc import Callable
 from typing import Protocol, TypeVar
 
 import typer
 
-from chipcompiler.cli.core.inputs import OutputOptions, ProjectOptions
+from chipcompiler.cli.core.inputs import OutputOptions, ProjectOptions, RunInput
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
-from chipcompiler.cli.inspection.discovery import resolve_run_dir
 from chipcompiler.cli.project.config import (
-    InvalidFlowRun,
-    config_run_id_from,
+    ConfigUnreadableError,
     load_run_config,
     resolve_project_dir,
 )
 
 
 class CommandInput(Protocol):
-    output: OutputOptions
-    project: ProjectOptions
+    # Read-only members: the frozen input dataclasses satisfy these.
+    @property
+    def output(self) -> OutputOptions: ...
+    @property
+    def project(self) -> ProjectOptions: ...
 
 
 CommandInputT = TypeVar("CommandInputT", bound=CommandInput)
 CommandHandler = Callable[[CommandInputT, CommandContext], CommandResult]
 
 
-def output_mode(*, json_output: bool, jsonl: bool, plain: bool) -> OutputMode:
-    if jsonl:
-        return OutputMode.JSONL
-    if json_output:
-        return OutputMode.JSON
+def output_mode(*, plain: bool) -> OutputMode:
     if plain:
         return OutputMode.PLAIN
     return OutputMode.TEXT
+
+
+def _resolve_manifest_workspace(
+    project_dir: str, workspace_name: str | None, *, allow_create: bool
+) -> tuple[str, str | None, str | None]:
+    """Resolve a managed workspace from a project.json manifest.
+
+    Returns (workspace_dir, workspace_id, error). A run may name a new
+    single-segment workspace; read-only commands may only select declarations.
+    """
+    from chipcompiler.cli.project.manifest import load_manifest
+    from chipcompiler.cli.project.run_prepare import invalid_workspace_name
+
+    manifest = load_manifest(project_dir)
+    active = manifest.active_workspaces()
+
+    if workspace_name is None:
+        if len(active) == 1:
+            return active[0].workspace_path, active[0].workspace_id, None
+        ids = ", ".join(w.workspace_id for w in active) or "(none)"
+        if allow_create and not active:
+            return os.path.join(project_dir, "default"), "default", None
+        return (
+            os.path.join(project_dir, "default"),
+            None,
+            f"workspace_required: --workspace is required; declared workspaces: {ids}",
+        )
+
+    if invalid_workspace_name(workspace_name):
+        return (
+            os.path.join(project_dir, "default"),
+            None,
+            f"invalid_workspace: {workspace_name!r} is not a single workspace name",
+        )
+
+    match = manifest.find_workspace(workspace_name)
+    if match is not None:
+        return match.workspace_path, match.workspace_id, None
+    ids = ", ".join(w.workspace_id for w in active) or "(none)"
+    if allow_create:
+        return os.path.join(project_dir, workspace_name), workspace_name, None
+    return (
+        os.path.join(project_dir, workspace_name),
+        workspace_name,
+        f"workspace_not_declared: unknown workspace {workspace_name!r}; declared workspaces: {ids}",
+    )
 
 
 def build_context(command_input: CommandInput) -> CommandContext:
     project = command_input.project.project
     project_dir = resolve_project_dir(project)
 
-    cli_run_id = command_input.project.run_id
-    cfg = load_run_config(project_dir)
-    configured = config_run_id_from(cfg)
+    workspace_name = getattr(command_input, "workspace", None)
     config_error = None
-    if isinstance(configured, InvalidFlowRun):
-        if cli_run_id is None:
-            config_error = configured.problem
-        configured = None
+    try:
+        cfg = load_run_config(project_dir)
+    except ConfigUnreadableError as exc:
+        cfg = None
+        config_error = str(exc)
 
-    run_dir, run_id = resolve_run_dir(
-        project_dir, cli_run_id if cli_run_id is not None else configured
+    from chipcompiler.cli.project.manifest import (
+        ManifestError,
+        classify_project,
     )
 
-    mode = output_mode(
-        json_output=command_input.output.json,
-        jsonl=command_input.output.jsonl,
-        plain=command_input.output.plain,
-    )
+    project_state = classify_project(project_dir)
+    manifest_error = None
+
+    if workspace_name is not None:
+        from chipcompiler.cli.project.run_prepare import invalid_workspace_name
+
+        if invalid_workspace_name(workspace_name):
+            run_dir, run_id = os.path.join(project_dir, "default"), None
+            manifest_error = f"invalid_workspace: {workspace_name!r} is not a single workspace name"
+            project_state = "invalid_workspace"
+        else:
+            run_dir = run_id = None
+    else:
+        run_dir = run_id = None
+
+    if project_state == "manifest":
+        # Manifest projects use the manifest workspaces table for discovery
+        # even when an ecc.toml also exists (config values still layer the
+        # ecc.toml above the manifest base).
+        try:
+            run_dir, run_id, manifest_error = _resolve_manifest_workspace(
+                project_dir,
+                workspace_name,
+                allow_create=isinstance(command_input, RunInput),
+            )
+        except ManifestError as exc:
+            run_dir, run_id = os.path.join(project_dir, "default"), workspace_name
+            manifest_error = f"manifest_invalid: {exc}"
+    elif project_state != "invalid_workspace":
+        workspace_id = workspace_name or "default"
+        run_dir, run_id = os.path.join(project_dir, workspace_id), workspace_id
+
+    mode = output_mode(plain=command_input.output.plain)
 
     return CommandContext(
         project_dir=project_dir,
@@ -65,6 +137,8 @@ def build_context(command_input: CommandInput) -> CommandContext:
         output_mode=mode,
         config_error=config_error,
         config=cfg,
+        project_state=project_state,
+        manifest_error=manifest_error,
     )
 
 
@@ -74,6 +148,60 @@ def _should_colorize():
     return supports_color(file=sys.stdout)
 
 
+def _with_legacy_hint(command: str, command_input, result, ctx):
+    """Append the legacy-layout hint at the command-result boundary.
+
+    run/check/status on a legacy runs/ project carry the migration hint on
+    every outcome.
+    """
+    if command not in ("run", "check", "status") or ctx.project_state != "legacy":
+        return result
+    from chipcompiler.cli.core.records import legacy_layout_hint_record
+
+    return CommandResult(
+        records=(*result.records, legacy_layout_hint_record(ctx.project)),
+        exit_code=result.exit_code,
+    )
+
+
+def _with_config_shadow_hint(command: str, command_input, result, ctx):
+    """Append the shadowed-config warning at the command-result boundary.
+
+    run/check/status on a workspace whose home/ holds BOTH the canonical
+    params.toml and a legacy parameters.json carry the warning on every
+    outcome: the JSON is inert, and a user editing it would otherwise see
+    nothing happen. One lexists pair per command (lexists, not isfile: a
+    dangling link still shadows); no workspace load, no file mutation —
+    deleting the JSON stays the user's call.
+    """
+    if command not in ("run", "check", "status"):
+        return result
+    from chipcompiler.cli.core.records import warning_record
+    from chipcompiler.data.workspace_config import (
+        LEGACY_PARAMETERS_FILENAME,
+        WORKSPACE_CONFIG_FILENAME,
+    )
+
+    workspace_dir = ctx.run_dir
+    home = os.path.join(workspace_dir, "home")
+    if not (
+        os.path.lexists(os.path.join(home, WORKSPACE_CONFIG_FILENAME))
+        and os.path.lexists(os.path.join(home, LEGACY_PARAMETERS_FILENAME))
+    ):
+        return result
+    return CommandResult(
+        records=(
+            *result.records,
+            warning_record(
+                "workspace_config_shadowed",
+                reason="home/params.toml wins over home/parameters.json; "
+                "the legacy JSON is inert — delete it to silence this",
+            ),
+        ),
+        exit_code=result.exit_code,
+    )
+
+
 def execute_command(
     command: str,
     command_input: CommandInputT,
@@ -81,7 +209,8 @@ def execute_command(
     render_key: str | None = None,
 ) -> None:
     ctx = build_context(command_input)
-    result = handler(command_input, ctx)
+    result = _with_legacy_hint(command, command_input, handler(command_input, ctx), ctx)
+    result = _with_config_shadow_hint(command, command_input, result, ctx)
     color = _should_colorize()
     selected_render_key = render_key or command
 

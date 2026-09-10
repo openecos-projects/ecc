@@ -6,6 +6,7 @@ import shutil
 import sys
 import threading
 import time
+from pathlib import Path
 
 from chipcompiler.cli.core.output import disclosure_cmd, normalize_state, normalize_step_name
 from chipcompiler.cli.core.types import OutputMode
@@ -419,7 +420,16 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
     progress_stream = _stable_stream_from(stderr)
     try:
         renderer = RunProgressRenderer(progress_stream, color=color)
-        engine_flow.workspace.home.reset()
+        workspace = engine_flow.workspace
+        workspace.home.reset()
+        home_path = getattr(workspace.home, "path", None)
+        home_dir = Path(home_path).parent if home_path else None
+        if home_dir is not None:
+            if getattr(workspace.flow, "path", None) is not None:
+                workspace.home.set_flow(workspace.flow.path)
+            workspace.home.set_checklist(home_dir / "checklist.json")
+            if getattr(workspace.parameters, "path", None) is not None:
+                workspace.home.set_parameters(workspace.parameters.path)
 
         run_dir = engine_flow.workspace.directory
         run_name = ctx.run_id or "default"

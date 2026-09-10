@@ -470,24 +470,26 @@ select -write ${timing_cell_stat_rpt} t:*DFF*
 tee -q -o ${timing_cell_count_rpt} select -count t:*DFF*
 tee -q -a ${timing_cell_count_rpt} select -count */t:*_DLATCH*_ */t:*_SR*_
 
+if {[info exists golden_netlist_file] && $golden_netlist_file ne ""} {
+    yosys write_verilog -noattr -noexpr -nohex -nodec ${golden_netlist_file}
+}
+
 # technology mapping for clockgate
 clockgate {*}$tech_cells_args {*}$exclude_cells
 
 # technology mapping for flip-flops
 dfflibmap {*}$tech_cells_args {*}$exclude_cells
 
-# dfflibmap intentionally handles only flip-flops.  For ics55 it selects the
-# final matching DFF library in lib_stdcell_list, so use that same H7 variant
-# for latch mapping before ABC.  The library has separate cells for latch
-# enable polarity and asynchronous set/reset polarity; positive async
-# controls are inverted because the library controls are active low.
-set ics55_latch_suffix ""
-if {[llength $lib_stdcell_list] > 0} {
-  set dff_lib [lindex $lib_stdcell_list end]
-  if {[regexp {ics55_LLSC_H7C([HLR])_} [file tail $dff_lib] -> vt]} {
-    set ics55_latch_suffix "H7$vt"
-  }
+# Follow mapped DFF cell names, not library filenames. For designs without
+# mapped ICS55 DFFs, select from the loaded latch library cells.
+set ics55_cells [tee -q -s result.string select -list-mod =*/t:DFF*H7? %M]
+if {[string trim $ics55_cells] eq ""} {
+  set ics55_cells [tee -q -s result.string select -list-mod =LATLX1H7?]
 }
+set ics55_latch_suffix ""
+regexp {H7[HLR]\M} $ics55_cells ics55_latch_suffix
+
+# Positive asynchronous controls are inverted for the active-low library pins.
 if {$ics55_latch_suffix ne ""} {
   set ics55_latch_map "${tmp_dir}/ics55_latch_map.v"
   set latch_map_file [open $ics55_latch_map "w"]
@@ -630,7 +632,7 @@ autoname
 write_verilog -attr2comment -noexpr -nohex -nodec -defparam ${final_netlist_sim_file}
 
 # splitting nets resolves unwanted compound assign statements in netlist (assign {..} = {..}
-splitnets -format __v -ports
+splitnets -format _ -ports
 
 # remove unused cells and wires
 opt_clean -purge

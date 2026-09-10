@@ -86,7 +86,7 @@ def _plain_verilog_filelist_paths(filelist: str) -> list[str] | None:
 
 def _yosys_source_config(workspace: Workspace, step: WorkspaceStep) -> tuple[bool, list[str], str]:
     """Classify RTL input as native-Verilog or Slang-required."""
-    filelist = workspace.design.input_filelist or workspace.parameters.data.get("File list", "")
+    filelist = workspace.design.input_filelist or workspace.parameters.data.get("file_list", "")
     if filelist and os.path.exists(filelist):
         plain_sources = _plain_verilog_filelist_paths(filelist)
         if plain_sources is not None:
@@ -104,7 +104,7 @@ def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:
     if not workspace.design.top_module:
         raise ValueError("TOP_NAME (workspace.design.top_module) not set")
 
-    freq_mhz = workspace.parameters.data.get("Frequency max [MHz]")
+    freq_mhz = workspace.parameters.data.get("frequency_max")
     if freq_mhz is None:
         raise ValueError("CLK_FREQ_MHZ (Frequency max [MHz]) not set")
     if not isinstance(freq_mhz, (int, float)) or freq_mhz <= 0:
@@ -114,7 +114,7 @@ def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:
     filelist = (
         workspace.design.input_filelist
         if workspace.design.input_filelist
-        else workspace.parameters.data.get("File list", "")
+        else workspace.parameters.data.get("file_list", "")
     )
 
     # Prefer filelist if available, otherwise use rtl_file --- IGNORE ---
@@ -177,9 +177,13 @@ def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:
         script.set_list("rtl_file", native_rtl_files or [_abspath(rtl_file)])
     script.blank_line()
 
+    golden_netlist_file = _abspath(step.output.golden_verilog or "")
+
     script.comment("Output files")
     script.set_path("final_netlist_file", netlist_file)
     script.set_path("final_netlist_sim_file", netlist_sim_file)
+    if golden_netlist_file:
+        script.set_path("golden_netlist_file", golden_netlist_file)
     script.set_path("timing_cell_stat_rpt", timing_cell_stat_rpt)
     script.set_path("timing_cell_count_rpt", timing_cell_count_rpt)
     script.set_path("generic_stat_json", generic_stat_json)
@@ -261,6 +265,7 @@ def build_step(
                 else output_dir / f"{design}_{step_name}.v.gz"
             ),
             sim_verilog=output_dir / f"{design}_{step_name}_sim.v.gz",
+            golden_verilog=output_dir / f"{design}_{step_name}_golden.v",
             json=output_dir / f"{design}_{step_name}.json",
             report=output_dir / f"{design}_{step_name}.rpt",
             image=output_dir / f"{design}_{step_name}.png",

@@ -71,6 +71,9 @@ def json_read_strict(file_path: str | Path) -> dict:
                 return json.load(f)
     except json.JSONDecodeError as e:
         raise JsonReadError(f"Invalid JSON in {path}: {e}") from e
+    except UnicodeDecodeError as e:
+        # JSON must be UTF-8; undecodable content is invalid JSON.
+        raise JsonReadError(f"Invalid JSON in {path}: {e}") from e
     except OSError as e:
         raise JsonReadError(f"Failed to read {path}: {e}") from e
 

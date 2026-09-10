@@ -25,10 +25,34 @@ from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
 
 
+class CompletionObserver:
+    """Record on_step_completed deliveries for assertions."""
+
+    def __init__(self):
+        self.completed = []
+
+    def on_step_completed(self, _step, state, error=None):
+        self.completed.append((state, error))
+
+
 def test_engine_flow_missing_path_is_not_initialized():
     engine_flow = EngineFlow(Workspace())
 
     assert engine_flow.has_init() is False
+
+
+def test_engine_flow_default_steps_include_synthesis_lec(tmp_path):
+    workspace = Workspace()
+    workspace.flow.path = tmp_path / "flow.json"
+
+    engine_flow = EngineFlow(workspace)
+    engine_flow.build_default_steps()
+
+    assert [(step["name"], step["tool"]) for step in workspace.flow.data["steps"][:3]] == [
+        (StepEnum.SYNTHESIS.value, "yosys"),
+        (StepEnum.LEC.value, "yosys_lec"),
+        (StepEnum.FLOORPLAN.value, "ecc"),
+    ]
 
 
 def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
@@ -99,6 +123,58 @@ def test_engine_flow_does_not_delay_short_step_before_return(monkeypatch, tmp_pa
 
     assert engine_flow.run_step(workspace_step) is StateEnum.Imcomplete
     assert sleep_calls == []
+
+
+def test_failed_synthesis_lec_is_persisted_as_incomplete(monkeypatch, tmp_path):
+    workspace = Workspace(directory=tmp_path)
+    workspace.flow.path = tmp_path / "flow.json"
+    workspace.flow.data = {
+        "steps": [{"name": StepEnum.LEC.value, "tool": "yosys_lec", "state": "Unstart"}]
+    }
+    workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
+    workspace_step = EccStep(name=StepEnum.LEC.value, directory=tmp_path, tool="yosys_lec")
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    monkeypatch.setattr(
+        flow_module,
+        "execute_tool_step",
+        lambda *args, **kwargs: SimpleNamespace(
+            error=None, elapsed_seconds=0.1, peak_memory_mb=1.0, runtime="0:00:00"
+        ),
+    )
+    monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: False)
+
+    assert engine_flow.run_step(workspace_step) is StateEnum.Imcomplete
+    assert workspace.flow.data["steps"][0]["state"] == StateEnum.Imcomplete.value
+
+
+def test_run_steps_stops_after_synthesis_lec_failure(monkeypatch, tmp_path):
+    workspace = Workspace(directory=tmp_path)
+    workspace.flow.data = {
+        "steps": [
+            {"name": StepEnum.LEC.value, "tool": "yosys_lec", "state": "Unstart"},
+            {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": "Unstart"},
+        ]
+    }
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace_steps = [
+        EccStep(name=StepEnum.LEC.value, directory=tmp_path, tool="yosys_lec"),
+        EccStep(name=StepEnum.FLOORPLAN.value, directory=tmp_path, tool="ecc"),
+    ]
+    calls = []
+
+    def fake_run_step(step, **_kwargs):
+        calls.append(step.name)
+        return StateEnum.Imcomplete if step.name == StepEnum.LEC.value else StateEnum.Success
+
+    monkeypatch.setattr(engine_flow, "run_step", fake_run_step)
+    monkeypatch.setattr(engine_flow, "init_db_engine", lambda: True)
+    monkeypatch.setattr(flow_module, "log_flow", lambda **_kwargs: None)
+
+    assert engine_flow.run_steps() is False
+    assert calls == [StepEnum.LEC.value]
 
 
 def test_check_step_result_synthesis_uses_common_verilog(tmp_path):
@@ -266,20 +342,43 @@ class TestCheckStepResultRcx:
     def test_rcx_succeeds_when_all_spef_exist(self, tmp_path):
         spef1 = tmp_path / "corner1.spef"
         spef2 = tmp_path / "corner2.spef"
-        spef1.write_text("")
-        spef2.write_text("")
+        spef1.write_text("*SPEF\n")
+        spef2.write_text("*SPEF\n")
         step = EccStep(
             name=StepEnum.RCX.value,
             output=EccOutput(spef=[spef1, spef2]),
         )
         assert EngineFlow(Workspace()).check_step_result(step) is True
 
-    def test_rcx_succeeds_with_empty_spef_list(self):
+    def test_rcx_fails_with_empty_spef_list(self):
         step = EccStep(
             name=StepEnum.RCX.value,
             output=EccOutput(spef=[]),
         )
-        assert EngineFlow(Workspace()).check_step_result(step) is True
+        assert EngineFlow(Workspace()).check_step_result(step) is False
+
+    def test_rcx_fails_when_spef_is_zero_byte(self, tmp_path):
+        spef = tmp_path / "corner1.spef"
+        spef.write_text("")
+        step = EccStep(
+            name=StepEnum.RCX.value,
+            output=EccOutput(spef=[spef]),
+        )
+        assert EngineFlow(Workspace()).check_step_result(step) is False
+
+    def test_rcx_fails_when_one_of_two_spef_missing(self, tmp_path):
+        spef1 = tmp_path / "corner1.spef"
+        spef1.write_text("*SPEF\n")
+        spef2 = tmp_path / "corner2.spef"
+        step = EccStep(
+            name=StepEnum.RCX.value,
+            output=EccOutput(spef=[spef1, spef2]),
+        )
+        assert EngineFlow(Workspace()).check_step_result(step) is False
+
+    def test_rcx_fails_when_output_is_not_ecc_output(self):
+        step = YosysStep(name=StepEnum.RCX.value, tool="yosys")
+        assert EngineFlow(Workspace()).check_step_result(step) is False
 
 
 class TestStepExceptionForcesIncomplete:
@@ -520,6 +619,109 @@ class TestStepExceptionForcesIncomplete:
         assert interrupted_step["peak memory (mb)"] >= 0
 
 
+class TestRunStepReturnContract:
+    """Regression: a non-success run_step() return must fail the step, never Success."""
+
+    @staticmethod
+    def _make_flow(tmp_path, name, tool, output):
+        workspace = Workspace()
+        workspace.flow.path = tmp_path / "flow.json"
+        flow_data = {"steps": [{"name": name, "tool": tool, "state": "Unstart"}]}
+        workspace.flow.path.write_text(json.dumps(flow_data), encoding="utf-8")
+        engine_flow = EngineFlow(workspace)
+        workspace_step = EccStep(name=name, directory=tmp_path, tool=tool, output=output)
+        engine_flow.workspace_steps = [workspace_step]
+        engine_flow.engine_db = SimpleNamespace(engine=None)
+        return engine_flow, workspace, workspace_step
+
+    @staticmethod
+    def _valid_route_output(tmp_path):
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        for name in ("route.def", "route.v", "route.gds"):
+            (output_dir / name).write_text("content\n", encoding="utf-8")
+        return EccOutput(
+            def_=output_dir / "route.def",
+            verilog=output_dir / "route.v",
+            gds=output_dir / "route.gds",
+        )
+
+    @pytest.mark.parametrize(
+        "returned",
+        [
+            False,
+            None,
+            StateEnum.Imcomplete,
+            StateEnum.Invalid,
+            StateEnum.Pending,
+            StateEnum.Unstart,
+            StateEnum.Ongoing,
+        ],
+    )
+    def test_non_success_return_forces_incomplete(self, monkeypatch, tmp_path, returned):
+        engine_flow, workspace, workspace_step = self._make_flow(
+            tmp_path, "route", "ecc", self._valid_route_output(tmp_path)
+        )
+        observer = CompletionObserver()
+        monkeypatch.setattr(tools, "run_step", lambda **_kwargs: returned)
+        monkeypatch.setattr(tools, "save_layout_image", lambda **_kwargs: True)
+
+        state = engine_flow.run_step(workspace_step, observer=observer)
+
+        assert state == StateEnum.Imcomplete
+        persisted_step = json.loads(workspace.flow.path.read_text(encoding="utf-8"))["steps"][0]
+        assert persisted_step["state"] == StateEnum.Imcomplete.value
+        assert observer.completed == [
+            (
+                StateEnum.Imcomplete,
+                f"route(ecc) reported failure (run_step returned {returned!r}).",
+            )
+        ]
+
+    @pytest.mark.parametrize("returned", [True, StateEnum.Success])
+    def test_success_returns_reach_success(self, monkeypatch, tmp_path, returned):
+        engine_flow, workspace, workspace_step = self._make_flow(
+            tmp_path, "route", "ecc", self._valid_route_output(tmp_path)
+        )
+        observer = CompletionObserver()
+        monkeypatch.setattr(tools, "run_step", lambda **_kwargs: returned)
+        monkeypatch.setattr(tools, "save_layout_image", lambda **_kwargs: True)
+        monkeypatch.setattr(tools, "build_step_metrics", lambda **_kwargs: StepMetrics(data={}))
+
+        state = engine_flow.run_step(workspace_step, observer=observer)
+
+        assert state == StateEnum.Success
+        persisted_step = json.loads(workspace.flow.path.read_text(encoding="utf-8"))["steps"][0]
+        assert persisted_step["state"] == StateEnum.Success.value
+        assert observer.completed == [(StateEnum.Success, None)]
+
+    @pytest.mark.parametrize("returned", [True, StateEnum.Success])
+    def test_sizer_state_enum_return_keeps_success_contract(self, monkeypatch, tmp_path, returned):
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        def_path = output_dir / "sized.def"
+        verilog_path = output_dir / "sized.v"
+        def_path.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n", encoding="utf-8")
+        verilog_path.write_text("module gcd; endmodule\n", encoding="utf-8")
+        engine_flow, workspace, workspace_step = self._make_flow(
+            tmp_path,
+            StepEnum.TIMING_OPT.value,
+            "sizer",
+            EccOutput(def_=def_path, verilog=verilog_path),
+        )
+        observer = CompletionObserver()
+        monkeypatch.setattr(tools, "run_step", lambda **_kwargs: returned)
+        monkeypatch.setattr(tools, "save_layout_image", lambda **_kwargs: True)
+        monkeypatch.setattr(tools, "build_step_metrics", lambda **_kwargs: StepMetrics(data={}))
+
+        state = engine_flow.run_step(workspace_step, observer=observer)
+
+        assert state == StateEnum.Success
+        persisted_step = json.loads(workspace.flow.path.read_text(encoding="utf-8"))["steps"][0]
+        assert persisted_step["state"] == StateEnum.Success.value
+        assert observer.completed == [(StateEnum.Success, None)]
+
+
 class TestCreateStepFailureBreaksChain:
     """Regression: create_step(None) must break the flow chain and mark step Incomplete."""
 
@@ -529,7 +731,6 @@ class TestCreateStepFailureBreaksChain:
             "steps": [
                 {"name": "SYNTHESIS", "tool": "yosys", "state": "Unstart"},
                 {"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"},
-                {"name": "NETLIST_OPT", "tool": "ecc", "state": "Unstart"},
             ]
         }
         flow_path.write_text(json.dumps(flow_data), encoding="utf-8")
@@ -551,17 +752,14 @@ class TestCreateStepFailureBreaksChain:
         monkeypatch.setattr(tools_mod, "create_step", fake_create_step)
         engine_flow.create_step_workspaces()
 
-        # Only SYNTHESIS should be created; FLOORPLAN fails, NETLIST_OPT never attempted
+        # Only SYNTHESIS should be created; FLOORPLAN fails and the chain stops.
         assert len(engine_flow.workspace_steps) == 1
         assert engine_flow.workspace_steps[0].name == "SYNTHESIS"
-        assert call_count[0] == 2  # SYNTHESIS + FLOORPLAN (NETLIST_OPT skipped)
+        assert call_count[0] == 2  # SYNTHESIS + FLOORPLAN
 
         # FLOORPLAN should be marked Incomplete in flow data
         fp_step = next(s for s in workspace.flow.data["steps"] if s["name"] == "FLOORPLAN")
         assert fp_step["state"] == StateEnum.Imcomplete.value
-        # NETLIST_OPT should stay Unstart (never reached)
-        no_step = next(s for s in workspace.flow.data["steps"] if s["name"] == "NETLIST_OPT")
-        assert no_step["state"] == "Unstart"
 
     def test_run_steps_returns_false_when_steps_skipped(self, monkeypatch, tmp_path):
         """run_steps must return False when create_step skipped steps."""
@@ -723,3 +921,65 @@ class TestMandatoryArtifactFailure:
 
         state = engine_flow.run_step(ws_step)
         assert state == StateEnum.Imcomplete
+
+
+def test_engine_flow_post_success_failure_marks_incomplete_not_success(
+    monkeypatch,
+    tmp_path,
+):
+    """A failure in post-success work (layout snapshot) must transition the
+    step to Incomplete — the terminal commit happens after the fallible
+    work, so no forbidden Success -> Incomplete rollback is attempted and
+    the original error is not masked."""
+    workspace = Workspace()
+    flow_path = tmp_path / "home" / "flow.json"
+    flow_path.parent.mkdir(parents=True)
+    flow_path.write_text(
+        json.dumps(
+            {
+                "steps": [
+                    {
+                        "name": "route",
+                        "tool": "ecc",
+                        "state": "Unstart",
+                        "runtime": "",
+                        "peak memory (mb)": 0,
+                        "info": {},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    workspace.flow.path = flow_path
+    workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
+    }
+    workspace_step = EccStep(
+        name="route",
+        directory=tmp_path,
+        tool="ecc",
+        feature=EccFeature(step=tmp_path / "feature" / "route.step.json"),
+    )
+    step_feature_path = workspace_step.feature.step
+    assert step_feature_path is not None
+    step_feature_path.parent.mkdir(parents=True, exist_ok=True)
+    step_feature_path.write_text("{}", encoding="utf-8")
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
+    monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
+    monkeypatch.setattr(engine_flow, "save_step_flow_facts", lambda **_kwargs: False)
+
+    def explode_layout(**_kwargs):
+        raise RuntimeError("layout render exploded")
+
+    monkeypatch.setattr(tools, "save_layout_image", explode_layout)
+
+    result = engine_flow.run_step(workspace_step)
+
+    assert result == StateEnum.Imcomplete
+    persisted = json.loads(flow_path.read_text(encoding="utf-8"))
+    assert persisted["steps"][0]["state"] == StateEnum.Imcomplete.value

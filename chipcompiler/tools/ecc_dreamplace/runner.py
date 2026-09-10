@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 
-from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace
+from dataclasses import replace
+from pathlib import Path
+
+from chipcompiler.data import EccStep, StateEnum, StepEnum, StepInput, Workspace
 from chipcompiler.tools.ecc import EccSubFlow, EccSubFlowEnum, ECCToolsModule
 from chipcompiler.tools.ecc import runner as ecc_runner
 
 from .checklist import DreamplaceChecklist
-from .module import DreamplaceModule, DreamplaceRunMode
+from .module import DreamplaceModule
 from .utility import is_eda_exist
 
 
@@ -30,8 +33,6 @@ def run_step(
 
     state = False
     match step.name:
-        case StepEnum.MACRO_PLACEMENT.value:
-            state = run_macro_placement(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.PLACEMENT.value:
             state = run_placement(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.LEGALIZATION.value:
@@ -40,13 +41,13 @@ def run_step(
     return state
 
 
-def _run_placement_mode(
-    workspace: Workspace,
-    step: EccStep,
-    ecc_module: ECCToolsModule | None,
-    mode: DreamplaceRunMode,
+def run_placement(
+    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
 ) -> bool:
-    result = False
+    """
+    run placement
+    """
+    reslut = False
 
     sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
 
@@ -54,6 +55,8 @@ def _run_placement_mode(
 
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
+
+        # run ecc dreamplace
         dreamplace_module = DreamplaceModule(
             workspace=workspace,
             step=step,
@@ -63,66 +66,26 @@ def _run_placement_mode(
             output_def=step.output.def_,
             output_verilog=step.output.verilog,
         )
-        run_name = (
-            EccSubFlowEnum.run_macro_placement
-            if mode is DreamplaceRunMode.MACRO_PLACEMENT
-            else EccSubFlowEnum.run_placement
-        )
-        run_method = (
-            dreamplace_module.run_macro_placement
-            if mode is DreamplaceRunMode.MACRO_PLACEMENT
-            else dreamplace_module.run_placement
-        )
-        result = run_method()
-        if not result:
+        reslut = dreamplace_module.run_placement()
+        if not reslut:
             sub_flow.update_step(
-                step_name=run_name.value, state=StateEnum.Imcomplete
+                step_name=EccSubFlowEnum.run_placement.value, state=StateEnum.Imcomplete
             )
             return False
 
-        if mode is DreamplaceRunMode.PLACEMENT:
-            ecc_module.feature_placement_map(json_path=step.feature.map)
+        ecc_module.feature_placement_map(json_path=step.feature.map)
 
-        sub_flow.update_step(step_name=run_name.value, state=StateEnum.Success)
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_placement.value, state=StateEnum.Success)
 
-        result = ecc_runner.save_data(
+        reslut = ecc_runner.save_data(
             workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False
         )
 
-        sub_flow.update_step(
-            step_name=EccSubFlowEnum.save_data.value,
-            state=StateEnum.Success if result else StateEnum.Imcomplete,
-        )
-        if not result:
-            return False
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
         run_analysis(workspace=workspace, step=step, subflow=sub_flow)
 
-    return result
-
-
-def run_macro_placement(
-    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
-) -> bool:
-    """Run full DreamPlace optimization and commit only eligible hard macros."""
-    return _run_placement_mode(
-        workspace=workspace,
-        step=step,
-        ecc_module=ecc_module,
-        mode=DreamplaceRunMode.MACRO_PLACEMENT,
-    )
-
-
-def run_placement(
-    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
-) -> bool:
-    """Run placement."""
-    return _run_placement_mode(
-        workspace=workspace,
-        step=step,
-        ecc_module=ecc_module,
-        mode=DreamplaceRunMode.PLACEMENT,
-    )
+    return reslut
 
 
 def run_legalization(
@@ -170,3 +133,65 @@ def run_legalization(
         run_analysis(workspace=workspace, step=step, subflow=sub_flow)
 
     return reslut
+
+
+def legalize_layout(
+    workspace: Workspace,
+    owner_step: EccStep,
+    input_def: Path | None,
+    input_verilog: Path | None,
+) -> ECCToolsModule | None:
+    """Legalize a layout for an owning step without owning that step's subflow."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+    if not is_eda_exist():
+        logger.error(
+            "DreamPlace tools not available for inner legalization of %s",
+            owner_step.name,
+        )
+        return None
+
+    if not workspace.config.get("dreamplace"):
+        from chipcompiler.data import build_workspace_config_paths
+
+        workspace.config["dreamplace"] = build_workspace_config_paths(workspace)["dreamplace"]
+    dreamplace_config = workspace.config.get("dreamplace")
+    if not dreamplace_config or not Path(dreamplace_config).is_file():
+        logger.error(
+            "DreamPlace config is missing for inner legalization of %s",
+            owner_step.name,
+        )
+        return None
+
+    load_step = replace(
+        owner_step,
+        input=StepInput(def_=input_def, verilog=input_verilog, db=None),
+    )
+    ecc_module = ecc_runner.create_db_engine(workspace, load_step)
+    if ecc_module is None:
+        logger.error(
+            "Failed to rebuild ECC database for inner legalization of %s",
+            owner_step.name,
+        )
+        return None
+
+    keep_engine = False
+    try:
+        dreamplace_module = DreamplaceModule(
+            workspace=workspace,
+            step=owner_step,
+            ecc_module=ecc_module,
+            input_def=input_def,
+            input_verilog=input_verilog,
+            output_def=None,
+            output_verilog=None,
+        )
+        if not dreamplace_module.run_legalization():
+            logger.error("DreamPlace legalization failed for %s", owner_step.name)
+            return None
+        keep_engine = True
+        return ecc_module
+    finally:
+        if not keep_engine:
+            ecc_module.close()

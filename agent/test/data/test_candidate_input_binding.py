@@ -111,8 +111,7 @@ def test_bind_candidate_input_reads_typed_ecc_output_paths(tmp_path):
     "target_step,source_step",
     [
         ("Floorplan", "initial"),
-        ("fixFanout", "Floorplan"),
-        ("place", "fixFanout"),
+        ("place", "Floorplan"),
         ("CTS", "place"),
         ("legalization", "CTS"),
         ("route", "legalization"),

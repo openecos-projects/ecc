@@ -74,7 +74,15 @@ class HomeData:
         self._repair_or_reload()
 
     def reset(self):
-        self._update(lambda data: data.clear() or data.update(_default_home_data()))
+        def mutator(data: dict) -> None:
+            # parameters/flow/checklist locate workspace-lifetime files; only
+            # per-run state (layout/metrics) is cleared.
+            paths = {key: data[key] for key in ("parameters", "flow", "checklist") if data.get(key)}
+            data.clear()
+            data.update(_default_home_data())
+            data.update(paths)
+
+        self._update(mutator)
 
     def save(self):
         source = self.data

@@ -19,7 +19,7 @@ def _set_flow_preset(project_dir, preset):
 
 def _patch_all_flow_builders(monkeypatch):
     markers = {}
-    for attr in ("build_rtl2gds_flow", "build_rcx_flow", "build_harden_flow", "build_syn_sta_flow"):
+    for attr in ("build_rtl2gds_flow", "build_syn_sta_flow", "build_synthesis_lec_flow"):
         steps = [("Synthesis", "yosys", "Unstart"), (attr, "ecc", "Unstart")]
         markers[attr] = steps
         monkeypatch.setattr(f"chipcompiler.rtl2gds.builder.{attr}", lambda steps=steps: steps)
@@ -33,7 +33,7 @@ class TestRun:
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 0
         assert flow_mocks.capture["create_kwargs"]["directory"] == os.path.join(
-            project_dir, "runs", "default"
+            project_dir, "default"
         )
 
     def test_run_adds_flow_steps_when_no_init(self, tmp_path, create_cli_project, flow_mocks):
@@ -55,19 +55,26 @@ class TestRun:
         self, tmp_path, create_cli_project, create_flow_json, flow_mocks
     ):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir, profile="main")
 
         rc = cli_main.run(["run", "--project", project_dir, "--overwrite"])
         assert rc == 0
 
-    def test_run_fails_if_flow_json_exists(self, tmp_path, create_cli_project, create_flow_json):
+    def test_run_fails_if_target_dir_exists_without_overwrite(
+        self, tmp_path, create_cli_project, capsys, mock_pdk_validation, plain_records
+    ):
+        mock_pdk_validation()
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
-        create_flow_json(run_dir, profile="main")
+        run_dir = os.path.join(project_dir, "default")
+        os.makedirs(run_dir)
 
-        rc = cli_main.run(["run", "--project", project_dir])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
+
         assert rc == 1
+        record = plain_records(capsys.readouterr().out)[0]
+        assert record["error"] == "run_exists"
+        assert record["workspace_id"] == "default"
 
     def test_run_fails_on_config_error(self, tmp_path):
         project_dir = tmp_path / "bad"
@@ -95,48 +102,36 @@ class TestRun:
         rc = cli_main.run(["run", "--project", project_dir])
         assert rc == 1
 
-    def test_run_json_uses_non_progress_path(
+    def test_run_plain_uses_non_progress_path(
+        self, tmp_path, capsys, create_cli_project, flow_mocks, plain_records
+    ):
+        project_dir = create_cli_project()
+
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
+        assert rc == 0
+        records = plain_records(capsys.readouterr().out)
+        assert records[0]["status"] == "success"
+        assert flow_mocks.flow.instances[0].run_called
+
+    def test_run_plain_no_progress_on_stderr(
         self, tmp_path, capsys, create_cli_project, flow_mocks
     ):
         project_dir = create_cli_project()
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
-        assert rc == 0
-        out = capsys.readouterr().out
-        data = json.loads(out)
-        assert "records" in data
-        assert data["records"][0]["status"] == "success"
-        assert flow_mocks.flow.instances[0].run_called
-
-    def test_run_jsonl_uses_non_progress_path(
-        self, tmp_path, capsys, create_cli_project, flow_mocks
-    ):
-        project_dir = create_cli_project()
-
-        rc = cli_main.run(["run", "--project", project_dir, "--jsonl"])
-        assert rc == 0
-        out = capsys.readouterr().out
-        objects = [json.loads(ln) for ln in out.strip().split("\n")]
-        assert any("status" in obj for obj in objects)
-        assert flow_mocks.flow.instances[0].run_called
-
-    def test_run_json_no_progress_on_stderr(self, tmp_path, capsys, create_cli_project, flow_mocks):
-        project_dir = create_cli_project()
-
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
         assert rc == 0
         err = capsys.readouterr().err
         assert "step=" not in err
 
-    def test_run_preserves_final_records(self, tmp_path, capsys, create_cli_project, flow_mocks):
+    def test_run_preserves_final_records(
+        self, tmp_path, capsys, create_cli_project, flow_mocks, plain_records
+    ):
         project_dir = create_cli_project()
 
-        rc = cli_main.run(["run", "--project", project_dir, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
         assert rc == 0
-        out = capsys.readouterr().out
-        data = json.loads(out)
-        record = data["records"][0]
-        assert record["run"] == "default"
+        record = plain_records(capsys.readouterr().out)[0]
+        assert record["workspace_id"] == "default"
         assert record["status"] == "success"
         assert "inspect_cmd" in record
         assert "metrics_cmd" not in record
@@ -148,9 +143,8 @@ class TestRunFlowPreset:
         "preset,builder_attr",
         [
             ("rtl2gds", "build_rtl2gds_flow"),
-            ("rcx", "build_rcx_flow"),
-            ("harden", "build_harden_flow"),
             ("syn_sta", "build_syn_sta_flow"),
+            ("synthesis_lec", "build_synthesis_lec_flow"),
         ],
     )
     def test_run_dispatches_builder_for_preset(
@@ -169,15 +163,56 @@ class TestRunFlowPreset:
         self, tmp_path, monkeypatch, create_cli_project, create_flow_json, flow_mocks
     ):
         project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
+        run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir, profile="main")
-        _set_flow_preset(project_dir, "harden")
+        _set_flow_preset(project_dir, "syn_sta")
         markers = _patch_all_flow_builders(monkeypatch)
 
         rc = cli_main.run(["run", "--project", project_dir, "--overwrite"])
 
         assert rc == 0
-        assert flow_mocks.flow.instances[0].added_steps == markers["build_harden_flow"]
+        assert flow_mocks.flow.instances[0].added_steps == markers["build_syn_sta_flow"]
+
+    def test_run_preset_flag_overrides_toml(
+        self, tmp_path, monkeypatch, create_cli_project, flow_mocks
+    ):
+        project_dir = create_cli_project()
+        markers = _patch_all_flow_builders(monkeypatch)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--preset", "syn_sta"])
+
+        assert rc == 0
+        assert flow_mocks.flow.instances[0].added_steps == markers["build_syn_sta_flow"]
+
+    def test_run_preset_flag_does_not_edit_toml(
+        self, tmp_path, monkeypatch, create_cli_project, flow_mocks
+    ):
+        project_dir = create_cli_project()
+        toml_path = os.path.join(project_dir, "ecc.toml")
+        with open(toml_path) as f:
+            before = f.read()
+        _patch_all_flow_builders(monkeypatch)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--preset", "syn_sta"])
+
+        assert rc == 0
+        with open(toml_path) as f:
+            assert f.read() == before
+
+    def test_run_preset_flag_rejects_unknown_preset(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, flow_mocks, plain_records
+    ):
+        project_dir = create_cli_project()
+        _patch_all_flow_builders(monkeypatch)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--preset", "bogus", "--plain"])
+
+        record = plain_records(capsys.readouterr().out)[0]
+        assert rc == 1
+        assert record["error"] == "unsupported_preset"
+        assert record["preset"] == "bogus"
+        assert "rtl2gds" in record["presets"]
+        assert flow_mocks.capture["create_kwargs"] is None
 
     def test_run_forwards_pdk_overrides(self, tmp_path, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
@@ -240,8 +275,36 @@ class TestRunFlowPreset:
 
 class TestWorkspaceRun:
     @pytest.fixture
-    def workspace_mocks(self, monkeypatch):
+    def workspace_mocks(self, monkeypatch, tmp_path, create_cli_project, mock_pdk_validation):
+        # The workspace must exist on disk under the project as a recognized
+        # workspace (canonical-chain ledger + params.toml flow target): the
+        # locked execution path refuses selectors on a fresh target, and
+        # classify/reconcile run against the real ledger before the mocks
+        # take over.
+        mock_pdk_validation()
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "workspace")
+        home = os.path.join(run_dir, "home")
+        os.makedirs(home)
+        from chipcompiler.data.workspace_config import save_workspace_config
+        from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
+
+        chain = [
+            (step.value if hasattr(step, "value") else str(step), str(tool))
+            for step, tool, _state in build_rtl2gds_flow()
+        ]
+        steps = [{"name": name, "tool": tool, "state": "Success"} for name, tool in chain]
+        steps[-1]["state"] = "Unstart"  # something left to resume
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            json.dump({"steps": steps}, f)
+        assert save_workspace_config(
+            run_dir,
+            {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
+            {"preset": "rtl2gds"},
+        )
         seen = SimpleNamespace(
+            project=project_dir,
+            run_dir=run_dir,
             load_path=None,
             has_init=True,
             selected_error=None,
@@ -251,6 +314,7 @@ class TestWorkspaceRun:
             only=None,
             from_step=None,
             resume=False,
+            bounded_through=None,
             result=StepRunResult(ok=True, executed=("place",)),
         )
 
@@ -265,7 +329,7 @@ class TestWorkspaceRun:
                 seen.create_calls += 1
                 seen.executable = executable_steps
 
-        def selected_step_names(flow, *, from_step=None, only=None, force=False):
+        def selected_step_names(flow, *, from_step=None, through=None, only=None, force=False):
             if seen.selected_error is not None:
                 raise seen.selected_error
             seen.selected = {"from_step": from_step, "only": only, "force": force}
@@ -275,15 +339,19 @@ class TestWorkspaceRun:
                 return [from_step, "CTS"]
             return ["place", "CTS"]
 
+        def bounded_resume_names(flow, through):
+            seen.bounded_through = through
+            return ["place", "CTS"]
+
         def run_only(flow, name, *, force=False):
             seen.only = (name, force)
             return seen.result
 
-        def run_from(flow, name):
+        def run_from(flow, name, *, through=None):
             seen.from_step = name
             return seen.result
 
-        def run_resume(flow):
+        def run_resume(flow, *, through=None):
             seen.resume = True
             return seen.result
 
@@ -294,6 +362,7 @@ class TestWorkspaceRun:
         monkeypatch.setattr("chipcompiler.data.load_workspace", fake_load_workspace)
         monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
         monkeypatch.setattr("chipcompiler.engine.rerun.selected_step_names", selected_step_names)
+        monkeypatch.setattr("chipcompiler.engine.rerun.bounded_resume_names", bounded_resume_names)
         monkeypatch.setattr("chipcompiler.engine.rerun.run_only", run_only)
         monkeypatch.setattr("chipcompiler.engine.rerun.run_from", run_from)
         monkeypatch.setattr("chipcompiler.engine.rerun.run_resume", run_resume)
@@ -303,98 +372,170 @@ class TestWorkspaceRun:
         )
         return seen
 
-    def test_only_force_wiring(self, workspace_mocks, tmp_path, capsys):
-        workspace = str(tmp_path / "workspace")
+    def test_only_force_wiring(self, workspace_mocks, capsys, plain_records):
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                workspace_mocks.project,
+                "--workspace",
+                "workspace",
+                "--only",
+                "place",
+                "--force",
+                "--plain",
+            ]
+        )
 
-        rc = cli_main.run(["run", "--workspace", workspace, "--only", "place", "--force", "--json"])
-
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 0
-        assert workspace_mocks.load_path == workspace
+        assert workspace_mocks.load_path == workspace_mocks.run_dir
         assert workspace_mocks.selected == {"from_step": None, "only": "place", "force": True}
         assert workspace_mocks.executable == {"place"}
         assert workspace_mocks.only == ("place", True)
-        assert record["run"] == "workspace"
+        assert record["workspace_id"] == "workspace"
         assert record["status"] == "success"
-        assert record["workspace"] == workspace
-        assert record["executed_steps"] == ["place"]
-        assert record["no_op"] is False
+        assert record["workspace"] == workspace_mocks.run_dir
+        assert record["executed_steps"] == "[place]"
+        assert record["no_op"] == "False"
 
-    def test_default_selector_is_resume(self, workspace_mocks, tmp_path):
-        rc = cli_main.run(["run", "--workspace", str(tmp_path / "workspace"), "--plain"])
+    def test_default_selector_is_resume(self, workspace_mocks):
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                workspace_mocks.project,
+                "--workspace",
+                "workspace",
+                "--resume",
+            ]
+        )
 
         assert rc == 0
         assert workspace_mocks.selected == {"from_step": None, "only": None, "force": False}
+        # The default resume is bounded to the reconciled target's last step.
+        assert workspace_mocks.bounded_through == "Harden"
         assert workspace_mocks.executable == {"place", "CTS"}
         assert workspace_mocks.resume is True
 
-    def test_from_step_wiring(self, workspace_mocks, tmp_path):
-        rc = cli_main.run(["run", "--workspace", str(tmp_path / "workspace"), "--from", "CTS"])
+    def test_from_step_wiring(self, workspace_mocks):
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                workspace_mocks.project,
+                "--workspace",
+                "workspace",
+                "--from",
+                "CTS",
+            ]
+        )
 
         assert rc == 0
         assert workspace_mocks.from_step == "CTS"
         assert workspace_mocks.executable == {"CTS"}
 
-    def test_noop_selection_skips_workspace_rebuild(self, workspace_mocks, tmp_path, capsys):
+    def test_noop_selection_skips_workspace_rebuild(self, workspace_mocks, capsys, plain_records):
         workspace_mocks.result = StepRunResult(ok=True, executed=())
-        workspace = str(tmp_path / "workspace")
 
-        rc = cli_main.run(["run", "--workspace", workspace, "--only", "place", "--json"])
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                workspace_mocks.project,
+                "--workspace",
+                "workspace",
+                "--only",
+                "place",
+                "--plain",
+            ]
+        )
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 0
         assert workspace_mocks.create_calls == 0
         assert workspace_mocks.only == ("place", False)
         assert record == {
-            "run": "workspace",
+            "workspace_id": "workspace",
             "status": "success",
-            "workspace": workspace,
-            "executed_steps": [],
-            "no_op": True,
+            "workspace": workspace_mocks.run_dir,
+            "executed_steps": "[]",
+            "no_op": "True",
         }
 
-    def test_failed_run_reports_failed_step_and_resume(self, workspace_mocks, tmp_path, capsys):
+    def test_failed_run_reports_failed_step_and_resume(
+        self, workspace_mocks, capsys, plain_records
+    ):
         workspace_mocks.result = StepRunResult(ok=False, executed=(), failed="place")
-        workspace = str(tmp_path / "workspace")
 
-        rc = cli_main.run(["run", "--workspace", workspace, "--only", "place", "--json"])
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                workspace_mocks.project,
+                "--workspace",
+                "workspace",
+                "--only",
+                "place",
+                "--plain",
+            ]
+        )
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record == {
-            "run": "workspace",
+            "workspace_id": "workspace",
             "status": "failed",
-            "workspace": workspace,
-            "executed_steps": [],
-            "no_op": False,
+            "workspace": workspace_mocks.run_dir,
+            "executed_steps": "[]",
+            "no_op": "False",
             "failed_step": "place",
-            "resume_cmd": f"ecc run --workspace {workspace} --resume",
+            "resume_cmd": "ecc run --workspace workspace --resume",
         }
 
-    def test_invalid_workspace(self, tmp_path, capsys):
-        rc = cli_main.run(["run", "--workspace", str(tmp_path / "missing"), "--json"])
+    def test_invalid_workspace(self, tmp_path, capsys, plain_records):
+        rc = cli_main.run(["run", "--workspace", str(tmp_path / "missing"), "--plain"])
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == "invalid_workspace"
 
-    def test_missing_flow(self, workspace_mocks, tmp_path, capsys):
+    def test_missing_flow(self, workspace_mocks, capsys, plain_records):
         workspace_mocks.has_init = False
 
-        rc = cli_main.run(["run", "--workspace", str(tmp_path / "workspace"), "--json"])
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                workspace_mocks.project,
+                "--workspace",
+                "workspace",
+                "--resume",
+                "--plain",
+            ]
+        )
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == "missing_flow"
 
-    def test_unknown_step(self, workspace_mocks, tmp_path, capsys):
+    def test_unknown_step(self, workspace_mocks, capsys, plain_records):
         workspace_mocks.selected_error = ValueError("unknown step 'bogus'")
 
         rc = cli_main.run(
-            ["run", "--workspace", str(tmp_path / "workspace"), "--only", "bogus", "--json"]
+            [
+                "run",
+                "--project",
+                workspace_mocks.project,
+                "--workspace",
+                "workspace",
+                "--only",
+                "bogus",
+                "--plain",
+            ]
         )
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == "unknown_step"
         assert "bogus" in record["reason"]
@@ -402,27 +543,107 @@ class TestWorkspaceRun:
     @pytest.mark.parametrize(
         "argv,error",
         [
-            (["--project", "p", "--workspace", "w"], "project_workspace_conflict"),
-            (["--run-id", "r", "--workspace", "w"], "project_workspace_conflict"),
-            (["--workspace", "w", "--overwrite"], "overwrite_requires_project"),
-            (["--workspace", "w", "--set", "place.target_density=0.6"], "set_requires_project"),
             (["--workspace", "w", "--resume", "--only", "place"], "selector_conflict"),
             (["--workspace", "w", "--from", "place", "--only", "CTS"], "selector_conflict"),
+            (["--workspace", "w", "--from", "place", "--resume"], "selector_conflict"),
+            (
+                ["--workspace", "w", "--from", "place", "--to", "route", "--resume"],
+                "selector_conflict",
+            ),
+            (
+                ["--workspace", "w", "--from", "place", "--to", "route", "--only", "place"],
+                "selector_conflict",
+            ),
+            (
+                ["--workspace", "w", "--from", "place", "--to", "route", "--force"],
+                "selector_conflict",
+            ),
+            (
+                ["--workspace", "w", "--from", "place", "--to", "route", "--preset", "rtl2gds"],
+                "selector_conflict",
+            ),
+            (["--workspace", "w", "--to", "route"], "flow_range_requires_pair"),
             (["--workspace", "w", "--force"], "force_requires_only"),
             (["--resume"], "selector_requires_workspace"),
-            (["--from", "place"], "selector_requires_workspace"),
             (["--only", "place"], "selector_requires_workspace"),
-            (["--force"], "selector_requires_workspace"),
+            (["--from", "place"], "flow_range_requires_pair"),
         ],
     )
-    def test_option_conflicts(self, argv, error, capsys, monkeypatch):
+    def test_option_conflicts(
+        self, argv, error, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
+    ):
+        project_dir = create_cli_project()
         monkeypatch.setattr(
             "chipcompiler.data.load_workspace",
             lambda _path: pytest.fail("conflicts must be rejected before workspace load"),
         )
 
-        rc = cli_main.run(["run", *argv, "--json"])
+        rc = cli_main.run(["run", "--project", project_dir, *argv, "--plain"])
 
-        record = json.loads(capsys.readouterr().out)["records"][0]
+        record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
         assert record["error"] == error
+
+
+class TestWorkspaceNoOp:
+    def test_complete_workspace_resume_is_noop(
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        plain_records,
+    ):
+        import json as _json
+
+        from chipcompiler.data.workspace_config import save_workspace_config
+
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        workspace = os.path.join(project_dir, "workspace")
+        home = os.path.join(workspace, "home")
+        os.makedirs(home)
+        from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
+
+        chain = [
+            (step.value if hasattr(step, "value") else str(step), str(tool))
+            for step, tool, _state in build_rtl2gds_flow()
+        ]
+        steps = [{"name": name, "tool": tool, "state": "Success"} for name, tool in chain]
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            _json.dump({"steps": steps}, f)
+        assert save_workspace_config(
+            workspace,
+            {
+                "pdk": "ics55",
+                "pdk_root": str(pdk_root),
+                "design": "gcd",
+                "top_module": "gcd",
+                "clock": "clk",
+            },
+            {"preset": "rtl2gds"},
+        )
+        monkeypatch.setattr(
+            "chipcompiler.engine.rerun.run_resume",
+            lambda flow, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("a complete flow must not execute on a no_op reconcile")
+            ),
+        )
+
+        rc = cli_main.run(
+            ["run", "--project", project_dir, "--workspace", "workspace", "--resume", "--plain"]
+        )
+
+        assert rc == 0
+        record = plain_records(capsys.readouterr().out)[0]
+        assert record["status"] == "success"
+        assert record["no_op"] == "True"
+        # The adopted narrower target replaced the stale wider one.
+        from chipcompiler.data.workspace_config import load_workspace_config
+
+        assert load_workspace_config(workspace)["_flow"] == {"preset": "rtl2gds"}

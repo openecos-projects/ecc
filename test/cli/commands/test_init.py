@@ -10,7 +10,9 @@ class TestInit:
         assert (tmp_path / "gcd" / "ecc.toml").exists()
         assert (tmp_path / "gcd" / "rtl").is_dir()
         assert (tmp_path / "gcd" / "constraints").is_dir()
-        assert (tmp_path / "gcd" / "runs").is_dir()
+        # init'd projects are virgin: the runs/ container is no longer
+        # pre-created; the first run generates project.json instead.
+        assert not (tmp_path / "gcd" / "runs").exists()
 
     def test_init_output_has_disclosure_commands(self, tmp_path, capsys):
         project_path = str(tmp_path / "myproj")

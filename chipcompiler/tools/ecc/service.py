@@ -101,8 +101,6 @@ def build_maps(workspace: Workspace, step: EccStep) -> dict:
     match StepEnum(step.name):
         case StepEnum.FLOORPLAN:
             pass
-        case StepEnum.NETLIST_OPT:
-            pass
         case StepEnum.PLACEMENT:
             info.update(build_maps_congestion(workspace, step))
             info.update(build_maps_density(workspace, step))

@@ -1,10 +1,16 @@
+import pytest
+
 import chipcompiler.rtl2gds.builder as builder_module
 from chipcompiler.data import StateEnum, StepEnum
 from chipcompiler.rtl2gds import get_flow_builders
 
 
 def test_discovery_includes_current_presets():
-    assert {"rtl2gds", "macro_rtl2gds", "rcx", "harden", "syn_sta"} <= set(get_flow_builders())
+    assert set(get_flow_builders()) == {
+        "rtl2gds",
+        "syn_sta",
+        "synthesis_lec",
+    }
 
 
 def test_discovery_picks_up_new_flow_def(monkeypatch):
@@ -45,37 +51,44 @@ def test_discovery_ignores_non_matching_names(monkeypatch):
         assert fn not in builders.values()
 
 
-def test_build_rtl2gds_flow_includes_lvs_after_drc():
+def test_build_rtl2gds_flow_is_the_complete_flow():
     flow = builder_module.build_rtl2gds_flow()
 
     assert flow == [
         (StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart),
+        (StepEnum.LEC, "yosys_lec", StateEnum.Unstart),
         (StepEnum.FLOORPLAN, "ecc", StateEnum.Unstart),
-        (StepEnum.NETLIST_OPT, "ecc", StateEnum.Unstart),
         (StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart),
         (StepEnum.CTS, "ecc", StateEnum.Unstart),
         (StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart),
+        (StepEnum.TIMING_OPT, "sizer", StateEnum.Unstart),
         (StepEnum.ROUTING, "ecc", StateEnum.Unstart),
-        (StepEnum.DRC, "ecc", StateEnum.Unstart),
-        (StepEnum.LVS, "ecc", StateEnum.Unstart),
         (StepEnum.FILLER, "ecc", StateEnum.Unstart),
+        (StepEnum.RCX, "ecc", StateEnum.Unstart),
+        (StepEnum.STA, "ecc", StateEnum.Unstart),
+        (StepEnum.LVS, "ecc", StateEnum.Unstart),
+        (StepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart),
+        (StepEnum.DRC, "ecc", StateEnum.Unstart),
+        (StepEnum.HARDEN, "ecc", StateEnum.Unstart),
     ]
 
 
-def test_build_macro_rtl2gds_flow_adds_only_macro_placement():
-    default_flow = builder_module.build_rtl2gds_flow()
+def test_build_flow_range_slices_the_canonical_chain():
+    flow = builder_module.build_flow_range("CTS", "route")
 
-    assert builder_module.build_macro_rtl2gds_flow() == [
-        (StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart),
-        (StepEnum.FLOORPLAN, "ecc", StateEnum.Unstart),
-        (StepEnum.NETLIST_OPT, "ecc", StateEnum.Unstart),
-        (StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart),
-        (StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart),
-        (StepEnum.CTS, "ecc", StateEnum.Unstart),
-        (StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart),
-        (StepEnum.ROUTING, "ecc", StateEnum.Unstart),
-        (StepEnum.DRC, "ecc", StateEnum.Unstart),
-        (StepEnum.LVS, "ecc", StateEnum.Unstart),
-        (StepEnum.FILLER, "ecc", StateEnum.Unstart),
+    assert [(step, tool) for step, tool, _state in flow] == [
+        (StepEnum.CTS, "ecc"),
+        (StepEnum.LEGALIZATION, "dreamplace"),
+        (StepEnum.TIMING_OPT, "sizer"),
+        (StepEnum.ROUTING, "ecc"),
     ]
-    assert builder_module.build_rtl2gds_flow() == default_flow
+
+
+def test_build_flow_range_normalizes_aliases_and_rejects_reverse_ranges():
+    assert [step for step, _tool, _state in builder_module.build_flow_range("place", "cts")] == [
+        StepEnum.PLACEMENT,
+        StepEnum.CTS,
+    ]
+
+    with pytest.raises(ValueError, match="reversed"):
+        builder_module.build_flow_range("route", "CTS")

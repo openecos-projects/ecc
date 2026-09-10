@@ -49,25 +49,85 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     assert "-prft_only" not in cmd_text
     assert "-outputPath ." in cmd_text
     expected_def_out = os.path.relpath(
-        str(step.output.def_),
+        sizer_builder.sizer_staging_def(step),
         step.data.steps[StepEnum.TIMING_OPT.value],
     )
     expected_verilog_out = os.path.relpath(
-        str(step.output.verilog),
+        sizer_builder.sizer_staging_verilog(step),
         step.data.steps[StepEnum.TIMING_OPT.value],
     )
     assert f"-def_out_path {expected_def_out}" in cmd_text
     assert f"-verilog_out_path {expected_verilog_out}" in cmd_text
+    assert expected_def_out == "sizer.def.gz"
+    assert expected_verilog_out == "sizer.v.gz"
     assert "-min_route_layer M2" in cmd_text
     assert "-max_route_layer M7" in cmd_text
 
     with open(str(step.subflow.path), encoding="utf-8") as file:
         subflow = json.load(file)
-    assert [item["name"] for item in subflow["steps"]] == ["run sizer"]
+    assert [item["name"] for item in subflow["steps"]] == [
+        "run sizer",
+        "run legalization",
+        "save data",
+    ]
 
     with open(str(step.checklist.path), encoding="utf-8") as file:
         checklist = json.load(file)
     assert checklist["checklist"] == []
+
+
+def test_sizer_metrics_write_qor_files_from_db_summary(tmp_path):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+    from chipcompiler.tools.ecc_sizer import metrics as sizer_metrics
+
+    workspace = _workspace(tmp_path)
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def="input.def",
+        input_verilog="input.v",
+    )
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_sub_flow(workspace, step)
+    assert step.feature.db is not None
+    step.feature.db.write_text(
+        json.dumps(
+            {
+                "Design Layout": {
+                    "die_area": 1200.5,
+                    "die_bounding_width": 40,
+                    "die_bounding_height": 30,
+                    "die_usage": 0.4,
+                    "core_area": 900.25,
+                    "core_usage": 0.5,
+                },
+                "Design Statis": {
+                    "num_iopins": 12,
+                    "num_instances": 100,
+                    "num_nets": 80,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    metrics = sizer_metrics.build_step_metrics(workspace, step)
+
+    assert metrics is not None
+    assert step.analysis.qor_metrics is not None
+    assert step.analysis.qor_metrics.is_file()
+    assert step.analysis.qor_summary is not None
+    assert step.analysis.qor_summary.is_file()
+    payload = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
+    assert payload["step"] == StepEnum.TIMING_OPT.value
+    assert any(record.get("id") == "die_area" for record in payload["metrics"])
+    with open(str(step.subflow.path), encoding="utf-8") as file:
+        subflow = json.load(file)
+    assert [item["name"] for item in subflow["steps"]] == [
+        "run sizer",
+        "run legalization",
+        "save data",
+    ]
 
 
 def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
@@ -105,11 +165,11 @@ def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
     assert f"-tclFile {runtime_root / 'src' / 'sizer_os.tcl'}" in env_lines
 
     expected_def_out = os.path.relpath(
-        str(step.output.def_),
+        sizer_builder.sizer_staging_def(step),
         step.data.steps[StepEnum.TIMING_OPT.value],
     )
     expected_verilog_out = os.path.relpath(
-        str(step.output.verilog),
+        sizer_builder.sizer_staging_verilog(step),
         step.data.steps[StepEnum.TIMING_OPT.value],
     )
     assert cmd_lines == [
@@ -203,7 +263,7 @@ def test_sizer_config_omits_empty_optional_paths(tmp_path, monkeypatch):
     assert "-spef " not in cmd_lines
 
 
-def test_sizer_step_declares_no_db_output_and_keeps_standard_dirs(tmp_path):
+def test_sizer_step_declares_db_geometry_and_keeps_standard_dirs(tmp_path):
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
 
     workspace = _workspace(tmp_path)
@@ -214,7 +274,9 @@ def test_sizer_step_declares_no_db_output_and_keeps_standard_dirs(tmp_path):
         input_verilog="input.v",
     )
 
-    assert step.output.db == ""
+    assert isinstance(step.output.db, Path)
+    assert step.output.geometry is not None
+    assert step.output.geometry_manifest is not None
     assert step.name == StepEnum.TIMING_OPT.value
     assert step.directory.name == "timing_optimization_sizer"
     assert not str(step.directory).endswith(f"{StepEnum.TIMING_OPT.value}_sizer")
@@ -278,6 +340,54 @@ def test_sizer_step_keeps_caller_output_paths_that_share_old_prefix(tmp_path):
     assert step.output.verilog == Path(output_verilog)
     assert str(step.output.def_) == output_def
     assert str(step.output.verilog) == output_verilog
+
+
+def test_sizer_command_resolves_from_env_root_before_path(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer.utility import get_sizer_command
+
+    env_root = tmp_path / "ecc-sizer"
+    (env_root / "bin").mkdir(parents=True)
+    env_sizer = env_root / "bin" / "Sizer"
+    env_sizer.write_text("#!/bin/sh\n", encoding="utf-8")
+    env_sizer.chmod(0o755)
+
+    path_dir = tmp_path / "on-path"
+    path_dir.mkdir()
+    path_sizer = path_dir / "Sizer"
+    path_sizer.write_text("#!/bin/sh\n", encoding="utf-8")
+    path_sizer.chmod(0o755)
+
+    monkeypatch.setenv("PATH", str(path_dir))
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(env_root))
+
+    assert get_sizer_command() == [str(env_sizer)]
+
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(tmp_path / "absent"))
+    assert get_sizer_command() == [str(path_sizer)]
+
+    monkeypatch.delenv("CHIPCOMPILER_ECC_SIZER_ROOT", raising=False)
+    assert get_sizer_command() == [str(path_sizer)]
+
+
+def test_sizer_command_skips_non_executable_env_override(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer.utility import get_sizer_command
+
+    env_root = tmp_path / "ecc-sizer"
+    (env_root / "bin").mkdir(parents=True)
+    env_sizer = env_root / "bin" / "Sizer"
+    env_sizer.write_text("#!/bin/sh\n", encoding="utf-8")
+    env_sizer.chmod(0o644)
+
+    path_dir = tmp_path / "on-path"
+    path_dir.mkdir()
+    path_sizer = path_dir / "Sizer"
+    path_sizer.write_text("#!/bin/sh\n", encoding="utf-8")
+    path_sizer.chmod(0o755)
+
+    monkeypatch.setenv("PATH", str(path_dir))
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(env_root))
+
+    assert get_sizer_command() == [str(path_sizer)]
 
 
 def test_sizer_command_resolves_from_path_only(tmp_path, monkeypatch):
@@ -377,7 +487,7 @@ def test_sizer_step_info_surfaces_include_step_local_config(tmp_path, monkeypatc
         "def": str(output.def_),
         "verilog": str(output.verilog),
         "gds": str(output.gds),
-        "db": output.db,
+        "db": str(output.db),
         "image": str(output.image),
         "json": str(output.json),
         "view_json": str(output.view_json),
@@ -393,3 +503,46 @@ def test_sizer_step_info_surfaces_include_step_local_config(tmp_path, monkeypatc
         "sizer_cmd": str(step.script.sizer_cmd),
     }
     assert get_step_info(workspace, step, "unknown") == {}
+
+
+def test_sizer_build_step_config_rewrites_legacy_one_stage_subflow(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(_sizer_runtime(tmp_path)))
+    workspace = _workspace(tmp_path)
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.TIMING_OPT.value,
+        input_def="input.def",
+        input_verilog="input.v",
+    )
+    sizer_builder.build_step_space(step)
+    assert step.subflow.path is not None
+    step.subflow.path.write_text(
+        json.dumps(
+            {
+                "path": str(step.subflow.path),
+                "steps": [
+                    {
+                        "name": "run sizer",
+                        "state": "Success",
+                        "runtime": "",
+                        "peak memory (mb)": 0,
+                        "info": {},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    sizer_builder.build_step_config(workspace, step)
+
+    with open(str(step.subflow.path), encoding="utf-8") as file:
+        subflow = json.load(file)
+    assert [item["name"] for item in subflow["steps"]] == [
+        "run sizer",
+        "run legalization",
+        "save data",
+    ]
+    assert {item["state"] for item in subflow["steps"]} == {"Unstart"}

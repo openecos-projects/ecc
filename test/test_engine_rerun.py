@@ -10,8 +10,9 @@ from chipcompiler.engine import rerun
 from chipcompiler.engine.flow import EngineFlow
 
 
-def _make_run_flow(tmp_path, steps):
+def _make_run_flow(tmp_path, steps, tools_by_name=None):
     """EngineFlow over a persisted flow.json plus aligned workspace steps."""
+    tools_by_name = tools_by_name or {}
     home = tmp_path / "home"
     home.mkdir()
     workspace = Workspace(directory=tmp_path, flow=Flow(path=home / "flow.json"))
@@ -20,7 +21,7 @@ def _make_run_flow(tmp_path, steps):
         "steps": [
             {
                 "name": name,
-                "tool": "ecc",
+                "tool": tools_by_name.get(name, "ecc"),
                 "state": state,
                 "runtime": "",
                 "peak memory (mb)": 0,
@@ -36,7 +37,7 @@ def _make_run_flow(tmp_path, steps):
         engine_flow.workspace_steps.append(
             EccStep(
                 name=name,
-                tool="ecc",
+                tool=tools_by_name.get(name, "ecc"),
                 directory=directory,
                 output=EccOutput(dir=directory / "output"),
             )
@@ -88,6 +89,34 @@ class TestSelectedStepNames:
 
         assert rerun.selected_step_names(flow) == []
 
+    def test_resume_reexecutes_legacy_warning_steps(self, tmp_path):
+        # The removed terminal Warning state (pre-rework synthesis LEC) is not
+        # a finished state: a plain resume re-executes it and its suffix.
+        flow = _make_run_flow(
+            tmp_path,
+            [
+                ("Synthesis", "Success"),
+                ("lec", "Warning"),
+                ("Floorplan", "Success"),
+                ("CTS", "Success"),
+            ],
+        )
+
+        assert rerun.selected_step_names(flow) == ["lec", "Floorplan", "CTS"]
+
+    def test_only_legacy_warning_step_does_not_require_force(self, tmp_path):
+        flow = _make_run_flow(tmp_path, [("lec", "Warning")])
+
+        assert rerun.selected_step_names(flow, only="lec") == ["lec"]
+
+    def test_resume_still_selects_incomplete_suffix(self, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [("Synthesis", "Success"), ("place", "Incomplete"), ("CTS", "Success")],
+        )
+
+        assert rerun.selected_step_names(flow) == ["place", "CTS"]
+
     def test_from_selects_suffix(self, tmp_path):
         flow = _make_run_flow(
             tmp_path,
@@ -95,6 +124,14 @@ class TestSelectedStepNames:
         )
 
         assert rerun.selected_step_names(flow, from_step="place") == ["place", "CTS"]
+
+    def test_from_through_selects_an_inclusive_bounded_range(self, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [("Synthesis", "Success"), ("place", "Success"), ("CTS", "Success")],
+        )
+
+        assert rerun.selected_step_names(flow, from_step="place", through="place") == ["place"]
 
     def test_only_success_step_requires_force(self, tmp_path):
         flow = _make_run_flow(tmp_path, [("place", "Success")])
@@ -107,6 +144,31 @@ class TestSelectedStepNames:
 
         with pytest.raises(ValueError, match="place.*CTS"):
             rerun.selected_step_names(flow, only="bogus")
+
+    def test_selectors_accept_alias_and_case_spellings(self, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [
+                ("Synthesis", "Success"),
+                ("Floorplan", "Success"),
+                ("place", "Success"),
+                ("CTS", "Unstart"),
+            ],
+        )
+
+        assert rerun.selected_step_names(flow, from_step="floorplan") == [
+            "Floorplan",
+            "place",
+            "CTS",
+        ]
+        assert rerun.selected_step_names(flow, from_step="FLOORPLAN", through="cts") == [
+            "Floorplan",
+            "place",
+            "CTS",
+        ]
+        assert rerun.selected_step_names(flow, only="Place", force=True) == ["place"]
+        # Alias resolution still honors the no-force no-op on a success.
+        assert rerun.selected_step_names(flow, only="synth") == []
 
 
 class TestRunFrom:
@@ -129,6 +191,25 @@ class TestRunFrom:
         assert keep.read_text(encoding="utf-8") == "old"
         assert not stale_place.exists()
         assert not stale_cts.exists()
+
+    def test_bounded_range_marks_downstream_stale_without_deleting_its_output(
+        self, monkeypatch, tmp_path
+    ):
+        flow = _make_run_flow(
+            tmp_path,
+            [("Synthesis", "Success"), ("place", "Success"), ("CTS", "Success")],
+        )
+        stale_place = _write_output(flow, "place")
+        retained_cts = _write_output(flow, "CTS")
+        calls = _fake_execution(flow, monkeypatch)
+
+        result = rerun.run_from(flow, "place", through="place")
+
+        assert result.ok
+        assert calls == [("place", True)]
+        assert not stale_place.exists()
+        assert retained_cts.read_text(encoding="utf-8") == "old"
+        assert _flow_states(flow) == ["Success", "Success", "Unstart"]
 
     def test_failure_stops_suffix_and_keeps_downstream_output(self, monkeypatch, tmp_path):
         flow = _make_run_flow(
@@ -333,3 +414,62 @@ class TestInitDbEngineForStep:
 
         assert flow.init_db_engine_for_step(flow.workspace_steps[0]) is True
         assert flow.engine_db is engine_db
+
+    def test_lec_step_never_initializes_a_native_db(self, tmp_path, monkeypatch):
+        from chipcompiler.engine import EngineDB
+
+        # LEC compares netlists and has no ECC DB: explicit reruns
+        # (--only lec) must not build one from the LEC workspace.
+        flow = _make_run_flow(tmp_path, [("lec", "Incomplete")], tools_by_name={"lec": "yosys_lec"})
+        created = []
+
+        def create_db_engine(self, step):
+            created.append(step)
+            return True
+
+        monkeypatch.setattr(EngineDB, "create_db_engine", create_db_engine)
+
+        assert flow.init_db_engine_for_step(flow.workspace_steps[0]) is True
+        assert created == []
+
+
+class TestBoundedResume:
+    def test_resume_bounded_to_target_end_keeps_beyond_target_outputs(self, monkeypatch, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [
+                ("Synthesis", "Success"),
+                ("route", "Incomplete"),
+                ("filler", "Unstart"),
+                ("RCX", "Success"),
+                ("sta", "Success"),
+            ],
+        )
+        keep_rcx = _write_output(flow, "RCX")
+        keep_sta = _write_output(flow, "sta")
+        calls = _fake_execution(flow, monkeypatch)
+
+        result = rerun.run_resume(flow, through="filler")
+
+        assert result.ok
+        assert result.executed == ("route", "filler")
+        assert calls == [("route", True), ("filler", True)]
+        # Beyond-target steps were neither invalidated nor re-executed.
+        assert keep_rcx.read_text(encoding="utf-8") == "old"
+        assert keep_sta.read_text(encoding="utf-8") == "old"
+
+    def test_bounded_resume_names_stop_at_the_target_end(self, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [
+                ("Synthesis", "Success"),
+                ("route", "Incomplete"),
+                ("filler", "Unstart"),
+                ("RCX", "Success"),
+                ("sta", "Success"),
+            ],
+        )
+
+        assert rerun.bounded_resume_names(flow, "filler") == ["route", "filler"]
+        # The first non-Success step lies beyond the target: nothing to do.
+        assert rerun.bounded_resume_names(flow, "Synthesis") == []

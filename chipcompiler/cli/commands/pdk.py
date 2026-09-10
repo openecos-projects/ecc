@@ -1,0 +1,77 @@
+from typing import Annotated
+
+import typer
+
+from chipcompiler.cli.command_handlers import pdk as pdk_handlers
+from chipcompiler.cli.core.apps import create_app
+from chipcompiler.cli.core.inputs import (
+    PdkSetRootInput,
+    PdkShowInput,
+    PdkUnsetInput,
+    output_options,
+    project_options,
+)
+from chipcompiler.cli.core.invocation import execute_command
+from chipcompiler.cli.core.options import (
+    PlainOption,
+    ProjectOption,
+)
+
+pdk_app = create_app(help="Show and configure the PDK path used by this project")
+
+
+def _finish(subcommand: str, command_input, handler) -> None:
+    execute_command("pdk", command_input, handler, render_key=f"pdk:{subcommand}")
+
+
+@pdk_app.command("set-root")
+def set_root_cmd(
+    *,
+    path: Annotated[
+        str,
+        typer.Argument(help="Path to an icsprout55-pdk checkout (absolute after expansion)"),
+    ],
+    project: ProjectOption = None,
+    plain: PlainOption = False,
+) -> None:
+    """Set the [pdk] root path in ecc.toml.
+
+    `pdk.root` is the base directory for the PDK content paths `pdk.tech`,
+    `pdk.lefs`, `pdk.libs`, and `pdk.mapping_file`. The design-data paths
+    `pdk.sdc` and `pdk.spef` resolve against the project directory instead.
+    All six get file-existence validation.
+
+    See 'ecc doc config' for the full reference.
+    """
+    command_input = PdkSetRootInput(
+        output=output_options(plain=plain),
+        project=project_options(project),
+        path=path,
+    )
+    _finish("set-root", command_input, pdk_handlers.set_root)
+
+
+@pdk_app.command("show", help="Show the resolved PDK root and its source")
+def show_cmd(
+    *,
+    project: ProjectOption = None,
+    plain: PlainOption = False,
+) -> None:
+    command_input = PdkShowInput(
+        output=output_options(plain=plain),
+        project=project_options(project),
+    )
+    _finish("show", command_input, pdk_handlers.show)
+
+
+@pdk_app.command("unset", help="Clear [pdk] root (fall back to env vars / repo default)")
+def unset_cmd(
+    *,
+    project: ProjectOption = None,
+    plain: PlainOption = False,
+) -> None:
+    command_input = PdkUnsetInput(
+        output=output_options(plain=plain),
+        project=project_options(project),
+    )
+    _finish("unset", command_input, pdk_handlers.unset)

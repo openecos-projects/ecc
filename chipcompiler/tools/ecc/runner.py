@@ -12,13 +12,18 @@ from chipcompiler.data import (
     workspace_config_path,
 )
 from chipcompiler.tools.ecc.checklist import EccChecklist
+from chipcompiler.tools.ecc.drc_artifacts import save_drc_feature
 from chipcompiler.tools.ecc.metrics import (
     build_step_metrics,
     save_cts_timing_feature_facts,
     save_rcx_spef_feature_facts,
 )
 from chipcompiler.tools.ecc.module import ECCToolsModule
-from chipcompiler.tools.ecc.plot import ECCToolsPlot
+from chipcompiler.tools.ecc.rcx_artifacts import (
+    copy_rcx_spef_outputs,
+    resolve_rcx_dirs,
+    wipe_stale_spef_artifacts,
+)
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_outputs
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
@@ -31,8 +36,6 @@ from chipcompiler.utility import json_read
 _GEOMETRY_SNAPSHOT_STEPS = frozenset(
     {
         StepEnum.FLOORPLAN.value,
-        StepEnum.NETLIST_OPT.value,
-        StepEnum.MACRO_PLACEMENT.value,
         StepEnum.PLACEMENT.value,
         StepEnum.CTS.value,
         StepEnum.TIMING_OPT.value,
@@ -45,6 +48,10 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.STA.value,
     }
 )
+
+
+class EccDesignReadError(RuntimeError):
+    """Raised when ECC cannot construct a database from a design input."""
 
 
 def temperature_token(temperature) -> str:
@@ -62,49 +69,6 @@ def _workspace_sta_config_path(workspace: Workspace) -> str | None:
         return None
     config_path = workspace_config_path(workspace.directory, StepEnum.STA.value)
     return os.fspath(config_path) if config_path is not None else None
-
-
-def copy_rcx_spef_outputs(workspace: Workspace, step: EccStep):
-    data_dir_text = os.fspath(step.data.dir or "")
-    output_dir_text = os.fspath(step.output.dir or "")
-    workspace_dir = workspace.directory
-    if not data_dir_text or not output_dir_text or workspace_dir is None:
-        return
-
-    data_dir = Path(data_dir_text)
-    if data_dir_text.startswith("/"):
-        relative_data_dir = data_dir_text[1:]
-        if relative_data_dir.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
-            data_dir = workspace_dir / relative_data_dir
-
-    output_dir = Path(output_dir_text)
-    if output_dir_text.startswith("/"):
-        relative_output_dir = output_dir_text[1:]
-        if relative_output_dir.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
-            output_dir = workspace_dir / relative_output_dir
-
-    spef_writer_dir = data_dir / "spef_writer"
-    if not spef_writer_dir.is_dir():
-        return
-
-    output_paths = [output_dir / spef_path.name for spef_path in step.output.spef if spef_path]
-
-    if not output_paths:
-        output_paths = [
-            output_dir / spef_path.name for spef_path in sorted(spef_writer_dir.glob("*.spef"))
-        ]
-
-    for output_path in output_paths:
-        source_path = spef_writer_dir / output_path.name
-        if not source_path.is_file():
-            continue
-
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source_path, output_path)
-        workspace.logger.info("Copied RCX SPEF %s to %s", source_path, output_path)
-
-    if isinstance(step.output.spef, list):
-        step.output.spef[:] = output_paths
 
 
 def copy_lvs_outputs(workspace: Workspace, step: EccStep):
@@ -134,6 +98,12 @@ def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
         return []
     sta_data = json_read(sta_config)
     rcx_output_dir = workspace_dir / f"{StepEnum.RCX.value}_ecc" / "output"
+    # STA-entry workspaces declare their parasitics (design.spef) instead of
+    # producing them with RCX: without an RCX step in the flow, every corner
+    # reads the declared SPEF.
+    flow = getattr(workspace, "flow", None)
+    has_rcx = bool(flow is not None and flow.has_step(StepEnum.RCX))
+    declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
 
     liberty_by_corner = {liberty.get("corner"): liberty for liberty in sta_data.get("liberty", [])}
     spef_design_name = workspace.design.top_module or workspace.design.name
@@ -155,13 +125,18 @@ def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
                 spef_name = (
                     f"{spef_design_name}_{rcx_corner_name}_{temperature_token(temperature)}C.spef"
                 )
+                spef_file = (
+                    str(declared_spef)
+                    if not has_rcx and declared_spef
+                    else str(rcx_output_dir / spef_name)
+                )
                 items.append(
                     {
                         "corner": corner_name,
                         "temperature": temperature,
                         "rcx_corner": rcx_corner_name,
                         "liberty_files": liberty_files,
-                        "spef_file": str(rcx_output_dir / spef_name),
+                        "spef_file": spef_file,
                     }
                 )
 
@@ -184,21 +159,29 @@ def _existing_input_path(path: Path | None) -> str | None:
     return None
 
 
-def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModule:
-    """"""
+def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModule | None:
+    """Load an ECC engine from the step input."""
 
-    def load_data():
+    def _close_engine(ecc_module: ECCToolsModule | None) -> None:
+        if ecc_module is None:
+            return
+        close = getattr(ecc_module, "close", None)
+        if callable(close):
+            close()
+
+    def load_data() -> ECCToolsModule | None:
         ecc_module = ECCToolsModule()
+        keep = False
+        try:
+            ecc_module.init_config(
+                db_config=workspace.config.get("db"),
+                output_dir=step.data.dir,
+                feature_dir=step.feature.dir,
+            )
 
-        ecc_module.init_config(
-            flow_config=workspace.config.get("flow"),
-            db_config=workspace.config.get("db"),
-            output_dir=step.data.dir,
-            feature_dir=step.feature.dir,
-        )
-
-        db_path = step.input.db or ""
-        if ecc_module.is_db_data_exists(db_path):
+            db_path = step.input.db or ""
+            if not ecc_module.is_db_data_exists(db_path):
+                return None
             try:
                 loaded = ecc_module.load_data(path=db_path)
             except Exception as e:
@@ -214,50 +197,62 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
                 return None
 
             workspace.logger.info(f"Successfully loaded data from {db_path}")
+            keep = True
             return ecc_module
-        else:
-            return None
+        finally:
+            if not keep:
+                _close_engine(ecc_module)
 
-    def load_design():
-        def def_exist() -> str | None:
-            return _existing_input_path(step.input.def_)
+    def require_design_read(input_kind: str, input_path: str, reader) -> None:
+        try:
+            read_ok = reader()
+        except Exception as error:
+            raise EccDesignReadError(
+                f"ECC failed to read {input_kind} input: {input_path}"
+            ) from error
+        if not read_ok:
+            raise EccDesignReadError(f"ECC failed to read {input_kind} input: {input_path}")
 
-        def verilog_exist() -> str | None:
-            return _existing_input_path(step.input.verilog)
-
+    def load_design() -> ECCToolsModule | None:
         ecc_module = ECCToolsModule()
+        keep = False
+        try:
+            ecc_module.init_config(
+                db_config=workspace.config.get("db"),
+                output_dir=step.data.dir,
+                feature_dir=step.feature.dir,
+            )
 
-        ecc_module.init_config(
-            flow_config=workspace.config.get("flow"),
-            db_config=workspace.config.get("db"),
-            output_dir=step.data.dir,
-            feature_dir=step.feature.dir,
-        )
+            ecc_module.init_techlef(workspace.pdk.tech)
+            ecc_module.init_lefs(workspace.pdk.lefs)
 
-        ecc_module.init_techlef(workspace.pdk.tech)
-        ecc_module.init_lefs(workspace.pdk.lefs)
+            def_path = _existing_input_path(step.input.def_)
+            verilog_path = _existing_input_path(step.input.verilog)
 
-        # if db def exist, read db def
-        def_path = def_exist()
-        verilog_path = verilog_exist()
-
-        if step.name == StepEnum.LVS.value:
-            if def_path is None:
+            if step.name == StepEnum.LVS.value:
+                if def_path is None:
+                    return None
+                require_design_read("DEF", def_path, lambda: ecc_module.read_def(def_path))
+            elif def_path is not None:
+                require_design_read("DEF", def_path, lambda: ecc_module.read_def(def_path))
+            elif verilog_path:
+                require_design_read(
+                    "Verilog",
+                    verilog_path,
+                    lambda: ecc_module.read_verilog(
+                        verilog=verilog_path, top_module=workspace.design.top_module
+                    ),
+                )
+            else:
                 return None
-            if not ecc_module.read_def(def_path):
-                return None
-        elif def_path is not None:
-            ecc_module.read_def(def_path)
-        elif verilog_path:
-            # else, read step output verilog
-            ecc_module.read_verilog(verilog=verilog_path, top_module=workspace.design.top_module)
-        else:
-            return None
 
-        return ecc_module
+            keep = True
+            return ecc_module
+        finally:
+            if not keep:
+                _close_engine(ecc_module)
 
-    def is_enable_setup():
-        # skip synthesis step
+    def is_enable_setup() -> bool:
         if step.name == StepEnum.SYNTHESIS.value:
             return False
 
@@ -268,15 +263,9 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
 
     if not is_eda_exist() or not is_enable_setup():
         return None
-    try:
-        ecc_module = None if step.name == StepEnum.LVS.value else load_data()
-        if ecc_module is None:
-            ecc_module = load_design()
-    except Exception as e:
-        workspace.logger.warning("Failed to load ECC data; falling back to design input: %s", e)
-        ecc_module = load_design()
-
-    return ecc_module
+    # Loading serialized ECC data is deliberately disabled. Always rebuild the
+    # database from the current design inputs.
+    return load_design()
 
 
 def get_eda_instance(
@@ -289,6 +278,8 @@ def get_eda_instance(
     if ecc_module is None:
         try:
             ecc_module = create_db_engine(workspace=workspace, step=step)
+        except EccDesignReadError:
+            raise
         except Exception as e:
             ecc_module = None
             workspace.logger.error(f"Failed to create ECC engine for step {step.name}: {e}")
@@ -351,7 +342,6 @@ def run_sta_without_spef(
         if ecc_module is None:
             ecc_module = ECCToolsModule()
             ecc_module.init_config(
-                flow_config=workspace.config.get("flow", ""),
                 db_config=workspace.config.get("db", ""),
                 output_dir=step.data.dir or "",
                 feature_dir=step.feature.dir or "",
@@ -379,7 +369,7 @@ def run_sta_without_spef(
             feature_dir=feature_dir,
             lib_paths=liberty_paths,
             sdc_path=sdc_path,
-            max_paths=workspace.parameters.data.get("STA max paths", 1000),
+            max_paths=workspace.parameters.data.get("sta_max_paths", 1000),
             corner=corner,
         )
     except Exception as exc:
@@ -410,7 +400,7 @@ def save_data(
     ecc_module.def_save(def_path=step.output.def_ or "")
     ecc_module.verilog_save(output_verilog=step.output.verilog or "")
     ecc_module.gds_save(output_path=step.output.gds or "")
-    ecc_module.save_data(path=step.output.db or "")
+    # ecc_module.save_data(path=step.output.db or "")
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
         geometry_manifest = step.output.geometry_manifest
@@ -456,20 +446,20 @@ def save_data(
         core_bounding_height = db_json.get("Design Layout", {}).get("core_bounding_height", 0)
         core_area = db_json.get("Design Layout", {}).get("core_area", 0)
 
-        margin = workspace.parameters.data.get("Core", {}).get("Margin", [0, 0])
+        margin = workspace.parameters.data.get("core", {}).get("margin", [0, 0])
 
         aspect_ratio = die_bounding_width / die_bounding_height if die_bounding_height > 0 else 1
 
         update_param = {
-            "Die": {"Size": [die_bounding_width, die_bounding_height], "Area": die_area},
-            "Core": {
-                "Size": [core_bounding_width, core_bounding_height],
-                "Area": core_area,
-                "Bounding box": (
+            "die": {"size": [die_bounding_width, die_bounding_height], "area": die_area},
+            "core": {
+                "size": [core_bounding_width, core_bounding_height],
+                "area": core_area,
+                "bounding_box": (
                     f"({margin[0]} , {margin[1]}) "
                     f"({core_bounding_width + margin[0]} , {core_bounding_height + margin[1]})"
                 ),
-                "Aspect ratio": aspect_ratio,
+                "aspect_ratio": aspect_ratio,
             },
         }
 
@@ -488,8 +478,6 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
     match step.name:
         case StepEnum.FLOORPLAN.value:
             state = run_floorplan(workspace=workspace, step=step, ecc_module=ecc_module)
-        case StepEnum.NETLIST_OPT.value:
-            state = run_net_opt(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.CTS.value:
             state = run_cts(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.ROUTING.value:
@@ -512,52 +500,21 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
 
 
 def run_analysis(workspace: Workspace, step: EccStep, subflow: EccSubFlow):
+    if not workspace.parameters.data.get("run_analysis", True):
+        return
+
     # save metrics
     build_step_metrics(workspace=workspace, step=step, subflow=subflow)
 
     # plot layout image
+    from chipcompiler.tools.ecc.plot import ECCToolsPlot
+
     ploter = ECCToolsPlot(workspace=workspace, step=step)
     ploter.plot()
 
     # do checklist
     checklist = EccChecklist(workspace=workspace, workspace_step=step)
     checklist.check()
-
-
-def run_net_opt(
-    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
-) -> bool:
-    """
-    run net optimization
-    """
-    reslut = False
-
-    sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
-
-    ecc_module = get_eda_instance(workspace=workspace, step=step, ecc_module=ecc_module)
-    if ecc_module is not None:
-        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
-
-        clock_name = workspace.parameters.data.get("Clock", "")
-        if clock_name:
-            ecc_module.set_net(net_name=clock_name, net_type="CLOCK")
-            sub_flow.update_step(
-                step_name=EccSubFlowEnum.set_clock_net.value, state=StateEnum.Success
-            )
-
-        ecc_module.run_net_opt(config=workspace.config.get(f"{StepEnum.NETLIST_OPT.value}"))
-
-        sub_flow.update_step(
-            step_name=EccSubFlowEnum.run_net_optimization.value, state=StateEnum.Success
-        )
-
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
-
-        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
-
-        run_analysis(workspace=workspace, step=step, subflow=sub_flow)
-
-    return reslut
 
 
 def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None) -> bool:
@@ -652,18 +609,23 @@ def run_drc(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
         ecc_module.init_drc(output_dir=(step.data.steps or {}).get(StepEnum.DRC.value, ""))
-        ecc_module.run_drc(
-            config=workspace.config.get(f"{StepEnum.DRC.value}", ""),
-            report_path=step.report.step or "",
-        )
+        ecc_module.run_drc()
+        ecc_module.destroy_drc()
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_DRC.value, state=StateEnum.Success)
 
         reslut = save_data(
-            workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False
+            workspace=workspace,
+            step=step,
+            ecc_module=ecc_module,
+            feature_step=False,
+            report_timing=False,
         )
-
-        ecc_module.save_drc(feature_path=step.feature.step or "")
+        if not reslut:
+            return False
+        if not save_drc_feature(step):
+            workspace.logger.error("Failed to save DRC feature: %s", step.feature.step)
+            return False
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
@@ -847,12 +809,37 @@ def run_rcx(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        ecc_module.init_rcx(
-            config=workspace.config.get(StepEnum.RCX.value, ""), pdk=workspace.pdk.name
-        )
-        ecc_module.run_rcx()
-        ecc_module.destroy_rcx()
-        copy_rcx_spef_outputs(workspace, step)
+        # A rerun keeps the step directory, so drop previously extracted SPEFs
+        # first; stale artifacts left behind by an earlier run must not be
+        # mistaken for fresh extraction output.
+        data_dir, _ = resolve_rcx_dirs(workspace, step)
+        if data_dir is not None:
+            wipe_stale_spef_artifacts(data_dir)
+
+        try:
+            if not ecc_module.init_rcx(
+                config=workspace.config.get(StepEnum.RCX.value, ""), pdk=workspace.pdk.name
+            ):
+                workspace.logger.error("Failed to initialize RCX extraction")
+                sub_flow.update_step(
+                    step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Imcomplete
+                )
+                return False
+            if not ecc_module.run_rcx():
+                workspace.logger.error("RCX extraction failed")
+                sub_flow.update_step(
+                    step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Imcomplete
+                )
+                return False
+        finally:
+            try:
+                ecc_module.destroy_rcx()
+            except Exception as exc:
+                workspace.logger.error("Failed to release the RCX extractor: %s", exc)
+
+        if not copy_rcx_spef_outputs(workspace, step):
+            sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Imcomplete)
+            return False
         sub_flow.update_step(step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Success)
 
         if not save_data(
@@ -970,7 +957,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             sdc_path=workspace.pdk.sdc,
             spef_path=spef_file,
             output_modes=("report", "structured"),
-            max_paths=workspace.parameters.data.get("STA max paths", 1000),
+            max_paths=workspace.parameters.data.get("sta_max_paths", 1000),
             corner=corner,
         )
 

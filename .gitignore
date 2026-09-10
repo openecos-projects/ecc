@@ -182,6 +182,7 @@ chipcompiler/tools/ecc_dreamplace/dreamplace
 
 .humanize/
 humanize-*
+.zcode/
 docs/superpowers/
 findings.md
 progress.md
@@ -191,3 +192,6 @@ task_plan.md
 .ccache
 
 .trellis
+
+# Stray runtime artifact from cwd-polluted test runs
+/checklist.json

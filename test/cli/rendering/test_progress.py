@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -103,12 +104,6 @@ class TestSupportsColor:
         env = {"TERM": "dumb"}
         assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.TEXT, env) is False
 
-    def test_disabled_json(self):
-        assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.JSON) is False
-
-    def test_disabled_jsonl(self):
-        assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.JSONL) is False
-
     def test_enabled_with_clean_env(self):
         env = {"TERM": "xterm-256color"}
         assert supports_color(FakeTTYStderr(isatty_value=True), OutputMode.TEXT, env) is True
@@ -133,14 +128,6 @@ class TestShouldEnableRunProgress:
     def test_enabled_text_tty(self):
         ctx = _make_ctx(OutputMode.TEXT)
         assert should_enable_run_progress(ctx, FakeTTYStderr(isatty_value=True)) is True
-
-    def test_disabled_json(self):
-        ctx = _make_ctx(OutputMode.JSON)
-        assert should_enable_run_progress(ctx, FakeTTYStderr(isatty_value=True)) is False
-
-    def test_disabled_jsonl(self):
-        ctx = _make_ctx(OutputMode.JSONL)
-        assert should_enable_run_progress(ctx, FakeTTYStderr(isatty_value=True)) is False
 
     def test_disabled_plain(self):
         ctx = _make_ctx(OutputMode.PLAIN)
@@ -289,11 +276,11 @@ class TestIncrementalLogTail:
     def test_reports_stale_status_without_losing_last_line(self, tmp_path):
         log = tmp_path / "step.log"
         log.write_text("StaDataPropagation.cc:710] data bwd propagation start\n")
-        tail = progress._IncrementalLogTail(str(log), "fixfanout", stale_after=5.0)
+        tail = progress._IncrementalLogTail(str(log), "floorplan", stale_after=5.0)
         assert tail.poll(now=10.0) == "StaDataPropagation.cc:710] data bwd propagation start"
 
         assert (
-            tail.poll(now=16.0) == "running fixfanout, last log 6s ago: "
+            tail.poll(now=16.0) == "running floorplan, last log 6s ago: "
             "StaDataPropagation.cc:710] data bwd propagation start"
         )
         assert tail.last_line == "StaDataPropagation.cc:710] data bwd propagation start"
@@ -331,7 +318,7 @@ class TestMonitorLogProgress:
         stop_event = threading.Event()
         monitor = threading.Thread(
             target=progress._monitor_log_progress,
-            args=(renderer, str(log), "fixfanout", stop_event),
+            args=(renderer, str(log), "floorplan", stop_event),
             kwargs={"interval": 0.01, "stale_after": 0.03},
             daemon=True,
         )
@@ -340,7 +327,7 @@ class TestMonitorLogProgress:
         try:
             assert _wait_until(lambda: renderer.has_line_containing("|_| |_"), timeout=1.0)
             assert _wait_until(lambda: renderer.has_line_containing("last log"), timeout=1.0)
-            assert renderer.has_line_containing("running fixfanout")
+            assert renderer.has_line_containing("running floorplan")
         finally:
             stop_event.set()
             monitor.join(timeout=1.0)
@@ -355,7 +342,7 @@ class TestMonitorLogProgress:
             stop_event, monitor = progress._start_log_monitor(
                 renderer,
                 str(log),
-                "fixfanout",
+                "floorplan",
                 isolated=True,
                 interval=0.01,
                 stale_after=0.03,
@@ -371,7 +358,7 @@ class TestMonitorLogProgress:
                 stop_event.set()
                 monitor.join(timeout=1.0)
 
-        assert "running fixfanout, last log" in output.read_text()
+        assert "running floorplan, last log" in output.read_text()
 
 
 # -- RunProgressRenderer --
@@ -630,6 +617,7 @@ def _make_ws(directory="/tmp", log_section_fn=None):
                 (),
                 {
                     "info": lambda *a, **k: None,
+                    "warning": lambda *a, **k: None,
                     "log_section": section_fn,
                     "log_separator": lambda *a, **k: None,
                 },
@@ -683,6 +671,41 @@ class TestRunFlowWithProgress:
         output = "".join(buf.written)
         assert "✓ synthesis (yosys)" in output
         assert "status=success" not in output
+
+    def test_run_start_reestablishes_home_pointers_after_reset(self, tmp_path):
+        from chipcompiler.data.home import HomeData
+
+        home_dir = tmp_path / "home"
+        home_dir.mkdir()
+        home = HomeData()
+        home.init(path=home_dir / "home.json")
+
+        logger = SimpleNamespace(
+            info=lambda *a, **k: None,
+            log_section=lambda *a, **k: None,
+            log_separator=lambda *a, **k: None,
+        )
+        ws = SimpleNamespace(
+            home=home,
+            logger=logger,
+            flow=SimpleNamespace(data={"steps": []}, path=home_dir / "flow.json"),
+            parameters=SimpleNamespace(path=home_dir / "params.toml"),
+            directory=str(tmp_path),
+        )
+
+        flow = _make_flow(
+            ws,
+            [_make_step("Synthesis", "yosys", str(tmp_path / "synth.log"))],
+            lambda self, s: StateEnum.Success,
+        )
+
+        buf = FakeTTYStderr(isatty_value=True)
+        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+
+        assert result is True
+        assert home.data["parameters"] == str(home_dir / "params.toml")
+        assert home.data["flow"] == str(home_dir / "flow.json")
+        assert home.data["checklist"] == str(home_dir / "checklist.json")
 
     def test_stops_on_failure(self):
         call_count = [0]
@@ -756,7 +779,7 @@ class TestRunFlowWithProgress:
         buf = FakeTTYStderr(isatty_value=True)
         run_flow_with_progress(flow, _make_ctx(run_id="exp1"), "myproject", buf)
         plain = _strip_ansi("".join(buf.written))
-        assert "  inspect: ecc log synthesis --project myproject --run-id exp1\n" in plain
+        assert "  inspect: ecc log synthesis --project myproject --workspace exp1\n" in plain
 
     def test_step_headers_emitted(self):
         flow = _make_flow(

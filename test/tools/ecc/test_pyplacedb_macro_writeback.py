@@ -1,4 +1,3 @@
-import gzip
 import json
 from pathlib import Path
 from textwrap import dedent
@@ -283,81 +282,6 @@ def test_macro_writeback_rejects_replacement_with_same_instance_name(mixed_macro
     updated_names = list(updated_db.node_names)
     replacement_id = updated_names.index("macro_unplaced")
     assert (updated_db.node_x[replacement_id], updated_db.node_y[replacement_id]) == (222000, 2000)
-
-
-def test_macro_placement_runner_writes_complete_selective_snapshot(
-    mixed_macro_place_db, monkeypatch
-):
-    from chipcompiler.data import OriginDesign, StepEnum, Workspace
-    from chipcompiler.tools.ecc.module import ECCToolsModule
-    from chipcompiler.tools.ecc_dreamplace import builder, runner
-
-    _, _, tmp_path = mixed_macro_place_db
-    source_config = (
-        Path(__file__).resolve().parents[3]
-        / "chipcompiler/tools/ecc_dreamplace/configs/dreamplace_ecc.json"
-    )
-    config = json.loads(source_config.read_text(encoding="utf-8"))
-    config.update(
-        {
-            "macro_halo_x": 1000,
-            "macro_halo_y": 1000,
-            "macro_pin_halo_x": -1,
-            "macro_pin_halo_y": -1,
-            "cell_padding_x": 0,
-            "enable_fillers": 0,
-            "auto_adjust_bins": 0,
-            "num_bins_x": 4,
-            "num_bins_y": 4,
-            "num_threads": 1,
-            "global_place_stages": [
-                {
-                    **config["global_place_stages"][0],
-                    "iteration": 5,
-                }
-            ],
-            "stop_overflow": 1.0,
-        }
-    )
-    config_path = tmp_path / "dreamplace.json"
-    config_path.write_text(json.dumps(config), encoding="utf-8")
-    workspace = Workspace(
-        directory=tmp_path / "workspace",
-        design=OriginDesign(name="macro_status_test", top_module="macro_status_test"),
-        config={"dreamplace": config_path},
-    )
-    step = builder.build_step(
-        workspace=workspace,
-        step_name=StepEnum.MACRO_PLACEMENT.value,
-        input_def=tmp_path / "design.def",
-        input_verilog=None,
-    )
-    builder.build_step_space(step)
-    monkeypatch.setattr(runner, "run_analysis", lambda **_kwargs: None)
-
-    assert runner.run_macro_placement(
-        workspace=workspace,
-        step=step,
-        ecc_module=ECCToolsModule(),
-    )
-
-    for path in (step.output.def_, step.output.verilog, step.output.gds):
-        assert path is not None
-        assert path.is_file()
-        assert path.stat().st_size > 0
-    assert step.output.db is not None
-    assert step.output.db.is_dir()
-    assert step.output.geometry_manifest is not None
-    assert step.output.geometry_manifest.is_file()
-    with gzip.open(step.output.def_, "rt", encoding="utf-8") as output:
-        output_def = output.read()
-    for name in ("macro_none", "macro_unplaced"):
-        component_start = output_def.index(f"- {name} ")
-        component_end = output_def.index(";", component_start)
-        assert "+ PLACED" in output_def[component_start:component_end]
-    core_start = output_def.index("- core_unplaced ")
-    core_end = output_def.index(";", core_start)
-    assert "+ UNPLACED" in output_def[core_start:core_end]
 
 
 def test_macro_placement_engine_smoke_commits_candidates_as_fixed(mixed_macro_place_db):

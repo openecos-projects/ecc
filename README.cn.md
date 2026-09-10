@@ -30,18 +30,25 @@ GUI（ECOS Studio）已迁移至 [ecos-studio](https://github.com/0xharry/ecos-s
 
 ## 安装
 
-### 预构建 CLI 包（推荐）
+### 安装脚本（推荐）
 
-从 [GitHub Releases](https://github.com/openecos-projects/ecc/releases) 下载
-`ecc-cli-linux-x86_64.tar.gz`（PyInstaller 打包，Linux x86_64）并解压：
+安装 `ecc` CLI（Linux x86_64，glibc 2.34+，fontconfig）：
 
-```bash
-mkdir -p ~/.local/ecc
-tar -xzf ecc-cli-linux-x86_64.tar.gz -C ~/.local/ecc
-~/.local/ecc/ecc --help
+```sh
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
 ```
 
-将 `~/.local/ecc` 加入 `PATH` 后即可在任意位置运行 `ecc`。
+同时安装 Yosys（OSS CAD Suite）和 ICS55 PDK：
+
+```sh
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --with-toolchain
+```
+
+wrapper 默认安装到 `~/.local/bin`。如果该目录不在 `PATH` 中，请加入：
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+```
 
 ### Nix
 
@@ -64,36 +71,34 @@ git submodule update --init --recursive
 ### 源码构建
 
 使用 `uv` 进行 Python 开发时，按上述方式（带 `--recursive`）克隆仓库，
-然后参照 [开发指南](docs/development.md) 配置工作区。
+然后配置工作区（源码开发的推荐方式）：
+
+```bash
+uv sync --no-build-isolation-package ecc-dreamplace --no-build-isolation-package ecc-tools-bin --verbose
+```
+
+完整搭建见 [开发指南](docs/development.cn.md)。
+
+如需自己编译可安装的 CLI 包（与官方 release 相同的 PyInstaller 流程）：
+
+```bash
+ECOS_PYINSTALLER_MODE=onedir uv run --no-sync --managed-python \
+  pyinstaller ecc.spec --clean --noconfirm
+# 重建 dist/ecc/（onedir，约 0.9G；首跑会触发 dreamplace 的 cmake 安装，属正常）
+
+# 安装到本机（覆盖现有安装位，如 ~/.local/ecc；PATH 中指向它的软链无需改动）
+rm -rf ~/.local/ecc && mkdir -p ~/.local/ecc && cp -a dist/ecc/. ~/.local/ecc/
+ecc --help            # 验证应有的命令已列出
+```
 
 ## 快速开始
 
 以下命令使用已安装的 `ecc`。未安装时，在每条命令前加 `nix run . --`
 （例如 `nix run . -- init gcd`）。
 
-### 前置准备
-
-运行流程需要 Yosys 和 PDK：
-
-**Yosys** —— 从 [OSS CAD Suite](https://github.com/YosysHQ/oss-cad-suite-build/releases)
-下载适用于你平台的最新 release，解压后将 ECC 指向解压目录：
-
-```bash
-export CHIPCOMPILER_OSS_CAD_DIR=/path/to/oss-cad-suite
-```
-
-（通过 Nix flake 运行时不需要——flake 已自带 Yosys。）
-
-**PDK** —— 克隆 [icsprout55-pdk](https://github.com/openecos-projects/icsprout55-pdk)
-并运行 `make unzip` 下载 liberty 文件：
-
-```bash
-git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git
-cd icsprout55-pdk && make unzip && cd ..
-```
-
-然后在 `ecc.toml` 中将 `pdk.root` 设为 PDK 路径（或导出
-`CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/icsprout55-pdk`）。
+如果安装时加了 `--with-toolchain`，Yosys 和 ICS55 PDK 已由 `ecc` wrapper
+配置好。否则请带 `--with-toolchain` 重新运行安装脚本。Nix flake 已自带
+Yosys；未使用安装脚本工具链时需要设置 `pdk.root`。
 
 创建项目并添加 RTL：
 
@@ -102,7 +107,9 @@ ecc init gcd
 cp /path/to/gcd.v gcd/rtl/gcd.v  # 示例设计：docs/examples/gcd/gcd.v
 ```
 
-`ecc init` 会生成 `gcd/ecc.toml`——编辑它并设置你的 PDK 路径：
+`ecc init` 会生成 `gcd/ecc.toml`，按需编辑。未设置
+`CHIPCOMPILER_ICS55_PDK_ROOT` 时必须填写 `pdk.root`（安装脚本
+`--with-toolchain` 的 wrapper 会设置该环境变量）：
 
 ```toml
 [design]
@@ -117,8 +124,7 @@ name = "ics55"
 root = "/path/to/icsprout55-pdk"
 
 [flow]
-preset = "rtl2gds" # rtl2gds | rcx | harden | syn_sta
-run = "default"
+preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
 ```
 
 然后校验并运行：
@@ -138,27 +144,35 @@ ecc log --project gcd
 | --- | --- |
 | `ecc init <name>` | 创建项目骨架和 `ecc.toml` |
 | `ecc check` | 校验 RTL、约束、PDK、工具和配置 |
+| `ecc doctor` | 检查主机环境：PDK、yosys（含 slang）和内置工具 |
+| `ecc doc <topic>` | 在终端阅读内置文档（`config` 配置参考、`ug` 用户指南、`tutorial` 教程） |
 | `ecc run` | 运行配置的 RTL-to-GDS 流程 |
-| `ecc status` | 显示运行和步骤状态 |
+| `ecc status` | 快速查看 run/步骤进度概要 |
 | `ecc log [step]` | 显示可用日志或步骤日志内容 |
-| `ecc config [step] --resolved` | 显示解析后的项目或步骤配置 |
+| `ecc config [step]` | 显示解析后的项目或步骤配置 |
+| `ecc migrate` | 将旧版 `runs/` 项目迁移到 manifest 布局 |
 | `ecc param` | 管理参数覆盖（`list`、`show`、`set`、`unset`、`diff`） |
+| `ecc pdk` | 管理 PDK 路径（`set-root`、`show`、`unset`） |
+| `ecc project` | 编辑 `ecc.toml` 中的项目声明（`set`、`unset`、`add`、`remove`、`show`） |
+| `ecc workspace` | 从项目配置刷新受管 workspace |
+| `ecc signoff` | 检查签核就绪度并导出签核包 |
+| `ecc report` | 生成设计总结、QoR、签核清单和步骤报告 |
 | `ecc version` | 显示 ECC 运行时和组件版本 |
 | `ecc layout-image` | 将 GDS 文件渲染为版图图像 |
 
 项目命令均接受 `--project <dir>`（默认为当前目录）。大多数命令支持
-`--plain`、`--json` 和 `--jsonl` 输出，便于脚本化。
+`--plain` 输出，便于脚本化。
 
-完整的命令模型——`ecc.toml` 参考、流程预设、步骤级重跑
-（`--resume`、`--from`、`--only`）和参数覆盖——请参阅
-[CLI 设计规范](docs/specification/cli-design.md)。
+完整指南随 CLI 分发、可离线阅读：`ecc doc ug --lang cn`（用户指南）、
+`ecc doc config --lang cn`（配置参考）、`ecc doc tutorial --lang cn`（从零上手的教程）。
+
 
 ## 功能特性
 
 - **完整 RTL-to-GDS 流程** - 综合、布局、布线、时序优化
 - **开源 EDA 集成** - Yosys（综合）、ECC-DreamPlace（布局）、ECC-Tools（布线、签核）、KLayout（查看器）
 - **CLI 自动化** - 可脚本化的命令行流程执行
-- **便携部署** - 预构建 CLI 包或 Nix
+- **便携部署** - 安装脚本或 Nix
 
 ## 🛠️ 集成工具
 
@@ -172,14 +186,12 @@ ecc log --project gcd
 ## 文档
 
 - [文档索引](docs/index.md) - 完整导航
-- [CLI 设计规范](docs/specification/cli-design.md) - 命令接口和 `ecc.toml` 参考
-- [架构](docs/architecture.md) - 系统设计和模式
-- [开发指南](docs/development.md) - 配置和工作流
+- [开发指南](docs/development.cn.md) - 配置和工作流
 - [示例](docs/examples/) - 使用示例
 
 ## 参与贡献
 
-欢迎贡献！配置说明请参阅 [开发指南](docs/development.md)。
+欢迎贡献！贡献规则与评审要求见 [CONTRIBUTING.md](CONTRIBUTING.md)，环境搭建见 [开发指南](docs/development.cn.md)。
 
 ## 致谢
 

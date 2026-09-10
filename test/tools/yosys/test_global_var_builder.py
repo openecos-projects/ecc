@@ -62,7 +62,7 @@ def _build_workspace_and_step(tmp_path, *, rtl_name="top.v", create_rtl=True, fi
             abc_driver_cell="BUFX4",
             abc_load=0.02,
         ),
-        parameters=Parameters(data={"Frequency max [MHz]": 100}),
+        parameters=Parameters(data={"frequency_max": 100}),
         config={"db": str(db_config)},
     )
 
@@ -137,7 +137,7 @@ def test_yosys_step_info_stringifies_path_payloads(tmp_path):
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="top", top_module="top"),
-        config={"flow": tmp_path / "config" / "flow.json"},
+        config={"db": tmp_path / "config" / "db_ecc.json"},
     )
     step = yosys_builder.build_step(
         workspace=workspace,
@@ -150,7 +150,7 @@ def test_yosys_step_info_stringifies_path_payloads(tmp_path):
     assert get_step_info(workspace, step, "metrics") == {"metrics": str(step.analysis.metrics)}
     assert get_step_info(workspace, step, "subflow") == {"path": str(step.subflow.path)}
     assert get_step_info(workspace, step, "checklist") == {"path": str(step.checklist.path)}
-    assert get_step_info(workspace, step, "config") == {"path": str(workspace.config["flow"])}
+    assert get_step_info(workspace, step, "config") == {"path": str(workspace.config["db"])}
 
 
 def test_plain_verilog_filelist_uses_native_parser(tmp_path):
@@ -217,11 +217,11 @@ def test_validation_errors_are_preserved(tmp_path, case, message):
     if case == "missing_top":
         workspace.design.top_module = ""
     elif case == "missing_frequency":
-        workspace.parameters.data.pop("Frequency max [MHz]")
+        workspace.parameters.data.pop("frequency_max")
     elif case == "zero_frequency":
-        workspace.parameters.data["Frequency max [MHz]"] = 0
+        workspace.parameters.data["frequency_max"] = 0
     elif case == "invalid_frequency":
-        workspace.parameters.data["Frequency max [MHz]"] = "fast"
+        workspace.parameters.data["frequency_max"] = "fast"
     elif case == "missing_inputs":
         step.input.verilog = tmp_path / "missing.v"
 

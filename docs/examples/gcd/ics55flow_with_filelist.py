@@ -35,7 +35,7 @@ parameters = get_design_parameters("ics55", "gcd")
 # The workspace will be created from scratch, the structure is as follows:
 # gcd_workspace_with_filelist/
 # ├── flow.json       # Flow state file tracking step states and runtime
-# ├── parameters.json # Design parameters file (die size, clock freq, cell names)
+# ├── params.toml        # Workspace configuration (die size, clock freq, flow target)
 # ├── CTS_ecc         # Clock Tree Synthesis step workspace
 # │   ├── analysis    # Analysis files extracted from metrics
 # │   ├── config      # Configuration files (JSON configs for ecc)
@@ -50,9 +50,6 @@ parameters = get_design_parameters("ics55", "gcd")
 # │   ...             # Similar structure as above
 # │   └── script
 # ├── filler_ecc      # Filler cell insertion step
-# │   ...
-# │   └── script
-# ├── fixFanout_ecc   # Netlist optimization step
 # │   ...
 # │   └── script
 # ├── Floorplan_ecc   # Floorplanning step
@@ -119,13 +116,8 @@ if not engine_flow.has_init():
     # Output: Floorplan definition
     engine_flow.add_step(step=StepEnum.FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
 
-    # NETLIST_OPT step: Optimize netlist (buffering, fanout fixing)
-    # Input: Synthesized netlist
-    # Output: Optimized netlist
-    engine_flow.add_step(step=StepEnum.NETLIST_OPT, tool="ecc", state=StateEnum.Unstart)
-
     # PLACEMENT step: Place cells on the die
-    # Input: Optimized netlist, floorplan
+    # Input: Synthesized netlist, floorplan
     # Output: DEF with cell placement
     engine_flow.add_step(step=StepEnum.PLACEMENT, tool="ecc", state=StateEnum.Unstart)
 

@@ -52,7 +52,7 @@ def test_workspace_create_maps_camel_case_fields_and_preserves_pdk_json():
             "pdkJson": pdk_json,
             "originDef": "/in.def",
             "originVerilog": "/in.v",
-            "paramJson": {"Design": "gcd"},
+            "paramJson": {"design": "gcd"},
             "rtlList": ["a.v"],
             "sdc": "/constraints/top.sdc",
             "flowConfig": flow_config,
@@ -66,7 +66,7 @@ def test_workspace_create_maps_camel_case_fields_and_preserves_pdk_json():
     assert request.pdk_json == pdk_json
     assert request.origin_def == "/in.def"
     assert request.origin_verilog == "/in.v"
-    assert request.parameters == {"Design": "gcd"}
+    assert request.parameters == {"design": "gcd"}
     assert request.rtl_list == ["a.v"]
     assert request.sdc == "/constraints/top.sdc"
     assert request.flow_config == flow_config
@@ -284,6 +284,27 @@ def test_workspace_export_signoff_preserves_exact_output_path():
 
     assert isinstance(request, WorkspaceExportSignoffRequest)
     assert request.output_path == "/exports/custom.tar.gz "
+
+
+@pytest.mark.parametrize(
+    "additional_files",
+    [
+        "not-a-list",
+        [{"archivePath": "nested.txt"}],
+        [{"content": "missing path"}],
+        [{"archivePath": "nested.txt", "content": 42}],
+    ],
+)
+def test_workspace_export_signoff_validates_additional_files(additional_files):
+    with pytest.raises(RequestValidationError):
+        _parse_runtime_request(
+            "workspace.export_signoff",
+            {
+                "workspaceId": "ws-1",
+                "outputPath": "/exports/custom.tar.gz",
+                "additionalFiles": additional_files,
+            },
+        )
 
 
 @pytest.mark.parametrize(

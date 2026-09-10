@@ -97,12 +97,8 @@ class ECCToolsModule:
     ########################################################################
     # config api
     ########################################################################
-    def init_config(
-        self, flow_config: str, db_config: str, output_dir: PathArg, feature_dir: PathArg
-    ):
+    def init_config(self, db_config: str, output_dir: PathArg, feature_dir: PathArg):
         """init_config"""
-        self.ecc.flow_init(flow_config=path_text(flow_config))
-
         self.ecc.db_init(
             config_path=path_text(db_config),
             output_path=path_text(output_dir),
@@ -230,9 +226,9 @@ class ECCToolsModule:
         """init def"""
         return self.ecc.def_init(def_path=path_text(path))
 
-    def read_verilog(self, verilog: PathArg, top_module: str):
+    def read_verilog(self, verilog: PathArg, top_module: str) -> bool:
         """init verilog"""
-        self.ecc.verilog_init(path_text(verilog), top_module)
+        return self.ecc.verilog_init(path_text(verilog), top_module)
 
     def read_lvs_verilog(self, verilog: PathArg, top_module: str) -> bool:
         """init verilog for iLVS"""
@@ -489,17 +485,17 @@ class ECCToolsModule:
         """
         self.ecc.init_drc(temp_directory_path=path_text(output_dir), thread_number=therad_number)
 
-    def run_drc(self, config: str, report_path: PathArg = "") -> bool:
+    def run_drc(self) -> bool:
         """
         run drc check
         """
-        self.ecc.run_drc(config=path_text(config), report=path_text(report_path))
+        return self.ecc.run_drc()
 
-    def save_drc(self, feature_path: PathArg):
+    def destroy_drc(self) -> bool:
         """
-        generate drc result
+        release drc resources
         """
-        self.ecc.save_drc(path=path_text(feature_path))
+        return self.ecc.destroy_drc()
 
     ########################################################################
     # LVS api
@@ -850,12 +846,6 @@ class ECCToolsModule:
 
     def eval_overflow(self):
         return self.ecc.eval_overflow()
-
-    ########################################################################
-    # net optimization
-    ########################################################################
-    def run_net_opt(self, config: str):
-        return self.ecc.fix_fanout(path_text(config))
 
     def build_rc_tree_from_flat_data(
         self,
