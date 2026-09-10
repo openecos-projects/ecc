@@ -30,6 +30,12 @@ class StepEnum(Enum):
     HARDEN = "Harden"
 
 
+# Tool identifiers that can own the lec/postRouteLec steps. Workspaces keep
+# the engine their ledger recorded, so every LEC-aware branch (input wiring,
+# result checks, DB skips) matches this set instead of one literal.
+LEC_STEP_TOOLS = frozenset({"yosys_lec", "kepler_formal"})
+
+
 class StateEnum(Enum):
     """flow running state"""
 

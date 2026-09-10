@@ -1,0 +1,151 @@
+#!/usr/bin/env python
+from pathlib import Path
+
+import yaml
+
+from chipcompiler.data import (
+    AnalysisPaths,
+    ChecklistState,
+    KeplerFormalData,
+    KeplerFormalInput,
+    KeplerFormalReport,
+    KeplerFormalStep,
+    LogPaths,
+    OutputPaths,
+    ScriptPaths,
+    SubflowState,
+    Workspace,
+)
+
+
+def _derive_golden_path(gate_verilog: Path | str | None) -> Path | None:
+    if not gate_verilog:
+        return None
+    gate = Path(gate_verilog)
+    return gate.with_name(f"{gate.stem}_golden{gate.suffix or '.v'}")
+
+
+def _optional_path(path: Path | str | None) -> Path | None:
+    return Path(path) if path else None
+
+
+def build_step(
+    workspace: Workspace,
+    step_name: str,
+    input_def: Path | None,
+    input_verilog: Path | None,
+    input_db: Path | str | None = None,
+    output_def: Path | None = None,
+    output_verilog: Path | None = None,
+    output_gds: Path | None = None,
+) -> KeplerFormalStep:
+    directory = Path(workspace.directory) / f"{step_name}_kepler_formal"
+    output_dir = directory / "output"
+    data_dir = directory / "data"
+    report_dir = directory / "report"
+    gate_verilog = _optional_path(input_verilog)
+    golden_verilog = _optional_path(input_db) or _derive_golden_path(gate_verilog)
+
+    return KeplerFormalStep(
+        name=step_name,
+        tool="kepler_formal",
+        version="0.1",
+        directory=directory,
+        input=KeplerFormalInput(
+            gate_verilog=gate_verilog,
+            golden_verilog=golden_verilog,
+            db=_optional_path(input_db),
+        ),
+        output=OutputPaths(
+            dir=output_dir,
+            json=output_dir / f"{workspace.design.name}_{step_name}_result.json",
+        ),
+        data=KeplerFormalData(dir=data_dir, config=data_dir / "lec_config.yaml"),
+        report=KeplerFormalReport(
+            dir=report_dir,
+            status=report_dir / "run_lec_status.rpt",
+            equiv_status=report_dir / "equiv_status.rpt",
+            miter_log=report_dir / "miter_log.txt",
+        ),
+        log=LogPaths(
+            dir=directory / "log",
+            file=directory / "log" / f"{step_name}.log",
+        ),
+        script=ScriptPaths(
+            dir=directory / "script",
+            main=directory / "script" / "run_lec.yaml",
+        ),
+        analysis=AnalysisPaths(
+            dir=directory / "analysis",
+            metrics=directory / "analysis" / f"{step_name}_metrics.json",
+        ),
+        subflow=SubflowState(path=directory / "subflow.json", steps=[]),
+        checklist=ChecklistState(path=directory / "checklist.json", checklist=[]),
+    )
+
+
+def build_step_space(step: KeplerFormalStep) -> None:
+    step_directory = Path(step.directory)
+    step_directory.mkdir(parents=True, exist_ok=True)
+    Path(step.output.dir or step_directory / "output").mkdir(parents=True, exist_ok=True)
+    Path(step.data.dir or step_directory / "data").mkdir(parents=True, exist_ok=True)
+    Path(step.report.dir or step_directory / "report").mkdir(parents=True, exist_ok=True)
+    Path(step.log.dir or step_directory / "log").mkdir(parents=True, exist_ok=True)
+    Path(step.script.dir or step_directory / "script").mkdir(parents=True, exist_ok=True)
+    Path(step.analysis.dir or step_directory / "analysis").mkdir(parents=True, exist_ok=True)
+
+
+def build_lec_config_yaml(
+    workspace: Workspace,
+    step: KeplerFormalStep,
+    *,
+    golden_verilog: Path | str | None = None,
+    gate_verilog: Path | str | None = None,
+) -> str:
+    """The kepler-formal YAML config for this step.
+
+    design1 is the golden netlist and design2 the gate netlist; kepler-formal
+    reports equivalence of design2 against design1. The explicit path
+    arguments override the step inputs so the runner can point kepler-formal
+    at prepared (decompressed / physical-cell-stripped) copies.
+    """
+    top_module = workspace.design.top_module
+    liberty_files = [str(path) for path in (workspace.pdk.libs or []) if path]
+
+    config = {
+        "format": "verilog",
+        "verification": "lec",
+        "input_paths": [
+            [str(golden_verilog or step.input.golden_verilog or "")],
+            [str(gate_verilog or step.input.gate_verilog or "")],
+        ],
+        "verilog_design1_top": top_module,
+        "verilog_design2_top": top_module,
+        "liberty_files": liberty_files,
+        "log_file": str(step.report.miter_log or ""),
+    }
+    return yaml.safe_dump(config, default_flow_style=False, sort_keys=False)
+
+
+def build_step_config(workspace: Workspace, step: KeplerFormalStep) -> None:
+    write_step_config(workspace, step)
+    from chipcompiler.tools.kepler_formal.subflow import KeplerFormalSubFlow
+
+    subflow = KeplerFormalSubFlow(workspace=workspace, workspace_step=step)
+    subflow.build_sub_flow()
+
+
+def write_step_config(
+    workspace: Workspace,
+    step: KeplerFormalStep,
+    *,
+    golden_verilog: Path | str | None = None,
+    gate_verilog: Path | str | None = None,
+) -> None:
+    config = (
+        "# Auto-generated by kepler_formal.builder - DO NOT EDIT MANUALLY\n"
+        + build_lec_config_yaml(
+            workspace, step, golden_verilog=golden_verilog, gate_verilog=gate_verilog
+        )
+    )
+    Path(step.data.config).write_text(config, encoding="utf-8")

@@ -207,7 +207,7 @@ def test_create_workspace_persists_dynamic_flow_steps(
         "ecc",
         "ecc",
         "ecc",
-        "yosys_lec",
+        "kepler_formal",
         "ecc",
     ]
     assert all(step["state"] == "Unstart" for step in flow_data["steps"])
@@ -411,7 +411,7 @@ def test_create_workspace_normalizes_post_route_lec_step_aliases(
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [(step["name"], step["tool"]) for step in flow_data["steps"]] == [
         ("lvs", "ecc"),
-        ("postRouteLec", "yosys_lec"),
+        ("postRouteLec", "kepler_formal"),
         ("drc", "ecc"),
     ]
 
@@ -441,7 +441,7 @@ def test_create_workspace_normalizes_post_route_lec_boundary_aliases(
 
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [(step["name"], step["tool"]) for step in flow_data["steps"]] == [
-        ("postRouteLec", "yosys_lec"),
+        ("postRouteLec", "kepler_formal"),
     ]
 
 

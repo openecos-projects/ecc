@@ -436,7 +436,7 @@ def test_rtl2gds_flow_runs_post_route_lec_after_lvs_before_drc():
     lec_index = step_names.index(StepEnum.POST_ROUTE_LEC)
     assert step_names.index(StepEnum.STA) < step_names.index(StepEnum.LVS)
     assert step_names.index(StepEnum.LVS) < lec_index < step_names.index(StepEnum.DRC)
-    assert steps[lec_index] == (StepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart)
+    assert steps[lec_index] == (StepEnum.POST_ROUTE_LEC, "kepler_formal", StateEnum.Unstart)
 
 
 def test_rtl2gds_flow_runs_synthesis_lec_before_floorplan():
@@ -446,7 +446,7 @@ def test_rtl2gds_flow_runs_synthesis_lec_before_floorplan():
     step_names = [step[0] for step in steps]
     lec_index = step_names.index(StepEnum.LEC)
     assert step_names.index(StepEnum.SYNTHESIS) < lec_index < step_names.index(StepEnum.FLOORPLAN)
-    assert steps[lec_index] == (StepEnum.LEC, "yosys_lec", StateEnum.Unstart)
+    assert steps[lec_index] == (StepEnum.LEC, "kepler_formal", StateEnum.Unstart)
 
 
 def test_engine_flow_wires_synthesis_lec_without_changing_physical_chain(tmp_path, monkeypatch):

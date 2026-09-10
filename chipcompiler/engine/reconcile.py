@@ -88,16 +88,35 @@ def compare_flows(persisted: list[tuple[str, str]], target: list[tuple[str, str]
     return "divergent"
 
 
+def _normalized_entries(entries: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Canonical comparison form where LEC engines are interchangeable.
+
+    A ledger that ran lec/postRouteLec under yosys_lec stays compatible when
+    the default chain wires those steps to kepler_formal (and vice versa):
+    the ledger's recorded tool keeps owning reruns, so only classification
+    needs a canonical form — mutations still apply the raw target entries.
+    """
+    from chipcompiler.data.step import LEC_STEP_TOOLS, StepEnum
+
+    lec_names = {StepEnum.LEC.value, StepEnum.POST_ROUTE_LEC.value}
+    return [
+        (name, "yosys_lec") if name in lec_names and tool in LEC_STEP_TOOLS else (name, tool)
+        for name, tool in entries
+    ]
+
+
 def _is_legacy_missing_synthesis_lec(
     persisted: list[tuple[str, str]], target: list[tuple[str, str]]
 ) -> bool:
     """Recognize pre-synthesis-LEC ledgers as upgradeable flow prefixes."""
-    if not any(name == "lec" and tool == "yosys_lec" for name, tool in target):
+    normalized_persisted = _normalized_entries(persisted)
+    normalized_target = _normalized_entries(target)
+    if not any(name == "lec" and tool == "yosys_lec" for name, tool in normalized_target):
         return False
-    target_without_lec = [entry for entry in target if entry != ("lec", "yosys_lec")]
-    return persisted == target_without_lec or (
-        len(persisted) < len(target_without_lec)
-        and target_without_lec[: len(persisted)] == persisted
+    target_without_lec = [entry for entry in normalized_target if entry != ("lec", "yosys_lec")]
+    return normalized_persisted == target_without_lec or (
+        len(normalized_persisted) < len(target_without_lec)
+        and target_without_lec[: len(normalized_persisted)] == normalized_persisted
     )
 
 
@@ -242,7 +261,7 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
     if not persisted:
         return ReconcileResult(outcome="no_op", target=_entry_names(target)), {}
 
-    relation = compare_flows(persisted, target)
+    relation = compare_flows(_normalized_entries(persisted), _normalized_entries(target))
     if relation == "divergent" and _is_legacy_missing_synthesis_lec(persisted, target):
         relation = "legacy_missing_synthesis_lec"
     if relation == "divergent" and _is_legacy_reordered_chain(persisted):

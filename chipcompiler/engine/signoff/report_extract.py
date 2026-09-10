@@ -6,6 +6,7 @@ from pathlib import Path
 
 from chipcompiler.data import StepEnum
 from chipcompiler.data.step_dirs import STEP_DIRECTORIES as STEP_DIRS
+from chipcompiler.data.step_dirs import all_step_directories
 from chipcompiler.engine.signoff.report_data import (
     DesignReportData,
     EvidenceProvenanceRecord,
@@ -415,7 +416,7 @@ def collect_workspace_report(workspace) -> DesignReportData:
         parameters = {}
 
     step_metrics: dict[str, dict] = {}
-    for dir_name in STEP_DIRS.values():
+    for dir_name in all_step_directories():
         step_dir = workspace_root / dir_name
         if not step_dir.is_dir():
             continue

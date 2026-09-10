@@ -50,7 +50,7 @@ def test_engine_flow_default_steps_include_synthesis_lec(tmp_path):
 
     assert [(step["name"], step["tool"]) for step in workspace.flow.data["steps"][:3]] == [
         (StepEnum.SYNTHESIS.value, "yosys"),
-        (StepEnum.LEC.value, "yosys_lec"),
+        (StepEnum.LEC.value, "kepler_formal"),
         (StepEnum.FLOORPLAN.value, "ecc"),
     ]
 

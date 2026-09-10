@@ -470,10 +470,6 @@ select -write ${timing_cell_stat_rpt} t:*DFF*
 tee -q -o ${timing_cell_count_rpt} select -count t:*DFF*
 tee -q -a ${timing_cell_count_rpt} select -count */t:*_DLATCH*_ */t:*_SR*_
 
-if {[info exists golden_netlist_file] && $golden_netlist_file ne ""} {
-    yosys write_verilog -noattr -noexpr -nohex -nodec ${golden_netlist_file}
-}
-
 # technology mapping for clockgate
 clockgate {*}$tech_cells_args {*}$exclude_cells
 
@@ -609,6 +605,15 @@ abc -D "$abc_delay_target" \
   {*}$tech_cells_args {*}$exclude_cells \
   -script "$strategy_script" \
   -showtmp
+
+# Golden reference for the synthesis-level LEC: dumped after the liberty
+# mapping (ABC) with split top ports, so the kepler-formal engine compares
+# identical boundaries against the final netlist. Everything after this
+# point (tie mapping, constant cleanup, renames) is what this LEC covers.
+splitnets -format _ -ports
+if {[info exists golden_netlist_file] && $golden_netlist_file ne ""} {
+    yosys write_verilog -noattr -noexpr -nohex -nodec ${golden_netlist_file}
+}
 
 # technology mapping for constant hi- and/or lo-drivers
 hilomap -singleton -hicell {*}$tech_cell_tiehi -locell {*}$tech_cell_tielo

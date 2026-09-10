@@ -164,6 +164,24 @@ class YosysLecReport(StepReport):
 
 
 @dataclass
+class KeplerFormalInput(StepInput):
+    gate_verilog: Path | None = None
+    golden_verilog: Path | None = None
+
+
+@dataclass
+class KeplerFormalData(StepData):
+    config: Path | None = None
+
+
+@dataclass
+class KeplerFormalReport(StepReport):
+    status: Path | None = None
+    equiv_status: Path | None = None
+    miter_log: Path | None = None
+
+
+@dataclass
 class EccReport(StepReport):
     db: Path | None = None
     step: Path | None = None
@@ -271,6 +289,15 @@ class YosysLecStep(WorkspaceStepBase):
     input: YosysLecInput = field(default_factory=YosysLecInput)
     data: YosysLecData = field(default_factory=YosysLecData)
     report: YosysLecReport = field(default_factory=YosysLecReport)
+
+
+@dataclass(frozen=True)
+class KeplerFormalStep(WorkspaceStepBase):
+    """kepler-formal equivalence-checking step."""
+
+    input: KeplerFormalInput = field(default_factory=KeplerFormalInput)
+    data: KeplerFormalData = field(default_factory=KeplerFormalData)
+    report: KeplerFormalReport = field(default_factory=KeplerFormalReport)
 
 
 @dataclass(frozen=True)

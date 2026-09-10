@@ -5,8 +5,16 @@ from pathlib import Path
 import pytest
 
 from chipcompiler.rtl2gds import build_rtl2gds_flow
+from chipcompiler.tools.kepler_formal.utility import get_kepler_formal_command
 
-pytestmark = [pytest.mark.integration, pytest.mark.pdk]
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.pdk,
+    pytest.mark.skipif(
+        not get_kepler_formal_command(),
+        reason="kepler-formal not available (set CHIPCOMPILER_KEPLER_FORMAL_ROOT)",
+    ),
+]
 
 
 def test_ics55_gcd(run_workspace_flow_factory):

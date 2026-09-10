@@ -180,7 +180,12 @@ class TestReconcile:
 
         assert result.outcome == "resume"
         steps = _flow_steps(workspace_dir)
-        assert [(s["name"], s["tool"]) for s in steps] == RTL2GDS_STEPS
+        # Pre-route legacy records keep their recorded engine (yosys_lec for
+        # the synthesis LEC); post-route steps restart on the current chain.
+        assert [(s["name"], s["tool"]) for s in steps] == [
+            ("lec", "yosys_lec") if name == "lec" else (name, tool)
+            for name, tool in RTL2GDS_STEPS
+        ]
         route_index = next(
             index for index, (name, _tool) in enumerate(RTL2GDS_STEPS) if name == "route"
         )

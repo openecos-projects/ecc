@@ -8,7 +8,7 @@ def build_rtl2gds_flow() -> list:
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
-    steps.append((StepEnum.LEC, "yosys_lec", StateEnum.Unstart))
+    steps.append((StepEnum.LEC, "kepler_formal", StateEnum.Unstart))
     steps.append((StepEnum.FLOORPLAN, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.CTS, "ecc", StateEnum.Unstart))
@@ -19,7 +19,7 @@ def build_rtl2gds_flow() -> list:
     steps.append((StepEnum.RCX, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.STA, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.LVS, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart))
+    steps.append((StepEnum.POST_ROUTE_LEC, "kepler_formal", StateEnum.Unstart))
     steps.append((StepEnum.DRC, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.HARDEN, "ecc", StateEnum.Unstart))
 
@@ -97,7 +97,7 @@ def build_synthesis_lec_flow() -> list:
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
-    steps.append((StepEnum.LEC, "yosys_lec", StateEnum.Unstart))
+    steps.append((StepEnum.LEC, "kepler_formal", StateEnum.Unstart))
 
     return steps
 
