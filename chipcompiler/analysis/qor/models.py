@@ -150,6 +150,17 @@ class InflationView:
 
 
 @dataclasses.dataclass(frozen=True)
+class PowerObservation:
+    """Raw power observation used by the QoR report and GUI breakdown."""
+
+    total_uw: float | None
+    budget_uw: float | None
+    source_path: str | None
+    source_kind: str | None  # signoff | synthesis
+    corner: str | None
+
+
+@dataclasses.dataclass(frozen=True)
 class QorAnalysis:
     schema_version: int
     scoring_engine: str
@@ -164,6 +175,7 @@ class QorAnalysis:
     scalar_summary: ScalarSummary
     diagnoses: list
     inflation: InflationView
+    power: PowerObservation
     flow_steps: dict  # step value -> persisted state snapshot
     config_warnings: list
 

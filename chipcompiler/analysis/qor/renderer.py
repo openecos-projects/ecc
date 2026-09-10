@@ -162,12 +162,20 @@ def _area_note(analysis, inputs):
 
 
 def _power_note(analysis, inputs):
-    if analysis.qor_record["power"].value is not None and inputs is not None:
+    observation = getattr(analysis, "power", None)
+    total = getattr(observation, "total_uw", None)
+    budget = getattr(observation, "budget_uw", None)
+    if total is None and inputs is not None:
         total = inputs.power_total_uw
-        if total is not None:
-            return f"(Ptotal: {_fmt(total / 1e6, 3)}W of {_fmt(inputs.power_budget_uw / 1e6, 3)}W)"
-        return ""
-    if inputs is not None and inputs.power_budget_uw is None:
+    if budget is None and inputs is not None:
+        budget = inputs.power_budget_uw
+    if total is not None:
+        if budget is not None:
+            return f"(Ptotal: {_fmt(total / 1e6, 3)}W of {_fmt(budget / 1e6, 3)}W)"
+        return f"(Ptotal: {_fmt(total / 1e6, 3)}W; no budget declared)"
+    if budget is None:
+        if observation is None and inputs is None:
+            return "(UNKNOWN)"
         return "(No budget declared)"
     return "(UNKNOWN)"
 
