@@ -3,6 +3,7 @@ import math
 from pathlib import Path
 from typing import Any, TypeGuard
 
+from chipcompiler.data.step import step_storage_name
 from chipcompiler.data.step_dirs import STEP_DIRECTORIES
 from chipcompiler.engine.qor_scoring import DIMENSION_WEIGHTS
 from chipcompiler.tools.ecc.sta_qor import STA_POWER_REPORT_FILENAME, STA_REPORT_FILENAMES
@@ -52,7 +53,9 @@ def build_workspace_analysis(
         identity = "".join(character for character in step_id.casefold() if character.isalnum())
         if identity == "fixfanout":
             continue
-        step_dir = root / STEP_DIRECTORIES.get(step_id, f"{step_id}_{tool_id}")
+        step_dir = root / STEP_DIRECTORIES.get(
+            step_id, f"{step_storage_name(step_id, tool_id)}_{tool_id}"
+        )
         step: dict[str, Any] = {
             "stepId": step_id,
             "toolId": tool_id,

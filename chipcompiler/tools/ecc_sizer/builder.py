@@ -2,7 +2,7 @@ import os
 import shutil
 from pathlib import Path
 
-from chipcompiler.data import EccStep, Workspace
+from chipcompiler.data import EccStep, Workspace, step_storage_name
 from chipcompiler.tools.ecc import builder as ecc_builder
 
 from .utility import find_sizer_root
@@ -22,7 +22,7 @@ def step_shape(
     Dependency-free (no rosettakit import at module scope of this module's
     callers) so deferred creation and selected creation share one shape.
     """
-    safe_step_name = "_".join(step_name.split()).lower()
+    safe_step_name = step_storage_name(step_name, "sizer")
     step_directory = Path(workspace.directory) / f"{safe_step_name}_sizer"
     if output_def is None:
         output_def = step_directory / "output" / f"{workspace.design.name}_{safe_step_name}.def.gz"
