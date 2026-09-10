@@ -58,6 +58,34 @@ def test_qor_scoring_uses_flow_order_for_area_step_when_provided():
     assert result.dimensions == {"area_cost": (50.0, 1)}
 
 
+def test_analysis_maps_legacy_power_category_to_power_integrity(tmp_path):
+    from chipcompiler.engine.analysis import _analysis_file
+    from chipcompiler.utility import json_write
+
+    path = tmp_path / "qor_metrics.json"
+    json_write(
+        path,
+        {
+            "schema_version": 3,
+            "metrics": [
+                {
+                    "id": "synthesis_power_dynamic_uw",
+                    "display_name": "Synthesis Dynamic Power",
+                    "value": 18.5,
+                    "category": "power",
+                    "direction": "trend_only",
+                    "scope": "synthesis",
+                    "rating": {"gate": False, "score": False, "trend": True},
+                }
+            ],
+        },
+    )
+
+    payload = _analysis_file(path, "artifact-metrics", 3, tmp_path)
+    assert payload["status"] == "available"
+    assert payload["data"]["metrics"][0]["category"] == "power_integrity"
+
+
 def test_score_metric_matches_fail_threshold_formulas():
     slack = _metric("STA", "sta_setup_wns", -0.1, "timing", "higher_is_better")
     assert score_metric(slack) == 50.0
