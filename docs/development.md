@@ -302,7 +302,8 @@ chipcompiler/cli/inspection/      # read-only probing logic
 chipcompiler/cli/project/         # config.py (ecc.toml parsing and validation) / config_fields.py (project declaration schema for `ecc project`) / params.py (parameter registry) / workspace_params.py (workspace-local override records) / manifest.py (project-state classification) / effective_config.py / config_params/ (direct-config schemas) / migrate*.py (legacy-layout migration) / run_*.py (workspace target resolution and dispatch)
 chipcompiler/cli/rendering/       # output rendering (render / renderers / pretty / progress)
 chipcompiler/engine/signoff/      # signoff collector + design/checklist reports (package, see below)
-chipcompiler/engine/qor_report.py # overall QoR scoring (port of the GUI rules)
+chipcompiler/engine/qor_scoring.py # QoR scoring rules (thresholds/weights/selection; shared with Studio Snapshot)
+chipcompiler/engine/qor_report.py # CLI QoR report (reads current analysis, calls qor_scoring)
 ```
 
 Module placement is enforced by `test/cli/test_cli_module_layout.py`: the core
@@ -570,13 +571,18 @@ required by doctor.
   / `report_text.py` formatting), all exposed through the package `__init__`.
   Add a report section through an `_extract_<family>(q)` in
   `report_sections.py` (or the timing chain) and register it from `report.py`.
-- `engine/qor_report.py`: the single-workspace port of the GUI's
-  `projectQorTrend.ts` — constant tables
-  (`METRIC_FAIL_VALUES`/`DIMENSION_WEIGHTS`/`QOR_SCORE_THRESHOLD`) +
-  normalization + project-level record selection (role priority
-  final>gate>trend; area_cost only from the last successful area step) + the
-  `score_record` formulas + dimension weighting (no renormalization). Adding a
-  scoreable metric = adding its threshold here and in the GUI.
+- `engine/qor_scoring.py`: the only QoR scoring rules. No I/O; owns metric
+  selection (role priority final>gate>trend; area_cost only from the last
+  successful area step), per-metric thresholds (`METRIC_FAIL_VALUES`),
+  dimension averages, weights (absent dimensions are not renormalized), and
+  the overall score. Studio consumes the same rules through Snapshot
+  `qorAssessment` (`engine/qor.py`); do not copy the threshold table into the
+  GUI or CLI. Adding a scoreable metric = adding its threshold in
+  `METRIC_FAIL_VALUES` only.
+- `engine/qor_report.py`: collection and text for `ecc report qor`. Reads the
+  workspace's current v3 `qor_metrics.json` files, calls `score_qor`, then
+  renders the overall score, dimension table, and per-metric detail. It does
+  not own the scoring formulas.
 - `engine/signoff/report_checklist.py`: read-only rendering of
   `home/checklist.json` (reports unavailable on an invalid file; never writes
   back).
@@ -665,9 +671,10 @@ uv run ecc run --project gcd --preset rtl2gds
 
 ### Reports
 
-`ecc report qor` scores the workspace the same way the GUI project dashboard
-does (per-metric scores against fixed fail thresholds, dimension averages,
+`ecc report qor` scores the workspace with the shared `qor_scoring` rules
+(per-metric scores against fixed fail thresholds, dimension averages,
 weighted overall — weights are not renormalized over missing dimensions);
+Studio Snapshot `qorAssessment` uses the same scorer.
 `ecc report checklist` renders the signoff checklist status, and `ecc report
 summary` writes the GUI-parity text design summary. All three write to
 `<workspace>/signoff/` by default and accept `-o` plus the usual

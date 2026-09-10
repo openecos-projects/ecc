@@ -1,19 +1,67 @@
+"""Shared QoR scoring rules.
+
+Owns fail thresholds, dimension weights, metric selection, and overall
+score. Callers: Snapshot assessment (`qor.py`) and CLI report
+(`qor_report.py`). Studio GUI consumes the Snapshot result; it does not
+keep a second rule table.
+"""
+
 from dataclasses import dataclass
 from typing import Any
 
-from .qor_report import (
-    _STEP_ENUM_TO_LABEL,
-    QorMetricRecord,
-    _select_project_records,
-    _weighted_overall,
-    score_record,
-)
-from .qor_report import (
-    DIMENSION_WEIGHTS as DIMENSION_WEIGHTS,
-)
-from .qor_report import (
-    QOR_SCORE_THRESHOLD as QOR_SCORE_THRESHOLD,
-)
+QOR_SCORE_THRESHOLD = 60
+
+DIMENSION_WEIGHTS = {
+    "timing": 0.35,
+    "power_integrity": 0.25,
+    "routability_physical": 0.2,
+    "area_cost": 0.1,
+    "clock_robustness_dfm": 0.1,
+    "runtime": 0.0,
+}
+
+METRIC_FAIL_VALUES = {
+    "drc_count": 10,
+    "lvs_count": 10,
+    "route_wirelength": 6000,
+    "route_via_count": 2000,
+    "cts_buffer_count": 20,
+    "cts_buffer_area": 40,
+    "clock_wirelength": 400000,
+    "cts_clock_wirelength_max": 100000,
+    "cts_clock_tree_max_level": 20,
+    "die_area": 3000,
+    "core_area": 2500,
+    "core_utilization": 0.85,
+    "synthesis_cell_area": 3000,
+    "fanout_max": 100,
+    "place_hpwl": 10000,
+    "place_grwl": 12000,
+    "place_flute_wirelength": 10000,
+    "place_congestion_egr_overflow_total": 100,
+    "place_congestion_egr_overflow_max": 20,
+    "place_rudy_utilization_max": 1,
+    "place_lutrudy_utilization_max": 1,
+    "route_dr_total_violation_count": 50,
+    "route_dr_total_patch_count": 100,
+    "route_dr_total_wirelength": 6000,
+    "route_dr_total_via_count": 2000,
+    "route_la_total_overflow": 100,
+    "rcx_missing_corner_count": 9,
+    "sta_setup_wns": -0.2,
+    "sta_setup_tns": -1,
+    "sta_hold_wns": -0.2,
+    "sta_hold_tns": -1,
+    "sta_frequency_mhz": 100,
+    "sta_setup_violation_count": 1,
+    "sta_hold_violation_count": 1,
+    "sta_missing_corner_count": 1,
+    "harden_artifact_missing_count": 6,
+}
+
+_SLACK_METRICS = {"sta_setup_wns", "sta_setup_tns", "sta_hold_wns", "sta_hold_tns"}
+_ROLE_PRIORITY = {"final": 0, "gate": 1, "trend": 2, "none": 3}
+CORE_UTILIZATION_TARGET = (0.45, 0.70)
 
 
 @dataclass(frozen=True)
@@ -44,75 +92,109 @@ class QorScoringResult:
     overall_score: float | None
 
 
-def score_qor(records: list[QorScoringMetric]) -> QorScoringResult:
-    canonical_pairs = tuple((record, _canonical_record(record)) for record in records)
-    canonical = tuple(item[1] for item in canonical_pairs)
-    area_step = next(
-        (
-            record.step
-            for record in reversed(canonical)
-            if record.dimension == "area_cost" and record.rating_score
-        ),
-        None,
-    )
-    selected = _select_project_records(canonical, area_step)
-    original_by_canonical_id = {
-        id(canonical_record): original for original, canonical_record in canonical_pairs
-    }
-    scored = tuple(
-        ScoredQorMetric(
-            original_by_canonical_id.get(id(record), _restore_record(record)),
-            score_record(record) if record.rating_score else None,
+def score_qor(
+    records: list[QorScoringMetric], *, flow_order: tuple[str, ...] = ()
+) -> QorScoringResult:
+    area_step = _area_scoring_step(records, flow_order)
+    selected: dict[tuple[str, str, str], tuple[int, int, QorScoringMetric]] = {}
+    for record in records:
+        if record.project_role == "none":
+            continue
+        if record.dimension == "area_cost" and record.step != area_step:
+            continue
+        key = (record.metric_id, record.scope, record.corner or "")
+        candidate = (
+            _ROLE_PRIORITY.get(record.project_role, 3),
+            -_step_rank(record.step, flow_order),
+            record,
         )
-        for record in selected
+        if key not in selected or candidate[:2] < selected[key][:2]:
+            selected[key] = candidate
+
+    scored = tuple(
+        ScoredQorMetric(record, score_metric(record) if record.rating_score else None)
+        for _role, _rank, record in sorted(selected.values(), key=lambda item: item[2].metric_id)
     )
     by_dimension: dict[str, list[float]] = {}
     for item in scored:
         if item.score is not None:
             by_dimension.setdefault(item.metric.dimension, []).append(item.score)
     dimensions = {
-        dimension: (round(sum(values) / len(values), 1), len(values))
-        for dimension, values in by_dimension.items()
+        dimension: (
+            round(sum(by_dimension[dimension]) / len(by_dimension[dimension]), 1),
+            len(by_dimension[dimension]),
+        )
+        for dimension in DIMENSION_WEIGHTS
+        if dimension in by_dimension
     }
-    return QorScoringResult(
-        area_step,
-        scored,
-        dimensions,
-        round(_weighted_overall({key: value[0] for key, value in dimensions.items()}), 1)
-        if dimensions
-        else None,
+    weighted = sum(
+        score * DIMENSION_WEIGHTS[dimension]
+        for dimension, (score, _count) in dimensions.items()
+        if DIMENSION_WEIGHTS[dimension] > 0
     )
+    overall = (
+        round(weighted, 1)
+        if any(DIMENSION_WEIGHTS[dimension] > 0 for dimension in dimensions)
+        else None
+    )
+    return QorScoringResult(area_step, scored, dimensions, overall)
 
 
 def score_metric(record: QorScoringMetric) -> float | None:
-    return score_record(_canonical_record(record))
+    if record.direction == "trend_only":
+        return None
+    fail = METRIC_FAIL_VALUES.get(record.metric_id)
+    if fail is None:
+        return None
+    if record.metric_id in _SLACK_METRICS:
+        if fail >= 0:
+            return None
+        return 100.0 if record.value >= 0 else _clamp(100 * (record.value - fail) / -fail)
+    if record.direction == "target_range":
+        if record.metric_id != "core_utilization":
+            return None
+        low, high = CORE_UTILIZATION_TARGET
+        if low <= record.value <= high:
+            return 100.0
+        if record.value < low:
+            return _clamp(100 * record.value / low)
+        return _clamp(100 * (fail - record.value) / (fail - high))
+    if fail <= 0:
+        return None
+    if record.direction == "lower_is_better":
+        return _clamp(100 * (fail - record.value) / fail)
+    if record.direction == "higher_is_better":
+        return _clamp(100 * record.value / fail)
+    return None
 
 
-def _canonical_record(record: QorScoringMetric) -> QorMetricRecord:
-    return QorMetricRecord(
-        step=_STEP_ENUM_TO_LABEL.get(record.step, record.step),
-        metric_name=record.metric_id,
-        display_name=record.metric_id,
-        value=record.value,
-        dimension=record.dimension,
-        polarity=record.direction,
-        scope=record.scope,
-        corner=record.corner,
-        project_role=record.project_role,
-        step_role="detail",
-        rating_score=record.rating_score,
+def _area_scoring_step(records: list[QorScoringMetric], flow_order: tuple[str, ...]) -> str | None:
+    if flow_order:
+        by_step = {
+            record.step
+            for record in records
+            if record.dimension == "area_cost" and record.rating_score
+        }
+        for step in reversed(flow_order):
+            if step in by_step:
+                return step
+        return None
+    return next(
+        (
+            record.step
+            for record in reversed(records)
+            if record.dimension == "area_cost" and record.rating_score
+        ),
+        None,
     )
 
 
-def _restore_record(record: QorMetricRecord) -> QorScoringMetric:
-    return QorScoringMetric(
-        step=record.step,
-        metric_id=record.metric_name,
-        value=record.value,
-        dimension=record.dimension,
-        direction=record.polarity,
-        scope=record.scope,
-        corner=record.corner,
-        project_role=record.project_role,
-        rating_score=record.rating_score,
-    )
+def _step_rank(step: str, flow_order: tuple[str, ...]) -> int:
+    try:
+        return flow_order.index(step)
+    except ValueError:
+        return -1
+
+
+def _clamp(value: float) -> float:
+    return max(0.0, min(100.0, value))

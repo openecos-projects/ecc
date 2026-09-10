@@ -517,7 +517,7 @@ $ ecc report summary
 
 ### 5.4 QoR 总分：ecc report qor
 
-按 GUI 项目看板同一套规则打分：每条指标折算 0–100 分，按维度加权（Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1），60 分为通过线；缺项维度不重归一化（缺项会拉低总分）：
+用 ECC 共用的 `qor_scoring` 规则打分（Studio Snapshot 也用这一套）：每条指标折算 0–100 分，按维度加权（Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1），60 分为通过线；缺项维度不重归一化（缺项会拉低总分）：
 
 ```console
 $ ecc report qor

@@ -273,7 +273,8 @@ chipcompiler/cli/inspection/      # 只读探查逻辑
 chipcompiler/cli/project/         # config.py（ecc.toml 解析校验）/ config_fields.py（`ecc project` 的项目声明 schema）/ params.py（参数注册表）/ workspace_params.py（workspace 局部覆盖记录）/ manifest.py（项目形态分类）/ effective_config.py / config_params/（直配参数 schema）/ migrate*.py（旧布局迁移）/ run_*.py（run 目标解析与分发）
 chipcompiler/cli/rendering/       # 输出渲染（render / renderers / pretty / progress）
 chipcompiler/engine/signoff/      # 签核收集器 + 设计/checklist 报告（包，见下文）
-chipcompiler/engine/qor_report.py # QoR 总分计分（GUI 规则移植）
+chipcompiler/engine/qor_scoring.py # QoR 评分规则（阈值/权重/选指标，Studio Snapshot 与 CLI 共用）
+chipcompiler/engine/qor_report.py # CLI QoR 报告（读当前 analysis，调用 qor_scoring）
 ```
 
 模块归属由 `test/cli/test_cli_module_layout.py` 强制：核心框架必须在 `cli/core/`、命令注册在 `cli/commands/`、全部处理器在唯一的 `cli/command_handlers/` 包、只读探查在 `cli/inspection/`、渲染在 `cli/rendering/`；旧的 `chipcompiler/cli/*.py` 平铺模块必须不可导入。新增文件时放进对应子包，不要在 `cli/` 根下新建模块。
@@ -427,7 +428,8 @@ config_param(
 #### 扩展报告（`ecc report summary/qor/checklist/step`）
 
 - **设计总结**：`ecc report summary` 调用 `chipcompiler.engine.signoff.generate_text_report`。其实现按职责分模块（`report.py` 编排 / `report_data.py` 数据契约 / `report_extract.py` 解析器+workspace 收集 / `report_sections.py` 分区抽取 / `report_timing.py` timing 链 / `report_text.py` 格式化），全部经包 `__init__` 对外暴露。新增报告分区时，在 `report_sections.py`（或 timing 链）增加 `_extract_<family>(q)`，并在 `report.py` 编排处注册。
-- `engine/qor_report.py`：GUI `projectQorTrend.ts` 的单 workspace 移植——常量表（`METRIC_FAIL_VALUES`/`DIMENSION_WEIGHTS`/`QOR_SCORE_THRESHOLD`）+ 归一化 + 项目级记录选择（role 优先级 final>gate>trend、area_cost 只取最后成功的 area 步）+ `score_record` 计分公式 + 维度加权（不重归一化）。新增可计分指标 = 在 GUI 与 `METRIC_FAIL_VALUES` 同步加阈值。
+- `engine/qor_scoring.py`：唯一的 QoR 评分规则。无 I/O；负责 metric 选择（role 优先级 final>gate>trend、area_cost 只取最后成功的 area 步）、单指标阈值（`METRIC_FAIL_VALUES`）、维度平均、权重（缺项不重归一化）和 overall score。Studio 经 Snapshot `qorAssessment`（`engine/qor.py`）消费同一套规则；不要在 GUI 或 CLI 再抄一份阈值表。新增可计分指标 = 只在 `METRIC_FAIL_VALUES` 加阈值。
+- `engine/qor_report.py`：CLI `ecc report qor` 的采集与文本。读取当前 workspace 的 v3 `qor_metrics.json`，交给 `score_qor`，再渲染总分、维度表和逐指标明细。不拥有评分公式。
 - `engine/signoff/report_checklist.py`：只读渲染 `home/checklist.json`（不合法时报 unavailable，绝不回写文件）。
 - CLI：`cli/commands/report.py` + `cli/command_handlers/report.py`；workspace 解析复用 `inspection/discovery.py`（`resolve_workspace_path` 是无副作用核心，`resolve_command_workspace` 是核心加 `load_workspace`；signoff、report 与只读的 status/log/config 共用）。
 
@@ -485,7 +487,7 @@ uv run ecc run --project gcd --preset rtl2gds
 
 ### 报告
 
-`ecc report qor` 按 GUI 项目看板相同的方式给 workspace 打分（每指标对固定 fail 阈值计分、维度求均值、加权总分——缺失维度不做权重重归一化）；`ecc report checklist` 渲染签核清单状态；`ecc report summary` 写出与 GUI 一致的文本设计总结。三者默认写入 `<workspace>/signoff/`，接受 `-o` 以及常规的 `--project` 和可选的受管 `--workspace NAME` 选择器：
+`ecc report qor` 用共享的 `qor_scoring` 规则给 workspace 打分（每指标对固定 fail 阈值计分、维度求均值、加权总分——缺失维度不做权重重归一化）；Studio Snapshot `qorAssessment` 用同一套计分器。`ecc report checklist` 渲染签核清单状态；`ecc report summary` 写出与 GUI 一致的文本设计总结。三者默认写入 `<workspace>/signoff/`，接受 `-o` 以及常规的 `--project` 和可选的受管 `--workspace NAME` 选择器：
 
 ```bash
 uv run ecc report qor --project gcd

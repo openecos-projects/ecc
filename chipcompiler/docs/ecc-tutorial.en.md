@@ -518,7 +518,7 @@ Excerpts from this gcd run (full report: `cat` the file above):
 
 ### 5.4 QoR score: ecc report qor
 
-Scores the workspace with the same rules as the GUI project dashboard: each metric maps to 0–100, dimensions are weighted (Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1), 60 is the pass line; absent dimensions are not renormalized (absence drags the overall score down):
+Scores the workspace with ECC's shared `qor_scoring` rules (the same table Studio Snapshot uses): each metric maps to 0–100, dimensions are weighted (Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1), 60 is the pass line; absent dimensions are not renormalized (absence drags the overall score down):
 
 ```console
 $ ecc report qor

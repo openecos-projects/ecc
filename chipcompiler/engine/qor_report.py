@@ -1,18 +1,18 @@
 """Overall QoR score report for one workspace.
 
-Python port of the ECOS Studio GUI scoring pipeline
-(ecos/gui/apps/renderer/src/utils/projectQorTrend.ts), restricted to the
-single-workspace view the CLI needs: normalize the per-step schema-v3
-``analysis/qor_metrics.json`` records, select project-level records, score
-each metric against the GUI fail thresholds, average per dimension, and
-combine with the GUI dimension weights (deliberately NOT renormalized over
-missing dimensions, matching GUI behavior). Trimmed relative to the GUI:
-cross-workspace trend/regression analysis, summary blocking-issue gates, and
-signoff-readiness score eligibility are project-dashboard concerns.
+Reads current per-step ``analysis/qor_metrics.json`` files and scores them
+with ``chipcompiler.engine.qor_scoring``. That module is the only scoring
+rule table (fail thresholds, dimension weights, pass line, metric
+selection). Studio uses the same scorer via the Engineering Snapshot
+``qorAssessment``; this report does not keep a second copy of the rules.
 
-Report source of truth: metrics files already carry dimension (category),
-polarity (direction), and the rating gate, written by
-tools/ecc/metrics.py::build_qor_metrics_payload.
+This file owns CLI collection and presentation only: metric-file
+normalization, DRC/LVS/RCX/STA flow-state gates, and the text report.
+Cross-workspace trend, summary blocking-issue gates, and signoff-readiness
+score eligibility stay on the Studio project dashboard.
+
+Metrics already carry dimension (category), polarity (direction), and the
+rating gate from tools/ecc/metrics.py::build_qor_metrics_payload.
 """
 
 import dataclasses
@@ -21,6 +21,13 @@ from pathlib import Path
 
 from chipcompiler.data import StateEnum, StepEnum
 from chipcompiler.data.step_dirs import STEP_DIRECTORIES
+from chipcompiler.engine.qor_scoring import (
+    DIMENSION_WEIGHTS,
+    QOR_SCORE_THRESHOLD,
+    QorScoringMetric,
+    score_metric,
+    score_qor,
+)
 from chipcompiler.utility.json import json_read
 
 # GUI FlowStep label for each canonical step that owns a scored directory.
@@ -50,15 +57,6 @@ FLOW_STEP_DIRS = {
 
 FLOW_STEPS = tuple(FLOW_STEP_DIRS)
 
-DIMENSION_WEIGHTS = {
-    "timing": 0.35,
-    "power_integrity": 0.25,
-    "routability_physical": 0.2,
-    "area_cost": 0.1,
-    "clock_robustness_dfm": 0.1,
-    "runtime": 0.0,
-}
-
 DIMENSION_LABELS = {
     "timing": "Timing",
     "power_integrity": "Power / IR / EM",
@@ -68,54 +66,9 @@ DIMENSION_LABELS = {
     "runtime": "Runtime",
 }
 
-METRIC_FAIL_VALUES = {
-    "drc_count": 10,
-    "lvs_count": 10,
-    "route_wirelength": 6000,
-    "route_via_count": 2000,
-    "cts_buffer_count": 20,
-    "cts_buffer_area": 40,
-    "clock_wirelength": 400000,
-    "cts_clock_wirelength_max": 100000,
-    "cts_clock_tree_max_level": 20,
-    "die_area": 3000,
-    "core_area": 2500,
-    "core_utilization": 0.85,
-    "synthesis_cell_area": 3000,
-    "fanout_max": 100,
-    "place_hpwl": 10000,
-    "place_grwl": 12000,
-    "place_flute_wirelength": 10000,
-    "place_congestion_egr_overflow_total": 100,
-    "place_congestion_egr_overflow_max": 20,
-    "place_rudy_utilization_max": 1,
-    "place_lutrudy_utilization_max": 1,
-    "route_dr_total_violation_count": 50,
-    "route_dr_total_patch_count": 100,
-    "route_dr_total_wirelength": 6000,
-    "route_dr_total_via_count": 2000,
-    "route_la_total_overflow": 100,
-    "rcx_missing_corner_count": 9,
-    "sta_setup_wns": -0.2,
-    "sta_setup_tns": -1,
-    "sta_hold_wns": -0.2,
-    "sta_hold_tns": -1,
-    "sta_frequency_mhz": 100,
-    "sta_setup_violation_count": 1,
-    "sta_hold_violation_count": 1,
-    "sta_missing_corner_count": 1,
-    "harden_artifact_missing_count": 6,
-}
-
-SLACK_METRICS = {"sta_setup_wns", "sta_setup_tns", "sta_hold_wns", "sta_hold_tns"}
-CORE_UTILIZATION_TARGET = (0.45, 0.70)
-
-#: The 0-100 line separating the GUI pass/fail presentation.
-QOR_SCORE_THRESHOLD = 60
-
 GATE_STEPS = ("DRC", "LVS", "RCX", "STA")
 
-_ROLE_PRIORITY = {"final": 0, "gate": 1, "trend": 2, "none": 3}
+_ROLE_PRIORITY = {"final", "gate", "trend", "none"}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -242,90 +195,34 @@ def _normalize_metrics(step: str, payload: dict) -> list[QorMetricRecord]:
     return records
 
 
-# ---------------------------------------------------------------------------
-# Scoring (port of scoreRecord / buildDimensionScores / weightedOverallScore)
-# ---------------------------------------------------------------------------
-
-
-def _clamp_score(score: float) -> float:
-    return max(0.0, min(100.0, score))
-
-
-def _round_score(score: float) -> float:
-    return round(score, 1)
-
-
-def _score_target_range(value: float, min_target: float, max_target: float, fail: float) -> float:
-    if min_target <= value <= max_target:
-        return 100.0
-    if value < min_target:
-        return _clamp_score(100 * value / min_target)
-    return _clamp_score(100 * (fail - value) / (fail - max_target))
-
-
 def score_record(record: QorMetricRecord) -> float | None:
-    if record.polarity == "trend_only":
-        return None
-    if record.metric_name not in METRIC_FAIL_VALUES:
-        return None
-
-    if record.metric_name in SLACK_METRICS:
-        fail = METRIC_FAIL_VALUES[record.metric_name]
-        if fail >= 0:
-            return None
-        if record.value >= 0:
-            return 100.0
-        return _clamp_score(100 * (record.value - fail) / -fail)
-
-    if record.polarity == "target_range":
-        if record.metric_name == "core_utilization":
-            return _score_target_range(
-                record.value, *CORE_UTILIZATION_TARGET, METRIC_FAIL_VALUES["core_utilization"]
-            )
-        return None
-
-    fail = METRIC_FAIL_VALUES[record.metric_name]
-    if fail <= 0:
-        return None
-    if record.polarity == "lower_is_better":
-        return _clamp_score(100 * (fail - record.value) / fail)
-    return _clamp_score(100 * record.value / fail)
+    return score_metric(_scoring_metric(record))
 
 
-def _record_key(record: QorMetricRecord) -> tuple:
-    return (record.metric_name, record.scope, record.corner or "")
-
-
-def _select_project_records(records, area_scoring_step) -> list[QorMetricRecord]:
-    selected: dict[tuple, QorMetricRecord] = {}
-    for record in records:
-        if record.project_role == "none":
-            continue
-        if record.dimension == "area_cost" and record.step != area_scoring_step:
-            continue
-        current = selected.get(_record_key(record))
-        if current is None or _selection_rank(record) < _selection_rank(current):
-            selected[_record_key(record)] = record
-    return sorted(selected.values(), key=lambda r: r.metric_name)
-
-
-def _selection_rank(record: QorMetricRecord) -> tuple:
-    try:
-        step_rank = FLOW_STEPS.index(record.step)
-    except ValueError:
-        # Forward-version/custom steps remain presentable but have no
-        # canonical ordering; prefer known flow evidence when deduplicating.
-        step_rank = -1
-    return (_ROLE_PRIORITY.get(record.project_role, len(_ROLE_PRIORITY)), -step_rank)
+def _scoring_metric(record: QorMetricRecord) -> QorScoringMetric:
+    return QorScoringMetric(
+        step=record.step,
+        metric_id=record.metric_name,
+        value=record.value,
+        dimension=record.dimension,
+        direction=record.polarity,
+        scope=record.scope,
+        corner=record.corner,
+        project_role=record.project_role,
+        rating_score=record.rating_score,
+        payload=record,
+    )
 
 
 def _resolve_area_scoring_step(records, flow_steps_by_label) -> str | None:
-    for step in reversed(FLOW_STEPS):
-        if flow_steps_by_label.get(step) != StateEnum.Success.value:
-            continue
-        if any(r.step == step and r.dimension == "area_cost" and r.rating_score for r in records):
-            return step
-    return None
+    scored = [
+        _scoring_metric(record)
+        for record in records
+        if record.rating_score
+        and record.dimension == "area_cost"
+        and flow_steps_by_label.get(record.step) == StateEnum.Success.value
+    ]
+    return score_qor(scored, flow_order=FLOW_STEPS).area_scoring_step
 
 
 def _gate_status(flow_steps_by_label) -> str:
@@ -386,21 +283,6 @@ def _workspace_status(flow_state: str, score: float | None, gate: str) -> str:
     return "Red"
 
 
-def _weighted_overall(dimension_scores: dict) -> float | None:
-    weighted_total = 0.0
-    used_weight = 0.0
-    for dimension, score in dimension_scores.items():
-        weight = DIMENSION_WEIGHTS.get(dimension, 0.0)
-        if weight <= 0:
-            continue
-        weighted_total += score * weight
-        used_weight += weight
-    if used_weight == 0:
-        return None
-    # GUI behavior: no renormalization over missing dimensions.
-    return weighted_total
-
-
 # ---------------------------------------------------------------------------
 # Workspace collection and rendering
 # ---------------------------------------------------------------------------
@@ -452,25 +334,10 @@ def build_qor_report(workspace) -> QorScoreReport:
         analyzed_steps.append(step)
         records.extend(_normalize_metrics(step, payload))
 
-    area_scoring_step = _resolve_area_scoring_step(records, flow_steps_by_label)
-    project_records = _select_project_records(records, area_scoring_step)
-
-    scored: list[QorMetricRecord] = []
-    by_dimension: dict[str, list[float]] = {}
-    for record in project_records:
-        # GUI gate: only rating.score records feed dimension averages; the
-        # rest stay in the table marked as trend-only.
-        score = score_record(record) if record.rating_score else None
-        scored.append(dataclasses.replace(record, score=score))
-        if score is not None:
-            by_dimension.setdefault(record.dimension, []).append(score)
-
-    dimension_averages = {
-        dimension: _round_score(sum(scores) / len(scores))
-        for dimension, scores in by_dimension.items()
-    }
-    overall = _weighted_overall(dimension_averages)
-    overall_score = _round_score(overall) if overall is not None else None
+    scoring = score_qor([_scoring_metric(record) for record in records], flow_order=FLOW_STEPS)
+    scored = [
+        dataclasses.replace(item.metric.payload, score=item.score) for item in scoring.metrics
+    ]
 
     gate = _gate_status(flow_steps_by_label)
     flow_state = _flow_completion_state(flow_steps_by_label.values())
@@ -490,25 +357,25 @@ def build_qor_report(workspace) -> QorScoreReport:
             dimension=dimension,
             label=DIMENSION_LABELS[dimension],
             weight=DIMENSION_WEIGHTS[dimension],
-            score=dimension_averages[dimension],
-            metric_count=len(by_dimension[dimension]),
+            score=scoring.dimensions[dimension][0],
+            metric_count=scoring.dimensions[dimension][1],
         )
         for dimension in DIMENSION_WEIGHTS
-        if dimension in dimension_averages
+        if dimension in scoring.dimensions
     ]
     absent = [
         DIMENSION_LABELS[dimension]
         for dimension in DIMENSION_WEIGHTS
-        if dimension not in dimension_averages and DIMENSION_WEIGHTS[dimension] > 0
+        if dimension not in scoring.dimensions and DIMENSION_WEIGHTS[dimension] > 0
     ]
 
     return QorScoreReport(
         workspace=str(workspace_root),
         design=design,
-        overall_score=overall_score,
-        status=_workspace_status(flow_state, overall_score, gate),
+        overall_score=scoring.overall_score,
+        status=_workspace_status(flow_state, scoring.overall_score, gate),
         gate_status=gate,
-        area_scoring_step=area_scoring_step,
+        area_scoring_step=scoring.area_scoring_step,
         dimension_scores=dimension_scores,
         metrics=scored,
         absent_dimensions=absent,
