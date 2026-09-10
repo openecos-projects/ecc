@@ -1,5 +1,3 @@
-import os
-import tempfile
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -16,6 +14,7 @@ from chipcompiler.data.workspace_parameters import (
     update_workspace_param_value,
     workspace_param_value,
 )
+from chipcompiler.data.workspace_transaction import WorkspaceFileTransaction
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.rerun import invalidate_from
 from chipcompiler.engine.snapshot import (
@@ -47,21 +46,16 @@ def update_workspace_configuration(
     target = Path(target_directory).expanduser().resolve()
     if not target.is_dir():
         raise WorkspaceLifecycleError("workspace_missing", f"Workspace not found: {target}")
-    from chipcompiler.engine.reconcile import _workspace_lock
-
-    with _workspace_lock(target):
-        before = _snapshot_files(_workspace_file_paths(target))
-        try:
-            return _update_workspace_configuration(
-                target,
-                expected_workspace_revision,
-                configuration,
-                workspace_bindings,
-                command_id,
-            )
-        except BaseException:
-            _restore_files(before)
-            raise
+    return _run_file_transaction(
+        target,
+        lambda: _update_workspace_configuration(
+            target,
+            expected_workspace_revision,
+            configuration,
+            workspace_bindings,
+            command_id,
+        ),
+    )
 
 
 def _update_workspace_configuration(
@@ -247,21 +241,16 @@ def update_workspace_step_configuration(
     target = Path(target_directory).expanduser().resolve()
     if not target.is_dir():
         raise WorkspaceLifecycleError("workspace_missing", f"Workspace not found: {target}")
-    from chipcompiler.engine.reconcile import _workspace_lock
-
-    with _workspace_lock(target):
-        before = _snapshot_files(_workspace_file_paths(target))
-        try:
-            return _update_workspace_step_configuration(
-                target,
-                expected_workspace_revision,
-                step_id,
-                parameters,
-                command_id,
-            )
-        except BaseException:
-            _restore_files(before)
-            raise
+    return _run_file_transaction(
+        target,
+        lambda: _update_workspace_step_configuration(
+            target,
+            expected_workspace_revision,
+            step_id,
+            parameters,
+            command_id,
+        ),
+    )
 
 
 def _update_workspace_step_configuration(
@@ -461,6 +450,17 @@ def _flow_id(names: list[str]) -> str:
     return "custom"
 
 
+def _run_file_transaction(target: Path, apply):
+    transaction = WorkspaceFileTransaction.begin(target, _workspace_file_paths(target))
+    try:
+        result = apply()
+        transaction.commit()
+        return result
+    except BaseException:
+        transaction.rollback()
+        raise
+
+
 def _workspace_file_paths(target: Path) -> list[Path]:
     paths = [
         target / "home" / "params.toml",
@@ -471,27 +471,3 @@ def _workspace_file_paths(target: Path) -> list[Path]:
     ]
     paths.extend(path for key, path in workspace_config_paths(target).items() if key != "dir")
     return paths
-
-
-def _snapshot_files(paths: list[Path]) -> dict[Path, bytes | None]:
-    return {path: path.read_bytes() if path.is_file() else None for path in paths}
-
-
-def _restore_files(snapshot: dict[Path, bytes | None]) -> None:
-    for path, content in snapshot.items():
-        if content is None:
-            path.unlink(missing_ok=True)
-        else:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            fd, temporary = tempfile.mkstemp(
-                dir=path.parent, prefix=f".{path.name}.", suffix=".tmp"
-            )
-            try:
-                with os.fdopen(fd, "wb") as handle:
-                    handle.write(content)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                os.replace(temporary, path)
-            except BaseException:
-                os.unlink(temporary)
-                raise
