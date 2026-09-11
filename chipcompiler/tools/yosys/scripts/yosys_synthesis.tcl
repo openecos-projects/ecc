@@ -606,15 +606,6 @@ abc -D "$abc_delay_target" \
   -script "$strategy_script" \
   -showtmp
 
-# Golden reference for the synthesis-level LEC: dumped after the liberty
-# mapping (ABC) with split top ports, so the kepler-formal engine compares
-# identical boundaries against the final netlist. Everything after this
-# point (tie mapping, constant cleanup, renames) is what this LEC covers.
-splitnets -format _ -ports
-if {[info exists golden_netlist_file] && $golden_netlist_file ne ""} {
-    yosys write_verilog -noattr -noexpr -nohex -nodec ${golden_netlist_file}
-}
-
 # technology mapping for constant hi- and/or lo-drivers
 hilomap -singleton -hicell {*}$tech_cell_tiehi -locell {*}$tech_cell_tielo
 
@@ -641,6 +632,17 @@ splitnets -format _ -ports
 
 # remove unused cells and wires
 opt_clean -purge
+
+# Golden reference for the synthesis-level LEC. kepler-formal matches
+# top ports and sequential instances by name, so the golden dump must sit
+# after every transform that renames (autoname) or removes (opt_clean)
+# boundary points; only the reporting passes and the final write follow,
+# which do not modify the design. With that placement the golden and gate
+# netlists are structurally identical and the LEC verifies the netlist
+# writers themselves.
+if {[info exists golden_netlist_file] && $golden_netlist_file ne ""} {
+    yosys write_verilog -noattr -noexpr -nohex -nodec ${golden_netlist_file}
+}
 
 # reports
 stat -top $top_design {*}$liberty_args
