@@ -865,11 +865,15 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
         raise RuntimeApiError("command_failed", "candidate input fingerprints are unavailable")
     try:
         tech_lef = Path(getattr(getattr(workspace, "pdk", None), "tech", None))
+        site_core = getattr(getattr(workspace, "pdk", None), "site_core", None)
+        if not isinstance(site_core, str) or not site_core.strip():
+            raise ValueError("core site is unavailable")
+        site_pattern = re.escape(site_core.strip())
         pdk_sha256 = f"sha256:{sha256(tech_lef.read_bytes()).hexdigest()}"
         lef_text = tech_lef.read_text(encoding="utf-8")
         units_match = re.search(r"DATABASE\s+MICRONS\s+(\d+)", lef_text, re.IGNORECASE)
         site_match = re.search(
-            r"SITE\s+(?:core7|CoreSite)\b(?P<body>.*?)END\s+(?:core7|CoreSite)",
+            rf"SITE\s+{site_pattern}\b(?P<body>.*?)END\s+{site_pattern}",
             lef_text,
             re.IGNORECASE | re.DOTALL,
         )
