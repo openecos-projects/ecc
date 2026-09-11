@@ -68,6 +68,7 @@ PROTECTED_FIELDS = {
         ("base_design_name",),
         ("def_input",),
         ("lef_input",),
+        ("macro_only",),
         ("result_dir",),
         ("verilog_input",),
     },
