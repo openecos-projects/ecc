@@ -173,11 +173,12 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
         ecc_module = ECCToolsModule()
         keep = False
         try:
-            ecc_module.init_config(
+            if not ecc_module.init_config(
                 db_config=workspace.config.get("db"),
                 output_dir=step.data.dir,
                 feature_dir=step.feature.dir,
-            )
+            ):
+                return None
 
             db_path = step.input.db or ""
             if not ecc_module.is_db_data_exists(db_path):
@@ -217,14 +218,17 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
         ecc_module = ECCToolsModule()
         keep = False
         try:
-            ecc_module.init_config(
+            if not ecc_module.init_config(
                 db_config=workspace.config.get("db"),
                 output_dir=step.data.dir,
                 feature_dir=step.feature.dir,
-            )
+            ):
+                return None
 
-            ecc_module.init_techlef(workspace.pdk.tech)
-            ecc_module.init_lefs(workspace.pdk.lefs)
+            if not ecc_module.init_techlef(workspace.pdk.tech):
+                return None
+            if not ecc_module.init_lefs(workspace.pdk.lefs):
+                return None
 
             def_path = _existing_input_path(step.input.def_)
             verilog_path = _existing_input_path(step.input.verilog)
@@ -285,11 +289,14 @@ def get_eda_instance(
             workspace.logger.error(f"Failed to create ECC engine for step {step.name}: {e}")
 
     # release sta for some memory leakage issue
-    if ecc_module is not None:
-        ecc_module.update_step_paths(
-            output_dir=step.data.dir or "",
-            feature_dir=step.feature.dir or "",
+    if ecc_module is not None and not ecc_module.update_step_paths(
+        output_dir=step.data.dir or "",
+        feature_dir=step.feature.dir or "",
+    ):
+        workspace.logger.error(
+            "Failed to update step paths for %s", step.name
         )
+        ecc_module = None
 
     return ecc_module
 
@@ -341,28 +348,33 @@ def run_sta_without_spef(
 
         if ecc_module is None:
             ecc_module = ECCToolsModule()
-            ecc_module.init_config(
+            if not ecc_module.init_config(
                 db_config=workspace.config.get("db", ""),
                 output_dir=step.data.dir or "",
                 feature_dir=step.feature.dir or "",
-            )
+            ):
+                raise ValueError("Failed to initialize ECC config")
         else:
-            ecc_module.update_step_paths(
+            if not ecc_module.update_step_paths(
                 output_dir=step.data.dir or "",
                 feature_dir=step.feature.dir or "",
-            )
+            ):
+                raise ValueError("Failed to update step paths")
 
-        ecc_module.init_techlef(workspace.pdk.tech)
-        ecc_module.init_lefs(workspace.pdk.lefs)
-        ecc_module.read_verilog(
+        if not ecc_module.init_techlef(workspace.pdk.tech):
+            raise ValueError("Failed to initialize tech LEF")
+        if not ecc_module.init_lefs(workspace.pdk.lefs):
+            raise ValueError("Failed to initialize LEFs")
+        if not ecc_module.read_verilog(
             verilog=netlist_path,
             top_module=workspace.design.top_module,
-        )
+        ):
+            raise ValueError(f"Failed to read netlist: {netlist_path}")
         sta_config = _workspace_sta_config_path(workspace)
         if sta_config is None:
             raise ValueError("workspace STA config path is not configured")
 
-        ecc_module.run_timing(
+        if not ecc_module.run_timing(
             config=sta_config,
             work_dir=work_dir,
             report_dir=report_dir,
@@ -371,7 +383,8 @@ def run_sta_without_spef(
             sdc_path=sdc_path,
             max_paths=workspace.parameters.data.get("sta_max_paths", 1000),
             corner=corner,
-        )
+        ):
+            raise ValueError("STA timing computation failed")
     except Exception as exc:
         workspace.logger.warning("Post-synthesis STA failed; synthesis result is kept: %s", exc)
         return False
@@ -397,9 +410,15 @@ def save_data(
     """
     if ecc_module is None:
         return False
-    ecc_module.def_save(def_path=step.output.def_ or "")
-    ecc_module.verilog_save(output_verilog=step.output.verilog or "")
-    ecc_module.gds_save(output_path=step.output.gds or "")
+    if not ecc_module.def_save(def_path=step.output.def_ or ""):
+        workspace.logger.error("Failed to save DEF for %s", step.name)
+        return False
+    if not ecc_module.verilog_save(output_verilog=step.output.verilog or ""):
+        workspace.logger.error("Failed to save Verilog for %s", step.name)
+        return False
+    if not ecc_module.gds_save(output_path=step.output.gds or ""):
+        workspace.logger.error("Failed to save GDS for %s", step.name)
+        return False
     # ecc_module.save_data(path=step.output.db or "")
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
@@ -416,22 +435,38 @@ def save_data(
             return False
     # View JSON serialization is intentionally skipped. The GUI reads the
     # geometry snapshot generated above instead.
-    ecc_module.feature_sammry(json_path=step.feature.db or "")
-    if feature_step:
-        ecc_module.feature_step(step=step.name, json_path=step.feature.step or "")
+    if not ecc_module.feature_sammry(json_path=step.feature.db or ""):
+        workspace.logger.error("Failed to generate feature summary for %s", step.name)
+        return False
+    step_feature = step.feature.step or ""
+    if feature_step and not ecc_module.feature_step(
+        step=step.name, json_path=step_feature
+    ):
+        workspace.logger.error("Failed to generate step feature for %s", step.name)
+        return False
 
-    ecc_module.report_summary(path=step.report.db or "")
+    if not ecc_module.report_summary(path=step.report.db or ""):
+        workspace.logger.error("Failed to generate report summary for %s", step.name)
+        return False
 
     if report_timing:
-        ecc_module.release_sta()
-        ecc_module.init_sta(
+        if not ecc_module.release_sta():
+            workspace.logger.error("Failed to release STA for %s", step.name)
+            return False
+        if not ecc_module.init_sta(
             output_dir=(step.data.steps or {}).get("sta", ""),
             top_module=workspace.design.top_module,
             lib_paths=workspace.pdk.libs,
             sdc_path=workspace.pdk.sdc,
-        )
-        ecc_module.report_timing()
-        ecc_module.release_sta()
+        ):
+            workspace.logger.error("Failed to init STA for %s", step.name)
+            return False
+        if not ecc_module.report_timing():
+            workspace.logger.error("Failed to report timing for %s", step.name)
+            return False
+        if not ecc_module.release_sta():
+            workspace.logger.error("Failed to release STA after timing for %s", step.name)
+            return False
 
     # update parameters
     db_json = json_read(step.feature.db or "")
@@ -530,14 +565,22 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        ecc_module.run_cts(
+        if not ecc_module.run_cts(
             config=workspace.config.get(f"{StepEnum.CTS.value}", ""),
             output=(step.data.steps or {}).get(StepEnum.CTS.value, ""),
-        )
+        ):
+            sub_flow.update_step(step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Imcomplete)
+            return False
 
-        ecc_module.report_cts(output=(step.data.steps or {}).get(StepEnum.CTS.value, ""))
+        if not ecc_module.report_cts(
+            output=(step.data.steps or {}).get(StepEnum.CTS.value, "")
+        ):
+            workspace.logger.error("CTS report generation failed")
+            return False
 
-        ecc_module.feature_cts_map(json_path=step.feature.map or "")
+        if not ecc_module.feature_cts_map(json_path=step.feature.map or ""):
+            workspace.logger.error("CTS map feature generation failed")
+            return False
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Success)
 
@@ -572,15 +615,34 @@ def run_routing(
         if ecc_module.is_rt_timing_enable(
             config=workspace.config.get(f"{StepEnum.ROUTING.value}", "")
         ):
-            ecc_module.release_sta()
-            ecc_module.init_sta(
+            if not ecc_module.release_sta():
+                workspace.logger.error("Failed to release STA before routing timing")
+                sub_flow.update_step(
+                    step_name=EccSubFlowEnum.run_routing.value,
+                    state=StateEnum.Imcomplete,
+                )
+                return False
+            if not ecc_module.init_sta(
                 output_dir=(step.data.steps or {}).get(StepEnum.ROUTING.value, ""),
                 top_module=workspace.design.top_module,
                 lib_paths=workspace.pdk.libs,
                 sdc_path=workspace.pdk.sdc,
-            )
+            ):
+                workspace.logger.error("Failed to init STA for routing timing")
+                sub_flow.update_step(
+                    step_name=EccSubFlowEnum.run_routing.value,
+                    state=StateEnum.Imcomplete,
+                )
+                return False
 
-        ecc_module.run_routing(config=workspace.config.get(f"{StepEnum.ROUTING.value}", ""))
+        if not ecc_module.run_routing(
+            config=workspace.config.get(f"{StepEnum.ROUTING.value}", "")
+        ):
+            sub_flow.update_step(
+                step_name=EccSubFlowEnum.run_routing.value,
+                state=StateEnum.Imcomplete,
+            )
+            return False
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_routing.value, state=StateEnum.Success)
 
@@ -608,9 +670,27 @@ def run_drc(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        ecc_module.init_drc(output_dir=(step.data.steps or {}).get(StepEnum.DRC.value, ""))
-        ecc_module.run_drc()
-        ecc_module.destroy_drc()
+        if not ecc_module.init_drc(
+            output_dir=(step.data.steps or {}).get(StepEnum.DRC.value, "")
+        ):
+            sub_flow.update_step(
+                step_name=EccSubFlowEnum.run_DRC.value,
+                state=StateEnum.Imcomplete,
+            )
+            return False
+        try:
+            if not ecc_module.run_drc():
+                sub_flow.update_step(
+                    step_name=EccSubFlowEnum.run_DRC.value,
+                    state=StateEnum.Imcomplete,
+                )
+                return False
+        finally:
+            try:
+                if not ecc_module.destroy_drc():
+                    workspace.logger.error("DRC resource cleanup returned failure")
+            except Exception as exc:
+                workspace.logger.error("Failed to release DRC: %s", exc)
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_DRC.value, state=StateEnum.Success)
 
@@ -655,9 +735,27 @@ def run_lvs(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
 
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        ecc_module.init_lvs(output_dir=(step.data.steps or {}).get(StepEnum.LVS.value, ""))
-        ecc_module.run_lvs()
-        ecc_module.destroy_lvs()
+        if not ecc_module.init_lvs(
+            output_dir=(step.data.steps or {}).get(StepEnum.LVS.value, "")
+        ):
+            sub_flow.update_step(
+                step_name=EccSubFlowEnum.run_LVS.value,
+                state=StateEnum.Imcomplete,
+            )
+            return False
+        try:
+            if not ecc_module.run_lvs():
+                sub_flow.update_step(
+                    step_name=EccSubFlowEnum.run_LVS.value,
+                    state=StateEnum.Imcomplete,
+                )
+                return False
+        finally:
+            try:
+                if not ecc_module.destroy_lvs():
+                    workspace.logger.error("LVS resource cleanup returned failure")
+            except Exception as exc:
+                workspace.logger.error("Failed to release LVS: %s", exc)
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_LVS.value, state=StateEnum.Success)
 
@@ -695,7 +793,14 @@ def run_filler(
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        ecc_module.run_filler(config=workspace.config.get(f"{StepEnum.FILLER.value}", ""))
+        if not ecc_module.run_filler(
+            config=workspace.config.get(f"{StepEnum.FILLER.value}", "")
+        ):
+            sub_flow.update_step(
+                step_name=EccSubFlowEnum.run_filler.value,
+                state=StateEnum.Imcomplete,
+            )
+            return False
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_filler.value, state=StateEnum.Success)
 
@@ -724,16 +829,35 @@ def run_floorplan(
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        ecc_module.init_fp(config=workspace.config.get(StepEnum.FLOORPLAN.value, ""))
-        sub_flow.update_step(step_name=EccSubFlowEnum.init_floorplan.value, state=StateEnum.Success)
+        if not ecc_module.init_fp(
+            config=workspace.config.get(StepEnum.FLOORPLAN.value, "")
+        ):
+            sub_flow.update_step(
+                step_name=EccSubFlowEnum.init_floorplan.value,
+                state=StateEnum.Imcomplete,
+            )
+            return False
+        sub_flow.update_step(
+            step_name=EccSubFlowEnum.init_floorplan.value,
+            state=StateEnum.Success,
+        )
 
-        ecc_module.run_fp()
-        sub_flow.update_step(step_name=EccSubFlowEnum.create_tracks.value, state=StateEnum.Success)
+        if not ecc_module.run_fp():
+            sub_flow.update_step(
+                step_name=EccSubFlowEnum.create_tracks.value,
+                state=StateEnum.Imcomplete,
+            )
+            return False
+        sub_flow.update_step(
+            step_name=EccSubFlowEnum.create_tracks.value,
+            state=StateEnum.Success,
+        )
         sub_flow.update_step(step_name=EccSubFlowEnum.place_io_pins.value, state=StateEnum.Success)
         sub_flow.update_step(step_name=EccSubFlowEnum.tap_cell.value, state=StateEnum.Success)
         sub_flow.update_step(step_name=EccSubFlowEnum.PDN.value, state=StateEnum.Success)
 
-        ecc_module.destroy_fp()
+        if not ecc_module.destroy_fp():
+            workspace.logger.error("Failed to release floorplan")
         sub_flow.update_step(step_name=EccSubFlowEnum.set_clock_net.value, state=StateEnum.Success)
 
         reslut = save_data(
@@ -776,7 +900,9 @@ def run_harden(
             workspace.logger.error("workspace STA config path is not configured")
             return False
 
-        ecc_module.write_abstract_lef(output_lef_path=step.output.lef or "")
+        if not ecc_module.write_abstract_lef(output_lef_path=step.output.lef or ""):
+            workspace.logger.error("Failed to write abstract LEF")
+            return False
         ecc_module.write_timing_model(
             output_lib_path=step.output.lib or "",
             config=sta_config,
@@ -786,7 +912,9 @@ def run_harden(
             spef_path=signoff_item["spef_file"],
             design_name=workspace.design.name,
         )
-        ecc_module.gds_save(output_path=step.output.gds or "", is_harden=True)
+        if not ecc_module.gds_save(output_path=step.output.gds or "", is_harden=True):
+            workspace.logger.error("Failed to save hardened GDS for %s", step.name)
+            return False
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)
 
@@ -833,7 +961,8 @@ def run_rcx(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
                 return False
         finally:
             try:
-                ecc_module.destroy_rcx()
+                if not ecc_module.destroy_rcx():
+                    workspace.logger.error("RCX resource cleanup returned failure")
             except Exception as exc:
                 workspace.logger.error("Failed to release the RCX extractor: %s", exc)
 
@@ -948,7 +1077,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
 
         corner = f"{report_dir.parent.name}/{report_dir.name}"
 
-        ecc_module.run_timing(
+        if not ecc_module.run_timing(
             config=sta_config,
             work_dir=(step.data.steps or {}).get(StepEnum.STA.value, ""),
             report_dir=report_dir,
@@ -959,7 +1088,15 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             output_modes=("report", "structured"),
             max_paths=workspace.parameters.data.get("sta_max_paths", 1000),
             corner=corner,
-        )
+        ):
+            workspace.logger.error(
+                "STA timing failed for %s/%s at %sC",
+                corner_name,
+                rcx_corner_name,
+                temperature,
+            )
+            sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Imcomplete)
+            return False
 
         workspace.logger.info(
             "STA artifacts for %s/%s at %sC saved to report=%s feature=%s",

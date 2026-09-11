@@ -34,6 +34,7 @@ class FakeEccModule:
 
     def init_config(self, **kwargs):
         self.calls.append(("init_config", kwargs))
+        return True
 
     def is_db_data_exists(self, path):
         self.calls.append(("is_db_data_exists", path))
@@ -45,9 +46,11 @@ class FakeEccModule:
 
     def init_techlef(self, path):
         self.calls.append(("init_techlef", path))
+        return True
 
     def init_lefs(self, paths):
         self.calls.append(("init_lefs", paths))
+        return True
 
     def read_def(self, path):
         self.calls.append(("read_def", path))
@@ -59,6 +62,7 @@ class FakeEccModule:
 
     def read_lvs_verilog(self, path, top_module):
         self.calls.append(("read_lvs_verilog", path, top_module))
+        return True
 
     def close(self):
         self.calls.append(("close",))
@@ -70,18 +74,27 @@ class FakeSynthesisStaModule:
 
     def init_config(self, **kwargs):
         self.calls.append(("init_config", kwargs))
+        return True
 
     def init_techlef(self, path):
         self.calls.append(("init_techlef", path))
+        return True
 
     def init_lefs(self, paths):
         self.calls.append(("init_lefs", paths))
+        return True
+
+    def update_step_paths(self, **kwargs):
+        self.calls.append(("update_step_paths", kwargs))
+        return True
 
     def read_verilog(self, **kwargs):
         self.calls.append(("read_verilog", kwargs))
+        return True
 
     def run_timing(self, **kwargs):
         self.calls.append(("run_timing", kwargs))
+        return True
 
 
 class FakeLogger:
@@ -139,6 +152,7 @@ class FakeRcxModule:
 
     def update_step_paths(self, **kwargs):
         self.calls.append(("update_step_paths", kwargs))
+        return True
 
     def init_rcx(self, **kwargs):
         self.calls.append(("init_rcx", kwargs))
@@ -150,6 +164,7 @@ class FakeRcxModule:
 
     def destroy_rcx(self):
         self.calls.append(("destroy_rcx",))
+        return True
 
 
 class FakeCtsModule:
@@ -159,15 +174,19 @@ class FakeCtsModule:
 
     def run_cts(self, **kwargs):
         self.calls.append(("run_cts", kwargs))
+        return True
 
     def update_step_paths(self, **kwargs):
         self.calls.append(("update_step_paths", kwargs))
+        return True
 
     def report_cts(self, **kwargs):
         self.calls.append(("report_cts", kwargs))
+        return True
 
     def feature_cts_map(self, **kwargs):
         self.calls.append(("feature_cts_map", kwargs))
+        return True
 
     def feature_cts_timing(self):
         self.calls.append(("feature_cts_timing", {}))
