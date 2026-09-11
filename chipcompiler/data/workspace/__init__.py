@@ -511,6 +511,8 @@ def _load_default_floorplan_config() -> dict:
 
 def _has_new_floorplan_schema(config: dict) -> bool:
     die_builder = config.get("die_builder")
+    macro_placer = config.get("macro_placer")
+    io_placer = config.get("io_placer")
     return (
         all(
             key in config
@@ -525,20 +527,11 @@ def _has_new_floorplan_schema(config: dict) -> bool:
         )
         and isinstance(die_builder, dict)
         and all(key in die_builder for key in ("mode", "margin", "die_util", "die_size"))
+        and isinstance(macro_placer, dict)
+        and all(key in macro_placer for key in ("mode", "file_path"))
+        and isinstance(io_placer, dict)
+        and all(key in io_placer for key in ("mode", "file_path"))
     )
-
-
-def _macro_location_file(config_path: Path, floorplan: dict) -> Path:
-    macro_placer = floorplan.setdefault("macro_placer", {})
-    macro_path_text = str(macro_placer.get("macro_location_path") or "macro_locations.txt")
-    macro_placer["macro_location_path"] = macro_path_text
-    macro_path = Path(macro_path_text)
-    if not macro_path.is_absolute():
-        macro_path = config_path.parent / macro_path
-    macro_path.parent.mkdir(parents=True, exist_ok=True)
-    if not macro_path.exists():
-        macro_path.write_text("", encoding="utf-8")
-    return macro_path
 
 
 def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None = None) -> None:
@@ -620,7 +613,6 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
     side_endcap["left_cell_name"] = workspace.pdk.end_cap or side_endcap.get("left_cell_name", "")
     side_endcap["right_cell_name"] = workspace.pdk.end_cap or side_endcap.get("right_cell_name", "")
 
-    _macro_location_file(Path(config_path), floorplan)
     json_write(config_path, floorplan)
 
 
