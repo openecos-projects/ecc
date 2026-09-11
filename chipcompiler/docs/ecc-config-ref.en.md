@@ -16,7 +16,7 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 ├── home/
 │   ├── params.toml        # parameter hub: user params + PDK-derived values (see §1)
 │   └── flow.json          # step status
-├── config/                # ← this document's focus: 9 JSON files + macro_locations.txt
+├── config/                # ← this document's focus: 9 JSON files
 │   ├── db_ecc.json        # database build (loads LEF/DEF/netlist/LIB/SDC; shared by every ecc step)
 │   ├── floorplan_ecc.json # floorplanning
 │   ├── cts_ecc.json       # clock tree synthesis
@@ -25,8 +25,7 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 │   ├── filler_ecc.json    # filler cells
 │   ├── rcx_ecc.json       # parasitic extraction
 │   ├── sta_ecc.json       # static timing analysis (multi-corner)
-│   ├── dreamplace_ecc.json# DreamPlace placement/legalization (shared by placement and legalization)
-│   └── macro_locations.txt# macro locations (initially an empty file)
+│   └── dreamplace_ecc.json# DreamPlace placement/legalization (shared by placement and legalization)
 ├── Synthesis_yosys/
 │   └── data/global_var.tcl  # the synthesis step's "config" (Tcl variables, not JSON)
 ├── lec_yosys_lec/            # synthesis-level LEC (Tcl-script driven)
@@ -240,9 +239,10 @@ Configuration file `floorplan_ecc.json`, organized into 6 functional groups. Int
 
 | Parameter | Default | Meaning |
 |---|---|---|
+| `mode` | `auto` | `auto` places macros automatically; `file` reads macro locations from `file_path` |
+| `file_path` | `""` | Macro-location file used when `mode=file` |
 | `macro_placement_halo` | 3.0 | Placement halo around macros (µm; region where standard cells may not come close) |
 | `macro_routing_halo` | 3.0 | Routing halo around macros (µm; region where routing is banned) |
-| `macro_location_path` | `macro_locations.txt` | User-specified macro location file (in the config directory; initially empty = automatic placement) |
 
 ### die_builder (die/core area planning) ★ where user parameters land
 
@@ -259,6 +259,8 @@ Configuration file `floorplan_ecc.json`, organized into 6 functional groups. Int
 
 | Parameter | Default | Meaning |
 |---|---|---|
+| `mode` | `auto` | `auto` places IO pins automatically; `file` reads IO pin locations from `file_path` |
+| `file_path` | `""` | IO-pin location file used when `mode=file` |
 | `io_layer_list` | `["MET3","MET4"]` | Metal layers allowed for IO pins |
 
 ### phy_placer (physical cell insertion)
@@ -525,7 +527,7 @@ ecc param set design.frequency_mhz VALUE
 
 ### 15.3 floorplan
 
-`temp_directory_path` and `macro_location_path` are generated/protected paths and cannot be set through the CLI. The other reviewed `floorplan_ecc.json` fields are set the same way, for example:
+`temp_directory_path` is generated/protected and cannot be set through the CLI. The other reviewed `floorplan_ecc.json` fields are set the same way, for example:
 
 ```bash
 ecc param list --step floorplan

@@ -16,7 +16,7 @@
 ├── home/
 │   ├── params.toml        # 参数中枢：用户参数 + PDK 派生值（见 §1）
 │   └── flow.json          # 步骤状态
-├── config/                # ← 本文档的主角：9 个 JSON + macro_locations.txt
+├── config/                # ← 本文档的主角：9 个 JSON
 │   ├── db_ecc.json        # 数据库构建（读入 LEF/DEF/网表/LIB/SDC，每个 ecc 步骤共用）
 │   ├── floorplan_ecc.json # 布局规划
 │   ├── cts_ecc.json       # 时钟树综合
@@ -25,8 +25,7 @@
 │   ├── filler_ecc.json    # 填充单元
 │   ├── rcx_ecc.json       # 寄生提取
 │   ├── sta_ecc.json       # 静态时序分析（多 corner）
-│   ├── dreamplace_ecc.json# DreamPlace 布局/合法化（placement 与 legalization 共用）
-│   └── macro_locations.txt# 宏单元位置（初始为空文件）
+│   └── dreamplace_ecc.json# DreamPlace 布局/合法化（placement 与 legalization 共用）
 ├── Synthesis_yosys/
 │   └── data/global_var.tcl  # 综合步骤的"配置"（Tcl 变量，非 JSON）
 ├── lec_yosys_lec/            # 综合级 LEC（Tcl 脚本驱动）
@@ -242,9 +241,10 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
+| `mode` | `auto` | `auto` 自动摆放宏单元；`file` 从 `file_path` 读取宏位置 |
+| `file_path` | `""` | `mode=file` 时使用的宏位置文件 |
 | `macro_placement_halo` | 3.0 | 宏单元布置 halo（µm，禁止标准单元靠近的范围） |
 | `macro_routing_halo` | 3.0 | 宏单元绕线 halo（µm，禁止绕线的范围） |
-| `macro_location_path` | `macro_locations.txt` | 用户指定的宏位置文件（config 目录下，初始为空 = 自动摆放） |
 
 ### die_builder（die/核心区域规划）★ 用户参数作用区
 
@@ -261,6 +261,8 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
+| `mode` | `auto` | `auto` 自动摆放 IO 引脚；`file` 从 `file_path` 读取 IO 引脚位置 |
+| `file_path` | `""` | `mode=file` 时使用的 IO 引脚位置文件 |
 | `io_layer_list` | `["MET3","MET4"]` | IO 引脚允许的金属层 |
 
 ### phy_placer（物理单元插入）
@@ -527,7 +529,7 @@ ecc param set design.frequency_mhz VALUE
 
 ### 15.3 floorplan
 
-`temp_directory_path` 与 `macro_location_path` 为流程生成/保护路径，不能通过 CLI 设置；其余已审核的 `floorplan_ecc.json` 字段用法相同，例如：
+`temp_directory_path` 为流程生成/保护路径，不能通过 CLI 设置；其余已审核的 `floorplan_ecc.json` 字段用法相同，例如：
 
 ```bash
 ecc param list --step floorplan
