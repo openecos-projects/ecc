@@ -27,7 +27,7 @@ EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
     StepEnum.CTS.value: "cts_ecc.json",
     StepEnum.DRC.value: "drc_ecc.json",
     StepEnum.FLOORPLAN.value: "floorplan_ecc.json",
-    "macro_location": "macro_localtion.txt",
+    "macro_location": "macro_localtion.tcl",
     StepEnum.ROUTING.value: "route_ecc.json",
     StepEnum.FILLER.value: "filler_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",
@@ -658,7 +658,10 @@ def test_step_config_keys_return_workspace_config_keys():
         "db",
         StepEnum.FLOORPLAN.value,
     )
-    assert data_api.step_config_keys(StepEnum.MACRO_PLACEMENT, "dreamplace") == ("dreamplace",)
+    assert data_api.step_config_keys(StepEnum.MACRO_PLACEMENT, "dreamplace") == (
+        "dreamplace",
+        "macro_location",
+    )
     assert data_api.step_config_keys(StepEnum.POST_FLOORPLAN, "ecc") == (
         "db",
         StepEnum.FLOORPLAN.value,

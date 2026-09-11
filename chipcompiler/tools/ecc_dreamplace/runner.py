@@ -71,6 +71,13 @@ def run_macro_placement(
             )
             return False
 
+        reslut = ecc_module.tcl_save(workspace.config.get("macro_location", ""))
+        if not reslut:
+            sub_flow.update_step(
+                step_name=EccSubFlowEnum.macro_place.value, state=StateEnum.Imcomplete
+            )
+            return False
+
         sub_flow.update_step(step_name=EccSubFlowEnum.macro_place.value, state=StateEnum.Success)
         reslut = ecc_runner.save_data(
             workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False

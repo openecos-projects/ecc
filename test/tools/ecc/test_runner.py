@@ -159,7 +159,7 @@ def test_split_floorplan_runs_pre_and_post_phases_independently(monkeypatch, tmp
         )
     )
     simple_floorplan_config = floorplan_config.with_stem("floorplan_ecc_simple")
-    macro_location = tmp_path / "macro_localtion.txt"
+    macro_location = tmp_path / "macro_localtion.tcl"
     macro_location.write_text("# macro locations\n")
     workspace = Workspace(
         config={

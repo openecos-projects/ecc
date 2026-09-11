@@ -66,7 +66,9 @@ Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG
 |---|---|---|---|
 | synthesis | — | `global_var.tcl` (Tcl) | Yosys is driven by Tcl variables, not JSON |
 | lec | — | none (Tcl) | Synthesis-level Yosys LEC; compares the mapped and golden synthesis netlists; an unproven result fails the step and stops the flow |
-| floorplan | ✓ | `floorplan_ecc.json` | |
+| preFloorplan | ✓ | `floorplan_ecc.json` | automatic macro floorplanning |
+| macroPlacement | — | `dreamplace_ecc.json` + `macro_localtion.tcl` | writes the Tcl macro-placement handoff |
+| postFloorplan | ✓ | `floorplan_ecc.json` + `macro_localtion.tcl` | reads the Tcl macro-placement handoff |
 | placement | — | `dreamplace_ecc.json` | shares one file with legalization |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | `def_input`/`result_dir` etc. rewritten per step |
@@ -226,7 +228,7 @@ There is also the environment variable `YOSYS_SYNTH_STRATEGY` (e.g. `DELAY 4` / 
 
 ## 4. floorplan (ecc-tools)
 
-Configuration file `floorplan_ecc.json` is shared by the `preFloorplan` and `postFloorplan` steps. `preFloorplan` runs load data → init simple floorplan → save data with automatic macro placement; `macroPlacement` runs macro-only placement and forms the handoff checkpoint; `postFloorplan` consumes `config/macro_localtion.txt` in `file` mode, then runs load data → create tracks → place IO pins → tap cells → PDN → set clock net → save data → analysis.
+Configuration file `floorplan_ecc.json` is shared by the `preFloorplan` and `postFloorplan` steps. `preFloorplan` runs load data → init simple floorplan → save data with automatic macro placement; `macroPlacement` runs macro-only placement, writes `config/macro_localtion.tcl` through `tcl_save`, and forms the handoff checkpoint; `postFloorplan` consumes that file in `file` mode, then runs load data → create tracks → place IO pins → tap cells → PDN → set clock net → save data → analysis.
 
 ### ifp (the iFP floorplan engine)
 

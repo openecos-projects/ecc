@@ -66,7 +66,9 @@ graph LR
 |---|---|---|---|
 | synthesis | — | `global_var.tcl`（Tcl） | Yosys 用 Tcl 变量驱动，不走 JSON |
 | lec | — | 无（Tcl） | 综合级 Yosys LEC；比较综合网表与 golden 网表；未证明时步骤失败并终止后续流程 |
-| floorplan | ✓ | `floorplan_ecc.json` | |
+| preFloorplan | ✓ | `floorplan_ecc.json` | 自动宏布局 |
+| macroPlacement | — | `dreamplace_ecc.json` + `macro_localtion.tcl` | 写入 Tcl 宏摆放交接文件 |
+| postFloorplan | ✓ | `floorplan_ecc.json` + `macro_localtion.tcl` | 读取 Tcl 宏摆放交接文件 |
 | placement | — | `dreamplace_ecc.json` | 与 legalization 共用一个文件 |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | 每步重写 `def_input`/`result_dir` 等 |
@@ -228,7 +230,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ## 4. floorplan（ecc-tools）
 
-配置 `floorplan_ecc.json` 由 `preFloorplan` 和 `postFloorplan` 共享。`preFloorplan` 执行 load data → init simple floorplan → save data，并使用自动宏摆放；`macroPlacement` 执行仅宏单元摆放并形成交接检查点；`postFloorplan` 以 `file` 模式读取 `config/macro_localtion.txt`，再执行 load data → create tracks → place IO pins → tap cells → PDN → set clock net → save data → analysis。
+配置 `floorplan_ecc.json` 由 `preFloorplan` 和 `postFloorplan` 共享。`preFloorplan` 执行 load data → init simple floorplan → save data，并使用自动宏摆放；`macroPlacement` 执行仅宏单元摆放，并通过 `tcl_save` 写入 `config/macro_localtion.tcl` 形成交接检查点；`postFloorplan` 以 `file` 模式读取该文件，再执行 load data → create tracks → place IO pins → tap cells → PDN → set clock net → save data → analysis。
 
 ### ifp（iFP 布图引擎）
 

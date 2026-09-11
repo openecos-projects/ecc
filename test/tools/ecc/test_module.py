@@ -376,7 +376,7 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     assert module.read_lvs_verilog(Path("/ws/input_lvs.v"), "gcd") is True
     module.def_save(Path("/ws/output/gcd.def.gz"))
     module.gds_save(Path("/ws/output/gcd.gds.gz"), is_harden=True)
-    module.tcl_save(Path("/ws/script/out.tcl"))
+    assert module.tcl_save(Path("/ws/script/out.tcl")) is True
     module.verilog_save(Path("/ws/output/gcd.v.gz"))
     module.json_save(Path("/ws/output/gcd.json"))
     module.save_data(Path("/ws/output/db"))

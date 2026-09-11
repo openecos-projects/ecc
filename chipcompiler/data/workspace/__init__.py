@@ -161,7 +161,7 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     StepEnum.CTS.value: "cts_ecc.json",
     StepEnum.DRC.value: "drc_ecc.json",
     StepEnum.FLOORPLAN.value: "floorplan_ecc.json",
-    "macro_location": "macro_localtion.txt",
+    "macro_location": "macro_localtion.tcl",
     StepEnum.ROUTING.value: "route_ecc.json",
     StepEnum.FILLER.value: "filler_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",
@@ -185,7 +185,7 @@ _STEP_BY_VALUE: Final[dict[str, StepEnum]] = {step.value: step for step in StepE
 
 _STEP_CONFIG_KEYS: Final[dict[tuple[StepEnum, str], tuple[str, ...]]] = {
     (StepEnum.PRE_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value),
-    (StepEnum.MACRO_PLACEMENT, "dreamplace"): ("dreamplace",),
+    (StepEnum.MACRO_PLACEMENT, "dreamplace"): ("dreamplace", "macro_location"),
     (StepEnum.POST_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value, "macro_location"),
     (StepEnum.PLACEMENT, "ecc"): ("db",),
     (StepEnum.CTS, "ecc"): ("db", StepEnum.CTS.value),
