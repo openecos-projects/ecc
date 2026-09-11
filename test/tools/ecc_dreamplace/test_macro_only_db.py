@@ -62,36 +62,73 @@ def test_macro_only_apply_selectively_writes_unscaled_physical_coordinates():
 
         def write_macro_placement_back(self, node_x, node_y):
             self.calls.append((node_x.copy(), node_y.copy()))
-            return 2
+            return 3
 
     class FakeEccModule:
         def __init__(self):
             self.dense_calls = []
+            self.orientation_calls = []
 
         def write_placement_back(self, ecc_db, node_x, node_y):
             self.dense_calls.append((ecc_db, node_x.copy(), node_y.copy()))
+
+        def place_instance(self, **kwargs):
+            self.orientation_calls.append(kwargs)
+            return True
 
     ecc_module = FakeEccModule()
     native_db = FakeNativePlaceDB()
     place_db = MacroPlaceDB(ecc_module=ecc_module)
     place_db.pydb = native_db
     place_db.ecc_db = object()
-    place_db.num_physical_nodes = 3
+    place_db.num_physical_nodes = 4
     place_db.num_terminals = 0
     place_db.num_terminal_NIs = 0
-    place_db.node_x = np.zeros(3, dtype=np.float32)
-    place_db.node_y = np.zeros(3, dtype=np.float32)
+    place_db.node_x = np.zeros(4, dtype=np.float32)
+    place_db.node_y = np.zeros(4, dtype=np.float32)
+    place_db.node_names = np.array(["macro_r0", "macro_r90", "macro_default", "not_a_macro"])
+    place_db.node_orient = np.array([b"N_R0", b"W_R90", b"None", b"FS_MX"], dtype=np.bytes_)
+    place_db.macro_writeback_candidate = np.array([True, True, True, False], dtype=np.bool_)
     params = SimpleNamespace(macro_only=1, scale_factor=2.0, shift_factor=[10.0, 20.0])
 
     place_db.apply(
         params,
-        np.array([2.0, 4.0, 6.0], dtype=np.float32),
-        np.array([8.0, 10.0, 12.0], dtype=np.float32),
+        np.array([2.0, 4.0, 6.0, 8.0], dtype=np.float32),
+        np.array([8.0, 10.0, 12.0, 14.0], dtype=np.float32),
     )
 
     assert len(native_db.calls) == 1
-    np.testing.assert_array_equal(native_db.calls[0][0], [11.0, 12.0, 13.0])
-    np.testing.assert_array_equal(native_db.calls[0][1], [24.0, 25.0, 26.0])
+    np.testing.assert_array_equal(native_db.calls[0][0], [11.0, 12.0, 13.0, 14.0])
+    np.testing.assert_array_equal(native_db.calls[0][1], [24.0, 25.0, 26.0, 27.0])
+    assert ecc_module.orientation_calls == [
+        {
+            "inst_name": "macro_r0",
+            "llx": 11,
+            "lly": 24,
+            "orient": "R0",
+            "cellmaster": "",
+            "placement_status": "fixed",
+            "create_if_missing": False,
+        },
+        {
+            "inst_name": "macro_r90",
+            "llx": 12,
+            "lly": 25,
+            "orient": "R90",
+            "cellmaster": "",
+            "placement_status": "fixed",
+            "create_if_missing": False,
+        },
+        {
+            "inst_name": "macro_default",
+            "llx": 13,
+            "lly": 26,
+            "orient": "R0",
+            "cellmaster": "",
+            "placement_status": "fixed",
+            "create_if_missing": False,
+        },
+    ]
     assert ecc_module.dense_calls == []
 
 
