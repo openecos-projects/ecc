@@ -11,16 +11,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from chipcompiler.data import Workspace
 
-
-def create_default_sdc(workspace: "Workspace") -> None:
-    """
-    Create SDC file based on PDK and workspace parameters.
-    """
-    clock = workspace.parameters.data.get("clock", "")
-    freq_mhz = workspace.parameters.data.get("frequency_max", 100)
-    max_fanout = workspace.parameters.data.get("max_fanout", 20)
-
-    sdc_content = f"""\
+_SDC_HEAD_CLOCK = """\
 # Auto-generated SDC file
 
 set clk_name          {clock}
@@ -45,15 +36,36 @@ set_input_delay  0  -clock [get_clocks $clk_name] $all_inputs_wo_clk
 set_output_delay 0 -clock [get_clocks $clk_name] [all_outputs]
 """
 
-    if workspace.pdk.sdc_load > 0:
-        sdc_content += f"""
+_SDC_HEAD_VIRTUAL_CLOCK = """\
+# Auto-generated SDC file
+
+set clk_name          __VIRTUAL_CLK__
+set clk_freq_mhz      {freq_mhz}
+set clk_period        [expr 1000.0 / $clk_freq_mhz]
+set clk_io_pct        0.2
+
 # -------------------------------------------------
-# Output load (pF) - {workspace.pdk.name} pdk
+# Clock definition
 # -------------------------------------------------
-set_load {workspace.pdk.sdc_load} [all_outputs]
+create_clock -name $clk_name -period $clk_period
+
+# -------------------------------------------------
+# IO Delay
+# -------------------------------------------------
+set all_inputs_wo_clk  [all_inputs]
+
+set_input_delay  0  -clock [get_clocks $clk_name] $all_inputs_wo_clk
+set_output_delay 0 -clock [get_clocks $clk_name] [all_outputs]
 """
 
-    sdc_content += f"""
+_SDC_OUTPUT_LOAD = """
+# -------------------------------------------------
+# Output load (pF) - {pdk_name} pdk
+# -------------------------------------------------
+set_load {sdc_load} [all_outputs]
+"""
+
+_SDC_TAIL = """
 # -------------------------------------------------
 # Clock uncertainty & transition
 # -------------------------------------------------
@@ -70,6 +82,30 @@ set_input_transition  $input_transition $all_inputs_wo_clk
 # -------------------------------------------------
 set_max_fanout {max_fanout} [current_design]
 """
+
+
+def create_default_sdc(workspace: "Workspace") -> None:
+    """
+    Create SDC file based on PDK and workspace parameters.
+
+    A design without a clock port gets a virtual clock instead, so
+    downstream tools still have a clock object as timing reference.
+    """
+    parameters = workspace.parameters.data
+    freq_mhz = parameters.get("frequency_max", 100)
+
+    clock = parameters.get("clock", "")
+    if clock:
+        sdc_content = _SDC_HEAD_CLOCK.format(clock=clock, freq_mhz=freq_mhz)
+    else:
+        sdc_content = _SDC_HEAD_VIRTUAL_CLOCK.format(freq_mhz=freq_mhz)
+
+    if workspace.pdk.sdc_load > 0:
+        sdc_content += _SDC_OUTPUT_LOAD.format(
+            pdk_name=workspace.pdk.name, sdc_load=workspace.pdk.sdc_load
+        )
+
+    sdc_content += _SDC_TAIL.format(max_fanout=parameters.get("max_fanout", 20))
 
     with open(workspace.pdk.sdc, "w") as file:
         file.write(sdc_content)
