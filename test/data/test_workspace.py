@@ -165,7 +165,6 @@ set clk_name          clk
 set clk_port_name     clk
 set clk_freq_mhz      100
 set clk_period        [expr 1000.0 / $clk_freq_mhz]
-set clk_io_pct        0.2
 
 # -------------------------------------------------
 # Clock definition
@@ -232,7 +231,6 @@ EXPECTED_ICS55_VIRTUAL_CLOCK_SDC = """\
 set clk_name          __VIRTUAL_CLK__
 set clk_freq_mhz      100
 set clk_period        [expr 1000.0 / $clk_freq_mhz]
-set clk_io_pct        0.2
 
 # -------------------------------------------------
 # Clock definition

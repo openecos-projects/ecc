@@ -18,7 +18,6 @@ set clk_name          {clock}
 set clk_port_name     {clock}
 set clk_freq_mhz      {freq_mhz}
 set clk_period        [expr 1000.0 / $clk_freq_mhz]
-set clk_io_pct        0.2
 
 # -------------------------------------------------
 # Clock definition
@@ -42,7 +41,6 @@ _SDC_HEAD_VIRTUAL_CLOCK = """\
 set clk_name          __VIRTUAL_CLK__
 set clk_freq_mhz      {freq_mhz}
 set clk_period        [expr 1000.0 / $clk_freq_mhz]
-set clk_io_pct        0.2
 
 # -------------------------------------------------
 # Clock definition
