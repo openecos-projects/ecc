@@ -4,6 +4,8 @@ import os
 import select
 import subprocess
 import sys
+import textwrap
+import time
 from pathlib import Path
 
 from chipcompiler.data import create_workspace
@@ -169,6 +171,60 @@ def test_rpc_stdio_subprocess_smoke():
     responses = _decode_output(completed.stdout)
     assert [response["id"] for response in responses] == [1, 2, 3]
     assert responses[1]["result"] == {"ok": True}
+
+
+def test_rpc_stdio_subprocess_keeps_background_stdout_away_from_protocol():
+    program = textwrap.dedent(
+        """
+        import sys
+        import threading
+        import time
+
+        from chipcompiler.runtime.server import RuntimeServer
+        from chipcompiler.runtime.stdio_server import run_stdio_server
+
+        server = RuntimeServer()
+
+        def background_print():
+            time.sleep(0.1)
+            print("background noise")
+
+        def start_background_print():
+            threading.Thread(target=background_print, daemon=True).start()
+            return {"ok": True}
+
+        server.dispatcher.add_method("test.backgroundPrint", start_background_print)
+        raise SystemExit(run_stdio_server(sys.stdin.buffer, sys.stdout.buffer, server=server))
+        """
+    )
+    process = subprocess.Popen(
+        [sys.executable, "-c", program],
+        cwd=os.getcwd(),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    try:
+        _write_subprocess_request(process, "test.backgroundPrint", 1)
+        assert _read_subprocess_response(process)["result"] == {"ok": True}
+        time.sleep(0.2)
+        _write_subprocess_request(process, "rpc.ping", 2)
+        assert _read_subprocess_response(process) == {
+            "jsonrpc": "2.0",
+            "result": {"ok": True},
+            "id": 2,
+        }
+        _write_subprocess_request(process, "rpc.shutdown", 3)
+        assert _read_subprocess_response(process)["result"] == {"ok": True}
+        stderr = process.communicate(timeout=5)[1]
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.communicate()
+
+    assert process.returncode == 0, stderr.decode("utf-8", errors="replace")
+    assert "background noise" in stderr.decode("utf-8", errors="replace")
 
 
 def test_rpc_stdio_subprocess_persistent_db_smoke():

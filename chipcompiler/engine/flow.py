@@ -336,13 +336,19 @@ class EngineFlow:
         """
         return SignoffPackageCollector(self.workspace).collect(options)
 
-    def create_step_workspaces(self, *, executable_steps: set[str] | None = None):
+    def create_step_workspaces(
+        self,
+        *,
+        executable_steps: set[str] | None = None,
+        initialize_config: bool = True,
+    ):
         """
         create all step workspaces
 
         executable_steps: names of the steps that will actually run. Only those
         steps verify tool dependencies; other steps are always built so the
         input/output chaining stays intact when a non-selected tool is absent.
+        initialize_config: whether step factories may regenerate tool configs.
         """
         self.workspace_steps = []
         pre_step = None
@@ -382,7 +388,7 @@ class EngineFlow:
                 input_def=input_def,
                 input_verilog=input_verilog,
                 input_db=input_db,
-                initialize_config=True,
+                initialize_config=initialize_config,
                 check_dependency=executable_steps is None or step["name"] in executable_steps,
             )
             # save workspace step

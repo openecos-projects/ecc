@@ -20,6 +20,7 @@ INPUT_BINDING_FILENAME = "candidate_input_binding.v1.json"
 CANONICAL_INPUT_EDGES = frozenset(
     {
         ("Floorplan", "initial"),
+        ("Floorplan", "Synthesis"),
         ("place", "Floorplan"),
         ("CTS", "place"),
         ("legalization", "CTS"),
@@ -132,7 +133,7 @@ def _path_or_none(value: Any) -> Path | None:
 def _validate_source_inputs(source_step: str, inputs: dict[str, Path | None]) -> None:
     def_hash = sha256_path(inputs["def"]) if inputs["def"] else None
     verilog_hash = sha256_path(inputs["verilog"]) if inputs["verilog"] else None
-    if source_step != "initial" and def_hash is None:
+    if source_step not in {"initial", "Synthesis"} and def_hash is None:
         raise CandidateInputBindingError(f"candidate source {source_step} has no DEF checkpoint")
     if def_hash is None and verilog_hash is None:
         raise CandidateInputBindingError(f"candidate source {source_step} has no design checkpoint")

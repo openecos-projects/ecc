@@ -4,10 +4,16 @@ import traceback
 from threading import Event, Thread
 
 from chipcompiler.data import StateEnum, WorkspaceStep
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow import (
+    EngineFlow,
+    _notify_flow_observer,
+    _wait_for_step_rendered,
+)
 from chipcompiler.engine.step_execution import get_process_rss_mb, track_current_process_memory
-from chipcompiler.utility.log import redirect_stdio_to_file
+from chipcompiler.utility.log import redirect_stdio_to_file, stdio_redirect_lock
 
+from .plot import _is_candidate_workspace
+from .sta_parallel import track_sta_process_memory
 from .tools import run_step as run_agent_step
 
 
@@ -21,7 +27,13 @@ class AgentEngineFlow(EngineFlow):
         steps.insert(filler_index, self.init_flow_step("DRC", "ecc", StateEnum.Unstart))
         self.save()
 
-    def run_step(self, workspace_step: WorkspaceStep | str, *, rerun: bool = False) -> StateEnum:
+    def run_step(
+        self,
+        workspace_step: WorkspaceStep | str,
+        *,
+        rerun: bool = False,
+        observer=None,
+    ) -> StateEnum:
         if isinstance(workspace_step, str):
             workspace_step = self.get_workspace_step(workspace_step)
         if workspace_step is None:
@@ -32,6 +44,7 @@ class AgentEngineFlow(EngineFlow):
         ):
             self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
             self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
+            _notify_flow_observer(observer, "on_step_skipped", workspace_step)
             return StateEnum.Success
 
         self._normalize_legacy_terminal_state(workspace_step, step_tag)
@@ -39,9 +52,15 @@ class AgentEngineFlow(EngineFlow):
         start_time = time.time()
         timing_constraints = self.timing_constraint_facts()
         self.set_state(name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Ongoing)
+        _notify_flow_observer(observer, "on_step_started", workspace_step)
         self._redirect_step_stdio(workspace_step)
-        start_memory, peak_memory, stop_monitor, monitor = self._start_memory_monitor()
+        start_memory, peak_memory, stop_monitor, monitor = self._start_memory_monitor(
+            workspace_step
+        )
         result = False
+        previous_observer = getattr(self.workspace, "_runtime_flow_observer", None)
+        if observer is not None:
+            self.workspace._runtime_flow_observer = observer
         try:
             result = run_agent_step(
                 workspace=self.workspace, step=workspace_step, ecc_module=self.engine_db.engine
@@ -52,6 +71,11 @@ class AgentEngineFlow(EngineFlow):
             traceback.print_exc()
         finally:
             self._stop_memory_monitor(stop_monitor, monitor)
+            if observer is not None:
+                if previous_observer is None:
+                    delattr(self.workspace, "_runtime_flow_observer")
+                else:
+                    self.workspace._runtime_flow_observer = previous_observer
 
         elapsed = time.time() - start_time
         state = self._step_state(workspace_step, result)
@@ -62,6 +86,13 @@ class AgentEngineFlow(EngineFlow):
             timing_constraints,
             max(0, round(peak_memory[0] - start_memory, 3)),
         )
+        _notify_flow_observer(observer, "on_step_completed", workspace_step, state)
+        if state == StateEnum.Success and not _wait_for_step_rendered(
+            observer,
+            workspace_step,
+            state,
+        ):
+            return StateEnum.Invalid
         return state
 
     def _redirect_step_stdio(self, workspace_step: WorkspaceStep) -> None:
@@ -71,16 +102,26 @@ class AgentEngineFlow(EngineFlow):
         try:
             log_file = os.path.abspath(log_file)
             os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
-            redirect_stdio_to_file(log_file)
+            # ponytail: fd-level redirect is process-global; the lock only
+            # keeps the dup2+rebind atomic across concurrent candidate steps.
+            # A parent-process print during an overlap may still land in the
+            # other candidate's log; step tools inherit fds at spawn, so
+            # per-candidate tool logs stay correctly routed.
+            with stdio_redirect_lock:
+                redirect_stdio_to_file(log_file)
         except Exception:
             traceback.print_exc()
 
-    def _start_memory_monitor(self) -> tuple[float, list[float], Event, Thread]:
+    def _start_memory_monitor(self, step) -> tuple[float, list[float], Event, Thread]:
         start_memory = get_process_rss_mb(os.getpid())
         peak_memory = [start_memory]
         stop_monitor = Event()
         monitor = Thread(
-            target=track_current_process_memory,
+            target=(
+                track_sta_process_memory
+                if step.name == "sta" and _is_candidate_workspace(self.workspace)
+                else track_current_process_memory
+            ),
             args=(os.getpid(), stop_monitor, peak_memory),
             daemon=True,
         )
@@ -150,4 +191,5 @@ class AgentEngineFlow(EngineFlow):
                 build_step_metrics(workspace=self.workspace, step=workspace_step)
             except Exception:
                 self.workspace.logger.exception("[QOR] failed to refresh analysis")
-        save_layout_image(workspace=self.workspace, step=workspace_step)
+        if not _is_candidate_workspace(self.workspace):
+            save_layout_image(workspace=self.workspace, step=workspace_step)

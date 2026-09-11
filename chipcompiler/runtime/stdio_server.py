@@ -68,6 +68,16 @@ def _write_all(fd: int, data: bytes) -> None:
         view = view[written:]
 
 
+def _redirect_process_stdout_to_stderr(output_stream: BinaryIO) -> None:
+    try:
+        if output_stream.fileno() != sys.stdout.fileno():
+            return
+        sys.stdout.flush()
+        os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
+    except (AttributeError, OSError):
+        return
+
+
 def run_stdio_server(
     input_stream: BinaryIO,
     output_stream: BinaryIO,
@@ -78,6 +88,7 @@ def run_stdio_server(
     runtime_server = server or RuntimeServer(persistent_db_enabled=persistent_db_enabled)
     decoder = ContentLengthDecoder()
     writer = _ProtocolWriter(output_stream)
+    _redirect_process_stdout_to_stderr(output_stream)
     runtime_server.set_notification_sink(writer.send_notification)
 
     try:

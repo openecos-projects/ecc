@@ -177,6 +177,7 @@ result
 
 # Generated from uv.lock, not committed
 requirements_lock.txt
+/checklist.json
 
 chipcompiler/tools/ecc_dreamplace/dreamplace
 
