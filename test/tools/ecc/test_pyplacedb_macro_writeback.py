@@ -182,6 +182,10 @@ def test_macro_writeback_commits_only_frozen_candidates(mixed_macro_place_db):
     expected_candidate_locations = {
         names[node_id]: (int(node_x[node_id]), int(node_y[node_id])) for node_id in candidate_ids
     }
+    expected_candidate_orientations = {
+        name: "N_R0" if before[name][2] == "None" else before[name][2]
+        for name in expected_candidate_locations
+    }
 
     assert place_db.write_macro_placement_back(node_x, node_y) == len(candidate_ids)
 
@@ -197,7 +201,7 @@ def test_macro_writeback_commits_only_frozen_candidates(mixed_macro_place_db):
     }
     for name, location in expected_candidate_locations.items():
         assert after[name][:2] == location
-        assert after[name][2] == before[name][2]
+        assert after[name][2] == expected_candidate_orientations[name]
     assert {
         name: state for name, state in after.items() if name not in expected_candidate_locations
     } == {name: state for name, state in before.items() if name not in expected_candidate_locations}
