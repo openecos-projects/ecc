@@ -31,11 +31,13 @@ from chipcompiler.tools.ecc.sta_qor import (
 )
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 from chipcompiler.tools.ecc.utility import is_eda_exist
-from chipcompiler.utility import json_read
+from chipcompiler.utility import json_read, json_write
 
 _GEOMETRY_SNAPSHOT_STEPS = frozenset(
     {
-        StepEnum.FLOORPLAN.value,
+        StepEnum.PRE_FLOORPLAN.value,
+        StepEnum.MACRO_PLACEMENT.value,
+        StepEnum.POST_FLOORPLAN.value,
         StepEnum.PLACEMENT.value,
         StepEnum.CTS.value,
         StepEnum.TIMING_OPT.value,
@@ -476,8 +478,10 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
 
     state = False
     match step.name:
-        case StepEnum.FLOORPLAN.value:
-            state = run_floorplan(workspace=workspace, step=step, ecc_module=ecc_module)
+        case StepEnum.PRE_FLOORPLAN.value:
+            state = run_pre_floorplan(workspace=workspace, step=step, ecc_module=ecc_module)
+        case StepEnum.POST_FLOORPLAN.value:
+            state = run_post_floorplan(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.CTS.value:
             state = run_cts(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.ROUTING.value:
@@ -710,12 +714,10 @@ def run_filler(
     return reslut
 
 
-def run_floorplan(
+def run_pre_floorplan(
     workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
 ) -> bool:
-    """
-    run floorplan
-    """
+    """Run the simple floorplan with automatic macro placement enabled."""
     reslut = False
     sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
 
@@ -724,9 +726,54 @@ def run_floorplan(
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        ecc_module.init_fp(config=workspace.config.get(StepEnum.FLOORPLAN.value, ""))
+        floorplan_config = os.fspath(workspace.config.get(StepEnum.FLOORPLAN.value, ""))
+        floorplan_path = Path(floorplan_config)
+        simple_floorplan_config = os.fspath(
+            floorplan_path.with_stem(f"{floorplan_path.stem}_simple")
+        )
+        simple_floorplan = json_read(floorplan_config)
+        simple_floorplan["macro_placer"]["mode"] = "auto"
+        simple_floorplan["macro_placer"]["file_path"] = ""
+        json_write(simple_floorplan_config, simple_floorplan)
+
+        ecc_module.init_fp(config=simple_floorplan_config)
+        ecc_module.run_simple_fp()
+        ecc_module.destroy_fp()
         sub_flow.update_step(step_name=EccSubFlowEnum.init_floorplan.value, state=StateEnum.Success)
 
+        reslut = save_data(
+            workspace=workspace,
+            step=step,
+            ecc_module=ecc_module,
+            feature_step=False,
+            report_timing=False,
+        )
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
+
+    return reslut
+
+
+def run_post_floorplan(
+    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
+) -> bool:
+    """Run complete floorplanning with the macro-location file."""
+    reslut = False
+    sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
+
+    ecc_module = get_eda_instance(workspace=workspace, step=step, ecc_module=ecc_module)
+
+    if ecc_module is not None:
+        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
+
+        floorplan_config = os.fspath(workspace.config.get(StepEnum.FLOORPLAN.value, ""))
+        floorplan = json_read(floorplan_config)
+        floorplan["macro_placer"]["mode"] = "file"
+        floorplan["macro_placer"]["file_path"] = os.fspath(
+            workspace.config.get("macro_location", "")
+        )
+        json_write(floorplan_config, floorplan)
+
+        ecc_module.init_fp(config=floorplan_config)
         ecc_module.run_fp()
         sub_flow.update_step(step_name=EccSubFlowEnum.create_tracks.value, state=StateEnum.Success)
         sub_flow.update_step(step_name=EccSubFlowEnum.place_io_pins.value, state=StateEnum.Success)
@@ -743,7 +790,6 @@ def run_floorplan(
             feature_step=False,
             report_timing=False,
         )
-
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
         run_analysis(workspace=workspace, step=step, subflow=sub_flow)

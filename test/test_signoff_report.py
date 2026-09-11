@@ -34,6 +34,7 @@ class TestParsers:
 
     def test_canonicalize_stage_name(self):
         assert canonicalize_stage_name("Synthesis_yosys") == "Synth"
+        assert canonicalize_stage_name("postFloorplan_ecc") == "PostFloorplan"
         assert canonicalize_stage_name("legalization_dreamplace") == "Legal"
         assert canonicalize_stage_name("custom_step") == "custom_step"
 
@@ -82,15 +83,17 @@ class TestStepMetricStore:
 
     def test_query_dotted_path_and_normalized_key(self):
         store = StepMetricStore()
-        store.add("Floorplan_ecc", {"Design Layout": {"die_area": 1234.5}})
-        value, _, _ = store.query("Physical", "Die Area", ["Floor"], ["Design Layout.die_area"])
+        store.add("postFloorplan_ecc", {"Design Layout": {"die_area": 1234.5}})
+        value, _, _ = store.query(
+            "Physical", "Die Area", ["PostFloorplan"], ["Design Layout.die_area"]
+        )
         assert value == 1234.5
         store.add("route_ecc", {"RouteDrTotalViaCount": 7})
         assert store.query("Routing", "Via", ["Route"], ["route_dr_total_via_count"])[0] == 7.0
 
     def test_query_miss_returns_none(self):
         store = StepMetricStore()
-        assert store.query("Physical", "Die Area", ["Floor"], ["die_area"])[0] is None
+        assert store.query("Physical", "Die Area", ["PostFloorplan"], ["die_area"])[0] is None
 
 
 class TestExtractDesignReportData:

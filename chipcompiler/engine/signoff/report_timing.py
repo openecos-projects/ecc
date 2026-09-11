@@ -424,7 +424,7 @@ def _extract_clock(q) -> ClockMetrics:
     clock_buffer_count = q(
         "Clock",
         "Clock Buffer Count",
-        ["CTS", "Route", "Place", "Floor"],
+        ["CTS", "Route", "Place", "PostFloorplan"],
         [
             "cts_buffer_count",
             "CTS.buffer_num",

@@ -56,14 +56,14 @@ def test_run_accepts_only_the_defined_empty_macro_short_circuit(
     )
     step = EccStep(
         name=(
-            StepEnum.FLOORPLAN.value
+            StepEnum.MACRO_PLACEMENT.value
             if mode is DreamplaceRunMode.MACRO_PLACEMENT
             else StepEnum.PLACEMENT.value
         ),
         data=EccData(
             dir=tmp_path / "data",
             steps={
-                StepEnum.FLOORPLAN.value: tmp_path / "data" / "floorplan",
+                StepEnum.MACRO_PLACEMENT.value: tmp_path / "data" / "macro",
                 StepEnum.PLACEMENT.value: tmp_path / "data" / "pl",
             },
         ),
@@ -184,10 +184,10 @@ def test_macro_placement_forces_selective_non_routable_placement_params(tmp_path
         config={"dreamplace": config_path},
     )
     step = EccStep(
-        name=StepEnum.FLOORPLAN.value,
+        name=StepEnum.MACRO_PLACEMENT.value,
         data=EccData(
             dir=tmp_path / "data",
-            steps={StepEnum.FLOORPLAN.value: tmp_path / "data" / "floorplan"},
+            steps={StepEnum.MACRO_PLACEMENT.value: tmp_path / "data" / "macro"},
         ),
     )
     module = DreamplaceModule(
@@ -328,6 +328,14 @@ def test_timing_opt_legalize_log_does_not_reuse_step_log(tmp_path):
     )
     assert timing_opt._file_handler_path(mode=DreamplaceRunMode.LEGALIZATION) == str(
         Path(timing_opt.result_dir) / "dreamplace_legalization.log"
+    )
+
+
+def test_macro_placement_log_does_not_reuse_step_log(tmp_path):
+    macro_placement = _module_for_owner(tmp_path, StepEnum.MACRO_PLACEMENT.value)
+
+    assert macro_placement._file_handler_path(mode=DreamplaceRunMode.MACRO_PLACEMENT) == str(
+        Path(macro_placement.result_dir) / "dreamplace_macro_placement.log"
     )
 
 

@@ -26,7 +26,7 @@ from chipcompiler.utility.json import json_read
 # GUI FlowStep label for each canonical step that owns a scored directory.
 _STEP_ENUM_TO_LABEL = {
     StepEnum.SYNTHESIS.value: "Synth",
-    StepEnum.FLOORPLAN.value: "Floor",
+    StepEnum.POST_FLOORPLAN.value: "PostFloorplan",
     StepEnum.PLACEMENT.value: "Place",
     StepEnum.CTS.value: "CTS",
     StepEnum.LEGALIZATION.value: "Legal",

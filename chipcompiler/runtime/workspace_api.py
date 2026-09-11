@@ -1870,7 +1870,7 @@ def _apply_layout_edit_workspace_staging(workspace, workspace_staging: dict[str,
 
 
 def _mark_placement_and_later_stale(flow_data: dict[str, Any], step_name: str) -> bool:
-    if step_name != "Floorplan":
+    if step_name != "postFloorplan":
         return False
     steps = flow_data.get("steps")
     if not isinstance(steps, list):

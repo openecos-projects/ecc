@@ -95,6 +95,8 @@ class DreamplaceModule:
         return os.path.join(self.result_dir, log_name)
 
     def _file_handler_path(self, *, mode: DreamplaceRunMode) -> str:
+        if mode is DreamplaceRunMode.MACRO_PLACEMENT:
+            return self._log_path(mode=mode)
         if mode is DreamplaceRunMode.LEGALIZATION and self.step.name != StepEnum.LEGALIZATION.value:
             return self._log_path(mode=mode)
         return str(self.step.log.file or self._log_path(mode=mode))

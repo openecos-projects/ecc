@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 import chipcompiler.utility as chipcompiler_utility
 from chipcompiler.data import OriginDesign, StepEnum, Workspace
 from chipcompiler.tools.ecc import metrics as ecc_metrics
@@ -154,6 +156,15 @@ def test_init_rcx_omits_explicit_empty_pdk_for_backward_compatibility():
     assert module.init_rcx(config="/tmp/rcx_ecc.json", pdk="") is True
 
     assert module.ecc.calls == [{"config": "/tmp/rcx_ecc.json"}]
+
+
+def test_run_simple_fp_calls_native_api():
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+
+    assert module.run_simple_fp() is True
+
+    assert module.ecc.calls == [("run_simple_fp", (), {})]
 
 
 def test_view_json_save_passes_output_options():
@@ -2420,6 +2431,50 @@ def test_ecc_subflow_writes_path_payload_as_json_strings(tmp_path):
     with open(str(step.subflow.path), encoding="utf-8") as file:
         data = json.load(file)
     assert data["path"] == str(step.subflow.path)
+
+
+@pytest.mark.parametrize(
+    ("step_name", "expected"),
+    [
+        (
+            StepEnum.PRE_FLOORPLAN.value,
+            ["load data", "init floorplan", "save data"],
+        ),
+        (
+            StepEnum.MACRO_PLACEMENT.value,
+            ["load data", "macro placement", "save data"],
+        ),
+        (
+            StepEnum.POST_FLOORPLAN.value,
+            [
+                "load data",
+                "create tracks",
+                "place io pins",
+                "tap cell",
+                "PDN",
+                "set clock net",
+                "save data",
+                "analysis",
+            ],
+        ),
+    ],
+)
+def test_split_floorplan_subflows_are_independent(tmp_path, step_name, expected):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=step_name,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+
+    EccSubFlow(workspace, step)
+
+    assert [item["name"] for item in step.subflow.steps] == expected
 
 
 def test_ecc_step_info_stringifies_path_payloads(tmp_path, monkeypatch):

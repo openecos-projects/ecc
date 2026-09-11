@@ -11,7 +11,10 @@ class StepEnum(Enum):
     RTL2GDS = "RTL2GDS"
     INIT = "Init"
     SYNTHESIS = "Synthesis"
-    FLOORPLAN = "Floorplan"
+    FLOORPLAN = "Floorplan"  # shared floorplan configuration key, not a flow step
+    PRE_FLOORPLAN = "preFloorplan"
+    MACRO_PLACEMENT = "macroPlacement"
+    POST_FLOORPLAN = "postFloorplan"
     PLACEMENT = "place"
     CTS = "CTS"
     TIMING_OPT = "Timing optimization"

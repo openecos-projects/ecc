@@ -27,6 +27,7 @@ EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
     StepEnum.CTS.value: "cts_ecc.json",
     StepEnum.DRC.value: "drc_ecc.json",
     StepEnum.FLOORPLAN.value: "floorplan_ecc.json",
+    "macro_location": "macro_localtion.txt",
     StepEnum.ROUTING.value: "route_ecc.json",
     StepEnum.FILLER.value: "filler_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",
@@ -130,6 +131,7 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
     assert isinstance(workspace.parameters.path, Path)
     assert isinstance(workspace.home.path, Path)
     assert all(isinstance(path, Path) for path in workspace.config.values())
+    assert workspace.config["macro_location"].is_file()
 
     home_data = json.loads((workspace_dir / "home" / "home.json").read_text())
     assert home_data["flow"] == str(workspace.flow.path)
@@ -265,7 +267,7 @@ def test_load_workspace_keeps_golden_prefixed_primary_netlist(
         pdk="ics55",
         parameters=deepcopy(default_ics55_parameters),
         pdk_root=pdk_root,
-        flow_config={"start_step": "Synthesis", "end_step": "Floorplan"},
+        flow_config={"start_step": "Synthesis", "end_step": "postFloorplan"},
     )
 
     loaded = load_workspace(str(workspace_dir))
@@ -326,7 +328,9 @@ def test_create_workspace_non_contiguous_flow_seeds_both_stores_contiguous(
     assert [step["name"] for step in flow_data["steps"]] == [
         "Synthesis",
         "lec",
-        "Floorplan",
+        "preFloorplan",
+        "macroPlacement",
+        "postFloorplan",
         "place",
         "CTS",
     ]
@@ -650,6 +654,16 @@ def test_workspace_config_path_handles_known_and_unknown_keys(tmp_path):
 
 def test_step_config_keys_return_workspace_config_keys():
     assert data_api.step_config_keys("CTS", "ecc") == ("db", StepEnum.CTS.value)
+    assert data_api.step_config_keys(StepEnum.PRE_FLOORPLAN, "ecc") == (
+        "db",
+        StepEnum.FLOORPLAN.value,
+    )
+    assert data_api.step_config_keys(StepEnum.MACRO_PLACEMENT, "dreamplace") == ("dreamplace",)
+    assert data_api.step_config_keys(StepEnum.POST_FLOORPLAN, "ecc") == (
+        "db",
+        StepEnum.FLOORPLAN.value,
+        "macro_location",
+    )
     assert data_api.step_config_keys("place", "ecc") == ("db",)
     assert data_api.step_config_keys(StepEnum.PLACEMENT, "ecc") == ("db",)
     assert data_api.step_config_keys("legalization", "ecc") == ("db",)
@@ -672,7 +686,7 @@ def test_step_config_keys_return_workspace_config_keys():
 
 def test_step_config_keys_accept_exact_internal_step_names_only():
     cases = [
-        (StepEnum.FLOORPLAN.value, StepEnum.FLOORPLAN.value),
+        (StepEnum.POST_FLOORPLAN.value, StepEnum.FLOORPLAN.value),
         (StepEnum.ROUTING.value, StepEnum.ROUTING.value),
         (StepEnum.RCX.value, StepEnum.RCX.value),
         ("sta", StepEnum.STA.value),

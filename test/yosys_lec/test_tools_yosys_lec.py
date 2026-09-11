@@ -439,13 +439,15 @@ def test_rtl2gds_flow_runs_post_route_lec_after_lvs_before_drc():
     assert steps[lec_index] == (StepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart)
 
 
-def test_rtl2gds_flow_runs_synthesis_lec_before_floorplan():
+def test_rtl2gds_flow_runs_synthesis_lec_before_pre_floorplan():
     from chipcompiler.rtl2gds import build_rtl2gds_flow
 
     steps = build_rtl2gds_flow()
     step_names = [step[0] for step in steps]
     lec_index = step_names.index(StepEnum.LEC)
-    assert step_names.index(StepEnum.SYNTHESIS) < lec_index < step_names.index(StepEnum.FLOORPLAN)
+    assert (
+        step_names.index(StepEnum.SYNTHESIS) < lec_index < step_names.index(StepEnum.PRE_FLOORPLAN)
+    )
     assert steps[lec_index] == (StepEnum.LEC, "yosys_lec", StateEnum.Unstart)
 
 

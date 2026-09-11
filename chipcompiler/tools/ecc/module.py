@@ -518,6 +518,9 @@ class ECCToolsModule:
     def init_fp(self, config: str):
         return self.ecc.init_fp(config=path_text(config))
 
+    def run_simple_fp(self):
+        return self.ecc.run_simple_fp()
+
     def run_fp(self):
         return self.ecc.run_fp()
 

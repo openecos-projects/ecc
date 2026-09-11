@@ -161,6 +161,7 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     StepEnum.CTS.value: "cts_ecc.json",
     StepEnum.DRC.value: "drc_ecc.json",
     StepEnum.FLOORPLAN.value: "floorplan_ecc.json",
+    "macro_location": "macro_localtion.txt",
     StepEnum.ROUTING.value: "route_ecc.json",
     StepEnum.FILLER.value: "filler_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",
@@ -183,7 +184,9 @@ _LEGACY_WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
 _STEP_BY_VALUE: Final[dict[str, StepEnum]] = {step.value: step for step in StepEnum}
 
 _STEP_CONFIG_KEYS: Final[dict[tuple[StepEnum, str], tuple[str, ...]]] = {
-    (StepEnum.FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value),
+    (StepEnum.PRE_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value),
+    (StepEnum.MACRO_PLACEMENT, "dreamplace"): ("dreamplace",),
+    (StepEnum.POST_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value, "macro_location"),
     (StepEnum.PLACEMENT, "ecc"): ("db",),
     (StepEnum.CTS, "ecc"): ("db", StepEnum.CTS.value),
     (StepEnum.ROUTING, "ecc"): ("db", StepEnum.ROUTING.value),
@@ -550,7 +553,7 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
     default_ifp = default_floorplan.get("ifp", {})
     ifp.setdefault("thread_number", default_ifp.get("thread_number", 16))
     if step is not None:
-        workdir = step.data.workdir_for(StepEnum.FLOORPLAN.value)
+        workdir = step.data.workdir_for(step.name)
         if workdir:
             ifp["temp_directory_path"] = path_text(workdir)
 
@@ -943,7 +946,7 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
     db["OUTPUT"]["output_dir_path"] = path_text(step.output.dir)
     json_write(workspace.config["db"], db)
 
-    if step.name == StepEnum.FLOORPLAN.value:
+    if step.name in {StepEnum.PRE_FLOORPLAN.value, StepEnum.POST_FLOORPLAN.value}:
         _refresh_floorplan_config(workspace, step=step)
 
     if step.name == StepEnum.ROUTING.value and isinstance(step.data, EccData):

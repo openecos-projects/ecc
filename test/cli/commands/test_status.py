@@ -28,7 +28,9 @@ class TestStatus:
         assert [record["step"] for record in records if "step" in record] == [
             "synthesis",
             "lec",
-            "floorplan",
+            "pre_floorplan",
+            "macro_placement",
+            "post_floorplan",
             "placement",
             "cts",
             "legalization",

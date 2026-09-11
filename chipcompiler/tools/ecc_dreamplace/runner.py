@@ -33,12 +33,51 @@ def run_step(
 
     state = False
     match step.name:
+        case StepEnum.MACRO_PLACEMENT.value:
+            state = run_macro_placement(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.PLACEMENT.value:
             state = run_placement(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.LEGALIZATION.value:
             state = run_legalization(workspace=workspace, step=step, ecc_module=ecc_module)
 
     return state
+
+
+def run_macro_placement(
+    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
+) -> bool:
+    """Run macro-only placement between the two floorplan phases."""
+    reslut = False
+    sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
+
+    ecc_module = ecc_runner.get_eda_instance(workspace=workspace, step=step, ecc_module=ecc_module)
+
+    if ecc_module is not None:
+        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
+
+        dreamplace_module = DreamplaceModule(
+            workspace=workspace,
+            step=step,
+            ecc_module=ecc_module,
+            input_def=step.input.def_,
+            input_verilog=step.input.verilog,
+            output_def=step.output.def_,
+            output_verilog=step.output.verilog,
+        )
+        reslut = dreamplace_module.run_macro_placement()
+        if not reslut:
+            sub_flow.update_step(
+                step_name=EccSubFlowEnum.macro_place.value, state=StateEnum.Imcomplete
+            )
+            return False
+
+        sub_flow.update_step(step_name=EccSubFlowEnum.macro_place.value, state=StateEnum.Success)
+        reslut = ecc_runner.save_data(
+            workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False
+        )
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
+
+    return reslut
 
 
 def run_placement(

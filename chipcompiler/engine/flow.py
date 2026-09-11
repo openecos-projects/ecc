@@ -74,7 +74,9 @@ def _validate_transition(old_state: str | None, new_state: str, step_name: str, 
 
 _GEOMETRY_SNAPSHOT_STEPS = frozenset(
     {
-        StepEnum.FLOORPLAN.value,
+        StepEnum.PRE_FLOORPLAN.value,
+        StepEnum.MACRO_PLACEMENT.value,
+        StepEnum.POST_FLOORPLAN.value,
         StepEnum.PLACEMENT.value,
         StepEnum.CTS.value,
         StepEnum.TIMING_OPT.value,
@@ -108,7 +110,9 @@ class EngineFlow:
         steps.append(
             self.init_flow_step(StepEnum.LEC, "yosys_lec", StateEnum.Unstart, info=lec_info)
         )
-        steps.append(self.init_flow_step(StepEnum.FLOORPLAN, "ecc", StateEnum.Unstart))
+        steps.append(self.init_flow_step(StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart))
+        steps.append(self.init_flow_step(StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart))
+        steps.append(self.init_flow_step(StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.CTS, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart))
