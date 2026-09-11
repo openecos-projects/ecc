@@ -97,6 +97,14 @@ def run_step(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
 
         golden_path = step.output.golden_verilog or ""
         golden_exists = not golden_path or os.path.exists(golden_path)
+        if result.returncode != 0:
+            sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
+            logger.error(
+                "yosys failed (exit code %d); see %s",
+                result.returncode,
+                log_file,
+            )
+            return False
         if os.path.exists(step.output.verilog or "") and golden_exists:
             sub_flow.update_step(step_name="run yosys", state=StateEnum.Success)
 

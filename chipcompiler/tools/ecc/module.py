@@ -58,9 +58,9 @@ class ECCToolsModule:
     def get_ecc(self):
         return self.ecc
 
-    def exit(self):
+    def exit(self) -> bool:
         """exit ECC tools"""
-        self.ecc.flow_exit()
+        return self.ecc.flow_exit()
 
     def close(self):
         """release ECC data without terminating the host process"""
@@ -91,30 +91,30 @@ class ECCToolsModule:
     def build_connection_map(self, clusters, src_instances, max_hop: int):
         return self.ecc.build_connection_map(clusters, src_instances, max_hop)
 
-    def reset_data(self):
-        self.ecc.reset_data()
+    def reset_data(self) -> bool:
+        return self.ecc.reset_data()
 
     ########################################################################
     # config api
     ########################################################################
-    def init_config(self, db_config: str, output_dir: PathArg, feature_dir: PathArg):
+    def init_config(self, db_config: str, output_dir: PathArg, feature_dir: PathArg) -> bool:
         """init_config"""
-        self.ecc.db_init(
+        return self.ecc.db_init(
             config_path=path_text(db_config),
             output_path=path_text(output_dir),
             feature_path=path_text(feature_dir),
         )
 
-    def update_step_paths(self, output_dir: PathArg, feature_dir: PathArg):
-        self.ecc.db_init(
+    def update_step_paths(self, output_dir: PathArg, feature_dir: PathArg) -> bool:
+        return self.ecc.db_init(
             output_path=path_text(output_dir),
             feature_path=path_text(feature_dir),
         )
 
     def update_sta_data_config(
         self, db_config: str, output_dir: str, lib_paths: list[str], sdc_path: str
-    ):
-        self.ecc.db_init(
+    ) -> bool:
+        return self.ecc.db_init(
             config_path=path_text(db_config),
             output_path=path_text(output_dir),
             lib_paths=path_texts(lib_paths),
@@ -208,19 +208,19 @@ class ECCToolsModule:
     def set_exclude_cell_names(self, cell_names: set):
         self.cell_names = cell_names
 
-    def write_placement_back(self, dm_inst_ptr, node_x, node_y):
-        self.ecc.write_placement_back(dm_inst_ptr, node_x, node_y)
+    def write_placement_back(self, dm_inst_ptr, node_x, node_y) -> bool:
+        return self.ecc.write_placement_back(dm_inst_ptr, node_x, node_y)
 
     ########################################################################
     # data io api
     ########################################################################
-    def init_techlef(self, tech_lef_path: str):
+    def init_techlef(self, tech_lef_path: str) -> bool:
         """init tech lef"""
-        self.ecc.tech_lef_init(path_text(tech_lef_path))
+        return self.ecc.tech_lef_init(path_text(tech_lef_path))
 
-    def init_lefs(self, lef_paths: list):
+    def init_lefs(self, lef_paths: list) -> bool:
         """init_lef"""
-        self.ecc.lef_init(lef_paths=path_texts(lef_paths))
+        return self.ecc.lef_init(lef_paths=path_texts(lef_paths))
 
     def read_def(self, path: str = "") -> bool:
         """init def"""
@@ -234,26 +234,29 @@ class ECCToolsModule:
         """init verilog for iLVS"""
         return self.ecc.lvs_verilog_init(path_text(verilog), top_module)
 
-    def def_save(self, def_path: PathArg):
+    def def_save(self, def_path: PathArg) -> bool:
         """save def file"""
-        self.ecc.def_save(def_name=path_text(def_path))
+        return self.ecc.def_save(def_name=path_text(def_path))
 
-    def gds_save(self, output_path: PathArg, *, is_harden: bool = False):
+    def gds_save(self, output_path: PathArg, *, is_harden: bool = False) -> bool:
         """save gds file"""
-        self.ecc.gds_save(path_text(output_path), is_harden)
+        return self.ecc.gds_save(path_text(output_path), is_harden)
 
-    def tcl_save(self, output_path: str):
+    def tcl_save(self, output_path: str) -> bool:
         """save tcl file"""
-        self.ecc.tcl_save(path_text(output_path))
+        return self.ecc.tcl_save(path_text(output_path))
 
-    def verilog_save(self, output_verilog, cell_names: set | None = None):
+    def verilog_save(self, output_verilog, cell_names: set | None = None) -> bool:
         """verilog save"""
         if cell_names is None:
             cell_names = set()
-        self.ecc.netlist_save(netlist_path=path_text(output_verilog), exclude_cell_names=cell_names)
+        return self.ecc.netlist_save(
+            netlist_path=path_text(output_verilog),
+            exclude_cell_names=cell_names,
+        )
 
-    def json_save(self, path: str):
-        self.ecc.json_save(path=path_text(path))
+    def json_save(self, path: str) -> bool:
+        return self.ecc.json_save(path=path_text(path))
 
     def view_json_save(
         self,
@@ -358,17 +361,17 @@ class ECCToolsModule:
     ########################################################################
     # feature api
     ########################################################################
-    def feature_sammry(self, json_path: PathArg):
+    def feature_sammry(self, json_path: PathArg) -> bool:
         """
         generate feature summary
         """
-        self.ecc.feature_summary(path_text(json_path))
+        return self.ecc.feature_summary(path_text(json_path))
 
-    def feature_step(self, step: str, json_path: PathArg):
+    def feature_step(self, step: str, json_path: PathArg) -> bool:
         """
         generate step feature
         """
-        self.ecc.feature_tool(path_text(json_path), step)
+        return self.ecc.feature_tool(path_text(json_path), step)
 
     def feature_eval_map(self, path: str, bin_cnt_x: int, bin_cnt_y: int):
         return self.ecc.feature_eval_map(
@@ -395,11 +398,11 @@ class ECCToolsModule:
     def report_wirelength(self, path: str = ""):
         return self.ecc.report_wirelength(path=path_text(path))
 
-    def report_summary(self, path: PathArg):
+    def report_summary(self, path: PathArg) -> bool:
         """
         generate step report
         """
-        self.ecc.report_db(path_text(path))
+        return self.ecc.report_db(path_text(path))
 
     def report_congestion(self, path: str = ""):
         return self.ecc.report_congestion(path=path_text(path))
@@ -463,27 +466,30 @@ class ECCToolsModule:
     def run_cts(self, config: str, output: PathArg) -> bool:
         return self.ecc.run_cts(path_text(config), path_text(output))
 
-    def report_cts(self, output: PathArg):
-        self.ecc.cts_report(path_text(output))
+    def report_cts(self, output: PathArg) -> bool:
+        return self.ecc.cts_report(path_text(output))
 
     def feature_cts_timing(self) -> dict:
         """Return post-optimization CTS FastSTA timing aggregates."""
         return self.ecc.cts_timing_feature()
 
-    def feature_cts_map(self, json_path: PathArg, map_grid_size=5):
+    def feature_cts_map(self, json_path: PathArg, map_grid_size=5) -> bool:
         """
         generate cts map feature
         """
-        self.ecc.feature_cts_eval(path_text(json_path), map_grid_size)
+        return self.ecc.feature_cts_eval(path_text(json_path), map_grid_size)
 
     ########################################################################
     # DRC api
     ########################################################################
-    def init_drc(self, output_dir: PathArg, therad_number: int = 128):
+    def init_drc(self, output_dir: PathArg, therad_number: int = 128) -> bool:
         """
         init drc config
         """
-        self.ecc.init_drc(temp_directory_path=path_text(output_dir), thread_number=therad_number)
+        return self.ecc.init_drc(
+            temp_directory_path=path_text(output_dir),
+            thread_number=therad_number,
+        )
 
     def run_drc(self) -> bool:
         """
@@ -500,47 +506,47 @@ class ECCToolsModule:
     ########################################################################
     # LVS api
     ########################################################################
-    def init_lvs(self, output_dir: PathArg, thread_number: int = 128):
+    def init_lvs(self, output_dir: PathArg, thread_number: int = 128) -> bool:
         return self.ecc.init_lvs(
             temp_directory_path=path_text(output_dir),
             thread_number=thread_number,
         )
 
-    def run_lvs(self):
+    def run_lvs(self) -> bool:
         return self.ecc.run_lvs()
 
-    def destroy_lvs(self):
+    def destroy_lvs(self) -> bool:
         return self.ecc.destroy_lvs()
 
     ########################################################################
     # floorplan api
     ########################################################################
-    def init_fp(self, config: str):
+    def init_fp(self, config: str) -> bool:
         return self.ecc.init_fp(config=path_text(config))
 
-    def run_fp(self):
+    def run_fp(self) -> bool:
         return self.ecc.run_fp()
 
-    def destroy_fp(self):
+    def destroy_fp(self) -> bool:
         return self.ecc.destroy_fp()
 
     ########################################################################
     # pnp api
     ########################################################################
-    def pnp(self, config: str):
-        self.ecc.run_pnp(path_text(config))
+    def pnp(self, config: str) -> bool:
+        return self.ecc.run_pnp(path_text(config))
 
     ########################################################################
     # placement api
     ########################################################################
-    def feature_placement_map(self, json_path: PathArg, map_grid_size=5):
+    def feature_placement_map(self, json_path: PathArg, map_grid_size=5) -> bool:
         """
         generate placement map feature
         """
-        self.ecc.feature_pl_eval(path_text(json_path), map_grid_size)
+        return self.ecc.feature_pl_eval(path_text(json_path), map_grid_size)
 
-    def run_filler(self, config: str):
-        self.ecc.insert_filler(path_text(config))
+    def run_filler(self, config: str) -> bool:
+        return self.ecc.insert_filler(path_text(config))
 
     ########################################################################
     # routing api
@@ -550,21 +556,26 @@ class ECCToolsModule:
             config_dict = {}
         return self.ecc.run_ert(config=path_text(config), config_dict=config_dict)
 
-    def run_routing(self, config: str):
-        self.ecc.init_rt(config=path_text(config))
-        self.ecc.run_rt()
-        self.ecc.destroy_rt()
+    def run_routing(self, config: str) -> bool:
+        if not self.ecc.init_rt(config=path_text(config)):
+            return False
+        try:
+            if not self.ecc.run_rt():
+                return False
+        finally:
+            self.ecc.destroy_rt()
+        return True
 
-    def close_routing(self):
-        self.ecc.destroy_rt()
+    def close_routing(self) -> bool:
+        return self.ecc.destroy_rt()
 
     # read route json file to ecc route data
-    def feature_route_read(self, json_path: str):
-        self.ecc.feature_route_read(path=path_text(json_path))
+    def feature_route_read(self, json_path: str) -> bool:
+        return self.ecc.feature_route_read(path=path_text(json_path))
 
     # read route def and save route data to json
-    def feature_route(self, json_path: str):
-        self.ecc.feature_route(path=path_text(json_path))
+    def feature_route(self, json_path: str) -> bool:
+        return self.ecc.feature_route(path=path_text(json_path))
 
     def is_rt_timing_enable(self, config: str):
         if os.path.exists(config):
@@ -581,15 +592,15 @@ class ECCToolsModule:
     ########################################################################
     # RCX api
     ########################################################################
-    def init_rcx(self, config: str, pdk: str = "ics55"):
+    def init_rcx(self, config: str, pdk: str = "ics55") -> bool:
         if pdk:
             return self.ecc.init_rcx(config=path_text(config), pdk=pdk)
         return self.ecc.init_rcx(config=path_text(config))
 
-    def run_rcx(self):
+    def run_rcx(self) -> bool:
         return self.ecc.run_rcx()
 
-    def destroy_rcx(self):
+    def destroy_rcx(self) -> bool | None:
         destroy_rcx = getattr(self.ecc, "destroy_rcx", None)
         if destroy_rcx is None:
             return None
@@ -632,9 +643,12 @@ class ECCToolsModule:
 
         discard_sta_run_outputs(work_dir, report_dir, feature_dir, modes)
 
-        self.ecc.lib_init(lib_paths=path_texts(lib_paths))
-        self.ecc.sdc_init(path_text(sdc_path))
-        self.ecc.spef_init(path_text(spef_path))
+        if not self.ecc.lib_init(lib_paths=path_texts(lib_paths)):
+            return False
+        if not self.ecc.sdc_init(path_text(sdc_path)):
+            return False
+        if not self.ecc.spef_init(path_text(spef_path)):
+            return False
         config_dict = {}
         if work_dir:
             config_dict["-temp_directory_path"] = path_text(work_dir)
@@ -648,9 +662,11 @@ class ECCToolsModule:
         )
         if corner:
             config_dict["-timing_corner"] = corner
-        self.ecc.init_sta(config=path_text(config), config_dict=config_dict)
+        if not self.ecc.init_sta(config=path_text(config), config_dict=config_dict):
+            return False
         try:
-            self.ecc.run_sta()
+            if not self.ecc.run_sta():
+                return False
         finally:
             self.ecc.destroy_sta()
 
@@ -660,8 +676,33 @@ class ECCToolsModule:
             feature_dir=feature_dir or "",
             modes=modes,
         )
+        return True
 
-    def write_abstract_lef(self, output_lef_path: PathArg):
+    def release_sta(self) -> bool:
+        return self.ecc.release_sta()
+
+    def init_sta(
+        self,
+        output_dir: PathArg = "",
+        top_module: str = "",
+        lib_paths: list[str] | None = None,
+        sdc_path: str = "",
+    ) -> bool:
+        if lib_paths is None:
+            lib_paths = []
+        if not self.ecc.lib_init(lib_paths=path_texts(lib_paths)):
+            return False
+        if not self.ecc.sdc_init(path_text(sdc_path)):
+            return False
+        config_dict: dict[str, str] = {}
+        if output_dir:
+            config_dict["-temp_directory_path"] = path_text(output_dir)
+        return self.ecc.init_sta(config="", config_dict=config_dict)
+
+    def report_timing(self) -> bool:
+        return self.ecc.report_timing()
+
+    def write_abstract_lef(self, output_lef_path: PathArg) -> bool:
         return self.ecc.write_abstract_lef(path_text(output_lef_path))
 
     def write_timing_model(
@@ -688,13 +729,18 @@ class ECCToolsModule:
                 design_name = design_name[: -len("_Harden")]
 
         sta_output_dir = Path(output_dir) if output_dir else output_lib_path.parent
-        self.ecc.lib_init(lib_paths=path_texts(lib_paths))
-        self.ecc.sdc_init(path_text(sdc_path))
-        self.ecc.spef_init(path_text(spef_path))
+        if not self.ecc.lib_init(lib_paths=path_texts(lib_paths)):
+            return
+        if not self.ecc.sdc_init(path_text(sdc_path)):
+            return
+        if not self.ecc.spef_init(path_text(spef_path)):
+            return
         config_dict = {"-temp_directory_path": path_text(sta_output_dir)}
-        self.ecc.init_sta(config=path_text(config), config_dict=config_dict)
+        if not self.ecc.init_sta(config=path_text(config), config_dict=config_dict):
+            return
         try:
-            self.ecc.extract_lib()
+            if not self.ecc.extract_lib():
+                return
         finally:
             self.ecc.destroy_sta()
 

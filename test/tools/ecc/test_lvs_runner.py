@@ -23,15 +23,19 @@ class FakeLvsModule:
 
     def update_step_paths(self, **kwargs):
         self.calls.append(("update_step_paths", kwargs))
+        return True
 
     def init_lvs(self, **kwargs):
         self.calls.append(("init_lvs", kwargs))
+        return True
 
     def run_lvs(self):
         self.calls.append(("run_lvs", {}))
+        return True
 
     def destroy_lvs(self):
         self.calls.append(("destroy_lvs", {}))
+        return True
 
 
 class FakeLogger:
