@@ -226,13 +226,13 @@ There is also the environment variable `YOSYS_SYNTH_STRATEGY` (e.g. `DELAY 4` / 
 
 ## 4. floorplan (ecc-tools)
 
-Configuration file `floorplan_ecc.json`, organized into 6 functional groups. Internal sub-phases of the step: load data → init floorplan → create tracks → place io pins → tap cell → PDN → set clock net → save data → analysis.
+Configuration file `floorplan_ecc.json` is shared by the `preFloorplan` and `postFloorplan` steps. `preFloorplan` runs load data → init simple floorplan → save data with automatic macro placement; `macroPlacement` runs macro-only placement and forms the handoff checkpoint; `postFloorplan` consumes `config/macro_localtion.txt` in `file` mode, then runs load data → create tracks → place IO pins → tap cells → PDN → set clock net → save data → analysis.
 
 ### ifp (the iFP floorplan engine)
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `temp_directory_path` | generated per step → `Floorplan_ecc/data/fp` | iFP intermediate data directory |
+| `temp_directory_path` | generated per step → `preFloorplan_ecc/data/fp` or `postFloorplan_ecc/data/fp` | iFP intermediate data directory |
 | `thread_number` | 16 | Number of parallel threads |
 
 ### macro_placer (macro placement)
@@ -283,9 +283,9 @@ Configuration file `floorplan_ecc.json`, organized into 6 functional groups. Int
 | `stripe` (MET4/MET5) | width 1.0, pitch 16.0, offset 0.5 | Power stripes: layer/width/pitch (spacing)/offset (µm) |
 | `connect_layers` | MET1–MET4, MET4–MET5 | Adjacent-layer via connection pairs for power |
 
-## 5. placement / legalization (DreamPlace)
+## 5. macro placement / placement / legalization (DreamPlace)
 
-The two steps share `config/dreamplace_ecc.json`; before each step runs, `def_input` (placement reads the floorplan output, legalization reads the CTS output), `verilog_input`, and `result_dir` are rewritten (`place_dreamplace/data/pl` and `legalization_dreamplace/data/pl` respectively). The parameters are exactly the upstream DreamPlace JSON parameter set, explained group by group below (defaults = template values; `*` marks user-parameter mapping points).
+The three steps share `config/dreamplace_ecc.json`; before each step runs, `def_input`, `verilog_input`, and `result_dir` are rewritten. `macroPlacement` uses `macroPlacement_dreamplace/data/macro`, placement reads the post-floorplan output and uses `place_dreamplace/data/pl`, and legalization reads the CTS output and uses `legalization_dreamplace/data/pl`. The parameters are exactly the upstream DreamPlace JSON parameter set, explained group by group below (defaults = template values; `*` marks user-parameter mapping points).
 
 ### Inputs and outputs
 
@@ -309,7 +309,7 @@ The two steps share `config/dreamplace_ecc.json`; before each step runs, `def_in
 | `enable_fillers` | 1 | Allow virtual filler occupancy during placement (for density computation) |
 | `routability_opt_flag` | 1 `*place.routability_opt` | Routing-congestion-driven placement optimization |
 | `timing_opt_flag` / `timing_eval_flag` | 0 | Timing-driven placement (not enabled in this flow; requires sizer/STA support) |
-| `macro_place_flag` | 0 | Automatic macro placement (already handled by floorplan) |
+| `macro_place_flag` | 0 | Enabled for the dedicated `macroPlacement` step |
 | `plot_flag` / `get_congestion_map` / `evaluate_pl` | 0 / 1 / 0 | Plotting / congestion-map export / placement evaluation |
 | `dump_global_place_solution_flag` / `dump_legalize_solution_flag` | 0 | Export intermediate solutions |
 

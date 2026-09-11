@@ -84,8 +84,8 @@ uv run ecc --help
 - 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`param`、`pdk`、`project`、`workspace`、`signoff`、`report` 都支持 `--plain`（`key=value`，便于脚本解析），缺省为人类可读 TEXT。`rpc serve` 和 `layout-image` 使用各自的协议。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。
 - 步骤名（step token）有三套写法，按场景区分：
-  - **展示名**（`ecc status` / `ecc log` / `ecc report step` 的输出与入参，统一小写/下划线）：`synthesis / lec / floorplan / placement / cts / legalization / timing_optimization / routing / filler / rcx / sta / lvs / postroutelec / drc / harden`；
-  - **持久化名**（`home/flow.json` 中的原始名；已有 workspace 上的 `--from`/`--only`/`--to` 必须用它，如 `place`、`CTS`、`Timing optimization`）：`Synthesis / lec / Floorplan / place / CTS / legalization / Timing optimization / route / filler / RCX / sta / lvs / postRouteLec / drc / Harden`；
+  - **展示名**（`ecc status` / `ecc log` / `ecc report step` 的输出与入参，统一小写/下划线）：`synthesis / lec / pre_floorplan / macro_placement / post_floorplan / placement / cts / legalization / timing_optimization / routing / filler / rcx / sta / lvs / postroutelec / drc / harden`；
+  - **持久化名**（`home/flow.json` 中的原始名；已有 workspace 上的 `--from`/`--only`/`--to` 必须用它，如 `place`、`CTS`、`Timing optimization`）：`Synthesis / lec / preFloorplan / macroPlacement / postFloorplan / place / CTS / legalization / Timing optimization / route / filler / RCX / sta / lvs / postRouteLec / drc / Harden`；
   - **新建范围时的别名**（首次 `--from A --to B` 建 workspace 会做别名归一化，两种拼法都接受）：如 `cts`↔`CTS`、`route`↔`routing`、`timingopt`↔`Timing optimization`、`postlec`↔`postRouteLec`。
   拼错时返回 `unknown_step` 并列出全部可用步骤名，照抄即可。
 
@@ -327,7 +327,7 @@ ecc run [OPTIONS]
   --plain           面向脚本的 key=value 输出
 ```
 
-新建或 `--overwrite` 的 workspace 会按以下流程执行：读 `ecc.toml` → 只解析入口步骤所需的设计文件以及 PDK/参数 → 预检所需工具 → 先写入 `project.json` 登记 → 在 `<project>/<workspace 名称>` 创建 workspace → 将声明的设计输入复制到 `origin/`、写入对应步骤配置并运行 flow。workspace 不会存放第二份项目输入清单。已有 workspace 按持久化 flow 续跑，不会改写已有输入或步骤配置。`rtl2gds` 是完整 15 步链（Synthesis→LEC（Yosys 等价性检查）→Floorplan→place→CTS→legalization→Timing optimization（sizer）→route→filler→RCX→sta→LVS→postRouteLec（Yosys 等价性检查）→DRC→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB）。
+新建或 `--overwrite` 的 workspace 会按以下流程执行：读 `ecc.toml` → 只解析入口步骤所需的设计文件以及 PDK/参数 → 预检所需工具 → 先写入 `project.json` 登记 → 在 `<project>/<workspace 名称>` 创建 workspace → 将声明的设计输入复制到 `origin/`、写入对应步骤配置并运行 flow。workspace 不会存放第二份项目输入清单。已有 workspace 按持久化 flow 续跑，不会改写已有输入或步骤配置。`rtl2gds` 是完整 17 步链（Synthesis→LEC（Yosys 等价性检查）→preFloorplan→macroPlacement→postFloorplan→place→CTS→legalization→Timing optimization（sizer）→route→filler→RCX→sta→LVS→postRouteLec（Yosys 等价性检查）→DRC→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB）。
 
 运行结束打印汇总（真实输出）：
 
@@ -383,7 +383,7 @@ ecc run --workspace cts-only --from cts --to cts      # 新建范围 workspace�
 ecc run --workspace cts-route --from cts --to routing # 同上；两端都接受别名
 ```
 
-新建范围 workspace 时只校验**入口步骤**所需的设计输入：Synthesis 要 `rtl`；LEC/postRouteLec 要 `netlist` + `golden_netlist`；Floorplan 要 `netlist`；物理步骤（place/CTS/legalization/timing optimization/route/filler/rcx/drc/lvs/harden）要 `def` + `netlist`；sta 还要 `spef`；`sdc` 声明了才校验。缺输入时按 `step_input_missing` 报错：
+新建范围 workspace 时只校验**入口步骤**所需的设计输入：Synthesis 要 `rtl`；LEC/postRouteLec 要 `netlist` + `golden_netlist`；preFloorplan 要 `netlist`；macroPlacement、postFloorplan 和其余物理步骤（place/CTS/legalization/timing optimization/route/filler/rcx/drc/lvs/harden）要 `def` + `netlist`；sta 还要 `spef`；`sdc` 声明了才校验。缺输入时按 `step_input_missing` 报错：
 
 ```console
 $ ecc run --from cts --to route          # 新建范围但缺 def/netlist
@@ -393,19 +393,19 @@ $ ecc run --from cts --to route          # 新建范围但缺 def/netlist
 rc=1
 ```
 
-例如，要复用已有 workspace `2` 的 Floorplan 产物，新建一个只跑 placement 到 routing 的 workspace，先把**匹配的一对** DEF 和门级网表声明为新 workspace 的入口输入，再创建范围 flow：
+例如，要复用已有 workspace `2` 的 post-floorplan 产物，新建一个只跑 placement 到 routing 的 workspace，先把**匹配的一对** DEF 和门级网表声明为新 workspace 的入口输入，再创建范围 flow：
 
 ```bash
 PROJECT=~/projects/benchmark/gcd
-SOURCE="$PROJECT/2/Floorplan_ecc/output"
+SOURCE="$PROJECT/2/postFloorplan_ecc/output"
 
-ecc project set design.def "$SOURCE/gcd_Floorplan.def.gz" --project "$PROJECT"
-ecc project set design.netlist "$SOURCE/gcd_Floorplan.v.gz" --project "$PROJECT"
+ecc project set design.def "$SOURCE/gcd_postFloorplan.def.gz" --project "$PROJECT"
+ecc project set design.netlist "$SOURCE/gcd_postFloorplan.v.gz" --project "$PROJECT"
 ecc run --project "$PROJECT" --workspace floorplan-2-place-route \
   --from placement --to routing
 ```
 
-`ecc run` 不提供 `--def` 或 `--netlist` 选项；范围入口从 `ecc.toml` 的 `design.def` / `design.netlist` 读取。这个例子会在 `project.json` 中登记 `floorplan-2-place-route`，将两个文件复制到新 workspace 的 `origin/`，并从 placement 开始执行至 routing（不重跑 Floorplan）。由于前两条命令会改动项目级 `ecc.toml`，它们也影响之后新建的 workspace；若原先未声明这些字段，可在创建完成后用 `ecc project unset design.def --project "$PROJECT"` 和 `ecc project unset design.netlist --project "$PROJECT"` 恢复项目默认入口。
+`ecc run` 不提供 `--def` 或 `--netlist` 选项；范围入口从 `ecc.toml` 的 `design.def` / `design.netlist` 读取。这个例子会在 `project.json` 中登记 `floorplan-2-place-route`，将两个文件复制到新 workspace 的 `origin/`，并从 placement 开始执行至 routing（不重跑 postFloorplan）。由于前两条命令会改动项目级 `ecc.toml`，它们也影响之后新建的 workspace；若原先未声明这些字段，可在创建完成后用 `ecc project unset design.def --project "$PROJECT"` 和 `ecc project unset design.netlist --project "$PROJECT"` 恢复项目默认入口。
 
 ### 5.2 workspace 模式（调试/复跑）
 
@@ -423,8 +423,8 @@ ecc run [--workspace NAME] [--resume | --from STEP [--to STEP] | --only STEP [--
 ```console
 $ ecc run --workspace default --from synthesis   # 持久化名是 "Synthesis"
 [error]
-  unknown_step unknown step 'synthesis'; available steps: Synthesis, lec, Floorplan,
-  place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
+  unknown_step unknown step 'synthesis'; available steps: Synthesis, lec, preFloorplan,
+  macroPlacement, postFloorplan, place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
   postRouteLec, drc, Harden
   workspace: /tmp/gcd/default
 ```
@@ -523,8 +523,12 @@ $ ecc status
       log: ecc log synthesis --workspace default
     lec (yosys_lec) success 0:0:1
       log: ecc log lec --workspace default
-    floorplan (ecc) success 0:0:1
-      log: ecc log floorplan --workspace default
+    pre_floorplan (ecc) success 0:0:1
+      log: ecc log pre_floorplan --workspace default
+    macro_placement (dreamplace) success 0:0:5
+      log: ecc log macro_placement --workspace default
+    post_floorplan (ecc) success 0:0:1
+      log: ecc log post_floorplan --workspace default
     placement (dreamplace) incomplete
       log: ecc log placement --workspace default
     cts (ecc) unstart
@@ -922,18 +926,20 @@ ecc report checklist --project gcd
   - `checklist`：`<step>/checklist.json`（v3 契约，缺失时回退 `home/checklist.json` 按步骤过滤）
 - `--section` 可重复指定，只输出选中的节；某节产物缺失时该节显示 `unavailable`
 
-step token 与 `ecc log` 同源（`synthesis/floorplan/placement/cts/...`），同时接受 flow 内部名（如 `Timing optimization`）与目录名变体（`timing_optimization`）；未知 token 返回 `unknown_step` 并列出可用值。
+step token 与 `ecc log` 同源（`synthesis/pre_floorplan/macro_placement/post_floorplan/placement/cts/...`），同时接受 flow 内部名（如 `Timing optimization`）与目录名变体（`timing_optimization`）；未知 token 返回 `unknown_step` 并列出可用值。
 
 ```console
 $ ecc report step --workspace default
 [report step]
   workspace : /tmp/gcd/default
-  steps     : 15
+  steps     : 17
 
   step                   tool         status    runtime  peak MB  metrics quality  checklist
   synthesis              yosys        success   0:0:17   1165.89  10      pass     ready
   lec                    yosys_lec    success   0:0:1    0.164    -       -        ready
-  floorplan              ecc          success   0:0:1    97.516   11      pass     ready
+  pre_floorplan          ecc          success   0:0:1    97.516   -       -        ready
+  macro_placement        dreamplace   success   0:0:5    97.516   -       -        ready
+  post_floorplan         ecc          success   0:0:1    97.516   11      pass     ready
   ...
   drc                    ecc          success   0:0:3    42.0     12      blocked  blocked (1 blocked)
 
@@ -1030,7 +1036,7 @@ ecc report qor --workspace baseline    # 两个 run 的 QoR 报告分别对比
 ecc report qor --workspace exp1
 
 # 已有现成综合网表时，也可以从中间步骤起建范围 workspace（入口输入要求见 §5.1）：
-ecc run --workspace pnr --from floorplan --to route
+ecc run --workspace pnr --from prefloorplan --to route
 ```
 
 `project.json` 生成后，项目级查看、签核和报告命令按已声明的 workspace 选择；只有一个活跃 workspace 时自动选中，多个活跃 workspace 时必须显式传 `--workspace NAME`（否则报 `workspace_required` 并列出可用名称）。不再使用的 workspace 可在 `project.json` 中把其 `status` 改为 `archived`，使其退出自动选择。

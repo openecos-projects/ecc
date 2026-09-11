@@ -16,7 +16,7 @@ The target process is the official [ICS55 PDK](https://github.com/openecos-proje
 graph LR
     A[Install ecc CLI<br/>+ PDK + Yosys] --> B[ecc init gcd<br/>create project, add RTL]
     B --> C[ecc doctor / check<br/>environment & config checks]
-    C --> D[ecc run --preset rtl2gds<br/>15-step flow]
+    C --> D[ecc run --preset rtl2gds<br/>17-step flow]
     D --> E[ecc status / log<br/>inspect results & logs]
     E --> F[ecc signoff export<br/>signoff tar.gz]
     E --> G[ecc report summary<br/>design summary]
@@ -254,7 +254,7 @@ rc=0
 
 ### 4.1 Start
 
-The `rtl2gds` preset is the full 15-step chain, running all the way through Harden (which produces the GDS + abstract LEF + timing LIB):
+The `rtl2gds` preset is the full 17-step chain, running all the way through Harden (which produces the GDS + abstract LEF + timing LIB):
 
 ```bash
 ecc run --preset rtl2gds
@@ -262,29 +262,31 @@ ecc run --preset rtl2gds
 
 (The generated `ecc.toml` already selects `rtl2gds`; `--preset` applies to this run only and is not written back.)
 
-In an interactive terminal the CLI renders live per-step progress and log tails; with output redirected to a file it runs silently and prints a summary at the end. The 15 `rtl2gds` steps are:
+In an interactive terminal the CLI renders live per-step progress and log tails; with output redirected to a file it runs silently and prints a summary at the end. The 17 `rtl2gds` steps are:
 
 | # | Step | Tool | What it does |
 |---|------|------|--------------|
 | 1 | synthesis | yosys | RTL synthesis and technology mapping (slang frontend reads SystemVerilog) |
 | 2 | lec | yosys_lec | Logic equivalence check: synthesis netlist vs its golden netlist |
-| 3 | floorplan | ecc | Floorplan: die/core regions, IO pin placement |
-| 4 | placement | dreamplace | Global placement |
-| 5 | cts | ecc | Clock tree synthesis (incl. fanout limits) |
-| 6 | legalization | dreamplace | Placement legalization |
-| 7 | timing optimization | sizer | Timing optimization (cell sizing) |
-| 8 | routing | ecc | Routing |
-| 9 | filler | ecc | Filler cell insertion |
-| 10 | rcx | ecc | Parasitic extraction (multi-corner SPEF) |
-| 11 | sta | ecc | Multi-corner static timing analysis |
-| 12 | lvs | ecc | Layout-vs-schematic check |
-| 13 | postroutelec | yosys_lec | Logic equivalence check: synthesis netlist vs post-route netlist |
-| 14 | drc | ecc | Design rule check |
-| 15 | harden | ecc | Hardened handoff: GDS + abstract LEF + timing LIB + layout snapshot |
+| 3 | pre_floorplan | ecc | Build the simple floorplan with automatic macro placement |
+| 4 | macro_placement | dreamplace | Run macro-only placement; this is the handoff checkpoint before the macro-location file is consumed |
+| 5 | post_floorplan | ecc | Read the macro-location file; create tracks, IO pins, tap cells, PDN, and clock-net setup |
+| 6 | placement | dreamplace | Global placement |
+| 7 | cts | ecc | Clock tree synthesis (incl. fanout limits) |
+| 8 | legalization | dreamplace | Placement legalization |
+| 9 | timing optimization | sizer | Timing optimization (cell sizing) |
+| 10 | routing | ecc | Routing |
+| 11 | filler | ecc | Filler cell insertion |
+| 12 | rcx | ecc | Parasitic extraction (multi-corner SPEF) |
+| 13 | sta | ecc | Multi-corner static timing analysis |
+| 14 | lvs | ecc | Layout-vs-schematic check |
+| 15 | postroutelec | yosys_lec | Logic equivalence check: synthesis netlist vs post-route netlist |
+| 16 | drc | ecc | Design rule check |
+| 17 | harden | ecc | Hardened handoff: GDS + abstract LEF + timing LIB + layout snapshot |
 
 ```mermaid
 graph LR
-    A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Floorplan] --> D[Placement<br/>dreamplace]
+    A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> D[Placement<br/>dreamplace]
     D --> E[CTS] --> F[Legalization<br/>dreamplace] --> T[Timing Opt<br/>sizer] --> G[Routing]
     G --> J[Filler] --> K[RCX] --> L[STA] --> I[LVS] --> N[LEC<br/>yosys_lec] --> H[DRC] --> M[Harden<br/>GDS/LEF/LIB]
 ```
@@ -313,8 +315,12 @@ $ ecc status
       log: ecc log synthesis --workspace default
     lec (yosys_lec) success 0:0:1
       log: ecc log lec --workspace default
-    floorplan (ecc) success 0:0:1
-      log: ecc log floorplan --workspace default
+    pre_floorplan (ecc) success 0:0:1
+      log: ecc log pre_floorplan --workspace default
+    macro_placement (dreamplace) success 0:0:5
+      log: ecc log macro_placement --workspace default
+    post_floorplan (ecc) success 0:0:1
+      log: ecc log post_floorplan --workspace default
     placement (dreamplace) ongoing 0:0:40
       log: ecc log placement --workspace default
     cts (ecc) unstart
@@ -339,7 +345,9 @@ $ ecc status
     synthesis (yosys) success 0:0:17
       log: ecc log synthesis --workspace default
     lec (yosys_lec) success 0:0:1
-    floorplan (ecc) success 0:0:1
+    pre_floorplan (ecc) success 0:0:1
+    macro_placement (dreamplace) success 0:0:5
+    post_floorplan (ecc) success 0:0:1
     placement (dreamplace) success 0:0:47
     cts (ecc) success 0:0:19
     legalization (dreamplace) success 0:0:1
@@ -380,7 +388,9 @@ default/
 ├── config/             # configs actually in effect per step (view: ecc config <step>)
 ├── Synthesis_yosys/    # each step dir is organized into log/ script/ output/ report/ ...
 ├── lec_yosys_lec/       # synthesis-level LEC equivalence check
-├── Floorplan_ecc/
+├── preFloorplan_ecc/
+├── macroPlacement_dreamplace/
+├── postFloorplan_ecc/
 ├── ...
 ├── postRouteLec_yosys_lec/   # LEC equivalence check (output/<design>_postRouteLec_result.json)
 ├── Harden_ecc/
@@ -650,24 +660,24 @@ ecc run --workspace default --only place --force   # rerun this step even if it 
 
 ```bash
 ecc run --workspace cts-only --from cts --to cts     # a workspace that runs only the CTS step
-ecc run --workspace pnr --from floorplan --to route  # floorplan through routing
+ecc run --workspace pnr --from prefloorplan --to route  # pre-floorplan through routing
 ```
 
-**Complete example: reuse existing Floorplan outputs.** To create a placement-through-routing workspace from the Floorplan output of existing workspace `2`, do not pass the DEF directly to `ecc run`. The placement entry requires matching `design.def` and `design.netlist`; write those project declarations first, then create the new range:
+**Complete example: reuse existing post-floorplan outputs.** To create a placement-through-routing workspace from the post-floorplan output of existing workspace `2`, do not pass the DEF directly to `ecc run`. The placement entry requires matching `design.def` and `design.netlist`; write those project declarations first, then create the new range:
 
 ```bash
 PROJECT=~/projects/benchmark/gcd
-SOURCE="$PROJECT/2/Floorplan_ecc/output"
+SOURCE="$PROJECT/2/postFloorplan_ecc/output"
 
-ecc project set design.def "$SOURCE/gcd_Floorplan.def.gz" --project "$PROJECT"
-ecc project set design.netlist "$SOURCE/gcd_Floorplan.v.gz" --project "$PROJECT"
+ecc project set design.def "$SOURCE/gcd_postFloorplan.def.gz" --project "$PROJECT"
+ecc project set design.netlist "$SOURCE/gcd_postFloorplan.v.gz" --project "$PROJECT"
 ecc run --project "$PROJECT" --workspace floorplan-2-place-route \
   --from placement --to routing
 ```
 
-This copies the DEF/netlist into the new workspace's `origin/`, runs placement through routing, and does not rerun Floorplan; `placement` and `routing` are accepted aliases when creating a range. `ecc project set` changes project-level `ecc.toml`, which also affects later fresh workspaces. If the two fields were previously unset, restore the original project entry after creation with `ecc project unset design.def --project "$PROJECT"` and `ecc project unset design.netlist --project "$PROJECT"`.
+This copies the DEF/netlist into the new workspace's `origin/`, runs placement through routing, and does not rerun post-floorplan; `placement` and `routing` are accepted aliases when creating a range. `ecc project set` changes project-level `ecc.toml`, which also affects later fresh workspaces. If the two fields were previously unset, restore the original project entry after creation with `ecc project unset design.def --project "$PROJECT"` and `ecc project unset design.netlist --project "$PROJECT"`.
 
-The declared entry files are validated against the first step's requirements: `rtl` for Synthesis; `netlist` plus `golden_netlist` for LEC; `netlist` for Floorplan; `def` plus `netlist` for the physical steps (place/CTS/legalization/timing optimization/route/filler/rcx/drc/lvs/harden); and `def`, `netlist`, and `spef` for STA. `sdc` is optional. Anything missing fails with a clear error:
+The declared entry files are validated against the first step's requirements: `rtl` for Synthesis; `netlist` plus `golden_netlist` for LEC; `netlist` for pre-floorplan; `def` plus `netlist` for macro placement, post-floorplan, and the remaining physical steps (place/CTS/legalization/timing optimization/route/filler/rcx/drc/lvs/harden); and `def`, `netlist`, and `spef` for STA. `sdc` is optional. Anything missing fails with a clear error:
 
 ```console
 $ ecc run --from cts --to route
@@ -682,8 +692,8 @@ rc=1
 > ```console
 > $ ecc run --workspace default --only placemen   # typo: neither a persisted name nor an alias
 > [error]
->   unknown_step unknown step 'placemen'; available steps: Synthesis, lec, Floorplan,
->   place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
+>   unknown_step unknown step 'placemen'; available steps: Synthesis, lec, preFloorplan,
+>   macroPlacement, postFloorplan, place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
 >   postRouteLec, drc, Harden
 > ```
 
@@ -716,7 +726,7 @@ ecc config --plain      # project-level config (key=value + resolved absolute pa
 ## 8. Next Steps
 
 - Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist) for multi-file designs;
-- Preset differences: `rtl2gds` (the complete 15-step synthesis-to-Harden chain, including synthesis-level LEC), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps);
+- Preset differences: `rtl2gds` (the complete 17-step synthesis-to-Harden chain, including synthesis-level LEC), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps);
 - Full command details in the **[ECC CLI User Guide](ecc-user-guide.en.md)** (`ecc doc ug`); extending the CLI is covered in [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli);
 - Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/ics55flow.py).
 

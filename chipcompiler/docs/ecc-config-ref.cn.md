@@ -228,13 +228,13 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ## 4. floorplan（ecc-tools）
 
-配置 `floorplan_ecc.json`，按功能分 6 组。步骤内部子阶段：load data → init floorplan → create tracks → place io pins → tap cell → PDN → set clock net → save data → analysis。
+配置 `floorplan_ecc.json` 由 `preFloorplan` 和 `postFloorplan` 共享。`preFloorplan` 执行 load data → init simple floorplan → save data，并使用自动宏摆放；`macroPlacement` 执行仅宏单元摆放并形成交接检查点；`postFloorplan` 以 `file` 模式读取 `config/macro_localtion.txt`，再执行 load data → create tracks → place IO pins → tap cells → PDN → set clock net → save data → analysis。
 
 ### ifp（iFP 布图引擎）
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `temp_directory_path` | 每步生成 → `Floorplan_ecc/data/fp` | iFP 中间数据目录 |
+| `temp_directory_path` | 每步生成 → `preFloorplan_ecc/data/fp` 或 `postFloorplan_ecc/data/fp` | iFP 中间数据目录 |
 | `thread_number` | 16 | 并行线程数 |
 
 ### macro_placer（宏摆放）
@@ -285,9 +285,9 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `stripe`（MET4/MET5） | 宽 1.0、间距 16.0、偏移 0.5 | 电源条带：层/宽度/间距（pitch）/偏移（µm） |
 | `connect_layers` | MET1–MET4、MET4–MET5 | 相邻层电源过孔连接对 |
 
-## 5. placement / legalization（DreamPlace）
+## 5. macro placement / placement / legalization（DreamPlace）
 
-两者共用 `config/dreamplace_ecc.json`；每次步骤运行前重写 `def_input`（placement 读 floorplan 输出，legalization 读 CTS 输出）、`verilog_input`、`result_dir`（分别为 `place_dreamplace/data/pl`、`legalization_dreamplace/data/pl`）。参数即上游 DreamPlace 的 JSON 参数集，分组解释如下（默认值 = 模板值；`*` = 用户参数映射点）。
+三步共用 `config/dreamplace_ecc.json`；每次步骤运行前重写 `def_input`、`verilog_input`、`result_dir`。`macroPlacement` 使用 `macroPlacement_dreamplace/data/macro`；placement 读取 post-floorplan 输出并使用 `place_dreamplace/data/pl`；legalization 读取 CTS 输出并使用 `legalization_dreamplace/data/pl`。参数即上游 DreamPlace 的 JSON 参数集，分组解释如下（默认值 = 模板值；`*` = 用户参数映射点）。
 
 ### 输入输出
 
@@ -311,7 +311,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `enable_fillers` | 1 | 布局阶段允许虚拟 filler 占位（密度计算） |
 | `routability_opt_flag` | 1 `*place.routability_opt` | 绕线拥塞驱动的布局优化 |
 | `timing_opt_flag` / `timing_eval_flag` | 0 | 时序驱动布局（本流程未启用，需 sizer/STA 配合） |
-| `macro_place_flag` | 0 | 宏单元自动摆放（floorplan 已处理） |
+| `macro_place_flag` | 0 | 专用 `macroPlacement` 步骤会启用该开关 |
 | `plot_flag` / `get_congestion_map` / `evaluate_pl` | 0 / 1 / 0 | 出图 / 拥塞图导出 / 布局评估 |
 | `dump_global_place_solution_flag` / `dump_legalize_solution_flag` | 0 | 导出中间解 |
 
