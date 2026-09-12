@@ -40,6 +40,7 @@ def normalize_flow_step(value: str | StepEnum) -> str:
         "synth": StepEnum.SYNTHESIS.value,
         "synthesis": StepEnum.SYNTHESIS.value,
         "prefloorplan": StepEnum.PRE_FLOORPLAN.value,
+        "floorplan": StepEnum.PRE_FLOORPLAN.value,
         "macroplace": StepEnum.MACRO_PLACEMENT.value,
         "macroplacement": StepEnum.MACRO_PLACEMENT.value,
         "postfloorplan": StepEnum.POST_FLOORPLAN.value,

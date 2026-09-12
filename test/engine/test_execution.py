@@ -34,7 +34,8 @@ def test_execution_plan_dispatches_full_flow_and_single_step():
         state=StateEnum.Success.value,
         step_id="Floorplan",
     )
-    assert calls == [("flow", False, observer), ("Floorplan", True, observer)]
+    assert [call[:2] for call in calls] == [("flow", False), ("Floorplan", True)]
+    assert all(call[2].delegate is observer for call in calls)
 
 
 def test_execution_failure_keeps_main_blocking_semantics():
@@ -75,3 +76,24 @@ def test_default_execution_observer_commits_completed_steps(monkeypatch, tmp_pat
 
     assert result.succeeded
     assert committed == [("synthesis", StateEnum.Success)]
+
+
+def test_execution_reports_ordered_steps_and_completed_default_is_noop():
+    calls = []
+
+    class Flow:
+        workspace = SimpleNamespace(
+            flow=SimpleNamespace(data={"steps": [{"name": "synthesis", "state": "Success"}]})
+        )
+
+        def run_steps(self, **_kwargs):
+            calls.append("run")
+            return True
+
+    result = execute(Flow(), ExecutionPlan(intent="run"))
+
+    assert result.succeeded
+    assert result.no_op
+    assert result.executed_steps == ()
+    assert result.failed_step is None
+    assert calls == []

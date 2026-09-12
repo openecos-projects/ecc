@@ -177,29 +177,88 @@ def _invalidate_suffix(flow: "EngineFlow", index: int, last_index: int | None = 
 
 
 def _run_selected(flow: "EngineFlow", selected: list[tuple[WorkspaceStep, Path]]) -> StepRunResult:
-    """Run the selected steps in order, each with a fresh output directory."""
+    """Run selected steps through the shared Engine execution contract."""
     # a new selection must not inherit a DB positioned by an earlier run
     if flow.engine_db is not None:
         flow.engine_db.close()
 
-    executed = []
-    for workspace_step, output_dir in selected:
-        flow.workspace.logger.log_section(
-            f"{workspace_step.tool} - begin step - {workspace_step.name}"
-        )
-        _reset_output_dir(output_dir)
-        _redirect_to_step_log(workspace_step)
-        flow.init_db_engine_for_step(workspace_step)
-        state = flow.run_step(workspace_step, rerun=True)
-        log_flow(workspace=flow.workspace)
-        flow.workspace.logger.log_section(
-            f"{workspace_step.tool} - end step - {workspace_step.name}"
-        )
-        if state is not StateEnum.Success:
-            # A persisted Incomplete blocks the rerun.
-            return StepRunResult(ok=False, executed=tuple(executed), failed=workspace_step.name)
-        executed.append(workspace_step.name)
-    return StepRunResult(ok=True, executed=tuple(executed))
+    output_dirs = {workspace_step.name: output_dir for workspace_step, output_dir in selected}
+
+    class PreparedFlow:
+        workspace = flow.workspace
+
+        def get_workspace_step(self, step_id):
+            return flow.get_workspace_step(step_id)
+
+        def run_step(self, workspace_step, *, rerun=False, observer=None):
+            output_dir = output_dirs[workspace_step.name]
+            flow.workspace.logger.log_section(
+                f"{workspace_step.tool} - begin step - {workspace_step.name}"
+            )
+            _reset_output_dir(output_dir)
+            _redirect_to_step_log(workspace_step)
+            flow.init_db_engine_for_step(workspace_step)
+            if _callable_accepts_keyword(flow.run_step, "observer"):
+                state = flow.run_step(workspace_step, rerun=rerun, observer=observer)
+            else:
+                state = flow.run_step(workspace_step, rerun=rerun)
+            log_flow(workspace=flow.workspace)
+            flow.workspace.logger.log_section(
+                f"{workspace_step.tool} - end step - {workspace_step.name}"
+            )
+            return state
+
+    from chipcompiler.engine.execution import ExecutionPlan, execute
+
+    result = execute(
+        PreparedFlow(),
+        ExecutionPlan(intent="rerun", step_ids=tuple(output_dirs)),
+    )
+    executed = result.executed_steps or _successful_prefix(
+        flow,
+        selected,
+        succeeded=result.succeeded,
+    )
+    return StepRunResult(
+        ok=result.succeeded,
+        executed=executed,
+        failed=result.failed_step
+        or (
+            None
+            if result.succeeded
+            else tuple(output_dirs)[min(len(executed), len(output_dirs) - 1)]
+        ),
+    )
+
+
+def _callable_accepts_keyword(callback, keyword: str) -> bool:
+    import inspect
+
+    try:
+        parameters = inspect.signature(callback).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(
+        parameter.name == keyword or parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters
+    )
+
+
+def _successful_prefix(flow, selected, *, succeeded: bool) -> tuple[str, ...]:
+    if succeeded:
+        return tuple(step.name for step, _output_dir in selected)
+    persisted = getattr(getattr(flow.workspace, "flow", None), "data", {})
+    states = {
+        str(step.get("name")): step.get("state")
+        for step in persisted.get("steps", [])
+        if isinstance(step, dict)
+    }
+    completed = []
+    for step, _output_dir in selected:
+        if states.get(step.name) != StateEnum.Success.value:
+            break
+        completed.append(step.name)
+    return tuple(completed)
 
 
 def _validated_output_dirs(workspace: Workspace, steps: list[WorkspaceStep]) -> list[Path]:

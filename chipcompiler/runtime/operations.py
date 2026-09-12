@@ -14,7 +14,9 @@ _MAX_FINAL_LOG_BYTES = 64 * 1024
 _RENDER_ACK_RETRY_SECONDS = 5.0
 _RENDER_ACK_PAUSE_SECONDS = 30.0
 _RENDER_ACK_ABORT_SECONDS = 300.0
-_TERMINAL_OPERATION_STATES = frozenset({"succeeded", "failed", "cancelled"})
+_TERMINAL_OPERATION_STATES = frozenset({"succeeded", "failed", "cancelled", "interrupted"})
+_MAX_TERMINAL_OPERATIONS = 256
+_LEDGER_SCHEMA_VERSION = 1
 
 
 @dataclass
@@ -84,6 +86,7 @@ class RuntimeOperationManager:
         self._step_log_tails: dict[str, _StepLogTail] = {}
         self._runtime_instance_id = uuid4().hex
         self._workspace_sequences: dict[str, int] = {}
+        self._ledger_paths: dict[str, Path] = {}
 
     def set_publisher(self, publisher: Callable[[dict[str, Any]], None] | None) -> None:
         with self._lock:
@@ -99,6 +102,7 @@ class RuntimeOperationManager:
         step: str,
         idempotency_key: str,
         runner: Callable[[RuntimeFlowObserver], dict[str, Any]],
+        workspace_revision: int = 0,
     ) -> dict[str, Any]:
         with self._lock:
             if idempotency_key:
@@ -126,11 +130,13 @@ class RuntimeOperationManager:
                 rerun=rerun,
                 step=step,
                 idempotency_key=idempotency_key,
+                workspace_revision=workspace_revision,
             )
             self._operations[operation.operation_id] = operation
             self._active_by_workspace[workspace_id] = operation.operation_id
             if idempotency_key:
                 self._idempotency[(workspace_id, idempotency_key)] = operation.operation_id
+            self._persist_workspace_locked(workspace_id)
             queued_event = self._new_event_locked(operation, "operation.queued", {})
 
         self._publish(queued_event)
@@ -154,6 +160,55 @@ class RuntimeOperationManager:
         with self._lock:
             operation = self._operations.get(operation_id)
             return operation is not None and operation.state not in _TERMINAL_OPERATION_STATES
+
+    def has_active_workspace(self, workspace_id: str) -> bool:
+        with self._lock:
+            operation_id = self._active_by_workspace.get(workspace_id)
+            if operation_id is None:
+                return False
+            operation = self._operations.get(operation_id)
+            return operation is not None and operation.state not in _TERMINAL_OPERATION_STATES
+
+    def load_workspace_ledger(self, workspace_id: str, ledger_path: str | Path) -> list[str]:
+        """Restore the bounded execution ledger after a Runtime restart."""
+        from chipcompiler.utility import JsonReadError, json_read_strict
+
+        path = Path(ledger_path).expanduser().resolve()
+        with self._lock:
+            self._ledger_paths[workspace_id] = path
+            try:
+                payload = json_read_strict(path)
+            except (OSError, JsonReadError):
+                return []
+            entries = payload.get("operations", []) if isinstance(payload, dict) else payload
+            if not isinstance(entries, list):
+                return []
+            restored: list[str] = []
+            for entry in entries:
+                if not isinstance(entry, dict) or entry.get("workspaceId") != workspace_id:
+                    continue
+                operation = _operation_from_payload(entry, self._runtime_instance_id)
+                if operation is None:
+                    continue
+                if operation.state not in _TERMINAL_OPERATION_STATES:
+                    operation.state = "interrupted"
+                    operation.error = {
+                        "code": "interrupted",
+                        "message": "Runtime process ended before the Operation completed",
+                    }
+                    operation.updated_at = time.time()
+                self._operations[operation.operation_id] = operation
+                if operation.idempotency_key:
+                    self._idempotency[(workspace_id, operation.idempotency_key)] = (
+                        operation.operation_id
+                    )
+                self._workspace_sequences[workspace_id] = max(
+                    self._workspace_sequences.get(workspace_id, 0), operation.sequence
+                )
+                restored.append(operation.operation_id)
+            self._prune_terminal_locked()
+            self._persist_workspace_locked(workspace_id)
+            return restored
 
     def workspace_snapshot(self, workspace_id: str) -> dict[str, Any]:
         with self._lock:
@@ -222,6 +277,7 @@ class RuntimeOperationManager:
             operation.render_wait_started_at = None
             operation.last_render_ack_at = time.time()
             operation.updated_at = time.time()
+            self._persist_workspace_locked(operation.workspace_id)
             self._render_gate.notify_all()
             return {
                 "accepted": True,
@@ -239,6 +295,7 @@ class RuntimeOperationManager:
                 return {"accepted": False, "operationId": operation_id, "state": operation.state}
             operation.cancel_requested = True
             operation.updated_at = time.time()
+            self._persist_workspace_locked(operation.workspace_id)
             event = self._new_event_locked(operation, "operation.cancel_requested", {})
             self._render_gate.notify_all()
         self._publish(event)
@@ -286,6 +343,8 @@ class RuntimeOperationManager:
                         "operation.completed",
                         {"result": result},
                     )
+                    self._prune_terminal_locked()
+                    self._persist_workspace_locked(operation.workspace_id)
             except RuntimeOperationCancelled as exc:
                 with self._lock:
                     operation = self._operations[operation_id]
@@ -305,6 +364,8 @@ class RuntimeOperationManager:
                         event_type,
                         {"error": operation.error},
                     )
+                    self._prune_terminal_locked()
+                    self._persist_workspace_locked(operation.workspace_id)
             except Exception as exc:
                 with self._lock:
                     operation = self._operations[operation_id]
@@ -330,6 +391,8 @@ class RuntimeOperationManager:
                             }
                         )
                     event = self._new_event_locked(operation, event_type, payload)
+                    self._prune_terminal_locked()
+                    self._persist_workspace_locked(operation.workspace_id)
             self._publish(event)
         finally:
             try:
@@ -365,6 +428,7 @@ class RuntimeOperationManager:
             )
             if log_tail is not None:
                 self._step_log_tails[operation_id] = log_tail
+            self._persist_workspace_locked(operation.workspace_id)
         self._publish(event)
         if log_tail is not None:
             thread = threading.Thread(
@@ -445,6 +509,7 @@ class RuntimeOperationManager:
                     operation.render_retry_count = 0
                     operation.render_wait_started_at = time.monotonic()
                     operation.state = "waiting_for_gui_sync"
+            self._persist_workspace_locked(operation.workspace_id)
         self._publish(event)
 
     def subflow_stage(
@@ -470,6 +535,7 @@ class RuntimeOperationManager:
                     "tool": tool,
                 },
             )
+            self._persist_workspace_locked(operation.workspace_id)
         self._publish(event)
 
     def step_skipped(self, operation_id: str, workspace_step: Any) -> None:
@@ -642,6 +708,45 @@ class RuntimeOperationManager:
             "payload": payload,
         }
 
+    def _prune_terminal_locked(self) -> None:
+        terminal = [
+            operation
+            for operation in self._operations.values()
+            if operation.state in _TERMINAL_OPERATION_STATES
+        ]
+        if len(terminal) <= _MAX_TERMINAL_OPERATIONS:
+            return
+        terminal.sort(key=lambda operation: (operation.updated_at, operation.operation_id))
+        removed = terminal[: len(terminal) - _MAX_TERMINAL_OPERATIONS]
+        removed_ids = {operation.operation_id for operation in removed}
+        for operation_id in removed_ids:
+            self._operations.pop(operation_id, None)
+        self._idempotency = {
+            key: operation_id
+            for key, operation_id in self._idempotency.items()
+            if operation_id not in removed_ids
+        }
+
+    def _persist_workspace_locked(self, workspace_id: str) -> None:
+        path = self._ledger_paths.get(workspace_id)
+        if path is None:
+            return
+        from chipcompiler.utility import json_write
+
+        operations = [
+            self._operation_payload(operation)
+            for operation in self._operations.values()
+            if operation.workspace_id == workspace_id
+        ]
+        json_write(
+            path,
+            {
+                "schemaVersion": _LEDGER_SCHEMA_VERSION,
+                "workspaceId": workspace_id,
+                "operations": operations,
+            },
+        )
+
     @staticmethod
     def _operation_payload(operation: RuntimeOperation) -> dict[str, Any]:
         return {
@@ -653,6 +758,7 @@ class RuntimeOperationManager:
             "origin": operation.origin,
             "rerun": operation.rerun,
             "step": operation.step,
+            "idempotencyKey": operation.idempotency_key,
             "state": operation.state,
             "currentStep": operation.current_step,
             "currentTool": operation.current_tool,
@@ -670,6 +776,7 @@ class RuntimeOperationManager:
             "shutdownBarrier": operation.state not in _TERMINAL_OPERATION_STATES,
             "createdAt": operation.created_at,
             "updatedAt": operation.updated_at,
+            "sequence": operation.sequence,
         }
 
     def _publish(self, event: dict[str, Any]) -> None:
@@ -761,3 +868,55 @@ def _step_log_tail_for(
         tool=tool,
         cursor=cursor,
     )
+
+
+def _operation_from_payload(
+    payload: dict[str, Any], runtime_instance_id: str
+) -> RuntimeOperation | None:
+    operation_id = payload.get("operationId")
+    run_session_id = payload.get("runSessionId")
+    workspace_id = payload.get("workspaceId")
+    kind = payload.get("kind")
+    origin = payload.get("origin")
+    if not all(
+        isinstance(value, str) and value
+        for value in (operation_id, run_session_id, workspace_id, kind, origin)
+    ):
+        return None
+    return RuntimeOperation(
+        operation_id=operation_id,
+        run_session_id=run_session_id,
+        runtime_instance_id=runtime_instance_id,
+        workspace_id=workspace_id,
+        kind=kind,
+        origin=origin,
+        rerun=bool(payload.get("rerun", False)),
+        step=str(payload.get("step", "")),
+        idempotency_key=str(payload.get("idempotencyKey", "")),
+        state=str(payload.get("state", "interrupted")),
+        current_step=str(payload.get("currentStep", "")),
+        current_tool=str(payload.get("currentTool", "")),
+        error=payload.get("error") if isinstance(payload.get("error"), dict) else None,
+        result=payload.get("result") if isinstance(payload.get("result"), dict) else None,
+        created_at=_number(payload.get("createdAt")),
+        updated_at=_number(payload.get("updatedAt")),
+        sequence=int(payload.get("sequence", 0) or 0),
+        workspace_revision=int(payload.get("workspaceRevision", 0) or 0),
+        render_sync_state=str(payload.get("renderSyncState", "idle")),
+        render_retry_count=int(payload.get("renderRetryCount", 0) or 0),
+        last_render_ack_at=_optional_number(payload.get("lastRenderAckAt")),
+        cancel_requested=bool(payload.get("cancelRequested", False)),
+        interruptibility=str(payload.get("interruptibility", "deferred")),
+    )
+
+
+def _number(value: Any) -> float:
+    return (
+        float(value)
+        if isinstance(value, (int, float)) and not isinstance(value, bool)
+        else time.time()
+    )
+
+
+def _optional_number(value: Any) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None

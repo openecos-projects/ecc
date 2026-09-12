@@ -33,7 +33,6 @@ migrating) the workspace; it additionally returns ``pending_mutation``
 when the flow is compatible but an append/adopt is due.
 """
 
-import fcntl
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -123,15 +122,10 @@ def _persisted_flow_data(workspace_dir: Path, json_read) -> dict:
 
 @contextmanager
 def _workspace_lock(workspace_dir: Path):
-    # The lock lives NEXT TO the workspace (never inside it): an overwrite
-    # deleting the tree cannot invalidate the lock's inode, so a waiter
-    # always serializes against the run that replaces the directory.
-    lock_path = workspace_dir.parent / f"{workspace_dir.name}.lock"
-    workspace_dir.parent.mkdir(parents=True, exist_ok=True)
-    with open(lock_path, "a") as lock_file:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+    from chipcompiler.utility.workspace_lock import workspace_lock
+
+    with workspace_lock(workspace_dir):
         yield
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def resolve_target_section(project_flow: dict | None, workspace_flow: dict | None) -> dict:

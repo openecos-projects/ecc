@@ -309,22 +309,12 @@ def _validate_parameter_applicability(
     flow_steps: set[str],
     issues: list[dict[str, Any]],
 ) -> None:
-    normalized_steps = {step.lower() for step in flow_steps}
-    aliases = {
-        "synthesis": "synth",
-        "floorplan": "floor",
-        "fixfanout": "fanout",
-        "placement": "place",
-        "routing": "route",
-    }
-    normalized_steps |= {aliases.get(step, step) for step in normalized_steps}
     for schema in list_schemas():
         if schema.param not in explicit:
             continue
         if schema.applies == "all":
             continue
-        applies = aliases.get(schema.applies.lower(), schema.applies.lower())
-        if flow_steps and applies not in normalized_steps:
+        if flow_steps and not _parameter_applies_to_flow(schema.applies, flow_steps):
             issues.append(
                 _issue(
                     "inapplicable_parameter",
@@ -335,16 +325,28 @@ def _validate_parameter_applicability(
 
 
 def _effective_parameter_values(resolved, steps: set[str]) -> dict[str, object]:
-    available = {normalize_flow_step(step).casefold() for step in steps}
     return {
         parameter.param: deepcopy(parameter.value)
         for parameter in resolved
         if parameter.schema.pdk_target is None
         and (
             parameter.schema.applies == "all"
-            or normalize_flow_step(parameter.schema.applies).casefold() in available
+            or _parameter_applies_to_flow(parameter.schema.applies, steps)
         )
     }
+
+
+def _parameter_applies_to_flow(applies: str, steps: set[str]) -> bool:
+    normalized = {normalize_flow_step(step).casefold() for step in steps}
+    aliases = {
+        "synthesis": {"synthesis"},
+        "floorplan": {"prefloorplan", "macroplacement", "postfloorplan"},
+        "placement": {"placement", "place", "macroplacement"},
+        "routing": {"routing", "route"},
+        "fixfanout": {"fixfanout"},
+    }
+    candidates = aliases.get(applies.casefold(), {normalize_flow_step(applies).casefold()})
+    return bool(normalized & candidates)
 
 
 def _refs(

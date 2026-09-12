@@ -476,6 +476,10 @@ def execute_fresh_run(
             # The replacement is fully constructed and verified: commit it.
             # The previous workspace's backup is obsolete, the new tree owns
             # the target, and later failures are a normal failed run.
+            from chipcompiler.engine.snapshot import create_engineering_snapshot
+
+            if getattr(workspace, "directory", None):
+                create_engineering_snapshot(workspace)
             commit_replacement()
 
             if workspace_registered and execute_flow:
@@ -504,7 +508,9 @@ def execute_fresh_run(
             if should_enable_run_progress(ctx, sys.stderr):
                 flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
             else:
-                flow_ok = engine_flow.run_steps()
+                from chipcompiler.engine import ExecutionPlan, execute
+
+                flow_ok = execute(engine_flow, ExecutionPlan(intent="run")).succeeded
 
             if not flow_ok:
                 if workspace_registered:

@@ -11,6 +11,9 @@ class WorkspaceSession:
     workspace_id: str
     directory: Path
     workspace: Any
+    workspace_revision: int = 0
+    execution_readiness: dict[str, Any] = field(default_factory=lambda: {"ready": True})
+    workspace_bindings: dict[str, Any] | None = None
     db_handle: Any = None
     layout_edit_session: "LayoutEditSession | None" = None
     mutation_lock: threading.Lock = field(default_factory=threading.Lock)
@@ -38,6 +41,7 @@ class LayoutEditSession:
     requires_verilog: bool = False
     used_floorplan_editor: bool = False
     validation_diagnostics: list[dict[str, Any]] = field(default_factory=list)
+    ownership_lock: Any = None
 
 
 class WorkspaceSessionNotFound(KeyError):
@@ -58,22 +62,54 @@ class WorkspaceSessionRegistry:
         self._db_releaser = db_releaser
         self._lock = threading.Lock()
 
-    def create_session(self, directory: str | Path, *, workspace: Any) -> WorkspaceSession:
+    def create_session(
+        self,
+        directory: str | Path,
+        *,
+        workspace: Any,
+        workspace_id: str | None = None,
+        workspace_revision: int = 0,
+        execution_readiness: dict[str, Any] | None = None,
+        workspace_bindings: dict[str, Any] | None = None,
+    ) -> WorkspaceSession:
         resolved_directory = Path(directory).resolve()
         with self._lock:
             existing_id = self._sessions_by_directory.get(resolved_directory)
             if existing_id is not None:
                 self._remove_session(existing_id)
-            return self._create_session(resolved_directory, workspace=workspace)
+            return self._create_session(
+                resolved_directory,
+                workspace=workspace,
+                workspace_id=workspace_id,
+                workspace_revision=workspace_revision,
+                execution_readiness=execution_readiness,
+                workspace_bindings=workspace_bindings,
+            )
 
-    def open_session(self, directory: str | Path, *, workspace: Any) -> WorkspaceSession:
+    def open_session(
+        self,
+        directory: str | Path,
+        *,
+        workspace: Any,
+        workspace_id: str | None = None,
+        workspace_revision: int = 0,
+        execution_readiness: dict[str, Any] | None = None,
+        workspace_bindings: dict[str, Any] | None = None,
+    ) -> WorkspaceSession:
         resolved_directory = Path(directory).resolve()
         with self._lock:
             existing_id = self._sessions_by_directory.get(resolved_directory)
             if existing_id is not None:
                 return self._sessions[existing_id]
 
-            return self._create_session(resolved_directory, workspace=workspace)
+            return self._create_session(
+                resolved_directory,
+                workspace=workspace,
+                workspace_id=workspace_id,
+                workspace_revision=workspace_revision,
+                execution_readiness=execution_readiness,
+                workspace_bindings=workspace_bindings,
+            )
 
     def get_session(self, workspace_id: str) -> WorkspaceSession:
         try:
@@ -96,13 +132,26 @@ class WorkspaceSessionRegistry:
     def release_session_db(self, session: WorkspaceSession) -> bool:
         return self._release_session_db(session)
 
-    def _create_session(self, directory: Path, *, workspace: Any) -> WorkspaceSession:
-        workspace_id = f"workspace-{self._next_id}"
-        self._next_id += 1
+    def _create_session(
+        self,
+        directory: Path,
+        *,
+        workspace: Any,
+        workspace_id: str | None,
+        workspace_revision: int,
+        execution_readiness: dict[str, Any] | None,
+        workspace_bindings: dict[str, Any] | None,
+    ) -> WorkspaceSession:
+        if workspace_id is None:
+            workspace_id = f"workspace-{self._next_id}"
+            self._next_id += 1
         session = WorkspaceSession(
             workspace_id=workspace_id,
             directory=directory,
             workspace=workspace,
+            workspace_revision=workspace_revision,
+            execution_readiness=execution_readiness or {"ready": True},
+            workspace_bindings=workspace_bindings,
         )
         self._sessions[workspace_id] = session
         self._sessions_by_directory[directory] = workspace_id

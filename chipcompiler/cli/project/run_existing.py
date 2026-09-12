@@ -229,7 +229,15 @@ def run_existing_workspace(
                     # The persisted ledger may be wider than the reconciled
                     # target by design (workspace_steps is bound above), so
                     # the full-ledger completeness check does not apply.
-                    flow_ok = engine_flow.run_steps(require_full_ledger=False)
+                    from chipcompiler.engine import ExecutionPlan, execute
+
+                    flow_ok = execute(
+                        engine_flow,
+                        ExecutionPlan(
+                            intent="run",
+                            step_ids=tuple(step.name for step in engine_flow.workspace_steps),
+                        ),
+                    ).succeeded
         except Exception as exc:
             if workspace_registered:
                 _write_back_status(project_dir, run_name, "failed", warnings)

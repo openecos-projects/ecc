@@ -383,7 +383,7 @@ def test_first_slice_methods_are_registered(method):
 
     response = _dispatch(server, f'{{"jsonrpc":"2.0","method":"{method}","id":1}}')
 
-    assert response["error"]["code"] != -32601
+    assert response.get("error", {}).get("code") != -32601
 
 
 @pytest.mark.parametrize(

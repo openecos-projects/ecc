@@ -2,13 +2,14 @@ import inspect
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from chipcompiler.data import StateEnum
+from chipcompiler.data import StateEnum, is_finished_step_state
 
 
 @dataclass(frozen=True)
 class ExecutionPlan:
     intent: Literal["run", "rerun"]
     step_id: str | None = None
+    step_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -16,45 +17,109 @@ class ExecutionResult:
     succeeded: bool
     state: str
     step_id: str | None = None
+    executed_steps: tuple[str, ...] = ()
+    failed_step: str | None = None
+    no_op: bool = False
 
 
 def execute(flow: Any, plan: ExecutionPlan, *, event_sink: Any = None) -> ExecutionResult:
     if plan.intent not in {"run", "rerun"}:
         raise ValueError(f"unsupported execution intent: {plan.intent}")
-    if event_sink is None and getattr(flow.workspace, "directory", None):
-        event_sink = _EngineeringCommitSink(flow.workspace)
-    rerun = plan.intent == "rerun"
-    if plan.step_id is None:
-        succeeded = bool(_invoke(flow.run_steps, rerun=rerun, observer=event_sink))
+    selected_ids = tuple(plan.step_ids)
+    if plan.step_id is not None:
+        if selected_ids:
+            raise ValueError("ExecutionPlan cannot set both step_id and step_ids")
+        selected_ids = (plan.step_id,)
+    if plan.intent == "run" and not selected_ids and _is_completed(flow):
         return ExecutionResult(
-            succeeded=succeeded,
-            state=StateEnum.Success.value if succeeded else StateEnum.Imcomplete.value,
+            succeeded=True,
+            state=StateEnum.Success.value,
+            executed_steps=(),
+            no_op=True,
         )
-
-    get_workspace_step = getattr(flow, "get_workspace_step", None)
-    step = (
-        get_workspace_step(plan.step_id)
-        if callable(get_workspace_step)
-        else next(
-            (
-                candidate
-                for candidate in getattr(flow, "workspace_steps", [])
-                if getattr(candidate, "name", None) == plan.step_id
-            ),
-            None,
-        )
-    )
-    if step is None:
-        raise ValueError(f"step not found: {plan.step_id}")
-    state = _invoke(flow.run_step, step, rerun=rerun, observer=event_sink)
+    workspace = getattr(flow, "workspace", None)
+    if event_sink is None and getattr(workspace, "directory", None):
+        event_sink = _EngineeringCommitSink(workspace)
+    rerun = plan.intent == "rerun"
+    observer = _ExecutionObserver(event_sink)
+    if not selected_ids:
+        succeeded = bool(_invoke(flow.run_steps, rerun=rerun, observer=observer))
+    else:
+        succeeded = True
+        for step_id in selected_ids:
+            step = _find_step(flow, step_id)
+            if step is None:
+                raise ValueError(f"step not found: {step_id}")
+            state = _invoke(flow.run_step, step, rerun=rerun, observer=observer)
+            if (
+                state is not StateEnum.Success
+                and getattr(state, "value", state) != StateEnum.Success.value
+            ):
+                succeeded = False
+                break
+    executed_steps = tuple(getattr(observer, "executed_steps", ()))
+    failed_step = getattr(observer, "failed_step", None)
+    state = StateEnum.Success.value if succeeded else StateEnum.Imcomplete.value
     return ExecutionResult(
-        succeeded=state is StateEnum.Success,
-        state=getattr(state, "value", str(state)),
-        step_id=plan.step_id,
+        succeeded=succeeded,
+        state=state,
+        step_id=selected_ids[0] if len(selected_ids) == 1 else None,
+        executed_steps=executed_steps,
+        failed_step=failed_step,
     )
+
+
+def _find_step(flow: Any, step_id: str) -> Any | None:
+    get_workspace_step = getattr(flow, "get_workspace_step", None)
+    if callable(get_workspace_step):
+        return get_workspace_step(step_id)
+    return next(
+        (
+            candidate
+            for candidate in getattr(flow, "workspace_steps", [])
+            if getattr(candidate, "name", None) == step_id
+        ),
+        None,
+    )
+
+
+def _is_completed(flow: Any) -> bool:
+    data = getattr(getattr(getattr(flow, "workspace", None), "flow", None), "data", {})
+    steps = data.get("steps", []) if isinstance(data, dict) else []
+    return bool(steps) and all(
+        isinstance(step, dict) and is_finished_step_state(step.get("state")) for step in steps
+    )
+
+
+class _ExecutionObserver:
+    def __init__(self, delegate: Any):
+        self.delegate = delegate
+        self.fatal_observer = bool(getattr(delegate, "fatal_observer", False))
+        self.executed_steps: list[str] = []
+        self.failed_step: str | None = None
+
+    def on_step_completed(self, step: Any, state: Any, error: str | None = None) -> None:
+        name = getattr(step, "name", None)
+        if isinstance(name, str) and name:
+            if getattr(state, "value", state) == StateEnum.Success.value:
+                self.executed_steps.append(name)
+            elif self.failed_step is None:
+                self.failed_step = name
+        callback = getattr(self.delegate, "on_step_completed", None)
+        if callable(callback):
+            callback(step, state, error)
+
+    def __getattr__(self, name: str):
+        if self.delegate is not None:
+            callback = getattr(self.delegate, name, None)
+            if callback is not None:
+                return callback
+        return lambda *_args, **_kwargs: None
 
 
 class _EngineeringCommitSink:
+    fatal_observer = True
+
     def __init__(self, workspace: Any):
         from chipcompiler.engine.snapshot import ensure_engineering_snapshot
 

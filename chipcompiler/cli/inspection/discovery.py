@@ -185,13 +185,20 @@ def resolve_command_workspace(workspace_arg, project, workspace_id, run_dir):
     instead. Returns (workspace, error-record-or-None); the caller maps a
     non-None record to a CommandResult.err.
     """
+    import inspect
+
     from chipcompiler.data import load_workspace
 
     path, error = resolve_workspace_path(workspace_arg, project, workspace_id, run_dir)
     if error is not None:
         return None, error
     try:
-        workspace = load_workspace(path)
+        load_kwargs = (
+            {"read_only": True}
+            if "read_only" in inspect.signature(load_workspace).parameters
+            else {}
+        )
+        workspace = load_workspace(path, **load_kwargs)
     except Exception as exc:
         return None, error_record("invalid_workspace", workspace=path, reason=str(exc))
     if workspace is None:

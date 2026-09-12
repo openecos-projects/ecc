@@ -500,6 +500,50 @@ def test_cancel_does_not_replace_a_specific_tool_error(tmp_path):
     }
 
 
+def test_operation_manager_keeps_only_latest_terminal_window():
+    manager = RuntimeOperationManager()
+
+    for index in range(257):
+        started = manager.start(
+            workspace_id="workspace-1",
+            kind="step",
+            origin="gui",
+            rerun=False,
+            step="step",
+            idempotency_key=f"command-{index}",
+            runner=lambda _observer: {"ok": True},
+        )
+        assert _wait_for_terminal(manager, started["operationId"])["state"] == "succeeded"
+
+    assert len(manager.workspace_snapshot("workspace-1")["operations"]) == 256
+
+
+def test_operation_ledger_recovers_unfinished_operations_as_interrupted(tmp_path):
+    ledger = tmp_path / "runtime-commands.json"
+    manager = RuntimeOperationManager()
+    manager.load_workspace_ledger("workspace-1", ledger)
+    release = threading.Event()
+    started = manager.start(
+        workspace_id="workspace-1",
+        kind="flow",
+        origin="gui",
+        rerun=False,
+        step="",
+        idempotency_key="running-command",
+        runner=lambda _observer: release.wait(timeout=2),
+    )
+    for _ in range(100):
+        if ledger.exists() and started["operationId"] in ledger.read_text():
+            break
+        threading.Event().wait(0.01)
+
+    restored = RuntimeOperationManager()
+    restored_ids = restored.load_workspace_ledger("workspace-1", ledger)
+    assert restored_ids == [started["operationId"]]
+    assert restored.operation_status(started["operationId"])["state"] == "interrupted"
+    release.set()
+
+
 def _wait_for_event(events: list[dict], event_type: str) -> dict:
     for _ in range(200):
         for event in events:
@@ -512,7 +556,7 @@ def _wait_for_event(events: list[dict], event_type: str) -> dict:
 def _wait_for_terminal(manager: RuntimeOperationManager, operation_id: str) -> dict:
     for _ in range(100):
         status = manager.operation_status(operation_id)
-        if status["state"] in {"succeeded", "failed", "cancelled"}:
+        if status["state"] in {"succeeded", "failed", "cancelled", "interrupted"}:
             return status
         threading.Event().wait(0.01)
     return manager.operation_status(operation_id)

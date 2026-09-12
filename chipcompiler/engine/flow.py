@@ -850,6 +850,8 @@ def _notify_flow_observer(observer, method_name: str, *args) -> None:
     try:
         callback(*args)
     except (Exception, SystemExit):
+        if getattr(observer, "fatal_observer", False):
+            raise
         # Runtime observers must never turn a completed tool execution into a
         # failed flow. The coordinator records transport failures separately.
         logging.getLogger(__name__).exception("flow observer callback failed: %s", method_name)
