@@ -955,6 +955,44 @@ def test_workspace_snapshot_includes_configuration_and_engineering_snapshot(monk
     }
 
 
+def test_workspace_snapshot_falls_back_to_persisted_flow_steps(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    workspace = api.sessions.get_session(workspace_id).workspace
+    flow = workspace.flow
+    flow.data = {}
+    workspace.parameters = SimpleNamespace(data={}, path=ws / "home" / "parameters.json")
+    workspace.home = SimpleNamespace(data={})
+    monkeypatch.setattr(
+        flow,
+        "steps",
+        lambda: [{"name": "Synthesis", "tool": "yosys", "state": "Success"}],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        api,
+        "_read_engineering_snapshot",
+        lambda _owner: {"workspaceId": "workspace-1", "workspaceRevision": 1},
+    )
+    monkeypatch.setattr(
+        "chipcompiler.engine.read_workspace_configuration",
+        lambda _workspace: {},
+    )
+
+    snapshot = api.workspace_snapshot(WorkspaceIdRequest(workspace_id))
+
+    assert snapshot["flow"]["steps"] == [
+        {
+            "name": "Synthesis",
+            "tool": "yosys",
+            "state": "Success",
+            "runtime": "",
+            "peakMemory": 0,
+        }
+    ]
+
+
 def test_flow_run_uses_run_steps_and_prepare_on_rerun(monkeypatch, tmp_path):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     prepared = []

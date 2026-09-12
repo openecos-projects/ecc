@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 import threading
 import time
 from collections.abc import Callable
@@ -14,6 +17,7 @@ _MAX_FINAL_LOG_BYTES = 64 * 1024
 _TERMINAL_OPERATION_STATES = frozenset({"succeeded", "failed", "cancelled", "interrupted"})
 _MAX_TERMINAL_OPERATIONS = 256
 _LEDGER_SCHEMA_VERSION = 1
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -37,6 +41,10 @@ class RuntimeOperationCancelled(RuntimeError):
     """Cancellation was accepted at a safe step boundary."""
 
 
+class RuntimeOperationIdempotencyConflict(RuntimeError):
+    """A command ID was reused with different immutable input."""
+
+
 @dataclass
 class RuntimeOperation:
     operation_id: str
@@ -48,6 +56,7 @@ class RuntimeOperation:
     rerun: bool
     step: str = ""
     idempotency_key: str = ""
+    command_fingerprint: str = ""
     state: str = "queued"
     current_step: str = ""
     current_tool: str = ""
@@ -76,11 +85,12 @@ class RuntimeOperationManager:
         self._lock = threading.RLock()
         self._operations: dict[str, RuntimeOperation] = {}
         self._active_by_workspace: dict[str, str] = {}
-        self._idempotency: dict[tuple[str, str], str] = {}
+        self._idempotency: dict[tuple[str, str], tuple[str, str]] = {}
         self._step_log_tails: dict[str, _StepLogTail] = {}
         self._runtime_instance_id = uuid4().hex
         self._workspace_sequences: dict[str, int] = {}
         self._ledger_paths: dict[str, Path] = {}
+        self._loaded_ledgers: set[Path] = set()
 
     def set_publisher(self, publisher: Callable[[dict[str, Any]], None] | None) -> None:
         with self._lock:
@@ -97,15 +107,37 @@ class RuntimeOperationManager:
         idempotency_key: str,
         runner: Callable[[RuntimeFlowObserver], dict[str, Any]],
         workspace_revision: int = 0,
+        snapshot_committer: Callable[[Any, Any, str | None], int] | None = None,
+        command_input: dict[str, Any] | None = None,
+        ledger_path: str | Path | None = None,
+        precondition: Callable[[], None] | None = None,
     ) -> dict[str, Any]:
+        fingerprint = _command_fingerprint(
+            kind=kind,
+            origin=origin,
+            rerun=rerun,
+            step=step,
+            workspace_revision=workspace_revision,
+            command_input=command_input,
+        )
+        if ledger_path is not None:
+            self.load_workspace_ledger(workspace_id, ledger_path)
         with self._lock:
             if idempotency_key:
-                known_id = self._idempotency.get((workspace_id, idempotency_key))
-                if known_id is not None:
+                known = self._idempotency.get((workspace_id, idempotency_key))
+                if known is not None:
+                    known_id, known_fingerprint = known
+                    if known_fingerprint and known_fingerprint != fingerprint:
+                        raise RuntimeOperationIdempotencyConflict(
+                            f"command id reused with different input: {idempotency_key}"
+                        )
                     return {
                         **self._operation_payload(self._operations[known_id]),
                         "deduplicated": True,
                     }
+
+            if precondition is not None:
+                precondition()
 
             active_id = self._active_by_workspace.get(workspace_id)
             if active_id is not None:
@@ -124,19 +156,23 @@ class RuntimeOperationManager:
                 rerun=rerun,
                 step=step,
                 idempotency_key=idempotency_key,
+                command_fingerprint=fingerprint,
                 workspace_revision=workspace_revision,
             )
             self._operations[operation.operation_id] = operation
             self._active_by_workspace[workspace_id] = operation.operation_id
             if idempotency_key:
-                self._idempotency[(workspace_id, idempotency_key)] = operation.operation_id
+                self._idempotency[(workspace_id, idempotency_key)] = (
+                    operation.operation_id,
+                    fingerprint,
+                )
             self._persist_workspace_locked(workspace_id)
             queued_event = self._new_event_locked(operation, "operation.queued", {})
 
         self._publish(queued_event)
         thread = threading.Thread(
             target=self._run,
-            args=(operation.operation_id, runner),
+            args=(operation.operation_id, runner, snapshot_committer),
             name=f"ecc-runtime-{operation.operation_id}",
             daemon=True,
         )
@@ -169,6 +205,9 @@ class RuntimeOperationManager:
 
         path = Path(ledger_path).expanduser().resolve()
         with self._lock:
+            if path in self._loaded_ledgers:
+                return []
+            self._loaded_ledgers.add(path)
             self._ledger_paths[workspace_id] = path
             try:
                 payload = json_read_strict(path)
@@ -200,7 +239,8 @@ class RuntimeOperationManager:
                 self._operations[operation.operation_id] = operation
                 if operation.idempotency_key:
                     self._idempotency[(workspace_id, operation.idempotency_key)] = (
-                        operation.operation_id
+                        operation.operation_id,
+                        operation.command_fingerprint,
                     )
                 self._workspace_sequences[workspace_id] = max(
                     self._workspace_sequences.get(workspace_id, 0), operation.sequence
@@ -298,6 +338,12 @@ class RuntimeOperationManager:
         self._publish(event)
         return {"accepted": True, "operationId": operation_id, "state": operation.state}
 
+    def raise_if_cancel_requested(self, operation_id: str) -> None:
+        with self._lock:
+            operation = self._operations[operation_id]
+            if operation.cancel_requested:
+                raise RuntimeOperationCancelled("operation cancelled at a step boundary")
+
     def shutdown_barrier(self) -> dict[str, Any] | None:
         with self._lock:
             for operation_id in self._active_by_workspace.values():
@@ -317,13 +363,14 @@ class RuntimeOperationManager:
         self,
         operation_id: str,
         runner: Callable[[RuntimeFlowObserver], dict[str, Any]],
+        snapshot_committer: Callable[[Any, Any, str | None], int] | None,
     ) -> None:
         with self._lock:
             operation = self._operations[operation_id]
             operation.state = "running"
             operation.updated_at = time.time()
             started_event = self._new_event_locked(operation, "operation.started", {})
-        observer = RuntimeFlowObserver(self, operation_id)
+        observer = RuntimeFlowObserver(self, operation_id, snapshot_committer)
         try:
             self._publish(started_event)
             try:
@@ -372,10 +419,7 @@ class RuntimeOperationManager:
                         event_type = "operation.cancelled"
                     else:
                         operation.state = "failed"
-                        operation.error = operation.error or {
-                            "message": str(exc),
-                            "code": "command_failed",
-                        }
+                        operation.error = operation.error or _operation_error_from_exception(exc)
                         event_type = "operation.failed"
                     operation.updated_at = time.time()
                     payload = {"error": operation.error}
@@ -444,20 +488,27 @@ class RuntimeOperationManager:
         affected_steps: list[str],
         scope: str,
         target_step: str = "",
+        workspace_revision: int | None = None,
     ) -> None:
         """Publish the idempotent GUI reset boundary before a rerun starts."""
         with self._lock:
             operation = self._operations[operation_id]
+            if workspace_revision is not None:
+                operation.workspace_revision = workspace_revision
             operation.updated_at = time.time()
+            payload = {
+                "affectedSteps": affected_steps,
+                "scope": scope,
+                "targetStep": target_step,
+            }
+            if workspace_revision is not None:
+                payload["workspaceRevision"] = workspace_revision
             event = self._new_event_locked(
                 operation,
                 "operation.rerun_prepared",
-                {
-                    "affectedSteps": affected_steps,
-                    "scope": scope,
-                    "targetStep": target_step,
-                },
+                payload,
             )
+            self._persist_workspace_locked(operation.workspace_id)
         self._publish(event)
 
     def step_completed(
@@ -466,6 +517,7 @@ class RuntimeOperationManager:
         workspace_step: Any,
         state: Any,
         error: str | None = None,
+        workspace_revision: int | None = None,
     ) -> None:
         self._stop_step_log_tail(operation_id)
         state_value = str(getattr(state, "value", state))
@@ -483,7 +535,7 @@ class RuntimeOperationManager:
             }
             if error:
                 log_file = str(getattr(getattr(workspace_step, "log", None), "file", "") or "")
-                operation.error = {
+                operation.error = operation.error or {
                     "code": "tool_failed",
                     "message": error,
                     "step": operation.current_step,
@@ -491,13 +543,58 @@ class RuntimeOperationManager:
                     "logFile": log_file,
                 }
                 payload["error"] = operation.error
-                payload["logFile"] = log_file
+                payload["logFile"] = str(operation.error.get("logFile", log_file))
             event = self._new_event_locked(operation, "step.completed", payload)
-            if state_value == "Success":
+            if workspace_revision is None:
                 operation.workspace_revision += 1
-                step_commit_id = f"{operation.operation_id}:step:{operation.workspace_revision}"
-                payload["stepCommitId"] = step_commit_id
-                payload["workspaceRevision"] = operation.workspace_revision
+            else:
+                operation.workspace_revision = workspace_revision
+            step_commit_id = f"{operation.operation_id}:step:{operation.workspace_revision}"
+            payload["stepCommitId"] = step_commit_id
+            payload["workspaceRevision"] = operation.workspace_revision
+            self._persist_workspace_locked(operation.workspace_id)
+        self._publish(event)
+
+    def step_diagnostic(
+        self,
+        operation_id: str,
+        workspace_step: Any,
+        diagnostic: dict[str, Any],
+    ) -> None:
+        message = str(diagnostic.get("message", "tool failed"))
+        log_file = str(getattr(getattr(workspace_step, "log", None), "file", "") or "")
+        with self._lock:
+            operation = self._operations[operation_id]
+            operation.error = {
+                "code": "tool_failed",
+                "message": message,
+                "step": str(getattr(workspace_step, "name", "")),
+                "tool": str(getattr(workspace_step, "tool", "")),
+                "logFile": log_file,
+                **diagnostic,
+            }
+            operation.updated_at = time.time()
+            revision = operation.workspace_revision
+            operation.error.update(
+                {
+                    "snapshotRevision": revision,
+                    "eventRevision": revision,
+                    "operationRevision": revision,
+                }
+            )
+            event = self._new_event_locked(
+                operation,
+                "step.diagnostic",
+                {
+                    "step": str(getattr(workspace_step, "name", "")),
+                    "tool": str(getattr(workspace_step, "tool", "")),
+                    "diagnostic": operation.error,
+                    "snapshotRevision": revision,
+                    "eventRevision": revision,
+                    "operationRevision": revision,
+                    "workspaceRevision": revision,
+                },
+            )
             self._persist_workspace_locked(operation.workspace_id)
         self._publish(event)
 
@@ -638,9 +735,7 @@ class RuntimeOperationManager:
         for operation_id in removed_ids:
             self._operations.pop(operation_id, None)
         self._idempotency = {
-            key: operation_id
-            for key, operation_id in self._idempotency.items()
-            if operation_id not in removed_ids
+            key: record for key, record in self._idempotency.items() if record[0] not in removed_ids
         }
 
     def _persist_workspace_locked(self, workspace_id: str) -> None:
@@ -675,6 +770,7 @@ class RuntimeOperationManager:
             "rerun": operation.rerun,
             "step": operation.step,
             "idempotencyKey": operation.idempotency_key,
+            "commandFingerprint": operation.command_fingerprint,
             "state": operation.state,
             "currentStep": operation.current_step,
             "currentTool": operation.current_tool,
@@ -698,13 +794,25 @@ class RuntimeOperationManager:
     def _publish(self, event: dict[str, Any]) -> None:
         publisher = self._publisher
         if publisher is not None:
-            publisher(event)
+            try:
+                publisher(event)
+            except Exception:
+                logger.exception("runtime event consumer failed: %s", event.get("type"))
 
 
 class RuntimeFlowObserver:
-    def __init__(self, manager: RuntimeOperationManager, operation_id: str):
+    fatal_observer = True
+
+    def __init__(
+        self,
+        manager: RuntimeOperationManager,
+        operation_id: str,
+        snapshot_committer: Callable[[Any, Any, str | None], int] | None = None,
+    ):
         self._manager = manager
         self._operation_id = operation_id
+        self._snapshot_committer = snapshot_committer
+        self._committed_revision: int | None = None
 
     @property
     def runtime_operation(self) -> dict[str, Any]:
@@ -723,13 +831,18 @@ class RuntimeFlowObserver:
         affected_steps: list[str],
         scope: str,
         target_step: str = "",
+        workspace_revision: int | None = None,
     ) -> None:
         self._manager.rerun_prepared(
             self._operation_id,
             affected_steps=affected_steps,
             scope=scope,
             target_step=target_step,
+            workspace_revision=workspace_revision,
         )
+
+    def raise_if_cancelled(self) -> None:
+        self._manager.raise_if_cancel_requested(self._operation_id)
 
     def on_step_completed(
         self,
@@ -737,7 +850,27 @@ class RuntimeFlowObserver:
         state: Any,
         error: str | None = None,
     ) -> None:
-        self._manager.step_completed(self._operation_id, workspace_step, state, error)
+        if self._committed_revision is None and self._snapshot_committer is not None:
+            self.commit_step(workspace_step, state, error)
+        self._manager.step_completed(
+            self._operation_id,
+            workspace_step,
+            state,
+            error,
+            self._committed_revision,
+        )
+        self._committed_revision = None
+
+    def on_step_diagnostic(
+        self,
+        workspace_step: Any,
+        diagnostic: dict[str, Any],
+    ) -> None:
+        self._manager.step_diagnostic(self._operation_id, workspace_step, diagnostic)
+
+    def commit_step(self, workspace_step: Any, state: Any, error: str | None = None) -> None:
+        if self._snapshot_committer is not None:
+            self._committed_revision = self._snapshot_committer(workspace_step, state, error)
 
     def on_subflow_stage(self, workspace_step: Any, subflow_step: dict[str, Any]) -> None:
         self._manager.subflow_stage(self._operation_id, workspace_step, subflow_step)
@@ -809,6 +942,7 @@ def _operation_from_payload(
         rerun=bool(payload.get("rerun", False)),
         step=str(payload.get("step", "")),
         idempotency_key=str(payload.get("idempotencyKey", "")),
+        command_fingerprint=str(payload.get("commandFingerprint", "")),
         state=str(payload.get("state", "interrupted")),
         current_step=str(payload.get("currentStep", "")),
         current_tool=str(payload.get("currentTool", "")),
@@ -832,6 +966,42 @@ def _number(value: Any) -> float:
         if isinstance(value, (int, float)) and not isinstance(value, bool)
         else time.time()
     )
+
+
+def _command_fingerprint(
+    *,
+    kind: str,
+    origin: str,
+    rerun: bool,
+    step: str,
+    workspace_revision: int,
+    command_input: dict[str, Any] | None = None,
+) -> str:
+    encoded = json.dumps(
+        {
+            "kind": kind,
+            "origin": origin,
+            "rerun": rerun,
+            "step": step,
+            "workspaceRevision": workspace_revision,
+            "commandInput": command_input or {},
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _operation_error_from_exception(exc: Exception) -> dict[str, Any]:
+    code = getattr(exc, "code", None)
+    data = getattr(exc, "data", None)
+    error: dict[str, Any] = {
+        "message": str(exc),
+        "code": code if isinstance(code, str) and code else "command_failed",
+    }
+    if isinstance(data, dict):
+        error.update(data)
+    return error
 
 
 def _optional_number(value: Any) -> float | None:
