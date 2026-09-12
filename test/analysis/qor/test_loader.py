@@ -50,7 +50,7 @@ def _write_step_payload(root, directory, metrics):
 
 _STEP_DIRECTORIES = {
     "Synthesis": "Synthesis_yosys",
-    "Floorplan": "Floorplan_ecc",
+    "postFloorplan": "postFloorplan_ecc",
     "place": "place_dreamplace",
     "CTS": "CTS_ecc",
     "route": "route_ecc",
@@ -90,7 +90,7 @@ SUCCESS = "Success"
 
 _FULL_FLOW = {
     "Synthesis": SUCCESS,
-    "Floorplan": SUCCESS,
+    "postFloorplan": SUCCESS,
     "place": SUCCESS,
     "CTS": SUCCESS,
     "route": SUCCESS,

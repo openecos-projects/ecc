@@ -27,7 +27,7 @@ SUCCESS = "Success"
 
 _FLOW_STEPS = {
     "Synthesis": SUCCESS,
-    "Floorplan": SUCCESS,
+    "postFloorplan": SUCCESS,
     "place": SUCCESS,
     "CTS": SUCCESS,
     "route": SUCCESS,
@@ -88,7 +88,7 @@ def _make_gcd_workspace(tmp_path):
 
     directory_by_step = {
         "Synthesis": "Synthesis_yosys",
-        "Floorplan": "Floorplan_ecc",
+        "postFloorplan": "postFloorplan_ecc",
         "place": "place_dreamplace",
         "CTS": "CTS_ecc",
         "route": "route_ecc",
@@ -100,7 +100,7 @@ def _make_gcd_workspace(tmp_path):
     }
     payloads = {
         "Synthesis": [_metric("synthesis_cell_area", 800.0, "trend", "um^2")],
-        "Floorplan": [
+        "postFloorplan": [
             _metric("core_area", 1538.46, "trend", "um^2"),
             _metric("core_utilization", 0.52, "trend"),
         ],

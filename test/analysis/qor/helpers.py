@@ -47,7 +47,7 @@ def _all_success():
         step: SUCCESS
         for step in (
             "Synthesis",
-            "Floorplan",
+            "postFloorplan",
             "place",
             "CTS",
             "route",
@@ -64,8 +64,8 @@ def gcd_metrics() -> dict:
     """Reference GCD fixture inputs (spec §12.1)."""
     records = [
         make_metric("synthesis_cell_area", 800.0, step="Synthesis"),
-        make_metric("core_area", 1538.46, step="Floorplan"),
-        make_metric("core_utilization", 0.52, step="Floorplan"),
+        make_metric("core_area", 1538.46, step="postFloorplan"),
+        make_metric("core_utilization", 0.52, step="postFloorplan"),
         make_metric("place_hpwl", 3143.52, step="place"),
         make_metric("place_grwl", 3812.00, step="place"),
         make_metric("place_rudy_utilization_max", 0.0, step="place"),

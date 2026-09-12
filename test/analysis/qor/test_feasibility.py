@@ -5,7 +5,7 @@ ALL_SUCCESS = {
     step: "Success"
     for step in (
         "Synthesis",
-        "Floorplan",
+        "postFloorplan",
         "place",
         "CTS",
         "route",

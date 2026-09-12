@@ -422,7 +422,7 @@ STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup
                 "congestion_severity": 0.0, "compatibility_status": "INCOMPATIBLE"},
   "power": {"total_uw": null, "budget_uw": null, "source_path": null,
             "source_kind": null, "corner": null},
-  "flow_steps": {"Synthesis": "Success", "Floorplan": "Success", "place": "Success",
+  "flow_steps": {"Synthesis": "Success", "postFloorplan": "Success", "place": "Success",
                  "CTS": "Success", "route": "Success", "drc": "Success",
                  "lvs": "Success", "RCX": "Success", "sta": "Success",
                  "Harden": "Success"},
