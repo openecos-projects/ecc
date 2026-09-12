@@ -778,13 +778,6 @@ class EngineFlow:
             runtime,
             peak_memory_mb,
         )
-        if state == StateEnum.Success and not _wait_for_step_rendered(
-            observer,
-            workspace_step,
-            state,
-        ):
-            return StateEnum.Invalid
-
         return state
 
     def init_db_engine_for_step(self, workspace_step: WorkspaceStep) -> bool:
@@ -855,17 +848,3 @@ def _notify_flow_observer(observer, method_name: str, *args) -> None:
         # Runtime observers must never turn a completed tool execution into a
         # failed flow. The coordinator records transport failures separately.
         logging.getLogger(__name__).exception("flow observer callback failed: %s", method_name)
-
-
-def _wait_for_step_rendered(observer, workspace_step: WorkspaceStep, state: StateEnum) -> bool:
-    if observer is None or state != StateEnum.Success:
-        return True
-    callback = getattr(observer, "wait_for_step_rendered", None)
-    if not callable(callback):
-        return True
-    try:
-        return bool(callback(workspace_step, state))
-    except Exception:
-        # Fail-open: observer bugs must not invalidate successful tool results.
-        logging.getLogger(__name__).exception("flow observer render gate failed")
-        return True
