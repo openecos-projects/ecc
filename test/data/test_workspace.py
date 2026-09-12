@@ -238,7 +238,7 @@ def test_create_workspace_copies_external_lec_and_sta_inputs(
         pdk="ics55",
         parameters=default_ics55_parameters,
         pdk_root=pdk_root,
-        flow_config={"start_step": "lec", "end_step": "lec"},
+        flow_config={"start_step": "postlec", "end_step": "postlec"},
     )
 
     assert workspace is not None
@@ -327,7 +327,6 @@ def test_create_workspace_non_contiguous_flow_seeds_both_stores_contiguous(
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [step["name"] for step in flow_data["steps"]] == [
         "Synthesis",
-        "lec",
         "preFloorplan",
         "macroPlacement",
         "postFloorplan",

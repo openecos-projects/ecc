@@ -272,7 +272,6 @@ class TestStepOverview:
         assert rc == 0
         assert [record["step"] for record in records[1:]] == [
             "synthesis",
-            "lec",
             "pre_floorplan",
             "macro_placement",
             "post_floorplan",
