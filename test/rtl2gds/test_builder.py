@@ -56,7 +56,6 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
 
     assert flow == [
         (StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart),
-        (StepEnum.LEC, "yosys_lec", StateEnum.Unstart),
         (StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart),
         (StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart),
         (StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart),
