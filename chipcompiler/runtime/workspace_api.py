@@ -593,6 +593,8 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
 
     def workspace_snapshot(self, request: WorkspaceIdRequest) -> dict:
         session = self._get_session(request.workspace_id)
+        from chipcompiler.engine import read_workspace_configuration
+
         flow_data = getattr(getattr(session.workspace, "flow", None), "data", {})
         raw_steps = flow_data.get("steps", []) if isinstance(flow_data, dict) else []
         steps = [
@@ -628,12 +630,27 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                 parameter_path = workspace_config_path(session.directory)
             home_data["parameters"] = str(parameter_path)
 
+        engineering_snapshot = self._read_engineering_snapshot(session)
+        try:
+            configuration = read_workspace_configuration(session.workspace)
+        except (OSError, ValueError):
+            configuration = None
+        if (
+            not isinstance(configuration, dict)
+            or configuration.get("workspaceId") != session.workspace_id
+            or not isinstance(configuration.get("workspaceSpec"), dict)
+            or not isinstance(configuration.get("workspaceBindings"), dict)
+        ):
+            configuration = None
+
         return {
             **self.operations.workspace_snapshot(request.workspace_id),
+            "engineeringSnapshot": engineering_snapshot,
             "directory": str(session.directory),
             "flow": {"steps": steps},
             "home": stringify_paths(home_data),
             "parameters": stringify_paths(deepcopy(parameters_data)),
+            "configuration": stringify_paths(configuration) if configuration else None,
         }
 
     def engineering_snapshot(self, request: WorkspaceIdRequest) -> dict:

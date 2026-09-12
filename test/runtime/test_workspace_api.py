@@ -923,6 +923,38 @@ def test_runtime_modules_do_not_import_typer_or_click():
         assert "import click" not in source
 
 
+def test_workspace_snapshot_includes_configuration_and_engineering_snapshot(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    configuration = {
+        "workspaceId": "workspace-1",
+        "workspaceRevision": 2,
+        "workspaceSpec": {"design": {"name": "gcd"}},
+        "workspaceBindings": {},
+    }
+    monkeypatch.setattr(
+        "chipcompiler.engine.read_workspace_configuration",
+        lambda _workspace: configuration,
+    )
+    api = WorkspaceRuntimeApi()
+    monkeypatch.setattr(
+        api,
+        "_read_engineering_snapshot",
+        lambda _owner: {"workspaceId": "workspace-1", "workspaceRevision": 2},
+    )
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    session = api.sessions.get_session(workspace_id)
+    session.workspace.parameters = SimpleNamespace(data={}, path=ws / "home" / "params.toml")
+    session.workspace.home.data = {}
+
+    snapshot = api.workspace_snapshot(WorkspaceIdRequest(workspace_id))
+
+    assert snapshot["configuration"] == configuration
+    assert snapshot["engineeringSnapshot"] == {
+        "workspaceId": "workspace-1",
+        "workspaceRevision": 2,
+    }
+
+
 def test_flow_run_uses_run_steps_and_prepare_on_rerun(monkeypatch, tmp_path):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     prepared = []
