@@ -27,7 +27,10 @@ class DummyFlow:
     def add_step(self, step, tool, state):
         self.added_steps.append((step, tool, state))
 
-    def create_step_workspaces(self):
+    def load(self):
+        return True
+
+    def create_step_workspaces(self, **_kwargs):
         self.create_called = True
 
     def run_steps(self, **_kwargs):
