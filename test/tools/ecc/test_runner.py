@@ -114,7 +114,7 @@ class FakeSubFlow:
 )
 def test_run_analysis_switch(parameters, expected_calls, tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, parameters=Parameters(data=parameters))
-    step = EccStep(name=StepEnum.FLOORPLAN.value)
+    step = EccStep(name=StepEnum.POST_FLOORPLAN.value)
     metrics = Mock()
     plotter = Mock()
     checklist = Mock()
@@ -129,6 +129,92 @@ def test_run_analysis_switch(parameters, expected_calls, tmp_path, monkeypatch):
     assert plotter.return_value.plot.call_count == expected_calls
     assert checklist.call_count == expected_calls
     assert checklist.return_value.check.call_count == expected_calls
+
+
+def test_split_floorplan_runs_pre_and_post_phases_independently(monkeypatch, tmp_path):
+    calls = []
+    saved_steps = []
+    analyzed_steps = []
+
+    class FakeFloorplanModule:
+        def init_fp(self, config):
+            calls.append(("init_fp", config))
+
+        def run_simple_fp(self):
+            calls.append(("run_simple_fp",))
+
+        def run_fp(self):
+            calls.append(("run_fp",))
+
+        def destroy_fp(self):
+            calls.append(("destroy_fp",))
+
+    floorplan_config = tmp_path / "floorplan_ecc.json"
+    floorplan_config.write_text(
+        json.dumps(
+            {
+                "macro_placer": {"mode": "file", "file_path": "old_locations.txt"},
+                "io_placer": {"mode": "file", "file_path": "io_pins.txt"},
+            }
+        )
+    )
+    simple_floorplan_config = floorplan_config.with_stem("floorplan_ecc_simple")
+    macro_location = tmp_path / "macro_localtion.tcl"
+    macro_location.write_text("# macro locations\n")
+    workspace = Workspace(
+        config={
+            StepEnum.FLOORPLAN.value: floorplan_config,
+            "macro_location": macro_location,
+        }
+    )
+    module = FakeFloorplanModule()
+
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
+    monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **_kwargs: module)
+    monkeypatch.setattr(
+        ecc_runner,
+        "save_data",
+        lambda **kwargs: saved_steps.append(kwargs["step"].name) or True,
+    )
+    monkeypatch.setattr(
+        ecc_runner,
+        "run_analysis",
+        lambda **kwargs: analyzed_steps.append(kwargs["step"].name),
+    )
+
+    assert ecc_runner.run_pre_floorplan(
+        workspace=workspace,
+        step=EccStep(name=StepEnum.PRE_FLOORPLAN.value),
+    )
+    assert calls == [
+        ("init_fp", str(simple_floorplan_config)),
+        ("run_simple_fp",),
+        ("destroy_fp",),
+    ]
+    assert json.loads(simple_floorplan_config.read_text())["macro_placer"] == {
+        "mode": "auto",
+        "file_path": "",
+    }
+    assert json.loads(floorplan_config.read_text())["macro_placer"] == {
+        "mode": "file",
+        "file_path": "old_locations.txt",
+    }
+
+    assert ecc_runner.run_post_floorplan(
+        workspace=workspace,
+        step=EccStep(name=StepEnum.POST_FLOORPLAN.value),
+    )
+    assert calls[3:] == [
+        ("init_fp", str(floorplan_config)),
+        ("run_fp",),
+        ("destroy_fp",),
+    ]
+    assert json.loads(floorplan_config.read_text())["macro_placer"] == {
+        "mode": "file",
+        "file_path": str(macro_location),
+    }
+    assert saved_steps == [StepEnum.PRE_FLOORPLAN.value, StepEnum.POST_FLOORPLAN.value]
+    assert analyzed_steps == [StepEnum.POST_FLOORPLAN.value]
 
 
 class FakeRcxModule:

@@ -57,7 +57,9 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
     assert flow == [
         (StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart),
         (StepEnum.LEC, "yosys_lec", StateEnum.Unstart),
-        (StepEnum.FLOORPLAN, "ecc", StateEnum.Unstart),
+        (StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart),
+        (StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart),
+        (StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart),
         (StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart),
         (StepEnum.CTS, "ecc", StateEnum.Unstart),
         (StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart),
@@ -92,3 +94,13 @@ def test_build_flow_range_normalizes_aliases_and_rejects_reverse_ranges():
 
     with pytest.raises(ValueError, match="reversed"):
         builder_module.build_flow_range("route", "CTS")
+
+
+def test_build_flow_range_exposes_split_floorplan_steps():
+    flow = builder_module.build_flow_range("preFloorplan", "postFloorplan")
+
+    assert [(step, tool) for step, tool, _state in flow] == [
+        (StepEnum.PRE_FLOORPLAN, "ecc"),
+        (StepEnum.MACRO_PLACEMENT, "dreamplace"),
+        (StepEnum.POST_FLOORPLAN, "ecc"),
+    ]

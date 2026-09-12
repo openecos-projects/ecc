@@ -242,9 +242,9 @@ class ECCToolsModule:
         """save gds file"""
         self.ecc.gds_save(path_text(output_path), is_harden)
 
-    def tcl_save(self, output_path: str):
-        """save tcl file"""
-        self.ecc.tcl_save(path_text(output_path))
+    def tcl_save(self, output_path: PathArg) -> bool:
+        """Save hard-macro placement commands in Tcl format."""
+        return self.ecc.tcl_save(path_text(output_path))
 
     def verilog_save(self, output_verilog, cell_names: set | None = None):
         """verilog save"""
@@ -517,6 +517,9 @@ class ECCToolsModule:
     ########################################################################
     def init_fp(self, config: str):
         return self.ecc.init_fp(config=path_text(config))
+
+    def run_simple_fp(self):
+        return self.ecc.run_simple_fp()
 
     def run_fp(self):
         return self.ecc.run_fp()

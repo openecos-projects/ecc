@@ -236,7 +236,7 @@ def test_migration_seeds_flow_section_from_persisted_flow(
     steps = {
         "steps": [
             {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-            {"name": "Floorplan", "tool": "ecc", "state": "Success"},
+            {"name": "postFloorplan", "tool": "ecc", "state": "Success"},
         ]
     }
     (workspace_dir / "home" / "flow.json").write_text(json.dumps(steps))
@@ -244,7 +244,7 @@ def test_migration_seeds_flow_section_from_persisted_flow(
     loaded = load_workspace(str(workspace_dir))
 
     assert loaded is not None
-    assert loaded.parameters.data["_flow"] == {"start": "Synthesis", "end": "Floorplan"}
+    assert loaded.parameters.data["_flow"] == {"start": "Synthesis", "end": "postFloorplan"}
 
 
 def _fail_first_decode(monkeypatch):

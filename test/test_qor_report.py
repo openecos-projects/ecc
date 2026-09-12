@@ -338,7 +338,7 @@ class TestFlowStepOrder:
 
         assert FLOW_STEPS == (
             "Synth",
-            "Floor",
+            "PostFloorplan",
             "Place",
             "CTS",
             "Legal",

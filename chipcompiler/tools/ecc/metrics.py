@@ -560,7 +560,7 @@ QOR_EXPECTED_METRICS_BY_STEP = {
         "synthesis_power_dynamic_uw",
         "synthesis_power_leakage_uw",
     ],
-    StepEnum.FLOORPLAN.value: [
+    StepEnum.POST_FLOORPLAN.value: [
         "die_area",
         "die_width",
         "die_height",
@@ -1709,7 +1709,7 @@ def _metric_scope_and_roles(step: WorkspaceStep, metric_id: str) -> tuple[str, s
     if step.name == StepEnum.SYNTHESIS.value:
         scope = "synthesis"
         step_role = "primary"
-    elif step.name == StepEnum.FLOORPLAN.value:
+    elif step.name == StepEnum.POST_FLOORPLAN.value:
         scope = "floorplan"
         step_role = "primary"
     elif step.name == StepEnum.PLACEMENT.value:
@@ -2820,7 +2820,7 @@ def _gate_state(*, available: bool, passed: bool) -> str:
 
 
 _MPC_AREA_SOURCE_STEPS = {
-    StepEnum.FLOORPLAN.value,
+    StepEnum.POST_FLOORPLAN.value,
     StepEnum.PLACEMENT.value,
     StepEnum.CTS.value,
     StepEnum.LEGALIZATION.value,
@@ -3399,7 +3399,7 @@ def build_step_metrics(
     # step matrics
     metrics = None
     match step.name:
-        case StepEnum.FLOORPLAN.value:
+        case StepEnum.POST_FLOORPLAN.value:
             metrics = build_metrics_floorplan(workspace, step)
         case StepEnum.PLACEMENT.value:
             metrics = build_metrics_placement(workspace, step)

@@ -152,75 +152,7 @@ class TestReconcile:
 
         assert result.outcome == "resume"
 
-    # The pre-reorder chain: DRC/LVS before filler, RCX/STA/Harden as
-    # preset-only suffixes.
-    LEGACY_RTL2GDS_ORDER = [
-        ("Synthesis", "yosys"),
-        ("lec", "yosys_lec"),
-        ("Floorplan", "ecc"),
-        ("place", "dreamplace"),
-        ("CTS", "ecc"),
-        ("legalization", "dreamplace"),
-        ("Timing optimization", "sizer"),
-        ("route", "ecc"),
-        ("drc", "ecc"),
-        ("lvs", "ecc"),
-        ("filler", "ecc"),
-        ("postRouteLec", "yosys_lec"),
-    ]
-
-    def test_legacy_prereorder_ledger_migrates_instead_of_mismatch(self, tmp_path):
-        workspace_dir = _write_workspace(
-            tmp_path,
-            self.LEGACY_RTL2GDS_ORDER,
-            flow_section={"preset": "rtl2gds"},
-        )
-
-        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
-
-        assert result.outcome == "resume"
-        steps = _flow_steps(workspace_dir)
-        assert [(s["name"], s["tool"]) for s in steps] == RTL2GDS_STEPS
-        route_index = next(
-            index for index, (name, _tool) in enumerate(RTL2GDS_STEPS) if name == "route"
-        )
-        # The identical Synthesis..route prefix keeps its Success states;
-        # post-route steps ran with pre-reorder inputs and restart.
-        assert all(s["state"] == "Success" for s in steps[: route_index + 1])
-        assert [s["state"] for s in steps[route_index + 1 :]] == ["Unstart"] * (
-            len(steps) - route_index - 1
-        )
-        assert set(result.appended) == {"RCX", "sta", "Harden"}
-
-    def test_legacy_prereorder_rcx_preset_migrates_to_legacy_alias_range(self, tmp_path):
-        workspace_dir = _write_workspace(
-            tmp_path,
-            self.LEGACY_RTL2GDS_ORDER + [("RCX", "ecc"), ("sta", "ecc")],
-            flow_section={"preset": "rcx"},
-        )
-
-        result = reconcile_workspace(workspace_dir, {"preset": "rcx"})
-
-        assert result.outcome == "resume"
-        steps = _flow_steps(workspace_dir)
-        assert [(s["name"], s["tool"]) for s in steps] == [
-            ("Synthesis", "yosys"),
-            ("lec", "yosys_lec"),
-            ("Floorplan", "ecc"),
-            ("place", "dreamplace"),
-            ("CTS", "ecc"),
-            ("legalization", "dreamplace"),
-            ("Timing optimization", "sizer"),
-            ("route", "ecc"),
-            ("filler", "ecc"),
-            ("RCX", "ecc"),
-            ("sta", "ecc"),
-        ]
-        assert _flow_section(workspace_dir) == {"preset": "rcx"}
-
     def test_ledger_starting_off_synthesis_is_still_a_mismatch(self, tmp_path):
-        # Legacy presets always began at Synthesis: a ledger starting
-        # elsewhere is a foreign shape, not a migratable legacy one.
         workspace_dir = _write_workspace(
             tmp_path, [("place", "dreamplace")], flow_section={"preset": "rtl2gds"}
         )

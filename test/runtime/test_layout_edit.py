@@ -157,24 +157,24 @@ class FakeFlow:
 
 def _make_layout_workspace(tmp_path, *, with_db=False, with_editor_workspace=False):
     workspace_dir = tmp_path / "workspace"
-    output_dir = workspace_dir / "Floorplan_ecc" / "output"
+    output_dir = workspace_dir / "postFloorplan_ecc" / "output"
     output_dir.mkdir(parents=True)
-    output_def = output_dir / "gcd_Floorplan.def.gz"
+    output_def = output_dir / "gcd_postFloorplan.def.gz"
     output_def.write_text("old def", encoding="utf-8")
-    output_db = output_dir / "gcd_Floorplan_db"
+    output_db = output_dir / "gcd_postFloorplan_db"
     if with_db:
         output_db.mkdir()
         (output_db / "metadata.idb").write_text("old db", encoding="utf-8")
     step = SimpleNamespace(
-        name="Floorplan",
+        name="postFloorplan",
         input={"def": None, "verilog": None, "db": None},
         output={
             "def": output_def,
             "db": output_db,
-            "gds": output_dir / "gcd_Floorplan.gds",
+            "gds": output_dir / "gcd_postFloorplan.gds",
             "geometry": output_dir / "geometry",
             "geometry_manifest": output_dir / "geometry" / "geometry.manifest",
-            "verilog": output_dir / "gcd_Floorplan.v",
+            "verilog": output_dir / "gcd_postFloorplan.v",
         },
     )
     workspace = SimpleNamespace(directory=workspace_dir)
@@ -187,7 +187,7 @@ def _make_layout_workspace(tmp_path, *, with_db=False, with_editor_workspace=Fal
         flow_path = workspace_dir / "flow.json"
         flow_data = {
             "steps": [
-                {"name": "Floorplan", "state": "Success", "runtime": "1s"},
+                {"name": "postFloorplan", "state": "Success", "runtime": "1s"},
                 {"name": "place", "state": "Success", "runtime": "2s"},
                 {"name": "route", "state": "Success", "runtime": "3s"},
             ]
@@ -225,7 +225,7 @@ def _open_api(monkeypatch, tmp_path, *, with_db=False, with_editor_workspace=Fal
 
 def _begin(api, workspace_id, **kwargs):
     return api.layout_edit_begin(
-        LayoutEditBeginRequest(workspace_id=workspace_id, step="Floorplan", **kwargs)
+        LayoutEditBeginRequest(workspace_id=workspace_id, step="postFloorplan", **kwargs)
     )
 
 

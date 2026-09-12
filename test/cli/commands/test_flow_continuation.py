@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 
 from chipcompiler.cli import main as cli_main
+from chipcompiler.rtl2gds import build_rtl2gds_flow
 
 
 def _write_existing_workspace(run_dir, step_names, states=None, preset="rtl2gds", pdk_root=None):
@@ -38,21 +39,8 @@ def _write_existing_workspace(run_dir, step_names, states=None, preset="rtl2gds"
 
 
 RTL2GDS_NAMES = [
-    "Synthesis",
-    "lec",
-    "Floorplan",
-    "place",
-    "CTS",
-    "legalization",
-    "Timing optimization",
-    "route",
-    "filler",
-    "RCX",
-    "sta",
-    "lvs",
-    "postRouteLec",
-    "drc",
-    "Harden",
+    step.value if hasattr(step, "value") else str(step)
+    for step, _tool, _state in build_rtl2gds_flow()
 ]
 
 

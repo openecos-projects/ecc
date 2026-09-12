@@ -16,7 +16,7 @@
 graph LR
     A[安装 ecc CLI<br/>+ PDK + Yosys] --> B[ecc init gcd<br/>建项目放 RTL]
     B --> C[ecc doctor / check<br/>环境与配置体检]
-    C --> D[ecc run --preset rtl2gds<br/>15 步全流程]
+    C --> D[ecc run --preset rtl2gds<br/>17 步全流程]
     D --> E[ecc status / log<br/>查看结果与日志]
     E --> F[ecc signoff export<br/>签核包 tar.gz]
     E --> G[ecc report summary<br/>设计总结报告]
@@ -253,7 +253,7 @@ rc=0
 
 ### 4.1 启动
 
-`rtl2gds` preset 是完整 15 步链，一步到位跑到 Harden（产出 GDS + 抽象 LEF + 时序 LIB）：
+`rtl2gds` preset 是完整 17 步链，一步到位跑到 Harden（产出 GDS + 抽象 LEF + 时序 LIB）：
 
 ```bash
 ecc run --preset rtl2gds
@@ -261,29 +261,31 @@ ecc run --preset rtl2gds
 
 （生成的 `ecc.toml` 已选择 `rtl2gds`；`--preset` 只对本次运行生效，不写回配置。）
 
-交互终端下会实时渲染各步骤进度与日志尾部；输出重定向到文件时则静默执行，结束时打印汇总。`rtl2gds` 的 15 步依次为：
+交互终端下会实时渲染各步骤进度与日志尾部；输出重定向到文件时则静默执行，结束时打印汇总。`rtl2gds` 的 17 步依次为：
 
 | # | 步骤 | 工具 | 作用 |
 |---|------|------|------|
 | 1 | synthesis | yosys | RTL 综合、工艺映射（slang 前端读入 SystemVerilog） |
 | 2 | lec | yosys_lec | 逻辑等价性检查：综合网表与 golden 网表 |
-| 3 | floorplan | ecc | 布局规划：die/core 区域、IO pin 排布 |
-| 4 | placement | dreamplace | 全局布局 |
-| 5 | cts | ecc | 时钟树综合（含扇出约束） |
-| 6 | legalization | dreamplace | 布局合法化 |
-| 7 | timing optimization | sizer | 时序优化（cell sizing） |
-| 8 | routing | ecc | 布线 |
-| 9 | filler | ecc | 填充单元插入 |
-| 10 | rcx | ecc | 寄生参数提取（多 corner SPEF） |
-| 11 | sta | ecc | 多 corner 静态时序分析 |
-| 12 | lvs | ecc | 版图与原理图一致性检查 |
-| 13 | postroutelec | yosys_lec | 逻辑等价性检查：综合网表 vs 布线后网表 |
-| 14 | drc | ecc | 物理规则检查 |
-| 15 | harden | ecc | 硬化交付：GDS + 抽象 LEF + 时序 LIB + 版图快照 |
+| 3 | pre_floorplan | ecc | 执行 simple floorplan，并使用自动 macro placement |
+| 4 | macro_placement | dreamplace | 执行仅宏单元摆放；这是宏位置文件被读取前的交接检查点 |
+| 5 | post_floorplan | ecc | 读取宏位置文件，完成 tracks、IO pin、tap cell、PDN 和时钟网设置 |
+| 6 | placement | dreamplace | 全局布局 |
+| 7 | cts | ecc | 时钟树综合（含扇出约束） |
+| 8 | legalization | dreamplace | 布局合法化 |
+| 9 | timing optimization | sizer | 时序优化（cell sizing） |
+| 10 | routing | ecc | 布线 |
+| 11 | filler | ecc | 填充单元插入 |
+| 12 | rcx | ecc | 寄生参数提取（多 corner SPEF） |
+| 13 | sta | ecc | 多 corner 静态时序分析 |
+| 14 | lvs | ecc | 版图与原理图一致性检查 |
+| 15 | postroutelec | yosys_lec | 逻辑等价性检查：综合网表 vs 布线后网表 |
+| 16 | drc | ecc | 物理规则检查 |
+| 17 | harden | ecc | 硬化交付：GDS + 抽象 LEF + 时序 LIB + 版图快照 |
 
 ```mermaid
 graph LR
-    A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Floorplan] --> D[Placement<br/>dreamplace]
+    A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> D[Placement<br/>dreamplace]
     D --> E[CTS] --> F[Legalization<br/>dreamplace] --> T[Timing Opt<br/>sizer] --> G[Routing]
     G --> J[Filler] --> K[RCX] --> L[STA] --> I[LVS] --> N[LEC<br/>yosys_lec] --> H[DRC] --> M[Harden<br/>GDS/LEF/LIB]
 ```
@@ -312,8 +314,12 @@ $ ecc status
       log: ecc log synthesis --workspace default
     lec (yosys_lec) success 0:0:1
       log: ecc log lec --workspace default
-    floorplan (ecc) success 0:0:1
-      log: ecc log floorplan --workspace default
+    pre_floorplan (ecc) success 0:0:1
+      log: ecc log pre_floorplan --workspace default
+    macro_placement (dreamplace) success 0:0:5
+      log: ecc log macro_placement --workspace default
+    post_floorplan (ecc) success 0:0:1
+      log: ecc log post_floorplan --workspace default
     placement (dreamplace) ongoing 0:0:40
       log: ecc log placement --workspace default
     cts (ecc) unstart
@@ -338,7 +344,9 @@ $ ecc status
     synthesis (yosys) success 0:0:17
       log: ecc log synthesis --workspace default
     lec (yosys_lec) success 0:0:1
-    floorplan (ecc) success 0:0:1
+    pre_floorplan (ecc) success 0:0:1
+    macro_placement (dreamplace) success 0:0:5
+    post_floorplan (ecc) success 0:0:1
     placement (dreamplace) success 0:0:47
     cts (ecc) success 0:0:19
     legalization (dreamplace) success 0:0:1
@@ -379,7 +387,9 @@ default/
 ├── config/             # 各步骤实际生效的配置（ecc config <step> 查看）
 ├── Synthesis_yosys/    # 每步子目录内含 log/ script/ output/ report/ 等分类
 ├── lec_yosys_lec/       # 综合级 LEC 等价性检查
-├── Floorplan_ecc/
+├── preFloorplan_ecc/
+├── macroPlacement_dreamplace/
+├── postFloorplan_ecc/
 ├── ...
 ├── postRouteLec_yosys_lec/   # LEC 等价性检查（output/<design>_postRouteLec_result.json）
 ├── Harden_ecc/
@@ -649,24 +659,24 @@ ecc run --workspace default --only place --force   # 已成功也强制重跑这
 
 ```bash
 ecc run --workspace cts-only --from cts --to cts     # 只跑 CTS 一步的 workspace
-ecc run --workspace pnr --from floorplan --to route  # 从布局规划到布线
+ecc run --workspace pnr --from prefloorplan --to route  # 从 pre-floorplan 到布线
 ```
 
-**复用已有 Floorplan 输出的完整示例**：从已有 workspace `2` 的 Floorplan 输出创建一个新的 placement 到 routing workspace 时，不能把 DEF 直接传给 `ecc run`。placement 入口要求匹配的 `design.def` 和 `design.netlist`；先用 `ecc project` 写入项目配置，再创建新范围：
+**复用已有 post-floorplan 输出的完整示例**：从已有 workspace `2` 的 post-floorplan 输出创建一个新的 placement 到 routing workspace 时，不能把 DEF 直接传给 `ecc run`。placement 入口要求匹配的 `design.def` 和 `design.netlist`；先用 `ecc project` 写入项目配置，再创建新范围：
 
 ```bash
 PROJECT=~/projects/benchmark/gcd
-SOURCE="$PROJECT/2/Floorplan_ecc/output"
+SOURCE="$PROJECT/2/postFloorplan_ecc/output"
 
-ecc project set design.def "$SOURCE/gcd_Floorplan.def.gz" --project "$PROJECT"
-ecc project set design.netlist "$SOURCE/gcd_Floorplan.v.gz" --project "$PROJECT"
+ecc project set design.def "$SOURCE/gcd_postFloorplan.def.gz" --project "$PROJECT"
+ecc project set design.netlist "$SOURCE/gcd_postFloorplan.v.gz" --project "$PROJECT"
 ecc run --project "$PROJECT" --workspace floorplan-2-place-route \
   --from placement --to routing
 ```
 
-这会将 DEF/网表复制到新 workspace 的 `origin/`，从 placement 运行至 routing，不会重新运行 Floorplan；`placement`、`routing` 是新建范围时可用的别名。`ecc project set` 修改的是项目级 `ecc.toml`，也会影响之后新建的 workspace。若这两个字段原来没有设置，在新 workspace 创建后执行 `ecc project unset design.def --project "$PROJECT"` 和 `ecc project unset design.netlist --project "$PROJECT"` 可恢复原先的项目入口。
+这会将 DEF/网表复制到新 workspace 的 `origin/`，从 placement 运行至 routing，不会重新运行 post-floorplan；`placement`、`routing` 是新建范围时可用的别名。`ecc project set` 修改的是项目级 `ecc.toml`，也会影响之后新建的 workspace。若这两个字段原来没有设置，在新 workspace 创建后执行 `ecc project unset design.def --project "$PROJECT"` 和 `ecc project unset design.netlist --project "$PROJECT"` 可恢复原先的项目入口。
 
-入口文件按首步要求校验：Synthesis 要 `rtl`；LEC 要 `netlist` 和 `golden_netlist`；Floorplan 要 `netlist`；物理步骤（place/CTS/legalization/timing optimization/route/filler/rcx/drc/lvs/harden）要 `def` 和 `netlist`；STA 要 `def`、`netlist`、`spef`；`sdc` 可选。缺什么会明确报错：
+入口文件按首步要求校验：Synthesis 要 `rtl`；LEC 要 `netlist` 和 `golden_netlist`；pre-floorplan 要 `netlist`；macro placement、post-floorplan 和其余物理步骤（place/CTS/legalization/timing optimization/route/filler/rcx/drc/lvs/harden）要 `def` 和 `netlist`；STA 要 `def`、`netlist`、`spef`；`sdc` 可选。缺什么会明确报错：
 
 ```console
 $ ecc run --from cts --to route
@@ -681,8 +691,8 @@ rc=1
 > ```console
 > $ ecc run --workspace default --only placemen   # 拼错了：既不是持久化名也不是别名
 > [error]
->   unknown_step unknown step 'placemen'; available steps: Synthesis, lec, Floorplan,
->   place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
+>   unknown_step unknown step 'placemen'; available steps: Synthesis, lec, preFloorplan,
+>   macroPlacement, postFloorplan, place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
 >   postRouteLec, drc, Harden
 > ```
 
@@ -715,7 +725,7 @@ ecc config --plain      # 项目级配置（键值 + 解析后绝对路径）
 ## 8. 下一步
 
 - 换你自己的设计：改 `ecc.toml` 的 `top`/`rtl`/`clock_port`/`frequency_mhz`，多文件用 [filelist](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist)；
-- 了解 preset 差异：`rtl2gds`（完整 15 步综合到 Harden 链，含综合级 LEC）、`syn_sta`（仅综合）、`synthesis_lec`（综合 + LEC，两步）；
+- 了解 preset 差异：`rtl2gds`（完整 17 步综合到 Harden 链，含综合级 LEC）、`syn_sta`（仅综合）、`synthesis_lec`（综合 + LEC，两步）；
 - 全部命令细节见 **[ECC CLI 用户指南](ecc-user-guide.cn.md)**（终端：`ecc doc ug --lang cn`）；CLI 扩展开发见 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli)；
 - 用 Python API 直接编排 flow（`EngineFlow`）见 [examples/gcd/ics55flow.py](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/ics55flow.py)。
 

@@ -10,6 +10,7 @@ class EccSubFlowEnum(Enum):
     save_data = "save data"
     analysis = "analysis"
     init_floorplan = "init floorplan"
+    macro_place = "macro placement"
     create_tracks = "create tracks"
     place_io_pins = "place io pins"
     tap_cell = "tap cell"
@@ -66,9 +67,16 @@ class EccSubFlow:
 
         step = StepEnum(self.workspace_step.name)
         match step:
-            case StepEnum.FLOORPLAN:
+            case StepEnum.PRE_FLOORPLAN:
                 steps.append(subflow_template(EccSubFlowEnum.load_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.init_floorplan.value))
+                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
+            case StepEnum.MACRO_PLACEMENT:
+                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
+                steps.append(subflow_template(EccSubFlowEnum.macro_place.value))
+                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
+            case StepEnum.POST_FLOORPLAN:
+                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.create_tracks.value))
                 steps.append(subflow_template(EccSubFlowEnum.place_io_pins.value))
                 steps.append(subflow_template(EccSubFlowEnum.tap_cell.value))
