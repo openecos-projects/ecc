@@ -22,7 +22,7 @@ def run_step(workspace: Workspace, step: WorkspaceStep, ecc_module=None) -> bool
     log_workspace_step(step, workspace.logger)
 
     def run_tool():
-        workers = sta_workers(workspace, step)
+        workers = sta_workers(step)
         if workers > 1:
             return run_parallel_sta(workspace, step, ecc_module, workers)
         if step.tool != "sizer":

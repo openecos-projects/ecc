@@ -123,33 +123,28 @@ def _workspace(tmp_path):
     )
 
 
-def test_worker_setting_is_candidate_sta_only(tmp_path, monkeypatch):
+def test_worker_setting_applies_to_every_workspace_sta_step(tmp_path, monkeypatch):
     monkeypatch.setattr(sta.sys, "platform", "linux")
-    workspace = _workspace(tmp_path)
     step = SimpleNamespace(tool="ecc", name="sta")
-    assert sta.sta_workers(workspace, step) == 2
+    assert sta.sta_workers(step) == 2
     for value in ("1", "2", "4"):
         monkeypatch.setenv("ECOS_AGENT_STA_WORKERS", value)
-        assert sta.sta_workers(workspace, step) == int(value)
+        assert sta.sta_workers(step) == int(value)
     monkeypatch.setenv("ECOS_AGENT_STA_WORKERS", "13")
     with pytest.raises(ValueError, match="1, 2, or 4"):
-        sta.sta_workers(workspace, step)
+        sta.sta_workers(step)
     step.name = "Harden"
-    assert sta.sta_workers(workspace, step) == 1
+    assert sta.sta_workers(step) == 1
 
 
-def test_non_linux_candidates_keep_serial_default(tmp_path, monkeypatch):
+def test_non_linux_keeps_serial_default(tmp_path, monkeypatch):
     monkeypatch.setattr(sta.sys, "platform", "darwin")
     monkeypatch.delenv("ECOS_AGENT_STA_WORKERS", raising=False)
-    workspace = _workspace(tmp_path)
     step = SimpleNamespace(tool="ecc", name="sta")
-    assert sta.sta_workers(workspace, step) == 1
+    assert sta.sta_workers(step) == 1
     monkeypatch.setenv("ECOS_AGENT_STA_WORKERS", "2")
     with pytest.raises(ValueError, match="requires Linux"):
-        sta.sta_workers(workspace, step)
-    step.name = "sta"
-    workspace.directory = tmp_path / "ordinary"
-    assert sta.sta_workers(workspace, step) == 1
+        sta.sta_workers(step)
 
 
 @pytest.mark.parametrize("fail", [False, True])

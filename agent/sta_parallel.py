@@ -1,4 +1,9 @@
-"""Candidate-only full-corner STA with isolated native processes."""
+"""Full-corner STA with isolated native processes.
+
+Parallel STA applies to every workspace's `sta` step (GUI flows and
+optimization candidates alike); `ECOS_AGENT_STA_WORKERS` selects the worker
+count, defaulting to 2 on Linux and 1 elsewhere.
+"""
 
 import multiprocessing
 import os
@@ -18,11 +23,9 @@ from chipcompiler.tools.ecc.sta_artifacts import copy_sta_artifact, discard_sta_
 from chipcompiler.tools.ecc.sta_qor import sta_artifact_directory
 from chipcompiler.utility.log import redirect_stdio_to_file
 
-from .plot import _is_candidate_workspace
 
-
-def sta_workers(workspace, step) -> int:
-    if step.tool != "ecc" or step.name != "sta" or not _is_candidate_workspace(workspace):
+def sta_workers(step) -> int:
+    if step.tool != "ecc" or step.name != "sta":
         return 1
     value = os.environ.get("ECOS_AGENT_STA_WORKERS", "2" if sys.platform == "linux" else "1")
     if value not in {"1", "2", "4"}:
