@@ -19,7 +19,9 @@ from chipcompiler.data.workspace import (
     prepare_workspace_for_rerun,
     refresh_workspace_config,
     sync_workspace_config_to_parameters,
+    update_step_config,
 )
+from chipcompiler.data.workspace.layout import EccData, EccOutput, EccStep, StepInput
 from chipcompiler.utility import json_read, json_write
 
 EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
@@ -1171,6 +1173,38 @@ def test_refresh_workspace_config_reapplies_direct_config_overrides(
 
     assert json_read(workspace.config[StepEnum.CTS.value])["skew_bound"] == "0.05"
     assert json_read(workspace.config["dreamplace"])["num_threads"] == 12
+
+
+def test_update_step_config_preserves_floorplan_mode_override_after_result_backfill(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    workspace_dir, workspace = _create_loaded_ics55_workspace(
+        tmp_path,
+        "workspace_floorplan_mode_override",
+        minimal_ics55_pdk_factory,
+        default_ics55_parameters,
+    )
+    parameters = _read_parameters(workspace_dir / "home" / "params.toml")
+    parameters["die"] = {"size": [31.8, 32.0], "area": 1017.6}
+    parameters["config_overrides"] = {
+        "Floorplan": {"die_builder": {"mode": "die_util"}},
+    }
+    _write_parameters(workspace_dir / "home" / "params.toml", parameters)
+    workspace.parameters.data = parameters
+
+    step = EccStep(
+        name=StepEnum.POST_FLOORPLAN.value,
+        input=StepInput(),
+        output=EccOutput(dir=workspace_dir / "postFloorplan_ecc" / "output"),
+        data=EccData(
+            steps={StepEnum.POST_FLOORPLAN.value: workspace_dir / "postFloorplan_ecc" / "data"}
+        ),
+    )
+
+    update_step_config(workspace, step)
+
+    floorplan = json_read(workspace.config[StepEnum.FLOORPLAN.value])
+    assert floorplan["die_builder"]["mode"] == "die_util"
 
 
 def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshes_peers(

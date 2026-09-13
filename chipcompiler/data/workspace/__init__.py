@@ -952,6 +952,9 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
 
     if step.name in {StepEnum.PRE_FLOORPLAN.value, StepEnum.POST_FLOORPLAN.value}:
         _refresh_floorplan_config(workspace, step=step)
+        from .config_overrides import apply_config_overrides
+
+        apply_config_overrides(workspace.config, workspace.parameters.data)
 
     if step.name == StepEnum.ROUTING.value and isinstance(step.data, EccData):
         router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])
