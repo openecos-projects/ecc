@@ -481,7 +481,7 @@ Timing optimization 是三阶段子流程：运行 Sizer，用 DreamPlace 对 Si
 | 输出 | `output/<设计>_postRouteLec_result.json`：`status`（`proven` / 失败）+ 双方 `sha256` + 报告路径；`report/equiv_status.rpt`、`report/run_lec_status.rpt` |
 | 签核 | `status=proven` 计入签核清单（LEC 结果进签核包 `final/reports/postRouteLec/`） |
 
-完整 `rtl2gds` preset 会在 synthesis 后立即执行 `lec`。另有 `synthesis_lec` preset（仅 synthesis + lec 两步）可单独做综合级等价检查。
+完整 `rtl2gds` preset 的链路中 `lec` 紧跟 synthesis，但**默认被跳过**（`[flow] skip_steps` 默认为 `["lec"]`；设为 `[]` 才会执行）。另有 `synthesis_lec` preset（仅 synthesis + lec 两步）可单独做综合级等价检查；该 preset 需要显式 `skip_steps = []`。
 
 ## 12. rcx（ecc-tools）
 

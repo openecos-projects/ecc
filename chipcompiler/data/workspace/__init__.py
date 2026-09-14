@@ -1057,11 +1057,15 @@ def create_workspace(
         - input_filelist takes priority over origin_verilog for synthesis when both exist
         - All input files are copied to workspace/origin/ directory
     """
-    # The skip policy is validated before anything on disk is touched: an
-    # invalid policy is a configuration error, never a partial workspace.
+    # The skip policy and the selected range are validated before anything
+    # on disk is touched: invalid configuration is an error, never a
+    # partial workspace. A skipped step cannot bound the range either.
     from chipcompiler.rtl2gds import resolve_skip_steps
 
+    from ..workspace_config import flow_section_from_flow_config
+
     resolve_skip_steps(flow_config)
+    flow_section_from_flow_config(flow_config)
 
     # create workspace directory
     import shutil
@@ -1171,6 +1175,15 @@ def create_workspace(
             dynamic_flow_data["steps"][0]["info"]["spef"] = str(workspace.pdk.spef)
         if not json_write(workspace.flow.path, workspace.flow.data):
             raise OSError(f"Failed to write initial flow.json: {workspace.flow.path}")
+    elif isinstance(flow_config, dict) and "skip_steps" in flow_config:
+        # A policy-only flow config selects no steps (the preset or the
+        # ledger-less rebuild owns the chain), but the declared policy must
+        # still persist so later rebuilds resolve the same chain.
+        from ..workspace_config import validate_flow_config
+
+        workspace.parameters.data["_flow"] = validate_flow_config(
+            {"skip_steps": flow_config["skip_steps"]}
+        )
 
     if workspace.pdk.root:
         workspace.parameters.data["pdk_root"] = str(workspace.pdk.root)

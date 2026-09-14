@@ -472,3 +472,15 @@ def test_save_drops_null_list_elements_with_a_warning(tmp_path):
     assert ok is True
     loaded = load_workspace_config(tmp_path)
     assert loaded["core"]["margin"] == [2]
+
+
+def test_flow_section_rejects_skipped_step_as_range_boundary():
+    with pytest.raises(WorkspaceFlowTargetError, match="cannot bound the flow range"):
+        validate_flow_config({"start": "Synthesis", "end": "lec", "skip_steps": ["lec"]})
+    # Same rule when the boundary step is the start.
+    with pytest.raises(WorkspaceFlowTargetError, match="cannot bound the flow range"):
+        validate_flow_config({"start": "lec", "end": "Harden", "skip_steps": ["LEC"]})
+    # A skipped step INSIDE the range is fine.
+    assert validate_flow_config(
+        {"start": "Synthesis", "end": "preFloorplan", "skip_steps": ["lec"]}
+    ) == {"start": "Synthesis", "end": "preFloorplan", "skip_steps": ["lec"]}

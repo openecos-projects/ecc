@@ -1780,3 +1780,29 @@ def test_create_workspace_pdk_overrides_typo_propagates(
             pdk_root=str(pdk_root),
             pdk_overrides={"dontuse": ["ICG*"]},
         )
+
+
+def test_create_workspace_policy_only_config_persists_declared_policy(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    """A policy-only flow config (no selected steps) still persists the
+    declared policy, so ledger-less rebuilds resolve the same chain."""
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    netlist_path = tmp_path / "gcd.v"
+    netlist_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    workspace = create_workspace(
+        directory=workspace_dir,
+        origin_def="",
+        origin_verilog=netlist_path,
+        pdk="ics55",
+        parameters=deepcopy(default_ics55_parameters),
+        pdk_root=pdk_root,
+        flow_config={"skip_steps": []},
+    )
+
+    assert workspace is not None
+    assert not (workspace_dir / "home" / "flow.json").exists()
+    loaded = load_workspace(str(workspace_dir))
+    assert loaded.parameters.data["_flow"] == {"skip_steps": []}

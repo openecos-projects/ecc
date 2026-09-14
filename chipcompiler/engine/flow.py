@@ -171,7 +171,7 @@ class EngineFlow:
 
     def add_step(
         self,
-        step: StepEnum | str,
+        step: StepBaseEnum | str,
         tool: str,
         state: str | StateEnum,
         info: dict | None = None,

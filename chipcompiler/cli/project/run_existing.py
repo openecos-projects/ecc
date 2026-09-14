@@ -112,7 +112,12 @@ def run_existing_workspace(
         # manifest's start/end seeded it at creation and is not consulted.
         target_section = None
     else:
+        # The declared skip policy rides on the preset target so an
+        # existing workspace classifies against the same policy a fresh
+        # creation would use (an explicit empty list included).
         target_section = {"preset": cfg.flow_preset} if cfg.flow_preset else None
+        if target_section is not None and "flow.skip_steps" in cfg._explicit_keys:
+            target_section["skip_steps"] = cfg.flow_skip_steps
 
     # Pure-read preflight: a divergent flow is rejected BEFORE load_workspace
     # can migrate configs, create home.json/checklist, or take the lock.

@@ -484,7 +484,7 @@ uv run ecc pdk show
 
 ### Flow Preset 覆盖
 
-`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（16 步，Synthesis 后紧跟一次综合级 LEC；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
+`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（规范链 17 步，含 Synthesis 后紧跟的综合级 LEC，默认策略会跳过该步，见下文「可跳过的 Flow Step」；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
 
 ```bash
 uv run ecc run --project gcd --preset rtl2gds

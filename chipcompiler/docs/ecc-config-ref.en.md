@@ -479,7 +479,7 @@ No JSON configuration; driven by `script/run_lec.tcl` (read liberty → normaliz
 | Output | `output/<design>_postRouteLec_result.json`: `status` (`proven` / failure) + both sides' `sha256` + report paths; `report/equiv_status.rpt`, `report/run_lec_status.rpt` |
 | Signoff | `status=proven` counts toward the signoff checklist (LEC results go into the signoff package `final/reports/postRouteLec/`) |
 
-The `lec` step runs immediately after synthesis in the complete `rtl2gds` preset. There is also a `synthesis_lec` preset (just the two steps synthesis + lec) for standalone synthesis-level equivalence checking.
+The `lec` step sits immediately after synthesis in the canonical `rtl2gds` chain but is **skipped by default** (`[flow] skip_steps` defaults to `["lec"]`; set `skip_steps = []` to run it). There is also a `synthesis_lec` preset (just the two steps synthesis + lec) for standalone synthesis-level equivalence checking; it requires `skip_steps = []`.
 
 ## 12. rcx (ecc-tools)
 

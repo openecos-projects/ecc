@@ -674,9 +674,10 @@ uv run ecc pdk show
 `ecc run --preset <name>` overrides `[flow] preset` for a single run without
 editing `ecc.toml`. Valid names are auto-discovered from
 `chipcompiler/rtl2gds/builder.py` (`rtl2gds | syn_sta | synthesis_lec`); the
-`rtl2gds` preset is the full synthesis-to-harden chain (16 steps, with a
-synthesis-level LEC immediately after Synthesis; Harden
-emits GDS + abstract LEF + timing LIB):
+`rtl2gds` preset is the full synthesis-to-harden chain (17 canonical steps,
+including a synthesis-level LEC immediately after Synthesis that the default
+skip policy excludes — see [Skippable Flow Steps](#skippable-flow-steps);
+Harden emits GDS + abstract LEF + timing LIB):
 
 ```bash
 uv run ecc run --project gcd --preset rtl2gds

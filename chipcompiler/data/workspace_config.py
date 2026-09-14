@@ -158,6 +158,14 @@ def validate_flow_config(flow: object) -> dict:
         if value not in canonical_names:
             raise WorkspaceFlowTargetError(f"[flow] unknown step name: {value!r}")
         normalized[key] = value
+    excluded = set(result.get("skip_steps") or ())
+    for key in ("start", "end"):
+        if normalized[key] in excluded:
+            raise WorkspaceFlowTargetError(
+                f"[flow] {normalized[key]!r} is skipped by skip_steps and cannot "
+                f"bound the flow range; remove it from skip_steps or pick another "
+                f"boundary"
+            )
     if canonical_names.index(normalized["start"]) > canonical_names.index(normalized["end"]):
         raise WorkspaceFlowTargetError(
             f"[flow] start {normalized['start']!r} is after end {normalized['end']!r}"

@@ -453,12 +453,17 @@ def execute_fresh_run(
 
             if not _flow_config_selects_steps(flow_config):
                 # CLI-born workspaces persist the named preset chain as
-                # their target; a declared skip policy rides along.
+                # their target; a declared skip policy rides along,
+                # normalized (validate_flow_config is the normalizer).
                 workspace_parameters = getattr(workspace, "parameters", None)
                 if workspace_parameters is not None:
-                    flow_section = {"preset": cfg.flow_preset}
+                    flow_section: dict = {"preset": cfg.flow_preset}
                     if isinstance(flow_config, dict) and "skip_steps" in flow_config:
-                        flow_section["skip_steps"] = flow_config["skip_steps"]
+                        from chipcompiler.data.workspace_config import validate_flow_config
+
+                        flow_section = validate_flow_config(
+                            {"preset": cfg.flow_preset, "skip_steps": flow_config["skip_steps"]}
+                        )
                     workspace_parameters.data["_flow"] = flow_section
                     if not save_parameter(workspace_parameters):
                         return failed_workspace("failed to persist the flow target in params.toml")
