@@ -253,9 +253,12 @@ rc=0
 
 ### 4.1 启动
 
-`rtl2gds` preset 是完整 17 步链，一步到位跑到 Harden（产出 GDS + 抽象 LEF + 时序 LIB）。综合级 LEC（第 2 步）在链路中但**默认被跳过**：`[flow] skip_steps` 默认为 `["lec"]`，在 `ecc.toml` 中设 `skip_steps = []` 是启用它的唯一方式。本教程捕获的输出均在启用 LEC 的条件下产生：
+`rtl2gds` preset 是完整 17 步链，一步到位跑到 Harden（产出 GDS + 抽象 LEF + 时序 LIB）。综合级 LEC（第 2 步）在链路中但**默认被跳过**：`[flow] skip_steps` 默认为 `["lec"]`，在 `ecc.toml` 中设 `skip_steps = []` 是启用它的唯一方式。要完整复现下文展示的每一步（包括 LEC），先清空该列表再运行：
 
 ```bash
+# 为本教程启用综合级 LEC
+sed -i 's/skip_steps = \["lec"\]/skip_steps = []/' ecc.toml
+
 ecc run --preset rtl2gds
 ```
 

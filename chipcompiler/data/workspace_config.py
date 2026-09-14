@@ -239,6 +239,13 @@ def flow_section_from_flow_config(flow_config: dict | None) -> dict:
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
 
+    # A preset-shaped flow_config selects the preset's canonical range.
+    if "preset" in flow_config and "start_step" not in flow_config and "steps" not in flow_config:
+        section: dict = {"preset": flow_config["preset"]}
+        if "skip_steps" in flow_config:
+            section["skip_steps"] = flow_config["skip_steps"]
+        return validate_flow_config(section)
+
     from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
 
     selected, _degraded = resolve_flow_selection(flow_config, _canonical_rtl2gds_flow_entries())

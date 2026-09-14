@@ -328,7 +328,7 @@ ecc run [OPTIONS]
 
 新建或 `--overwrite` 的 workspace 会按以下流程执行：读 `ecc.toml` → 只解析入口步骤所需的设计文件以及 PDK/参数 → 预检所需工具 → 先写入 `project.json` 登记 → 在 `<project>/<workspace 名称>` 创建 workspace → 将声明的设计输入复制到 `origin/`、写入对应步骤配置并运行 flow。workspace 不会存放第二份项目输入清单。已有 workspace 按持久化 flow 续跑，不会改写已有输入或步骤配置。`rtl2gds` 是完整 17 步链（Synthesis→LEC（Yosys 等价性检查；默认跳过——`[flow] skip_steps` 默认为 `["lec"]`，设为 `[]` 才启用）→preFloorplan→macroPlacement→postFloorplan→place→CTS→legalization→Timing optimization（sizer）→route→filler→RCX→sta→LVS→postRouteLec（Yosys 等价性检查）→DRC→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB）。
 
-运行结束打印汇总（真实输出）：
+`synthesis_lec` preset 需要默认策略跳过的 LEC，因此本示例的项目先在 `ecc.toml` 中显式设置 `skip_steps = []`：
 
 ```console
 $ ecc run --preset synthesis_lec

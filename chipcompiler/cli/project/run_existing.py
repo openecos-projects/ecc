@@ -26,6 +26,7 @@ def run_existing_workspace(
     cli_overrides: dict,
     warning_records: list[dict],
     *,
+    flow_config=None,
     workspace_registered: bool,
 ) -> CommandResult:
     """Run against an existing workspace: reconcile target vs persisted flow.
@@ -112,12 +113,16 @@ def run_existing_workspace(
         # manifest's start/end seeded it at creation and is not consulted.
         target_section = None
     else:
-        # The declared skip policy rides on the preset target so an
-        # existing workspace classifies against the same policy a fresh
-        # creation would use (an explicit empty list included).
+        # The target carries the preset plus the effective declared skip
+        # policy (already resolved through skip-specific precedence onto
+        # the flow config), so an existing workspace classifies against
+        # the same policy a fresh creation would use.
         target_section = {"preset": cfg.flow_preset} if cfg.flow_preset else None
-        if target_section is not None and "flow.skip_steps" in cfg._explicit_keys:
-            target_section["skip_steps"] = cfg.flow_skip_steps
+        if target_section is not None:
+            if isinstance(flow_config, dict) and "skip_steps" in flow_config:
+                target_section["skip_steps"] = flow_config["skip_steps"]
+            elif "flow.skip_steps" in cfg._explicit_keys:
+                target_section["skip_steps"] = cfg.flow_skip_steps
 
     # Pure-read preflight: a divergent flow is rejected BEFORE load_workspace
     # can migrate configs, create home.json/checklist, or take the lock.

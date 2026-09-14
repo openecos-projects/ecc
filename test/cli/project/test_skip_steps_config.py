@@ -183,3 +183,38 @@ def test_init_materializes_the_default_skip_into_generated_ecc_toml(tmp_path):
     toml = (tmp_path / "gcd" / "ecc.toml").read_text()
     assert 'skip_steps = ["lec"]' in toml
     assert "LEC is skipped by default; clear the list to enable it." in toml
+
+
+def test_pre_register_materializes_declared_skip_steps(tmp_path, monkeypatch):
+    """A fresh manifest registration records the workspace's declared
+    skip policy on the entry (declared spelling preserved)."""
+    from chipcompiler.cli.project.config import load_project_config
+    from chipcompiler.cli.project.manifest_write import pre_register_workspace
+
+    (tmp_path / "ecc.toml").write_text(
+        "[design]\n"
+        'name = "gcd"\n'
+        'top = "gcd"\n'
+        'rtl = ["rtl/gcd.v"]\n'
+        'clock_port = "clk"\n'
+        "frequency_mhz = 100.0\n"
+        "\n[pdk]\n"
+        'name = "ics55"\n'
+        'root = "/pdk"\n'
+        "\n[flow]\n"
+        'preset = "rtl2gds"\n'
+    )
+    cfg = load_project_config(str(tmp_path / "ecc.toml"))
+
+    outcome = pre_register_workspace(
+        str(tmp_path),
+        cfg=cfg,
+        pdk_root="/pdk",
+        workspace_id="ws_0001",
+        workspace_path=str(tmp_path / "ws_0001"),
+        flow_config={"skip_steps": ["TimingOpt"]},
+    )
+
+    assert outcome == "registered"
+    (entry,) = load_manifest(str(tmp_path)).workspaces
+    assert entry.skip_steps == ("TimingOpt",)

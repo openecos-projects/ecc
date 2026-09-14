@@ -363,6 +363,14 @@ def pre_register_workspace(
         start_step, end_step = manifest_range_for_flow(cfg, flow_config)
     except ManifestError:
         return "failed"
+    # A declared skip policy is materialized on the entry (declared
+    # spelling preserved); an undeclared policy stays absent so the code
+    # default keeps applying on later reads.
+    declared_skip = (
+        flow_config.get("skip_steps")
+        if isinstance(flow_config, dict) and "skip_steps" in flow_config
+        else None
+    )
     now = _now_iso()
     manifest_path = os.path.join(project_dir, MANIFEST_FILENAME)
     if not os.path.lexists(manifest_path):
@@ -375,6 +383,7 @@ def pre_register_workspace(
             start_step=start_step,
             end_step=end_step,
             status="not_started",
+            skip_steps=list(declared_skip) if declared_skip is not None else None,
         )
         if write_manifest_if_absent(project_dir, document):
             return "registered"
@@ -409,6 +418,7 @@ def pre_register_workspace(
                 end_step=end_step,
                 status="not_started",
                 now=now,
+                skip_steps=list(declared_skip) if declared_skip is not None else None,
             )
         )
         document["updated_at"] = now

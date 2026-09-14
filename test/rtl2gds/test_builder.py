@@ -231,3 +231,23 @@ def test_unknown_flow_config_keys_never_become_steps_or_errors():
     names = [step["name"] for step in ledger["steps"]]
     assert "Synthesis" in names
     assert "future_unknown_key" not in names
+
+
+def test_preset_shaped_flow_config_builds_the_preset_ledger():
+    from chipcompiler.data.workspace import build_dynamic_flow_data
+    from chipcompiler.data.workspace_config import flow_section_from_flow_config
+
+    policy = {"preset": "synthesis_lec", "skip_steps": []}
+
+    ledger = build_dynamic_flow_data(policy)
+    assert [step["name"] for step in ledger["steps"]] == ["Synthesis", "lec"]
+
+    # The persisted flow section keeps the preset and the normalized policy.
+    section = flow_section_from_flow_config(policy)
+    assert section == {"preset": "synthesis_lec", "skip_steps": []}
+
+    # The default policy conflicts with this preset's LEC endpoint: the
+    # skipped boundary is a deterministic unknown-step error (the data-level
+    # mirror of the creation-time preset conflict).
+    with pytest.raises(ValueError, match="unknown flow step"):
+        build_dynamic_flow_data({"preset": "synthesis_lec"})

@@ -285,16 +285,22 @@ def build_dynamic_flow_data(flow_config: dict | None) -> dict:
 
     A non-contiguous explicit selection degrades to the contiguous
     first..last range (with a log note) so flow.json and the [flow] target
-    always describe the same steps. The config's skip policy is resolved
-    here: skipped steps never enter the ledger.
+    always describe the same steps. A preset-shaped config selects the
+    preset's canonical range. The config's skip policy is resolved here:
+    skipped steps never enter the ledger.
     """
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
 
-    canonical_steps = _canonical_rtl2gds_flow_entries()
-    from ..workspace_config import resolve_flow_selection
+    from ..workspace_config import flow_range_for_preset, resolve_flow_selection
 
-    selected_names, _degraded = resolve_flow_selection(flow_config, canonical_steps)
+    if "preset" in flow_config and "start_step" not in flow_config and "steps" not in flow_config:
+        first, last = flow_range_for_preset(flow_config["preset"])
+        selected_names = [first, last]
+    else:
+        selected_names, _degraded = resolve_flow_selection(
+            flow_config, _canonical_rtl2gds_flow_entries()
+        )
     if not selected_names:
         return {}
 

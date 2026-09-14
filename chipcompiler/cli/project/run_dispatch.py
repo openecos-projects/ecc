@@ -237,6 +237,7 @@ def dispatch_project_run(
             run_name,
             cli_overrides,
             warning_records,
+            flow_config=flow_config,
             workspace_registered=workspace_registered,
         )
 
