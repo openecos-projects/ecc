@@ -26,8 +26,8 @@ flowchart LR
 
 ## 宏位置交接文件
 
-宏单元摆放成功后，流程会写入 `config/macro_localtion.tcl`。文件名保留现有的
-`localtion` 拼写，以保证兼容性。
+宏单元摆放成功后，流程会写入 `config/macro_location.tcl`。改名之前创建的
+workspace 若仍带有 `macro_localtion.tcl`，打开时会自动迁移。
 
 该文件是 macro placement 和 post-floorplan 之间的 iDB/Tcl 交接文件。每个硬宏
 使用如下命令表示，坐标单位为微米：
@@ -43,9 +43,19 @@ setInstancePlacementStatus -status fixed -name <instance>
 交接文件使用。生成的方向值为 `R0`、`R90`、`R180`、`R270`、`MY`、`MX90`、`MX`
 和 `MY90`。
 
-如果 GUI 或用户提供宏位置，也必须使用同一种 Tcl 格式。重新运行
-`macroPlacement` 会重新生成该文件；使用有效的手工交接文件后，应只运行
-`postFloorplan`，不要再次运行宏摆放阶段。
+手工宏位置通过 `macro.placements` 参数和 `ecc macro` 命令管理：
+
+```bash
+ecc macro set u_ram0 --x 10 --y 20.5 --orient R0
+ecc macro remove u_ram0
+ecc macro show
+```
+
+只要 `macro.placements` 非空，创建或刷新 workspace 配置时都会把它渲染进
+`config/macro_location.tcl`；此时 `macroPlacement` 保留 load/save 流程但跳过
+DreamPlace 宏摆放，由 `postFloorplan` 依据该文件将宏以 fixed 状态提交。删除
+最后一个条目会清空参数并恢复 DreamPlace 自动摆放。不支持手工编辑该文件：未设置
+`macro.placements` 时，重新运行 `macroPlacement` 会重新生成交接文件。
 
 ## 恢复与重跑
 

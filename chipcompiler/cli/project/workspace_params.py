@@ -17,6 +17,7 @@ _APPLIES_TO_STEP = {
     "synthesis": "Synthesis",
     "floorplan": "preFloorplan",
     "placement": "place",
+    "macro": "macroPlacement",
     "cts": "CTS",
     "routing": "route",
     "filler": "filler",

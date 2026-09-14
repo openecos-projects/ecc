@@ -269,7 +269,7 @@ In an interactive terminal the CLI renders live per-step progress and log tails;
 | 1 | synthesis | yosys | RTL synthesis and technology mapping (slang frontend reads SystemVerilog) |
 | 2 | lec | yosys_lec | Logic equivalence check: synthesis netlist vs its golden netlist |
 | 3 | pre_floorplan | ecc | Build the simple floorplan with automatic macro placement |
-| 4 | macro_placement | dreamplace | Run macro-only placement; this is the handoff checkpoint before the macro-location file is consumed |
+| 4 | macro_placement | dreamplace | Run macro-only placement (positions can also be set manually with `ecc macro`, see §6.5); this is the handoff checkpoint before the macro-location file is consumed |
 | 5 | post_floorplan | ecc | Read the macro-location file; create tracks, IO pins, tap cells, PDN, and clock-net setup |
 | 6 | placement | dreamplace | Global placement |
 | 7 | cts | ecc | Clock tree synthesis (incl. fanout limits) |
@@ -703,6 +703,29 @@ rc=1
 ecc config placement    # config files actually used by that step under the workspace's config/
 ecc config --plain      # project-level config (key=value + resolved absolute paths)
 ```
+
+### 6.5 Placing macros manually (designs with hard macros)
+
+gcd is a pure digital design with no macros. For a design with SRAM/analog hard macros, step 4 `macro_placement` places them automatically with DreamPlace and writes the positions to the workspace's `config/macro_location.tcl`. To decide the macro positions yourself (for example, pinning an SRAM array along the datapath), use the `ecc macro` command group instead of editing the Tcl by hand:
+
+```bash
+ecc macro set u_ram0 --x 10 --y 20.5 --orient R0    # add/update one macro position (µm, upsert)
+ecc macro set u_ram1 --x 150 --y 20.5 --orient MY   # orientations: R0/R90/R180/R270/MX/MY/MX90/MY90
+ecc macro show                                      # list the placements and the generated Tcl path
+ecc macro remove u_ram0                             # remove one; clearing the list restores DreamPlace auto placement
+```
+
+Pick the scope that matches your intent:
+
+- **Fix positions before running** (project scope): run `ecc macro set ...` without a selector — it writes `ecc.toml`'s `[params.macro]`, and every workspace created afterwards (`ecc run` / `--overwrite` / `ecc workspace refresh`) renders `config/macro_location.tcl` from it;
+- **Adjust an existing workspace**: add `--workspace default` — the Tcl is regenerated immediately and `macroPlacement` and its suffix are marked pending. The following `ecc run --workspace default` resumes from `macroPlacement`: DreamPlace placement is skipped, `post_floorplan` commits the macros `fixed` from the file, and everything from place onwards re-runs.
+
+```bash
+ecc macro set u_ram0 --x 120.0 --y 80.0 --orient MY --workspace default
+ecc run --workspace default
+```
+
+The list must cover **every** hard macro in the design and use real instance names, otherwise `post_floorplan` fails with the missing instance names. See [User Guide §9.5](ecc-user-guide.en.md#95-macro--manual-macro-placement) for the command details and [floorplan-flow.en.md](floorplan-flow.en.md) for the staged floorplan and the handoff format.
 
 ## 7. Troubleshooting
 

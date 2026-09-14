@@ -765,6 +765,59 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 优先级：CLI `--set` > `ecc.toml` `[params.*]` > 模板默认值。`pdk.*` 路径参数写入 `[pdk.overrides]`：`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file` 相对 `pdk.root` 解析，`pdk.sdc` 和 `pdk.spef` 相对项目目录解析；六者都会校验文件。
 
+## 9.5. macro — 手动宏单元摆放
+
+```bash
+ecc macro set INSTANCE --x X --y Y --orient ORIENT [--project DIR] [--workspace NAME] [--plain]
+ecc macro remove INSTANCE [--project DIR] [--workspace NAME] [--plain]
+ecc macro show [--project DIR] [--workspace NAME] [--plain]
+```
+
+含硬宏（SRAM 等）的设计默认在 `macroPlacement` 步骤由 DreamPlace 自动摆放，结果写入 `config/macro_location.tcl`。`ecc macro` 管理手工摆放参数 `macro.placements`：坐标单位微米，实例以 `fixed` 状态提交。参数非空时 `macroPlacement` 保留 load/save 流程但跳过 DreamPlace，由 `postFloorplan` 按该文件提交宏。方向取值 `R0`、`R90`、`R180`、`R270`、`MX`、`MY`、`MX90`、`MY90`；同一实例重复 `set` 为原地更新。
+
+与 `ecc param` 相同的两种 scope：
+
+- 项目（默认）：写入 `ecc.toml` `[params.macro]`，在下一次新建 workspace（`ecc run` / `--overwrite`）或 `ecc workspace refresh` 时渲染进 Tcl；
+- `--workspace NAME`：写入该 workspace 的 `home/params.toml`，立即重生成 `config/macro_location.tcl`，并把 `macroPlacement` 及其后缀标记为待执行，之后 `ecc run --workspace NAME` 从 `macroPlacement` 续跑。
+
+```console
+$ ecc macro set u_ram0 --x 10 --y 20.5 --orient R0
+[status]
+  param: macro.placements
+  instance: u_ram0
+  x: 10.0
+  y: 20.5
+  orientation: R0
+  placements: [{'instance': 'u_ram0', 'x': 10.0, 'y': 20.5, 'orientation': 'R0'}]
+  status: set
+  source: ecc.toml
+
+$ ecc macro set u_ram1 --x 150 --y 20.5 --orient MY
+$ ecc macro show
+[result]
+  param: macro.placements
+  placements: [{'instance': 'u_ram0', 'x': 10.0, 'y': 20.5, 'orientation': 'R0'}, {'instance': 'u_ram1', 'x': 150.0, 'y': 20.5, 'orientation': 'MY'}]
+  source: ecc.toml
+
+$ ecc macro remove u_ram1
+[status]
+  param: macro.placements
+  instance: u_ram1
+  placements: [{'instance': 'u_ram0', 'x': 10.0, 'y': 20.5, 'orientation': 'R0'}]
+  status: removed
+  source: ecc.toml
+```
+
+在已有 workspace 上调整宏位置并重跑受影响片段：
+
+```bash
+ecc macro set u_ram0 --x 120.0 --y 80.0 --orient MY --workspace default
+ecc run --workspace default                 # 从 macroPlacement 续跑，下游步骤一并重跑
+ecc macro remove u_ram0 --workspace default # 删除最后一个条目后恢复 DreamPlace 自动摆放，再续跑即回到自动结果
+```
+
+实例名必须存在于设计中，且必须列出全部硬宏——`postFloorplan` 会按缺失实例名报错；`macro_location.tcl` 是生成物，不支持手工编辑（未设置该参数时重跑 `macroPlacement` 会重新生成）。交接文件格式与三阶段 floorplan 细节见 [floorplan-flow.cn.md](floorplan-flow.cn.md)，参数说明见[配置参考 §1.5](ecc-config-ref.cn.md)。
+
 ## 10. pdk — PDK 路径配置
 
 PDK 本体由安装脚本（`--with-toolchain`，见教程）或手动 clone 获取。已就绪的 PDK 用 `ecc pdk set-root` 接入（写入 `ecc.toml` 的 `[pdk] root`，自动展开为绝对路径；目录必须已存在）。内容不完整（如还没 `make unzip`）不阻断设置，会给出提示：
@@ -1037,6 +1090,14 @@ ecc report qor --workspace exp1
 
 # 已有现成综合网表时，也可以从中间步骤起建范围 workspace（入口输入要求见 §5.1）：
 ecc run --workspace pnr --from prefloorplan --to route
+```
+
+含硬宏的设计可改用手工摆放（完整说明见 §9.5）：
+
+```bash
+ecc macro set u_ram0 --x 10 --y 20.5 --orient R0 --workspace default
+ecc run --workspace default   # 从 macroPlacement 续跑：跳过 DreamPlace，按手工位置提交宏
+ecc macro show --workspace default
 ```
 
 `project.json` 生成后，项目级查看、签核和报告命令按已声明的 workspace 选择；只有一个活跃 workspace 时自动选中，多个活跃 workspace 时必须显式传 `--workspace NAME`（否则报 `workspace_required` 并列出可用名称）。不再使用的 workspace 可在 `project.json` 中把其 `status` 改为 `archived`，使其退出自动选择。

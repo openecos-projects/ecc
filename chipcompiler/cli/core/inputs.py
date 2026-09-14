@@ -222,6 +222,32 @@ class WorkspaceRefreshInput:
     workspace: str
 
 
+@dataclass(frozen=True)
+class MacroSetInput:
+    output: OutputOptions
+    project: ProjectOptions
+    instance: str
+    x: float
+    y: float
+    orientation: str
+    workspace: str | None = None
+
+
+@dataclass(frozen=True)
+class MacroRemoveInput:
+    output: OutputOptions
+    project: ProjectOptions
+    instance: str
+    workspace: str | None = None
+
+
+@dataclass(frozen=True)
+class MacroShowInput:
+    output: OutputOptions
+    project: ProjectOptions
+    workspace: str | None = None
+
+
 def output_options(*, plain: bool) -> OutputOptions:
     return OutputOptions(plain=plain)
 

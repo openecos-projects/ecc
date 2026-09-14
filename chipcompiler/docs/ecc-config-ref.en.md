@@ -16,7 +16,7 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 ├── home/
 │   ├── params.toml        # parameter hub: user params + PDK-derived values (see §1)
 │   └── flow.json          # step status
-├── config/                # ← this document's focus: 9 JSON files
+├── config/                # ← this document's focus: 9 JSON files + the Tcl macro-location handoff
 │   ├── db_ecc.json        # database build (loads LEF/DEF/netlist/LIB/SDC; shared by every ecc step)
 │   ├── floorplan_ecc.json # floorplanning
 │   ├── cts_ecc.json       # clock tree synthesis
@@ -25,7 +25,8 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 │   ├── filler_ecc.json    # filler cells
 │   ├── rcx_ecc.json       # parasitic extraction
 │   ├── sta_ecc.json       # static timing analysis (multi-corner)
-│   └── dreamplace_ecc.json# DreamPlace placement/legalization (shared by placement and legalization)
+│   ├── dreamplace_ecc.json# DreamPlace placement/legalization (shared by placement and legalization)
+│   └── macro_location.tcl # macro-placement Tcl handoff (see §1.5; written by macroPlacement or the macro.placements parameter)
 ├── Synthesis_yosys/
 │   └── data/global_var.tcl  # the synthesis step's "config" (Tcl variables, not JSON)
 ├── lec_yosys_lec/            # synthesis-level LEC (Tcl-script driven)
@@ -67,8 +68,8 @@ Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG
 | synthesis | — | `global_var.tcl` (Tcl) | Yosys is driven by Tcl variables, not JSON |
 | lec | — | none (Tcl) | Synthesis-level Yosys LEC; compares the mapped and golden synthesis netlists; an unproven result fails the step and stops the flow |
 | preFloorplan | ✓ | `floorplan_ecc.json` | automatic macro floorplanning |
-| macroPlacement | — | `dreamplace_ecc.json` + `macro_localtion.tcl` | writes the Tcl macro-placement handoff |
-| postFloorplan | ✓ | `floorplan_ecc.json` + `macro_localtion.tcl` | reads the Tcl macro-placement handoff |
+| macroPlacement | — | `dreamplace_ecc.json` + `macro_location.tcl` | writes the Tcl macro-placement handoff (skips DreamPlace when `macro.placements` is set, see §1.5) |
+| postFloorplan | ✓ | `floorplan_ecc.json` + `macro_location.tcl` | reads the Tcl macro-placement handoff |
 | placement | — | `dreamplace_ecc.json` | shares one file with legalization |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | `def_input`/`result_dir` etc. rewritten per step |
@@ -185,6 +186,20 @@ For one-off overrides use `ecc run --set KEY=VALUE`: it applies only when the wo
 
 For full command output examples, see [ECC CLI User Guide §9](ecc-user-guide.en.md) (`ecc doc ug`).
 
+### 1.5 Manual macro placement (`ecc macro`)
+
+`macro.placements` holds manual hard-macro placements as a JSON array of `{instance, x, y, orientation}` entries (micron coordinates; instances are committed `fixed`). It is a semantic parameter like the §1.1 set — it is not written to any `config/*.json` field but rendered into `config/macro_location.tcl` whenever the workspace configuration is created or refreshed. While it is non-empty, `macroPlacement` keeps its load/save flow but skips DreamPlace macro placement and leaves the generated handoff untouched; `postFloorplan` then commits the macros from the file. Clearing the parameter restores automatic DreamPlace placement.
+
+| Command | What it does |
+|---|---|
+| `ecc macro set INSTANCE --x X --y Y --orient ORIENT` | Upsert one instance placement (orientation: `R0`, `R90`, `R180`, `R270`, `MX`, `MY`, `MX90`, `MY90`) |
+| `ecc macro remove INSTANCE` | Remove one instance placement; removing the last entry clears the parameter |
+| `ecc macro show` | List the placements and the generated Tcl path |
+
+Both `ecc param` scopes apply: project scope (default) stores the list in `ecc.toml` `[params.macro]` and takes effect on the next fresh run or `ecc workspace refresh`; `--workspace NAME` writes `home/params.toml`, regenerates the Tcl immediately, and marks `macroPlacement` and its suffix pending. The list is also accepted as a plain JSON parameter, e.g. `ecc param set macro.placements '[{"instance": "u0", "x": 10.0, "y": 20.0, "orientation": "R0"}]'`.
+
+The file must cover every hard macro in the design — `postFloorplan` fails with the missing instance names otherwise. See [floorplan-flow.en.md](floorplan-flow.en.md) for the handoff format.
+
 ## 2. Shared configuration: db_ecc.json
 
 Shared by all ecc tool steps. At step startup it is used to load LEF/DEF/netlist/LIB into the in-memory database (the subflow's "load data" phase). `INPUT.def_path/verilog_path` and `OUTPUT.output_dir_path` are **rewritten before every step run**, implementing the file chain between steps.
@@ -228,7 +243,7 @@ There is also the environment variable `YOSYS_SYNTH_STRATEGY` (e.g. `DELAY 4` / 
 
 ## 4. floorplan (ecc-tools)
 
-Configuration file `floorplan_ecc.json` is shared by the `preFloorplan` and `postFloorplan` steps. `preFloorplan` runs load data → init simple floorplan → save data with automatic macro placement; `macroPlacement` runs macro-only placement, writes `config/macro_localtion.tcl` through `tcl_save`, and forms the handoff checkpoint; `postFloorplan` consumes that file in `file` mode, then runs load data → create tracks → place IO pins → tap cells → PDN → set clock net → save data → analysis.
+Configuration file `floorplan_ecc.json` is shared by the `preFloorplan` and `postFloorplan` steps. `preFloorplan` runs load data → init simple floorplan → save data with automatic macro placement; `macroPlacement` runs macro-only placement, writes `config/macro_location.tcl` through `tcl_save`, and forms the handoff checkpoint (when the `macro.placements` parameter is set, DreamPlace is skipped and the handoff is rendered from the parameter, see §1.5); `postFloorplan` consumes that file in `file` mode, then runs load data → create tracks → place IO pins → tap cells → PDN → set clock net → save data → analysis.
 
 ### ifp (the iFP floorplan engine)
 
@@ -242,7 +257,7 @@ Configuration file `floorplan_ecc.json` is shared by the `preFloorplan` and `pos
 | Parameter | Default | Meaning |
 |---|---|---|
 | `mode` | `auto` | `auto` places macros automatically; `file` reads macro locations from `file_path` |
-| `file_path` | `""` | Macro-location file used when `mode=file` |
+| `file_path` | `""` | Macro-location file used when `mode=file`; the flow always points it at `config/macro_location.tcl` |
 | `macro_placement_halo` | 3.0 | Placement halo around macros (µm; region where standard cells may not come close) |
 | `macro_routing_halo` | 3.0 | Routing halo around macros (µm; region where routing is banned) |
 

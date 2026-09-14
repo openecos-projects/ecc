@@ -27,7 +27,7 @@ EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
     StepEnum.CTS.value: "cts_ecc.json",
     StepEnum.DRC.value: "drc_ecc.json",
     StepEnum.FLOORPLAN.value: "floorplan_ecc.json",
-    "macro_location": "macro_localtion.tcl",
+    "macro_location": "macro_location.tcl",
     StepEnum.ROUTING.value: "route_ecc.json",
     StepEnum.FILLER.value: "filler_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",

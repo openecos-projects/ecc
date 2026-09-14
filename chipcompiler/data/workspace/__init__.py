@@ -30,6 +30,7 @@ from ..workspace_config import (
 )
 from .filelist_copy import copy_filelist_with_sources as copy_filelist_with_sources
 from .layout import EccData, WorkspaceStepBase
+from .macro_location import refresh_generated_macro_location
 from .sdc import create_default_sdc as create_default_sdc
 from .sdc import refresh_generated_sdc
 
@@ -161,7 +162,7 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     StepEnum.CTS.value: "cts_ecc.json",
     StepEnum.DRC.value: "drc_ecc.json",
     StepEnum.FLOORPLAN.value: "floorplan_ecc.json",
-    "macro_location": "macro_localtion.tcl",
+    "macro_location": "macro_location.tcl",
     StepEnum.ROUTING.value: "route_ecc.json",
     StepEnum.FILLER.value: "filler_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",
@@ -174,6 +175,7 @@ _LEGACY_WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     StepEnum.CTS.value: "cts_default_config.json",
     StepEnum.DRC.value: "drc_default_config.json",
     StepEnum.FLOORPLAN.value: "fp_default_config.json",
+    "macro_location": "macro_localtion.tcl",
     StepEnum.ROUTING.value: "rt_default_config.json",
     StepEnum.FILLER.value: "pl_default_config.json",
     StepEnum.RCX.value: "rcx.json",
@@ -674,6 +676,9 @@ def init_workspace_config(workspace: Workspace) -> None:
     ecc_config_dir = root_dir / "tools" / "ecc" / "configs"
     dreamplace_config = root_dir / "tools" / "ecc_dreamplace" / "configs" / "dreamplace_ecc.json"
 
+    if workspace.directory is not None:
+        migrate_workspace_config_filenames(workspace.directory)
+
     _copy_missing_files(ecc_config_dir, config_dir)
     if not workspace.config["dreamplace"].exists():
         shutil.copy2(dreamplace_config, workspace.config["dreamplace"])
@@ -695,6 +700,7 @@ def refresh_workspace_config(workspace: Workspace) -> None:
         workspace.config = build_workspace_config_paths(workspace)
 
     refresh_generated_sdc(workspace)
+    refresh_generated_macro_location(workspace)
 
     db = json_read(workspace.config["db"])
     if "INPUT" not in db or "LayerSettings" not in db:

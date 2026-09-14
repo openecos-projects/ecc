@@ -807,6 +807,59 @@ Legacy semantic parameters:
 
 Priority: CLI `--set` > `ecc.toml` `[params.*]` > template defaults. `pdk.*` path parameters write to `[pdk.overrides]`: `pdk.tech`, `pdk.lefs`, `pdk.libs`, and `pdk.mapping_file` resolve relative to `pdk.root`, while `pdk.sdc` and `pdk.spef` resolve relative to the project directory; all are file-validated.
 
+## 9.5. macro — manual macro placement
+
+```bash
+ecc macro set INSTANCE --x X --y Y --orient ORIENT [--project DIR] [--workspace NAME] [--plain]
+ecc macro remove INSTANCE [--project DIR] [--workspace NAME] [--plain]
+ecc macro show [--project DIR] [--workspace NAME] [--plain]
+```
+
+A design with hard macros (SRAMs, analog blocks) places them automatically with DreamPlace in the `macroPlacement` step, writing `config/macro_location.tcl`. `ecc macro` manages the manual-placement parameter `macro.placements`: coordinates are in microns and instances are committed `fixed`. While the parameter is non-empty, `macroPlacement` keeps its load/save flow but skips DreamPlace, and `postFloorplan` commits the macros from the file. Orientations: `R0`, `R90`, `R180`, `R270`, `MX`, `MY`, `MX90`, `MY90`; setting the same instance again updates it in place.
+
+Both `ecc param` scopes apply:
+
+- project (default): stored in `ecc.toml` `[params.macro]`, rendered into the Tcl on the next fresh workspace (`ecc run` / `--overwrite`) or `ecc workspace refresh`;
+- `--workspace NAME`: written to that workspace's `home/params.toml`; the Tcl is regenerated immediately and `macroPlacement` and its suffix are marked pending, so the next `ecc run --workspace NAME` resumes from `macroPlacement`.
+
+```console
+$ ecc macro set u_ram0 --x 10 --y 20.5 --orient R0
+[status]
+  param: macro.placements
+  instance: u_ram0
+  x: 10.0
+  y: 20.5
+  orientation: R0
+  placements: [{'instance': 'u_ram0', 'x': 10.0, 'y': 20.5, 'orientation': 'R0'}]
+  status: set
+  source: ecc.toml
+
+$ ecc macro set u_ram1 --x 150 --y 20.5 --orient MY
+$ ecc macro show
+[result]
+  param: macro.placements
+  placements: [{'instance': 'u_ram0', 'x': 10.0, 'y': 20.5, 'orientation': 'R0'}, {'instance': 'u_ram1', 'x': 150.0, 'y': 20.5, 'orientation': 'MY'}]
+  source: ecc.toml
+
+$ ecc macro remove u_ram1
+[status]
+  param: macro.placements
+  instance: u_ram1
+  placements: [{'instance': 'u_ram0', 'x': 10.0, 'y': 20.5, 'orientation': 'R0'}]
+  status: removed
+  source: ecc.toml
+```
+
+Adjusting macro positions on an existing workspace and re-running the affected segment:
+
+```bash
+ecc macro set u_ram0 --x 120.0 --y 80.0 --orient MY --workspace default
+ecc run --workspace default                 # resumes from macroPlacement; downstream steps re-run
+ecc macro remove u_ram0 --workspace default # removing the last entry restores DreamPlace auto placement; resume again for the automatic result
+```
+
+Instance names must exist in the design and every hard macro must be listed — `postFloorplan` fails with the missing instance names otherwise. `macro_location.tcl` is a generated file and hand-editing it is unsupported (re-running `macroPlacement` without the parameter regenerates it). See [floorplan-flow.en.md](floorplan-flow.en.md) for the handoff format and staged-floorplan details, and the [Configuration Reference §1.5](ecc-config-ref.en.md) for the parameter.
+
 ## 10. pdk — PDK path configuration
 
 The PDK itself comes from the install script (`--with-toolchain`; see the
@@ -1086,6 +1139,14 @@ ecc report qor --workspace exp1
 # With a ready-made synthesis netlist, a range workspace can also start from an
 # intermediate step (entry-input requirements in §5.1):
 ecc run --workspace pnr --from prefloorplan --to route
+```
+
+A design with hard macros can switch to manual placement instead (full contract in §9.5):
+
+```bash
+ecc macro set u_ram0 --x 10 --y 20.5 --orient R0 --workspace default
+ecc run --workspace default   # resumes from macroPlacement: DreamPlace is skipped, the manual positions are committed
+ecc macro show --workspace default
 ```
 
 Once `project.json` exists, project-scoped inspection, signoff, and report commands select among declared workspaces; a single active workspace is auto-selected, while multiple active workspaces require an explicit `--workspace NAME` (otherwise `workspace_required` is reported, listing the available names). A workspace no longer in use can be dropped from auto-selection by changing its `status` to `archived` in `project.json`.

@@ -29,8 +29,8 @@ workspace.
 ## Macro-location handoff
 
 After successful macro-only placement, the flow writes
-`config/macro_localtion.tcl`. The filename intentionally retains the existing
-`localtion` spelling for compatibility.
+`config/macro_location.tcl`. Workspaces created before the rename that still
+carry `macro_localtion.tcl` are migrated automatically when opened.
 
 The file is the iDB/Tcl handoff between macro placement and post-floorplan.
 Each hard macro is represented by these commands, with coordinates in microns:
@@ -46,9 +46,22 @@ macros. Every listed instance must exist in the design; old four-column
 location text files are not valid handoffs. The generated orientation values
 are `R0`, `R90`, `R180`, `R270`, `MY`, `MX90`, `MX`, and `MY90`.
 
-If a GUI or a user supplies macro locations, it must write this same Tcl
-format. Re-running `macroPlacement` regenerates the handoff, so run only
-`postFloorplan` after replacing it with a valid manual handoff.
+Manual macro locations are managed through the `macro.placements` parameter
+and the `ecc macro` commands:
+
+```bash
+ecc macro set u_ram0 --x 10 --y 20.5 --orient R0
+ecc macro remove u_ram0
+ecc macro show
+```
+
+While `macro.placements` is non-empty, the placements are rendered into
+`config/macro_location.tcl` whenever the workspace configuration is created or
+refreshed, and `macroPlacement` keeps its load/save flow but skips DreamPlace
+macro placement — `postFloorplan` commits the macros from the file as fixed.
+Removing the last entry clears the parameter and restores the automatic
+DreamPlace behavior. Hand-editing the file is not supported: without
+`macro.placements` set, re-running `macroPlacement` regenerates the handoff.
 
 ## Resuming or re-running stages
 
