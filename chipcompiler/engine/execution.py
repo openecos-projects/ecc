@@ -106,18 +106,39 @@ class ExecutionObserver:
                 self.executed_steps.append(name)
             elif self.failed_step is None:
                 self.failed_step = name
-        callback = getattr(self.delegate, "on_step_completed", None)
-        if callable(callback):
-            callback(step, state, error)
+        self._delegate_call("on_step_completed", step, state, error)
 
-    def __getattr__(self, name: str):
-        if self.delegate is not None:
-            callback = getattr(self.delegate, name, None)
-            if callback is not None:
-                return callback
-        if name == "runtime_operation":
-            return None
-        return lambda *_args, **_kwargs: None
+    @property
+    def runtime_operation(self):
+        return getattr(self.delegate, "runtime_operation", None)
+
+    def raise_if_cancelled(self) -> None:
+        self._delegate_call("raise_if_cancelled")
+
+    def on_step_started(self, step: Any) -> None:
+        self._delegate_call("on_step_started", step)
+
+    def on_step_skipped(self, step: Any) -> None:
+        self._delegate_call("on_step_skipped", step)
+
+    def on_subflow_stage(self, step: Any, subflow_step: Any) -> None:
+        self._delegate_call("on_subflow_stage", step, subflow_step)
+
+    def on_step_diagnostic(self, step: Any, diagnostic: dict[str, Any]) -> None:
+        self._delegate_call("on_step_diagnostic", step, diagnostic)
+
+    def on_rerun_prepared(self, *args, **kwargs) -> None:
+        self._delegate_call("on_rerun_prepared", *args, **kwargs)
+
+    def wait_for_step_rendered(self, step: Any, state: Any) -> bool:
+        result = self._delegate_call("wait_for_step_rendered", step, state)
+        return True if result is None else bool(result)
+
+    def _delegate_call(self, name: str, *args, **kwargs):
+        callback = getattr(self.delegate, name, None)
+        if callable(callback):
+            return callback(*args, **kwargs)
+        return None
 
 
 class _EngineeringCommitSink:

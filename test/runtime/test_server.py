@@ -10,7 +10,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceInspectSignoffRequest,
     WorkspaceOpenRequest,
 )
-from chipcompiler.runtime.server import RuntimeServer
+from chipcompiler.runtime.server import RuntimeServer, _project_runtime_event
 from chipcompiler.runtime.workspace_api import RuntimeApiError
 
 
@@ -134,6 +134,18 @@ def test_rpc_hello_reports_persistent_db_capabilities_when_enabled():
 
     assert "db.ensure" in response["result"]["capabilities"]
     assert "db.release" in response["result"]["capabilities"]
+
+
+def test_cancel_requested_event_projects_cancelling_state():
+    projected = _project_runtime_event(
+        {
+            "type": "operation.cancel_requested",
+            "payload": {},
+        }
+    )
+
+    assert projected["type"] == "operation.changed"
+    assert projected["payload"]["state"] == "cancelling"
 
 
 def test_rpc_hello_rejects_incompatible_version():

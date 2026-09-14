@@ -181,6 +181,7 @@ def _project_runtime_event(event: dict) -> dict:
         state = {
             "operation.queued": "queued",
             "operation.started": "running",
+            "operation.cancel_requested": "cancelling",
             "operation.completed": "succeeded",
             "operation.failed": "failed",
             "operation.cancelled": "cancelled",

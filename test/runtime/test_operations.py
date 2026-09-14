@@ -89,7 +89,12 @@ def test_cancel_stops_before_next_engine_flow_step(monkeypatch):
         runner=lambda observer: {"succeeded": flow.run_steps(observer=observer)},
     )
     assert first_step_running.wait(timeout=1)
-    assert manager.request_cancel(started["operationId"])["accepted"] is True
+    cancellation = manager.request_cancel(started["operationId"])
+    assert cancellation == {
+        "accepted": True,
+        "operationId": started["operationId"],
+        "state": "cancelling",
+    }
     release_first_step.set()
 
     status = _wait_for_terminal(manager, started["operationId"])
@@ -100,6 +105,34 @@ def test_cancel_stops_before_next_engine_flow_step(monkeypatch):
     assert revisions == [1]
     event_types = [event["type"] for event in events]
     assert event_types.index("step.completed") < event_types.index("operation.cancelled")
+
+
+def test_queued_cancel_finishes_without_leaving_active_workspace(monkeypatch):
+    class DeferredThread:
+        def __init__(self, target, args, **_kwargs):
+            self._target = target
+            self._args = args
+
+        def start(self):
+            return None
+
+    monkeypatch.setattr("chipcompiler.runtime.operations.threading.Thread", DeferredThread)
+    manager = RuntimeOperationManager()
+    started = manager.start(
+        workspace_id="workspace-1",
+        kind="flow",
+        origin="gui",
+        rerun=False,
+        step="",
+        idempotency_key="queued-cancel",
+        runner=lambda _observer: {"ok": True},
+    )
+
+    assert manager.request_cancel(started["operationId"])["state"] == "cancelling"
+    manager._run(started["operationId"], lambda _observer: {"ok": True}, None)
+
+    assert manager.operation_status(started["operationId"])["state"] == "cancelled"
+    assert manager.shutdown_barrier() is None
 
 
 def test_subflow_stage_is_emitted_for_the_active_workspace_step():
@@ -460,6 +493,42 @@ def test_operation_ledger_recovers_unfinished_operations_as_interrupted(tmp_path
     assert restored_ids == [started["operationId"]]
     assert restored.operation_status(started["operationId"])["state"] == "interrupted"
     release.set()
+
+
+def test_read_only_ledger_load_does_not_recover_or_rewrite(tmp_path):
+    ledger = tmp_path / "runtime-commands.json"
+    ledger.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "workspaceId": "workspace-1",
+                "operations": [
+                    {
+                        "operationId": "operation-running",
+                        "runSessionId": "session-running",
+                        "runtimeInstanceId": "runtime-old",
+                        "workspaceId": "workspace-1",
+                        "kind": "flow",
+                        "origin": "gui",
+                        "state": "running",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    before = ledger.read_bytes()
+
+    manager = RuntimeOperationManager()
+    loaded = manager.load_workspace_ledger("workspace-1", ledger, recover=False)
+
+    assert loaded == ["operation-running"]
+    assert manager.operation_status("operation-running")["state"] == "running"
+    assert not manager.is_active("operation-running")
+    assert ledger.read_bytes() == before
+
+    assert manager.load_workspace_ledger("workspace-1", ledger) == ["operation-running"]
+    assert manager.operation_status("operation-running")["state"] == "interrupted"
 
 
 def test_operation_ledger_clears_legacy_render_wait_state(tmp_path):

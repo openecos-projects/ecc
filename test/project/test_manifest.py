@@ -1,5 +1,7 @@
 import json
+from contextlib import contextmanager
 
+import chipcompiler.project.api as project_api
 from chipcompiler.cli.project.manifest import load_manifest
 from chipcompiler.project import (
     create_project_manifest,
@@ -75,3 +77,34 @@ def test_manifest_mutation_without_timestamp_keeps_audit_timestamp(tmp_path):
 
     assert updated["updated_at"]
     assert updated["workspaces"][0]["updated_at"]
+
+
+def test_project_workspace_acquires_manifest_lock_before_workspace_lock(tmp_path, monkeypatch):
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+    events = []
+
+    @contextmanager
+    def marked_lock(name):
+        events.append(f"{name}:acquire")
+        yield
+
+    monkeypatch.setattr(project_api, "manifest_lock", lambda _project: marked_lock("manifest"))
+    monkeypatch.setattr(
+        "chipcompiler.engine.reconcile._workspace_lock",
+        lambda _target: marked_lock("workspace"),
+    )
+    monkeypatch.setattr(
+        "chipcompiler.engine.workspace_lifecycle._create_workspace_from_spec",
+        lambda *_args: object(),
+    )
+    monkeypatch.setattr(project_api, "update_manifest_locked", lambda *_args: True)
+
+    project_api.create_project_workspace(
+        tmp_path,
+        tmp_path / "experiment",
+        {},
+        {},
+        command_id="create-1",
+    )
+
+    assert events == ["manifest:acquire", "workspace:acquire"]

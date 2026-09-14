@@ -40,6 +40,13 @@ def test_execution_plan_dispatches_full_flow_and_single_step():
     assert all(call[2].delegate is observer for call in calls)
 
 
+def test_execution_observer_does_not_hide_unknown_callbacks():
+    from chipcompiler.engine.execution import ExecutionObserver
+
+    with pytest.raises(AttributeError):
+        _ = ExecutionObserver(object()).unknown_callback
+
+
 def test_execution_plan_checks_cancel_before_each_selected_step():
     calls = []
 

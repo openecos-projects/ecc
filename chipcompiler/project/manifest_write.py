@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import tempfile
+from contextlib import contextmanager
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -216,18 +217,31 @@ def update_manifest(project_dir: str, mutator) -> bool:
     the lock cannot be taken, or the write fails — callers degrade to a
     warning, never a run failure.
     """
-    from chipcompiler.project.locking import flock_file
-
     path = os.path.join(project_dir, MANIFEST_FILENAME)
     try:
-        with flock_file(os.path.join(project_dir, ".manifest.lock"), exclusive=True):
-            return _update_manifest_locked(path, mutator)
+        with manifest_lock(project_dir):
+            return update_manifest_locked(project_dir, mutator)
     except OSError as exc:
         # An untakeable lock (e.g. a directory at the lock path) degrades
         # like any write failure: a warning, never an uncaught exception —
         # the migration registration path relies on False to roll back.
         logger.warning("manifest update failed: %s: %s", path, exc)
         return False
+
+
+@contextmanager
+def manifest_lock(project_dir: str | Path):
+    from chipcompiler.project.locking import flock_file
+
+    yield_lock_path = os.path.join(str(project_dir), ".manifest.lock")
+    with flock_file(yield_lock_path, exclusive=True):
+        yield
+
+
+def update_manifest_locked(project_dir: str | Path, mutator) -> bool:
+    """Apply a manifest mutation while the caller owns ``manifest_lock``."""
+    path = os.path.join(str(project_dir), MANIFEST_FILENAME)
+    return _update_manifest_locked(path, mutator)
 
 
 def _update_manifest_locked(path: str, mutator) -> bool:

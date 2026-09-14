@@ -237,6 +237,7 @@ class WorkspaceSpecRuntimeMixin:
         self.operations.load_workspace_ledger(
             session.workspace_id,
             session.directory / "home" / "runtime-commands.json",
+            recover=False,
         )
         return _workspace_session_result(session)
 
@@ -421,7 +422,15 @@ class WorkspaceSpecRuntimeMixin:
         )
 
         try:
-            return read_engineering_snapshot(getattr(owner, "workspace", owner))
+            workspace = getattr(owner, "workspace", owner)
+            revision = getattr(owner, "workspace_revision", None)
+            return read_engineering_snapshot(
+                workspace,
+                expected_workspace_id=getattr(owner, "workspace_id", None),
+                expected_workspace_revision=revision
+                if isinstance(revision, int) and revision > 0
+                else None,
+            )
         except EngineeringSnapshotError as exc:
             raise RuntimeApiError("engineering_snapshot_unavailable", str(exc)) from exc
 

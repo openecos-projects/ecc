@@ -11,8 +11,10 @@ from chipcompiler.project.manifest import (
 )
 from chipcompiler.project.manifest_write import (
     build_project_document,
+    manifest_lock,
     manifest_workspace_entry,
     update_manifest,
+    update_manifest_locked,
     write_manifest_if_absent,
 )
 
@@ -77,6 +79,14 @@ def mutate_project_manifest(project_dir: str | Path, mutation: dict) -> dict:
     project = Path(project_dir).expanduser().resolve()
     load_project_manifest(project)
 
+    apply = _project_manifest_mutator(project, mutation)
+
+    if not update_manifest(str(project), apply):
+        raise ManifestError("Project Manifest update failed")
+    return load_project_manifest(project)
+
+
+def _project_manifest_mutator(project: Path, mutation: dict):
     def apply(document: dict) -> None:
         kind = mutation.get("type")
         if kind == "register_workspace":
@@ -90,9 +100,7 @@ def mutate_project_manifest(project_dir: str | Path, mutation: dict) -> dict:
         else:
             raise ManifestError(f"unsupported Project mutation: {kind}")
 
-    if not update_manifest(str(project), apply):
-        raise ManifestError("Project Manifest update failed")
-    return load_project_manifest(project)
+    return apply
 
 
 def create_project_workspace(
@@ -108,7 +116,8 @@ def create_project_workspace(
     expected_project_id: str | None = None,
     now: str | None = None,
 ):
-    from chipcompiler.engine import create_workspace_from_spec
+    from chipcompiler.engine.reconcile import _workspace_lock
+    from chipcompiler.engine.workspace_lifecycle import _create_workspace_from_spec
 
     project = Path(project_dir).expanduser().resolve()
     target = Path(target_directory).expanduser().resolve()
@@ -116,31 +125,34 @@ def create_project_workspace(
         target.relative_to(project)
     except ValueError as exc:
         raise ManifestError("Workspace must be inside the Project root") from exc
-    manifest = load_project_manifest(project)
-    if expected_project_id is not None and manifest["project_id"] != expected_project_id:
-        raise ManifestError("Project identity does not match")
     existed = target.exists()
-    workspace = create_workspace_from_spec(str(target), spec, bindings, command_id)
-    if workspace is None:
-        raise ManifestError("Workspace creation returned no Workspace")
-    identity = workspace_id or target.name
-    try:
-        mutate_project_manifest(
-            project,
-            {
-                "type": "register_workspace",
-                "workspace_id": identity,
-                "name": name or identity,
-                "workspace_path": str(target),
-                "source_workspace_id": source_workspace_id,
-                "created_at": now,
-                "updated_at": now,
-            },
-        )
-    except Exception:
-        if not existed:
-            shutil.rmtree(target, ignore_errors=True)
-        raise
+    with manifest_lock(project):
+        manifest = load_project_manifest(project)
+        if expected_project_id is not None and manifest["project_id"] != expected_project_id:
+            raise ManifestError("Project identity does not match")
+        try:
+            with _workspace_lock(target):
+                workspace = _create_workspace_from_spec(str(target), spec, bindings, command_id)
+                if workspace is None:
+                    raise ManifestError("Workspace creation returned no Workspace")
+                identity = workspace_id or target.name
+                mutation = {
+                    "type": "register_workspace",
+                    "workspace_id": identity,
+                    "name": name or identity,
+                    "workspace_path": str(target),
+                    "source_workspace_id": source_workspace_id,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+                if not update_manifest_locked(
+                    project, _project_manifest_mutator(project, mutation)
+                ):
+                    raise ManifestError("Project Manifest update failed")
+        except Exception:
+            if not existed:
+                shutil.rmtree(target, ignore_errors=True)
+            raise
     return workspace
 
 

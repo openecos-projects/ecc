@@ -20,8 +20,22 @@ from chipcompiler.runtime.requests import (
     WorkspaceRecoverInterruptedRequest,
     WorkspaceSyncConfigRequest,
 )
-from chipcompiler.runtime.sessions import WorkspaceSessionRegistry
+from chipcompiler.runtime.sessions import WorkspaceSession, WorkspaceSessionRegistry
 from chipcompiler.runtime.workspace_api import RuntimeApiError, WorkspaceRuntimeApi
+
+
+def test_legacy_flow_request_without_revision_remains_compatible(tmp_path):
+    session = WorkspaceSession(
+        workspace_id="workspace-1",
+        directory=tmp_path,
+        workspace=object(),
+        workspace_revision=2,
+    )
+
+    WorkspaceRuntimeApi._validate_workspace_revision(
+        session,
+        FlowRunRequest(workspace_id="workspace-1").expected_workspace_revision,
+    )
 
 
 class DummyEngineDB:

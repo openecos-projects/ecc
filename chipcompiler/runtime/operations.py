@@ -189,7 +189,11 @@ class RuntimeOperationManager:
     def is_active(self, operation_id: str) -> bool:
         with self._lock:
             operation = self._operations.get(operation_id)
-            return operation is not None and operation.state not in _TERMINAL_OPERATION_STATES
+            return (
+                operation is not None
+                and operation.state not in _TERMINAL_OPERATION_STATES
+                and self._active_by_workspace.get(operation.workspace_id) == operation_id
+            )
 
     def has_active_workspace(self, workspace_id: str) -> bool:
         with self._lock:
@@ -199,13 +203,21 @@ class RuntimeOperationManager:
             operation = self._operations.get(operation_id)
             return operation is not None and operation.state not in _TERMINAL_OPERATION_STATES
 
-    def load_workspace_ledger(self, workspace_id: str, ledger_path: str | Path) -> list[str]:
-        """Restore the bounded execution ledger after a Runtime restart."""
+    def load_workspace_ledger(
+        self,
+        workspace_id: str,
+        ledger_path: str | Path,
+        *,
+        recover: bool = True,
+    ) -> list[str]:
+        """Load the bounded execution ledger, optionally marking live work interrupted."""
         from chipcompiler.utility import JsonReadError, json_read_strict
 
         path = Path(ledger_path).expanduser().resolve()
         with self._lock:
             if path in self._loaded_ledgers:
+                if recover:
+                    return self._recover_loaded_workspace_locked(workspace_id)
                 return []
             self._loaded_ledgers.add(path)
             self._ledger_paths[workspace_id] = path
@@ -223,19 +235,6 @@ class RuntimeOperationManager:
                 operation = _operation_from_payload(entry, self._runtime_instance_id)
                 if operation is None:
                     continue
-                if operation.state not in _TERMINAL_OPERATION_STATES:
-                    operation.state = "interrupted"
-                    operation.error = {
-                        "code": "interrupted",
-                        "message": "Runtime process ended before the Operation completed",
-                    }
-                    operation.updated_at = time.time()
-                # Render ACKs are retained only as a wire-compatibility field. They
-                # never gate execution, so old waiting records must not resurrect it.
-                operation.awaiting_event_id = None
-                operation.awaiting_event = None
-                operation.awaiting_step_commit_id = None
-                operation.render_sync_state = "idle"
                 self._operations[operation.operation_id] = operation
                 if operation.idempotency_key:
                     self._idempotency[(workspace_id, operation.idempotency_key)] = (
@@ -246,9 +245,33 @@ class RuntimeOperationManager:
                     self._workspace_sequences.get(workspace_id, 0), operation.sequence
                 )
                 restored.append(operation.operation_id)
-            self._prune_terminal_locked()
-            self._persist_workspace_locked(workspace_id)
+            if recover:
+                self._recover_loaded_workspace_locked(workspace_id)
             return restored
+
+    def _recover_loaded_workspace_locked(self, workspace_id: str) -> list[str]:
+        recovered: list[str] = []
+        for operation in self._operations.values():
+            if (
+                operation.workspace_id != workspace_id
+                or operation.state in _TERMINAL_OPERATION_STATES
+            ):
+                continue
+            operation.state = "interrupted"
+            operation.error = {
+                "code": "interrupted",
+                "message": "Runtime process ended before the Operation completed",
+            }
+            operation.updated_at = time.time()
+            operation.awaiting_event_id = None
+            operation.awaiting_event = None
+            operation.awaiting_step_commit_id = None
+            operation.render_sync_state = "idle"
+            self._active_by_workspace.pop(workspace_id, None)
+            recovered.append(operation.operation_id)
+        self._prune_terminal_locked()
+        self._persist_workspace_locked(workspace_id)
+        return recovered
 
     def workspace_snapshot(self, workspace_id: str) -> dict[str, Any]:
         with self._lock:
@@ -332,6 +355,7 @@ class RuntimeOperationManager:
             if operation.state in _TERMINAL_OPERATION_STATES:
                 return {"accepted": False, "operationId": operation_id, "state": operation.state}
             operation.cancel_requested = True
+            operation.state = "cancelling"
             operation.updated_at = time.time()
             self._persist_workspace_locked(operation.workspace_id)
             event = self._new_event_locked(operation, "operation.cancel_requested", {})
@@ -367,12 +391,33 @@ class RuntimeOperationManager:
     ) -> None:
         with self._lock:
             operation = self._operations[operation_id]
-            operation.state = "running"
-            operation.updated_at = time.time()
-            started_event = self._new_event_locked(operation, "operation.started", {})
+            if operation.cancel_requested:
+                operation.state = "cancelled"
+                operation.error = {
+                    "message": "operation cancelled before execution",
+                    "code": "cancelled",
+                }
+                operation.updated_at = time.time()
+                event = self._new_event_locked(
+                    operation,
+                    "operation.cancelled",
+                    {"error": operation.error},
+                )
+                self._prune_terminal_locked()
+                self._persist_workspace_locked(operation.workspace_id)
+                self._active_by_workspace.pop(operation.workspace_id, None)
+                publish_before_return = True
+            else:
+                operation.state = "running"
+                operation.updated_at = time.time()
+                event = self._new_event_locked(operation, "operation.started", {})
+                publish_before_return = False
+        if publish_before_return:
+            self._publish(event)
+            return
         observer = RuntimeFlowObserver(self, operation_id, snapshot_committer)
         try:
-            self._publish(started_event)
+            self._publish(event)
             try:
                 result = runner(observer)
                 with self._lock:

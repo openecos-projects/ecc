@@ -192,6 +192,7 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
         self.operations.load_workspace_ledger(
             session.workspace_id,
             session.directory / "home" / "runtime-commands.json",
+            recover=False,
         )
         return _workspace_session_result(session)
 
@@ -563,6 +564,10 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
     def start_flow_operation(self, request: OperationStartFlowRequest) -> dict:
         self._require_gui_operation_origin(request.origin)
         session = self._get_session(request.workspace_id)
+        expected_revision = request.expected_workspace_revision
+        operation_revision = (
+            session.workspace_revision if expected_revision is None else expected_revision
+        )
         try:
 
             def validate_start() -> None:
@@ -576,7 +581,7 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                 rerun=request.rerun,
                 step="",
                 idempotency_key=request.idempotency_key,
-                workspace_revision=request.expected_workspace_revision,
+                workspace_revision=operation_revision,
                 snapshot_committer=lambda step, state, error: self._commit_step_snapshot(
                     session,
                     step,
@@ -588,7 +593,7 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                 runner=lambda observer: self._flow_run(
                     FlowRunRequest(
                         workspace_id=request.workspace_id,
-                        expected_workspace_revision=request.expected_workspace_revision,
+                        expected_workspace_revision=expected_revision,
                         rerun=request.rerun,
                     ),
                     observer=observer,
@@ -603,6 +608,10 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
     def start_step_operation(self, request: OperationStartStepRequest) -> dict:
         self._require_gui_operation_origin(request.origin)
         session = self._get_session(request.workspace_id)
+        expected_revision = request.expected_workspace_revision
+        operation_revision = (
+            session.workspace_revision if expected_revision is None else expected_revision
+        )
         try:
 
             def validate_start() -> None:
@@ -616,7 +625,7 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                 rerun=request.rerun,
                 step=request.step,
                 idempotency_key=request.idempotency_key,
-                workspace_revision=request.expected_workspace_revision,
+                workspace_revision=operation_revision,
                 command_input={"resetDependents": request.reset_dependents},
                 snapshot_committer=lambda step, state, error: self._commit_step_snapshot(
                     session,
@@ -630,7 +639,7 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                     FlowRunStepRequest(
                         workspace_id=request.workspace_id,
                         step=request.step,
-                        expected_workspace_revision=request.expected_workspace_revision,
+                        expected_workspace_revision=expected_revision,
                         rerun=request.rerun,
                     ),
                     observer=observer,
@@ -747,7 +756,13 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
         from chipcompiler.engine.snapshot import EngineeringSnapshotError, read_engineering_snapshot
 
         try:
-            return read_engineering_snapshot(session.workspace)
+            return read_engineering_snapshot(
+                session.workspace,
+                expected_workspace_id=session.workspace_id,
+                expected_workspace_revision=(
+                    session.workspace_revision if session.workspace_revision > 0 else None
+                ),
+            )
         except EngineeringSnapshotError as exc:
             raise RuntimeApiError(
                 "engineering_snapshot_unavailable",
@@ -1196,10 +1211,11 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
     @staticmethod
     def _validate_workspace_revision(
         session: WorkspaceSession,
-        expected_workspace_revision: int,
+        expected_workspace_revision: int | None,
     ) -> None:
         if (
-            session.workspace_revision == 0
+            expected_workspace_revision is None
+            or session.workspace_revision == 0
             or expected_workspace_revision == session.workspace_revision
         ):
             return

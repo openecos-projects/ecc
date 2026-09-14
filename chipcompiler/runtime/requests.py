@@ -162,7 +162,7 @@ class WorkspaceInfoRequest:
 @dataclass(frozen=True)
 class FlowRunRequest:
     workspace_id: str
-    expected_workspace_revision: int = 1
+    expected_workspace_revision: int | None = None
     rerun: bool = False
 
 
@@ -170,14 +170,14 @@ class FlowRunRequest:
 class FlowRunStepRequest:
     workspace_id: str
     step: str
-    expected_workspace_revision: int = 1
+    expected_workspace_revision: int | None = None
     rerun: bool = False
 
 
 @dataclass(frozen=True)
 class OperationStartFlowRequest:
     workspace_id: str
-    expected_workspace_revision: int = 1
+    expected_workspace_revision: int | None = None
     rerun: bool = False
     origin: str = "gui"
     idempotency_key: str = ""
@@ -187,7 +187,7 @@ class OperationStartFlowRequest:
 class OperationStartStepRequest:
     workspace_id: str
     step: str
-    expected_workspace_revision: int = 1
+    expected_workspace_revision: int | None = None
     rerun: bool = False
     reset_dependents: bool = False
     origin: str = "gui"

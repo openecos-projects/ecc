@@ -1,3 +1,4 @@
+import hashlib
 import json
 from copy import deepcopy
 from pathlib import Path
@@ -115,3 +116,59 @@ def test_qor_extension_validator_rejects_missing_and_invalid_nested_fields():
     invalid_gate = deepcopy(extension)
     invalid_gate["feasibility"]["gates"].append({"id": "broken"})
     assert not validate_qor_snapshot_extension(invalid_gate)
+
+
+def test_snapshot_read_validates_expected_identity_and_revision(tmp_path):
+    workspace = _workspace(tmp_path)
+    create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
+
+    with pytest.raises(EngineeringSnapshotError, match="identity mismatch"):
+        read_engineering_snapshot(workspace, expected_workspace_id="other")
+    with pytest.raises(EngineeringSnapshotError, match="Revision mismatch"):
+        read_engineering_snapshot(workspace, expected_workspace_revision=2)
+
+    (workspace.directory / "home" / "workspace-commands.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "commands": {
+                    "create-1": {"result": {"workspaceId": "other"}},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(EngineeringSnapshotError, match="identity mismatch"):
+        read_engineering_snapshot(workspace)
+
+
+def test_snapshot_read_rejects_invalid_sections_and_artifact_fingerprints(tmp_path):
+    workspace = _workspace(tmp_path)
+    create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
+    path = Path(workspace.directory) / "home" / "engineering-snapshot.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    invalid_section = deepcopy(payload)
+    invalid_section["flow"] = []
+    path.write_text(json.dumps(invalid_section), encoding="utf-8")
+    with pytest.raises(EngineeringSnapshotError, match="section: flow"):
+        read_engineering_snapshot(workspace)
+
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    artifact = payload["artifacts"][0]
+    artifact_path = workspace.directory / artifact["reference"]
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_bytes(b"before")
+    artifact.update(
+        {
+            "availability": "available",
+            "sizeBytes": 6,
+            "sha256": hashlib.sha256(b"before").hexdigest(),
+        }
+    )
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    assert read_engineering_snapshot(workspace)["artifacts"][0]["availability"] == "available"
+
+    artifact_path.write_bytes(b"after")
+    with pytest.raises(EngineeringSnapshotError, match="fingerprint mismatch"):
+        read_engineering_snapshot(workspace)

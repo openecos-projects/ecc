@@ -41,9 +41,7 @@ def test_engine_flow_missing_path_is_not_initialized():
     assert engine_flow.has_init() is False
 
 
-def test_run_step_without_runtime_operation_marker_does_not_expand_function(
-    monkeypatch, tmp_path
-):
+def test_run_step_without_runtime_operation_marker_does_not_expand_function(monkeypatch, tmp_path):
     from chipcompiler.engine.execution import ExecutionObserver
 
     workspace = Workspace()
