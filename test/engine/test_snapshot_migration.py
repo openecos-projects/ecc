@@ -31,6 +31,8 @@ def _workspace(tmp_path):
 def test_migration_preserves_identity_advances_revision_and_projects_qor(tmp_path):
     workspace = _workspace(tmp_path)
     current = create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
+    assert current["schemaVersion"] == 2
+    assert str(workspace.directory) not in json.dumps(current["qorSnapshotExtension"])
 
     migrated = migrate_engineering_snapshot(
         workspace,
