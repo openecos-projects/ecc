@@ -73,6 +73,27 @@ def test_load_manifest_normalizes_workspace_entries(tmp_path):
     assert manifest.active_workspaces() == [entry]
 
 
+def test_load_manifest_maps_legacy_floor_range_to_post_floorplan(tmp_path):
+    _write_manifest(
+        tmp_path,
+        _minimal_document(
+            tmp_path,
+            workspaces=[
+                {
+                    "workspace_id": "legacy",
+                    "workspace_path": str(tmp_path / "legacy"),
+                    "start_step": "Floor",
+                    "end_step": "Place",
+                }
+            ],
+        ),
+    )
+
+    entry = load_manifest(str(tmp_path)).workspaces[0]
+
+    assert (entry.start_step, entry.end_step) == ("PostFloorplan", "Place")
+
+
 def test_load_manifest_relative_workspace_path_resolves_inside_root(tmp_path):
     _write_manifest(
         tmp_path,

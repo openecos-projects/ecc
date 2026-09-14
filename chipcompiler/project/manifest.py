@@ -43,6 +43,11 @@ MANIFEST_FLOW_STEPS = (
     "Harden",
 )
 
+# ``Floor`` was the public manifest value before floorplanning was split into
+# pre/macro/post stages.  Read it as the completed handoff stage so old ranges
+# keep their original start/end meaning without rewriting project.json.
+_MANIFEST_STEP_ALIASES = {"Floor": "PostFloorplan"}
+
 PRESET_MANIFEST_RANGE = {
     "syn_sta": ("Synth", "Synth"),
     "rtl2gds": ("Synth", "Harden"),
@@ -59,6 +64,7 @@ _CANONICAL_TO_MANIFEST_STEP = {
     "preFloorplan": "PreFloorplan",
     "macroPlacement": "MacroPlacement",
     "postFloorplan": "PostFloorplan",
+    "Floorplan": "PostFloorplan",
     "place": "Place",
     "CTS": "CTS",
     "legalization": "Legal",
@@ -152,6 +158,8 @@ def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> Mani
         status = "not_started"
     start_step = _optional_str(source.get("start_step")) or "Synth"
     end_step = _optional_str(source.get("end_step")) or "Harden"
+    start_step = _MANIFEST_STEP_ALIASES.get(start_step, start_step)
+    end_step = _MANIFEST_STEP_ALIASES.get(end_step, end_step)
     for step_name, field_name in ((start_step, "start_step"), (end_step, "end_step")):
         if step_name not in MANIFEST_FLOW_STEPS:
             raise ManifestError(

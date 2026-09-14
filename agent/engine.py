@@ -5,6 +5,7 @@ from threading import Event, Thread
 
 from chipcompiler.data import StateEnum, WorkspaceStep
 from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow_completion import normalize_legacy_terminal_state
 from chipcompiler.engine.step_execution import get_process_rss_mb, track_current_process_memory
 from chipcompiler.utility.log import redirect_stdio_to_file
 
@@ -34,7 +35,7 @@ class AgentEngineFlow(EngineFlow):
             self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
             return StateEnum.Success
 
-        self._normalize_legacy_terminal_state(workspace_step, step_tag)
+        normalize_legacy_terminal_state(self, workspace_step, step_tag)
 
         start_time = time.time()
         timing_constraints = self.timing_constraint_facts()

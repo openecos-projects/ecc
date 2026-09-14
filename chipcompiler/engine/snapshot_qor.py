@@ -3,6 +3,17 @@
 from math import isfinite
 from typing import Any
 
+from chipcompiler.analysis.qor.schema import (
+    CONFIDENCES,
+    DIMENSION_KEYS,
+    DIMENSION_STATES,
+    EVIDENCE_STATES,
+    FEASIBILITY_STATUSES,
+    GATE_STATES,
+    SCALAR_STATUSES,
+    TIERS,
+)
+
 QOR_SNAPSHOT_EXTENSION_SCHEMA_VERSION = 1
 _MAX_DIAGNOSES = 64
 _MAX_INTERVENTIONS = 4
@@ -133,20 +144,215 @@ def unavailable_qor_snapshot_extension(reason: str) -> dict[str, Any]:
 
 
 def validate_qor_snapshot_extension(value: object) -> bool:
-    """Validate the migration-only extension boundary."""
+    """Validate the bounded, path-free QoR extension fail-closed."""
     if not isinstance(value, dict):
         return False
+    status = value.get("status")
+    required = {
+        "schemaVersion",
+        "scoringEngine",
+        "status",
+        "score",
+        "scalarStatus",
+        "profile",
+        "qphys",
+        "feasibility",
+        "evidence",
+        "diagnoses",
+        "inflation",
+        "power",
+        "artifactIds",
+    }
+    if status == "unavailable":
+        required.add("reason")
+    if (
+        set(value) != required
+        or value.get("schemaVersion") != QOR_SNAPSHOT_EXTENSION_SCHEMA_VERSION
+        or value.get("scoringEngine") != "qor-v3"
+        or status not in {"available", "unavailable"}
+        or not _bounded_text(
+            value.get("profile"),
+            values=("balanced", "timing_critical", "low_power", "area_optimized"),
+        )
+        or not _bounded_number(value.get("score"), 0, 100, nullable=True)
+        or value.get("scalarStatus") not in SCALAR_STATUSES
+    ):
+        return False
+    if status == "unavailable" and not _bounded_text(value.get("reason")):
+        return False
+
+    qphys = value.get("qphys")
+    if not isinstance(qphys, dict) or len(qphys) > len(DIMENSION_KEYS):
+        return False
+    for key, dimension in qphys.items():
+        if key not in DIMENSION_KEYS or not isinstance(dimension, dict):
+            return False
+        if set(dimension) != {"value", "state", "featureIds"}:
+            return False
+        if not _bounded_number(dimension["value"], 0, 100, nullable=True):
+            return False
+        if dimension["state"] not in DIMENSION_STATES or not _bounded_strings(
+            dimension["featureIds"], 32
+        ):
+            return False
+
+    feasibility = value.get("feasibility")
+    if not isinstance(feasibility, dict) or set(feasibility) != {"status", "gates"}:
+        return False
+    if (
+        feasibility["status"] not in FEASIBILITY_STATUSES
+        or not isinstance(feasibility["gates"], list)
+        or len(feasibility["gates"]) > 32
+    ):
+        return False
+    for gate in feasibility["gates"]:
+        if not isinstance(gate, dict) or set(gate) != {
+            "id",
+            "stage",
+            "state",
+            "blocksTapeout",
+            "metrics",
+            "availability",
+        }:
+            return False
+        if (
+            not _bounded_text(gate["id"])
+            or not _bounded_text(gate["stage"])
+            or gate["state"] not in GATE_STATES
+            or not isinstance(gate["blocksTapeout"], bool)
+            or not _bounded_strings(gate["metrics"], 32)
+            or not _bounded_text(gate["availability"], nullable=True)
+        ):
+            return False
+
+    evidence = value.get("evidence")
+    if not isinstance(evidence, dict) or set(evidence) != {
+        "index",
+        "state",
+        "integrity",
+        "coverage",
+        "consistency",
+    }:
+        return False
+    if (
+        evidence["state"] not in EVIDENCE_STATES
+        or not _bounded_number(evidence["index"], 0, 100, nullable=True)
+        or not all(
+            _bounded_number(evidence[field], 0, 1, nullable=True)
+            for field in ("integrity", "coverage", "consistency")
+        )
+    ):
+        return False
+
+    diagnoses = value.get("diagnoses")
+    if not isinstance(diagnoses, list) or len(diagnoses) > _MAX_DIAGNOSES:
+        return False
+    for diagnosis in diagnoses:
+        if not isinstance(diagnosis, dict) or set(diagnosis) != {
+            "diagnosisId",
+            "state",
+            "severity",
+            "confidence",
+            "triggerFeatures",
+            "affectedDimensions",
+            "interventions",
+            "interventionConfidence",
+            "validationRequired",
+        }:
+            return False
+        if (
+            not _bounded_text(diagnosis["diagnosisId"])
+            or not _bounded_text(diagnosis["state"])
+            or not _bounded_number(diagnosis["severity"], 0, 1)
+            or diagnosis["confidence"] not in CONFIDENCES
+            or not _bounded_strings(diagnosis["triggerFeatures"], 32)
+            or not _bounded_strings(diagnosis["affectedDimensions"], 16)
+            or not isinstance(diagnosis["interventions"], list)
+            or len(diagnosis["interventions"]) > _MAX_INTERVENTIONS
+            or diagnosis["interventionConfidence"] not in CONFIDENCES
+            or not _bounded_text(diagnosis["validationRequired"], nullable=True)
+        ):
+            return False
+        for intervention in diagnosis["interventions"]:
+            if not isinstance(intervention, dict) or set(intervention) != {
+                "hypothesis",
+                "tier",
+                "confidence",
+                "parameterKnob",
+                "validationProcedure",
+            }:
+                return False
+            if (
+                not _bounded_text(intervention["hypothesis"])
+                or intervention["tier"] not in TIERS
+                or intervention["confidence"] not in CONFIDENCES
+                or not _bounded_text(intervention["parameterKnob"], nullable=True)
+                or not _bounded_text(intervention["validationProcedure"], nullable=True)
+            ):
+                return False
+
+    inflation = value.get("inflation")
+    if not isinstance(inflation, dict) or set(inflation) != {
+        "iPlace",
+        "iRoute",
+        "iTotal",
+        "congestionSeverity",
+        "compatibilityStatus",
+    }:
+        return False
+    if not all(
+        _bounded_number(inflation[field], 0, None, nullable=True)
+        for field in ("iPlace", "iRoute", "iTotal", "congestionSeverity")
+    ) or inflation["compatibilityStatus"] not in {
+        "EXACT_COMPATIBLE",
+        "MAPPED_COMPATIBLE",
+        "INCOMPATIBLE",
+        "UNAVAILABLE",
+    }:
+        return False
+
+    power = value.get("power")
+    if not isinstance(power, dict) or set(power) != {"totalUw", "budgetUw", "sourceKind", "corner"}:
+        return False
+    if (
+        not _bounded_number(power["totalUw"], 0, None, nullable=True)
+        or not _bounded_number(power["budgetUw"], 0, None, nullable=True)
+        or power["sourceKind"] not in {None, "signoff", "synthesis"}
+        or not _bounded_text(power["corner"], nullable=True)
+    ):
+        return False
+
+    return _bounded_strings(value["artifactIds"], _MAX_ARTIFACT_IDS)
+
+
+def _bounded_number(
+    value: object, low: float | None, high: float | None, *, nullable: bool
+) -> bool:
+    if value is None:
+        return nullable
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value):
+        return False
+    return (low is None or value >= low) and (high is None or value <= high)
+
+
+def _bounded_text(
+    value: object, *, nullable: bool = False, values: tuple[str, ...] | None = None
+) -> bool:
+    if value is None:
+        return nullable
     return (
-        value.get("schemaVersion") == QOR_SNAPSHOT_EXTENSION_SCHEMA_VERSION
-        and value.get("scoringEngine") == "qor-v3"
-        and value.get("status") in {"available", "unavailable"}
-        and isinstance(value.get("qphys"), dict)
-        and isinstance(value.get("feasibility"), dict)
-        and isinstance(value["feasibility"].get("gates"), list)
-        and isinstance(value.get("evidence"), dict)
-        and isinstance(value.get("diagnoses"), list)
-        and isinstance(value.get("artifactIds"), list)
-        and all(isinstance(item, str) and item for item in value["artifactIds"])
+        isinstance(value, str)
+        and bool(value)
+        and len(value) <= _MAX_TEXT
+        and (values is None or value in values)
+    )
+
+
+def _bounded_strings(value: object, maximum: int) -> bool:
+    return (
+        isinstance(value, list)
+        and len(value) <= maximum
+        and all(_bounded_text(item) for item in value)
     )
 
 

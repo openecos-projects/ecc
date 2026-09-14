@@ -522,6 +522,39 @@ class TestStepExceptionForcesIncomplete:
         assert step["state"] == StateEnum.Ongoing.value
         assert step["info"]["runtime_operation"]["operation_id"] == "operation-1"
 
+    def test_fatal_completion_commit_restores_ongoing_flow_marker(self, monkeypatch, tmp_path):
+        workspace = Workspace()
+        workspace.flow.path = tmp_path / "flow.json"
+        workspace.flow.data = {
+            "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart", "info": {}}],
+        }
+        workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
+        engine_flow = EngineFlow(workspace)
+        workspace_step = EccStep(name="place", directory=tmp_path, tool="dreamplace")
+        engine_flow.workspace_steps = [workspace_step]
+        engine_flow.engine_db = SimpleNamespace(engine=None)
+
+        class Observer:
+            fatal_observer = True
+            runtime_operation = {
+                "schema": 1,
+                "operation_id": "operation-1",
+                "runtime_instance_id": "runtime-1",
+            }
+
+            def on_step_completed(self, _step, _state, _error=None):
+                raise RuntimeError("snapshot commit failed")
+
+        monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
+        monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
+
+        with pytest.raises(RuntimeError, match="snapshot commit failed"):
+            engine_flow.run_step(workspace_step, observer=Observer())
+
+        persisted = json.loads(workspace.flow.path.read_text(encoding="utf-8"))["steps"][0]
+        assert persisted["state"] == StateEnum.Ongoing.value
+        assert persisted["info"]["runtime_operation"]["operation_id"] == "operation-1"
+
     def test_result_check_system_exit_still_finalizes_step(self, monkeypatch, tmp_path):
         workspace = Workspace()
         workspace.flow.path = tmp_path / "flow.json"

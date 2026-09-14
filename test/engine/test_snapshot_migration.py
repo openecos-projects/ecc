@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,6 +12,10 @@ from chipcompiler.engine.snapshot import (
     ensure_engineering_snapshot,
     migrate_engineering_snapshot,
     read_engineering_snapshot,
+)
+from chipcompiler.engine.snapshot_qor import (
+    unavailable_qor_snapshot_extension,
+    validate_qor_snapshot_extension,
 )
 
 
@@ -93,3 +98,20 @@ def test_production_write_paths_reject_migrated_v3_snapshot(tmp_path):
 
     with pytest.raises(EngineeringSnapshotError, match="production Snapshot schema is still v2"):
         ensure_engineering_snapshot(workspace)
+
+
+def test_qor_extension_validator_rejects_missing_and_invalid_nested_fields():
+    extension = unavailable_qor_snapshot_extension("analysis unavailable")
+    assert validate_qor_snapshot_extension(extension)
+
+    missing_score = deepcopy(extension)
+    missing_score.pop("score")
+    assert not validate_qor_snapshot_extension(missing_score)
+
+    invalid_power = deepcopy(extension)
+    invalid_power["power"]["sourceKind"] = "raw_file"
+    assert not validate_qor_snapshot_extension(invalid_power)
+
+    invalid_gate = deepcopy(extension)
+    invalid_gate["feasibility"]["gates"].append({"id": "broken"})
+    assert not validate_qor_snapshot_extension(invalid_gate)
