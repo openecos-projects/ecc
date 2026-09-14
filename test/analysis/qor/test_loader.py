@@ -1,0 +1,328 @@
+import json
+import os
+from types import SimpleNamespace
+
+import pytest
+
+from chipcompiler.analysis.qor.loader import load_workspace_qor_inputs
+
+
+def _write(path, payload):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(payload, f)
+
+
+def _metric(metric_id, value, project_role="final", **overrides):
+    record = {
+        "id": metric_id,
+        "display_name": metric_id,
+        "value": value,
+        "unit": "",
+        "category": "timing",
+        "direction": "lower_is_better",
+        "scope": "project",
+        "corner": None,
+        "project_role": project_role,
+        "step_role": "primary",
+        "rating": {"gate": False, "score": True, "trend": True},
+        "source": {"kind": "analysis", "path": "x"},
+    }
+    record.update(overrides)
+    return record
+
+
+def _payload(metrics):
+    return {
+        "schema_version": 3,
+        "kind": "qor_metrics",
+        "integrity": {"status": "pass", "invalid_metric_source_ids": [], "invalid_detail_ids": []},
+        "metrics": metrics,
+    }
+
+
+def _write_step_payload(root, directory, metrics):
+    _write(
+        os.path.join(root, directory, "analysis", "qor_metrics.json"),
+        _payload(metrics),
+    )
+
+
+_STEP_DIRECTORIES = {
+    "Synthesis": "Synthesis_yosys",
+    "postFloorplan": "postFloorplan_ecc",
+    "place": "place_dreamplace",
+    "CTS": "CTS_ecc",
+    "route": "route_ecc",
+    "drc": "drc_ecc",
+    "lvs": "lvs_ecc",
+    "RCX": "RCX_ecc",
+    "sta": "sta_ecc",
+    "Harden": "Harden_ecc",
+}
+
+
+def _make_workspace(tmp_path, steps):
+    root = str(tmp_path / "ws")
+    _write(
+        os.path.join(root, "home", "flow.json"),
+        {"steps": [{"name": name, "tool": "ecc", "state": state} for name, state in steps.items()]},
+    )
+    _write(
+        os.path.join(root, "home", "parameters.json"),
+        {"Design": "gcd", "frequency_max": 50.0},
+    )
+    # Every successful step emits a minimal valid payload unless a test
+    # overwrites it; the loader treats a missing payload as a parse failure.
+    for step_value, state in steps.items():
+        if state == SUCCESS:
+            _write_step_payload(root, _STEP_DIRECTORIES[step_value], [_metric("probe_metric", 1.0)])
+
+    class _Flow:
+        data = {}
+
+    return SimpleNamespace(
+        directory=root, name="gcd", design=SimpleNamespace(name="gcd"), flow=_Flow()
+    )
+
+
+SUCCESS = "Success"
+
+_FULL_FLOW = {
+    "Synthesis": SUCCESS,
+    "postFloorplan": SUCCESS,
+    "place": SUCCESS,
+    "CTS": SUCCESS,
+    "route": SUCCESS,
+    "drc": SUCCESS,
+    "lvs": SUCCESS,
+    "RCX": SUCCESS,
+    "sta": SUCCESS,
+    "Harden": SUCCESS,
+}
+
+
+class TestMetricSelection:
+    def test_role_priority_final_beats_trend(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write_step_payload(
+            workspace.directory,
+            "place_ecc".replace("place_ecc", "place_dreamplace"),
+            [_metric("place_hpwl", 100.0, project_role="trend")],
+        )
+        _write_step_payload(
+            workspace.directory,
+            "route_ecc",
+            [_metric("place_hpwl", 200.0, project_role="final")],
+        )
+        inputs = load_workspace_qor_inputs(workspace)
+        assert inputs.value("place_hpwl") == 200.0
+
+    def test_later_step_wins_within_same_role(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write_step_payload(
+            workspace.directory,
+            "place_dreamplace",
+            [_metric("place_hpwl", 100.0, project_role="trend")],
+        )
+        _write_step_payload(
+            workspace.directory,
+            "route_ecc",
+            [_metric("place_hpwl", 111.0, project_role="trend")],
+        )
+        inputs = load_workspace_qor_inputs(workspace)
+        assert inputs.value("place_hpwl") == 111.0
+        assert inputs.metrics["place_hpwl"].step == "route"
+
+    def test_stale_payload_of_unstarted_step_is_ignored(self, tmp_path):
+        steps = dict(_FULL_FLOW)
+        steps["route"] = "Unstart"
+        workspace = _make_workspace(tmp_path, steps)
+        _write_step_payload(workspace.directory, "route_ecc", [_metric("route_wirelength", 9999.0)])
+        inputs = load_workspace_qor_inputs(workspace)
+        assert inputs.value("route_wirelength") is None
+        assert "route" not in inputs.analyzed_steps
+        assert inputs.parse_failures == 0  # unstarted steps are not failures
+
+    def test_failed_payload_counts_as_parse_failure(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write(
+            os.path.join(workspace.directory, "drc_ecc", "analysis", "qor_metrics.json"),
+            {"broken": True},
+        )
+        inputs = load_workspace_qor_inputs(workspace)
+        assert inputs.parse_failures == 1
+        assert "drc" not in inputs.analyzed_steps
+
+
+class TestParameterResolution:
+    def test_frequency_max_resolves_tclk(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        inputs = load_workspace_qor_inputs(workspace)
+        assert inputs.tclk_ns == pytest.approx(20.0)
+        assert inputs.config_warnings == []
+
+    def test_unknown_profile_warns_and_falls_back(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write(
+            os.path.join(workspace.directory, "home", "parameters.json"),
+            {"frequency_max": 50.0, "qor_profile": "speed_demon"},
+        )
+        inputs = load_workspace_qor_inputs(workspace)
+        assert inputs.profile == "balanced"
+        assert inputs.config_warnings
+
+    def test_nonpositive_budget_warns_and_undeclares(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write(
+            os.path.join(workspace.directory, "home", "parameters.json"),
+            {"frequency_max": 50.0, "qor_power_budget_w": -1},
+        )
+        inputs = load_workspace_qor_inputs(workspace)
+        assert inputs.power_budget_uw is None
+        assert inputs.config_warnings
+
+
+class TestCornerLoading:
+    def test_per_corner_summaries_are_parsed(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        for corner_dir, wns in (("MAX_125_t125", 16.622), ("MAX_M40_tm40", 18.98)):
+            _write(
+                os.path.join(
+                    workspace.directory,
+                    "sta_ecc",
+                    "feature",
+                    corner_dir,
+                    "Cworst",
+                    "qor_summary.json",
+                ),
+                {
+                    "path_groups": [],
+                    "summary": {
+                        "setup": {"wns": wns, "tns": 0.0, "nvp": 0, "frequency_mhz": 296.0},
+                        "hold": {"wns": 0.1, "tns": 0.0, "nvp": 0},
+                    },
+                },
+            )
+        inputs = load_workspace_qor_inputs(workspace)
+        assert [corner.setup_ws for corner in inputs.corners] == [16.622, 18.98]
+
+    def test_failed_sta_does_not_load_stale_corner_files(self, tmp_path):
+        steps = dict(_FULL_FLOW)
+        steps["sta"] = "Imcomplete"
+        workspace = _make_workspace(tmp_path, steps)
+        _write(
+            os.path.join(
+                workspace.directory,
+                "sta_ecc",
+                "feature",
+                "MAX_125_t125",
+                "Cworst",
+                "qor_summary.json",
+            ),
+            {
+                "path_groups": [],
+                "summary": {
+                    "setup": {"wns": 1.0, "tns": 0.0, "nvp": 0, "frequency_mhz": 50.0},
+                    "hold": {"wns": 1.0, "tns": 0.0, "nvp": 0},
+                },
+            },
+        )
+        inputs = load_workspace_qor_inputs(workspace)
+        assert inputs.corners == []
+
+    def test_synthesis_power_summary_is_loaded(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write(
+            os.path.join(
+                workspace.directory,
+                "Synthesis_yosys",
+                "feature",
+                "post_synthesis",
+                "power_summary.json",
+            ),
+            {
+                "schema_version": 1,
+                "dynamic_uw": 3.0,
+                "leakage_uw": 4.0,
+                "internal_uw": 1.0,
+                "switching_uw": 2.0,
+            },
+        )
+        inputs = load_workspace_qor_inputs(workspace)
+        assert inputs.power_total_uw == 7.0
+        assert inputs.power_source_path.endswith(
+            "Synthesis_yosys/feature/post_synthesis/power_summary.json"
+        )
+        assert inputs.power_source_kind == "synthesis"
+        assert inputs.power_corner == "post_synthesis"
+
+    def test_signoff_power_uses_worst_configured_corner(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        sta_config_path = os.path.join(workspace.directory, "home", "sta_ecc.json")
+        _write(
+            sta_config_path,
+            {
+                "liberty": [
+                    {"corner": "MAX", "temperature": 125},
+                    {"corner": "MIN", "temperature": -40},
+                ],
+                "signoff": [{"MAX": ["Cworst"]}, {"MIN": ["Cbest"]}],
+            },
+        )
+        workspace.config = {"sta": sta_config_path}
+        for corner_dir, rcx_dir, total in (
+            ("MAX_125", "Cworst", 5.0),
+            ("MIN_m40", "Cbest", 9.0),
+        ):
+            _write(
+                os.path.join(
+                    workspace.directory,
+                    "sta_ecc",
+                    "feature",
+                    corner_dir,
+                    rcx_dir,
+                    "power_summary.json",
+                ),
+                {
+                    "schema_version": 1,
+                    "dynamic_uw": total - 1.0,
+                    "leakage_uw": 1.0,
+                    "internal_uw": 1.0,
+                    "switching_uw": total - 1.0,
+                },
+            )
+        inputs = load_workspace_qor_inputs(workspace)
+        assert inputs.power_total_uw == 9.0
+        assert inputs.power_source_path.endswith("MIN_m40/Cbest/power_summary.json")
+        assert inputs.power_source_kind == "signoff"
+        assert inputs.power_corner == "MIN_m40/Cbest"
+
+    def test_setup_only_corner_is_loaded_with_fallback_marker(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write(
+            os.path.join(
+                workspace.directory,
+                "sta_ecc",
+                "feature",
+                "MAX_125_t125",
+                "Cworst",
+                "qor_summary.json",
+            ),
+            {
+                "path_groups": [],
+                "summary": {"setup": {"wns": 1.0, "tns": 0.0, "nvp": 0}},
+            },
+        )
+        inputs = load_workspace_qor_inputs(workspace)
+        assert len(inputs.corners) == 1
+        assert inputs.sta_setup_only is True
+
+
+class TestDesignResolution:
+    def test_design_falls_back_to_parameters(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        workspace.design = SimpleNamespace(name="")
+        workspace.name = ""
+        inputs = load_workspace_qor_inputs(workspace)
+        assert inputs.design == "gcd"
