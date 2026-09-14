@@ -3,11 +3,21 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from chipcompiler.engine.snapshot_qor import (
+    build_qor_snapshot_extension,
+    unavailable_qor_snapshot_extension,
+    validate_qor_snapshot_extension,
+)
 from chipcompiler.utility import JsonReadError, json_read, json_read_strict, json_write
 
 SNAPSHOT_SCHEMA_VERSION = 2
+SNAPSHOT_V3_SCHEMA_VERSION = 3
+SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS = frozenset(
+    {SNAPSHOT_SCHEMA_VERSION, SNAPSHOT_V3_SCHEMA_VERSION}
+)
 SNAPSHOT_FILENAME = "engineering-snapshot.json"
 STALE_SNAPSHOT_FILENAME = "engineering-snapshot.stale.json"
+SNAPSHOT_V2_TO_V3_MIGRATION_CAUSE = "snapshot.migrated.v2_to_v3"
 
 
 class EngineeringSnapshotError(RuntimeError):
@@ -51,6 +61,49 @@ def read_stale_engineering_snapshot(workspace: Any) -> dict[str, Any] | None:
     return _read_snapshot(path) if path.is_file() else None
 
 
+def migrate_engineering_snapshot(
+    workspace: Any,
+    *,
+    expected_workspace_revision: int | None = None,
+    cause: str = SNAPSHOT_V2_TO_V3_MIGRATION_CAUSE,
+) -> dict[str, Any]:
+    """Explicitly migrate one v2 Snapshot to the prepared v3 contract.
+
+    Normal Snapshot producers remain pinned to v2. This write-only seam is the
+    only path that emits v3 until ECC and Studio switch the production contract.
+    """
+    current = _read_snapshot(_snapshot_path(workspace))
+    if current["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
+        raise EngineeringSnapshotError("Snapshot migration requires schemaVersion 2")
+    if (
+        expected_workspace_revision is not None
+        and current["workspaceRevision"] != expected_workspace_revision
+    ):
+        raise EngineeringSnapshotError(
+            "Workspace Revision does not match before Snapshot migration"
+        )
+    try:
+        snapshot = _build_snapshot(
+            workspace,
+            workspace_id=current["workspaceId"],
+            workspace_revision=current["workspaceRevision"] + 1,
+            cause=cause,
+            schema_version=SNAPSHOT_V3_SCHEMA_VERSION,
+            strict_qor=True,
+        )
+    except Exception as exc:
+        raise EngineeringSnapshotError(
+            "failed to regenerate QoR facts for Snapshot migration"
+        ) from exc
+    if isinstance(current.get("stalePredecessor"), dict):
+        snapshot["stalePredecessor"] = deepcopy(current["stalePredecessor"])
+    _write_snapshot(_snapshot_path(workspace), snapshot)
+    return snapshot
+
+
+migrate_engineering_snapshot_v2_to_v3 = migrate_engineering_snapshot
+
+
 def commit_engineering_snapshot(
     workspace: Any,
     *,
@@ -58,6 +111,8 @@ def commit_engineering_snapshot(
     cause: str,
 ) -> dict[str, Any]:
     current = read_engineering_snapshot(workspace)
+    if current["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
+        raise EngineeringSnapshotError("production Snapshot schema is still v2")
     if current["workspaceId"] != workspace_id:
         raise EngineeringSnapshotError("Workspace identity changed before commit")
     snapshot = _build_snapshot(
@@ -94,6 +149,8 @@ def invalidate_engineering_snapshot(
     first_invalidated_step: str | None = None,
 ) -> dict[str, Any]:
     current = read_engineering_snapshot(workspace)
+    if current["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
+        raise EngineeringSnapshotError("production Snapshot schema is still v2")
     if current["workspaceId"] != workspace_id:
         raise EngineeringSnapshotError("Workspace identity changed before invalidation")
     flow = deepcopy(current.get("flow", {}))
@@ -145,6 +202,8 @@ def _build_snapshot(
     workspace_id: str,
     workspace_revision: int,
     cause: str,
+    schema_version: int = SNAPSHOT_SCHEMA_VERSION,
+    strict_qor: bool = False,
 ) -> dict[str, Any]:
     flow_owner = getattr(workspace, "flow", None)
     flow = _data_mapping(flow_owner)
@@ -160,8 +219,19 @@ def _build_snapshot(
 
     analysis, artifacts = build_workspace_analysis(workspace, workspace_id)
     qor_assessment = build_workspace_qor_assessment(analysis)
+    try:
+        from chipcompiler.analysis.qor import build_qor_analysis
+
+        qor_extension = build_qor_snapshot_extension(
+            build_qor_analysis(workspace),
+            artifacts,
+        )
+    except Exception as exc:
+        if strict_qor:
+            raise
+        qor_extension = unavailable_qor_snapshot_extension(str(exc))
     return {
-        "schemaVersion": SNAPSHOT_SCHEMA_VERSION,
+        "schemaVersion": schema_version,
         "workspaceId": workspace_id,
         "workspaceRevision": workspace_revision,
         "cause": cause,
@@ -171,6 +241,7 @@ def _build_snapshot(
         "analysis": analysis,
         "metrics": deepcopy(qor_assessment["metrics"]),
         "qorAssessment": qor_assessment,
+        "qorSnapshotExtension": qor_extension,
         "signoffAssessment": build_signoff_assessment(workspace),
         "artifacts": artifacts,
     }
@@ -202,12 +273,16 @@ def _read_snapshot(path: Path) -> dict[str, Any]:
         raise EngineeringSnapshotError(f"invalid Engineering Snapshot: {path}") from exc
     if (
         not isinstance(snapshot, dict)
-        or snapshot.get("schemaVersion") != SNAPSHOT_SCHEMA_VERSION
+        or snapshot.get("schemaVersion") not in SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS
         or not isinstance(snapshot.get("workspaceId"), str)
         or not snapshot["workspaceId"]
         or isinstance(snapshot.get("workspaceRevision"), bool)
         or not isinstance(snapshot.get("workspaceRevision"), int)
         or snapshot["workspaceRevision"] < 1
+        or (
+            snapshot.get("schemaVersion") == SNAPSHOT_V3_SCHEMA_VERSION
+            and not validate_qor_snapshot_extension(snapshot.get("qorSnapshotExtension"))
+        )
     ):
         raise EngineeringSnapshotError(f"invalid Engineering Snapshot: {path}")
     return snapshot
