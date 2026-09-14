@@ -502,6 +502,27 @@ def _run_project(
             ]
         )
 
+    # A creation-time (fresh/overwrite only) configuration conflict: the
+    # synthesis_lec preset exists to run the LEC the effective policy skips.
+    # Existing ledgers are never re-filtered, so resume/rerun is unaffected.
+    if (
+        fresh_target
+        and effective_preset == "synthesis_lec"
+        and "lec" in resolve_skip_steps_for_flow_config(flow_config)
+    ):
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "config_error",
+                    "reason": (
+                        "the synthesis_lec preset conflicts with the effective skip_steps "
+                        "policy (lec is skipped); set skip_steps = [] to enable it"
+                    ),
+                }
+            ]
+        )
+
     protected = (project_dir, os.path.join(project_dir, "runs"))
     spelled = {os.path.normpath(p) for p in protected}
     canonical = {os.path.realpath(p) for p in protected}
@@ -561,6 +582,15 @@ def _config_error_code(reason: str) -> str:
         if reason.startswith(f"{code}:"):
             return code
     return "config_error"
+
+
+def resolve_skip_steps_for_flow_config(flow_config) -> tuple[str, ...]:
+    """The effective skip policy of a creation flow config (default when none)."""
+    from chipcompiler.rtl2gds import resolve_skip_steps
+
+    return resolve_skip_steps(
+        flow_config if isinstance(flow_config, dict) and "skip_steps" in flow_config else None
+    )
 
 
 def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResult:

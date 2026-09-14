@@ -81,21 +81,41 @@ def compare_flows(persisted: list[tuple[str, str]], target: list[tuple[str, str]
     return "divergent"
 
 
-def _is_legacy_missing_synthesis_lec(
-    persisted: list[tuple[str, str]], target: list[tuple[str, str]]
-) -> bool:
-    """Recognize pre-synthesis-LEC ledgers as upgradeable flow prefixes."""
-    if not any(name == "lec" and tool == "yosys_lec" for name, tool in target):
-        return False
-    target_without_lec = [entry for entry in target if entry != ("lec", "yosys_lec")]
-    return persisted == target_without_lec or (
-        len(persisted) < len(target_without_lec)
-        and target_without_lec[: len(persisted)] == persisted
-    )
+def _relation_with_skipped_steps(
+    persisted: list[tuple[str, str]], target: list[tuple[str, str]], skip: tuple[str, ...]
+) -> str:
+    """Compatibility relation treating policy-skipped ledger steps as inert.
+
+    A ledger written under a wider policy (e.g. with the synthesis LEC
+    enabled) stays runnable when the effective policy excludes those
+    steps: the excluded entries are ignored for comparison and never
+    removed from the ledger. Returns "" when the ledger is not
+    compatible even after ignoring skipped steps.
+    """
+    kept = [entry for entry in persisted if entry[0] not in set(skip)]
+    if kept == target:
+        return "equal"
+    if len(kept) < len(target) and target[: len(kept)] == kept:
+        return "proper_prefix"
+    if len(target) < len(kept) and kept[: len(target)] == target:
+        return "target_prefix"
+    return ""
+
+
+def _resolved_skip_steps(flow_section: dict) -> tuple[str, ...]:
+    """The skip policy a [flow] section carries (default when undeclared)."""
+    from chipcompiler.rtl2gds import resolve_skip_steps
+
+    return resolve_skip_steps(flow_section)
 
 
 def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
-    """(name, tool) entries for a [flow] section, over the canonical chain."""
+    """(name, tool) entries for a [flow] section, over the canonical chain.
+
+    The section's skip policy (its declared list, or the code default when
+    undeclared) is applied to the chain, so the target never contains steps
+    the workspace excludes.
+    """
     from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
     from chipcompiler.data.workspace_config import flow_range_of
 
@@ -105,7 +125,14 @@ def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
     start, end = flow_range
     chain = _canonical_rtl2gds_flow_entries()
     names = [name for name, _tool, _state in chain]
-    return [(name, tool) for name, tool, _state in chain[names.index(start) : names.index(end) + 1]]
+    entries = [
+        (name, tool) for name, tool, _state in chain[names.index(start) : names.index(end) + 1]
+    ]
+    skip = _resolved_skip_steps(flow_section)
+    if skip:
+        excluded = set(skip)
+        entries = [entry for entry in entries if entry[0] not in excluded]
+    return entries
 
 
 def _derive_section_from_persisted(persisted: list[tuple[str, str]]) -> dict:
@@ -191,8 +218,15 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
         return ReconcileResult(outcome="no_op", target=_entry_names(target)), {}
 
     relation = compare_flows(persisted, target)
-    if relation == "divergent" and _is_legacy_missing_synthesis_lec(persisted, target):
-        relation = "legacy_missing_synthesis_lec"
+    if relation == "divergent":
+        # A ledger holding steps the target's policy skips stays compatible:
+        # the skipped entries are inert, never removed or re-inserted.
+        relation = (
+            _relation_with_skipped_steps(
+                persisted, target, _resolved_skip_steps(target_section or {})
+            )
+            or relation
+        )
     if relation == "divergent":
         return (
             ReconcileResult(
@@ -208,7 +242,7 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
         stale = flow_range_of(workspace_flow) != flow_range_of(target_section)
     else:
         stale = bool(target_section)
-    if relation in {"proper_prefix", "legacy_missing_synthesis_lec"} or stale:
+    if relation == "proper_prefix" or stale:
         context = {
             "flow_data": flow_data,
             "persisted": persisted,
@@ -338,42 +372,25 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
 
     if relation == "proper_prefix":
         # Append the missing suffix as Unstart, then adopt the target.
+        # Entries already in the ledger (e.g. steps the effective policy
+        # now skips) are never appended twice, so the suffix is computed
+        # against what the ledger actually holds.
         import copy
 
         from chipcompiler.data.workspace import _flow_step_template
 
         context["flow_data_original"] = copy.deepcopy(flow_data)
         steps = flow_data.setdefault("steps", [])
-        for name, tool in target[len(persisted) :]:
+        present = set(persisted)
+        for name, tool in target:
+            if (name, tool) in present:
+                continue
             steps.append(_flow_step_template(name, tool, "Unstart"))
             appended.append(name)
         if not json_write(workspace_dir / "home" / "flow.json", flow_data):
             return ReconcileResult(
                 outcome="mismatch",
                 error=f"failed to append flow steps to {workspace_dir / 'home' / 'flow.json'}",
-            )
-        adopted_flow = dict(target_section)
-        outcome = "extended"
-    elif relation == "legacy_missing_synthesis_lec":
-        # Insert the newly required synthesis-level LEC while preserving all
-        # existing step records and their states.
-        import copy
-
-        from chipcompiler.data.workspace import _flow_step_template
-
-        context["flow_data_original"] = copy.deepcopy(flow_data)
-        steps = flow_data.setdefault("steps", [])
-        lec_index = next(index for index, (name, _tool) in enumerate(target) if name == "lec")
-        lec_name, lec_tool = target[lec_index]
-        steps.insert(lec_index, _flow_step_template(lec_name, lec_tool, "Unstart"))
-        appended.append(lec_name)
-        for name, tool in target[len(persisted) + 1 :]:
-            steps.append(_flow_step_template(name, tool, "Unstart"))
-            appended.append(name)
-        if not json_write(workspace_dir / "home" / "flow.json", flow_data):
-            return ReconcileResult(
-                outcome="mismatch",
-                error=f"failed to insert flow step into {workspace_dir / 'home' / 'flow.json'}",
             )
         adopted_flow = dict(target_section)
         outcome = "extended"

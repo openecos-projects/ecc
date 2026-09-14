@@ -39,7 +39,10 @@ def resolve_skip_steps(flow_config: dict | None) -> tuple[str, ...]:
             f"skip_steps names steps that cannot be skipped: {', '.join(illegal)}; "
             f"skippable steps: {legal}"
         )
-    chain_names = [step.value for step, _tool, _state in build_rtl2gds_flow()]
+    chain_names = [
+        step.value if isinstance(step, StepBaseEnum) else str(step)
+        for step, _tool, _state in build_rtl2gds_flow()
+    ]
     return tuple(name for name in chain_names if name in requested)
 
 
