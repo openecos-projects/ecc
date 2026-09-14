@@ -215,3 +215,19 @@ def test_policy_only_flow_config_never_yields_a_ledger():
 
     assert build_dynamic_flow_data({"skip_steps": ["lec"]}) == {}
     assert build_dynamic_flow_data({"skip_steps": []}) == {}
+
+
+def test_unknown_flow_config_keys_never_become_steps_or_errors():
+    from chipcompiler.data.workspace import build_dynamic_flow_data
+
+    ledger = build_dynamic_flow_data(
+        {
+            "start_step": "Synthesis",
+            "end_step": "Harden",
+            "future_unknown_key": {"nested": [1, 2, 3]},
+        }
+    )
+
+    names = [step["name"] for step in ledger["steps"]]
+    assert "Synthesis" in names
+    assert "future_unknown_key" not in names

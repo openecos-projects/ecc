@@ -484,10 +484,29 @@ uv run ecc pdk show
 
 ### Flow Preset 覆盖
 
-`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（15 步，Synthesis 后紧跟一次综合级 LEC；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
+`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（16 步，Synthesis 后紧跟一次综合级 LEC；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
 
 ```bash
 uv run ecc run --project gcd --preset rtl2gds
+```
+
+### 可跳过的 Flow Step
+
+三个可选 step 可在创建 workspace 时按配置排除：综合级 LEC（`lec`）、布线后 LEC（`postRouteLec`）、时序优化（`Timing optimization`）。被跳过的 step 不会进入 workspace 的执行 ledger——其输入自然落到前一个保留 step，也不会为其创建 step 目录。状态机与 resume/rerun 语义零改动；已创建的 ledger 永远不会按新配置重过滤——事后修改策略不会向已有 workspace 插入或删除 step。
+
+策略在两个配置面声明，优先级对 skip_steps 单独生效：
+
+1. `project.json` → `workspaces[].skip_steps`（per-workspace，仅此键优先——显式空数组也生效），
+2. `ecc.toml` → `[flow] skip_steps`（项目级），
+3. 两者都未声明时的代码默认 `("lec",)`。
+
+显式 `skip_steps = []` 表示全部执行，是启用综合级 LEC 的唯一方式。有效策略包含 `lec` 时选择 `synthesis_lec` preset 是创建期配置错误；解决办法是 `skip_steps = []`。条目接受与 flow 范围相同的别名（如 `LEC`、`postlec`、`TimingOpt`），并按可跳过集合校验。
+
+```toml
+[flow]
+preset = "rtl2gds"
+# LEC is skipped by default; clear the list to enable it.
+skip_steps = ["lec"]
 ```
 
 ### 报告
@@ -533,6 +552,7 @@ root = "/path/to/ics55"
 
 [flow]
 preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
+# 可选：skip_steps = ["lec"]（默认）；[] 全部执行（启用 LEC）
 ```
 
 filelist 模式下把 `design.rtl` 设为单个 filelist 路径，如 `rtl = ["rtl/filelist.f"]`。多 RTL 源应列在 filelist 里，而不是写多个 `design.rtl` 条目。

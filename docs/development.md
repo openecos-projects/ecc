@@ -674,12 +674,44 @@ uv run ecc pdk show
 `ecc run --preset <name>` overrides `[flow] preset` for a single run without
 editing `ecc.toml`. Valid names are auto-discovered from
 `chipcompiler/rtl2gds/builder.py` (`rtl2gds | syn_sta | synthesis_lec`); the
-`rtl2gds` preset is the full synthesis-to-harden chain (15 steps, with a
+`rtl2gds` preset is the full synthesis-to-harden chain (16 steps, with a
 synthesis-level LEC immediately after Synthesis; Harden
 emits GDS + abstract LEF + timing LIB):
 
 ```bash
 uv run ecc run --project gcd --preset rtl2gds
+```
+
+### Skippable Flow Steps
+
+Three optional steps can be excluded from a workspace at creation time:
+the synthesis LEC (`lec`), the post-route LEC (`postRouteLec`), and timing
+optimization (`Timing optimization`). Skipped steps never enter the
+workspace's execution ledger — their inputs fall through to the previous
+retained step, and no step directory is created for them. State-machine,
+resume/rerun semantics are unchanged, and existing ledgers are never
+re-filtered: changing the policy later cannot insert or remove steps in a
+created workspace.
+
+The policy is declared on two surfaces, with skip-specific precedence:
+
+1. `project.json` → `workspaces[].skip_steps` (per-workspace, wins for
+   this key only — including an explicit empty list),
+2. `ecc.toml` → `[flow] skip_steps` (project level),
+3. code default `("lec",)` when neither declares the key.
+
+An explicit `skip_steps = []` runs every step and is the only way to
+enable the synthesis LEC. Selecting the `synthesis_lec` preset while the
+effective policy skips `lec` is a creation-time configuration error; the
+fix is `skip_steps = []`. Entries accept the same aliases as flow ranges
+(e.g. `LEC`, `postlec`, `TimingOpt`) and are validated against the
+skippable set.
+
+```toml
+[flow]
+preset = "rtl2gds"
+# LEC is skipped by default; clear the list to enable it.
+skip_steps = ["lec"]
 ```
 
 ### Reports
@@ -734,6 +766,7 @@ root = "/path/to/ics55"
 
 [flow]
 preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
+# Optional: skip_steps = ["lec"] (default); [] runs everything (enables LEC)
 ```
 
 For filelist mode, set `design.rtl` to a single filelist path, for example
