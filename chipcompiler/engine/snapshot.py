@@ -44,7 +44,10 @@ def create_engineering_snapshot(
 def ensure_engineering_snapshot(workspace: Any) -> dict[str, Any]:
     path = _snapshot_path(workspace)
     if path.is_file():
-        return _read_snapshot(path)
+        snapshot = _read_snapshot(path)
+        if snapshot["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
+            raise EngineeringSnapshotError("production Snapshot schema is still v2")
+        return snapshot
     return create_engineering_snapshot(workspace, cause="workspace.migrated")
 
 

@@ -8,6 +8,7 @@ from chipcompiler.engine.snapshot import (
     SNAPSHOT_V3_SCHEMA_VERSION,
     EngineeringSnapshotError,
     create_engineering_snapshot,
+    ensure_engineering_snapshot,
     migrate_engineering_snapshot,
     read_engineering_snapshot,
 )
@@ -81,3 +82,12 @@ def test_unsupported_schema_is_not_migrated(tmp_path):
 
     with pytest.raises(EngineeringSnapshotError, match="invalid Engineering Snapshot"):
         migrate_engineering_snapshot(workspace)
+
+
+def test_production_write_paths_reject_migrated_v3_snapshot(tmp_path):
+    workspace = _workspace(tmp_path)
+    create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
+    migrate_engineering_snapshot(workspace)
+
+    with pytest.raises(EngineeringSnapshotError, match="production Snapshot schema is still v2"):
+        ensure_engineering_snapshot(workspace)
