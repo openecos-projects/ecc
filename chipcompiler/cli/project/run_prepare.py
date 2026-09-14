@@ -118,6 +118,17 @@ def _workspace_failed_result(run_name: str, run_dir: str, reason: str | None) ->
     return CommandResult.err([record])
 
 
+def _flow_config_selects_steps(flow_config) -> bool:
+    """Whether a creation flow config names steps (range or selection).
+
+    A policy-only config (just ``skip_steps``) selects nothing and must not
+    mask a preset target.
+    """
+    if not isinstance(flow_config, dict):
+        return False
+    return bool(flow_config.get("start_step")) or bool(flow_config.get("steps"))
+
+
 def _fresh_entry_step_name(cfg, flow_config) -> str | None:
     """The canonical first step a fresh workspace target will execute.
 
@@ -440,11 +451,15 @@ def execute_fresh_run(
                 with open(provenance_path, "w") as _f:
                     json.dump(cli_overrides, _f)
 
-            if flow_config is None:
-                # CLI-born workspaces persist the named prefix chain as their target.
+            if not _flow_config_selects_steps(flow_config):
+                # CLI-born workspaces persist the named preset chain as
+                # their target; a declared skip policy rides along.
                 workspace_parameters = getattr(workspace, "parameters", None)
                 if workspace_parameters is not None:
-                    workspace_parameters.data["_flow"] = {"preset": cfg.flow_preset}
+                    flow_section = {"preset": cfg.flow_preset}
+                    if isinstance(flow_config, dict) and "skip_steps" in flow_config:
+                        flow_section["skip_steps"] = flow_config["skip_steps"]
+                    workspace_parameters.data["_flow"] = flow_section
                     if not save_parameter(workspace_parameters):
                         return failed_workspace("failed to persist the flow target in params.toml")
         except Exception as exc:

@@ -61,13 +61,16 @@ def manifest_workspace_entry(
     end_step: str,
     status: str,
     now: str,
+    skip_steps: list[str] | None = None,
 ) -> dict:
     """One complete schema-v1 workspaces[] entry, every field materialized.
 
     The single builder for generated manifests and migration previews, so
     the previewed entry and the applied entry are the same object shape.
+    ``skip_steps`` is materialized only when the workspace carries a
+    declared policy (an explicit empty list stays []).
     """
-    return {
+    entry = {
         "workspace_id": workspace_id,
         "name": name,
         "workspace_path": workspace_path,
@@ -82,6 +85,9 @@ def manifest_workspace_entry(
         "metrics_summary": {},
         "step_metrics": {},
     }
+    if skip_steps is not None:
+        entry["skip_steps"] = list(skip_steps)
+    return entry
 
 
 def build_manifest_document(
@@ -94,6 +100,7 @@ def build_manifest_document(
     start_step: str,
     end_step: str,
     status: str = "running",
+    skip_steps: list[str] | None = None,
 ) -> dict:
     """Assemble a schema-v1 manifest for a virgin project's first run."""
     now = _now_iso()
@@ -112,6 +119,7 @@ def build_manifest_document(
             end_step=end_step,
             status=status,
             now=now,
+            skip_steps=skip_steps,
         )
     ]
     document["qor_baseline"] = {

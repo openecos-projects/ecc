@@ -59,6 +59,9 @@ class MigrationEntry:
     status: str
     start_step: str
     end_step: str
+    # Declared [flow] skip_steps carried from the workspace's params.toml;
+    # None when the workspace declared no policy.
+    skip_steps: tuple[str, ...] | None = None
     # Plan-time lstat identity of the confirmed source: a substituted
     # real directory fails the move-time check, not just a symlink.
     source_dev: int = 0
@@ -179,6 +182,38 @@ def _is_contiguous_flow(names: list[str]) -> bool:
     "after the transition period",
     category=None,
 )
+def _persisted_skip_steps(run_dir: str) -> tuple[str, ...] | None:
+    """The workspace's declared ``[flow] skip_steps``; None when absent.
+
+    Read raw like the ledger above: the value was validated when written,
+    and a hand-broken one degrades to an undeclared policy (the default)
+    instead of poisoning the migrated manifest against ever loading.
+    """
+    import tomllib
+
+    config_path = os.path.join(run_dir, "home", "params.toml")
+    try:
+        with open(config_path, "rb") as f:
+            data = tomllib.load(f)
+    except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
+        return None
+    flow = data.get("flow")
+    if not isinstance(flow, dict) or "skip_steps" not in flow:
+        return None
+    from chipcompiler.rtl2gds import resolve_skip_steps
+
+    try:
+        resolve_skip_steps({"skip_steps": flow["skip_steps"]})
+    except ValueError:
+        return None
+    return tuple(flow["skip_steps"])
+
+
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
 def plan_migration(project_dir: str) -> MigrationPlan:
     """Enumerate the runs/ workspaces to move and any name collisions.
 
@@ -267,6 +302,7 @@ def plan_migration(project_dir: str) -> MigrationPlan:
                 status=_flow_status(steps),
                 start_step=CANONICAL_TO_DISPLAY.get(names[0], "Synth") if names else "Synth",
                 end_step=CANONICAL_TO_DISPLAY.get(names[-1], "Harden") if names else "Harden",
+                skip_steps=_persisted_skip_steps(source),
                 source_dev=source_stat.st_dev,
                 source_ino=source_stat.st_ino,
             )
@@ -310,6 +346,7 @@ def _workspace_entries(
             end_step=entry.end_step,
             status=entry.status,
             now=now,
+            skip_steps=list(entry.skip_steps) if entry.skip_steps is not None else None,
         )
         for entry in entries
     )
@@ -344,6 +381,7 @@ def build_migration_preview(project_dir: str, cfg) -> MigrationPreview:
                 start_step=first.start_step,
                 end_step=first.end_step,
                 status=first.status,
+                skip_steps=list(first.skip_steps) if first.skip_steps is not None else None,
             )
             document["workspaces"].extend(
                 _workspace_entries(

@@ -96,6 +96,10 @@ class ManifestWorkspace:
     end_step: str
     status: str
     parameter_patch: dict = field(default_factory=dict)
+    # Declared workspaces[].skip_steps spelling (aliases/duplicates kept);
+    # None when the key is absent, () for an explicit empty list. Wins over
+    # ecc.toml [flow] skip_steps for this key only.
+    skip_steps: tuple[str, ...] | None = None
     raw: dict = field(default_factory=dict)
 
 
@@ -129,6 +133,24 @@ def _optional_str(value: Any) -> str:
 
 def _record(value: Any) -> dict:
     return value if isinstance(value, dict) else {}
+
+
+def _workspace_skip_steps(source: dict, index: int) -> tuple[str, ...] | None:
+    """Validated workspaces[].skip_steps; None when the key is absent.
+
+    The declared spelling is kept verbatim (one normalizer exists, in the
+    skip resolver); only its validity is checked here so an invalid value
+    fails the whole manifest load before any registration or write.
+    """
+    if "skip_steps" not in source:
+        return None
+    from chipcompiler.rtl2gds import resolve_skip_steps
+
+    try:
+        resolve_skip_steps({"skip_steps": source["skip_steps"]})
+    except ValueError as exc:
+        raise ManifestError(f"workspaces[{index}] {exc}") from None
+    return tuple(source["skip_steps"])
 
 
 def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> ManifestWorkspace:
@@ -176,6 +198,7 @@ def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> Mani
         end_step=end_step,
         status=status,
         parameter_patch=_record(source.get("parameter_patch")),
+        skip_steps=_workspace_skip_steps(source, index),
         raw=dict(source),
     )
 

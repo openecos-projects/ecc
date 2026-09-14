@@ -271,6 +271,65 @@ def test_flow_validation_rejects_unknown_preset():
         validate_flow_config({"preset": "does_not_exist"})
 
 
+def test_flow_section_skip_steps_normalize():
+    assert validate_flow_config({"skip_steps": ["LEC", "postlec"]}) == {
+        "skip_steps": ["lec", "postRouteLec"]
+    }
+    # Idempotent on already-normalized input.
+    assert validate_flow_config({"skip_steps": ["lec", "postRouteLec"]}) == {
+        "skip_steps": ["lec", "postRouteLec"]
+    }
+
+
+def test_flow_section_skip_steps_three_states_round_trip(tmp_path):
+    from chipcompiler.data.workspace_config import load_workspace_config
+
+    payload = {"design": "gcd", "top_module": "gcd", "clock": "clk"}
+
+    def _round_trip(section):
+        assert save_workspace_config(tmp_path, payload, section)
+        return load_workspace_config(tmp_path)["_flow"]
+
+    assert _round_trip({"start": "Synthesis", "end": "Harden"}) == {
+        "start": "Synthesis",
+        "end": "Harden",
+    }
+    assert _round_trip({"start": "Synthesis", "end": "Harden", "skip_steps": []}) == {
+        "start": "Synthesis",
+        "end": "Harden",
+        "skip_steps": [],
+    }
+    assert _round_trip({"preset": "rtl2gds", "skip_steps": ["LEC"]}) == {
+        "preset": "rtl2gds",
+        "skip_steps": ["lec"],
+    }
+
+
+def test_flow_section_policy_only_skip_steps_is_valid():
+    assert validate_flow_config({"skip_steps": ["lec"]}) == {"skip_steps": ["lec"]}
+    assert flow_range_of({"skip_steps": ["lec"]}) is None
+
+
+def test_flow_section_rejects_invalid_skip_steps():
+    with pytest.raises(WorkspaceFlowTargetError, match="skip_steps"):
+        validate_flow_config({"skip_steps": "lec"})
+    with pytest.raises(WorkspaceFlowTargetError, match="cannot be skipped"):
+        validate_flow_config({"skip_steps": ["route"]})
+
+
+def test_flow_section_from_flow_config_carries_declared_skip():
+    section = flow_section_from_flow_config(
+        {"start_step": "Place", "end_step": "Route", "skip_steps": ["TimingOpt"]}
+    )
+    assert section == {"start": "place", "end": "route", "skip_steps": ["Timing optimization"]}
+
+    # An undeclared policy stays absent; the code default keeps applying.
+    assert flow_section_from_flow_config({"start_step": "Place", "end_step": "Route"}) == {
+        "start": "place",
+        "end": "route",
+    }
+
+
 def test_save_replace_and_cleanup_failure_returns_false(
     tmp_path, monkeypatch, stubborn_candidate_unlink
 ):
