@@ -43,7 +43,6 @@ ChipCompiler supports various EDA file formats. Technical specifications for par
 
 ### CLI Specifications
 
-- **[ECC Runtime Consolidation Plan](specification/ecc-runtime-consolidation-plan.zh-CN.md)** - ECC-owned Runtime, shared CLI/Engine writes, Studio Snapshot boundary, phased migration and protocol cleanup
 - **[CLI Design](specification/cli-design.md)** - Progressive-disclosure CLI design and roadmap
   - Grep-friendly summary lines with disclosure commands
   - Project, run, step, metric, artifact, issue, and config object model
