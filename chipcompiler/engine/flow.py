@@ -516,6 +516,7 @@ class EngineFlow:
         """
 
         for workspace_step in self.workspace_steps:
+            _notify_flow_observer(observer, "raise_if_cancelled")
             self.workspace.logger.log_section(
                 f"{workspace_step.tool} - begin step - {workspace_step.name}"
             )

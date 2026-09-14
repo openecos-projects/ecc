@@ -3,6 +3,7 @@ import threading
 from types import SimpleNamespace
 
 from chipcompiler.data import StateEnum
+from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.runtime.operations import RuntimeOperationManager
 
 
@@ -39,6 +40,66 @@ def test_successful_step_does_not_wait_for_render_ack_before_completing():
     assert status["renderSyncState"] == "idle"
     assert status["awaitingEventId"] is None
     assert events[-1]["type"] == "operation.completed"
+
+
+def test_cancel_stops_before_next_engine_flow_step(monkeypatch):
+    events = []
+    first_step_running = threading.Event()
+    release_first_step = threading.Event()
+    manager = RuntimeOperationManager(events.append)
+    steps = [
+        SimpleNamespace(name=name, tool="mock", log=SimpleNamespace(file=""))
+        for name in ("Synthesis", "Floorplan")
+    ]
+    workspace = SimpleNamespace(
+        flow=SimpleNamespace(data={"steps": [{}, {}]}),
+        logger=SimpleNamespace(log_section=lambda *_args: None, error=lambda *_args: None),
+    )
+    flow = EngineFlow(workspace=None)
+    flow.workspace = workspace
+    flow.workspace_steps = steps
+    flow.init_db_engine = lambda: True
+    executed = []
+
+    def run_step(step, *, rerun=False, observer=None):
+        executed.append(step.name)
+        observer.on_step_started(step)
+        if step.name == "Synthesis":
+            first_step_running.set()
+            assert release_first_step.wait(timeout=2)
+        observer.on_step_completed(step, StateEnum.Success)
+        return StateEnum.Success
+
+    flow.run_step = run_step
+    monkeypatch.setattr("chipcompiler.engine.flow.log_flow", lambda **_kwargs: None)
+    revisions = []
+
+    def commit_step(*_args):
+        revisions.append(len(revisions) + 1)
+        return revisions[-1]
+
+    started = manager.start(
+        workspace_id="workspace-1",
+        kind="flow",
+        origin="gui",
+        rerun=False,
+        step="",
+        idempotency_key="cancel-at-step-boundary",
+        snapshot_committer=commit_step,
+        runner=lambda observer: {"succeeded": flow.run_steps(observer=observer)},
+    )
+    assert first_step_running.wait(timeout=1)
+    assert manager.request_cancel(started["operationId"])["accepted"] is True
+    release_first_step.set()
+
+    status = _wait_for_terminal(manager, started["operationId"])
+
+    assert status["state"] == "cancelled"
+    assert status["workspaceRevision"] == 1
+    assert executed == ["Synthesis"]
+    assert revisions == [1]
+    event_types = [event["type"] for event in events]
+    assert event_types.index("step.completed") < event_types.index("operation.cancelled")
 
 
 def test_subflow_stage_is_emitted_for_the_active_workspace_step():

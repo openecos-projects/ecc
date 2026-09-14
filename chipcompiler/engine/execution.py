@@ -47,6 +47,7 @@ def execute(flow: Any, plan: ExecutionPlan, *, event_sink: Any = None) -> Execut
     else:
         succeeded = True
         for step_id in selected_ids:
+            observer.raise_if_cancelled()
             step = _find_step(flow, step_id)
             if step is None:
                 raise ValueError(f"step not found: {step_id}")

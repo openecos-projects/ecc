@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from chipcompiler.data import StateEnum
 from chipcompiler.engine.execution import ExecutionPlan, execute
 
@@ -36,6 +38,44 @@ def test_execution_plan_dispatches_full_flow_and_single_step():
     )
     assert [call[:2] for call in calls] == [("flow", False), ("Floorplan", True)]
     assert all(call[2].delegate is observer for call in calls)
+
+
+def test_execution_plan_checks_cancel_before_each_selected_step():
+    calls = []
+
+    class Cancelled(RuntimeError):
+        pass
+
+    class Observer:
+        fatal_observer = True
+
+        def __init__(self):
+            self.completed = 0
+
+        def on_step_completed(self, _step, _state, _error=None):
+            self.completed += 1
+
+        def raise_if_cancelled(self):
+            if self.completed:
+                raise Cancelled
+
+    class Flow:
+        def get_workspace_step(self, step_id):
+            return SimpleNamespace(name=step_id)
+
+        def run_step(self, step, *, rerun=False, observer=None):
+            calls.append(step.name)
+            observer.on_step_completed(step, StateEnum.Success)
+            return StateEnum.Success
+
+    with pytest.raises(Cancelled):
+        execute(
+            Flow(),
+            ExecutionPlan(intent="run", step_ids=("Synthesis", "Floorplan")),
+            event_sink=Observer(),
+        )
+
+    assert calls == ["Synthesis"]
 
 
 def test_execution_failure_keeps_main_blocking_semantics():
