@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from chipcompiler.data import StateEnum
-from chipcompiler.engine.execution import ExecutionPlan, execute
+from chipcompiler.engine.execution import ExecutionPlan, event_sink_for_workspace, execute
 
 
 def test_execution_plan_dispatches_full_flow_and_single_step():
@@ -137,3 +137,8 @@ def test_execution_reports_ordered_steps_and_completed_default_is_noop():
     assert result.executed_steps == ()
     assert result.failed_step is None
     assert calls == []
+
+
+def test_event_sink_for_workspace_is_none_without_directory():
+    assert event_sink_for_workspace(SimpleNamespace()) is None
+    assert event_sink_for_workspace(SimpleNamespace(directory=None)) is None

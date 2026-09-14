@@ -38,10 +38,10 @@ def execute(flow: Any, plan: ExecutionPlan, *, event_sink: Any = None) -> Execut
             no_op=True,
         )
     workspace = getattr(flow, "workspace", None)
-    if event_sink is None and getattr(workspace, "directory", None):
-        event_sink = _EngineeringCommitSink(workspace)
+    if event_sink is None:
+        event_sink = event_sink_for_workspace(workspace)
     rerun = plan.intent == "rerun"
-    observer = _ExecutionObserver(event_sink)
+    observer = execution_observer(event_sink)
     if not selected_ids:
         succeeded = bool(_invoke(flow.run_steps, rerun=rerun, observer=observer))
     else:
@@ -92,7 +92,7 @@ def _is_completed(flow: Any) -> bool:
     )
 
 
-class _ExecutionObserver:
+class ExecutionObserver:
     def __init__(self, delegate: Any):
         self.delegate = delegate
         self.fatal_observer = bool(getattr(delegate, "fatal_observer", False))
@@ -115,6 +115,8 @@ class _ExecutionObserver:
             callback = getattr(self.delegate, name, None)
             if callback is not None:
                 return callback
+        if name == "runtime_operation":
+            return None
         return lambda *_args, **_kwargs: None
 
 
@@ -135,6 +137,20 @@ class _EngineeringCommitSink:
             workspace_id=self.snapshot["workspaceId"],
             cause=f"flow_step.{getattr(state, 'value', str(state)).lower()}",
         )
+
+
+def event_sink_for_workspace(workspace: Any) -> _EngineeringCommitSink | None:
+    if getattr(workspace, "directory", None):
+        return _EngineeringCommitSink(workspace)
+    return None
+
+
+def execution_observer(event_sink: Any) -> ExecutionObserver:
+    return ExecutionObserver(event_sink)
+
+
+def invoke_engine(callback, *args, rerun: bool = False, observer: Any = None):
+    return _invoke(callback, *args, rerun=rerun, observer=observer)
 
 
 def _invoke(callback, *args, rerun: bool, observer: Any):

@@ -41,6 +41,27 @@ def test_engine_flow_missing_path_is_not_initialized():
     assert engine_flow.has_init() is False
 
 
+def test_run_step_without_runtime_operation_marker_does_not_expand_function(
+    monkeypatch, tmp_path
+):
+    from chipcompiler.engine.execution import ExecutionObserver
+
+    workspace = Workspace()
+    workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
+    }
+    engine_flow = EngineFlow(workspace)
+    workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
+    monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
+
+    observer = ExecutionObserver(object())
+    assert engine_flow.run_step(workspace_step, observer=observer) == StateEnum.Success
+
+
 def test_engine_flow_default_steps_include_synthesis_lec(tmp_path):
     workspace = Workspace()
     workspace.flow.path = tmp_path / "flow.json"

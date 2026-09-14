@@ -19,6 +19,11 @@ from chipcompiler.cli.inspection.log_view import (
 from chipcompiler.cli.rendering.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
 from chipcompiler.cli.rendering.pretty import style as _style
 from chipcompiler.data import StateEnum, log_flow
+from chipcompiler.engine.execution import (
+    event_sink_for_workspace,
+    execution_observer,
+    invoke_engine,
+)
 from chipcompiler.utility.log import flush_cstdio, redirect_stdio_to_file
 
 
@@ -434,6 +439,7 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
         run_dir = engine_flow.workspace.directory
         run_name = ctx.run_id or "default"
         renderer.start_run(run_name, run_dir)
+        observer = execution_observer(event_sink_for_workspace(workspace))
 
         for workspace_step in engine_flow.workspace_steps:
             step_token = normalize_step_name(workspace_step.name)
@@ -476,7 +482,12 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
                         finally:
                             if init_log_stream is not None:
                                 init_log_stream.close()
-                    state = engine_flow.run_step(workspace_step)
+                    state = invoke_engine(
+                        engine_flow.run_step,
+                        workspace_step,
+                        rerun=False,
+                        observer=observer,
+                    )
             finally:
                 _stop_log_monitor(stop_event, monitor)
                 renderer.clear()

@@ -534,7 +534,10 @@ Project preset sequences are defined in `chipcompiler/rtl2gds/builder.py`
 step aliases and ordering have one source of truth. Keep a sequence change
 coordinated with the engine's default flow, `StepEnum`, and manifest range
 mappings; the CLI only handles argument parsing, input contracts,
-progress-renderer selection, and result mapping.
+progress-renderer selection, and result mapping. Interactive TTY
+`ecc run` uses `run_flow_with_progress()`; `--plain` and GUI use
+`execute()`. Both attach the same Engineering Snapshot commit observer
+so each completed step updates `home/engineering-snapshot.json`.
 
 #### Extending environment probing (doctor / preflight)
 
