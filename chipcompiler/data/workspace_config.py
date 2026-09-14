@@ -412,10 +412,10 @@ def render_workspace_config(
     """Render the workspace configuration TOML document.
 
     ``pdk_config`` values inside the workspace are stored
-    workspace-relative; *flow* is validated before rendering.
+    workspace-relative; *flow* is validated — and its normalized form
+    (e.g. canonical ``skip_steps``) — is what gets rendered.
     """
-    if flow:
-        validate_flow_config(flow)
+    normalized_flow = validate_flow_config(flow) if flow else None
     workspace_root = Path(workspace_dir).resolve()
 
     payload = _drop_null_values(dict(data))
@@ -430,8 +430,8 @@ def render_workspace_config(
         "design": sections["design"],
         "pdk": sections["pdk"],
     }
-    if flow:
-        document["flow"] = dict(flow)
+    if normalized_flow:
+        document["flow"] = dict(normalized_flow)
     document["params"] = sections["params"]
     return tomli_w.dumps(document).encode("utf-8")
 

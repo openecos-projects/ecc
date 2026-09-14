@@ -253,7 +253,7 @@ rc=0
 
 ### 4.1 启动
 
-`rtl2gds` preset 是完整 17 步链，一步到位跑到 Harden（产出 GDS + 抽象 LEF + 时序 LIB）：
+`rtl2gds` preset 是完整 17 步链，一步到位跑到 Harden（产出 GDS + 抽象 LEF + 时序 LIB）。综合级 LEC（第 2 步）在链路中但**默认被跳过**：`[flow] skip_steps` 默认为 `["lec"]`，在 `ecc.toml` 中设 `skip_steps = []` 是启用它的唯一方式。本教程捕获的输出均在启用 LEC 的条件下产生：
 
 ```bash
 ecc run --preset rtl2gds
@@ -748,7 +748,7 @@ ecc run --workspace default
 ## 8. 下一步
 
 - 换你自己的设计：改 `ecc.toml` 的 `top`/`rtl`/`clock_port`/`frequency_mhz`，多文件用 [filelist](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist)；
-- 了解 preset 差异：`rtl2gds`（完整 17 步综合到 Harden 链，含综合级 LEC）、`syn_sta`（仅综合）、`synthesis_lec`（综合 + LEC，两步）；
+- 了解 preset 差异：`rtl2gds`（完整 17 步综合到 Harden 链；综合级 LEC 在链路中但默认跳过——`skip_steps = []` 启用）、`syn_sta`（仅综合）、`synthesis_lec`（综合 + LEC，两步，需要 `skip_steps = []`）；
 - 全部命令细节见 **[ECC CLI 用户指南](ecc-user-guide.cn.md)**（终端：`ecc doc ug --lang cn`）；CLI 扩展开发见 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli)；
 - 用 Python API 直接编排 flow（`EngineFlow`）见 [examples/gcd/ics55flow.py](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/ics55flow.py)。
 

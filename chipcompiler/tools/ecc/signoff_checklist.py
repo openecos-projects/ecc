@@ -17,6 +17,12 @@ from chipcompiler.data import (
     WorkspaceStep,
 )
 from chipcompiler.data.step import STEP_DIRECTORIES
+from chipcompiler.tools.ecc.lec_gates import (
+    post_route_lec_netlists as _post_route_lec_netlists,
+)
+from chipcompiler.tools.ecc.lec_gates import (
+    requires_post_route_lec as _requires_post_route_lec,
+)
 from chipcompiler.tools.ecc.sta_qor import (
     STA_QOR_SUMMARY_FILENAME,
     STA_REPORT_FILENAMES,
@@ -499,38 +505,6 @@ def refresh_step_checklist(workspace: Workspace, step: WorkspaceStep) -> bool:
     if getattr(workspace, "directory", None):
         rebuild_home_checklist(workspace)
     return not any(item["blocked"] for item in step.checklist.checklist)
-
-
-def _post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | None]:
-    design = getattr(getattr(workspace, "design", None), "name", "") or ""
-    # Golden precedence mirrors the execution wiring (engine/flow.py): the
-    # synthesis output when the flow contains Synthesis, else the declared
-    # golden netlist, else the origin RTL.
-    golden = getattr(getattr(workspace, "design", None), "origin_verilog", None)
-    gate = None
-    workspace_dir = Path(workspace.directory) if getattr(workspace, "directory", None) else None
-    flow = getattr(workspace, "flow", None)
-    if workspace_dir is not None:
-        # The canonical chain wires postRouteLec's gate input to the LVS
-        # output netlist (the step immediately before it), not the filler one.
-        gate = workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz"
-        if flow is not None and flow.has_step(StepEnum.SYNTHESIS):
-            golden = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
-        else:
-            golden = getattr(workspace.design, "golden_verilog", None) or golden
-    return golden, gate
-
-
-def _requires_post_route_lec(workspace: Workspace) -> bool:
-    flow = getattr(workspace, "flow", None)
-    if flow is None or not flow.has_step(StepEnum.LVS):
-        return False
-    # A workspace whose ledger has no postRouteLec (skipped at creation)
-    # never requires it, regardless of the artifacts on disk.
-    if not flow.has_step(SkippableStepEnum.POST_ROUTE_LEC):
-        return False
-    golden, gate = _post_route_lec_netlists(workspace)
-    return bool(golden and Path(golden).is_file() and gate and Path(gate).is_file())
 
 
 def _flow_items(workspace: Workspace) -> list[dict]:

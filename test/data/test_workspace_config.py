@@ -484,3 +484,19 @@ def test_flow_section_rejects_skipped_step_as_range_boundary():
     assert validate_flow_config(
         {"start": "Synthesis", "end": "preFloorplan", "skip_steps": ["lec"]}
     ) == {"start": "Synthesis", "end": "preFloorplan", "skip_steps": ["lec"]}
+
+
+def test_save_persists_normalized_skip_steps(tmp_path):
+    """save_workspace_config renders the validated [flow] section, so the
+    persisted policy is canonical regardless of the declared spelling."""
+    from chipcompiler.data.workspace_config import load_workspace_config
+
+    payload = {"design": "gcd", "top_module": "gcd", "clock": "clk"}
+    assert save_workspace_config(
+        tmp_path, payload, {"start": "Synthesis", "end": "Harden", "skip_steps": ["TimingOpt"]}
+    )
+
+    raw = (tmp_path / "home" / "params.toml").read_text()
+    assert "Timing optimization" in raw
+    assert "TimingOpt" not in raw
+    assert load_workspace_config(tmp_path)["_flow"]["skip_steps"] == ["Timing optimization"]

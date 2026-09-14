@@ -478,7 +478,9 @@ class TestMigrationPlanningRobustness:
 
         assert rc == 0
         (workspace,) = _manifest(project_dir)["workspaces"]
-        assert workspace["skip_steps"] == ["TimingOpt"]
+        # The persisted policy is normalized by save_workspace_config, so
+        # the manifest entry carries the canonical step value.
+        assert workspace["skip_steps"] == ["Timing optimization"]
 
     def test_undeclared_and_empty_skip_policies_stay_distinct_after_migration(
         self,
