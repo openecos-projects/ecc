@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+import signal
 import subprocess
 from pathlib import Path
 
@@ -18,6 +19,41 @@ logger = logging.getLogger(__name__)
 
 def _has_staging_outputs(step: EccStep) -> bool:
     return os.path.exists(sizer_staging_def(step)) and os.path.exists(sizer_staging_verilog(step))
+
+
+# Native crash banners glibc/libstdc++ write to the inherited stderr before
+# aborting (e.g. "*** buffer overflow detected ***: terminated"). A kill or
+# timeout prints no such line, so the banner separates tool crashes from
+# external termination.
+_FATAL_LOG_MARKERS = (
+    "*** ",
+    "terminate called after throwing",
+)
+
+
+def _termination_reason(returncode: int) -> str:
+    """Classify a native exit status as a fatal signal or a tool exit code."""
+    if returncode >= 0:
+        return f"exit_code={returncode}"
+    signum = -returncode
+    try:
+        signame = signal.Signals(signum).name
+    except ValueError:
+        signame = "UNKNOWN"
+    return f"signal={signame}({signum})"
+
+
+def _first_fatal_log_line(log_path: str) -> str:
+    """The first native fatal banner in the step log, or an empty string."""
+    try:
+        with open(log_path, errors="replace") as log_file:
+            for line in log_file:
+                stripped = line.strip()
+                if stripped.startswith(_FATAL_LOG_MARKERS):
+                    return stripped
+    except OSError:
+        pass
+    return ""
 
 
 def _published_paths(step: EccStep) -> list[Path]:
@@ -127,10 +163,11 @@ def run_step(
 
     if result.returncode != 0 or not _has_staging_outputs(step):
         logger.error(
-            "Sizer failed for step %s: exit code=%d, staging present=%s",
+            "Sizer failed for step %s: %s, staging present=%s, fatal_log_line=%r",
             step.name,
-            result.returncode,
+            _termination_reason(result.returncode),
             _has_staging_outputs(step),
+            _first_fatal_log_line(log_path),
         )
         sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Imcomplete)
         return StateEnum.Imcomplete
