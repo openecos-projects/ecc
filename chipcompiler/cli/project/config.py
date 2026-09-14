@@ -50,6 +50,9 @@ class ProjectConfig:
     # ecc.toml): the workspace's own [flow] is then the run target source.
     manifest_driven: bool = False
 
+    # Winning skip_steps layer recorded by effective-config resolution
+    # ("project.json" / "ecc.toml"); None when never resolved.
+    _skip_steps_source: str | None = field(default=None, init=False, repr=False)
     _toml_error: str | None = field(default=None, init=False, repr=False)
     _param_errors: list[str] = field(default_factory=list, init=False, repr=False)
     _pdk_config_errors: list[str] = field(default_factory=list, init=False, repr=False)

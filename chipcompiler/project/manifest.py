@@ -79,6 +79,9 @@ _CANONICAL_TO_MANIFEST_STEP = {
     "Harden": "Harden",
 }
 
+# Display name -> canonical step value, for skip-policy boundary checks.
+_MANIFEST_TO_CANONICAL_STEP = {v: k for k, v in _CANONICAL_TO_MANIFEST_STEP.items()}
+
 _WORKSPACE_STATUSES = frozenset(
     {"success", "failed", "running", "in_progress", "not_started", "archived"}
 )
@@ -135,22 +138,24 @@ def _record(value: Any) -> dict:
     return value if isinstance(value, dict) else {}
 
 
-def _workspace_skip_steps(source: dict, index: int) -> tuple[str, ...] | None:
-    """Validated workspaces[].skip_steps; None when the key is absent.
+def _workspace_skip_steps(source: dict, index: int) -> tuple[tuple[str, ...] | None, set[str]]:
+    """Validated workspaces[].skip_steps and its canonical step set.
 
-    The declared spelling is kept verbatim (one normalizer exists, in the
-    skip resolver); only its validity is checked here so an invalid value
-    fails the whole manifest load before any registration or write.
+    Returns (declared spelling, canonical skipped values); the declared
+    spelling is None when the key is absent. The declared spelling is
+    kept verbatim (one normalizer exists, in the skip resolver); only its
+    validity is checked here so an invalid value fails the whole manifest
+    load before any registration or write.
     """
     if "skip_steps" not in source:
-        return None
+        return None, set()
     from chipcompiler.rtl2gds import resolve_skip_steps
 
     try:
-        resolve_skip_steps({"skip_steps": source["skip_steps"]})
+        canonical = set(resolve_skip_steps({"skip_steps": source["skip_steps"]}))
     except ValueError as exc:
         raise ManifestError(f"workspaces[{index}] {exc}") from None
-    return tuple(source["skip_steps"])
+    return tuple(source["skip_steps"]), canonical
 
 
 def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> ManifestWorkspace:
@@ -178,6 +183,7 @@ def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> Mani
     status = source.get("status")
     if not isinstance(status, str) or status not in _WORKSPACE_STATUSES:
         status = "not_started"
+    declared_skip, skipped = _workspace_skip_steps(source, index)
     start_step = _optional_str(source.get("start_step")) or "Synth"
     end_step = _optional_str(source.get("end_step")) or "Harden"
     start_step = _MANIFEST_STEP_ALIASES.get(start_step, start_step)
@@ -186,6 +192,12 @@ def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> Mani
         if step_name not in MANIFEST_FLOW_STEPS:
             raise ManifestError(
                 f"workspaces[{index}] {field_name} is not on the canonical flow chain: {step_name}"
+            )
+    for step_name, field_name in ((start_step, "start_step"), (end_step, "end_step")):
+        if _MANIFEST_TO_CANONICAL_STEP[step_name] in skipped:
+            raise ManifestError(
+                f"workspaces[{index}] {field_name} {step_name!r} is skipped by skip_steps "
+                f"and cannot bound the flow range"
             )
     if MANIFEST_FLOW_STEPS.index(start_step) > MANIFEST_FLOW_STEPS.index(end_step):
         raise ManifestError(
@@ -198,7 +210,7 @@ def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> Mani
         end_step=end_step,
         status=status,
         parameter_patch=_record(source.get("parameter_patch")),
-        skip_steps=_workspace_skip_steps(source, index),
+        skip_steps=declared_skip,
         raw=dict(source),
     )
 

@@ -189,9 +189,10 @@ class _InvalidPersistedSkipSteps(ValueError):
 def _persisted_skip_steps(run_dir: str) -> tuple[str, ...] | None:
     """The workspace's declared ``[flow] skip_steps``; None when absent.
 
-    Read raw like the ledger above: the value was validated when written,
-    and a hand-broken one degrades to an undeclared policy (the default)
-    instead of poisoning the migrated manifest against ever loading.
+    Only a MISSING config reads as "no policy declared". A config that
+    exists but cannot be parsed/decoded/read is invalid input, never a
+    silent default: the caller blocks the workspace's migration with the
+    reason instead of dropping the user's policy.
     """
     import tomllib
 
@@ -199,8 +200,14 @@ def _persisted_skip_steps(run_dir: str) -> tuple[str, ...] | None:
     try:
         with open(config_path, "rb") as f:
             data = tomllib.load(f)
-    except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
+    except FileNotFoundError:
         return None
+    except tomllib.TOMLDecodeError as exc:
+        raise _InvalidPersistedSkipSteps(f"params.toml is malformed: {exc}") from None
+    except UnicodeDecodeError as exc:
+        raise _InvalidPersistedSkipSteps(f"params.toml is not valid UTF-8: {exc}") from None
+    except OSError as exc:
+        raise _InvalidPersistedSkipSteps(f"params.toml could not be read: {exc}") from None
     flow = data.get("flow")
     if not isinstance(flow, dict) or "skip_steps" not in flow:
         return None

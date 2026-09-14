@@ -118,17 +118,6 @@ def _workspace_failed_result(run_name: str, run_dir: str, reason: str | None) ->
     return CommandResult.err([record])
 
 
-def _flow_config_selects_steps(flow_config) -> bool:
-    """Whether a creation flow config names steps (range or selection).
-
-    A policy-only config (just ``skip_steps``) selects nothing and must not
-    mask a preset target.
-    """
-    if not isinstance(flow_config, dict):
-        return False
-    return bool(flow_config.get("start_step")) or bool(flow_config.get("steps"))
-
-
 def _fresh_entry_step_name(cfg, flow_config) -> str | None:
     """The canonical first step a fresh workspace target will execute.
 
@@ -248,6 +237,7 @@ def execute_fresh_run(
         resolve_rtl,
         to_parameters,
     )
+    from chipcompiler.cli.project.effective_config import flow_config_selects_steps
     from chipcompiler.data import create_workspace
     from chipcompiler.data.parameter import save_parameter, update_parameters
     from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
@@ -451,7 +441,7 @@ def execute_fresh_run(
                 with open(provenance_path, "w") as _f:
                     json.dump(cli_overrides, _f)
 
-            if not _flow_config_selects_steps(flow_config):
+            if not flow_config_selects_steps(flow_config):
                 # CLI-born workspaces persist the named preset chain as
                 # their target; a declared skip policy rides along,
                 # normalized (validate_flow_config is the normalizer).

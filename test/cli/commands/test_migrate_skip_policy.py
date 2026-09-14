@@ -4,6 +4,7 @@ manifest entry (moved out of test_migrate.py, over the size guideline).
 
 import json
 import os
+from pathlib import Path
 
 from chipcompiler.cli import main as cli_main
 
@@ -78,3 +79,41 @@ class TestMigrationSkipPolicy:
         entries = {entry["workspace_id"]: entry for entry in _manifest(project_dir)["workspaces"]}
         assert "skip_steps" not in entries["exp1"]
         assert entries["exp2"]["skip_steps"] == []
+
+    def test_malformed_params_toml_blocks_migration_instead_of_dropping_policy(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        Path(run_dir, "home", "params.toml").write_bytes(b"[flow\nskip_steps = [")
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes"])
+
+        assert rc != 0
+        assert os.path.exists(run_dir), "a blocked workspace must stay under runs/"
+
+    def test_invalid_skip_steps_value_blocks_migration(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        # Write raw invalid policy bypassing save-time validation.
+        toml_path = Path(run_dir, "home", "params.toml")
+        toml_path.write_text(toml_path.read_text() + "\n[flow.skip_steps]\nroute = true\n")
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes"])
+
+        assert rc != 0
+        assert os.path.exists(run_dir)

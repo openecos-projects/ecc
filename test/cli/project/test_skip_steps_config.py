@@ -218,3 +218,31 @@ def test_pre_register_materializes_declared_skip_steps(tmp_path, monkeypatch):
     assert outcome == "registered"
     (entry,) = load_manifest(str(tmp_path)).workspaces
     assert entry.skip_steps == ("TimingOpt",)
+
+
+class TestManifestSkipBoundary:
+    def test_skipped_manifest_boundary_fails_the_load(self, tmp_path):
+        _write_manifest(
+            tmp_path,
+            [_workspace(tmp_path, start_step="Synth", end_step="LEC", skip_steps=["LEC"])],
+        )
+
+        with pytest.raises(ManifestError, match="cannot bound the flow range"):
+            load_manifest(str(tmp_path))
+
+    def test_skipped_step_inside_the_manifest_range_is_fine(self, tmp_path):
+        _write_manifest(
+            tmp_path,
+            [
+                _workspace(
+                    tmp_path,
+                    start_step="Synth",
+                    end_step="PreFloorplan",
+                    skip_steps=["LEC"],
+                )
+            ],
+        )
+
+        (entry,) = load_manifest(str(tmp_path)).workspaces
+
+        assert entry.skip_steps == ("LEC",)
