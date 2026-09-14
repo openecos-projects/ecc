@@ -119,30 +119,20 @@ class EngineFlow:
             self.load()
 
     def build_default_steps(self):
-        # Flow step sequences
-        steps = []
+        """Seed the canonical rtl2gds chain (test helper; the CLI/GUI paths
+        resolve their own target and policy before seeding)."""
+        from chipcompiler.rtl2gds import build_rtl2gds_flow
 
-        steps.append(self.init_flow_step(StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
+        steps = [
+            self.init_flow_step(step, tool, state) for step, tool, state in build_rtl2gds_flow()
+        ]
         # Persist the golden netlist on the LEC step so reloads do not have
         # to guess roles from the golden_* filename convention.
         golden = getattr(self.workspace.design, "golden_verilog", None)
-        lec_info = {"golden_verilog": str(golden)} if golden else None
-        steps.append(
-            self.init_flow_step(
-                SkippableStepEnum.LEC, "yosys_lec", StateEnum.Unstart, info=lec_info
-            )
-        )
-        steps.append(self.init_flow_step(StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.CTS, "ecc", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart))
-        steps.append(self.init_flow_step(SkippableStepEnum.TIMING_OPT, "sizer", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.ROUTING, "ecc", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.FILLER, "ecc", StateEnum.Unstart))
-        # steps.append(self.init_flow_step(StepEnum.GDS, "klayout", StateEnum.Unstart))
-        # steps.append(self.init_flow_step(StepEnum.SIGNOFF, "ecc", StateEnum.Unstart))
+        if golden:
+            for step in steps:
+                if step["name"] == SkippableStepEnum.LEC.value:
+                    step["info"] = {"golden_verilog": str(golden)}
 
         self.workspace.flow.data = {"steps": steps}
 

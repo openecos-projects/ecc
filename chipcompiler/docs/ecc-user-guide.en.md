@@ -203,6 +203,8 @@ root = ""                # icsprout55-pdk path; empty falls back to CHIPCOMPILER
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"
+# LEC is skipped by default; clear the list to enable it.
+skip_steps = ["lec"]
 ```
 
 ## 4. check — validate the project configuration
@@ -330,7 +332,8 @@ ecc run [OPTIONS]
 For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full 17-step chain (Synthesis→LEC (Yosys equivalence check; skipped by default — `[flow] skip_steps` defaults to `["lec"]`, set `[]` to enable)→preFloorplan→macroPlacement→postFloorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→RCX→sta→LVS→postRouteLec (Yosys equivalence check)→DRC→Harden; Harden emits GDS + abstract LEF + timing LIB).
 
 The `synthesis_lec` preset requires the LEC the default policy skips, so this
-example's project sets an explicit `skip_steps = []` in `ecc.toml` first:
+example's project edits `ecc.toml` first (`sed -i 's/skip_steps = \["lec"\]/skip_steps = []/' ecc.toml`
+or any editor):
 
 ```console
 $ ecc run --preset synthesis_lec

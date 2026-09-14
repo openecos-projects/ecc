@@ -177,6 +177,10 @@ def _is_contiguous_flow(names: list[str]) -> bool:
     return False
 
 
+class _InvalidPersistedSkipSteps(ValueError):
+    """A workspace's persisted [flow] skip_steps is invalid (unreadable policy)."""
+
+
 @deprecated(
     "legacy runs/ -> manifest layout migration machinery; slated for removal "
     "after the transition period",
@@ -204,8 +208,8 @@ def _persisted_skip_steps(run_dir: str) -> tuple[str, ...] | None:
 
     try:
         resolve_skip_steps({"skip_steps": flow["skip_steps"]})
-    except ValueError:
-        return None
+    except ValueError as exc:
+        raise _InvalidPersistedSkipSteps(str(exc)) from None
     return tuple(flow["skip_steps"])
 
 
@@ -273,6 +277,14 @@ def plan_migration(project_dir: str) -> MigrationPlan:
         if os.path.lexists(target):
             collisions.append(run_id)
             continue
+        try:
+            persisted_skip = _persisted_skip_steps(source)
+        except _InvalidPersistedSkipSteps as exc:
+            blocked[run_id] = (
+                f"the workspace's persisted [flow] skip_steps is invalid ({exc}); "
+                f"fix home/params.toml and retry"
+            )
+            continue
         steps = _read_flow_steps(source)
         if steps is None:
             blocked[run_id] = (
@@ -302,7 +314,7 @@ def plan_migration(project_dir: str) -> MigrationPlan:
                 status=_flow_status(steps),
                 start_step=CANONICAL_TO_DISPLAY.get(names[0], "Synth") if names else "Synth",
                 end_step=CANONICAL_TO_DISPLAY.get(names[-1], "Harden") if names else "Harden",
-                skip_steps=_persisted_skip_steps(source),
+                skip_steps=persisted_skip,
                 source_dev=source_stat.st_dev,
                 source_ino=source_stat.st_ino,
             )

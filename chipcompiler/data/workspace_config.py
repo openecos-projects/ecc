@@ -142,7 +142,15 @@ def validate_flow_config(flow: object) -> dict:
     if preset is not None:
         if not isinstance(preset, str) or not preset.strip():
             raise WorkspaceFlowTargetError(f"[flow] preset must be a non-empty string: {preset!r}")
-        flow_range_for_preset(preset)  # raises on unknown presets
+        first, last = flow_range_for_preset(preset)  # raises on unknown presets
+        excluded = set(result.get("skip_steps") or ())
+        for boundary in (first, last):
+            if boundary in excluded:
+                raise WorkspaceFlowTargetError(
+                    f"[flow] {boundary!r} (the {preset!r} preset boundary) is skipped by "
+                    f"skip_steps and cannot be part of the flow target; set skip_steps = [] "
+                    f"or pick another preset"
+                )
         result["preset"] = preset
         return result
 

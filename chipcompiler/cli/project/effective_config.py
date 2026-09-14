@@ -111,7 +111,15 @@ def resolve_effective_config(
                 flow_config = {"start_step": entry.start_step, "end_step": entry.end_step}
 
     # skip_steps is the one key where the manifest layer outranks ecc.toml.
-    flow_config = _attach_skip_steps(flow_config, declared_skip_steps(entry, cfg))
+    declared = declared_skip_steps(entry, cfg)
+    flow_config = _attach_skip_steps(flow_config, declared)
+    # Provenance for inspection surfaces: the winning layer's name.
+    if declared is not None:
+        cfg._skip_steps_source = (
+            "project.json"
+            if (entry is not None and getattr(entry, "skip_steps", None) is not None)
+            else "ecc.toml"
+        )
 
     warnings = []
     diverging = layer_divergences(cfg, assembled, entry)

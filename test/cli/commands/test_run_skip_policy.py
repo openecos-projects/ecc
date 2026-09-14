@@ -13,24 +13,6 @@ import pytest
 from chipcompiler.cli import main as cli_main
 
 
-def _set_flow_preset(project_dir, preset):
-    toml_path = os.path.join(project_dir, "ecc.toml")
-    with open(toml_path) as f:
-        content = f.read()
-    content = content.replace('preset = "rtl2gds"', f'preset = "{preset}"')
-    with open(toml_path, "w") as f:
-        f.write(content)
-
-
-def _patch_all_flow_builders(monkeypatch):
-    markers = {}
-    for attr in ("build_rtl2gds_flow", "build_syn_sta_flow", "build_synthesis_lec_flow"):
-        steps = [("Synthesis", "yosys", "Unstart"), (attr, "ecc", "Unstart")]
-        markers[attr] = steps
-        monkeypatch.setattr(f"chipcompiler.rtl2gds.builder.{attr}", lambda steps=steps: steps)
-    return markers
-
-
 def _enable_lec_in(project_dir):
     """Append an explicit empty skip list — the only LEC enable path."""
     toml_path = os.path.join(project_dir, "ecc.toml")
@@ -50,15 +32,22 @@ def _enable_lec_in(project_dir):
     ],
 )
 def test_run_dispatches_builder_for_preset(
-    tmp_path, monkeypatch, create_cli_project, flow_mocks, preset, builder_attr
+    tmp_path,
+    monkeypatch,
+    create_cli_project,
+    flow_mocks,
+    set_flow_preset,
+    patch_all_flow_builders,
+    preset,
+    builder_attr,
 ):
     project_dir = create_cli_project()
-    _set_flow_preset(project_dir, preset)
+    set_flow_preset(project_dir, preset)
     if preset == "synthesis_lec":
         # The preset needs the synthesis LEC the default policy skips;
         # an explicit empty skip list is the only enable path.
         _enable_lec_in(project_dir)
-    markers = _patch_all_flow_builders(monkeypatch)
+    markers = patch_all_flow_builders(monkeypatch)
 
     rc = cli_main.run(["run", "--project", project_dir])
 
@@ -67,10 +56,10 @@ def test_run_dispatches_builder_for_preset(
 
 
 def test_synthesis_lec_preset_conflicts_with_default_skip_policy(
-    tmp_path, capsys, create_cli_project, flow_mocks
+    tmp_path, capsys, create_cli_project, flow_mocks, set_flow_preset
 ):
     project_dir = create_cli_project()
-    _set_flow_preset(project_dir, "synthesis_lec")
+    set_flow_preset(project_dir, "synthesis_lec")
     # No skip_steps declared: the code default skips lec.
 
     rc = cli_main.run(["run", "--project", project_dir])
@@ -81,12 +70,12 @@ def test_synthesis_lec_preset_conflicts_with_default_skip_policy(
 
 
 def test_synthesis_lec_preset_conflict_never_fires_for_existing_ledger(
-    tmp_path, create_cli_project, flow_mocks
+    tmp_path, create_cli_project, flow_mocks, set_flow_preset
 ):
     from chipcompiler.data.workspace_config import save_workspace_config
 
     project_dir = create_cli_project()
-    _set_flow_preset(project_dir, "synthesis_lec")
+    set_flow_preset(project_dir, "synthesis_lec")
     run_dir = os.path.join(project_dir, "default")
     home = os.path.join(run_dir, "home")
     os.makedirs(home, exist_ok=True)

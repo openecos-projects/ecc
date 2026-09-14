@@ -89,10 +89,20 @@ def _relation_with_skipped_steps(
     A ledger written under a wider policy (e.g. with the synthesis LEC
     enabled) stays runnable when the effective policy excludes those
     steps: the excluded entries are ignored for comparison and never
-    removed from the ledger. Returns "" when the ledger is not
-    compatible even after ignoring skipped steps.
+    removed from the ledger. An entry only counts as a skipped step when
+    its (name, tool) pair matches the canonical chain — a corrupted entry
+    (right name, wrong tool) is never silently ignored. Returns "" when
+    the ledger is not compatible even after ignoring skipped steps.
     """
-    kept = [entry for entry in persisted if entry[0] not in set(skip)]
+    from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
+
+    canonical_tools = {name: tool for name, tool, _state in _canonical_rtl2gds_flow_entries()}
+    excluded = set(skip)
+    kept = [
+        entry
+        for entry in persisted
+        if not (entry[0] in excluded and entry[1] == canonical_tools.get(entry[0]))
+    ]
     if kept == target:
         return "equal"
     if len(kept) < len(target) and target[: len(kept)] == kept:
