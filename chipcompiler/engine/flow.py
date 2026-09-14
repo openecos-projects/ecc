@@ -8,7 +8,9 @@ from pathlib import Path
 
 from chipcompiler.data import (
     EccOutput,
+    SkippableStepEnum,
     StateEnum,
+    StepBaseEnum,
     StepEnum,
     Workspace,
     WorkspaceStep,
@@ -97,7 +99,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.POST_FLOORPLAN.value,
         StepEnum.PLACEMENT.value,
         StepEnum.CTS.value,
-        StepEnum.TIMING_OPT.value,
+        SkippableStepEnum.TIMING_OPT.value,
         StepEnum.LEGALIZATION.value,
         StepEnum.ROUTING.value,
         StepEnum.DRC.value,
@@ -126,7 +128,9 @@ class EngineFlow:
         golden = getattr(self.workspace.design, "golden_verilog", None)
         lec_info = {"golden_verilog": str(golden)} if golden else None
         steps.append(
-            self.init_flow_step(StepEnum.LEC, "yosys_lec", StateEnum.Unstart, info=lec_info)
+            self.init_flow_step(
+                SkippableStepEnum.LEC, "yosys_lec", StateEnum.Unstart, info=lec_info
+            )
         )
         steps.append(self.init_flow_step(StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart))
@@ -134,7 +138,7 @@ class EngineFlow:
         steps.append(self.init_flow_step(StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.CTS, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.TIMING_OPT, "sizer", StateEnum.Unstart))
+        steps.append(self.init_flow_step(SkippableStepEnum.TIMING_OPT, "sizer", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.ROUTING, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.FILLER, "ecc", StateEnum.Unstart))
         # steps.append(self.init_flow_step(StepEnum.GDS, "klayout", StateEnum.Unstart))
@@ -149,12 +153,12 @@ class EngineFlow:
 
     def init_flow_step(
         self,
-        step: StepEnum | str,
+        step: StepBaseEnum | str,
         tool: str,
         state: str | StateEnum,
         info: dict | None = None,
     ):
-        step_value = step.value if isinstance(step, StepEnum) else step
+        step_value = step.value if isinstance(step, StepBaseEnum) else step
         state_value = state.value if isinstance(state, StateEnum) else state
         return {
             "name": step_value,  # step name
@@ -293,8 +297,8 @@ class EngineFlow:
         # HARDEN/RCX/GDS results live on the place-and-route (ecc) output leaves.
         ecc_output = output if isinstance(output, EccOutput) else None
         if workspace_step.tool == "yosys_lec" or workspace_step.name in (
-            StepEnum.LEC.value,
-            StepEnum.POST_ROUTE_LEC.value,
+            SkippableStepEnum.LEC.value,
+            SkippableStepEnum.POST_ROUTE_LEC.value,
         ):
             from chipcompiler.tools.yosys_lec.utility import lec_result_is_proven
 
@@ -330,7 +334,7 @@ class EngineFlow:
                 success = bool(spef_list) and all(
                     os.path.isfile(spef) and os.path.getsize(spef) > 0 for spef in spef_list
                 )
-            case StepEnum.TIMING_OPT.value:
+            case SkippableStepEnum.TIMING_OPT.value:
                 if os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""):
                     success = True
             case _:
@@ -391,7 +395,7 @@ class EngineFlow:
                     input_db = explicit_golden
                 elif pre_step is None and self.workspace.design.golden_verilog is not None:
                     input_db = self.workspace.design.golden_verilog
-                elif step["name"] == StepEnum.POST_ROUTE_LEC.value:
+                elif step["name"] == SkippableStepEnum.POST_ROUTE_LEC.value:
                     input_db = synthesis_gate_verilog or self.workspace.design.origin_verilog
                 elif pre_step is not None and pre_step.name == StepEnum.SYNTHESIS.value:
                     input_db = synthesis_golden_verilog or None

@@ -3,7 +3,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from chipcompiler.data import EccData, EccStep, LogPaths, OriginDesign, StepEnum, Workspace
+from chipcompiler.data import (
+    EccData,
+    EccStep,
+    LogPaths,
+    OriginDesign,
+    SkippableStepEnum,
+    StepEnum,
+    Workspace,
+)
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
 from chipcompiler.tools.ecc_dreamplace.service import get_step_info
 from chipcompiler.utility import json_write
@@ -310,18 +318,18 @@ def test_run_legalization_allows_timing_opt_and_legalization_owners(tmp_path, mo
     monkeypatch.setattr(DreamplaceModule, "_run", fake_run)
 
     legalization = _module_for_owner(tmp_path, StepEnum.LEGALIZATION.value)
-    timing_opt = _module_for_owner(tmp_path, StepEnum.TIMING_OPT.value)
+    timing_opt = _module_for_owner(tmp_path, SkippableStepEnum.TIMING_OPT.value)
     placement = _module_for_owner(tmp_path, StepEnum.PLACEMENT.value)
 
     assert legalization.run_legalization() is True
     assert timing_opt.run_legalization() is True
     assert placement.run_legalization() is False
-    assert seen == [StepEnum.LEGALIZATION.value, StepEnum.TIMING_OPT.value]
+    assert seen == [StepEnum.LEGALIZATION.value, SkippableStepEnum.TIMING_OPT.value]
 
 
 def test_timing_opt_legalize_log_does_not_reuse_step_log(tmp_path):
     legalization = _module_for_owner(tmp_path, StepEnum.LEGALIZATION.value)
-    timing_opt = _module_for_owner(tmp_path, StepEnum.TIMING_OPT.value)
+    timing_opt = _module_for_owner(tmp_path, SkippableStepEnum.TIMING_OPT.value)
 
     assert legalization._file_handler_path(mode=DreamplaceRunMode.LEGALIZATION) == str(
         tmp_path / "step.log"
@@ -347,7 +355,7 @@ def test_dreamplace_run_step_ignores_timing_opt(tmp_path, monkeypatch):
     monkeypatch.setattr(dreamplace_runner, "run_legalization", lambda **kwargs: True)
 
     workspace = Workspace(directory=str(tmp_path / "workspace"), design=OriginDesign(name="gcd"))
-    step = EccStep(name=StepEnum.TIMING_OPT.value)
+    step = EccStep(name=SkippableStepEnum.TIMING_OPT.value)
 
     assert dreamplace_runner.run_step(workspace, step) is False
 
@@ -356,7 +364,7 @@ def test_legalize_layout_rebuilds_from_sources_and_closes_on_failure(tmp_path, m
     from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
     from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
 
-    module = _module_for_owner(tmp_path, StepEnum.TIMING_OPT.value)
+    module = _module_for_owner(tmp_path, SkippableStepEnum.TIMING_OPT.value)
     staging_def = tmp_path / "sizer.def.gz"
     staging_verilog = tmp_path / "sizer.v.gz"
     created = []
@@ -392,7 +400,7 @@ def test_legalize_layout_rebuilds_from_sources_and_closes_on_failure(tmp_path, m
         is None
     )
     assert created == [
-        (staging_def, staging_verilog, None, StepEnum.TIMING_OPT.value, module.workspace)
+        (staging_def, staging_verilog, None, SkippableStepEnum.TIMING_OPT.value, module.workspace)
     ]
     assert closed == [True]
 
@@ -401,7 +409,7 @@ def test_legalize_layout_returns_none_without_dreamplace_config(tmp_path, monkey
     from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
 
     workspace = Workspace(directory=str(tmp_path / "workspace"), design=OriginDesign(name="gcd"))
-    step = EccStep(name=StepEnum.TIMING_OPT.value)
+    step = EccStep(name=SkippableStepEnum.TIMING_OPT.value)
     monkeypatch.setattr(dreamplace_runner, "is_eda_exist", lambda: True)
 
     assert (
@@ -429,10 +437,10 @@ def test_legalize_layout_fills_missing_dreamplace_config_without_clobbering(tmp_
         config={"db": workspace_dir / "config" / "db_ecc.json"},
     )
     step = EccStep(
-        name=StepEnum.TIMING_OPT.value,
+        name=SkippableStepEnum.TIMING_OPT.value,
         data=EccData(
             dir=tmp_path / "data",
-            steps={StepEnum.TIMING_OPT.value: tmp_path / "data" / "to"},
+            steps={SkippableStepEnum.TIMING_OPT.value: tmp_path / "data" / "to"},
         ),
         log=LogPaths(file=tmp_path / "step.log"),
     )
@@ -462,7 +470,7 @@ def test_legalize_layout_returns_engine_when_legalize_succeeds(tmp_path, monkeyp
     from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
     from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
 
-    module = _module_for_owner(tmp_path, StepEnum.TIMING_OPT.value)
+    module = _module_for_owner(tmp_path, SkippableStepEnum.TIMING_OPT.value)
     engine = SimpleNamespace(close=lambda: (_ for _ in ()).throw(AssertionError("closed")))
 
     monkeypatch.setattr(dreamplace_runner, "is_eda_exist", lambda: True)

@@ -13,6 +13,7 @@ from chipcompiler.data import (
     EccOutput,
     EccStep,
     LogPaths,
+    SkippableStepEnum,
     StateEnum,
     StepEnum,
     StepMetrics,
@@ -69,7 +70,7 @@ def test_engine_flow_default_steps_include_synthesis_lec(tmp_path):
 
     assert [(step["name"], step["tool"]) for step in workspace.flow.data["steps"][:5]] == [
         (StepEnum.SYNTHESIS.value, "yosys"),
-        (StepEnum.LEC.value, "yosys_lec"),
+        (SkippableStepEnum.LEC.value, "yosys_lec"),
         (StepEnum.PRE_FLOORPLAN.value, "ecc"),
         (StepEnum.MACRO_PLACEMENT.value, "dreamplace"),
         (StepEnum.POST_FLOORPLAN.value, "ecc"),
@@ -150,10 +151,10 @@ def test_failed_synthesis_lec_is_persisted_as_incomplete(monkeypatch, tmp_path):
     workspace = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
-        "steps": [{"name": StepEnum.LEC.value, "tool": "yosys_lec", "state": "Unstart"}]
+        "steps": [{"name": SkippableStepEnum.LEC.value, "tool": "yosys_lec", "state": "Unstart"}]
     }
     workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
-    workspace_step = EccStep(name=StepEnum.LEC.value, directory=tmp_path, tool="yosys_lec")
+    workspace_step = EccStep(name=SkippableStepEnum.LEC.value, directory=tmp_path, tool="yosys_lec")
     engine_flow = EngineFlow(workspace)
     engine_flow.workspace_steps = [workspace_step]
     engine_flow.engine_db = SimpleNamespace(engine=None)
@@ -175,27 +176,29 @@ def test_run_steps_stops_after_synthesis_lec_failure(monkeypatch, tmp_path):
     workspace = Workspace(directory=tmp_path)
     workspace.flow.data = {
         "steps": [
-            {"name": StepEnum.LEC.value, "tool": "yosys_lec", "state": "Unstart"},
+            {"name": SkippableStepEnum.LEC.value, "tool": "yosys_lec", "state": "Unstart"},
             {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": "Unstart"},
         ]
     }
     engine_flow = EngineFlow(workspace)
     engine_flow.workspace_steps = [
-        EccStep(name=StepEnum.LEC.value, directory=tmp_path, tool="yosys_lec"),
+        EccStep(name=SkippableStepEnum.LEC.value, directory=tmp_path, tool="yosys_lec"),
         EccStep(name=StepEnum.FLOORPLAN.value, directory=tmp_path, tool="ecc"),
     ]
     calls = []
 
     def fake_run_step(step, **_kwargs):
         calls.append(step.name)
-        return StateEnum.Imcomplete if step.name == StepEnum.LEC.value else StateEnum.Success
+        if step.name == SkippableStepEnum.LEC.value:
+            return StateEnum.Imcomplete
+        return StateEnum.Success
 
     monkeypatch.setattr(engine_flow, "run_step", fake_run_step)
     monkeypatch.setattr(engine_flow, "init_db_engine", lambda: True)
     monkeypatch.setattr(flow_module, "log_flow", lambda **_kwargs: None)
 
     assert engine_flow.run_steps() is False
-    assert calls == [StepEnum.LEC.value]
+    assert calls == [SkippableStepEnum.LEC.value]
 
 
 def test_check_step_result_synthesis_uses_common_verilog(tmp_path):
@@ -289,7 +292,7 @@ def test_check_step_result_timing_opt_does_not_require_gds(tmp_path):
     (tmp_path / "gcd.def").write_text("")
     (tmp_path / "gcd.v").write_text("")
     step = EccStep(
-        name=StepEnum.TIMING_OPT.value,
+        name=SkippableStepEnum.TIMING_OPT.value,
         output=EccOutput(def_=tmp_path / "gcd.def", verilog=tmp_path / "gcd.v"),
     )
     # gds intentionally absent; timing-opt result must still succeed.
@@ -759,7 +762,7 @@ class TestRunStepReturnContract:
         verilog_path.write_text("module gcd; endmodule\n", encoding="utf-8")
         engine_flow, workspace, workspace_step = self._make_flow(
             tmp_path,
-            StepEnum.TIMING_OPT.value,
+            SkippableStepEnum.TIMING_OPT.value,
             "sizer",
             EccOutput(def_=def_path, verilog=verilog_path),
         )

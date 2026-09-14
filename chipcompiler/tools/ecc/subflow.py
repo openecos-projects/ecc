@@ -2,7 +2,7 @@
 import time
 from enum import Enum
 
-from chipcompiler.data import StateEnum, StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data import StateEnum, StepEnum, Workspace, WorkspaceStep, step_from_value
 
 
 class EccSubFlowEnum(Enum):
@@ -65,7 +65,7 @@ class EccSubFlow:
 
         steps = []
 
-        step = StepEnum(self.workspace_step.name)
+        step = step_from_value(self.workspace_step.name)
         match step:
             case StepEnum.PRE_FLOORPLAN:
                 steps.append(subflow_template(EccSubFlowEnum.load_data.value))

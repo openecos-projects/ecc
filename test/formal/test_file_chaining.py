@@ -20,17 +20,19 @@ from z3 import (
     unsat,
 )
 
-from chipcompiler.data import StepEnum
+from chipcompiler.data import SkippableStepEnum, StepBaseEnum, StepEnum
 
-# Assign each StepEnum member an integer ID for z3.
-STEP_TYPE_MAP: dict[StepEnum, int] = {member: i for i, member in enumerate(StepEnum)}
+# Assign each concrete step enum member an integer ID for z3.
+STEP_TYPE_MAP: dict[StepBaseEnum, int] = {
+    member: i for i, member in enumerate((*StepEnum, *SkippableStepEnum))
+}
 STEP_TYPE_COUNT: int = len(STEP_TYPE_MAP)
 
 # Steps that only require a mapped netlist (not def/gds).
 SYNTHESIS_ONLY_STEPS: set[StepEnum] = {StepEnum.SYNTHESIS}
 
 # Steps whose success contract is a proven result JSON, not physical outputs.
-JSON_ONLY_STEPS: set[StepEnum] = {StepEnum.LEC, StepEnum.POST_ROUTE_LEC}
+JSON_ONLY_STEPS: set[StepBaseEnum] = {SkippableStepEnum.LEC, SkippableStepEnum.POST_ROUTE_LEC}
 
 
 def _expected_output_keys(

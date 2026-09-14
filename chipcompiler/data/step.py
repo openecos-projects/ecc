@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from chipcompiler.data.types import StepEnum
+from chipcompiler.data.types import SkippableStepEnum, StepEnum
 
 # Canonical workspace step-directory names.
 #
@@ -16,7 +16,7 @@ from chipcompiler.data.types import StepEnum
 # consumer reads through these tables.
 STEP_DIRECTORIES = {
     StepEnum.SYNTHESIS.value: "Synthesis_yosys",
-    StepEnum.LEC.value: "lec_yosys_lec",
+    SkippableStepEnum.LEC.value: "lec_yosys_lec",
     StepEnum.PRE_FLOORPLAN.value: "preFloorplan_ecc",
     StepEnum.MACRO_PLACEMENT.value: "macroPlacement_dreamplace",
     StepEnum.POST_FLOORPLAN.value: "postFloorplan_ecc",
@@ -28,7 +28,7 @@ STEP_DIRECTORIES = {
     StepEnum.RCX.value: "RCX_ecc",
     StepEnum.STA.value: "sta_ecc",
     StepEnum.LVS.value: "lvs_ecc",
-    StepEnum.POST_ROUTE_LEC.value: "postRouteLec_yosys_lec",
+    SkippableStepEnum.POST_ROUTE_LEC.value: "postRouteLec_yosys_lec",
     StepEnum.DRC.value: "drc_ecc",
     StepEnum.HARDEN.value: "Harden_ecc",
 }

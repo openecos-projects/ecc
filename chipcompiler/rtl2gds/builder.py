@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from collections.abc import Callable
 
-from chipcompiler.data import StateEnum, StepEnum
+from chipcompiler.data import SkippableStepEnum, StateEnum, StepBaseEnum, StepEnum
 
 
 def build_rtl2gds_flow() -> list:
@@ -9,29 +9,29 @@ def build_rtl2gds_flow() -> list:
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
     # LEC is still unstable; keep it disabled until it is reliable enough to enable.
-    # steps.append((StepEnum.LEC, "yosys_lec", StateEnum.Unstart))
+    # steps.append((SkippableStepEnum.LEC, "yosys_lec", StateEnum.Unstart))
     steps.append((StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.CTS, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart))
-    steps.append((StepEnum.TIMING_OPT, "sizer", StateEnum.Unstart))
+    steps.append((SkippableStepEnum.TIMING_OPT, "sizer", StateEnum.Unstart))
     steps.append((StepEnum.ROUTING, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.FILLER, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.RCX, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.STA, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.LVS, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart))
+    steps.append((SkippableStepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart))
     steps.append((StepEnum.DRC, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.HARDEN, "ecc", StateEnum.Unstart))
 
     return steps
 
 
-def normalize_flow_step(value: str | StepEnum) -> str:
+def normalize_flow_step(value: str | StepBaseEnum) -> str:
     """Resolve a CLI/manifest step spelling to its canonical flow name."""
-    if isinstance(value, StepEnum):
+    if isinstance(value, StepBaseEnum):
         return value.value
     token = str(value or "").strip()
     if not token:
@@ -52,16 +52,16 @@ def normalize_flow_step(value: str | StepEnum) -> str:
         "cts": StepEnum.CTS.value,
         "legal": StepEnum.LEGALIZATION.value,
         "legalization": StepEnum.LEGALIZATION.value,
-        "timingopt": StepEnum.TIMING_OPT.value,
-        "timingoptimization": StepEnum.TIMING_OPT.value,
+        "timingopt": SkippableStepEnum.TIMING_OPT.value,
+        "timingoptimization": SkippableStepEnum.TIMING_OPT.value,
         "route": StepEnum.ROUTING.value,
         "routing": StepEnum.ROUTING.value,
         "drc": StepEnum.DRC.value,
         "lvs": StepEnum.LVS.value,
         "filler": StepEnum.FILLER.value,
-        "lec": StepEnum.LEC.value,
-        "postlec": StepEnum.POST_ROUTE_LEC.value,
-        "postroutelec": StepEnum.POST_ROUTE_LEC.value,
+        "lec": SkippableStepEnum.LEC.value,
+        "postlec": SkippableStepEnum.POST_ROUTE_LEC.value,
+        "postroutelec": SkippableStepEnum.POST_ROUTE_LEC.value,
         "rcx": StepEnum.RCX.value,
         "sta": StepEnum.STA.value,
         "harden": StepEnum.HARDEN.value,
@@ -69,7 +69,7 @@ def normalize_flow_step(value: str | StepEnum) -> str:
     return aliases.get(alias_key, token)
 
 
-def build_flow_range(from_step: str | StepEnum, to_step: str | StepEnum) -> list:
+def build_flow_range(from_step: str | StepBaseEnum, to_step: str | StepBaseEnum) -> list:
     """Return the inclusive canonical RTL-to-GDS range requested by a workspace.
 
     The RTL-to-GDS chain is owned by :func:`build_rtl2gds_flow`; partial flows
@@ -77,7 +77,7 @@ def build_flow_range(from_step: str | StepEnum, to_step: str | StepEnum) -> list
     """
     steps = build_rtl2gds_flow()
     names = [
-        step.value if isinstance(step, StepEnum) else str(step) for step, _tool, _state in steps
+        step.value if isinstance(step, StepBaseEnum) else str(step) for step, _tool, _state in steps
     ]
     first = normalize_flow_step(from_step)
     last = normalize_flow_step(to_step)
@@ -105,7 +105,7 @@ def build_synthesis_lec_flow() -> list:
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
-    steps.append((StepEnum.LEC, "yosys_lec", StateEnum.Unstart))
+    steps.append((SkippableStepEnum.LEC, "yosys_lec", StateEnum.Unstart))
 
     return steps
 

@@ -13,6 +13,7 @@ from chipcompiler.data import (
     EccStep,
     OriginDesign,
     Parameters,
+    SkippableStepEnum,
     StateEnum,
     StepEnum,
     StepInput,
@@ -386,7 +387,7 @@ def test_create_db_engine_reads_replaced_step_input_despite_db(tmp_path, monkeyp
         config={"db": tmp_path / "config" / "db_ecc.json"},
     )
     step = EccStep(
-        name=StepEnum.TIMING_OPT.value,
+        name=SkippableStepEnum.TIMING_OPT.value,
         input=StepInput(
             def_=staging_def,
             verilog=staging_verilog,
@@ -421,7 +422,7 @@ def test_create_db_engine_raises_and_closes_when_def_master_resolution_fails(tmp
         config={"db": tmp_path / "config" / "db_ecc.json"},
     )
     step = EccStep(
-        name=StepEnum.TIMING_OPT.value,
+        name=SkippableStepEnum.TIMING_OPT.value,
         input=StepInput(def_=design_def, verilog=tmp_path / "origin" / "gcd.v", db=None),
         data=EccData(dir=tmp_path / "timing_optimization_sizer" / "data"),
         feature=EccFeature(dir=tmp_path / "timing_optimization_sizer" / "feature"),
@@ -492,7 +493,7 @@ def test_create_db_engine_without_input_db_does_not_retry_load_design(tmp_path, 
         logger=FakeLogger(),
     )
     step = EccStep(
-        name=StepEnum.TIMING_OPT.value,
+        name=SkippableStepEnum.TIMING_OPT.value,
         input=StepInput(def_=design_def, db=None),
         data=EccData(dir=tmp_path / "timing_optimization_sizer" / "data"),
         feature=EccFeature(dir=tmp_path / "timing_optimization_sizer" / "feature"),

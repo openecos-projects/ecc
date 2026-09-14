@@ -1,7 +1,7 @@
 import pytest
 
 import chipcompiler.rtl2gds.builder as builder_module
-from chipcompiler.data import StateEnum, StepEnum
+from chipcompiler.data import SkippableStepEnum, StateEnum, StepEnum
 from chipcompiler.rtl2gds import get_flow_builders
 
 
@@ -62,13 +62,13 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
         (StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart),
         (StepEnum.CTS, "ecc", StateEnum.Unstart),
         (StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart),
-        (StepEnum.TIMING_OPT, "sizer", StateEnum.Unstart),
+        (SkippableStepEnum.TIMING_OPT, "sizer", StateEnum.Unstart),
         (StepEnum.ROUTING, "ecc", StateEnum.Unstart),
         (StepEnum.FILLER, "ecc", StateEnum.Unstart),
         (StepEnum.RCX, "ecc", StateEnum.Unstart),
         (StepEnum.STA, "ecc", StateEnum.Unstart),
         (StepEnum.LVS, "ecc", StateEnum.Unstart),
-        (StepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart),
+        (SkippableStepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart),
         (StepEnum.DRC, "ecc", StateEnum.Unstart),
         (StepEnum.HARDEN, "ecc", StateEnum.Unstart),
     ]
@@ -80,7 +80,7 @@ def test_build_flow_range_slices_the_canonical_chain():
     assert [(step, tool) for step, tool, _state in flow] == [
         (StepEnum.CTS, "ecc"),
         (StepEnum.LEGALIZATION, "dreamplace"),
-        (StepEnum.TIMING_OPT, "sizer"),
+        (SkippableStepEnum.TIMING_OPT, "sizer"),
         (StepEnum.ROUTING, "ecc"),
     ]
 

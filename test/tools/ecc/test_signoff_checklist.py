@@ -7,6 +7,7 @@ from chipcompiler.data import (
     EccStep,
     OriginDesign,
     Parameters,
+    SkippableStepEnum,
     StateEnum,
     StepEnum,
     StepMetrics,
@@ -97,9 +98,11 @@ def test_lec_failure_blocks_export_for_both_lec_steps(monkeypatch, tmp_path):
     )
     workspace = Workspace(directory=tmp_path)
 
-    synthesis_item = _lec_artifact_items(workspace, StepEnum.LEC.value, result, None, None)[0]
+    synthesis_item = _lec_artifact_items(
+        workspace, SkippableStepEnum.LEC.value, result, None, None
+    )[0]
     post_route_item = _lec_artifact_items(
-        workspace, StepEnum.POST_ROUTE_LEC.value, result, None, None
+        workspace, SkippableStepEnum.POST_ROUTE_LEC.value, result, None, None
     )[0]
 
     for item in (synthesis_item, post_route_item):
@@ -574,7 +577,7 @@ def test_home_checklist_flow_completed_tracks_final_harden_state(tmp_path):
                 StepEnum.DRC,
                 StepEnum.LVS,
                 StepEnum.FILLER,
-                StepEnum.POST_ROUTE_LEC,
+                SkippableStepEnum.POST_ROUTE_LEC,
                 StepEnum.RCX,
                 StepEnum.STA,
             )
@@ -636,7 +639,7 @@ def test_home_checklist_uses_origin_golden_when_flow_has_no_synthesis(tmp_path):
                 StepEnum.DRC,
                 StepEnum.LVS,
                 StepEnum.FILLER,
-                StepEnum.POST_ROUTE_LEC,
+                SkippableStepEnum.POST_ROUTE_LEC,
                 StepEnum.RCX,
                 StepEnum.STA,
                 StepEnum.HARDEN,
@@ -735,7 +738,7 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
             for step in (
                 StepEnum.FILLER,
                 StepEnum.LVS,
-                StepEnum.POST_ROUTE_LEC,
+                SkippableStepEnum.POST_ROUTE_LEC,
                 StepEnum.HARDEN,
             )
         ]

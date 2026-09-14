@@ -19,9 +19,12 @@ from .step import (
 )
 from .types import (
     FINISHED_STEP_STATES,
+    SkippableStepEnum,
     StateEnum,
+    StepBaseEnum,
     StepEnum,
     is_finished_step_state,
+    step_from_value,
 )
 from .workspace import (
     OriginDesign,
@@ -143,7 +146,10 @@ __all__ = [
     "get_pdk",
     "StepEnum",
     "step_storage_name",
+    "SkippableStepEnum",
+    "StepBaseEnum",
     "StateEnum",
+    "step_from_value",
     "CheckState",
     "StepMetrics",
     "load_metrics",

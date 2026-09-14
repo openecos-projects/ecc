@@ -15,7 +15,7 @@ import tarfile
 import time
 from pathlib import Path
 
-from chipcompiler.data import StateEnum, StepEnum, Workspace
+from chipcompiler.data import SkippableStepEnum, StateEnum, StepEnum, Workspace
 from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
 from chipcompiler.engine.signoff.discovery import CollectorDiscoveryMixin
 from chipcompiler.engine.signoff.models import (
@@ -366,8 +366,10 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 required=True,
             )
 
-        lec_dir = workspace_dir / self._step_dirs()[StepEnum.POST_ROUTE_LEC.value]
-        lec_result = lec_dir / "output" / f"{design}_{StepEnum.POST_ROUTE_LEC.value}_result.json"
+        lec_dir = workspace_dir / self._step_dirs()[SkippableStepEnum.POST_ROUTE_LEC.value]
+        lec_result = (
+            lec_dir / "output" / f"{design}_{SkippableStepEnum.POST_ROUTE_LEC.value}_result.json"
+        )
         if require_lec:
             add_file(
                 role="lec.result",
@@ -545,7 +547,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         add_file("status.flow", flow_path, "final/reports/flow.json", required=True)
 
         for step_name, step_dir in self._step_dirs().items():
-            if step_name == StepEnum.POST_ROUTE_LEC.value:
+            if step_name == SkippableStepEnum.POST_ROUTE_LEC.value:
                 continue
             for kind in ("analysis", "report"):
                 self._copy_tree_files(

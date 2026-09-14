@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from chipcompiler.data import EccStep, StepEnum, Workspace
+from chipcompiler.data import EccStep, StepEnum, Workspace, step_from_value
 from chipcompiler.tools.ecc.metrics import build_step_metrics
 from chipcompiler.utility import dict_to_str, json_read
 from chipcompiler.utility.path import stringify_paths
@@ -103,7 +103,7 @@ def build_analysis(workspace: Workspace, step: EccStep) -> dict:
 def build_maps(workspace: Workspace, step: EccStep) -> dict:
     info = {}
 
-    match StepEnum(step.name):
+    match step_from_value(step.name):
         case StepEnum.PRE_FLOORPLAN | StepEnum.POST_FLOORPLAN:
             pass
         case StepEnum.PLACEMENT:

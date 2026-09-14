@@ -8,7 +8,14 @@ to assemble a signoff package.
 import re
 from pathlib import Path
 
-from chipcompiler.data import Checklist, StateEnum, StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data import (
+    Checklist,
+    SkippableStepEnum,
+    StateEnum,
+    StepEnum,
+    Workspace,
+    WorkspaceStep,
+)
 from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.tools.ecc.sta_qor import (
     STA_QOR_SUMMARY_FILENAME,
@@ -43,7 +50,7 @@ _REQUIRED_FLOW_STEPS = (
     StepEnum.DRC.value,
     StepEnum.LVS.value,
     StepEnum.FILLER.value,
-    StepEnum.POST_ROUTE_LEC.value,
+    SkippableStepEnum.POST_ROUTE_LEC.value,
     StepEnum.RCX.value,
     StepEnum.STA.value,
     StepEnum.HARDEN.value,
@@ -409,7 +416,7 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
         ]
     elif step.name == StepEnum.SYNTHESIS.value:
         artifacts = (("netlist", "Mapped synthesis netlist", step.output.verilog),)
-    elif step.name in {StepEnum.LEC.value, StepEnum.POST_ROUTE_LEC.value}:
+    elif step.name in {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}:
         step_input = getattr(step, "input", None)
         return _lec_artifact_items(
             workspace,
@@ -531,7 +538,9 @@ def _flow_items(workspace: Workspace) -> list[dict]:
     }
     items = []
     for step in _REQUIRED_FLOW_STEPS:
-        if step == StepEnum.POST_ROUTE_LEC.value and not _requires_post_route_lec(workspace):
+        if step == SkippableStepEnum.POST_ROUTE_LEC.value and not _requires_post_route_lec(
+            workspace
+        ):
             continue
         state = "pass" if states.get(step) == StateEnum.Success.value else "failed"
         items.append(
@@ -648,7 +657,7 @@ def rebuild_home_checklist(
         return {}
     workspace_dir = Path(workspace_directory)
     items = []
-    post_route_lec_dir = STEP_DIRECTORIES[StepEnum.POST_ROUTE_LEC.value]
+    post_route_lec_dir = STEP_DIRECTORIES[SkippableStepEnum.POST_ROUTE_LEC.value]
     for directory in STEP_DIRECTORIES.values():
         if directory == post_route_lec_dir:
             continue
@@ -662,10 +671,12 @@ def rebuild_home_checklist(
             workspace_dir
             / post_route_lec_dir
             / "output"
-            / f"{design}_{StepEnum.POST_ROUTE_LEC.value}_result.json"
+            / f"{design}_{SkippableStepEnum.POST_ROUTE_LEC.value}_result.json"
         )
         items.extend(
-            _lec_artifact_items(workspace, StepEnum.POST_ROUTE_LEC.value, result_json, golden, gate)
+            _lec_artifact_items(
+                workspace, SkippableStepEnum.POST_ROUTE_LEC.value, result_json, golden, gate
+            )
         )
     for step_name in _QUALITY_GATES_BY_STEP:
         step_directory = workspace_dir / STEP_DIRECTORIES[step_name]

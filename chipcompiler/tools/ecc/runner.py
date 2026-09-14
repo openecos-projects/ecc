@@ -5,6 +5,7 @@ from pathlib import Path
 
 from chipcompiler.data import (
     EccStep,
+    SkippableStepEnum,
     StateEnum,
     StepEnum,
     Workspace,
@@ -40,7 +41,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.POST_FLOORPLAN.value,
         StepEnum.PLACEMENT.value,
         StepEnum.CTS.value,
-        StepEnum.TIMING_OPT.value,
+        SkippableStepEnum.TIMING_OPT.value,
         StepEnum.LEGALIZATION.value,
         StepEnum.ROUTING.value,
         StepEnum.DRC.value,

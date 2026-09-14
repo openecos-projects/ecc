@@ -7,8 +7,21 @@ dependency-free root of the data layer's type vocabulary.
 from enum import Enum
 
 
-class StepEnum(Enum):
-    """RTL2GDS flow step names"""
+class StepBaseEnum(Enum):
+    """Memberless base of the flow step enums: shared behavior.
+
+    Python forbids inheriting an Enum that has members, so shared step
+    behavior lives on this base while the concrete members are split
+    between :class:`StepEnum` (core chain steps) and
+    :class:`SkippableStepEnum` (optional steps a project may exclude).
+    """
+
+    def is_skippable(self) -> bool:
+        return False
+
+
+class StepEnum(StepBaseEnum):
+    """RTL2GDS flow step names (core chain steps)"""
 
     RTL2GDS = "RTL2GDS"
     INIT = "Init"
@@ -19,20 +32,49 @@ class StepEnum(Enum):
     POST_FLOORPLAN = "postFloorplan"
     PLACEMENT = "place"
     CTS = "CTS"
-    TIMING_OPT = "Timing optimization"
     LEGALIZATION = "legalization"
     ROUTING = "route"
     FILLER = "filler"
     GDS = "GDS"
     SIGNOFF = "Signoff"
-    LEC = "lec"
-    POST_ROUTE_LEC = "postRouteLec"
     STA = "sta"
     DRC = "drc"
     LVS = "lvs"
     RCX = "RCX"
     ABSTRACT_LEF = "Abstract lef"
     HARDEN = "Harden"
+
+
+class SkippableStepEnum(StepBaseEnum):
+    """Optional flow steps a project may exclude from its ledger.
+
+    These are check/optimization steps whose outputs downstream steps can
+    do without; persisted string values match the former StepEnum members.
+    """
+
+    LEC = "lec"
+    POST_ROUTE_LEC = "postRouteLec"
+    TIMING_OPT = "Timing optimization"
+
+    def is_skippable(self) -> bool:
+        return True
+
+
+_STEP_ENUMS: tuple[type[StepBaseEnum], ...] = (StepEnum, SkippableStepEnum)
+
+
+def step_from_value(name: str) -> StepBaseEnum:
+    """The step enum member for a persisted step value, across both enums.
+
+    Raises ValueError for an unknown value, mirroring ``StepEnum(name)``.
+    """
+    for enum in _STEP_ENUMS:
+        try:
+            return enum(name)
+        except ValueError:
+            continue
+    legal = ", ".join(sorted(member.value for enum in _STEP_ENUMS for member in enum))
+    raise ValueError(f"unknown flow step: {name!r}; available steps: {legal}")
 
 
 class StateEnum(Enum):

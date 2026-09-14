@@ -22,7 +22,7 @@ from ..parameter import (
     load_parameter as load_parameter,
 )
 from ..pdk import PDK, get_pdk
-from ..types import StateEnum, StepEnum
+from ..types import SkippableStepEnum, StateEnum, StepBaseEnum, StepEnum
 from ..workspace_config import (
     legacy_parameters_fallback as legacy_parameters_fallback,
 )
@@ -79,8 +79,8 @@ class Flow:
             return []
         return [step for step in raw_steps if isinstance(step, dict)]
 
-    def get_step(self, name: str | StepEnum, tool: str | None = None) -> dict | None:
-        step_name = name.value if isinstance(name, StepEnum) else name
+    def get_step(self, name: str | StepBaseEnum, tool: str | None = None) -> dict | None:
+        step_name = name.value if isinstance(name, StepBaseEnum) else name
         for step in self.steps():
             if step.get("name") != step_name:
                 continue
@@ -88,7 +88,7 @@ class Flow:
                 return step
         return None
 
-    def has_step(self, name: str | StepEnum, tool: str | None = None) -> bool:
+    def has_step(self, name: str | StepBaseEnum, tool: str | None = None) -> bool:
         return self.get_step(name, tool) is not None
 
 
@@ -187,9 +187,11 @@ _LEGACY_WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     "dreamplace": "dreamplace.json",
 }
 
-_STEP_BY_VALUE: Final[dict[str, StepEnum]] = {step.value: step for step in StepEnum}
+_STEP_BY_VALUE: Final[dict[str, StepBaseEnum]] = {
+    step.value: step for step in (*StepEnum, *SkippableStepEnum)
+}
 
-_STEP_CONFIG_KEYS: Final[dict[tuple[StepEnum, str], tuple[str, ...]]] = {
+_STEP_CONFIG_KEYS: Final[dict[tuple[StepBaseEnum, str], tuple[str, ...]]] = {
     (StepEnum.PRE_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value),
     (StepEnum.MACRO_PLACEMENT, "dreamplace"): ("dreamplace", "macro_location"),
     (StepEnum.POST_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value, "macro_location"),
@@ -203,12 +205,12 @@ _STEP_CONFIG_KEYS: Final[dict[tuple[StepEnum, str], tuple[str, ...]]] = {
     (StepEnum.STA, "ecc"): ("db", StepEnum.RCX.value, StepEnum.STA.value),
     (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
     (StepEnum.LEGALIZATION, "dreamplace"): ("dreamplace",),
-    (StepEnum.TIMING_OPT, "sizer"): ("db", "dreamplace"),
+    (SkippableStepEnum.TIMING_OPT, "sizer"): ("db", "dreamplace"),
 }
 
 
-def _workspace_step_enum(step: str | StepEnum) -> StepEnum | None:
-    if isinstance(step, StepEnum):
+def _workspace_step_enum(step: str | StepBaseEnum) -> StepBaseEnum | None:
+    if isinstance(step, StepBaseEnum):
         return step
     return _STEP_BY_VALUE.get(step)
 
@@ -246,7 +248,7 @@ def workspace_config_path(workspace_dir: str | Path, config_key: str) -> Path | 
     return workspace_config_paths(workspace_dir).get(config_key)
 
 
-def step_config_keys(step: str | StepEnum, tool: str | None) -> tuple[str, ...]:
+def step_config_keys(step: str | StepBaseEnum, tool: str | None) -> tuple[str, ...]:
     step_enum = _workspace_step_enum(step)
     if step_enum is None or tool is None:
         return ()
@@ -255,7 +257,7 @@ def step_config_keys(step: str | StepEnum, tool: str | None) -> tuple[str, ...]:
 
 def step_config_paths(
     workspace_dir: str | Path,
-    step: str | StepEnum,
+    step: str | StepBaseEnum,
     tool: str | None,
     *,
     existing_only: bool = False,
@@ -301,7 +303,7 @@ def build_dynamic_flow_data(flow_config: dict | None) -> dict:
     return {
         "steps": [
             _flow_step_template(
-                name.value if isinstance(name, StepEnum) else str(name),
+                name.value if isinstance(name, StepBaseEnum) else str(name),
                 str(tool),
                 state.value if isinstance(state, StateEnum) else str(state),
             )
@@ -315,7 +317,7 @@ def _canonical_rtl2gds_flow_entries() -> list[tuple[str, str, str]]:
 
     return [
         (
-            step.value if isinstance(step, StepEnum) else str(step),
+            step.value if isinstance(step, StepBaseEnum) else str(step),
             str(tool),
             state.value if isinstance(state, StateEnum) else str(state),
         )
