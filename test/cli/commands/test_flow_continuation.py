@@ -254,6 +254,38 @@ class TestFlowMismatchZeroMutation:
         assert _tree_snapshot(run_dir) == tree_before
         assert Path(manifest_path).read_bytes() == manifest_before
 
+    def test_manifest_declared_skip_policy_is_honored_on_existing_run(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
+    ):
+        """A per-workspace project.json skip policy wins over the
+        workspace's undeclared one on an existing run: enabling the LEC
+        (skip_steps = []) against a without-LEC ledger is a mismatch that
+        never inserts the step."""
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = os.path.join(project_dir, "ws_0001")
+        # A post-default-policy ledger: the canonical chain without the LEC.
+        without_lec = [name for name in RTL2GDS_NAMES if name != "lec"]
+        prefix = without_lec[:3]
+        _write_existing_workspace(
+            run_dir, prefix, states=["Success"] * 2 + ["Unstart"], pdk_root=pdk_root
+        )
+
+        manifest_path = _write_manifest_with_workspace(project_dir, run_dir, pdk_root)
+        with open(manifest_path) as f:
+            document = json.load(f)
+        document["workspaces"][0]["skip_steps"] = []
+        with open(manifest_path, "w") as f:
+            json.dump(document, f, indent=2)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
+
+        assert rc != 0
+        errors = [r for r in _records(capsys, plain_records) if r.get("error") == "flow_mismatch"]
+        assert len(errors) == 1
+        ledger = json.loads((Path(run_dir) / "home" / "flow.json").read_text())
+        assert "lec" not in [step["name"] for step in ledger["steps"]]
+
     def test_legacy_parameters_mismatch_never_migrates(
         self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
     ):

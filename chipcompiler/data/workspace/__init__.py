@@ -1063,15 +1063,14 @@ def create_workspace(
         - input_filelist takes priority over origin_verilog for synthesis when both exist
         - All input files are copied to workspace/origin/ directory
     """
-    # The skip policy and the selected range are validated before anything
-    # on disk is touched: invalid configuration is an error, never a
-    # partial workspace. A skipped step cannot bound the range either.
+    # The skip policy, the selected range, and the resulting ledger are
+    # fully resolved before anything on disk is touched: invalid
+    # configuration (including a preset target whose endpoint the policy
+    # skips) is an error, never a partial workspace.
     from chipcompiler.rtl2gds import resolve_skip_steps
 
-    from ..workspace_config import flow_section_from_flow_config
-
     resolve_skip_steps(flow_config)
-    flow_section_from_flow_config(flow_config)
+    dynamic_flow_data = build_dynamic_flow_data(flow_config)
 
     # create workspace directory
     import shutil
@@ -1162,7 +1161,6 @@ def create_workspace(
     workspace.home.set_flow(workspace.flow.path)
     workspace.home.set_checklist(home_dir / "checklist.json")
     workspace.home.set_parameters(workspace.parameters.path)
-    dynamic_flow_data = build_dynamic_flow_data(flow_config)
     if dynamic_flow_data:
         from chipcompiler.utility import json_write
 
