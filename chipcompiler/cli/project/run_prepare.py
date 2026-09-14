@@ -457,7 +457,13 @@ def execute_fresh_run(
             engine_flow = EngineFlow(workspace=workspace)
             flow_builders = rtl2gds_api.get_flow_builders()
             if not engine_flow.has_init():
-                for step, tool, state in flow_builders[cfg.flow_preset]():
+                # No-arg preset builders stay canonical; the skip policy is
+                # applied to their output so every ledger-creation path
+                # filters through one resolver.
+                for step, tool, state in rtl2gds_api.filter_flow_steps(
+                    flow_builders[cfg.flow_preset](),
+                    rtl2gds_api.resolve_skip_steps(flow_config),
+                ):
                     engine_flow.add_step(step=step, tool=tool, state=state)
 
             engine_flow.create_step_workspaces()

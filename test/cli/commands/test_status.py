@@ -8,11 +8,12 @@ class TestStatus:
     def test_status_normalizes_every_rtl2gds_step(
         self, tmp_path, capsys, create_cli_project, create_flow_json, plain_records
     ):
+        from chipcompiler.data import DEFAULT_SKIP_STEPS
         from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
 
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
-        flow = build_rtl2gds_flow()
+        flow = build_rtl2gds_flow(skip=DEFAULT_SKIP_STEPS)
         create_flow_json(
             run_dir,
             [

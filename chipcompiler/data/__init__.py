@@ -18,6 +18,7 @@ from .step import (
     step_storage_name,
 )
 from .types import (
+    DEFAULT_SKIP_STEPS,
     FINISHED_STEP_STATES,
     SkippableStepEnum,
     StateEnum,
@@ -86,6 +87,7 @@ __all__ = [
     "create_workspace",
     "load_workspace",
     "create_default_sdc",
+    "DEFAULT_SKIP_STEPS",
     "Workspace",
     "WorkspaceStep",
     "WorkspaceStepBase",

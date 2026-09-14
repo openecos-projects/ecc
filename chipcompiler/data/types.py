@@ -5,6 +5,7 @@ dependency-free root of the data layer's type vocabulary.
 """
 
 from enum import Enum
+from typing import Final
 
 
 class StepBaseEnum(Enum):
@@ -58,6 +59,12 @@ class SkippableStepEnum(StepBaseEnum):
 
     def is_skippable(self) -> bool:
         return True
+
+
+# Projects that declare no skip policy skip the synthesis LEC: the
+# conservative default keeps pre-existing projects' ledgers unchanged.
+# An explicit empty skip list is the only way to enable it.
+DEFAULT_SKIP_STEPS: Final = (SkippableStepEnum.LEC.value,)
 
 
 _STEP_ENUMS: tuple[type[StepBaseEnum], ...] = (StepEnum, SkippableStepEnum)

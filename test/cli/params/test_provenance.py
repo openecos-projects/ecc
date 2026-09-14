@@ -36,7 +36,7 @@ class TestCliProvenance:
         )
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-            lambda: [("Synthesis", "yosys", "Unstart")],
+            lambda *, skip=(): [("Synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
@@ -102,7 +102,7 @@ class TestCliProvenance:
         )
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-            lambda: [("Synthesis", "yosys", "Unstart")],
+            lambda *, skip=(): [("Synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
@@ -175,7 +175,7 @@ class TestCliProvenance:
         )
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-            lambda: [("Synthesis", "yosys", "Unstart")],
+            lambda *, skip=(): [("Synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",

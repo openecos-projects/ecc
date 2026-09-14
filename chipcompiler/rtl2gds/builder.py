@@ -1,15 +1,63 @@
 #!/usr/bin/env python
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 
-from chipcompiler.data import SkippableStepEnum, StateEnum, StepBaseEnum, StepEnum
+from chipcompiler.data import (
+    DEFAULT_SKIP_STEPS,
+    SkippableStepEnum,
+    StateEnum,
+    StepBaseEnum,
+    StepEnum,
+)
+
+# Step values a project is allowed to exclude from its ledger.
+SKIPPABLE_STEP_VALUES = frozenset(member.value for member in SkippableStepEnum)
 
 
-def build_rtl2gds_flow() -> list:
+def resolve_skip_steps(flow_config: dict | None) -> tuple[str, ...]:
+    """The effective skip policy carried by a flow config.
+
+    Presence-keyed: an absent ``skip_steps`` key yields the code default;
+    an explicitly empty list yields ``()`` (run every step — the only way
+    to enable the synthesis LEC). Entries accept the same aliases as step
+    ranges, must name skippable steps only, and normalize to canonical
+    step values in canonical chain order (idempotently).
+    """
+    if not isinstance(flow_config, dict) or "skip_steps" not in flow_config:
+        return DEFAULT_SKIP_STEPS
+    raw = flow_config["skip_steps"]
+    if not isinstance(raw, list):
+        raise ValueError(f"skip_steps must be a list, not {type(raw).__name__}: {raw!r}")
+    requested = set()
+    for entry in raw:
+        if not isinstance(entry, str):
+            raise ValueError(f"skip_steps entries must be strings, not {entry!r}")
+        requested.add(normalize_flow_step(entry))
+    illegal = sorted(requested - SKIPPABLE_STEP_VALUES)
+    if illegal:
+        legal = ", ".join(sorted(SKIPPABLE_STEP_VALUES))
+        raise ValueError(
+            f"skip_steps names steps that cannot be skipped: {', '.join(illegal)}; "
+            f"skippable steps: {legal}"
+        )
+    chain_names = [step.value for step, _tool, _state in build_rtl2gds_flow()]
+    return tuple(name for name in chain_names if name in requested)
+
+
+def filter_flow_steps(steps: list, skip: Collection[str]) -> list:
+    """Drop the skipped step entries from a built step list, order untouched."""
+    excluded = set(skip)
+    return [
+        entry
+        for entry in steps
+        if (entry[0].value if isinstance(entry[0], StepBaseEnum) else str(entry[0])) not in excluded
+    ]
+
+
+def build_rtl2gds_flow(*, skip: Collection[str] = ()) -> list:
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
-    # LEC is still unstable; keep it disabled until it is reliable enough to enable.
-    # steps.append((SkippableStepEnum.LEC, "yosys_lec", StateEnum.Unstart))
+    steps.append((SkippableStepEnum.LEC, "yosys_lec", StateEnum.Unstart))
     steps.append((StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart))
@@ -26,7 +74,7 @@ def build_rtl2gds_flow() -> list:
     steps.append((StepEnum.DRC, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.HARDEN, "ecc", StateEnum.Unstart))
 
-    return steps
+    return filter_flow_steps(steps, skip)
 
 
 def normalize_flow_step(value: str | StepBaseEnum) -> str:
@@ -69,13 +117,20 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
     return aliases.get(alias_key, token)
 
 
-def build_flow_range(from_step: str | StepBaseEnum, to_step: str | StepBaseEnum) -> list:
+def build_flow_range(
+    from_step: str | StepBaseEnum,
+    to_step: str | StepBaseEnum,
+    *,
+    skip: Collection[str] = (),
+) -> list:
     """Return the inclusive canonical RTL-to-GDS range requested by a workspace.
 
     The RTL-to-GDS chain is owned by :func:`build_rtl2gds_flow`; partial flows
     are always slices of that chain rather than a second hand-maintained list.
+    Skipped steps are excluded from the chain first, so a skipped step cannot
+    serve as a range boundary (it is unknown in the filtered chain).
     """
-    steps = build_rtl2gds_flow()
+    steps = build_rtl2gds_flow(skip=skip)
     names = [
         step.value if isinstance(step, StepBaseEnum) else str(step) for step, _tool, _state in steps
     ]

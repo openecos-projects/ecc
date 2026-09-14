@@ -440,12 +440,13 @@ def test_rtl2gds_flow_runs_post_route_lec_after_lvs_before_drc():
     assert steps[lec_index] == (SkippableStepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart)
 
 
-def test_rtl2gds_flow_keeps_unstable_synthesis_lec_disabled():
+def test_rtl2gds_flow_restores_synthesis_lec_into_the_canonical_chain():
     from chipcompiler.rtl2gds import build_rtl2gds_flow
 
     steps = build_rtl2gds_flow()
     step_names = [step[0] for step in steps]
-    assert SkippableStepEnum.LEC not in step_names
+    assert SkippableStepEnum.LEC in step_names
+    assert step_names.index(SkippableStepEnum.LEC) == step_names.index(StepEnum.SYNTHESIS) + 1
 
 
 def test_engine_flow_wires_synthesis_lec_without_changing_physical_chain(tmp_path, monkeypatch):

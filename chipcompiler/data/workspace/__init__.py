@@ -285,7 +285,8 @@ def build_dynamic_flow_data(flow_config: dict | None) -> dict:
 
     A non-contiguous explicit selection degrades to the contiguous
     first..last range (with a log note) so flow.json and the [flow] target
-    always describe the same steps.
+    always describe the same steps. The config's skip policy is resolved
+    here: skipped steps never enter the ledger.
     """
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
@@ -299,7 +300,8 @@ def build_dynamic_flow_data(flow_config: dict | None) -> dict:
 
     import chipcompiler.rtl2gds as rtl2gds_api
 
-    selected = rtl2gds_api.build_flow_range(selected_names[0], selected_names[-1])
+    skip = rtl2gds_api.resolve_skip_steps(flow_config)
+    selected = rtl2gds_api.build_flow_range(selected_names[0], selected_names[-1], skip=skip)
     return {
         "steps": [
             _flow_step_template(

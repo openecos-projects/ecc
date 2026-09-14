@@ -297,7 +297,7 @@ def test_load_workspace_restores_golden_from_persisted_flow_info(
         pdk="ics55",
         parameters=deepcopy(default_ics55_parameters),
         pdk_root=pdk_root,
-        flow_config={"start_step": "lec", "end_step": "lec"},
+        flow_config={"start_step": "lec", "end_step": "lec", "skip_steps": []},
     )
 
     loaded = load_workspace(str(workspace_dir))

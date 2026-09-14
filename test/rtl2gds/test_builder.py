@@ -56,6 +56,7 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
 
     assert flow == [
         (StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart),
+        (SkippableStepEnum.LEC, "yosys_lec", StateEnum.Unstart),
         (StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart),
         (StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart),
         (StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart),
@@ -72,6 +73,16 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
         (StepEnum.DRC, "ecc", StateEnum.Unstart),
         (StepEnum.HARDEN, "ecc", StateEnum.Unstart),
     ]
+
+
+def test_build_rtl2gds_flow_skip_removes_exactly_the_skipped_steps():
+    flow = builder_module.build_rtl2gds_flow(skip=("lec", SkippableStepEnum.TIMING_OPT.value))
+
+    step_names = [step.value for step, _tool, _state in flow]
+    assert SkippableStepEnum.LEC.value not in step_names
+    assert SkippableStepEnum.TIMING_OPT.value not in step_names
+    unfiltered = [step.value for step, _tool, _state in builder_module.build_rtl2gds_flow()]
+    assert step_names == [name for name in unfiltered if name not in {"lec", "Timing optimization"}]
 
 
 def test_build_flow_range_slices_the_canonical_chain():
@@ -103,3 +114,68 @@ def test_build_flow_range_exposes_split_floorplan_steps():
         (StepEnum.MACRO_PLACEMENT, "dreamplace"),
         (StepEnum.POST_FLOORPLAN, "ecc"),
     ]
+
+
+def test_build_flow_range_skip_excludes_steps_from_the_slice():
+    flow = builder_module.build_flow_range("Synthesis", "preFloorplan", skip=("lec",))
+
+    assert [step for step, _tool, _state in flow] == [
+        StepEnum.SYNTHESIS,
+        StepEnum.PRE_FLOORPLAN,
+    ]
+
+
+def test_build_flow_range_rejects_skipped_step_as_boundary():
+    with pytest.raises(ValueError, match="unknown flow step"):
+        builder_module.build_flow_range("Synthesis", "lec", skip=("lec",))
+
+
+def test_resolve_skip_steps_absent_key_yields_the_code_default():
+    from chipcompiler.data import DEFAULT_SKIP_STEPS
+
+    assert builder_module.resolve_skip_steps(None) == DEFAULT_SKIP_STEPS
+    assert builder_module.resolve_skip_steps({}) == DEFAULT_SKIP_STEPS
+    assert builder_module.resolve_skip_steps({"start_step": "Synthesis"}) == DEFAULT_SKIP_STEPS
+    assert (SkippableStepEnum.LEC.value,) == DEFAULT_SKIP_STEPS
+
+
+def test_resolve_skip_steps_explicit_empty_list_runs_everything():
+    assert builder_module.resolve_skip_steps({"skip_steps": []}) == ()
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        (["lec"], ("lec",)),
+        (["LEC"], ("lec",)),
+        (["lec", "lec"], ("lec",)),
+        (["postRouteLec", "lec"], ("lec", "postRouteLec")),
+        (["TimingOpt", "lec", "postlec"], ("lec", "Timing optimization", "postRouteLec")),
+    ],
+)
+def test_resolve_skip_steps_normalizes_aliases_in_canonical_order(raw, expected):
+    assert builder_module.resolve_skip_steps({"skip_steps": raw}) == expected
+    # Normalization is idempotent: feeding the normalized tuple back is a no-op.
+    assert builder_module.resolve_skip_steps({"skip_steps": list(expected)}) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "lec",
+        None,
+        [1],
+        ["lec", "route"],
+        ["bogus"],
+    ],
+)
+def test_resolve_skip_steps_rejects_invalid_values(raw):
+    with pytest.raises(ValueError, match="skip_steps"):
+        builder_module.resolve_skip_steps({"skip_steps": raw})
+
+
+def test_filter_flow_steps_removes_entries_without_reordering():
+    steps = builder_module.build_synthesis_lec_flow()
+
+    assert builder_module.filter_flow_steps(steps, ()) == steps
+    assert builder_module.filter_flow_steps(steps, ("lec",)) == steps[:1]
