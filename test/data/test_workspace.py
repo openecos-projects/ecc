@@ -221,6 +221,28 @@ def test_create_workspace_persists_dynamic_flow_steps(
     assert all(step["peak memory (mb)"] == 0 for step in flow_data["steps"])
 
 
+def test_create_workspace_rejects_invalid_skip_steps_before_any_mutation(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    netlist_path = tmp_path / "gcd.v"
+    netlist_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    with pytest.raises(ValueError, match="skip_steps"):
+        create_workspace(
+            directory=workspace_dir,
+            origin_def="",
+            origin_verilog=netlist_path,
+            pdk="ics55",
+            parameters=deepcopy(default_ics55_parameters),
+            pdk_root=pdk_root,
+            flow_config={"start_step": "Synthesis", "end_step": "Harden", "skip_steps": "lec"},
+        )
+
+    assert not workspace_dir.exists()
+
+
 def test_create_workspace_copies_external_lec_and_sta_inputs(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):

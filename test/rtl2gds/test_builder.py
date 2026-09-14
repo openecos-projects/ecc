@@ -179,3 +179,39 @@ def test_filter_flow_steps_removes_entries_without_reordering():
 
     assert builder_module.filter_flow_steps(steps, ()) == steps
     assert builder_module.filter_flow_steps(steps, ("lec",)) == steps[:1]
+
+
+def test_all_creation_paths_build_the_same_ledger_for_one_policy():
+    from chipcompiler.data.workspace import build_dynamic_flow_data
+
+    policy = {"start_step": "Synthesis", "end_step": "Harden", "skip_steps": ["lec"]}
+
+    # Sidecar/direct flow_config path: the dynamic ledger.
+    sidecar = [step["name"] for step in build_dynamic_flow_data(policy)["steps"]]
+
+    # CLI ranged path: build_flow_range with the resolved policy.
+    ranged = [
+        step.value
+        for step, _tool, _state in builder_module.build_flow_range(
+            "Synthesis", "Harden", skip=builder_module.resolve_skip_steps(policy)
+        )
+    ]
+
+    # CLI preset path: the no-arg builder output filtered post-call.
+    preset = [
+        step.value
+        for step, _tool, _state in builder_module.filter_flow_steps(
+            builder_module.build_rtl2gds_flow(),
+            builder_module.resolve_skip_steps(policy),
+        )
+    ]
+
+    assert sidecar == ranged == preset
+    assert "lec" not in sidecar
+
+
+def test_policy_only_flow_config_never_yields_a_ledger():
+    from chipcompiler.data.workspace import build_dynamic_flow_data
+
+    assert build_dynamic_flow_data({"skip_steps": ["lec"]}) == {}
+    assert build_dynamic_flow_data({"skip_steps": []}) == {}

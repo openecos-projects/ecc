@@ -129,6 +129,16 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
         if not request.directory:
             raise RuntimeApiError("invalid_request", "missing required field: directory")
 
+        import chipcompiler.rtl2gds as rtl2gds_api
+
+        # The skip policy is validated before any sidecar artifact (temp
+        # filelist, inline PDK) is materialized: invalid input must not
+        # reach workspace creation or leave temporaries behind.
+        try:
+            rtl2gds_api.resolve_skip_steps(request.flow_config)
+        except ValueError as exc:
+            raise RuntimeApiError("config_error", f"invalid skip_steps: {exc}") from exc
+
         temp_filelist_dir = None
         input_filelist = request.filelist
         if not input_filelist:

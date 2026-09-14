@@ -299,6 +299,25 @@ def test_create_workspace_forwards_dynamic_flow_config(monkeypatch, tmp_path):
     assert capture["create_kwargs"]["flow_config"] == flow_config
 
 
+def test_create_workspace_rejects_invalid_skip_steps_before_sidecars(monkeypatch, tmp_path):
+    capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+
+    with pytest.raises(RuntimeApiError, match="skip_steps") as exc_info:
+        api.create_workspace(
+            WorkspaceCreateRequest(
+                directory=str(ws),
+                rtl_list=["a.v"],
+                flow_config={"skip_steps": "lec"},
+            )
+        )
+
+    assert exc_info.value.code == "config_error"
+    # The failure happened before any materialization: no workspace creation
+    # call, and the temp filelist was never written.
+    assert capture["create_kwargs"] is None
+
+
 def test_create_workspace_writes_rtl_list_filelist_outside_workspace(
     monkeypatch,
     tmp_path,

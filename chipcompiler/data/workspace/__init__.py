@@ -1057,6 +1057,12 @@ def create_workspace(
         - input_filelist takes priority over origin_verilog for synthesis when both exist
         - All input files are copied to workspace/origin/ directory
     """
+    # The skip policy is validated before anything on disk is touched: an
+    # invalid policy is a configuration error, never a partial workspace.
+    from chipcompiler.rtl2gds import resolve_skip_steps
+
+    resolve_skip_steps(flow_config)
+
     # create workspace directory
     import shutil
 
