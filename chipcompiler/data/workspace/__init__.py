@@ -22,7 +22,7 @@ from ..parameter import (
     load_parameter as load_parameter,
 )
 from ..pdk import PDK, get_pdk
-from ..step import StateEnum, StepEnum
+from ..types import StateEnum, StepEnum
 from ..workspace_config import (
     legacy_parameters_fallback as legacy_parameters_fallback,
 )

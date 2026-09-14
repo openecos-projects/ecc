@@ -1,51 +1,37 @@
 #!/usr/bin/env python
 
 from dataclasses import dataclass, field
-from enum import Enum
 from pathlib import Path
 
+from chipcompiler.data.types import StepEnum
 
-class StepEnum(Enum):
-    """RTL2GDS flow step names"""
-
-    RTL2GDS = "RTL2GDS"
-    INIT = "Init"
-    SYNTHESIS = "Synthesis"
-    FLOORPLAN = "Floorplan"  # shared floorplan configuration key, not a flow step
-    PRE_FLOORPLAN = "preFloorplan"
-    MACRO_PLACEMENT = "macroPlacement"
-    POST_FLOORPLAN = "postFloorplan"
-    PLACEMENT = "place"
-    CTS = "CTS"
-    TIMING_OPT = "Timing optimization"
-    LEGALIZATION = "legalization"
-    ROUTING = "route"
-    FILLER = "filler"
-    GDS = "GDS"
-    SIGNOFF = "Signoff"
-    LEC = "lec"
-    POST_ROUTE_LEC = "postRouteLec"
-    STA = "sta"
-    DRC = "drc"
-    LVS = "lvs"
-    RCX = "RCX"
-    ABSTRACT_LEF = "Abstract lef"
-    HARDEN = "Harden"
-
-
-class StateEnum(Enum):
-    """flow running state"""
-
-    Invalid = "Invalid"  # ecc tools or config invalid
-    Unstart = "Unstart"  # step unstart
-    Success = "Success"  # step run success
-    Ongoing = "Ongoing"  # step is running
-    Pending = "Pending"  # step is pending
-    Imcomplete = "Incomplete"  # step is failed
-    # Ignored = "Ignored" # step result do not affect flow step
-
-
-FINISHED_STEP_STATES = frozenset({StateEnum.Success.value})
+# Canonical workspace step-directory names.
+#
+# Workspace creation names each step directory ``<step>_<tool>`` along the
+# canonical rtl2gds chain (``Synthesis_yosys``, ``place_dreamplace``, ...).
+# Checklists, signoff packages, QoR scoring, and the design reports all
+# resolve per-step artifacts through that naming, so the mapping lives here
+# once instead of as hand-maintained tables per consumer. Timing
+# optimization is on the canonical chain but owns no artifact directory any
+# consumer reads through these tables.
+STEP_DIRECTORIES = {
+    StepEnum.SYNTHESIS.value: "Synthesis_yosys",
+    StepEnum.LEC.value: "lec_yosys_lec",
+    StepEnum.PRE_FLOORPLAN.value: "preFloorplan_ecc",
+    StepEnum.MACRO_PLACEMENT.value: "macroPlacement_dreamplace",
+    StepEnum.POST_FLOORPLAN.value: "postFloorplan_ecc",
+    StepEnum.PLACEMENT.value: "place_dreamplace",
+    StepEnum.CTS.value: "CTS_ecc",
+    StepEnum.LEGALIZATION.value: "legalization_dreamplace",
+    StepEnum.ROUTING.value: "route_ecc",
+    StepEnum.FILLER.value: "filler_ecc",
+    StepEnum.RCX.value: "RCX_ecc",
+    StepEnum.STA.value: "sta_ecc",
+    StepEnum.LVS.value: "lvs_ecc",
+    StepEnum.POST_ROUTE_LEC.value: "postRouteLec_yosys_lec",
+    StepEnum.DRC.value: "drc_ecc",
+    StepEnum.HARDEN.value: "Harden_ecc",
+}
 
 
 def step_storage_name(step_name: str, tool_name: str) -> str:
@@ -57,17 +43,6 @@ def step_storage_name(step_name: str, tool_name: str) -> str:
     if tool_name.lower() == "sizer":
         return "_".join(step_name.split()).lower()
     return step_name
-
-
-def is_finished_step_state(state: object) -> bool:
-    """Whether a persisted step state counts as done for selection and skipping.
-
-    Incomplete/Invalid steps are unfinished: resume and rerun selectors
-    re-execute them. A legacy ``Warning`` state (removed terminal state for
-    the synthesis LEC) is not finished and is normalized to Unstart on
-    resume.
-    """
-    return state in FINISHED_STEP_STATES
 
 
 ###########################################################################

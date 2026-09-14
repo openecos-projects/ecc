@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 
 from chipcompiler.data import Checklist, StateEnum, StepEnum, Workspace, WorkspaceStep
-from chipcompiler.data.step_dirs import STEP_DIRECTORIES
+from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.tools.ecc.sta_qor import (
     STA_QOR_SUMMARY_FILENAME,
     STA_REPORT_FILENAMES,

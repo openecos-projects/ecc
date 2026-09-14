@@ -231,7 +231,7 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
         # every step WITHIN the requested target range finished; an
         # unfinished one resumes. Steps beyond the target are never the
         # run's business.
-        from chipcompiler.data.step import FINISHED_STEP_STATES
+        from chipcompiler.data.types import FINISHED_STEP_STATES
 
         target_states = {
             str(step.get("state", ""))
@@ -247,7 +247,7 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
             {},
         )
 
-    from chipcompiler.data.step import FINISHED_STEP_STATES
+    from chipcompiler.data.types import FINISHED_STEP_STATES
 
     states = {
         str(step.get("state", "")) for step in flow_data.get("steps", []) if isinstance(step, dict)
@@ -406,7 +406,7 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
         )
 
     if outcome is None:
-        from chipcompiler.data.step import FINISHED_STEP_STATES
+        from chipcompiler.data.types import FINISHED_STEP_STATES
 
         if relation == "target_prefix":
             # The persisted flow already covers the target: no-op only

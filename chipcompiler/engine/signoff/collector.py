@@ -863,7 +863,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             )
 
     def _step_dirs(self) -> dict[str, str]:
-        from chipcompiler.data.step_dirs import STEP_DIRECTORIES
+        from chipcompiler.data.step import STEP_DIRECTORIES
 
         return STEP_DIRECTORIES
 

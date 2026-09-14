@@ -11,14 +11,17 @@ from .parameter import (
 )
 from .pdk import PDK, get_pdk
 from .step import (
-    FINISHED_STEP_STATES,
-    StateEnum,
-    StepEnum,
+    STEP_DIRECTORIES,
     StepMetrics,
-    is_finished_step_state,
     load_metrics,
     save_metrics,
     step_storage_name,
+)
+from .types import (
+    FINISHED_STEP_STATES,
+    StateEnum,
+    StepEnum,
+    is_finished_step_state,
 )
 from .workspace import (
     OriginDesign,
@@ -145,6 +148,7 @@ __all__ = [
     "StepMetrics",
     "load_metrics",
     "save_metrics",
+    "STEP_DIRECTORIES",
     "Checklist",
     "HomeData",
 ]
