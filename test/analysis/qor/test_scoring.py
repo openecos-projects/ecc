@@ -44,7 +44,9 @@ class TestScalarSummary:
         assert dimensions["area"].value == pytest.approx(100.0)
 
     def test_not_verified_is_not_rated(self):
-        states = {step: "Success" for step in ("Synthesis", "postFloorplan", "place", "CTS", "route")}
+        states = {
+            step: "Success" for step in ("Synthesis", "postFloorplan", "place", "CTS", "route")
+        }
         states["drc"] = "Unstart"
         summary, _ = _summary(make_inputs(gcd_metrics(), states))
         assert summary.score is None
