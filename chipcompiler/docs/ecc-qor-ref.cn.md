@@ -1,6 +1,6 @@
 # ECC QoR 参考手册（质量评分 · 可行性门禁 · 证据与诊断）
 
-本文整理 ECC 当前 QoR 方案（**ECC-QoR draft 3**，评分引擎标识 `qor-v3`，报告 `schema_version: 3`），面向使用 ECC CLI 与 ECOS Studio 的工程师：分数怎么算、报告怎么读、参数怎么配、诊断怎么用。全部公式、阈值与默认值均核对自实现源码 [chipcompiler/analysis/qor/](../analysis/qor/)（分支 `yell/qor_v2`，2026-09）。
+本文整理 ECC 当前 QoR 方案（**ECC-QoR V3**，报告 `schema_version: 3`），面向使用 ECC CLI 与 ECOS Studio 的工程师：分数怎么算、报告怎么读、参数怎么配、诊断怎么用。全部公式、阈值与默认值均与当前实现一致。
 
 - 命令用法与安装 → [ECC CLI 用户指南](ecc-user-guide.cn.md)；从零上手 → [入门教程](ecc-tutorial.cn.md)
 - 每步工具配置参数 → [ECC Flow 工具配置参考](ecc-config-ref.cn.md)
@@ -10,7 +10,7 @@
 
 ```mermaid
 graph LR
-    A["各步骤产物<br/>qor_metrics.json / qor_summary.json<br/>power_summary.json"] --> B["ECC QoR 引擎<br/>qor-v3（唯一计算方）"]
+    A["各步骤产物<br/>qor_metrics.json / qor_summary.json<br/>power_summary.json"] --> B["ECC QoR V3 引擎<br/>（唯一计算方）"]
     B --> C["home/qor_report.json<br/>每步成功后自动刷新"]
     C --> D["ECOS Studio<br/>（渲染方：五维分解/门禁/诊断）"]
     B --> E["ecc report qor<br/>文本报告 → signoff/*.txt"]
@@ -28,7 +28,7 @@ graph LR
 
 | 入口 | 产物 | 刷新时机 |
 |---|---|---|
-| flow 引擎自动写 | `<workspace>/home/qor_report.json`（机器可读，JSON Schema v3，见 §10） | 每个步骤成功后（含跳过已成功步骤时）自动刷新 |
+| flow 引擎自动写 | `<workspace>/home/qor_report.json`（机器可读，schema_version 3，见 §10） | 每个步骤成功后（含跳过已成功步骤时）自动刷新 |
 | `ecc report qor` | `<workspace>/signoff/<design>_qor_report.txt`（人类可读文本报告） | 每次执行都按当前产物现算快照 |
 | ECOS Studio | 项目看板 QoR 卡、五维分解、诊断列表 | 读取 `home/qor_report.json`，无报告或陈旧时显示 NOT_RATED（§10.2） |
 
@@ -111,7 +111,7 @@ PHYSICAL_FAIL（任一门禁 failed）≻ UNKNOWN（证据损坏）≻ NOT_VERIF
 
 ## 3. 五维怎么算
 
-以下公式中的默认阈值都是**校准的工程经验值**（CALIBRATED_HEURISTIC / USER_PROJECT_CONSTRAINT），不是物理定律，集中定义在 [calibration.py](../analysis/qor/calibration.py)，当前未开放为用户参数。
+以下公式中的默认阈值都是**校准的工程经验值**（CALIBRATED_HEURISTIC / USER_PROJECT_CONSTRAINT），不是物理定律，当前未开放为用户参数。
 
 ### 3.1 Q_T 时序质量
 
@@ -340,7 +340,7 @@ qor_power_budget_w = 0.5
 
 | 来源 | 路径 | 用途 |
 |---|---|---|
-| 逐步指标 | `<step_dir>/analysis/qor_metrics.json`（schema v3，各步 metrics.py 产出，**保持不变**） | 指标值与溯源 |
+| 逐步指标 | `<step_dir>/analysis/qor_metrics.json`（schema_version 3，由各步骤产出，**保持不变**） | 指标值与溯源 |
 | 逐 corner 时序 | `sta_ecc/feature/<corner>/Cworst/qor_summary.json` | 有符号 setup/hold WS、TNS、NVP；PVT 离散度 |
 | 功耗 | `sta_ecc/feature/<corner>/Cworst/power_summary.json`（回退 `Synthesis_yosys/feature/post_synthesis/power_summary.json`） | P_total |
 | 步骤状态 | `home/flow.json` | 只有状态为 `Success` 的步骤参与分析（invalidation 后的陈旧产物不计分） |
@@ -348,7 +348,7 @@ qor_power_budget_w = 0.5
 
 同一指标 id 被多步产出时按 `project_role` 优选（final > gate > trend），同优先级后写者胜。
 
-### 9.2 引擎消费的指标目录（权威副本见 [metric_registry.py](../analysis/qor/metric_registry.py)）
+### 9.2 引擎消费的指标目录
 
 综合：`synthesis_cell_area`、`synthesis_cell_count`、`synthesis_wire_count`、`synthesis_power_dynamic_uw`、`synthesis_power_leakage_uw`；
 布图：`die_area`、`core_area`、`core_utilization`；
@@ -359,7 +359,7 @@ RCX：`rcx_spef_file_count`、`rcx_expected/missing_corner_count`、`rcx_spef_pa
 STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup/hold_violation_count`、`sta_frequency_mhz`、`sta_corner_count`、`sta_expected/missing_corner_count`、`sta_worst_setup_corner`；
 签核：`drc_count`、`lvs_count`、`harden_artifact_missing_count`。
 
-### 9.3 派生特征目录（见 [feature_registry.py](../analysis/qor/feature_registry.py)）
+### 9.3 派生特征目录
 
 | 特征 | 公式 | 认识论分类 |
 |---|---|---|
@@ -440,7 +440,7 @@ STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup
 
 ## 11. 与旧评分方案的区别（迁移说明）
 
-| 维度 | 旧方案（qor-v3 之前） | 当前方案（qor-v3） |
+| 维度 | 旧方案（V3 之前） | 当前方案（V3） |
 |---|---|---|
 | 阈值 | 绝对值（如 route_wirelength fail=6000 µm），只对标 GCD 量级，跨设计不可比 | 相对膨胀率（I = 实际/几何下界），跨设计可比 |
 | 缺维 | 权重不归一，缺功耗维时满分只有 75 | 已评估维度权重归一，满分恒 100 |
@@ -448,7 +448,7 @@ STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup
 | 正裕量 | slack ≥ 0 一律 100 分 | WS 连续分化 + 过约束识别（OPPORTUNITY） |
 | 缺数据 | "没测到"与"测得 0"不可区分 | 三态语义 + null 维度 |
 | 时序计权 | WNS/TNS/frequency/NVP 四指标等权重复计 | 一个连续 Q_T；WNS/TNS/NVP 仅门禁与诊断 |
-| 实现 | TS(GUI) 与 Python(CLI) 双份移植，阈值表三份 | ECC 单一实现，GUI 渲染报告 |
+| 计分一致性 | GUI 与 CLI 各自维护一份计分实现，阈值表三份，可能漂移 | ECC 单一实现，GUI 只渲染报告 |
 
 迁移影响（升级时须知）：
 
@@ -477,7 +477,7 @@ WS 超过 0.20·T_clk 的过约束提示：设计可能过度缓冲，可尝试�
 两个都是真的：`ws_ns` 是有符号最差裕量（连续质量与裕量分析用）；`wns_ns = min(0, ws_ns)` 是钳位负裕量（门禁与违规幅度用）。ECC 指标名 `sta_setup_wns` 历史上借用 wns 缩写，携带的是有符号值。
 
 **Q：阈值（1.25/1.75、0.45/0.70 等）能改吗？**
-当前是引擎常量（calibration.py），未开放为用户参数。它们是校准的工程默认值，随版本演进可能调整；对特定工艺的校准需求请反馈给工具链维护者。
+当前是引擎常量，未开放为用户参数。它们是校准的工程默认值，随版本演进可能调整；对特定工艺的校准需求请反馈给工具链维护者。
 
 **Q：`ecc report qor` 和 `home/qor_report.json` 数值会不一致吗？**
 正常不会：报告每步成功后自动刷新，CLI 每次现算。若你手改了产物文件或正在并发跑 flow，两者可能短暂不一致；flow 走完后以重跑的 `ecc report qor` 为准。

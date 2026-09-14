@@ -1,6 +1,6 @@
 # ECC QoR Reference (Quality Scoring · Feasibility Gates · Evidence & Diagnosis)
 
-This manual documents ECC's current QoR scheme (**ECC-QoR draft 3**, scoring engine id `qor-v3`, report `schema_version: 3`) for engineers using the ECC CLI and ECOS Studio: how scores are computed, how to read the report, which parameters apply, and how to use the diagnoses. All formulas, thresholds, and defaults were verified against the implementation in [chipcompiler/analysis/qor/](../analysis/qor/) (branch `yell/qor_v2`, 2026-09).
+This manual documents ECC's current QoR scheme (**ECC-QoR V3**, report `schema_version: 3`) for engineers using the ECC CLI and ECOS Studio: how scores are computed, how to read the report, which parameters apply, and how to use the diagnoses. All formulas, thresholds, and defaults match the current implementation.
 
 - Command usage and installation → [ECC CLI User Guide](ecc-user-guide.en.md); first run from zero → [Tutorial](ecc-tutorial.en.md)
 - Per-step tool configuration → [ECC Flow Tool Configuration Reference](ecc-config-ref.en.md)
@@ -10,7 +10,7 @@ This manual documents ECC's current QoR scheme (**ECC-QoR draft 3**, scoring eng
 
 ```mermaid
 graph LR
-    A["Per-step artifacts<br/>qor_metrics.json / qor_summary.json<br/>power_summary.json"] --> B["ECC QoR engine<br/>qor-v3 (single scorer)"]
+    A["Per-step artifacts<br/>qor_metrics.json / qor_summary.json<br/>power_summary.json"] --> B["ECC QoR V3 engine<br/>(single scorer)"]
     B --> C["home/qor_report.json<br/>auto-refreshed after each step"]
     C --> D["ECOS Studio<br/>(renderer: 5-dim breakdown / gates / diagnoses)"]
     B --> E["ecc report qor<br/>text report → signoff/*.txt"]
@@ -28,7 +28,7 @@ Three design principles explain every line of the output:
 
 | Entry point | Artifact | Refresh |
 |---|---|---|
-| Flow engine (automatic) | `<workspace>/home/qor_report.json` (machine-readable, JSON Schema v3, see §10) | After every successful step (including skips of already-succeeded steps) |
+| Flow engine (automatic) | `<workspace>/home/qor_report.json` (machine-readable, schema_version 3, see §10) | After every successful step (including skips of already-succeeded steps) |
 | `ecc report qor` | `<workspace>/signoff/<design>_qor_report.txt` (human-readable text report) | Rebuilt from current artifacts on every invocation |
 | ECOS Studio | Project dashboard QoR card, 5-dimension breakdown, diagnosis list | Reads `home/qor_report.json`; missing or stale → NOT_RATED (§10.2) |
 
@@ -111,7 +111,7 @@ PHYSICAL_FAIL (any gate failed) ≻ UNKNOWN (corrupt evidence) ≻ NOT_VERIFIED 
 
 ## 3. How Each Dimension Is Computed
 
-The default thresholds below are **calibrated engineering values** (CALIBRATED_HEURISTIC / USER_PROJECT_CONSTRAINT), not physical laws. They are centrally defined in [calibration.py](../analysis/qor/calibration.py) and are not user-facing parameters today.
+The default thresholds below are **calibrated engineering values** (CALIBRATED_HEURISTIC / USER_PROJECT_CONSTRAINT), not physical laws, and are not user-facing parameters today.
 
 ### 3.1 Q_T — Timing Quality
 
@@ -340,7 +340,7 @@ qor_power_budget_w = 0.5
 
 | Source | Path | Purpose |
 |---|---|---|
-| Per-step metrics | `<step_dir>/analysis/qor_metrics.json` (schema v3, emitted by each step's metrics.py — **unchanged**) | metric values and provenance |
+| Per-step metrics | `<step_dir>/analysis/qor_metrics.json` (schema_version 3, emitted by every step — **unchanged**) | metric values and provenance |
 | Per-corner timing | `sta_ecc/feature/<corner>/Cworst/qor_summary.json` | signed setup/hold WS, TNS, NVP; PVT dispersion |
 | Power | `sta_ecc/feature/<corner>/Cworst/power_summary.json` (falls back to `Synthesis_yosys/feature/post_synthesis/power_summary.json`) | P_total |
 | Step states | `home/flow.json` | only steps whose state is `Success` are analyzed (stale artifacts after invalidation never score) |
@@ -348,7 +348,7 @@ qor_power_budget_w = 0.5
 
 When several steps emit the same metric id, selection prefers `project_role` (final > gate > trend) and, at equal priority, the later step wins.
 
-### 9.2 Metric catalog consumed by the engine (authoritative copy in [metric_registry.py](../analysis/qor/metric_registry.py))
+### 9.2 Metric catalog consumed by the engine
 
 Synthesis: `synthesis_cell_area`, `synthesis_cell_count`, `synthesis_wire_count`, `synthesis_power_dynamic_uw`, `synthesis_power_leakage_uw`;
 Floorplan: `die_area`, `core_area`, `core_utilization`;
@@ -359,7 +359,7 @@ RCX: `rcx_spef_file_count`, `rcx_expected/missing_corner_count`, `rcx_spef_parse
 STA: `sta_setup/hold_wns` (signed WS), `sta_setup/hold_tns`, `sta_setup/hold_violation_count`, `sta_frequency_mhz`, `sta_corner_count`, `sta_expected/missing_corner_count`, `sta_worst_setup_corner`;
 Signoff: `drc_count`, `lvs_count`, `harden_artifact_missing_count`.
 
-### 9.3 Derived feature catalog (see [feature_registry.py](../analysis/qor/feature_registry.py))
+### 9.3 Derived feature catalog
 
 | Feature | Formula | Epistemic class |
 |---|---|---|
@@ -440,7 +440,7 @@ Field quick reference: `feasibility` (gates), `evidence`, `qor_record` (five dim
 
 ## 11. Differences From the Legacy Scheme (Migration Notes)
 
-| Aspect | Legacy (pre qor-v3) | Current (qor-v3) |
+| Aspect | Legacy (pre-V3) | Current (V3) |
 |---|---|---|
 | Thresholds | absolute values (e.g., route_wirelength fail = 6000 µm), GCD-scale only, not comparable across designs | relative inflation (I = actual / geometric bound), comparable across designs |
 | Missing dimensions | no weight re-normalization; a missing power dimension capped the ceiling at 75 | re-normalized over evaluated dimensions; the ceiling is always 100 |
@@ -448,7 +448,7 @@ Field quick reference: `feasibility` (gates), `evidence`, `qor_record` (five dim
 | Positive slack | any slack ≥ 0 scored 100 | continuous WS differentiation + over-constraint detection (OPPORTUNITY) |
 | Missing data | "not measured" and "measured zero" indistinguishable | trichotomy + null dimensions |
 | Timing weighting | WNS/TNS/frequency/NVP equally weighted (one fact counted 4×) | a single continuous Q_T; WNS/TNS/NVP for gating and diagnostics only |
-| Implementation | a TS (GUI) and a Python (CLI) port of the same scorer; three threshold tables | one implementation in ECC; the GUI renders the report |
+| Implementation | separate GUI and CLI scorers with three threshold tables; they could drift | one implementation in ECC; the GUI only renders the report |
 
 Migration impact (to know before upgrading):
 
@@ -477,7 +477,7 @@ WS exceeds 0.20·T_clk — an over-constraint hint: the design may be over-buffe
 Both: `ws_ns` is the signed worst slack (used for continuous quality and headroom analysis); `wns_ns = min(0, ws_ns)` is the clamped negative slack (used for gating and violation magnitude). ECC's metric id `sta_setup_wns` historically borrows the wns abbreviation but carries the signed value.
 
 **Q: Can I change the thresholds (1.25/1.75, 0.45/0.70, …)?**
-They are engine constants today (calibration.py), not user parameters. They are calibrated engineering defaults and may evolve between releases; route technology-specific calibration requests to the toolchain maintainers.
+They are engine constants today, not user parameters. They are calibrated engineering defaults and may evolve between releases; route technology-specific calibration requests to the toolchain maintainers.
 
 **Q: Can `ecc report qor` and `home/qor_report.json` disagree?**
 Not normally: the report refreshes after every successful step and the CLI recomputes on the fly. If you hand-edit artifact files or run the flow concurrently, they may diverge briefly; after the flow finishes, a rerun of `ecc report qor` is authoritative.
