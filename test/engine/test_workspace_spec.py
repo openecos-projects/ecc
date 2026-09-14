@@ -226,14 +226,14 @@ def test_partial_flow_spec_preserves_requested_boundaries(tmp_path, minimal_ics5
     spec["flow"] = {
         "flowId": "rtl2gds",
         "fromStepId": "Synthesis",
-        "throughStepId": "lec",
+        "throughStepId": "preFloorplan",
     }
     spec["parameters"] = {"design.frequency_mhz": 200.0}
     workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings)
 
     assert [step["name"] for step in load_workspace(workspace.directory).flow.steps()] == [
         "Synthesis",
-        "lec",
+        "preFloorplan",
     ]
 
 

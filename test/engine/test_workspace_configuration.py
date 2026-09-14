@@ -250,8 +250,8 @@ def test_step_configuration_update_invalidates_only_target_suffix(
     }
     states = {step["name"]: step["state"] for step in updated.flow.steps()}
     assert states["Synthesis"] == "Success"
-    assert states["lec"] == "Success"
-    assert states["Floorplan"] == "Unstart"
+    assert states["preFloorplan"] == "Unstart"
+    assert states["macroPlacement"] == "Unstart"
     assert read_engineering_snapshot(updated)["workspaceRevision"] == 2
 
     with pytest.raises(WorkspaceLifecycleError) as inapplicable:
