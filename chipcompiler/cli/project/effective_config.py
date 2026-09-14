@@ -410,6 +410,10 @@ def layer_divergences(cfg, assembled: dict, entry) -> list[str]:
 def _backend_leaf_keys(schema) -> tuple[str, ...]:
     """The flattened backend key names a schema's maps_to target produces."""
     maps_to = schema.maps_to
+    # Direct config/PDK parameters are applied through their explicit target
+    # and intentionally have no legacy backend projection.
+    if maps_to is None:
+        return ()
     if isinstance(maps_to, str):
         return (maps_to,)
     return tuple(".".join((subtree, leaf)) for subtree, leaf in maps_to.items())
@@ -439,7 +443,10 @@ def _diverging_lower_keys(overrides: dict, resolve_lower) -> tuple[list[str], se
             continue
         coerced, type_err = _validate_schema_type(lower_value, schema)
         if type_err or coerced != override_value:
-            diverging.extend(leaf_keys)
+            # Direct config/PDK parameters have no backend leaf key. Keep the
+            # warning useful by identifying the canonical parameter instead
+            # of silently dropping the divergence or inventing a key.
+            diverging.extend(leaf_keys or [dotted])
     return diverging, compared
 
 

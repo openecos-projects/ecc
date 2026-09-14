@@ -1,11 +1,13 @@
 import pytest
 
+from chipcompiler.cli.project.effective_config import _diverging_lower_keys
 from chipcompiler.cli.project.params import (
     PARAM_REGISTRY,
     ParamSchema,
     ResolvedParam,
     build_backend_overrides,
     build_config_overrides,
+    build_pdk_overrides,
     coerce_manifest_parameters,
     is_known_key,
     list_groups,
@@ -398,6 +400,42 @@ class TestBackendMapping:
         )
         build_backend_overrides([rp])
         assert schema.default == original_default
+
+    @pytest.mark.parametrize("schema", PARAM_REGISTRY, ids=lambda schema: schema.param)
+    def test_every_schema_default_survives_all_mapping_paths(self, schema):
+        """Every registered parameter must be safe through resolution and projections."""
+        resolved, errors = resolve_parameters(cli_overrides={schema.param: schema.default})
+        assert errors == []
+        rp = next(item for item in resolved if item.param == schema.param)
+
+        backend = build_backend_overrides([rp])
+        config = build_config_overrides([rp])
+        pdk = build_pdk_overrides([rp])
+        assert isinstance(backend, dict)
+        assert isinstance(config, dict)
+        assert isinstance(pdk, dict)
+        if schema.config_target is not None:
+            assert config
+            assert backend == {}
+        elif schema.pdk_target is not None:
+            assert pdk == {schema.pdk_target: schema.default}
+            assert backend == {}
+        else:
+            assert backend
+
+    @pytest.mark.parametrize("schema", PARAM_REGISTRY, ids=lambda schema: schema.param)
+    def test_every_schema_is_safe_in_divergence_projection(self, schema):
+        diverging, compared = _diverging_lower_keys(
+            {schema.param: schema.default}, lambda _schema: (None, False)
+        )
+
+        assert diverging == []
+        if schema.maps_to is None:
+            assert compared == set()
+        elif isinstance(schema.maps_to, str):
+            assert compared == {schema.maps_to}
+        else:
+            assert compared == {f"{parent}.{child}" for parent, child in schema.maps_to.items()}
 
 
 class TestCliOverrides:
