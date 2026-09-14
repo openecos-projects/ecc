@@ -424,7 +424,8 @@ def test_collect_signoff_package_requires_proven_post_route_lec(tmp_path):
     )
 
 
-def test_collect_signoff_package_requires_post_route_lec_even_if_flow_omits_it(tmp_path):
+def test_collect_signoff_package_skips_post_route_lec_when_flow_omits_it(tmp_path):
+    """A ledger without postRouteLec (skipped at creation) never requires it."""
     workspace_dir = _make_signoff_workspace(tmp_path)
     flow = json.loads((workspace_dir / "home" / "flow.json").read_text())
     flow["steps"] = [step for step in flow["steps"] if step.get("name") != "postRouteLec"]
@@ -434,8 +435,9 @@ def test_collect_signoff_package_requires_post_route_lec_even_if_flow_omits_it(t
         SignoffPackageOptions(archive=False, materialize=False)
     )
 
-    assert result.ok is False
-    assert any(issue.location == "postRouteLec" and issue.required for issue in result.issues)
+    assert result.ok is True
+    assert not any(issue.location == "postRouteLec" and issue.required for issue in result.issues)
+    assert not any("postRouteLec" in entry for entry in result.missing_required)
 
 
 def _rewrite_flow_without_synthesis(workspace_dir: Path, first_step: dict) -> None:
@@ -835,3 +837,14 @@ def test_collect_signoff_package_packages_legacy_parameters_when_toml_absent(tmp
     assert (package_dir / "initial" / "parameters.json").is_file()
     summary = json.loads((package_dir / "summary.json").read_text())
     assert summary["initial"]["parameters"] == "initial/parameters.json"
+
+
+def test_signoff_required_qor_steps_contain_no_skippable_step():
+    """The QoR required set must stay free of skippable steps: a workspace
+    that skipped one would false-fail its signoff. A future skippable
+    addition trips this deliberately."""
+    from chipcompiler.data import SkippableStepEnum
+    from chipcompiler.engine.signoff import SIGNOFF_REQUIRED_QOR_STEPS
+
+    skippable = {member.value for member in SkippableStepEnum}
+    assert not (SIGNOFF_REQUIRED_QOR_STEPS & skippable)

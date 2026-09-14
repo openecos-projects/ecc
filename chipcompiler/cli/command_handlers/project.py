@@ -191,14 +191,21 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
     return CommandResult.ok(records)
 
 
-def _preflight_environment(preset: str | None, project: str | None) -> CommandResult | None:
+def _preflight_environment(
+    preset: str | None, project: str | None, flow_config: dict | None = None
+) -> CommandResult | None:
     """Fail fast when the tools a fresh flow target needs are missing.
+
+    The probe set comes from the preset's builder output filtered by the
+    effective skip policy, so a skipped step's tool is never probed.
 
     None means ready.
     """
     from chipcompiler.cli.inspection import env_probe
+    from chipcompiler.rtl2gds import resolve_skip_steps
 
-    probes = env_probe.probe_environment(env_probe.probe_components_for_preset(preset))
+    skip = resolve_skip_steps(flow_config)
+    probes = env_probe.probe_environment(env_probe.probe_components_for_preset(preset, skip=skip))
     return _preflight_failures(probes, project, preset)
 
 
@@ -207,13 +214,18 @@ def _preflight_flow_range(flow_config: dict, project: str | None) -> CommandResu
 
     The selected range already names its tools, so a missing tool is a
     preflight failure before any manifest registration or workspace
-    creation — not a discovery made mid-creation.
+    creation — not a discovery made mid-creation. The range is sliced
+    from the policy-filtered chain, matching ledger creation.
     """
     from chipcompiler.cli.inspection import env_probe
-    from chipcompiler.rtl2gds import build_flow_range
+    from chipcompiler.rtl2gds import build_flow_range, resolve_skip_steps
 
     try:
-        steps = build_flow_range(flow_config["start_step"], flow_config["end_step"])
+        steps = build_flow_range(
+            flow_config["start_step"],
+            flow_config["end_step"],
+            skip=resolve_skip_steps(flow_config),
+        )
     except ValueError:
         # Range spellings are validated where they are declared (CLI ranges
         # during argument handling, manifest ranges at load time); an
@@ -549,7 +561,7 @@ def _run_project(
         if flow_config_selects_steps(flow_config):
             preflight = _preflight_flow_range(flow_config, project)
         elif effective_preset:
-            preflight = _preflight_environment(effective_preset, project)
+            preflight = _preflight_environment(effective_preset, project, flow_config)
         else:
             preflight = None
         if preflight is not None:

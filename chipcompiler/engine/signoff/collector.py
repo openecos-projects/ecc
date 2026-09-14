@@ -134,7 +134,11 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         filler_verilog = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
         # The canonical chain wires postRouteLec's gate input to the LVS output.
         lec_gate = workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz"
-        require_lec = self._requires_post_route_lec(lec_golden, lec_gate)
+        # A workspace whose ledger has no postRouteLec (skipped at creation)
+        # never requires it, regardless of the artifacts on disk.
+        require_lec = self.workspace.flow.has_step(
+            SkippableStepEnum.POST_ROUTE_LEC
+        ) and self._requires_post_route_lec(lec_golden, lec_gate)
         required_steps = self._required_step_states(require_lec=require_lec)
         for step_name, state in required_steps.items():
             if state != StateEnum.Success.value:
