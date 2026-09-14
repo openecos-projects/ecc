@@ -198,3 +198,40 @@ class TestMigrationSkipPolicy:
         assert rc == 0
         (entry,) = _manifest(project_dir)["workspaces"]
         assert entry["skip_steps"] == ["Timing optimization", "postRouteLec"]
+
+    def test_explicit_empty_policy_with_lec_less_ledger_is_blocked(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+    ):
+        """Explicit skip_steps = [] is authoritative: a LEC-less ledger is
+        NOT accepted by the legacy-era tolerance, because the declared
+        policy says the LEC should have run."""
+        from chipcompiler.data.workspace_config import (
+            load_workspace_config,
+            save_workspace_config,
+        )
+
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        # Rewrite the ledger WITHOUT the LEC, then declare skip_steps = [].
+        ledger_path = Path(run_dir, "home", "flow.json")
+        ledger = json.loads(ledger_path.read_text())
+        ledger["steps"] = [step for step in ledger["steps"] if step["name"] != "lec"]
+        ledger_path.write_text(json.dumps(ledger))
+        payload = load_workspace_config(run_dir)
+        payload.pop("_flow", None)
+        assert save_workspace_config(
+            run_dir,
+            payload,
+            {"start": "Synthesis", "end": "postFloorplan", "skip_steps": []},
+        )
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes"])
+
+        assert rc != 0
+        assert os.path.exists(run_dir), "a blocked workspace must stay under runs/"
