@@ -70,6 +70,20 @@ def _entry_names(entries: list[tuple[str, str]]) -> tuple[str, ...]:
     return tuple(name for name, _tool in entries)
 
 
+def _target_step_states(flow_data: dict, target: list[tuple[str, str]]) -> set[str]:
+    """States of the ledger steps the target names, matched by step name.
+
+    Name matching (not position slicing) keeps skipped ledger entries from
+    shifting which states fall inside the evaluated target range.
+    """
+    states_by_name = {
+        str(step.get("name", "")): str(step.get("state", ""))
+        for step in flow_data.get("steps", [])
+        if isinstance(step, dict)
+    }
+    return {states_by_name.get(name, "") for name, _tool in target}
+
+
 def compare_flows(persisted: list[tuple[str, str]], target: list[tuple[str, str]]) -> str:
     """Pairwise (name, tool) comparison of persisted vs target step lists."""
     if persisted == target:
@@ -277,11 +291,7 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
         # run's business.
         from chipcompiler.data.types import FINISHED_STEP_STATES
 
-        target_states = {
-            str(step.get("state", ""))
-            for step in flow_data.get("steps", [])[: len(target)]
-            if isinstance(step, dict)
-        }
+        target_states = _target_step_states(flow_data, target)
         return (
             ReconcileResult(
                 outcome="no_op" if target_states <= FINISHED_STEP_STATES else "resume",
@@ -439,11 +449,7 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
             # The persisted flow already covers the target: no-op only
             # when every step within the requested target range finished.
             flow_data = _persisted_flow_data(workspace_dir, json_read)
-            target_states = {
-                str(step.get("state", ""))
-                for step in flow_data.get("steps", [])[: len(target)]
-                if isinstance(step, dict)
-            }
+            target_states = _target_step_states(flow_data, target)
             outcome = "no_op" if target_states <= FINISHED_STEP_STATES else "resume"
         else:
             flow_data = _persisted_flow_data(workspace_dir, json_read)

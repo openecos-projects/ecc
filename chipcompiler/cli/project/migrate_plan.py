@@ -158,22 +158,31 @@ def _read_flow_steps(run_dir: str) -> list[dict] | None:
     "after the transition period",
     category=None,
 )
-def _is_contiguous_flow(names: list[str]) -> bool:
+def _is_contiguous_flow(names: list[str], skip: tuple[str, ...] = ()) -> bool:
     """The persisted step names must form one contiguous slice of the
-    canonical chain: anything else cannot be registered as a start..end
-    manifest range without lying about the ledger."""
+    canonical chain (as filtered by the workspace's resolved skip policy):
+    anything else cannot be registered as a start..end manifest range
+    without lying about the ledger.
+
+    A declared policy legitimately omits its skipped steps; without one,
+    both the full chain and the lec-less chain are accepted so ledgers
+    from either pre-policy era (LEC in-chain or reverted) still migrate.
+    """
     from chipcompiler.data.workspace_config import canonical_flow_chain
 
     chain = canonical_flow_chain()
-    for start in range(len(chain) - len(names) + 1):
-        if chain[start : start + len(names)] == names:
-            return True
-    # Workspaces created before synthesis-level LEC was added omit only this
-    # newly inserted step; retain their migration compatibility.
-    legacy_chain = [name for name in chain if name != "lec"]
-    for start in range(len(legacy_chain) - len(names) + 1):
-        if legacy_chain[start : start + len(names)] == names:
-            return True
+    candidates = [chain]
+    if skip:
+        excluded = set(skip)
+        candidates.append([name for name in chain if name not in excluded])
+    else:
+        # No declared policy: the default skips the synthesis LEC, and
+        # ledgers from before the skip mechanism existed include it.
+        candidates.append([name for name in chain if name != "lec"])
+    for candidate in candidates:
+        for start in range(len(candidate) - len(names) + 1):
+            if candidate[start : start + len(names)] == names:
+                return True
     return False
 
 
@@ -306,7 +315,12 @@ def plan_migration(project_dir: str) -> MigrationPlan:
             )
             continue
         names = [str(step["name"]) for step in steps]
-        if names and not _is_contiguous_flow(names):
+        from chipcompiler.rtl2gds import resolve_skip_steps
+
+        resolved_skip = resolve_skip_steps(
+            {"skip_steps": list(persisted_skip)} if persisted_skip is not None else None
+        )
+        if names and not _is_contiguous_flow(names, skip=resolved_skip):
             blocked[run_id] = (
                 "legacy flow is not a contiguous slice of the canonical chain "
                 f"({names[0]}..{names[-1]} with gaps); register it by hand"

@@ -117,3 +117,84 @@ class TestMigrationSkipPolicy:
 
         assert rc != 0
         assert os.path.exists(run_dir)
+
+    def test_ledgers_omitting_declared_skipped_steps_migrate(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+    ):
+        """A ledger legitimately omitting its declared skipped steps
+        (postRouteLec, Timing optimization) is contiguous under the policy
+        and must not be blocked as gapped."""
+        import json
+
+        from chipcompiler.data.workspace_config import (
+            load_workspace_config,
+            save_workspace_config,
+        )
+
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+
+        # Build a with-skip ledger directly: Synthesis..Harden minus the
+        # two skipped steps, matching the declared policy below.
+        from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
+
+        chain = [
+            (step.value if hasattr(step, "value") else str(step), str(tool))
+            for step, tool, _state in build_rtl2gds_flow()
+        ]
+        skipped = {"postRouteLec", "Timing optimization"}
+        kept = [(name, tool) for name, tool in chain if name not in skipped]
+
+        rtl_path = os.path.join(project_dir, "rtl", "gcd.v")
+        os.makedirs(os.path.dirname(rtl_path), exist_ok=True)
+        with open(rtl_path, "w") as f:
+            f.write("module gcd(input clk); endmodule\n")
+
+        run_dir = os.path.join(project_dir, "runs", "exp1")
+        from chipcompiler.data import create_workspace
+
+        workspace = create_workspace(
+            directory=run_dir,
+            origin_def="",
+            origin_verilog=rtl_path,
+            pdk="ics55",
+            parameters={"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
+            pdk_root=str(pdk_root),
+        )
+        assert workspace is not None
+        home = os.path.join(run_dir, "home")
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            json.dump(
+                {
+                    "steps": [
+                        {
+                            "name": name,
+                            "tool": tool,
+                            "state": "Success",
+                            "runtime": "",
+                            "peak memory (mb)": 0,
+                            "info": {},
+                        }
+                        for name, tool in kept
+                    ]
+                },
+                f,
+            )
+        payload = load_workspace_config(run_dir)
+        payload.pop("_flow", None)
+        assert save_workspace_config(
+            run_dir,
+            payload,
+            {"start": "Synthesis", "end": "Harden", "skip_steps": sorted(skipped)},
+        )
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes"])
+
+        assert rc == 0
+        (entry,) = _manifest(project_dir)["workspaces"]
+        assert entry["skip_steps"] == ["Timing optimization", "postRouteLec"]

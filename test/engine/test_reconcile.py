@@ -346,3 +346,31 @@ class TestSkipPolicyReconcile:
         assert result.outcome == "extended"
         names = [step["name"] for step in _flow_steps(workspace_dir)]
         assert names == [name for name, _tool in RTL2GDS_STEPS]
+
+
+class TestTargetPrefixWithSkippedLedgerSteps:
+    def test_unfinished_in_range_step_resumes_despite_interspersed_skip(self, tmp_path):
+        """A skipped ledger entry before the target boundary must not shift
+        the state evaluation: an unfinished in-range step means resume, not
+        no_op."""
+        ledger = RTL2GDS_STEPS  # full chain including lec
+        target_end = next(
+            index for index, (name, _tool) in enumerate(RTL2GDS_STEPS) if name == "RCX"
+        )
+        # Everything finished except filler: inside the target range by
+        # name, but shifted out of a positional slice by the skipped lec.
+        unfinished = next(
+            index for index, (name, _tool) in enumerate(RTL2GDS_STEPS) if name == "filler"
+        )
+        states = ["Unstart" if index == unfinished else "Success" for index in range(len(ledger))]
+        assert unfinished < target_end
+        workspace_dir = _write_workspace(
+            tmp_path, ledger, states=states, flow_section={"preset": "rtl2gds"}
+        )
+
+        result = reconcile_workspace(
+            workspace_dir,
+            {"start": "Synthesis", "end": "RCX", "skip_steps": ["lec"]},
+        )
+
+        assert result.outcome == "resume"
