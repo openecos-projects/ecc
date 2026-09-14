@@ -28,6 +28,8 @@ def test_help_renders_for_every_command(path, capsys):
 
 def test_help_keeps_styles_when_color_is_forced(monkeypatch, capsys):
     monkeypatch.setattr("typer.rich_utils.FORCE_TERMINAL", True)
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
 
     rc = cli_main.run(["--help"])
 
