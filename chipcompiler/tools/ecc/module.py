@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import json
 import os
 import shutil
 from pathlib import Path
@@ -568,18 +567,6 @@ class ECCToolsModule:
     # read route def and save route data to json
     def feature_route(self, json_path: str):
         self.ecc.feature_route(path=path_text(json_path))
-
-    def is_rt_timing_enable(self, config: str):
-        if os.path.exists(config):
-            with open(config, encoding="utf-8") as f_reader:
-                json_data = json.load(f_reader)
-                # check if time enable
-                if (
-                    json_data is not None
-                    and json_data.get("RT", {}).get("-enable_timing", "0") == "1"
-                ):
-                    return True
-        return False
 
     ########################################################################
     # RCX api
