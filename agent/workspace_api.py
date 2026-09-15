@@ -330,13 +330,25 @@ def _candidate_rerun_steps(flow, target_step: str, end_step: str, execution_scop
     )
 
 
+# The RPC-level "Floorplan" target names the shared floorplan configuration,
+# not a flow step; its range starts at the first floorplan sub-step.
+_FLOORPLAN_RANGE_START = {"Floorplan": "preFloorplan"}
+
+
 def _candidate_step_range(
     steps: list, target_step: str, end_step: str, execution_scope: str
 ) -> list:
     if execution_scope not in {"single_step", "full_flow"}:
         raise RuntimeApiError("invalid_request", "candidate rerun execution scope is invalid")
+    range_target = target_step
+    if target_step in _FLOORPLAN_RANGE_START and not any(
+        _step_value(step, "name") == target_step for step in steps
+    ):
+        # Flows running the floorplan phase as sub-steps have no literal
+        # "Floorplan" step; start the range at its first sub-step instead.
+        range_target = _FLOORPLAN_RANGE_START[target_step]
     target_index = next(
-        (index for index, step in enumerate(steps) if _step_value(step, "name") == target_step),
+        (index for index, step in enumerate(steps) if _step_value(step, "name") == range_target),
         None,
     )
     end_index = next(
@@ -992,6 +1004,10 @@ def _validate_runtime_report_binding(
 
 
 def _candidate_source_step(flow, target_step: str) -> str:
+    # The RPC-level "Floorplan" target binds the post-synthesis netlist: the
+    # floorplan sub-steps consume the Synthesis output as their phase input.
+    if target_step == "Floorplan":
+        return "Synthesis"
     steps = flow.workspace.flow.data.get("steps", [])
     for index, step in enumerate(steps):
         if step.get("name") == target_step and index:

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from agent.data.candidate_artifacts import sha256_path
+from agent.data.candidate_input_binding import _validate_edge
 from agent.data.candidate_materialization import materialize_candidate_config
 from agent.requests import CandidateRerunRequest
 from agent.workspace_api import (
@@ -14,6 +15,7 @@ from agent.workspace_api import (
     _candidate_rerun_steps,
     _candidate_source_step,
     _candidate_step_artifact_dirs,
+    _candidate_step_range,
     _create_candidate_workspace,
     _materialize_candidate_rerun,
     _preflight_candidate_steps,
@@ -211,6 +213,49 @@ def test_floorplan_candidate_uses_synthesis_checkpoint_across_lec() -> None:
     )
 
     assert _candidate_source_step(flow, "Floorplan") == "Synthesis"
+
+
+_CURRENT_FLOW_STEPS = [
+    {"name": "Synthesis", "tool": "yosys"},
+    {"name": "preFloorplan", "tool": "ecc"},
+    {"name": "macroPlacement", "tool": "dreamplace"},
+    {"name": "postFloorplan", "tool": "ecc"},
+    {"name": "place", "tool": "dreamplace"},
+    {"name": "CTS", "tool": "ecc"},
+    {"name": "legalization", "tool": "dreamplace"},
+    {"name": "Timing optimization", "tool": "sizer"},
+    {"name": "route", "tool": "ecc"},
+    {"name": "filler", "tool": "ecc"},
+    {"name": "RCX", "tool": "ecc"},
+    {"name": "sta", "tool": "ecc"},
+    {"name": "lvs", "tool": "ecc"},
+    {"name": "postRouteLec", "tool": "yosys_lec"},
+    {"name": "drc", "tool": "ecc"},
+    {"name": "Harden", "tool": "ecc"},
+]
+
+
+def test_place_candidate_binds_the_post_floorplan_predecessor() -> None:
+    flow = SimpleNamespace(
+        workspace=SimpleNamespace(flow=SimpleNamespace(data={"steps": _CURRENT_FLOW_STEPS}))
+    )
+
+    assert _candidate_source_step(flow, "place") == "postFloorplan"
+
+
+def test_current_flow_topological_edges_are_declared() -> None:
+    for index in range(1, len(_CURRENT_FLOW_STEPS)):
+        target = _CURRENT_FLOW_STEPS[index]["name"]
+        source = _CURRENT_FLOW_STEPS[index - 1]["name"]
+        _validate_edge(target, source)
+
+
+def test_floorplan_target_range_starts_at_the_first_floorplan_sub_step() -> None:
+    range_steps = _candidate_step_range(_CURRENT_FLOW_STEPS, "Floorplan", "Harden", "full_flow")
+
+    assert [step["name"] for step in range_steps] == [
+        step["name"] for step in _CURRENT_FLOW_STEPS[1:]
+    ]
 
 
 def test_agent_flow_defaults_to_full_rtl2gds_flow(monkeypatch):

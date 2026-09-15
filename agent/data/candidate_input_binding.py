@@ -19,8 +19,26 @@ INPUT_BINDING_SCHEMA_VERSION = 1
 INPUT_BINDING_FILENAME = "candidate_input_binding.v1.json"
 CANONICAL_INPUT_EDGES = frozenset(
     {
+        # Current flow topology: the floorplan phase runs as the sub-steps
+        # preFloorplan -> macroPlacement -> postFloorplan sharing the
+        # "Floorplan" configuration.
+        ("preFloorplan", "Synthesis"),
+        ("macroPlacement", "preFloorplan"),
+        ("postFloorplan", "macroPlacement"),
+        ("place", "postFloorplan"),
+        ("Timing optimization", "legalization"),
+        ("route", "Timing optimization"),
+        ("filler", "route"),
+        ("RCX", "filler"),
+        ("sta", "RCX"),
+        ("lvs", "sta"),
+        ("postRouteLec", "lvs"),
+        ("drc", "postRouteLec"),
+        ("Harden", "drc"),
+        # RPC-level floorplan target binding (see prepare_floorplan_mode).
         ("Floorplan", "initial"),
         ("Floorplan", "Synthesis"),
+        # Legacy single-step floorplan topology and sanctioned resume edges.
         ("place", "Floorplan"),
         ("CTS", "place"),
         ("legalization", "CTS"),
