@@ -178,7 +178,7 @@ def test_sizer_runner_marks_subflow_incomplete_when_tool_is_signal_terminated(
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -223,7 +223,7 @@ def test_sizer_runner_reports_plain_exit_code_without_signal_or_fatal_line(
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
