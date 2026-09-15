@@ -86,6 +86,44 @@ class TestCreateWorkspaceIntegration:
         assert (origin_dir / "rtl" / "core" / "alu.v").exists()
         assert (origin_dir / "rtl" / "core" / "ctrl.v").exists()
 
+    def test_filelist_survives_workspace_reload(self, tmp_path, minimal_ics55_pdk_factory):
+        from chipcompiler.data import load_workspace
+        from chipcompiler.data.parameter import load_parameter
+        from chipcompiler.data.workspace_config import workspace_config_path
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        _write_rtl_file(project_dir / "gcd.v", "gcd")
+
+        filelist = project_dir / "design.f"
+        _create_filelist(filelist, "gcd.v")
+
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        workspace_dir = tmp_path / "workspace"
+        create_workspace(
+            directory=str(workspace_dir),
+            origin_def="",
+            origin_verilog="",
+            pdk="ics55",
+            parameters={
+                "design": "gcd",
+                "top_module": "gcd",
+                "clock": "clk",
+                "frequency_max": 100,
+            },
+            input_filelist=str(filelist),
+            pdk_root=pdk_root,
+        )
+
+        frozen = workspace_dir / "origin" / "design.f"
+        assert frozen.is_file()
+
+        parameters = load_parameter(workspace_config_path(workspace_dir))
+        assert parameters.data["file_list"] == str(frozen)
+
+        reloaded = load_workspace(workspace_dir)
+        assert reloaded.design.input_filelist == frozen
+
     def test_filelist_absolute_entries_rewritten_to_frozen_sources(self, tmp_path):
         from chipcompiler.data.workspace import copy_filelist_with_sources
 

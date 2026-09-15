@@ -1124,6 +1124,12 @@ def create_workspace(
         input_filelist=input_filelist,
         golden_verilog=golden_verilog,
     )
+    if workspace.design.input_filelist is not None:
+        # The in-memory rebind dies with this process; persist the frozen copy
+        # so reloaded workspaces (step subprocesses, later sessions) keep the
+        # filelist input instead of falling back to the single origin verilog.
+        workspace.parameters.data["file_list"] = str(workspace.design.input_filelist)
+
     init_workspace_config(workspace)
 
     # set home data
