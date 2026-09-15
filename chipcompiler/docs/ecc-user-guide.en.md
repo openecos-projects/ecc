@@ -80,7 +80,7 @@ uv run ecc --help
 ## 1. General conventions
 
 - Global: `ecc --version` (single version line), `ecc --help`.
-- Project location: project-scoped commands accept `--project <dir>` (defaults to the current directory). `--workspace <name>` is a managed, non-empty single path segment in that project, never a filesystem path. A fresh project creates `default` on bare `ecc run`; a project with one active workspace auto-selects it, while one with multiple active workspaces requires `--workspace`. A named workspace is created and registered in `project.json` before its files are created. Legacy `runs/` projects must be upgraded with `ecc migrate` before running a flow. Each project has one `ecc.toml`; workspace inputs are copied to its own `origin/` directory at creation time.
+- Project location: project-scoped commands accept `--project <dir>` (defaults to the current directory). `--workspace <name>` is a managed, non-empty single path segment and always selects the logical workspace ID, never a filesystem path. A fresh project creates `default` on bare `ecc run`; a project with one active workspace auto-selects it, while one with multiple active workspaces requires `--workspace`. A named workspace is created and registered in `project.json` before its files are created. `ecc run --path <dir>` optionally places that named workspace at an exact absolute directory outside the project; without `--path`, the existing `<project>/<workspace-id>` layout is unchanged. Legacy `runs/` projects must be upgraded with `ecc migrate` before running a flow. Each project has one `ecc.toml`; workspace inputs are copied to its own `origin/` directory at creation time.
 - Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `param`, `pdk`, `project`, `workspace`, `signoff`, and `report` accept `--plain` (`key=value`, for scripting), with human-readable TEXT by default. `rpc serve` and `layout-image` use their own protocols instead.
 - Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`).
 - Step tokens come in three vocabularies, distinguished by context:
@@ -318,6 +318,7 @@ Notes:
 ecc run [OPTIONS]
   --project TEXT     project directory (defaults to cwd)
   --workspace TEXT   create, select, or resume a managed workspace name
+  --path TEXT        exact absolute directory for the managed workspace (requires --workspace)
   --resume           continue from the first non-successful step
   --from TEXT        re-execute from a step, or pair with --to for a new range workspace
   --to TEXT          inclusive final step for a bounded range (requires --from)
@@ -329,7 +330,26 @@ ecc run [OPTIONS]
   --plain            key=value output for scripting
 ```
 
-For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full 17-step chain (Synthesis→LEC (Yosys equivalence check; skipped by default — `[flow] skip_steps` defaults to `["lec"]`, set `[]` to enable)→preFloorplan→macroPlacement→postFloorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→RCX→sta→LVS→postRouteLec (Yosys equivalence check)→DRC→Harden; Harden emits GDS + abstract LEF + timing LIB).
+For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` by default, or at the exact directory supplied by `--path` → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. `--path` is optional, must be an absolute complete workspace directory, and requires an explicit `--workspace`; it never infers the workspace ID from the directory name. An existing valid workspace at an external path can be registered and resumed with the same command. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full 17-step chain (Synthesis→LEC (Yosys equivalence check; skipped by default — `[flow] skip_steps` defaults to `["lec"]`, set `[]` to enable)→preFloorplan→macroPlacement→postFloorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→RCX→sta→LVS→postRouteLec (Yosys equivalence check)→DRC→Harden; Harden emits GDS + abstract LEF + timing LIB).
+
+#### External workspace paths
+
+Use `--path` when the workspace directory must live outside the project. The option names the complete workspace directory, not a parent directory:
+
+```bash
+# Existing behavior: create and register the workspace below the project.
+ecc run --project /projects/gcd --workspace local
+
+# Create and run a managed workspace outside the project.
+ecc run --project /projects/gcd --workspace archive \
+  --path /data/ecc-runs/gcd/archive
+
+# Once registered, select the external workspace by ID; --path is no longer needed.
+ecc run --project /projects/gcd --workspace archive --resume
+ecc status --project /projects/gcd --workspace archive
+```
+
+The path must be absolute. `ecc` creates only the final directory, so its parent must already exist; an existing non-empty directory must already be a valid ECC workspace. The project root and its legacy `runs/` directory are protected targets, and a path that contains the project directory is rejected. A workspace ID cannot be rebound to another path, and a path already declared for another ID cannot be reused. Use `ecc workspace import` to register an existing workspace without running or modifying it.
 
 The `synthesis_lec` preset requires the LEC the default policy skips, so this
 example's project edits `ecc.toml` first (`sed -i 's/skip_steps = \["lec"\]/skip_steps = []/' ecc.toml`
@@ -422,6 +442,7 @@ ecc run [--workspace NAME] [--resume | --from STEP [--to STEP] | --only STEP [--
 - on a new workspace, `--from` and `--to` must be supplied together and dynamically build the inclusive flow range;
 - `--only STEP [--force]`: run exactly one step; `--force` re-runs it even if it already succeeded;
 - `--resume`, `--only`, and a range are mutually exclusive; a fresh range cannot be combined with `--preset`, `--resume`, `--only`, `--force`, or `--overwrite`; `--workspace` may be combined with `--project`;
+- `--path` is only for creating or resuming a named workspace target. It requires `--workspace` and is not a second selector for read-only commands; after registration, all workspace-scoped commands use the manifest's declared path by ID;
 - **`--from`/`--only`/`--to` on an existing workspace require the persisted names** (the original names in `home/flow.json`; see the vocabulary in section 1, e.g. `place`, `CTS`, `Timing optimization`); only a fresh range (`--from A --to B` given together) accepts the lowercase aliases. A misspelled name reports `unknown_step` with the full list of available names:
 
 ```console
@@ -480,6 +501,12 @@ $ ecc run --workspace a/b     # a workspace must be a single name, never a path
 | `invalid_workspace` | the workspace name contains `/`, is an absolute path, or is `.`/`..`; or the directory is not a loadable workspace | use a compliant name / inspect the directory |
 | `workspace_required` | the project has multiple active workspaces but no `--workspace` was given | pass one of the names listed in the error |
 | `workspace_not_declared` | the `--workspace` name does not match an id declared in `project.json` (including aliases pointing at a declared path) | use the declared id given in the error |
+| `path_requires_workspace` | `--path` was supplied without `--workspace` | provide an explicit workspace ID |
+| `workspace_path_not_absolute` | `--path` is not an absolute path to a complete workspace directory | pass an absolute workspace directory |
+| `workspace_path_unsafe` | the path is the project root, the legacy `runs/` directory, contains the project directory, or has no existing parent | choose a safe directory whose parent already exists |
+| `workspace_id_conflict` | the workspace ID is already declared at a different path | omit `--path` or use the declared path; use another ID for a new path |
+| `workspace_path_conflict` | the canonical path is already declared for another workspace ID | use the declared ID or choose another directory |
+| `workspace_not_importable` | an existing directory is not a supported ECC workspace, or its design/PDK identity does not match the project | point to a valid workspace for this project |
 | `workspace_conflict` | a workspace with the same name is already declared at another path | choose a different name |
 | `workspace_registration_failed` | registering the new workspace in `project.json` failed (unwritable manifest, …) | make `project.json` writable and retry |
 | `legacy_workspace_migration_required` | `ecc run` on a legacy `runs/` project | run `ecc migrate` first (the hint record carries the full command) |
@@ -670,7 +697,21 @@ $ ecc project add design.name x       # add/remove exist only for the rtl list
 rc=1
 ```
 
-`ecc workspace refresh NAME --project DIR` rebuilds a workspace already declared in `project.json` from the current `ecc.toml`, without running the flow. It replaces the workspace's copied inputs, tool configuration, state, and artifacts; run `ecc run --workspace NAME` afterwards. `ecc run --workspace NAME --overwrite` is the existing shortcut that refreshes and immediately re-executes:
+`ecc workspace import WORKSPACE --path DIR --project PROJECT` registers an existing ECC workspace in `project.json` without running it, changing files below it, or moving it. `WORKSPACE` is the logical ID used by all later commands; `--path` is required and must be an absolute complete workspace directory. Import inspects the persisted flow, status, design, PDK, and parameter state read-only before atomically registering the path:
+
+```bash
+ecc workspace import archive \
+  --project /projects/gcd \
+  --path /data/ecc-runs/gcd/archive
+
+# The imported workspace is now selected by ID.
+ecc status --project /projects/gcd --workspace archive
+ecc run --project /projects/gcd --workspace archive --resume
+```
+
+Import rejects malformed or incompatible workspaces, duplicate IDs/paths, protected paths, and legacy projects that still require `ecc migrate`. If an `ecc.toml` project has no `project.json` yet, a successful import creates the schema-v1 manifest before registering the workspace.
+
+`ecc workspace refresh NAME --project DIR` rebuilds a workspace already declared in `project.json` from the current `ecc.toml`, without running the flow. It replaces the workspace's copied inputs, tool configuration, state, and artifacts at the path already declared in the manifest; run `ecc run --workspace NAME` afterwards. `ecc run --workspace NAME --overwrite` is the existing shortcut that refreshes and immediately re-executes:
 
 ```console
 $ ecc workspace refresh default
