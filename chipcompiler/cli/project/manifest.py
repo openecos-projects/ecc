@@ -26,7 +26,9 @@ MANIFEST_FILENAME = "project.json"
 MANIFEST_FLOW_STEPS = (
     "Synth",
     "LEC",
-    "Floor",
+    "PreFloorplan",
+    "MacroPlacement",
+    "PostFloorplan",
     "Place",
     "CTS",
     "Legal",
@@ -54,7 +56,9 @@ PRESET_MANIFEST_RANGE = {
 _CANONICAL_TO_MANIFEST_STEP = {
     "Synthesis": "Synth",
     "lec": "LEC",
-    "Floorplan": "Floor",
+    "preFloorplan": "PreFloorplan",
+    "macroPlacement": "MacroPlacement",
+    "postFloorplan": "PostFloorplan",
     "place": "Place",
     "CTS": "CTS",
     "legalization": "Legal",

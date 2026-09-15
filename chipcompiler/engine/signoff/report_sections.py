@@ -23,7 +23,7 @@ from chipcompiler.engine.signoff.report_extract import (
     parse_runtime_seconds,
 )
 
-_AREA_STAGES = ["Harden", "Route", "Legal", "Place", "Floor"]
+_AREA_STAGES = ["Harden", "Route", "Legal", "Place", "PostFloorplan"]
 
 
 def _normalize_area(value):
@@ -104,19 +104,28 @@ def _extract_physical(q, warnings) -> PhysicalMetrics:
         macro_area_um2=q(
             "Physical",
             "Macro Area",
-            ["Harden", "Route", "Place", "Floor"],
+            ["Harden", "Route", "Place", "PostFloorplan"],
             ["Instances.macros.area", "macro_area", "macro_area_um2", "macroArea"],
         )[0],
         macro_count=q(
             "Physical",
             "Macro Count",
-            ["Harden", "Route", "Place", "Floor"],
+            ["Harden", "Route", "Place", "PostFloorplan"],
             ["Instances.macros.num", "macro_count", "num_macros", "macroCount"],
         )[0],
         instance_count=q(
             "Physical",
             "Total Instances",
-            ["Harden", "Route", "Legal", "Place", "CTS", "Fanout", "Floor", "Synth"],
+            [
+                "Harden",
+                "Route",
+                "Legal",
+                "Place",
+                "CTS",
+                "Fanout",
+                "PostFloorplan",
+                "Synth",
+            ],
             [
                 "Design Statis.num_instances",
                 "Instances.total.num",
@@ -156,7 +165,7 @@ def _extract_physical(q, warnings) -> PhysicalMetrics:
         io_pin_count=q(
             "Physical",
             "IO Pin Count",
-            ["Harden", "Route", "Floor", "Synth"],
+            ["Harden", "Route", "PostFloorplan", "Synth"],
             [
                 "Design Statis.num_iopins",
                 "Instances.total.pin_num",
@@ -171,7 +180,16 @@ def _extract_physical(q, warnings) -> PhysicalMetrics:
         net_count=q(
             "Physical",
             "Total Nets",
-            ["Harden", "Route", "Legal", "Place", "CTS", "Fanout", "Floor", "Synth"],
+            [
+                "Harden",
+                "Route",
+                "Legal",
+                "Place",
+                "CTS",
+                "Fanout",
+                "PostFloorplan",
+                "Synth",
+            ],
             [
                 "Design Statis.num_nets",
                 "design.num_wires",
@@ -208,7 +226,7 @@ def _extract_routing(q) -> RoutingMetrics:
         hpwl_um=q(
             "Routing",
             "Half-Perimeter Wirelength",
-            ["Place", "Floor"],
+            ["Place", "PostFloorplan"],
             ["place_hpwl", "hpwl", "hpwl_um", "half_perimeter_wirelength"],
         )[0],
         estimated_wirelength_um=q(

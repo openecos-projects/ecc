@@ -15,8 +15,9 @@ WORKSPACE_PARAM_OVERRIDES_KEY = "workspace_param_overrides"
 
 _APPLIES_TO_STEP = {
     "synthesis": "Synthesis",
-    "floorplan": "Floorplan",
+    "floorplan": "preFloorplan",
     "placement": "place",
+    "macro": "macroPlacement",
     "cts": "CTS",
     "routing": "route",
     "filler": "filler",

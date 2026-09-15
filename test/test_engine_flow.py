@@ -48,10 +48,12 @@ def test_engine_flow_default_steps_include_synthesis_lec(tmp_path):
     engine_flow = EngineFlow(workspace)
     engine_flow.build_default_steps()
 
-    assert [(step["name"], step["tool"]) for step in workspace.flow.data["steps"][:3]] == [
+    assert [(step["name"], step["tool"]) for step in workspace.flow.data["steps"][:5]] == [
         (StepEnum.SYNTHESIS.value, "yosys"),
         (StepEnum.LEC.value, "yosys_lec"),
-        (StepEnum.FLOORPLAN.value, "ecc"),
+        (StepEnum.PRE_FLOORPLAN.value, "ecc"),
+        (StepEnum.MACRO_PLACEMENT.value, "dreamplace"),
+        (StepEnum.POST_FLOORPLAN.value, "ecc"),
     ]
 
 

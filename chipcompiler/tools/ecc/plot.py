@@ -21,7 +21,7 @@ class ECCToolsPlot:
     def plot(self) -> bool:
         state = True
         match self.step.name:
-            case StepEnum.FLOORPLAN.value:
+            case StepEnum.POST_FLOORPLAN.value:
                 state = state & self.default_plot()
             case StepEnum.PLACEMENT.value:
                 state = state & self.default_plot() & self.plot_placement_heatmap()

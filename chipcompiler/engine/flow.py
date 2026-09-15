@@ -74,7 +74,9 @@ def _validate_transition(old_state: str | None, new_state: str, step_name: str, 
 
 _GEOMETRY_SNAPSHOT_STEPS = frozenset(
     {
-        StepEnum.FLOORPLAN.value,
+        StepEnum.PRE_FLOORPLAN.value,
+        StepEnum.MACRO_PLACEMENT.value,
+        StepEnum.POST_FLOORPLAN.value,
         StepEnum.PLACEMENT.value,
         StepEnum.CTS.value,
         StepEnum.TIMING_OPT.value,
@@ -108,7 +110,9 @@ class EngineFlow:
         steps.append(
             self.init_flow_step(StepEnum.LEC, "yosys_lec", StateEnum.Unstart, info=lec_info)
         )
-        steps.append(self.init_flow_step(StepEnum.FLOORPLAN, "ecc", StateEnum.Unstart))
+        steps.append(self.init_flow_step(StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart))
+        steps.append(self.init_flow_step(StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart))
+        steps.append(self.init_flow_step(StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.CTS, "ecc", StateEnum.Unstart))
         steps.append(self.init_flow_step(StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart))
@@ -610,6 +614,14 @@ class EngineFlow:
             self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
             self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
             _notify_flow_observer(observer, "on_step_skipped", workspace_step)
+            try:
+                from chipcompiler.analysis.qor import refresh_workspace_qor_report
+
+                refresh_workspace_qor_report(self.workspace)
+            except Exception:
+                self.workspace.logger.exception(
+                    "[QOR] %s failed to refresh the workspace QoR report after skip", step_tag
+                )
             return StateEnum.Success
 
         self._normalize_legacy_terminal_state(workspace_step, step_tag)
@@ -736,6 +748,19 @@ class EngineFlow:
                     self.workspace.logger.exception(
                         "[QOR] %s failed to save run facts after the step succeeded",
                         step_tag,
+                    )
+
+            # The workspace QoR report renders the per-step analysis
+            # artifacts refreshed above, so it runs after they exist; a
+            # failure degrades to a warning like the facts refresh.
+            if state == StateEnum.Success:
+                try:
+                    from chipcompiler.analysis.qor import refresh_workspace_qor_report
+
+                    refresh_workspace_qor_report(self.workspace)
+                except Exception:
+                    self.workspace.logger.exception(
+                        "[QOR] %s failed to refresh the workspace QoR report", step_tag
                     )
         except (Exception, SystemExit) as exc:
             failure_message = record_tool_failure(self.workspace.logger, step_tag, exc)

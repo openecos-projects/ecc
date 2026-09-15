@@ -84,8 +84,8 @@ uv run ecc --help
 - Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `param`, `pdk`, `project`, `workspace`, `signoff`, and `report` accept `--plain` (`key=value`, for scripting), with human-readable TEXT by default. `rpc serve` and `layout-image` use their own protocols instead.
 - Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`).
 - Step tokens come in three vocabularies, distinguished by context:
-  - **display names** (output and input of `ecc status` / `ecc log` / `ecc report step`, uniformly lowercase/underscore): `synthesis / lec / floorplan / placement / cts / legalization / timing_optimization / routing / filler / rcx / sta / lvs / postroutelec / drc / harden`;
-  - **persisted names** (the original names in `home/flow.json`; required by `--from`/`--only`/`--to` on existing workspaces, e.g. `place`, `CTS`, `Timing optimization`): `Synthesis / lec / Floorplan / place / CTS / legalization / Timing optimization / route / filler / RCX / sta / lvs / postRouteLec / drc / Harden`;
+  - **display names** (output and input of `ecc status` / `ecc log` / `ecc report step`, uniformly lowercase/underscore): `synthesis / lec / pre_floorplan / macro_placement / post_floorplan / placement / cts / legalization / timing_optimization / routing / filler / rcx / sta / lvs / postroutelec / drc / harden`;
+  - **persisted names** (the original names in `home/flow.json`; required by `--from`/`--only`/`--to` on existing workspaces, e.g. `place`, `CTS`, `Timing optimization`): `Synthesis / lec / preFloorplan / macroPlacement / postFloorplan / place / CTS / legalization / Timing optimization / route / filler / RCX / sta / lvs / postRouteLec / drc / Harden`;
   - **aliases when creating a new range** (the first `--from A --to B` workspace creation normalizes aliases; both spellings are accepted): e.g. `cts`↔`CTS`, `route`↔`routing`, `timingopt`↔`Timing optimization`, `postlec`↔`postRouteLec`.
   A misspelled name returns `unknown_step` with the full list of available step names — copy one of them as printed.
 
@@ -328,7 +328,7 @@ ecc run [OPTIONS]
   --plain            key=value output for scripting
 ```
 
-For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full 15-step chain (Synthesis→LEC (Yosys equivalence check)→Floorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→RCX→sta→LVS→postRouteLec (Yosys equivalence check)→DRC→Harden; Harden emits GDS + abstract LEF + timing LIB).
+For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full 17-step chain (Synthesis→LEC (Yosys equivalence check)→preFloorplan→macroPlacement→postFloorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→RCX→sta→LVS→postRouteLec (Yosys equivalence check)→DRC→Harden; Harden emits GDS + abstract LEF + timing LIB).
 
 A summary is printed when the run finishes (real output):
 
@@ -384,7 +384,7 @@ ecc run --workspace cts-only --from cts --to cts      # new range workspace (ali
 ecc run --workspace cts-route --from cts --to routing # same; both ends accept aliases
 ```
 
-When creating a range workspace, only the design inputs required by the **entry step** are validated: Synthesis needs `rtl`; LEC/postRouteLec need `netlist` + `golden_netlist`; Floorplan needs `netlist`; the physical steps (place/CTS/legalization/timing optimization/route/filler/rcx/drc/lvs/harden) need `def` + `netlist`; sta additionally needs `spef`; `sdc` is validated only when declared. Missing inputs report `step_input_missing`:
+When creating a range workspace, only the design inputs required by the **entry step** are validated: Synthesis needs `rtl`; LEC/postRouteLec need `netlist` + `golden_netlist`; preFloorplan needs `netlist`; macroPlacement, postFloorplan, and the remaining physical steps (place/CTS/legalization/timing optimization/route/filler/rcx/drc/lvs/harden) need `def` + `netlist`; sta additionally needs `spef`; `sdc` is validated only when declared. Missing inputs report `step_input_missing`:
 
 ```console
 $ ecc run --from cts --to route          # new range but def/netlist are missing
@@ -394,19 +394,19 @@ $ ecc run --from cts --to route          # new range but def/netlist are missing
 rc=1
 ```
 
-For example, to reuse the Floorplan artifacts from existing workspace `2` and create a workspace that runs only placement through routing, declare the **matching pair** of DEF and gate-level netlist as the new workspace's entry inputs before creating the range flow:
+For example, to reuse the post-floorplan artifacts from existing workspace `2` and create a workspace that runs only placement through routing, declare the **matching pair** of DEF and gate-level netlist as the new workspace's entry inputs before creating the range flow:
 
 ```bash
 PROJECT=~/projects/benchmark/gcd
-SOURCE="$PROJECT/2/Floorplan_ecc/output"
+SOURCE="$PROJECT/2/postFloorplan_ecc/output"
 
-ecc project set design.def "$SOURCE/gcd_Floorplan.def.gz" --project "$PROJECT"
-ecc project set design.netlist "$SOURCE/gcd_Floorplan.v.gz" --project "$PROJECT"
+ecc project set design.def "$SOURCE/gcd_postFloorplan.def.gz" --project "$PROJECT"
+ecc project set design.netlist "$SOURCE/gcd_postFloorplan.v.gz" --project "$PROJECT"
 ecc run --project "$PROJECT" --workspace floorplan-2-place-route \
   --from placement --to routing
 ```
 
-`ecc run` has no `--def` or `--netlist` flag; a range entry reads `design.def` and `design.netlist` from `ecc.toml`. This registers `floorplan-2-place-route` in `project.json`, copies the two files into the new workspace's `origin/`, and runs placement through routing without rerunning Floorplan. The first two commands change project-level `ecc.toml`, so they also affect later fresh workspaces. If those fields were previously absent, restore the default project entry after creation with `ecc project unset design.def --project "$PROJECT"` and `ecc project unset design.netlist --project "$PROJECT"`.
+`ecc run` has no `--def` or `--netlist` flag; a range entry reads `design.def` and `design.netlist` from `ecc.toml`. This registers `floorplan-2-place-route` in `project.json`, copies the two files into the new workspace's `origin/`, and runs placement through routing without rerunning postFloorplan. The first two commands change project-level `ecc.toml`, so they also affect later fresh workspaces. If those fields were previously absent, restore the default project entry after creation with `ecc project unset design.def --project "$PROJECT"` and `ecc project unset design.netlist --project "$PROJECT"`.
 
 ### 5.2 Workspace mode (debugging / re-runs)
 
@@ -424,8 +424,8 @@ ecc run [--workspace NAME] [--resume | --from STEP [--to STEP] | --only STEP [--
 ```console
 $ ecc run --workspace default --from synthesis   # the persisted name is "Synthesis"
 [error]
-  unknown_step unknown step 'synthesis'; available steps: Synthesis, lec, Floorplan,
-  place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
+  unknown_step unknown step 'synthesis'; available steps: Synthesis, lec, preFloorplan,
+  macroPlacement, postFloorplan, place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
   postRouteLec, drc, Harden
   workspace: /tmp/gcd/default
 ```
@@ -525,8 +525,12 @@ $ ecc status
       log: ecc log synthesis --workspace default
     lec (yosys_lec) success 0:0:1
       log: ecc log lec --workspace default
-    floorplan (ecc) success 0:0:1
-      log: ecc log floorplan --workspace default
+    pre_floorplan (ecc) success 0:0:1
+      log: ecc log pre_floorplan --workspace default
+    macro_placement (dreamplace) success 0:0:5
+      log: ecc log macro_placement --workspace default
+    post_floorplan (ecc) success 0:0:1
+      log: ecc log post_floorplan --workspace default
     placement (dreamplace) incomplete
       log: ecc log placement --workspace default
     cts (ecc) unstart
@@ -803,6 +807,59 @@ Legacy semantic parameters:
 
 Priority: CLI `--set` > `ecc.toml` `[params.*]` > template defaults. `pdk.*` path parameters write to `[pdk.overrides]`: `pdk.tech`, `pdk.lefs`, `pdk.libs`, and `pdk.mapping_file` resolve relative to `pdk.root`, while `pdk.sdc` and `pdk.spef` resolve relative to the project directory; all are file-validated.
 
+## 9.5. macro — manual macro placement
+
+```bash
+ecc macro set INSTANCE --x X --y Y --orient ORIENT [--project DIR] [--workspace NAME] [--plain]
+ecc macro remove INSTANCE [--project DIR] [--workspace NAME] [--plain]
+ecc macro show [--project DIR] [--workspace NAME] [--plain]
+```
+
+A design with hard macros (SRAMs, analog blocks) places them automatically with DreamPlace in the `macroPlacement` step, writing `config/macro_location.tcl`. `ecc macro` manages the manual-placement parameter `macro.placements`: coordinates are in microns and instances are committed `fixed`. While the parameter is non-empty, `macroPlacement` keeps its load/save flow but skips DreamPlace, and `postFloorplan` commits the macros from the file. Orientations: `R0`, `R90`, `R180`, `R270`, `MX`, `MY`, `MX90`, `MY90`; setting the same instance again updates it in place.
+
+Both `ecc param` scopes apply:
+
+- project (default): stored in `ecc.toml` `[params.macro]`, rendered into the Tcl on the next fresh workspace (`ecc run` / `--overwrite`) or `ecc workspace refresh`;
+- `--workspace NAME`: written to that workspace's `home/params.toml`; the Tcl is regenerated immediately and `macroPlacement` and its suffix are marked pending, so the next `ecc run --workspace NAME` resumes from `macroPlacement`.
+
+```console
+$ ecc macro set u_ram0 --x 10 --y 20.5 --orient R0
+[status]
+  param: macro.placements
+  instance: u_ram0
+  x: 10.0
+  y: 20.5
+  orientation: R0
+  placements: [{'instance': 'u_ram0', 'x': 10.0, 'y': 20.5, 'orientation': 'R0'}]
+  status: set
+  source: ecc.toml
+
+$ ecc macro set u_ram1 --x 150 --y 20.5 --orient MY
+$ ecc macro show
+[result]
+  param: macro.placements
+  placements: [{'instance': 'u_ram0', 'x': 10.0, 'y': 20.5, 'orientation': 'R0'}, {'instance': 'u_ram1', 'x': 150.0, 'y': 20.5, 'orientation': 'MY'}]
+  source: ecc.toml
+
+$ ecc macro remove u_ram1
+[status]
+  param: macro.placements
+  instance: u_ram1
+  placements: [{'instance': 'u_ram0', 'x': 10.0, 'y': 20.5, 'orientation': 'R0'}]
+  status: removed
+  source: ecc.toml
+```
+
+Adjusting macro positions on an existing workspace and re-running the affected segment:
+
+```bash
+ecc macro set u_ram0 --x 120.0 --y 80.0 --orient MY --workspace default
+ecc run --workspace default                 # resumes from macroPlacement; downstream steps re-run
+ecc macro remove u_ram0 --workspace default # removing the last entry restores DreamPlace auto placement; resume again for the automatic result
+```
+
+Instance names must exist in the design and every hard macro must be listed — `postFloorplan` fails with the missing instance names otherwise. `macro_location.tcl` is a generated file and hand-editing it is unsupported (re-running `macroPlacement` without the parameter regenerates it). See [floorplan-flow.en.md](floorplan-flow.en.md) for the handoff format and staged-floorplan details, and the [Configuration Reference §1.5](ecc-config-ref.en.md) for the parameter.
+
 ## 10. pdk — PDK path configuration
 
 The PDK itself comes from the install script (`--with-toolchain`; see the
@@ -970,18 +1027,20 @@ Previews the **current step artifacts** of one workspace directly in the termina
   - `checklist`: `<step>/checklist.json` (the v3 contract; falls back to `home/checklist.json` filtered by step when missing)
 - `--section` may be repeated to select sections; a section whose artifacts are missing renders as `unavailable`
 
-Step tokens follow `ecc log` (`synthesis/floorplan/placement/cts/...`); flow-internal names (`Timing optimization`) and directory-name variants (`timing_optimization`) are accepted too. An unknown token returns `unknown_step` with the list of valid tokens.
+Step tokens follow `ecc log` (`synthesis/pre_floorplan/macro_placement/post_floorplan/placement/cts/...`); flow-internal names (`Timing optimization`) and directory-name variants (`timing_optimization`) are accepted too. An unknown token returns `unknown_step` with the list of valid tokens.
 
 ```console
 $ ecc report step --workspace default
 [report step]
   workspace : /tmp/gcd/default
-  steps     : 15
+  steps     : 17
 
   step                   tool         status    runtime  peak MB  metrics quality  checklist
   synthesis              yosys        success   0:0:17   1165.89  10      pass     ready
   lec                    yosys_lec    success   0:0:1    0.164    -       -        ready
-  floorplan              ecc          success   0:0:1    97.516   11      pass     ready
+  pre_floorplan          ecc          success   0:0:1    97.516   -       -        ready
+  macro_placement        dreamplace   success   0:0:5    97.516   -       -        ready
+  post_floorplan         ecc          success   0:0:1    97.516   11      pass     ready
   ...
   drc                    ecc          success   0:0:3    42.0     12      blocked  blocked (1 blocked)
 
@@ -1079,7 +1138,15 @@ ecc report qor --workspace exp1
 
 # With a ready-made synthesis netlist, a range workspace can also start from an
 # intermediate step (entry-input requirements in §5.1):
-ecc run --workspace pnr --from floorplan --to route
+ecc run --workspace pnr --from prefloorplan --to route
+```
+
+A design with hard macros can switch to manual placement instead (full contract in §9.5):
+
+```bash
+ecc macro set u_ram0 --x 10 --y 20.5 --orient R0 --workspace default
+ecc run --workspace default   # resumes from macroPlacement: DreamPlace is skipped, the manual positions are committed
+ecc macro show --workspace default
 ```
 
 Once `project.json` exists, project-scoped inspection, signoff, and report commands select among declared workspaces; a single active workspace is auto-selected, while multiple active workspaces require an explicit `--workspace NAME` (otherwise `workspace_required` is reported, listing the available names). A workspace no longer in use can be dropped from auto-selection by changing its `status` to `archived` in `project.json`.

@@ -23,6 +23,8 @@ class ResolvedDesignInputs:
 
 _PHYSICAL_STEPS = frozenset(
     {
+        "macroPlacement",
+        "postFloorplan",
         "place",
         "CTS",
         "legalization",
@@ -46,7 +48,7 @@ def required_inputs_for_step(step: str) -> tuple[str, ...]:
         return ("rtl",)
     if canonical in {"lec", "postRouteLec"}:
         return ("netlist", "golden_netlist")
-    if canonical == "Floorplan":
+    if canonical == "preFloorplan":
         return ("netlist",)
     if canonical == "sta":
         return ("def", "netlist", "spef")

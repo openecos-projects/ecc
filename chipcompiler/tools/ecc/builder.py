@@ -86,7 +86,9 @@ def build_step(
         data=EccData(
             dir=data_dir,
             steps={
-                StepEnum.FLOORPLAN.value: data_dir / "fp",
+                StepEnum.PRE_FLOORPLAN.value: data_dir / "fp",
+                StepEnum.MACRO_PLACEMENT.value: data_dir / "macro",
+                StepEnum.POST_FLOORPLAN.value: data_dir / "fp",
                 StepEnum.PLACEMENT.value: data_dir / "pl",
                 StepEnum.LEGALIZATION.value: data_dir / "pl",
                 StepEnum.FILLER.value: data_dir / "pl",

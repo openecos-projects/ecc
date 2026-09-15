@@ -13,7 +13,9 @@ def disclosure_cmd(command: str, project: str | None = None, workspace: str | No
 def normalize_step_name(internal: str) -> str:
     mapping = {
         "Synthesis": "synthesis",
-        "Floorplan": "floorplan",
+        "preFloorplan": "pre_floorplan",
+        "macroPlacement": "macro_placement",
+        "postFloorplan": "post_floorplan",
         "place": "placement",
         "CTS": "cts",
         "legalization": "legalization",

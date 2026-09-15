@@ -61,7 +61,7 @@ class TestMigrate:
         assert entry["workspace_id"] == "exp1"
         assert entry["workspace_path"] == target
         assert entry["start_step"] == "Synth"
-        assert entry["end_step"] == "Floor"
+        assert entry["end_step"] == "PostFloorplan"
         assert entry["status"] == "success"
         assert manifest["design_name"] == "gcd"
         assert manifest["qor_baseline"]["workspace_id"] == "exp1"
@@ -135,7 +135,7 @@ class TestMigrate:
                     "workspace_path": os.path.join(project_dir, "exp1"),
                     "status": "success",
                     "start_step": "Synth",
-                    "end_step": "Floor",
+                    "end_step": "PostFloorplan",
                 }
             ],
         }
@@ -679,7 +679,7 @@ class TestMigrationPreview:
                     "workspace_path": os.path.join(project_dir, "exp1"),
                     "status": "success",
                     "start_step": "Synth",
-                    "end_step": "Floor",
+                    "end_step": "PostFloorplan",
                 }
             ],
         }

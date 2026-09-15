@@ -89,6 +89,18 @@ class TestSelectedStepNames:
 
         assert rerun.selected_step_names(flow) == []
 
+    def test_resume_skips_completed_pre_floorplan(self, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [
+                ("preFloorplan", "Success"),
+                ("macroPlacement", "Unstart"),
+                ("postFloorplan", "Unstart"),
+            ],
+        )
+
+        assert rerun.selected_step_names(flow) == ["macroPlacement", "postFloorplan"]
+
     def test_resume_reexecutes_legacy_warning_steps(self, tmp_path):
         # The removed terminal Warning state (pre-rework synthesis LEC) is not
         # a finished state: a plain resume re-executes it and its suffix.

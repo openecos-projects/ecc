@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from chipcompiler.cli import main as cli_main
 
 
@@ -633,6 +635,111 @@ class TestManifestParameterValidation:
         assert rc == 0
         parameters = flow_mocks.capture["create_kwargs"]["parameters"]
         assert parameters["frequency_max"] == 100.0
+
+    @pytest.mark.parametrize(
+        ("param", "value", "expected"),
+        [
+            (
+                "place.random_seed",
+                "3001",
+                {"dreamplace": {"random_seed": 3001}},
+            ),
+            (
+                "route.RT.-enable_timing",
+                "1",
+                {"route": {"RT": {"-enable_timing": "1"}}},
+            ),
+        ],
+    )
+    def test_run_set_direct_config_parameter_in_manifest_project(
+        self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs, param, value, expected
+    ):
+        project_dir = _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            ecc_toml=self._hybrid_toml(project_dir=tmp_path / "proj", frequency=False),
+        )
+
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                str(project_dir),
+                "--from",
+                "Synth",
+                "--to",
+                "Synth",
+                "--set",
+                f"{param}={value}",
+            ]
+        )
+
+        assert rc == 0
+        assert flow_mocks.capture["create_kwargs"]["parameters"]["config_overrides"] == expected
+
+    def test_run_set_direct_config_parameter_warns_on_different_toml_value(
+        self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs
+    ):
+        project_dir = _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            ecc_toml=self._hybrid_toml(project_dir=tmp_path / "proj", frequency=False)
+            + "\n[params.place]\nrandom_seed = 3000\n",
+        )
+
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                str(project_dir),
+                "--from",
+                "Synth",
+                "--to",
+                "Synth",
+                "--set",
+                "place.random_seed=3001",
+                "--plain",
+            ]
+        )
+
+        assert rc == 0
+        warnings = [
+            record
+            for record in manifest_stubs.records()
+            if record.get("warning") == "config_layer_diverged"
+        ]
+        assert len(warnings) == 1
+        assert "place.random_seed" in warnings[0]["keys"]
+
+    @pytest.mark.parametrize(
+        ("section", "key", "value"),
+        [
+            ("[params.place]", "random_seed", "3001"),
+            ("[params.route.RT]", '"-enable_timing"', '"1"'),
+        ],
+    )
+    def test_check_direct_config_param_override_in_manifest_project(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs, section, key, value
+    ):
+        project_dir = tmp_path / "proj"
+        toml = self._hybrid_toml(project_dir, frequency=False)
+        toml += f"\n{section}\n{key} = {value}\n"
+        _write_manifest_project(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            100,
+            ecc_toml=toml,
+        )
+
+        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
+
+        assert rc == 0
+        assert manifest_stubs.records()[0]["status"] == "checked"
 
 
 class TestManifestBoolTypeSafety:

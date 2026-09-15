@@ -130,8 +130,8 @@ def _require_step_index(flow: "EngineFlow", name: str) -> int:
     for index, step in enumerate(steps):
         if step.get("name") == name:
             return index
-    # Selectors accept any CLI spelling of a persisted step ("floorplan",
-    # "Floorplan", "FLOORPLAN", "synth", ...) — only an unambiguous
+    # Selectors accept any CLI spelling of a persisted step ("postfloorplan",
+    # "postFloorplan", "POSTFLOORPLAN", "synth", ...) — only an unambiguous
     # canonical form may not be guessed at.
     from chipcompiler.rtl2gds.builder import normalize_flow_step
 

@@ -157,7 +157,7 @@ def legacy_hint():
 
 @pytest.fixture
 def create_legacy_workspace():
-    """Factory: a real runs/<run_id> workspace with a Synthesis..Floorplan
+    """Factory: a real runs/<run_id> workspace with a Synthesis..postFloorplan
     flow ledger cut from the canonical chain.
 
     *states* holds (first step state, last step state); steps between them
@@ -189,7 +189,7 @@ def create_legacy_workspace():
             for step, tool, _state in build_rtl2gds_flow()
         ]
         tools = dict(chain)
-        names = flow_steps_in_range("Synthesis", "Floorplan")
+        names = flow_steps_in_range("Synthesis", "postFloorplan")
         step_states = [states[0]] * (len(names) - 1) + [states[1]]
         steps = [
             {

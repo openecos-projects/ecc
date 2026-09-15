@@ -31,11 +31,13 @@ from chipcompiler.tools.ecc.sta_qor import (
 )
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 from chipcompiler.tools.ecc.utility import is_eda_exist
-from chipcompiler.utility import json_read
+from chipcompiler.utility import json_read, json_write
 
 _GEOMETRY_SNAPSHOT_STEPS = frozenset(
     {
-        StepEnum.FLOORPLAN.value,
+        StepEnum.PRE_FLOORPLAN.value,
+        StepEnum.MACRO_PLACEMENT.value,
+        StepEnum.POST_FLOORPLAN.value,
         StepEnum.PLACEMENT.value,
         StepEnum.CTS.value,
         StepEnum.TIMING_OPT.value,
@@ -389,7 +391,6 @@ def save_data(
     ecc_module: ECCToolsModule,
     *,
     feature_step: bool = True,
-    report_timing: bool = False,
 ) -> bool:
     """
     module is ecc module from db engine,
@@ -421,17 +422,6 @@ def save_data(
         ecc_module.feature_step(step=step.name, json_path=step.feature.step or "")
 
     ecc_module.report_summary(path=step.report.db or "")
-
-    if report_timing:
-        ecc_module.release_sta()
-        ecc_module.init_sta(
-            output_dir=(step.data.steps or {}).get("sta", ""),
-            top_module=workspace.design.top_module,
-            lib_paths=workspace.pdk.libs,
-            sdc_path=workspace.pdk.sdc,
-        )
-        ecc_module.report_timing()
-        ecc_module.release_sta()
 
     # update parameters
     db_json = json_read(step.feature.db or "")
@@ -476,8 +466,10 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
 
     state = False
     match step.name:
-        case StepEnum.FLOORPLAN.value:
-            state = run_floorplan(workspace=workspace, step=step, ecc_module=ecc_module)
+        case StepEnum.PRE_FLOORPLAN.value:
+            state = run_pre_floorplan(workspace=workspace, step=step, ecc_module=ecc_module)
+        case StepEnum.POST_FLOORPLAN.value:
+            state = run_post_floorplan(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.CTS.value:
             state = run_cts(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.ROUTING.value:
@@ -569,24 +561,14 @@ def run_routing(
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        if ecc_module.is_rt_timing_enable(
-            config=workspace.config.get(f"{StepEnum.ROUTING.value}", "")
-        ):
-            ecc_module.release_sta()
-            ecc_module.init_sta(
-                output_dir=(step.data.steps or {}).get(StepEnum.ROUTING.value, ""),
-                top_module=workspace.design.top_module,
-                lib_paths=workspace.pdk.libs,
-                sdc_path=workspace.pdk.sdc,
-            )
-
+        # Timing-driven routing is self-contained in iRT: RTInterface builds its
+        # own timing engine from the shared db config (lib paths, SDC), so no
+        # Python-side STA lifecycle is needed before run_routing.
         ecc_module.run_routing(config=workspace.config.get(f"{StepEnum.ROUTING.value}", ""))
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_routing.value, state=StateEnum.Success)
 
-        reslut = save_data(
-            workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False
-        )
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
@@ -619,7 +601,6 @@ def run_drc(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             step=step,
             ecc_module=ecc_module,
             feature_step=False,
-            report_timing=False,
         )
         if not reslut:
             return False
@@ -666,7 +647,6 @@ def run_lvs(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             step=step,
             ecc_module=ecc_module,
             feature_step=False,
-            report_timing=False,
         )
         if not reslut:
             return False
@@ -699,9 +679,7 @@ def run_filler(
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_filler.value, state=StateEnum.Success)
 
-        reslut = save_data(
-            workspace=workspace, step=step, ecc_module=ecc_module, report_timing=False
-        )
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
@@ -710,12 +688,10 @@ def run_filler(
     return reslut
 
 
-def run_floorplan(
+def run_pre_floorplan(
     workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
 ) -> bool:
-    """
-    run floorplan
-    """
+    """Run the simple floorplan with automatic macro placement enabled."""
     reslut = False
     sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
 
@@ -724,9 +700,53 @@ def run_floorplan(
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        ecc_module.init_fp(config=workspace.config.get(StepEnum.FLOORPLAN.value, ""))
+        floorplan_config = os.fspath(workspace.config.get(StepEnum.FLOORPLAN.value, ""))
+        floorplan_path = Path(floorplan_config)
+        simple_floorplan_config = os.fspath(
+            floorplan_path.with_stem(f"{floorplan_path.stem}_simple")
+        )
+        simple_floorplan = json_read(floorplan_config)
+        simple_floorplan["macro_placer"]["mode"] = "auto"
+        simple_floorplan["macro_placer"]["file_path"] = ""
+        json_write(simple_floorplan_config, simple_floorplan)
+
+        ecc_module.init_fp(config=simple_floorplan_config)
+        ecc_module.run_simple_fp()
+        ecc_module.destroy_fp()
         sub_flow.update_step(step_name=EccSubFlowEnum.init_floorplan.value, state=StateEnum.Success)
 
+        reslut = save_data(
+            workspace=workspace,
+            step=step,
+            ecc_module=ecc_module,
+            feature_step=False,
+        )
+        sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
+
+    return reslut
+
+
+def run_post_floorplan(
+    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
+) -> bool:
+    """Run complete floorplanning with the macro-location file."""
+    reslut = False
+    sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
+
+    ecc_module = get_eda_instance(workspace=workspace, step=step, ecc_module=ecc_module)
+
+    if ecc_module is not None:
+        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
+
+        floorplan_config = os.fspath(workspace.config.get(StepEnum.FLOORPLAN.value, ""))
+        floorplan = json_read(floorplan_config)
+        floorplan["macro_placer"]["mode"] = "file"
+        floorplan["macro_placer"]["file_path"] = os.fspath(
+            workspace.config.get("macro_location", "")
+        )
+        json_write(floorplan_config, floorplan)
+
+        ecc_module.init_fp(config=floorplan_config)
         ecc_module.run_fp()
         sub_flow.update_step(step_name=EccSubFlowEnum.create_tracks.value, state=StateEnum.Success)
         sub_flow.update_step(step_name=EccSubFlowEnum.place_io_pins.value, state=StateEnum.Success)
@@ -741,9 +761,7 @@ def run_floorplan(
             step=step,
             ecc_module=ecc_module,
             feature_step=False,
-            report_timing=False,
         )
-
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
         run_analysis(workspace=workspace, step=step, subflow=sub_flow)
@@ -847,7 +865,6 @@ def run_rcx(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             step=step,
             ecc_module=ecc_module,
             feature_step=False,
-            report_timing=False,
         ):
             workspace.logger.error("Failed to save RCX data")
             return False
@@ -977,7 +994,6 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         step=step,
         ecc_module=ecc_module,
         feature_step=False,
-        report_timing=False,
     )
 
     sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)

@@ -31,7 +31,9 @@ from chipcompiler.cli.project.manifest_write import (
 # Canonical step name -> GUI display name (manifest vocabulary).
 CANONICAL_TO_DISPLAY = {
     "Synthesis": "Synth",
-    "Floorplan": "Floor",
+    "preFloorplan": "PreFloorplan",
+    "macroPlacement": "MacroPlacement",
+    "postFloorplan": "PostFloorplan",
     "fixFanout": "Fanout",
     "place": "Place",
     "CTS": "CTS",

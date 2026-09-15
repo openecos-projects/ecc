@@ -27,12 +27,6 @@ Outcomes:
 - ``mismatch``: divergent flows — validation is pure-read, nothing was
   written; the caller surfaces flow_mismatch.
 
-Ledgers persisted in the pre-reorder chain order (DRC/LVS before filler,
-RCX/STA/Harden as preset suffixes) are migrated onto the canonical chain by
-step name instead of rejected: records up to ``route`` keep their states,
-everything after restarts from Unstart, and the outcome falls back to
-``repaired``/``resume``.
-
 :func:`classify_workspace` exposes the pure-read phase to callers that
 must reject a mismatch before loading (and thereby initializing or
 migrating) the workspace; it additionally returns ``pending_mutation``
@@ -99,46 +93,6 @@ def _is_legacy_missing_synthesis_lec(
         len(persisted) < len(target_without_lec)
         and target_without_lec[: len(persisted)] == persisted
     )
-
-
-# The pre-reorder canonical chain: DRC/LVS ran before filler, and RCX/STA/
-# Harden were preset-only suffixes. Ledgers persisted in this shape map onto
-# the current chain by step name.
-_LEGACY_RTL2GDS_CHAIN = (
-    ("Synthesis", "yosys"),
-    ("lec", "yosys_lec"),
-    ("Floorplan", "ecc"),
-    ("place", "dreamplace"),
-    ("CTS", "ecc"),
-    ("legalization", "dreamplace"),
-    ("Timing optimization", "sizer"),
-    ("route", "ecc"),
-    ("drc", "ecc"),
-    ("lvs", "ecc"),
-    ("filler", "ecc"),
-    ("postRouteLec", "yosys_lec"),
-    ("RCX", "ecc"),
-    ("sta", "ecc"),
-    ("Harden", "ecc"),
-)
-
-
-def _is_legacy_reordered_chain(persisted: list[tuple[str, str]]) -> bool:
-    """Whether a ledger is an order-preserving slice of the pre-reorder chain.
-
-    Legacy presets always began at Synthesis, so a ledger starting anywhere
-    else is a foreign shape, not a legacy one.
-    """
-    if not persisted or persisted[0] != _LEGACY_RTL2GDS_CHAIN[0]:
-        return False
-    positions = {entry: index for index, entry in enumerate(_LEGACY_RTL2GDS_CHAIN)}
-    taken = []
-    for entry in persisted:
-        position = positions.get(entry)
-        if position is None:
-            return False
-        taken.append(position)
-    return taken == sorted(set(taken)) and len(taken) == len(set(taken))
 
 
 def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
@@ -245,8 +199,6 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
     relation = compare_flows(persisted, target)
     if relation == "divergent" and _is_legacy_missing_synthesis_lec(persisted, target):
         relation = "legacy_missing_synthesis_lec"
-    if relation == "divergent" and _is_legacy_reordered_chain(persisted):
-        relation = "legacy_reordered_chain"
     if relation == "divergent":
         return (
             ReconcileResult(
@@ -262,10 +214,7 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
         stale = flow_range_of(workspace_flow) != flow_range_of(target_section)
     else:
         stale = bool(target_section)
-    if (
-        relation in {"proper_prefix", "legacy_missing_synthesis_lec", "legacy_reordered_chain"}
-        or stale
-    ):
+    if relation in {"proper_prefix", "legacy_missing_synthesis_lec"} or stale:
         context = {
             "flow_data": flow_data,
             "persisted": persisted,
@@ -434,40 +383,6 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
             )
         adopted_flow = dict(target_section)
         outcome = "extended"
-    elif relation == "legacy_reordered_chain":
-        # Map a pre-reorder ledger onto the canonical chain by step name:
-        # the Synthesis..route prefix is identical in both orders and keeps
-        # its records; every post-route step ran with pre-reorder inputs
-        # (DRC/LVS before filler), so it restarts from Unstart.
-        import copy
-
-        from chipcompiler.data.workspace import (
-            _canonical_rtl2gds_flow_entries,
-            _flow_step_template,
-        )
-
-        context["flow_data_original"] = copy.deepcopy(flow_data)
-        persisted_by_name = {
-            step.get("name"): step for step in flow_data.get("steps", []) if isinstance(step, dict)
-        }
-        chain_names = [name for name, _tool, _state in _canonical_rtl2gds_flow_entries()]
-        route_position = chain_names.index("route")
-        steps = []
-        for name, tool in target:
-            old = persisted_by_name.get(name)
-            if old is not None and chain_names.index(name) <= route_position:
-                steps.append(old)
-            else:
-                steps.append(_flow_step_template(name, tool, "Unstart"))
-                if name not in persisted_by_name:
-                    appended.append(name)
-        flow_data["steps"] = steps
-        if not json_write(workspace_dir / "home" / "flow.json", flow_data):
-            return ReconcileResult(
-                outcome="mismatch",
-                error=f"failed to rewrite flow steps into {workspace_dir / 'home' / 'flow.json'}",
-            )
-        adopted_flow = dict(target_section)
     else:
         # Adopt the effective target when the persisted [flow] is stale
         # (crash between append and adopt, a hand-edited file, or an
@@ -484,8 +399,6 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
         # failure is an error, not a tolerated partial state. Roll the
         # ledger back too — leaving the appended suffix behind would
         # report failure while the persisted flow is wider than the target.
-        # The reordered-chain migration can rewrite the ledger without
-        # appending a single name, so the rollback keys on the snapshot.
         if "flow_data_original" in context:
             json_write(workspace_dir / "home" / "flow.json", context["flow_data_original"])
         return ReconcileResult(

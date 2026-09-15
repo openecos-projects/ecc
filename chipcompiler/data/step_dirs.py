@@ -14,7 +14,9 @@ from chipcompiler.data.step import StepEnum
 STEP_DIRECTORIES = {
     StepEnum.SYNTHESIS.value: "Synthesis_yosys",
     StepEnum.LEC.value: "lec_yosys_lec",
-    StepEnum.FLOORPLAN.value: "Floorplan_ecc",
+    StepEnum.PRE_FLOORPLAN.value: "preFloorplan_ecc",
+    StepEnum.MACRO_PLACEMENT.value: "macroPlacement_dreamplace",
+    StepEnum.POST_FLOORPLAN.value: "postFloorplan_ecc",
     StepEnum.PLACEMENT.value: "place_dreamplace",
     StepEnum.CTS.value: "CTS_ecc",
     StepEnum.LEGALIZATION.value: "legalization_dreamplace",
