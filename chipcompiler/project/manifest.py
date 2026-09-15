@@ -165,11 +165,13 @@ def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> Mani
     if not workspace_id or not workspace_path:
         raise ManifestError(f"workspaces[{index}] requires workspace_id and workspace_path")
     resolved = Path(workspace_path)
-    if not resolved.is_absolute():
+    relative_path = not resolved.is_absolute()
+    if relative_path:
         resolved = Path(project_dir) / resolved
     try:
         canonical = resolved.resolve()
-        canonical.relative_to(Path(project_dir).resolve())
+        if relative_path:
+            canonical.relative_to(Path(project_dir).resolve())
     except ValueError:
         raise ManifestError(
             f"workspaces[{index}] workspace_path escapes the project root: {workspace_path}"
@@ -180,6 +182,11 @@ def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> Mani
         raise ManifestError(
             f"workspaces[{index}] workspace_path cannot be resolved: {workspace_path}"
         ) from exc
+    project = Path(project_dir).resolve()
+    if canonical in (project, project / "runs") or project.is_relative_to(canonical):
+        raise ManifestError(
+            f"workspaces[{index}] workspace_path is a protected project path: {workspace_path}"
+        )
     status = source.get("status")
     if not isinstance(status, str) or status not in _WORKSPACE_STATUSES:
         status = "not_started"
@@ -258,8 +265,8 @@ def load_manifest(project_dir: str) -> ProjectManifest:
 
     Mirrors the GUI parser's contract: schema_version 1 and a workspaces
     array are required, everything else is default-filled. Raises
-    ManifestError on parse failure, root_path mismatch, or a workspace
-    path outside the project root.
+    ManifestError on parse failure, root_path mismatch, or a relative workspace
+    path that escapes the project root. Absolute workspace paths may be external.
     """
     path = os.path.join(project_dir, MANIFEST_FILENAME)
     try:
@@ -312,6 +319,27 @@ def load_manifest(project_dir: str) -> ProjectManifest:
         }
 
     _validate_mpc(source.get("mpc"))
+    workspaces = tuple(
+        _normalize_workspace_entry(entry, index, project_dir)
+        for index, entry in enumerate(raw_workspaces)
+    )
+    active_ids: set[str] = set()
+    active_paths: set[str] = set()
+    for workspace in workspaces:
+        if workspace.status == "archived":
+            continue
+        if workspace.workspace_id in active_ids:
+            raise ManifestError(
+                f"invalid project manifest: duplicate active workspace_id "
+                f"{workspace.workspace_id!r}"
+            )
+        if workspace.workspace_path in active_paths:
+            raise ManifestError(
+                f"invalid project manifest: duplicate active workspace_path "
+                f"{workspace.workspace_path!r}"
+            )
+        active_ids.add(workspace.workspace_id)
+        active_paths.add(workspace.workspace_path)
 
     return ProjectManifest(
         project_dir=project_dir,
@@ -321,10 +349,7 @@ def load_manifest(project_dir: str) -> ProjectManifest:
         design_name=design_name,
         base_design=base_design,
         objectives=objectives,
-        workspaces=tuple(
-            _normalize_workspace_entry(entry, index, project_dir)
-            for index, entry in enumerate(raw_workspaces)
-        ),
+        workspaces=workspaces,
         qor_baseline=qor_baseline,
         raw=source,
     )

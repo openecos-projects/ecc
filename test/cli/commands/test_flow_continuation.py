@@ -371,13 +371,11 @@ class TestFlowMismatchZeroMutation:
         assert len(errors) == 1
         assert (external / "home" / "flow.json").read_bytes() == flow_before
 
-    def test_existing_run_rejects_symlinked_manifest_target(
+    def test_manifest_symlink_target_resolves_to_canonical_external_workspace(
         self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
     ):
-        """A declared workspace whose directory is a symlink into an
-        external tree never reaches the engine: the manifest layer rejects it
-        (manifest_invalid), with the dispatch ownership guard as the backup
-        line behind it. The external tree is left untouched either way."""
+        """A legacy absolute declaration through a symlink is normalized to
+        the exact external root and remains read-only during discovery."""
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
         external = tmp_path / "external-ws"
@@ -387,15 +385,11 @@ class TestFlowMismatchZeroMutation:
         _write_manifest_with_workspace(project_dir, run_dir, pdk_root)
 
         flow_before = (external / "home" / "flow.json").read_bytes()
-        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
+        rc = cli_main.run(["status", "--project", project_dir, "--plain"])
 
-        assert rc != 0
-        errors = [
-            r
-            for r in _records(capsys, plain_records)
-            if r.get("error") in {"manifest_invalid", "run_target_unsafe"}
-        ]
-        assert len(errors) == 1
+        assert rc == 0
+        records = _records(capsys, plain_records)
+        assert records[0]["workspace"] == str(external.resolve())
         assert (external / "home" / "flow.json").read_bytes() == flow_before
 
     def test_flow_exception_marks_manifest_status_failed(
