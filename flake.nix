@@ -153,7 +153,10 @@
     };
   in flake-parts.lib.mkFlake { inherit inputs; } {
     systems = [ "x86_64-linux" ];
-    perSystem = { self', pkgs, system, ... }: {
+    perSystem = { self', pkgs, system, ... }:
+      let
+        signoffTools = pkgs.callPackage ./nix/signoff-tools.nix { };
+      in {
       packages.default = pkgs.callPackage chipcompiler {
         ecc-dreamplace = ecc-dreamplace.packages.${system}.default;
         ecc-tools = ecc-tools.packages.${system}.default;
@@ -161,6 +164,25 @@
         rosettakit = pkgs.callPackage rosettakit {};
         yosysWithSlang = infra.packages.${system}.yosysWithSlang;
       };
+      packages.filecheck = signoffTools.filecheck;
+      packages.lit = signoffTools.lit;
+      packages.signoff-tools = signoffTools.signoff-tools;
+      packages.ci-run-ics55-gcd = signoffTools.ci-run-ics55-gcd;
+      packages.ci-export-signoff-csv = signoffTools.ci-export-signoff-csv;
+
+      apps.ci-run-ics55-gcd = {
+        type = "app";
+        program = "${signoffTools.ci-run-ics55-gcd}/bin/ci-run-ics55-gcd";
+      };
+      apps.ci-export-signoff-csv = {
+        type = "app";
+        program = "${signoffTools.ci-export-signoff-csv}/bin/ci-export-signoff-csv";
+      };
+      apps.filecheck = {
+        type = "app";
+        program = "${signoffTools.filecheck}/bin/filecheck";
+      };
+
       devShells.default = pkgs.mkShell.override {
         stdenv = pkgs.ccacheStdenv;
       } {
@@ -178,9 +200,14 @@
         nativeBuildInputs = ecc-dreamplace.packages.${system}.default.rawNativeBuildInputs ++
           ecc-tools.packages.${system}.default.rawNativeBuildInputs ++ (with pkgs; [
             uv
-          ]);
+          ]) ++ [
+            signoffTools.signoff-tools
+            signoffTools.ci-run-ics55-gcd
+            signoffTools.ci-export-signoff-csv
+          ];
         shellHook = ''
           export CCACHE_DIR="$PWD/.ccache"
+          export ECC_REPO_ROOT="$PWD"
         '';
       };
     };
