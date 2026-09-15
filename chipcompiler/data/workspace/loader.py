@@ -111,10 +111,7 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
         workspace.design.input_filelist = Path(persisted_filelist)
 
     filelist_path = origin_dir / "filelist"
-    if (
-        workspace.design.input_filelist is None
-        and filelist_path.exists()
-    ):
+    if workspace.design.input_filelist is None and filelist_path.exists():
         workspace.design.input_filelist = filelist_path
 
     workspace.flow.path = home_dir / "flow.json"
