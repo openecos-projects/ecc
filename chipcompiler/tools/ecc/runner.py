@@ -441,7 +441,6 @@ def save_data(
         aspect_ratio = die_bounding_width / die_bounding_height if die_bounding_height > 0 else 1
 
         update_param = {
-            "die": {"size": [die_bounding_width, die_bounding_height], "area": die_area},
             "core": {
                 "size": [core_bounding_width, core_bounding_height],
                 "area": core_area,
@@ -452,6 +451,22 @@ def save_data(
                 "aspect_ratio": aspect_ratio,
             },
         }
+        # In die_util mode the realized die dimensions are outputs of the
+        # geometry solver, not inputs: re-pinning "[params.die] size" would
+        # make every later config refresh force die_size and invalidate the
+        # utilization the floorplan just consumed. Only die_size workspaces
+        # keep the explicit-size pin.
+        floorplan_mode = None
+        try:
+            floorplan_config = json_read(workspace.config[StepEnum.FLOORPLAN.value])
+            floorplan_mode = (floorplan_config.get("die_builder") or {}).get("mode")
+        except (OSError, ValueError):
+            floorplan_mode = None
+        if floorplan_mode != "die_util":
+            update_param = {
+                "die": {"size": [die_bounding_width, die_bounding_height], "area": die_area},
+                **update_param,
+            }
 
         update_parameters(parameters_src=update_param, parameters_target=workspace.parameters.data)
         if not save_parameter(workspace.parameters):

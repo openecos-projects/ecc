@@ -32,10 +32,12 @@ from .data.candidate_materialization import (
     candidate_written_patch,
     validate_candidate_materialization_receipt,
 )
+from .data.candidate_registry import FLOORPLAN_TARGET_FLOW_STEP
 from .data.parameter_application_receipt import build_parameter_application_receipt
 from .engine import AgentEngineFlow
 from .floorplan_mode import (
     FLOORPLAN_MODE_REF,
+    drop_pinned_die_size,
     prepare_floorplan_mode,
     validate_floorplan_mode_request,
     validate_floorplan_mode_result,
@@ -188,6 +190,11 @@ class FlowAgentRuntimeApi:
                     lambda locked: self._clone_candidate_snapshot(locked, request),
                 )
             )
+            # A die_util candidate must stop pinning the explicit die size
+            # before the flow loads its parameters, or every config refresh
+            # forces the mode back to die_size.
+            if request.floorplan_mode == "die_util":
+                drop_pinned_die_size(candidate_workspace)
             # Execution phase: the clone owns an isolated lifecycle and never
             # holds the source lock, so sibling candidates and source
             # operations can run while these steps execute.
@@ -330,23 +337,18 @@ def _candidate_rerun_steps(flow, target_step: str, end_step: str, execution_scop
     )
 
 
-# The RPC-level "Floorplan" target names the shared floorplan configuration,
-# not a flow step; its range starts at the first floorplan sub-step.
-_FLOORPLAN_RANGE_START = {"Floorplan": "preFloorplan"}
-
-
 def _candidate_step_range(
     steps: list, target_step: str, end_step: str, execution_scope: str
 ) -> list:
     if execution_scope not in {"single_step", "full_flow"}:
         raise RuntimeApiError("invalid_request", "candidate rerun execution scope is invalid")
     range_target = target_step
-    if target_step in _FLOORPLAN_RANGE_START and not any(
+    if target_step in FLOORPLAN_TARGET_FLOW_STEP and not any(
         _step_value(step, "name") == target_step for step in steps
     ):
         # Flows running the floorplan phase as sub-steps have no literal
         # "Floorplan" step; start the range at its first sub-step instead.
-        range_target = _FLOORPLAN_RANGE_START[target_step]
+        range_target = FLOORPLAN_TARGET_FLOW_STEP[target_step]
     target_index = next(
         (index for index, step in enumerate(steps) if _step_value(step, "name") == range_target),
         None,

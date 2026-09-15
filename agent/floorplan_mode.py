@@ -128,6 +128,27 @@ def prepare_floorplan_mode(workspace, request) -> None:
     apply_floorplan_mode(workspace, "Floorplan")
 
 
+def drop_pinned_die_size(workspace) -> None:
+    """Drop the explicit die dimensions so config refreshes keep die_util.
+
+    ``_refresh_floorplan_config`` forces ``die_builder.mode = "die_size"``
+    whenever the workspace parameters pin ``[params.die] size``; a die_util
+    candidate is only effective when the isolated clone stops pinning that
+    size. Call before the candidate flow loads its parameters.
+    """
+    parameters = getattr(workspace, "parameters", None)
+    data = getattr(parameters, "data", None)
+    die = data.get("die") if isinstance(data, dict) else None
+    if not isinstance(die, dict) or not die.get("size"):
+        return
+    die.pop("size", None)
+    die.pop("area", None)
+    from chipcompiler.data.parameter import save_parameter
+
+    if not save_parameter(parameters):
+        raise RuntimeApiError("command_failed", "candidate params.toml could not be updated")
+
+
 def apply_floorplan_mode(workspace, step_name: str) -> None:
     if step_name != "Floorplan":
         return
