@@ -288,6 +288,41 @@ def test_workspace_spec_update_is_atomic_revisioned_and_idempotent(
     assert read_engineering_snapshot(repeated) == after
 
 
+def test_workspace_spec_update_keeps_generated_filelist_relocatable(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    from chipcompiler.data import load_workspace
+    from chipcompiler.data.parameter import load_parameter
+    from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
+    from chipcompiler.engine.snapshot import read_engineering_snapshot
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    created = create_workspace_from_spec(target, payload["workspaceSpec"], bindings)
+
+    second_rtl = tmp_path / "helper.v"
+    second_rtl.write_text("module helper; endmodule\n", encoding="utf-8")
+    updated_spec = deepcopy(payload["workspaceSpec"])
+    updated_spec["inputs"].append({"inputId": "rtl-helper", "role": "rtl"})
+    updated_bindings = deepcopy(bindings)
+    updated_bindings["inputs"]["rtl-helper"] = str(second_rtl)
+
+    update_workspace_from_spec(
+        target,
+        read_engineering_snapshot(created)["workspaceRevision"],
+        updated_spec,
+        updated_bindings,
+    )
+
+    persisted = Path(load_parameter(target / "home" / "params.toml").data["file_list"])
+    reopened = load_workspace(target)
+
+    assert not persisted.is_absolute()
+    assert (target / persisted).is_file()
+    assert reopened.design.input_filelist == target / persisted
+
+
 def test_workspace_spec_stale_revision_does_not_create_missing_snapshot(
     tmp_path, minimal_ics55_pdk_factory
 ):

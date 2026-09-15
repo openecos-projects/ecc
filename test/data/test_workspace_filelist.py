@@ -88,7 +88,7 @@ class TestCreateWorkspaceIntegration:
 
     def test_filelist_survives_workspace_reload(self, tmp_path, minimal_ics55_pdk_factory):
         from chipcompiler.data import load_workspace
-        from chipcompiler.data.parameter import load_parameter
+        from chipcompiler.data.parameter import load_parameter, save_parameter
         from chipcompiler.data.workspace_config import workspace_config_path
 
         project_dir = tmp_path / "project"
@@ -119,10 +119,14 @@ class TestCreateWorkspaceIntegration:
         assert frozen.is_file()
 
         parameters = load_parameter(workspace_config_path(workspace_dir))
-        assert parameters.data["file_list"] == str(frozen)
+        assert parameters.data["file_list"] == "origin/design.f"
 
         reloaded = load_workspace(workspace_dir)
         assert reloaded.design.input_filelist == frozen
+
+        parameters.data["file_list"] = str(frozen)
+        assert save_parameter(parameters)
+        assert load_workspace(workspace_dir).design.input_filelist == frozen
 
     def test_filelist_absolute_entries_rewritten_to_frozen_sources(self, tmp_path):
         from chipcompiler.data.workspace import copy_filelist_with_sources

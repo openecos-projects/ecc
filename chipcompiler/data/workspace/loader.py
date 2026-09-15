@@ -107,8 +107,12 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
         workspace.design.golden_verilog = golden
 
     persisted_filelist = parameters.data.get("file_list", "")
-    if persisted_filelist and Path(persisted_filelist).is_file():
-        workspace.design.input_filelist = Path(persisted_filelist)
+    if persisted_filelist:
+        persisted_filelist = Path(persisted_filelist)
+        if not persisted_filelist.is_absolute():
+            persisted_filelist = workspace_dir / persisted_filelist
+        if persisted_filelist.is_file():
+            workspace.design.input_filelist = persisted_filelist
 
     filelist_path = origin_dir / "filelist"
     if workspace.design.input_filelist is None and filelist_path.exists():
