@@ -188,7 +188,18 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
     def _open_legacy_workspace(self, request: WorkspaceOpenRequest) -> dict:
         workspace = self._load_workspace(request.directory)
         build_flow_for_workspace(workspace, create_step_workspaces=False)
-        session = self.sessions.open_session(workspace.directory, workspace=workspace)
+        from chipcompiler.engine.snapshot import EngineeringSnapshotError, read_engineering_snapshot
+
+        try:
+            snapshot = read_engineering_snapshot(workspace)
+        except EngineeringSnapshotError:
+            snapshot = None
+        session = self.sessions.open_session(
+            workspace.directory,
+            workspace=workspace,
+            workspace_id=snapshot["workspaceId"] if snapshot else None,
+            workspace_revision=snapshot["workspaceRevision"] if snapshot else 0,
+        )
         self.operations.load_workspace_ledger(
             session.workspace_id,
             session.directory / "home" / "runtime-commands.json",
@@ -2460,7 +2471,10 @@ def build_flow_for_workspace(workspace, *, create_step_workspaces: bool = True):
 
 
 def _workspace_session_result(session: WorkspaceSession) -> dict:
-    return {"workspaceId": session.workspace_id, "directory": str(session.directory)}
+    result = {"workspaceId": session.workspace_id, "directory": str(session.directory)}
+    if session.workspace_revision > 0:
+        result["workspaceRevision"] = session.workspace_revision
+    return result
 
 
 def _db_ensure_result(

@@ -18,6 +18,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceInfoRequest,
     WorkspaceOpenRequest,
     WorkspaceRecoverInterruptedRequest,
+    WorkspaceStepConfigurationReadRequest,
     WorkspaceSyncConfigRequest,
 )
 from chipcompiler.runtime.sessions import WorkspaceSession, WorkspaceSessionRegistry
@@ -415,6 +416,53 @@ def test_open_workspace_loads_without_creating_step_workspaces(monkeypatch, tmp_
     }
     assert capture["loaded"] == [str(ws)]
     assert not DummyFlow.instances[0].created
+
+
+def test_open_workspace_reuses_engineering_snapshot_identity(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "chipcompiler.engine.snapshot.read_engineering_snapshot",
+        lambda _workspace: {"workspaceId": "cli-workspace", "workspaceRevision": 7},
+    )
+    api = WorkspaceRuntimeApi()
+
+    result = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))
+
+    assert result == {
+        "workspaceId": "cli-workspace",
+        "workspaceRevision": 7,
+        "directory": str(ws.resolve()),
+    }
+
+
+def test_step_configuration_keeps_cli_workspace_identity_after_open(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "chipcompiler.engine.snapshot.read_engineering_snapshot",
+        lambda _workspace: {"workspaceId": "cli-workspace", "workspaceRevision": 7},
+    )
+    monkeypatch.setattr(
+        "chipcompiler.engine.read_step_configuration",
+        lambda _workspace, _step: {
+            "step": "Synthesis",
+            "stepId": "Synthesis",
+            "parameters": [],
+            "workspaceId": "cli-workspace",
+            "workspaceRevision": 7,
+        },
+    )
+    api = WorkspaceRuntimeApi()
+    opened = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))
+
+    result = api.read_workspace_step_configuration(
+        WorkspaceStepConfigurationReadRequest(
+            step="Synthesis",
+            workspace_id=opened["workspaceId"],
+        )
+    )
+
+    assert result["workspaceId"] == opened["workspaceId"]
+    assert result["workspaceRevision"] == opened["workspaceRevision"]
 
 
 def test_recover_interrupted_is_marker_scoped_and_idempotent(monkeypatch, tmp_path):
