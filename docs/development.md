@@ -331,7 +331,7 @@ Using `ecc check --project gcd --plain` as the example:
    execute_command("check", command_input, project_handlers.check)
    ```
 3. `core/invocation.py::execute_command()` (`cli/core/invocation.py`) then:
-   - `build_context()`: resolves the project directory (`--project`, defaulting to cwd) → reads its sole `ecc.toml` (an unreadable file is recorded in `config_error`) → classifies the project state via `cli/project/manifest.py::classify_project()` (manifest / legacy / virgin). Manifest projects resolve `--workspace NAME` only through the `project.json` workspaces table: one active workspace auto-selects, multiple ones require the selector, and a new `ecc run --workspace NAME` target is registered before files are created. `--workspace` is a single project-local name, never a direct path. A legacy project must migrate before `ecc run`; a corrupt manifest yields `manifest_invalid`. The context derives `OutputMode` from `--plain` and carries `project_state` / `manifest_error` (`cli/core/types.py`).
+   - `build_context()`: resolves the project directory (`--project`, defaulting to cwd) → reads its sole `ecc.toml` (an unreadable file is recorded in `config_error`) → classifies the project state via `cli/project/manifest.py::classify_project()` (manifest / legacy / virgin). Manifest projects resolve `--workspace NAME` only through the `project.json` workspaces table: one active workspace auto-selects, multiple ones require the selector, and a new `ecc run --workspace NAME` target is registered before files are created. The workspace selector is a single-segment logical ID. The optional run `--path` is a complete canonical absolute target, requires an explicit ID, and is used only to create or register that ID; without it the target remains `<project>/<workspace-id>`. A legacy project must migrate before `ecc run`; a corrupt manifest yields `manifest_invalid`. The context derives `OutputMode` from `--plain` and carries `project_state` / `manifest_error` (`cli/core/types.py`).
    - Calls the handler: `handler(command_input, ctx) -> CommandResult`.
    - After the handler, records are appended as needed (`_with_legacy_hint` / `_with_config_shadow_hint`): `run/check/status` on a legacy project carry a migration hint (pointing at `ecc migrate`); when a workspace's `home/` holds both `params.toml` and the legacy `parameters.json`, a `workspace_config_shadowed` warning is emitted (the JSON is inert).
    - Renders: `rendering/renderers.py::render_command_result()` first looks up a custom renderer in `RENDERERS[(render_key, output_mode)]`, falling back to the generic `rendering/render.py::render_result()`.
@@ -513,7 +513,8 @@ in `test/cli/params/`.
 - **Fresh workspace**: resolve `[design]` input declarations, PDK, parameters,
   and the requested entry step; validate only that entry step's required files;
   atomically pre-register the managed name in `project.json` as `not_started`;
-  preflight tools; call `create_workspace` at `<project>/<workspace-name>`.
+  preflight tools; call `create_workspace` at `<project>/<workspace-name>` or
+  the exact absolute `--path` when supplied.
   `create_workspace` copies inputs to `origin/` and produces all step configs;
   the CLI never rewrites those configs afterwards. A normal fresh flow uses a
   preset. `--from A --to B` instead calls `rtl2gds.build_flow_range(A, B)` to
@@ -527,6 +528,14 @@ in `test/cli/params/`.
   inclusive persisted range and invalidates its downstream suffix while
   retaining downstream output files. Existing workspaces neither preflight
   fresh inputs nor rewrite copied inputs/configuration.
+
+`ecc workspace import NAME --path /absolute/workspace` uses
+`cli/project/workspace_registration.py` to validate persisted workspace
+identity, flow range, status, and parameter differences before atomically
+adding the canonical path to `project.json`. The same service is used by an
+explicit `ecc run --path` that discovers an unregistered existing workspace.
+All later commands resolve the external directory through the manifest and do
+not accept a second path override.
 
 Project preset sequences are defined in `chipcompiler/rtl2gds/builder.py`
 (`build_*_flow()` / `get_flow_builders()`), not in the CLI layer.

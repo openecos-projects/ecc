@@ -131,15 +131,76 @@ def test_load_manifest_rejects_root_path_mismatch(tmp_path):
         load_manifest(str(tmp_path))
 
 
-def test_load_manifest_rejects_workspace_outside_root(tmp_path):
+def test_load_manifest_accepts_absolute_workspace_outside_root(tmp_path):
+    external = tmp_path.parent / "x"
     _write_manifest(
         tmp_path,
         _minimal_document(
             tmp_path,
-            workspaces=[{"workspace_id": "ws", "workspace_path": str(tmp_path.parent / "x")}],
+            workspaces=[{"workspace_id": "ws", "workspace_path": str(external)}],
+        ),
+    )
+
+    manifest = load_manifest(str(tmp_path))
+
+    assert manifest.workspaces[0].workspace_path == str(external.resolve())
+
+
+def test_load_manifest_rejects_relative_workspace_outside_root(tmp_path):
+    _write_manifest(
+        tmp_path,
+        _minimal_document(
+            tmp_path,
+            workspaces=[{"workspace_id": "ws", "workspace_path": "../x"}],
         ),
     )
     with pytest.raises(ManifestError):
+        load_manifest(str(tmp_path))
+
+
+@pytest.mark.parametrize("workspace_path", (".", "runs"))
+def test_load_manifest_rejects_protected_project_paths(tmp_path, workspace_path):
+    _write_manifest(
+        tmp_path,
+        _minimal_document(
+            tmp_path,
+            workspaces=[{"workspace_id": "ws", "workspace_path": workspace_path}],
+        ),
+    )
+
+    with pytest.raises(ManifestError, match="protected project path"):
+        load_manifest(str(tmp_path))
+
+
+def test_load_manifest_rejects_workspace_path_containing_project(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    _write_manifest(
+        project,
+        _minimal_document(
+            project,
+            workspaces=[{"workspace_id": "ws", "workspace_path": str(tmp_path)}],
+        ),
+    )
+
+    with pytest.raises(ManifestError, match="protected project path"):
+        load_manifest(str(project))
+
+
+@pytest.mark.parametrize("duplicate", ("id", "path"))
+def test_load_manifest_rejects_duplicate_active_workspace_identity(tmp_path, duplicate):
+    first = {"workspace_id": "one", "workspace_path": str(tmp_path / "one")}
+    second = {"workspace_id": "two", "workspace_path": str(tmp_path / "two")}
+    if duplicate == "id":
+        second["workspace_id"] = first["workspace_id"]
+    else:
+        second["workspace_path"] = first["workspace_path"]
+    _write_manifest(
+        tmp_path,
+        _minimal_document(tmp_path, workspaces=[first, second]),
+    )
+
+    with pytest.raises(ManifestError, match=f"duplicate active workspace_{duplicate}"):
         load_manifest(str(tmp_path))
 
 

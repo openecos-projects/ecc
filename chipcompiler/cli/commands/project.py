@@ -68,6 +68,10 @@ def run_cmd(
         str | None,
         typer.Option("--workspace", help="Create, select, or resume a managed workspace"),
     ] = None,
+    path: Annotated[
+        str | None,
+        typer.Option("--path", help="Exact absolute directory for the managed workspace"),
+    ] = None,
     resume: Annotated[
         bool,
         typer.Option("--resume", help="Continue from the first non-successful step"),
@@ -126,6 +130,7 @@ def run_cmd(
         overwrite=overwrite,
         param_set=tuple(param_set or ()),
         workspace=workspace,
+        path=path,
         resume=resume,
         from_step=from_step,
         to_step=to_step,

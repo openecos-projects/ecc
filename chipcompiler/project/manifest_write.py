@@ -62,13 +62,15 @@ def manifest_workspace_entry(
     status: str,
     now: str,
     skip_steps: list[str] | None = None,
+    parameter_patch: dict | None = None,
 ) -> dict:
     """One complete schema-v1 workspaces[] entry, every field materialized.
 
     The single builder for generated manifests and migration previews, so
     the previewed entry and the applied entry are the same object shape.
     ``skip_steps`` is materialized only when the workspace carries a
-    declared policy (an explicit empty list stays []).
+    declared policy (an explicit empty list stays []). ``parameter_patch``
+    is always materialized as an object for imported workspace metadata.
     """
     entry = {
         "workspace_id": workspace_id,
@@ -81,7 +83,7 @@ def manifest_workspace_entry(
         "status": status,
         "created_at": now,
         "updated_at": now,
-        "parameter_patch": {},
+        "parameter_patch": dict(parameter_patch or {}),
         "metrics_summary": {},
         "step_metrics": {},
     }
@@ -352,6 +354,8 @@ def pre_register_workspace(
     workspace_id: str,
     workspace_path: str,
     flow_config: dict | None,
+    status: str = "not_started",
+    parameter_patch: dict | None = None,
 ) -> str:
     """Atomically register a fresh managed workspace before filesystem creation.
 
@@ -382,9 +386,10 @@ def pre_register_workspace(
             workspace_path=workspace_path,
             start_step=start_step,
             end_step=end_step,
-            status="not_started",
+            status=status,
             skip_steps=list(declared_skip) if declared_skip is not None else None,
         )
+        document["workspaces"][0]["parameter_patch"] = dict(parameter_patch or {})
         if write_manifest_if_absent(project_dir, document):
             return "registered"
         # A concurrent creator won the link race: fall through and apply the
@@ -400,15 +405,15 @@ def pre_register_workspace(
             outcome = "failed"
             return
         for entry in workspaces:
-            if not isinstance(entry, dict) or entry.get("workspace_id") != workspace_id:
+            if not isinstance(entry, dict):
                 continue
-            if os.path.realpath(str(entry.get("workspace_path", ""))) == os.path.realpath(
+            same_id = entry.get("workspace_id") == workspace_id
+            same_path = os.path.realpath(str(entry.get("workspace_path", ""))) == os.path.realpath(
                 workspace_path
-            ):
-                outcome = "existing"
-            else:
-                outcome = "conflict"
-            return
+            )
+            if same_id or same_path:
+                outcome = "existing" if same_id and same_path else "conflict"
+                return
         workspaces.append(
             manifest_workspace_entry(
                 workspace_id,
@@ -416,9 +421,10 @@ def pre_register_workspace(
                 workspace_path=workspace_path,
                 start_step=start_step,
                 end_step=end_step,
-                status="not_started",
+                status=status,
                 now=now,
                 skip_steps=list(declared_skip) if declared_skip is not None else None,
+                parameter_patch=parameter_patch,
             )
         )
         document["updated_at"] = now

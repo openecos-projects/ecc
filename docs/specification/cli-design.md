@@ -283,8 +283,10 @@ The command graph follows these rules; new commands must follow them too:
 - **Naming.** Lowercase single words; multi-word names use kebab-case
   (`set-root`, `layout-image`). Help strings start with an imperative verb.
 - **Selectors.** `--workspace NAME` selects a declared or newly-created
-  project-local workspace and may be combined with `--project`. File-producing
-  commands use `-o/--output`.
+  managed workspace and may be combined with `--project`. `ecc run` alone may
+  add an absolute `--path` to place a new workspace or register an existing
+  one at that exact directory; omitting it keeps the project-local default.
+  File-producing commands use `-o/--output`.
 - **Status vs full evidence.** `ecc status` is the lightweight progress check;
   `ecc report step` is the full per-step evidence report (features, analysis,
   checklist). Both are read-only.
@@ -353,10 +355,15 @@ step marks downstream steps `Unstart` while retaining their output files.
 `--only`. A new bounded workspace requires both `--from` and `--to` and cannot
 combine with `--preset`, `--overwrite`, `--resume`, `--only`, or `--force`.
 The builder dynamically slices the canonical RTL-to-GDS flow for that range.
-`--workspace` is a project-local single path segment and can be combined with
-`--project`; no direct workspace paths or run ids are supported. Bare `ecc run`
-creates `default` for a project with no workspace, resumes its sole active
-workspace, and reports `workspace_required` when several are active.
+`--workspace` is a single-segment logical ID and can be combined with
+`--project`. `ecc run --workspace NAME --path /absolute/workspace` creates at
+or resumes the exact path and records it in `project.json`; `--path` is not
+accepted without the ID. An existing workspace can be registered without
+running it using `ecc workspace import NAME --path /absolute/workspace`.
+After registration all commands select it by ID, including when its directory
+is outside the project. Bare `ecc run` creates `default` for a project with no
+workspace, resumes its sole active workspace, and reports `workspace_required`
+when several are active.
 
 ### Parameter Management
 

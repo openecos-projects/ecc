@@ -5,7 +5,12 @@ from typing import Protocol, TypeVar
 
 import typer
 
-from chipcompiler.cli.core.inputs import OutputOptions, ProjectOptions, RunInput
+from chipcompiler.cli.core.inputs import (
+    OutputOptions,
+    ProjectOptions,
+    RunInput,
+    WorkspaceImportInput,
+)
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
 from chipcompiler.cli.project.config import (
     ConfigUnreadableError,
@@ -33,15 +38,19 @@ def output_mode(*, plain: bool) -> OutputMode:
 
 
 def _resolve_manifest_workspace(
-    project_dir: str, workspace_name: str | None, *, allow_create: bool
+    project_dir: str,
+    workspace_name: str | None,
+    *,
+    allow_create: bool,
+    workspace_path: str | None = None,
 ) -> tuple[str, str | None, str | None]:
     """Resolve a managed workspace from a project.json manifest.
 
     Returns (workspace_dir, workspace_id, error). A run may name a new
     single-segment workspace; read-only commands may only select declarations.
     """
-    from chipcompiler.cli.project.manifest import load_manifest
     from chipcompiler.cli.project.run_prepare import invalid_workspace_name
+    from chipcompiler.project.manifest import load_manifest
 
     manifest = load_manifest(project_dir)
     active = manifest.active_workspaces()
@@ -67,10 +76,27 @@ def _resolve_manifest_workspace(
 
     match = manifest.find_workspace(workspace_name)
     if match is not None:
+        if workspace_path is not None and os.path.realpath(match.workspace_path) != workspace_path:
+            return (
+                match.workspace_path,
+                match.workspace_id,
+                f"workspace_id_conflict: workspace {workspace_name!r} is already declared at "
+                f"{match.workspace_path}",
+            )
         return match.workspace_path, match.workspace_id, None
     ids = ", ".join(w.workspace_id for w in active) or "(none)"
     if allow_create:
-        return os.path.join(project_dir, workspace_name), workspace_name, None
+        target = workspace_path or os.path.join(project_dir, workspace_name)
+        if workspace_path is not None:
+            for workspace in manifest.workspaces:
+                if os.path.realpath(workspace.workspace_path) == os.path.realpath(target):
+                    return (
+                        target,
+                        workspace_name,
+                        f"workspace_path_conflict: path is already declared as "
+                        f"{workspace.workspace_id!r}",
+                    )
+        return target, workspace_name, None
     return (
         os.path.join(project_dir, workspace_name),
         workspace_name,
@@ -83,6 +109,8 @@ def build_context(command_input: CommandInput) -> CommandContext:
     project_dir = resolve_project_dir(project)
 
     workspace_name = getattr(command_input, "workspace", None)
+    supplied_workspace_path = getattr(command_input, "path", None)
+    workspace_path = None
     config_error = None
     try:
         cfg = load_run_config(project_dir)
@@ -90,7 +118,7 @@ def build_context(command_input: CommandInput) -> CommandContext:
         cfg = None
         config_error = str(exc)
 
-    from chipcompiler.cli.project.manifest import (
+    from chipcompiler.project.manifest import (
         ManifestError,
         classify_project,
     )
@@ -98,7 +126,24 @@ def build_context(command_input: CommandInput) -> CommandContext:
     project_state = classify_project(project_dir)
     manifest_error = None
 
-    if workspace_name is not None:
+    if supplied_workspace_path is not None and workspace_name is None:
+        run_dir, run_id = os.path.join(project_dir, "default"), None
+        manifest_error = "path_requires_workspace: --path requires --workspace"
+        project_state = "invalid_workspace"
+    elif supplied_workspace_path is not None:
+        from chipcompiler.cli.project.workspace_location import (
+            WorkspacePathError,
+            canonical_explicit_workspace_path,
+        )
+
+        try:
+            workspace_path = canonical_explicit_workspace_path(supplied_workspace_path, project_dir)
+        except WorkspacePathError as exc:
+            run_dir, run_id = os.path.join(project_dir, "default"), workspace_name
+            manifest_error = f"{exc.code}: {exc}"
+            project_state = "invalid_workspace"
+
+    if project_state != "invalid_workspace" and workspace_name is not None:
         from chipcompiler.cli.project.run_prepare import invalid_workspace_name
 
         if invalid_workspace_name(workspace_name):
@@ -106,9 +151,9 @@ def build_context(command_input: CommandInput) -> CommandContext:
             manifest_error = f"invalid_workspace: {workspace_name!r} is not a single workspace name"
             project_state = "invalid_workspace"
         else:
-            run_dir = run_id = None
-    else:
-        run_dir = run_id = None
+            run_dir, run_id = os.path.join(project_dir, workspace_name), workspace_name
+    elif project_state != "invalid_workspace":
+        run_dir, run_id = os.path.join(project_dir, "default"), None
 
     if project_state == "manifest":
         # Manifest projects use the manifest workspaces table for discovery
@@ -118,14 +163,15 @@ def build_context(command_input: CommandInput) -> CommandContext:
             run_dir, run_id, manifest_error = _resolve_manifest_workspace(
                 project_dir,
                 workspace_name,
-                allow_create=isinstance(command_input, RunInput),
+                allow_create=isinstance(command_input, (RunInput, WorkspaceImportInput)),
+                workspace_path=workspace_path,
             )
         except ManifestError as exc:
             run_dir, run_id = os.path.join(project_dir, "default"), workspace_name
             manifest_error = f"manifest_invalid: {exc}"
     elif project_state != "invalid_workspace":
         workspace_id = workspace_name or "default"
-        run_dir, run_id = os.path.join(project_dir, workspace_id), workspace_id
+        run_dir, run_id = workspace_path or os.path.join(project_dir, workspace_id), workspace_id
 
     mode = output_mode(plain=command_input.output.plain)
 
