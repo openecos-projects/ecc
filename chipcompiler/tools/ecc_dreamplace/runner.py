@@ -4,6 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from chipcompiler.data import EccStep, StateEnum, StepEnum, StepInput, Workspace
+from chipcompiler.data.workspace.macro_location import macro_placements
 from chipcompiler.tools.ecc import EccSubFlow, EccSubFlowEnum, ECCToolsModule
 from chipcompiler.tools.ecc import runner as ecc_runner
 
@@ -47,6 +48,9 @@ def run_macro_placement(
     workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
 ) -> bool:
     """Run macro-only placement between the two floorplan phases."""
+    import logging
+
+    logger = logging.getLogger(__name__)
     reslut = False
     sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
 
@@ -55,30 +59,43 @@ def run_macro_placement(
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        dreamplace_module = DreamplaceModule(
-            workspace=workspace,
-            step=step,
-            ecc_module=ecc_module,
-            input_def=step.input.def_,
-            input_verilog=step.input.verilog,
-            output_def=step.output.def_,
-            output_verilog=step.output.verilog,
-        )
-        reslut = dreamplace_module.run_macro_placement()
-        if not reslut:
-            sub_flow.update_step(
-                step_name=EccSubFlowEnum.macro_place.value, state=StateEnum.Imcomplete
+        manual_placements = macro_placements(workspace)
+        if manual_placements:
+            logger.info(
+                "macro.placements set (%d entries); skipping DreamPlace, using %s",
+                len(manual_placements),
+                workspace.config.get("macro_location", ""),
             )
-            return False
-
-        reslut = ecc_module.tcl_save(workspace.config.get("macro_location", ""))
-        if not reslut:
             sub_flow.update_step(
-                step_name=EccSubFlowEnum.macro_place.value, state=StateEnum.Imcomplete
+                step_name=EccSubFlowEnum.macro_place.value, state=StateEnum.Success
             )
-            return False
+        else:
+            dreamplace_module = DreamplaceModule(
+                workspace=workspace,
+                step=step,
+                ecc_module=ecc_module,
+                input_def=step.input.def_,
+                input_verilog=step.input.verilog,
+                output_def=step.output.def_,
+                output_verilog=step.output.verilog,
+            )
+            reslut = dreamplace_module.run_macro_placement()
+            if not reslut:
+                sub_flow.update_step(
+                    step_name=EccSubFlowEnum.macro_place.value, state=StateEnum.Imcomplete
+                )
+                return False
 
-        sub_flow.update_step(step_name=EccSubFlowEnum.macro_place.value, state=StateEnum.Success)
+            reslut = ecc_module.tcl_save(workspace.config.get("macro_location", ""))
+            if not reslut:
+                sub_flow.update_step(
+                    step_name=EccSubFlowEnum.macro_place.value, state=StateEnum.Imcomplete
+                )
+                return False
+
+            sub_flow.update_step(
+                step_name=EccSubFlowEnum.macro_place.value, state=StateEnum.Success
+            )
         reslut = ecc_runner.save_data(
             workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False
         )

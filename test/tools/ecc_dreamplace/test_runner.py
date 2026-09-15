@@ -1,4 +1,5 @@
 from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace
+from chipcompiler.data.parameter import Parameters
 from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
 
 
@@ -28,7 +29,7 @@ def test_macro_placement_step_runs_and_saves_outputs(monkeypatch, tmp_path):
             calls.append(("tcl_save", output_path))
             return True
 
-    macro_location = tmp_path / "macro_localtion.tcl"
+    macro_location = tmp_path / "macro_location.tcl"
     module = FakeEccModule()
     step = EccStep(name=StepEnum.MACRO_PLACEMENT.value)
 
@@ -82,7 +83,7 @@ def test_macro_placement_stops_when_tcl_handoff_fails(monkeypatch, tmp_path):
             calls.append(("tcl_save", output_path))
             return False
 
-    macro_location = tmp_path / "macro_localtion.tcl"
+    macro_location = tmp_path / "macro_location.tcl"
     step = EccStep(name=StepEnum.MACRO_PLACEMENT.value)
 
     monkeypatch.setattr(dreamplace_runner, "EccSubFlow", lambda **_kwargs: subflow)
@@ -107,6 +108,64 @@ def test_macro_placement_stops_when_tcl_handoff_fails(monkeypatch, tmp_path):
     assert calls == ["run", ("tcl_save", macro_location)]
     assert [update["step_name"] for update in subflow.updates] == ["load data", "macro placement"]
     assert subflow.updates[-1]["state"] is StateEnum.Imcomplete
+
+
+def test_macro_placement_skips_dreamplace_when_manual_placements_set(monkeypatch, tmp_path):
+    calls = []
+    subflow = FakeSubFlow()
+
+    class FakeDreamplaceModule:
+        def __init__(self, **_kwargs):
+            calls.append("init")
+
+        def run_macro_placement(self):
+            calls.append("run")
+            return True
+
+    class FakeEccModule:
+        def tcl_save(self, output_path):
+            calls.append(("tcl_save", output_path))
+            return True
+
+    macro_location = tmp_path / "macro_location.tcl"
+    module = FakeEccModule()
+    step = EccStep(name=StepEnum.MACRO_PLACEMENT.value)
+    workspace = Workspace(
+        config={"macro_location": macro_location},
+        parameters=Parameters(
+            data={
+                "macro": {
+                    "placements": [{"instance": "u0", "x": 1.0, "y": 2.0, "orientation": "R0"}]
+                }
+            }
+        ),
+    )
+
+    monkeypatch.setattr(dreamplace_runner, "EccSubFlow", lambda **_kwargs: subflow)
+    monkeypatch.setattr(
+        dreamplace_runner.ecc_runner,
+        "get_eda_instance",
+        lambda **_kwargs: module,
+    )
+    monkeypatch.setattr(
+        dreamplace_runner.ecc_runner,
+        "save_data",
+        lambda **kwargs: calls.append(("save", kwargs["step"].name)) or True,
+    )
+    monkeypatch.setattr(dreamplace_runner, "DreamplaceModule", FakeDreamplaceModule)
+
+    assert dreamplace_runner.run_macro_placement(workspace, step) is True
+    assert calls == [("save", StepEnum.MACRO_PLACEMENT.value)]
+    assert [update["step_name"] for update in subflow.updates] == [
+        "load data",
+        "macro placement",
+        "save data",
+    ]
+    assert [update["state"] for update in subflow.updates] == [
+        StateEnum.Success,
+        StateEnum.Success,
+        StateEnum.Success,
+    ]
 
 
 def test_run_step_dispatches_macro_placement(monkeypatch):

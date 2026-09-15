@@ -268,7 +268,7 @@ ecc run --preset rtl2gds
 | 1 | synthesis | yosys | RTL 综合、工艺映射（slang 前端读入 SystemVerilog） |
 | 2 | lec | yosys_lec | 逻辑等价性检查：综合网表与 golden 网表 |
 | 3 | pre_floorplan | ecc | 执行 simple floorplan，并使用自动 macro placement |
-| 4 | macro_placement | dreamplace | 执行仅宏单元摆放；这是宏位置文件被读取前的交接检查点 |
+| 4 | macro_placement | dreamplace | 执行仅宏单元摆放（可用 `ecc macro` 手工指定位置，见 §6.5）；这是宏位置文件被读取前的交接检查点 |
 | 5 | post_floorplan | ecc | 读取宏位置文件，完成 tracks、IO pin、tap cell、PDN 和时钟网设置 |
 | 6 | placement | dreamplace | 全局布局 |
 | 7 | cts | ecc | 时钟树综合（含扇出约束） |
@@ -702,6 +702,29 @@ rc=1
 ecc config placement    # 该步在 workspace config/ 下实际用的配置文件
 ecc config --plain      # 项目级配置（键值 + 解析后绝对路径）
 ```
+
+### 6.5 手动摆放宏单元（含硬宏的设计）
+
+gcd 是纯数字设计，没有宏单元。换成带 SRAM/模拟硬宏的设计时，步骤 4 `macro_placement` 默认由 DreamPlace 自动摆放，位置写入 workspace 的 `config/macro_location.tcl`。想自己决定宏的位置（比如让 SRAM 阵列贴着数据通路摆），用 `ecc macro` 命令组，不要手工编辑 Tcl：
+
+```bash
+ecc macro set u_ram0 --x 10 --y 20.5 --orient R0    # 新增/更新一个宏的位置（µm，upsert）
+ecc macro set u_ram1 --x 150 --y 20.5 --orient MY   # 方向：R0/R90/R180/R270/MX/MY/MX90/MY90
+ecc macro show                                      # 查看已设置的摆放与生成的 Tcl 路径
+ecc macro remove u_ram0                             # 删除一条；删空后恢复 DreamPlace 自动摆放
+```
+
+按用途选一种方式：
+
+- **开跑前定好位置**（项目级）：直接 `ecc macro set ...`——写入 `ecc.toml` 的 `[params.macro]`，之后新建的 workspace（`ecc run` / `--overwrite` / `ecc workspace refresh`）都会按它渲染 `config/macro_location.tcl`；
+- **在已有 workspace 上调整**：加 `--workspace default`——Tcl 立即重生成，`macroPlacement` 及其后缀标记为待重跑；随后 `ecc run --workspace default` 从 `macroPlacement` 续跑：DreamPlace 摆放被跳过，`post_floorplan` 按文件把宏以 `fixed` 提交，place 及之后的步骤全部重跑。
+
+```bash
+ecc macro set u_ram0 --x 120.0 --y 80.0 --orient MY --workspace default
+ecc run --workspace default
+```
+
+列表必须覆盖设计中的**全部**硬宏且实例名真实存在，否则 `post_floorplan` 按缺失实例名失败。命令细节见[用户指南 §9.5](ecc-user-guide.cn.md#95-macro--手动宏单元摆放)，三阶段 floorplan 与交接文件格式见 [floorplan-flow.cn.md](floorplan-flow.cn.md)。
 
 ## 7. 常见问题
 

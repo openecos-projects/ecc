@@ -16,7 +16,7 @@
 ├── home/
 │   ├── params.toml        # 参数中枢：用户参数 + PDK 派生值（见 §1）
 │   └── flow.json          # 步骤状态
-├── config/                # ← 本文档的主角：9 个 JSON
+├── config/                # ← 本文档的主角：9 个 JSON + Tcl 宏位置交接文件
 │   ├── db_ecc.json        # 数据库构建（读入 LEF/DEF/网表/LIB/SDC，每个 ecc 步骤共用）
 │   ├── floorplan_ecc.json # 布局规划
 │   ├── cts_ecc.json       # 时钟树综合
@@ -25,7 +25,8 @@
 │   ├── filler_ecc.json    # 填充单元
 │   ├── rcx_ecc.json       # 寄生提取
 │   ├── sta_ecc.json       # 静态时序分析（多 corner）
-│   └── dreamplace_ecc.json# DreamPlace 布局/合法化（placement 与 legalization 共用）
+│   ├── dreamplace_ecc.json# DreamPlace 布局/合法化（placement 与 legalization 共用）
+│   └── macro_location.tcl # 宏摆放 Tcl 交接文件（见 §1.5；由 macroPlacement 或 macro.placements 参数写出）
 ├── Synthesis_yosys/
 │   └── data/global_var.tcl  # 综合步骤的"配置"（Tcl 变量，非 JSON）
 ├── lec_yosys_lec/            # 综合级 LEC（Tcl 脚本驱动）
@@ -67,8 +68,8 @@ graph LR
 | synthesis | — | `global_var.tcl`（Tcl） | Yosys 用 Tcl 变量驱动，不走 JSON |
 | lec | — | 无（Tcl） | 综合级 Yosys LEC；比较综合网表与 golden 网表；未证明时步骤失败并终止后续流程 |
 | preFloorplan | ✓ | `floorplan_ecc.json` | 自动宏布局 |
-| macroPlacement | — | `dreamplace_ecc.json` + `macro_localtion.tcl` | 写入 Tcl 宏摆放交接文件 |
-| postFloorplan | ✓ | `floorplan_ecc.json` + `macro_localtion.tcl` | 读取 Tcl 宏摆放交接文件 |
+| macroPlacement | — | `dreamplace_ecc.json` + `macro_location.tcl` | 写入 Tcl 宏摆放交接文件（设置了 `macro.placements` 时跳过 DreamPlace，见 §1.5） |
+| postFloorplan | ✓ | `floorplan_ecc.json` + `macro_location.tcl` | 读取 Tcl 宏摆放交接文件 |
 | placement | — | `dreamplace_ecc.json` | 与 legalization 共用一个文件 |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | 每步重写 `def_input`/`result_dir` 等 |
@@ -187,6 +188,20 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 完整命令输出示例见 [ECC CLI 用户指南 §9](ecc-user-guide.cn.md)（终端：`ecc doc ug --lang cn`）。
 
+### 1.5 手工宏摆放（`ecc macro`）
+
+`macro.placements` 保存手工硬宏摆放，取值为 `{instance, x, y, orientation}` 对象的 JSON 数组（坐标单位微米；实例以 `fixed` 状态提交）。它与 §1.1 的语义参数同类——不写入任何 `config/*.json` 字段，而是在创建或刷新 workspace 配置时渲染进 `config/macro_location.tcl`。只要它非空，`macroPlacement` 保留 load/save 流程但跳过 DreamPlace 宏摆放、保留生成的交接文件；`postFloorplan` 随后依据该文件提交宏。清空该参数即恢复 DreamPlace 自动摆放。
+
+| 命令 | 作用 |
+|---|---|
+| `ecc macro set INSTANCE --x X --y Y --orient ORIENT` | 按 instance 新增/更新一条摆放（方向：`R0`、`R90`、`R180`、`R270`、`MX`、`MY`、`MX90`、`MY90`） |
+| `ecc macro remove INSTANCE` | 删除一条摆放；删除最后一个条目会清空该参数 |
+| `ecc macro show` | 列出当前摆放与生成的 Tcl 路径 |
+
+`ecc param` 的两种 scope 都适用：项目 scope（默认）把列表存进 `ecc.toml` `[params.macro]`，在下一次新建 run 或 `ecc workspace refresh` 时生效；`--workspace NAME` 写入 `home/params.toml`，立即重生成 Tcl，并把 `macroPlacement` 及其后缀标记为待重跑。该列表也可以按普通 JSON 参数设置，例如 `ecc param set macro.placements '[{"instance": "u0", "x": 10.0, "y": 20.0, "orientation": "R0"}]'`。
+
+交接文件必须覆盖设计中的全部硬宏，否则 `postFloorplan` 会报出缺失的实例名。文件格式详见 [floorplan-flow.cn.md](floorplan-flow.cn.md)。
+
 ## 2. 公共配置：db_ecc.json
 
 所有 ecc 工具步骤共用。每个步骤启动时先用它把 LEF/DEF/网表/LIB 载入内存数据库（subflow 的 "load data" 阶段）。`INPUT.def_path/verilog_path` 与 `OUTPUT.output_dir_path` 三个字段**每步运行前被重写**，实现步骤间文件链。
@@ -230,7 +245,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ## 4. floorplan（ecc-tools）
 
-配置 `floorplan_ecc.json` 由 `preFloorplan` 和 `postFloorplan` 共享。`preFloorplan` 执行 load data → init simple floorplan → save data，并使用自动宏摆放；`macroPlacement` 执行仅宏单元摆放，并通过 `tcl_save` 写入 `config/macro_localtion.tcl` 形成交接检查点；`postFloorplan` 以 `file` 模式读取该文件，再执行 load data → create tracks → place IO pins → tap cells → PDN → set clock net → save data → analysis。
+配置 `floorplan_ecc.json` 由 `preFloorplan` 和 `postFloorplan` 共享。`preFloorplan` 执行 load data → init simple floorplan → save data，并使用自动宏摆放；`macroPlacement` 执行仅宏单元摆放，并通过 `tcl_save` 写入 `config/macro_location.tcl` 形成交接检查点（设置了 `macro.placements` 参数时跳过 DreamPlace，交接文件改由参数渲染，见 §1.5）；`postFloorplan` 以 `file` 模式读取该文件，再执行 load data → create tracks → place IO pins → tap cells → PDN → set clock net → save data → analysis。
 
 ### ifp（iFP 布图引擎）
 
@@ -244,7 +259,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `mode` | `auto` | `auto` 自动摆放宏单元；`file` 从 `file_path` 读取宏位置 |
-| `file_path` | `""` | `mode=file` 时使用的宏位置文件 |
+| `file_path` | `""` | `mode=file` 时使用的宏位置文件；流程固定指向 `config/macro_location.tcl` |
 | `macro_placement_halo` | 3.0 | 宏单元布置 halo（µm，禁止标准单元靠近的范围） |
 | `macro_routing_halo` | 3.0 | 宏单元绕线 halo（µm，禁止绕线的范围） |
 
