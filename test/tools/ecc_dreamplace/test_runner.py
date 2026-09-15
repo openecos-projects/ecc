@@ -135,9 +135,7 @@ def test_macro_placement_skips_dreamplace_when_manual_placements_set(monkeypatch
         parameters=Parameters(
             data={
                 "macro": {
-                    "placements": [
-                        {"instance": "u0", "x": 1.0, "y": 2.0, "orientation": "R0"}
-                    ]
+                    "placements": [{"instance": "u0", "x": 1.0, "y": 2.0, "orientation": "R0"}]
                 }
             }
         ),

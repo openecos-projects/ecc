@@ -118,9 +118,7 @@ def test_macro_set_upserts_by_instance(capsys, create_cli_project):
         ["u_ram0", "--x", "30", "--y", "40", "--orient", "MY"],
         ["u_ram1", "--x", "1", "--y", "2", "--orient", "MX"],
     ):
-        assert (
-            cli_main.run(["macro", "set", *args, "--project", project_dir, "--plain"]) == 0
-        )
+        assert cli_main.run(["macro", "set", *args, "--project", project_dir, "--plain"]) == 0
 
     assert _read_macro_placements(project_dir) == [
         {"instance": "u_ram0", "x": 30.0, "y": 40.0, "orientation": "MY"},
@@ -131,24 +129,44 @@ def test_macro_set_upserts_by_instance(capsys, create_cli_project):
 def test_macro_remove_project_filters_and_deletes_empty(capsys, create_cli_project):
     project_dir = create_cli_project()
     cli_main.run(
-        ["macro", "set", "u_ram0", "--x", "1", "--y", "2", "--orient", "R0",
-         "--project", project_dir, "--plain"]
+        [
+            "macro",
+            "set",
+            "u_ram0",
+            "--x",
+            "1",
+            "--y",
+            "2",
+            "--orient",
+            "R0",
+            "--project",
+            project_dir,
+            "--plain",
+        ]
     )
     cli_main.run(
-        ["macro", "set", "u_ram1", "--x", "3", "--y", "4", "--orient", "R0",
-         "--project", project_dir, "--plain"]
+        [
+            "macro",
+            "set",
+            "u_ram1",
+            "--x",
+            "3",
+            "--y",
+            "4",
+            "--orient",
+            "R0",
+            "--project",
+            project_dir,
+            "--plain",
+        ]
     )
 
-    assert (
-        cli_main.run(["macro", "remove", "u_ram0", "--project", project_dir, "--plain"]) == 0
-    )
+    assert cli_main.run(["macro", "remove", "u_ram0", "--project", project_dir, "--plain"]) == 0
     assert _read_macro_placements(project_dir) == [
         {"instance": "u_ram1", "x": 3.0, "y": 4.0, "orientation": "R0"}
     ]
 
-    assert (
-        cli_main.run(["macro", "remove", "u_ram1", "--project", project_dir, "--plain"]) == 0
-    )
+    assert cli_main.run(["macro", "remove", "u_ram1", "--project", project_dir, "--plain"]) == 0
     with (Path(project_dir) / "ecc.toml").open("rb") as f:
         document = tomllib.load(f)
     assert "macro" not in document.get("params", {})
@@ -262,9 +280,7 @@ def test_macro_remove_workspace_absent_instance_is_noop(
     assert workspace.parameters.path.read_bytes() == before
 
 
-def test_macro_show_lists_entries_and_file(
-    capsys, create_cli_project, monkeypatch, plain_records
-):
+def test_macro_show_lists_entries_and_file(capsys, create_cli_project, monkeypatch, plain_records):
     project_dir = create_cli_project()
     workspace_dir = Path(project_dir) / "baseline"
     _write_manifest(project_dir)
