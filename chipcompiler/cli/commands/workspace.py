@@ -6,11 +6,41 @@ import typer
 
 from chipcompiler.cli.command_handlers import project as project_handlers
 from chipcompiler.cli.core.apps import create_app
-from chipcompiler.cli.core.inputs import WorkspaceRefreshInput, output_options, project_options
+from chipcompiler.cli.core.inputs import (
+    WorkspaceImportInput,
+    WorkspaceRefreshInput,
+    output_options,
+    project_options,
+)
 from chipcompiler.cli.core.invocation import execute_command
 from chipcompiler.cli.core.options import PlainOption, ProjectOption
 
-workspace_app = create_app(help="Refresh managed workspaces from project configuration")
+workspace_app = create_app(help="Import or refresh managed workspaces")
+
+
+@workspace_app.command("import")
+def import_cmd(
+    *,
+    workspace: Annotated[str, typer.Argument(help="Workspace ID to register")],
+    path: Annotated[
+        str,
+        typer.Option("--path", help="Exact absolute directory of an existing workspace"),
+    ],
+    project: ProjectOption = None,
+    plain: PlainOption = False,
+) -> None:
+    """Register an existing workspace without changing or running it.
+
+    The workspace remains at its current directory. Future commands select it
+    by WORKSPACE through the owning project's `project.json`.
+    """
+    command_input = WorkspaceImportInput(
+        output=output_options(plain=plain),
+        project=project_options(project),
+        workspace=workspace,
+        path=path,
+    )
+    execute_command("workspace", command_input, project_handlers.import_workspace)
 
 
 @workspace_app.command("refresh")
