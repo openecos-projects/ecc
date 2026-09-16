@@ -461,7 +461,7 @@ def save_data(
         try:
             floorplan_config = json_read(workspace.config[StepEnum.FLOORPLAN.value])
             floorplan_mode = (floorplan_config.get("die_builder") or {}).get("mode")
-        except (OSError, ValueError):
+        except (OSError, ValueError, KeyError):
             floorplan_mode = None
         if floorplan_mode != "die_util":
             update_param = {
