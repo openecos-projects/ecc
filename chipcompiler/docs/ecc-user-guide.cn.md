@@ -338,7 +338,7 @@ ecc run [OPTIONS]
 # 原有行为：在项目下创建并登记 workspace。
 ecc run --project /projects/gcd --workspace <project-local-path>
 
-# 在项目外创建并运行受管 workspace。
+# 在项目外创建并运行受工具管理的 workspace。
 ecc run --project /projects/gcd \
   --workspace /data/ecc-runs/gcd/archive
 
