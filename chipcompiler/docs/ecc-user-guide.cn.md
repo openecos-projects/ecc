@@ -332,7 +332,7 @@ ecc run [OPTIONS]
 
 #### 外部 workspace 路径
 
-当 workspace 必须放在项目目录外时，把完整绝对目录直接作为 `--workspace` 选择器。它表示 workspace 的完整目录，不是父目录：
+当 workspace 必须放在项目目录外时，把完整绝对目录直接作为 `--workspace` 的路径参数。它表示 workspace 的完整目录，不是父目录：
 
 ```bash
 # 原有行为：在项目下创建并登记 workspace。
