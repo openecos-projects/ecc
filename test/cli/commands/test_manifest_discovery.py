@@ -78,9 +78,7 @@ class TestManifestRunDiscovery:
         assert record["error"] == "invalid_workspace"
         assert record["reason"].startswith("invalid_workspace:")
 
-    def test_absolute_workspace_path_is_not_declared(
-        self, tmp_path, capsys, manifest_stubs
-    ):
+    def test_absolute_workspace_path_is_not_declared(self, tmp_path, capsys, manifest_stubs):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
