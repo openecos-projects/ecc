@@ -13,13 +13,33 @@ from .candidate_artifacts import (
     workspace_relative_ref,
     write_json_atomic,
 )
+from .candidate_registry import FLOORPLAN_TARGET_FLOW_STEP
 
 INPUT_BINDING_SCHEMA = "ecc.workspace.candidate_input_binding.v1"
 INPUT_BINDING_SCHEMA_VERSION = 1
 INPUT_BINDING_FILENAME = "candidate_input_binding.v1.json"
 CANONICAL_INPUT_EDGES = frozenset(
     {
+        # Current flow topology: the floorplan phase runs as the sub-steps
+        # preFloorplan -> macroPlacement -> postFloorplan sharing the
+        # "Floorplan" configuration.
+        ("preFloorplan", "Synthesis"),
+        ("macroPlacement", "preFloorplan"),
+        ("postFloorplan", "macroPlacement"),
+        ("place", "postFloorplan"),
+        ("Timing optimization", "legalization"),
+        ("route", "Timing optimization"),
+        ("filler", "route"),
+        ("RCX", "filler"),
+        ("sta", "RCX"),
+        ("lvs", "sta"),
+        ("postRouteLec", "lvs"),
+        ("drc", "postRouteLec"),
+        ("Harden", "drc"),
+        # RPC-level floorplan target binding (see prepare_floorplan_mode).
         ("Floorplan", "initial"),
+        ("Floorplan", "Synthesis"),
+        # Legacy single-step floorplan topology and sanctioned resume edges.
         ("place", "Floorplan"),
         ("CTS", "place"),
         ("legalization", "CTS"),
@@ -35,6 +55,17 @@ class CandidateInputBindingError(ValueError):
     """A candidate input binding is outside the declared physical-flow edges."""
 
 
+# The RPC-level "Floorplan" target names the shared floorplan configuration,
+# not a flow step; the phase input binds on its first sub-step when the flow
+# runs the split phase instead of a literal "Floorplan" step.
+
+
+def _flow_step_name(engine_flow: Any, target_step: str) -> str:
+    if engine_flow.get_workspace_step(target_step) is not None:
+        return target_step
+    return FLOORPLAN_TARGET_FLOW_STEP.get(target_step, target_step)
+
+
 def bind_candidate_input(
     workspace: Any,
     engine_flow: Any,
@@ -44,7 +75,7 @@ def bind_candidate_input(
 ) -> dict[str, Any]:
     candidate_id = _validated_candidate_id(candidate_id)
     _validate_edge(target_step, source_step)
-    target = _step_or_error(engine_flow, target_step, "target")
+    target = _step_or_error(engine_flow, _flow_step_name(engine_flow, target_step), "target")
     inputs = _source_inputs(workspace, engine_flow, source_step)
     receipt = _build_receipt(workspace, target_step, source_step, candidate_id, inputs)
     write_json_atomic(_receipt_path(workspace), receipt)
@@ -65,7 +96,7 @@ def reapply_candidate_input_binding(
         return None
     source_step = receipt["source"]["step"]
     _validate_edge(target_step, source_step)
-    target = _step_or_error(engine_flow, target_step, "target")
+    target = _step_or_error(engine_flow, _flow_step_name(engine_flow, target_step), "target")
     inputs = _source_inputs(workspace, engine_flow, source_step)
     actual = _build_receipt(
         workspace,
@@ -132,7 +163,7 @@ def _path_or_none(value: Any) -> Path | None:
 def _validate_source_inputs(source_step: str, inputs: dict[str, Path | None]) -> None:
     def_hash = sha256_path(inputs["def"]) if inputs["def"] else None
     verilog_hash = sha256_path(inputs["verilog"]) if inputs["verilog"] else None
-    if source_step != "initial" and def_hash is None:
+    if source_step not in {"initial", "Synthesis"} and def_hash is None:
         raise CandidateInputBindingError(f"candidate source {source_step} has no DEF checkpoint")
     if def_hash is None and verilog_hash is None:
         raise CandidateInputBindingError(f"candidate source {source_step} has no design checkpoint")

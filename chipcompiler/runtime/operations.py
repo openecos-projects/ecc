@@ -41,6 +41,21 @@ class RuntimeOperationCancelled(RuntimeError):
     """Cancellation was accepted at a safe step boundary."""
 
 
+class RuntimeOperationFailed(RuntimeError):
+    """A failed operation with an auditable partial result."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        result: dict[str, Any],
+        code: str = "command_failed",
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.result = result
+
+
 class RuntimeOperationIdempotencyConflict(RuntimeError):
     """A command ID was reused with different immutable input."""
 
@@ -422,10 +437,10 @@ class RuntimeOperationManager:
                 result = runner(observer)
                 with self._lock:
                     operation = self._operations[operation_id]
+                    operation.result = result
                     if operation.cancel_requested:
                         raise RuntimeOperationCancelled("operation cancelled at a step boundary")
                     operation.state = "succeeded"
-                    operation.result = result
                     operation.updated_at = time.time()
                     event = self._new_event_locked(
                         operation,
@@ -451,7 +466,33 @@ class RuntimeOperationManager:
                     event = self._new_event_locked(
                         operation,
                         event_type,
-                        {"error": operation.error},
+                        {
+                            "error": operation.error,
+                            **(
+                                {"result": operation.result} if operation.result is not None else {}
+                            ),
+                        },
+                    )
+            except RuntimeOperationFailed as exc:
+                with self._lock:
+                    operation = self._operations[operation_id]
+                    operation.result = exc.result
+                    if operation.cancel_requested and operation.error is None:
+                        operation.state = "cancelled"
+                        operation.error = {"message": str(exc), "code": "cancelled"}
+                        event_type = "operation.cancelled"
+                    else:
+                        operation.state = "failed"
+                        operation.error = operation.error or {
+                            "message": str(exc),
+                            "code": exc.code,
+                        }
+                        event_type = "operation.failed"
+                    operation.updated_at = time.time()
+                    event = self._new_event_locked(
+                        operation,
+                        event_type,
+                        {"error": operation.error, "result": operation.result},
                     )
                     self._prune_terminal_locked()
                     self._persist_workspace_locked(operation.workspace_id)

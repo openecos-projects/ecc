@@ -7,10 +7,17 @@ from .requests import (
     CandidateBindInputRequest,
     CandidateMaterializeRequest,
     CandidateRerunRequest,
+    CandidateResumeRequest,
+    RuntimePreflightRequest,
     WorkspaceExtractFoundationRequest,
 )
 
 AGENT_RUNTIME_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
+    RuntimeMethodSpec(
+        method_name="agent.runtime_preflight",
+        request_model=RuntimePreflightRequest,
+        handler_name="runtime_preflight",
+    ),
     RuntimeMethodSpec(
         method_name="workspace.extract_foundation",
         request_model=WorkspaceExtractFoundationRequest,
@@ -35,6 +42,11 @@ AGENT_RUNTIME_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
         method_name="candidate.rerun",
         request_model=CandidateRerunRequest,
         handler_name="candidate_rerun",
+    ),
+    RuntimeMethodSpec(
+        method_name="candidate.resume",
+        request_model=CandidateResumeRequest,
+        handler_name="candidate_resume",
     ),
 )
 
