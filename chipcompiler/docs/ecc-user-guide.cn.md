@@ -347,7 +347,7 @@ ecc run --project /projects/gcd --workspace archive --resume
 ecc status --project /projects/gcd --workspace archive
 ```
 
-路径必须是绝对路径。`ecc` 只创建最后一级目录，因此父目录必须已存在；已有非空目录必须已经是有效 ECC workspace。项目根目录和 legacy `runs/` 目录是受保护目标，包含项目目录的路径也会被拒绝。同一个 workspace ID 不能重新绑定到另一个路径，已登记给其他 ID 的路径也不能重复使用。要登记已有 workspace 但不执行或修改它，请使用 `ecc workspace import`。
+路径必须是绝对路径。`ecc` 只创建最后一级目录，因此父目录必须已存在；已有非空目录必须已经是有效 ECC workspace。项目根目录和 legacy `runs/` 目录是受项目目录，包含项目目录的路径也会被拒绝。同一个 workspace ID 不能重新绑定到另一个路径，已登记给其他 ID 的路径也不能重复使用。要登记已有 workspace 但不执行或修改它，请使用 `ecc workspace import`。
 
 `synthesis_lec` preset 需要默认策略跳过的 LEC，因此本示例的项目先编辑 `ecc.toml`（`sed -i 's/skip_steps = \["lec"\]/skip_steps = []/' ecc.toml` 或手动修改）显式设置 `skip_steps = []`：
 
