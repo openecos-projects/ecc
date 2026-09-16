@@ -228,7 +228,9 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
             )
             snapshot_path = Path(session.workspace.directory) / "home" / "engineering-snapshot.json"
             if result["recovered"] and snapshot_path.is_file():
-                self._commit_workspace_snapshot(session, "operation.recovered")
+                result["workspaceRevision"] = self._commit_workspace_snapshot(
+                    session, "operation.recovered"
+                )
             return result
 
         return self._with_session_mutation_lock(

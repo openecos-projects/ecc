@@ -601,6 +601,47 @@ def test_recover_interrupted_is_marker_scoped_and_idempotent(monkeypatch, tmp_pa
     ) == {"recovered": []}
 
 
+def test_recover_interrupted_returns_committed_workspace_revision(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    session = api.sessions.get_session(workspace_id)
+    session.workspace.flow.data = {
+        "steps": [
+            {
+                "name": "place",
+                "tool": "dreamplace",
+                "state": "Ongoing",
+                "info": {
+                    "runtime_operation": {
+                        "schema": 1,
+                        "operation_id": "operation-1",
+                        "runtime_instance_id": "runtime-old",
+                        "started_at": 1.0,
+                    }
+                },
+            },
+        ]
+    }
+    home = ws / "home"
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "engineering-snapshot.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "chipcompiler.engine.snapshot.commit_engineering_snapshot",
+        lambda _workspace, *, workspace_id, cause: {
+            "workspaceId": workspace_id,
+            "workspaceRevision": 2,
+        },
+    )
+
+    result = api.recover_interrupted(
+        WorkspaceRecoverInterruptedRequest(workspace_id, "operation-1")
+    )
+
+    assert result["workspaceRevision"] == 2
+    assert session.workspace_revision == 2
+
+
 def test_create_workspace_replaces_existing_same_directory_session(monkeypatch, tmp_path):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     api = WorkspaceRuntimeApi()
