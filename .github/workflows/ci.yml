@@ -46,8 +46,27 @@ jobs:
         with:
           expected_ref: ${{ startsWith(github.ref, 'refs/heads/release/v') && github.ref || startsWith(github.base_ref, 'release/v') && github.base_ref || '' }}
 
-  test:
-    name: Test
+  lint:
+    needs: check-version
+    runs-on: ubuntu-latest
+    container: quay.io/pypa/manylinux_2_34_x86_64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Python dependencies
+        uses: ./.github/actions/setup-python-deps
+
+      - name: Ruff format check
+        run: uv run --no-sync ruff format --check chipcompiler test
+
+      - name: Ruff lint
+        run: uv run --no-sync ruff check --output-format=github chipcompiler test
+
+  unit-test:
+    name: Unit tests
     needs: check-version
     runs-on: ubuntu-latest
     container: quay.io/pypa/manylinux_2_34_x86_64
@@ -61,6 +80,52 @@ jobs:
         uses: ./.github/actions/setup-python-deps
         with:
           build-all: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['build-all'] == 'true' && 'true' || 'false' }}
+
+      - name: Pytest (no integration / no packaged EDA)
+        run: >
+          uv run --no-sync pytest test/ -v
+          --ignore=test/integration
+          --basetemp=pytest-tmp
+          --cov=chipcompiler --cov-report=
+
+      - name: Publish coverage summary
+        if: success()
+        run: |
+          set -euo pipefail
+          {
+            echo '## Coverage Report'
+            echo '```'
+            uv run --no-sync coverage report
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  packaged-ecc:
+    name: Build packaged ecc and run EDA
+    needs: check-version
+    runs-on: ubuntu-latest
+    container: quay.io/pypa/manylinux_2_34_x86_64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Python dependencies
+        uses: ./.github/actions/setup-python-deps
+        with:
+          build-all: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['build-all'] == 'true' && 'true' || 'false' }}
+
+      - name: Smoke test native toolchain wheels
+        run: |
+          .venv/bin/python - <<'PY'
+          import ecc_tools_bin.ecc_py  # noqa: F401
+          from chipcompiler.tools.ecc.module import ECCToolsModule
+          from dreamplace.Params import Params  # noqa: F401
+          from dreamplace.Placer import PlacementEngine  # noqa: F401
+
+          assert ECCToolsModule().get_ecc() is not None
+          print("ecc-tools wrapper and ecc-dreamplace imports passed")
+          PY
 
       - name: Setup PDK
         run: |
@@ -121,63 +186,49 @@ jobs:
           command -v Sizer
           test -f "${CHIPCOMPILER_ECC_SIZER_ROOT}/src/sizer_os.tcl"
 
-      - name: Pytest
-        run: uv run --no-sync pytest test/ -v --basetemp=pytest-tmp --cov=chipcompiler --cov-report=
-
-      - name: Upload integration flow logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: integration-flow-logs
-          if-no-files-found: ignore
-          path: |
-            pytest-tmp/**/home/flow.json
-            pytest-tmp/**/log/**
-            pytest-tmp/**/data/**/*.log
-
-      - name: Publish coverage summary
-        if: always()
-        run: |
-          {
-            echo '## Coverage Report'
-            echo '```'
-            uv run --no-sync coverage report
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  build-pyinstaller:
-    name: Build PyInstaller Bundle
-    needs: check-version
-    runs-on: ubuntu-latest
-    container: quay.io/pypa/manylinux_2_34_x86_64
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Setup Python dependencies
-        uses: ./.github/actions/setup-python-deps
-        with:
-          build-all: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['build-all'] == 'true' && 'true' || 'false' }}
-
-      - name: Smoke test native toolchain wheels
-        run: |
-          .venv/bin/python - <<'PY'
-          import ecc_tools_bin.ecc_py  # noqa: F401
-          from chipcompiler.tools.ecc.module import ECCToolsModule
-          from dreamplace.Params import Params  # noqa: F401
-          from dreamplace.Placer import PlacementEngine  # noqa: F401
-
-          assert ECCToolsModule().get_ecc() is not None
-          print("ecc-tools wrapper and ecc-dreamplace imports passed")
-          PY
-
       - name: Build PyInstaller bundle
         uses: ./.github/actions/build-pyinstaller-bundle
         with:
           artifact-path: dist/ecc.tar
           artifact-format: tar
+          smoke-dir: dist/ecc-packaged
+
+      - name: Point ECC_BIN at packaged binary
+        run: |
+          set -euo pipefail
+          test -x dist/ecc-packaged/ecc
+          echo "ECC_BIN=${GITHUB_WORKSPACE}/dist/ecc-packaged/ecc" >> "$GITHUB_ENV"
+
+      - name: Install Nix (lit / filecheck / CI script wrappers)
+        uses: DeterminateSystems/nix-installer-action@v16
+
+      - name: Packaged ecc rtl2gds (ics55 gcd)
+        run: |
+          set -euo pipefail
+          export ECC_REPO_ROOT="${GITHUB_WORKSPACE}"
+          nix run .#ci-run-ics55-gcd -- \
+            --ecc "${ECC_BIN}" \
+            --project-dir ci-artifacts/gcd \
+            --pdk-root ../pdk/icsprout55-pdk
+
+      - name: Packaged ecc signoff export + CSV FileCheck
+        run: |
+          set -euo pipefail
+          export ECC_REPO_ROOT="${GITHUB_WORKSPACE}"
+          workspace=ci-artifacts/gcd/default
+          test -f "${workspace}/home/flow.json"
+          mkdir -p ci-artifacts/eda-signoff/packages
+          nix run .#ci-export-signoff-csv -- \
+            --workspace "${workspace}" \
+            --out-dir ci-artifacts/eda-signoff
+          "${ECC_BIN}" signoff export \
+            --project ci-artifacts/gcd \
+            --workspace default \
+            --output ci-artifacts/eda-signoff/packages/signoff.tar.gz \
+            --plain
+          nix run .#filecheck -- \
+            --input-file=ci-artifacts/eda-signoff/reports/metrics.check.txt \
+            test/support/csv_profiles/ics55_gcd.check
 
       - name: Upload PyInstaller artifact
         if: always()
@@ -188,24 +239,27 @@ jobs:
           path: |
             dist/ecc.tar
 
-  lint:
-    needs: check-version
-    runs-on: ubuntu-latest
-    container: quay.io/pypa/manylinux_2_34_x86_64
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Upload EDA signoff artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          submodules: recursive
+          name: eda-signoff-artifacts
+          if-no-files-found: ignore
+          path: |
+            ci-artifacts/eda-signoff/**
+            ci-artifacts/gcd/default/home/flow.json
+            ci-artifacts/gcd/default/home/checklist.json
+            ci-artifacts/gcd/default/**/analysis/qor_metrics.json
+            ci-artifacts/gcd/default/**/analysis/qor_summary.json
+            ci-artifacts/gcd/default/**/log/**
 
-      - name: Setup Python dependencies
-        uses: ./.github/actions/setup-python-deps
-
-      - name: Ruff format check
-        run: uv run --no-sync ruff format --check chipcompiler test
-
-      - name: Ruff lint
-        run: uv run --no-sync ruff check --output-format=github chipcompiler test
-
-      # - name: Pyright
-      #   run: uv run pyright chipcompiler
+      - name: Upload packaged EDA logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-eda-flow-logs
+          if-no-files-found: ignore
+          path: |
+            ci-artifacts/gcd/default/**/log/**
+            ci-artifacts/gcd/default/home/flow.json
+            ci-artifacts/gcd/default/home/checklist.json

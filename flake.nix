@@ -153,14 +153,22 @@
     };
   in flake-parts.lib.mkFlake { inherit inputs; } {
     systems = [ "x86_64-linux" ];
-    perSystem = { self', pkgs, system, ... }: {
-      packages.default = pkgs.callPackage chipcompiler {
-        ecc-dreamplace = ecc-dreamplace.packages.${system}.default;
-        ecc-tools = ecc-tools.packages.${system}.default;
-        jsonrpcserver = pkgs.callPackage jsonrpcserver { oslash = pkgs.callPackage oslash {}; };
-        rosettakit = pkgs.callPackage rosettakit {};
-        yosysWithSlang = infra.packages.${system}.yosysWithSlang;
-      };
+    perSystem = { self', pkgs, system, ... }:
+      let
+        signoff = import ./nix/signoff.nix { inherit pkgs; };
+      in {
+      packages = {
+        default = pkgs.callPackage chipcompiler {
+          ecc-dreamplace = ecc-dreamplace.packages.${system}.default;
+          ecc-tools = ecc-tools.packages.${system}.default;
+          jsonrpcserver = pkgs.callPackage jsonrpcserver { oslash = pkgs.callPackage oslash {}; };
+          rosettakit = pkgs.callPackage rosettakit {};
+          yosysWithSlang = infra.packages.${system}.yosysWithSlang;
+        };
+      } // signoff.packages;
+
+      apps = signoff.apps;
+
       devShells.default = pkgs.mkShell.override {
         stdenv = pkgs.ccacheStdenv;
       } {
@@ -178,10 +186,10 @@
         nativeBuildInputs = ecc-dreamplace.packages.${system}.default.rawNativeBuildInputs ++
           ecc-tools.packages.${system}.default.rawNativeBuildInputs ++ (with pkgs; [
             uv
-          ]);
+          ]) ++ signoff.nativeBuildInputs;
         shellHook = ''
           export CCACHE_DIR="$PWD/.ccache"
-        '';
+        '' + signoff.shellHook;
       };
     };
   };

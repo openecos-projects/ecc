@@ -1,0 +1,17 @@
+# FileCheck contract for the real ics55 gcd rtl2gds CSV projection.
+# Values may drift; require profile ids present=true (not fixture constants).
+#
+# RUN (CI):
+#   filecheck --input-file=<out>/reports/metrics.check.txt test/support/csv_profiles/ics55_gcd.check
+
+CHECK: design: gcd
+CHECK: section: metrics
+CHECK-DAG: metric drc_count value={{.*}} present=true reference={{.*}}
+CHECK-DAG: metric lvs_count value={{.*}} present=true reference={{.*}}
+CHECK-DAG: metric sta_setup_wns value={{.*}} present=true reference={{.*}}
+CHECK-DAG: metric sta_hold_wns value={{.*}} present=true reference={{.*}}
+CHECK: section: checklist
+CHECK-DAG: checklist quality.drc.clean {{.*}} present=true
+CHECK-DAG: checklist quality.lvs.clean {{.*}} present=true
+CHECK-DAG: checklist quality.sta.setup_closed {{.*}} present=true
+CHECK-DAG: checklist quality.sta.hold_closed {{.*}} present=true
