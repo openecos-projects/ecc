@@ -43,8 +43,6 @@ from .floorplan_mode import (
     validate_floorplan_mode_result,
 )
 from .requests import (
-    CandidateBindInputRequest,
-    CandidateMaterializeRequest,
     CandidateRerunRequest,
     CandidateResumeRequest,
     WorkspaceExtractFoundationRequest,
@@ -92,23 +90,11 @@ def build_agent_flow_for_workspace(workspace, *, create_step_workspaces: bool = 
     return flow
 
 
-class AgentWorkspaceRuntimeApi(WorkspaceRuntimeApi):
-    def _build_flow_for_session(self, session, *, attach_session_db: bool):
-        flow = build_agent_flow_for_workspace(session.workspace)
-        if attach_session_db:
-            flow.engine_db = session.db_handle
-        return flow
-
-
 class FlowAgentRuntimeApi:
     """Optional Flow Agent RPC handlers over one ECC workspace runtime."""
 
     def __init__(self, ecc_api: WorkspaceRuntimeApi):
         self.ecc_api = ecc_api
-
-    def runtime_preflight(self, _request) -> dict[str, bool]:
-        preflight_sizer_runtime()
-        return {"sizer": True, "dreamplace": True}
 
     def extract_foundation(self, request: WorkspaceExtractFoundationRequest) -> dict:
         def extract(session):
@@ -122,34 +108,10 @@ class FlowAgentRuntimeApi:
 
         return self._with_workspace_lock(request.workspace_id, extract)
 
-    def export_candidate_capabilities(self, request: WorkspaceIdRequest) -> dict:
+    def candidate_capabilities(self, request: WorkspaceIdRequest) -> dict:
         return self._with_workspace_lock(
             request.workspace_id,
             lambda session: export_candidate_capabilities(session.workspace),
-        )
-
-    def bind_candidate_input(self, request: CandidateBindInputRequest) -> dict:
-        def bind(session):
-            flow = build_agent_flow_for_workspace(session.workspace)
-            return bind_candidate_input(
-                session.workspace,
-                flow,
-                request.target_step,
-                request.source_step,
-                request.candidate_id,
-            )
-
-        return self._with_workspace_lock(request.workspace_id, bind)
-
-    def materialize_candidate(self, request: CandidateMaterializeRequest) -> dict:
-        return self._with_workspace_lock(
-            request.workspace_id,
-            lambda session: materialize_candidate_config(
-                session.workspace,
-                request.target_step,
-                request.patch,
-                request.candidate_id,
-            ),
         )
 
     def candidate_rerun(self, request: CandidateRerunRequest) -> dict:

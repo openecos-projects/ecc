@@ -4,39 +4,21 @@ from chipcompiler.runtime.methods import RuntimeMethodSpec
 from chipcompiler.runtime.requests import WorkspaceIdRequest
 
 from .requests import (
-    CandidateBindInputRequest,
-    CandidateMaterializeRequest,
     CandidateRerunRequest,
     CandidateResumeRequest,
-    RuntimePreflightRequest,
     WorkspaceExtractFoundationRequest,
 )
 
 AGENT_RUNTIME_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
-    RuntimeMethodSpec(
-        method_name="agent.runtime_preflight",
-        request_model=RuntimePreflightRequest,
-        handler_name="runtime_preflight",
-    ),
     RuntimeMethodSpec(
         method_name="workspace.extract_foundation",
         request_model=WorkspaceExtractFoundationRequest,
         handler_name="extract_foundation",
     ),
     RuntimeMethodSpec(
-        method_name="candidate.export_capabilities",
+        method_name="candidate.capabilities",
         request_model=WorkspaceIdRequest,
-        handler_name="export_candidate_capabilities",
-    ),
-    RuntimeMethodSpec(
-        method_name="candidate.bind_input",
-        request_model=CandidateBindInputRequest,
-        handler_name="bind_candidate_input",
-    ),
-    RuntimeMethodSpec(
-        method_name="candidate.materialize",
-        request_model=CandidateMaterializeRequest,
-        handler_name="materialize_candidate",
+        handler_name="candidate_capabilities",
     ),
     RuntimeMethodSpec(
         method_name="candidate.rerun",

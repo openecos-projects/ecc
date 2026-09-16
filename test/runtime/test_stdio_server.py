@@ -170,6 +170,11 @@ def test_rpc_stdio_subprocess_smoke():
     assert completed.returncode == 0
     responses = _decode_output(completed.stdout)
     assert [response["id"] for response in responses] == [1, 2, 3]
+    capabilities = responses[0]["result"]["capabilities"]
+    assert "candidate.capabilities" in capabilities
+    assert "candidate.rerun" in capabilities
+    assert "candidate.resume" in capabilities
+    assert "agent.runtime_preflight" not in capabilities
     assert responses[1]["result"] == {"ok": True}
 
 

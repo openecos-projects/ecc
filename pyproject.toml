@@ -42,7 +42,6 @@ dependencies = [
   "uvicorn>=0.27",
 ]
 scripts.ecc = "chipcompiler.cli.main:main"
-scripts.ecc-agent-rpc = "agent.rpc_server:main"
 
 [dependency-groups]
 dev = [

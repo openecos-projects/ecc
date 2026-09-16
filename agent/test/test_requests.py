@@ -9,46 +9,40 @@ from agent.methods import agent_method_names
 from agent.requests import (
     CandidateRerunRequest,
     CandidateResumeRequest,
-    RuntimePreflightRequest,
     parse_agent_request_model,
 )
 from agent.server import AgentRuntimeServer
 from chipcompiler.runtime.requests import RequestValidationError
 from chipcompiler.runtime.transport import ContentLengthDecoder, encode_content_length_frame
+from chipcompiler.runtime.workspace_api import WorkspaceRuntimeApi
 
 CONTEXT_SHA256 = "sha256:" + "a" * 64
 PARAMETER_CARD_SHA256 = "sha256:" + "b" * 64
 
 
-def test_agent_methods_keep_the_original_rpc_names():
-    assert agent_method_names() == (
-        "agent.runtime_preflight",
-        "workspace.extract_foundation",
-        "candidate.export_capabilities",
-        "candidate.bind_input",
-        "candidate.materialize",
-        "candidate.rerun",
-        "candidate.resume",
-    )
+PUBLIC_CANDIDATE_METHODS = (
+    "workspace.extract_foundation",
+    "candidate.capabilities",
+    "candidate.rerun",
+    "candidate.resume",
+)
+REMOVED_PUBLIC_METHODS = (
+    "agent.runtime_preflight",
+    "candidate.export_capabilities",
+    "candidate.bind_input",
+    "candidate.materialize",
+)
+
+
+def test_agent_methods_keep_the_public_candidate_rpc_names():
+    assert agent_method_names() == PUBLIC_CANDIDATE_METHODS
 
 
 def test_agent_runtime_server_registers_isolated_methods():
     server = AgentRuntimeServer()
 
     assert set(agent_method_names()).issubset(server.capabilities)
-
-
-def test_runtime_preflight_is_read_only_and_checks_agent_tools(monkeypatch):
-    calls = []
-    monkeypatch.setattr(
-        "agent.workspace_api.preflight_sizer_runtime", lambda: calls.append("preflight")
-    )
-    server = AgentRuntimeServer()
-
-    result = server.agent_api.runtime_preflight(RuntimePreflightRequest())
-
-    assert result == {"sizer": True, "dreamplace": True}
-    assert calls == ["preflight"]
+    assert not set(REMOVED_PUBLIC_METHODS) & set(server.capabilities)
 
 
 def test_agent_runtime_server_prepares_agent_environment(monkeypatch):
@@ -63,19 +57,23 @@ def test_agent_runtime_server_prepares_agent_environment(monkeypatch):
     assert calls == [True]
 
 
-def test_agent_runtime_server_builds_full_flows_with_agent_engine(monkeypatch):
-    flow = SimpleNamespace(engine_db=None)
+def test_agent_runtime_server_uses_generic_workspace_api_for_ordinary_flow():
+    server = AgentRuntimeServer()
+
+    assert type(server.api) is WorkspaceRuntimeApi
+
+
+def test_candidate_execution_builds_agent_engine_flow(monkeypatch):
+    flow = SimpleNamespace()
     monkeypatch.setattr(
         "agent.workspace_api.build_agent_flow_for_workspace",
-        lambda _workspace: flow,
+        lambda _workspace, **_kwargs: flow,
     )
     server = AgentRuntimeServer()
-    session = SimpleNamespace(workspace=SimpleNamespace(), db_handle=object())
 
-    result = server.api._build_flow_for_session(session, attach_session_db=True)
+    result = server.agent_api._build_flow(SimpleNamespace())
 
     assert result is flow
-    assert result.engine_db is session.db_handle
 
 
 def test_agent_request_normalizes_camel_case_fields():
@@ -236,28 +234,25 @@ def test_candidate_rerun_rejects_a_multi_knob_patch_as_an_invalid_request():
     }
 
 
-def test_agent_rpc_uses_dedicated_entrypoint():
+def test_ecc_rpc_serve_advertises_candidate_methods():
     def request(method: str, request_id: int, params: dict | None = None) -> bytes:
         payload = {"jsonrpc": "2.0", "method": method, "id": request_id}
         if params is not None:
             payload["params"] = params
         return encode_content_length_frame(json.dumps(payload, separators=(",", ":")))
 
-    def capabilities() -> list[str]:
-        command = [
-            sys.executable,
-            "-m",
-            "agent.rpc_server",
-        ]
-        completed = subprocess.run(
-            command,
-            input=request("rpc.hello", 1, {"version": 1}) + request("rpc.shutdown", 2),
-            capture_output=True,
-            check=False,
-        )
-        decoder = ContentLengthDecoder()
-        responses = [json.loads(message) for message in decoder.feed(completed.stdout)]
-        assert completed.returncode == 0, completed.stderr.decode("utf-8", errors="replace")
-        return responses[0]["result"]["capabilities"]
+    completed = subprocess.run(
+        [sys.executable, "-m", "chipcompiler.cli.main", "rpc", "serve", "--stdio"],
+        input=request("rpc.hello", 1, {"version": 1}) + request("rpc.shutdown", 2),
+        capture_output=True,
+        check=False,
+    )
+    decoder = ContentLengthDecoder()
+    responses = [json.loads(message) for message in decoder.feed(completed.stdout)]
+    assert completed.returncode == 0, completed.stderr.decode("utf-8", errors="replace")
+    capabilities = responses[0]["result"]["capabilities"]
 
-    assert "candidate.rerun" in capabilities()
+    for method_name in PUBLIC_CANDIDATE_METHODS:
+        assert method_name in capabilities
+    for method_name in REMOVED_PUBLIC_METHODS:
+        assert method_name not in capabilities

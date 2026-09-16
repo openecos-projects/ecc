@@ -543,12 +543,13 @@ def test_materialize_rejects_invalid_candidate_id(tmp_path, candidate_id):
         )
 
 
-def test_export_capabilities_writes_stable_schema_and_backend_truth(tmp_path):
+def test_export_capabilities_returns_stable_schema_and_backend_truth_without_writing_catalog(
+    tmp_path,
+):
     workspace = _workspace(tmp_path)
 
     capabilities = export_candidate_capabilities(workspace)
 
-    persisted = _read_json(tmp_path / "analysis" / "candidate_capabilities.v1.json")
     cts = next(item for item in capabilities["targets"] if item["target_step"] == "CTS")
     legalization = next(
         item for item in capabilities["targets"] if item["target_step"] == "legalization"
@@ -556,7 +557,7 @@ def test_export_capabilities_writes_stable_schema_and_backend_truth(tmp_path):
     filler = next(item for item in capabilities["targets"] if item["target_step"] == "filler")
     floorplan = next(item for item in capabilities["targets"] if item["target_step"] == "Floorplan")
 
-    assert capabilities == persisted
+    assert not (tmp_path / "analysis" / "candidate_capabilities.v1.json").exists()
     assert capabilities["schema"] == "ecc.workspace.candidate_capabilities.v1"
     assert capabilities["schema_version"] == 1
     assert capabilities["registry_sha256"].startswith("sha256:")

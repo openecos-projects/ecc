@@ -25,6 +25,9 @@ class CompleteFakeApi:
     def open_workspace(self, _request):
         raise AssertionError("unexpected open_workspace call")
 
+    def derive_workspace(self, _request):
+        raise AssertionError("unexpected derive_workspace call")
+
     def close_workspace(self, _request):
         raise AssertionError("unexpected close_workspace call")
 

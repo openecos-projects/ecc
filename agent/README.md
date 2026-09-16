@@ -1,9 +1,9 @@
 # ECC Agent Runtime（`agent/`）
 
 `agent/` 是 ECC 的 **Flow Agent 运行时**：在 `chipcompiler` 标准 runtime 之上构建的
-受控、可审计的流程代理执行层。它以独立 sidecar 进程（可执行入口
-`ecc-agent-rpc`）运行，通过 JSON-RPC 2.0 over stdio 对外提供服务，供
-ECOS Studio 的 GUI 前端与 `ecos_agent` 受控优化后端驱动。
+受控、可审计的流程代理执行层。它通过内部 server composition 注册到唯一的
+`ecc rpc serve` JSON-RPC 入口，供 ECOS Studio 的 GUI 前端与 `ecos_agent`
+受控优化后端驱动。产品中只发布 `ecc` 可执行文件，不再提供独立的 Agent sidecar。
 
 它只做确定性的执行与证据记录：**决策不在这里**。`agent/` 不包含任何 LLM
 代码，不解析自由文本指令，也不直接执行 shell 命令；流程决策由上层
@@ -37,16 +37,18 @@ ECOS Studio 的 GUI 前端与 `ecos_agent` 受控优化后端驱动。
    中执行，全角 STA 同样使用隔离原生进程。
 5. **不反向依赖**：`agent/` 依赖 `chipcompiler` 的公开 runtime 接口并继承
    扩展，不修改其行为；除观测回执的结构化输入外，不依赖 `ecos_agent`。
+6. **不改变普通 Flow**：普通 `workspace.*` 与 `flow.*` 继续使用通用 Workspace
+   Runtime API 和 Engine Flow；只有 Candidate Execution 在自己的 operation
+   边界内构造 Candidate Flow。
 
 ## 代码结构
 
 ```text
 agent/
-├── rpc_server.py        # 进程入口：stdin/stdout 上启动 stdio JSON-RPC 服务
-├── server.py            # AgentRuntimeServer：扩展基础 RuntimeServer 与能力协商
+├── server.py            # AgentRuntimeServer：在通用 RuntimeServer 上组合 Candidate 方法
 ├── methods.py           # Agent RPC 方法表（RuntimeMethodSpec 声明）
 ├── requests.py          # RPC 请求模型（frozen dataclass + 校验）
-├── workspace_api.py     # AgentWorkspaceRuntimeApi / FlowAgentRuntimeApi：RPC 处理层
+├── workspace_api.py     # FlowAgentRuntimeApi：Candidate RPC 处理层
 ├── engine.py            # AgentEngineFlow：流程引擎覆盖（观察者、渲染门控、监控）
 ├── tools.py             # Agent 侧步骤执行适配（固化重放、模式覆盖、STA 分发）
 ├── plot.py              # 无头运行下抑制显示绘图的绘图适配
@@ -59,7 +61,7 @@ agent/
 ├── sta_benchmark.py     # STA 调度基准测试（隔离副本上比较方案）
 └── data/                # 候选与观测的数据模型、注册表和落盘产物
     ├── candidate_registry.py             # 受控 knob 与后端需求的静态注册表
-    ├── candidate_capabilities.py         # 稳定的候选能力元数据导出
+    ├── candidate_capabilities.py         # 当前 workspace 的候选能力查询
     ├── candidate_materialization.py      # 可重放的配置固化与回执校验
     ├── candidate_input_binding.py        # 受控上游输入绑定（阶段间数据边）
     ├── candidate_contract.py             # 配置/检查点回执的配对一致性检查
@@ -77,45 +79,42 @@ agent/
         └── writers.py                    # JSON/JSONL 写出
 ```
 
-分层关系：`rpc_server` → `server`（方法分发、错误码映射）→ `methods`/`requests`
-（schema）→ `workspace_api`（Agent RPC 处理器）→ `engine`/`tools`/`candidate_*`
-（执行基础设施）→ `data/*`（注册表、固化与回执落盘）。
+分层关系：`ecc rpc serve` → `stdio_server.main()` 组合 `AgentRuntimeServer`
+（方法分发、错误码映射）→ `methods`/`requests`（schema）→ `workspace_api`
+（Agent RPC 处理器）→ `engine`/`tools`/`candidate_*`（执行基础设施）→
+`data/*`（注册表、固化与回执落盘）。
 
 ## RPC 方法面
 
 `AgentRuntimeServer` 继承基础 runtime 的全部方法（workspace 生命周期、配置
 读写、`flow.run`/`flow.run_step`、operation 状态与取消、快照等，完整清单见
 `chipcompiler/runtime/methods.py` 与 `docs/rpc-guide.md`），并在能力协商
-（`rpc.hello`）中追加声明以下 Agent 方法：
+（`rpc.hello`）中追加声明以下方法：
 
 | 方法 | 作用 |
 | --- | --- |
-| `agent.runtime_preflight` | Agent 运行时预检（如 sizer 可执行文件） |
 | `workspace.extract_foundation` | 从 workspace 证据提取 foundation 数据表 |
-| `candidate.export_capabilities` | 导出候选能力元数据（受控 knob、后端需求） |
-| `candidate.bind_input` | 绑定候选的上游输入（阶段间检查点） |
-| `candidate.materialize` | 将候选参数补丁固化为可重放配置 |
-| `candidate.rerun` | 克隆候选 workspace 并在隔离 worker 中重跑目标阶段 |
+| `candidate.capabilities` | 查询当前 workspace 的候选能力（受控 knob、后端需求） |
+| `candidate.rerun` | 原子克隆候选 workspace 并在隔离 worker 中重跑目标阶段 |
 | `candidate.resume` | 在原候选 workspace 上断点续跑失败的候选 |
 
 传输与分帧协议与基础 runtime 一致（`Content-Length` 分帧的 JSON-RPC 2.0），
-详见 `docs/rpc-guide.md`。
+详见 `docs/rpc-guide.md`。输入绑定、配置 materialization 和运行时预检保留为
+`candidate.rerun` 的内部步骤，不作为独立 RPC 方法。
 
 ## 候选重跑生命周期
 
-一次受控候选评估的典型调用序列：
+一次受控候选评估的公开调用序列：
 
-1. **预检**：`agent.runtime_preflight` 确认运行时可用。
-2. **能力导出**：`candidate.export_capabilities` 返回目标阶段允许的受控
-   knob 集合与后端需求，上层只能在该集合内提参数。
-3. **绑定与固化**：`candidate.bind_input` 固定上游输入边；
-   `candidate.materialize` 将参数补丁写入候选配置并生成回执，二者与
-   检查点回执通过 candidate contract 校验配对。
-4. **隔离重跑**：`candidate.rerun` 克隆父 workspace（按忽略规则裁剪产物），
-   在独立 worker 进程中按目标阶段重跑，事件经观察者流式回传，结果与
-   状态摘要落盘。
-5. **续跑**：失败的候选可用 `candidate.resume` 在原 workspace 上继续，
-   保留原候选记录与 Floorplan 模式，不改变历史语义。
+1. **能力查询**：`candidate.capabilities` 返回目标阶段允许的受控 knob 集合
+   与后端需求，上层只能在该集合内提参数。这是查询，不写第二份参数目录。
+2. **原子重跑**：`candidate.rerun` 在 ECC 内部完成预检、源 workspace 快照、
+   克隆、输入绑定、参数固化、Floorplan 模式覆盖，并在独立 worker 进程中按
+   目标阶段重跑。事件经观察者流式回传，结果与状态摘要落盘。失败的准备步骤
+   不会留下可执行的半成品 Candidate。
+3. **续跑**：失败的候选可用 `candidate.resume` 在原 workspace 上继续，
+   保留原候选记录与 Floorplan 模式，不改变历史语义。取消与恢复复用通用
+   Operation 生命周期。
 
 Floorplan 模式覆盖（`die_util`/`die_size`）只作用于隔离候选：随请求显式
 给出、持久化到候选 workspace 的 `analysis/floorplan_mode.v1.json`，不影响
@@ -132,13 +131,14 @@ Floorplan 模式覆盖（`die_util`/`die_size`）只作用于隔离候选：随�
 
 传输、超时、错误恢复与可执行文件解析的共同契约见 ECOS Studio 仓库的
 `ecos/agent/docs/ecc-agent-rpc.md`；修改本层的 RPC 表面或事件语义时，须
-同步该文档与两侧客户端。
+同步该文档与两侧客户端。生产路径应通过 Electron Product Command 调用
+`ecc rpc serve`，而不是再启动第二个 Agent executable。
 
 ## 开发与测试
 
 ```bash
-# 启动 stdio RPC 服务（等价于 ecc-agent-rpc 入口）
-uv run python -m agent.rpc_server
+# 启动 stdio RPC 服务（Candidate 方法已组合进该入口）
+uv run ecc rpc serve --stdio
 
 # 运行本目录测试（与 chipcompiler 的 test/ 互相独立）
 uv run pytest agent/test

@@ -5,29 +5,8 @@ from chipcompiler.runtime.requests import RequestValidationError, parse_request_
 
 
 @dataclass(frozen=True)
-class RuntimePreflightRequest:
-    pass
-
-
-@dataclass(frozen=True)
 class WorkspaceExtractFoundationRequest:
     workspace_id: str
-
-
-@dataclass(frozen=True)
-class CandidateBindInputRequest:
-    workspace_id: str
-    target_step: str
-    source_step: str
-    candidate_id: str
-
-
-@dataclass(frozen=True)
-class CandidateMaterializeRequest:
-    workspace_id: str
-    target_step: str
-    candidate_id: str
-    patch: list[dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -60,7 +39,6 @@ _FIELD_ALIASES = {
     "workspaceId": "workspace_id",
     "targetStep": "target_step",
     "endStep": "end_step",
-    "sourceStep": "source_step",
     "candidateId": "candidate_id",
     "executionScope": "execution_scope",
     "idempotencyKey": "idempotency_key",
