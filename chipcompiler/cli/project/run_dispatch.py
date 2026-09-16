@@ -115,7 +115,7 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
             empty_target = not os.listdir(run_dir)
         except OSError:
             empty_target = False
-    use_existing_empty_target = command_input.path is not None and empty_target
+    use_existing_empty_target = ctx.workspace_path_explicit and empty_target
     if (command_input.overwrite or use_existing_empty_target) and os.path.lexists(run_dir):
         if not _resolves_as_spelled(run_dir, project_dir) or not _is_ecc_run_dir(run_dir):
             return CommandResult.err(
@@ -316,7 +316,7 @@ def dispatch_project_run(
                 unsafe = _existing_target_guard(run_dir, project_dir, run_name)
                 if unsafe is not None:
                     return unsafe
-                if not workspace_registered and command_input.path is not None:
+                if not workspace_registered and ctx.workspace_path_explicit:
                     from chipcompiler.cli.core.records import error_record
                     from chipcompiler.cli.project.config import resolve_pdk_root
                     from chipcompiler.cli.project.workspace_registration import (

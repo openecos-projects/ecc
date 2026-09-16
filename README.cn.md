@@ -137,16 +137,17 @@ ecc log --project gcd
 ```
 
 默认情况下，具名 workspace 创建在 `<project>/<workspace-id>`。如需在项目外部的
-精确目录创建 workspace，请同时提供 workspace ID 和绝对 `--path`：
+精确目录创建或选择 workspace，请把绝对路径直接作为 `--workspace` 选择器：
 
 ```bash
-ecc run --project gcd --workspace experiment --path /data/ecc/gcd/experiment
+ecc run --project gcd --workspace /data/ecc/gcd/experiment
 ecc workspace import recovered --project gcd --path /archive/ecc/gcd/recovered
 ecc run --project gcd --workspace recovered --resume
 ```
 
-规范路径会登记到 `project.json`；后续命令只需使用 workspace ID，无需重复传入
-`--path`。
+对 `ecc run` 而言，单段字符串是 workspace 名称，继续使用项目内目录；绝对路径
+是项目外 workspace 路径。新路径默认以目录 basename 作为 workspace ID；如果路径已经
+登记，则沿用清单中的 ID。规范路径会登记到 `project.json`，后续可按登记的 ID 选择。
 
 ## CLI 命令
 

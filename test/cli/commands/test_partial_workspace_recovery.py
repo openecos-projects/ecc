@@ -179,5 +179,5 @@ class TestPartialWorkspaceRecovery:
 
         assert rc == 1
         records = plain_records(capsys.readouterr().out)
-        assert any(r.get("error") == "invalid_workspace" for r in records)
+        assert any(r.get("error") == "workspace_path_unsafe" for r in records)
         assert not os.path.exists(os.path.join(str(tmp_path), "new"))

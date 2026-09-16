@@ -16,7 +16,7 @@ def canonical_explicit_workspace_path(path: str, project_dir: str) -> str:
     if not os.path.isabs(path):
         raise WorkspacePathError(
             "workspace_path_not_absolute",
-            "--path must name the complete absolute workspace directory",
+            "workspace path must name the complete absolute workspace directory",
         )
 
     canonical = os.path.realpath(path)

@@ -38,7 +38,6 @@ class RunInput:
     overwrite: bool = False
     param_set: tuple[str, ...] = ()
     workspace: str | None = None
-    path: str | None = None
     resume: bool = False
     from_step: str | None = None
     to_step: str | None = None

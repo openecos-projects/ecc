@@ -474,7 +474,7 @@ class TestWorkspaceRun:
 
         record = plain_records(capsys.readouterr().out)[0]
         assert rc == 1
-        assert record["error"] == "invalid_workspace"
+        assert record["error"] == "missing_config"
 
     def test_missing_flow(self, workspace_mocks, capsys, plain_records):
         workspace_mocks.has_init = False

@@ -122,6 +122,48 @@ def test_import_is_idempotent_and_external_workspace_resolves_by_id(
     assert any(record.get("workspace") == str(workspace.resolve()) for record in records)
 
 
+def test_absolute_workspace_path_reuses_registered_id(
+    tmp_path, capsys, create_cli_project, plain_records
+):
+    project_dir = create_cli_project()
+    workspace = tmp_path / "external" / "directory-name"
+    _existing_workspace(workspace)
+
+    assert (
+        cli_main.run(
+            [
+                "workspace",
+                "import",
+                "archive",
+                "--project",
+                project_dir,
+                "--path",
+                str(workspace),
+                "--plain",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert (
+        cli_main.run(
+            [
+                "status",
+                "--project",
+                project_dir,
+                "--workspace",
+                str(workspace),
+                "--plain",
+            ]
+        )
+        == 0
+    )
+    record = plain_records(capsys.readouterr().out)[0]
+    assert record["workspace_id"] == "archive"
+    assert record["workspace"] == str(workspace.resolve())
+
+
 def test_import_rejects_invalid_workspace_without_manifest(
     tmp_path, capsys, create_cli_project, plain_records
 ):
@@ -201,29 +243,22 @@ def test_import_rejects_id_and_path_conflicts(tmp_path, capsys, create_cli_proje
     assert plain_records(capsys.readouterr().out)[0]["error"] == "workspace_path_conflict"
 
 
-def test_explicit_workspace_path_requires_id_and_absolute_path(
+def test_workspace_selector_rejects_relative_paths(
     tmp_path, capsys, create_cli_project, plain_records
 ):
     project_dir = create_cli_project()
-
-    rc = cli_main.run(["run", "--project", project_dir, "--path", str(tmp_path), "--plain"])
-    assert rc == 1
-    assert plain_records(capsys.readouterr().out)[0]["error"] == "path_requires_workspace"
-
     rc = cli_main.run(
         [
             "run",
             "--project",
             project_dir,
             "--workspace",
-            "external",
-            "--path",
             "relative/workspace",
             "--plain",
         ]
     )
     assert rc == 1
-    assert plain_records(capsys.readouterr().out)[0]["error"] == "workspace_path_not_absolute"
+    assert plain_records(capsys.readouterr().out)[0]["error"] == "invalid_workspace"
 
 
 def test_run_creates_workspace_at_exact_external_path(
@@ -240,8 +275,6 @@ def test_run_creates_workspace_at_exact_external_path(
             "--project",
             project_dir,
             "--workspace",
-            "created",
-            "--path",
             str(workspace),
             "--plain",
         ]
@@ -253,7 +286,7 @@ def test_run_creates_workspace_at_exact_external_path(
     assert manifest["workspaces"][0]["workspace_path"] == str(workspace.resolve())
 
 
-def test_run_path_registers_and_resumes_existing_external_workspace(
+def test_run_path_selector_registers_and_resumes_existing_external_workspace(
     tmp_path, capsys, create_cli_project, monkeypatch, plain_records
 ):
     project_dir = create_cli_project()
@@ -293,8 +326,6 @@ def test_run_path_registers_and_resumes_existing_external_workspace(
             "--project",
             project_dir,
             "--workspace",
-            "resume",
-            "--path",
             str(workspace),
             "--resume",
             "--plain",
@@ -309,7 +340,7 @@ def test_run_path_registers_and_resumes_existing_external_workspace(
     assert manifest["workspaces"][0]["workspace_path"] == str(workspace.resolve())
 
 
-def test_run_path_accepts_existing_empty_target(tmp_path, create_cli_project, flow_mocks):
+def test_run_path_selector_accepts_existing_empty_target(tmp_path, create_cli_project, flow_mocks):
     project_dir = create_cli_project()
     workspace = tmp_path / "external" / "empty"
     workspace.mkdir(parents=True)
@@ -320,8 +351,6 @@ def test_run_path_accepts_existing_empty_target(tmp_path, create_cli_project, fl
             "--project",
             project_dir,
             "--workspace",
-            "empty",
-            "--path",
             str(workspace),
         ]
     )
@@ -330,7 +359,7 @@ def test_run_path_accepts_existing_empty_target(tmp_path, create_cli_project, fl
     assert flow_mocks.capture["create_kwargs"]["directory"] == str(workspace.resolve())
 
 
-def test_run_without_path_keeps_project_local_workspace(tmp_path, create_cli_project, flow_mocks):
+def test_run_workspace_name_keeps_project_local_workspace(tmp_path, create_cli_project, flow_mocks):
     project_dir = create_cli_project()
 
     assert cli_main.run(["run", "--project", project_dir, "--workspace", "local"]) == 0

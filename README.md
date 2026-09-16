@@ -142,17 +142,20 @@ ecc log --project gcd
 ```
 
 By default, named workspaces are created at `<project>/<workspace-id>`. To
-create one at an exact external directory, provide an absolute `--path` with
-the workspace ID:
+create or select one at an exact external directory, pass the absolute path as
+the `--workspace` selector:
 
 ```bash
-ecc run --project gcd --workspace experiment --path /data/ecc/gcd/experiment
+ecc run --project gcd --workspace /data/ecc/gcd/experiment
 ecc workspace import recovered --project gcd --path /archive/ecc/gcd/recovered
 ecc run --project gcd --workspace recovered --resume
 ```
 
-`project.json` records the canonical path, so later commands select the
-workspace by ID without repeating `--path`.
+For `ecc run`, a single-segment value is a workspace name and keeps the
+project-local layout; an absolute value is an external workspace path. The
+path basename is used as the new workspace ID unless the path is already
+registered. `project.json` records the canonical path, so later commands can
+select the workspace by its registered ID.
 
 ## CLI Commands
 

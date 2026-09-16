@@ -80,7 +80,7 @@ uv run ecc --help
 ## 1. 通用约定
 
 - 全局：`ecc --version`（单行版本号）、`ecc --help`。
-- 项目定位：项目级命令接受 `--project <dir>`（缺省为当前目录）。`--workspace <名称>` 是受管的、非空单路径段名称，始终表示逻辑 workspace ID，不能传文件系统路径。新项目裸执行 `ecc run` 创建 `default`；只有一个活跃 workspace 时自动选择，多个活跃 workspace 时必须指定 `--workspace`。命名 workspace 会在创建文件前登记到 `project.json`。`ecc run --path <目录>` 可选地把命名 workspace 放在项目外的指定绝对目录；不设置 `--path` 时仍使用原有的 `<project>/<workspace-id>` 布局。遗留的 `runs/` 项目必须先执行 `ecc migrate`。每个项目只有一个 `ecc.toml`；创建时会把声明的输入复制到各 workspace 的 `origin/`。
+- 项目定位：项目级命令接受 `--project <dir>`（缺省为当前目录）。`--workspace <选择器>` 可以是受管的非空单段名称，也可以是完整绝对路径。名称继续使用项目内的 `<project>/<workspace-id>` 布局；绝对路径创建或选择项目外 workspace，新路径默认以目录 basename 作为 workspace ID，已登记路径沿用清单中的 ID。新项目裸执行 `ecc run` 创建 `default`；只有一个活跃 workspace 时自动选择，多个活跃 workspace 时必须指定 `--workspace`。命名 workspace 会在创建文件前登记到 `project.json`。遗留的 `runs/` 项目必须先执行 `ecc migrate`。每个项目只有一个 `ecc.toml`；创建时会把声明的输入复制到各 workspace 的 `origin/`。
 - 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`param`、`pdk`、`project`、`workspace`、`signoff`、`report` 都支持 `--plain`（`key=value`，便于脚本解析），缺省为人类可读 TEXT。`rpc serve` 和 `layout-image` 使用各自的协议。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。
 - 步骤名（step token）有三套写法，按场景区分：
@@ -316,8 +316,7 @@ yosys -Q -T -p "help read_slang" 2>&1 | grep -q "No such command" \
 ```bash
 ecc run [OPTIONS]
   --project TEXT     项目目录（缺省 cwd）
-  --workspace TEXT   创建、选择或续跑一个受管 workspace 名称
-  --path TEXT        workspace 的完整绝对目录（必须同时指定 --workspace）
+  --workspace TEXT   创建、选择或续跑 workspace 名称或绝对路径
   --resume           从第一个非成功步骤继续
   --from TEXT        从一个步骤重跑，或与 --to 配对创建范围 workspace
   --to TEXT          有界范围的包含式终点（必须与 --from 同用）
@@ -329,21 +328,21 @@ ecc run [OPTIONS]
   --plain           面向脚本的 key=value 输出
 ```
 
-新建或 `--overwrite` 的 workspace 会按以下流程执行：读 `ecc.toml` → 只解析入口步骤所需的设计文件以及 PDK/参数 → 预检所需工具 → 先写入 `project.json` 登记 → 默认在 `<project>/<workspace 名称>` 创建 workspace，或在 `--path` 指定的完整目录创建 → 将声明的设计输入复制到 `origin/`、写入对应步骤配置并运行 flow。`--path` 是可选的绝对目录，必须同时显式指定 `--workspace`，不会从目录名推断 workspace ID。外部目录中已有有效 ECC workspace 时，也可以用同一命令登记并续跑。workspace 不会存放第二份项目输入清单。已有 workspace 按持久化 flow 续跑，不会改写已有输入或步骤配置。`rtl2gds` 是完整 17 步链（Synthesis→LEC（Yosys 等价性检查；默认跳过——`[flow] skip_steps` 默认为 `["lec"]`，设为 `[]` 才启用）→preFloorplan→macroPlacement→postFloorplan→place→CTS→legalization→Timing optimization（sizer）→route→filler→RCX→sta→LVS→postRouteLec（Yosys 等价性检查）→DRC→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB）。
+新建或 `--overwrite` 的 workspace 会按以下流程执行：读 `ecc.toml` → 只解析入口步骤所需的设计文件以及 PDK/参数 → 预检所需工具 → 先写入 `project.json` 登记 → `--workspace` 是名称时默认在 `<project>/<workspace 名称>` 创建，是绝对路径时在该完整目录创建 → 将声明的设计输入复制到 `origin/`、写入对应步骤配置并运行 flow。绝对路径必须是完整的项目外目录且父目录已存在；新路径以 basename 作为 workspace ID，已登记路径沿用清单中的 ID。外部目录中已有有效 ECC workspace 时，也可以用同一命令登记并续跑。workspace 不会存放第二份项目输入清单。已有 workspace 按持久化 flow 续跑，不会改写已有输入或步骤配置。`rtl2gds` 是完整 17 步链（Synthesis→LEC（Yosys 等价性检查；默认跳过——`[flow] skip_steps` 默认为 `["lec"]`，设为 `[]` 才启用）→preFloorplan→macroPlacement→postFloorplan→place→CTS→legalization→Timing optimization（sizer）→route→filler→RCX→sta→LVS→postRouteLec（Yosys 等价性检查）→DRC→Harden，Harden 产出 GDS + 抽象 LEF + 时序 LIB）。
 
 #### 外部 workspace 路径
 
-当 workspace 必须放在项目目录外时使用 `--path`。该选项表示 workspace 的完整目录，不是父目录：
+当 workspace 必须放在项目目录外时，把完整绝对目录直接作为 `--workspace` 选择器。它表示 workspace 的完整目录，不是父目录：
 
 ```bash
 # 原有行为：在项目下创建并登记 workspace。
 ecc run --project /projects/gcd --workspace local
 
 # 在项目外创建并运行受管 workspace。
-ecc run --project /projects/gcd --workspace archive \
-  --path /data/ecc-runs/gcd/archive
+ecc run --project /projects/gcd \
+  --workspace /data/ecc-runs/gcd/archive
 
-# 登记后按 ID 选择外部 workspace，不再需要 --path。
+# 登记后按清单中的 ID 选择外部 workspace。
 ecc run --project /projects/gcd --workspace archive --resume
 ecc status --project /projects/gcd --workspace archive
 ```
@@ -439,7 +438,7 @@ ecc run [--workspace NAME] [--resume | --from STEP [--to STEP] | --only STEP [--
 - 新 workspace 必须同时给出 `--from` 与 `--to`，动态构建这段包含式 flow；
 - `--only STEP [--force]`：只跑一步，`--force` 用于该步已成功时强制重跑；
 - `--resume`、`--only` 与范围选择互斥；新建范围不能与 `--preset`、`--resume`、`--only`、`--force`、`--overwrite` 组合；`--workspace` 可与 `--project` 组合；
-- `--path` 只用于创建或续跑一个已命名的 workspace，必须同时指定 `--workspace`，不是只读命令的第二个选择器；登记后所有按 workspace 作用域的命令都按 ID 使用清单中的路径；
+- `--workspace` 可以是单段名称或绝对路径。绝对路径用于创建或登记项目外目标；登记后所有按 workspace 作用域的命令都可以使用清单中的 ID；
 - **已有 workspace 上的 `--from`/`--only`/`--to` 必须用持久化名**（`home/flow.json` 中的原始名，见第 1 节词表，如 `place`、`CTS`、`Timing optimization`）；新建范围（`--from A --to B` 同时给出）才接受小写别名。拼错时报 `unknown_step` 并列出全部可用名：
 
 ```console
@@ -495,13 +494,12 @@ $ ecc run --workspace a/b     # workspace 必须是单段名称，不能是路�
 |---|---|---|
 | `run_exists` | 目标目录已存在但不是有效 ECC workspace（无 `home/flow.json`） | `--overwrite`（有安全校验）或换 `--workspace` |
 | `overwrite_refused` | `--overwrite` 的目标不是真正的 ECC workspace 目录 | 人工确认目录内容后手动清理 |
-| `invalid_workspace` | workspace 名含 `/`、是绝对路径或 `.`/`..`；或目录不是可加载的 workspace | 换合规名称 / 检查目录 |
+| `invalid_workspace` | workspace 名含 `/`、是相对路径或 `.`/`..`；或目录不是可加载的 workspace | 使用单段名称或完整绝对路径 / 检查目录 |
 | `workspace_required` | 项目有多个活跃 workspace 但没传 `--workspace` | 按报错列出的名称指定其一 |
 | `workspace_not_declared` | `--workspace` 名与 `project.json` 声明的 id 不一致（含别名指向已声明路径） | 使用报错中给出的已声明 id |
-| `path_requires_workspace` | 未指定 `--workspace` 却使用了 `--path` | 显式提供 workspace ID |
-| `workspace_path_not_absolute` | `--path` 不是指向完整 workspace 目录的绝对路径 | 传入绝对 workspace 目录 |
+| `workspace_path_not_absolute` | 导入路径不是绝对路径 | 为 `workspace import` 传入绝对 workspace 目录 |
 | `workspace_path_unsafe` | 路径是项目根目录、legacy `runs/` 目录、包含项目目录，或父目录不存在 | 选择安全目录，并确保父目录已存在 |
-| `workspace_id_conflict` | workspace ID 已登记在另一个路径 | 去掉 `--path` 或使用已登记路径；新路径请换 ID |
+| `workspace_id_conflict` | workspace ID 已登记在另一个路径 | 使用已登记的 ID/路径，或更换目录 basename |
 | `workspace_path_conflict` | 规范化后的路径已登记给另一个 workspace ID | 使用已登记 ID 或更换目录 |
 | `workspace_not_importable` | 目录不是受支持的 ECC workspace，或其 design/PDK 身份与项目不匹配 | 指向该项目的有效 workspace |
 | `workspace_conflict` | 同名 workspace 已声明在另一个路径 | 换名称 |

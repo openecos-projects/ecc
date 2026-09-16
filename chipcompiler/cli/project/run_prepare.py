@@ -46,11 +46,11 @@ def resolve_manifest_run_target(command_input, ctx):
     from chipcompiler.project.manifest import load_manifest
 
     project_dir = ctx.project_dir
-    workspace_name = command_input.workspace
-    explicit_path = ctx.run_dir if command_input.path is not None else None
+    workspace_name = ctx.run_id
+    explicit_path = ctx.run_dir if ctx.workspace_path_explicit else None
 
     if ctx.project_state == "virgin":
-        run_name = workspace_name or ctx.run_id or "default"
+        run_name = workspace_name or "default"
         if invalid_workspace_name(run_name):
             return CommandResult.err(
                 [

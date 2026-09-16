@@ -66,11 +66,10 @@ def run_cmd(
     overwrite: Annotated[bool, typer.Option("--overwrite")] = False,
     workspace: Annotated[
         str | None,
-        typer.Option("--workspace", help="Create, select, or resume a managed workspace"),
-    ] = None,
-    path: Annotated[
-        str | None,
-        typer.Option("--path", help="Exact absolute directory for the managed workspace"),
+        typer.Option(
+            "--workspace",
+            help="Create, select, or resume a workspace name or absolute path",
+        ),
     ] = None,
     resume: Annotated[
         bool,
@@ -130,7 +129,6 @@ def run_cmd(
         overwrite=overwrite,
         param_set=tuple(param_set or ()),
         workspace=workspace,
-        path=path,
         resume=resume,
         from_step=from_step,
         to_step=to_step,

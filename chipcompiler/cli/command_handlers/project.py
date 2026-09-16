@@ -477,7 +477,7 @@ def _run_project(
     from chipcompiler.cli.project.effective_config import flow_config_selects_steps
 
     if ctx.project_state == "manifest":
-        resolved_cfg = effective_config.resolve_effective_config(ctx, command_input.workspace, cfg)
+        resolved_cfg = effective_config.resolve_effective_config(ctx, ctx.run_id, cfg)
         if isinstance(resolved_cfg, CommandResult):
             return resolved_cfg
         cfg, flow_config, entry_warnings = resolved_cfg
@@ -675,7 +675,7 @@ def _run_project(
 
     if (
         not fresh_target
-        and command_input.path is None
+        and not ctx.workspace_path_explicit
         and (
             command_input.resume
             or command_input.from_step is not None

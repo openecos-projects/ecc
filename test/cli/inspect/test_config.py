@@ -557,7 +557,7 @@ class TestDirectoryOnlyStepConfig:
 
 
 class TestAbsoluteWorkspaceSelector:
-    def test_absolute_workspace_selector_rejected(
+    def test_absolute_workspace_selector_resolves_external_path(
         self,
         tmp_path,
         capsys,
@@ -580,10 +580,11 @@ class TestAbsoluteWorkspaceSelector:
                 project_dir,
             ]
         )
-        assert rc == 1
-        record = plain_records(capsys.readouterr().out)[0]
-        assert record["error"] == "invalid_workspace"
-        assert "invalid_workspace" in record["reason"]
+        assert rc == 0
+        records = plain_records(capsys.readouterr().out)
+        run_dir = next(record for record in records if record.get("config") == "run_dir")
+        assert run_dir["value"] == str(external_run.resolve())
+        assert run_dir["resolved"] == str(external_run.resolve())
 
 
 class TestConfigTextUsesItemInspectCmd:
