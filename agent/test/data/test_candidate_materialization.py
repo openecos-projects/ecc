@@ -672,3 +672,23 @@ def test_materialize_rejects_missing_parameters_base_config(tmp_path):
             [{"knob_id": "floorplan.core_util", "value": 0.7}],
             candidate_id="missing-base",
         )
+
+
+def test_reapply_binds_floorplan_target_on_post_floorplan_step(tmp_path):
+    """The RPC-level Floorplan materialization must arm on the postFloorplan
+    step (the only step that runs the complete init+run floorplan cycle);
+    matching no real flow step starves the runtime observer and leaves the
+    candidate without a parameter application receipt."""
+    workspace = _workspace(tmp_path)
+
+    receipt = materialize_candidate_config(
+        workspace,
+        "Floorplan",
+        [{"knob_id": "floorplan.core_util", "value": 0.4}],
+        candidate_id="floorplan-candidate",
+    )
+    assert receipt["target_step"] == "Floorplan"
+
+    assert reapply_materialized_candidate_config(workspace, "postFloorplan") is not None
+    assert reapply_materialized_candidate_config(workspace, "preFloorplan") is None
+    assert reapply_materialized_candidate_config(workspace, "place") is None

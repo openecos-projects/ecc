@@ -83,9 +83,14 @@ def reapply_materialized_candidate_config(
     if not receipt_path.exists():
         return None
     receipt = _read_receipt(receipt_path)
-    if receipt["target_step"] != target_step:
+    # The agent targets the RPC-level "Floorplan" step, but the flow splits
+    # floorplanning across preFloorplan/postFloorplan; postFloorplan is the
+    # only step that runs the complete init+run cycle the runtime observer
+    # must capture, so the materialization arms there.
+    bound_step = "Floorplan" if target_step == "postFloorplan" else target_step
+    if receipt["target_step"] != bound_step:
         return None
-    _validate_receipt_binding(workspace, target_step, receipt)
+    _validate_receipt_binding(workspace, bound_step, receipt)
     _verify_config_snapshot_hashes(workspace, receipt["snapshots"])
     snapshots = {entry["config_key"]: entry for entry in receipt["snapshots"]}
     for entry in receipt["configs"]:
