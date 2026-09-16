@@ -80,7 +80,7 @@ uv run ecc --help
 ## 1. 通用约定
 
 - 全局：`ecc --version`（单行版本号）、`ecc --help`。
-- 项目定位：项目级命令接受 `--project <dir>`（缺省为当前目录）。`--workspace <选择器>` 可以是受管的非空单段名称，也可以是完整绝对路径。名称继续使用项目内的 `<project>/<workspace-id>` 布局；绝对路径创建或选择项目外 workspace，新路径默认以目录 basename 作为 workspace ID，已登记路径沿用清单中的 ID。新项目裸执行 `ecc run` 创建 `default`；只有一个活跃 workspace 时自动选择，多个活跃 workspace 时必须指定 `--workspace`。命名 workspace 会在创建文件前登记到 `project.json`。遗留的 `runs/` 项目必须先执行 `ecc migrate`。每个项目只有一个 `ecc.toml`；创建时会把声明的输入复制到各 workspace 的 `origin/`。
+- 项目定位：项目级命令接受 `--project <dir>`（缺少参数指定即为当前目录）。`--workspace <路径指定>` 可以是受工具管理的非空简单文件夹路径，也可以是完整绝对路径。名称继续使用项目内的 `<project>/<workspace-id>` 布局；绝对路径创建或选择项目外 workspace，新路径默认以目录 basename 作为 workspace ID，已登记路径沿用清单中的 ID。新项目裸执行 `ecc run` 创建 `default`；只有一个活跃 workspace 时自动选择，多个活跃 workspace 时必须指定 `--workspace`。命名 workspace 会在创建文件前登记到 `project.json`。遗留的 `runs/` 项目必须先执行 `ecc migrate`。每个项目只有一个 `ecc.toml`；创建时会把声明的输入复制到各 workspace 的 `origin/`。
 - 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`param`、`pdk`、`project`、`workspace`、`signoff`、`report` 都支持 `--plain`（`key=value`，便于脚本解析），缺省为人类可读 TEXT。`rpc serve` 和 `layout-image` 使用各自的协议。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。
 - 步骤名（step token）有三套写法，按场景区分：
