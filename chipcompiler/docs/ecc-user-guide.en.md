@@ -80,7 +80,7 @@ uv run ecc --help
 ## 1. General conventions
 
 - Global: `ecc --version` (single version line), `ecc --help`.
-- Project location: project-scoped commands accept `--project <dir>` (defaults to the current directory). `--workspace <selector>` accepts either a managed, non-empty single-segment name or a complete absolute filesystem path. A name keeps the project-local `<project>/<workspace-id>` layout; an absolute path creates or selects an external workspace and uses its basename as the new ID unless the path is already registered. A fresh project creates `default` on bare `ecc run`; a project with one active workspace auto-selects it, while one with multiple active workspaces requires `--workspace`. A named workspace is created and registered in `project.json` before its files are created. Legacy `runs/` projects must be upgraded with `ecc migrate` before running a flow. Each project has one `ecc.toml`; workspace inputs are copied to its own `origin/` directory at creation time.
+- Project location: project-scoped commands accept `--project <dir>` (when the option is not given, the current directory is used). `--workspace <path>` accepts either a tool-managed, non-empty simple folder name or a complete absolute filesystem path. A name keeps the project-local `<project>/<workspace-id>` layout; an absolute path creates or selects an external workspace and uses its basename as the new ID unless the path is already registered. A fresh project creates `default` on bare `ecc run`; a project with one active workspace auto-selects it, while one with multiple active workspaces requires `--workspace`. A named workspace is created and registered in `project.json` before its files are created. Legacy `runs/` projects must be upgraded with `ecc migrate` before running a flow. Each project has one `ecc.toml`; workspace inputs are copied to its own `origin/` directory at creation time.
 - Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `param`, `pdk`, `project`, `workspace`, `signoff`, and `report` accept `--plain` (`key=value`, for scripting), with human-readable TEXT by default. `rpc serve` and `layout-image` use their own protocols instead.
 - Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`).
 - Step tokens come in three vocabularies, distinguished by context:
@@ -329,17 +329,17 @@ ecc run [OPTIONS]
   --plain            key=value output for scripting
 ```
 
-For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` when the selector is a name, or at the exact absolute path when the selector is a path → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. An absolute workspace selector must be a complete external directory whose parent already exists; its basename becomes the new workspace ID unless the path is already registered. An existing valid workspace at an external path can be registered and resumed with the same command. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full 17-step chain (Synthesis→LEC (Yosys equivalence check; skipped by default — `[flow] skip_steps` defaults to `["lec"]`, set `[]` to enable)→preFloorplan→macroPlacement→postFloorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→RCX→sta→LVS→postRouteLec (Yosys equivalence check)→DRC→Harden; Harden emits GDS + abstract LEF + timing LIB).
+For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` when the selector is a name, or at the exact absolute path when the selector is a path → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. An absolute workspace selector must be a complete external directory whose parent already exists; its basename becomes the new workspace ID unless the path is already registered. An existing valid workspace at an external path can be registered and resumed with the same command. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full 17-step chain (Synthesis→LEC (Yosys equivalence check; skipped by default — `[flow] skip_steps` defaults to `["lec"]`, set `[]` to enable)→preFloorplan→macroPlacement→postFloorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→RCX→sta→LVS→postRouteLec (Yosys equivalence check)→DRC→Harden; Harden emits GDS + Abstract LEF + timing LIB).
 
 #### External workspace paths
 
-Pass an absolute path directly to `--workspace` when the workspace directory must live outside the project. The selector names the complete workspace directory, not a parent directory:
+Pass the complete absolute directory directly as the `--workspace` path argument when the workspace directory must live outside the project. It refers to the complete workspace directory, not a parent directory:
 
 ```bash
 # Existing behavior: create and register the workspace below the project.
-ecc run --project /projects/gcd --workspace local
+ecc run --project /projects/gcd --workspace <project-local-path>
 
-# Create and run a managed workspace outside the project.
+# Create and run a tool-managed workspace outside the project.
 ecc run --project /projects/gcd \
   --workspace /data/ecc-runs/gcd/archive
 
@@ -497,7 +497,7 @@ $ ecc run --workspace a/b     # a workspace must be a single name, never a path
 |---|---|---|
 | `run_exists` | the target directory already exists but is not a valid ECC workspace (no `home/flow.json`) | `--overwrite` (with safety checks) or a different `--workspace` |
 | `overwrite_refused` | the `--overwrite` target is not a genuine ECC workspace directory | inspect the directory contents and clean it up manually |
-| `invalid_workspace` | the workspace name contains `/`, is a relative path, or is `.`/`..`; or the directory is not a loadable workspace | use a single-segment name or complete absolute path / inspect the directory |
+| `invalid_workspace` | the workspace name contains `/`, is a relative path, or is `.`/`..`; or the directory is not a loadable workspace | use a simple name (e.g. `myproject`) or a complete absolute path / inspect the directory (e.g. `/home/user/myproject`) |
 | `workspace_required` | the project has multiple active workspaces but no `--workspace` was given | pass one of the names listed in the error |
 | `workspace_not_declared` | the `--workspace` name does not match an id declared in `project.json` (including aliases pointing at a declared path) | use the declared id given in the error |
 | `workspace_path_not_absolute` | the import path is not absolute | pass an absolute workspace directory to `workspace import` |
