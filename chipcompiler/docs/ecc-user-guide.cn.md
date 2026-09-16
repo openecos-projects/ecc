@@ -494,7 +494,7 @@ $ ecc run --workspace a/b     # workspace 必须是单段名称，不能是路�
 |---|---|---|
 | `run_exists` | 目标目录已存在但不是有效 ECC workspace（无 `home/flow.json`） | `--overwrite`（有安全校验）或换 `--workspace` |
 | `overwrite_refused` | `--overwrite` 的目标不是真正的 ECC workspace 目录 | 人工确认目录内容后手动清理 |
-| `invalid_workspace` | workspace 名含 `/`、是相对路径或 `.`/`..`；或目录不是可加载的 workspace | 使用单段名称或完整绝对路径 / 检查目录 |
+| `invalid_workspace` | workspace 名含 `/`、是相对路径或 `.`/`..`；或目录不是可加载的 workspace | 使用简单名称（如 myproject）或完整绝对路径 / 检查目录（如 /home/user/myproject） |
 | `workspace_required` | 项目有多个活跃 workspace 但没传 `--workspace` | 按报错列出的名称指定其一 |
 | `workspace_not_declared` | `--workspace` 名与 `project.json` 声明的 id 不一致（含别名指向已声明路径） | 使用报错中给出的已声明 id |
 | `workspace_path_not_absolute` | 导入路径不是绝对路径 | 为 `workspace import` 传入绝对 workspace 目录 |
