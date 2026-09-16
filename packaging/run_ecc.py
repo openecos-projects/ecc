@@ -1,6 +1,7 @@
 import multiprocessing
 import os
 import sys
+from pathlib import Path
 
 
 def _configure_pyinstaller_runtime() -> None:
@@ -10,7 +11,10 @@ def _configure_pyinstaller_runtime() -> None:
 
 
 def main() -> int | None:
-    from chipcompiler.cli.main import main as entrypoint
+    if Path(sys.argv[0]).stem == "ecc-agent-rpc":
+        from chipcompiler.runtime.stdio_server import main as entrypoint
+    else:
+        from chipcompiler.cli.main import main as entrypoint
 
     return entrypoint()
 

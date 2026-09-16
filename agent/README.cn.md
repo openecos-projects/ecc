@@ -1,10 +1,12 @@
 # Candidate Runtime 入口说明
 
-ECC 只发布 `ecc` 可执行文件。Candidate 方法通过内部 server composition
-注册到 `ecc rpc serve --stdio`，不再提供独立的 `ecc-agent-rpc` 入口。
+ECC 发布 `ecc` 可执行文件，并附带 `ecc-agent-rpc` 兼容别名（同一二进制的
+硬链接）。Candidate 方法通过内部 server composition 注册到统一的
+`ecc rpc serve --stdio` 运行时；`ecc-agent-rpc` 也直接进入该运行时。
 
 ```toml
 scripts.ecc = "chipcompiler.cli.main:main"
+scripts.ecc-agent-rpc = "chipcompiler.runtime.stdio_server:main"
 ```
 
 桌面端或离线研究客户端启动该进程，通过标准输入发送请求，并从标准输出
