@@ -336,7 +336,7 @@ ecc run [OPTIONS]
 
 ```bash
 # 原有行为：在项目下创建并登记 workspace。
-ecc run --project /projects/gcd --workspace local
+ecc run --project /projects/gcd --workspace <project-local-path>
 
 # 在项目外创建并运行受管 workspace。
 ecc run --project /projects/gcd \
