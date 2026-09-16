@@ -19,7 +19,8 @@ If Nix is not available, run the same `uv sync` commands in your normal shell
 after installing the required system packages for native builds.
 
 The Nix shell also provides pinned **lit** / **filecheck** and wrappers for the
-signoff CI scripts (versions live in [`nix/signoff-tools.nix`](../nix/signoff-tools.nix)):
+signoff CI scripts (versions in [`nix/signoff-tools.nix`](../nix/signoff-tools.nix);
+flake wiring in [`nix/signoff.nix`](../nix/signoff.nix)):
 
 ```bash
 nix run .#filecheck -- --help
