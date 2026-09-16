@@ -8,14 +8,14 @@ from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
 
-from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data import SkippableStepEnum, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.utility.path import optional_path, path_text
 
 _LEGALIZE_OWNERS = frozenset(
     {
         StepEnum.LEGALIZATION.value,
-        StepEnum.TIMING_OPT.value,
+        SkippableStepEnum.TIMING_OPT.value,
     }
 )
 

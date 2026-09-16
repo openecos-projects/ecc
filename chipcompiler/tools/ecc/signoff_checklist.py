@@ -8,8 +8,21 @@ to assemble a signoff package.
 import re
 from pathlib import Path
 
-from chipcompiler.data import Checklist, StateEnum, StepEnum, Workspace, WorkspaceStep
-from chipcompiler.data.step_dirs import STEP_DIRECTORIES
+from chipcompiler.data import (
+    Checklist,
+    SkippableStepEnum,
+    StateEnum,
+    StepEnum,
+    Workspace,
+    WorkspaceStep,
+)
+from chipcompiler.data.step import STEP_DIRECTORIES
+from chipcompiler.tools.ecc.lec_gates import (
+    post_route_lec_netlists as _post_route_lec_netlists,
+)
+from chipcompiler.tools.ecc.lec_gates import (
+    requires_post_route_lec as _requires_post_route_lec,
+)
 from chipcompiler.tools.ecc.sta_qor import (
     STA_QOR_SUMMARY_FILENAME,
     STA_REPORT_FILENAMES,
@@ -43,7 +56,7 @@ _REQUIRED_FLOW_STEPS = (
     StepEnum.DRC.value,
     StepEnum.LVS.value,
     StepEnum.FILLER.value,
-    StepEnum.POST_ROUTE_LEC.value,
+    SkippableStepEnum.POST_ROUTE_LEC.value,
     StepEnum.RCX.value,
     StepEnum.STA.value,
     StepEnum.HARDEN.value,
@@ -409,7 +422,7 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
         ]
     elif step.name == StepEnum.SYNTHESIS.value:
         artifacts = (("netlist", "Mapped synthesis netlist", step.output.verilog),)
-    elif step.name in {StepEnum.LEC.value, StepEnum.POST_ROUTE_LEC.value}:
+    elif step.name in {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}:
         step_input = getattr(step, "input", None)
         return _lec_artifact_items(
             workspace,
@@ -494,34 +507,6 @@ def refresh_step_checklist(workspace: Workspace, step: WorkspaceStep) -> bool:
     return not any(item["blocked"] for item in step.checklist.checklist)
 
 
-def _post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | None]:
-    design = getattr(getattr(workspace, "design", None), "name", "") or ""
-    # Golden precedence mirrors the execution wiring (engine/flow.py): the
-    # synthesis output when the flow contains Synthesis, else the declared
-    # golden netlist, else the origin RTL.
-    golden = getattr(getattr(workspace, "design", None), "origin_verilog", None)
-    gate = None
-    workspace_dir = Path(workspace.directory) if getattr(workspace, "directory", None) else None
-    flow = getattr(workspace, "flow", None)
-    if workspace_dir is not None:
-        # The canonical chain wires postRouteLec's gate input to the LVS
-        # output netlist (the step immediately before it), not the filler one.
-        gate = workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz"
-        if flow is not None and flow.has_step(StepEnum.SYNTHESIS):
-            golden = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
-        else:
-            golden = getattr(workspace.design, "golden_verilog", None) or golden
-    return golden, gate
-
-
-def _requires_post_route_lec(workspace: Workspace) -> bool:
-    flow = getattr(workspace, "flow", None)
-    if flow is None or not flow.has_step(StepEnum.LVS):
-        return False
-    golden, gate = _post_route_lec_netlists(workspace)
-    return bool(golden and Path(golden).is_file() and gate and Path(gate).is_file())
-
-
 def _flow_items(workspace: Workspace) -> list[dict]:
     flow = getattr(workspace, "flow", None)
     states = {
@@ -531,7 +516,9 @@ def _flow_items(workspace: Workspace) -> list[dict]:
     }
     items = []
     for step in _REQUIRED_FLOW_STEPS:
-        if step == StepEnum.POST_ROUTE_LEC.value and not _requires_post_route_lec(workspace):
+        if step == SkippableStepEnum.POST_ROUTE_LEC.value and not _requires_post_route_lec(
+            workspace
+        ):
             continue
         state = "pass" if states.get(step) == StateEnum.Success.value else "failed"
         items.append(
@@ -639,14 +626,16 @@ def _package_items(resource_issues) -> list[dict]:
     return items
 
 
-def rebuild_home_checklist(workspace: Workspace, resource_issues=None) -> dict:
+def rebuild_home_checklist(
+    workspace: Workspace, resource_issues=None, *, persist: bool = True
+) -> dict:
     """Replace the aggregate workspace checklist from current step snapshots."""
     workspace_directory = getattr(workspace, "directory", None)
     if not workspace_directory:
         return {}
     workspace_dir = Path(workspace_directory)
     items = []
-    post_route_lec_dir = STEP_DIRECTORIES[StepEnum.POST_ROUTE_LEC.value]
+    post_route_lec_dir = STEP_DIRECTORIES[SkippableStepEnum.POST_ROUTE_LEC.value]
     for directory in STEP_DIRECTORIES.values():
         if directory == post_route_lec_dir:
             continue
@@ -660,10 +649,12 @@ def rebuild_home_checklist(workspace: Workspace, resource_issues=None) -> dict:
             workspace_dir
             / post_route_lec_dir
             / "output"
-            / f"{design}_{StepEnum.POST_ROUTE_LEC.value}_result.json"
+            / f"{design}_{SkippableStepEnum.POST_ROUTE_LEC.value}_result.json"
         )
         items.extend(
-            _lec_artifact_items(workspace, StepEnum.POST_ROUTE_LEC.value, result_json, golden, gate)
+            _lec_artifact_items(
+                workspace, SkippableStepEnum.POST_ROUTE_LEC.value, result_json, golden, gate
+            )
         )
     for step_name in _QUALITY_GATES_BY_STEP:
         step_directory = workspace_dir / STEP_DIRECTORIES[step_name]
@@ -690,8 +681,8 @@ def rebuild_home_checklist(workspace: Workspace, resource_issues=None) -> dict:
         # Recover home.json files whose checklist path was cleared by an older
         # home.reset(); persist so later checklist updates resolve as well.
         checklist_path = workspace_dir / "home" / "checklist.json"
-        if workspace.home.path is not None:
+        if persist and workspace.home.path is not None:
             workspace.home.set_checklist(checklist_path)
-    checklist = Checklist(checklist_path)
-    checklist.replace(list(deduplicated.values()))
-    return checklist.data
+    from chipcompiler.tools.ecc.checklist_render import render_checklist
+
+    return render_checklist(checklist_path, deduplicated.values(), persist=persist)

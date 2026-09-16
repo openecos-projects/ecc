@@ -8,7 +8,9 @@ from pathlib import Path
 
 from chipcompiler.data import (
     EccOutput,
+    SkippableStepEnum,
     StateEnum,
+    StepBaseEnum,
     StepEnum,
     Workspace,
     WorkspaceStep,
@@ -16,6 +18,24 @@ from chipcompiler.data import (
     log_flow,
 )
 from chipcompiler.engine import EngineDB
+from chipcompiler.engine.flow_completion import (
+    finalize_interrupted_subflow as _finalize_interrupted_subflow,
+)
+from chipcompiler.engine.flow_completion import (
+    normalize_legacy_terminal_state as _normalize_legacy_terminal_state,
+)
+from chipcompiler.engine.flow_completion import (
+    notify_flow_observer as _notify_flow_observer,
+)
+from chipcompiler.engine.flow_completion import (
+    notify_step_completed,
+)
+from chipcompiler.engine.flow_completion import (
+    refresh_qor_report as _refresh_qor_report,
+)
+from chipcompiler.engine.flow_completion import (
+    refresh_signoff_checklist as _refresh_signoff_checklist,
+)
 from chipcompiler.engine.signoff import (
     SignoffPackageCollector,
     SignoffPackageOptions,
@@ -79,7 +99,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.POST_FLOORPLAN.value,
         StepEnum.PLACEMENT.value,
         StepEnum.CTS.value,
-        StepEnum.TIMING_OPT.value,
+        SkippableStepEnum.TIMING_OPT.value,
         StepEnum.LEGALIZATION.value,
         StepEnum.ROUTING.value,
         StepEnum.DRC.value,
@@ -99,28 +119,20 @@ class EngineFlow:
             self.load()
 
     def build_default_steps(self):
-        # Flow step sequences
-        steps = []
+        """Seed the canonical rtl2gds chain (test helper; the CLI/GUI paths
+        resolve their own target and policy before seeding)."""
+        from chipcompiler.rtl2gds import build_rtl2gds_flow
 
-        steps.append(self.init_flow_step(StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
+        steps = [
+            self.init_flow_step(step, tool, state) for step, tool, state in build_rtl2gds_flow()
+        ]
         # Persist the golden netlist on the LEC step so reloads do not have
         # to guess roles from the golden_* filename convention.
         golden = getattr(self.workspace.design, "golden_verilog", None)
-        lec_info = {"golden_verilog": str(golden)} if golden else None
-        steps.append(
-            self.init_flow_step(StepEnum.LEC, "yosys_lec", StateEnum.Unstart, info=lec_info)
-        )
-        steps.append(self.init_flow_step(StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.CTS, "ecc", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.TIMING_OPT, "sizer", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.ROUTING, "ecc", StateEnum.Unstart))
-        steps.append(self.init_flow_step(StepEnum.FILLER, "ecc", StateEnum.Unstart))
-        # steps.append(self.init_flow_step(StepEnum.GDS, "klayout", StateEnum.Unstart))
-        # steps.append(self.init_flow_step(StepEnum.SIGNOFF, "ecc", StateEnum.Unstart))
+        if golden:
+            for step in steps:
+                if step["name"] == SkippableStepEnum.LEC.value:
+                    step["info"] = {"golden_verilog": str(golden)}
 
         self.workspace.flow.data = {"steps": steps}
 
@@ -131,12 +143,12 @@ class EngineFlow:
 
     def init_flow_step(
         self,
-        step: StepEnum | str,
+        step: StepBaseEnum | str,
         tool: str,
         state: str | StateEnum,
         info: dict | None = None,
     ):
-        step_value = step.value if isinstance(step, StepEnum) else step
+        step_value = step.value if isinstance(step, StepBaseEnum) else step
         state_value = state.value if isinstance(state, StateEnum) else state
         return {
             "name": step_value,  # step name
@@ -149,7 +161,7 @@ class EngineFlow:
 
     def add_step(
         self,
-        step: StepEnum | str,
+        step: StepBaseEnum | str,
         tool: str,
         state: str | StateEnum,
         info: dict | None = None,
@@ -275,8 +287,8 @@ class EngineFlow:
         # HARDEN/RCX/GDS results live on the place-and-route (ecc) output leaves.
         ecc_output = output if isinstance(output, EccOutput) else None
         if workspace_step.tool == "yosys_lec" or workspace_step.name in (
-            StepEnum.LEC.value,
-            StepEnum.POST_ROUTE_LEC.value,
+            SkippableStepEnum.LEC.value,
+            SkippableStepEnum.POST_ROUTE_LEC.value,
         ):
             from chipcompiler.tools.yosys_lec.utility import lec_result_is_proven
 
@@ -312,7 +324,7 @@ class EngineFlow:
                 success = bool(spef_list) and all(
                     os.path.isfile(spef) and os.path.getsize(spef) > 0 for spef in spef_list
                 )
-            case StepEnum.TIMING_OPT.value:
+            case SkippableStepEnum.TIMING_OPT.value:
                 if os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""):
                     success = True
             case _:
@@ -379,7 +391,7 @@ class EngineFlow:
                     input_db = explicit_golden
                 elif pre_step is None and self.workspace.design.golden_verilog is not None:
                     input_db = self.workspace.design.golden_verilog
-                elif step["name"] == StepEnum.POST_ROUTE_LEC.value:
+                elif step["name"] == SkippableStepEnum.POST_ROUTE_LEC.value:
                     input_db = synthesis_gate_verilog or self.workspace.design.origin_verilog
                 elif pre_step is not None and pre_step.name == StepEnum.SYNTHESIS.value:
                     input_db = synthesis_golden_verilog or None
@@ -522,6 +534,7 @@ class EngineFlow:
         """
 
         for workspace_step in self.workspace_steps:
+            _notify_flow_observer(observer, "raise_if_cancelled")
             self.workspace.logger.log_section(
                 f"{workspace_step.tool} - begin step - {workspace_step.name}"
             )
@@ -564,33 +577,6 @@ class EngineFlow:
 
         return True
 
-    def _normalize_legacy_terminal_state(self, workspace_step, step_tag):
-        """Reset stuck terminal states from pre-guard workspaces to Unstart.
-
-        Pre-guard workspaces may have steps stuck in Incomplete/Invalid from
-        earlier runs, or in the removed terminal Warning state of the
-        synthesis LEC. Batch resets (_invalidate_suffix, clear_states) handle
-        rerun paths; this handles the rerun=False resume path.
-        """
-        old_step = self.get_step(name=workspace_step.name, tool=workspace_step.tool)
-        if old_step is None:
-            return
-        persisted = old_step.get("state")
-        if persisted in {
-            StateEnum.Imcomplete.value,
-            StateEnum.Invalid.value,
-            "Warning",
-        }:
-            logger.warning(
-                "Normalizing legacy %s state '%s' → Unstart before rerun",
-                step_tag,
-                persisted,
-            )
-            old_step["state"] = StateEnum.Unstart.value
-            old_step["runtime"] = ""
-            old_step["peak memory (mb)"] = 0
-            # No self.save() — set_state(Ongoing) below saves.
-
     def run_step(
         self,
         workspace_step: WorkspaceStep | str,
@@ -614,17 +600,10 @@ class EngineFlow:
             self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
             self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
             _notify_flow_observer(observer, "on_step_skipped", workspace_step)
-            try:
-                from chipcompiler.analysis.qor import refresh_workspace_qor_report
-
-                refresh_workspace_qor_report(self.workspace)
-            except Exception:
-                self.workspace.logger.exception(
-                    "[QOR] %s failed to refresh the workspace QoR report after skip", step_tag
-                )
+            _refresh_qor_report(self.workspace, step_tag)
             return StateEnum.Success
 
-        self._normalize_legacy_terminal_state(workspace_step, step_tag)
+        _normalize_legacy_terminal_state(self, workspace_step, step_tag)
 
         # set state ongoing
         start_time = time.time()
@@ -659,6 +638,7 @@ class EngineFlow:
             ):
                 raise RuntimeError(f"failed to persist ongoing state for {step_tag}")
         _notify_flow_observer(observer, "on_step_started", workspace_step)
+        previous_step = deepcopy(flow_step) if flow_step is not None else None
 
         execution = execute_tool_step(
             self.workspace,
@@ -754,14 +734,7 @@ class EngineFlow:
             # artifacts refreshed above, so it runs after they exist; a
             # failure degrades to a warning like the facts refresh.
             if state == StateEnum.Success:
-                try:
-                    from chipcompiler.analysis.qor import refresh_workspace_qor_report
-
-                    refresh_workspace_qor_report(self.workspace)
-                except Exception:
-                    self.workspace.logger.exception(
-                        "[QOR] %s failed to refresh the workspace QoR report", step_tag
-                    )
+                _refresh_qor_report(self.workspace, step_tag)
         except (Exception, SystemExit) as exc:
             failure_message = record_tool_failure(self.workspace.logger, step_tag, exc)
             step_error = step_error or failure_message
@@ -790,12 +763,13 @@ class EngineFlow:
             except (Exception, SystemExit):
                 logger.exception("Failed to release DB engine after %s", step_tag)
             if terminal_persisted:
-                _notify_flow_observer(
+                notify_step_completed(
+                    self,
                     observer,
-                    "on_step_completed",
                     workspace_step,
                     state,
                     step_error,
+                    previous_step,
                 )
 
         self.workspace.logger.info(
@@ -805,13 +779,6 @@ class EngineFlow:
             runtime,
             peak_memory_mb,
         )
-        if state == StateEnum.Success and not _wait_for_step_rendered(
-            observer,
-            workspace_step,
-            state,
-        ):
-            return StateEnum.Invalid
-
         return state
 
     def init_db_engine_for_step(self, workspace_step: WorkspaceStep) -> bool:
@@ -827,70 +794,3 @@ class EngineFlow:
             return True
 
         return self.engine_db.create_db_engine(step=workspace_step)
-
-
-def _finalize_interrupted_subflow(
-    observer,
-    workspace_step: WorkspaceStep,
-    runtime: str,
-    peak_memory_mb: float,
-) -> None:
-    try:
-        from chipcompiler.runtime.subflow_events import finalize_interrupted_subflow
-
-        for subflow_step in finalize_interrupted_subflow(
-            workspace_step,
-            runtime,
-            peak_memory_mb,
-        ):
-            _notify_flow_observer(
-                observer,
-                "on_subflow_stage",
-                workspace_step,
-                subflow_step,
-            )
-    except (Exception, SystemExit):
-        logger.exception("Failed to finalize subflow after %s", workspace_step.name)
-
-
-def _refresh_signoff_checklist(workspace: Workspace, workspace_step: WorkspaceStep) -> None:
-    """Replace step/home checklists after the step's terminal flow state is saved."""
-    try:
-        from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
-
-        refresh_step_checklist(workspace, workspace_step)
-    except (Exception, SystemExit):
-        logger.exception(
-            "Failed to refresh signoff checklist after %s/%s",
-            workspace_step.name,
-            workspace_step.tool,
-        )
-
-
-def _notify_flow_observer(observer, method_name: str, *args) -> None:
-    """Keep optional GUI observers outside the flow engine's failure domain."""
-    if observer is None:
-        return
-    callback = getattr(observer, method_name, None)
-    if not callable(callback):
-        return
-    try:
-        callback(*args)
-    except (Exception, SystemExit):
-        # Runtime observers must never turn a completed tool execution into a
-        # failed flow. The coordinator records transport failures separately.
-        logging.getLogger(__name__).exception("flow observer callback failed: %s", method_name)
-
-
-def _wait_for_step_rendered(observer, workspace_step: WorkspaceStep, state: StateEnum) -> bool:
-    if observer is None or state != StateEnum.Success:
-        return True
-    callback = getattr(observer, "wait_for_step_rendered", None)
-    if not callable(callback):
-        return True
-    try:
-        return bool(callback(workspace_step, state))
-    except Exception:
-        # Fail-open: observer bugs must not invalidate successful tool results.
-        logging.getLogger(__name__).exception("flow observer render gate failed")
-        return True

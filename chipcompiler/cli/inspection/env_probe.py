@@ -201,16 +201,18 @@ _TOOL_COMPONENTS = {
 }
 
 
-def probe_components_for_preset(preset: str) -> tuple[str, ...]:
+def probe_components_for_preset(preset: str, *, skip: tuple[str, ...] = ()) -> tuple[str, ...]:
     """Components a flow preset needs at minimum before it can start.
 
     The PDK is not probed here: `ecc run` already validates it through
     validate_project_config, and the slang check is left to the synthesis
-    step's existing fail-fast so preflight stays fast.
+    step's existing fail-fast so preflight stays fast. Skipped steps are
+    filtered out first, so their tools are never probed.
     """
     from chipcompiler import rtl2gds as rtl2gds_api
 
-    return probe_components_for_steps(rtl2gds_api.get_flow_builders()[preset]())
+    steps = rtl2gds_api.filter_flow_steps(rtl2gds_api.get_flow_builders()[preset](), skip)
+    return probe_components_for_steps(steps)
 
 
 def probe_components_for_steps(steps) -> tuple[str, ...]:

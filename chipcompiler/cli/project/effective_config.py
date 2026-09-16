@@ -37,6 +37,43 @@ def _resolve_entry(manifest, run_name: str | None):
     return active[0] if len(active) == 1 else None
 
 
+def declared_skip_steps(entry, cfg) -> list | None:
+    """The declared skip policy: project.json entry wins over ecc.toml.
+
+    The only key with this precedence direction — ecc.toml keeps winning
+    for every other field. None means neither surface declared a policy
+    (the code default applies downstream); [] is an explicit run-everything.
+    """
+    if entry is not None and getattr(entry, "skip_steps", None) is not None:
+        return list(entry.skip_steps)
+    if "flow.skip_steps" in getattr(cfg, "_explicit_keys", frozenset()):
+        return list(getattr(cfg, "flow_skip_steps", None) or [])
+    return None
+
+
+def _attach_skip_steps(flow_config: dict | None, skip_steps: list | None) -> dict | None:
+    """Carry a declared skip policy on the flow config (policy-only when
+    the config selects no steps)."""
+    if skip_steps is None:
+        return flow_config
+    if flow_config is None:
+        return {"skip_steps": skip_steps}
+    flow_config = dict(flow_config)
+    flow_config["skip_steps"] = skip_steps
+    return flow_config
+
+
+def flow_config_selects_steps(flow_config) -> bool:
+    """Whether a flow config names steps (a range or explicit selection).
+
+    A policy-only config (just ``skip_steps``) selects nothing: it must
+    not satisfy a flow-target requirement nor trigger range preflight.
+    """
+    if not isinstance(flow_config, dict):
+        return False
+    return bool(flow_config.get("start_step")) or bool(flow_config.get("steps"))
+
+
 def resolve_effective_config(
     ctx, run_name: str | None, cfg: "ProjectConfig | None"
 ) -> "CommandResult | tuple[ProjectConfig, dict | None, list[dict]]":
@@ -72,6 +109,17 @@ def resolve_effective_config(
             cfg.manifest_parameters = assembled["parameters"]
             if "flow.preset" not in cfg._explicit_keys:
                 flow_config = {"start_step": entry.start_step, "end_step": entry.end_step}
+
+    # skip_steps is the one key where the manifest layer outranks ecc.toml.
+    declared = declared_skip_steps(entry, cfg)
+    flow_config = _attach_skip_steps(flow_config, declared)
+    # Provenance for inspection surfaces: the winning layer's name.
+    if declared is not None:
+        cfg._skip_steps_source = (
+            "project.json"
+            if (entry is not None and getattr(entry, "skip_steps", None) is not None)
+            else "ecc.toml"
+        )
 
     warnings = []
     diverging = layer_divergences(cfg, assembled, entry)
@@ -243,7 +291,7 @@ def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None
         sources = cfg.design_rtl if len(cfg.design_rtl) > 1 else cfg.design_rtl[1:]
         for entry in sources:
             errors.extend(_validate_rtl_source(cfg.project_dir, entry))
-        if fresh and not cfg.flow_preset and flow_config is None:
+        if fresh and not cfg.flow_preset and not flow_config_selects_steps(flow_config):
             errors.append(
                 "no flow target: set flow.preset in ecc.toml or declare the workspace's "
                 "start/end range in project.json"

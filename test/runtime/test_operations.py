@@ -1,14 +1,14 @@
+import json
 import threading
 from types import SimpleNamespace
 
 from chipcompiler.data import StateEnum
-from chipcompiler.runtime import operations
+from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.runtime.operations import RuntimeOperationManager
 
 
-def test_successful_step_waits_for_matching_render_ack_before_completing():
+def test_successful_step_does_not_wait_for_render_ack_before_completing():
     events = []
-    entered_render_gate = threading.Event()
     completed = threading.Event()
     manager = RuntimeOperationManager(events.append)
     step = SimpleNamespace(name="Synthesis", tool="yosys", log=SimpleNamespace(file=""))
@@ -16,7 +16,6 @@ def test_successful_step_waits_for_matching_render_ack_before_completing():
     def runner(observer):
         observer.on_step_started(step)
         observer.on_step_completed(step, StateEnum.Success)
-        entered_render_gate.set()
         assert observer.wait_for_step_rendered(step, StateEnum.Success)
         completed.set()
         return {"rerun": False}
@@ -31,33 +30,109 @@ def test_successful_step_waits_for_matching_render_ack_before_completing():
         runner=runner,
     )
 
-    assert started["state"] in {"queued", "running", "waiting_for_gui_sync"}
-    assert entered_render_gate.wait(timeout=1)
-    assert not completed.wait(timeout=0.05)
+    assert started["state"] in {"queued", "running", "succeeded"}
+    assert completed.wait(timeout=1)
     step_completed = next(event for event in events if event["type"] == "step.completed")
     assert step_completed["payload"]["stepCommitId"]
     assert step_completed["payload"]["workspaceRevision"] == 1
-    assert not manager.acknowledge_step_rendered(
-        started["operationId"],
-        step_completed["eventId"],
-        "wrong-step-commit",
-        step_completed["payload"]["workspaceRevision"],
-    )["accepted"]
-
-    assert manager.acknowledge_step_rendered(
-        started["operationId"],
-        step_completed["eventId"],
-        step_completed["payload"]["stepCommitId"],
-        step_completed["payload"]["workspaceRevision"],
-    ) == {
-        "accepted": True,
-        "duplicate": False,
-        "operationId": started["operationId"],
-        "eventId": step_completed["eventId"],
-    }
-    assert completed.wait(timeout=1)
-    assert manager.operation_status(started["operationId"])["state"] == "succeeded"
+    status = manager.operation_status(started["operationId"])
+    assert status["state"] == "succeeded"
+    assert status["renderSyncState"] == "idle"
+    assert status["awaitingEventId"] is None
     assert events[-1]["type"] == "operation.completed"
+
+
+def test_cancel_stops_before_next_engine_flow_step(monkeypatch):
+    events = []
+    first_step_running = threading.Event()
+    release_first_step = threading.Event()
+    manager = RuntimeOperationManager(events.append)
+    steps = [
+        SimpleNamespace(name=name, tool="mock", log=SimpleNamespace(file=""))
+        for name in ("Synthesis", "Floorplan")
+    ]
+    workspace = SimpleNamespace(
+        flow=SimpleNamespace(data={"steps": [{}, {}]}),
+        logger=SimpleNamespace(log_section=lambda *_args: None, error=lambda *_args: None),
+    )
+    flow = EngineFlow(workspace=None)
+    flow.workspace = workspace
+    flow.workspace_steps = steps
+    flow.init_db_engine = lambda: True
+    executed = []
+
+    def run_step(step, *, rerun=False, observer=None):
+        executed.append(step.name)
+        observer.on_step_started(step)
+        if step.name == "Synthesis":
+            first_step_running.set()
+            assert release_first_step.wait(timeout=2)
+        observer.on_step_completed(step, StateEnum.Success)
+        return StateEnum.Success
+
+    flow.run_step = run_step
+    monkeypatch.setattr("chipcompiler.engine.flow.log_flow", lambda **_kwargs: None)
+    revisions = []
+
+    def commit_step(*_args):
+        revisions.append(len(revisions) + 1)
+        return revisions[-1]
+
+    started = manager.start(
+        workspace_id="workspace-1",
+        kind="flow",
+        origin="gui",
+        rerun=False,
+        step="",
+        idempotency_key="cancel-at-step-boundary",
+        snapshot_committer=commit_step,
+        runner=lambda observer: {"succeeded": flow.run_steps(observer=observer)},
+    )
+    assert first_step_running.wait(timeout=1)
+    cancellation = manager.request_cancel(started["operationId"])
+    assert cancellation == {
+        "accepted": True,
+        "operationId": started["operationId"],
+        "state": "cancelling",
+    }
+    release_first_step.set()
+
+    status = _wait_for_terminal(manager, started["operationId"])
+
+    assert status["state"] == "cancelled"
+    assert status["workspaceRevision"] == 1
+    assert executed == ["Synthesis"]
+    assert revisions == [1]
+    event_types = [event["type"] for event in events]
+    assert event_types.index("step.completed") < event_types.index("operation.cancelled")
+
+
+def test_queued_cancel_finishes_without_leaving_active_workspace(monkeypatch):
+    class DeferredThread:
+        def __init__(self, target, args, **_kwargs):
+            self._target = target
+            self._args = args
+
+        def start(self):
+            return None
+
+    monkeypatch.setattr("chipcompiler.runtime.operations.threading.Thread", DeferredThread)
+    manager = RuntimeOperationManager()
+    started = manager.start(
+        workspace_id="workspace-1",
+        kind="flow",
+        origin="gui",
+        rerun=False,
+        step="",
+        idempotency_key="queued-cancel",
+        runner=lambda _observer: {"ok": True},
+    )
+
+    assert manager.request_cancel(started["operationId"])["state"] == "cancelling"
+    manager._run(started["operationId"], lambda _observer: {"ok": True}, None)
+
+    assert manager.operation_status(started["operationId"])["state"] == "cancelled"
+    assert manager.shutdown_barrier() is None
 
 
 def test_subflow_stage_is_emitted_for_the_active_workspace_step():
@@ -101,56 +176,6 @@ def test_subflow_stage_is_emitted_for_the_active_workspace_step():
         "tool": "ecc",
     }
     released.set()
-    assert _wait_for_terminal(manager, started["operationId"])["state"] == "succeeded"
-
-
-def test_render_ack_replays_one_commit_then_pauses_before_a_bounded_timeout(monkeypatch):
-    monkeypatch.setattr(operations, "_RENDER_ACK_RETRY_SECONDS", 0.01)
-    monkeypatch.setattr(operations, "_RENDER_ACK_PAUSE_SECONDS", 0.02)
-    monkeypatch.setattr(operations, "_RENDER_ACK_ABORT_SECONDS", 0.5)
-    events = []
-    entered_render_gate = threading.Event()
-    manager = RuntimeOperationManager(events.append)
-    step = SimpleNamespace(name="Synthesis", tool="yosys", log=SimpleNamespace(file=""))
-
-    def runner(observer):
-        observer.on_step_started(step)
-        observer.on_step_completed(step, StateEnum.Success)
-        entered_render_gate.set()
-        assert observer.wait_for_step_rendered(step, StateEnum.Success)
-        return {"rerun": False}
-
-    started = manager.start(
-        workspace_id="workspace-1",
-        kind="flow",
-        origin="gui",
-        rerun=False,
-        step="",
-        idempotency_key="request-replay",
-        runner=runner,
-    )
-    assert entered_render_gate.wait(timeout=1)
-    step_completed = _wait_for_event(events, "step.completed")
-    paused = _wait_for_event(events, "operation.gui_sync_paused")
-    replays = [
-        event
-        for event in events
-        if event["type"] == "step.completed" and event["payload"].get("replayed")
-    ]
-    assert paused["payload"]["stepCommitId"] == step_completed["payload"]["stepCommitId"]
-    assert replays
-    assert all(event["eventId"] == step_completed["eventId"] for event in replays)
-    assert (
-        manager.operation_status(started["operationId"])["renderSyncState"]
-        == "paused_for_gui_recovery"
-    )
-
-    assert manager.acknowledge_step_rendered(
-        started["operationId"],
-        step_completed["eventId"],
-        step_completed["payload"]["stepCommitId"],
-        step_completed["payload"]["workspaceRevision"],
-    )["accepted"]
     assert _wait_for_terminal(manager, started["operationId"])["state"] == "succeeded"
 
 
@@ -269,49 +294,6 @@ def test_rerun_prepared_event_carries_the_affected_steps_once():
     assert len([event for event in events if event["type"] == "operation.rerun_prepared"]) == 1
 
 
-def test_render_ack_timeout_degrades_and_allows_the_flow_to_continue(monkeypatch):
-    monkeypatch.setattr(operations, "_RENDER_ACK_RETRY_SECONDS", 0.01)
-    monkeypatch.setattr(operations, "_RENDER_ACK_PAUSE_SECONDS", 0.02)
-    monkeypatch.setattr(operations, "_RENDER_ACK_ABORT_SECONDS", 0.04)
-    events = []
-    manager = RuntimeOperationManager(events.append)
-    step = SimpleNamespace(name="Synthesis", tool="yosys", log=SimpleNamespace(file=""))
-
-    def runner(observer):
-        observer.on_step_started(step)
-        observer.on_step_completed(step, StateEnum.Success)
-        assert observer.wait_for_step_rendered(step, StateEnum.Success)
-        observer.on_step_started(step)
-        observer.on_step_completed(step, StateEnum.Success)
-        assert observer.wait_for_step_rendered(step, StateEnum.Success)
-        return {"rerun": False}
-
-    started = manager.start(
-        workspace_id="workspace-1",
-        kind="flow",
-        origin="gui",
-        rerun=False,
-        step="",
-        idempotency_key="request-degraded-sync",
-        runner=runner,
-    )
-
-    degraded = _wait_for_event(events, "operation.gui_sync_degraded")
-    assert degraded["payload"]["stepCommitId"]
-    assert _wait_for_terminal(manager, started["operationId"])["state"] == "succeeded"
-    completed_events = [
-        event
-        for event in events
-        if event["type"] == "step.completed" and not event["payload"].get("replayed")
-    ]
-    assert len(completed_events) == 2
-    assert completed_events[1]["payload"]["stepCommitId"]
-    assert (
-        manager.operation_status(started["operationId"])["renderSyncState"] == "gui_sync_degraded"
-    )
-    assert not any(event["type"] == "operation.failed" for event in events)
-
-
 def test_active_operation_reports_a_shutdown_barrier_and_safe_boundary():
     release = threading.Event()
     manager = RuntimeOperationManager()
@@ -334,34 +316,6 @@ def test_active_operation_reports_a_shutdown_barrier_and_safe_boundary():
     assert status["shutdownBarrier"] is True
     assert status["safeToStop"] is False
     release.set()
-
-
-def test_cancel_at_render_ack_boundary_releases_the_waiting_flow():
-    entered_render_gate = threading.Event()
-    manager = RuntimeOperationManager()
-    step = SimpleNamespace(name="Synthesis", tool="yosys", log=SimpleNamespace(file=""))
-
-    def runner(observer):
-        observer.on_step_started(step)
-        observer.on_step_completed(step, StateEnum.Success)
-        entered_render_gate.set()
-        if not observer.wait_for_step_rendered(step, StateEnum.Success):
-            raise RuntimeError("operation cancelled at a render boundary")
-        return {"rerun": False}
-
-    started = manager.start(
-        workspace_id="workspace-1",
-        kind="flow",
-        origin="gui",
-        rerun=False,
-        step="",
-        idempotency_key="request-cancel-at-gate",
-        runner=runner,
-    )
-    assert entered_render_gate.wait(timeout=1)
-
-    assert manager.request_cancel(started["operationId"])["accepted"] is True
-    assert _wait_for_terminal(manager, started["operationId"])["state"] == "cancelled"
 
 
 def test_step_log_events_stream_only_new_log_bytes_and_keep_final_tail(tmp_path):
@@ -405,9 +359,6 @@ def test_step_log_events_stream_only_new_log_bytes_and_keep_final_tail(tmp_path)
     complete_step.set()
     step_complete = _wait_for_event(events, "step.completed")
     assert step_complete["payload"]["finalLog"] == ("previous run\nlive line one\nlive line two\n")
-    assert manager.acknowledge_step_rendered(started["operationId"], step_complete["eventId"])[
-        "accepted"
-    ]
     assert _wait_for_terminal(manager, started["operationId"])["state"] == "succeeded"
 
 
@@ -500,6 +451,122 @@ def test_cancel_does_not_replace_a_specific_tool_error(tmp_path):
     }
 
 
+def test_operation_manager_keeps_only_latest_terminal_window():
+    manager = RuntimeOperationManager()
+
+    for index in range(257):
+        started = manager.start(
+            workspace_id="workspace-1",
+            kind="step",
+            origin="gui",
+            rerun=False,
+            step="step",
+            idempotency_key=f"command-{index}",
+            runner=lambda _observer: {"ok": True},
+        )
+        assert _wait_for_terminal(manager, started["operationId"])["state"] == "succeeded"
+
+    assert len(manager.workspace_snapshot("workspace-1")["operations"]) == 256
+
+
+def test_operation_ledger_recovers_unfinished_operations_as_interrupted(tmp_path):
+    ledger = tmp_path / "runtime-commands.json"
+    manager = RuntimeOperationManager()
+    manager.load_workspace_ledger("workspace-1", ledger)
+    release = threading.Event()
+    started = manager.start(
+        workspace_id="workspace-1",
+        kind="flow",
+        origin="gui",
+        rerun=False,
+        step="",
+        idempotency_key="running-command",
+        runner=lambda _observer: release.wait(timeout=2),
+    )
+    for _ in range(100):
+        if ledger.exists() and started["operationId"] in ledger.read_text():
+            break
+        threading.Event().wait(0.01)
+
+    restored = RuntimeOperationManager()
+    restored_ids = restored.load_workspace_ledger("workspace-1", ledger)
+    assert restored_ids == [started["operationId"]]
+    assert restored.operation_status(started["operationId"])["state"] == "interrupted"
+    release.set()
+
+
+def test_read_only_ledger_load_does_not_recover_or_rewrite(tmp_path):
+    ledger = tmp_path / "runtime-commands.json"
+    ledger.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "workspaceId": "workspace-1",
+                "operations": [
+                    {
+                        "operationId": "operation-running",
+                        "runSessionId": "session-running",
+                        "runtimeInstanceId": "runtime-old",
+                        "workspaceId": "workspace-1",
+                        "kind": "flow",
+                        "origin": "gui",
+                        "state": "running",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    before = ledger.read_bytes()
+
+    manager = RuntimeOperationManager()
+    loaded = manager.load_workspace_ledger("workspace-1", ledger, recover=False)
+
+    assert loaded == ["operation-running"]
+    assert manager.operation_status("operation-running")["state"] == "running"
+    assert not manager.is_active("operation-running")
+    assert ledger.read_bytes() == before
+
+    assert manager.load_workspace_ledger("workspace-1", ledger) == ["operation-running"]
+    assert manager.operation_status("operation-running")["state"] == "interrupted"
+
+
+def test_operation_ledger_clears_legacy_render_wait_state(tmp_path):
+    ledger = tmp_path / "runtime-commands.json"
+    ledger.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "workspaceId": "workspace-1",
+                "operations": [
+                    {
+                        "operationId": "operation-legacy",
+                        "runSessionId": "session-legacy",
+                        "runtimeInstanceId": "runtime-legacy",
+                        "workspaceId": "workspace-1",
+                        "kind": "flow",
+                        "origin": "gui",
+                        "state": "waiting_for_gui_sync",
+                        "awaitingEventId": "event-legacy",
+                        "awaitingStepCommitId": "commit-legacy",
+                        "renderSyncState": "waiting_for_gui_sync",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    manager = RuntimeOperationManager()
+    manager.load_workspace_ledger("workspace-1", ledger)
+
+    status = manager.operation_status("operation-legacy")
+    assert status["state"] == "interrupted"
+    assert status["renderSyncState"] == "idle"
+    assert status["awaitingEventId"] is None
+    assert status["awaitingStepCommitId"] is None
+
+
 def _wait_for_event(events: list[dict], event_type: str) -> dict:
     for _ in range(200):
         for event in events:
@@ -512,7 +579,7 @@ def _wait_for_event(events: list[dict], event_type: str) -> dict:
 def _wait_for_terminal(manager: RuntimeOperationManager, operation_id: str) -> dict:
     for _ in range(100):
         status = manager.operation_status(operation_id)
-        if status["state"] in {"succeeded", "failed", "cancelled"}:
+        if status["state"] in {"succeeded", "failed", "cancelled", "interrupted"}:
             return status
         threading.Event().wait(0.01)
     return manager.operation_status(operation_id)

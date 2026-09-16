@@ -303,7 +303,8 @@ chipcompiler/cli/inspection/      # read-only probing logic
 chipcompiler/cli/project/         # config.py (ecc.toml parsing and validation) / config_fields.py (project declaration schema for `ecc project`) / params.py (parameter registry) / workspace_params.py (workspace-local override records) / manifest.py (project-state classification) / effective_config.py / config_params/ (direct-config schemas) / migrate*.py (legacy-layout migration) / run_*.py (workspace target resolution and dispatch)
 chipcompiler/cli/rendering/       # output rendering (render / renderers / pretty / progress)
 chipcompiler/engine/signoff/      # signoff collector + design/checklist reports (package, see below)
-chipcompiler/engine/qor_report.py # overall QoR scoring (port of the GUI rules)
+chipcompiler/analysis/qor/ # canonical QoR v3 analysis, scoring, and report contract
+chipcompiler/engine/qor_report.py # CLI QoR facade delegating to analysis.qor
 ```
 
 Module placement is enforced by `test/cli/test_cli_module_layout.py`: the core
@@ -533,7 +534,10 @@ Project preset sequences are defined in `chipcompiler/rtl2gds/builder.py`
 step aliases and ordering have one source of truth. Keep a sequence change
 coordinated with the engine's default flow, `StepEnum`, and manifest range
 mappings; the CLI only handles argument parsing, input contracts,
-progress-renderer selection, and result mapping.
+progress-renderer selection, and result mapping. Interactive TTY
+`ecc run` uses `run_flow_with_progress()`; `--plain` and GUI use
+`execute()`. Both attach the same Engineering Snapshot commit observer
+so each completed step updates `home/engineering-snapshot.json`.
 
 #### Extending environment probing (doctor / preflight)
 
@@ -571,13 +575,16 @@ required by doctor.
   / `report_text.py` formatting), all exposed through the package `__init__`.
   Add a report section through an `_extract_<family>(q)` in
   `report_sections.py` (or the timing chain) and register it from `report.py`.
-- `engine/qor_report.py`: the single-workspace port of the GUI's
-  `projectQorTrend.ts` — constant tables
-  (`METRIC_FAIL_VALUES`/`DIMENSION_WEIGHTS`/`QOR_SCORE_THRESHOLD`) +
-  normalization + project-level record selection (role priority
-  final>gate>trend; area_cost only from the last successful area step) + the
-  `score_record` formulas + dimension weighting (no renormalization). Adding a
-  scoreable metric = adding its threshold here and in the GUI.
+- `analysis/qor/`: the canonical QoR v3 Engine. It owns metric loading,
+  feature and dimension evaluation, feasibility gates, evidence, scoring,
+  diagnoses, interventions, the bounded report schema, and text rendering.
+  New QoR conclusions belong here; do not copy thresholds or formulas into
+  the GUI or CLI.
+- `engine/qor_report.py`: the CLI `ecc report qor` facade. It delegates to
+  `analysis.qor` and does not own a second scoring implementation.
+- `engine/qor_scoring.py` and `engine/qor.py`: legacy v2 Snapshot assessment
+  kept only while production Snapshot writes remain v2. Do not extend this
+  path for QoR v3 consumers.
 - `engine/signoff/report_checklist.py`: read-only rendering of
   `home/checklist.json` (reports unavailable on an invalid file; never writes
   back).
@@ -667,19 +674,53 @@ uv run ecc pdk show
 `ecc run --preset <name>` overrides `[flow] preset` for a single run without
 editing `ecc.toml`. Valid names are auto-discovered from
 `chipcompiler/rtl2gds/builder.py` (`rtl2gds | syn_sta | synthesis_lec`); the
-`rtl2gds` preset is the full synthesis-to-harden chain (15 steps, with a
-synthesis-level LEC immediately after Synthesis; Harden
-emits GDS + abstract LEF + timing LIB):
+`rtl2gds` preset is the full synthesis-to-harden chain (17 canonical steps,
+including a synthesis-level LEC immediately after Synthesis that the default
+skip policy excludes — see [Skippable Flow Steps](#skippable-flow-steps);
+Harden emits GDS + abstract LEF + timing LIB):
 
 ```bash
 uv run ecc run --project gcd --preset rtl2gds
 ```
 
+### Skippable Flow Steps
+
+Three optional steps can be excluded from a workspace at creation time:
+the synthesis LEC (`lec`), the post-route LEC (`postRouteLec`), and timing
+optimization (`Timing optimization`). Skipped steps never enter the
+workspace's execution ledger — their inputs fall through to the previous
+retained step, and no step directory is created for them. State-machine,
+resume/rerun semantics are unchanged, and existing ledgers are never
+re-filtered: changing the policy later cannot insert or remove steps in a
+created workspace.
+
+The policy is declared on two surfaces, with skip-specific precedence:
+
+1. `project.json` → `workspaces[].skip_steps` (per-workspace, wins for
+   this key only — including an explicit empty list),
+2. `ecc.toml` → `[flow] skip_steps` (project level),
+3. code default `("lec",)` when neither declares the key.
+
+An explicit `skip_steps = []` runs every step and is the only way to
+enable the synthesis LEC. Selecting the `synthesis_lec` preset while the
+effective policy skips `lec` is a creation-time configuration error; the
+fix is `skip_steps = []`. Entries accept the same aliases as flow ranges
+(e.g. `LEC`, `postlec`, `TimingOpt`) and are validated against the
+skippable set.
+
+```toml
+[flow]
+preset = "rtl2gds"
+# LEC is skipped by default; clear the list to enable it.
+skip_steps = ["lec"]
+```
+
 ### Reports
 
-`ecc report qor` scores the workspace the same way the GUI project dashboard
-does (per-metric scores against fixed fail thresholds, dimension averages,
-weighted overall — weights are not renormalized over missing dimensions);
+`ecc report qor` delegates to the canonical QoR v3 Engine in
+`chipcompiler.analysis.qor`. The production v2 Snapshot `qorAssessment`
+projection remains available for GUI compatibility during the ECC-only
+rollout; it is not a second source for v3 conclusions.
 `ecc report checklist` renders the signoff checklist status, and `ecc report
 summary` writes the GUI-parity text design summary. All three write to
 `<workspace>/signoff/` by default and accept `-o` plus the usual
@@ -726,6 +767,7 @@ root = "/path/to/ics55"
 
 [flow]
 preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
+# Optional: skip_steps = ["lec"] (default); [] runs everything (enables LEC)
 ```
 
 For filelist mode, set `design.rtl` to a single filelist path, for example

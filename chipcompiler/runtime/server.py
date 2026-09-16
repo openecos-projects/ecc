@@ -60,7 +60,7 @@ class RuntimeServer:
     def _publish_runtime_event(self, event: dict) -> None:
         sink = self._notification_sink
         if sink is not None:
-            sink("runtime.event", event)
+            sink("runtime.event", _project_runtime_event(event))
 
     def _register_base_methods(self) -> None:
         self.dispatcher.add_method("rpc.hello", self._hello)
@@ -76,6 +76,7 @@ class RuntimeServer:
             )
         return {
             "version": PROTOCOL_VERSION,
+            "protocolVersion": PROTOCOL_VERSION,
             "eccVersion": getattr(chipcompiler, "__version__", "unknown"),
             "capabilities": list(self.capabilities),
         }
@@ -101,9 +102,13 @@ class RuntimeServer:
         ):
             api_method = getattr(self.api, spec.handler_name, None)
             if not callable(api_method):
-                raise TypeError(
-                    f"runtime method {spec.method_name} handler {spec.handler_name} is not callable"
+                if spec.method_name not in methods.OPTIONAL_RUNTIME_METHOD_NAMES:
+                    raise TypeError(f"runtime API handler is not callable: {spec.handler_name}")
+                self.dispatcher.add_method(
+                    spec.method_name,
+                    self._missing_optional_method_handler(spec),
                 )
+                continue
             self.dispatcher.add_method(
                 spec.method_name,
                 self._runtime_method_handler(spec, api_method),
@@ -129,6 +134,16 @@ class RuntimeServer:
                     {"message": exc.message, **exc.data},
                 )
             except Exception as exc:
+                stable_code = getattr(exc, "code", None)
+                if isinstance(stable_code, str):
+                    details = getattr(exc, "details", None)
+                    if not isinstance(details, dict):
+                        details = getattr(exc, "data", None)
+                    return Error(
+                        ERROR_CODES.get(stable_code, -32000),
+                        stable_code,
+                        {"message": str(exc), **(details if isinstance(details, dict) else {})},
+                    )
                 return Error(
                     ERROR_CODES["command_failed"],
                     "command_failed",
@@ -136,3 +151,51 @@ class RuntimeServer:
                 )
 
         return handler
+
+    @staticmethod
+    def _missing_optional_method_handler(spec):
+        def handler(**_params):
+            return Error(
+                -32602,
+                "invalid_request",
+                {"message": f"runtime API does not support {spec.method_name}"},
+            )
+
+        return handler
+
+
+def _project_runtime_event(event: dict) -> dict:
+    source_type = str(event.get("type", ""))
+    payload = {**event.get("payload", {}), "sourceType": source_type}
+    if source_type == "step.completed":
+        event_type = "workspace.committed"
+    elif source_type in {
+        "step.started",
+        "step.log",
+        "subflow.stage",
+        "operation.rerun_prepared",
+    }:
+        event_type = "execution.progress"
+    else:
+        event_type = "operation.changed"
+        state = {
+            "operation.queued": "queued",
+            "operation.started": "running",
+            "operation.cancel_requested": "cancelling",
+            "operation.completed": "succeeded",
+            "operation.failed": "failed",
+            "operation.cancelled": "cancelled",
+            "operation.interrupted": "interrupted",
+        }.get(source_type)
+        if state:
+            payload["state"] = state
+    return {
+        **event,
+        "type": event_type,
+        "payload": payload,
+        **(
+            {"workspaceRevision": payload["workspaceRevision"]}
+            if "workspaceRevision" in payload
+            else {}
+        ),
+    }

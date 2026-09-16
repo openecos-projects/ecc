@@ -254,9 +254,12 @@ rc=0
 
 ### 4.1 Start
 
-The `rtl2gds` preset is the full 17-step chain, running all the way through Harden (which produces the GDS + abstract LEF + timing LIB):
+The `rtl2gds` preset is the full 17-step chain, running all the way through Harden (which produces the GDS + abstract LEF + timing LIB). The synthesis LEC (step 2) is part of the chain but **skipped by default**: `[flow] skip_steps` defaults to `["lec"]`, and setting `skip_steps = []` in `ecc.toml` is the only way to run it. To reproduce every step shown below (including the LEC), clear the list once before running:
 
 ```bash
+# enable the synthesis LEC for this tutorial
+sed -i 's/skip_steps = \["lec"\]/skip_steps = []/' ecc.toml
+
 ecc run --preset rtl2gds
 ```
 
@@ -528,7 +531,7 @@ Excerpts from this gcd run (full report: `cat` the file above):
 
 ### 5.4 QoR score: ecc report qor
 
-Scores the workspace with the same rules as the GUI project dashboard: each metric maps to 0–100, dimensions are weighted (Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1), 60 is the pass line; absent dimensions are not renormalized (absence drags the overall score down):
+Scores the workspace with ECC's shared `qor_scoring` rules (the same table Studio Snapshot uses): each metric maps to 0–100, dimensions are weighted (Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1), 60 is the pass line; absent dimensions are not renormalized (absence drags the overall score down):
 
 ```console
 $ ecc report qor
@@ -749,7 +752,7 @@ The list must cover **every** hard macro in the design and use real instance nam
 ## 8. Next Steps
 
 - Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist) for multi-file designs;
-- Preset differences: `rtl2gds` (the complete 17-step synthesis-to-Harden chain, including synthesis-level LEC), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps);
+- Preset differences: `rtl2gds` (the complete 17-step synthesis-to-Harden chain; the synthesis-level LEC is in the chain but skipped by default — `skip_steps = []` enables it), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps, requires `skip_steps = []`);
 - Full command details in the **[ECC CLI User Guide](ecc-user-guide.en.md)** (`ecc doc ug`); extending the CLI is covered in [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli);
 - Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/ics55flow.py).
 

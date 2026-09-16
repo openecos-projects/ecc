@@ -59,6 +59,9 @@ class MigrationEntry:
     status: str
     start_step: str
     end_step: str
+    # Declared [flow] skip_steps carried from the workspace's params.toml;
+    # None when the workspace declared no policy.
+    skip_steps: tuple[str, ...] | None = None
     # Plan-time lstat identity of the confirmed source: a substituted
     # real directory fails the move-time check, not just a symlink.
     source_dev: int = 0
@@ -155,23 +158,79 @@ def _read_flow_steps(run_dir: str) -> list[dict] | None:
     "after the transition period",
     category=None,
 )
-def _is_contiguous_flow(names: list[str]) -> bool:
+def _is_contiguous_flow(names: list[str], skip: tuple[str, ...] | None) -> bool:
     """The persisted step names must form one contiguous slice of the
-    canonical chain: anything else cannot be registered as a start..end
-    manifest range without lying about the ledger."""
+    canonical chain (as filtered by the workspace's resolved skip policy):
+    anything else cannot be registered as a start..end manifest range
+    without lying about the ledger.
+
+    *skip* is None when the workspace declared no policy: both the full
+    chain and the lec-less chain are then accepted so ledgers from either
+    pre-policy era (LEC in-chain or reverted) still migrate. An explicit
+    policy (even an empty one) is authoritative: only its filtered chain
+    (plus the unfiltered chain, for ledgers written before the policy was
+    applied) is accepted.
+    """
     from chipcompiler.data.workspace_config import canonical_flow_chain
 
     chain = canonical_flow_chain()
-    for start in range(len(chain) - len(names) + 1):
-        if chain[start : start + len(names)] == names:
-            return True
-    # Workspaces created before synthesis-level LEC was added omit only this
-    # newly inserted step; retain their migration compatibility.
-    legacy_chain = [name for name in chain if name != "lec"]
-    for start in range(len(legacy_chain) - len(names) + 1):
-        if legacy_chain[start : start + len(names)] == names:
-            return True
+    candidates = [chain]
+    if skip is None:
+        # Undeclared: the default skips the synthesis LEC, and ledgers from
+        # before the skip mechanism existed include it.
+        candidates.append([name for name in chain if name != "lec"])
+    else:
+        excluded = set(skip)
+        if excluded:
+            candidates.append([name for name in chain if name not in excluded])
+    for candidate in candidates:
+        for start in range(len(candidate) - len(names) + 1):
+            if candidate[start : start + len(names)] == names:
+                return True
     return False
+
+
+class _InvalidPersistedSkipSteps(ValueError):
+    """A workspace's persisted [flow] skip_steps is invalid (unreadable policy)."""
+
+
+@deprecated(
+    "legacy runs/ -> manifest layout migration machinery; slated for removal "
+    "after the transition period",
+    category=None,
+)
+def _persisted_skip_steps(run_dir: str) -> tuple[str, ...] | None:
+    """The workspace's declared ``[flow] skip_steps``; None when absent.
+
+    Only a MISSING config reads as "no policy declared". A config that
+    exists but cannot be parsed/decoded/read is invalid input, never a
+    silent default: the caller blocks the workspace's migration with the
+    reason instead of dropping the user's policy.
+    """
+    import tomllib
+
+    config_path = os.path.join(run_dir, "home", "params.toml")
+    try:
+        with open(config_path, "rb") as f:
+            data = tomllib.load(f)
+    except FileNotFoundError:
+        return None
+    except tomllib.TOMLDecodeError as exc:
+        raise _InvalidPersistedSkipSteps(f"params.toml is malformed: {exc}") from None
+    except UnicodeDecodeError as exc:
+        raise _InvalidPersistedSkipSteps(f"params.toml is not valid UTF-8: {exc}") from None
+    except OSError as exc:
+        raise _InvalidPersistedSkipSteps(f"params.toml could not be read: {exc}") from None
+    flow = data.get("flow")
+    if not isinstance(flow, dict) or "skip_steps" not in flow:
+        return None
+    from chipcompiler.rtl2gds import resolve_skip_steps
+
+    try:
+        resolve_skip_steps({"skip_steps": flow["skip_steps"]})
+    except ValueError as exc:
+        raise _InvalidPersistedSkipSteps(str(exc)) from None
+    return tuple(flow["skip_steps"])
 
 
 @deprecated(
@@ -238,6 +297,14 @@ def plan_migration(project_dir: str) -> MigrationPlan:
         if os.path.lexists(target):
             collisions.append(run_id)
             continue
+        try:
+            persisted_skip = _persisted_skip_steps(source)
+        except _InvalidPersistedSkipSteps as exc:
+            blocked[run_id] = (
+                f"the workspace's persisted [flow] skip_steps is invalid ({exc}); "
+                f"fix home/params.toml and retry"
+            )
+            continue
         steps = _read_flow_steps(source)
         if steps is None:
             blocked[run_id] = (
@@ -252,7 +319,16 @@ def plan_migration(project_dir: str) -> MigrationPlan:
             )
             continue
         names = [str(step["name"]) for step in steps]
-        if names and not _is_contiguous_flow(names):
+        from chipcompiler.rtl2gds import resolve_skip_steps
+
+        # None keeps the era tolerance for an UNDECLARED policy; an
+        # explicit policy (even []) is authoritative for contiguity.
+        resolved_skip = (
+            resolve_skip_steps({"skip_steps": list(persisted_skip)})
+            if persisted_skip is not None
+            else None
+        )
+        if names and not _is_contiguous_flow(names, skip=resolved_skip):
             blocked[run_id] = (
                 "legacy flow is not a contiguous slice of the canonical chain "
                 f"({names[0]}..{names[-1]} with gaps); register it by hand"
@@ -267,6 +343,7 @@ def plan_migration(project_dir: str) -> MigrationPlan:
                 status=_flow_status(steps),
                 start_step=CANONICAL_TO_DISPLAY.get(names[0], "Synth") if names else "Synth",
                 end_step=CANONICAL_TO_DISPLAY.get(names[-1], "Harden") if names else "Harden",
+                skip_steps=persisted_skip,
                 source_dev=source_stat.st_dev,
                 source_ino=source_stat.st_ino,
             )
@@ -310,6 +387,7 @@ def _workspace_entries(
             end_step=entry.end_step,
             status=entry.status,
             now=now,
+            skip_steps=list(entry.skip_steps) if entry.skip_steps is not None else None,
         )
         for entry in entries
     )
@@ -344,6 +422,7 @@ def build_migration_preview(project_dir: str, cfg) -> MigrationPreview:
                 start_step=first.start_step,
                 end_step=first.end_step,
                 status=first.status,
+                skip_steps=list(first.skip_steps) if first.skip_steps is not None else None,
             )
             document["workspaces"].extend(
                 _workspace_entries(

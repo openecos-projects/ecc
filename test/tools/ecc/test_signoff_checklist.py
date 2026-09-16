@@ -7,6 +7,7 @@ from chipcompiler.data import (
     EccStep,
     OriginDesign,
     Parameters,
+    SkippableStepEnum,
     StateEnum,
     StepEnum,
     StepMetrics,
@@ -97,9 +98,11 @@ def test_lec_failure_blocks_export_for_both_lec_steps(monkeypatch, tmp_path):
     )
     workspace = Workspace(directory=tmp_path)
 
-    synthesis_item = _lec_artifact_items(workspace, StepEnum.LEC.value, result, None, None)[0]
+    synthesis_item = _lec_artifact_items(
+        workspace, SkippableStepEnum.LEC.value, result, None, None
+    )[0]
     post_route_item = _lec_artifact_items(
-        workspace, StepEnum.POST_ROUTE_LEC.value, result, None, None
+        workspace, SkippableStepEnum.POST_ROUTE_LEC.value, result, None, None
     )[0]
 
     for item in (synthesis_item, post_route_item):
@@ -574,7 +577,7 @@ def test_home_checklist_flow_completed_tracks_final_harden_state(tmp_path):
                 StepEnum.DRC,
                 StepEnum.LVS,
                 StepEnum.FILLER,
-                StepEnum.POST_ROUTE_LEC,
+                SkippableStepEnum.POST_ROUTE_LEC,
                 StepEnum.RCX,
                 StepEnum.STA,
             )
@@ -636,7 +639,7 @@ def test_home_checklist_uses_origin_golden_when_flow_has_no_synthesis(tmp_path):
                 StepEnum.DRC,
                 StepEnum.LVS,
                 StepEnum.FILLER,
-                StepEnum.POST_ROUTE_LEC,
+                SkippableStepEnum.POST_ROUTE_LEC,
                 StepEnum.RCX,
                 StepEnum.STA,
                 StepEnum.HARDEN,
@@ -735,7 +738,7 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
             for step in (
                 StepEnum.FILLER,
                 StepEnum.LVS,
-                StepEnum.POST_ROUTE_LEC,
+                SkippableStepEnum.POST_ROUTE_LEC,
                 StepEnum.HARDEN,
             )
         ]
@@ -770,3 +773,38 @@ def test_rebuild_home_checklist_heals_empty_home_checklist_path(tmp_path):
     assert [item["id"] for item in healed["checklist"] if item["step"] == "STA"] == [
         "sta.check.setup.timing"
     ]
+
+
+def test_home_checklist_omits_post_route_lec_when_ledger_skips_it(tmp_path):
+    """A ledger without postRouteLec produces no missing flow item for it."""
+    from chipcompiler.data import SkippableStepEnum, StateEnum, StepEnum
+    from chipcompiler.tools.ecc.signoff_checklist import rebuild_home_checklist
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    (tmp_path / "home").mkdir()
+    workspace.home.init(tmp_path / "home" / "home.json")
+    workspace.home.set_checklist(tmp_path / "home" / "checklist.json")
+    workspace.flow.path = tmp_path / "home" / "flow.json"
+    ledger_without_post_route_lec = [
+        {"name": step.value, "tool": "ecc", "state": StateEnum.Success.value}
+        for step in (StepEnum.ROUTING, StepEnum.DRC, StepEnum.LVS, StepEnum.FILLER)
+    ] + [
+        {"name": StepEnum.RCX.value, "tool": "ecc", "state": StateEnum.Success.value},
+        {"name": StepEnum.STA.value, "tool": "ecc", "state": StateEnum.Success.value},
+        {"name": StepEnum.HARDEN.value, "tool": "ecc", "state": StateEnum.Success.value},
+    ]
+    assert all(
+        step["name"] != SkippableStepEnum.POST_ROUTE_LEC.value
+        for step in ledger_without_post_route_lec
+    )
+    workspace.flow.data = {"steps": ledger_without_post_route_lec}
+
+    rebuild_home_checklist(workspace)
+
+    home_items = {
+        item["id"]: item
+        for item in json.loads((tmp_path / "home" / "checklist.json").read_text(encoding="utf-8"))[
+            "checklist"
+        ]
+    }
+    assert "flow.postroutelec.completed" not in home_items

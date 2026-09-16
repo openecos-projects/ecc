@@ -58,6 +58,8 @@ root = ""
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"
+# LEC is skipped by default; clear the list to enable it.
+skip_steps = ["lec"]
 """
 
     with open(config_path, "w") as f:
@@ -189,14 +191,21 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
     return CommandResult.ok(records)
 
 
-def _preflight_environment(preset: str | None, project: str | None) -> CommandResult | None:
+def _preflight_environment(
+    preset: str | None, project: str | None, flow_config: dict | None = None
+) -> CommandResult | None:
     """Fail fast when the tools a fresh flow target needs are missing.
+
+    The probe set comes from the preset's builder output filtered by the
+    effective skip policy, so a skipped step's tool is never probed.
 
     None means ready.
     """
     from chipcompiler.cli.inspection import env_probe
+    from chipcompiler.rtl2gds import resolve_skip_steps
 
-    probes = env_probe.probe_environment(env_probe.probe_components_for_preset(preset))
+    skip = resolve_skip_steps(flow_config)
+    probes = env_probe.probe_environment(env_probe.probe_components_for_preset(preset, skip=skip))
     return _preflight_failures(probes, project, preset)
 
 
@@ -205,13 +214,18 @@ def _preflight_flow_range(flow_config: dict, project: str | None) -> CommandResu
 
     The selected range already names its tools, so a missing tool is a
     preflight failure before any manifest registration or workspace
-    creation — not a discovery made mid-creation.
+    creation — not a discovery made mid-creation. The range is sliced
+    from the policy-filtered chain, matching ledger creation.
     """
     from chipcompiler.cli.inspection import env_probe
-    from chipcompiler.rtl2gds import build_flow_range
+    from chipcompiler.rtl2gds import build_flow_range, resolve_skip_steps
 
     try:
-        steps = build_flow_range(flow_config["start_step"], flow_config["end_step"])
+        steps = build_flow_range(
+            flow_config["start_step"],
+            flow_config["end_step"],
+            skip=resolve_skip_steps(flow_config),
+        )
     except ValueError:
         # Range spellings are validated where they are declared (CLI ranges
         # during argument handling, manifest ranges at load time); an
@@ -356,6 +370,7 @@ def _run_project(
         )
 
     from chipcompiler.cli.project import effective_config
+    from chipcompiler.cli.project.effective_config import flow_config_selects_steps
 
     if ctx.project_state == "manifest":
         resolved_cfg = effective_config.resolve_effective_config(ctx, command_input.workspace, cfg)
@@ -363,6 +378,17 @@ def _run_project(
             return resolved_cfg
         cfg, flow_config, entry_warnings = resolved_cfg
         layer_warnings.extend(entry_warnings)
+    else:
+        # Virgin projects have no manifest layer; an ecc.toml skip policy
+        # still rides on the flow config (policy-only when no range applies).
+        from chipcompiler.cli.project.effective_config import _attach_skip_steps
+
+        skip_steps = (
+            list(cfg.flow_skip_steps)
+            if "flow.skip_steps" in cfg._explicit_keys and cfg.flow_skip_steps is not None
+            else None
+        )
+        flow_config = _attach_skip_steps(flow_config, skip_steps)
 
     flow_builders = rtl2gds_api.get_flow_builders()
     effective_preset = command_input.preset or cfg.flow_preset
@@ -377,24 +403,32 @@ def _run_project(
                 )
             ]
         )
+    # The resolved skip policy survives every target override below (the
+    # policy comes from configuration, never from the target spelling).
+    skip_policy = flow_config.get("skip_steps") if isinstance(flow_config, dict) else None
     if command_input.preset is not None:
         # The explicit CLI selection takes precedence over a manifest range
         # for this invocation without changing either project config file.
         cfg.flow_preset = effective_preset
         cfg.manifest_driven = False
-        flow_config = None
+        flow_config = {"skip_steps": skip_policy} if skip_policy is not None else None
 
     if command_input.from_step is not None and command_input.to_step is not None:
         try:
-            from chipcompiler.rtl2gds import build_flow_range
+            from chipcompiler.rtl2gds import build_flow_range, resolve_skip_steps
 
-            build_flow_range(command_input.from_step, command_input.to_step)
+            skip = resolve_skip_steps(
+                {"skip_steps": skip_policy} if skip_policy is not None else None
+            )
+            build_flow_range(command_input.from_step, command_input.to_step, skip=skip)
         except ValueError as exc:
             return error("flow_range_invalid", reason=str(exc))
         flow_config = {
             "start_step": command_input.from_step,
             "end_step": command_input.to_step,
         }
+        if skip_policy is not None:
+            flow_config["skip_steps"] = skip_policy
 
     cli_overrides = {}
     raw_sets = command_input.param_set
@@ -444,6 +478,20 @@ def _run_project(
         return error("flow_range_requires_pair")
     if fresh_target and (command_input.resume or command_input.only is not None):
         return error("selector_requires_workspace")
+    if not fresh_target and ctx.project_state == "manifest" and cfg.manifest_driven:
+        return run_dispatch.dispatch_project_run(
+            command_input,
+            ctx,
+            cfg,
+            run_dir,
+            run_name,
+            cli_overrides,
+            flow_config,
+            project_state,
+            warning_records,
+            workspace_registered=workspace_registered,
+            execute_flow=execute_flow,
+        )
     errors = effective_config.validate_effective(
         ctx,
         cfg,
@@ -463,6 +511,27 @@ def _run_project(
                     "reason": err,
                 }
                 for err in errors
+            ]
+        )
+
+    # A creation-time (fresh/overwrite only) configuration conflict: the
+    # synthesis_lec preset exists to run the LEC the effective policy skips.
+    # Existing ledgers are never re-filtered, so resume/rerun is unaffected.
+    if (
+        fresh_target
+        and effective_preset == "synthesis_lec"
+        and "lec" in resolve_skip_steps_for_flow_config(flow_config)
+    ):
+        return CommandResult.err(
+            [
+                {
+                    "kind": "error",
+                    "error": "config_error",
+                    "reason": (
+                        "the synthesis_lec preset conflicts with the effective skip_steps "
+                        "policy (lec is skipped); set skip_steps = [] to enable it"
+                    ),
+                }
             ]
         )
 
@@ -489,10 +558,10 @@ def _run_project(
     # probe set from the selected chain, so a missing tool fails fast
     # instead of surfacing mid-creation.
     if fresh_target:
-        if flow_config is not None:
+        if flow_config_selects_steps(flow_config):
             preflight = _preflight_flow_range(flow_config, project)
         elif effective_preset:
-            preflight = _preflight_environment(effective_preset, project)
+            preflight = _preflight_environment(effective_preset, project, flow_config)
         else:
             preflight = None
         if preflight is not None:
@@ -525,6 +594,15 @@ def _config_error_code(reason: str) -> str:
         if reason.startswith(f"{code}:"):
             return code
     return "config_error"
+
+
+def resolve_skip_steps_for_flow_config(flow_config) -> tuple[str, ...]:
+    """The effective skip policy of a creation flow config (default when none)."""
+    from chipcompiler.rtl2gds import resolve_skip_steps
+
+    return resolve_skip_steps(
+        flow_config if isinstance(flow_config, dict) and "skip_steps" in flow_config else None
+    )
 
 
 def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResult:

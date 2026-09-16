@@ -6,13 +6,21 @@ import shutil
 import tempfile
 import threading
 from collections.abc import Callable
+from contextlib import contextmanager
 from copy import copy, deepcopy
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, TypeVar
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows uses the in-process lock.
+    fcntl = None
+
+from chipcompiler.runtime.errors import RuntimeApiError
 from chipcompiler.runtime.operations import (
     RuntimeOperationConflict,
+    RuntimeOperationIdempotencyConflict,
     RuntimeOperationManager,
 )
 from chipcompiler.runtime.requests import (
@@ -38,6 +46,9 @@ from chipcompiler.runtime.requests import (
     WorkspaceInspectSignoffRequest,
     WorkspaceOpenRequest,
     WorkspaceRecoverInterruptedRequest,
+    WorkspaceSpecCreateRequest,
+    WorkspaceSpecOpenRequest,
+    WorkspaceStepConfigurationReadRequest,
     WorkspaceSyncConfigRequest,
 )
 from chipcompiler.runtime.sessions import (
@@ -56,15 +67,10 @@ from chipcompiler.utility.path import path_is_within, stringify_paths
 _T = TypeVar("_T")
 
 
-class RuntimeApiError(RuntimeError):
-    def __init__(self, code: str, message: str, data: dict | None = None):
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.data = data or {}
+from chipcompiler.runtime.workspace_spec_api import WorkspaceSpecRuntimeMixin  # noqa: E402
 
 
-class WorkspaceRuntimeApi:
+class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
     def __init__(
         self,
         sessions: WorkspaceSessionRegistry | None = None,
@@ -86,9 +92,52 @@ class WorkspaceRuntimeApi:
     def set_event_publisher(self, publisher: Callable[[dict[str, Any]], None] | None) -> None:
         self.operations.set_publisher(publisher)
 
-    def create_workspace(self, request: WorkspaceCreateRequest) -> dict:
+    def create_workspace(
+        self, request: WorkspaceCreateRequest | WorkspaceSpecCreateRequest
+    ) -> dict:
+        if getattr(request, "workspace_spec", None) is not None:
+            spec_request = (
+                request
+                if isinstance(request, WorkspaceSpecCreateRequest)
+                else WorkspaceSpecCreateRequest(
+                    command_id=request.command_id,
+                    target_directory=request.target_directory,
+                    workspace_spec=request.workspace_spec,
+                    workspace_bindings=request.workspace_bindings or {},
+                    project_id=request.project_id,
+                    project_root=request.project_root,
+                )
+            )
+            return self._create_workspace_from_spec(spec_request)
+        if isinstance(request, WorkspaceSpecCreateRequest):
+            request = WorkspaceCreateRequest(
+                directory=request.directory,
+                pdk=request.pdk,
+                pdk_root=request.pdk_root,
+                pdk_json=request.pdk_json,
+                parameters=request.parameters,
+                origin_def=request.origin_def,
+                origin_verilog=request.origin_verilog,
+                filelist=request.filelist,
+                rtl_list=request.rtl_list,
+                sdc=request.sdc,
+                flow_config=request.flow_config,
+            )
+        return self._create_legacy_workspace(request)
+
+    def _create_legacy_workspace(self, request: WorkspaceCreateRequest) -> dict:
         if not request.directory:
             raise RuntimeApiError("invalid_request", "missing required field: directory")
+
+        import chipcompiler.rtl2gds as rtl2gds_api
+
+        # The skip policy is validated before any sidecar artifact (temp
+        # filelist, inline PDK) is materialized: invalid input must not
+        # reach workspace creation or leave temporaries behind.
+        try:
+            rtl2gds_api.resolve_skip_steps(request.flow_config)
+        except ValueError as exc:
+            raise RuntimeApiError("config_error", f"invalid skip_steps: {exc}") from exc
 
         temp_filelist_dir = None
         input_filelist = request.filelist
@@ -127,24 +176,64 @@ class WorkspaceRuntimeApi:
 
         build_flow_for_workspace(workspace)
         session = self.sessions.create_session(workspace.directory, workspace=workspace)
+        self.operations.load_workspace_ledger(
+            session.workspace_id,
+            session.directory / "home" / "runtime-commands.json",
+        )
         return _workspace_session_result(session)
 
-    def open_workspace(self, request: WorkspaceOpenRequest) -> dict:
+    def open_workspace(self, request: WorkspaceOpenRequest | WorkspaceSpecOpenRequest) -> dict:
+        if isinstance(request, WorkspaceSpecOpenRequest) or request.workspace_bindings is not None:
+            spec_request = (
+                request
+                if isinstance(request, WorkspaceSpecOpenRequest)
+                else WorkspaceSpecOpenRequest(
+                    directory=request.directory,
+                    workspace_bindings=request.workspace_bindings,
+                )
+            )
+            return WorkspaceSpecRuntimeMixin.open_workspace(self, spec_request)
+        return self._open_legacy_workspace(request)
+
+    def _open_legacy_workspace(self, request: WorkspaceOpenRequest) -> dict:
         workspace = self._load_workspace(request.directory)
         build_flow_for_workspace(workspace, create_step_workspaces=False)
-        session = self.sessions.open_session(workspace.directory, workspace=workspace)
+        from chipcompiler.engine.snapshot import EngineeringSnapshotError, read_engineering_snapshot
+
+        try:
+            snapshot = read_engineering_snapshot(workspace)
+        except EngineeringSnapshotError:
+            snapshot = None
+        session = self.sessions.open_session(
+            workspace.directory,
+            workspace=workspace,
+            workspace_id=snapshot["workspaceId"] if snapshot else None,
+            workspace_revision=snapshot["workspaceRevision"] if snapshot else 0,
+        )
+        self.operations.load_workspace_ledger(
+            session.workspace_id,
+            session.directory / "home" / "runtime-commands.json",
+            recover=False,
+        )
         return _workspace_session_result(session)
 
     def recover_interrupted(self, request: WorkspaceRecoverInterruptedRequest) -> dict:
         from chipcompiler.runtime.recovery import recover_interrupted_operation
 
-        return self._with_session_mutation_lock(
-            request.workspace_id,
-            lambda session: recover_interrupted_operation(
+        def recover(session: WorkspaceSession) -> dict:
+            result = recover_interrupted_operation(
                 session.workspace,
                 self.operations,
                 request.operation_id,
-            ),
+            )
+            snapshot_path = Path(session.workspace.directory) / "home" / "engineering-snapshot.json"
+            if result["recovered"] and snapshot_path.is_file():
+                self._commit_workspace_snapshot(session, "operation.recovered")
+            return result
+
+        return self._with_session_mutation_lock(
+            request.workspace_id,
+            recover,
         )
 
     def workspace_home(self, request: WorkspaceIdRequest) -> dict:
@@ -172,6 +261,47 @@ class WorkspaceRuntimeApi:
             "id": request.info_id,
             "info": stringify_paths(info or {}),
         }
+
+    def read_workspace_step_configuration(
+        self, request: WorkspaceStepConfigurationReadRequest
+    ) -> dict:
+        if bool(request.workspace_id) == bool(request.directory):
+            raise RuntimeApiError(
+                "invalid_request",
+                "Exactly one of workspaceId or directory is required",
+            )
+
+        from chipcompiler.engine import (
+            WorkspaceLifecycleError,
+            read_step_configuration,
+            read_step_configuration_from_directory,
+        )
+
+        try:
+            if request.directory:
+                result = read_step_configuration_from_directory(request.directory, request.step)
+            else:
+                session = self._get_session(request.workspace_id)
+                result = read_step_configuration(session.workspace, request.step)
+        except WorkspaceLifecycleError as exc:
+            if exc.code == "step_configuration_unavailable":
+                return {
+                    "status": "unavailable",
+                    "step": request.step,
+                    "reason": exc.code,
+                    **exc.details,
+                    **(
+                        {
+                            "workspaceId": session.workspace_id,
+                            "workspaceRevision": session.workspace_revision,
+                        }
+                        if request.workspace_id
+                        else {}
+                    ),
+                }
+            raise RuntimeApiError(exc.code, str(exc), exc.details) from exc
+
+        return {"status": "available", **result}
 
     def refresh_config(self, request: WorkspaceIdRequest) -> dict:
         def refresh(session: WorkspaceSession) -> dict:
@@ -262,15 +392,19 @@ class WorkspaceRuntimeApi:
         preserve_user_inputs: bool = False,
     ) -> dict:
         def run(session: WorkspaceSession) -> dict:
+            self._ensure_execution_ready(session)
+            self._validate_workspace_revision(session, request.expected_workspace_revision)
+            stale_step_ids = self._stale_step_ids(session.workspace)
+            requires_preparation = request.rerun or bool(stale_step_ids)
             should_capture = self._should_capture_session_db(session)
             previous_db = session.db_handle if should_capture else None
-            if request.rerun and should_capture:
+            if requires_preparation and should_capture:
                 self._release_session_db(session)
                 previous_db = None
 
             engine_flow = self._build_flow_for_session(
                 session,
-                attach_session_db=should_capture and not request.rerun,
+                attach_session_db=should_capture and not requires_preparation,
             )
             if request.rerun:
                 affected_steps = list(getattr(engine_flow, "workspace_steps", []))
@@ -279,13 +413,44 @@ class WorkspaceRuntimeApi:
                     engine_flow,
                     preserve_user_inputs=preserve_user_inputs,
                 )
+                reset_revision = self._commit_rerun_snapshot(
+                    session,
+                    "flow.rerun_prepared",
+                )
                 self._notify_rerun_prepared(
                     observer,
                     affected_steps,
                     scope="flow",
+                    workspace_revision=reset_revision,
+                )
+            elif stale_step_ids:
+                affected_steps = [
+                    step
+                    for step in getattr(engine_flow, "workspace_steps", [])
+                    if str(getattr(step, "name", "")) in stale_step_ids
+                ]
+                self._refresh_workspace_config(session.workspace)
+                self._prepare_steps_for_rerun(
+                    session.workspace,
+                    engine_flow,
+                    affected_steps,
+                )
+                reset_revision = self._commit_rerun_snapshot(
+                    session,
+                    "flow.rerun_prepared",
+                )
+                self._notify_rerun_prepared(
+                    observer,
+                    affected_steps,
+                    scope="flow",
+                    workspace_revision=reset_revision,
                 )
             try:
-                ok = _run_engine_flow_steps(engine_flow, rerun=request.rerun, observer=observer)
+                ok = _run_engine_flow_steps(
+                    engine_flow,
+                    rerun=request.rerun,
+                    observer=observer,
+                )
             finally:
                 if should_capture:
                     self._capture_flow_db(
@@ -316,17 +481,30 @@ class WorkspaceRuntimeApi:
         reset_dependents: bool = False,
     ) -> dict:
         def run_step(session: WorkspaceSession) -> dict:
+            self._ensure_execution_ready(session)
+            self._validate_workspace_revision(session, request.expected_workspace_revision)
+            stale_step_ids = self._stale_step_ids(session.workspace)
             should_capture = self._should_capture_session_db(session)
             previous_db = session.db_handle if should_capture else None
-            if request.rerun and should_capture:
+            stale_target_index = -1
+            if request.step in stale_step_ids:
+                stale_target_index = stale_step_ids.index(request.step)
+            requires_preparation = request.rerun or stale_target_index == 0
+            if stale_target_index > 0:
+                raise RuntimeApiError(
+                    "stale_dependency",
+                    f"rerun {stale_step_ids[0]} before {request.step}",
+                    {"requiredStep": stale_step_ids[0]},
+                )
+            if requires_preparation and should_capture:
                 self._release_session_db(session)
                 previous_db = None
 
             engine_flow = self._build_flow_for_session(
                 session,
-                attach_session_db=should_capture and not request.rerun,
+                attach_session_db=should_capture and not requires_preparation,
             )
-            if request.rerun:
+            if requires_preparation:
                 if session.layout_edit_session is not None:
                     raise RuntimeApiError(
                         "layout_edit_active",
@@ -337,26 +515,39 @@ class WorkspaceRuntimeApi:
             workspace_step = engine_flow.get_workspace_step(request.step)
             if workspace_step is None:
                 raise RuntimeApiError("command_failed", f"step not found: {request.step}")
-            if request.rerun:
-                affected_steps = self._rerun_affected_steps(
-                    engine_flow,
-                    workspace_step,
-                    reset_dependents=reset_dependents,
+            if requires_preparation:
+                affected_steps = (
+                    [
+                        step
+                        for step in getattr(engine_flow, "workspace_steps", [])
+                        if str(getattr(step, "name", "")) in stale_step_ids
+                    ]
+                    if stale_target_index == 0
+                    else self._rerun_affected_steps(
+                        engine_flow,
+                        workspace_step,
+                        reset_dependents=reset_dependents,
+                    )
                 )
                 self._prepare_steps_for_rerun(
                     session.workspace,
                     engine_flow,
                     affected_steps,
                 )
+                reset_revision = self._commit_rerun_snapshot(
+                    session,
+                    "flow.rerun_prepared",
+                )
                 self._notify_rerun_prepared(
                     observer,
                     affected_steps,
                     scope="step",
                     target_step=workspace_step.name,
+                    workspace_revision=reset_revision,
                 )
 
             try:
-                step_already_succeeded = not request.rerun and engine_flow.check_state(
+                step_already_succeeded = not requires_preparation and engine_flow.check_state(
                     name=workspace_step.name,
                     tool=workspace_step.tool,
                     state=_success_state(),
@@ -366,7 +557,7 @@ class WorkspaceRuntimeApi:
                 state = _run_engine_flow_step(
                     engine_flow,
                     workspace_step,
-                    rerun=request.rerun,
+                    rerun=requires_preparation,
                     observer=observer,
                 )
             finally:
@@ -393,8 +584,17 @@ class WorkspaceRuntimeApi:
 
     def start_flow_operation(self, request: OperationStartFlowRequest) -> dict:
         self._require_gui_operation_origin(request.origin)
-        self._get_session(request.workspace_id)
+        session = self._get_session(request.workspace_id)
+        expected_revision = request.expected_workspace_revision
+        operation_revision = (
+            session.workspace_revision if expected_revision is None else expected_revision
+        )
         try:
+
+            def validate_start() -> None:
+                self._ensure_execution_ready(session)
+                self._validate_workspace_revision(session, request.expected_workspace_revision)
+
             return self.operations.start(
                 workspace_id=request.workspace_id,
                 kind="flow",
@@ -402,19 +602,43 @@ class WorkspaceRuntimeApi:
                 rerun=request.rerun,
                 step="",
                 idempotency_key=request.idempotency_key,
+                workspace_revision=operation_revision,
+                snapshot_committer=lambda step, state, error: self._commit_step_snapshot(
+                    session,
+                    step,
+                    state,
+                    error,
+                ),
+                ledger_path=session.directory / "home" / "runtime-commands.json",
+                precondition=validate_start,
                 runner=lambda observer: self._flow_run(
-                    FlowRunRequest(workspace_id=request.workspace_id, rerun=request.rerun),
+                    FlowRunRequest(
+                        workspace_id=request.workspace_id,
+                        expected_workspace_revision=expected_revision,
+                        rerun=request.rerun,
+                    ),
                     observer=observer,
                     preserve_user_inputs=request.rerun,
                 ),
             )
+        except RuntimeOperationIdempotencyConflict as exc:
+            raise RuntimeApiError("idempotency_conflict", str(exc)) from exc
         except RuntimeOperationConflict as exc:
-            raise RuntimeApiError("command_failed", str(exc)) from exc
+            raise RuntimeApiError("operation_conflict", str(exc)) from exc
 
     def start_step_operation(self, request: OperationStartStepRequest) -> dict:
         self._require_gui_operation_origin(request.origin)
-        self._get_session(request.workspace_id)
+        session = self._get_session(request.workspace_id)
+        expected_revision = request.expected_workspace_revision
+        operation_revision = (
+            session.workspace_revision if expected_revision is None else expected_revision
+        )
         try:
+
+            def validate_start() -> None:
+                self._ensure_execution_ready(session)
+                self._validate_workspace_revision(session, request.expected_workspace_revision)
+
             return self.operations.start(
                 workspace_id=request.workspace_id,
                 kind="step",
@@ -422,18 +646,31 @@ class WorkspaceRuntimeApi:
                 rerun=request.rerun,
                 step=request.step,
                 idempotency_key=request.idempotency_key,
+                workspace_revision=operation_revision,
+                command_input={"resetDependents": request.reset_dependents},
+                snapshot_committer=lambda step, state, error: self._commit_step_snapshot(
+                    session,
+                    step,
+                    state,
+                    error,
+                ),
+                ledger_path=session.directory / "home" / "runtime-commands.json",
+                precondition=validate_start,
                 runner=lambda observer: self._flow_run_step(
                     FlowRunStepRequest(
                         workspace_id=request.workspace_id,
                         step=request.step,
+                        expected_workspace_revision=expected_revision,
                         rerun=request.rerun,
                     ),
                     observer=observer,
                     reset_dependents=request.reset_dependents,
                 ),
             )
+        except RuntimeOperationIdempotencyConflict as exc:
+            raise RuntimeApiError("idempotency_conflict", str(exc)) from exc
         except RuntimeOperationConflict as exc:
-            raise RuntimeApiError("command_failed", str(exc)) from exc
+            raise RuntimeApiError("operation_conflict", str(exc)) from exc
 
     def operation_status(self, request: OperationIdRequest) -> dict:
         try:
@@ -469,8 +706,15 @@ class WorkspaceRuntimeApi:
 
     def workspace_snapshot(self, request: WorkspaceIdRequest) -> dict:
         session = self._get_session(request.workspace_id)
-        flow_data = getattr(getattr(session.workspace, "flow", None), "data", {})
+        from chipcompiler.engine import read_workspace_configuration
+
+        flow = getattr(session.workspace, "flow", None)
+        flow_data = getattr(flow, "data", {})
         raw_steps = flow_data.get("steps", []) if isinstance(flow_data, dict) else []
+        if not raw_steps:
+            loader = getattr(flow, "steps", None)
+            if callable(loader):
+                raw_steps = loader()
         steps = [
             {
                 "name": str(step.get("name", "")),
@@ -504,13 +748,48 @@ class WorkspaceRuntimeApi:
                 parameter_path = workspace_config_path(session.directory)
             home_data["parameters"] = str(parameter_path)
 
+        engineering_snapshot = self._read_engineering_snapshot(session)
+        try:
+            configuration = read_workspace_configuration(session.workspace)
+        except (OSError, ValueError):
+            configuration = None
+        if (
+            not isinstance(configuration, dict)
+            or configuration.get("workspaceId") != session.workspace_id
+            or not isinstance(configuration.get("workspaceSpec"), dict)
+            or not isinstance(configuration.get("workspaceBindings"), dict)
+        ):
+            configuration = None
+
         return {
             **self.operations.workspace_snapshot(request.workspace_id),
+            "engineeringSnapshot": engineering_snapshot,
             "directory": str(session.directory),
             "flow": {"steps": steps},
             "home": stringify_paths(home_data),
             "parameters": stringify_paths(deepcopy(parameters_data)),
+            "configuration": stringify_paths(configuration) if configuration else None,
         }
+
+    def engineering_snapshot(self, request: WorkspaceIdRequest) -> dict:
+        """Read the committed Snapshot for the Phase 1 wire contract."""
+        session = self._get_session(request.workspace_id)
+        from chipcompiler.engine.snapshot import EngineeringSnapshotError, read_engineering_snapshot
+
+        try:
+            return read_engineering_snapshot(
+                session.workspace,
+                expected_workspace_id=session.workspace_id,
+                expected_workspace_revision=(
+                    session.workspace_revision if session.workspace_revision > 0 else None
+                ),
+            )
+        except EngineeringSnapshotError as exc:
+            raise RuntimeApiError(
+                "engineering_snapshot_unavailable",
+                str(exc),
+                {"workspaceId": request.workspace_id},
+            ) from exc
 
     def db_ensure(self, request: DbEnsureRequest) -> dict:
         self._require_persistent_db()
@@ -563,6 +842,11 @@ class WorkspaceRuntimeApi:
 
     def layout_edit_begin(self, request: LayoutEditBeginRequest) -> dict:
         self._require_persistent_db()
+        session = self._get_session(request.workspace_id)
+        ownership_lock = None
+        if session.layout_edit_session is None:
+            ownership_lock = _workspace_ownership_lock(session.directory)
+            ownership_lock.__enter__()
 
         def begin(session: WorkspaceSession) -> dict:
             with self._layout_edit_lock:
@@ -669,7 +953,19 @@ class WorkspaceRuntimeApi:
                 self._layout_edit_sessions[edit_session.edit_session_id] = edit_session
                 return _layout_edit_begin_result(edit_session, reused=False)
 
-        return self._with_session_mutation_lock(request.workspace_id, begin)
+        try:
+            result = self._with_session_mutation_lock(request.workspace_id, begin)
+        except BaseException as exc:
+            if ownership_lock is not None:
+                ownership_lock.__exit__(type(exc), exc, exc.__traceback__)
+            raise
+        if ownership_lock is not None:
+            edit_session = session.layout_edit_session
+            if edit_session is not None and result.get("reused") is not True:
+                edit_session.ownership_lock = ownership_lock
+            else:
+                ownership_lock.__exit__(None, None, None)
+        return result
 
     def layout_edit_apply(self, request: LayoutEditApplyRequest) -> dict:
         def apply(session: WorkspaceSession, edit_session: LayoutEditSession) -> dict:
@@ -744,7 +1040,9 @@ class WorkspaceRuntimeApi:
                     },
                 )
             if not edit_session.dirty:
-                return _layout_edit_save_result(edit_session, saved=False)
+                result = _layout_edit_save_result(edit_session, saved=False)
+                _release_layout_edit_ownership_lock(edit_session)
+                return result
 
             current_fingerprint = _artifact_fingerprint(edit_session.source_paths)
             if current_fingerprint != edit_session.source_fingerprint:
@@ -780,8 +1078,19 @@ class WorkspaceRuntimeApi:
             edit_session.source_kind = "db"
             edit_session.source_paths = (output_db,)
             edit_session.source_fingerprint = _artifact_fingerprint(edit_session.source_paths)
+            workspace_revision = None
+            snapshot_path = Path(session.workspace.directory) / "home" / "engineering-snapshot.json"
+            if snapshot_path.is_file():
+                workspace_revision = WorkspaceSpecRuntimeMixin._commit_workspace_snapshot(
+                    session,
+                    "layout.edit.save",
+                )
             edit_session.dirty = False
-            return _layout_edit_save_result(edit_session, saved=True, artifacts=artifacts)
+            result = _layout_edit_save_result(edit_session, saved=True, artifacts=artifacts)
+            if workspace_revision is not None:
+                result["workspaceRevision"] = workspace_revision
+            _release_layout_edit_ownership_lock(edit_session)
+            return result
 
         return self._with_layout_edit_session_mutation_lock(request.edit_session_id, save)
 
@@ -862,7 +1171,9 @@ class WorkspaceRuntimeApi:
             if edit_session is None:
                 return False
             self._layout_edit_sessions.pop(edit_session.edit_session_id, None)
-            return self.sessions.release_layout_edit_session(session)
+            released = self.sessions.release_layout_edit_session(session)
+            _release_layout_edit_ownership_lock(edit_session)
+            return released
 
     def _release_session_db(self, session: WorkspaceSession) -> bool:
         return self.sessions.release_session_db(session)
@@ -906,10 +1217,74 @@ class WorkspaceRuntimeApi:
         self,
         workspace_id: str,
         operation: Callable[[WorkspaceSession], _T],
+        *,
+        reject_active_operation: bool = False,
     ) -> _T:
         session = self._get_session(workspace_id)
+        if reject_active_operation:
+            self._ensure_no_active_operation(session)
         with session.mutation_lock:
-            return operation(session)
+            if reject_active_operation:
+                self._ensure_no_active_operation(session)
+            with _workspace_ownership_lock(session.directory):
+                return operation(session)
+
+    @staticmethod
+    def _validate_workspace_revision(
+        session: WorkspaceSession,
+        expected_workspace_revision: int | None,
+    ) -> None:
+        if (
+            expected_workspace_revision is None
+            or session.workspace_revision == 0
+            or expected_workspace_revision == session.workspace_revision
+        ):
+            return
+        raise RuntimeApiError(
+            "revision_conflict",
+            "Workspace Revision does not match",
+            {
+                "expectedRevision": expected_workspace_revision,
+                "actualRevision": session.workspace_revision,
+            },
+        )
+
+    def _ensure_no_active_operation(self, session: WorkspaceSession) -> None:
+        if self.operations.has_active_workspace(session.workspace_id):
+            raise RuntimeApiError(
+                "operation_conflict",
+                "Workspace has an active Operation",
+            )
+
+    @staticmethod
+    def _stale_step_ids(workspace) -> list[str]:
+        from chipcompiler.engine.snapshot import (
+            EngineeringSnapshotError,
+            read_engineering_snapshot,
+        )
+
+        try:
+            snapshot = read_engineering_snapshot(workspace)
+        except EngineeringSnapshotError:
+            snapshot_path = Path(workspace.directory) / "home" / "engineering-snapshot.json"
+            if snapshot_path.is_file():
+                raise
+            return []
+        predecessor = snapshot.get("stalePredecessor")
+        if not isinstance(predecessor, dict):
+            return []
+        return [
+            step_id
+            for step_id in predecessor.get("invalidatedStepIds", [])
+            if isinstance(step_id, str) and step_id
+        ]
+
+    @staticmethod
+    def _commit_rerun_snapshot(session: WorkspaceSession, cause: str) -> int | None:
+        snapshot_path = Path(session.directory) / "home" / "engineering-snapshot.json"
+        if not snapshot_path.is_file():
+            return None
+        return WorkspaceSpecRuntimeMixin._commit_workspace_snapshot(session, cause)
 
     def _refresh_workspace_config(self, workspace) -> None:
         import chipcompiler.data as data_api
@@ -948,16 +1323,20 @@ class WorkspaceRuntimeApi:
         workspace_steps,
         *,
         scope: str,
+        workspace_revision: int | None,
         target_step: str = "",
     ) -> None:
         callback = getattr(observer, "on_rerun_prepared", None)
         if callback is None:
             return
-        callback(
-            affected_steps=[str(getattr(step, "name", "")) for step in workspace_steps],
-            scope=scope,
-            target_step=target_step,
-        )
+        payload = {
+            "affected_steps": [str(getattr(step, "name", "")) for step in workspace_steps],
+            "scope": scope,
+            "target_step": target_step,
+        }
+        if workspace_revision is not None:
+            payload["workspace_revision"] = workspace_revision
+        callback(**payload)
 
     @staticmethod
     def _prepare_step_for_rerun(workspace, engine_flow, workspace_step) -> None:
@@ -1111,6 +1490,32 @@ class WorkspaceRuntimeApi:
                 f"step artifact is not a directory: {step_name}",
             )
         return resolved
+
+
+@contextmanager
+def _workspace_ownership_lock(directory: Path):
+    """Acquire the CLI-compatible sibling lock without waiting in Runtime."""
+    if fcntl is None:
+        yield
+        return
+    from chipcompiler.utility.workspace_lock import workspace_lock
+
+    try:
+        with workspace_lock(directory, blocking=False):
+            yield
+    except BlockingIOError as exc:
+        raise RuntimeApiError(
+            "workspace_busy",
+            f"Workspace is busy: {directory}",
+            {"directory": str(directory)},
+        ) from exc
+
+
+def _release_layout_edit_ownership_lock(edit_session: LayoutEditSession) -> None:
+    ownership_lock = edit_session.ownership_lock
+    edit_session.ownership_lock = None
+    if ownership_lock is not None:
+        ownership_lock.__exit__(None, None, None)
 
 
 def _layout_edit_begin_result(edit_session: LayoutEditSession, *, reused: bool) -> dict:
@@ -2067,7 +2472,14 @@ def build_flow_for_workspace(workspace, *, create_step_workspaces: bool = True):
 
     engine_flow = engine_api.EngineFlow(workspace=workspace)
     if not engine_flow.has_init():
-        for step, tool, state in rtl2gds_api.build_rtl2gds_flow():
+        # Ledger-less rebuild: the workspace's persisted flow target carries
+        # the skip policy; the code default applies when none was persisted.
+        parameters_data = getattr(getattr(workspace, "parameters", None), "data", None)
+        persisted_flow = parameters_data.get("_flow") if isinstance(parameters_data, dict) else None
+        skip = rtl2gds_api.resolve_skip_steps(
+            persisted_flow if isinstance(persisted_flow, dict) else None
+        )
+        for step, tool, state in rtl2gds_api.build_rtl2gds_flow(skip=skip):
             engine_flow.add_step(step=step, tool=tool, state=state)
 
     if create_step_workspaces:
@@ -2076,7 +2488,10 @@ def build_flow_for_workspace(workspace, *, create_step_workspaces: bool = True):
 
 
 def _workspace_session_result(session: WorkspaceSession) -> dict:
-    return {"workspaceId": session.workspace_id, "directory": str(session.directory)}
+    result = {"workspaceId": session.workspace_id, "directory": str(session.directory)}
+    if session.workspace_revision > 0:
+        result["workspaceRevision"] = session.workspace_revision
+    return result
 
 
 def _db_ensure_result(
@@ -2232,25 +2647,25 @@ def _state_value(state: Any) -> str:
 
 
 def _run_engine_flow_steps(engine_flow, *, rerun: bool, observer) -> bool:
-    run_steps = engine_flow.run_steps
-    if observer is not None and _callable_accepts_keyword(run_steps, "observer"):
-        return run_steps(rerun=rerun, observer=observer)
-    return run_steps(rerun=rerun)
+    from chipcompiler.engine import ExecutionPlan, execute
+
+    result = execute(
+        engine_flow,
+        ExecutionPlan(intent="rerun" if rerun else "run"),
+        event_sink=observer,
+    )
+    return result.succeeded
 
 
 def _run_engine_flow_step(engine_flow, workspace_step, *, rerun: bool, observer):
-    run_step = engine_flow.run_step
-    if observer is not None and _callable_accepts_keyword(run_step, "observer"):
-        return run_step(workspace_step, rerun=rerun, observer=observer)
-    return run_step(workspace_step, rerun=rerun)
+    from chipcompiler.engine import ExecutionPlan, execute
 
-
-def _callable_accepts_keyword(callback, keyword: str) -> bool:
-    try:
-        parameters = inspect.signature(callback).parameters.values()
-    except (TypeError, ValueError):
-        return False
-    return any(
-        parameter.name == keyword or parameter.kind == inspect.Parameter.VAR_KEYWORD
-        for parameter in parameters
+    result = execute(
+        engine_flow,
+        ExecutionPlan(
+            intent="rerun" if rerun else "run",
+            step_id=str(getattr(workspace_step, "name", "")),
+        ),
+        event_sink=observer,
     )
+    return _success_state() if result.succeeded else result.state

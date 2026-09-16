@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.data import EccOutput, EccStep, StateEnum, StepEnum, Workspace
+from chipcompiler.data import EccOutput, EccStep, SkippableStepEnum, StateEnum, StepEnum, Workspace
 
 from ._sizer_helpers import _sizer_runtime, _subflow_states, _workspace
 
@@ -17,7 +17,7 @@ def test_timing_opt_step_result_does_not_require_gds(tmp_path):
     output_verilog.write_text("module gcd; endmodule\n", encoding="utf-8")
 
     step = EccStep(
-        name=StepEnum.TIMING_OPT.value,
+        name=SkippableStepEnum.TIMING_OPT.value,
         tool="sizer",
         output=EccOutput(
             def_=output_def,
@@ -39,7 +39,7 @@ def test_timing_opt_step_result_requires_declared_geometry_manifest(tmp_path):
     output_verilog.write_text("module gcd; endmodule\n", encoding="utf-8")
 
     step = EccStep(
-        name=StepEnum.TIMING_OPT.value,
+        name=SkippableStepEnum.TIMING_OPT.value,
         tool="sizer",
         output=EccOutput(
             def_=output_def,
@@ -67,7 +67,7 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
     workspace.flow.data = {
         "steps": [
             {
-                "name": StepEnum.TIMING_OPT.value,
+                "name": SkippableStepEnum.TIMING_OPT.value,
                 "tool": "sizer",
                 "state": StateEnum.Unstart.value,
             },
@@ -80,7 +80,7 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
     }
 
     sizer_step = EccStep(
-        name=StepEnum.TIMING_OPT.value,
+        name=SkippableStepEnum.TIMING_OPT.value,
         tool="sizer",
         output=EccOutput(
             def_=tmp_path / "sizer.def",
@@ -163,14 +163,14 @@ def test_engine_flow_clears_cached_db_after_incomplete_sizer_step(tmp_path, monk
     workspace.flow.data = {
         "steps": [
             {
-                "name": StepEnum.TIMING_OPT.value,
+                "name": SkippableStepEnum.TIMING_OPT.value,
                 "tool": "sizer",
                 "state": StateEnum.Unstart.value,
             }
         ]
     }
     sizer_step = EccStep(
-        name=StepEnum.TIMING_OPT.value,
+        name=SkippableStepEnum.TIMING_OPT.value,
         tool="sizer",
         output=EccOutput(
             def_=tmp_path / "sizer.def",
@@ -212,7 +212,7 @@ def test_legacy_one_stage_success_is_invalidated_before_skip(tmp_path, monkeypat
     flow_data = {
         "steps": [
             {
-                "name": StepEnum.TIMING_OPT.value,
+                "name": SkippableStepEnum.TIMING_OPT.value,
                 "tool": "sizer",
                 "state": StateEnum.Success.value,
             },
@@ -228,7 +228,7 @@ def test_legacy_one_stage_success_is_invalidated_before_skip(tmp_path, monkeypat
 
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -272,7 +272,7 @@ def test_legacy_one_stage_success_is_invalidated_before_skip(tmp_path, monkeypat
 
     engine_flow = EngineFlow(workspace)
     assert not engine_flow.check_state(
-        name=StepEnum.TIMING_OPT.value,
+        name=SkippableStepEnum.TIMING_OPT.value,
         tool="sizer",
         state=StateEnum.Success,
     )

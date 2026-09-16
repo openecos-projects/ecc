@@ -80,6 +80,26 @@ def build_project_config_items(
     else:
         entries.append(("flow.preset", cfg.flow_preset, cfg.flow_preset, source_of("flow.preset")))
 
+    # Effective skip policy: the declared spelling with its winning layer,
+    # or the code default when no surface declares the key.
+    declared = None
+    source = "ecc.toml"
+    winner = getattr(cfg, "_skip_steps_source", None)
+    if resolved is not None and isinstance(flow_config, dict) and "skip_steps" in flow_config:
+        declared = list(flow_config["skip_steps"])
+        # The winner was resolved by effective-config: manifest entry beats
+        # ecc.toml for this key; fall back to layer presence for older
+        # call paths that did not record it.
+        source = winner or ("project.json" if "flow.skip_steps" not in explicit else "ecc.toml")
+    elif "flow.skip_steps" in explicit:
+        declared = list(cfg.flow_skip_steps or [])
+    if declared is None:
+        from chipcompiler.data import DEFAULT_SKIP_STEPS
+
+        entries.append(("flow.skip_steps", None, list(DEFAULT_SKIP_STEPS), "default"))
+    else:
+        entries.append(("flow.skip_steps", declared, declared, source))
+
     inspect = disclosure_cmd("ecc config", project, run_id)
 
     for key, value, resolved, source in entries:

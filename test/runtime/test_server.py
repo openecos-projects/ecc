@@ -10,7 +10,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceInspectSignoffRequest,
     WorkspaceOpenRequest,
 )
-from chipcompiler.runtime.server import RuntimeServer
+from chipcompiler.runtime.server import RuntimeServer, _project_runtime_event
 from chipcompiler.runtime.workspace_api import RuntimeApiError
 
 
@@ -134,6 +134,18 @@ def test_rpc_hello_reports_persistent_db_capabilities_when_enabled():
 
     assert "db.ensure" in response["result"]["capabilities"]
     assert "db.release" in response["result"]["capabilities"]
+
+
+def test_cancel_requested_event_projects_cancelling_state():
+    projected = _project_runtime_event(
+        {
+            "type": "operation.cancel_requested",
+            "payload": {},
+        }
+    )
+
+    assert projected["type"] == "operation.changed"
+    assert projected["payload"]["state"] == "cancelling"
 
 
 def test_rpc_hello_rejects_incompatible_version():
@@ -383,7 +395,7 @@ def test_first_slice_methods_are_registered(method):
 
     response = _dispatch(server, f'{{"jsonrpc":"2.0","method":"{method}","id":1}}')
 
-    assert response["error"]["code"] != -32601
+    assert response.get("error", {}).get("code") != -32601
 
 
 @pytest.mark.parametrize(

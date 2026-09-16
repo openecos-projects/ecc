@@ -254,6 +254,7 @@ def step_args(tmp_path, *args, workspace="ws"):
 
 class TestStepOverview:
     def test_overview_includes_every_rtl2gds_step(self, tmp_path, capsys, plain_records):
+        from chipcompiler.data import DEFAULT_SKIP_STEPS
         from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
 
         ws = str(tmp_path / "ws")
@@ -262,7 +263,7 @@ class TestStepOverview:
             {
                 "steps": [
                     {"name": step.value, "tool": tool, "state": state.value}
-                    for step, tool, state in build_rtl2gds_flow()
+                    for step, tool, state in build_rtl2gds_flow(skip=DEFAULT_SKIP_STEPS)
                 ]
             },
         )

@@ -247,8 +247,7 @@ chipcompiler/cli/commands/        # typer 命令定义层（薄）
   ├── project_config.py           # project 子应用（set/unset/add/remove/show）
   ├── workspace.py                # workspace 子应用（refresh）
   ├── signoff.py                  # signoff 子应用（inspect/export）
-  ├── report.py                   # report 子应用（summary/qor/checklist/step）
-  └── rpc.py                      # rpc 子应用（serve）
+  └── report.py                   # report 子应用（summary/qor/checklist/step）
 chipcompiler/cli/command_handlers/  # 业务处理层（唯一的处理器包，有状态/重逻辑）
   ├── project.py                  # init / check / run / migrate / workspace refresh（含 preset 解析与环境预检）
   ├── inspect.py                  # status / log / config
@@ -274,7 +273,8 @@ chipcompiler/cli/inspection/      # 只读探查逻辑
 chipcompiler/cli/project/         # config.py（ecc.toml 解析校验）/ config_fields.py（`ecc project` 的项目声明 schema）/ params.py（参数注册表）/ workspace_params.py（workspace 局部覆盖记录）/ manifest.py（项目形态分类）/ effective_config.py / config_params/（直配参数 schema）/ migrate*.py（旧布局迁移）/ run_*.py（run 目标解析与分发）
 chipcompiler/cli/rendering/       # 输出渲染（render / renderers / pretty / progress）
 chipcompiler/engine/signoff/      # 签核收集器 + 设计/checklist 报告（包，见下文）
-chipcompiler/engine/qor_report.py # QoR 总分计分（GUI 规则移植）
+chipcompiler/analysis/qor/ # QoR v3 唯一分析、评分与报告契约
+chipcompiler/engine/qor_report.py # CLI QoR facade，委托 analysis.qor
 ```
 
 模块归属由 `test/cli/test_cli_module_layout.py` 强制：核心框架必须在 `cli/core/`、命令注册在 `cli/commands/`、全部处理器在唯一的 `cli/command_handlers/` 包、只读探查在 `cli/inspection/`、渲染在 `cli/rendering/`；旧的 `chipcompiler/cli/*.py` 平铺模块必须不可导入。新增文件时放进对应子包，不要在 `cli/` 根下新建模块。
@@ -414,7 +414,7 @@ config_param(
 - **新建 workspace**：解析 `[design]` 输入声明、PDK、参数与请求入口步骤；只校验入口步骤所需文件；先原子登记受管名称到 `project.json`（`not_started`）；预检工具；在 `<project>/<workspace 名称>` 调用 `create_workspace`。`create_workspace` 将输入复制到 `origin/` 并产出全部步骤配置，CLI 后续不改写配置。正常新建 flow 用 preset；`--from A --to B` 改用 `rtl2gds.build_flow_range(A, B)` 动态构建包含式规范范围。新范围不能与 `--preset`、`--overwrite`、`--resume`、`--only`、`--force` 组合。
 - **已有 workspace**：先由 `chipcompiler/engine/reconcile.py` 把持久化 flow 与目标对齐（前缀 → 追加扩展；超集且全成 → `no_op`；分叉 → `flow_mismatch`），再 `load_workspace` 后由 `chipcompiler.engine.rerun` 的 `run_resume`、`run_from` 或 `run_only` 原地复跑。`--from A --to B` 是已有 flow 的包含式范围，会将其后的步骤状态失效但保留其输出文件。已有 workspace 不会重新预检输入，也不会改写已复制输入或配置。
 
-项目 preset 的步骤序列定义在 `chipcompiler/rtl2gds/builder.py`（`build_*_flow()` / `get_flow_builders()`），不在 CLI 层。`build_flow_range()` 对规范的 `build_rtl2gds_flow()` 结果切片，步骤别名和顺序只有一份来源。修改序列时须同步引擎默认 flow、`StepEnum` 与 manifest 范围映射；CLI 只负责参数解析、输入契约、进度渲染选择与结果映射。
+项目 preset 的步骤序列定义在 `chipcompiler/rtl2gds/builder.py`（`build_*_flow()` / `get_flow_builders()`），不在 CLI 层。`build_flow_range()` 对规范的 `build_rtl2gds_flow()` 结果切片，步骤别名和顺序只有一份来源。修改序列时须同步引擎默认 flow、`StepEnum` 与 manifest 范围映射；CLI 只负责参数解析、输入契约、进度渲染选择与结果映射。交互式 TTY 的 `ecc run` 走 `run_flow_with_progress()`，`--plain` 与 GUI 走 `execute()`；两条路径挂同一套 Engineering Snapshot 提交 observer，每完成一步都会更新 `home/engineering-snapshot.json`。
 
 #### 扩展环境探查（doctor / 预检）
 
@@ -428,7 +428,9 @@ config_param(
 #### 扩展报告（`ecc report summary/qor/checklist/step`）
 
 - **设计总结**：`ecc report summary` 调用 `chipcompiler.engine.signoff.generate_text_report`。其实现按职责分模块（`report.py` 编排 / `report_data.py` 数据契约 / `report_extract.py` 解析器+workspace 收集 / `report_sections.py` 分区抽取 / `report_timing.py` timing 链 / `report_text.py` 格式化），全部经包 `__init__` 对外暴露。新增报告分区时，在 `report_sections.py`（或 timing 链）增加 `_extract_<family>(q)`，并在 `report.py` 编排处注册。
-- `engine/qor_report.py`：GUI `projectQorTrend.ts` 的单 workspace 移植——常量表（`METRIC_FAIL_VALUES`/`DIMENSION_WEIGHTS`/`QOR_SCORE_THRESHOLD`）+ 归一化 + 项目级记录选择（role 优先级 final>gate>trend、area_cost 只取最后成功的 area 步）+ `score_record` 计分公式 + 维度加权（不重归一化）。新增可计分指标 = 在 GUI 与 `METRIC_FAIL_VALUES` 同步加阈值。
+- `analysis/qor/`：QoR v3 唯一分析引擎，负责指标加载、feature/维度计算、feasibility gates、evidence、评分、diagnosis、intervention、有界报告 schema 和文本渲染。新的工程结论只能在这里实现，GUI/CLI 不得复制阈值或公式。
+- `engine/qor_report.py`：CLI `ecc report qor` facade，委托 `analysis.qor`，不拥有第二套评分实现。
+- `engine/qor_scoring.py` 与 `engine/qor.py`：仅为生产 Snapshot v2 兼容保留；ECC-only 阶段不要让 QoR v3 消费这条路径。
 - `engine/signoff/report_checklist.py`：只读渲染 `home/checklist.json`（不合法时报 unavailable，绝不回写文件）。
 - CLI：`cli/commands/report.py` + `cli/command_handlers/report.py`；workspace 解析复用 `inspection/discovery.py`（`resolve_workspace_path` 是无副作用核心，`resolve_command_workspace` 是核心加 `load_workspace`；signoff、report 与只读的 status/log/config 共用）。
 
@@ -482,15 +484,34 @@ uv run ecc pdk show
 
 ### Flow Preset 覆盖
 
-`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（15 步，Synthesis 后紧跟一次综合级 LEC；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
+`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（规范链 17 步，含 Synthesis 后紧跟的综合级 LEC，默认策略会跳过该步，见下文「可跳过的 Flow Step」；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
 
 ```bash
 uv run ecc run --project gcd --preset rtl2gds
 ```
 
+### 可跳过的 Flow Step
+
+三个可选 step 可在创建 workspace 时按配置排除：综合级 LEC（`lec`）、布线后 LEC（`postRouteLec`）、时序优化（`Timing optimization`）。被跳过的 step 不会进入 workspace 的执行 ledger——其输入自然落到前一个保留 step，也不会为其创建 step 目录。状态机与 resume/rerun 语义零改动；已创建的 ledger 永远不会按新配置重过滤——事后修改策略不会向已有 workspace 插入或删除 step。
+
+策略在两个配置面声明，优先级对 skip_steps 单独生效：
+
+1. `project.json` → `workspaces[].skip_steps`（per-workspace，仅此键优先——显式空数组也生效），
+2. `ecc.toml` → `[flow] skip_steps`（项目级），
+3. 两者都未声明时的代码默认 `("lec",)`。
+
+显式 `skip_steps = []` 表示全部执行，是启用综合级 LEC 的唯一方式。有效策略包含 `lec` 时选择 `synthesis_lec` preset 是创建期配置错误；解决办法是 `skip_steps = []`。条目接受与 flow 范围相同的别名（如 `LEC`、`postlec`、`TimingOpt`），并按可跳过集合校验。
+
+```toml
+[flow]
+preset = "rtl2gds"
+# LEC is skipped by default; clear the list to enable it.
+skip_steps = ["lec"]
+```
+
 ### 报告
 
-`ecc report qor` 按 GUI 项目看板相同的方式给 workspace 打分（每指标对固定 fail 阈值计分、维度求均值、加权总分——缺失维度不做权重重归一化）；`ecc report checklist` 渲染签核清单状态；`ecc report summary` 写出与 GUI 一致的文本设计总结。三者默认写入 `<workspace>/signoff/`，接受 `-o` 以及常规的 `--project` 和可选的受管 `--workspace NAME` 选择器：
+`ecc report qor` 委托 `chipcompiler.analysis.qor` QoR v3 引擎。生产 Snapshot v2 的 `qorAssessment` 仅为当前 GUI 兼容保留，不是 v3 工程结论的第二来源。`ecc report checklist` 渲染签核清单状态；`ecc report summary` 写出与 GUI 一致的文本设计总结。三者默认写入 `<workspace>/signoff/`，接受 `-o` 以及常规的 `--project` 和可选的受管 `--workspace NAME` 选择器：
 
 ```bash
 uv run ecc report qor --project gcd
@@ -531,6 +552,7 @@ root = "/path/to/ics55"
 
 [flow]
 preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
+# 可选：skip_steps = ["lec"]（默认）；[] 全部执行（启用 LEC）
 ```
 
 filelist 模式下把 `design.rtl` 设为单个 filelist 路径，如 `rtl = ["rtl/filelist.f"]`。多 RTL 源应列在 filelist 里，而不是写多个 `design.rtl` 条目。

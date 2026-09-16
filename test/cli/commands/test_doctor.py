@@ -242,7 +242,7 @@ class TestRunPreflight:
         )
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-            lambda: [
+            lambda *, skip=(): [
                 ("Synthesis", "yosys", "Unstart"),
                 ("Floorplan", "ecc", "Unstart"),
                 ("place", "dreamplace", "Unstart"),
@@ -259,6 +259,48 @@ class TestRunPreflight:
             "dreamplace",
             "sizer",
         )
+
+    def test_preflight_resolves_components_from_filtered_steps(
+        self, tmp_path, create_cli_project, monkeypatch
+    ):
+        """Skipping a step removes its tool from the preflight probe set."""
+        from chipcompiler.cli.command_handlers.project import _preflight_environment
+
+        monkeypatch.setattr(
+            "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
+            lambda *, skip=(): [
+                (step, tool, "Unstart")
+                for step, tool, _state in [
+                    ("Synthesis", "yosys", "Unstart"),
+                    ("lec", "yosys_lec", "Unstart"),
+                    ("Floorplan", "ecc", "Unstart"),
+                    ("Timing optimization", "sizer", "Unstart"),
+                ]
+                if step not in set(skip)
+            ],
+        )
+        seen = {}
+        monkeypatch.setattr(
+            "chipcompiler.cli.inspection.env_probe.probe_components_for_steps",
+            lambda steps: seen.setdefault(
+                "tools", tuple(sorted({tool for _step, tool, _state in steps}))
+            ),
+        )
+        monkeypatch.setattr(
+            "chipcompiler.cli.inspection.env_probe.probe_environment",
+            lambda components, **kwargs: [],
+        )
+
+        # No policy: the default skips lec; no flow_config: probe the preset
+        # filtered by that default.
+        _preflight_environment("rtl2gds", None, None)
+        assert "yosys_lec" not in seen["tools"]
+        assert seen["tools"] == ("ecc", "sizer", "yosys")
+
+        # Skipping TimingOpt removes the sizer probe.
+        seen.clear()
+        _preflight_environment("rtl2gds", None, {"skip_steps": ["TimingOpt"]})
+        assert "sizer" not in seen["tools"]
 
     def test_workspace_run_mode_never_probes(
         self, tmp_path, monkeypatch, create_cli_project, minimal_ics55_pdk_factory
@@ -326,7 +368,7 @@ class TestRunPreflight:
 
 
 def _capture_preset(seen):
-    def fake(preset):
+    def fake(preset, *, skip=()):
         seen["preset"] = preset
         return ("ecc-tools",)
 

@@ -11,6 +11,7 @@ from chipcompiler.cli.project.params import (
     validate_pdk_target,
     validate_value,
 )
+from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
 from chipcompiler.utility.file import write_text_atomic
 
 
@@ -29,6 +30,20 @@ def _manifest_mode_error(ctx: CommandContext) -> CommandResult | None:
     return None
 
 
+def _parameter_flow_error(schema, ctx: CommandContext) -> CommandResult | None:
+    preset = getattr(ctx.config, "flow_preset", "")
+    builder = get_flow_builders().get(preset)
+    if builder is None or schema.applies == "all" or schema.pdk_target is not None:
+        return None
+    flow_steps = {normalize_flow_step(step).casefold() for step, _tool, _state in builder()}
+    if normalize_flow_step(schema.applies).casefold() in flow_steps:
+        return None
+    return CommandResult.err(
+        [error_record("parameter_not_in_flow", param=schema.param, preset=preset)],
+        exit_code=1,
+    )
+
+
 def param_list(args, ctx: CommandContext) -> CommandResult:
     if getattr(args, "workspace", None) is not None:
         from chipcompiler.cli.command_handlers import workspace_params
@@ -45,12 +60,31 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
     resolved, _ = resolve_parameters(toml_overrides=toml_overrides)
     project = ctx.project
 
-    selected_step = (getattr(args, "step", None) or "").casefold()
+    selected_step = normalize_flow_step(getattr(args, "step", None) or "").casefold()
     show_all = bool(getattr(args, "all", False))
+    preset = getattr(ctx.config, "flow_preset", "")
+    builder = get_flow_builders().get(preset)
+    flow_step_names = (
+        [normalize_flow_step(step).casefold() for step, _tool, _state in builder()]
+        if builder is not None
+        else []
+    )
+    flow_steps = set(flow_step_names)
+    first_flow_step = flow_step_names[0] if flow_step_names else ""
+    if selected_step and flow_steps and selected_step not in flow_steps:
+        return CommandResult.ok([])
     records = []
     for rp in resolved:
         s = rp.schema
-        if selected_step and selected_step not in {s.group.casefold(), s.applies.casefold()}:
+        applies = normalize_flow_step(s.applies).casefold()
+        if flow_steps and s.applies != "all" and applies not in flow_steps:
+            continue
+        schema_steps = {
+            normalize_flow_step(s.group).casefold(),
+            normalize_flow_step(s.applies).casefold(),
+        }
+        global_at_first_step = s.applies == "all" and selected_step == first_flow_step
+        if selected_step and selected_step not in schema_steps and not global_at_first_step:
             continue
         if not selected_step and not show_all and s.has_direct_target and not rp.is_explicit:
             continue
@@ -160,6 +194,9 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
             ],
             exit_code=1,
         )
+    flow_error = _parameter_flow_error(schema, ctx)
+    if flow_error is not None:
+        return flow_error
 
     try:
         value = parse_value(raw_value, schema)
@@ -248,6 +285,9 @@ def param_unset(args, ctx: CommandContext) -> CommandResult:
             ],
             exit_code=1,
         )
+    flow_error = _parameter_flow_error(schema, ctx)
+    if flow_error is not None:
+        return flow_error
 
     config_path = _find_config_path(ctx.project_dir)
     if config_path is None:

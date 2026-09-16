@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from rosettakit.errors import ValidationError
 
-from chipcompiler.data import StepEnum
+from chipcompiler.data import SkippableStepEnum
 
 from ._sizer_helpers import _sizer_runtime, _workspace
 
@@ -20,7 +20,7 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def="input.def",
         input_verilog="input.v",
     )
@@ -50,11 +50,11 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     assert "-outputPath ." in cmd_text
     expected_def_out = os.path.relpath(
         sizer_builder.sizer_staging_def(step),
-        step.data.steps[StepEnum.TIMING_OPT.value],
+        step.data.steps[SkippableStepEnum.TIMING_OPT.value],
     )
     expected_verilog_out = os.path.relpath(
         sizer_builder.sizer_staging_verilog(step),
-        step.data.steps[StepEnum.TIMING_OPT.value],
+        step.data.steps[SkippableStepEnum.TIMING_OPT.value],
     )
     assert f"-def_out_path {expected_def_out}" in cmd_text
     assert f"-verilog_out_path {expected_verilog_out}" in cmd_text
@@ -83,7 +83,7 @@ def test_sizer_metrics_write_qor_files_from_db_summary(tmp_path):
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def="input.def",
         input_verilog="input.v",
     )
@@ -119,7 +119,7 @@ def test_sizer_metrics_write_qor_files_from_db_summary(tmp_path):
     assert step.analysis.qor_summary is not None
     assert step.analysis.qor_summary.is_file()
     payload = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
-    assert payload["step"] == StepEnum.TIMING_OPT.value
+    assert payload["step"] == SkippableStepEnum.TIMING_OPT.value
     assert any(record.get("id") == "die_area" for record in payload["metrics"])
     with open(str(step.subflow.path), encoding="utf-8") as file:
         subflow = json.load(file)
@@ -145,7 +145,7 @@ def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
 
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=str(tmp_path / "inputs" / "input_def.def"),
         input_verilog=str(tmp_path / "inputs" / "input_rtl.v"),
     )
@@ -166,11 +166,11 @@ def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
 
     expected_def_out = os.path.relpath(
         sizer_builder.sizer_staging_def(step),
-        step.data.steps[StepEnum.TIMING_OPT.value],
+        step.data.steps[SkippableStepEnum.TIMING_OPT.value],
     )
     expected_verilog_out = os.path.relpath(
         sizer_builder.sizer_staging_verilog(step),
-        step.data.steps[StepEnum.TIMING_OPT.value],
+        step.data.steps[SkippableStepEnum.TIMING_OPT.value],
     )
     assert cmd_lines == [
         "-useOpenSTA",
@@ -193,7 +193,7 @@ def test_sizer_cmd_omits_missing_input_paths(tmp_path):
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=None,
         input_verilog=None,
     )
@@ -214,7 +214,7 @@ def test_sizer_config_rejects_whitespace_paths_unsupported_by_runtime(tmp_path, 
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=str(tmp_path / "inputs" / "input def.def"),
         input_verilog="input.v",
     )
@@ -246,7 +246,7 @@ def test_sizer_config_omits_empty_optional_paths(tmp_path, monkeypatch):
     workspace.pdk.spef = ""
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def="",
         input_verilog="",
     )
@@ -269,7 +269,7 @@ def test_sizer_step_declares_db_geometry_and_keeps_standard_dirs(tmp_path):
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def="input.def",
         input_verilog="input.v",
     )
@@ -277,9 +277,9 @@ def test_sizer_step_declares_db_geometry_and_keeps_standard_dirs(tmp_path):
     assert isinstance(step.output.db, Path)
     assert step.output.geometry is not None
     assert step.output.geometry_manifest is not None
-    assert step.name == StepEnum.TIMING_OPT.value
+    assert step.name == SkippableStepEnum.TIMING_OPT.value
     assert step.directory.name == "timing_optimization_sizer"
-    assert not str(step.directory).endswith(f"{StepEnum.TIMING_OPT.value}_sizer")
+    assert not str(step.directory).endswith(f"{SkippableStepEnum.TIMING_OPT.value}_sizer")
     assert isinstance(step.directory, Path)
     assert " " not in os.path.basename(str(step.output.def_))
     assert " " not in os.path.basename(str(step.output.verilog))
@@ -310,7 +310,7 @@ def test_sizer_step_keeps_caller_input_paths(tmp_path):
     input_verilog = f"{workspace.directory}/Timing optimization_sizer_inputs/input.v"
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=input_def,
         input_verilog=input_verilog,
     )
@@ -329,7 +329,7 @@ def test_sizer_step_keeps_caller_output_paths_that_share_old_prefix(tmp_path):
     output_verilog = f"{workspace.directory}/Timing optimization_sizer_outputs/output.v"
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def="input.def",
         input_verilog="input.v",
         output_def=output_def,
@@ -469,7 +469,7 @@ def test_sizer_step_info_surfaces_include_step_local_config(tmp_path, monkeypatc
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def="input.def",
         input_verilog="input.v",
     )
@@ -512,7 +512,7 @@ def test_sizer_build_step_config_rewrites_legacy_one_stage_subflow(tmp_path, mon
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def="input.def",
         input_verilog="input.v",
     )

@@ -7,6 +7,8 @@ import pytest
 import chipcompiler.data as data_api
 import chipcompiler.data.workspace as workspace_data
 from chipcompiler.data import (
+    SkippableStepEnum,
+    StepBaseEnum,
     StepEnum,
     create_workspace,
     load_workspace,
@@ -19,7 +21,9 @@ from chipcompiler.data.workspace import (
     prepare_workspace_for_rerun,
     refresh_workspace_config,
     sync_workspace_config_to_parameters,
+    update_step_config,
 )
+from chipcompiler.data.workspace.layout import EccData, EccOutput, EccStep, StepInput
 from chipcompiler.utility import json_read, json_write
 
 EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
@@ -160,6 +164,137 @@ def test_create_workspace_rejects_existing_non_empty_directory(tmp_path):
     assert workspace is None
 
 
+EXPECTED_ICS55_DEFAULT_SDC = """\
+# Auto-generated SDC file
+
+set clk_name          clk
+set clk_port_name     clk
+set clk_freq_mhz      100
+set clk_period        [expr 1000.0 / $clk_freq_mhz]
+
+# -------------------------------------------------
+# Clock definition
+# -------------------------------------------------
+set clk_port [get_ports $clk_port_name]
+create_clock -name $clk_name -period $clk_period $clk_port
+
+# -------------------------------------------------
+# IO Delay
+# -------------------------------------------------
+set clk_input          [get_ports $clk_port_name]
+set all_inputs_wo_clk  [remove_from_collection [all_inputs] $clk_input]
+
+set_input_delay  0  -clock [get_clocks $clk_name] $all_inputs_wo_clk
+set_output_delay 0 -clock [get_clocks $clk_name] [all_outputs]
+
+# -------------------------------------------------
+# Output load (pF) - ics55 pdk
+# -------------------------------------------------
+set_load 0.001 [all_outputs]
+
+# -------------------------------------------------
+# Clock uncertainty & transition
+# -------------------------------------------------
+set clk_uncertainty   [expr $clk_period * 0.05]                 ;# 5% of period
+set clk_transition    [expr min(0.15, $clk_period * 0.03)]      ;# 3%, cap 0.15ns
+set input_transition  [expr min(0.20, $clk_period * 0.05)]      ;# 5%, cap 0.20ns
+
+set_clock_uncertainty $clk_uncertainty  [get_clocks $clk_name]
+set_clock_transition  $clk_transition   [get_clocks $clk_name]
+set_input_transition  $input_transition $all_inputs_wo_clk
+
+# -------------------------------------------------
+# Design-level constraints
+# -------------------------------------------------
+set_max_fanout 32 [current_design]
+"""
+
+
+def test_create_workspace_generates_default_sdc_from_parameters(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters={**default_ics55_parameters, "max_fanout": 32},
+        pdk_root=str(pdk_root),
+    )
+
+    sdc_path = workspace_dir / "origin" / "gcd.sdc"
+    assert sdc_path.read_text() == EXPECTED_ICS55_DEFAULT_SDC
+
+
+EXPECTED_ICS55_VIRTUAL_CLOCK_SDC = """\
+# Auto-generated SDC file
+
+set clk_name          __VIRTUAL_CLK__
+set clk_freq_mhz      100
+set clk_period        [expr 1000.0 / $clk_freq_mhz]
+
+# -------------------------------------------------
+# Clock definition
+# -------------------------------------------------
+create_clock -name $clk_name -period $clk_period
+
+# -------------------------------------------------
+# IO Delay
+# -------------------------------------------------
+set all_inputs_wo_clk  [all_inputs]
+
+set_input_delay  0  -clock [get_clocks $clk_name] $all_inputs_wo_clk
+set_output_delay 0 -clock [get_clocks $clk_name] [all_outputs]
+
+# -------------------------------------------------
+# Output load (pF) - ics55 pdk
+# -------------------------------------------------
+set_load 0.001 [all_outputs]
+
+# -------------------------------------------------
+# Clock uncertainty & transition
+# -------------------------------------------------
+set clk_uncertainty   [expr $clk_period * 0.05]                 ;# 5% of period
+set clk_transition    [expr min(0.15, $clk_period * 0.03)]      ;# 3%, cap 0.15ns
+set input_transition  [expr min(0.20, $clk_period * 0.05)]      ;# 5%, cap 0.20ns
+
+set_clock_uncertainty $clk_uncertainty  [get_clocks $clk_name]
+set_clock_transition  $clk_transition   [get_clocks $clk_name]
+set_input_transition  $input_transition $all_inputs_wo_clk
+
+# -------------------------------------------------
+# Design-level constraints
+# -------------------------------------------------
+set_max_fanout 20 [current_design]
+"""
+
+
+def test_create_workspace_generates_virtual_clock_sdc_for_clockless_design(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters={**default_ics55_parameters, "clock": ""},
+        pdk_root=str(pdk_root),
+    )
+
+    sdc_path = workspace_dir / "origin" / "gcd.sdc"
+    assert sdc_path.read_text() == EXPECTED_ICS55_VIRTUAL_CLOCK_SDC
+
+
 def test_create_workspace_persists_dynamic_flow_steps(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
@@ -293,7 +428,7 @@ def test_load_workspace_restores_golden_from_persisted_flow_info(
         pdk="ics55",
         parameters=deepcopy(default_ics55_parameters),
         pdk_root=pdk_root,
-        flow_config={"start_step": "lec", "end_step": "lec"},
+        flow_config={"start_step": "lec", "end_step": "lec", "skip_steps": []},
     )
 
     loaded = load_workspace(str(workspace_dir))
@@ -681,7 +816,7 @@ def test_step_config_keys_return_workspace_config_keys():
     assert data_api.step_config_keys("place", "dreamplace") == ("dreamplace",)
     assert data_api.step_config_keys("legalization", "dreamplace") == ("dreamplace",)
     assert data_api.step_config_keys("Timing optimization", "sizer") == ("db", "dreamplace")
-    assert data_api.step_config_keys(StepEnum.TIMING_OPT, "sizer") == ("db", "dreamplace")
+    assert data_api.step_config_keys(SkippableStepEnum.TIMING_OPT, "sizer") == ("db", "dreamplace")
     assert data_api.step_config_keys("synthesis", "yosys") == ()
     assert data_api.step_config_keys("place", None) == ()
 
@@ -731,7 +866,7 @@ def test_step_config_paths_return_expected_and_existing_paths(tmp_path):
     assert data_api.step_config_paths(workspace_dir, "legalization", "dreamplace") == (
         config_dir / "dreamplace_ecc.json",
     )
-    assert data_api.step_config_paths(workspace_dir, StepEnum.TIMING_OPT, "sizer") == (
+    assert data_api.step_config_paths(workspace_dir, SkippableStepEnum.TIMING_OPT, "sizer") == (
         config_dir / "db_ecc.json",
         config_dir / "dreamplace_ecc.json",
     )
@@ -757,7 +892,7 @@ def test_workspace_config_metadata_is_private_and_step_enum_keyed():
     assert hasattr(workspace_data, "_WORKSPACE_CONFIG_FILENAMES")
     assert hasattr(workspace_data, "_STEP_CONFIG_KEYS")
     assert all(
-        isinstance(step, StepEnum) and isinstance(tool, str)
+        isinstance(step, StepBaseEnum) and isinstance(tool, str)
         for step, tool in workspace_data._STEP_CONFIG_KEYS
     )
 
@@ -1044,7 +1179,7 @@ def test_refresh_workspace_config_updates_generated_sdc_frequency(
 
     refresh_workspace_config(workspace)
 
-    assert "set clk_freq_mhz 250.0" in workspace.pdk.sdc.read_text(encoding="utf-8")
+    assert "set clk_freq_mhz      250.0" in workspace.pdk.sdc.read_text(encoding="utf-8")
 
 
 def test_refresh_workspace_config_preserves_external_sdc(
@@ -1170,6 +1305,38 @@ def test_refresh_workspace_config_reapplies_direct_config_overrides(
 
     assert json_read(workspace.config[StepEnum.CTS.value])["skew_bound"] == "0.05"
     assert json_read(workspace.config["dreamplace"])["num_threads"] == 12
+
+
+def test_update_step_config_preserves_floorplan_mode_override_after_result_backfill(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    workspace_dir, workspace = _create_loaded_ics55_workspace(
+        tmp_path,
+        "workspace_floorplan_mode_override",
+        minimal_ics55_pdk_factory,
+        default_ics55_parameters,
+    )
+    parameters = _read_parameters(workspace_dir / "home" / "params.toml")
+    parameters["die"] = {"size": [31.8, 32.0], "area": 1017.6}
+    parameters["config_overrides"] = {
+        "Floorplan": {"die_builder": {"mode": "die_util"}},
+    }
+    _write_parameters(workspace_dir / "home" / "params.toml", parameters)
+    workspace.parameters.data = parameters
+
+    step = EccStep(
+        name=StepEnum.POST_FLOORPLAN.value,
+        input=StepInput(),
+        output=EccOutput(dir=workspace_dir / "postFloorplan_ecc" / "output"),
+        data=EccData(
+            steps={StepEnum.POST_FLOORPLAN.value: workspace_dir / "postFloorplan_ecc" / "data"}
+        ),
+    )
+
+    update_step_config(workspace, step)
+
+    floorplan = json_read(workspace.config[StepEnum.FLOORPLAN.value])
+    assert floorplan["die_builder"]["mode"] == "die_util"
 
 
 def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshes_peers(

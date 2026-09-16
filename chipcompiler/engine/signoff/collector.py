@@ -15,7 +15,7 @@ import tarfile
 import time
 from pathlib import Path
 
-from chipcompiler.data import StateEnum, StepEnum, Workspace
+from chipcompiler.data import SkippableStepEnum, StateEnum, StepEnum, Workspace
 from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
 from chipcompiler.engine.signoff.discovery import CollectorDiscoveryMixin
 from chipcompiler.engine.signoff.models import (
@@ -134,7 +134,11 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         filler_verilog = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
         # The canonical chain wires postRouteLec's gate input to the LVS output.
         lec_gate = workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz"
-        require_lec = self._requires_post_route_lec(lec_golden, lec_gate)
+        # A workspace whose ledger has no postRouteLec (skipped at creation)
+        # never requires it, regardless of the artifacts on disk.
+        require_lec = self.workspace.flow.has_step(
+            SkippableStepEnum.POST_ROUTE_LEC
+        ) and self._requires_post_route_lec(lec_golden, lec_gate)
         required_steps = self._required_step_states(require_lec=require_lec)
         for step_name, state in required_steps.items():
             if state != StateEnum.Success.value:
@@ -366,8 +370,10 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 required=True,
             )
 
-        lec_dir = workspace_dir / self._step_dirs()[StepEnum.POST_ROUTE_LEC.value]
-        lec_result = lec_dir / "output" / f"{design}_{StepEnum.POST_ROUTE_LEC.value}_result.json"
+        lec_dir = workspace_dir / self._step_dirs()[SkippableStepEnum.POST_ROUTE_LEC.value]
+        lec_result = (
+            lec_dir / "output" / f"{design}_{SkippableStepEnum.POST_ROUTE_LEC.value}_result.json"
+        )
         if require_lec:
             add_file(
                 role="lec.result",
@@ -545,7 +551,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         add_file("status.flow", flow_path, "final/reports/flow.json", required=True)
 
         for step_name, step_dir in self._step_dirs().items():
-            if step_name == StepEnum.POST_ROUTE_LEC.value:
+            if step_name == SkippableStepEnum.POST_ROUTE_LEC.value:
                 continue
             for kind in ("analysis", "report"):
                 self._copy_tree_files(
@@ -578,6 +584,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         checklist_data = rebuild_home_checklist(
             self.workspace,
             resource_issues=[*issues, *analysis_issues],
+            persist=options.materialize,
         )
         add_file(
             "status.checklist",
@@ -862,7 +869,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             )
 
     def _step_dirs(self) -> dict[str, str]:
-        from chipcompiler.data.step_dirs import STEP_DIRECTORIES
+        from chipcompiler.data.step import STEP_DIRECTORIES
 
         return STEP_DIRECTORIES
 

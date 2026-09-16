@@ -12,6 +12,7 @@ from chipcompiler.cli.project.workspace_params import (
     workspace_param_step,
     workspace_param_value,
 )
+from chipcompiler.rtl2gds import normalize_flow_step
 
 
 def param_set(args, ctx: CommandContext) -> CommandResult:
@@ -62,15 +63,19 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
     if workspace_error is not None:
         return workspace_error
     overrides = {record["key"] for record in workspace_param_diff(workspace)}
-    selected_step = (args.step or "").casefold()
+    selected_step = normalize_flow_step(args.step or "").casefold()
+    flow_steps = workspace.flow.data.get("steps", [])
+    first_step = normalize_flow_step(flow_steps[0]["name"]).casefold() if flow_steps else ""
     records = []
     for schema in list_schemas():
         if schema.pdk_target is not None or (not args.all and schema.param not in overrides):
             continue
-        if selected_step and selected_step not in {
-            schema.group.casefold(),
-            schema.applies.casefold(),
-        }:
+        schema_steps = {
+            normalize_flow_step(schema.group).casefold(),
+            normalize_flow_step(schema.applies).casefold(),
+        }
+        global_at_first_step = schema.applies == "all" and selected_step == first_step
+        if selected_step and selected_step not in schema_steps and not global_at_first_step:
             continue
         try:
             value = workspace_param_value(workspace, schema)
@@ -167,6 +172,8 @@ def _mutate(
             workspace, workspace_error = _load_workspace(ctx)
             if workspace_error is not None:
                 return workspace_error
+            if (Path(ctx.run_dir) / "home" / "engineering-snapshot.json").is_file():
+                return _mutate_via_engine(ctx, workspace, schema, requested_value, status)
             try:
                 result = mutation(workspace)
             except ValueError as exc:
@@ -218,6 +225,57 @@ def _mutate(
         )
     effective_value = requested_value if status == "set" else value
     record = _record(ctx, schema.param, effective_value, status)
+    record["from_step"] = step
+    record["invalidated_steps"] = invalidated
+    return CommandResult.ok([record])
+
+
+def _mutate_via_engine(ctx, workspace, schema, requested_value: object, status: str):
+    from chipcompiler.data.workspace_parameters import workspace_param_diff, workspace_param_step
+    from chipcompiler.engine import update_workspace_step_configuration
+    from chipcompiler.engine.snapshot import read_engineering_snapshot
+    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+
+    overrides = workspace_param_diff(workspace)
+    existing = next((item for item in overrides if item["key"] == schema.param), None)
+    if status == "unset" and existing is None:
+        return CommandResult.ok([_record(ctx, schema.param, None, "no_override")])
+    value = requested_value if status == "set" else existing["baseline"]
+    step = workspace_param_step(schema)
+    try:
+        revision = read_engineering_snapshot(workspace)["workspaceRevision"]
+        updated = update_workspace_step_configuration(
+            ctx.run_dir,
+            revision,
+            step,
+            {schema.param: value},
+            command_id="",
+        )
+    except WorkspaceLifecycleError as exc:
+        return CommandResult.err(
+            [error_record(exc.code, param=schema.param, reason=str(exc), **exc.details)]
+        )
+    except Exception as exc:
+        return CommandResult.err(
+            [error_record("workspace_param_refresh_failed", param=schema.param, reason=str(exc))]
+        )
+
+    updated_steps = updated.flow.steps()
+    target = normalize_flow_step(step).casefold()
+    start = next(
+        (
+            index
+            for index, item in enumerate(updated_steps)
+            if normalize_flow_step(item.get("name", "")).casefold() == target
+        ),
+        len(updated_steps),
+    )
+    invalidated = [
+        str(item.get("name", ""))
+        for item in updated_steps[start:]
+        if item.get("name") and item.get("state") == "Unstart"
+    ]
+    record = _record(ctx, schema.param, value, status)
     record["from_step"] = step
     record["invalidated_steps"] = invalidated
     return CommandResult.ok([record])

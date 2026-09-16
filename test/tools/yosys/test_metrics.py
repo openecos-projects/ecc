@@ -98,7 +98,7 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
         "display_name": "Synthesis Dynamic Power",
         "value": 62.7968,
         "unit": "uW",
-        "category": "power",
+        "category": "power_integrity",
         "direction": "trend_only",
         "scope": "synthesis",
         "corner": None,

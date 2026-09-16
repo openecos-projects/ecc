@@ -8,24 +8,6 @@ from chipcompiler.cli import main as cli_main
 from chipcompiler.engine import StepRunResult
 
 
-def _set_flow_preset(project_dir, preset):
-    toml_path = os.path.join(project_dir, "ecc.toml")
-    with open(toml_path) as f:
-        content = f.read()
-    content = content.replace('preset = "rtl2gds"', f'preset = "{preset}"')
-    with open(toml_path, "w") as f:
-        f.write(content)
-
-
-def _patch_all_flow_builders(monkeypatch):
-    markers = {}
-    for attr in ("build_rtl2gds_flow", "build_syn_sta_flow", "build_synthesis_lec_flow"):
-        steps = [("Synthesis", "yosys", "Unstart"), (attr, "ecc", "Unstart")]
-        markers[attr] = steps
-        monkeypatch.setattr(f"chipcompiler.rtl2gds.builder.{attr}", lambda steps=steps: steps)
-    return markers
-
-
 class TestRun:
     def test_run_calls_create_workspace(self, tmp_path, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
@@ -139,34 +121,21 @@ class TestRun:
 
 
 class TestRunFlowPreset:
-    @pytest.mark.parametrize(
-        "preset,builder_attr",
-        [
-            ("rtl2gds", "build_rtl2gds_flow"),
-            ("syn_sta", "build_syn_sta_flow"),
-            ("synthesis_lec", "build_synthesis_lec_flow"),
-        ],
-    )
-    def test_run_dispatches_builder_for_preset(
-        self, tmp_path, monkeypatch, create_cli_project, flow_mocks, preset, builder_attr
-    ):
-        project_dir = create_cli_project()
-        _set_flow_preset(project_dir, preset)
-        markers = _patch_all_flow_builders(monkeypatch)
-
-        rc = cli_main.run(["run", "--project", project_dir])
-
-        assert rc == 0
-        assert flow_mocks.flow.instances[0].added_steps == markers[builder_attr]
-
     def test_run_overwrite_rebuilds_flow_with_new_preset(
-        self, tmp_path, monkeypatch, create_cli_project, create_flow_json, flow_mocks
+        self,
+        tmp_path,
+        monkeypatch,
+        create_cli_project,
+        create_flow_json,
+        flow_mocks,
+        set_flow_preset,
+        patch_all_flow_builders,
     ):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir, profile="main")
-        _set_flow_preset(project_dir, "syn_sta")
-        markers = _patch_all_flow_builders(monkeypatch)
+        set_flow_preset(project_dir, "syn_sta")
+        markers = patch_all_flow_builders(monkeypatch)
 
         rc = cli_main.run(["run", "--project", project_dir, "--overwrite"])
 
@@ -174,10 +143,10 @@ class TestRunFlowPreset:
         assert flow_mocks.flow.instances[0].added_steps == markers["build_syn_sta_flow"]
 
     def test_run_preset_flag_overrides_toml(
-        self, tmp_path, monkeypatch, create_cli_project, flow_mocks
+        self, tmp_path, monkeypatch, create_cli_project, flow_mocks, patch_all_flow_builders
     ):
         project_dir = create_cli_project()
-        markers = _patch_all_flow_builders(monkeypatch)
+        markers = patch_all_flow_builders(monkeypatch)
 
         rc = cli_main.run(["run", "--project", project_dir, "--preset", "syn_sta"])
 
@@ -185,13 +154,13 @@ class TestRunFlowPreset:
         assert flow_mocks.flow.instances[0].added_steps == markers["build_syn_sta_flow"]
 
     def test_run_preset_flag_does_not_edit_toml(
-        self, tmp_path, monkeypatch, create_cli_project, flow_mocks
+        self, tmp_path, monkeypatch, create_cli_project, flow_mocks, patch_all_flow_builders
     ):
         project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             before = f.read()
-        _patch_all_flow_builders(monkeypatch)
+        patch_all_flow_builders(monkeypatch)
 
         rc = cli_main.run(["run", "--project", project_dir, "--preset", "syn_sta"])
 
@@ -200,10 +169,17 @@ class TestRunFlowPreset:
             assert f.read() == before
 
     def test_run_preset_flag_rejects_unknown_preset(
-        self, tmp_path, capsys, monkeypatch, create_cli_project, flow_mocks, plain_records
+        self,
+        tmp_path,
+        capsys,
+        monkeypatch,
+        create_cli_project,
+        flow_mocks,
+        patch_all_flow_builders,
+        plain_records,
     ):
         project_dir = create_cli_project()
-        _patch_all_flow_builders(monkeypatch)
+        patch_all_flow_builders(monkeypatch)
 
         rc = cli_main.run(["run", "--project", project_dir, "--preset", "bogus", "--plain"])
 

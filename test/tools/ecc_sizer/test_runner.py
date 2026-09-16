@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.data import StateEnum, StepEnum
+from chipcompiler.data import SkippableStepEnum, StateEnum
 
 from ._sizer_helpers import (
     ExplodingEccModule,
@@ -23,7 +23,7 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -69,7 +69,7 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
                 "-f",
                 str(step.script.sizer_cmd),
             ],
-            str(step.data.steps[StepEnum.TIMING_OPT.value]),
+            str(step.data.steps[SkippableStepEnum.TIMING_OPT.value]),
             None,
             subprocess.STDOUT,
             False,
@@ -84,7 +84,7 @@ def test_sizer_runner_marks_subflow_invalid_when_tool_or_config_missing(tmp_path
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -113,7 +113,7 @@ def test_sizer_runner_does_not_run_sizer_when_dreamplace_is_missing(tmp_path, mo
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -146,7 +146,7 @@ def test_sizer_runner_marks_subflow_incomplete_when_outputs_are_missing(
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -178,7 +178,7 @@ def test_sizer_runner_marks_subflow_incomplete_when_tool_is_signal_terminated(
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -223,7 +223,7 @@ def test_sizer_runner_reports_plain_exit_code_without_signal_or_fatal_line(
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -259,7 +259,7 @@ def test_sizer_runner_inherits_captured_stdio_instead_of_truncating_step_log(
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -298,7 +298,7 @@ def test_public_sizer_run_marks_invalid_when_tool_missing(tmp_path, monkeypatch)
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -323,7 +323,7 @@ def test_public_sizer_run_marks_invalid_when_runtime_missing(tmp_path, monkeypat
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )

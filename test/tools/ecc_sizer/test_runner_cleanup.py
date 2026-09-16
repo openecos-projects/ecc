@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from chipcompiler.data import StateEnum, StepEnum, Workspace
+from chipcompiler.data import SkippableStepEnum, StateEnum, Workspace
 
 from ._sizer_helpers import (
     FakeLegalizeModule,
@@ -24,7 +24,7 @@ def test_sizer_success_legalize_failure_leaves_published_outputs_empty(tmp_path,
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -58,7 +58,7 @@ def test_sizer_save_data_failure_deletes_partial_outputs(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -94,7 +94,7 @@ def test_sizer_save_data_failure_deletes_feature_report_and_image(tmp_path, monk
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -133,7 +133,7 @@ def test_sizer_closes_engine_when_published_cleanup_fails(tmp_path, monkeypatch)
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -176,7 +176,7 @@ def test_sizer_does_not_legalize_when_staging_cleanup_fails(tmp_path, monkeypatc
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -221,7 +221,7 @@ def test_sizer_rerun_resets_previous_subflow_success(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -261,7 +261,7 @@ def test_sizer_rerun_does_not_legalize_stale_staging_when_sizer_writes_nothing(
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -300,7 +300,7 @@ def test_sizer_save_data_exception_deletes_partial_outputs(tmp_path, monkeypatch
     workspace = _workspace(tmp_path)
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )

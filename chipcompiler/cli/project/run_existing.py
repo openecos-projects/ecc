@@ -17,6 +17,36 @@ from chipcompiler.cli.project.run_prepare import _write_back_status
 from chipcompiler.data import is_finished_step_state
 
 
+def _manifest_skip_target(run_dir: str, flow_config) -> dict | None:
+    """Manifest-mode target: the workspace's own [flow] range plus the
+    effective declared skip policy.
+
+    None when no policy is declared (the workspace's persisted policy
+    keeps governing) or when the workspace config carries no range (the
+    persisted-ledger fallback stays in charge).
+    """
+    declared = (
+        flow_config.get("skip_steps")
+        if isinstance(flow_config, dict) and "skip_steps" in flow_config
+        else None
+    )
+    if declared is None:
+        return None
+    from chipcompiler.data.workspace_config import (
+        WorkspaceConfigError,
+        WorkspaceFlowTargetError,
+        load_workspace_config,
+    )
+
+    try:
+        workspace_flow = load_workspace_config(run_dir)["_flow"]
+    except (FileNotFoundError, OSError, WorkspaceConfigError, WorkspaceFlowTargetError):
+        return None
+    if "start" not in workspace_flow or "end" not in workspace_flow:
+        return None
+    return {**workspace_flow, "skip_steps": declared}
+
+
 def run_existing_workspace(
     command_input,
     ctx,
@@ -26,6 +56,7 @@ def run_existing_workspace(
     cli_overrides: dict,
     warning_records: list[dict],
     *,
+    flow_config=None,
     workspace_registered: bool,
 ) -> CommandResult:
     """Run against an existing workspace: reconcile target vs persisted flow.
@@ -108,11 +139,23 @@ def run_existing_workspace(
         )
 
     if cfg.manifest_driven:
-        # Manifest mode: the workspace's own [flow] is the target; the
-        # manifest's start/end seeded it at creation and is not consulted.
-        target_section = None
+        # Manifest mode: the workspace's own [flow] governs the range (the
+        # seeded start/end is not re-consulted), but the effective declared
+        # skip policy (project.json over ecc.toml, carried on the flow
+        # config) is applied over it so classification and any extension
+        # use the same policy a fresh creation would.
+        target_section = _manifest_skip_target(run_dir, flow_config)
     else:
+        # The target carries the preset plus the effective declared skip
+        # policy (already resolved through skip-specific precedence onto
+        # the flow config), so an existing workspace classifies against
+        # the same policy a fresh creation would use.
         target_section = {"preset": cfg.flow_preset} if cfg.flow_preset else None
+        if target_section is not None:
+            if isinstance(flow_config, dict) and "skip_steps" in flow_config:
+                target_section["skip_steps"] = flow_config["skip_steps"]
+            elif "flow.skip_steps" in cfg._explicit_keys:
+                target_section["skip_steps"] = cfg.flow_skip_steps
 
     # Pure-read preflight: a divergent flow is rejected BEFORE load_workspace
     # can migrate configs, create home.json/checklist, or take the lock.
@@ -229,7 +272,15 @@ def run_existing_workspace(
                     # The persisted ledger may be wider than the reconciled
                     # target by design (workspace_steps is bound above), so
                     # the full-ledger completeness check does not apply.
-                    flow_ok = engine_flow.run_steps(require_full_ledger=False)
+                    from chipcompiler.engine import ExecutionPlan, execute
+
+                    flow_ok = execute(
+                        engine_flow,
+                        ExecutionPlan(
+                            intent="run",
+                            step_ids=tuple(step.name for step in engine_flow.workspace_steps),
+                        ),
+                    ).succeeded
         except Exception as exc:
             if workspace_registered:
                 _write_back_status(project_dir, run_name, "failed", warnings)

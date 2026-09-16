@@ -276,3 +276,101 @@ def test_adoption_failure_is_an_error_not_a_tolerated_stale_target(tmp_path, mon
     assert result.outcome == "mismatch"
     assert result.error is not None
     assert result.error.startswith("flow_adopt_failed")
+
+
+class TestSkipPolicyReconcile:
+    """Policy-driven targets: default-skip reproduces post-#280 ledgers;
+    skipped ledger steps are inert, never removed or re-inserted."""
+
+    def test_default_policy_reproduces_ledger_without_lec(self, tmp_path):
+        without_lec = [(name, tool) for name, tool in RTL2GDS_STEPS if name != "lec"]
+
+        workspace_dir = _write_workspace(tmp_path, without_lec, flow_section={"preset": "rtl2gds"})
+
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
+        assert result.outcome == "no_op"
+
+    def test_ledger_with_lec_stays_runnable_under_default_policy(self, tmp_path):
+        workspace_dir = _write_workspace(
+            tmp_path, RTL2GDS_STEPS, flow_section={"preset": "rtl2gds"}
+        )
+
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
+
+        assert result.outcome == "no_op"
+        # The ledger keeps its LEC entry: policy changes never remove steps.
+        names = [step["name"] for step in _flow_steps(workspace_dir)]
+        assert "lec" in names
+
+    def test_without_lec_ledger_never_gains_lec_when_policy_enables_it(self, tmp_path):
+        without_lec = [(name, tool) for name, tool in RTL2GDS_STEPS if name != "lec"]
+        workspace_dir = _write_workspace(
+            tmp_path, without_lec, flow_section={"start": "Synthesis", "end": "Harden"}
+        )
+
+        result = reconcile_workspace(
+            workspace_dir,
+            {"start": "Synthesis", "end": "Harden", "skip_steps": []},
+        )
+
+        assert result.outcome == "mismatch"
+        names = [step["name"] for step in _flow_steps(workspace_dir)]
+        assert "lec" not in names
+
+    def test_partial_ledger_with_lec_appends_only_the_missing_suffix(self, tmp_path):
+        prefix = RTL2GDS_STEPS[: RTL2GDS_STEPS.index(("CTS", "ecc")) + 1]
+        states = ["Success"] * len(prefix)
+        workspace_dir = _write_workspace(
+            tmp_path, prefix, states=states, flow_section={"preset": "rtl2gds"}
+        )
+
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
+
+        assert result.outcome == "extended"
+        names = [step["name"] for step in _flow_steps(workspace_dir)]
+        assert names == [name for name, _tool in RTL2GDS_STEPS]
+        assert result.appended == tuple(name for name, _tool in RTL2GDS_STEPS[len(prefix) :])
+
+    def test_declared_policy_extends_the_target_chain(self, tmp_path):
+        # A workspace declaring skip_steps=[] gets a WITH-lec target: a
+        # without-lec ledger extends by the suffix after the last kept step.
+        prefix = RTL2GDS_STEPS[:2]  # Synthesis, lec
+        workspace_dir = _write_workspace(
+            tmp_path,
+            prefix,
+            flow_section={"preset": "rtl2gds", "skip_steps": []},
+        )
+
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds", "skip_steps": []})
+
+        assert result.outcome == "extended"
+        names = [step["name"] for step in _flow_steps(workspace_dir)]
+        assert names == [name for name, _tool in RTL2GDS_STEPS]
+
+
+class TestTargetPrefixWithSkippedLedgerSteps:
+    def test_unfinished_in_range_step_resumes_despite_interspersed_skip(self, tmp_path):
+        """A skipped ledger entry before the target boundary must not shift
+        the state evaluation: an unfinished in-range step means resume, not
+        no_op."""
+        ledger = RTL2GDS_STEPS  # full chain including lec
+        target_end = next(
+            index for index, (name, _tool) in enumerate(RTL2GDS_STEPS) if name == "RCX"
+        )
+        # Everything finished except filler: inside the target range by
+        # name, but shifted out of a positional slice by the skipped lec.
+        unfinished = next(
+            index for index, (name, _tool) in enumerate(RTL2GDS_STEPS) if name == "filler"
+        )
+        states = ["Unstart" if index == unfinished else "Success" for index in range(len(ledger))]
+        assert unfinished < target_end
+        workspace_dir = _write_workspace(
+            tmp_path, ledger, states=states, flow_section={"preset": "rtl2gds"}
+        )
+
+        result = reconcile_workspace(
+            workspace_dir,
+            {"start": "Synthesis", "end": "RCX", "skip_steps": ["lec"]},
+        )
+
+        assert result.outcome == "resume"

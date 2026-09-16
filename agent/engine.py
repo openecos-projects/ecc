@@ -1,13 +1,16 @@
+import logging
 import os
 import time
 import traceback
 from threading import Event, Thread
 
 from chipcompiler.data import StateEnum, WorkspaceStep
-from chipcompiler.engine.flow import (
-    EngineFlow,
-    _notify_flow_observer,
-    _wait_for_step_rendered,
+from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow_completion import (
+    normalize_legacy_terminal_state,
+)
+from chipcompiler.engine.flow_completion import (
+    notify_flow_observer as _notify_flow_observer,
 )
 from chipcompiler.engine.step_execution import get_process_rss_mb, track_current_process_memory
 from chipcompiler.utility.log import redirect_stdio_to_file, stdio_redirect_lock
@@ -15,6 +18,20 @@ from chipcompiler.utility.log import redirect_stdio_to_file, stdio_redirect_lock
 from .plot import _is_candidate_workspace
 from .sta_parallel import track_sta_process_memory
 from .tools import run_step as run_agent_step
+
+
+def _wait_for_step_rendered(observer, workspace_step: WorkspaceStep, state: StateEnum) -> bool:
+    if observer is None or state != StateEnum.Success:
+        return True
+    callback = getattr(observer, "wait_for_step_rendered", None)
+    if not callable(callback):
+        return True
+    try:
+        return bool(callback(workspace_step, state))
+    except Exception:
+        # Fail-open: observer bugs must not invalidate successful tool results.
+        logging.getLogger(__name__).exception("flow observer render gate failed")
+        return True
 
 
 class AgentEngineFlow(EngineFlow):
@@ -47,7 +64,7 @@ class AgentEngineFlow(EngineFlow):
             _notify_flow_observer(observer, "on_step_skipped", workspace_step)
             return StateEnum.Success
 
-        self._normalize_legacy_terminal_state(workspace_step, step_tag)
+        normalize_legacy_terminal_state(self, workspace_step, step_tag)
 
         start_time = time.time()
         timing_constraints = self.timing_constraint_facts()

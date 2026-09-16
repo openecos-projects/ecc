@@ -9,7 +9,7 @@ contracts. Shared through composition, so ``self`` is the composed
 import json
 from pathlib import Path
 
-from chipcompiler.data import StepEnum
+from chipcompiler.data import SkippableStepEnum, StepEnum
 
 
 class CollectorDiscoveryMixin:
@@ -109,7 +109,7 @@ class CollectorDiscoveryMixin:
             StepEnum.ROUTING.value,
         ]
         if require_lec:
-            required.append(StepEnum.POST_ROUTE_LEC.value)
+            required.append(SkippableStepEnum.POST_ROUTE_LEC.value)
         states = {}
         for step in required:
             entry = self.workspace.flow.get_step(step)

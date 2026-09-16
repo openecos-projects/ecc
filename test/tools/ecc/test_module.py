@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 import chipcompiler.utility as chipcompiler_utility
-from chipcompiler.data import OriginDesign, StepEnum, Workspace
+from chipcompiler.data import OriginDesign, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.tools.ecc import metrics as ecc_metrics
 from chipcompiler.tools.ecc import plot as ecc_plot
 from chipcompiler.tools.ecc import service as ecc_service
@@ -2539,19 +2539,19 @@ def test_ecc_builder_uses_explicit_step_directory(tmp_path):
 
     step = build_step(
         workspace=workspace,
-        step_name=StepEnum.TIMING_OPT.value,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
         tool="sizer",
         step_directory=step_directory,
     )
 
-    assert step.name == StepEnum.TIMING_OPT.value
+    assert step.name == SkippableStepEnum.TIMING_OPT.value
     assert step.directory == step_directory
     assert isinstance(step.directory, Path)
     assert step.output.dir == step_directory / "output"
-    assert step.data.steps[StepEnum.TIMING_OPT.value] == step_directory / "data" / "to"
-    assert step.log.file == step_directory / "log" / f"{StepEnum.TIMING_OPT.value}.log"
+    assert step.data.steps[SkippableStepEnum.TIMING_OPT.value] == step_directory / "data" / "to"
+    assert step.log.file == step_directory / "log" / f"{SkippableStepEnum.TIMING_OPT.value}.log"
     assert str(step.output.dir) == f"{step_directory}/output"
-    assert str(step.data.steps[StepEnum.TIMING_OPT.value]) == f"{step_directory}/data/to"
-    assert str(step.log.file) == f"{step_directory}/log/{StepEnum.TIMING_OPT.value}.log"
+    assert str(step.data.steps[SkippableStepEnum.TIMING_OPT.value]) == f"{step_directory}/data/to"
+    assert str(step.log.file) == f"{step_directory}/log/{SkippableStepEnum.TIMING_OPT.value}.log"

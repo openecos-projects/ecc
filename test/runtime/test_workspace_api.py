@@ -18,10 +18,25 @@ from chipcompiler.runtime.requests import (
     WorkspaceInfoRequest,
     WorkspaceOpenRequest,
     WorkspaceRecoverInterruptedRequest,
+    WorkspaceStepConfigurationReadRequest,
     WorkspaceSyncConfigRequest,
 )
-from chipcompiler.runtime.sessions import WorkspaceSessionRegistry
+from chipcompiler.runtime.sessions import WorkspaceSession, WorkspaceSessionRegistry
 from chipcompiler.runtime.workspace_api import RuntimeApiError, WorkspaceRuntimeApi
+
+
+def test_legacy_flow_request_without_revision_remains_compatible(tmp_path):
+    session = WorkspaceSession(
+        workspace_id="workspace-1",
+        directory=tmp_path,
+        workspace=object(),
+        workspace_revision=2,
+    )
+
+    WorkspaceRuntimeApi._validate_workspace_revision(
+        session,
+        FlowRunRequest(workspace_id="workspace-1").expected_workspace_revision,
+    )
 
 
 class DummyEngineDB:
@@ -207,7 +222,7 @@ def _install_runtime_mocks(monkeypatch, tmp_path, *, create_workspace_files=True
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
     monkeypatch.setattr(
         "chipcompiler.rtl2gds.build_rtl2gds_flow",
-        lambda: [("Synthesis", "yosys", "Unstart")],
+        lambda *, skip=(): [("Synthesis", "yosys", "Unstart")],
     )
 
     ws = tmp_path / "workspace"
@@ -226,7 +241,7 @@ def test_runtime_workspace_defaults_to_rtl2gds_flow(monkeypatch):
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
     monkeypatch.setattr(
         "chipcompiler.rtl2gds.build_rtl2gds_flow",
-        lambda: [("rtl2gds", "ecc", "Unstart")],
+        lambda *, skip: [("rtl2gds", "ecc", "Unstart")],
     )
 
     flow = build_flow_for_workspace(workspace)
@@ -297,6 +312,25 @@ def test_create_workspace_forwards_dynamic_flow_config(monkeypatch, tmp_path):
     )
 
     assert capture["create_kwargs"]["flow_config"] == flow_config
+
+
+def test_create_workspace_rejects_invalid_skip_steps_before_sidecars(monkeypatch, tmp_path):
+    capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+
+    with pytest.raises(RuntimeApiError, match="skip_steps") as exc_info:
+        api.create_workspace(
+            WorkspaceCreateRequest(
+                directory=str(ws),
+                rtl_list=["a.v"],
+                flow_config={"skip_steps": "lec"},
+            )
+        )
+
+    assert exc_info.value.code == "config_error"
+    # The failure happened before any materialization: no workspace creation
+    # call, and the temp filelist was never written.
+    assert capture["create_kwargs"] is None
 
 
 def test_create_workspace_writes_rtl_list_filelist_outside_workspace(
@@ -416,6 +450,53 @@ def test_open_workspace_loads_without_creating_step_workspaces(monkeypatch, tmp_
     }
     assert capture["loaded"] == [str(ws)]
     assert not DummyFlow.instances[0].created
+
+
+def test_open_workspace_reuses_engineering_snapshot_identity(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "chipcompiler.engine.snapshot.read_engineering_snapshot",
+        lambda _workspace: {"workspaceId": "cli-workspace", "workspaceRevision": 7},
+    )
+    api = WorkspaceRuntimeApi()
+
+    result = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))
+
+    assert result == {
+        "workspaceId": "cli-workspace",
+        "workspaceRevision": 7,
+        "directory": str(ws.resolve()),
+    }
+
+
+def test_step_configuration_keeps_cli_workspace_identity_after_open(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "chipcompiler.engine.snapshot.read_engineering_snapshot",
+        lambda _workspace: {"workspaceId": "cli-workspace", "workspaceRevision": 7},
+    )
+    monkeypatch.setattr(
+        "chipcompiler.engine.read_step_configuration",
+        lambda _workspace, _step: {
+            "step": "Synthesis",
+            "stepId": "Synthesis",
+            "parameters": [],
+            "workspaceId": "cli-workspace",
+            "workspaceRevision": 7,
+        },
+    )
+    api = WorkspaceRuntimeApi()
+    opened = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))
+
+    result = api.read_workspace_step_configuration(
+        WorkspaceStepConfigurationReadRequest(
+            step="Synthesis",
+            workspace_id=opened["workspaceId"],
+        )
+    )
+
+    assert result["workspaceId"] == opened["workspaceId"]
+    assert result["workspaceRevision"] == opened["workspaceRevision"]
 
 
 def test_recover_interrupted_is_marker_scoped_and_idempotent(monkeypatch, tmp_path):
@@ -936,6 +1017,76 @@ def test_runtime_modules_do_not_import_typer_or_click():
         source = path.read_text()
         assert "import typer" not in source
         assert "import click" not in source
+
+
+def test_workspace_snapshot_includes_configuration_and_engineering_snapshot(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    configuration = {
+        "workspaceId": "workspace-1",
+        "workspaceRevision": 2,
+        "workspaceSpec": {"design": {"name": "gcd"}},
+        "workspaceBindings": {},
+    }
+    monkeypatch.setattr(
+        "chipcompiler.engine.read_workspace_configuration",
+        lambda _workspace: configuration,
+    )
+    api = WorkspaceRuntimeApi()
+    monkeypatch.setattr(
+        api,
+        "_read_engineering_snapshot",
+        lambda _owner: {"workspaceId": "workspace-1", "workspaceRevision": 2},
+    )
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    session = api.sessions.get_session(workspace_id)
+    session.workspace.parameters = SimpleNamespace(data={}, path=ws / "home" / "params.toml")
+    session.workspace.home.data = {}
+
+    snapshot = api.workspace_snapshot(WorkspaceIdRequest(workspace_id))
+
+    assert snapshot["configuration"] == configuration
+    assert snapshot["engineeringSnapshot"] == {
+        "workspaceId": "workspace-1",
+        "workspaceRevision": 2,
+    }
+
+
+def test_workspace_snapshot_falls_back_to_persisted_flow_steps(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    workspace = api.sessions.get_session(workspace_id).workspace
+    flow = workspace.flow
+    flow.data = {}
+    workspace.parameters = SimpleNamespace(data={}, path=ws / "home" / "parameters.json")
+    workspace.home = SimpleNamespace(data={})
+    monkeypatch.setattr(
+        flow,
+        "steps",
+        lambda: [{"name": "Synthesis", "tool": "yosys", "state": "Success"}],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        api,
+        "_read_engineering_snapshot",
+        lambda _owner: {"workspaceId": "workspace-1", "workspaceRevision": 1},
+    )
+    monkeypatch.setattr(
+        "chipcompiler.engine.read_workspace_configuration",
+        lambda _workspace: {},
+    )
+
+    snapshot = api.workspace_snapshot(WorkspaceIdRequest(workspace_id))
+
+    assert snapshot["flow"]["steps"] == [
+        {
+            "name": "Synthesis",
+            "tool": "yosys",
+            "state": "Success",
+            "runtime": "",
+            "peakMemory": 0,
+        }
+    ]
 
 
 def test_flow_run_uses_run_steps_and_prepare_on_rerun(monkeypatch, tmp_path):

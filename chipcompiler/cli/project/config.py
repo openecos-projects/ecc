@@ -33,6 +33,10 @@ class ProjectConfig:
     pdk_overrides: dict[str, object] = field(default_factory=dict)
 
     flow_preset: str = ""
+    # Declared [flow] skip_steps spelling; None when the key is absent (the
+    # code default then applies). The manifest's per-workspace value wins
+    # over this one for this key only.
+    flow_skip_steps: list[str] | None = None
     config_path: str = ""
     project_dir: str = ""
 
@@ -46,6 +50,9 @@ class ProjectConfig:
     # ecc.toml): the workspace's own [flow] is then the run target source.
     manifest_driven: bool = False
 
+    # Winning skip_steps layer recorded by effective-config resolution
+    # ("project.json" / "ecc.toml"); None when never resolved.
+    _skip_steps_source: str | None = field(default=None, init=False, repr=False)
     _toml_error: str | None = field(default=None, init=False, repr=False)
     _param_errors: list[str] = field(default_factory=list, init=False, repr=False)
     _pdk_config_errors: list[str] = field(default_factory=list, init=False, repr=False)
@@ -99,6 +106,10 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     pdk_overrides = {} if not isinstance(pdk_overrides_raw, dict) else pdk_overrides_raw
 
     raw_run = flow.get("run")
+    # Raw declared value (even an invalid one): presence is tracked through
+    # _explicit_keys, and validate_project_config surfaces invalid shapes
+    # instead of silently dropping them.
+    skip_steps = flow.get("skip_steps")
 
     cfg = ProjectConfig(
         design_name=_str(design.get("name", "")),
@@ -115,6 +126,7 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         pdk_root=_str(pdk.get("root", "")),
         pdk_overrides=pdk_overrides,
         flow_preset=_str(flow.get("preset", "")),
+        flow_skip_steps=skip_steps,
         config_path=config_path,
         project_dir=project_dir,
     )
@@ -230,6 +242,14 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         errors.append("flow.preset is required")
     elif cfg.flow_preset not in _supported_flow_presets():
         errors.append(f"unsupported flow.preset: {cfg.flow_preset}")
+
+    if "flow.skip_steps" in cfg._explicit_keys:
+        from chipcompiler.rtl2gds import resolve_skip_steps
+
+        try:
+            resolve_skip_steps({"skip_steps": cfg.flow_skip_steps})
+        except ValueError as exc:
+            errors.append(str(exc))
 
     errors.extend(cfg._flow_config_errors)
 

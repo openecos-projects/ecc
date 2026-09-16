@@ -5,6 +5,7 @@ from pathlib import Path
 
 from chipcompiler.data import (
     EccStep,
+    SkippableStepEnum,
     StateEnum,
     StepEnum,
     Workspace,
@@ -40,7 +41,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.POST_FLOORPLAN.value,
         StepEnum.PLACEMENT.value,
         StepEnum.CTS.value,
-        StepEnum.TIMING_OPT.value,
+        SkippableStepEnum.TIMING_OPT.value,
         StepEnum.LEGALIZATION.value,
         StepEnum.ROUTING.value,
         StepEnum.DRC.value,
@@ -921,7 +922,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Imcomplete)
         return False
 
-    if not os.path.exists(workspace.pdk.sdc):
+    if not workspace.pdk.sdc or not os.path.exists(workspace.pdk.sdc):
         workspace.logger.error("STA SDC does not exist: %s", workspace.pdk.sdc)
         sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Imcomplete)
         return False

@@ -493,7 +493,7 @@ requires-dist = [
     { name = "ecc-dreamplace", editable = "chipcompiler/thirdparty/ecc-dreamplace" },
     { name = "ecc-tools-bin", editable = "chipcompiler/thirdparty/ecc-tools" },
     { name = "fastapi", specifier = ">=0.109" },
-    { name = "jsonrpcserver", specifier = ">=5.0.9" },
+    { name = "jsonrpcserver", specifier = ">=5.0.9,<6" },
     { name = "klayout", specifier = ">=0.30.2" },
     { name = "matplotlib", specifier = ">=3.4" },
     { name = "numpy", specifier = ">=1.21" },

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 import threading
 import time
 from collections.abc import Callable
@@ -11,10 +14,10 @@ from uuid import uuid4
 _LOG_POLL_INTERVAL_SECONDS = 0.25
 _MAX_LOG_CHUNK_BYTES = 16 * 1024
 _MAX_FINAL_LOG_BYTES = 64 * 1024
-_RENDER_ACK_RETRY_SECONDS = 5.0
-_RENDER_ACK_PAUSE_SECONDS = 30.0
-_RENDER_ACK_ABORT_SECONDS = 300.0
-_TERMINAL_OPERATION_STATES = frozenset({"succeeded", "failed", "cancelled"})
+_TERMINAL_OPERATION_STATES = frozenset({"succeeded", "failed", "cancelled", "interrupted"})
+_MAX_TERMINAL_OPERATIONS = 256
+_LEDGER_SCHEMA_VERSION = 1
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -53,6 +56,10 @@ class RuntimeOperationFailed(RuntimeError):
         self.result = result
 
 
+class RuntimeOperationIdempotencyConflict(RuntimeError):
+    """A command ID was reused with different immutable input."""
+
+
 @dataclass
 class RuntimeOperation:
     operation_id: str
@@ -64,6 +71,7 @@ class RuntimeOperation:
     rerun: bool
     step: str = ""
     idempotency_key: str = ""
+    command_fingerprint: str = ""
     state: str = "queued"
     current_step: str = ""
     current_tool: str = ""
@@ -78,9 +86,7 @@ class RuntimeOperation:
     workspace_revision: int = 0
     render_sync_state: str = "idle"
     render_retry_count: int = 0
-    render_wait_started_at: float | None = None
     last_render_ack_at: float | None = None
-    render_sync_degraded: bool = False
     acked_event_ids: set[str] = field(default_factory=set)
     cancel_requested: bool = False
     interruptibility: str = "deferred"
@@ -92,13 +98,14 @@ class RuntimeOperationManager:
     def __init__(self, publisher: Callable[[dict[str, Any]], None] | None = None):
         self._publisher = publisher
         self._lock = threading.RLock()
-        self._render_gate = threading.Condition(self._lock)
         self._operations: dict[str, RuntimeOperation] = {}
         self._active_by_workspace: dict[str, str] = {}
-        self._idempotency: dict[tuple[str, str], str] = {}
+        self._idempotency: dict[tuple[str, str], tuple[str, str]] = {}
         self._step_log_tails: dict[str, _StepLogTail] = {}
         self._runtime_instance_id = uuid4().hex
         self._workspace_sequences: dict[str, int] = {}
+        self._ledger_paths: dict[str, Path] = {}
+        self._loaded_ledgers: set[Path] = set()
 
     def set_publisher(self, publisher: Callable[[dict[str, Any]], None] | None) -> None:
         with self._lock:
@@ -114,15 +121,38 @@ class RuntimeOperationManager:
         step: str,
         idempotency_key: str,
         runner: Callable[[RuntimeFlowObserver], dict[str, Any]],
+        workspace_revision: int = 0,
+        snapshot_committer: Callable[[Any, Any, str | None], int] | None = None,
+        command_input: dict[str, Any] | None = None,
+        ledger_path: str | Path | None = None,
+        precondition: Callable[[], None] | None = None,
     ) -> dict[str, Any]:
+        fingerprint = _command_fingerprint(
+            kind=kind,
+            origin=origin,
+            rerun=rerun,
+            step=step,
+            workspace_revision=workspace_revision,
+            command_input=command_input,
+        )
+        if ledger_path is not None:
+            self.load_workspace_ledger(workspace_id, ledger_path)
         with self._lock:
             if idempotency_key:
-                known_id = self._idempotency.get((workspace_id, idempotency_key))
-                if known_id is not None:
+                known = self._idempotency.get((workspace_id, idempotency_key))
+                if known is not None:
+                    known_id, known_fingerprint = known
+                    if known_fingerprint and known_fingerprint != fingerprint:
+                        raise RuntimeOperationIdempotencyConflict(
+                            f"command id reused with different input: {idempotency_key}"
+                        )
                     return {
                         **self._operation_payload(self._operations[known_id]),
                         "deduplicated": True,
                     }
+
+            if precondition is not None:
+                precondition()
 
             active_id = self._active_by_workspace.get(workspace_id)
             if active_id is not None:
@@ -141,17 +171,23 @@ class RuntimeOperationManager:
                 rerun=rerun,
                 step=step,
                 idempotency_key=idempotency_key,
+                command_fingerprint=fingerprint,
+                workspace_revision=workspace_revision,
             )
             self._operations[operation.operation_id] = operation
             self._active_by_workspace[workspace_id] = operation.operation_id
             if idempotency_key:
-                self._idempotency[(workspace_id, idempotency_key)] = operation.operation_id
+                self._idempotency[(workspace_id, idempotency_key)] = (
+                    operation.operation_id,
+                    fingerprint,
+                )
+            self._persist_workspace_locked(workspace_id)
             queued_event = self._new_event_locked(operation, "operation.queued", {})
 
         self._publish(queued_event)
         thread = threading.Thread(
             target=self._run,
-            args=(operation.operation_id, runner),
+            args=(operation.operation_id, runner, snapshot_committer),
             name=f"ecc-runtime-{operation.operation_id}",
             daemon=True,
         )
@@ -168,7 +204,89 @@ class RuntimeOperationManager:
     def is_active(self, operation_id: str) -> bool:
         with self._lock:
             operation = self._operations.get(operation_id)
+            return (
+                operation is not None
+                and operation.state not in _TERMINAL_OPERATION_STATES
+                and self._active_by_workspace.get(operation.workspace_id) == operation_id
+            )
+
+    def has_active_workspace(self, workspace_id: str) -> bool:
+        with self._lock:
+            operation_id = self._active_by_workspace.get(workspace_id)
+            if operation_id is None:
+                return False
+            operation = self._operations.get(operation_id)
             return operation is not None and operation.state not in _TERMINAL_OPERATION_STATES
+
+    def load_workspace_ledger(
+        self,
+        workspace_id: str,
+        ledger_path: str | Path,
+        *,
+        recover: bool = True,
+    ) -> list[str]:
+        """Load the bounded execution ledger, optionally marking live work interrupted."""
+        from chipcompiler.utility import JsonReadError, json_read_strict
+
+        path = Path(ledger_path).expanduser().resolve()
+        with self._lock:
+            if path in self._loaded_ledgers:
+                if recover:
+                    return self._recover_loaded_workspace_locked(workspace_id)
+                return []
+            self._loaded_ledgers.add(path)
+            self._ledger_paths[workspace_id] = path
+            try:
+                payload = json_read_strict(path)
+            except (OSError, JsonReadError):
+                return []
+            entries = payload.get("operations", []) if isinstance(payload, dict) else payload
+            if not isinstance(entries, list):
+                return []
+            restored: list[str] = []
+            for entry in entries:
+                if not isinstance(entry, dict) or entry.get("workspaceId") != workspace_id:
+                    continue
+                operation = _operation_from_payload(entry, self._runtime_instance_id)
+                if operation is None:
+                    continue
+                self._operations[operation.operation_id] = operation
+                if operation.idempotency_key:
+                    self._idempotency[(workspace_id, operation.idempotency_key)] = (
+                        operation.operation_id,
+                        operation.command_fingerprint,
+                    )
+                self._workspace_sequences[workspace_id] = max(
+                    self._workspace_sequences.get(workspace_id, 0), operation.sequence
+                )
+                restored.append(operation.operation_id)
+            if recover:
+                self._recover_loaded_workspace_locked(workspace_id)
+            return restored
+
+    def _recover_loaded_workspace_locked(self, workspace_id: str) -> list[str]:
+        recovered: list[str] = []
+        for operation in self._operations.values():
+            if (
+                operation.workspace_id != workspace_id
+                or operation.state in _TERMINAL_OPERATION_STATES
+            ):
+                continue
+            operation.state = "interrupted"
+            operation.error = {
+                "code": "interrupted",
+                "message": "Runtime process ended before the Operation completed",
+            }
+            operation.updated_at = time.time()
+            operation.awaiting_event_id = None
+            operation.awaiting_event = None
+            operation.awaiting_step_commit_id = None
+            operation.render_sync_state = "idle"
+            self._active_by_workspace.pop(workspace_id, None)
+            recovered.append(operation.operation_id)
+        self._prune_terminal_locked()
+        self._persist_workspace_locked(workspace_id)
+        return recovered
 
     def workspace_snapshot(self, workspace_id: str) -> dict[str, Any]:
         with self._lock:
@@ -194,7 +312,7 @@ class RuntimeOperationManager:
         step_commit_id: str = "",
         workspace_revision: int | None = None,
     ) -> dict[str, Any]:
-        with self._render_gate:
+        with self._lock:
             operation = self._operations.get(operation_id)
             if operation is None:
                 raise KeyError(operation_id)
@@ -234,10 +352,9 @@ class RuntimeOperationManager:
             operation.awaiting_event = None
             operation.awaiting_step_commit_id = None
             operation.render_sync_state = "idle"
-            operation.render_wait_started_at = None
             operation.last_render_ack_at = time.time()
             operation.updated_at = time.time()
-            self._render_gate.notify_all()
+            self._persist_workspace_locked(operation.workspace_id)
             return {
                 "accepted": True,
                 "duplicate": False,
@@ -246,18 +363,25 @@ class RuntimeOperationManager:
             }
 
     def request_cancel(self, operation_id: str) -> dict[str, Any]:
-        with self._render_gate:
+        with self._lock:
             operation = self._operations.get(operation_id)
             if operation is None:
                 raise KeyError(operation_id)
             if operation.state in _TERMINAL_OPERATION_STATES:
                 return {"accepted": False, "operationId": operation_id, "state": operation.state}
             operation.cancel_requested = True
+            operation.state = "cancelling"
             operation.updated_at = time.time()
+            self._persist_workspace_locked(operation.workspace_id)
             event = self._new_event_locked(operation, "operation.cancel_requested", {})
-            self._render_gate.notify_all()
         self._publish(event)
         return {"accepted": True, "operationId": operation_id, "state": operation.state}
+
+    def raise_if_cancel_requested(self, operation_id: str) -> None:
+        with self._lock:
+            operation = self._operations[operation_id]
+            if operation.cancel_requested:
+                raise RuntimeOperationCancelled("operation cancelled at a step boundary")
 
     def shutdown_barrier(self) -> dict[str, Any] | None:
         with self._lock:
@@ -278,15 +402,37 @@ class RuntimeOperationManager:
         self,
         operation_id: str,
         runner: Callable[[RuntimeFlowObserver], dict[str, Any]],
+        snapshot_committer: Callable[[Any, Any, str | None], int] | None,
     ) -> None:
         with self._lock:
             operation = self._operations[operation_id]
-            operation.state = "running"
-            operation.updated_at = time.time()
-            started_event = self._new_event_locked(operation, "operation.started", {})
-        observer = RuntimeFlowObserver(self, operation_id)
+            if operation.cancel_requested:
+                operation.state = "cancelled"
+                operation.error = {
+                    "message": "operation cancelled before execution",
+                    "code": "cancelled",
+                }
+                operation.updated_at = time.time()
+                event = self._new_event_locked(
+                    operation,
+                    "operation.cancelled",
+                    {"error": operation.error},
+                )
+                self._prune_terminal_locked()
+                self._persist_workspace_locked(operation.workspace_id)
+                self._active_by_workspace.pop(operation.workspace_id, None)
+                publish_before_return = True
+            else:
+                operation.state = "running"
+                operation.updated_at = time.time()
+                event = self._new_event_locked(operation, "operation.started", {})
+                publish_before_return = False
+        if publish_before_return:
+            self._publish(event)
+            return
+        observer = RuntimeFlowObserver(self, operation_id, snapshot_committer)
         try:
-            self._publish(started_event)
+            self._publish(event)
             try:
                 result = runner(observer)
                 with self._lock:
@@ -301,6 +447,8 @@ class RuntimeOperationManager:
                         "operation.completed",
                         {"result": result},
                     )
+                    self._prune_terminal_locked()
+                    self._persist_workspace_locked(operation.workspace_id)
             except RuntimeOperationCancelled as exc:
                 with self._lock:
                     operation = self._operations[operation_id]
@@ -346,6 +494,8 @@ class RuntimeOperationManager:
                         event_type,
                         {"error": operation.error, "result": operation.result},
                     )
+                    self._prune_terminal_locked()
+                    self._persist_workspace_locked(operation.workspace_id)
             except Exception as exc:
                 with self._lock:
                     operation = self._operations[operation_id]
@@ -355,10 +505,7 @@ class RuntimeOperationManager:
                         event_type = "operation.cancelled"
                     else:
                         operation.state = "failed"
-                        operation.error = operation.error or {
-                            "message": str(exc),
-                            "code": "command_failed",
-                        }
+                        operation.error = operation.error or _operation_error_from_exception(exc)
                         event_type = "operation.failed"
                     operation.updated_at = time.time()
                     payload = {"error": operation.error}
@@ -371,6 +518,8 @@ class RuntimeOperationManager:
                             }
                         )
                     event = self._new_event_locked(operation, event_type, payload)
+                    self._prune_terminal_locked()
+                    self._persist_workspace_locked(operation.workspace_id)
             self._publish(event)
         finally:
             try:
@@ -406,6 +555,7 @@ class RuntimeOperationManager:
             )
             if log_tail is not None:
                 self._step_log_tails[operation_id] = log_tail
+            self._persist_workspace_locked(operation.workspace_id)
         self._publish(event)
         if log_tail is not None:
             thread = threading.Thread(
@@ -424,20 +574,27 @@ class RuntimeOperationManager:
         affected_steps: list[str],
         scope: str,
         target_step: str = "",
+        workspace_revision: int | None = None,
     ) -> None:
         """Publish the idempotent GUI reset boundary before a rerun starts."""
         with self._lock:
             operation = self._operations[operation_id]
+            if workspace_revision is not None:
+                operation.workspace_revision = workspace_revision
             operation.updated_at = time.time()
+            payload = {
+                "affectedSteps": affected_steps,
+                "scope": scope,
+                "targetStep": target_step,
+            }
+            if workspace_revision is not None:
+                payload["workspaceRevision"] = workspace_revision
             event = self._new_event_locked(
                 operation,
                 "operation.rerun_prepared",
-                {
-                    "affectedSteps": affected_steps,
-                    "scope": scope,
-                    "targetStep": target_step,
-                },
+                payload,
             )
+            self._persist_workspace_locked(operation.workspace_id)
         self._publish(event)
 
     def step_completed(
@@ -446,11 +603,12 @@ class RuntimeOperationManager:
         workspace_step: Any,
         state: Any,
         error: str | None = None,
+        workspace_revision: int | None = None,
     ) -> None:
         self._stop_step_log_tail(operation_id)
         state_value = str(getattr(state, "value", state))
         final_log = _read_final_log(getattr(workspace_step, "log", None))
-        with self._render_gate:
+        with self._lock:
             operation = self._operations[operation_id]
             operation.current_step = str(getattr(workspace_step, "name", ""))
             operation.current_tool = str(getattr(workspace_step, "tool", ""))
@@ -463,7 +621,7 @@ class RuntimeOperationManager:
             }
             if error:
                 log_file = str(getattr(getattr(workspace_step, "log", None), "file", "") or "")
-                operation.error = {
+                operation.error = operation.error or {
                     "code": "tool_failed",
                     "message": error,
                     "step": operation.current_step,
@@ -471,21 +629,59 @@ class RuntimeOperationManager:
                     "logFile": log_file,
                 }
                 payload["error"] = operation.error
-                payload["logFile"] = log_file
+                payload["logFile"] = str(operation.error.get("logFile", log_file))
             event = self._new_event_locked(operation, "step.completed", payload)
-            if state_value == "Success":
+            if workspace_revision is None:
                 operation.workspace_revision += 1
-                step_commit_id = f"{operation.operation_id}:step:{operation.workspace_revision}"
-                payload["stepCommitId"] = step_commit_id
-                payload["workspaceRevision"] = operation.workspace_revision
-                if not operation.render_sync_degraded:
-                    operation.awaiting_event_id = event["eventId"]
-                    operation.awaiting_event = event
-                    operation.awaiting_step_commit_id = step_commit_id
-                    operation.render_sync_state = "waiting_for_gui_sync"
-                    operation.render_retry_count = 0
-                    operation.render_wait_started_at = time.monotonic()
-                    operation.state = "waiting_for_gui_sync"
+            else:
+                operation.workspace_revision = workspace_revision
+            step_commit_id = f"{operation.operation_id}:step:{operation.workspace_revision}"
+            payload["stepCommitId"] = step_commit_id
+            payload["workspaceRevision"] = operation.workspace_revision
+            self._persist_workspace_locked(operation.workspace_id)
+        self._publish(event)
+
+    def step_diagnostic(
+        self,
+        operation_id: str,
+        workspace_step: Any,
+        diagnostic: dict[str, Any],
+    ) -> None:
+        message = str(diagnostic.get("message", "tool failed"))
+        log_file = str(getattr(getattr(workspace_step, "log", None), "file", "") or "")
+        with self._lock:
+            operation = self._operations[operation_id]
+            operation.error = {
+                "code": "tool_failed",
+                "message": message,
+                "step": str(getattr(workspace_step, "name", "")),
+                "tool": str(getattr(workspace_step, "tool", "")),
+                "logFile": log_file,
+                **diagnostic,
+            }
+            operation.updated_at = time.time()
+            revision = operation.workspace_revision
+            operation.error.update(
+                {
+                    "snapshotRevision": revision,
+                    "eventRevision": revision,
+                    "operationRevision": revision,
+                }
+            )
+            event = self._new_event_locked(
+                operation,
+                "step.diagnostic",
+                {
+                    "step": str(getattr(workspace_step, "name", "")),
+                    "tool": str(getattr(workspace_step, "tool", "")),
+                    "diagnostic": operation.error,
+                    "snapshotRevision": revision,
+                    "eventRevision": revision,
+                    "operationRevision": revision,
+                    "workspaceRevision": revision,
+                },
+            )
+            self._persist_workspace_locked(operation.workspace_id)
         self._publish(event)
 
     def subflow_stage(
@@ -511,6 +707,7 @@ class RuntimeOperationManager:
                     "tool": tool,
                 },
             )
+            self._persist_workspace_locked(operation.workspace_id)
         self._publish(event)
 
     def step_skipped(self, operation_id: str, workspace_step: Any) -> None:
@@ -532,81 +729,8 @@ class RuntimeOperationManager:
         self._publish(event)
 
     def wait_for_step_rendered(self, operation_id: str) -> bool:
-        while True:
-            degraded_event: dict[str, Any] | None = None
-            replay_event: dict[str, Any] | None = None
-            pause_event: dict[str, Any] | None = None
-            with self._render_gate:
-                operation = self._operations[operation_id]
-                if operation.cancel_requested:
-                    return False
-                if not operation.awaiting_event_id:
-                    if operation.state in {
-                        "waiting_for_gui_sync",
-                        "paused_for_gui_recovery",
-                    }:
-                        operation.state = "running"
-                        operation.updated_at = time.time()
-                    return True
-
-                started_at = operation.render_wait_started_at or time.monotonic()
-                elapsed = time.monotonic() - started_at
-                if elapsed >= _RENDER_ACK_ABORT_SECONDS:
-                    awaiting_event_id = operation.awaiting_event_id
-                    awaiting_step_commit_id = operation.awaiting_step_commit_id
-                    operation.awaiting_event_id = None
-                    operation.awaiting_event = None
-                    operation.awaiting_step_commit_id = None
-                    operation.render_sync_state = "gui_sync_degraded"
-                    operation.render_sync_degraded = True
-                    operation.state = "running"
-                    operation.updated_at = time.time()
-                    degraded_event = self._new_event_locked(
-                        operation,
-                        "operation.gui_sync_degraded",
-                        {
-                            "eventId": awaiting_event_id,
-                            "stepCommitId": awaiting_step_commit_id,
-                            "workspaceRevision": operation.workspace_revision,
-                        },
-                    )
-                elif (
-                    elapsed >= _RENDER_ACK_PAUSE_SECONDS
-                    and operation.render_sync_state != "paused_for_gui_recovery"
-                ):
-                    operation.render_sync_state = "paused_for_gui_recovery"
-                    operation.state = "paused_for_gui_recovery"
-                    operation.updated_at = time.time()
-                    pause_event = self._new_event_locked(
-                        operation,
-                        "operation.gui_sync_paused",
-                        {
-                            "eventId": operation.awaiting_event_id,
-                            "stepCommitId": operation.awaiting_step_commit_id,
-                            "workspaceRevision": operation.workspace_revision,
-                        },
-                    )
-
-                if degraded_event is None:
-                    operation.render_retry_count += 1
-                    if operation.awaiting_event is not None:
-                        replay_event = {
-                            **operation.awaiting_event,
-                            "payload": {
-                                **operation.awaiting_event["payload"],
-                                "replayed": True,
-                                "retryCount": operation.render_retry_count,
-                            },
-                        }
-                    self._render_gate.wait(timeout=_RENDER_ACK_RETRY_SECONDS)
-
-            if degraded_event is not None:
-                self._publish(degraded_event)
-                return True
-            if pause_event is not None:
-                self._publish(pause_event)
-            if replay_event is not None:
-                self._publish(replay_event)
+        with self._lock:
+            return not self._operations[operation_id].cancel_requested
 
     def _tail_step_log(self, log_tail: _StepLogTail) -> None:
         while not log_tail.stopped.is_set():
@@ -683,6 +807,43 @@ class RuntimeOperationManager:
             "payload": payload,
         }
 
+    def _prune_terminal_locked(self) -> None:
+        terminal = [
+            operation
+            for operation in self._operations.values()
+            if operation.state in _TERMINAL_OPERATION_STATES
+        ]
+        if len(terminal) <= _MAX_TERMINAL_OPERATIONS:
+            return
+        terminal.sort(key=lambda operation: (operation.updated_at, operation.operation_id))
+        removed = terminal[: len(terminal) - _MAX_TERMINAL_OPERATIONS]
+        removed_ids = {operation.operation_id for operation in removed}
+        for operation_id in removed_ids:
+            self._operations.pop(operation_id, None)
+        self._idempotency = {
+            key: record for key, record in self._idempotency.items() if record[0] not in removed_ids
+        }
+
+    def _persist_workspace_locked(self, workspace_id: str) -> None:
+        path = self._ledger_paths.get(workspace_id)
+        if path is None:
+            return
+        from chipcompiler.utility import json_write
+
+        operations = [
+            self._operation_payload(operation)
+            for operation in self._operations.values()
+            if operation.workspace_id == workspace_id
+        ]
+        json_write(
+            path,
+            {
+                "schemaVersion": _LEDGER_SCHEMA_VERSION,
+                "workspaceId": workspace_id,
+                "operations": operations,
+            },
+        )
+
     @staticmethod
     def _operation_payload(operation: RuntimeOperation) -> dict[str, Any]:
         return {
@@ -694,6 +855,8 @@ class RuntimeOperationManager:
             "origin": operation.origin,
             "rerun": operation.rerun,
             "step": operation.step,
+            "idempotencyKey": operation.idempotency_key,
+            "commandFingerprint": operation.command_fingerprint,
             "state": operation.state,
             "currentStep": operation.current_step,
             "currentTool": operation.current_tool,
@@ -711,18 +874,31 @@ class RuntimeOperationManager:
             "shutdownBarrier": operation.state not in _TERMINAL_OPERATION_STATES,
             "createdAt": operation.created_at,
             "updatedAt": operation.updated_at,
+            "sequence": operation.sequence,
         }
 
     def _publish(self, event: dict[str, Any]) -> None:
         publisher = self._publisher
         if publisher is not None:
-            publisher(event)
+            try:
+                publisher(event)
+            except Exception:
+                logger.exception("runtime event consumer failed: %s", event.get("type"))
 
 
 class RuntimeFlowObserver:
-    def __init__(self, manager: RuntimeOperationManager, operation_id: str):
+    fatal_observer = True
+
+    def __init__(
+        self,
+        manager: RuntimeOperationManager,
+        operation_id: str,
+        snapshot_committer: Callable[[Any, Any, str | None], int] | None = None,
+    ):
         self._manager = manager
         self._operation_id = operation_id
+        self._snapshot_committer = snapshot_committer
+        self._committed_revision: int | None = None
 
     @property
     def runtime_operation(self) -> dict[str, Any]:
@@ -741,13 +917,18 @@ class RuntimeFlowObserver:
         affected_steps: list[str],
         scope: str,
         target_step: str = "",
+        workspace_revision: int | None = None,
     ) -> None:
         self._manager.rerun_prepared(
             self._operation_id,
             affected_steps=affected_steps,
             scope=scope,
             target_step=target_step,
+            workspace_revision=workspace_revision,
         )
+
+    def raise_if_cancelled(self) -> None:
+        self._manager.raise_if_cancel_requested(self._operation_id)
 
     def on_step_completed(
         self,
@@ -755,7 +936,27 @@ class RuntimeFlowObserver:
         state: Any,
         error: str | None = None,
     ) -> None:
-        self._manager.step_completed(self._operation_id, workspace_step, state, error)
+        if self._committed_revision is None and self._snapshot_committer is not None:
+            self.commit_step(workspace_step, state, error)
+        self._manager.step_completed(
+            self._operation_id,
+            workspace_step,
+            state,
+            error,
+            self._committed_revision,
+        )
+        self._committed_revision = None
+
+    def on_step_diagnostic(
+        self,
+        workspace_step: Any,
+        diagnostic: dict[str, Any],
+    ) -> None:
+        self._manager.step_diagnostic(self._operation_id, workspace_step, diagnostic)
+
+    def commit_step(self, workspace_step: Any, state: Any, error: str | None = None) -> None:
+        if self._snapshot_committer is not None:
+            self._committed_revision = self._snapshot_committer(workspace_step, state, error)
 
     def on_subflow_stage(self, workspace_step: Any, subflow_step: dict[str, Any]) -> None:
         self._manager.subflow_stage(self._operation_id, workspace_step, subflow_step)
@@ -802,3 +1003,92 @@ def _step_log_tail_for(
         tool=tool,
         cursor=cursor,
     )
+
+
+def _operation_from_payload(
+    payload: dict[str, Any], runtime_instance_id: str
+) -> RuntimeOperation | None:
+    operation_id = payload.get("operationId")
+    run_session_id = payload.get("runSessionId")
+    workspace_id = payload.get("workspaceId")
+    kind = payload.get("kind")
+    origin = payload.get("origin")
+    if not all(
+        isinstance(value, str) and value
+        for value in (operation_id, run_session_id, workspace_id, kind, origin)
+    ):
+        return None
+    return RuntimeOperation(
+        operation_id=operation_id,
+        run_session_id=run_session_id,
+        runtime_instance_id=runtime_instance_id,
+        workspace_id=workspace_id,
+        kind=kind,
+        origin=origin,
+        rerun=bool(payload.get("rerun", False)),
+        step=str(payload.get("step", "")),
+        idempotency_key=str(payload.get("idempotencyKey", "")),
+        command_fingerprint=str(payload.get("commandFingerprint", "")),
+        state=str(payload.get("state", "interrupted")),
+        current_step=str(payload.get("currentStep", "")),
+        current_tool=str(payload.get("currentTool", "")),
+        error=payload.get("error") if isinstance(payload.get("error"), dict) else None,
+        result=payload.get("result") if isinstance(payload.get("result"), dict) else None,
+        created_at=_number(payload.get("createdAt")),
+        updated_at=_number(payload.get("updatedAt")),
+        sequence=int(payload.get("sequence", 0) or 0),
+        workspace_revision=int(payload.get("workspaceRevision", 0) or 0),
+        render_sync_state=str(payload.get("renderSyncState", "idle")),
+        render_retry_count=int(payload.get("renderRetryCount", 0) or 0),
+        last_render_ack_at=_optional_number(payload.get("lastRenderAckAt")),
+        cancel_requested=bool(payload.get("cancelRequested", False)),
+        interruptibility=str(payload.get("interruptibility", "deferred")),
+    )
+
+
+def _number(value: Any) -> float:
+    return (
+        float(value)
+        if isinstance(value, (int, float)) and not isinstance(value, bool)
+        else time.time()
+    )
+
+
+def _command_fingerprint(
+    *,
+    kind: str,
+    origin: str,
+    rerun: bool,
+    step: str,
+    workspace_revision: int,
+    command_input: dict[str, Any] | None = None,
+) -> str:
+    encoded = json.dumps(
+        {
+            "kind": kind,
+            "origin": origin,
+            "rerun": rerun,
+            "step": step,
+            "workspaceRevision": workspace_revision,
+            "commandInput": command_input or {},
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _operation_error_from_exception(exc: Exception) -> dict[str, Any]:
+    code = getattr(exc, "code", None)
+    data = getattr(exc, "data", None)
+    error: dict[str, Any] = {
+        "message": str(exc),
+        "code": code if isinstance(code, str) and code else "command_failed",
+    }
+    if isinstance(data, dict):
+        error.update(data)
+    return error
+
+
+def _optional_number(value: Any) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None

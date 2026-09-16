@@ -86,9 +86,49 @@ class TestCreateWorkspaceIntegration:
         assert (origin_dir / "rtl" / "core" / "alu.v").exists()
         assert (origin_dir / "rtl" / "core" / "ctrl.v").exists()
 
-    def test_filelist_absolute_entries_rewritten_to_frozen_sources(
-        self, tmp_path, test_parameters, pdk
-    ):
+    def test_filelist_survives_workspace_reload(self, tmp_path, minimal_ics55_pdk_factory):
+        from chipcompiler.data import load_workspace
+        from chipcompiler.data.parameter import load_parameter, save_parameter
+        from chipcompiler.data.workspace_config import workspace_config_path
+
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        _write_rtl_file(project_dir / "gcd.v", "gcd")
+
+        filelist = project_dir / "design.f"
+        _create_filelist(filelist, "gcd.v")
+
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        workspace_dir = tmp_path / "workspace"
+        create_workspace(
+            directory=str(workspace_dir),
+            origin_def="",
+            origin_verilog="",
+            pdk="ics55",
+            parameters={
+                "design": "gcd",
+                "top_module": "gcd",
+                "clock": "clk",
+                "frequency_max": 100,
+            },
+            input_filelist=str(filelist),
+            pdk_root=pdk_root,
+        )
+
+        frozen = workspace_dir / "origin" / "design.f"
+        assert frozen.is_file()
+
+        parameters = load_parameter(workspace_config_path(workspace_dir))
+        assert parameters.data["file_list"] == "origin/design.f"
+
+        reloaded = load_workspace(workspace_dir)
+        assert reloaded.design.input_filelist == frozen
+
+        parameters.data["file_list"] = str(frozen)
+        assert save_parameter(parameters)
+        assert load_workspace(workspace_dir).design.input_filelist == frozen
+
+    def test_filelist_absolute_entries_rewritten_to_frozen_sources(self, tmp_path):
         from chipcompiler.data.workspace import copy_filelist_with_sources
 
         project_dir = tmp_path / "project"
@@ -111,9 +151,7 @@ class TestCreateWorkspaceIntegration:
         assert (workspace_dir / "origin" / "rtl" / "b.v").exists()
         assert installed == str(workspace_dir / "origin" / "design.f")
 
-    def test_filelist_rewrite_handles_quoted_and_commented_entries(
-        self, tmp_path, test_parameters, pdk
-    ):
+    def test_filelist_rewrite_handles_quoted_and_commented_entries(self, tmp_path):
         from chipcompiler.data.workspace import copy_filelist_with_sources
 
         project_dir = tmp_path / "project"
@@ -129,9 +167,7 @@ class TestCreateWorkspaceIntegration:
         assert lines == ['"a.v" # top']
         assert (workspace_dir / "origin" / "a.v").exists()
 
-    def test_filelist_absolute_duplicate_basenames_are_disambiguated(
-        self, tmp_path, test_parameters, pdk
-    ):
+    def test_filelist_absolute_duplicate_basenames_are_disambiguated(self, tmp_path):
         from chipcompiler.data.workspace import copy_filelist_with_sources
 
         dir_a = tmp_path / "a"
@@ -152,7 +188,7 @@ class TestCreateWorkspaceIntegration:
         assert (workspace_dir / "origin" / "foo.v").read_text() == "module foo_a; endmodule\n"
         assert (workspace_dir / "origin" / "b_foo.v").read_text() == "module foo_b; endmodule\n"
 
-    def test_filelist_absolute_incdir_is_frozen_inside_origin(self, tmp_path, test_parameters, pdk):
+    def test_filelist_absolute_incdir_is_frozen_inside_origin(self, tmp_path):
         from chipcompiler.data.workspace.filelist_copy import copy_filelist_with_sources
 
         include_dir = tmp_path / "proj" / "include"
@@ -169,7 +205,7 @@ class TestCreateWorkspaceIntegration:
         assert lines[0] == "+incdir+include"
         assert (workspace_dir / "origin" / "include" / "defs.svh").exists()
 
-    def test_load_workspace_rejects_symlinked_params_toml(self, tmp_path, test_parameters, pdk):
+    def test_load_workspace_rejects_symlinked_params_toml(self, tmp_path):
         from chipcompiler.data.workspace import load_workspace
         from chipcompiler.data.workspace_config import WorkspaceConfigError, save_workspace_config
 
@@ -185,9 +221,7 @@ class TestCreateWorkspaceIntegration:
         with pytest.raises(WorkspaceConfigError):
             load_workspace(str(workspace_dir))
 
-    def test_filelist_absolute_incdirs_with_same_basename_are_disambiguated(
-        self, tmp_path, test_parameters, pdk
-    ):
+    def test_filelist_absolute_incdirs_with_same_basename_are_disambiguated(self, tmp_path):
         from chipcompiler.data.workspace.filelist_copy import copy_filelist_with_sources
 
         dir_a = tmp_path / "a" / "include"

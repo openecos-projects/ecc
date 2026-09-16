@@ -41,6 +41,7 @@ class PDK:
     dont_use: list[str] = field(default_factory=list[str])  # don't use cell list
     abc_driver_cell: str = ""  # ABC driving cell
     abc_load: float = 0.015  # ABC output load
+    sdc_load: float = 0.0  # output load (pF) for generated SDC; 0 omits set_load
 
     def __post_init__(self) -> None:
         self.root = optional_path(self.root)
@@ -222,6 +223,7 @@ def _pdk_from_external_config(data: dict, pdk_name: str = "") -> PDK:
         dont_use=data.get("dont_use", []),
         abc_driver_cell=str(data.get("abc_driver_cell", "")),
         abc_load=float(data.get("abc_load", 0.015)),
+        sdc_load=float(data.get("sdc_load", 0.0)),
     )
 
 
@@ -249,6 +251,8 @@ def get_pdk(
     pdk_root: str | Path = "",
     pdk_config: str | Path = "",
     overrides: dict | None = None,
+    *,
+    validate: bool = True,
 ) -> PDK:
     """
     Return the PDK instance based on the given pdk name.
@@ -273,15 +277,16 @@ def get_pdk(
         pdk = _builtin_pdk(pdk_name_normalized, pdk_root=pdk_root) or PDK(name=pdk_name_normalized)
     overrides = overrides or {}
     pdk = apply_pdk_overrides(pdk, overrides)
-    pdk.validate()
-    errors = []
-    for key, label in _OPTIONAL_PATH_LABELS.items():
-        if key not in overrides:
-            continue
-        path = getattr(pdk, key)
-        if path and not path.is_file():
-            errors.append(f"{label}: {path}")
-    _raise_pdk_validation_error(errors)
+    if validate:
+        pdk.validate()
+        errors = []
+        for key, label in _OPTIONAL_PATH_LABELS.items():
+            if key not in overrides:
+                continue
+            path = getattr(pdk, key)
+            if path and not path.is_file():
+                errors.append(f"{label}: {path}")
+        _raise_pdk_validation_error(errors)
     return pdk
 
 
@@ -357,6 +362,7 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
         tie_low_port="Z",
         abc_driver_cell="BUFX0P5H7R",
         abc_load=0.015,
+        sdc_load=0.001,
         dont_use=[
             "DFFSRQX*",
             "DFFSRX*",

@@ -658,6 +658,10 @@ def _make_flow(ws, steps, run_step_fn, init_db_engine_fn=None, check_state_fn=No
 
 
 class TestRunFlowWithProgress:
+    @pytest.fixture(autouse=True)
+    def _disable_snapshot_sink(self, monkeypatch):
+        monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: None)
+
     def test_success_summary_format(self, tmp_path):
         flow = _make_flow(
             _make_ws(str(tmp_path)),
@@ -1124,6 +1128,65 @@ class TestRunFlowWithProgress:
         output = "".join(buf.written)
         for code in (BOLD, CYAN, GREEN, RED, DIM):
             assert code not in output
+
+    def test_progress_run_commits_snapshot_after_each_step(self, tmp_path, monkeypatch):
+        committed = []
+        sink = SimpleNamespace(
+            on_step_completed=lambda step, state, error=None: committed.append(
+                (step.name, state, error)
+            )
+        )
+        monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: sink)
+
+        def fake_run_step(self, step, *, rerun=False, observer=None):
+            assert rerun is False
+            observer.on_step_completed(step, StateEnum.Success)
+            return StateEnum.Success
+
+        flow = _make_flow(
+            _make_ws(str(tmp_path)),
+            [
+                _make_step("Synthesis", "yosys"),
+                _make_step("Floorplan", "ecc"),
+            ],
+            fake_run_step,
+        )
+
+        buf = FakeTTYStderr(isatty_value=True)
+        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+
+        assert result is True
+        assert committed == [
+            ("Synthesis", StateEnum.Success, None),
+            ("Floorplan", StateEnum.Success, None),
+        ]
+
+    def test_progress_run_commits_snapshot_for_failed_step(self, monkeypatch):
+        committed = []
+        sink = SimpleNamespace(
+            on_step_completed=lambda step, state, error=None: committed.append((step.name, state))
+        )
+        monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: sink)
+
+        def fake_run_step(self, step, *, rerun=False, observer=None):
+            state = StateEnum.Success if step.name == "Synthesis" else StateEnum.Imcomplete
+            observer.on_step_completed(step, state)
+            return state
+
+        flow = _make_flow(
+            _make_ws(),
+            [_make_step("Synthesis", "yosys"), _make_step("Floorplan", "ecc")],
+            fake_run_step,
+        )
+
+        buf = FakeTTYStderr(isatty_value=True)
+        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+
+        assert result is False
+        assert committed == [
+            ("Synthesis", StateEnum.Success),
+            ("Floorplan", StateEnum.Imcomplete),
+        ]
 
 
 # ---------------------------------------------------------------------------

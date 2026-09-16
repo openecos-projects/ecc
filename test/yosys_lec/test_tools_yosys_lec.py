@@ -9,6 +9,7 @@ from chipcompiler.data import (
     OriginDesign,
     OutputPaths,
     Parameters,
+    SkippableStepEnum,
     StateEnum,
     StepEnum,
     Workspace,
@@ -98,7 +99,7 @@ def test_lec_builder_derives_golden_from_gate_netlist_and_creates_workspace(tmp_
 
     step = builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.LEC.value,
+        step_name=SkippableStepEnum.LEC.value,
         input_def=None,
         input_verilog=gate,
     )
@@ -122,7 +123,7 @@ def test_lec_builder_accepts_explicit_golden_netlist(tmp_path):
 
     step = builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.POST_ROUTE_LEC.value,
+        step_name=SkippableStepEnum.POST_ROUTE_LEC.value,
         input_def=None,
         input_verilog=gate,
         input_db=golden,
@@ -142,7 +143,7 @@ def test_lec_build_step_config_writes_models_and_repo_local_script(tmp_path):
 
     step = builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.LEC.value,
+        step_name=SkippableStepEnum.LEC.value,
         input_def=None,
         input_verilog=gate,
     )
@@ -171,7 +172,7 @@ def test_lec_runner_marks_success_from_yosys_status(tmp_path, monkeypatch):
 
     step = builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.LEC.value,
+        step_name=SkippableStepEnum.LEC.value,
         input_def=None,
         input_verilog=gate,
     )
@@ -212,7 +213,7 @@ def test_lec_runner_writes_incomplete_result_on_failure(tmp_path, monkeypatch):
     _write_gcd_netlist_pair(gate)
     step = builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.LEC.value,
+        step_name=SkippableStepEnum.LEC.value,
         input_def=None,
         input_verilog=gate,
     )
@@ -263,7 +264,7 @@ def test_engine_flow_accepts_lec_result_json(tmp_path):
         )
     )
     step = YosysLecStep(
-        name=StepEnum.LEC.value,
+        name=SkippableStepEnum.LEC.value,
         input=SimpleNamespace(golden_verilog=golden, gate_verilog=gate),
         output=OutputPaths(json=result_json),
     )
@@ -271,7 +272,7 @@ def test_engine_flow_accepts_lec_result_json(tmp_path):
     assert EngineFlow(workspace=None).check_step_result(step) is True
     incomplete = tmp_path / "lec_incomplete.json"
     incomplete.write_text('{"status": "incomplete"}\n')
-    failed = YosysLecStep(name=StepEnum.LEC.value, output=OutputPaths(json=incomplete))
+    failed = YosysLecStep(name=SkippableStepEnum.LEC.value, output=OutputPaths(json=incomplete))
     assert EngineFlow(workspace=None).check_step_result(failed) is False
 
 
@@ -299,7 +300,7 @@ def test_engine_flow_rejects_stale_lec_result_when_netlist_changes(tmp_path):
         )
     )
     step = YosysLecStep(
-        name=StepEnum.LEC.value,
+        name=SkippableStepEnum.LEC.value,
         input=SimpleNamespace(golden_verilog=golden, gate_verilog=gate),
         output=OutputPaths(json=result_json),
     )
@@ -325,7 +326,7 @@ def test_engine_flow_rejects_legacy_proven_json_without_digests(tmp_path):
         )
     )
     step = YosysLecStep(
-        name=StepEnum.LEC.value,
+        name=SkippableStepEnum.LEC.value,
         input=SimpleNamespace(golden_verilog=golden, gate_verilog=gate),
         output=OutputPaths(json=result_json),
     )
@@ -354,7 +355,7 @@ def test_engine_flow_rejects_legacy_proven_json_without_sizes(tmp_path):
         )
     )
     step = YosysLecStep(
-        name=StepEnum.LEC.value,
+        name=SkippableStepEnum.LEC.value,
         input=SimpleNamespace(golden_verilog=golden, gate_verilog=gate),
         output=OutputPaths(json=result_json),
     )
@@ -385,7 +386,7 @@ def test_engine_flow_rejects_bool_size_fields(tmp_path):
         )
     )
     step = YosysLecStep(
-        name=StepEnum.LEC.value,
+        name=SkippableStepEnum.LEC.value,
         input=SimpleNamespace(golden_verilog=golden, gate_verilog=gate),
         output=OutputPaths(json=result_json),
     )
@@ -400,7 +401,7 @@ def test_lec_runner_writes_incomplete_result_when_yosys_raises(tmp_path, monkeyp
     _write_gcd_netlist_pair(gate)
     step = builder.build_step(
         workspace=workspace,
-        step_name=StepEnum.LEC.value,
+        step_name=SkippableStepEnum.LEC.value,
         input_def=None,
         input_verilog=gate,
     )
@@ -433,18 +434,19 @@ def test_rtl2gds_flow_runs_post_route_lec_after_lvs_before_drc():
     steps = build_rtl2gds_flow()
 
     step_names = [step[0] for step in steps]
-    lec_index = step_names.index(StepEnum.POST_ROUTE_LEC)
+    lec_index = step_names.index(SkippableStepEnum.POST_ROUTE_LEC)
     assert step_names.index(StepEnum.STA) < step_names.index(StepEnum.LVS)
     assert step_names.index(StepEnum.LVS) < lec_index < step_names.index(StepEnum.DRC)
-    assert steps[lec_index] == (StepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart)
+    assert steps[lec_index] == (SkippableStepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart)
 
 
-def test_rtl2gds_flow_keeps_unstable_synthesis_lec_disabled():
+def test_rtl2gds_flow_restores_synthesis_lec_into_the_canonical_chain():
     from chipcompiler.rtl2gds import build_rtl2gds_flow
 
     steps = build_rtl2gds_flow()
     step_names = [step[0] for step in steps]
-    assert StepEnum.LEC not in step_names
+    assert SkippableStepEnum.LEC in step_names
+    assert step_names.index(SkippableStepEnum.LEC) == step_names.index(StepEnum.SYNTHESIS) + 1
 
 
 def test_engine_flow_wires_synthesis_lec_without_changing_physical_chain(tmp_path, monkeypatch):
@@ -455,7 +457,11 @@ def test_engine_flow_wires_synthesis_lec_without_changing_physical_chain(tmp_pat
     workspace.flow.data = {
         "steps": [
             {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": StateEnum.Unstart.value},
-            {"name": StepEnum.LEC.value, "tool": "yosys_lec", "state": StateEnum.Unstart.value},
+            {
+                "name": SkippableStepEnum.LEC.value,
+                "tool": "yosys_lec",
+                "state": StateEnum.Unstart.value,
+            },
             {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": StateEnum.Unstart.value},
         ]
     }
@@ -528,7 +534,7 @@ def test_engine_flow_wires_post_route_lec_against_synthesis_gate(tmp_path, monke
             {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": StateEnum.Unstart.value},
             {"name": StepEnum.ROUTING.value, "tool": "ecc", "state": StateEnum.Unstart.value},
             {
-                "name": StepEnum.POST_ROUTE_LEC.value,
+                "name": SkippableStepEnum.POST_ROUTE_LEC.value,
                 "tool": "yosys_lec",
                 "state": StateEnum.Unstart.value,
             },
@@ -588,7 +594,7 @@ def test_engine_flow_wires_post_route_lec_against_synthesis_gate(tmp_path, monke
     synth_step, route_step, lec_step, rcx_step = engine_flow.workspace_steps
     assert synth_step.name == StepEnum.SYNTHESIS.value
     assert route_step.name == StepEnum.ROUTING.value
-    assert lec_step.name == StepEnum.POST_ROUTE_LEC.value
+    assert lec_step.name == SkippableStepEnum.POST_ROUTE_LEC.value
     assert rcx_step.name == StepEnum.RCX.value
     assert lec_step.input.gate_verilog == route_step.output.verilog
     assert lec_step.input.golden_verilog == synth_step.output.verilog
@@ -605,7 +611,7 @@ def test_engine_flow_wires_post_route_lec_to_origin_without_synthesis(tmp_path, 
             {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": StateEnum.Unstart.value},
             {"name": StepEnum.ROUTING.value, "tool": "ecc", "state": StateEnum.Unstart.value},
             {
-                "name": StepEnum.POST_ROUTE_LEC.value,
+                "name": SkippableStepEnum.POST_ROUTE_LEC.value,
                 "tool": "yosys_lec",
                 "state": StateEnum.Unstart.value,
             },

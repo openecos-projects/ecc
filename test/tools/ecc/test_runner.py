@@ -13,6 +13,7 @@ from chipcompiler.data import (
     EccStep,
     OriginDesign,
     Parameters,
+    SkippableStepEnum,
     StateEnum,
     StepEnum,
     StepInput,
@@ -386,7 +387,7 @@ def test_create_db_engine_reads_replaced_step_input_despite_db(tmp_path, monkeyp
         config={"db": tmp_path / "config" / "db_ecc.json"},
     )
     step = EccStep(
-        name=StepEnum.TIMING_OPT.value,
+        name=SkippableStepEnum.TIMING_OPT.value,
         input=StepInput(
             def_=staging_def,
             verilog=staging_verilog,
@@ -421,7 +422,7 @@ def test_create_db_engine_raises_and_closes_when_def_master_resolution_fails(tmp
         config={"db": tmp_path / "config" / "db_ecc.json"},
     )
     step = EccStep(
-        name=StepEnum.TIMING_OPT.value,
+        name=SkippableStepEnum.TIMING_OPT.value,
         input=StepInput(def_=design_def, verilog=tmp_path / "origin" / "gcd.v", db=None),
         data=EccData(dir=tmp_path / "timing_optimization_sizer" / "data"),
         feature=EccFeature(dir=tmp_path / "timing_optimization_sizer" / "feature"),
@@ -492,7 +493,7 @@ def test_create_db_engine_without_input_db_does_not_retry_load_design(tmp_path, 
         logger=FakeLogger(),
     )
     step = EccStep(
-        name=StepEnum.TIMING_OPT.value,
+        name=SkippableStepEnum.TIMING_OPT.value,
         input=StepInput(def_=design_def, db=None),
         data=EccData(dir=tmp_path / "timing_optimization_sizer" / "data"),
         feature=EccFeature(dir=tmp_path / "timing_optimization_sizer" / "feature"),
@@ -951,6 +952,50 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
             "corner": "MIN_m40/Cbest",
         },
     ]
+
+
+def test_run_sta_returns_false_when_sdc_is_missing(tmp_path, monkeypatch):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    max_lib = tmp_path / "pdk" / "max.lib"
+    spef = tmp_path / "RCX_ecc" / "output" / "gcd_RCworst_125C.spef"
+    for path in (max_lib, spef):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+    sta_config = config_dir / "sta_ecc.json"
+    sta_config.write_text(
+        json.dumps(
+            {
+                "liberty": [{"corner": "MAX", "temperature": 125, "path": [str(max_lib)]}],
+                "signoff": [{"MAX": ["RCworst"]}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    rcx_config = config_dir / "rcx_ecc.json"
+    rcx_config.write_text(
+        json.dumps({"output": str(tmp_path / "RCX_ecc" / "data")}),
+        encoding="utf-8",
+    )
+    logger = FakeLogger()
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        pdk=PDK(libs=[max_lib], sdc=None),
+        config={StepEnum.STA.value: sta_config, StepEnum.RCX.value: rcx_config},
+        logger=logger,
+    )
+    step = EccStep(
+        name=StepEnum.STA.value,
+        data=EccData(steps={StepEnum.STA.value: tmp_path / "sta_ecc" / "data" / "sta"}),
+        report=EccReport(dir=tmp_path / "sta_ecc" / "report"),
+        feature=EccFeature(dir=tmp_path / "sta_ecc" / "feature"),
+    )
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
+    monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **kwargs: FakeSynthesisStaModule())
+
+    assert ecc_runner.run_sta(workspace, step) is False
+    assert logger.errors[0][0] == "STA SDC does not exist: %s"
 
 
 def test_rcx_checklist_strips_top_module_from_spef_corner(tmp_path):

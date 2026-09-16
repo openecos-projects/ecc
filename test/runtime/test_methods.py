@@ -16,8 +16,19 @@ def test_runtime_method_registry_contains_current_methods_once():
     from chipcompiler.runtime.methods import RUNTIME_METHODS, runtime_method_names
 
     expected_methods = (
+        "workspace_spec.describe",
+        "workspace_spec.validate",
+        "project.discover",
+        "project.manifest.load",
+        "project.manifest.mutate",
         "workspace.create",
         "workspace.open",
+        "workspace.binding_requirement",
+        "workspace.update",
+        "workspace.configuration.update",
+        "workspace.configuration.read",
+        "workspace.step_configuration.update",
+        "workspace.step_configuration.read",
         "workspace.close",
         "workspace.home",
         "workspace.info",
@@ -34,9 +45,9 @@ def test_runtime_method_registry_contains_current_methods_once():
         "operation.cancel",
         "operation.ack_step_rendered",
         "workspace.snapshot",
+        "workspace.engineering_snapshot",
         "workspace.recover_interrupted",
     )
-
     assert runtime_method_names() == expected_methods
     assert len(runtime_method_names()) == len(set(runtime_method_names()))
     assert len(RUNTIME_METHODS) == len(expected_methods)
