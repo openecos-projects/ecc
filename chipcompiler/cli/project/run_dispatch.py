@@ -344,7 +344,7 @@ def dispatch_project_run(
                                 )
                             ]
                         )
-                    if registration == "conflict":
+                    if registration.startswith("conflict"):
                         return CommandResult.err(
                             [
                                 error_record(
@@ -386,7 +386,7 @@ def dispatch_project_run(
                         workspace_path=run_dir,
                         flow_config=flow_config,
                     )
-                    if registration == "conflict":
+                    if registration.startswith("conflict"):
                         _abandon_prepared_target(backup_path, run_dir, owns_target=owns_target)
                         return CommandResult.err(
                             [

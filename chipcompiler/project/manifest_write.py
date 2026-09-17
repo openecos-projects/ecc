@@ -332,18 +332,89 @@ def remove_workspace_registration(project_dir: str, workspace_id: str) -> bool:
     return update_manifest(project_dir, mutate)
 
 
+def manifest_range_for_steps(start: str, end: str) -> tuple[str, str]:
+    """The GUI manifest range for a pair of flow step spellings."""
+    from chipcompiler.rtl2gds import normalize_flow_step
+
+    canonical_start = normalize_flow_step(start)
+    canonical_end = normalize_flow_step(end)
+    try:
+        return (
+            _CANONICAL_TO_MANIFEST_STEP[canonical_start],
+            _CANONICAL_TO_MANIFEST_STEP[canonical_end],
+        )
+    except KeyError as exc:
+        raise ManifestError(f"unknown workspace flow step: {exc.args[0]}") from None
+
+
 def manifest_range_for_flow(cfg, flow_config: dict | None) -> tuple[str, str]:
     """Return the GUI manifest range for a workspace's effective target."""
     if isinstance(flow_config, dict) and flow_config.get("start_step"):
-        from chipcompiler.rtl2gds import normalize_flow_step
-
-        start = normalize_flow_step(flow_config["start_step"])
-        end = normalize_flow_step(flow_config.get("end_step") or start)
-        try:
-            return (_CANONICAL_TO_MANIFEST_STEP[start], _CANONICAL_TO_MANIFEST_STEP[end])
-        except KeyError as exc:
-            raise ManifestError(f"unknown workspace flow step: {exc.args[0]}") from None
+        return manifest_range_for_steps(
+            flow_config["start_step"], flow_config.get("end_step") or flow_config["start_step"]
+        )
     return PRESET_MANIFEST_RANGE.get(cfg.flow_preset, ("Synth", "Harden"))
+
+
+def append_workspace_entry(
+    project_dir: str,
+    *,
+    workspace_id: str,
+    name: str,
+    workspace_path: str,
+    start_step: str,
+    end_step: str,
+    status: str,
+    now: str | None = None,
+    skip_steps: list[str] | None = None,
+    parameter_patch: dict | None = None,
+) -> str:
+    """Atomically append one workspace entry to an existing manifest.
+
+    Returns ``registered``, ``existing``, ``conflict_id``, ``conflict_path``,
+    or ``failed``. ``conflict_id``/``conflict_path`` distinguish whether the
+    workspace id or the canonical path matched a different entry.
+    """
+    timestamp = now or _now_iso()
+    outcome = "registered"
+
+    def mutate(document: dict) -> None:
+        nonlocal outcome
+        workspaces = document.get("workspaces")
+        if not isinstance(workspaces, list):
+            outcome = "failed"
+            return
+        for entry in workspaces:
+            if not isinstance(entry, dict):
+                continue
+            same_id = entry.get("workspace_id") == workspace_id
+            same_path = os.path.realpath(str(entry.get("workspace_path", ""))) == os.path.realpath(
+                workspace_path
+            )
+            if same_id and same_path:
+                outcome = "existing"
+                return
+            if same_id or same_path:
+                outcome = "conflict_id" if same_id else "conflict_path"
+                return
+        workspaces.append(
+            manifest_workspace_entry(
+                workspace_id,
+                name=name,
+                workspace_path=workspace_path,
+                start_step=start_step,
+                end_step=end_step,
+                status=status,
+                now=timestamp,
+                skip_steps=skip_steps,
+                parameter_patch=parameter_patch,
+            )
+        )
+        document["updated_at"] = timestamp
+
+    if not update_manifest(project_dir, mutate):
+        return "failed"
+    return outcome
 
 
 def pre_register_workspace(
@@ -359,9 +430,9 @@ def pre_register_workspace(
 ) -> str:
     """Atomically register a fresh managed workspace before filesystem creation.
 
-    Returns ``registered``, ``existing``, ``conflict``, or ``failed``. A
-    workspace entry intentionally contains no input snapshot: copied files and
-    the workspace config are the reproducibility boundary.
+    Returns ``registered``, ``existing``, ``conflict_id``, ``conflict_path``,
+    or ``failed``. A workspace entry intentionally contains no input snapshot:
+    copied files and the workspace config are the reproducibility boundary.
     """
     try:
         start_step, end_step = manifest_range_for_flow(cfg, flow_config)
@@ -396,39 +467,15 @@ def pre_register_workspace(
         # same registration mutation under the manifest lock instead of
         # aborting this run. A genuine I/O failure fails again below.
 
-    outcome = "registered"
-
-    def mutate(document: dict) -> None:
-        nonlocal outcome
-        workspaces = document.get("workspaces")
-        if not isinstance(workspaces, list):
-            outcome = "failed"
-            return
-        for entry in workspaces:
-            if not isinstance(entry, dict):
-                continue
-            same_id = entry.get("workspace_id") == workspace_id
-            same_path = os.path.realpath(str(entry.get("workspace_path", ""))) == os.path.realpath(
-                workspace_path
-            )
-            if same_id or same_path:
-                outcome = "existing" if same_id and same_path else "conflict"
-                return
-        workspaces.append(
-            manifest_workspace_entry(
-                workspace_id,
-                name=cfg.design_name,
-                workspace_path=workspace_path,
-                start_step=start_step,
-                end_step=end_step,
-                status=status,
-                now=now,
-                skip_steps=list(declared_skip) if declared_skip is not None else None,
-                parameter_patch=parameter_patch,
-            )
-        )
-        document["updated_at"] = now
-
-    if not update_manifest(project_dir, mutate):
-        return "failed"
-    return outcome
+    return append_workspace_entry(
+        project_dir,
+        workspace_id=workspace_id,
+        name=cfg.design_name,
+        workspace_path=workspace_path,
+        start_step=start_step,
+        end_step=end_step,
+        status=status,
+        now=now,
+        skip_steps=list(declared_skip) if declared_skip is not None else None,
+        parameter_patch=parameter_patch,
+    )

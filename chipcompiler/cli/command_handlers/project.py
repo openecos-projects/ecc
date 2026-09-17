@@ -375,7 +375,7 @@ def import_workspace(command_input: WorkspaceImportInput, ctx: CommandContext) -
             ]
         )
 
-    if outcome == "conflict":
+    if outcome.startswith("conflict"):
         return CommandResult.err(
             [
                 error_record(
