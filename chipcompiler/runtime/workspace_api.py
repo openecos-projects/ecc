@@ -1123,6 +1123,9 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
             edit_session.source_kind = "db"
             edit_session.source_paths = (output_db,)
             edit_session.source_fingerprint = _artifact_fingerprint(edit_session.source_paths)
+            macro_location_path = (
+                _write_macro_location_tcl(module, session.workspace) if request.write_macro_location else None
+            )
             workspace_revision = None
             snapshot_path = Path(session.workspace.directory) / "home" / "engineering-snapshot.json"
             if snapshot_path.is_file():
@@ -1131,7 +1134,12 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                     "layout.edit.save",
                 )
             edit_session.dirty = False
-            result = _layout_edit_save_result(edit_session, saved=True, artifacts=artifacts)
+            result = _layout_edit_save_result(
+                edit_session,
+                saved=True,
+                artifacts=artifacts,
+                macro_location_path=macro_location_path,
+            )
             if workspace_revision is not None:
                 result["workspaceRevision"] = workspace_revision
             _release_layout_edit_ownership_lock(edit_session)
@@ -1583,10 +1591,11 @@ def _layout_edit_save_result(
     *,
     saved: bool,
     artifacts: dict[str, str] | None = None,
+    macro_location_path: Path | None = None,
 ) -> dict:
     if artifacts is None:
         artifacts = _layout_edit_published_artifacts(edit_session.workspace_step)
-    return {
+    result = {
         "editSessionId": edit_session.edit_session_id,
         "revision": edit_session.revision,
         "geometryRevision": edit_session.geometry_revision,
@@ -1595,6 +1604,19 @@ def _layout_edit_save_result(
         "sourceFingerprint": edit_session.source_fingerprint,
         "artifacts": artifacts,
     }
+    if macro_location_path is not None:
+        result["macroLocationPath"] = str(macro_location_path)
+    return result
+
+
+def _write_macro_location_tcl(module, workspace) -> Path:
+    from chipcompiler.data.workspace import workspace_config_paths
+
+    path = workspace_config_paths(workspace.directory)["macro_location"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not module.tcl_save(str(path)):
+        raise RuntimeApiError("command_failed", "macro location tcl export failed")
+    return path
 
 
 def _layout_edit_published_artifacts(workspace_step) -> dict:

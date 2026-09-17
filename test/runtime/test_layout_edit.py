@@ -28,6 +28,8 @@ class FakeLayoutModule:
         self.editor_calls = []
         self.validation_result = {"ok": True, "diagnostics": []}
         self.export_intent = {"ok": True}
+        self.tcl_save_calls = []
+        self.tcl_save_ok = True
 
     def initialize_geometry_session(self):
         self.initialize_calls += 1
@@ -119,6 +121,12 @@ class FakeLayoutModule:
     def verilog_save(self, output_verilog):
         self.export_calls.append("verilog")
         Path(output_verilog).write_text("module gcd; endmodule\n", encoding="utf-8")
+
+    def tcl_save(self, output_path):
+        self.tcl_save_calls.append(Path(output_path))
+        if self.tcl_save_ok:
+            Path(output_path).write_text("# macro location\n", encoding="utf-8")
+        return self.tcl_save_ok
 
 
 class FakeEngineDb:
@@ -364,6 +372,76 @@ def test_layout_edit_save_publishes_staged_outputs_only_after_explicit_save(monk
     geometry_manifest = step.output["geometry"] / "geometry.manifest"
     assert geometry_manifest.read_text(encoding="utf-8") == "new geometry"
     assert not list(step.output["def"].parent.glob(".layout-edit-*"))
+
+
+def test_layout_edit_save_writes_macro_location_tcl_when_requested(monkeypatch, tmp_path):
+    api, session, _step, module, _flow_calls = _open_api(monkeypatch, tmp_path)
+    begin = _begin(api, session.workspace_id)
+    apply = _apply(api, begin["editSessionId"])
+
+    saved = api.layout_edit_save(
+        LayoutEditSaveRequest(
+            edit_session_id=begin["editSessionId"],
+            expected_revision=apply["revision"],
+            write_macro_location=True,
+        )
+    )
+
+    macro_location = Path(session.workspace.directory) / "config" / "macro_location.tcl"
+    assert module.tcl_save_calls == [macro_location]
+    assert saved["macroLocationPath"] == str(macro_location)
+    assert macro_location.read_text(encoding="utf-8") == "# macro location\n"
+
+
+def test_layout_edit_save_skips_macro_location_tcl_by_default(monkeypatch, tmp_path):
+    api, session, _step, module, _flow_calls = _open_api(monkeypatch, tmp_path)
+    begin = _begin(api, session.workspace_id)
+    apply = _apply(api, begin["editSessionId"])
+
+    saved = api.layout_edit_save(
+        LayoutEditSaveRequest(
+            edit_session_id=begin["editSessionId"],
+            expected_revision=apply["revision"],
+        )
+    )
+
+    assert module.tcl_save_calls == []
+    assert "macroLocationPath" not in saved
+    assert not (Path(session.workspace.directory) / "config").exists()
+
+
+def test_layout_edit_save_raises_when_macro_location_export_fails(monkeypatch, tmp_path):
+    api, session, _step, module, _flow_calls = _open_api(monkeypatch, tmp_path)
+    begin = _begin(api, session.workspace_id)
+    apply = _apply(api, begin["editSessionId"])
+    module.tcl_save_ok = False
+
+    with pytest.raises(RuntimeApiError) as exc_info:
+        api.layout_edit_save(
+            LayoutEditSaveRequest(
+                edit_session_id=begin["editSessionId"],
+                expected_revision=apply["revision"],
+                write_macro_location=True,
+            )
+        )
+
+    assert exc_info.value.code == "command_failed"
+
+
+def test_layout_edit_save_without_edits_skips_macro_location_tcl(monkeypatch, tmp_path):
+    api, session, _step, module, _flow_calls = _open_api(monkeypatch, tmp_path)
+    begin = _begin(api, session.workspace_id)
+
+    saved = api.layout_edit_save(
+        LayoutEditSaveRequest(
+            edit_session_id=begin["editSessionId"],
+            expected_revision=0,
+            write_macro_location=True,
+        )
+    )
+
+    assert saved["saved"] is False
+    assert module.tcl_save_calls == []
 
 
 def test_layout_edit_discard_drops_in_memory_db_without_publishing(monkeypatch, tmp_path):

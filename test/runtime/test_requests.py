@@ -228,6 +228,28 @@ def test_layout_edit_begin_accepts_source_fingerprint_alias():
     assert request.expected_source_fingerprint == "abc123"
 
 
+def test_layout_edit_save_accepts_write_macro_location_alias():
+    request = _parse_runtime_request(
+        "layout.edit.save",
+        {"editSessionId": "layout-edit-1", "expectedRevision": 1, "writeMacroLocation": True},
+        persistent_db_enabled=True,
+    )
+
+    assert isinstance(request, LayoutEditSaveRequest)
+    assert request.write_macro_location is True
+
+
+def test_write_macro_location_must_be_boolean():
+    with pytest.raises(RequestValidationError) as exc_info:
+        _parse_runtime_request(
+            "layout.edit.save",
+            {"editSessionId": "layout-edit-1", "expectedRevision": 1, "writeMacroLocation": "yes"},
+            persistent_db_enabled=True,
+        )
+
+    assert exc_info.value.reason == "write_macro_location must be a boolean"
+
+
 def test_missing_required_field_reports_field_name():
     with pytest.raises(RequestValidationError) as exc_info:
         _parse_runtime_request("flow.run_step", {"workspaceId": "ws-1"})

@@ -253,6 +253,7 @@ class LayoutEditSaveRequest:
     edit_session_id: str
     expected_revision: int
     expected_workspace_revision: int = 1
+    write_macro_location: bool = False
 
 
 @dataclass(frozen=True)
@@ -324,6 +325,7 @@ FIELD_ALIASES = {
     "projectRoot": "project_root",
     "stepId": "step_id",
     "resetFromStep": "reset_from_step",
+    "writeMacroLocation": "write_macro_location",
 }
 
 
@@ -351,7 +353,7 @@ def parse_request_model(model: type, params: object):
         if required and _is_missing(values[field.name]):
             raise RequestValidationError(f"missing required field: {field.name}")
 
-        if field.name in {"rerun", "reset_dependents"} and not isinstance(values[field.name], bool):
+        if field.name in {"rerun", "reset_dependents", "write_macro_location"} and not isinstance(values[field.name], bool):
             raise RequestValidationError(f"{field.name} must be a boolean")
         if field.name == "additional_files":
             _validate_additional_files(values[field.name])
