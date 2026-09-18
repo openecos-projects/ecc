@@ -1473,7 +1473,7 @@ def test_flow_run_step_sizer_exception_clears_closed_session_db(
     assert api.sessions.get_session(workspace_id).db_handle is None
 
 
-def test_flow_run_step_rerun_preserves_saved_config(monkeypatch, tmp_path):
+def test_flow_run_step_rerun_refreshes_before_db_init(monkeypatch, tmp_path):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     refreshed = []
 
@@ -1491,10 +1491,9 @@ def test_flow_run_step_rerun_preserves_saved_config(monkeypatch, tmp_path):
 
     flow = DummyFlow.instances[-1]
     assert result == {"step": "Floorplan", "state": "Success"}
-    # Parameter saves refresh the configs themselves; a rerun must not
-    # re-refresh and discard configuration saved in between.
-    assert refreshed == []
+    assert refreshed == [ws.resolve()]
     assert flow.call_order == [
+        ("refresh_config", ws.resolve()),
         ("init_db_engine",),
         ("run_step", "Floorplan", True),
     ]

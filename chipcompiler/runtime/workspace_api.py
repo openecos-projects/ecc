@@ -471,14 +471,12 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                         workspace_revision=reset_revision,
                     )
                 elif stale_step_ids:
-                    # Parameter saves already refreshed the workspace configs when
-                    # they invalidated these steps; re-refreshing here would
-                    # discard configuration the user saved in between.
                     affected_steps = [
                         step
                         for step in getattr(engine_flow, "workspace_steps", [])
                         if str(getattr(step, "name", "")) in stale_step_ids
                     ]
+                    self._refresh_workspace_config(session.workspace)
                     self._prepare_steps_for_rerun(
                         session.workspace,
                         engine_flow,
@@ -566,9 +564,7 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                 raise RuntimeApiError("command_failed", f"step not found: {request.step}")
             with manifest_run_status(session.directory):
                 if requires_preparation:
-                    # Parameter saves already refreshed the workspace configs when
-                    # they invalidated these steps; re-refreshing here would
-                    # discard configuration the user saved in between.
+                    self._refresh_workspace_config(session.workspace)
                     affected_steps = (
                         [
                             step
