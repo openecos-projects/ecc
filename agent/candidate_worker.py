@@ -40,14 +40,16 @@ class _MarkerObserver:
 def run_candidate_steps_isolated(flow, steps, *, observer) -> None:
     """Run the candidate step loop in a subprocess, preserving failure shape.
 
-    Falls back to in-process execution when isolation is disabled (unit
-    tests drive fake flows through the same loop) or when a worker process
-    cannot start, matching the legacy behavior of frozen environments.
+    Falls back to in-process execution only when isolation is explicitly
+    disabled (unit tests drive fake flows through the same loop). A worker
+    that cannot start fails the operation: silently running candidates in
+    process would corrupt the shared C++ global config and step logs.
     """
     if os.environ.get(_ISOLATION_FLAG, "1") == "0":
         from .workspace_api import _run_candidate_step
 
         for step in steps:
+            _raise_if_cancelled(observer)
             _run_candidate_step(flow, step, observer=observer)
         return
 
@@ -59,6 +61,7 @@ def run_candidate_steps_isolated(flow, steps, *, observer) -> None:
         "step_names": [str(step.name) for step in steps],
         "runtime_operation": getattr(observer, "runtime_operation", None),
         "result_path": str(result_path),
+        "parent_pid": os.getpid(),
     }
     try:
         process = subprocess.Popen(
@@ -67,31 +70,46 @@ def run_candidate_steps_isolated(flow, steps, *, observer) -> None:
             stdin=subprocess.PIPE,
         )
     except OSError as exc:
-        print(
-            f"[candidate-worker] isolated execution unavailable ({exc});"
-            " running candidate steps in process",
-            file=sys.stderr,
-        )
-        from .workspace_api import _run_candidate_step
-
-        for step in steps:
-            _run_candidate_step(flow, step, observer=observer)
-        return
+        raise RuntimeApiError(
+            "command_failed", f"candidate worker process failed to start: {exc}"
+        ) from exc
 
     process.stdin.write(json.dumps(payload).encode("utf-8"))
     process.stdin.close()
     step_by_name = {str(step.name): step for step in steps}
     emitted: set[str] = set()
-    while process.poll() is None:
+    try:
+        while process.poll() is None:
+            _raise_if_cancelled(observer)
+            _replay_step_started(result_path, step_by_name, observer, emitted)
+            time.sleep(_POLL_SECONDS)
         _replay_step_started(result_path, step_by_name, observer, emitted)
-        time.sleep(_POLL_SECONDS)
-    _replay_step_started(result_path, step_by_name, observer, emitted)
+    finally:
+        _terminate_worker(process)
     result = _read_result(result_path)
     if process.returncode != 0 or not isinstance(result, dict) or result.get("ok") is not True:
         error = (result or {}).get("error") or (
             f"candidate worker exited with code {process.returncode}"
         )
         raise RuntimeApiError("command_failed", str(error))
+
+
+def _raise_if_cancelled(observer) -> None:
+    callback = getattr(observer, "raise_if_cancelled", None)
+    if callable(callback):
+        callback()
+
+
+def _terminate_worker(process: subprocess.Popen) -> None:
+    """Reap a worker left running by cancellation or an observer failure."""
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
 
 
 def _replay_step_started(result_path: Path, step_by_name, observer, emitted: set[str]) -> None:
@@ -123,6 +141,11 @@ def _read_result(result_path: Path):
 
 def main() -> int:
     payload = json.loads(sys.stdin.read())
+    if sys.platform == "linux":
+        # RPC close can kill the parent without reaping this worker.
+        from .sta_parallel import _arm_parent_death_signal
+
+        _arm_parent_death_signal(payload["parent_pid"])
     result_path = Path(payload["result_path"])
     result = {"schema_version": RESULT_SCHEMA_VERSION, "ok": False, "steps": [], "error": None}
 

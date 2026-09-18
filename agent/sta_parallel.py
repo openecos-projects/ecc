@@ -35,11 +35,12 @@ def sta_workers(step) -> int:
     return int(value)
 
 
-def _arm_parent_death_signal():
+def _arm_parent_death_signal(parent_pid=None):
     import ctypes
 
     # RPC close can kill the parent without running its Python cleanup.
-    parent_pid = multiprocessing.parent_process().pid
+    if parent_pid is None:
+        parent_pid = multiprocessing.parent_process().pid
     libc = ctypes.CDLL(None, use_errno=True)
     if libc.prctl(1, signal.SIGKILL, 0, 0, 0) != 0:  # PR_SET_PDEATHSIG
         error = ctypes.get_errno()
