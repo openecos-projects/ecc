@@ -387,7 +387,11 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
         def reset(session: WorkspaceSession) -> dict:
             self._release_session_db(session)
             engine_flow = build_flow_for_workspace(session.workspace)
-            self._prepare_workspace_for_rerun(session.workspace, engine_flow)
+            self._prepare_workspace_for_rerun(
+                session.workspace,
+                engine_flow,
+                preserve_user_inputs=True,
+            )
             return {"directory": str(session.directory)}
 
         return self._with_session_mutation_lock(request.workspace_id, reset)
@@ -467,12 +471,14 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                         workspace_revision=reset_revision,
                     )
                 elif stale_step_ids:
+                    # Parameter saves already refreshed the workspace configs when
+                    # they invalidated these steps; re-refreshing here would
+                    # discard configuration the user saved in between.
                     affected_steps = [
                         step
                         for step in getattr(engine_flow, "workspace_steps", [])
                         if str(getattr(step, "name", "")) in stale_step_ids
                     ]
-                    self._refresh_workspace_config(session.workspace)
                     self._prepare_steps_for_rerun(
                         session.workspace,
                         engine_flow,
@@ -560,7 +566,9 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                 raise RuntimeApiError("command_failed", f"step not found: {request.step}")
             with manifest_run_status(session.directory):
                 if requires_preparation:
-                    self._refresh_workspace_config(session.workspace)
+                    # Parameter saves already refreshed the workspace configs when
+                    # they invalidated these steps; re-refreshing here would
+                    # discard configuration the user saved in between.
                     affected_steps = (
                         [
                             step

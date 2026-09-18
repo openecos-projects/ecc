@@ -724,10 +724,11 @@ def test_refresh_sync_and_reset_flow_use_session(monkeypatch, tmp_path):
         "chipcompiler.data.sync_workspace_config_to_parameters",
         lambda workspace, path: synced.append((workspace.directory, path)) or True,
     )
-    monkeypatch.setattr(
-        "chipcompiler.data.prepare_workspace_for_rerun",
-        lambda workspace, flow, **_kwargs: prepared.append((workspace.directory, flow)),
-    )
+
+    def prepare(workspace, flow, **kwargs):
+        prepared.append((workspace.directory, flow, kwargs.get("preserve_user_inputs")))
+
+    monkeypatch.setattr("chipcompiler.data.prepare_workspace_for_rerun", prepare)
     config_dir = ws / "config"
     config_dir.mkdir()
     config_path = config_dir / "route.json"
@@ -754,7 +755,7 @@ def test_refresh_sync_and_reset_flow_use_session(monkeypatch, tmp_path):
     assert reset == {"directory": str(ws.resolve())}
     assert refreshed == [ws.resolve(), ws.resolve()]
     assert synced == [(ws.resolve(), config_path.resolve())]
-    assert prepared == [(ws.resolve(), DummyFlow.instances[-1])]
+    assert prepared == [(ws.resolve(), DummyFlow.instances[-1], True)]
 
 
 def test_refresh_config_releases_active_session_db(monkeypatch, tmp_path):
@@ -1472,7 +1473,7 @@ def test_flow_run_step_sizer_exception_clears_closed_session_db(
     assert api.sessions.get_session(workspace_id).db_handle is None
 
 
-def test_flow_run_step_rerun_refreshes_before_db_init(monkeypatch, tmp_path):
+def test_flow_run_step_rerun_preserves_saved_config(monkeypatch, tmp_path):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     refreshed = []
 
@@ -1490,9 +1491,10 @@ def test_flow_run_step_rerun_refreshes_before_db_init(monkeypatch, tmp_path):
 
     flow = DummyFlow.instances[-1]
     assert result == {"step": "Floorplan", "state": "Success"}
-    assert refreshed == [ws.resolve()]
+    # Parameter saves refresh the configs themselves; a rerun must not
+    # re-refresh and discard configuration saved in between.
+    assert refreshed == []
     assert flow.call_order == [
-        ("refresh_config", ws.resolve()),
         ("init_db_engine",),
         ("run_step", "Floorplan", True),
     ]
