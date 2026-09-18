@@ -185,6 +185,23 @@ def _register_workspace(document: dict, mutation: dict, project: Path) -> None:
             == workspace_path
         )
         if same_id and same_path:
+            # The workspace is pre-registered at creation time; a later
+            # re-registration carrying branch metadata completes the entry
+            # instead of being swallowed by idempotency.
+            changed = False
+            for key in ("source_workspace_id", "branch_from"):
+                value = mutation.get(key)
+                if value is not None:
+                    existing[key] = deepcopy(value)
+                    changed = True
+            if changed:
+                timestamp = str(
+                    mutation.get("updated_at")
+                    or mutation.get("created_at")
+                    or datetime.now(UTC).isoformat()
+                )
+                existing["updated_at"] = timestamp
+                document["updated_at"] = timestamp
             return
         if same_id or same_path:
             raise ManifestError(f"Workspace registration conflicts with: {workspace_id}")
