@@ -100,5 +100,3 @@ def _backend_unavailable_knobs(knobs: list[dict[str, Any]], reason: str) -> list
         payload["unavailable_reason"] = reason
         unavailable.append(payload)
     return unavailable
-
-
