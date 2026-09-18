@@ -66,7 +66,10 @@ def run_cmd(
     overwrite: Annotated[bool, typer.Option("--overwrite")] = False,
     workspace: Annotated[
         str | None,
-        typer.Option("--workspace", help="Create, select, or resume a managed workspace"),
+        typer.Option(
+            "--workspace",
+            help="Create, select, or resume a workspace name or absolute path",
+        ),
     ] = None,
     resume: Annotated[
         bool,

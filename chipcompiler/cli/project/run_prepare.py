@@ -43,13 +43,14 @@ def resolve_manifest_run_target(command_input, ctx):
     manifest_invalid, workspace_required, or invalid_workspace.
     """
     from chipcompiler.cli.core.records import error_record
-    from chipcompiler.cli.project.manifest import load_manifest
+    from chipcompiler.project.manifest import load_manifest
 
     project_dir = ctx.project_dir
-    workspace_name = command_input.workspace
+    workspace_name = ctx.run_id
+    explicit_path = ctx.run_dir if ctx.workspace_path_explicit else None
 
     if ctx.project_state == "virgin":
-        run_name = workspace_name or ctx.run_id or "default"
+        run_name = workspace_name or "default"
         if invalid_workspace_name(run_name):
             return CommandResult.err(
                 [
@@ -60,7 +61,7 @@ def resolve_manifest_run_target(command_input, ctx):
                     )
                 ]
             )
-        return (os.path.join(project_dir, run_name), run_name, False, [])
+        return (explicit_path or os.path.join(project_dir, run_name), run_name, False, [])
 
     if ctx.manifest_error and ctx.manifest_error.startswith("manifest_invalid"):
         return CommandResult.err([error_record("manifest_invalid", reason=ctx.manifest_error)])
@@ -77,6 +78,19 @@ def resolve_manifest_run_target(command_input, ctx):
         return (os.path.join(project_dir, "default"), "default", False, [])
 
     if match is not None:
+        if explicit_path is not None and os.path.realpath(match.workspace_path) != os.path.realpath(
+            explicit_path
+        ):
+            return CommandResult.err(
+                [
+                    error_record(
+                        "workspace_id_conflict",
+                        workspace_id=workspace_name,
+                        workspace=explicit_path,
+                        reason=f"workspace is already declared at {match.workspace_path}",
+                    )
+                ]
+            )
         return (match.workspace_path, match.workspace_id, True, [])
 
     if invalid_workspace_name(workspace_name):
@@ -93,7 +107,8 @@ def resolve_manifest_run_target(command_input, ctx):
     # path would operate that workspace under an alias the document never
     # spelled — bypassing its registration and status write-back. Refuse
     # and name the declared selector instead.
-    candidate_real = os.path.realpath(os.path.join(project_dir, workspace_name))
+    candidate_path = explicit_path or os.path.join(project_dir, workspace_name)
+    candidate_real = os.path.realpath(candidate_path)
     for workspace in manifest.workspaces:
         if os.path.realpath(workspace.workspace_path) == candidate_real:
             return CommandResult.err(
@@ -106,7 +121,7 @@ def resolve_manifest_run_target(command_input, ctx):
                     )
                 ]
             )
-    return (os.path.join(project_dir, workspace_name), workspace_name, False, [])
+    return (candidate_path, workspace_name, False, [])
 
 
 def _workspace_failed_result(run_name: str, run_dir: str, reason: str | None) -> CommandResult:
@@ -142,7 +157,7 @@ def _fresh_entry_step_name(cfg, flow_config) -> str | None:
 def _write_back_status(project_dir: str, run_name: str, status: str, warning_records: list) -> None:
     """Best-effort manifest status write-back; degrades to a warning."""
     from chipcompiler.cli.core.records import warning_record
-    from chipcompiler.cli.project.manifest_write import write_back_workspace_status
+    from chipcompiler.project.manifest_write import write_back_workspace_status
 
     if not write_back_workspace_status(project_dir, run_name, status):
         warning_records.append(
@@ -317,7 +332,7 @@ def execute_fresh_run(
         elif registration_created and backup_path is not None:
             # This invocation pre-registered an undeclared workspace and then
             # restored the previous tree: the fresh entry must not shadow it.
-            from chipcompiler.cli.project.manifest_write import remove_workspace_registration
+            from chipcompiler.project.manifest_write import remove_workspace_registration
 
             remove_workspace_registration(project_dir, run_name)
 

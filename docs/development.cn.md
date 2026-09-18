@@ -291,7 +291,7 @@ chipcompiler/engine/qor_report.py # CLI QoR facade，委托 analysis.qor
    execute_command("check", command_input, project_handlers.check)
    ```
 3. `core/invocation.py::execute_command()`（`cli/core/invocation.py`）依次：
-   - `build_context()`：解析项目目录（`--project`，缺省为 cwd）→ 读项目唯一的 `ecc.toml`（不可读时记入 `config_error`）→ `cli/project/manifest.py::classify_project()` 判定项目形态（manifest / legacy / virgin）。manifest 项目只从 `project.json` workspace 表解析 `--workspace NAME`：唯一活跃 workspace 自动选中，多个时必须选择；新的 `ecc run --workspace NAME` 会在创建文件前登记。`--workspace` 是项目内单路径段名称，不是直接路径。legacy 项目必须先迁移才能 `ecc run`；清单损坏为 `manifest_invalid`。随后由 `--plain` 推导 `OutputMode`，组装成带 `project_state` / `manifest_error` 字段的 `CommandContext`（`cli/core/types.py`）。
+   - `build_context()`：解析项目目录（`--project`，缺省为 cwd）→ 读项目唯一的 `ecc.toml`（不可读时记入 `config_error`）→ `cli/project/manifest.py::classify_project()` 判定项目形态（manifest / legacy / virgin）。manifest 项目用单段 `--workspace NAME` 从 `project.json` workspace 表解析；绝对 `--workspace PATH` 则先规范化为项目外路径，并优先按路径匹配，再按 basename 推导新 ID。唯一活跃 workspace 自动选中，多个时必须选择；新的 run workspace 会在创建文件前登记。legacy 项目必须先迁移才能 `ecc run`；清单损坏为 `manifest_invalid`。随后由 `--plain` 推导 `OutputMode`，并在 `CommandContext`（`cli/core/types.py`）中记录是否为显式路径选择器以及 `project_state` / `manifest_error`。
    - 调 handler：`handler(command_input, ctx) -> CommandResult`。
    - handler 返回后按需追加记录（`_with_legacy_hint` / `_with_config_shadow_hint`）：legacy 项目的 `run/check/status` 附加迁移提示（指向 `ecc migrate`）；workspace 的 `home/` 同时存在 `params.toml` 与旧 `parameters.json` 时打 `workspace_config_shadowed` 警告（旧 JSON 已失效）。
    - 渲染：`rendering/renderers.py::render_command_result()` 先查 `RENDERERS[(render_key, output_mode)]` 定制渲染器，没有则落到通用 `rendering/render.py::render_result()`。
@@ -411,8 +411,14 @@ config_param(
 
 `run` 有两条互斥路径（`cli/command_handlers/project.py` 的 `run()` / `_run_workspace()`）：
 
-- **新建 workspace**：解析 `[design]` 输入声明、PDK、参数与请求入口步骤；只校验入口步骤所需文件；先原子登记受管名称到 `project.json`（`not_started`）；预检工具；在 `<project>/<workspace 名称>` 调用 `create_workspace`。`create_workspace` 将输入复制到 `origin/` 并产出全部步骤配置，CLI 后续不改写配置。正常新建 flow 用 preset；`--from A --to B` 改用 `rtl2gds.build_flow_range(A, B)` 动态构建包含式规范范围。新范围不能与 `--preset`、`--overwrite`、`--resume`、`--only`、`--force` 组合。
+- **新建 workspace**：解析 `[design]` 输入声明、PDK、参数与请求入口步骤；只校验入口步骤所需文件；先原子登记受管名称到 `project.json`（`not_started`）；预检工具；名称选择器默认在 `<project>/<workspace 名称>` 调用 `create_workspace`，绝对路径选择器则使用该精确项目外目录。`create_workspace` 将输入复制到 `origin/` 并产出全部步骤配置，CLI 后续不改写配置。正常新建 flow 用 preset；`--from A --to B` 改用 `rtl2gds.build_flow_range(A, B)` 动态构建包含式规范范围。新范围不能与 `--preset`、`--overwrite`、`--resume`、`--only`、`--force` 组合。
 - **已有 workspace**：先由 `chipcompiler/engine/reconcile.py` 把持久化 flow 与目标对齐（前缀 → 追加扩展；超集且全成 → `no_op`；分叉 → `flow_mismatch`），再 `load_workspace` 后由 `chipcompiler.engine.rerun` 的 `run_resume`、`run_from` 或 `run_only` 原地复跑。`--from A --to B` 是已有 flow 的包含式范围，会将其后的步骤状态失效但保留其输出文件。已有 workspace 不会重新预检输入，也不会改写已复制输入或配置。
+
+`ecc workspace import NAME --path /absolute/workspace` 通过
+`cli/project/workspace_registration.py` 校验持久化的 workspace 身份、flow 范围、
+状态和参数差异，再把规范路径原子登记到 `project.json`。显式
+绝对路径形式的 `ecc run --workspace /absolute/workspace` 遇到未登记的已有 workspace 时复用同一服务。登记后所有命令都
+通过 manifest 按 ID 解析外部目录，不再接受第二个路径覆盖。
 
 项目 preset 的步骤序列定义在 `chipcompiler/rtl2gds/builder.py`（`build_*_flow()` / `get_flow_builders()`），不在 CLI 层。`build_flow_range()` 对规范的 `build_rtl2gds_flow()` 结果切片，步骤别名和顺序只有一份来源。修改序列时须同步引擎默认 flow、`StepEnum` 与 manifest 范围映射；CLI 只负责参数解析、输入契约、进度渲染选择与结果映射。交互式 TTY 的 `ecc run` 走 `run_flow_with_progress()`，`--plain` 与 GUI 走 `execute()`；两条路径挂同一套 Engineering Snapshot 提交 observer，每完成一步都会更新 `home/engineering-snapshot.json`。
 

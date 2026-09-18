@@ -64,11 +64,10 @@ def _resolves_as_spelled(path: str, anchor: str) -> bool:
 
 
 def _existing_target_guard(run_dir: str, project_dir: str, run_name: str) -> CommandResult | None:
-    """Reject an existing run target that escapes the project.
+    """Reject an existing run target that is linked or malformed.
 
-    A symlinked run target (or one whose home/flow.json is itself linked)
-    must never be executed or mutated in place of a project-owned run:
-    fail loud instead of touching the external workspace it points at.
+    External workspaces are valid, but their resolved path must match the
+    supplied spelling and their metadata boundary must not use symlinks.
     """
     from chipcompiler.cli.core.records import error_record
 
@@ -79,7 +78,7 @@ def _existing_target_guard(run_dir: str, project_dir: str, run_name: str) -> Com
                     "run_target_unsafe",
                     workspace_id=run_name,
                     workspace=run_dir,
-                    reason="existing target is not an ECC workspace directory inside the project",
+                    reason="existing target is not a canonical ECC workspace directory",
                 )
             ]
         )
@@ -110,7 +109,14 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
 
     project_dir = ctx.project_dir
     backup_path = None
-    if command_input.overwrite and os.path.lexists(run_dir):
+    empty_target = False
+    if os.path.isdir(run_dir) and not os.path.islink(run_dir):
+        try:
+            empty_target = not os.listdir(run_dir)
+        except OSError:
+            empty_target = False
+    use_existing_empty_target = ctx.workspace_path_explicit and empty_target
+    if (command_input.overwrite or use_existing_empty_target) and os.path.lexists(run_dir):
         if not _resolves_as_spelled(run_dir, project_dir) or not _is_ecc_run_dir(run_dir):
             return CommandResult.err(
                 [
@@ -189,7 +195,7 @@ def _stale_project_state(project_dir: str, expected: str) -> CommandResult | Non
     refuses with a retry hint instead of splitting the project.
     """
     from chipcompiler.cli.core.records import error_record
-    from chipcompiler.cli.project.manifest import classify_project
+    from chipcompiler.project.manifest import classify_project
 
     if classify_project(project_dir) == expected:
         return None
@@ -310,6 +316,58 @@ def dispatch_project_run(
                 unsafe = _existing_target_guard(run_dir, project_dir, run_name)
                 if unsafe is not None:
                     return unsafe
+                if not workspace_registered and ctx.workspace_path_explicit:
+                    from chipcompiler.cli.core.records import error_record
+                    from chipcompiler.cli.project.config import resolve_pdk_root
+                    from chipcompiler.cli.project.workspace_registration import (
+                        WorkspaceRegistrationError,
+                        register_existing_workspace,
+                    )
+
+                    try:
+                        registration, _metadata = register_existing_workspace(
+                            project_dir,
+                            cfg=cfg,
+                            pdk_root=resolve_pdk_root(cfg),
+                            workspace_id=run_name,
+                            workspace_path=run_dir,
+                            project_lock_held=True,
+                        )
+                    except WorkspaceRegistrationError as exc:
+                        return CommandResult.err(
+                            [
+                                error_record(
+                                    exc.code,
+                                    workspace_id=run_name,
+                                    workspace=run_dir,
+                                    reason=str(exc),
+                                )
+                            ]
+                        )
+                    if registration.startswith("conflict"):
+                        return CommandResult.err(
+                            [
+                                error_record(
+                                    "workspace_conflict",
+                                    workspace_id=run_name,
+                                    workspace=run_dir,
+                                )
+                            ]
+                        )
+                    if registration not in ("registered", "existing"):
+                        return CommandResult.err(
+                            [
+                                error_record(
+                                    "workspace_registration_failed",
+                                    workspace_id=run_name,
+                                    workspace=run_dir,
+                                )
+                            ]
+                        )
+                    workspace_registered = True
+                    # This execution must use the imported workspace's own
+                    # persisted range, not the project's fresh-run preset.
+                    cfg.manifest_driven = True
             else:
                 prepared = _prepare_run_target(command_input, ctx, run_dir, run_name, ws_locks)
                 if isinstance(prepared, CommandResult):
@@ -318,7 +376,7 @@ def dispatch_project_run(
                 if not workspace_registered:
                     from chipcompiler.cli.core.records import error_record
                     from chipcompiler.cli.project.config import resolve_pdk_root
-                    from chipcompiler.cli.project.manifest_write import pre_register_workspace
+                    from chipcompiler.project.manifest_write import pre_register_workspace
 
                     registration = pre_register_workspace(
                         project_dir,
@@ -328,7 +386,7 @@ def dispatch_project_run(
                         workspace_path=run_dir,
                         flow_config=flow_config,
                     )
-                    if registration == "conflict":
+                    if registration.startswith("conflict"):
                         _abandon_prepared_target(backup_path, run_dir, owns_target=owns_target)
                         return CommandResult.err(
                             [
@@ -339,7 +397,7 @@ def dispatch_project_run(
                                 )
                             ]
                         )
-                    if registration != "registered":
+                    if registration not in ("registered", "existing"):
                         _abandon_prepared_target(backup_path, run_dir, owns_target=owns_target)
                         return CommandResult.err(
                             [
@@ -351,7 +409,7 @@ def dispatch_project_run(
                             ]
                         )
                     workspace_registered = True
-                    created_registration = True
+                    created_registration = registration == "registered"
         if existing:
             # Manifest workspaces live outside runs/ — migration never moves
             # them, so the engine must not pin the shared lock for its whole

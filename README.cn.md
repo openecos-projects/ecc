@@ -136,6 +136,19 @@ ecc status --project gcd
 ecc log --project gcd
 ```
 
+默认情况下，具名 workspace 创建在 `<project>/<workspace-id>`。如需在项目外部的
+精确目录创建或选择 workspace，请把绝对路径直接作为 `--workspace` 选择器：
+
+```bash
+ecc run --project gcd --workspace /data/ecc/gcd/experiment
+ecc workspace import recovered --project gcd --path /archive/ecc/gcd/recovered
+ecc run --project gcd --workspace recovered --resume
+```
+
+对 `ecc run` 而言，单段字符串是 workspace 名称，继续使用项目内目录；绝对路径
+是项目外 workspace 路径。新路径默认以目录 basename 作为 workspace ID；如果路径已经
+登记，则沿用清单中的 ID。规范路径会登记到 `project.json`，后续可按登记的 ID 选择。
+
 ## CLI 命令
 
 运行 `ecc --help`（或 `ecc <command> --help`）查看完整用法。常用命令：
@@ -154,7 +167,7 @@ ecc log --project gcd
 | `ecc param` | 管理参数覆盖（`list`、`show`、`set`、`unset`、`diff`） |
 | `ecc pdk` | 管理 PDK 路径（`set-root`、`show`、`unset`） |
 | `ecc project` | 编辑 `ecc.toml` 中的项目声明（`set`、`unset`、`add`、`remove`、`show`） |
-| `ecc workspace` | 从项目配置刷新受管 workspace |
+| `ecc workspace` | 导入已有 workspace，或从项目配置刷新受管 workspace |
 | `ecc signoff` | 检查签核就绪度并导出签核包 |
 | `ecc report` | 生成设计总结、QoR、签核清单和步骤报告 |
 | `ecc version` | 显示 ECC 运行时和组件版本 |

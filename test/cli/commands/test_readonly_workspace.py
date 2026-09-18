@@ -59,15 +59,24 @@ class TestWorkspaceSelection:
 
 class TestInvalidWorkspace:
     @pytest.mark.parametrize("command", (["status"], ["log"], ["config"]))
-    def test_workspace_path_is_not_a_name(self, tmp_path, capsys, command, plain_records):
+    def test_absolute_workspace_path_is_selected(self, tmp_path, capsys, command, plain_records):
         absent = str(tmp_path / "absent")
 
         rc = cli_main.run([*command, "--workspace", absent, "--plain"])
 
         record = plain_records(capsys.readouterr().out)[0]
-        assert rc == 1
-        assert record["error"] == "invalid_workspace"
-        assert record["reason"] == f"invalid_workspace: {absent!r} is not a single workspace name"
+        if command == ["status"]:
+            assert rc == 1
+            assert record["workspace_id"] == "absent"
+            assert record["status"] == "missing"
+            assert record["workspace"] == absent
+        elif command == ["log"]:
+            assert rc == 0
+            assert record["log_status"] == "no_logs"
+            assert record["workspace"] == absent
+        else:
+            assert rc == 1
+            assert record["error"] == "missing_config"
 
 
 class TestWorkspaceViews:

@@ -223,6 +223,14 @@ class WorkspaceRefreshInput:
 
 
 @dataclass(frozen=True)
+class WorkspaceImportInput:
+    output: OutputOptions
+    project: ProjectOptions
+    workspace: str
+    path: str
+
+
+@dataclass(frozen=True)
 class MacroSetInput:
     output: OutputOptions
     project: ProjectOptions

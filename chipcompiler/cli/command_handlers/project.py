@@ -3,7 +3,13 @@ import os
 
 from typing_extensions import deprecated
 
-from chipcompiler.cli.core.inputs import CheckInput, InitInput, MigrateInput, RunInput
+from chipcompiler.cli.core.inputs import (
+    CheckInput,
+    InitInput,
+    MigrateInput,
+    RunInput,
+    WorkspaceImportInput,
+)
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
@@ -204,6 +210,8 @@ def _preflight_environment(
     from chipcompiler.cli.inspection import env_probe
     from chipcompiler.rtl2gds import resolve_skip_steps
 
+    if preset is None:
+        return None
     skip = resolve_skip_steps(flow_config)
     probes = env_probe.probe_environment(env_probe.probe_components_for_preset(preset, skip=skip))
     return _preflight_failures(probes, project, preset)
@@ -306,6 +314,102 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
     return _run_project(refresh_input, ctx, execute_flow=False)
 
 
+def import_workspace(command_input: WorkspaceImportInput, ctx: CommandContext) -> CommandResult:
+    """Register an existing workspace without opening or changing it."""
+    if ctx.project_state == "legacy":
+        return CommandResult.err([error_record("legacy_workspace_migration_required")])
+    if ctx.manifest_error:
+        return CommandResult.err(
+            [
+                error_record(
+                    ctx.manifest_error.split(":", 1)[0],
+                    reason=ctx.manifest_error,
+                )
+            ]
+        )
+    cfg = ctx.config
+    if cfg is None and ctx.project_state != "manifest":
+        return CommandResult.err(
+            [
+                error_record(
+                    "missing_config",
+                    path=os.path.join(ctx.project_dir, "ecc.toml"),
+                )
+            ]
+        )
+
+    if ctx.project_state == "manifest":
+        from chipcompiler.cli.project import effective_config
+
+        resolved = effective_config.resolve_effective_config(ctx, command_input.workspace, cfg)
+        if isinstance(resolved, CommandResult):
+            return resolved
+        cfg, _flow_config, warnings = resolved
+    else:
+        warnings = []
+    assert cfg is not None
+
+    from chipcompiler.cli.project.config import resolve_pdk_root
+    from chipcompiler.cli.project.workspace_registration import (
+        WorkspaceRegistrationError,
+        register_existing_workspace,
+    )
+
+    try:
+        outcome, metadata = register_existing_workspace(
+            ctx.project_dir,
+            cfg=cfg,
+            pdk_root=resolve_pdk_root(cfg),
+            workspace_id=command_input.workspace,
+            workspace_path=ctx.run_dir,
+        )
+    except WorkspaceRegistrationError as exc:
+        return CommandResult.err(
+            [
+                error_record(
+                    exc.code,
+                    workspace_id=command_input.workspace,
+                    workspace=ctx.run_dir,
+                    reason=str(exc),
+                )
+            ]
+        )
+
+    if outcome.startswith("conflict"):
+        return CommandResult.err(
+            [
+                error_record(
+                    "workspace_conflict",
+                    workspace_id=command_input.workspace,
+                    workspace=ctx.run_dir,
+                )
+            ]
+        )
+    if outcome not in ("registered", "existing"):
+        return CommandResult.err(
+            [
+                error_record(
+                    "workspace_registration_failed",
+                    workspace_id=command_input.workspace,
+                    workspace=ctx.run_dir,
+                )
+            ]
+        )
+
+    return CommandResult.ok(
+        warnings
+        + [
+            {
+                "workspace_id": command_input.workspace,
+                "registration": "imported" if outcome == "registered" else "already_registered",
+                "status": metadata.status,
+                "workspace": ctx.run_dir,
+                "run_cmd": disclosure_cmd("ecc run", ctx.project, command_input.workspace),
+            }
+        ]
+    )
+
+
 def _run_project(
     command_input: RunInput, ctx: CommandContext, *, execute_flow: bool
 ) -> CommandResult:
@@ -373,7 +477,7 @@ def _run_project(
     from chipcompiler.cli.project.effective_config import flow_config_selects_steps
 
     if ctx.project_state == "manifest":
-        resolved_cfg = effective_config.resolve_effective_config(ctx, command_input.workspace, cfg)
+        resolved_cfg = effective_config.resolve_effective_config(ctx, ctx.run_id, cfg)
         if isinstance(resolved_cfg, CommandResult):
             return resolved_cfg
         cfg, flow_config, entry_warnings = resolved_cfg
@@ -389,6 +493,8 @@ def _run_project(
             else None
         )
         flow_config = _attach_skip_steps(flow_config, skip_steps)
+
+    assert cfg is not None
 
     flow_builders = rtl2gds_api.get_flow_builders()
     effective_preset = command_input.preset or cfg.flow_preset
@@ -430,12 +536,12 @@ def _run_project(
         if skip_policy is not None:
             flow_config["skip_steps"] = skip_policy
 
-    cli_overrides = {}
+    cli_overrides: dict[str, object] = {}
     raw_sets = command_input.param_set
     if raw_sets:
         from chipcompiler.cli.project.params import parse_cli_overrides
 
-        cli_overrides, set_errors = parse_cli_overrides(raw_sets)
+        cli_overrides, set_errors = parse_cli_overrides(list(raw_sets))
         if set_errors:
             return CommandResult.err(
                 [
@@ -567,10 +673,14 @@ def _run_project(
         if preflight is not None:
             return preflight
 
-    if not fresh_target and (
-        command_input.resume
-        or command_input.from_step is not None
-        or command_input.only is not None
+    if (
+        not fresh_target
+        and not ctx.workspace_path_explicit
+        and (
+            command_input.resume
+            or command_input.from_step is not None
+            or command_input.only is not None
+        )
     ):
         return _run_workspace(command_input, ctx)
 

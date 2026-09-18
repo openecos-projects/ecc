@@ -114,6 +114,7 @@ def test_run_help_documents_fresh_run_override_rule(capsys):
 
     out = capsys.readouterr().out
     assert rc == 0
+    assert "--path" not in out
     assert "set_requires_fresh_run" in out
     assert "cli-param-overrides.json" in out
 

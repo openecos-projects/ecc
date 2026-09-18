@@ -141,6 +141,22 @@ ecc status --project gcd
 ecc log --project gcd
 ```
 
+By default, named workspaces are created at `<project>/<workspace-id>`. To
+create or select one at an exact external directory, pass the absolute path as
+the `--workspace` selector:
+
+```bash
+ecc run --project gcd --workspace /data/ecc/gcd/experiment
+ecc workspace import recovered --project gcd --path /archive/ecc/gcd/recovered
+ecc run --project gcd --workspace recovered --resume
+```
+
+For `ecc run`, a single-segment value is a workspace name and keeps the
+project-local layout; an absolute value is an external workspace path. The
+path basename is used as the new workspace ID unless the path is already
+registered. `project.json` records the canonical path, so later commands can
+select the workspace by its registered ID.
+
 ## CLI Commands
 
 Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
@@ -159,7 +175,7 @@ Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 | `ecc param` | Manage parameter overrides (`list`, `show`, `set`, `unset`, `diff`) |
 | `ecc pdk` | Manage the PDK path (`set-root`, `show`, `unset`) |
 | `ecc project` | Edit project declarations in `ecc.toml` (`set`, `unset`, `add`, `remove`, `show`) |
-| `ecc workspace` | Refresh managed workspaces from project configuration |
+| `ecc workspace` | Import existing workspaces or refresh them from project configuration |
 | `ecc signoff` | Inspect readiness and export the signoff package |
 | `ecc report` | Write design-summary, QoR, checklist, and step reports |
 | `ecc version` | Show ECC runtime and component versions |

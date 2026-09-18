@@ -21,6 +21,8 @@ class CommandContext:
     # project.json manifest state: "manifest" | "legacy" | "virgin" | None
     project_state: str | None = None
     manifest_error: str | None = None
+    # ``--workspace`` may be either a managed ID or an absolute external path.
+    workspace_path_explicit: bool = False
 
 
 @dataclass(frozen=True)

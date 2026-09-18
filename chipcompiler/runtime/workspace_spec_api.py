@@ -94,6 +94,8 @@ class WorkspaceSpecRuntimeMixin:
                 raise RuntimeApiError("project_manifest_invalid", str(exc)) from exc
         now = str(mutation.get("now") or datetime.now(UTC).isoformat())
         source = mutation.get("input") if isinstance(mutation.get("input"), dict) else mutation
+        if kind == "import-workspace":
+            return self._import_project_workspace(request.project_root, source)
         translated = {
             "type": str(kind).replace("-", "_"),
             **{
@@ -139,6 +141,67 @@ class WorkspaceSpecRuntimeMixin:
             )
         try:
             return mutate_project_manifest(request.project_root, translated)
+        except (OSError, ValueError) as exc:
+            raise RuntimeApiError("project_manifest_invalid", str(exc)) from exc
+
+    def _import_project_workspace(self, project_root: str, source: dict) -> dict:
+        from chipcompiler.cli.project.workspace_registration import (
+            WorkspaceRegistrationError,
+            import_managed_workspace,
+        )
+        from chipcompiler.project import load_project_manifest
+
+        workspace_path = str(source.get("workspacePath") or "").strip()
+        if not workspace_path:
+            raise RuntimeApiError("invalid_request", "import-workspace requires a workspacePath")
+        try:
+            manifest = load_project_manifest(project_root)
+        except (OSError, ValueError) as exc:
+            raise RuntimeApiError("project_manifest_invalid", str(exc)) from exc
+        project_dir = str(manifest["root_path"])
+        target = Path(workspace_path).expanduser()
+        resolved = target if target.is_absolute() else Path(project_dir) / target
+        resolved = resolved.resolve()
+        workspace_id = str(source.get("workspaceId") or "").strip() or resolved.name
+        if not workspace_id:
+            raise RuntimeApiError(
+                "workspace_not_importable",
+                "import-workspace workspacePath has no usable directory name",
+            )
+        base_design = manifest.get("base_design")
+        if not isinstance(base_design, dict):
+            base_design = {}
+        base_parameters = base_design.get("parameters")
+        try:
+            outcome, _metadata = import_managed_workspace(
+                project_dir,
+                design_name=str(manifest.get("design_name") or ""),
+                workspace_id=workspace_id,
+                workspace_path=str(resolved),
+                expected_pdk=str(base_design.get("pdk") or ""),
+                base_parameters=base_parameters if isinstance(base_parameters, dict) else {},
+            )
+        except WorkspaceRegistrationError as exc:
+            raise RuntimeApiError(exc.code, str(exc)) from exc
+        except (OSError, ValueError) as exc:
+            raise RuntimeApiError("project_manifest_invalid", str(exc)) from exc
+        if outcome == "conflict_id":
+            raise RuntimeApiError(
+                "workspace_id_conflict",
+                f"Workspace ID {workspace_id} is already registered at another path.",
+            )
+        if outcome == "conflict_path":
+            raise RuntimeApiError(
+                "workspace_path_conflict",
+                f"Workspace path is already registered as another workspace: {resolved}",
+            )
+        if outcome not in ("registered", "existing"):
+            raise RuntimeApiError(
+                "workspace_registration_failed",
+                f"Workspace import failed: {workspace_id}",
+            )
+        try:
+            return load_project_manifest(project_dir)
         except (OSError, ValueError) as exc:
             raise RuntimeApiError("project_manifest_invalid", str(exc)) from exc
 
