@@ -2,6 +2,60 @@ from .common import config_param
 
 SCHEMAS = (
     config_param(
+        "sta.liberty",
+        "sta",
+        ("liberty",),
+        [
+            {
+                "corner": "MAX",
+                "temperature": 125,
+                "path": [
+                    "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib",
+                    "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CL/liberty/ics55_LLSC_H7CL_ss_rcworst_1p08_125_nldm.lib",
+                ],
+            },
+            {
+                "corner": "WCL",
+                "temperature": -40,
+                "path": [
+                    "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ss_cworst_1p08_m40_nldm.lib",
+                    "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CL/liberty/ics55_LLSC_H7CL_ss_cworst_1p08_m40_nldm.lib",
+                ],
+            },
+            {
+                "corner": "TYP",
+                "temperature": 25,
+                "path": [
+                    "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_typ_tt_1p2_25_nldm.lib",
+                    "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CL/liberty/ics55_LLSC_H7CL_typ_tt_1p2_25_nldm.lib",
+                ],
+            },
+            {
+                "corner": "MIN",
+                "temperature": -40,
+                "path": [
+                    "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ff_rcbest_1p32_m40_nldm.lib",
+                    "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CL/liberty/ics55_LLSC_H7CL_ff_rcbest_1p32_m40_nldm.lib",
+                ],
+            },
+            {
+                "corner": "ML",
+                "temperature": 125,
+                "path": [
+                    "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ff_cbest_1p32_125_nldm.lib",
+                    "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CL/liberty/ics55_LLSC_H7CL_ff_cbest_1p32_125_nldm.lib",
+                ],
+            },
+        ],
+        applies="sta",
+        description=(
+            "Liberty corner groups analyzed by STA. Each entry is "
+            "{corner, temperature, path}; relative paths are expanded "
+            "against the PDK root on config refresh."
+        ),
+        type="json",
+    ),
+    config_param(
         "sta.signoff",
         "sta",
         ("signoff",),
