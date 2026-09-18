@@ -18,6 +18,7 @@ from .candidate_artifacts import (
     write_json_atomic,
 )
 from .candidate_registry import (
+    FLOORPLAN_TARGET_FLOW_STEP,
     CandidateKnob,
     candidate_knob_registry,
     candidate_registry_digest,
@@ -83,9 +84,16 @@ def reapply_materialized_candidate_config(
     if not receipt_path.exists():
         return None
     receipt = _read_receipt(receipt_path)
-    if receipt["target_step"] != target_step:
+    receipt_target = receipt["target_step"]
+    # The "Floorplan" receipt names the shared phase configuration, not a
+    # flow step; a flow running the split phase re-applies it when its
+    # first sub-step executes (same alias as candidate_input_binding).
+    if (
+        receipt_target != target_step
+        and FLOORPLAN_TARGET_FLOW_STEP.get(receipt_target) != target_step
+    ):
         return None
-    _validate_receipt_binding(workspace, target_step, receipt)
+    _validate_receipt_binding(workspace, receipt_target, receipt)
     _verify_config_snapshot_hashes(workspace, receipt["snapshots"])
     snapshots = {entry["config_key"]: entry for entry in receipt["snapshots"]}
     for entry in receipt["configs"]:
