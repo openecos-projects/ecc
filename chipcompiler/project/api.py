@@ -177,7 +177,12 @@ def _register_workspace(document: dict, mutation: dict, project: Path) -> None:
     for existing in document.get("workspaces", []):
         same_id = existing.get("workspace_id") == workspace_id
         same_path = (
-            _resolve_workspace(project, str(existing.get("workspace_path", ""))) == workspace_path
+            _resolve_workspace(
+                project,
+                str(existing.get("workspace_path", "")),
+                require_inside=False,
+            )
+            == workspace_path
         )
         if same_id and same_path:
             return
@@ -281,10 +286,17 @@ def _required_string(value: dict, key: str) -> str:
     return result.strip()
 
 
-def _resolve_workspace(project: Path, declared: str) -> Path:
+def _resolve_workspace(
+    project: Path,
+    declared: str,
+    *,
+    require_inside: bool = True,
+) -> Path:
     workspace = Path(declared)
     workspace = workspace if workspace.is_absolute() else project / workspace
     resolved = workspace.resolve()
+    if not require_inside:
+        return resolved
     try:
         resolved.relative_to(project)
     except ValueError as exc:

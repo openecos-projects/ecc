@@ -9,6 +9,7 @@ from chipcompiler.project import (
     load_project_manifest,
     mutate_project_manifest,
 )
+from chipcompiler.project.manifest_write import append_workspace_entry
 
 
 def test_domain_created_manifest_is_cli_readable(tmp_path):
@@ -53,6 +54,38 @@ def test_register_workspace_uses_main_manifest_shape(tmp_path):
     assert updated == load_project_manifest(tmp_path)
     assert updated["workspaces"][0]["start_step"] == "Synth"
     assert updated["workspaces"][0]["end_step"] == "Synth"
+
+
+def test_register_workspace_allows_existing_external_workspace(tmp_path):
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+    external = tmp_path.parent / "external" / "workspace"
+    assert (
+        append_workspace_entry(
+            str(tmp_path),
+            workspace_id="external",
+            name="External",
+            workspace_path=str(external),
+            start_step="Synth",
+            end_step="Harden",
+            status="success",
+        )
+        == "registered"
+    )
+
+    updated = mutate_project_manifest(
+        tmp_path,
+        {
+            "type": "register_workspace",
+            "workspace_id": "ws_0009",
+            "workspace_path": str(tmp_path / "ws_0009"),
+            "name": "ws_0009",
+        },
+    )
+
+    assert [entry["workspace_id"] for entry in updated["workspaces"]] == [
+        "external",
+        "ws_0009",
+    ]
 
 
 def test_manifest_mutation_without_timestamp_keeps_audit_timestamp(tmp_path):
