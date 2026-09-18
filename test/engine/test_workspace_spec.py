@@ -58,6 +58,11 @@ def test_workspace_spec_discovery_and_validation_are_canonical_and_side_effect_f
         "design.frequency_mhz",
         "floorplan.core_util",
     }
+    flows = {flow["flowId"]: flow for flow in discovery["flowDefinitions"]}
+    rtl2gds = flows["rtl2gds"]
+    assert set(rtl2gds["skippableStepIds"]) == {"lec", "postRouteLec", "Timing optimization"}
+    assert set(rtl2gds["skippableStepIds"]) <= set(rtl2gds["stepIds"])
+    assert rtl2gds["defaultSkippedStepIds"] == ["lec"]
     assert result["issues"] == []
     assert result["resolvedWorkspaceSpec"]["parameters"]["design.frequency_mhz"] == 200.0
     assert result["resolvedWorkspaceSpec"]["parameters"]["floorplan.core_util"] == 0.4

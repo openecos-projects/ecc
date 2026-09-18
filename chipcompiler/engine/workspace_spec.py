@@ -2,6 +2,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from chipcompiler.data import DEFAULT_SKIP_STEPS, StepBaseEnum
 from chipcompiler.data.parameter_schema import list_schemas, resolve_parameters
 from chipcompiler.engine.pdk_binding import pdk_binding_content_hash
 from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
@@ -17,9 +18,24 @@ _SPEC_FIELDS = frozenset(
 
 def describe_workspace_spec() -> dict[str, Any]:
     flows = []
+    default_skip = set(DEFAULT_SKIP_STEPS)
     for flow_id, builder in sorted(get_flow_builders().items()):
-        steps = [_enum_value(step) for step, _tool, _state in builder()]
-        flows.append({"flowId": flow_id, "stepIds": steps})
+        built = builder()
+        step_ids = [_enum_value(step) for step, _tool, _state in built]
+        flows.append(
+            {
+                "flowId": flow_id,
+                "stepIds": step_ids,
+                "skippableStepIds": [
+                    _enum_value(step)
+                    for step, _tool, _state in built
+                    if isinstance(step, StepBaseEnum) and step.is_skippable()
+                ],
+                # Steps ECC excludes when the workspace declares no skip_steps
+                # policy (what GUI-created workspaces get).
+                "defaultSkippedStepIds": [step for step in step_ids if step in default_skip],
+            }
+        )
     return {
         "schemaVersion": SCHEMA_VERSION,
         "parameterCatalog": [
