@@ -18,6 +18,20 @@ nix develop
 If Nix is not available, run the same `uv sync` commands in your normal shell
 after installing the required system packages for native builds.
 
+The Nix shell also provides pinned **lit** / **filecheck** and wrappers for the
+signoff CI scripts (versions in [`nix/signoff-tools.nix`](../nix/signoff-tools.nix);
+flake wiring in [`nix/signoff.nix`](../nix/signoff.nix)):
+
+```bash
+nix run .#filecheck -- --help
+nix run .#ci-run-ics55-gcd -- --help
+nix run .#ci-export-signoff-csv -- --help
+nix run .#ci-check-signoff-csv -- --help
+```
+
+CSV CI entrypoints are shell scripts (see [signoff-testing.md](signoff-testing.md)):
+`export_signoff_csv.sh` / `check_signoff_csv.sh`.
+
 ### ECC Workspace
 
 From the `ecc` repository root:
@@ -123,6 +137,8 @@ uv run pytest test/tools/yosys/test_utility.py -v
 uv run pytest test/ --cov=chipcompiler --cov-report=term-missing
 uv run pytest test/formal/ -v
 ```
+
+Signoff white-box vs packaged black-box CI: [signoff-testing.md](signoff-testing.md).
 
 ### Formal Verification
 
@@ -564,6 +580,9 @@ by configuration validation, slang is left to synthesis, and Sizer is also
 required by doctor.
 
 #### Extending signoff (`ecc signoff inspect/export`)
+
+Testing and CI layers (white-box pytest, packaged `ECC_BIN`, FileCheck): see
+[signoff-testing.md](signoff-testing.md).
 
 - **CLI layer**: `cli/commands/signoff.py` + `cli/command_handlers/signoff.py`.
   `inspection/discovery.py::resolve_loaded_workspace()` resolves a managed

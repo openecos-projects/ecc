@@ -111,6 +111,8 @@ uv run pytest test/ --cov=chipcompiler --cov-report=term-missing
 uv run pytest test/formal/ -v
 ```
 
+签核白盒与打包黑盒 CI：[signoff-testing.md](signoff-testing.md)。
+
 ### 形式化验证
 
 基于 z3 的形式化验证。方法、测试清单与已知发现的 bug 见 [test/formal/README.md](../test/formal/README.md)。
@@ -427,6 +429,9 @@ config_param(
 `cli/inspection/env_probe.py` 是唯一的探查层：`ProbeResult(component, status, required, detail, remediation)` + 每组件一个 probe 函数（yosys / yosys-slang / ecc-tools / dreamplace / klayout / sizer / pdk）。新增组件 = 加一个 probe 函数并登记进 `_PROBES`/`ALL_COMPONENTS`；`probe_environment()` 对异常兜底（探查失败计为 fail 而非崩溃）。`probe_components_for_preset()` 决定当前 run 预检范围（始终 ecc-tools，yosys↔含 Synthesis，dreamplace↔含 place/legalization，sizer↔含 Timing optimization）。PDK 由配置校验覆盖，slang 留给综合步骤；Sizer 也是 doctor 的必需组件。
 
 #### 扩展签核（`ecc signoff inspect/export`）
+
+测试与 CI 分层（白盒 pytest、打包 `ECC_BIN`、FileCheck）见
+[signoff-testing.md](signoff-testing.md)。
 
 - **CLI 层**：`cli/commands/signoff.py` + `cli/command_handlers/signoff.py`。`inspection/discovery.py::resolve_loaded_workspace()` 在选定项目中解析受管 `--workspace NAME`（或唯一活跃 workspace）。inspect 复用 `runtime/signoff_export.py::inspect_signoff_package`（blocked 也 rc=0）；export 复用 `export_signoff_package_archive`（`RuntimeApiError` → `signoff_incomplete`）。
 - **引擎层**：`chipcompiler/engine/signoff/` 包负责签核收集器 `SignoffPackageCollector`，以及就绪度检查和归档导出所使用的包级 API。
