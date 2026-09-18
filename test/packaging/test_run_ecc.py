@@ -30,6 +30,19 @@ def test_agent_rpc_alias_selects_agent_entrypoint(monkeypatch):
     assert calls == ["agent"]
 
 
+def test_candidate_worker_flag_selects_worker_entrypoint(monkeypatch):
+    module = _load_entrypoint_module()
+    calls = []
+
+    monkeypatch.setattr(sys, "argv", [os.path.join("dist", "ecc"), "--ecc-candidate-worker"])
+    monkeypatch.setattr(
+        "agent.candidate_worker.main", lambda: calls.append("worker") or 9
+    )
+
+    assert module.main() == 9
+    assert calls == ["worker"]
+
+
 def test_packaged_entrypoint_propagates_exit_code():
     project_root = Path(__file__).parents[2]
     source = (project_root / "packaging" / "run_ecc.py").read_text()

@@ -11,6 +11,9 @@ def _configure_pyinstaller_runtime() -> None:
 
 
 def main() -> int | None:
+    if "--ecc-candidate-worker" in sys.argv[1:]:
+        from agent.candidate_worker import main as entrypoint
+        return entrypoint()
     if Path(sys.argv[0]).stem == "ecc-agent-rpc":
         from chipcompiler.runtime.stdio_server import main as entrypoint
     else:

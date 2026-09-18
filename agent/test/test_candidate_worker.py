@@ -70,6 +70,13 @@ def _spawn_fake_worker(monkeypatch, argv):
     return created
 
 
+def test_frozen_worker_uses_packaged_entrypoint(monkeypatch):
+    monkeypatch.setattr(candidate_worker.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(candidate_worker.sys, "executable", "/dist/ecc")
+
+    assert candidate_worker._worker_command() == ["/dist/ecc", "--ecc-candidate-worker"]
+
+
 def test_cancel_terminates_worker_subprocess(tmp_path, monkeypatch):
     monkeypatch.setenv("ECC_CANDIDATE_STEP_ISOLATION", "1")
     created = _spawn_fake_worker(monkeypatch, [sys.executable, "-c", "import time; time.sleep(30)"])

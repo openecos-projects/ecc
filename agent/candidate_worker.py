@@ -24,6 +24,7 @@ _RESULT_NAME = "candidate-worker.v1.json"
 _POLL_SECONDS = 1.0
 
 _ISOLATION_FLAG = "ECC_CANDIDATE_STEP_ISOLATION"
+_FROZEN_WORKER_FLAG = "--ecc-candidate-worker"
 
 
 def _state_value(state) -> str:
@@ -35,6 +36,12 @@ class _MarkerObserver:
 
     def __init__(self, marker):
         self.runtime_operation = marker
+
+
+def _worker_command() -> list[str]:
+    if getattr(sys, "frozen", False):
+        return [sys.executable, _FROZEN_WORKER_FLAG]
+    return [sys.executable, "-m", "agent.candidate_worker"]
 
 
 def run_candidate_steps_isolated(flow, steps, *, observer) -> None:
@@ -65,7 +72,7 @@ def run_candidate_steps_isolated(flow, steps, *, observer) -> None:
     }
     try:
         process = subprocess.Popen(
-            [sys.executable, "-m", "agent.candidate_worker"],
+            _worker_command(),
             cwd=str(Path(__file__).resolve().parents[1]),
             stdin=subprocess.PIPE,
         )
