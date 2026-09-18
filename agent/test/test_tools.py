@@ -29,7 +29,32 @@ def test_agent_plotter_skips_all_display_plots_for_candidate_workspaces(monkeypa
     AgentECCToolsPlot(ordinary, SimpleNamespace()).plot()
 
     assert calls == [ordinary]
-    assert ecc_runner.ECCToolsPlot is AgentECCToolsPlot
+
+
+def test_run_analysis_routes_plots_through_agent_plotter(monkeypatch, tmp_path):
+    plotted = []
+    monkeypatch.setattr(ECCToolsPlot, "plot", lambda plotter: plotted.append(plotter))
+    monkeypatch.setattr(ecc_runner, "build_step_metrics", lambda **kwargs: None)
+    monkeypatch.setattr(
+        ecc_runner,
+        "EccChecklist",
+        lambda **kwargs: SimpleNamespace(check=lambda: None),
+    )
+
+    def run_analysis_at(root):
+        workspace = SimpleNamespace(directory=root, parameters=SimpleNamespace(data={}))
+        ecc_runner.run_analysis(
+            workspace=workspace,
+            step=SimpleNamespace(name="cts"),
+            subflow=SimpleNamespace(),
+        )
+
+    run_analysis_at(tmp_path / ".agent" / "candidates" / "candidate-1")
+    assert plotted == []
+
+    run_analysis_at(tmp_path / "ordinary")
+    assert len(plotted) == 1
+    assert isinstance(plotted[0], AgentECCToolsPlot)
 
 
 def test_agent_plotter_uses_headless_display_helper_only_when_requested(monkeypatch, tmp_path):

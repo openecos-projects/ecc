@@ -507,6 +507,19 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
     return state
 
 
+def _plotter_class():
+    # Resolved through the module global so agent.tools can substitute its
+    # plotter (ecc_runner.ECCToolsPlot = AgentECCToolsPlot). The default import
+    # stays deferred because ECCToolsPlot pulls in matplotlib, which must stay
+    # off the package import path (test/utility/test_plot_lazy.py).
+    override = globals().get("ECCToolsPlot")
+    if override is not None:
+        return override
+    from chipcompiler.tools.ecc.plot import ECCToolsPlot
+
+    return ECCToolsPlot
+
+
 def run_analysis(workspace: Workspace, step: EccStep, subflow: EccSubFlow):
     if not workspace.parameters.data.get("run_analysis", True):
         return
@@ -515,9 +528,7 @@ def run_analysis(workspace: Workspace, step: EccStep, subflow: EccSubFlow):
     build_step_metrics(workspace=workspace, step=step, subflow=subflow)
 
     # plot layout image
-    from chipcompiler.tools.ecc.plot import ECCToolsPlot
-
-    ploter = ECCToolsPlot(workspace=workspace, step=step)
+    ploter = _plotter_class()(workspace=workspace, step=step)
     ploter.plot()
 
     # do checklist
