@@ -74,7 +74,6 @@ PROTECTED_FIELDS = {
     },
     "route": {("RT", "-temp_directory_path")},
     "RCX": {("output",)},
-    "sta": {("liberty",)},
 }
 
 
