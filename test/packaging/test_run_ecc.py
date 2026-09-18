@@ -35,9 +35,7 @@ def test_candidate_worker_flag_selects_worker_entrypoint(monkeypatch):
     calls = []
 
     monkeypatch.setattr(sys, "argv", [os.path.join("dist", "ecc"), "--ecc-candidate-worker"])
-    monkeypatch.setattr(
-        "agent.candidate_worker.main", lambda: calls.append("worker") or 9
-    )
+    monkeypatch.setattr("agent.candidate_worker.main", lambda: calls.append("worker") or 9)
 
     assert module.main() == 9
     assert calls == ["worker"]

@@ -70,10 +70,11 @@ def test_synthesis_lec_preset_conflicts_with_default_skip_policy(
 
 
 def test_synthesis_lec_preset_conflict_never_fires_for_existing_ledger(
-    tmp_path, create_cli_project, flow_mocks, set_flow_preset
+    tmp_path, create_cli_project, flow_mocks, set_flow_preset, monkeypatch
 ):
     from chipcompiler.data.workspace_config import save_workspace_config
 
+    monkeypatch.setattr("chipcompiler.data.pdk.PDK.validate", lambda _self: None)
     project_dir = create_cli_project()
     set_flow_preset(project_dir, "synthesis_lec")
     run_dir = os.path.join(project_dir, "default")

@@ -210,7 +210,7 @@ def _install_runtime_mocks(monkeypatch, tmp_path, *, create_workspace_files=True
             )
         return _workspace(Path(kwargs["directory"]))
 
-    def fake_load_workspace(directory):
+    def fake_load_workspace(directory, *, read_only=False):
         capture["loaded"].append(directory)
         return _workspace(Path(directory))
 
@@ -1978,7 +1978,7 @@ def _make_derive_source(tmp_path):
 
 
 def _install_derive_mocks(monkeypatch):
-    def fake_load_workspace(directory):
+    def fake_load_workspace(directory, *, read_only=False):
         directory = Path(directory)
         flow_path = directory / "home" / "flow.json"
         home_path = directory / "home" / "home.json"
@@ -2149,3 +2149,65 @@ def test_derive_workspace_rewrites_artifact_paths_before_snapshot_digest(monkeyp
     assert derived_artifact["report_root"] == str(target.resolve() / "Synthesis_yosys")
     opened = api.open_workspace(WorkspaceOpenRequest(directory=str(target)))
     assert opened["workspaceId"] == result["workspaceId"]
+
+
+def _register_workspace_in_project(project_dir, ws, workspace_id="ws_0001"):
+    from chipcompiler.project.manifest_write import (
+        build_manifest_document,
+        write_manifest_if_absent,
+    )
+
+    document = build_manifest_document(
+        str(project_dir),
+        design_name="gcd",
+        base_design={"parameters": {"design": "gcd"}},
+        workspace_id=workspace_id,
+        workspace_path=str(ws),
+        start_step="Synth",
+        end_step="Harden",
+        status="not_started",
+    )
+    write_manifest_if_absent(str(project_dir), document)
+
+
+def _manifest_workspace_status(project_dir, workspace_id="ws_0001"):
+    document = json.loads((Path(project_dir) / "project.json").read_text())
+    (entry,) = [w for w in document["workspaces"] if w["workspace_id"] == workspace_id]
+    return entry["status"]
+
+
+def test_flow_run_writes_terminal_status_to_project_manifest(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    _register_workspace_in_project(tmp_path, ws)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+
+    result = api.flow_run(FlowRunRequest(workspace_id=workspace_id, rerun=False))
+
+    assert result == {"rerun": False}
+    assert _manifest_workspace_status(tmp_path) == "success"
+
+
+def test_flow_run_failure_writes_failed_status_to_project_manifest(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    _register_workspace_in_project(tmp_path, ws)
+    DummyFlow.next_run_states = [StateEnum.Imcomplete]
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+
+    with pytest.raises(RuntimeApiError) as exc_info:
+        api.flow_run(FlowRunRequest(workspace_id=workspace_id, rerun=False))
+
+    assert exc_info.value.code == "command_failed"
+    assert _manifest_workspace_status(tmp_path) == "failed"
+
+
+def test_flow_run_without_manifest_project_skips_write_back(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+
+    result = api.flow_run(FlowRunRequest(workspace_id=workspace_id, rerun=False))
+
+    assert result == {"rerun": False}
+    assert not (tmp_path / "project.json").exists()

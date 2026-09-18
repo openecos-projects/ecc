@@ -13,17 +13,25 @@ def build_flow_for_workspace(workspace, *, create_step_workspaces: bool = True):
     return engine_flow
 
 
-def workspace_step_from_flow(workspace, name: str):
+def iter_workspace_steps(workspace):
+    """Yield ``(flow_step, workspace_step)`` pairs in ledger order.
+
+    The chain is walked once: each step builds on the previous successfully
+    built step. A step whose tool builder cannot be constructed yields
+    ``None`` without nulling the steps after it.
+    """
+    flow = getattr(workspace, "flow", None)
+    if flow is None:
+        return
     previous_step = None
-    loader = getattr(workspace.flow, "steps", None)
-    steps = loader() if callable(loader) else workspace.flow.data.get("steps", [])
-    for flow_step in steps:
-        workspace_step = _build_workspace_step_for_info(workspace, flow_step, previous_step)
-        if flow_step.get("name") == name:
-            return workspace_step
+    for flow_step in flow.steps():
+        try:
+            workspace_step = _build_workspace_step_for_info(workspace, flow_step, previous_step)
+        except (ImportError, AttributeError, TypeError, ValueError):
+            workspace_step = None
+        yield flow_step, workspace_step
         if workspace_step is not None:
             previous_step = workspace_step
-    return None
 
 
 def _build_workspace_step_for_info(workspace, flow_step: dict, previous_step):
