@@ -19,23 +19,19 @@ complete_ics55_pdk_available = _load_complete_ics55_pdk_available()
 
 FILELIST_INTEGRATION_PREFIX = "test/data/test_workspace_filelist.py::TestCreateWorkspaceIntegration"
 
-PDK_REQUIRED_TESTS = {
-    f"{FILELIST_INTEGRATION_PREFIX}::test_workspace_with_filelist": "",
-    f"{FILELIST_INTEGRATION_PREFIX}::test_workspace_with_nested_filelist": "",
-    "test/integration/test_rtl2gds_flow.py::test_ics55_gcd": "",
-}
+# Empty pdk_root means "resolve via env / default layout" in complete_ics55_pdk_available.
+PDK_REQUIRED_PREFIXES = (
+    FILELIST_INTEGRATION_PREFIX,
+    "test/integration/test_rtl2gds_flow.py::test_ics55_gcd",
+)
 
 
 def pytest_collection_modifyitems(config, items):
-    repo_root = str(config.rootpath)
+    if complete_ics55_pdk_available(""):
+        return
     skip_missing_pdk = pytest.mark.skip(reason="complete ICS55 PDK is not available")
     for item in items:
-        pdk_root = PDK_REQUIRED_TESTS.get(item.nodeid)
-        if pdk_root is None:
-            continue
-        if pdk_root:
-            pdk_root = f"{repo_root}/{pdk_root}"
-        if not complete_ics55_pdk_available(pdk_root):
+        if any(item.nodeid.startswith(prefix) for prefix in PDK_REQUIRED_PREFIXES):
             item.add_marker(skip_missing_pdk)
 
 

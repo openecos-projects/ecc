@@ -1,0 +1,32 @@
+# CI/test CSV profile: DRC + timing (+ light LVS) for FileCheck / artifact export.
+# Override with ECC_SIGNOFF_CSV_SPEC. Not an ``ecc`` CLI surface.
+
+version: 1
+
+tables:
+  - qor_summary
+  - qor_metrics
+  - checklist
+  - flow_steps
+
+metrics:
+  - id: drc_count
+    reference: 0
+  - id: lvs_count
+    reference: 0
+  - id: sta_setup_wns
+    reference: 0.0
+  - id: sta_hold_wns
+    reference: 0.0
+
+checklist:
+  - id: quality.drc.clean
+  - id: quality.lvs.clean
+  - id: quality.sta.setup_closed
+  - id: quality.sta.hold_closed
+
+flow_steps:
+  - DRC
+  - LVS
+  - sta
+  - Harden
