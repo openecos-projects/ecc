@@ -118,6 +118,12 @@ class WorkspaceStepConfigurationReadRequest:
 
 
 @dataclass(frozen=True)
+class WorkspaceStepOutputsRequest:
+    directory: str
+    step: str = ""
+
+
+@dataclass(frozen=True)
 class WorkspaceIdRequest:
     workspace_id: str
     expected_workspace_revision: int = 1

@@ -34,6 +34,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceSpecValidateRequest,
     WorkspaceStepConfigurationReadRequest,
     WorkspaceStepConfigurationUpdateRequest,
+    WorkspaceStepOutputsRequest,
     WorkspaceSyncConfigRequest,
     WorkspaceUpdateRequest,
 )
@@ -113,6 +114,11 @@ RUNTIME_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
         method_name="workspace.step_configuration.read",
         request_model=WorkspaceStepConfigurationReadRequest,
         handler_name="read_workspace_step_configuration",
+    ),
+    RuntimeMethodSpec(
+        method_name="workspace.step_outputs",
+        request_model=WorkspaceStepOutputsRequest,
+        handler_name="workspace_step_outputs",
     ),
     RuntimeMethodSpec(
         method_name="workspace.close",
@@ -222,6 +228,7 @@ OPTIONAL_RUNTIME_METHOD_NAMES: Final[frozenset[str]] = frozenset(
         "workspace.configuration.read",
         "workspace.step_configuration.update",
         "workspace.step_configuration.read",
+        "workspace.step_outputs",
         "workspace.engineering_snapshot",
     }
 )

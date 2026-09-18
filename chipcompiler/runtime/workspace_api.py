@@ -18,6 +18,7 @@ except ImportError:  # pragma: no cover - Windows uses the in-process lock.
     fcntl = None
 
 from chipcompiler.runtime.errors import RuntimeApiError
+from chipcompiler.runtime.manifest_status import manifest_run_status
 from chipcompiler.runtime.operations import (
     RuntimeOperationConflict,
     RuntimeOperationIdempotencyConflict,
@@ -49,6 +50,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceSpecCreateRequest,
     WorkspaceSpecOpenRequest,
     WorkspaceStepConfigurationReadRequest,
+    WorkspaceStepOutputsRequest,
     WorkspaceSyncConfigRequest,
 )
 from chipcompiler.runtime.sessions import (
@@ -305,6 +307,15 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
 
         return {"status": "available", **result}
 
+    def workspace_step_outputs(self, request: WorkspaceStepOutputsRequest) -> dict:
+        workspace = self._load_workspace(request.directory, read_only=True)
+        from chipcompiler.runtime.step_outputs import resolve_workspace_step_outputs
+
+        try:
+            return resolve_workspace_step_outputs(workspace, request.step)
+        except ValueError as exc:
+            raise RuntimeApiError("invalid_request", str(exc)) from exc
+
     def refresh_config(self, request: WorkspaceIdRequest) -> dict:
         def refresh(session: WorkspaceSession) -> dict:
             self._release_session_db(session)
@@ -396,79 +407,80 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
         def run(session: WorkspaceSession) -> dict:
             self._ensure_execution_ready(session)
             self._validate_workspace_revision(session, request.expected_workspace_revision)
-            stale_step_ids = self._stale_step_ids(session.workspace)
-            requires_preparation = request.rerun or bool(stale_step_ids)
-            should_capture = self._should_capture_session_db(session)
-            previous_db = session.db_handle if should_capture else None
-            if requires_preparation and should_capture:
-                self._release_session_db(session)
-                previous_db = None
+            with manifest_run_status(session.directory):
+                stale_step_ids = self._stale_step_ids(session.workspace)
+                requires_preparation = request.rerun or bool(stale_step_ids)
+                should_capture = self._should_capture_session_db(session)
+                previous_db = session.db_handle if should_capture else None
+                if requires_preparation and should_capture:
+                    self._release_session_db(session)
+                    previous_db = None
 
-            engine_flow = self._build_flow_for_session(
-                session,
-                attach_session_db=should_capture and not requires_preparation,
-            )
-            if request.rerun:
-                affected_steps = list(getattr(engine_flow, "workspace_steps", []))
-                self._prepare_workspace_for_rerun(
-                    session.workspace,
-                    engine_flow,
-                    preserve_user_inputs=preserve_user_inputs,
-                )
-                reset_revision = self._commit_rerun_snapshot(
+                engine_flow = self._build_flow_for_session(
                     session,
-                    "flow.rerun_prepared",
+                    attach_session_db=should_capture and not requires_preparation,
                 )
-                self._notify_rerun_prepared(
-                    observer,
-                    affected_steps,
-                    scope="flow",
-                    workspace_revision=reset_revision,
-                )
-            elif stale_step_ids:
-                affected_steps = [
-                    step
-                    for step in getattr(engine_flow, "workspace_steps", [])
-                    if str(getattr(step, "name", "")) in stale_step_ids
-                ]
-                self._refresh_workspace_config(session.workspace)
-                self._prepare_steps_for_rerun(
-                    session.workspace,
-                    engine_flow,
-                    affected_steps,
-                )
-                reset_revision = self._commit_rerun_snapshot(
-                    session,
-                    "flow.rerun_prepared",
-                )
-                self._notify_rerun_prepared(
-                    observer,
-                    affected_steps,
-                    scope="flow",
-                    workspace_revision=reset_revision,
-                )
-            try:
-                ok = _run_engine_flow_steps(
-                    engine_flow,
-                    rerun=request.rerun,
-                    observer=observer,
-                )
-            finally:
-                if should_capture:
-                    self._capture_flow_db(
-                        session,
+                if request.rerun:
+                    affected_steps = list(getattr(engine_flow, "workspace_steps", []))
+                    self._prepare_workspace_for_rerun(
+                        session.workspace,
                         engine_flow,
-                        previous_handle=previous_db,
+                        preserve_user_inputs=preserve_user_inputs,
                     )
-                else:
-                    self._close_transient_flow_db(engine_flow)
-            if not ok:
-                raise RuntimeApiError(
-                    "command_failed",
-                    f"run flow failed : {session.directory}",
-                    {"rerun": request.rerun},
-                )
-            return {"rerun": request.rerun}
+                    reset_revision = self._commit_rerun_snapshot(
+                        session,
+                        "flow.rerun_prepared",
+                    )
+                    self._notify_rerun_prepared(
+                        observer,
+                        affected_steps,
+                        scope="flow",
+                        workspace_revision=reset_revision,
+                    )
+                elif stale_step_ids:
+                    affected_steps = [
+                        step
+                        for step in getattr(engine_flow, "workspace_steps", [])
+                        if str(getattr(step, "name", "")) in stale_step_ids
+                    ]
+                    self._refresh_workspace_config(session.workspace)
+                    self._prepare_steps_for_rerun(
+                        session.workspace,
+                        engine_flow,
+                        affected_steps,
+                    )
+                    reset_revision = self._commit_rerun_snapshot(
+                        session,
+                        "flow.rerun_prepared",
+                    )
+                    self._notify_rerun_prepared(
+                        observer,
+                        affected_steps,
+                        scope="flow",
+                        workspace_revision=reset_revision,
+                    )
+                try:
+                    ok = _run_engine_flow_steps(
+                        engine_flow,
+                        rerun=request.rerun,
+                        observer=observer,
+                    )
+                finally:
+                    if should_capture:
+                        self._capture_flow_db(
+                            session,
+                            engine_flow,
+                            previous_handle=previous_db,
+                        )
+                    else:
+                        self._close_transient_flow_db(engine_flow)
+                if not ok:
+                    raise RuntimeApiError(
+                        "command_failed",
+                        f"run flow failed : {session.directory}",
+                        {"rerun": request.rerun},
+                    )
+                return {"rerun": request.rerun}
 
         return self._with_session_mutation_lock(request.workspace_id, run)
 
@@ -485,6 +497,9 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
         def run_step(session: WorkspaceSession) -> dict:
             self._ensure_execution_ready(session)
             self._validate_workspace_revision(session, request.expected_workspace_revision)
+            # Pre-run gates stay outside manifest_run_status: a rejected
+            # attempt executes nothing, so it must not write running/failed
+            # over the manifest's previous status.
             stale_step_ids = self._stale_step_ids(session.workspace)
             should_capture = self._should_capture_session_db(session)
             previous_db = session.db_handle if should_capture else None
@@ -498,6 +513,11 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                     f"rerun {stale_step_ids[0]} before {request.step}",
                     {"requiredStep": stale_step_ids[0]},
                 )
+            if requires_preparation and session.layout_edit_session is not None:
+                raise RuntimeApiError(
+                    "layout_edit_active",
+                    "close the rendered layout before rerunning this step",
+                )
             if requires_preparation and should_capture:
                 self._release_session_db(session)
                 previous_db = None
@@ -506,81 +526,75 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                 session,
                 attach_session_db=should_capture and not requires_preparation,
             )
-            if requires_preparation:
-                if session.layout_edit_session is not None:
-                    raise RuntimeApiError(
-                        "layout_edit_active",
-                        "close the rendered layout before rerunning this step",
-                    )
-                self._refresh_workspace_config(session.workspace)
-
             workspace_step = engine_flow.get_workspace_step(request.step)
             if workspace_step is None:
                 raise RuntimeApiError("command_failed", f"step not found: {request.step}")
-            if requires_preparation:
-                affected_steps = (
-                    [
-                        step
-                        for step in getattr(engine_flow, "workspace_steps", [])
-                        if str(getattr(step, "name", "")) in stale_step_ids
-                    ]
-                    if stale_target_index == 0
-                    else self._rerun_affected_steps(
+            with manifest_run_status(session.directory):
+                if requires_preparation:
+                    self._refresh_workspace_config(session.workspace)
+                    affected_steps = (
+                        [
+                            step
+                            for step in getattr(engine_flow, "workspace_steps", [])
+                            if str(getattr(step, "name", "")) in stale_step_ids
+                        ]
+                        if stale_target_index == 0
+                        else self._rerun_affected_steps(
+                            engine_flow,
+                            workspace_step,
+                            reset_dependents=reset_dependents,
+                        )
+                    )
+                    self._prepare_steps_for_rerun(
+                        session.workspace,
+                        engine_flow,
+                        affected_steps,
+                    )
+                    reset_revision = self._commit_rerun_snapshot(
+                        session,
+                        "flow.rerun_prepared",
+                    )
+                    self._notify_rerun_prepared(
+                        observer,
+                        affected_steps,
+                        scope="step",
+                        target_step=workspace_step.name,
+                        workspace_revision=reset_revision,
+                    )
+
+                try:
+                    step_already_succeeded = not requires_preparation and engine_flow.check_state(
+                        name=workspace_step.name,
+                        tool=workspace_step.tool,
+                        state=_success_state(),
+                    )
+                    if not step_already_succeeded:
+                        _init_db_engine_for_workspace_step(engine_flow, workspace_step)
+                    state = _run_engine_flow_step(
                         engine_flow,
                         workspace_step,
-                        reset_dependents=reset_dependents,
+                        rerun=requires_preparation,
+                        observer=observer,
                     )
-                )
-                self._prepare_steps_for_rerun(
-                    session.workspace,
-                    engine_flow,
-                    affected_steps,
-                )
-                reset_revision = self._commit_rerun_snapshot(
-                    session,
-                    "flow.rerun_prepared",
-                )
-                self._notify_rerun_prepared(
-                    observer,
-                    affected_steps,
-                    scope="step",
-                    target_step=workspace_step.name,
-                    workspace_revision=reset_revision,
-                )
+                finally:
+                    if should_capture:
+                        self._capture_flow_db(
+                            session,
+                            engine_flow,
+                            previous_handle=previous_db,
+                        )
+                    else:
+                        self._close_transient_flow_db(engine_flow)
 
-            try:
-                step_already_succeeded = not requires_preparation and engine_flow.check_state(
-                    name=workspace_step.name,
-                    tool=workspace_step.tool,
-                    state=_success_state(),
-                )
-                if not step_already_succeeded:
-                    _init_db_engine_for_workspace_step(engine_flow, workspace_step)
-                state = _run_engine_flow_step(
-                    engine_flow,
-                    workspace_step,
-                    rerun=requires_preparation,
-                    observer=observer,
-                )
-            finally:
-                if should_capture:
-                    self._capture_flow_db(
-                        session,
-                        engine_flow,
-                        previous_handle=previous_db,
+                state_value = _state_value(state)
+                result = {"step": request.step, "state": state_value}
+                if state_value != "Success":
+                    raise RuntimeApiError(
+                        "command_failed",
+                        f"run step {request.step} failed with state {state_value}",
+                        result,
                     )
-                else:
-                    self._close_transient_flow_db(engine_flow)
-
-            state_value = _state_value(state)
-            result = {"step": request.step, "state": state_value}
-            if state_value != "Success":
-                raise RuntimeApiError(
-                    "command_failed",
-                    f"run step {request.step} failed with state {state_value}",
-                    result,
-                )
-            return result
+                return result
 
         return self._with_session_mutation_lock(request.workspace_id, run_step)
 
@@ -1108,7 +1122,7 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
 
         return self._with_layout_edit_session_mutation_lock(request.edit_session_id, discard)
 
-    def _load_workspace(self, directory: str):
+    def _load_workspace(self, directory: str, *, read_only: bool = False):
         if not directory:
             raise RuntimeApiError("invalid_request", "missing required field: directory")
         if not _looks_like_old_workspace(directory):
@@ -1116,7 +1130,7 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
 
         import chipcompiler.data as data_api
 
-        workspace = data_api.load_workspace(directory=directory)
+        workspace = data_api.load_workspace(directory=directory, read_only=read_only)
         if workspace is None:
             raise RuntimeApiError("command_failed", f"load workspace failed : {directory}")
         return workspace
