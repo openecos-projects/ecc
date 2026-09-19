@@ -95,7 +95,7 @@ graph LR
 | `floorplan.core_util` | float [0.01, 1.0] | 0.4 | floorplan `die_builder.die_util.utilization` | 核心利用率（面积按单元面积/利用率反推） |
 | `floorplan.core_margin` | int×2（µm） | [2, 2] | floorplan `die_builder.margin.{left,right,top,bottom}_micron` | 核心到 die 边的留白 [水平, 垂直] |
 | `floorplan.aspect_ratio` | float [0.1, 10] | 1.0 | floorplan `die_builder.die_util.aspect_ratio` | 核心宽高比 |
-| `cts.max_fanout` | int [1, 200] | 20 | cts `max_fanout` | 时钟树缓冲最大扇出（fixfanout 步骤移除后由 CTS 承接） |
+| `cts.max_fanout` | int [1, 200] | 32 | cts `max_fanout` | 时钟树缓冲最大扇出（fixfanout 步骤移除后由 CTS 承接） |
 | `place.target_density` | float [0.1, 0.95] | 0.2 | dreamplace `target_density` | 全局布局目标密度 |
 | `place.target_overflow` | float [0.0, 1.0] | 0.1 | dreamplace `stop_overflow` | 全局布局溢出收敛目标 |
 | `place.global_right_padding` | int [0, 100] | 0 | 仅记录于 params.toml | 布局 site 右侧全局 padding（当前版本尚未接入工具配置字段） |
@@ -434,7 +434,7 @@ Timing optimization 是三阶段子流程：运行 Sizer，用 DreamPlace 对 Si
 | `root_input_slew` | `"0.0"` | 0.0 | 时钟根节点输入翻转（ns） |
 | `max_sink_tran` | `"0.5"` | 0.5 | 时钟叶节点（sink）最大翻转（ns） |
 | `max_cap` | `"0.15"` | 0.15 | 缓冲最大负载电容（pF） |
-| `max_fanout` | `"32"` | 20 `*cts.max_fanout` | 时钟缓冲最大扇出 |
+| `max_fanout` | `"32"` | 32 `*cts.max_fanout` | 时钟缓冲最大扇出 |
 | `max_length` | `"300"` | 300 | 单级缓冲最大线长（µm） |
 | `wirelength_iterations` | `"3"` | 3 | 线长平衡迭代次数 |
 | `slew_steps` / `cap_steps` | `"10"` / `"10"` | 10 / 10 | 翻转/电容查找表插值步数 |

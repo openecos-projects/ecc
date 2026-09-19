@@ -96,7 +96,6 @@ PARAM_CONFIG_DEFAULTS: list[tuple[str, float, float, str]] = [
     ("Target overflow", 0.1, 0.1, "dreamplace.stop_overflow"),
     ("Cell padding x", 300, 300, "dreamplace.cell_padding_x"),
     ("Routability opt flag", 1, 1, "dreamplace.routability_opt_flag"),
-    ("Max fanout", 20, 32, "cts.max_fanout"),
 ]
 
 

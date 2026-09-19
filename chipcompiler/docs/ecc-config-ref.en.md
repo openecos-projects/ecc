@@ -95,7 +95,7 @@ Source: `_LEGACY_PARAM_REGISTRY` in [chipcompiler/cli/project/params.py](https:/
 | `floorplan.core_util` | float [0.01, 1.0] | 0.4 | floorplan `die_builder.die_util.utilization` | Core utilization (area back-calculated as cell area / utilization) |
 | `floorplan.core_margin` | int×2 (µm) | [2, 2] | floorplan `die_builder.margin.{left,right,top,bottom}_micron` | Margin from core to die edge [horizontal, vertical] |
 | `floorplan.aspect_ratio` | float [0.1, 10] | 1.0 | floorplan `die_builder.die_util.aspect_ratio` | Core width/height ratio |
-| `cts.max_fanout` | int [1, 200] | 20 | cts `max_fanout` | Max fanout of clock tree buffers (taken over by CTS after the fixfanout step was removed) |
+| `cts.max_fanout` | int [1, 200] | 32 | cts `max_fanout` | Max fanout of clock tree buffers (taken over by CTS after the fixfanout step was removed) |
 | `place.target_density` | float [0.1, 0.95] | 0.2 | dreamplace `target_density` | Global placement target density |
 | `place.target_overflow` | float [0.0, 1.0] | 0.1 | dreamplace `stop_overflow` | Global placement overflow convergence target |
 | `place.global_right_padding` | int [0, 100] | 0 | recorded only in params.toml | Global padding on the right side of placement sites (not yet wired into a tool config field in the current version) |
@@ -432,7 +432,7 @@ Configuration file `cts_ecc.json`. Sub-phases: load data → run CTS → save da
 | `root_input_slew` | `"0.0"` | 0.0 | Input slew at the clock root (ns) |
 | `max_sink_tran` | `"0.5"` | 0.5 | Max slew at clock sinks (ns) |
 | `max_cap` | `"0.15"` | 0.15 | Max buffer load capacitance (pF) |
-| `max_fanout` | `"32"` | 20 `*cts.max_fanout` | Max fanout of clock buffers |
+| `max_fanout` | `"32"` | 32 `*cts.max_fanout` | Max fanout of clock buffers |
 | `max_length` | `"300"` | 300 | Max wirelength per buffer level (µm) |
 | `wirelength_iterations` | `"3"` | 3 | Wirelength balancing iteration count |
 | `slew_steps` / `cap_steps` | `"10"` / `"10"` | 10 / 10 | Slew/capacitance lookup-table interpolation steps |

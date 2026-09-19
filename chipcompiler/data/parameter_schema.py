@@ -66,7 +66,7 @@ _LEGACY_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         "cts",
         "max_fanout",
         "int",
-        20,
+        32,
         "cts",
         "Maximum fanout for clock tree synthesis",
         "max_fanout",

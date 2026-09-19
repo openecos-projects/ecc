@@ -67,11 +67,13 @@ _SDC_TAIL = """
 # -------------------------------------------------
 # Clock uncertainty & transition
 # -------------------------------------------------
-set clk_uncertainty   [expr $clk_period * 0.05]                 ;# 5% of period
-set clk_transition    [expr min(0.15, $clk_period * 0.03)]      ;# 3%, cap 0.15ns
-set input_transition  [expr min(0.20, $clk_period * 0.05)]      ;# 5%, cap 0.20ns
+set clk_setup_uncertainty [expr $clk_period * 0.015]            ;# 1.5% of period
+set clk_hold_uncertainty  [expr $clk_period * 0.005]            ;# 0.5% of period
+set clk_transition        [expr min(0.15, $clk_period * 0.03)]  ;# 3%, cap 0.15ns
+set input_transition      [expr min(0.20, $clk_period * 0.05)]  ;# 5%, cap 0.20ns
 
-set_clock_uncertainty $clk_uncertainty  [get_clocks $clk_name]
+set_clock_uncertainty -setup $clk_setup_uncertainty [get_clocks $clk_name]
+set_clock_uncertainty -hold  $clk_hold_uncertainty  [get_clocks $clk_name]
 set_clock_transition  $clk_transition   [get_clocks $clk_name]
 set_input_transition  $input_transition $all_inputs_wo_clk
 
@@ -103,7 +105,7 @@ def create_default_sdc(workspace: "Workspace") -> None:
             pdk_name=workspace.pdk.name, sdc_load=workspace.pdk.sdc_load
         )
 
-    sdc_content += _SDC_TAIL.format(max_fanout=parameters.get("max_fanout", 20))
+    sdc_content += _SDC_TAIL.format(max_fanout=parameters.get("max_fanout", 32))
 
     with open(workspace.pdk.sdc, "w") as file:
         file.write(sdc_content)
