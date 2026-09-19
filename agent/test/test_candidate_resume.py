@@ -246,13 +246,26 @@ def test_candidate_resume_restores_drifted_target_config_before_strict_validatio
 
 class _EccApi:
     def __init__(self, workspace):
-        self.session = SimpleNamespace(workspace=workspace, db_handle=None)
+        self.session = SimpleNamespace(workspace=workspace, db_handle=None, workspace_revision=0)
         self.events = []
         self.operations = RuntimeOperationManager(self.events.append)
 
     def _get_session(self, workspace_id):
         assert workspace_id == "workspace-1"
         return self.session
+
+    @staticmethod
+    def _validate_workspace_revision(session, expected_workspace_revision):
+        actual = getattr(session, "workspace_revision", 0)
+        if (
+            expected_workspace_revision is not None
+            and actual != 0
+            and expected_workspace_revision != actual
+        ):
+            raise RuntimeApiError(
+                "revision_conflict",
+                "Workspace Revision does not match",
+            )
 
     def _with_session_mutation_lock(self, workspace_id, operation):
         assert workspace_id == "workspace-1"

@@ -39,6 +39,9 @@ from .workspace_api import (
 def candidate_resume(api, request: CandidateResumeRequest) -> dict:
     _validate_candidate_resume_request(request)
     session = api.ecc_api._get_session(request.workspace_id)
+    api.ecc_api._validate_workspace_revision(
+        session, request.expected_workspace_revision
+    )
     api._reject_active_source_operation(request.workspace_id)
     try:
         return api.ecc_api.operations.start(
@@ -139,6 +142,14 @@ def _candidate_resume_failure_result(
 
 
 def _validate_candidate_resume_request(request: CandidateResumeRequest) -> None:
+    if request.expected_workspace_revision is not None and (
+        type(request.expected_workspace_revision) is not int
+        or request.expected_workspace_revision < 1
+    ):
+        raise RuntimeApiError(
+            "invalid_request",
+            "candidate resume expected workspace revision is invalid",
+        )
     if not isinstance(request.workspace_id, str) or not request.workspace_id.strip():
         raise RuntimeApiError("invalid_request", "candidate resume workspace_id is invalid")
     try:

@@ -116,6 +116,31 @@ def test_candidate_sizer_preflight_failure_skips_clone(monkeypatch, tmp_path):
     assert "sizer broken" in terminal["error"]["message"]
 
 
+def test_candidate_rerun_rejects_workspace_revision_conflict_before_clone(tmp_path):
+    _, _, workspace = _seed_candidate_source_workspace(tmp_path)
+    api = FlowAgentRuntimeApi(_EccApi(workspace, workspace_revision=17))
+
+    with pytest.raises(RuntimeApiError) as excinfo:
+        api.candidate_rerun(
+            CandidateRerunRequest(
+                workspace_id="workspace-1",
+                target_step="place",
+                end_step="Harden",
+                candidate_id="candidate-1",
+                patch=[{"knob_id": "place.target_density", "value": 0.6}],
+                execution_scope="full_flow",
+                idempotency_key="episode-1.intervention-1",
+                context_sha256=CONTEXT_SHA256,
+                parameter_card_sha256=CONTEXT_SHA256,
+                seed=17,
+                expected_workspace_revision=16,
+            )
+        )
+
+    assert excinfo.value.code == "revision_conflict"
+    assert not (tmp_path / ".agent" / "candidates" / "candidate-1").exists()
+
+
 def test_candidate_clone_skips_step_directories_that_will_be_rerun(tmp_path):
     flow_data = {
         "steps": [
@@ -1003,14 +1028,31 @@ def test_candidate_rerun_removes_partial_clone_on_copy_failure(monkeypatch, tmp_
 
 
 class _EccApi:
-    def __init__(self, workspace):
-        self.session = SimpleNamespace(workspace=workspace, db_handle=None)
+    def __init__(self, workspace, *, workspace_revision=0):
+        self.session = SimpleNamespace(
+            workspace=workspace,
+            db_handle=None,
+            workspace_revision=workspace_revision,
+        )
         self.events = []
         self.operations = RuntimeOperationManager(self.events.append)
 
     def _get_session(self, workspace_id):
         assert workspace_id == "workspace-1"
         return self.session
+
+    @staticmethod
+    def _validate_workspace_revision(session, expected_workspace_revision):
+        actual = getattr(session, "workspace_revision", 0)
+        if (
+            expected_workspace_revision is not None
+            and actual != 0
+            and expected_workspace_revision != actual
+        ):
+            raise RuntimeApiError(
+                "revision_conflict",
+                "Workspace Revision does not match",
+            )
 
     def _load_workspace(self, directory):
         root = Path(directory)

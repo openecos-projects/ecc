@@ -21,6 +21,7 @@ class CandidateRerunRequest:
     context_sha256: str
     parameter_card_sha256: str
     seed: int
+    expected_workspace_revision: int | None = None
     parent_candidate_root_ref: str | None = None
     floorplan_mode: str | None = None
 
@@ -33,6 +34,7 @@ class CandidateResumeRequest:
     context_sha256: str
     parameter_card_sha256: str
     seed: int
+    expected_workspace_revision: int | None = None
 
 
 _FIELD_ALIASES = {

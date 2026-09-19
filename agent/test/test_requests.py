@@ -90,6 +90,7 @@ def test_agent_request_normalizes_camel_case_fields():
             "contextSha256": CONTEXT_SHA256,
             "parameterCardSha256": PARAMETER_CARD_SHA256,
             "seed": 17,
+            "expectedWorkspaceRevision": 17,
             "parentCandidateRootRef": ".agent/candidates/candidate-0",
         },
     )
@@ -105,6 +106,7 @@ def test_agent_request_normalizes_camel_case_fields():
         context_sha256=CONTEXT_SHA256,
         parameter_card_sha256=PARAMETER_CARD_SHA256,
         seed=17,
+        expected_workspace_revision=17,
         parent_candidate_root_ref=".agent/candidates/candidate-0",
     )
 
@@ -135,6 +137,7 @@ def test_candidate_resume_request_accepts_only_execution_binding_fields():
             "contextSha256": CONTEXT_SHA256,
             "parameterCardSha256": PARAMETER_CARD_SHA256,
             "seed": 17,
+            "expectedWorkspaceRevision": 17,
         },
     )
 
@@ -145,6 +148,7 @@ def test_candidate_resume_request_accepts_only_execution_binding_fields():
         context_sha256=CONTEXT_SHA256,
         parameter_card_sha256=PARAMETER_CARD_SHA256,
         seed=17,
+        expected_workspace_revision=17,
     )
 
 

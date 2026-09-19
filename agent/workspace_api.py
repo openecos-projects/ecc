@@ -117,6 +117,9 @@ class FlowAgentRuntimeApi:
     def candidate_rerun(self, request: CandidateRerunRequest) -> dict:
         _validate_candidate_rerun_request(request)
         session = self.ecc_api._get_session(request.workspace_id)
+        self.ecc_api._validate_workspace_revision(
+            session, request.expected_workspace_revision
+        )
         self._reject_active_source_operation(request.workspace_id)
         try:
             return self.ecc_api.operations.start(
@@ -343,6 +346,14 @@ _IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
 def _validate_candidate_rerun_request(request: CandidateRerunRequest) -> None:
     validate_floorplan_mode_request(request)
+    if request.expected_workspace_revision is not None and (
+        type(request.expected_workspace_revision) is not int
+        or request.expected_workspace_revision < 1
+    ):
+        raise RuntimeApiError(
+            "invalid_request",
+            "candidate rerun expected workspace revision is invalid",
+        )
     for name in ("workspace_id", "target_step", "end_step", "candidate_id"):
         value = getattr(request, name)
         if not isinstance(value, str) or not value.strip():
