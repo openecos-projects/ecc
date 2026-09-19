@@ -26,6 +26,7 @@ from chipcompiler.engine.snapshot import (
     read_engineering_snapshot,
 )
 from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
+from chipcompiler.utility import JsonReadError
 
 from .workspace_lifecycle import (
     WorkspaceLifecycleError,
@@ -148,14 +149,20 @@ def _update_workspace_configuration(
     return _load_committed_workspace(target)
 
 
-def read_workspace_configuration(workspace: Any) -> dict[str, Any]:
+def read_workspace_configuration(workspace: Any, *, strict: bool = False) -> dict[str, Any]:
     parameters = {}
     for schema in list_schemas():
         if schema.pdk_target is not None:
             continue
         try:
-            parameters[schema.param] = workspace_param_value(workspace, schema)
-        except (OSError, ValueError):
+            parameters[schema.param] = workspace_param_value(
+                workspace,
+                schema,
+                strict=strict,
+            )
+        except (OSError, ValueError, JsonReadError):
+            if strict:
+                raise
             continue
     steps = workspace.flow.steps()
     flow_names = [str(step.get("name", "")) for step in steps if step.get("name")]

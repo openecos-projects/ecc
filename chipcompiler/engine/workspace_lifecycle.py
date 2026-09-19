@@ -5,6 +5,8 @@ import json
 import os
 import shutil
 import tempfile
+from collections.abc import Collection
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -87,13 +89,21 @@ def create_workspace_from_spec(
     spec: object,
     bindings: object,
     command_id: str = "",
+    *,
+    preserved_parameters: Collection[str] = (),
 ):
     """Create a Workspace Spec target while serializing sibling creators."""
     from chipcompiler.engine.reconcile import _workspace_lock
 
     target = Path(target_directory).expanduser().resolve()
     with _workspace_lock(target):
-        return _create_workspace_from_spec(target, spec, bindings, command_id)
+        return _create_workspace_from_spec(
+            target,
+            spec,
+            bindings,
+            command_id,
+            preserved_parameters=preserved_parameters,
+        )
 
 
 def _create_workspace_from_spec(
@@ -101,6 +111,8 @@ def _create_workspace_from_spec(
     spec: object,
     bindings: object,
     command_id: str = "",
+    *,
+    preserved_parameters: Collection[str] = (),
 ):
     target = Path(target_directory).expanduser().resolve()
     fingerprint = _workspace_command_fingerprint("create", spec, bindings)
@@ -108,7 +120,11 @@ def _create_workspace_from_spec(
         if command_id and _command_retry_matches(target, command_id, fingerprint):
             return _load_committed_workspace(target)
         raise WorkspaceLifecycleError("workspace_exists", f"Workspace already exists: {target}")
-    validation = validate_workspace_spec(spec, bindings)
+    validation = validate_workspace_spec(
+        spec,
+        bindings,
+        preserved_parameters=preserved_parameters,
+    )
     issues = validation["issues"]
     if issues:
         raise WorkspaceLifecycleError(
@@ -281,10 +297,17 @@ def _update_workspace_from_spec(
             },
         )
 
+    update_spec, preserved_parameters = _merge_workspace_update_parameters(current, spec)
     staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=target.parent))
     staging.rmdir()
     try:
-        staged = create_workspace_from_spec(staging, spec, bindings)
+        staged = create_workspace_from_spec(
+            staging,
+            update_spec,
+            bindings,
+            preserved_parameters=preserved_parameters,
+        )
+        _preserve_workspace_config_extensions(target, staging)
         create_engineering_snapshot(
             staged,
             workspace_id=snapshot["workspaceId"],
@@ -308,6 +331,103 @@ def _update_workspace_from_spec(
             raise
     finally:
         shutil.rmtree(staging, ignore_errors=True)
+
+
+def _merge_workspace_update_parameters(
+    current: Any,
+    spec: object,
+) -> tuple[object, frozenset[str]]:
+    """Overlay an update request on the committed Workspace parameters.
+
+    The public Workspace Spec remains replace-oriented for creation and
+    validation. Only structural updates use the committed Workspace as a
+    parameter baseline, so omitted config values do not silently reset.
+    """
+    if not isinstance(spec, dict):
+        return spec, frozenset()
+
+    requested = spec.get("parameters", {})
+    if not isinstance(requested, dict):
+        return spec, frozenset()
+
+    from chipcompiler.utility import JsonReadError
+
+    from .workspace_configuration import read_workspace_configuration
+
+    try:
+        current_configuration = read_workspace_configuration(current, strict=True)
+    except (OSError, ValueError, JsonReadError) as exc:
+        raise WorkspaceLifecycleError(
+            "workspace_invalid",
+            "Current Workspace configuration is unavailable",
+        ) from exc
+
+    current_spec = current_configuration.get("workspaceSpec")
+    current_parameters = (
+        current_spec.get("parameters")
+        if isinstance(current_spec, dict)
+        else None
+    )
+    if not isinstance(current_parameters, dict):
+        raise WorkspaceLifecycleError(
+            "workspace_invalid",
+            "Current Workspace parameters are unavailable",
+        )
+
+    merged = deepcopy(spec)
+    merged["parameters"] = {
+        **{str(key): deepcopy(value) for key, value in current_parameters.items()},
+        **{str(key): deepcopy(value) for key, value in requested.items()},
+    }
+    preserved = frozenset(str(key) for key in current_parameters.keys() - requested.keys())
+    return merged, preserved
+
+
+def _preserve_workspace_config_extensions(source: Path, destination: Path) -> None:
+    """Copy old JSON extension fields that the regenerated config does not define."""
+    from chipcompiler.data.workspace import workspace_config_paths
+    from chipcompiler.utility import JsonReadError, json_read_strict, json_write
+
+    source_paths = workspace_config_paths(source)
+    destination_paths = workspace_config_paths(destination)
+    for config_key, source_path in source_paths.items():
+        if config_key == "dir" or source_path.suffix != ".json" or not source_path.is_file():
+            continue
+        destination_path = destination_paths.get(config_key)
+        if destination_path is None or not destination_path.is_file():
+            continue
+
+        try:
+            source_config = json_read_strict(source_path)
+            destination_config = json_read_strict(destination_path)
+        except (OSError, JsonReadError) as exc:
+            raise WorkspaceLifecycleError(
+                "workspace_invalid",
+                "Workspace configuration is unavailable",
+            ) from exc
+        if not isinstance(source_config, dict) or not isinstance(destination_config, dict):
+            raise WorkspaceLifecycleError(
+                "workspace_invalid",
+                "Workspace configuration must be an object",
+            )
+        if _merge_missing_config_fields(destination_config, source_config) and not json_write(
+            destination_path,
+            destination_config,
+        ):
+            raise OSError(f"Failed to preserve Workspace config extensions: {destination_path}")
+
+
+def _merge_missing_config_fields(destination: dict, source: dict) -> bool:
+    changed = False
+    for key, source_value in source.items():
+        if key not in destination:
+            destination[key] = deepcopy(source_value)
+            changed = True
+            continue
+        destination_value = destination[key]
+        if isinstance(destination_value, dict) and isinstance(source_value, dict):
+            changed = _merge_missing_config_fields(destination_value, source_value) or changed
+    return changed
 
 
 def _pdk_config(pdk: PDK) -> dict[str, Any]:

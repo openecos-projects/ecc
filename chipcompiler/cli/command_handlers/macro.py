@@ -1,6 +1,7 @@
 """Handlers for the manual macro-placement commands."""
 
 import math
+from pathlib import Path
 
 from chipcompiler.cli.command_handlers.param import (
     _find_config_path,
@@ -16,7 +17,10 @@ from chipcompiler.cli.project.workspace_params import (
     set_workspace_param,
     workspace_param_value,
 )
-from chipcompiler.data.workspace.macro_location import MACRO_ORIENTATIONS
+from chipcompiler.data.workspace.macro_location import (
+    MACRO_ORIENTATIONS,
+    parse_macro_location_tcl,
+)
 
 MACRO_PARAM = "macro.placements"
 
@@ -40,6 +44,28 @@ def macro_remove(args, ctx: CommandContext) -> CommandResult:
     return _project_remove(args, ctx, schema)
 
 
+def macro_import(args, ctx: CommandContext) -> CommandResult:
+    schema = lookup_schema(MACRO_PARAM)
+
+    try:
+        text = Path(args.path).read_text(encoding="utf-8")
+    except OSError as exc:
+        return CommandResult.err(
+            [error_record("file_unreadable", param=MACRO_PARAM, reason=str(exc))],
+            exit_code=1,
+        )
+    try:
+        placements = parse_macro_location_tcl(text)
+    except ValueError as exc:
+        return CommandResult.err(
+            [error_record("invalid_value", param=MACRO_PARAM, reason=str(exc))], exit_code=1
+        )
+
+    if getattr(args, "workspace", None) is not None:
+        return _workspace_import(args, ctx, schema, placements)
+    return _project_import(args, ctx, schema, placements)
+
+
 def macro_show(args, ctx: CommandContext) -> CommandResult:
     schema = lookup_schema(MACRO_PARAM)
 
@@ -54,17 +80,21 @@ def macro_show(args, ctx: CommandContext) -> CommandResult:
             return error
         from chipcompiler.data.workspace import workspace_config_paths
 
-        return CommandResult.ok(
-            [
-                {
-                    "param": MACRO_PARAM,
-                    "placements": placements,
-                    "file": str(workspace_config_paths(workspace.directory)["macro_location"]),
-                    "source": "workspace",
-                    "workspace": ctx.run_id,
-                }
-            ]
-        )
+        file_path = workspace_config_paths(workspace.directory)["macro_location"]
+        record = {
+            "param": MACRO_PARAM,
+            "placements": placements,
+            "file": str(file_path),
+            "source": "workspace",
+            "workspace": ctx.run_id,
+        }
+        file_placements, file_error = _read_file_placements(file_path)
+        if file_error is not None:
+            record["file_error"] = file_error
+        else:
+            record["file_placements"] = file_placements
+            record["diverged"] = not _same_placements(placements, file_placements)
+        return CommandResult.ok([record])
 
     manifest_error = _manifest_mode_error(ctx)
     if manifest_error is not None:
@@ -157,6 +187,17 @@ def _workspace_placements(workspace, schema) -> tuple[list, CommandResult | None
             exit_code=1,
         )
     return value, None
+
+
+def _workspace_import(args, ctx, schema, placements: list) -> CommandResult:
+    from chipcompiler.cli.command_handlers.workspace_params import _mutate
+
+    def mutation(workspace):
+        return set_workspace_param(workspace, schema, placements)
+
+    result = _mutate(ctx, schema, mutation, placements, "set")
+    _annotate_import(result, args.path, placements)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +309,36 @@ def _project_placements(ctx: CommandContext) -> tuple[list, CommandResult | None
     return value, None
 
 
+def _project_import(args, ctx, schema, placements: list) -> CommandResult:
+    manifest_error = _manifest_mode_error(ctx)
+    if manifest_error is not None:
+        return manifest_error
+    config_path = _find_config_path(ctx.project_dir)
+    if config_path is None:
+        return CommandResult.err([error_record("missing_config")], exit_code=1)
+    try:
+        if placements:
+            _write_param_to_toml(config_path, schema, placements)
+        else:
+            _remove_param_from_toml(config_path, schema)
+    except (OSError, ValueError) as exc:
+        return CommandResult.err(
+            [error_record("config_error", param=MACRO_PARAM, reason=str(exc))], exit_code=1
+        )
+
+    return CommandResult.ok(
+        [
+            {
+                "param": MACRO_PARAM,
+                "source_file": args.path,
+                "placements": placements,
+                "status": "imported",
+                "source": "ecc.toml",
+            }
+        ]
+    )
+
+
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -322,3 +393,44 @@ def _annotate(result: CommandResult, instance: str, placements) -> dict | None:
     if record.get("status") != "no_override":
         record["status"] = "set"
     return record
+
+
+def _annotate_import(result: CommandResult, path: str, placements: list) -> None:
+    if not result.records or result.exit_code != 0:
+        return
+    record = result.records[0]
+    record["source_file"] = path
+    record["placements"] = placements
+    if record.get("status") != "no_override":
+        record["status"] = "imported"
+
+
+def _read_file_placements(path) -> tuple[list | None, str | None]:
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError:
+        return None, f"{Path(path).name} is missing or unreadable"
+    try:
+        return parse_macro_location_tcl(text), None
+    except ValueError as exc:
+        return None, str(exc)
+
+
+def _same_placements(left: list, right: list) -> bool:
+    """Order-insensitive placement comparison; order never affects placement."""
+    return sorted(left, key=_placement_sort_key) == sorted(right, key=_placement_sort_key)
+
+
+def _placement_sort_key(entry: dict) -> tuple:
+    return (
+        str(entry.get("instance", "")),
+        _coordinate_sort_key(entry.get("x")),
+        _coordinate_sort_key(entry.get("y")),
+        str(entry.get("orientation", "")),
+    )
+
+
+def _coordinate_sort_key(value) -> tuple:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return ("n", float(value))
+    return ("s", str(value))

@@ -33,7 +33,7 @@ def workspace_param_step(schema) -> str:
     return step
 
 
-def workspace_param_value(workspace, schema) -> object:
+def workspace_param_value(workspace, schema, *, strict: bool = False) -> object:
     if schema.pdk_target is not None:
         raise ValueError(f"{schema.param} requires a full workspace refresh")
     if schema.maps_to is not None:
@@ -42,7 +42,15 @@ def workspace_param_value(workspace, schema) -> object:
         config_path = workspace.config.get(schema.config_target.config_key)
         if config_path is None:
             raise ValueError(f"workspace config missing target: {schema.config_target.config_key}")
-        value = _nested_value(json_read(config_path), schema.config_target.json_path)
+        if strict:
+            from chipcompiler.utility import json_read_strict
+
+            config = json_read_strict(config_path)
+            if not isinstance(config, dict):
+                raise ValueError(f"workspace config must be an object: {config_path}")
+        else:
+            config = json_read(config_path)
+        value = _nested_value(config, schema.config_target.json_path)
         return schema.default if value is _MISSING else value
     raise ValueError(f"{schema.param} has no workspace configuration target")
 

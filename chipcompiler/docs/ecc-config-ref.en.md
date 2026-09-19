@@ -194,7 +194,8 @@ For full command output examples, see [ECC CLI User Guide §9](ecc-user-guide.en
 |---|---|
 | `ecc macro set INSTANCE --x X --y Y --orient ORIENT` | Upsert one instance placement (orientation: `R0`, `R90`, `R180`, `R270`, `MX`, `MY`, `MX90`, `MY90`) |
 | `ecc macro remove INSTANCE` | Remove one instance placement; removing the last entry clears the parameter |
-| `ecc macro show` | List the placements and the generated Tcl path |
+| `ecc macro import PATH` | Parse a `placeInstance` handoff file (microns, R-notation; comments and `setInstancePlacementStatus` lines are skipped) and replace the parameter wholesale; an empty file clears the parameter and a malformed statement fails without writing |
+| `ecc macro show` | List the placements and the generated Tcl path; workspace scope additionally parses the current Tcl and reports `file_placements` plus `diverged` (whether the file disagrees with the parameter) |
 
 Both `ecc param` scopes apply: project scope (default) stores the list in `ecc.toml` `[params.macro]` and takes effect on the next fresh run or `ecc workspace refresh`; `--workspace NAME` writes `home/params.toml`, regenerates the Tcl immediately, and marks `macroPlacement` and its suffix pending. The list is also accepted as a plain JSON parameter, e.g. `ecc param set macro.placements '[{"instance": "u0", "x": 10.0, "y": 20.0, "orientation": "R0"}]'`.
 
