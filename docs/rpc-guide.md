@@ -17,12 +17,15 @@ The sidecar speaks JSON-RPC 2.0 over stdio. Each JSON-RPC payload is framed with
 a `Content-Length` header. Stdout is reserved for framed protocol messages;
 diagnostics and tool output belong on stderr.
 
-The public CLI supports only `ecc workspace refresh NAME` from this resource
-area. It reconstructs a workspace already declared in `project.json` from the
-current `ecc.toml`, without executing the flow. The legacy workspace create/run
-commands and their custom server-shaped JSON envelope are not supported.
-Project commands such as `ecc init`, `ecc run`, `ecc status`, `ecc config`, and
-`ecc param` remain ordinary stateless CLI commands.
+The public CLI supports two commands from this resource area: `ecc workspace
+refresh NAME`, which reconstructs a workspace already declared in
+`project.json` from the current `ecc.toml` without executing the flow, and
+`ecc workspace import NAME --path /absolute/workspace`, which registers an
+existing workspace directory in `project.json` without changing or running
+it. The legacy workspace create/run commands and their custom server-shaped
+JSON envelope are not supported. Project commands such as `ecc init`,
+`ecc run`, `ecc status`, `ecc config`, and `ecc param` remain ordinary
+stateless CLI commands.
 
 ## Framing
 
@@ -186,6 +189,77 @@ Tool-specific step information is available through `workspace.info`:
 Common info ids include `views`, `layout`, `metrics`, `subflow`, `analysis`,
 `maps`, `checklist`, `sta`, and `config`.
 
+## Read And Update Workspace Configuration
+
+`workspace.configuration.read` takes a workspace `directory` (no session
+required) and returns the workspace-level configuration. Its mutating
+counterpart `workspace.configuration.update` takes `workspaceId`,
+`expectedWorkspaceRevision` (optimistic concurrency), a `commandId` for
+idempotency, the new `configuration`, and `workspaceBindings`.
+
+Per-step parameters go through `workspace.step_configuration.read` /
+`workspace.step_configuration.update`. The read takes `step` plus exactly
+one of `workspaceId` or `directory`; when the step has no derived
+configuration it returns `status: "unavailable"` with a `reason` instead of
+an error. The update takes `workspaceId`, `expectedWorkspaceRevision`,
+`stepId`, and a `parameters` map:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "workspace.step_configuration.update",
+  "params": {
+    "workspaceId": "workspace-1",
+    "expectedWorkspaceRevision": 3,
+    "commandId": "param-save-42",
+    "stepId": "place",
+    "parameters": {
+      "place.target_density": 0.6
+    }
+  },
+  "id": "step-cfg-1"
+}
+```
+
+A step-configuration update persists the parameters, refreshes the derived
+`config/*.json`, marks the step and its downstream suffix stale, and bumps
+the Engineering Snapshot `workspaceRevision`.
+
+## Describe And Validate A Workspace Spec
+
+`workspace_spec.describe` (no params) returns the declarative workspace-spec
+contract: `schemaVersion`, `flowDefinitions` (flow id to ordered step ids),
+`inputRoleRules`, and a `parameterCatalog`. Each catalog record carries the
+canonical parameter `id`, `type`, `default`, `appliesTo`,
+`backendMapping`, optional `range` / `choices` / `unit`, plus `display_key`
+and `knob_id`. Those two fields come from `chipcompiler/data/param_keys.py`
+and are the authoritative mapping from GUI display keys and Agent knob ids
+to canonical parameter ids — the GUI and the Agent must not hardcode their
+own key tables.
+
+`workspace_spec.validate` checks a candidate `workspaceSpec` document
+together with its `workspaceBindings` and returns an `issues` list (empty
+when the spec is valid) instead of raising:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "workspace_spec.validate",
+  "params": {
+    "workspaceSpec": {
+      "schemaVersion": 1,
+      "design": "gcd"
+    },
+    "workspaceBindings": {}
+  },
+  "id": "spec-validate-1"
+}
+```
+
+Both methods are part of the v1 workspace contract; an older embedder that
+lacks them receives a stable invalid-request result instead of a server
+startup failure.
+
 ## Mutating Workspace Calls
 
 The runtime serializes mutating calls for the same workspace session. Supported
@@ -195,9 +269,18 @@ first-slice mutation methods are:
 - `workspace.sync_config`
 - `workspace.reset_flow`
 - `workspace.derive`
+- `workspace.configuration.update`
+- `workspace.step_configuration.update`
+- `workspace.export_signoff`
+- `workspace.inspect_signoff`
 - `flow.run`
 - `flow.run_step`
 - `workspace.close`
+
+`workspace.export_signoff` takes `workspaceId`, `outputPath`, and optional
+`additionalFiles`, and writes the signoff package archive, returning the
+resolved `outputPath`. `workspace.inspect_signoff` returns the signoff
+package readiness summary for the workspace.
 
 `workspace.sync_config` requires `configPath` to be inside the workspace
 `config/` directory:

@@ -11,7 +11,7 @@ The `ecc` command-line tool ships bilingual guides (`.en.md` / `.cn.md`):
   - First project, the 17-step `rtl2gds` flow (synthesis LEC skipped by default), signoff package, and reports
   - Tuning parameters, workspaces, and rerun scenarios
 - **[CLI User Guide](../chipcompiler/docs/ecc-user-guide.en.md)** / **[中文用户指南](../chipcompiler/docs/ecc-user-guide.cn.md)** - All currently supported commands
-  - Every command and option: `init`/`check`/`run`/`status`/`log`/`config`/`doctor`/`param`/`pdk`/`project`/`workspace`/`signoff`/`report`/`rpc`/`layout-image`
+  - Every command and option: `init`/`check`/`run`/`status`/`log`/`config`/`doctor`/`param`/`macro`/`doc`/`pdk`/`project`/`workspace`/`signoff`/`report`/`rpc`/`layout-image`
   - Run selectors (`--resume`/`--from`/`--to`/`--only`), error-code reference, end-to-end workflows
 - **[CLI Config Reference](../chipcompiler/docs/ecc-config-ref.en.md)** / **[中文配置参考](../chipcompiler/docs/ecc-config-ref.cn.md)** - `ecc.toml`, workspace files, and the parameter system
 - **[Staged Floorplan Flow](../chipcompiler/docs/floorplan-flow.en.md)** / **[分阶段 Floorplan 流程](../chipcompiler/docs/floorplan-flow.cn.md)** - Pre-floorplan, macro placement, post-floorplan, and the macro-location Tcl handoff
@@ -27,7 +27,7 @@ The `ecc` command-line tool ships bilingual guides (`.en.md` / `.cn.md`):
   - Extending the `ecc` CLI
 
 - **[Parameter Lifecycle](param-lifecycle.md)** / **[参数生命周期](param-lifecycle.cn.md)** - Parameter precedence, effective timing, CLI/GUI differences, and schema versioning
-  - Priority matrix (`--set` > `ecc.toml [params]` > `project.json` base > schema defaults)
+  - Priority matrix (`--set` > `ecc.toml [params]` > `project.json` base + workspace `parameter_patch` > schema defaults)
   - Fresh vs existing runs, `skip_steps` convergence
   - Drift and overwrite guards (`workspace_spec_drift`, `derived_configs_modified`)
   - `schema_version` registry for `home/` files
