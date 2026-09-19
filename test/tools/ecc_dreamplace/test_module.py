@@ -96,6 +96,7 @@ def test_build_params_preserves_routability_config_and_forces_timing_off(tmp_pat
     json_write(
         config_path,
         {
+            "random_seed": 17,
             "macro_only": 1,
             "routability_opt_flag": 1,
             "get_congestion_map": 1,
@@ -129,6 +130,7 @@ def test_build_params_preserves_routability_config_and_forces_timing_off(tmp_pat
     params = module._build_params(FakeParams, mode=DreamplaceRunMode.PLACEMENT)
 
     assert params.routability_opt_flag == 1
+    assert params.random_seed == 17
     assert params.get_congestion_map == 1
     assert params.macro_only == 0
     assert params.with_sta is False

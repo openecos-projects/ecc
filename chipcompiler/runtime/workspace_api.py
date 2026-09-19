@@ -41,6 +41,7 @@ from chipcompiler.runtime.requests import (
     OperationStartFlowRequest,
     OperationStartStepRequest,
     WorkspaceCreateRequest,
+    WorkspaceDeriveRequest,
     WorkspaceExportSignoffRequest,
     WorkspaceIdRequest,
     WorkspaceInfoRequest,
@@ -216,6 +217,34 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
             session.workspace_id,
             session.directory / "home" / "runtime-commands.json",
             recover=False,
+        )
+        return _workspace_session_result(session)
+
+    def derive_workspace(self, request: WorkspaceDeriveRequest) -> dict:
+        from chipcompiler.engine.snapshot import read_engineering_snapshot
+        from chipcompiler.engine.workspace_derive import derive_workspace as derive_workspace_copy
+        from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+
+        try:
+            workspace = derive_workspace_copy(
+                request.directory,
+                request.target_directory,
+                reset_from_step=request.reset_from_step,
+                command_id=request.command_id,
+                cause=request.cause,
+            )
+        except WorkspaceLifecycleError as exc:
+            raise RuntimeApiError(exc.code, str(exc), exc.details) from exc
+        snapshot = read_engineering_snapshot(workspace)
+        session = self.sessions.create_session(
+            workspace.directory,
+            workspace=workspace,
+            workspace_id=snapshot["workspaceId"],
+            workspace_revision=snapshot["workspaceRevision"],
+        )
+        self.operations.load_workspace_ledger(
+            session.workspace_id,
+            session.directory / "home" / "runtime-commands.json",
         )
         return _workspace_session_result(session)
 

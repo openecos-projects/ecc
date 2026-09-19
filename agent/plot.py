@@ -2,9 +2,11 @@ import concurrent.futures
 import multiprocessing
 import os
 from collections.abc import Callable
+from pathlib import Path
 
 from tqdm import tqdm
 
+from chipcompiler.tools.ecc.plot import ECCToolsPlot
 from chipcompiler.utility import plot_csv_map
 
 MAX_PLOT_WORKERS = 4
@@ -30,3 +32,23 @@ def plot_array_maps(input_paths: list[str], warn: Callable[[str], None]) -> None
             unit="file",
         ):
             pass
+
+
+def _is_candidate_workspace(workspace) -> bool:
+    root = Path(workspace.directory).resolve()
+    return root.parent.name == "candidates" and root.parent.parent.name == ".agent"
+
+
+class AgentECCToolsPlot(ECCToolsPlot):
+    def plot(self) -> bool:
+        if _is_candidate_workspace(self.workspace):
+            return True
+        return super().plot()
+
+    def plot_array_maps(self, input_paths: list[str]) -> None:
+        if _is_candidate_workspace(self.workspace):
+            return
+        if os.environ.get("ECOS_AGENT_SKIP_DISPLAY_PLOTS") == "1":
+            plot_array_maps(input_paths, self.workspace.logger.warning)
+            return
+        super().plot_array_maps(input_paths)

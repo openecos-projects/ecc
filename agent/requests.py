@@ -10,22 +10,6 @@ class WorkspaceExtractFoundationRequest:
 
 
 @dataclass(frozen=True)
-class CandidateBindInputRequest:
-    workspace_id: str
-    target_step: str
-    source_step: str
-    candidate_id: str
-
-
-@dataclass(frozen=True)
-class CandidateMaterializeRequest:
-    workspace_id: str
-    target_step: str
-    candidate_id: str
-    patch: list[dict[str, Any]]
-
-
-@dataclass(frozen=True)
 class CandidateRerunRequest:
     workspace_id: str
     target_step: str
@@ -33,15 +17,37 @@ class CandidateRerunRequest:
     candidate_id: str
     patch: list[dict[str, Any]]
     execution_scope: str
+    idempotency_key: str
+    context_sha256: str
+    parameter_card_sha256: str
+    seed: int
+    expected_workspace_revision: int | None = None
+    parent_candidate_root_ref: str | None = None
+    floorplan_mode: str | None = None
+
+
+@dataclass(frozen=True)
+class CandidateResumeRequest:
+    workspace_id: str
+    candidate_id: str
+    idempotency_key: str
+    context_sha256: str
+    parameter_card_sha256: str
+    seed: int
+    expected_workspace_revision: int | None = None
 
 
 _FIELD_ALIASES = {
     "workspaceId": "workspace_id",
     "targetStep": "target_step",
     "endStep": "end_step",
-    "sourceStep": "source_step",
     "candidateId": "candidate_id",
     "executionScope": "execution_scope",
+    "idempotencyKey": "idempotency_key",
+    "contextSha256": "context_sha256",
+    "parameterCardSha256": "parameter_card_sha256",
+    "parentCandidateRootRef": "parent_candidate_root_ref",
+    "floorplanMode": "floorplan_mode",
 }
 
 

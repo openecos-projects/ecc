@@ -60,9 +60,11 @@ first-slice method list:
 
 The result includes `version`, `eccVersion`, and `capabilities`.
 
-Default `ecc rpc serve --stdio` capabilities do not include persistent DB
-methods. When `--persistent-db` is enabled, `rpc.hello` also advertises
-`db.ensure` and `db.release`.
+Default `ecc rpc serve --stdio` capabilities include Candidate methods
+(`candidate.capabilities`, `candidate.rerun`, `candidate.resume`) composed
+onto the generic runtime. They do not include persistent DB methods. When
+`--persistent-db` is enabled, `rpc.hello` also advertises `db.ensure` and
+`db.release`.
 
 ## Open A Workspace
 
@@ -125,6 +127,32 @@ parameters, and optional input files:
 If `filelist` is omitted and `rtlList` is present, ECC writes a workspace-local
 filelist before creating the workspace.
 
+## Derive A Workspace
+
+`workspace.derive` copies an existing workspace into a new directory with a
+fresh identity: a new Engineering Snapshot (`workspaceRevision` 1, cause
+`workspace.derived`), an empty runtime command ledger, and no inherited
+workspace command records. The source directory stays read-only and
+byte-identical. `resetFromStep` is optional; empty resets the whole flow for a
+rerun, while a step name resets only that step and its flow suffix.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "workspace.derive",
+  "params": {
+    "directory": "/path/to/gcd",
+    "targetDirectory": "/path/to/gcd-rerun",
+    "resetFromStep": "Floorplan",
+    "commandId": "derive-1"
+  },
+  "id": "derive-1"
+}
+```
+
+The result has the same shape as `workspace.open` (`workspaceId`,
+`workspaceRevision`, `directory`) with the derived workspace id.
+
 ## Inspect A Workspace
 
 Use the returned `workspaceId` to inspect session state:
@@ -166,6 +194,7 @@ first-slice mutation methods are:
 - `workspace.refresh_config`
 - `workspace.sync_config`
 - `workspace.reset_flow`
+- `workspace.derive`
 - `flow.run`
 - `flow.run_step`
 - `workspace.close`

@@ -29,7 +29,7 @@ proc normalize_design {top_design} {
     yosys async2sync
     yosys flatten
     yosys splitnets -ports -format _
-    yosys opt_clean -purge
+    yosys opt_clean
 }
 
 proc build_design {stash_name top_design netlist_file} {

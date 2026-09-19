@@ -111,6 +111,7 @@ def test_bind_candidate_input_reads_typed_ecc_output_paths(tmp_path):
     "target_step,source_step",
     [
         ("Floorplan", "initial"),
+        ("Floorplan", "Synthesis"),
         ("place", "Floorplan"),
         ("CTS", "place"),
         ("legalization", "CTS"),
@@ -143,6 +144,25 @@ def test_canonical_candidate_input_edges_are_declared(tmp_path, target_step, sou
 
     assert receipt["target"] == {"step": target_step}
     assert receipt["source"] == {"step": source_step}
+
+
+def test_floorplan_accepts_a_verilog_only_synthesis_checkpoint(tmp_path):
+    floorplan = _step(tmp_path, "Floorplan")
+    synthesis = _step(tmp_path, "Synthesis")
+    synthesis.output["def"].unlink()
+    synthesis.output["def"] = None
+    workspace = SimpleNamespace(directory=str(tmp_path), design=SimpleNamespace())
+
+    receipt = bind_candidate_input(
+        workspace,
+        _Flow(floorplan, synthesis),
+        "Floorplan",
+        "Synthesis",
+        candidate_id="floorplan-from-synthesis",
+    )
+
+    assert receipt["inputs"]["def"] is None
+    assert receipt["inputs"]["verilog"]["sha256"] == _sha256(synthesis.output["verilog"])
 
 
 def test_noncanonical_candidate_edge_is_rejected(tmp_path):

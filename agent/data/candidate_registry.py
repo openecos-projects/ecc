@@ -38,6 +38,12 @@ def _cts_uint(name: str, minimum: int = 1) -> CandidateKnob:
     return CandidateKnob(f"cts.{name}", "CTS", "CTS", (name,), "uint", minimum)
 
 
+# The RPC-level "Floorplan" target names the shared floorplan configuration,
+# not a flow step; the backend tool and the phase input bind on its first
+# sub-step when the flow runs the split phase.
+FLOORPLAN_TARGET_FLOW_STEP = {"Floorplan": "preFloorplan"}
+
+
 CANDIDATE_TARGET_BACKENDS: dict[str, CandidateTargetBackend] = {
     "Floorplan": CandidateTargetBackend("ecc"),
     "place": CandidateTargetBackend("dreamplace"),
@@ -380,12 +386,18 @@ def _workspace_target_tool(workspace: Any, target_step: str) -> str | None:
     steps = flow_data.get("steps")
     if not isinstance(steps, list):
         return None
-    matches = [
-        step["tool"]
-        for step in steps
-        if isinstance(step, dict)
-        and step.get("name") == target_step
-        and isinstance(step.get("tool"), str)
-        and step["tool"]
-    ]
+
+    def tools_for(step_name: str) -> list[str]:
+        return [
+            step["tool"]
+            for step in steps
+            if isinstance(step, dict)
+            and step.get("name") == step_name
+            and isinstance(step.get("tool"), str)
+            and step["tool"]
+        ]
+
+    matches = tools_for(target_step)
+    if not matches and target_step in FLOORPLAN_TARGET_FLOW_STEP:
+        matches = tools_for(FLOORPLAN_TARGET_FLOW_STEP[target_step])
     return matches[0] if len(matches) == 1 else None

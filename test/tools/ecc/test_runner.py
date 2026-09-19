@@ -120,6 +120,10 @@ def test_run_analysis_switch(parameters, expected_calls, tmp_path, monkeypatch):
     plotter = Mock()
     checklist = Mock()
     monkeypatch.setattr(ecc_runner, "build_step_metrics", metrics)
+    # run_analysis resolves the plotter through the runner module global first
+    # (agent.tools installs an override there); clear any imported override so
+    # this test exercises the default plot-module resolution.
+    monkeypatch.delattr(ecc_runner, "ECCToolsPlot", raising=False)
     monkeypatch.setattr("chipcompiler.tools.ecc.plot.ECCToolsPlot", plotter)
     monkeypatch.setattr(ecc_runner, "EccChecklist", checklist)
 

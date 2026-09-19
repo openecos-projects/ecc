@@ -24,6 +24,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceCloseRequest,
     WorkspaceConfigurationUpdateRequest,
     WorkspaceCreateRequest,
+    WorkspaceDeriveRequest,
     WorkspaceExportSignoffRequest,
     WorkspaceIdRequest,
     WorkspaceInfoRequest,
@@ -84,6 +85,11 @@ RUNTIME_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
         method_name="workspace.open",
         request_model=WorkspaceOpenRequest,
         handler_name="open_workspace",
+    ),
+    RuntimeMethodSpec(
+        method_name="workspace.derive",
+        request_model=WorkspaceDeriveRequest,
+        handler_name="derive_workspace",
     ),
     RuntimeMethodSpec(
         method_name="workspace.binding_requirement",

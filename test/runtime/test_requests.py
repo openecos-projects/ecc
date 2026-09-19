@@ -19,6 +19,7 @@ from chipcompiler.runtime.requests import (
     RequestValidationError,
     WorkspaceCloseRequest,
     WorkspaceCreateRequest,
+    WorkspaceDeriveRequest,
     WorkspaceExportSignoffRequest,
     WorkspaceIdRequest,
     WorkspaceInfoRequest,
@@ -76,6 +77,11 @@ def test_workspace_create_maps_camel_case_fields_and_preserves_pdk_json():
     ("method", "params", "request_type"),
     [
         ("workspace.open", {"directory": "/work/ws"}, WorkspaceOpenRequest),
+        (
+            "workspace.derive",
+            {"directory": "/work/ws", "targetDirectory": "/work/ws-copy"},
+            WorkspaceDeriveRequest,
+        ),
         ("workspace.close", {"workspaceId": "ws-1"}, WorkspaceCloseRequest),
         ("workspace.home", {"workspaceId": "ws-1"}, WorkspaceIdRequest),
         ("workspace.refresh_config", {"workspaceId": "ws-1"}, WorkspaceIdRequest),

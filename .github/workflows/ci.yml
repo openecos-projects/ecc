@@ -15,6 +15,7 @@ on:
   pull_request:
     paths:
       - 'chipcompiler/**'
+      - 'agent/**'
       - 'test/**'
       - 'ecc.spec'
       - 'packaging/**'
@@ -124,6 +125,13 @@ jobs:
       - name: Pytest
         run: uv run --no-sync pytest test/ -v --basetemp=pytest-tmp --cov=chipcompiler --cov-report=
 
+      - name: Pytest (agent)
+        run: uv run --no-sync pytest agent/test -v --basetemp=pytest-agent-tmp
+
+      - name: Prune test fixture symlinks before log upload
+        if: failure()
+        run: find pytest-tmp -type l -delete
+
       - name: Upload integration flow logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -202,10 +210,10 @@ jobs:
         uses: ./.github/actions/setup-python-deps
 
       - name: Ruff format check
-        run: uv run --no-sync ruff format --check chipcompiler test
+        run: uv run --no-sync ruff format --check chipcompiler test agent
 
       - name: Ruff lint
-        run: uv run --no-sync ruff check --output-format=github chipcompiler test
+        run: uv run --no-sync ruff check --output-format=github chipcompiler test agent
 
       # - name: Pyright
       #   run: uv run pyright chipcompiler

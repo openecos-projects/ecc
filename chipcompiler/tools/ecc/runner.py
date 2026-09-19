@@ -442,7 +442,6 @@ def save_data(
         aspect_ratio = die_bounding_width / die_bounding_height if die_bounding_height > 0 else 1
 
         update_param = {
-            "die": {"size": [die_bounding_width, die_bounding_height], "area": die_area},
             "core": {
                 "size": [core_bounding_width, core_bounding_height],
                 "area": core_area,
@@ -453,6 +452,22 @@ def save_data(
                 "aspect_ratio": aspect_ratio,
             },
         }
+        # In die_util mode the realized die dimensions are outputs of the
+        # geometry solver, not inputs: re-pinning "[params.die] size" would
+        # make every later config refresh force die_size and invalidate the
+        # utilization the floorplan just consumed. Only die_size workspaces
+        # keep the explicit-size pin.
+        floorplan_mode = None
+        try:
+            floorplan_config = json_read(workspace.config[StepEnum.FLOORPLAN.value])
+            floorplan_mode = (floorplan_config.get("die_builder") or {}).get("mode")
+        except (OSError, ValueError, KeyError):
+            floorplan_mode = None
+        if floorplan_mode != "die_util":
+            update_param = {
+                "die": {"size": [die_bounding_width, die_bounding_height], "area": die_area},
+                **update_param,
+            }
 
         update_parameters(parameters_src=update_param, parameters_target=workspace.parameters.data)
         if not save_parameter(workspace.parameters):
@@ -492,6 +507,19 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
     return state
 
 
+def _plotter_class():
+    # Resolved through the module global so agent.tools can substitute its
+    # plotter (ecc_runner.ECCToolsPlot = AgentECCToolsPlot). The default import
+    # stays deferred because ECCToolsPlot pulls in matplotlib, which must stay
+    # off the package import path (test/utility/test_plot_lazy.py).
+    override = globals().get("ECCToolsPlot")
+    if override is not None:
+        return override
+    from chipcompiler.tools.ecc.plot import ECCToolsPlot
+
+    return ECCToolsPlot
+
+
 def run_analysis(workspace: Workspace, step: EccStep, subflow: EccSubFlow):
     if not workspace.parameters.data.get("run_analysis", True):
         return
@@ -500,9 +528,7 @@ def run_analysis(workspace: Workspace, step: EccStep, subflow: EccSubFlow):
     build_step_metrics(workspace=workspace, step=step, subflow=subflow)
 
     # plot layout image
-    from chipcompiler.tools.ecc.plot import ECCToolsPlot
-
-    ploter = ECCToolsPlot(workspace=workspace, step=step)
+    ploter = _plotter_class()(workspace=workspace, step=step)
     ploter.plot()
 
     # do checklist

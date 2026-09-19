@@ -30,6 +30,15 @@ class WorkspaceOpenRequest:
 
 
 @dataclass(frozen=True)
+class WorkspaceDeriveRequest:
+    directory: str
+    target_directory: str
+    reset_from_step: str = ""
+    command_id: str = ""
+    cause: str = "workspace.derived"
+
+
+@dataclass(frozen=True)
 class EmptyRequest:
     pass
 
@@ -314,6 +323,7 @@ FIELD_ALIASES = {
     "projectId": "project_id",
     "projectRoot": "project_root",
     "stepId": "step_id",
+    "resetFromStep": "reset_from_step",
 }
 
 

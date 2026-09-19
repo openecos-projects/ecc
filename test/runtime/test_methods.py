@@ -23,6 +23,7 @@ def test_runtime_method_registry_contains_current_methods_once():
         "project.manifest.mutate",
         "workspace.create",
         "workspace.open",
+        "workspace.derive",
         "workspace.binding_requirement",
         "workspace.update",
         "workspace.configuration.update",

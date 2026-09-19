@@ -3,7 +3,6 @@
 from dataclasses import asdict
 from typing import Any
 
-from .candidate_artifacts import workspace_analysis_path, write_json_atomic
 from .candidate_registry import (
     CANDIDATE_TARGET_BACKENDS,
     candidate_capability_registry,
@@ -13,7 +12,6 @@ from .candidate_registry import (
 
 CAPABILITIES_SCHEMA = "ecc.workspace.candidate_capabilities.v1"
 CAPABILITIES_SCHEMA_VERSION = 1
-CAPABILITIES_FILENAME = "candidate_capabilities.v1.json"
 
 EXCLUDED_CONFIGURATION_GROUPS = {
     "Floorplan": [
@@ -30,9 +28,9 @@ EXCLUDED_CONFIGURATION_GROUPS = {
 
 
 def export_candidate_capabilities(workspace: Any) -> dict[str, Any]:
-    """Write and return the deterministic candidate capability contract."""
+    """Return the current workspace's candidate capability contract."""
     grouped = _group_knobs_by_target()
-    payload = {
+    return {
         "schema": CAPABILITIES_SCHEMA,
         "schema_version": CAPABILITIES_SCHEMA_VERSION,
         "registry_sha256": candidate_registry_digest(),
@@ -41,8 +39,6 @@ def export_candidate_capabilities(workspace: Any) -> dict[str, Any]:
             for target_step, available_knobs, unavailable_knobs in grouped
         ],
     }
-    write_json_atomic(_capabilities_path(workspace), payload)
-    return payload
 
 
 def _group_knobs_by_target() -> list[tuple[str, list[Any], list[Any]]]:
@@ -104,7 +100,3 @@ def _backend_unavailable_knobs(knobs: list[dict[str, Any]], reason: str) -> list
         payload["unavailable_reason"] = reason
         unavailable.append(payload)
     return unavailable
-
-
-def _capabilities_path(workspace: Any):
-    return workspace_analysis_path(workspace.directory, CAPABILITIES_FILENAME)
