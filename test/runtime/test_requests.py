@@ -134,6 +134,22 @@ def test_first_slice_payloads_parse_to_typed_request_models(method, params, requ
     assert is_dataclass(request)
 
 
+def test_flow_run_parses_reset_runtime_params_and_defaults_to_preserving():
+    request = _parse_runtime_request(
+        "flow.run", {"workspaceId": "ws-1", "rerun": True, "resetRuntimeParams": True}
+    )
+
+    assert request == FlowRunRequest(workspace_id="ws-1", rerun=True, reset_runtime_params=True)
+
+    default_request = _parse_runtime_request("flow.run", {"workspaceId": "ws-1"})
+    assert default_request.reset_runtime_params is False
+
+
+def test_flow_run_rejects_non_boolean_reset_runtime_params():
+    with pytest.raises(RequestValidationError, match="reset_runtime_params"):
+        _parse_runtime_request("flow.run", {"workspaceId": "ws-1", "resetRuntimeParams": "yes"})
+
+
 @pytest.mark.parametrize(
     ("method", "params", "request_type"),
     [

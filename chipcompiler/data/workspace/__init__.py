@@ -815,8 +815,10 @@ def prepare_workspace_for_rerun(
 ) -> None:
     """Delete old run artifacts and restore runtime files before a full-flow rerun.
 
-    GUI reruns retain the user's current configuration and parameter values. CLI
-    keeps the established runtime-parameter reset behavior.
+    With preserve_user_inputs=True (the rerun default, GUI and CLI alike) the
+    workspace's current configuration and parameter values are retained. Pass
+    False to make the reset explicit: the template runtime parameters
+    (die/core) are restored and the generated configs refreshed.
     """
     import shutil
 
