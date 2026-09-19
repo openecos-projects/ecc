@@ -305,6 +305,23 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
                 )
             ]
         )
+    from chipcompiler.data.workspace.config_manifest import modified_derived_configs
+
+    modified = modified_derived_configs(ctx.run_dir)
+    if modified and not command_input.force:
+        return CommandResult.err(
+            [
+                error_record(
+                    "derived_configs_modified",
+                    workspace=ctx.run_dir,
+                    files=", ".join(modified),
+                    reason="config/*.json changed since the last derivation; "
+                    "refresh would overwrite those edits",
+                    hint="rerun with --force to overwrite, or carry the edits "
+                    "through 'ecc param set --workspace' / ecc.toml instead",
+                )
+            ]
+        )
     refresh_input = RunInput(
         output=command_input.output,
         project=command_input.project,
