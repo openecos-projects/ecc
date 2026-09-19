@@ -6,7 +6,9 @@ from chipcompiler.cli import main as cli_main
 from chipcompiler.rtl2gds import build_rtl2gds_flow
 
 
-def _write_existing_workspace(run_dir, step_names, states=None, preset="rtl2gds", pdk_root=None):
+def _write_existing_workspace(
+    run_dir, step_names, states=None, preset="rtl2gds", pdk_root=None, extra=None
+):
     """A valid existing workspace: home/params.toml + flow.json with given steps."""
     from chipcompiler.data.workspace_config import save_workspace_config
     from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
@@ -35,6 +37,8 @@ def _write_existing_workspace(run_dir, step_names, states=None, preset="rtl2gds"
     parameters = {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"}
     if pdk_root is not None:
         parameters["pdk_root"] = str(pdk_root)
+    if extra:
+        parameters.update(extra)
     assert save_workspace_config(run_dir, parameters, {"preset": preset})
 
 
@@ -146,6 +150,84 @@ class TestFlowContinuation:
         records = _records(capsys, plain_records)
         warning = [r for r in records if r.get("warning") == "params_ignored_on_existing_run"]
         assert len(warning) == 1
+
+    def test_params_warning_carries_fix_commands_when_values_diverge(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        monkeypatch,
+        plain_records,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
+            f.write("\n[params.cts]\nmax_fanout = 16\n")
+        run_dir = os.path.join(project_dir, "default")
+        _write_existing_workspace(
+            run_dir, RTL2GDS_NAMES, pdk_root=pdk_root, extra={"max_fanout": 32}
+        )
+
+        class Flow:
+            def __init__(self, workspace):
+                self.workspace = workspace
+
+            def create_step_workspaces(self, *, executable_steps=None):
+                raise AssertionError("no-op run must not rebuild step workspaces")
+
+        monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
+
+        assert rc == 0
+        records = _records(capsys, plain_records)
+        (warning,) = [r for r in records if r.get("warning") == "params_ignored_on_existing_run"]
+        assert warning["diverging_params"] == "cts.max_fanout"
+        assert "ecc param set cts.max_fanout 16 --workspace default" in warning["fix"]
+
+    def test_params_warning_stays_generic_when_values_match(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        monkeypatch,
+        plain_records,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
+            f.write("\n[params.cts]\nmax_fanout = 16\n")
+        run_dir = os.path.join(project_dir, "default")
+        _write_existing_workspace(
+            run_dir, RTL2GDS_NAMES, pdk_root=pdk_root, extra={"max_fanout": 16}
+        )
+
+        class Flow:
+            def __init__(self, workspace):
+                self.workspace = workspace
+
+            def create_step_workspaces(self, *, executable_steps=None):
+                raise AssertionError("no-op run must not rebuild step workspaces")
+
+        monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
+
+        assert rc == 0
+        records = _records(capsys, plain_records)
+        (warning,) = [r for r in records if r.get("warning") == "params_ignored_on_existing_run"]
+        assert "diverging_params" not in warning
+        assert "fix" not in warning
 
     def test_malformed_workspace_config_is_config_invalid_not_invalid_workspace(
         self,

@@ -80,6 +80,57 @@ class TestParamSet:
         assert record["value"] == "0.65"
         assert record["source"] == "ecc.toml"
 
+    def test_param_set_discloses_fresh_run_scope_and_workspace_hint(
+        self, tmp_path, capsys, create_cli_project, plain_records
+    ):
+        project_dir = create_cli_project()
+        rc = cli_main.run(
+            ["param", "set", "place.target_density", "0.65", "--project", project_dir, "--plain"]
+        )
+
+        assert rc == 0
+        (record,) = plain_records(capsys.readouterr().out)
+        assert record["applies_to"] == "next fresh/overwrite run"
+        assert (
+            "ecc param set place.target_density <value> --workspace NAME"
+            in record["workspace_hint"]
+        )
+
+    def test_param_set_lists_registered_workspaces(
+        self, tmp_path, capsys, create_cli_project, plain_records
+    ):
+        project_dir = create_cli_project()
+        manifest = {
+            "schema_version": 1,
+            "design_name": "gcd",
+            "root_path": project_dir,
+            "base_design": {
+                "pdk": "ics55",
+                "pdk_root": str(tmp_path / "ics55"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v"],
+                "parameters": {"design": "gcd", "frequency_max": 100},
+            },
+            "workspaces": [
+                {
+                    "workspace_id": "ws_0001",
+                    "workspace_path": os.path.join(project_dir, "ws_0001"),
+                    "status": "success",
+                }
+            ],
+        }
+        with open(os.path.join(project_dir, "project.json"), "w") as f:
+            json.dump(manifest, f)
+
+        rc = cli_main.run(
+            ["param", "set", "place.target_density", "0.65", "--project", project_dir, "--plain"]
+        )
+
+        assert rc == 0
+        (record,) = plain_records(capsys.readouterr().out)
+        assert record["registered_workspaces"] == "ws_0001"
+
     def test_param_set_rejects_unknown_key(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
         rc = cli_main.run(["param", "set", "bogus.key", "5", "--project", project_dir])

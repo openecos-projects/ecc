@@ -252,16 +252,24 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
             [error_record("config_error", param=key, reason=str(exc))], exit_code=1
         )
 
-    return CommandResult.ok(
-        [
-            {
-                "param": key,
-                "value": value,
-                "status": "set",
-                "source": "ecc.toml",
-            }
-        ]
+    record = {
+        "param": key,
+        "value": value,
+        "status": "set",
+        "source": "ecc.toml",
+        "applies_to": "next fresh/overwrite run",
+    }
+    registered = _registered_workspace_names(ctx.project_dir)
+    if registered:
+        record["registered_workspaces"] = ", ".join(registered)
+    record["workspace_hint"] = (
+        "existing workspaces ignore ecc.toml params; apply to one with: "
+        + disclosure_cmd(
+            f"ecc param set {key} <value> --workspace NAME",
+            ctx.project,
+        )
     )
+    return CommandResult.ok([record])
 
 
 def param_unset(args, ctx: CommandContext) -> CommandResult:
@@ -388,6 +396,17 @@ def _pdk_target_str(target: str) -> str:
 def _find_config_path(project_dir: str) -> str | None:
     path = os.path.join(project_dir, "ecc.toml")
     return path if os.path.isfile(path) else None
+
+
+def _registered_workspace_names(project_dir: str) -> list[str]:
+    """Workspace ids registered in project.json ([] for non-manifest projects)."""
+    from chipcompiler.project.manifest import ManifestError, load_manifest
+
+    try:
+        manifest = load_manifest(project_dir)
+    except (ManifestError, OSError):
+        return []
+    return [workspace.workspace_id for workspace in manifest.workspaces]
 
 
 def _load_toml_overrides(project_dir: str) -> tuple[dict[str, object], list[str]]:

@@ -109,7 +109,9 @@ def set_cmd(
 
     - project (default): the override is written to `ecc.toml`
       (`[params.*]` / `[pdk.overrides]`) and takes effect on the next
-      fresh `ecc run`.
+      fresh `ecc run` (including `--overwrite`); existing workspaces ignore
+      it. The success record lists the registered workspaces and discloses
+      the workspace-scoped command to apply it to one of them.
     - `--workspace NAME`: written to `home/params.toml` `[params]`;
       the refresh is immediate and the owning step is marked pending.
 
