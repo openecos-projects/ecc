@@ -182,15 +182,15 @@ def run_existing_workspace(
     if cfg.manifest_driven:
         # Manifest mode: the workspace's own [flow] governs the range (the
         # seeded start/end is not re-consulted), but the effective declared
-        # skip policy (project.json over ecc.toml, carried on the flow
-        # config) is applied over it so classification and any extension
+        # skip policy (ecc.toml over the project.json entry, carried on the
+        # flow config) is applied over it so classification and any extension
         # use the same policy a fresh creation would.
         target_section = _manifest_skip_target(run_dir, flow_config)
     else:
         # The target carries the preset plus the effective declared skip
-        # policy (already resolved through skip-specific precedence onto
-        # the flow config), so an existing workspace classifies against
-        # the same policy a fresh creation would use.
+        # policy (already resolved through the shared ecc.toml-over-manifest
+        # precedence onto the flow config), so an existing workspace
+        # classifies against the same policy a fresh creation would use.
         target_section = {"preset": cfg.flow_preset} if cfg.flow_preset else None
         if target_section is not None:
             if isinstance(flow_config, dict) and "skip_steps" in flow_config:

@@ -83,14 +83,14 @@ def build_project_config_items(
     # Effective skip policy: the declared spelling with its winning layer,
     # or the code default when no surface declares the key.
     declared = None
-    source = "ecc.toml"
+    source = "project.json"
     winner = getattr(cfg, "_skip_steps_source", None)
     if resolved is not None and isinstance(flow_config, dict) and "skip_steps" in flow_config:
         declared = list(flow_config["skip_steps"])
-        # The winner was resolved by effective-config: manifest entry beats
-        # ecc.toml for this key; fall back to layer presence for older
-        # call paths that did not record it.
-        source = winner or ("project.json" if "flow.skip_steps" not in explicit else "ecc.toml")
+        # The winner was resolved by effective-config: an explicit ecc.toml
+        # key beats the manifest entry, like every other key; fall back to
+        # layer presence for older call paths that did not record it.
+        source = winner or ("ecc.toml" if "flow.skip_steps" in explicit else "project.json")
     elif "flow.skip_steps" in explicit:
         declared = list(cfg.flow_skip_steps or [])
     if declared is None:

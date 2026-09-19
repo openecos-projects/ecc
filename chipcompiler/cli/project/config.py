@@ -34,8 +34,8 @@ class ProjectConfig:
 
     flow_preset: str = ""
     # Declared [flow] skip_steps spelling; None when the key is absent (the
-    # code default then applies). The manifest's per-workspace value wins
-    # over this one for this key only.
+    # code default then applies). An explicit declaration wins over the
+    # manifest's per-workspace value, like every other key.
     flow_skip_steps: list[str] | None = None
     config_path: str = ""
     project_dir: str = ""
