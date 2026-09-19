@@ -247,6 +247,8 @@ def test_step_configuration_update_invalidates_only_target_suffix(
         "applies",
         "description",
         "range",
+        "display_key",
+        "knob_id",
     }
     states = {step["name"]: step["state"] for step in updated.flow.steps()}
     assert states["Synthesis"] == "Success"

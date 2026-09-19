@@ -3,6 +3,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from chipcompiler.data.param_keys import display_key_for, knob_id_for
 from chipcompiler.data.parameter_schema import list_schemas, resolve_parameters
 from chipcompiler.engine.pdk_binding import pdk_binding_content_hash
 from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
@@ -30,6 +31,8 @@ def describe_workspace_spec() -> dict[str, Any]:
                 "default": deepcopy(schema.default),
                 "appliesTo": schema.applies,
                 "backendMapping": deepcopy(schema.maps_to),
+                "display_key": display_key_for(schema.param),
+                "knob_id": knob_id_for(schema.param),
                 **({"range": list(schema.range)} if schema.range else {}),
                 **({"choices": list(schema.choices)} if schema.choices else {}),
                 **({"unit": schema.unit} if schema.unit else {}),
@@ -357,8 +360,7 @@ def _effective_parameter_values(
         if parameter.schema.pdk_target is None
         and (
             parameter.param in preserved
-            or
-            parameter.schema.applies == "all"
+            or parameter.schema.applies == "all"
             or _parameter_applies_to_flow(parameter.schema.applies, steps)
         )
     }
