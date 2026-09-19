@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.data import SkippableStepEnum, StateEnum
+from chipcompiler.data import SkippableStepEnum, StateEnum, StepEnum
 
 from ._sizer_helpers import (
     ExplodingEccModule,
@@ -75,6 +75,47 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
             False,
         )
     ]
+
+
+def test_preplace_runner_publishes_without_dreamplace(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+    from chipcompiler.tools.ecc_sizer import runner as sizer_runner
+
+    workspace = _workspace(tmp_path)
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.PREPLACE.value,
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
+    )
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_step_config(workspace, step)
+
+    calls = []
+
+    def fake_run(command, cwd, stdout, stderr, check):
+        calls.append((command, cwd, stdout, stderr, check))
+        _write_staging(step)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(sizer_runner, "get_sizer_command", lambda: ["/fake/sizer"])
+    monkeypatch.setattr(sizer_runner, "is_eda_exist", lambda: True)
+    monkeypatch.setattr(sizer_runner, "is_sizer_runtime_exist", lambda: True)
+    monkeypatch.setattr(sizer_runner, "is_dreamplace_exist", lambda: False)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert sizer_runner.run_step(workspace, step) == StateEnum.Success
+    assert Path(step.output.def_).read_text(encoding="utf-8") == "def\n"
+    assert Path(step.output.verilog).read_text(encoding="utf-8") == "module gcd; endmodule\n"
+    assert not sizer_builder.sizer_staging_def(step).exists()
+    assert not sizer_builder.sizer_staging_verilog(step).exists()
+    assert calls
+    states = _subflow_states(step)
+    assert "run legalization" not in states
+    assert states == {
+        "run preplace": StateEnum.Success.value,
+        "save data": StateEnum.Success.value,
+    }
 
 
 def test_sizer_runner_marks_subflow_invalid_when_tool_or_config_missing(tmp_path, monkeypatch):

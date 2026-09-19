@@ -327,6 +327,9 @@ class EngineFlow:
             case SkippableStepEnum.TIMING_OPT.value:
                 if os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""):
                     success = True
+            case StepEnum.PREPLACE.value:
+                if os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""):
+                    success = True
             case _:
                 gds = ecc_output.gds if ecc_output else None
                 if (

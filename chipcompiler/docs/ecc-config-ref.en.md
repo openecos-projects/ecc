@@ -70,6 +70,7 @@ Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG
 | preFloorplan | ✓ | `floorplan_ecc.json` | automatic macro floorplanning |
 | macroPlacement | — | `dreamplace_ecc.json` + `macro_location.tcl` | writes the Tcl macro-placement handoff (skips DreamPlace when `macro.placements` is set, see §1.5) |
 | postFloorplan | ✓ | `floorplan_ecc.json` + `macro_location.tcl` | reads the Tcl macro-placement handoff |
+| preplace | — | generated Sizer env/cmd files | runs Sizer `-preplace_gain` after floorplan and emits a placement-ready DEF/netlist |
 | placement | — | `dreamplace_ecc.json` | shares one file with legalization |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | `def_input`/`result_dir` etc. rewritten per step |
@@ -300,9 +301,9 @@ Configuration file `floorplan_ecc.json` is shared by the `preFloorplan` and `pos
 | `stripe` (MET4/MET5) | width 1.0, pitch 16.0, offset 0.5 | Power stripes: layer/width/pitch (spacing)/offset (µm) |
 | `connect_layers` | MET1–MET4, MET4–MET5 | Adjacent-layer via connection pairs for power |
 
-## 5. macro placement / placement / legalization (DreamPlace)
+## 5. macro placement / preplace / placement / legalization
 
-The three steps share `config/dreamplace_ecc.json`; before each step runs, `def_input`, `verilog_input`, and `result_dir` are rewritten. `macroPlacement` uses `macroPlacement_dreamplace/data/macro`, placement reads the post-floorplan output and uses `place_dreamplace/data/pl`, and legalization reads the CTS output and uses `legalization_dreamplace/data/pl`. The parameters are exactly the upstream DreamPlace JSON parameter set, explained group by group below (defaults = template values; `*` marks user-parameter mapping points).
+`macroPlacement`, placement, and legalization share `config/dreamplace_ecc.json`; before each DreamPlace step runs, `def_input`, `verilog_input`, and `result_dir` are rewritten. The `preplace` step runs Sizer's placement-independent gain-buffering pass between post-floorplan and placement, and does not run DreamPlace legalization. `macroPlacement` uses `macroPlacement_dreamplace/data/macro`, placement reads the preplace output and uses `place_dreamplace/data/pl`, and legalization reads the CTS output and uses `legalization_dreamplace/data/pl`. The DreamPlace parameters are exactly the upstream JSON parameter set, explained group by group below (defaults = template values; `*` marks user-parameter mapping points).
 
 ### Inputs and outputs
 
@@ -420,6 +421,8 @@ Timing optimization is a three-stage subflow: run Sizer, legalize the Sizer stag
 | `data/to/sizer.def.gz` / `sizer.v.gz` | Sizer output | Staging artifacts consumed by the inner DreamPlace legalization; successful legalization is then saved as the Timing optimization step output |
 
 The runtime root must contain `src/sizer_os.tcl`; ECC discovers it from `CHIPCOMPILER_ECC_SIZER_ROOT` or by walking upward from the `Sizer` binary on `PATH`. `ecc doctor` requires both this runtime root and the Sizer executable. Sizer is required by the complete `rtl2gds` chain; for a fresh or `--overwrite` `rtl2gds` target, `ecc run` also checks it during environment preflight and returns `env_not_ready` before creating the workspace if it is missing. Existing workspaces and `--workspace` reruns skip this preflight and can still fail while executing Timing optimization.
+
+The preceding `preplace` step uses the same generated Sizer environment but adds `-preplace_gain`, omits SPEF, and publishes its DEF/netlist directly for DreamPlace placement. It does not run the Timing optimization sizing loop or an inner legalization pass.
 
 ## 7. cts (ecc-tools)
 

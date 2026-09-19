@@ -31,6 +31,7 @@ class StepEnum(StepBaseEnum):
     PRE_FLOORPLAN = "preFloorplan"
     MACRO_PLACEMENT = "macroPlacement"
     POST_FLOORPLAN = "postFloorplan"
+    PREPLACE = "preplace"
     PLACEMENT = "place"
     CTS = "CTS"
     LEGALIZATION = "legalization"

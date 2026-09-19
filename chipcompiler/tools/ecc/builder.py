@@ -90,6 +90,7 @@ def build_step(
                 StepEnum.PRE_FLOORPLAN.value: data_dir / "fp",
                 StepEnum.MACRO_PLACEMENT.value: data_dir / "macro",
                 StepEnum.POST_FLOORPLAN.value: data_dir / "fp",
+                StepEnum.PREPLACE.value: data_dir / "preplace",
                 StepEnum.PLACEMENT.value: data_dir / "pl",
                 StepEnum.LEGALIZATION.value: data_dir / "pl",
                 StepEnum.FILLER.value: data_dir / "pl",

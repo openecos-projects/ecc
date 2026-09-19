@@ -276,6 +276,7 @@ class TestStepOverview:
             "pre_floorplan",
             "macro_placement",
             "post_floorplan",
+            "preplace",
             "placement",
             "cts",
             "legalization",
