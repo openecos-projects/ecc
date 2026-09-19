@@ -447,7 +447,7 @@ config_param(
 #### 扩展项目声明（`ecc project *` / `ecc workspace refresh`）
 
 - `ecc project set/unset/add/remove/show` 的可编辑键在 `cli/project/config_fields.py::PROJECT_FIELDS` 声明（`key` / TOML 表 / 字段名 / 类型 / `list_value`）。加一个字段五个子命令自动生效；`add`/`remove` 硬性只支持 `design.rtl`（其余键报 `unsupported_project_collection`）。
-- `ecc workspace refresh` 的实现等价于 run 路径的 `overwrite=True, execute_flow=False`（`cli/command_handlers/project.py::refresh_workspace`），因此它和新建 run 一样做环境预检（`ecc.toml` 的 `preset: rtl2gds` 要求全套工具就绪，即使并不真正执行步骤）；非 manifest 项目报 `workspace_refresh_requires_managed_workspace`。
+- `ecc workspace refresh` 的实现等价于 run 路径的 `overwrite=True, execute_flow=False`（`cli/command_handlers/project.py::refresh_workspace`），因此它和新建 run 一样做环境预检（`ecc.toml` 的 `preset: rtl2gds` 要求全套工具就绪，即使并不真正执行步骤）；非 manifest 项目报 `workspace_refresh_requires_managed_workspace`。覆盖前它会把 `config/*.json` 与上次派生记录（`home/config-derived-manifest.json`，由 `refresh_workspace_config` 写出）比对；检测到差异时以 `derived_configs_modified` 拒绝并列出文件，除非给出 `--force`。
 - workspace 局部 `param set/unset/list/diff --workspace NAME` 经 `cli/command_handlers/workspace_params.py` 修改 `home/params.toml`（记录到 `workspace_param_overrides`，经 `chipcompiler.engine.rerun` 失效后缀步骤）；项目级 `param` 走 `cli/command_handlers/param.py`。
 
 ## CLI 用法

@@ -626,7 +626,11 @@ no CLI-layer changes needed.
   which is why it runs the same environment preflight as a fresh run (`preset:
   rtl2gds` from `ecc.toml` means the full tool set must be ready, even though
   no step executes). On a non-manifest project it reports
-  `workspace_refresh_requires_managed_workspace`.
+  `workspace_refresh_requires_managed_workspace`. Before overwriting it
+  compares `config/*.json` against the last derivation record
+  (`home/config-derived-manifest.json`, written by
+  `refresh_workspace_config`); a detected difference refuses with
+  `derived_configs_modified` listing the files unless `--force` is given.
 - Workspace-scoped `param set/unset/list/diff --workspace NAME` mutate
   `home/params.toml` through `cli/command_handlers/workspace_params.py`
   (records in `workspace_param_overrides`, suffix invalidation via
