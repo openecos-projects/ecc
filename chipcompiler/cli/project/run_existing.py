@@ -47,6 +47,42 @@ def _manifest_skip_target(run_dir: str, flow_config) -> dict | None:
     return {**workspace_flow, "skip_steps": declared}
 
 
+def _diverging_workspace_param_fixes(
+    workspace, run_name: str, overrides: dict, project
+) -> list[tuple[str, str]]:
+    """Copy-pasteable `ecc param set --workspace` commands for the ecc.toml
+    [params] keys whose value differs from the workspace's current value.
+
+    Returns (param, fix command) pairs. Best-effort: keys without a
+    resolvable workspace target (or whose config cannot be read) are skipped
+    — the generic warning still applies.
+    """
+    import json as _json
+
+    from chipcompiler.cli.project.params import lookup_schema
+    from chipcompiler.data.workspace_parameters import workspace_param_value
+
+    fixes = []
+    for key, value in sorted(overrides.items()):
+        schema = lookup_schema(key)
+        if schema is None:
+            continue
+        try:
+            current = workspace_param_value(workspace, schema)
+        except (ValueError, OSError):
+            continue
+        if current == value:
+            continue
+        rendered = _json.dumps(value) if isinstance(value, (list, dict, bool)) else str(value)
+        fixes.append(
+            (
+                key,
+                disclosure_cmd(f"ecc param set {key} {rendered} --workspace {run_name}", project),
+            )
+        )
+    return fixes
+
+
 def run_existing_workspace(
     command_input,
     ctx,
@@ -215,6 +251,20 @@ def run_existing_workspace(
                     )
                 ]
             )
+
+        if cfg.params_overrides:
+            # The warning was raised before the load; now that the persisted
+            # parameters are available, attach the concrete divergence fixes.
+            # The ecc.toml values stay ignored (semantics unchanged) — the
+            # commands disclose how to apply them to this workspace.
+            fixes = _diverging_workspace_param_fixes(
+                workspace, run_name, cfg.params_overrides, project
+            )
+            if fixes:
+                for warning in warnings:
+                    if warning.get("warning") == "params_ignored_on_existing_run":
+                        warning["diverging_params"] = ", ".join(key for key, _cmd in fixes)
+                        warning["fix"] = "; ".join(cmd for _key, cmd in fixes)
 
         result = reconcile_workspace_locked(run_dir, target_section)
         if result.outcome == "mismatch":
