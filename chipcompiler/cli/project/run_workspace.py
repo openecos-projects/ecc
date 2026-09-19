@@ -66,11 +66,15 @@ def execute_workspace_run(
     workspace_path = os.path.abspath(workspace_path)
 
     from chipcompiler.cli.project.pdk_root_fallback import pdk_root_env_fallback_warning
+    from chipcompiler.cli.project.spec_drift import workspace_spec_drift_warning
 
     warnings = []
     pdk_root_warning = pdk_root_env_fallback_warning(workspace_path)
     if pdk_root_warning is not None:
         warnings.append(pdk_root_warning)
+    spec_drift = workspace_spec_drift_warning(workspace_path)
+    if spec_drift is not None:
+        warnings.append(spec_drift)
 
     def mismatch_error(reason: str) -> CommandResult:
         if reason.startswith("unsupported_schema_version"):

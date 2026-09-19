@@ -131,10 +131,14 @@ def run_existing_workspace(
             )
         )
     from chipcompiler.cli.project.pdk_root_fallback import pdk_root_env_fallback_warning
+    from chipcompiler.cli.project.spec_drift import workspace_spec_drift_warning
 
     pdk_root_warning = pdk_root_env_fallback_warning(run_dir)
     if pdk_root_warning is not None:
         warnings.append(pdk_root_warning)
+    spec_drift = workspace_spec_drift_warning(run_dir)
+    if spec_drift is not None:
+        warnings.append(spec_drift)
 
     from chipcompiler.data import load_workspace
     from chipcompiler.data.schema_migrations import UnsupportedSchemaVersionError
