@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from chipcompiler.data import load_workspace, save_parameter
+from chipcompiler.data.param_keys import display_key_for, knob_id_for
 from chipcompiler.data.parameter_schema import (
     list_schemas,
     lookup_schema,
@@ -373,6 +374,8 @@ def _public_parameter_record(workspace: Any, schema) -> dict[str, Any]:
         "default": deepcopy(schema.default),
         "applies": schema.applies,
         "description": schema.description,
+        "display_key": display_key_for(schema.param),
+        "knob_id": knob_id_for(schema.param),
     }
     for field in ("range", "choices", "unit"):
         value = getattr(schema, field)
