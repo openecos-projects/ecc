@@ -154,16 +154,27 @@ def _fresh_entry_step_name(cfg, flow_config) -> str | None:
     return None
 
 
-def _write_back_status(project_dir: str, run_name: str, status: str, warning_records: list) -> None:
-    """Best-effort manifest status write-back; degrades to a warning."""
-    from chipcompiler.cli.core.records import warning_record
+def _write_back_status(
+    project_dir: str, run_name: str, status: str, warning_records: list, *, repair: str
+) -> None:
+    """Manifest status write-back; failure is a diagnosable error, never silent.
+
+    The run itself is NOT failed: the flow already executed and its result
+    stands. The error record names the status that did not persist and the
+    repair command that rewrites it on a later invocation.
+    """
+    from chipcompiler.cli.core.records import error_record
     from chipcompiler.project.manifest_write import write_back_workspace_status
 
     if not write_back_workspace_status(project_dir, run_name, status):
         warning_records.append(
-            warning_record(
+            error_record(
                 "manifest_write_back_failed",
-                reason="run status could not be written back to project.json",
+                workspace_id=run_name,
+                lost_status=status,
+                reason="run status could not be written back to project.json; "
+                "the manifest is out of date until repaired",
+                repair=repair,
             )
         )
 
@@ -260,6 +271,9 @@ def execute_fresh_run(
 
     project = ctx.project
     project_dir = ctx.project_dir
+    # A failed manifest write-back is repaired by re-running the workspace:
+    # the existing-run path rewrites the terminal status on every invocation.
+    write_back_repair = disclosure_cmd("ecc run", project, run_name)
 
     # Commit point: once the replacement is verified and the backup is
     # discarded, execution failures are a normal failed run — the new tree
@@ -328,7 +342,9 @@ def execute_fresh_run(
         if terminal_failure() and workspace_registered:
             # The target is genuinely gone: mark the entry failed. A restored
             # backup keeps its prior status — the refresh never happened.
-            _write_back_status(project_dir, run_name, "failed", warning_records)
+            _write_back_status(
+                project_dir, run_name, "failed", warning_records, repair=write_back_repair
+            )
         elif registration_created and backup_path is not None:
             # This invocation pre-registered an undeclared workspace and then
             # restored the previous tree: the fresh entry must not shadow it.
@@ -514,11 +530,19 @@ def execute_fresh_run(
             commit_replacement()
 
             if workspace_registered and execute_flow:
-                _write_back_status(project_dir, run_name, "running", warning_records)
+                _write_back_status(
+                    project_dir, run_name, "running", warning_records, repair=write_back_repair
+                )
 
             if not execute_flow:
                 if workspace_registered:
-                    _write_back_status(project_dir, run_name, "not_started", warning_records)
+                    _write_back_status(
+                        project_dir,
+                        run_name,
+                        "not_started",
+                        warning_records,
+                        repair=write_back_repair,
+                    )
                 return CommandResult.ok(
                     warning_records
                     + [
@@ -545,7 +569,9 @@ def execute_fresh_run(
 
             if not flow_ok:
                 if workspace_registered:
-                    _write_back_status(project_dir, run_name, "failed", warning_records)
+                    _write_back_status(
+                        project_dir, run_name, "failed", warning_records, repair=write_back_repair
+                    )
                 failure_records = [
                     {
                         "workspace_id": run_name,
@@ -582,7 +608,9 @@ def execute_fresh_run(
             ws_locks.close()
 
     if workspace_registered:
-        _write_back_status(project_dir, run_name, "success", warning_records)
+        _write_back_status(
+            project_dir, run_name, "success", warning_records, repair=write_back_repair
+        )
 
     success_records = [
         {
