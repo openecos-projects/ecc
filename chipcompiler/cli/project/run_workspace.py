@@ -64,6 +64,13 @@ def execute_workspace_run(
 
     workspace_path = os.path.abspath(workspace_path)
 
+    from chipcompiler.cli.project.pdk_root_fallback import pdk_root_env_fallback_warning
+
+    warnings = []
+    pdk_root_warning = pdk_root_env_fallback_warning(workspace_path)
+    if pdk_root_warning is not None:
+        warnings.append(pdk_root_warning)
+
     def mismatch_error(reason: str) -> CommandResult:
         if reason.startswith("workspace_config_invalid"):
             return error("workspace_config_invalid", workspace=workspace_path, reason=reason)
@@ -124,7 +131,8 @@ def execute_workspace_run(
             # is stale.
             write_status("success")
             return CommandResult.ok(
-                [
+                warnings
+                + [
                     {
                         "workspace_id": workspace_id or "default",
                         "status": "success",
@@ -204,7 +212,7 @@ def execute_workspace_run(
         "no_op": result.ok and not result.executed,
     }
     if result.ok:
-        return CommandResult.ok([record])
+        return CommandResult.ok(warnings + [record])
     record["failed_step"] = result.failed
     record["resume_cmd"] = f"ecc run --workspace {shlex.quote(workspace_id or 'default')} --resume"
-    return CommandResult.err([record])
+    return CommandResult.err(warnings + [record])

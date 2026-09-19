@@ -639,7 +639,7 @@ export CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/ics55-pdk
 3. 旧的 `ICS55_PDK_ROOT` 环境变量；
 4. 默认：ecc 检出目录旁的 `../pdk/icsprout55-pdk`（ecos-studio 工作区布局）。
 
-后端支持 `POST /api/workspace/set_pdk_root` 设置运行时路径。workspace 创建时会把解析出的 root 持久化到 `home/params.toml` 的 `pdk_root`。
+后端支持 `POST /api/workspace/set_pdk_root` 设置运行时路径。workspace 创建时会把解析出的 root（绝对路径）持久化到 `home/params.toml` 的 `[pdk] root`，因此同一 workspace 在任何机器上解析结果一致。加载持久化 root 为空/缺失的已有 workspace 时仍会回退环境变量，但 `ecc run` 会发出 `pdk_root_env_fallback` 警告并指明解析来源；执行 `ecc run --overwrite` 可把解析出的 root 固化进 workspace。
 
 示例：
 
