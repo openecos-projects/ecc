@@ -220,6 +220,7 @@ class WorkspaceRefreshInput:
     output: OutputOptions
     project: ProjectOptions
     workspace: str
+    force: bool = False
 
 
 @dataclass(frozen=True)

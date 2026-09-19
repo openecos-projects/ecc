@@ -66,3 +66,96 @@ def test_refresh_failure_restores_the_previous_workspace(
     # The restored workspace keeps its prior manifest status.
     document = json.loads((project_path / "project.json").read_text())
     assert document["workspaces"][0]["status"] == "success"
+
+
+def _write_derived_manifest(workspace_dir, contents: dict):
+    """Record the derived-state hashes for the given config file contents."""
+    import hashlib
+
+    from chipcompiler.data.workspace.config_manifest import derived_config_manifest_path
+
+    entries = {
+        name: {"sha256": hashlib.sha256(content.encode()).hexdigest(), "size": len(content)}
+        for name, content in contents.items()
+    }
+    derived_config_manifest_path(workspace_dir).write_text(json.dumps({"files": entries}))
+
+
+def test_refresh_proceeds_when_derived_configs_match(
+    capsys,
+    create_cli_project,
+    create_flow_json,
+    flow_mocks,
+    manifest_stubs,
+    plain_records,
+):
+    project_dir = create_cli_project()
+    workspace_dir = os.path.join(project_dir, "baseline")
+    project_path = Path(project_dir)
+    manifest_stubs.write(project_path, [manifest_stubs.entry(project_path, "baseline")])
+    create_flow_json(workspace_dir)
+    db_path = Path(workspace_dir, "config", "db_ecc.json")
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db_path.write_text("{}")
+    _write_derived_manifest(workspace_dir, {"db_ecc.json": "{}"})
+
+    rc = cli_main.run(["workspace", "refresh", "baseline", "--project", project_dir, "--plain"])
+
+    assert rc == 0
+    records = plain_records(capsys.readouterr().out)
+    assert records[-1]["status"] == "refreshed"
+
+
+def test_refresh_refuses_and_lists_files_after_hand_edit(
+    capsys,
+    create_cli_project,
+    create_flow_json,
+    flow_mocks,
+    manifest_stubs,
+    plain_records,
+):
+    project_dir = create_cli_project()
+    workspace_dir = os.path.join(project_dir, "baseline")
+    project_path = Path(project_dir)
+    manifest_stubs.write(project_path, [manifest_stubs.entry(project_path, "baseline")])
+    create_flow_json(workspace_dir)
+    db_path = Path(workspace_dir, "config", "db_ecc.json")
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db_path.write_text('{"RT": {}}')  # hand edit, diverging from the record
+    _write_derived_manifest(workspace_dir, {"db_ecc.json": "{}"})
+
+    rc = cli_main.run(["workspace", "refresh", "baseline", "--project", project_dir, "--plain"])
+
+    assert rc == 1
+    (record,) = plain_records(capsys.readouterr().out)
+    assert record["error"] == "derived_configs_modified"
+    assert record["files"] == "db_ecc.json"
+    assert "--force" in record["hint"]
+
+
+def test_refresh_force_overwrites_modified_configs(
+    capsys,
+    create_cli_project,
+    create_flow_json,
+    flow_mocks,
+    manifest_stubs,
+    plain_records,
+):
+    project_dir = create_cli_project()
+    workspace_dir = os.path.join(project_dir, "baseline")
+    project_path = Path(project_dir)
+    manifest_stubs.write(project_path, [manifest_stubs.entry(project_path, "baseline")])
+    create_flow_json(workspace_dir)
+    db_path = Path(workspace_dir, "config", "db_ecc.json")
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db_path.write_text('{"RT": {}}')
+    _write_derived_manifest(workspace_dir, {"db_ecc.json": "{}"})
+
+    rc = cli_main.run(
+        ["workspace", "refresh", "baseline", "--force", "--project", project_dir, "--plain"]
+    )
+
+    assert rc == 0
+    records = plain_records(capsys.readouterr().out)
+    assert records[-1]["status"] == "refreshed"
+    assert flow_mocks.flow.instances[-1].create_called is True

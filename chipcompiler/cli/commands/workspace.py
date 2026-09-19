@@ -47,16 +47,25 @@ def import_cmd(
 def refresh_cmd(
     *,
     workspace: Annotated[str, typer.Argument(help="Declared workspace name")],
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Overwrite hand-edited config/*.json without asking",
+        ),
+    ] = False,
     project: ProjectOption = None,
     plain: PlainOption = False,
 ) -> None:
     """Recreate a workspace from ecc.toml without running it.
 
     Rebuilds the generated configuration from `ecc.toml` and the PDK; manual
-    edits to `config/*.json` are overwritten. The workspace hub
-    `home/params.toml` keeps four sections: `[design]`, `[pdk]`, `[flow]`,
-    and `[params]`. `pdk.*` path changes cannot be applied with
-    `ecc param set --workspace`; edit `ecc.toml` and refresh instead.
+    edits to `config/*.json` are overwritten. When a change since the last
+    derivation is detected, refresh refuses and lists the modified files
+    unless --force is given. The workspace hub `home/params.toml` keeps four
+    sections: `[design]`, `[pdk]`, `[flow]`, and `[params]`. `pdk.*` path
+    changes cannot be applied with `ecc param set --workspace`; edit
+    `ecc.toml` and refresh instead.
 
     See 'ecc doc config' for the full reference.
     """
@@ -64,6 +73,7 @@ def refresh_cmd(
         output=output_options(plain=plain),
         project=project_options(project),
         workspace=workspace,
+        force=force,
     )
     execute_command(
         "workspace",
