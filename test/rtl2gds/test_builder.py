@@ -60,6 +60,7 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
         (StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart),
         (StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart),
         (StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart),
+        (StepEnum.PREPLACE, "sizer", StateEnum.Unstart),
         (StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart),
         (StepEnum.CTS, "ecc", StateEnum.Unstart),
         (StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart),

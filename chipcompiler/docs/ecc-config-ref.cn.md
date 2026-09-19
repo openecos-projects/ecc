@@ -70,6 +70,7 @@ graph LR
 | preFloorplan | ✓ | `floorplan_ecc.json` | 自动宏布局 |
 | macroPlacement | — | `dreamplace_ecc.json` + `macro_location.tcl` | 写入 Tcl 宏摆放交接文件（设置了 `macro.placements` 时跳过 DreamPlace，见 §1.5） |
 | postFloorplan | ✓ | `floorplan_ecc.json` + `macro_location.tcl` | 读取 Tcl 宏摆放交接文件 |
+| preplace | — | Sizer 生成的 env/cmd 文件 | floorplan 后执行 Sizer `-preplace_gain`，产出适合 placement 的 DEF/网表 |
 | placement | — | `dreamplace_ecc.json` | 与 legalization 共用一个文件 |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | 每步重写 `def_input`/`result_dir` 等 |
@@ -302,9 +303,9 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `stripe`（MET4/MET5） | 宽 1.0、间距 16.0、偏移 0.5 | 电源条带：层/宽度/间距（pitch）/偏移（µm） |
 | `connect_layers` | MET1–MET4、MET4–MET5 | 相邻层电源过孔连接对 |
 
-## 5. macro placement / placement / legalization（DreamPlace）
+## 5. macro placement / preplace / placement / legalization
 
-三步共用 `config/dreamplace_ecc.json`；每次步骤运行前重写 `def_input`、`verilog_input`、`result_dir`。`macroPlacement` 使用 `macroPlacement_dreamplace/data/macro`；placement 读取 post-floorplan 输出并使用 `place_dreamplace/data/pl`；legalization 读取 CTS 输出并使用 `legalization_dreamplace/data/pl`。参数即上游 DreamPlace 的 JSON 参数集，分组解释如下（默认值 = 模板值；`*` = 用户参数映射点）。
+`macroPlacement`、placement 和 legalization 共用 `config/dreamplace_ecc.json`；每次 DreamPlace 步骤运行前重写 `def_input`、`verilog_input`、`result_dir`。`preplace` 在 post-floorplan 与 placement 之间执行 Sizer 的 placement-independent gain buffering，不执行 DreamPlace legalization；`macroPlacement` 使用 `macroPlacement_dreamplace/data/macro`，placement 读取 preplace 输出并使用 `place_dreamplace/data/pl`，legalization 读取 CTS 输出并使用 `legalization_dreamplace/data/pl`。DreamPlace 参数即上游 JSON 参数集，分组解释如下（默认值 = 模板值；`*` = 用户参数映射点）。
 
 ### 输入输出
 
@@ -420,6 +421,8 @@ Timing optimization 是三阶段子流程：运行 Sizer，用 DreamPlace 对 Si
 | `timing_optimization_sizer/script/<design>.cmd_file` | workspace 步骤 + PDK | Sizer 命令：`-useOpenSTA`、顶层模块、输入 `-def`/`-v`、`-sdc`、可选 `-spef` 及暂存输出路径 |
 | `-min_route_layer` / `-max_route_layer` | 设置后取 `route.bottom_layer` / `route.top_layer` | 直接传给 Sizer 的布线层限制 |
 | `data/to/sizer.def.gz` / `sizer.v.gz` | Sizer 输出 | 被内部 DreamPlace 合法化消费的暂存产物；合法化成功后保存为 Timing optimization 步骤输出 |
+
+前置的 `preplace` 步骤复用生成的 Sizer 环境，但追加 `-preplace_gain`、不读取 SPEF，并直接发布 DEF/网表供 DreamPlace placement 使用。它不执行完整 Timing optimization sizing loop，也不执行内部合法化。
 
 运行时根目录必须含 `src/sizer_os.tcl`；ECC 从 `CHIPCOMPILER_ECC_SIZER_ROOT`，或从 `PATH` 上的 `Sizer` 二进制逐级向上查找。`ecc doctor` 同时要求此 runtime root 与 Sizer 可执行文件。完整 `rtl2gds` 链需要 Sizer；对新建或 `--overwrite` 的 `rtl2gds` 目标，`ecc run` 环境预检也会检查它，缺失时会在创建 workspace 前以 `env_not_ready` 失败。已有 workspace 或 `--workspace` 重跑不执行该预检，仍可能在 Timing optimization 执行时失败。
 

@@ -5,7 +5,7 @@ import signal
 import subprocess
 from pathlib import Path
 
-from chipcompiler.data import EccOutput, EccStep, StateEnum, Workspace
+from chipcompiler.data import EccOutput, EccStep, StateEnum, StepEnum, Workspace
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc_dreamplace.runner import legalize_layout
 from chipcompiler.tools.ecc_dreamplace.utility import is_eda_exist as is_dreamplace_exist
@@ -115,7 +115,10 @@ def run_step(
     del ecc_module
 
     sub_flow = SizerSubFlow(workspace=workspace, workspace_step=step)
-    run_sizer_step = SizerSubFlowEnum.run_sizer.value
+    is_preplace = step.name == StepEnum.PREPLACE.value
+    run_sizer_step = (
+        SizerSubFlowEnum.run_preplace.value if is_preplace else SizerSubFlowEnum.run_sizer.value
+    )
     run_legalization_step = SizerSubFlowEnum.run_legalization.value
     save_data_step = SizerSubFlowEnum.save_data.value
 
@@ -127,7 +130,7 @@ def run_step(
         sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Invalid)
         return StateEnum.Invalid
 
-    if not is_dreamplace_exist():
+    if not is_preplace and not is_dreamplace_exist():
         logger.error("DreamPlace tools not available for inner legalization of %s", step.name)
         sub_flow.update_step(step_name=run_legalization_step, state=StateEnum.Invalid)
         return StateEnum.Invalid
@@ -173,6 +176,24 @@ def run_step(
         return StateEnum.Imcomplete
 
     sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Success)
+
+    if is_preplace:
+        try:
+            shutil.copy2(sizer_staging_def(step), step.output.def_ or "")
+            shutil.copy2(sizer_staging_verilog(step), step.output.verilog or "")
+        except OSError:
+            logger.exception("Failed to publish preplace Sizer outputs for %s", step.name)
+            sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Imcomplete)
+            return StateEnum.Imcomplete
+        finally:
+            _delete_staging_outputs(step)
+
+        # This step deliberately produces a placement-ready netlist only;
+        # legalization belongs to the following DreamPlace placement flow.
+        sub_flow.update_step(step_name=save_data_step, state=StateEnum.Ongoing)
+        sub_flow.update_step(step_name=save_data_step, state=StateEnum.Success)
+        return StateEnum.Success
+
     sub_flow.update_step(step_name=run_legalization_step, state=StateEnum.Ongoing)
 
     ecc = legalize_layout(
