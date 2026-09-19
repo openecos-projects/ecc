@@ -39,8 +39,8 @@ line = empty_line
 empty_line = [ whitespace ] ;
 
 (* Comment line *)
-comment_line = [ whitespace ] comment_marker { any_char } ;
-comment_marker = "#" | "//" | "`" ;
+comment_line = [ whitespace ] line_comment_marker { any_char } ;
+line_comment_marker = "#" | "//" | "`" ;
 
 (* +incdir directive *)
 incdir_directive = [ whitespace ] "+incdir+" path_value [ inline_comment ] ;
@@ -62,7 +62,8 @@ quoted_path = ( '"' { any_char - '"' } '"' )
 unquoted_path = { any_char - whitespace - "#" - "//" } ;
 
 (* Inline comment *)
-inline_comment = [ whitespace ] comment_marker { any_char } ;
+inline_comment = [ whitespace ] inline_comment_marker { any_char } ;
+inline_comment_marker = "#" | "//" ;
 
 (* Whitespace *)
 whitespace = " " | "\t" ;

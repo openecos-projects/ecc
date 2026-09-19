@@ -17,8 +17,8 @@ and `chipcompiler/__init__.py` all agree.
 Set the release variables first:
 
 ```bash
-OLD_VERSION=0.1.0-alpha.4
-NEW_VERSION=0.1.0-alpha.5
+OLD_VERSION=0.1.0-alpha.11
+NEW_VERSION=0.1.0-alpha.12
 TAG=v${NEW_VERSION}
 RELEASE_BRANCH=release/${TAG}
 BASE_COMMIT=a6679f6053f54c3a0a5c6fbd6250ac5a137cfa3d
