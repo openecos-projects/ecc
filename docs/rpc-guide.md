@@ -185,6 +185,12 @@ first-slice mutation methods are:
 }
 ```
 
+`flow.run` with `rerun: true` re-executes the persisted flow from scratch
+and preserves the workspace's current parameter values (GUI parity). Pass
+`resetRuntimeParams: true` to make the runtime-parameter reset explicit:
+the template die/core parameters are restored and the generated configs
+refreshed before the rerun.
+
 Run a single step:
 
 ```json

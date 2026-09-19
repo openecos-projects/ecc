@@ -388,7 +388,16 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
         return self._with_session_mutation_lock(request.workspace_id, close)
 
     def flow_run(self, request: FlowRunRequest) -> dict:
-        return self._flow_run(request)
+        """Run the persisted flow; ``rerun=True`` re-executes it from scratch.
+
+        A rerun preserves the workspace's current parameter values by
+        default (GUI parity); ``reset_runtime_params=True`` is the explicit
+        opt-out that additionally restores the template runtime parameters.
+        """
+        return self._flow_run(
+            request,
+            preserve_user_inputs=not request.reset_runtime_params,
+        )
 
     def _flow_run(
         self,
@@ -1085,7 +1094,9 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
             edit_session.source_paths = (output_db,)
             edit_session.source_fingerprint = _artifact_fingerprint(edit_session.source_paths)
             macro_location_path = (
-                _write_macro_location_tcl(module, session.workspace) if request.write_macro_location else None
+                _write_macro_location_tcl(module, session.workspace)
+                if request.write_macro_location
+                else None
             )
             workspace_revision = None
             snapshot_path = Path(session.workspace.directory) / "home" / "engineering-snapshot.json"

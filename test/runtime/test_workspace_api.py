@@ -1130,6 +1130,26 @@ def test_flow_run_uses_run_steps_and_prepare_on_rerun(monkeypatch, tmp_path):
 
     flow = DummyFlow.instances[-1]
     assert result == {"rerun": True}
+    assert prepared == [(ws.resolve(), flow, {"preserve_user_inputs": True})]
+    assert flow.run_steps_calls == [True]
+
+
+def test_flow_run_reset_runtime_params_opts_out_of_preservation(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    prepared = []
+    monkeypatch.setattr(
+        "chipcompiler.data.prepare_workspace_for_rerun",
+        lambda workspace, flow, **kwargs: prepared.append((workspace.directory, flow, kwargs)),
+    )
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+
+    result = api.flow_run(
+        FlowRunRequest(workspace_id=workspace_id, rerun=True, reset_runtime_params=True)
+    )
+
+    flow = DummyFlow.instances[-1]
+    assert result == {"rerun": True}
     assert prepared == [(ws.resolve(), flow, {"preserve_user_inputs": False})]
     assert flow.run_steps_calls == [True]
 
