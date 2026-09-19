@@ -13,7 +13,7 @@
 | --- | --- | --- |
 | 1 | `ecc run --set key=value`（可重复） | 仅新建 run |
 | 2 | `ecc.toml` `[params.*]` | 仅新建 run |
-| 3 | `project.json` `base_design.parameters`（manifest 基础层） | manifest 工程 |
+| 3 | `project.json` `base_design.parameters` 与选中 workspace 条目的 `parameter_patch` 合并（manifest 基础层） | manifest 工程 |
 | 4 | schema 默认值（`chipcompiler/data/config_params/`、legacy 注册表模板） | 始终 |
 
 manifest 基础层是"地板"而不是"覆盖"：`ecc.toml` 与 `--set` 的值叠加在
@@ -24,7 +24,8 @@ manifest 基础层是"地板"而不是"覆盖"：`ecc.toml` 与 `--set` 的值�
 
 - `--set` 直接被拒（`set_requires_fresh_run`）；
 - `ecc.toml` `[params]` 被忽略，并给出 `params_ignored_on_existing_run`
-  警告，附每个参数的 `ecc param set --workspace` 修复命令；
+  警告，仅对 `ecc.toml` 值与 workspace 当前值不同的参数披露
+  `ecc param set --workspace` 修复命令；
 - 修改应走 `ecc param set/unset --workspace NAME`：它编辑
   `home/params.toml` 并刷新派生的 `config/*.json`。
 
@@ -41,8 +42,7 @@ manifest 基础层是"地板"而不是"覆盖"：`ecc.toml` 与 `--set` 的值�
 - **已有 run**：持久化的 `home/params.toml` 是权威。直接重跑默认保留
   用户参数（`flow.run` / `prepare_workspace_for_rerun(preserve_user_inputs=True)`）：
   被重跑的步骤按当前参数重新生成配置输入，下游步骤标记为未开始。
-- **GUI 运行**：GUI 打开 workspace 时会刷新派生配置，因此同一
-  `home/params.toml` 下 GUI 会话与 CLI 会话收敛到同一套 `config/*.json`。
+- **GUI 运行**：`workspace.open` 本身不做配置刷新。派生配置在两条时机刷新：通过 GUI 保存参数时（`workspace.step_configuration.update` / `workspace.configuration.update`），以及运行前 flow 中存在 stale 步骤时。因此同一 `home/params.toml` 下 GUI 会话与 CLI 会话收敛到同一套 `config/*.json`。
 
 ## CLI 与 GUI 差异
 
@@ -71,5 +71,9 @@ workspace 文件带有显式 schema 版本，来自更新版本的文件会响�
 
 注册表位于 `chipcompiler/data/schema_migrations.py`：
 `{文件类型: {目标版本: 迁移函数}}`，在 workspace 打开时按版本升序依次
-应用。文件声明的版本高于支持范围时抛出 `unsupported_schema_version`，
-错误信息带文件路径与版本号——绝不静默解析。
+应用。`params.toml` 或 `flow.json` 声明的版本高于支持范围时抛出
+`unsupported_schema_version`，错误信息带文件路径与版本号——绝不静默解析。
+`engineering-snapshot.json` 不符合支持的形态时则抛出
+`EngineeringSnapshotError`（`invalid Engineering Snapshot: <路径>`），
+不含版本号；v2 与 v3 均原生加载，v2→v3 迁移仅登记供发现——它是显式
+只写通道，加载链不会自动应用。

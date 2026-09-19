@@ -243,9 +243,11 @@ chipcompiler/cli/commands/        # typer 命令定义层（薄）
   ├── project.py                  # init/check/run/status/log/config/migrate 的注册与参数声明
   ├── doctor.py                   # doctor 顶层命令（环境体检）
   ├── param.py                    # param 子应用（list/show/set/unset/diff）
+  ├── macro.py                    # macro 子应用（set/remove/show/import）
+  ├── doc.py                      # doc 命令（在终端渲染内置指南）
   ├── pdk.py                      # pdk 子应用（set-root/show/unset）
   ├── project_config.py           # project 子应用（set/unset/add/remove/show）
-  ├── workspace.py                # workspace 子应用（refresh）
+  ├── workspace.py                # workspace 子应用（import/refresh）
   ├── signoff.py                  # signoff 子应用（inspect/export）
   └── report.py                   # report 子应用（summary/qor/checklist/step）
 chipcompiler/cli/command_handlers/  # 业务处理层（唯一的处理器包，有状态/重逻辑）
@@ -256,6 +258,7 @@ chipcompiler/cli/command_handlers/  # 业务处理层（唯一的处理器包，
   ├── pdk.py                      # pdk 三子命令（TOML 定点改写 + root 来源解析）
   ├── project_config.py           # project 五子命令（声明 schema + 经 cli/project/config_fields.py 做 TOML 定点改写）
   ├── workspace_params.py         # workspace 局部 param set/unset/list/diff（改 home/params.toml + 失效后缀步骤）
+  ├── macro.py                    # macro set/remove/show/import（渲染 macro_location.tcl + 写 params.toml）
   ├── signoff.py                  # signoff inspect/export
   └── report.py                   # report 四子命令（文件写出 + 记录汇总）
 chipcompiler/cli/core/            # 框架层
@@ -270,7 +273,7 @@ chipcompiler/cli/inspection/      # 只读探查逻辑
   ├── discovery.py / config_view.py / log_view.py
   ├── env_probe.py                # doctor/run 预检的环境探查（ProbeResult 体系）
   └── tool_versions.py            # ecc version 的环境工具版本（yosys/sizer/klayout）
-chipcompiler/cli/project/         # config.py（ecc.toml 解析校验）/ config_fields.py（`ecc project` 的项目声明 schema）/ params.py（参数注册表）/ workspace_params.py（workspace 局部覆盖记录）/ manifest.py（项目形态分类）/ effective_config.py / config_params/（直配参数 schema）/ migrate*.py（旧布局迁移）/ run_*.py（run 目标解析与分发）
+chipcompiler/cli/project/         # config.py（ecc.toml 解析校验）/ config_fields.py（`ecc project` 的项目声明 schema）/ params.py（参数注册表）/ toml_edit.py（TOML 定点改写）/ workspace_params.py（workspace 局部覆盖记录）/ manifest.py（项目形态分类）/ manifest_write.py（project.json 状态写回）/ workspace_registration.py（外部 workspace 登记）/ effective_config.py / pdk_root_fallback.py（PDK root 环境变量回退警告）/ spec_drift.py（workspace_spec_drift 披露）/ design_inputs.py（`[design]` 输入声明）/ config_params/（直配参数 schema）/ migrate*.py（旧布局迁移）/ run_*.py（run 目标解析与分发）
 chipcompiler/cli/rendering/       # 输出渲染（render / renderers / pretty / progress）
 chipcompiler/engine/signoff/      # 签核收集器 + 设计/checklist 报告（包，见下文）
 chipcompiler/analysis/qor/ # QoR v3 唯一分析、评分与报告契约
@@ -279,7 +282,7 @@ chipcompiler/engine/qor_report.py # CLI QoR facade，委托 analysis.qor
 
 模块归属由 `test/cli/test_cli_module_layout.py` 强制：核心框架必须在 `cli/core/`、命令注册在 `cli/commands/`、全部处理器在唯一的 `cli/command_handlers/` 包、只读探查在 `cli/inspection/`、渲染在 `cli/rendering/`；旧的 `chipcompiler/cli/*.py` 平铺模块必须不可导入。新增文件时放进对应子包，不要在 `cli/` 根下新建模块。
 
-公开命令的归属必须严格：`ecc signoff` 只负责签核包就绪度与归档导出（`inspect`、`export`）；`ecc report` 统一承载报告输出（`summary`、`qor`、`checklist`、`step`）。`ecc config [STEP]` 始终返回解析后的数据，因此不提供 `--resolved` 开关。不要在错误的命令组中增加别名，也不要添加没有行为分支的选项。
+公开命令的归属必须严格：`ecc signoff` 只负责签核包就绪度与归档导出（`inspect`、`export`）；`ecc report` 统一承载报告输出（`summary`、`qor`、`checklist`、`step`）；`ecc macro` 负责手工 macro 摆放（`set`、`remove`、`show`、`import`）；`ecc doc` 在终端渲染内置指南。`ecc config [STEP]` 始终返回解析后的数据，因此不提供 `--resolved` 开关。不要在错误的命令组中增加别名，也不要添加没有行为分支的选项。
 
 ### 一次命令调用的完整链路
 
@@ -377,7 +380,7 @@ chipcompiler/engine/qor_report.py # CLI QoR facade，委托 analysis.qor
      assert rc == 0
      records = plain_records(capsys.readouterr().out)  # fixture 来自 test/cli/conftest.py
      ```
-   - 复用 `test/cli/conftest.py` 的 fixture：`create_cli_project`（生成带 `ecc.toml` 的临时项目）、`create_flow_json`（伪造 `runs/<id>/home/flow.json`）、`create_step_dir`、`create_workspace_config`、`mock_pdk_validation` 等。**注意 autouse 的 `_stub_run_preflight`**：它把 `env_probe.probe_environment` 打桩为空，保证 CLI 测试不依赖宿主工具（doctor/预检相关测试自行覆盖该补丁即可覆盖生效）。
+   - 复用 `test/cli/conftest.py` 的 fixture：`create_cli_project`（生成带 `ecc.toml` 的临时项目）、`create_flow_json`（直接在调用方传入的 run 目录下写 `home/flow.json`）、`create_step_dir`、`create_workspace_config`、`mock_pdk_validation` 等。**注意 autouse 的 `_stub_run_preflight`**：它把 `env_probe.probe_environment` 打桩为空，保证 CLI 测试不依赖宿主工具（doctor/预检相关测试自行覆盖该补丁即可覆盖生效）。
    - 引擎层报告/签核的测试放顶层 `test/`（如 `test/test_signoff_report.py`、`test/test_qor_report.py`、`test/test_signoff_package.py`），伪造 workspace 复用其 fixture。
    - 新命令别忘了在 `test/cli/test_typer_cli.py::test_root_help_returns_zero_and_lists_commands` 与 `test/cli/test_cli_module_layout.py`（commands 元组）里登记。
 
@@ -405,14 +408,14 @@ config_param(
 
 项目 run 创建时，非默认 `config_target` 会以结构化 `config_overrides` 存入 `home/params.toml`；每次刷新 workspace 配置后由 `data.workspace.config_overrides` 重放。PDK 路径 schema 在 `config_params/pdk.py`，写入 `[pdk.overrides]`；`pdk.root` 始终使用 `ecc pdk set-root`。不得将 workspace 的输入、输出、临时、生成产物或 STA 多 corner liberty 路径暴露为 CLI 参数。
 
-`config_params/coverage.py` 会把每个 JSON 模板字段与唯一一个直配 schema、旧映射或受保护路径清单比对。模板变化时必须同步更新该清单和 `test/cli/params/test_config_coverage.py`。解析和定点 TOML 编辑仍在 `params.py`，命令测试仍放在 `test/cli/params/`。
+`config_params/coverage.py` 会把每个 JSON 模板字段与唯一一个直配 schema、旧映射或受保护路径清单比对。模板变化时必须同步更新该清单和 `test/cli/params/test_config_coverage.py`。解析仍在 `params.py`，外科手术式 TOML 编辑在 `cli/project/toml_edit.py`，命令测试仍放在 `test/cli/params/`。
 
 #### 扩展 `ecc run`
 
 `run` 有两条互斥路径（`cli/command_handlers/project.py` 的 `run()` / `_run_workspace()`）：
 
-- **新建 workspace**：解析 `[design]` 输入声明、PDK、参数与请求入口步骤；只校验入口步骤所需文件；先原子登记受管名称到 `project.json`（`not_started`）；预检工具；名称选择器默认在 `<project>/<workspace 名称>` 调用 `create_workspace`，绝对路径选择器则使用该精确项目外目录。`create_workspace` 将输入复制到 `origin/` 并产出全部步骤配置，CLI 后续不改写配置。正常新建 flow 用 preset；`--from A --to B` 改用 `rtl2gds.build_flow_range(A, B)` 动态构建包含式规范范围。新范围不能与 `--preset`、`--overwrite`、`--resume`、`--only`、`--force` 组合。
-- **已有 workspace**：先由 `chipcompiler/engine/reconcile.py` 把持久化 flow 与目标对齐（前缀 → 追加扩展；超集且全成 → `no_op`；分叉 → `flow_mismatch`），再 `load_workspace` 后由 `chipcompiler.engine.rerun` 的 `run_resume`、`run_from` 或 `run_only` 原地复跑。`--from A --to B` 是已有 flow 的包含式范围，会将其后的步骤状态失效但保留其输出文件。已有 workspace 不会重新预检输入，也不会改写已复制输入或配置。
+- **新建 workspace**：解析 `[design]` 输入声明、PDK、参数与请求入口步骤；只校验入口步骤所需文件；先原子登记受管名称到 `project.json`（`not_started`）；预检工具；名称选择器默认在 `<project>/<workspace 名称>` 调用 `create_workspace`，绝对路径选择器则使用该精确项目外目录。`create_workspace` 将输入复制到 `origin/` 并产出全部步骤配置；在派生路径之外，CLI 后续不改写这些配置：rerun 会按 `home/params.toml` 重新生成每个重执行步骤的 `config/*.json`，`ecc param set --workspace` 与 `ecc workspace refresh` 也会刷新派生配置。正常新建 flow 用 preset；`--from A --to B` 改用 `rtl2gds.build_flow_range(A, B)` 动态构建包含式规范范围。新范围不能与 `--preset`、`--overwrite`、`--resume`、`--only`、`--force` 组合。
+- **已有 workspace**：先由 `chipcompiler/engine/reconcile.py` 把持久化 flow 与目标对齐（前缀 → 追加扩展；超集且全成 → `no_op`；分叉 → `flow_mismatch`），再 `load_workspace` 后由 `chipcompiler.engine.rerun` 的 `run_resume`、`run_from` 或 `run_only` 原地复跑。`--from A --to B` 是已有 flow 的包含式范围，会将其后的步骤状态失效但保留其输出文件。已有 workspace 不会重新预检输入，也不会改写已复制的输入；其步骤配置仅在上述派生路径（rerun、`ecc param set --workspace`、`ecc workspace refresh）上重新生成。
 
 `ecc workspace import NAME --path /absolute/workspace` 通过
 `cli/project/workspace_registration.py` 校验持久化的 workspace 身份、flow 范围、
@@ -641,7 +644,7 @@ export CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/ics55-pdk
 3. 旧的 `ICS55_PDK_ROOT` 环境变量；
 4. 默认：ecc 检出目录旁的 `../pdk/icsprout55-pdk`（ecos-studio 工作区布局）。
 
-后端支持 `POST /api/workspace/set_pdk_root` 设置运行时路径。workspace 创建时会把解析出的 root（绝对路径）持久化到 `home/params.toml` 的 `[pdk] root`，因此同一 workspace 在任何机器上解析结果一致。加载持久化 root 为空/缺失的已有 workspace 时仍会回退环境变量，但 `ecc run` 会发出 `pdk_root_env_fallback` 警告并指明解析来源；执行 `ecc run --overwrite` 可把解析出的 root 固化进 workspace。
+运行时路径由 RPC `workspace.create` 请求的 `pdkRoot` 字段承担，CLI 工程则使用 `ecc pdk set-root`。workspace 创建时会把解析出的 root（绝对路径）持久化到 `home/params.toml` 的 `[pdk] root`，因此同一 workspace 在任何机器上解析结果一致。加载持久化 root 为空/缺失的已有 workspace 时仍会回退环境变量，但 `ecc run` 会发出 `pdk_root_env_fallback` 警告并指明解析来源；该警告仅在 workspace 的 PDK 名为 ics55（或未命名 PDK）时触发，因为这些环境变量只适用于 ics55。执行 `ecc run --overwrite` 可把解析出的 root 固化进 workspace。
 
 示例：
 

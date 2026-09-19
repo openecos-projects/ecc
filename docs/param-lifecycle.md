@@ -14,7 +14,7 @@ one value per key wins through this precedence (highest first):
 | --- | --- | --- |
 | 1 | `ecc run --set key=value` (repeatable) | fresh runs only |
 | 2 | `ecc.toml` `[params.*]` | fresh runs only |
-| 3 | `project.json` `base_design.parameters` (manifest base layer) | manifest projects |
+| 3 | `project.json` `base_design.parameters` merged with the selected workspace entry's `parameter_patch` (manifest base layer) | manifest projects |
 | 4 | schema defaults (`chipcompiler/data/config_params/`, legacy registry templates) | always |
 
 The manifest base layer is a floor, not an override: `ecc.toml` and `--set`
@@ -26,7 +26,9 @@ re-resolves the matrix:
 
 - `--set` is rejected with `set_requires_fresh_run`;
 - `ecc.toml` `[params]` is ignored, with a `params_ignored_on_existing_run`
-  warning that discloses per-parameter `ecc param set --workspace` fix commands;
+  warning that discloses `ecc param set --workspace` fix commands for the
+  parameters whose `ecc.toml` values differ from the workspace's current
+  values;
 - changes go through `ecc param set/unset --workspace NAME`, which edits
   `home/params.toml` and refreshes the derived `config/*.json`.
 
@@ -47,9 +49,12 @@ surfaces declare different policies, `ecc run`/`ecc check` emit a
   `prepare_workspace_for_rerun(preserve_user_inputs=True)`): step re-executed
   regenerates its config inputs from the current parameters, and steps
   downstream are marked unstarted.
-- **GUI runs** refresh the derived configs when the workspace opens, so a
-  GUI session and a CLI session converge on the same `config/*.json` for the
-  same `home/params.toml`.
+- **GUI runs**: `workspace.open` performs no config refresh. The derived
+  configs are refreshed when parameters are saved through the GUI
+  (`workspace.step_configuration.update` / `workspace.configuration.update`),
+  and before a run whenever the flow holds stale steps, so a GUI session and
+  a CLI session converge on the same `config/*.json` for the same
+  `home/params.toml`.
 
 ## CLI vs GUI
 
@@ -78,6 +83,10 @@ instead of parsing silently:
 
 The registry lives in `chipcompiler/data/schema_migrations.py`:
 `{file type: {target version: migration}}`, applied in ascending order at
-workspace open. A file declaring a version newer than supported raises
-`unsupported_schema_version` with the file path and version — never a
-silent parse.
+workspace open. A `params.toml` or `flow.json` declaring a version newer than
+supported raises `unsupported_schema_version` with the file path and version —
+never a silent parse. An `engineering-snapshot.json` that does not match a
+supported shape instead raises `EngineeringSnapshotError`
+(`invalid Engineering Snapshot: <path>`) without a version number; v2 and v3
+both load natively, and the v2→v3 migration stays registered for discovery
+only — an explicit write-only seam, not applied by the load chain.
