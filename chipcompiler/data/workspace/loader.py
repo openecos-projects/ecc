@@ -7,9 +7,16 @@ from chipcompiler.utility import Logger, create_logger, json_read
 
 from ..parameter import load_parameter
 from ..pdk import get_pdk
+from ..schema_migrations import (
+    PARAMS_TOML,
+    WORKSPACE_CONFIGS,
+    apply_schema_migrations,
+    read_file_schema_version,
+)
 from ..workspace_config import (
+    WORKSPACE_CONFIG_SCHEMA_VERSION,
     legacy_parameters_fallback,
-    migrate_legacy_parameters,
+    warn_legacy_config_shadow,
 )
 from ..workspace_config import (
     workspace_config_path as workspace_config_toml_path,
@@ -23,7 +30,6 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
         build_workspace_config_paths,
         log_parameters,
         log_workspace,
-        migrate_workspace_config_filenames,
     )
 
     workspace_dir = Path(directory).expanduser().resolve()
@@ -36,12 +42,17 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
         from ..workspace_transaction import recover_workspace_file_transaction
 
         recover_workspace_file_transaction(workspace_dir)
-        migrate_legacy_parameters(workspace_dir)
+        config_version = read_file_schema_version(PARAMS_TOML, workspace_dir)
+        apply_schema_migrations(PARAMS_TOML, workspace_dir)
+        if config_version >= WORKSPACE_CONFIG_SCHEMA_VERSION:
+            # The migration itself runs only for version-0 configs; the
+            # shadow disclosure must fire on every open regardless.
+            warn_legacy_config_shadow(workspace_dir)
 
     workspace = Workspace()
     workspace.directory = workspace_dir
     if not read_only:
-        migrate_workspace_config_filenames(workspace_dir)
+        apply_schema_migrations(WORKSPACE_CONFIGS, workspace_dir)
     workspace.config = build_workspace_config_paths(workspace)
 
     config_path = workspace_config_toml_path(workspace_dir)

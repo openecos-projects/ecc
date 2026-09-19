@@ -137,6 +137,7 @@ def run_existing_workspace(
         warnings.append(pdk_root_warning)
 
     from chipcompiler.data import load_workspace
+    from chipcompiler.data.schema_migrations import UnsupportedSchemaVersionError
     from chipcompiler.data.workspace_config import (
         WorkspaceConfigError,
         WorkspaceFlowTargetError,
@@ -144,6 +145,17 @@ def run_existing_workspace(
     from chipcompiler.engine.reconcile import classify_workspace
 
     def mismatch_error(reason: str) -> CommandResult:
+        if reason.startswith("unsupported_schema_version"):
+            return CommandResult.err(
+                [
+                    error_record(
+                        "unsupported_schema_version",
+                        workspace_id=run_name,
+                        workspace=run_dir,
+                        reason=reason,
+                    )
+                ]
+            )
         if reason.startswith("workspace_config_invalid"):
             return CommandResult.err(
                 [
@@ -216,6 +228,17 @@ def run_existing_workspace(
 
         try:
             workspace = load_workspace(run_dir)
+        except UnsupportedSchemaVersionError as exc:
+            return CommandResult.err(
+                [
+                    error_record(
+                        "unsupported_schema_version",
+                        workspace_id=run_name,
+                        workspace=run_dir,
+                        reason=str(exc),
+                    )
+                ]
+            )
         except (WorkspaceConfigError, WorkspaceFlowTargetError) as exc:
             return CommandResult.err(
                 [

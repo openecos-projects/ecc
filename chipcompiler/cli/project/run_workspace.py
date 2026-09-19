@@ -37,6 +37,7 @@ def execute_workspace_run(
     (running, then the terminal status) so the GUI never reads a stale one.
     """
     from chipcompiler.data import load_workspace
+    from chipcompiler.data.schema_migrations import UnsupportedSchemaVersionError
     from chipcompiler.data.workspace_config import (
         WorkspaceConfigError,
         WorkspaceFlowTargetError,
@@ -72,6 +73,8 @@ def execute_workspace_run(
         warnings.append(pdk_root_warning)
 
     def mismatch_error(reason: str) -> CommandResult:
+        if reason.startswith("unsupported_schema_version"):
+            return error("unsupported_schema_version", workspace=workspace_path, reason=reason)
         if reason.startswith("workspace_config_invalid"):
             return error("workspace_config_invalid", workspace=workspace_path, reason=reason)
         if reason.startswith("flow_adopt_failed"):
@@ -106,6 +109,8 @@ def execute_workspace_run(
 
         try:
             workspace = load_workspace(workspace_path)
+        except UnsupportedSchemaVersionError as exc:
+            return error("unsupported_schema_version", workspace=workspace_path, reason=str(exc))
         except (WorkspaceConfigError, WorkspaceFlowTargetError) as exc:
             return error("workspace_config_invalid", workspace=workspace_path, reason=str(exc))
         except Exception as exc:
