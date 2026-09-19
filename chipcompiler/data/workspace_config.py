@@ -9,6 +9,7 @@ metrics); this module owns the human-facing configuration file only.
 
 Layout::
 
+    schema_version = 1   (top-level; absent in pre-versioning files = version 0)
     [design]   name / top / clock_port / frequency_mhz
     [pdk]      name / root (absolute) / config (workspace-relative)
     [flow]     preset = "rtl2gds"  OR  start = "...", end = "..."
@@ -26,10 +27,20 @@ from typing import Any
 import tomli_w
 from typing_extensions import deprecated
 
+from .schema_migrations import (
+    PARAMS_TOML,
+    SCHEMA_VERSION_FIELD,
+    SUPPORTED_SCHEMA_VERSIONS,
+    ensure_supported_schema_version,
+)
+
 logger = logging.getLogger(__name__)
 
 WORKSPACE_CONFIG_FILENAME = "params.toml"
 LEGACY_PARAMETERS_FILENAME = "parameters.json"
+
+#: The schema_version written into new home/params.toml documents.
+WORKSPACE_CONFIG_SCHEMA_VERSION = SUPPORTED_SCHEMA_VERSIONS[PARAMS_TOML]
 
 _IDENTITY_FIELDS = ("pdk", "design", "top_module", "clock")
 
@@ -341,6 +352,10 @@ def _decode_workspace_config(path: Path, workspace_dir: str | Path) -> dict:
     except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
         raise WorkspaceConfigError(f"workspace config parse failure: {path}: {exc}") from exc
 
+    # A config from a newer ECC (schema_version newer than supported) is
+    # rejected with path and version, never parsed past this point.
+    ensure_supported_schema_version(PARAMS_TOML, path, raw)
+
     flow = validate_flow_config(raw.get("flow"))
     if not flow:
         # A hand-broken file without [flow] derives its target from the
@@ -442,6 +457,7 @@ def render_workspace_config(
 
     sections = _split_payload(payload)
     document: dict[str, Any] = {
+        SCHEMA_VERSION_FIELD: WORKSPACE_CONFIG_SCHEMA_VERSION,
         "design": sections["design"],
         "pdk": sections["pdk"],
     }
@@ -560,6 +576,24 @@ def resolve_flow_selection(
         selected_names[-1],
     )
     return (contiguous, True)
+
+
+def warn_legacy_config_shadow(workspace_dir: str | Path) -> None:
+    """Log the ``workspace_config_shadowed`` warning when both configs exist.
+
+    The legacy migration runs only for version-0 configs (see
+    ``chipcompiler.data.schema_migrations``); a leftover legacy
+    ``parameters.json`` next to a versioned ``params.toml`` is still inert,
+    so the disclosure must survive on every open, not only during migration.
+    """
+    config_path = workspace_config_path(workspace_dir)
+    legacy_path = legacy_parameters_path(workspace_dir)
+    if config_path.exists() and legacy_path.exists():
+        logger.warning(
+            "workspace_config_shadowed: both %s and %s exist; using the TOML",
+            config_path,
+            legacy_path,
+        )
 
 
 @deprecated(

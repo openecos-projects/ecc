@@ -17,6 +17,8 @@ from chipcompiler.data import (
     is_finished_step_state,
     log_flow,
 )
+from chipcompiler.data.schema_migrations import SCHEMA_VERSION_FIELD
+from chipcompiler.data.workspace.flow_data import FLOW_JSON_SCHEMA_VERSION
 from chipcompiler.engine import EngineDB
 from chipcompiler.engine.flow_completion import (
     finalize_interrupted_subflow as _finalize_interrupted_subflow,
@@ -191,7 +193,10 @@ class EngineFlow:
         """
         from chipcompiler.utility import json_write
 
-        return json_write(self.workspace.flow.path, self.workspace.flow.data)
+        data = self.workspace.flow.data
+        if isinstance(data, dict):
+            data[SCHEMA_VERSION_FIELD] = FLOW_JSON_SCHEMA_VERSION
+        return json_write(self.workspace.flow.path, data)
 
     def get_step(self, name: str, tool: str):
         for step in self.workspace.flow.data.get("steps", []):

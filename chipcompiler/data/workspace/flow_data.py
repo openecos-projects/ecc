@@ -8,6 +8,11 @@ selection, plus an optional declared skip policy) into the initial
 
 from chipcompiler.data.types import StateEnum, StepBaseEnum
 
+from ..schema_migrations import FLOW_JSON, SCHEMA_VERSION_FIELD, SUPPORTED_SCHEMA_VERSIONS
+
+#: The schema_version written into home/flow.json ledgers.
+FLOW_JSON_SCHEMA_VERSION = SUPPORTED_SCHEMA_VERSIONS[FLOW_JSON]
+
 
 def _canonical_rtl2gds_flow_entries() -> list[tuple[str, str, str]]:
     import chipcompiler.rtl2gds as rtl2gds_api
@@ -51,6 +56,7 @@ def build_dynamic_flow_data(flow_config: dict | None) -> dict:
     skip = rtl2gds_api.resolve_skip_steps(flow_config)
     selected = rtl2gds_api.build_flow_range(selected_names[0], selected_names[-1], skip=skip)
     return {
+        SCHEMA_VERSION_FIELD: FLOW_JSON_SCHEMA_VERSION,
         "steps": [
             _flow_step_template(
                 name.value if isinstance(name, StepBaseEnum) else str(name),
@@ -58,7 +64,7 @@ def build_dynamic_flow_data(flow_config: dict | None) -> dict:
                 state.value if isinstance(state, StateEnum) else str(state),
             )
             for name, tool, state in selected
-        ]
+        ],
     }
 
 

@@ -197,6 +197,11 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
     is due). Nothing is created or written here: no lock, no config
     initialization, no ledger rewrite.
     """
+    from chipcompiler.data.schema_migrations import (
+        FLOW_JSON,
+        UnsupportedSchemaVersionError,
+        ensure_supported_schema_version,
+    )
     from chipcompiler.data.workspace_config import (
         WorkspaceConfigError,
         WorkspaceFlowTargetError,
@@ -206,6 +211,11 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
     from chipcompiler.utility import json_read
 
     flow_data = _persisted_flow_data(workspace_dir, json_read)
+    flow_path = workspace_dir / "home" / "flow.json"
+    try:
+        ensure_supported_schema_version(FLOW_JSON, flow_path, flow_data)
+    except UnsupportedSchemaVersionError as exc:
+        return ReconcileResult(outcome="mismatch", error=f"unsupported_schema_version: {exc}"), {}
     persisted = _persisted_entries(flow_data)
 
     try:
