@@ -270,7 +270,7 @@ set_input_transition  $input_transition $all_inputs_wo_clk
 # -------------------------------------------------
 # Design-level constraints
 # -------------------------------------------------
-set_max_fanout 20 [current_design]
+set_max_fanout 32 [current_design]
 """
 
 

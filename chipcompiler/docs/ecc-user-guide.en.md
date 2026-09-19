@@ -770,7 +770,7 @@ $ ecc param list
     floorplan.core_margin          [2, 2]
     floorplan.aspect_ratio         1.0
   cts
-    cts.max_fanout                 20
+    cts.max_fanout                 32
   place
     place.target_density           0.2
     place.target_overflow          0.1
@@ -837,7 +837,7 @@ Legacy semantic parameters:
 | `floorplan.core_util` | float | 0.4 | [0.01, 1.0] | floorplan |
 | `floorplan.core_margin` | list[int] | [2, 2] | — | floorplan |
 | `floorplan.aspect_ratio` | float | 1.0 | [0.1, 10.0] | floorplan |
-| `cts.max_fanout` | int | 20 | [1, 200] | cts |
+| `cts.max_fanout` | int | 32 | [1, 200] | cts |
 | `place.target_density` | float | 0.2 | [0.1, 0.95] | placement |
 | `place.target_overflow` | float | 0.1 | [0.0, 1.0] | placement |
 | `place.global_right_padding` | int | 0 | [0, 100] | placement |
