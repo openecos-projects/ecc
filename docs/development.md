@@ -704,12 +704,17 @@ resume/rerun semantics are unchanged, and existing ledgers are never
 re-filtered: changing the policy later cannot insert or remove steps in a
 created workspace.
 
-The policy is declared on two surfaces, with skip-specific precedence:
+The policy is declared on two surfaces, with the common precedence
+(ecc.toml overrides the project.json base, like every other key):
 
-1. `project.json` → `workspaces[].skip_steps` (per-workspace, wins for
-   this key only — including an explicit empty list),
-2. `ecc.toml` → `[flow] skip_steps` (project level),
+1. `ecc.toml` → `[flow] skip_steps` (project level; an explicit
+   declaration — including an empty list — wins over the workspace entry),
+2. `project.json` → `workspaces[].skip_steps` (per-workspace base layer),
 3. code default `("lec",)` when neither declares the key.
+
+When both surfaces declare the policy with different effective values,
+`ecc run`/`ecc check` emit a `skip_steps_shadowed` warning naming the
+winning source.
 
 An explicit `skip_steps = []` runs every step and is the only way to
 enable the synthesis LEC. Selecting the `synthesis_lec` preset while the

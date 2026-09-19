@@ -1,9 +1,10 @@
 """skip_steps configuration surface: project.json, ecc.toml, precedence.
 
 One home for the config-layer tests of the skip policy: manifest parsing
-and raw round-trip, ecc.toml parsing and validation, the skip-specific
-precedence (project.json wins for this key only), and the materialized
-default in generated projects.
+and raw round-trip, ecc.toml parsing and validation, the shared precedence
+(an explicit ecc.toml declaration wins over the project.json base entry,
+like every other key), the shadow warning when both surfaces declare
+different policies, and the materialized default in generated projects.
 """
 
 import json
@@ -11,7 +12,10 @@ import json
 import pytest
 
 from chipcompiler.cli.project.config import load_project_config, validate_project_config
-from chipcompiler.cli.project.effective_config import declared_skip_steps
+from chipcompiler.cli.project.effective_config import (
+    declared_skip_steps,
+    skip_steps_shadow_warning,
+)
 from chipcompiler.cli.project.manifest import ManifestError, load_manifest
 from chipcompiler.cli.project.manifest_write import write_back_workspace_status
 
@@ -153,18 +157,18 @@ class TestSkipStepsPrecedence:
         cfg = load_project_config(str(tmp_path / "ecc.toml"))
         return entry, cfg
 
-    def test_project_json_wins_over_ecc_toml(self, tmp_path):
+    def test_ecc_toml_wins_over_project_json(self, tmp_path):
         entry, cfg = self._entry_and_cfg(tmp_path, manifest_skip=["TimingOpt"], toml_skip=["lec"])
 
-        assert declared_skip_steps(entry, cfg) == ["TimingOpt"]
+        assert declared_skip_steps(entry, cfg) == ["lec"]
 
-    def test_project_json_explicit_empty_wins_over_ecc_toml(self, tmp_path):
-        entry, cfg = self._entry_and_cfg(tmp_path, manifest_skip="empty", toml_skip=["lec"])
+    def test_ecc_toml_explicit_empty_wins_over_project_json(self, tmp_path):
+        entry, cfg = self._entry_and_cfg(tmp_path, manifest_skip=["lec"], toml_skip=[])
 
         assert declared_skip_steps(entry, cfg) == []
 
-    def test_ecc_toml_applies_when_project_json_lacks_the_key(self, tmp_path):
-        entry, cfg = self._entry_and_cfg(tmp_path, manifest_skip="absent", toml_skip=["lec"])
+    def test_project_json_applies_when_ecc_toml_lacks_the_key(self, tmp_path):
+        entry, cfg = self._entry_and_cfg(tmp_path, manifest_skip=["lec"], toml_skip="absent")
 
         assert declared_skip_steps(entry, cfg) == ["lec"]
 
@@ -172,6 +176,65 @@ class TestSkipStepsPrecedence:
         entry, cfg = self._entry_and_cfg(tmp_path, manifest_skip="absent", toml_skip="absent")
 
         assert declared_skip_steps(entry, cfg) is None
+
+
+class TestSkipStepsShadowWarning:
+    def _entry_and_cfg(self, tmp_path, manifest_skip, toml_skip):
+        _write_manifest(
+            tmp_path,
+            [_workspace(tmp_path, skip_steps=[] if manifest_skip == "empty" else manifest_skip)],
+        )
+        entry = load_manifest(str(tmp_path)).workspaces[0]
+        toml_flow = "" if toml_skip == "absent" else f"skip_steps = {toml_skip!r}\n"
+        (tmp_path / "ecc.toml").write_text(
+            "[design]\n"
+            'name = "gcd"\n'
+            'top = "gcd"\n'
+            'rtl = ["rtl/gcd.v"]\n'
+            'clock_port = "clk"\n'
+            "frequency_mhz = 100.0\n"
+            "\n[flow]\n"
+            'preset = "rtl2gds"\n' + toml_flow.replace("'", '"')
+        )
+        cfg = load_project_config(str(tmp_path / "ecc.toml"))
+        return entry, cfg
+
+    def test_warning_when_ecc_toml_shadows_a_different_manifest_entry(self, tmp_path):
+        entry, cfg = self._entry_and_cfg(tmp_path, manifest_skip=["TimingOpt"], toml_skip=["lec"])
+
+        warning = skip_steps_shadow_warning(entry, cfg)
+
+        assert warning is not None
+        assert warning["warning"] == "skip_steps_shadowed"
+        assert warning["effective_source"] == "ecc.toml"
+        assert warning["shadowed_source"] == "project.json"
+
+    def test_no_warning_when_the_policies_agree(self, tmp_path):
+        entry, cfg = self._entry_and_cfg(tmp_path, manifest_skip=["LEC", "lec"], toml_skip=["lec"])
+
+        assert skip_steps_shadow_warning(entry, cfg) is None
+
+    def test_no_warning_without_an_ecc_toml_declaration(self, tmp_path):
+        entry, cfg = self._entry_and_cfg(tmp_path, manifest_skip=["lec"], toml_skip="absent")
+
+        assert skip_steps_shadow_warning(entry, cfg) is None
+
+    def test_no_warning_without_a_manifest_entry(self, tmp_path):
+        _write_manifest(tmp_path, [_workspace(tmp_path)])
+        entry = load_manifest(str(tmp_path)).workspaces[0]
+        (tmp_path / "ecc.toml").write_text(
+            "[design]\n"
+            'name = "gcd"\n'
+            'top = "gcd"\n'
+            'rtl = ["rtl/gcd.v"]\n'
+            'clock_port = "clk"\n'
+            "frequency_mhz = 100.0\n"
+            "\n[flow]\n"
+            'preset = "rtl2gds"\nskip_steps = ["lec"]\n'
+        )
+        cfg = load_project_config(str(tmp_path / "ecc.toml"))
+
+        assert skip_steps_shadow_warning(entry, cfg) is None
 
 
 def test_init_materializes_the_default_skip_into_generated_ecc_toml(tmp_path):

@@ -100,8 +100,9 @@ class ManifestWorkspace:
     status: str
     parameter_patch: dict = field(default_factory=dict)
     # Declared workspaces[].skip_steps spelling (aliases/duplicates kept);
-    # None when the key is absent, () for an explicit empty list. Wins over
-    # ecc.toml [flow] skip_steps for this key only.
+    # None when the key is absent, () for an explicit empty list. The base
+    # layer: an explicit ecc.toml [flow] skip_steps overrides it, like every
+    # other key.
     skip_steps: tuple[str, ...] | None = None
     raw: dict = field(default_factory=dict)
 

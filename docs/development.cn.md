@@ -500,11 +500,13 @@ uv run ecc run --project gcd --preset rtl2gds
 
 三个可选 step 可在创建 workspace 时按配置排除：综合级 LEC（`lec`）、布线后 LEC（`postRouteLec`）、时序优化（`Timing optimization`）。被跳过的 step 不会进入 workspace 的执行 ledger——其输入自然落到前一个保留 step，也不会为其创建 step 目录。状态机与 resume/rerun 语义零改动；已创建的 ledger 永远不会按新配置重过滤——事后修改策略不会向已有 workspace 插入或删除 step。
 
-策略在两个配置面声明，优先级对 skip_steps 单独生效：
+策略在两个配置面声明，优先级与其他键一致（ecc.toml 显式声明覆盖 project.json 基准层）：
 
-1. `project.json` → `workspaces[].skip_steps`（per-workspace，仅此键优先——显式空数组也生效），
-2. `ecc.toml` → `[flow] skip_steps`（项目级），
+1. `ecc.toml` → `[flow] skip_steps`（项目级；显式声明——包括显式空数组——优先于 workspace entry），
+2. `project.json` → `workspaces[].skip_steps`（per-workspace 基准层），
 3. 两者都未声明时的代码默认 `("lec",)`。
+
+两个配置面声明的策略实际值不同时，`ecc run`/`ecc check` 会发出 `skip_steps_shadowed` 警告并指明生效来源。
 
 显式 `skip_steps = []` 表示全部执行，是启用综合级 LEC 的唯一方式。有效策略包含 `lec` 时选择 `synthesis_lec` preset 是创建期配置错误；解决办法是 `skip_steps = []`。条目接受与 flow 范围相同的别名（如 `LEC`、`postlec`、`TimingOpt`），并按可跳过集合校验。
 

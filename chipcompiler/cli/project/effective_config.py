@@ -38,17 +38,46 @@ def _resolve_entry(manifest, run_name: str | None):
 
 
 def declared_skip_steps(entry, cfg) -> list | None:
-    """The declared skip policy: project.json entry wins over ecc.toml.
+    """The declared skip policy: ecc.toml wins over the project.json entry.
 
-    The only key with this precedence direction — ecc.toml keeps winning
-    for every other field. None means neither surface declared a policy
-    (the code default applies downstream); [] is an explicit run-everything.
+    Same precedence direction as every other key — the manifest entry is
+    the base layer and an explicit ecc.toml value overrides it. None means
+    neither surface declared a policy (the code default applies downstream);
+    [] is an explicit run-everything.
     """
-    if entry is not None and getattr(entry, "skip_steps", None) is not None:
-        return list(entry.skip_steps)
     if "flow.skip_steps" in getattr(cfg, "_explicit_keys", frozenset()):
         return list(getattr(cfg, "flow_skip_steps", None) or [])
+    if entry is not None and getattr(entry, "skip_steps", None) is not None:
+        return list(entry.skip_steps)
     return None
+
+
+def skip_steps_shadow_warning(entry, cfg) -> dict | None:
+    """The skip_steps_shadowed warning when both surfaces declare the policy
+    with different effective values.
+
+    Only an explicit ecc.toml declaration can shadow the manifest entry (the
+    base layer), and only a genuinely different policy: alias spellings and
+    list order normalize away before comparison.
+    """
+    if entry is None or "flow.skip_steps" not in getattr(cfg, "_explicit_keys", frozenset()):
+        return None
+    manifest_value = getattr(entry, "skip_steps", None)
+    if manifest_value is None:
+        return None
+    from chipcompiler.rtl2gds.builder import resolve_skip_steps
+
+    toml_effective = resolve_skip_steps({"skip_steps": list(cfg.flow_skip_steps or [])})
+    manifest_effective = resolve_skip_steps({"skip_steps": list(manifest_value)})
+    if toml_effective == manifest_effective:
+        return None
+    return warning_record(
+        "skip_steps_shadowed",
+        effective_source="ecc.toml",
+        shadowed_source="project.json",
+        reason="ecc.toml [flow] skip_steps overrides the project.json workspace entry; "
+        "remove the ecc.toml key to let the project.json entry apply",
+    )
 
 
 def _attach_skip_steps(flow_config: dict | None, skip_steps: list | None) -> dict | None:
@@ -110,18 +139,20 @@ def resolve_effective_config(
             if "flow.preset" not in cfg._explicit_keys:
                 flow_config = {"start_step": entry.start_step, "end_step": entry.end_step}
 
-    # skip_steps is the one key where the manifest layer outranks ecc.toml.
+    # skip_steps follows the common precedence: an explicit ecc.toml
+    # declaration outranks the manifest entry (the base layer).
     declared = declared_skip_steps(entry, cfg)
     flow_config = _attach_skip_steps(flow_config, declared)
     # Provenance for inspection surfaces: the winning layer's name.
     if declared is not None:
         cfg._skip_steps_source = (
-            "project.json"
-            if (entry is not None and getattr(entry, "skip_steps", None) is not None)
-            else "ecc.toml"
+            "ecc.toml" if "flow.skip_steps" in cfg._explicit_keys else "project.json"
         )
 
     warnings = []
+    shadowed = skip_steps_shadow_warning(entry, cfg)
+    if shadowed is not None:
+        warnings.append(shadowed)
     diverging = layer_divergences(cfg, assembled, entry)
     if diverging:
         warnings.append(
