@@ -52,48 +52,68 @@ The workspace will be created from scratch, the structure is as follows:
 
 ```
 gcd_workspace/
-├── flow.json       # Flow state file
-├── params.toml        # Workspace configuration (parameters, flow target)
-├── CTS_ecc         # CTS step workspace
-│   ├── analysis    # Analysis files extract from metrics
-│   ├── config      # Configuration files
-│   ├── data        # Data files that generated during the step
-│   ├── feature     # Metrics feature files
-│   ├── log         # Each step log files
-│   ├── output      # Output artifacts
-│   ├── report      # Reports generated during the step
-│   └── script      # Step scripts
+├── home/
+│   ├── flow.json          # Flow state file
+│   ├── params.toml        # Workspace configuration (parameters, flow target)
+│   ├── home.json          # Workspace home state (flow/config/checklist pointers)
+│   └── checklist.json     # Checklist state
+├── CTS_ecc                # CTS step workspace
+│   ├── analysis    # Analysis files extract from metrics
+│   ├── config      # Configuration files
+│   ├── data        # Data files that generated during the step
+│   ├── feature     # Metrics feature files
+│   ├── log         # Each step log files
+│   ├── output      # Output artifacts
+│   ├── report      # Reports generated during the step
+│   └── script      # Step scripts
 ├── drc_ecc
-│   ...             # Similar structure as above, same below
-│   └── script
+│   ...             # Similar structure as above, same below
+│   └── script
 ├── filler_ecc
-│   ...
-│   └── script
-├── Floorplan_ecc
-│   ...
-│   └── script
-├── legalization_ecc
-│   ...
-│   └── script
+│   ...
+│   └── script
+├── Harden_ecc
+│   ...
+│   └── script
+├── legalization_dreamplace
+│   ...
+│   └── script
 ├── log
-│   └── gcd.xxxx-01-22_16-05-25 # Global log file
+│   └── gcd.xxxx-01-22_16-05-25 # Global log file
+├── lvs_ecc
+│   ...
+│   └── script
+├── macroPlacement_dreamplace
+│   ...
+│   └── script
 ├── origin
-│   ├── gcd.sdc
-│   ├── filelist.f
-│   └── rtl
-├── place_ecc
-│   ...
-│   └── script
+│   ├── gcd.sdc
+│   ├── filelist.f
+│   └── rtl
+├── place_dreamplace
+│   ...
+│   └── script
+├── postFloorplan_ecc
+│   ...
+│   └── script
+├── preFloorplan_ecc
+│   ...
+│   └── script
+├── RCX_ecc
+│   ...
+│   └── script
 ├── route_ecc
-│   ...
-│   └── script
+│   ...
+│   └── script
+├── sta_ecc
+│   ...
+│   └── script
 └── Synthesis_yosys
     ...
     └── script
 ```
 
 Then we can set up the flow engine, add steps, create step workspaces, and run the steps as follows:
-
 ```python
 from chipcompiler.data import StepEnum, StateEnum
 from chipcompiler.engine import EngineFlow

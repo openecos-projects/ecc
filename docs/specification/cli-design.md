@@ -135,6 +135,7 @@ Current implementation status:
 | `ecc signoff inspect/export` | `--plain` |
 | `ecc report summary/qor/checklist/step` | `--plain` |
 | `ecc doc` | `--plain` |
+| `ecc macro set/remove/import/show` | `--plain` |
 | `ecc version` | hidden `--json` only (desktop app contract) |
 | `ecc rpc serve` | none (machine protocol) |
 | `ecc layout-image` | none (tool invocation; produces a file) |
@@ -203,11 +204,13 @@ ecc log
 ecc config
 ecc migrate
 ecc param
+ecc macro
 ecc pdk
 ecc project
 ecc workspace
 ecc signoff
 ecc report
+ecc doc
 ecc layout-image
 ```
 
@@ -224,13 +227,15 @@ Responsibilities:
 | `ecc status` | Summarize run and step state |
 | `ecc log` | Show available logs or complete step log content |
 | `ecc config` | Show the resolved project or step configuration |
-| `ecc migrate` | Migrate a legacy `runs/` project to the manifest layout |
+| `ecc migrate` | Migrate a legacy `runs/` project to the manifest layout (deprecated; slated for removal after the transition period) |
 | `ecc param` | List, inspect, set, unset, and diff parameter overrides |
+| `ecc macro` | Manage manual macro placement (`macro_location.tcl`): `set`, `remove`, `import`, `show` |
 | `ecc pdk` | `set-root`/`show`/`unset` manage the `[pdk] root` path |
 | `ecc project` | Edit declared design, PDK, and flow resource fields in `ecc.toml` |
 | `ecc workspace` | Refresh a declared workspace from current `ecc.toml` without running it |
 | `ecc signoff` | Inspect package readiness and export the tar.gz package |
 | `ecc report` | Write design-summary, QoR, and checklist reports; show step evidence |
+| `ecc doc` | Render a bundled guide (config reference, user guide, tutorial) in the terminal |
 | `ecc layout-image` | Render a GDS file into an image |
 
 `ecc run` preflights the tools its preset needs (yosys for synthesis,
@@ -255,11 +260,13 @@ implementation detail:
 | `ecc pdk` | `set-root`, `show`, `unset` | Project PDK configuration |
 | `ecc param` | `list`, `show`, `set`, `unset`, `diff` | Project parameter overrides |
 | `ecc project` | `set`, `unset`, `add`, `remove`, `show` | Project design, PDK, and flow declarations in `ecc.toml` |
-| `ecc workspace` | `refresh` | Recreate one declared workspace from `ecc.toml`, without execution |
+| `ecc workspace` | `refresh`, `import` | Recreate or register one declared workspace from `ecc.toml`, without execution |
 
 Commands that consume a workspace use `--project DIR` (default: current
-directory) and, when selection matters, `--workspace NAME`. The name resolves
-only through the project's `project.json`; it is not a direct filesystem path.
+directory) and, when selection matters, `--workspace SELECTOR`. The selector
+is either a single-segment managed name resolved through the project's
+`project.json`, or a complete absolute path that creates or registers an
+external workspace at that exact directory.
 Run-scoped inspection and reporting commands (`run`, `status`, `log`,
 `config`, `report *`, `signoff *`) may combine the two options, and the read-only
 commands (`status`, `log`, `config`, `report step`) never load or mutate the
@@ -366,6 +373,18 @@ is outside the project. Bare `ecc run` creates `default` for a project with no
 workspace, resumes its sole active workspace, and reports `workspace_required`
 when several are active.
 
+Runs against an existing workspace can surface two advisory warnings without
+changing execution:
+
+- `pdk_root_env_fallback` — the workspace persists an empty `[pdk] root`, so
+  the PDK root resolves from the `CHIPCOMPILER_ICS55_PDK_ROOT` /
+  `ICS55_PDK_ROOT` environment variables (only for an `ics55` or unnamed
+  PDK). The warning names the winning variable; `ecc run --overwrite` pins
+  the resolved root into the workspace.
+- `workspace_spec_drift` — a CLI run of a spec-mode workspace (one carrying
+  `home/engineering-snapshot.json`) whose `home/params.toml` is newer than
+  the snapshot, so the GUI-side spec may be stale.
+
 ### Parameter Management
 
 Parameters are part of the implemented CLI surface. Legacy semantic parameters
@@ -391,6 +410,23 @@ ecc param diff --workspace baseline
 ecc run --set cts.max_fanout=16
 ```
 
+`ecc run --set KEY=VALUE` is accepted only when the run creates a workspace,
+including `--overwrite`; the overrides are recorded in
+`home/cli-param-overrides.json`. On an existing workspace `--set` fails with
+`set_requires_fresh_run` — use `ecc param set KEY VALUE --workspace NAME`
+instead. Precedence is `--set` > `ecc.toml` `[params]` > defaults. When a
+`--set` value overrides a different value from a lower layer (`ecc.toml`
+`[params]`, an explicit `[design]` frequency, or the manifest base), the run
+warns `config_layer_diverged` listing the affected keys.
+
+A project-scope `ecc param set` writes the override into `ecc.toml` and
+reports a `status=set` record with `source=ecc.toml` and
+`applies_to="next fresh/overwrite run"`: existing workspaces ignore
+`ecc.toml` params. The record lists `registered_workspaces` when the project
+has registered workspaces (omitted otherwise) and a `workspace_hint`
+disclosure pointing at `ecc param set KEY <value> --workspace NAME` for
+applying the value to one existing workspace.
+
 With `--workspace NAME`, `ecc param` changes only the selected existing
 workspace's `home/params.toml`. It immediately refreshes the generated
 configuration and invalidates the owning flow step plus its suffix, but does
@@ -413,7 +449,11 @@ inputs (`name`, `top`, `rtl`, `netlist`, `golden_netlist`, `def`, `sdc`,
 `ecc param` continues to own all `[params.*]` and `[pdk.overrides]` fields.
 `ecc workspace refresh NAME` accepts only a workspace declared in
 `project.json`, recreates it with the existing overwrite safeguards, records
-status `not_started`, and never executes the flow. `ecc run --workspace NAME
+status `not_started`, and never executes the flow. If any generated
+`config/*.json` was hand-edited since the last derivation, refresh refuses
+with `derived_configs_modified`, listing the differing files; `--force`
+overwrites those edits and updates the recorded
+`home/config-derived-manifest.json`. `ecc run --workspace NAME
 --overwrite` remains the refresh-and-run form.
 
 ### Version Information
@@ -592,7 +632,9 @@ through RCX, STA, and Harden; the synthesis LEC is skipped by default
 `syn_sta` runs synthesis only, with a best-effort netlist-level STA report
 (an STA failure does not fail the step). Switching
 presets on an existing run requires `ecc run --overwrite` to rebuild the
-workspace.
+workspace. An explicit `ecc.toml` `[flow] skip_steps` takes precedence over
+the `project.json` workspace entry; when the two declare different effective
+values, the run warns `skip_steps_shadowed`.
 `design.rtl` accepts one or more source entries. A filelist (`.f`, `.fl`, or
 `.filelist`) is also accepted; multiple direct source entries are assembled
 into a generated filelist when the workspace is created. If `pdk.root` is
