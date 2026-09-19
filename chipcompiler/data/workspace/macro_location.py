@@ -2,9 +2,10 @@
 
 ``macro_placements`` reads the manual hard-macro placements from the
 workspace parameters; ``refresh_generated_macro_location`` renders them
-into ``config/macro_location.tcl``. An empty placement list leaves the
-file untouched so the seeded template and DreamPlace's own handoff
-survive parameter refreshes.
+into ``config/macro_location.tcl``; ``parse_macro_location_tcl`` parses a
+handoff back into placements for ``ecc macro import``. An empty placement
+list leaves the file untouched so the seeded template and DreamPlace's own
+handoff survive parameter refreshes.
 """
 
 import math
@@ -85,3 +86,40 @@ def refresh_generated_macro_location(workspace: "Workspace") -> None:
     if not target:
         return
     write_text_atomic(Path(target), render_macro_location_tcl(placements))
+
+
+def parse_macro_location_tcl(text: str) -> list[dict]:
+    """Parse a placeInstance handoff back into placement entries.
+
+    Accepts both ``render_macro_location_tcl`` and ECC ``saveMacroTCL``
+    output: comments, blank lines, and ``setInstancePlacementStatus``
+    statements are skipped. Any other malformed statement raises so an
+    import never records a partial placement set.
+    """
+    placements: list[dict] = []
+    for line in text.splitlines():
+        statement = line.strip()
+        if (
+            not statement
+            or statement.startswith("#")
+            or statement.startswith("setInstancePlacementStatus")
+        ):
+            continue
+        tokens = statement.split()
+        if tokens[0] != "placeInstance" or len(tokens) != 5:
+            raise ValueError(f"unsupported macro location statement: {statement}")
+        try:
+            x = float(tokens[2])
+            y = float(tokens[3])
+        except ValueError as exc:
+            raise ValueError(
+                f"non-numeric coordinates in macro location statement: {statement}"
+            ) from exc
+        placements.append(
+            {"instance": tokens[1], "x": x, "y": y, "orientation": tokens[4]}
+        )
+
+    errors = validate_placements(placements)
+    if errors:
+        raise ValueError("; ".join(errors))
+    return placements

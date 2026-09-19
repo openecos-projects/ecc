@@ -810,15 +810,18 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 ```bash
 ecc macro set INSTANCE --x X --y Y --orient ORIENT [--project DIR] [--workspace NAME] [--plain]
 ecc macro remove INSTANCE [--project DIR] [--workspace NAME] [--plain]
+ecc macro import PATH [ --project DIR] [--workspace NAME] [--plain]
 ecc macro show [--project DIR] [--workspace NAME] [--plain]
 ```
 
-含硬宏（SRAM 等）的设计默认在 `macroPlacement` 步骤由 DreamPlace 自动摆放，结果写入 `config/macro_location.tcl`。`ecc macro` 管理手工摆放参数 `macro.placements`：坐标单位微米，实例以 `fixed` 状态提交。参数非空时 `macroPlacement` 保留 load/save 流程但跳过 DreamPlace，由 `postFloorplan` 按该文件提交宏。方向取值 `R0`、`R90`、`R180`、`R270`、`MX`、`MY`、`MX90`、`MY90`；同一实例重复 `set` 为原地更新。
+含硬宏（SRAM 等）的设计默认在 `macroPlacement` 步骤由 DreamPlace 自动摆放，结果写入 `config/macro_location.tcl`。`ecc macro` 管理手工摆放参数 `macro.placements`：坐标单位微米，实例以 `fixed` 状态提交。参数非空时 `macroPlacement` 保留 load/save 流程但跳过 DreamPlace，由 `postFloorplan` 按该文件提交宏。方向取值 `R0`、`R90`、`R180`、`R270`、`MX`、`MY`、`MX90`、`MY90`；同一实例重复 `set` 为原地更新。`import` 解析 `placeInstance` 交接文件（微米、R 记法，跳过注释与 `setInstancePlacementStatus` 行）并**整表替换** `macro.placements`；空文件等于清空参数，畸形语句整体报错不写入。
 
 与 `ecc param` 相同的两种 scope：
 
 - 项目（默认）：写入 `ecc.toml` `[params.macro]`，在下一次新建 workspace（`ecc run` / `--overwrite`）或 `ecc workspace refresh` 时渲染进 Tcl；
 - `--workspace NAME`：写入该 workspace 的 `home/params.toml`，立即重生成 `config/macro_location.tcl`，并把 `macroPlacement` 及其后缀标记为待执行，之后 `ecc run --workspace NAME` 从 `macroPlacement` 续跑。
+
+`ecc macro show --workspace NAME` 额外解析现有 `config/macro_location.tcl` 并输出 `file_placements` 与 `diverged`（文件与参数是否一致），便于发现手改文件或导入未落盘的差异。
 
 ```console
 $ ecc macro set u_ram0 --x 10 --y 20.5 --orient R0
@@ -854,6 +857,14 @@ $ ecc macro remove u_ram1
 ecc macro set u_ram0 --x 120.0 --y 80.0 --orient MY --workspace default
 ecc run --workspace default                 # 从 macroPlacement 续跑，下游步骤一并重跑
 ecc macro remove u_ram0 --workspace default # 删除最后一个条目后恢复 DreamPlace 自动摆放，再续跑即回到自动结果
+```
+
+把一份现成的 `macro_location.tcl`（例如另一工程或 Chip Viewer 手摆导出的文件）导入为手工摆放：
+
+```bash
+ecc macro import /path/to/macro_location.tcl --workspace default
+ecc macro show --workspace default          # file_placements 与 placements 一致、diverged 为 False
+ecc run --workspace default                 # 跳过 DreamPlace，postFloorplan 按文件提交宏
 ```
 
 实例名必须存在于设计中，且必须列出全部硬宏——`postFloorplan` 会按缺失实例名报错；`macro_location.tcl` 是生成物，不支持手工编辑（未设置该参数时重跑 `macroPlacement` 会重新生成）。交接文件格式与三阶段 floorplan 细节见 [floorplan-flow.cn.md](floorplan-flow.cn.md)，参数说明见[配置参考 §1.5](ecc-config-ref.cn.md)。

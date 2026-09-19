@@ -256,6 +256,14 @@ class MacroShowInput:
     workspace: str | None = None
 
 
+@dataclass(frozen=True)
+class MacroImportInput:
+    output: OutputOptions
+    project: ProjectOptions
+    path: str
+    workspace: str | None = None
+
+
 def output_options(*, plain: bool) -> OutputOptions:
     return OutputOptions(plain=plain)
 

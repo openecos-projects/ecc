@@ -2,11 +2,13 @@ from typing import Annotated
 
 import typer
 
+from chipcompiler.cli.command_handlers.macro import macro_import as macro_import_handler
 from chipcompiler.cli.command_handlers.macro import macro_remove as macro_remove_handler
 from chipcompiler.cli.command_handlers.macro import macro_set as macro_set_handler
 from chipcompiler.cli.command_handlers.macro import macro_show as macro_show_handler
 from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import (
+    MacroImportInput,
     MacroRemoveInput,
     MacroSetInput,
     MacroShowInput,
@@ -103,6 +105,46 @@ def remove_cmd(
         workspace=workspace,
     )
     _finish_macro("remove", command_input, macro_remove_handler)
+
+
+@macro_app.command("import")
+def import_cmd(
+    *,
+    path: Annotated[
+        str,
+        typer.Argument(help="Path to a placeInstance macro_location.tcl file."),
+    ],
+    project: ProjectOption = None,
+    workspace: WorkspaceOption = None,
+    plain: PlainOption = False,
+) -> None:
+    """Import a macro_location.tcl file as the manual macro placements.
+
+    Parses `placeInstance` statements (micrometers, R-notation) and
+    replaces `macro.placements` wholesale; comments and
+    `setInstancePlacementStatus` lines are skipped, any other statement
+    fails the import without writing anything.
+
+    Scopes:
+
+    - project (default): replaces `ecc.toml` `[params.macro]`; rendered
+      into `config/macro_location.tcl` when a workspace is created or
+      refreshed.
+    - `--workspace NAME`: written to `home/params.toml`, the Tcl file is
+      regenerated immediately, and `macroPlacement` and its suffix are
+      marked pending. An empty file clears the placements.
+
+    ```bash
+    ecc macro import config/macro_location.tcl --workspace baseline
+    ```
+    """
+    command_input = MacroImportInput(
+        output=output_options(plain=plain),
+        project=project_options(project),
+        path=path,
+        workspace=workspace,
+    )
+    _finish_macro("import", command_input, macro_import_handler)
 
 
 @macro_app.command("show")

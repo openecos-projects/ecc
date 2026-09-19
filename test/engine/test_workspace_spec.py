@@ -293,6 +293,157 @@ def test_workspace_spec_update_is_atomic_revisioned_and_idempotent(
     assert read_engineering_snapshot(repeated) == after
 
 
+def test_workspace_spec_update_preserves_omitted_config_parameters(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    from chipcompiler.data import load_workspace
+    from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
+    from chipcompiler.engine.snapshot import read_engineering_snapshot
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    initial_spec = deepcopy(payload["workspaceSpec"])
+    initial_spec["parameters"]["cts.skew_bound"] = "0.12"
+    target = tmp_path / "workspace"
+    created = create_workspace_from_spec(target, initial_spec, bindings)
+    before = read_engineering_snapshot(created)
+
+    update_spec = deepcopy(payload["workspaceSpec"])
+    update_spec["parameters"] = {
+        "design.frequency_mhz": 250.0,
+        "cts.skew_bound": "0.20",
+    }
+    updated = update_workspace_from_spec(
+        target,
+        before["workspaceRevision"],
+        update_spec,
+        bindings,
+        "preserve-config-1",
+    )
+
+    reopened = load_workspace(updated.directory)
+    cts = json.loads(reopened.config["CTS"].read_text(encoding="utf-8"))
+    assert reopened.parameters.data["frequency_max"] == 250.0
+    assert cts["skew_bound"] == "0.20"
+
+
+def test_workspace_spec_update_preserves_inapplicable_parameters_when_flow_changes(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    import chipcompiler.engine.workspace_configuration as workspace_configuration
+    from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
+    from chipcompiler.engine.snapshot import read_engineering_snapshot
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    initial_spec = deepcopy(payload["workspaceSpec"])
+    initial_spec["parameters"]["cts.skew_bound"] = "0.12"
+    target = tmp_path / "workspace"
+    created = create_workspace_from_spec(target, initial_spec, bindings)
+    before = read_engineering_snapshot(created)
+
+    update_spec = deepcopy(payload["workspaceSpec"])
+    update_spec["flow"] = {"flowId": "syn_sta"}
+    update_spec["parameters"] = {"design.frequency_mhz": 250.0}
+    updated = update_workspace_from_spec(
+        target,
+        before["workspaceRevision"],
+        update_spec,
+        bindings,
+        "preserve-config-flow-1",
+    )
+
+    configuration = workspace_configuration.read_workspace_configuration(updated)
+    assert configuration["workspaceSpec"]["parameters"]["cts.skew_bound"] == "0.12"
+    cts = json.loads(updated.config["CTS"].read_text(encoding="utf-8"))
+    assert cts["skew_bound"] == "0.12"
+
+
+def test_workspace_spec_update_preserves_unknown_config_extensions(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
+    from chipcompiler.engine.snapshot import read_engineering_snapshot
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    created = create_workspace_from_spec(target, payload["workspaceSpec"], bindings)
+    cts_path = target / "config" / "cts_ecc.json"
+    cts = json.loads(cts_path.read_text(encoding="utf-8"))
+    cts["custom_extension"] = {"enabled": True, "label": "preserve-me"}
+    cts_path.write_text(json.dumps(cts), encoding="utf-8")
+
+    update_spec = deepcopy(payload["workspaceSpec"])
+    update_spec["parameters"] = {"design.frequency_mhz": 250.0}
+    update_workspace_from_spec(
+        target,
+        read_engineering_snapshot(created)["workspaceRevision"],
+        update_spec,
+        bindings,
+        "preserve-extension-1",
+    )
+
+    updated_cts = json.loads(cts_path.read_text(encoding="utf-8"))
+    assert updated_cts["custom_extension"] == {"enabled": True, "label": "preserve-me"}
+
+
+def test_workspace_spec_update_fails_when_current_config_cannot_be_read(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    from chipcompiler.engine import WorkspaceLifecycleError, create_workspace_from_spec
+    from chipcompiler.engine.snapshot import read_engineering_snapshot
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    created = create_workspace_from_spec(target, payload["workspaceSpec"], bindings)
+    before = read_engineering_snapshot(created)
+    (target / "config" / "cts_ecc.json").unlink()
+
+    from chipcompiler.engine import update_workspace_from_spec
+
+    with pytest.raises(WorkspaceLifecycleError) as unavailable:
+        update_workspace_from_spec(
+            target,
+            before["workspaceRevision"],
+            payload["workspaceSpec"],
+            bindings,
+            "missing-config-1",
+        )
+
+    assert unavailable.value.code == "workspace_invalid"
+    assert read_engineering_snapshot(created)["workspaceRevision"] == before["workspaceRevision"]
+
+
+def test_workspace_spec_update_fails_when_current_config_is_malformed(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    from chipcompiler.engine import WorkspaceLifecycleError, create_workspace_from_spec
+    from chipcompiler.engine.snapshot import read_engineering_snapshot
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    created = create_workspace_from_spec(target, payload["workspaceSpec"], bindings)
+    before = read_engineering_snapshot(created)
+    (target / "config" / "cts_ecc.json").write_text("{", encoding="utf-8")
+
+    from chipcompiler.engine import update_workspace_from_spec
+
+    with pytest.raises(WorkspaceLifecycleError) as unavailable:
+        update_workspace_from_spec(
+            target,
+            before["workspaceRevision"],
+            payload["workspaceSpec"],
+            bindings,
+            "malformed-config-1",
+        )
+
+    assert unavailable.value.code == "workspace_invalid"
+    assert read_engineering_snapshot(created)["workspaceRevision"] == before["workspaceRevision"]
+
+
 def test_workspace_spec_update_keeps_generated_filelist_relocatable(
     tmp_path, minimal_ics55_pdk_factory
 ):

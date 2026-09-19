@@ -196,7 +196,8 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 |---|---|
 | `ecc macro set INSTANCE --x X --y Y --orient ORIENT` | 按 instance 新增/更新一条摆放（方向：`R0`、`R90`、`R180`、`R270`、`MX`、`MY`、`MX90`、`MY90`） |
 | `ecc macro remove INSTANCE` | 删除一条摆放；删除最后一个条目会清空该参数 |
-| `ecc macro show` | 列出当前摆放与生成的 Tcl 路径 |
+| `ecc macro import PATH` | 解析 `placeInstance` 交接文件（微米、R 记法；跳过注释与 `setInstancePlacementStatus` 行）并整表替换该参数；空文件清空参数，畸形语句整体报错不写入 |
+| `ecc macro show` | 列出当前摆放与生成的 Tcl 路径；workspace scope 额外解析现有 Tcl 输出 `file_placements` 与 `diverged`（文件与参数是否一致） |
 
 `ecc param` 的两种 scope 都适用：项目 scope（默认）把列表存进 `ecc.toml` `[params.macro]`，在下一次新建 run 或 `ecc workspace refresh` 时生效；`--workspace NAME` 写入 `home/params.toml`，立即重生成 Tcl，并把 `macroPlacement` 及其后缀标记为待重跑。该列表也可以按普通 JSON 参数设置，例如 `ecc param set macro.placements '[{"instance": "u0", "x": 10.0, "y": 20.0, "orientation": "R0"}]'`。
 
