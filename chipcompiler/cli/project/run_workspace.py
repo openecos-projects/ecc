@@ -11,14 +11,11 @@ same workspace (or an overwrite/migration replacing it) serialize on the
 lock. Imported lazily by the run handler; keep module-level imports cheap.
 """
 
-import logging
 import os
 import shlex
 from pathlib import Path
 
 from chipcompiler.cli.core.types import CommandResult
-
-logger = logging.getLogger(__name__)
 
 
 def execute_workspace_run(
@@ -52,15 +49,30 @@ def execute_workspace_run(
     def error(kind: str, **fields) -> CommandResult:
         return CommandResult.err([{"kind": "error", "error": kind, **fields}])
 
+    write_back_failures: list[dict] = []
+
     def write_status(status: str) -> None:
-        """Best-effort manifest status write-back; degrades to a log."""
+        """Manifest status write-back; failure is a diagnosable error record.
+
+        The run itself is NOT failed on a write-back failure: the flow
+        already executed and its result stands. The record names the status
+        that did not persist and the repair command that rewrites it.
+        """
+        from chipcompiler.cli.core.records import error_record
         from chipcompiler.cli.project.manifest_write import write_back_workspace_status
 
         if project_dir is None or not workspace_id:
             return
         if not write_back_workspace_status(project_dir, workspace_id, status):
-            logger.warning(
-                "manifest write-back failed: %s: %s -> %s", project_dir, workspace_id, status
+            write_back_failures.append(
+                error_record(
+                    "manifest_write_back_failed",
+                    workspace_id=workspace_id,
+                    lost_status=status,
+                    reason="run status could not be written back to project.json; "
+                    "the manifest is out of date until repaired",
+                    repair=f"ecc run --workspace {shlex.quote(workspace_id)}",
+                )
             )
 
     workspace_path = os.path.abspath(workspace_path)
@@ -140,7 +152,8 @@ def execute_workspace_run(
             # is stale.
             write_status("success")
             return CommandResult.ok(
-                warnings
+                write_back_failures
+                + warnings
                 + [
                     {
                         "workspace_id": workspace_id or "default",
@@ -158,7 +171,17 @@ def execute_workspace_run(
             """A failure after the running marker must leave a terminal
             status, never a workspace stuck as running."""
             write_status("failed")
-            return error(kind, workspace=workspace_path, **({"reason": reason} if reason else {}))
+            return CommandResult.err(
+                write_back_failures
+                + [
+                    {
+                        "kind": "error",
+                        "error": kind,
+                        "workspace": workspace_path,
+                        **({"reason": reason} if reason else {}),
+                    }
+                ]
+            )
 
         try:
             engine_flow = EngineFlow(workspace=workspace)
@@ -221,7 +244,7 @@ def execute_workspace_run(
         "no_op": result.ok and not result.executed,
     }
     if result.ok:
-        return CommandResult.ok(warnings + [record])
+        return CommandResult.ok(write_back_failures + warnings + [record])
     record["failed_step"] = result.failed
     record["resume_cmd"] = f"ecc run --workspace {shlex.quote(workspace_id or 'default')} --resume"
-    return CommandResult.err(warnings + [record])
+    return CommandResult.err(write_back_failures + warnings + [record])

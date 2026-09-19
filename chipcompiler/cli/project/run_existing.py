@@ -365,7 +365,13 @@ def run_existing_workspace(
                     ).succeeded
         except Exception as exc:
             if workspace_registered:
-                _write_back_status(project_dir, run_name, "failed", warnings)
+                _write_back_status(
+                    project_dir,
+                    run_name,
+                    "failed",
+                    warnings,
+                    repair=disclosure_cmd("ecc run", project, run_name),
+                )
             return CommandResult.err(
                 warnings
                 + [
@@ -379,7 +385,13 @@ def run_existing_workspace(
             )
 
         if workspace_registered:
-            _write_back_status(project_dir, run_name, "success" if flow_ok else "failed", warnings)
+            _write_back_status(
+                project_dir,
+                run_name,
+                "success" if flow_ok else "failed",
+                warnings,
+                repair=disclosure_cmd("ecc run", project, run_name),
+            )
 
         record: dict = {
             "workspace_id": run_name,

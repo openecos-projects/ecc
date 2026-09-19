@@ -191,12 +191,13 @@ class TestManifestRunCommand:
         manifest = json.loads((project_dir / "project.json").read_text())
         assert manifest["workspaces"][0]["status"] == "success"
 
-    def test_write_back_failure_degrades_to_warning(
+    def test_write_back_failure_is_a_diagnosable_error(
         self, tmp_path, capsys, flow_mocks, manifest_stubs, monkeypatch
     ):
         """AC-10: a failed status write-back never changes the run result —
-        the successful run stays successful, one
-        manifest_write_back_failed warning per lost write (the pre-engine
+        the successful run stays successful — but each lost write is an
+        error record (manifest_write_back_failed) carrying the lost status
+        and a repair command, never a silent warning (the pre-engine
         "running" update and the final status update)."""
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
@@ -214,8 +215,10 @@ class TestManifestRunCommand:
         records = manifest_stubs.records()
         statuses = [r for r in records if r.get("status") == "success"]
         assert len(statuses) == 1
-        warnings = [r for r in records if r.get("warning") == "manifest_write_back_failed"]
-        assert len(warnings) == 2
+        failures = [r for r in records if r.get("error") == "manifest_write_back_failed"]
+        assert len(failures) == 2
+        assert {f["lost_status"] for f in failures} == {"running", "success"}
+        assert all(f["repair"].startswith("ecc run") for f in failures)
         # The on-disk manifest keeps its pre-run entry status.
         manifest = json.loads((project_dir / "project.json").read_text())
         assert manifest["workspaces"][0]["status"] == "running"

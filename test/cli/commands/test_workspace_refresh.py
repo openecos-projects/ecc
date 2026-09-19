@@ -159,3 +159,37 @@ def test_refresh_force_overwrites_modified_configs(
     records = plain_records(capsys.readouterr().out)
     assert records[-1]["status"] == "refreshed"
     assert flow_mocks.flow.instances[-1].create_called is True
+
+
+def test_refresh_surfaces_manifest_write_back_failure(
+    capsys,
+    create_cli_project,
+    create_flow_json,
+    flow_mocks,
+    manifest_stubs,
+    monkeypatch,
+    plain_records,
+):
+    """A failed project.json status write-back is a diagnosable error record
+    with a repair command, not a silent warning — and the refresh itself
+    still succeeds."""
+    project_dir = create_cli_project()
+    workspace_dir = os.path.join(project_dir, "baseline")
+    project_path = Path(project_dir)
+    manifest_stubs.write(project_path, [manifest_stubs.entry(project_path, "baseline")])
+    create_flow_json(workspace_dir)
+
+    monkeypatch.setattr(
+        "chipcompiler.project.manifest_write.write_back_workspace_status",
+        lambda *args, **kwargs: False,
+    )
+
+    rc = cli_main.run(["workspace", "refresh", "baseline", "--project", project_dir, "--plain"])
+
+    assert rc == 0
+    records = plain_records(capsys.readouterr().out)
+    assert records[-1]["status"] == "refreshed"
+    failure = [record for record in records if record.get("error") == "manifest_write_back_failed"]
+    assert len(failure) == 1
+    assert failure[0]["lost_status"] == "not_started"
+    assert failure[0]["repair"].startswith("ecc run")
