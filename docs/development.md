@@ -879,7 +879,12 @@ Resolution priority for `get_pdk("ics55")` in `chipcompiler/data/pdk.py`:
    workspace location).
 
 Backend supports `POST /api/workspace/set_pdk_root` to set runtime path.
-Workspace creation persists the resolved root in `home/params.toml` as `pdk_root`.
+Workspace creation persists the resolved root in `home/params.toml` as `pdk_root`
+(under `[pdk] root`), so a workspace resolves identically on every machine.
+Loading an existing workspace whose persisted root is empty/missing still
+falls back to the environment variables, but `ecc run` then emits a
+`pdk_root_env_fallback` warning naming the variable it resolved from — run
+`ecc run --overwrite` to pin the root into the workspace.
 
 Example:
 

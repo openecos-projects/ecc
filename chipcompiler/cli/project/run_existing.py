@@ -94,6 +94,11 @@ def run_existing_workspace(
                 "the workspace reuses its persisted home/params.toml",
             )
         )
+    from chipcompiler.cli.project.pdk_root_fallback import pdk_root_env_fallback_warning
+
+    pdk_root_warning = pdk_root_env_fallback_warning(run_dir)
+    if pdk_root_warning is not None:
+        warnings.append(pdk_root_warning)
 
     from chipcompiler.data import load_workspace
     from chipcompiler.data.workspace_config import (
