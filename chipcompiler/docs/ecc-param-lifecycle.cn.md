@@ -96,3 +96,9 @@ workspace 文件带有显式 schema 版本，来自更新版本的文件会响�
 该状态，同时继续暴露 `flow` 和快照中其余有效分区。测试必须覆盖单文件
 上限、累计 analysis 预算、最终写入上限和 Studio 校验。不得为了容纳报告
 而提高 Studio 读取上限；完整报告应保持为 artifact，其正文不进入快照。
+
+STA corner 明细的发现不依赖聚合文件 `sta_timing_issues.json` 的正文。即使
+聚合 analysis 正文超限，ECC 仍会按确定性顺序索引最多 32 组
+`feature/<process>/<rc>/qor_summary.json` 和 `timing_paths.json`，并将它们
+记录为可校验 artifact。Studio 通过 artifact ID 按需读取并校验用户选中的
+单个 corner；真实文件引用和报告正文不会进入 renderer 可见的快照投影。

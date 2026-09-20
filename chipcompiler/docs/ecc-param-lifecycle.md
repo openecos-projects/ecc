@@ -111,3 +111,11 @@ sections. Tests must cover the per-file limit, cumulative analysis budget,
 final write limit, and Studio validation. Do not raise the Studio read limit to
 accommodate a report; keep the report as an artifact and its body out of the
 Snapshot.
+
+STA corner detail discovery is independent of the aggregate
+`sta_timing_issues.json` body. ECC indexes at most 32 deterministic
+`feature/<process>/<rc>/qor_summary.json` and `timing_paths.json` pairs as
+verified artifacts, even when the aggregate analysis body is oversized. Studio
+uses the artifact ID to read and validate one selected corner on demand; file
+references and report bodies remain outside the renderer-facing Snapshot
+projection.

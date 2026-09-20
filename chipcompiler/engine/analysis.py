@@ -25,6 +25,7 @@ _TIMING_FILE = ("timingIssues", "sta_timing_issues", "sta_timing_issues.json", 1
 _SUBFLOW_MAX_BYTES = 1024 * 1024
 _SUBFLOW_MAX_STEPS = 256
 _ARTIFACT_HASH_MAX_BYTES = 16 * 1024 * 1024
+_STA_CORNER_LIMIT = 32
 _CONGESTION_IMAGES = (
     ("egr_congestion_map", "{step}_egr_horizontal_overflow.png"),
     ("egr_congestion_map", "{step}_egr_vertical_overflow.png"),
@@ -172,22 +173,9 @@ def build_workspace_analysis(
                     ("timing_paths", timing_root / "timing_paths.json"),
                 )
             )
-        timing_data = step.get("timingIssues")
-        timing_payload = timing_data.get("data") if isinstance(timing_data, dict) else None
-        timing_paths = (
-            timing_payload.get("artifact_paths") if isinstance(timing_payload, dict) else None
-        )
         if step_id.lower() == "sta":
-            for item in timing_paths[:32] if isinstance(timing_paths, list) else []:
-                if not isinstance(item, dict):
-                    continue
-                report_dir = _safe_step_artifact_path(step_dir, item.get("report_dir"), root)
-                if report_dir is None:
-                    continue
-                try:
-                    relative_report_dir = report_dir.relative_to(step_dir / "report")
-                except ValueError:
-                    continue
+            for relative_corner, feature_dir in _sta_corner_directories(step_dir, root):
+                report_dir = step_dir / "report" / relative_corner
                 report_names = list(STA_REPORT_FILENAMES)
                 if (report_dir / STA_POWER_REPORT_FILENAME).is_file():
                     report_names.append(STA_POWER_REPORT_FILENAME)
@@ -201,29 +189,26 @@ def build_workspace_analysis(
                         kind="report_text",
                         root=root,
                     )
-                    artifact["name"] = (relative_report_dir / report_name).as_posix()
+                    artifact["name"] = (relative_corner / report_name).as_posix()
                     artifacts.append(artifact)
-        for item in timing_paths[:32] if isinstance(timing_paths, list) else []:
-            if not isinstance(item, dict):
-                continue
-            for kind, field in (
-                ("timing_summary", "qor_summary_file"),
-                ("timing_paths", "timing_paths_file"),
-            ):
-                timing_path = _safe_step_artifact_path(step_dir, item.get(field), root)
-                if timing_path is not None:
-                    timing_files.append((kind, timing_path))
-        for kind, path in timing_files:
-            artifacts.append(
-                _artifact_ref(
-                    path,
-                    workspace_id=workspace_id,
-                    reference=path.relative_to(root).as_posix(),
-                    step_id=step_id,
-                    kind=kind,
-                    root=root,
+                timing_files.extend(
+                    (
+                        ("timing_summary", feature_dir / "qor_summary.json"),
+                        ("timing_paths", feature_dir / "timing_paths.json"),
+                    )
                 )
+        for kind, path in timing_files:
+            artifact = _artifact_ref(
+                path,
+                workspace_id=workspace_id,
+                reference=path.relative_to(root).as_posix(),
+                step_id=step_id,
+                kind=kind,
+                root=root,
             )
+            if step_id.lower() == "sta":
+                artifact["name"] = path.relative_to(step_dir / "feature").as_posix()
+            artifacts.append(artifact)
         if step_id.lower() in {"place", "cts"}:
             for directory, filename in _CONGESTION_IMAGES:
                 image = step_dir / "feature" / directory / filename.format(step=step_id)
@@ -430,18 +415,39 @@ def _artifact_ref(
     return artifact
 
 
-def _safe_step_artifact_path(step_dir: Path, value: object, root: Path) -> Path | None:
-    if not isinstance(value, str) or not value:
-        return None
-    candidate = Path(value)
-    if candidate.is_absolute() or ".." in candidate.parts:
-        return None
-    resolved = step_dir / candidate
+def _sta_corner_directories(step_dir: Path, root: Path) -> list[tuple[Path, Path]]:
+    feature_root = step_dir / "feature"
+    if not feature_root.is_dir() or _has_symlink(feature_root, root):
+        return []
     try:
-        resolved.relative_to(root)
-    except ValueError:
-        return None
-    return resolved
+        process_directories = sorted(feature_root.iterdir(), key=lambda path: path.name)
+    except OSError:
+        return []
+    corners: list[tuple[Path, Path]] = []
+    for process_dir in process_directories:
+        if (
+            len(corners) >= _STA_CORNER_LIMIT
+            or not _safe_segment(process_dir.name)
+            or not process_dir.is_dir()
+            or _has_symlink(process_dir, root)
+        ):
+            continue
+        try:
+            rc_directories = sorted(process_dir.iterdir(), key=lambda path: path.name)
+        except OSError:
+            continue
+        for rc_dir in rc_directories:
+            if not _safe_segment(rc_dir.name) or not rc_dir.is_dir() or _has_symlink(rc_dir, root):
+                continue
+            if not any(
+                (rc_dir / filename).is_file()
+                for filename in ("qor_summary.json", "timing_paths.json")
+            ):
+                continue
+            corners.append((Path(process_dir.name) / rc_dir.name, rc_dir))
+            if len(corners) >= _STA_CORNER_LIMIT:
+                return corners
+    return corners
 
 
 def _safe_segment(value: object) -> TypeGuard[str]:
