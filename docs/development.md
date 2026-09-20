@@ -147,6 +147,7 @@ from pathlib import Path
 
 from chipcompiler.data import Workspace, WorkspaceStep
 
+
 def build_step(
     workspace: Workspace,
     step_name: str,
@@ -160,11 +161,14 @@ def build_step(
     directory = Path(workspace.directory) / f"{step_name}_<tool_name>"
     return WorkspaceStep(name=step_name, tool="<tool_name>", directory=directory)
 
+
 def build_step_space(workspace_step: WorkspaceStep) -> None:
     Path(workspace_step.directory).mkdir(parents=True, exist_ok=True)
 
-def build_step_config(workspace: Workspace, workspace_step: WorkspaceStep) -> None:
-    ...  # write the step's config files from the workspace parameters
+
+def build_step_config(
+    workspace: Workspace, workspace_step: WorkspaceStep
+) -> None: ...  # write the step's config files from the workspace parameters
 ```
 
 `runner.py`:
@@ -174,12 +178,14 @@ import subprocess
 
 from chipcompiler.data import Workspace, WorkspaceStep
 
+
 def is_eda_exist() -> bool:
     try:
         subprocess.run(["<tool_name>", "--version"], capture_output=True, check=True)
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
         return False
+
 
 def run_step(workspace: Workspace, step: WorkspaceStep, ecc_module=None) -> bool:
     result = subprocess.run(
@@ -394,8 +400,10 @@ are mandatory, the last 2 as needed):
    ```python
    from chipcompiler.cli.core.options import PlainOption, ProjectOption
 
+
    def register_project_commands(app: typer.Typer) -> None:
        app.command("check", help="Validate the current project setup")(check_cmd)
+
 
    def check_cmd(
        *,

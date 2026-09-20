@@ -244,8 +244,9 @@ class FoundationExtractor:
         )
         die_bbox = self._run_logged_stage(
             "discover_die_bbox",
-            lambda: self._discover_die_bbox(selected_stages)
-            or self._discover_def_die_bbox(def_data),
+            lambda: (
+                self._discover_die_bbox(selected_stages) or self._discover_def_die_bbox(def_data)
+            ),
         )
         canonical_grid = self._run_logged_stage(
             "build_canonical_grid",
@@ -275,11 +276,11 @@ class FoundationExtractor:
         route_stage = next((stage for stage in selected_stages if stage.name == "route"), None)
         native_demand_capacity = self._run_logged_stage(
             "parse_route_native_demand_capacity",
-            lambda: parse_route_native_demand_capacity_artifacts(
-                route_stage.directory, canonical_grid
-            )
-            if route_stage
-            else {"available": False, "labels": []},
+            lambda: (
+                parse_route_native_demand_capacity_artifacts(route_stage.directory, canonical_grid)
+                if route_stage
+                else {"available": False, "labels": []}
+            ),
         )
         labels = self._run_logged_stage(
             "write_labels",
@@ -2451,24 +2452,30 @@ class FoundationExtractor:
 
         instances_by_primary = _index_by_primary(
             instances,
-            lambda item: item.get("patch_anchor", {}).get("primary_patch_id")
-            if item.get("patch_anchor", {}).get("primary_patch_id") is not None
-            else item.get("physical_state", {}).get("patch_id"),
+            lambda item: (
+                item.get("patch_anchor", {}).get("primary_patch_id")
+                if item.get("patch_anchor", {}).get("primary_patch_id") is not None
+                else item.get("physical_state", {}).get("patch_id")
+            ),
         )
         instances_by_overlap = _index_by_many(
             instances,
-            lambda item: item.get("patch_anchor", {}).get("overlap_patch_ids")
-            or item.get("physical_state", {}).get("overlap_patch_ids")
-            or [],
+            lambda item: (
+                item.get("patch_anchor", {}).get("overlap_patch_ids")
+                or item.get("physical_state", {}).get("overlap_patch_ids")
+                or []
+            ),
         )
         pins_by_primary = _index_by_primary(
             pins, lambda item: item.get("patch_anchor", {}).get("primary_patch_id")
         )
         pins_by_overlap = _index_by_many(
             pins,
-            lambda item: item.get("patch_anchor", {}).get("overlap_patch_ids")
-            or item.get("geometry", {}).get("overlap_patch_ids")
-            or [],
+            lambda item: (
+                item.get("patch_anchor", {}).get("overlap_patch_ids")
+                or item.get("geometry", {}).get("overlap_patch_ids")
+                or []
+            ),
         )
         wires_by_overlap = _index_by_many(
             wires, lambda item: item.get("patch_anchor", {}).get("overlap_patch_ids") or []
@@ -11789,9 +11796,11 @@ def _via_layer_stack(
     cut_layers = [layer for layer in layers if _layer_type(layer) == "cut"]
     routing_layers = sorted(
         routing_layers,
-        key=lambda layer: layer_order_by_name.get(layer)
-        if layer_order_by_name.get(layer) is not None
-        else _layer_order_from_name(layer) or 10_000,
+        key=lambda layer: (
+            layer_order_by_name.get(layer)
+            if layer_order_by_name.get(layer) is not None
+            else _layer_order_from_name(layer) or 10_000
+        ),
     )
     return {
         "layers": layers,

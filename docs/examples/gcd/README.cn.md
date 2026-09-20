@@ -36,12 +36,13 @@ parameters = get_design_parameters("ics55", "gcd")
 
 ```python
 from chipcompiler.data import create_workspace, get_pdk, StepEnum, StateEnum
+
 workspace = create_workspace(
     directory=workspace_dir,
     origin_def="",
     origin_verilog=input_verilog,
     pdk=pdk,
-    parameters=parameters
+    parameters=parameters,
 )
 # 使用 `load_workspace` 从已有工作空间恢复
 # workspace = load_workspace(directory=workspace_dir)
@@ -181,7 +182,7 @@ workspace = create_workspace(
     origin_verilog="",  # 使用 filelist 时不需要
     pdk=pdk,
     parameters=parameters,
-    input_filelist=input_filelist  # 提供 filelist 而不是单个文件
+    input_filelist=input_filelist,  # 提供 filelist 而不是单个文件
 )
 ```
 

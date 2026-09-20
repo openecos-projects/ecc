@@ -39,9 +39,7 @@ from .workspace_api import (
 def candidate_resume(api, request: CandidateResumeRequest) -> dict:
     _validate_candidate_resume_request(request)
     session = api.ecc_api._get_session(request.workspace_id)
-    api.ecc_api._validate_workspace_revision(
-        session, request.expected_workspace_revision
-    )
+    api.ecc_api._validate_workspace_revision(session, request.expected_workspace_revision)
     api._reject_active_source_operation(request.workspace_id)
     try:
         return api.ecc_api.operations.start(

@@ -117,9 +117,7 @@ class FlowAgentRuntimeApi:
     def candidate_rerun(self, request: CandidateRerunRequest) -> dict:
         _validate_candidate_rerun_request(request)
         session = self.ecc_api._get_session(request.workspace_id)
-        self.ecc_api._validate_workspace_revision(
-            session, request.expected_workspace_revision
-        )
+        self.ecc_api._validate_workspace_revision(session, request.expected_workspace_revision)
         self._reject_active_source_operation(request.workspace_id)
         try:
             return self.ecc_api.operations.start(
