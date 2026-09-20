@@ -289,8 +289,12 @@ class ECCToolsModule:
         """
         return self.ecc.view_json_apply_edits(edits_path=path_text(edits_path), compress=compress)
 
-    def geometry_snapshot_save(self, output_dir: PathArg):
+    def geometry_snapshot_save(self, output_dir: PathArg, *, include_drc: bool = False):
         """Export the current in-memory IDB geometry for GUI rendering."""
+        if include_drc:
+            return self.ecc.geometry_snapshot_save(
+                output_dir=path_text(output_dir), include_drc=True
+            )
         return self.ecc.geometry_snapshot_save(output_dir=path_text(output_dir))
 
     def initialize_geometry_session(self):

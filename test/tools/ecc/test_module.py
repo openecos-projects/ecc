@@ -290,6 +290,17 @@ def test_geometry_snapshot_save_passes_output_directory():
     ]
 
 
+def test_geometry_snapshot_save_includes_drc_only_when_requested():
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+
+    assert module.geometry_snapshot_save(Path("/tmp/geometry"), include_drc=True) is True
+
+    assert module.ecc.calls == [
+        ("geometry_snapshot_save", (), {"output_dir": "/tmp/geometry", "include_drc": True}),
+    ]
+
+
 def test_geometry_edit_session_wrappers_forward_instance_name():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()

@@ -269,6 +269,7 @@ class SnapshotSaveEccModule:
     def __init__(self, *, write_snapshot: bool):
         self.write_snapshot = write_snapshot
         self.geometry_output = None
+        self.geometry_includes_drc = None
 
     def def_save(self, **_kwargs):
         return True
@@ -282,8 +283,9 @@ class SnapshotSaveEccModule:
     def save_data(self, **_kwargs):
         return True
 
-    def geometry_snapshot_save(self, output_dir):
+    def geometry_snapshot_save(self, output_dir, *, include_drc=False):
         self.geometry_output = output_dir
+        self.geometry_includes_drc = include_drc
         if not self.write_snapshot:
             return False
         Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -1024,7 +1026,9 @@ def test_rcx_checklist_uses_top_module_for_spef_design_token(tmp_path):
     assert checklist.check_spef_file(str(spef)) is True
 
 
-@pytest.mark.parametrize("step_name", (StepEnum.ROUTING.value, StepEnum.LVS.value))
+@pytest.mark.parametrize(
+    "step_name", (StepEnum.ROUTING.value, StepEnum.LVS.value, StepEnum.DRC.value)
+)
 def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path, step_name):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
     step = build_step(workspace, step_name, None, None)
@@ -1032,6 +1036,7 @@ def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path, step_nam
 
     assert ecc_runner.save_data(workspace, step, module, feature_step=False) is True
     assert module.geometry_output == step.output.geometry
+    assert module.geometry_includes_drc is (step_name == StepEnum.DRC.value)
     assert step.output.geometry_manifest is not None
     assert step.output.geometry_manifest.is_file()
 

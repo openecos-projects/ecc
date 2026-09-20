@@ -406,7 +406,8 @@ def save_data(
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
         geometry_manifest = step.output.geometry_manifest
-        if not ecc_module.geometry_snapshot_save(output_dir=geometry_dir):
+        snapshot_options = {"include_drc": True} if step.name == StepEnum.DRC.value else {}
+        if not ecc_module.geometry_snapshot_save(output_dir=geometry_dir, **snapshot_options):
             workspace.logger.error("Failed to write geometry snapshot for %s", step.name)
             return False
         if geometry_manifest is None or not geometry_manifest.is_file():
