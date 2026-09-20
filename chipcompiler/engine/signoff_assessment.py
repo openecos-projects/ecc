@@ -1,7 +1,10 @@
 from pathlib import Path
 from typing import Any, TypedDict
 
-from chipcompiler.utility import json_read
+from chipcompiler.engine.snapshot_limits import (
+    CHECKLIST_INLINE_MAX_BYTES,
+    read_bounded_json_object,
+)
 
 _REVIEW_GROUPS: tuple[tuple[str, str], ...] = (
     ("initial", "Initial"),
@@ -23,7 +26,11 @@ class _ReviewGroup(TypedDict):
     attention: list[dict]
 
 
-def build_signoff_assessment(workspace: Any) -> dict[str, Any]:
+def build_signoff_assessment(
+    workspace: Any,
+    *,
+    checklist: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     flow = getattr(workspace, "flow", None)
     steps_fn = getattr(flow, "steps", None)
     if callable(steps_fn):
@@ -33,7 +40,12 @@ def build_signoff_assessment(workspace: Any) -> dict[str, Any]:
         steps = flow_data.get("steps", []) if isinstance(flow_data, dict) else []
     if steps and any(str(step.get("state", "")) not in {"Success", "Skipped"} for step in steps):
         return _unavailable_assessment()
-    checklist = json_read(Path(workspace.directory) / "home" / "checklist.json")
+    if checklist is None:
+        checklist_result = read_bounded_json_object(
+            Path(workspace.directory) / "home" / "checklist.json",
+            CHECKLIST_INLINE_MAX_BYTES,
+        )
+        checklist = checklist_result.data if checklist_result.status == "available" else {}
     if (
         not isinstance(checklist, dict)
         or checklist.get("schema_version") != 3

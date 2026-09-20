@@ -4,12 +4,18 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from chipcompiler.engine.snapshot_limits import (
+    CHECKLIST_INLINE_MAX_BYTES,
+    ENGINEERING_SNAPSHOT_MAX_BYTES,
+    encoded_json_size,
+    read_bounded_json_object,
+)
 from chipcompiler.engine.snapshot_qor import (
     build_qor_snapshot_extension,
     unavailable_qor_snapshot_extension,
     validate_qor_snapshot_extension,
 )
-from chipcompiler.utility import JsonReadError, file_digest, json_read, json_read_strict, json_write
+from chipcompiler.utility import JsonReadError, file_digest, json_read_strict, json_write
 
 SNAPSHOT_SCHEMA_VERSION = 2
 SNAPSHOT_V3_SCHEMA_VERSION = 3
@@ -229,8 +235,14 @@ def _build_snapshot(
         steps = flow_owner.steps()
         flow = {"steps": deepcopy(steps)} if steps else {}
     home = _data_mapping(getattr(workspace, "home", None))
-    checklist_path = home.get("checklist")
-    checklist = json_read(checklist_path) if isinstance(checklist_path, (str, Path)) else {}
+    checklist_path = home.get("checklist") or (
+        Path(workspace.directory) / "home" / "checklist.json"
+    )
+    checklist_result = read_bounded_json_object(
+        Path(checklist_path),
+        CHECKLIST_INLINE_MAX_BYTES,
+    )
+    checklist = checklist_result.data if checklist_result.status == "available" else {}
     from chipcompiler.engine.analysis import build_workspace_analysis
     from chipcompiler.engine.qor import build_workspace_qor_assessment
     from chipcompiler.engine.signoff_assessment import build_signoff_assessment
@@ -260,7 +272,7 @@ def _build_snapshot(
         "metrics": deepcopy(qor_assessment["metrics"]),
         "qorAssessment": qor_assessment,
         "qorSnapshotExtension": qor_extension,
-        "signoffAssessment": build_signoff_assessment(workspace),
+        "signoffAssessment": build_signoff_assessment(workspace, checklist=checklist),
         "artifacts": artifacts,
     }
 
@@ -279,6 +291,12 @@ def _data_mapping(owner: Any) -> dict[str, Any]:
 
 
 def _write_snapshot(path: Path, snapshot: dict[str, Any]) -> None:
+    size = encoded_json_size(snapshot)
+    if size > ENGINEERING_SNAPSHOT_MAX_BYTES:
+        raise EngineeringSnapshotError(
+            "Engineering Snapshot exceeds "
+            f"{ENGINEERING_SNAPSHOT_MAX_BYTES} bytes ({size} bytes): {path}"
+        )
     path.parent.mkdir(parents=True, exist_ok=True)
     if not json_write(path, snapshot):
         raise EngineeringSnapshotError(f"failed to persist Engineering Snapshot: {path}")

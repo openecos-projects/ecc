@@ -77,3 +77,22 @@ workspace 文件带有显式 schema 版本，来自更新版本的文件会响�
 `EngineeringSnapshotError`（`invalid Engineering Snapshot: <路径>`），
 不含版本号；v2 与 v3 均原生加载，v2→v3 迁移仅登记供发现——它是显式
 只写通道，加载链不会自动应用。
+
+## Engineering Snapshot 载荷边界
+
+`home/engineering-snapshot.json` 是有界索引，不是完整 EDA 报告的容器。
+`build_workspace_analysis()` 会保留所有已声明分析文件的 artifact 元数据，
+但只有同时满足以下边界时才内联 JSON 正文：
+
+| 边界 | 上限 | 超限行为 |
+| --- | ---: | --- |
+| 单个 analysis 或 LEC JSON 正文 | 256 KiB | `status: oversized`、`data: null`，保留 artifact 引用 |
+| 所有内联 analysis 正文累计 | 2 MiB | 后续正文使用 `ANALYSIS_INLINE_BUDGET_EXCEEDED` |
+| Signoff checklist 正文 | 1 MiB | checklist 与 signoff 投影变为 unavailable |
+| 序列化后的 Engineering Snapshot | 16 MiB | 写入以 `EngineeringSnapshotError` 失败；原子写保证旧文件不变 |
+
+不可用分析文件的契约为
+`{artifactId, status: "oversized", reasonCode, data: null}`。Studio 必须接受
+该状态，同时继续暴露 `flow` 和快照中其余有效分区。测试必须覆盖单文件
+上限、累计 analysis 预算、最终写入上限和 Studio 校验。不得为了容纳报告
+而提高 Studio 读取上限；完整报告应保持为 artifact，其正文不进入快照。

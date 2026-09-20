@@ -90,3 +90,24 @@ supported shape instead raises `EngineeringSnapshotError`
 (`invalid Engineering Snapshot: <path>`) without a version number; v2 and v3
 both load natively, and the v2→v3 migration stays registered for discovery
 only — an explicit write-only seam, not applied by the load chain.
+
+## Engineering Snapshot payload bounds
+
+`home/engineering-snapshot.json` is a bounded index, not a container for full
+EDA reports. `build_workspace_analysis()` keeps artifact metadata for every
+declared analysis file, but only embeds a JSON body when both limits allow it:
+
+| Boundary | Limit | Oversize behavior |
+| --- | ---: | --- |
+| One analysis or LEC JSON body | 256 KiB | `status: oversized`, `data: null`, artifact reference retained |
+| All embedded analysis bodies | 2 MiB | later bodies use `ANALYSIS_INLINE_BUDGET_EXCEEDED` |
+| Signoff checklist body | 1 MiB | checklist and signoff projections become unavailable |
+| Serialized Engineering Snapshot | 16 MiB | write fails with `EngineeringSnapshotError`; the previous atomic file remains |
+
+The unavailable analysis-file contract is
+`{artifactId, status: "oversized", reasonCode, data: null}`. Studio must accept
+that status while continuing to expose `flow` and the remaining valid Snapshot
+sections. Tests must cover the per-file limit, cumulative analysis budget,
+final write limit, and Studio validation. Do not raise the Studio read limit to
+accommodate a report; keep the report as an artifact and its body out of the
+Snapshot.

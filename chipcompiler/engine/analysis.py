@@ -5,6 +5,12 @@ from typing import Any, TypeGuard
 
 from chipcompiler.data.step import STEP_DIRECTORIES, step_storage_name
 from chipcompiler.engine.qor_scoring import DIMENSION_WEIGHTS
+from chipcompiler.engine.snapshot_limits import (
+    ANALYSIS_FILE_INLINE_MAX_BYTES,
+    ANALYSIS_INLINE_BUDGET_BYTES,
+    InlineJsonBudget,
+    read_bounded_json_object,
+)
 from chipcompiler.tools.ecc.sta_qor import STA_POWER_REPORT_FILENAME, STA_REPORT_FILENAMES
 from chipcompiler.utility import JsonReadError, file_digest, json_read_strict
 
@@ -42,6 +48,7 @@ def build_workspace_analysis(
     design = str(getattr(getattr(workspace, "design", None), "name", "")).strip()
     steps: list[dict[str, Any]] = []
     artifacts: list[dict[str, Any]] = []
+    inline_budget = InlineJsonBudget(ANALYSIS_INLINE_BUDGET_BYTES)
     for order, raw_step in enumerate(raw_steps):
         if not isinstance(raw_step, dict):
             continue
@@ -76,7 +83,13 @@ def build_workspace_analysis(
                 root=root,
             )
             artifacts.append(artifact)
-            step[field] = _analysis_file(path, artifact["artifactId"], schema_version, root)
+            step[field] = _analysis_file(
+                path,
+                artifact["artifactId"],
+                schema_version,
+                root,
+                inline_budget,
+            )
         if "timingIssues" not in step:
             step["timingIssues"] = None
         if tool_id.lower() == "yosys_lec" and design:
@@ -90,7 +103,12 @@ def build_workspace_analysis(
                 root=root,
             )
             artifacts.append(artifact)
-            step["lecResult"] = _lec_result_file(result, artifact["artifactId"], root)
+            step["lecResult"] = _lec_result_file(
+                result,
+                artifact["artifactId"],
+                root,
+                inline_budget,
+            )
         step["subflow"] = _subflow_summary(step_dir / "subflow.json", root)
         if design:
             layout = step_dir / "output" / f"{design}_{step_id}.png"
@@ -223,7 +241,12 @@ def build_workspace_analysis(
     return {"steps": steps}, artifacts
 
 
-def _lec_result_file(path: Path, artifact_id: str, root: Path) -> dict[str, Any]:
+def _lec_result_file(
+    path: Path,
+    artifact_id: str,
+    root: Path,
+    inline_budget: InlineJsonBudget | None = None,
+) -> dict[str, Any]:
     if _has_symlink(path, root):
         return {
             "artifactId": artifact_id,
@@ -231,31 +254,25 @@ def _lec_result_file(path: Path, artifact_id: str, root: Path) -> dict[str, Any]
             "reasonCode": "LEC_RESULT_UNSAFE",
             "data": None,
         }
-    if not path.is_file():
+    result = read_bounded_json_object(path, ANALYSIS_FILE_INLINE_MAX_BYTES)
+    if result.status != "available":
         return {
             "artifactId": artifact_id,
-            "status": "missing",
-            "reasonCode": "LEC_RESULT_MISSING",
+            "status": result.status,
+            "reasonCode": f"LEC_RESULT_{result.status.upper()}",
             "data": None,
         }
-    try:
-        data = json_read_strict(path)
-    except (OSError, JsonReadError):
-        return {
-            "artifactId": artifact_id,
-            "status": "invalid",
-            "reasonCode": "LEC_RESULT_INVALID",
-            "data": None,
-        }
-    if not isinstance(data, dict):
-        return {
-            "artifactId": artifact_id,
-            "status": "invalid",
-            "reasonCode": "LEC_RESULT_INVALID",
-            "data": None,
-        }
+    data = result.data
+    assert data is not None
     result = dict(data)
     result["freshness_status"] = _lec_freshness_status(data, root)
+    if inline_budget is not None and not inline_budget.admit(result):
+        return {
+            "artifactId": artifact_id,
+            "status": "oversized",
+            "reasonCode": "LEC_RESULT_INLINE_BUDGET_EXCEEDED",
+            "data": None,
+        }
     return {"artifactId": artifact_id, "status": "available", "data": result}
 
 
@@ -277,7 +294,13 @@ def _lec_freshness_status(data: dict[str, Any], root: Path) -> str:
     return "proven"
 
 
-def _analysis_file(path: Path, artifact_id: str, schema_version: int, root: Path) -> dict[str, Any]:
+def _analysis_file(
+    path: Path,
+    artifact_id: str,
+    schema_version: int,
+    root: Path,
+    inline_budget: InlineJsonBudget | None = None,
+) -> dict[str, Any]:
     if _has_symlink(path, root):
         return {
             "artifactId": artifact_id,
@@ -285,29 +308,16 @@ def _analysis_file(path: Path, artifact_id: str, schema_version: int, root: Path
             "reasonCode": "ANALYSIS_REFERENCE_UNSAFE",
             "data": None,
         }
-    if not path.is_file():
+    result = read_bounded_json_object(path, ANALYSIS_FILE_INLINE_MAX_BYTES)
+    if result.status != "available":
         return {
             "artifactId": artifact_id,
-            "status": "missing",
-            "reasonCode": "ANALYSIS_FILE_MISSING",
+            "status": result.status,
+            "reasonCode": f"ANALYSIS_FILE_{result.status.upper()}",
             "data": None,
         }
-    try:
-        data = json_read_strict(path)
-    except (OSError, JsonReadError):
-        return {
-            "artifactId": artifact_id,
-            "status": "invalid",
-            "reasonCode": "ANALYSIS_FILE_INVALID",
-            "data": None,
-        }
-    if not isinstance(data, dict):
-        return {
-            "artifactId": artifact_id,
-            "status": "invalid",
-            "reasonCode": "ANALYSIS_FILE_INVALID",
-            "data": None,
-        }
+    data = result.data
+    assert data is not None
     if data.get("schema_version") != schema_version:
         return {
             "artifactId": artifact_id,
@@ -317,6 +327,13 @@ def _analysis_file(path: Path, artifact_id: str, schema_version: int, root: Path
         }
     if schema_version == 3 and isinstance(data.get("metrics"), list):
         data = _canonical_metrics_payload(data)
+    if inline_budget is not None and not inline_budget.admit(data):
+        return {
+            "artifactId": artifact_id,
+            "status": "oversized",
+            "reasonCode": "ANALYSIS_INLINE_BUDGET_EXCEEDED",
+            "data": None,
+        }
     return {"artifactId": artifact_id, "status": "available", "data": data}
 
 
