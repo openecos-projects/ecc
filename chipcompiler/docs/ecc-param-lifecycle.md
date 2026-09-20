@@ -2,7 +2,7 @@
 
 How a parameter value travels from declaration to a running step, and what
 protects the persisted state along the way. For the command and file
-reference see the [CLI Config Reference](../chipcompiler/docs/ecc-config-ref.en.md);
+reference see the [CLI Config Reference](ecc-config-ref.en.md);
 this page is about semantics.
 
 ## Priority matrix

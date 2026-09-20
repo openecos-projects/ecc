@@ -1,7 +1,7 @@
 # 参数生命周期
 
 参数值如何从声明流向运行中的步骤，以及沿途有哪些机制保护持久化
-状态。命令与文件字段参考见 [CLI 配置参考](../chipcompiler/docs/ecc-config-ref.cn.md)；
+状态。命令与文件字段参考见 [CLI 配置参考](ecc-config-ref.cn.md)；
 本页只讲语义。
 
 ## 优先级矩阵

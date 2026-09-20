@@ -16,6 +16,11 @@ The `ecc` command-line tool ships bilingual guides (`.en.md` / `.cn.md`):
 - **[CLI Config Reference](../chipcompiler/docs/ecc-config-ref.en.md)** / **[中文配置参考](../chipcompiler/docs/ecc-config-ref.cn.md)** - `ecc.toml`, workspace files, and the parameter system
 - **[Staged Floorplan Flow](../chipcompiler/docs/floorplan-flow.en.md)** / **[分阶段 Floorplan 流程](../chipcompiler/docs/floorplan-flow.cn.md)** - Pre-floorplan, macro placement, post-floorplan, and the macro-location Tcl handoff
 - **[RPC Guide](rpc-guide.md)** - Private JSON-RPC runtime sidecar protocol (`ecc rpc serve`)
+- **[Parameter Lifecycle](../chipcompiler/docs/ecc-param-lifecycle.md)** / **[参数生命周期](../chipcompiler/docs/ecc-param-lifecycle.cn.md)** - Parameter precedence, effective timing, CLI/GUI differences, and schema versioning
+  - Priority matrix (`--set` > `ecc.toml [params]` > `project.json` base + workspace `parameter_patch` > schema defaults)
+  - Fresh vs existing runs, `skip_steps` convergence
+  - Drift and overwrite guards (`workspace_spec_drift`, `derived_configs_modified`)
+  - `schema_version` registry for `home/` files
 
 ## Core Documentation
 
@@ -25,12 +30,6 @@ The `ecc` command-line tool ships bilingual guides (`.en.md` / `.cn.md`):
   - Adding new EDA tools
   - Debugging and testing
   - Extending the `ecc` CLI
-
-- **[Parameter Lifecycle](param-lifecycle.md)** / **[参数生命周期](param-lifecycle.cn.md)** - Parameter precedence, effective timing, CLI/GUI differences, and schema versioning
-  - Priority matrix (`--set` > `ecc.toml [params]` > `project.json` base + workspace `parameter_patch` > schema defaults)
-  - Fresh vs existing runs, `skip_steps` convergence
-  - Drift and overwrite guards (`workspace_spec_drift`, `derived_configs_modified`)
-  - `schema_version` registry for `home/` files
 
 - **[Release Guide](release.md)** - Release branch and hotfix release workflow
   - Preparing `release/v*` branches
