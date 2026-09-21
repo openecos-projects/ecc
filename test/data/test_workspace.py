@@ -1311,6 +1311,47 @@ def test_refresh_workspace_config_reapplies_direct_config_overrides(
     assert json_read(workspace.config["dreamplace"])["num_threads"] == 12
 
 
+def test_refresh_workspace_config_expands_pdk_relative_sta_liberty_overrides(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    relative_liberty = [
+        {
+            "corner": "MAX",
+            "temperature": 125,
+            "path": [
+                "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib"
+            ],
+        }
+    ]
+    workspace_dir = tmp_path / "workspace"
+    workspace = create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters={
+            **default_ics55_parameters,
+            "Config Overrides": {"sta": {"liberty": deepcopy(relative_liberty)}},
+        },
+        pdk_root=str(pdk_root),
+    )
+
+    expected = [
+        str(pdk_root / path.lstrip("/"))
+        for path in relative_liberty[0]["path"]
+    ]
+    sta = json_read(workspace.config[StepEnum.STA.value])
+    assert sta["liberty"][0]["path"] == expected
+
+    refresh_workspace_config(workspace)
+
+    sta = json_read(workspace.config[StepEnum.STA.value])
+    assert sta["liberty"][0]["path"] == expected
+
+
 def test_update_step_config_preserves_floorplan_mode_override_after_result_backfill(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):

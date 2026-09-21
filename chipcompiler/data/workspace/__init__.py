@@ -471,6 +471,24 @@ def _has_new_floorplan_schema(config: dict) -> bool:
     )
 
 
+def _refresh_sta_config(workspace: Workspace) -> None:
+    import os
+
+    from chipcompiler.utility import json_read, json_write
+
+    sta = json_read(workspace.config[f"{StepEnum.STA.value}"])
+    pdk_root = str(workspace.pdk.root or "").rstrip(os.sep)
+    for liberty in sta.get("liberty", []):
+        liberty["path"] = [
+            path
+            if path == pdk_root or path.startswith(f"{pdk_root}{os.sep}")
+            else str((workspace.pdk.root or Path("")) / path.lstrip(os.sep))
+            for path in liberty.get("path", [])
+        ]
+
+    json_write(workspace.config[f"{StepEnum.STA.value}"], sta)
+
+
 def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None = None) -> None:
     from chipcompiler.utility import json_read, json_write
 
@@ -621,8 +639,6 @@ def init_workspace_config(workspace: Workspace) -> None:
 
 def refresh_workspace_config(workspace: Workspace) -> None:
     """Reload the workspace configuration and refresh configs derived from parameters/PDK."""
-    import os
-
     from chipcompiler.tools.ecc_dreamplace.parameter_overrides import apply_parameter_overrides
     from chipcompiler.utility import json_read, json_write
 
@@ -692,18 +708,6 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     # rcx["corners"] = corners
     # json_write(workspace.config[f"{StepEnum.RCX.value}"], rcx)
 
-    sta = json_read(workspace.config[f"{StepEnum.STA.value}"])
-    pdk_root = str(workspace.pdk.root or "").rstrip(os.sep)
-    for liberty in sta.get("liberty", []):
-        liberty["path"] = [
-            path
-            if path == pdk_root or path.startswith(f"{pdk_root}{os.sep}")
-            else str((workspace.pdk.root or Path("")) / path.lstrip(os.sep))
-            for path in liberty.get("path", [])
-        ]
-
-    json_write(workspace.config[f"{StepEnum.STA.value}"], sta)
-
     dreamplace = json_read(workspace.config["dreamplace"])
     if not dreamplace:
         raise FileNotFoundError(
@@ -721,6 +725,10 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     from .config_overrides import apply_config_overrides
 
     apply_config_overrides(workspace.config, workspace.parameters.data)
+    # Expand PDK-relative liberty paths only after overrides are applied:
+    # explicit sta.liberty parameters carry the same PDK-relative defaults,
+    # and re-applying them above must not resurrect unexpanded paths.
+    _refresh_sta_config(workspace)
     record_derived_config(workspace)
 
 
