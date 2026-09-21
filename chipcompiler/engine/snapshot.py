@@ -63,8 +63,13 @@ def read_engineering_snapshot(
     *,
     expected_workspace_id: str | None = None,
     expected_workspace_revision: int | None = None,
-    validate_artifacts: bool = True,
+    validate_artifacts: bool = False,
 ) -> dict[str, Any]:
+    """Read the GUI projection, validating artifact contents only on explicit request.
+
+    Workspace artifacts may be regenerated independently of this index. Consumers
+    that require immutable evidence must opt in or validate the selected artifact.
+    """
     snapshot = _read_snapshot(_snapshot_path(workspace), validate_artifacts=validate_artifacts)
     if expected_workspace_id is not None and snapshot["workspaceId"] != expected_workspace_id:
         raise EngineeringSnapshotError("Engineering Snapshot workspace identity mismatch")
@@ -302,7 +307,7 @@ def _write_snapshot(path: Path, snapshot: dict[str, Any]) -> None:
         raise EngineeringSnapshotError(f"failed to persist Engineering Snapshot: {path}")
 
 
-def _read_snapshot(path: Path, *, validate_artifacts: bool = True) -> dict[str, Any]:
+def _read_snapshot(path: Path, *, validate_artifacts: bool = False) -> dict[str, Any]:
     try:
         snapshot = json_read_strict(path)
     except (OSError, JsonReadError) as exc:
@@ -416,7 +421,9 @@ def _validate_snapshot_artifact(
     if _contains_symlink(candidate, workspace_root):
         raise EngineeringSnapshotError("invalid Engineering Snapshot artifact path")
     if file_digest(candidate) != (digest, size):
-        raise EngineeringSnapshotError("Engineering Snapshot artifact fingerprint mismatch")
+        raise EngineeringSnapshotError(
+            f"Engineering Snapshot artifact fingerprint mismatch: {reference}"
+        )
 
 
 def _contains_symlink(path: Path, root: Path) -> bool:
