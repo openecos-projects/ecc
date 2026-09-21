@@ -1352,6 +1352,50 @@ def test_refresh_workspace_config_expands_pdk_relative_sta_liberty_overrides(
     assert sta["liberty"][0]["path"] == expected
 
 
+def test_update_step_config_keeps_sta_liberty_expanded_after_override_replay(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    relative_liberty = [
+        {
+            "corner": "MAX",
+            "temperature": 125,
+            "path": [
+                "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib"
+            ],
+        }
+    ]
+    workspace_dir = tmp_path / "workspace"
+    workspace = create_workspace(
+        directory=str(workspace_dir),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters={
+            **default_ics55_parameters,
+            "Config Overrides": {"sta": {"liberty": deepcopy(relative_liberty)}},
+        },
+        pdk_root=str(pdk_root),
+    )
+    expected = [str(pdk_root / path.lstrip("/")) for path in relative_liberty[0]["path"]]
+
+    step = EccStep(
+        name=StepEnum.POST_FLOORPLAN.value,
+        input=StepInput(),
+        output=EccOutput(dir=workspace_dir / "postFloorplan_ecc" / "output"),
+        data=EccData(
+            steps={StepEnum.POST_FLOORPLAN.value: workspace_dir / "postFloorplan_ecc" / "data"}
+        ),
+    )
+
+    update_step_config(workspace, step)
+
+    sta = json_read(workspace.config[StepEnum.STA.value])
+    assert sta["liberty"][0]["path"] == expected
+
+
 def test_update_step_config_preserves_floorplan_mode_override_after_result_backfill(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):

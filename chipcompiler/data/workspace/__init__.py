@@ -901,6 +901,9 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
         from .config_overrides import apply_config_overrides
 
         apply_config_overrides(workspace.config, workspace.parameters.data)
+        # Overrides replay raw PDK-relative sta.liberty defaults; re-expand
+        # them so a mid-run step build cannot resurrect unexpanded paths.
+        _refresh_sta_config(workspace)
 
     if step.name == StepEnum.ROUTING.value and isinstance(step.data, EccData):
         router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])
