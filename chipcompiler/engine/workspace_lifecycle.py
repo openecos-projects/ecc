@@ -212,7 +212,7 @@ def _create_workspace_from_spec(
 
         if not save_parameter(workspace.parameters):
             raise OSError(f"Failed to persist input mode: {workspace.parameters.path}")
-        snapshot = create_engineering_snapshot(workspace)
+        snapshot = create_engineering_snapshot(workspace, workspace_spec=resolved)
         _write_workspace_command(
             target,
             command_id,
@@ -297,7 +297,9 @@ def _update_workspace_from_spec(
             },
         )
 
-    update_spec, preserved_parameters = _merge_workspace_update_parameters(current, spec)
+    update_spec, preserved_parameters = _merge_workspace_update_parameters(
+        current, spec, committed_snapshot=snapshot
+    )
     staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=target.parent))
     staging.rmdir()
     try:
@@ -313,6 +315,7 @@ def _update_workspace_from_spec(
             workspace_id=snapshot["workspaceId"],
             workspace_revision=snapshot["workspaceRevision"] + 1,
             cause="workspace.updated",
+            workspace_spec=update_spec,
         )
         _copy_workspace_commands(target, staging)
         _write_workspace_command(
@@ -336,6 +339,8 @@ def _update_workspace_from_spec(
 def _merge_workspace_update_parameters(
     current: Any,
     spec: object,
+    *,
+    committed_snapshot: dict[str, Any] | None = None,
 ) -> tuple[object, frozenset[str]]:
     """Overlay an update request on the committed Workspace parameters.
 
@@ -362,8 +367,18 @@ def _merge_workspace_update_parameters(
             "Current Workspace configuration is unavailable",
         ) from exc
 
+    snapshot_spec = (
+        committed_snapshot.get("workspaceSpec") if isinstance(committed_snapshot, dict) else None
+    )
+    snapshot_parameters = (
+        snapshot_spec.get("parameters") if isinstance(snapshot_spec, dict) else None
+    )
     current_spec = current_configuration.get("workspaceSpec")
-    current_parameters = current_spec.get("parameters") if isinstance(current_spec, dict) else None
+    current_parameters = (
+        snapshot_parameters
+        if isinstance(snapshot_parameters, dict)
+        else (current_spec.get("parameters") if isinstance(current_spec, dict) else None)
+    )
     if not isinstance(current_parameters, dict):
         raise WorkspaceLifecycleError(
             "workspace_invalid",
