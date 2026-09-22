@@ -1393,6 +1393,17 @@ def test_update_step_config_keeps_sta_liberty_expanded_after_override_replay(
     assert sta["liberty"][0]["path"] == expected
 
 
+def test_refresh_sta_config_does_not_overwrite_corrupt_json(tmp_path):
+    sta_path = tmp_path / "sta_ecc.json"
+    workspace = Workspace(config={StepEnum.STA.value: sta_path})
+    workspace.pdk.root = tmp_path / "pdk"
+    sta_path.write_text("{corrupt", encoding="utf-8")
+
+    with pytest.raises(Exception):
+        workspace_data._refresh_sta_config(workspace)
+    assert sta_path.read_text(encoding="utf-8") == "{corrupt"
+
+
 def test_update_step_config_preserves_floorplan_mode_override_after_result_backfill(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):

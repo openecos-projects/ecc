@@ -474,9 +474,12 @@ def _has_new_floorplan_schema(config: dict) -> bool:
 def _refresh_sta_config(workspace: Workspace) -> None:
     import os
 
-    from chipcompiler.utility import json_read, json_write
+    from chipcompiler.utility import json_read_strict, json_write
 
-    sta = json_read(workspace.config[f"{StepEnum.STA.value}"])
+    sta_path = workspace.config[f"{StepEnum.STA.value}"]
+    sta = json_read_strict(sta_path)
+    if not isinstance(sta, dict):
+        raise TypeError(f"STA config must be a JSON object: {sta_path}")
     pdk_root = str(workspace.pdk.root or "").rstrip(os.sep)
     for liberty in sta.get("liberty", []):
         liberty["path"] = [
