@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from rosettakit.errors import ValidationError
 
-from chipcompiler.data import SkippableStepEnum
+from chipcompiler.data import SkippableStepEnum, StepEnum
 
 from ._sizer_helpers import _sizer_runtime, _workspace
 
@@ -48,18 +48,12 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     assert "-asap7" not in cmd_text
     assert "-prft_only" not in cmd_text
     assert "-outputPath ." in cmd_text
-    expected_def_out = os.path.relpath(
-        sizer_builder.sizer_staging_def(step),
-        step.data.steps[SkippableStepEnum.TIMING_OPT.value],
-    )
-    expected_verilog_out = os.path.relpath(
-        sizer_builder.sizer_staging_verilog(step),
-        step.data.steps[SkippableStepEnum.TIMING_OPT.value],
-    )
+    expected_def_out = str(sizer_builder.sizer_staging_def(step).resolve())
+    expected_verilog_out = str(sizer_builder.sizer_staging_verilog(step).resolve())
     assert f"-def_out_path {expected_def_out}" in cmd_text
     assert f"-verilog_out_path {expected_verilog_out}" in cmd_text
-    assert expected_def_out == "sizer.def.gz"
-    assert expected_verilog_out == "sizer.v.gz"
+    assert Path(expected_def_out).is_absolute()
+    assert Path(expected_verilog_out).is_absolute()
     assert "-min_route_layer M2" in cmd_text
     assert "-max_route_layer M7" in cmd_text
 
@@ -74,6 +68,50 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     with open(str(step.checklist.path), encoding="utf-8") as file:
         checklist = json.load(file)
     assert checklist["checklist"] == []
+
+
+def test_sizer_step_config_writes_ff_hold_pass_from_sta_contract(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    runtime_root = _sizer_runtime(tmp_path)
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime_root))
+
+    workspace = _workspace(tmp_path)
+    min_lib = tmp_path / "ff_rcbest.lib"
+    workspace.config[StepEnum.STA.value] = tmp_path / "sta_ecc.json"
+    workspace.config[StepEnum.STA.value].write_text(
+        json.dumps(
+            {
+                "liberty": [
+                    {"corner": "MAX", "path": [str(tmp_path / "ss.lib")]},
+                    {"corner": "MIN", "path": [str(min_lib)]},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
+        input_def="input.def",
+        input_verilog="input.v",
+    )
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_step_config(workspace, step)
+
+    hold_env = sizer_builder.sizer_hold_env(step)
+    hold_cmd = sizer_builder.sizer_hold_cmd(step)
+    assert hold_env.is_file()
+    assert hold_cmd.is_file()
+    assert f"-lib {min_lib}" in hold_env.read_text(encoding="utf-8")
+    hold_cmd_text = hold_cmd.read_text(encoding="utf-8")
+    assert "-hold_only" in hold_cmd_text
+    assert "-spef " not in hold_cmd_text
+    assert f"-def {sizer_builder.sizer_setup_staging_def(step)}" in hold_cmd_text
+    assert f"-def_out_path {sizer_builder.sizer_staging_def(step).resolve()}" in hold_cmd_text
+    assert (
+        f"-verilog_out_path {sizer_builder.sizer_staging_verilog(step).resolve()}" in hold_cmd_text
+    )
 
 
 def test_sizer_metrics_write_qor_files_from_db_summary(tmp_path):
@@ -164,14 +202,8 @@ def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
     assert f"-lib {workspace.pdk.libs[0]}" in env_lines
     assert f"-tclFile {runtime_root / 'src' / 'sizer_os.tcl'}" in env_lines
 
-    expected_def_out = os.path.relpath(
-        sizer_builder.sizer_staging_def(step),
-        step.data.steps[SkippableStepEnum.TIMING_OPT.value],
-    )
-    expected_verilog_out = os.path.relpath(
-        sizer_builder.sizer_staging_verilog(step),
-        step.data.steps[SkippableStepEnum.TIMING_OPT.value],
-    )
+    expected_def_out = str(sizer_builder.sizer_staging_def(step).resolve())
+    expected_verilog_out = str(sizer_builder.sizer_staging_verilog(step).resolve())
     assert cmd_lines == [
         "-useOpenSTA",
         "-top gcd",

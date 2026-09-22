@@ -1,14 +1,18 @@
-import os
 import shutil
 from pathlib import Path
 
-from chipcompiler.data import EccStep, Workspace, step_storage_name
+from chipcompiler.data import EccStep, StepEnum, Workspace, step_storage_name
 from chipcompiler.tools.ecc import builder as ecc_builder
+from chipcompiler.utility import json_read
 
 from .utility import find_sizer_root
 
 SIZER_STAGING_DEF_NAME = "sizer.def.gz"
 SIZER_STAGING_VERILOG_NAME = "sizer.v.gz"
+SIZER_SETUP_STAGING_DEF_NAME = "sizer_setup.def.gz"
+SIZER_SETUP_STAGING_VERILOG_NAME = "sizer_setup.v.gz"
+SIZER_HOLD_ENV_NAME = "hold.env_file"
+SIZER_HOLD_CMD_NAME = "hold.cmd_file"
 
 
 def step_shape(
@@ -133,14 +137,18 @@ def _sizer_env_template() -> Path | None:
     return submit_dir / "env_base_file"
 
 
-def _tech_text(workspace: Workspace) -> str:
+def _tech_text(workspace: Workspace, libs=None) -> str:
     sizer_root = find_sizer_root()
     from rosettakit import cmdfile
 
     env = cmdfile.CommandFile(prefix="-", dialect=cmdfile.PLAIN_DIALECT)
     env.option("lef", workspace.pdk.tech, value_type=cmdfile.ValueType.PATH, omit_empty=True)
     env.options("lef", workspace.pdk.lefs, value_type=cmdfile.ValueType.PATH)
-    env.options("lib", workspace.pdk.libs, value_type=cmdfile.ValueType.PATH)
+    env.options(
+        "lib",
+        workspace.pdk.libs if libs is None else libs,
+        value_type=cmdfile.ValueType.PATH,
+    )
 
     if sizer_root is not None:
         tcl_path = sizer_root / "src" / "sizer_os.tcl"
@@ -172,10 +180,62 @@ def sizer_staging_verilog(step: EccStep) -> Path:
     return Path(workdir) / SIZER_STAGING_VERILOG_NAME
 
 
+def sizer_setup_staging_def(step: EccStep) -> Path:
+    workdir = step.data.workdir_for(step.name)
+    if workdir is None:
+        raise ValueError("sizer step is missing a Timing optimization workdir")
+    return Path(workdir) / SIZER_SETUP_STAGING_DEF_NAME
+
+
+def sizer_setup_staging_verilog(step: EccStep) -> Path:
+    workdir = step.data.workdir_for(step.name)
+    if workdir is None:
+        raise ValueError("sizer step is missing a Timing optimization workdir")
+    return Path(workdir) / SIZER_SETUP_STAGING_VERILOG_NAME
+
+
+def sizer_hold_env(step: EccStep) -> Path:
+    script_dir = step.script.dir or Path(step.data.workdir_for(step.name) or ".") / "script"
+    return Path(script_dir) / SIZER_HOLD_ENV_NAME
+
+
+def sizer_hold_cmd(step: EccStep) -> Path:
+    script_dir = step.script.dir or Path(step.data.workdir_for(step.name) or ".") / "script"
+    return Path(script_dir) / SIZER_HOLD_CMD_NAME
+
+
+def _hold_corner_libs(workspace: Workspace) -> list[Path]:
+    """Return the MIN/FF Liberty set declared by the final STA contract."""
+    config_path = workspace.config.get(StepEnum.STA.value)
+    if not config_path or not Path(config_path).is_file():
+        return []
+    try:
+        sta_config = json_read(config_path)
+    except (OSError, ValueError, TypeError):
+        return []
+
+    for liberty in sta_config.get("liberty", []):
+        if str(liberty.get("corner", "")).upper() != "MIN":
+            continue
+        paths = []
+        config_dir = Path(config_path).parent
+        for raw_path in liberty.get("path", []):
+            path = Path(raw_path)
+            pdk_root = Path(workspace.pdk.root) if workspace.pdk.root else None
+            if not path.is_absolute():
+                path = (pdk_root or config_dir) / path
+            elif pdk_root and not path.exists():
+                pdk_path = pdk_root / str(path).lstrip("/")
+                if pdk_path.exists():
+                    path = pdk_path
+            paths.append(path)
+        return paths
+    return []
+
+
 def _cmd_text(workspace: Workspace, step: EccStep) -> str:
     from rosettakit import cmdfile
 
-    output_dir = step.data.workdir_for(step.name) or ""
     command = cmdfile.CommandFile(prefix="-", dialect=cmdfile.PLAIN_DIALECT)
 
     command.flag("useOpenSTA")
@@ -207,16 +267,67 @@ def _cmd_text(workspace: Workspace, step: EccStep) -> str:
     command.option("outputPath", ".")
     command.option(
         "def_out_path",
-        os.path.relpath(sizer_staging_def(step), output_dir),
+        str(sizer_staging_def(step).resolve()),
         value_type=cmdfile.ValueType.PATH,
     )
     command.option(
         "verilog_out_path",
-        os.path.relpath(sizer_staging_verilog(step), output_dir),
+        str(sizer_staging_verilog(step).resolve()),
         value_type=cmdfile.ValueType.PATH,
     )
     _append_route_layer_options(command, workspace)
     return command.build()
+
+
+def _hold_cmd_text(workspace: Workspace, step: EccStep) -> str:
+    from rosettakit import cmdfile
+
+    command = cmdfile.CommandFile(prefix="-", dialect=cmdfile.PLAIN_DIALECT)
+    command.flag("useOpenSTA")
+    command.option("top", workspace.design.top_module or workspace.design.name)
+    command.option(
+        "def",
+        sizer_setup_staging_def(step),
+        value_type=cmdfile.ValueType.PATH,
+    )
+    command.option(
+        "v",
+        sizer_setup_staging_verilog(step),
+        value_type=cmdfile.ValueType.PATH,
+    )
+    command.option("sdc", workspace.pdk.sdc, value_type=cmdfile.ValueType.PATH, omit_empty=True)
+    command.option("outputPath", ".")
+    command.option(
+        "def_out_path",
+        str(sizer_staging_def(step).resolve()),
+        value_type=cmdfile.ValueType.PATH,
+    )
+    command.option(
+        "verilog_out_path",
+        str(sizer_staging_verilog(step).resolve()),
+        value_type=cmdfile.ValueType.PATH,
+    )
+    _append_route_layer_options(command, workspace)
+    command.flag("hold_only")
+    return command.build()
+
+
+def build_hold_config(workspace: Workspace, step: EccStep) -> bool:
+    """Generate the optional FF/MIN hold-only Sizer invocation."""
+    hold_libs = _hold_corner_libs(workspace)
+    env_path = sizer_hold_env(step)
+    cmd_path = sizer_hold_cmd(step)
+    if not hold_libs:
+        env_path.unlink(missing_ok=True)
+        cmd_path.unlink(missing_ok=True)
+        return False
+
+    env_template = _sizer_env_template()
+    _copy_or_seed_template(env_template, env_path, "-num_vt 1\n")
+    _append_text(env_path, _tech_text(workspace, libs=hold_libs))
+    cmd_path.parent.mkdir(parents=True, exist_ok=True)
+    cmd_path.write_text(_hold_cmd_text(workspace, step), encoding="utf-8")
+    return True
 
 
 def build_step_config(workspace: Workspace, step: EccStep) -> None:
@@ -233,6 +344,7 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
 
     _append_text(env_path, _tech_text(workspace))
     _append_text(cmd_path, _cmd_text(workspace, step))
+    build_hold_config(workspace, step)
 
     build_sub_flow(workspace=workspace, workspace_step=step)
     build_checklist(workspace=workspace, workspace_step=step)

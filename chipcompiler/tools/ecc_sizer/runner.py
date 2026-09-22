@@ -10,7 +10,15 @@ from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc_dreamplace.runner import legalize_layout
 from chipcompiler.tools.ecc_dreamplace.utility import is_eda_exist as is_dreamplace_exist
 
-from .builder import sizer_staging_def, sizer_staging_verilog
+from .builder import (
+    build_hold_config,
+    sizer_hold_cmd,
+    sizer_hold_env,
+    sizer_setup_staging_def,
+    sizer_setup_staging_verilog,
+    sizer_staging_def,
+    sizer_staging_verilog,
+)
 from .subflow import SizerSubFlow, SizerSubFlowEnum
 from .utility import get_sizer_command, is_eda_exist, is_sizer_runtime_exist
 
@@ -103,8 +111,13 @@ def _delete_published_outputs(step: EccStep) -> None:
 
 
 def _delete_staging_outputs(step: EccStep) -> None:
-    _delete_path(sizer_staging_def(step))
-    _delete_path(sizer_staging_verilog(step))
+    for path in (
+        sizer_staging_def(step),
+        sizer_staging_verilog(step),
+        sizer_setup_staging_def(step),
+        sizer_setup_staging_verilog(step),
+    ):
+        _delete_path(path)
 
 
 def run_step(
@@ -171,6 +184,34 @@ def run_step(
         )
         sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Imcomplete)
         return StateEnum.Imcomplete
+
+    if build_hold_config(workspace, step):
+        shutil.copy2(sizer_staging_def(step), sizer_setup_staging_def(step))
+        shutil.copy2(sizer_staging_verilog(step), sizer_setup_staging_verilog(step))
+        # Do not let the setup result satisfy the hold-pass output contract if
+        # Sizer exits successfully without writing its requested outputs.
+        _delete_path(sizer_staging_def(step))
+        _delete_path(sizer_staging_verilog(step))
+        hold_result = subprocess.run(
+            get_sizer_command()
+            + ["-env", str(sizer_hold_env(step)), "-f", str(sizer_hold_cmd(step))],
+            cwd=str(output_dir),
+            stdout=None,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        if hold_result.returncode != 0 or not _has_staging_outputs(step):
+            logger.error(
+                "Sizer FF hold repair failed for step %s: %s, staging present=%s, "
+                "fatal_log_line=%r",
+                step.name,
+                _termination_reason(hold_result.returncode),
+                _has_staging_outputs(step),
+                _first_fatal_log_line(log_path),
+            )
+            sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Imcomplete)
+            return StateEnum.Imcomplete
+        logger.info("Sizer FF hold repair completed for step %s", step.name)
 
     sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Success)
     sub_flow.update_step(step_name=run_legalization_step, state=StateEnum.Ongoing)
