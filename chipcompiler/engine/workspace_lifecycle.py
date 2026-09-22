@@ -363,11 +363,7 @@ def _merge_workspace_update_parameters(
         ) from exc
 
     current_spec = current_configuration.get("workspaceSpec")
-    current_parameters = (
-        current_spec.get("parameters")
-        if isinstance(current_spec, dict)
-        else None
-    )
+    current_parameters = current_spec.get("parameters") if isinstance(current_spec, dict) else None
     if not isinstance(current_parameters, dict):
         raise WorkspaceLifecycleError(
             "workspace_invalid",

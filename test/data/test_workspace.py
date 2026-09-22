@@ -1339,10 +1339,7 @@ def test_refresh_workspace_config_expands_pdk_relative_sta_liberty_overrides(
         pdk_root=str(pdk_root),
     )
 
-    expected = [
-        str(pdk_root / path.lstrip("/"))
-        for path in relative_liberty[0]["path"]
-    ]
+    expected = [str(pdk_root / path.lstrip("/")) for path in relative_liberty[0]["path"]]
     sta = json_read(workspace.config[StepEnum.STA.value])
     assert sta["liberty"][0]["path"] == expected
 

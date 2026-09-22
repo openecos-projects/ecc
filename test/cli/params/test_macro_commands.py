@@ -330,9 +330,7 @@ def test_macro_import_project_replaces_placements_wholesale(
         "placeInstance u_b 1 2 MY90\n"
     )
 
-    rc = cli_main.run(
-        ["macro", "import", str(handoff), "--project", project_dir, "--plain"]
-    )
+    rc = cli_main.run(["macro", "import", str(handoff), "--project", project_dir, "--plain"])
 
     assert rc == 0
     record = plain_records(capsys.readouterr().out)[0]
@@ -413,9 +411,7 @@ def test_macro_import_empty_handoff_clears_project_placements(
     handoff = tmp_path / "macro_location.tcl"
     handoff.write_text("# Auto-generated macro location file\n\n")
 
-    rc = cli_main.run(
-        ["macro", "import", str(handoff), "--project", project_dir, "--plain"]
-    )
+    rc = cli_main.run(["macro", "import", str(handoff), "--project", project_dir, "--plain"])
 
     assert rc == 0
     with (Path(project_dir) / "ecc.toml").open("rb") as f:
@@ -452,9 +448,7 @@ def test_macro_import_rejects_malformed_handoff(
     handoff = tmp_path / "macro_location.tcl"
     handoff.write_text("moveInstance u0 1 2 R0\n")
 
-    rc = cli_main.run(
-        ["macro", "import", str(handoff), "--project", project_dir, "--plain"]
-    )
+    rc = cli_main.run(["macro", "import", str(handoff), "--project", project_dir, "--plain"])
 
     assert rc == 1
     record = plain_records(capsys.readouterr().out)[0]

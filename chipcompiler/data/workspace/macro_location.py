@@ -115,9 +115,7 @@ def parse_macro_location_tcl(text: str) -> list[dict]:
             raise ValueError(
                 f"non-numeric coordinates in macro location statement: {statement}"
             ) from exc
-        placements.append(
-            {"instance": tokens[1], "x": x, "y": y, "orientation": tokens[4]}
-        )
+        placements.append({"instance": tokens[1], "x": x, "y": y, "orientation": tokens[4]})
 
     errors = validate_placements(placements)
     if errors:
