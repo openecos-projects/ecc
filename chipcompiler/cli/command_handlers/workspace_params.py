@@ -124,7 +124,11 @@ def _snapshot_transaction(workspace) -> dict:
     from chipcompiler.data.workspace import workspace_config_paths
 
     workspace_dir = Path(workspace.directory)
-    paths = [workspace_dir / "home" / "params.toml", workspace_dir / "home" / "flow.json"]
+    paths = [
+        workspace_dir / "home" / "params.toml",
+        workspace_dir / "home" / "flow.json",
+        workspace_dir / "home" / "config-derived-manifest.json",
+    ]
     paths.extend(
         path for key, path in workspace_config_paths(workspace_dir).items() if key != "dir"
     )
