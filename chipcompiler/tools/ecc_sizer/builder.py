@@ -2,7 +2,7 @@ import os
 import shutil
 from pathlib import Path
 
-from chipcompiler.data import EccStep, Workspace, step_storage_name
+from chipcompiler.data import EccStep, StepEnum, Workspace, step_storage_name
 from chipcompiler.tools.ecc import builder as ecc_builder
 
 from .utility import find_sizer_root
@@ -198,12 +198,13 @@ def _cmd_text(workspace: Workspace, step: EccStep) -> str:
         value_type=cmdfile.ValueType.PATH,
         omit_empty=True,
     )
-    command.option(
-        "spef",
-        workspace.pdk.spef,
-        value_type=cmdfile.ValueType.PATH,
-        omit_empty=True,
-    )
+    if step.name != StepEnum.PREPLACE.value:
+        command.option(
+            "spef",
+            workspace.pdk.spef,
+            value_type=cmdfile.ValueType.PATH,
+            omit_empty=True,
+        )
     command.option("outputPath", ".")
     command.option(
         "def_out_path",
@@ -215,6 +216,8 @@ def _cmd_text(workspace: Workspace, step: EccStep) -> str:
         os.path.relpath(sizer_staging_verilog(step), output_dir),
         value_type=cmdfile.ValueType.PATH,
     )
+    if step.name == StepEnum.PREPLACE.value:
+        command.flag("preplace_gain")
     _append_route_layer_options(command, workspace)
     return command.build()
 

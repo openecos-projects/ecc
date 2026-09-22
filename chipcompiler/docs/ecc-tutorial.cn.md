@@ -253,7 +253,7 @@ rc=0
 
 ### 4.1 启动
 
-`rtl2gds` preset 是完整 17 步链，一步到位跑到 Harden（产出 GDS + 抽象 LEF + 时序 LIB）。综合级 LEC（第 2 步）在链路中但**默认被跳过**：`[flow] skip_steps` 默认为 `["lec"]`，在 `ecc.toml` 中设 `skip_steps = []` 是启用它的唯一方式。要完整复现下文展示的每一步（包括 LEC），先清空该列表再运行：
+`rtl2gds` preset 是完整 18 步链，一步到位跑到 Harden（产出 GDS + 抽象 LEF + 时序 LIB）。综合级 LEC（第 2 步）在链路中但**默认被跳过**：`[flow] skip_steps` 默认为 `["lec"]`，在 `ecc.toml` 中设 `skip_steps = []` 是启用它的唯一方式。要完整复现下文展示的每一步（包括 LEC），先清空该列表再运行：
 
 ```bash
 # 为本教程启用综合级 LEC
@@ -264,7 +264,7 @@ ecc run --preset rtl2gds
 
 （生成的 `ecc.toml` 已选择 `rtl2gds`；`--preset` 只对本次运行生效，不写回配置。）
 
-交互终端下会实时渲染各步骤进度与日志尾部；输出重定向到文件时则静默执行，结束时打印汇总。`rtl2gds` 的 17 步依次为：
+交互终端下会实时渲染各步骤进度与日志尾部；输出重定向到文件时则静默执行，结束时打印汇总。`rtl2gds` 的 18 步依次为：
 
 | # | 步骤 | 工具 | 作用 |
 |---|------|------|------|
@@ -273,27 +273,28 @@ ecc run --preset rtl2gds
 | 3 | pre_floorplan | ecc | 执行 simple floorplan，并使用自动 macro placement |
 | 4 | macro_placement | dreamplace | 执行仅宏单元摆放（可用 `ecc macro` 手工指定位置，见 §6.5）；这是宏位置文件被读取前的交接检查点 |
 | 5 | post_floorplan | ecc | 读取宏位置文件，完成 tracks、IO pin、tap cell、PDN 和时钟网设置 |
-| 6 | placement | dreamplace | 全局布局 |
-| 7 | cts | ecc | 时钟树综合（含扇出约束） |
-| 8 | legalization | dreamplace | 布局合法化 |
-| 9 | timing optimization | sizer | 时序优化（cell sizing） |
-| 10 | routing | ecc | 布线 |
-| 11 | filler | ecc | 填充单元插入 |
-| 12 | rcx | ecc | 寄生参数提取（多 corner SPEF） |
-| 13 | sta | ecc | 多 corner 静态时序分析 |
-| 14 | lvs | ecc | 版图与原理图一致性检查 |
-| 15 | postroutelec | yosys_lec | 逻辑等价性检查：综合网表 vs 布线后网表 |
-| 16 | drc | ecc | 物理规则检查 |
-| 17 | harden | ecc | 硬化交付：GDS + 抽象 LEF + 时序 LIB + 版图快照 |
+| 6 | preplace | sizer | placement 前的 gain buffering，产出适合布局的 DEF/网表 |
+| 7 | placement | dreamplace | 全局布局 |
+| 8 | cts | ecc | 时钟树综合（含扇出约束） |
+| 9 | legalization | dreamplace | 布局合法化 |
+| 10 | timing optimization | sizer | 时序优化（cell sizing） |
+| 11 | routing | ecc | 布线 |
+| 12 | filler | ecc | 填充单元插入 |
+| 13 | rcx | ecc | 寄生参数提取（多 corner SPEF） |
+| 14 | sta | ecc | 多 corner 静态时序分析 |
+| 15 | lvs | ecc | 版图与原理图一致性检查 |
+| 16 | postroutelec | yosys_lec | 逻辑等价性检查：综合网表 vs 布线后网表 |
+| 17 | drc | ecc | 物理规则检查 |
+| 18 | harden | ecc | 硬化交付：GDS + 抽象 LEF + 时序 LIB + 版图快照 |
 
 ```mermaid
 graph LR
-    A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> D[Placement<br/>dreamplace]
+    A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> X[Preplace<br/>sizer] --> D[Placement<br/>dreamplace]
     D --> E[CTS] --> F[Legalization<br/>dreamplace] --> T[Timing Opt<br/>sizer] --> G[Routing]
     G --> J[Filler] --> K[RCX] --> L[STA] --> I[LVS] --> N[LEC<br/>yosys_lec] --> H[DRC] --> M[Harden<br/>GDS/LEF/LIB]
 ```
 
-对新建或 `--overwrite` 的目标，`ecc run` 启动前会预检捆绑的 ecc-tools，以及 preset 选中的 Yosys、DreamPlace 和 Sizer（仅含 Timing optimization 的 flow，如 `rtl2gds`）；缺失则以 `env_not_ready` fail-fast 并提示 `ecc doctor`。已有 workspace 或 `--workspace` 重跑不做预检，缺 Sizer 时仍可能在 Timing optimization 步骤失败。
+对新建或 `--overwrite` 的目标，`ecc run` 启动前会预检捆绑的 ecc-tools，以及 preset 选中的 Yosys、DreamPlace 和 Sizer（`rtl2gds` 的 preplace 与 Timing optimization 都需要 Sizer）；缺失则以 `env_not_ready` fail-fast 并提示 `ecc doctor`。已有 workspace 或 `--workspace` 重跑不做预检，缺 Sizer 时仍可能在 preplace 或 Timing optimization 步骤失败。
 
 ### 4.2 观察进度（另开一个终端）
 

@@ -254,7 +254,7 @@ rc=0
 
 ### 4.1 Start
 
-The `rtl2gds` preset is the full 17-step chain, running all the way through Harden (which produces the GDS + abstract LEF + timing LIB). The synthesis LEC (step 2) is part of the chain but **skipped by default**: `[flow] skip_steps` defaults to `["lec"]`, and setting `skip_steps = []` in `ecc.toml` is the only way to run it. To reproduce every step shown below (including the LEC), clear the list once before running:
+The `rtl2gds` preset is the full 18-step chain, running all the way through Harden (which produces the GDS + abstract LEF + timing LIB). The synthesis LEC (step 2) is part of the chain but **skipped by default**: `[flow] skip_steps` defaults to `["lec"]`, and setting `skip_steps = []` in `ecc.toml` is the only way to run it. To reproduce every step shown below (including the LEC), clear the list once before running:
 
 ```bash
 # enable the synthesis LEC for this tutorial
@@ -265,7 +265,7 @@ ecc run --preset rtl2gds
 
 (The generated `ecc.toml` already selects `rtl2gds`; `--preset` applies to this run only and is not written back.)
 
-In an interactive terminal the CLI renders live per-step progress and log tails; with output redirected to a file it runs silently and prints a summary at the end. The 17 `rtl2gds` steps are:
+In an interactive terminal the CLI renders live per-step progress and log tails; with output redirected to a file it runs silently and prints a summary at the end. The 18 `rtl2gds` steps are:
 
 | # | Step | Tool | What it does |
 |---|------|------|--------------|
@@ -274,27 +274,28 @@ In an interactive terminal the CLI renders live per-step progress and log tails;
 | 3 | pre_floorplan | ecc | Build the simple floorplan with automatic macro placement |
 | 4 | macro_placement | dreamplace | Run macro-only placement (positions can also be set manually with `ecc macro`, see §6.5); this is the handoff checkpoint before the macro-location file is consumed |
 | 5 | post_floorplan | ecc | Read the macro-location file; create tracks, IO pins, tap cells, PDN, and clock-net setup |
-| 6 | placement | dreamplace | Global placement |
-| 7 | cts | ecc | Clock tree synthesis (incl. fanout limits) |
-| 8 | legalization | dreamplace | Placement legalization |
-| 9 | timing optimization | sizer | Timing optimization (cell sizing) |
-| 10 | routing | ecc | Routing |
-| 11 | filler | ecc | Filler cell insertion |
-| 12 | rcx | ecc | Parasitic extraction (multi-corner SPEF) |
-| 13 | sta | ecc | Multi-corner static timing analysis |
-| 14 | lvs | ecc | Layout-vs-schematic check |
-| 15 | postroutelec | yosys_lec | Logic equivalence check: synthesis netlist vs post-route netlist |
-| 16 | drc | ecc | Design rule check |
-| 17 | harden | ecc | Hardened handoff: GDS + abstract LEF + timing LIB + layout snapshot |
+| 6 | preplace | sizer | Pre-placement gain buffering; produces a placement-ready DEF/netlist |
+| 7 | placement | dreamplace | Global placement |
+| 8 | cts | ecc | Clock tree synthesis (incl. fanout limits) |
+| 9 | legalization | dreamplace | Placement legalization |
+| 10 | timing optimization | sizer | Timing optimization (cell sizing) |
+| 11 | routing | ecc | Routing |
+| 12 | filler | ecc | Filler cell insertion |
+| 13 | rcx | ecc | Parasitic extraction (multi-corner SPEF) |
+| 14 | sta | ecc | Multi-corner static timing analysis |
+| 15 | lvs | ecc | Layout-vs-schematic check |
+| 16 | postroutelec | yosys_lec | Logic equivalence check: synthesis netlist vs post-route netlist |
+| 17 | drc | ecc | Design rule check |
+| 18 | harden | ecc | Hardened handoff: GDS + abstract LEF + timing LIB + layout snapshot |
 
 ```mermaid
 graph LR
-    A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> D[Placement<br/>dreamplace]
+    A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> X[Preplace<br/>sizer] --> D[Placement<br/>dreamplace]
     D --> E[CTS] --> F[Legalization<br/>dreamplace] --> T[Timing Opt<br/>sizer] --> G[Routing]
     G --> J[Filler] --> K[RCX] --> L[STA] --> I[LVS] --> N[LEC<br/>yosys_lec] --> H[DRC] --> M[Harden<br/>GDS/LEF/LIB]
 ```
 
-For a fresh or `--overwrite` target, `ecc run` pre-checks bundled ecc-tools plus preset-selected Yosys, DreamPlace, and Sizer (Sizer only for flows containing Timing optimization, such as `rtl2gds`), and returns `env_not_ready` with a pointer to `ecc doctor` when a component is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail at Timing optimization.
+For a fresh or `--overwrite` target, `ecc run` pre-checks bundled ecc-tools plus preset-selected Yosys, DreamPlace, and Sizer (Sizer is required by `rtl2gds` for both preplace and Timing optimization), and returns `env_not_ready` with a pointer to `ecc doctor` when a component is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail at preplace or Timing optimization.
 
 ### 4.2 Watching progress (in a second terminal)
 

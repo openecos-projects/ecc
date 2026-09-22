@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from rosettakit.errors import ValidationError
 
-from chipcompiler.data import SkippableStepEnum
+from chipcompiler.data import SkippableStepEnum, StepEnum
 
 from ._sizer_helpers import _sizer_runtime, _workspace
 
@@ -74,6 +74,38 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     with open(str(step.checklist.path), encoding="utf-8") as file:
         checklist = json.load(file)
     assert checklist["checklist"] == []
+
+
+def test_preplace_step_config_uses_gain_mode_without_spef(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    runtime_root = _sizer_runtime(tmp_path)
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime_root))
+
+    workspace = _workspace(tmp_path)
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.PREPLACE.value,
+        input_def="input.def",
+        input_verilog="input.v",
+    )
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_step_config(workspace, step)
+
+    cmd_text = Path(step.script.sizer_cmd).read_text(encoding="utf-8")
+
+    assert step.directory.name == "preplace_sizer"
+    assert "-preplace_gain" in cmd_text
+    assert "-spef " not in cmd_text
+    assert "-def_out_path sizer.def.gz" in cmd_text
+    assert "-verilog_out_path sizer.v.gz" in cmd_text
+
+    with open(str(step.subflow.path), encoding="utf-8") as file:
+        subflow = json.load(file)
+    assert [item["name"] for item in subflow["steps"]] == [
+        "run preplace",
+        "save data",
+    ]
 
 
 def test_sizer_metrics_write_qor_files_from_db_summary(tmp_path):

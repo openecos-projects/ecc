@@ -2,11 +2,12 @@ import os
 import time
 from enum import Enum
 
-from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
+from chipcompiler.data import StateEnum, StepEnum, Workspace, WorkspaceStep
 
 
 class SizerSubFlowEnum(Enum):
     run_sizer = "run sizer"
+    run_preplace = "run preplace"
     run_legalization = "run legalization"
     save_data = "save data"
 
@@ -27,6 +28,18 @@ class SizerSubFlow:
             self.workspace_step.subflow.steps = data.get("steps", [])
         self.build_sub_flow()
 
+    def _stages(self) -> tuple[SizerSubFlowEnum, ...]:
+        if self.workspace_step.name == StepEnum.PREPLACE.value:
+            return (
+                SizerSubFlowEnum.run_preplace,
+                SizerSubFlowEnum.save_data,
+            )
+        return (
+            SizerSubFlowEnum.run_sizer,
+            SizerSubFlowEnum.run_legalization,
+            SizerSubFlowEnum.save_data,
+        )
+
     def _canonical_steps(self) -> list[dict]:
         return [
             {
@@ -36,11 +49,11 @@ class SizerSubFlow:
                 "peak memory (mb)": 0,
                 "info": {},
             }
-            for stage in SizerSubFlowEnum
+            for stage in self._stages()
         ]
 
     def build_sub_flow(self) -> list[dict]:
-        expected = [stage.value for stage in SizerSubFlowEnum]
+        expected = [stage.value for stage in self._stages()]
         current = [step_dict.get("name") for step_dict in self.workspace_step.subflow.steps or []]
         if current != expected:
             self.workspace_step.subflow.steps = self._canonical_steps()
@@ -75,7 +88,7 @@ class SizerSubFlow:
         json_write(self.workspace.flow.path, self.workspace.flow.data)
 
     def reset_stages(self) -> list[dict]:
-        expected = [stage.value for stage in SizerSubFlowEnum]
+        expected = [stage.value for stage in self._stages()]
         current = [step_dict.get("name") for step_dict in self.workspace_step.subflow.steps or []]
         if current != expected:
             self.workspace_step.subflow.steps = self._canonical_steps()

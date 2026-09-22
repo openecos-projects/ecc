@@ -469,6 +469,7 @@ def test_create_workspace_non_contiguous_flow_seeds_both_stores_contiguous(
         "preFloorplan",
         "macroPlacement",
         "postFloorplan",
+        "preplace",
         "place",
         "CTS",
     ]
