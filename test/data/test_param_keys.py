@@ -40,6 +40,7 @@ def test_knob_value_transforms_follow_the_agent_contract():
     assert by_id["route.thread_number"].value_transform(32) == "32"
     assert by_id["design.frequency_max"].value_transform is None
     assert AgentKnob("place.num_threads").value_transform is None
+    assert "floorplan.utilitization" not in by_id
 
 
 def test_die_area_mode_values_select_die_builder_mode():
@@ -59,6 +60,7 @@ def test_parameter_catalog_records_carry_display_key_and_knob_id():
     assert by_id["design.frequency_mhz"]["display_key"] == "frequency_max"
     assert by_id["design.frequency_mhz"]["knob_id"] == "design.frequency_max"
     assert by_id["floorplan.core_util"]["display_key"] == "utilization"
+    assert by_id["floorplan.core_util"]["knob_id"] == "floorplan.utilization"
     assert by_id["route.RT.-enable_timing"]["knob_id"] == "route.enable_timing"
     assert by_id["sta.max_paths"]["display_key"] is None
     assert by_id["sta.max_paths"]["knob_id"] is None
