@@ -182,7 +182,7 @@ def log_workspace_step(step: WorkspaceStep, logger: Logger):
 
 _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     "db": "db_ecc.json",
-    StepEnum.CTS.value: "cts_ecc.json",
+    SkippableStepEnum.CTS.value: "cts_ecc.json",
     StepEnum.DRC.value: "drc_ecc.json",
     StepEnum.FLOORPLAN.value: "floorplan_ecc.json",
     "macro_location": "macro_location.tcl",
@@ -195,7 +195,7 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
 
 _LEGACY_WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     "db": "db_default_config.json",
-    StepEnum.CTS.value: "cts_default_config.json",
+    SkippableStepEnum.CTS.value: "cts_default_config.json",
     StepEnum.DRC.value: "drc_default_config.json",
     StepEnum.FLOORPLAN.value: "fp_default_config.json",
     "macro_location": "macro_localtion.tcl",
@@ -215,7 +215,7 @@ _STEP_CONFIG_KEYS: Final[dict[tuple[StepBaseEnum, str], tuple[str, ...]]] = {
     (StepEnum.MACRO_PLACEMENT, "dreamplace"): ("dreamplace", "macro_location"),
     (StepEnum.POST_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value, "macro_location"),
     (StepEnum.PLACEMENT, "ecc"): ("db",),
-    (StepEnum.CTS, "ecc"): ("db", StepEnum.CTS.value),
+    (SkippableStepEnum.CTS, "ecc"): ("db", SkippableStepEnum.CTS.value),
     (StepEnum.ROUTING, "ecc"): ("db", StepEnum.ROUTING.value),
     (StepEnum.DRC, "ecc"): ("db", StepEnum.DRC.value),
     (StepEnum.LEGALIZATION, "ecc"): ("db",),
@@ -325,7 +325,7 @@ def _flag_to_int(value: Any) -> int:
 PARAMETER_CONFIG_FIELD_MAPPINGS = (
     WorkspaceConfigParameterMapping(
         "max_fanout",
-        StepEnum.CTS.value,
+        SkippableStepEnum.CTS.value,
         ("max_fanout",),
     ),
     WorkspaceConfigParameterMapping(
@@ -662,14 +662,14 @@ def refresh_workspace_config(workspace: Workspace) -> None:
         min_filler_width = nested.get("min_filler_width", 1) if isinstance(nested, dict) else 1
     json_write(filler_path, {"-min_filler_width": min_filler_width})
 
-    cts = json_read(workspace.config[f"{StepEnum.CTS.value}"])
+    cts = json_read(workspace.config[f"{SkippableStepEnum.CTS.value}"])
     if not cts:
         raise FileNotFoundError(
-            f"CTS config missing or corrupt: {workspace.config[f'{StepEnum.CTS.value}']}"
+            f"CTS config missing or corrupt: {workspace.config[f'{SkippableStepEnum.CTS.value}']}"
         )
     cts["buffer_type"] = workspace.pdk.buffers
     cts["max_fanout"] = max_fanout
-    json_write(workspace.config[f"{StepEnum.CTS.value}"], cts)
+    json_write(workspace.config[f"{SkippableStepEnum.CTS.value}"], cts)
 
     router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])
     if "RT" not in router:

@@ -13,6 +13,20 @@ from chipcompiler.data import (
 SKIPPABLE_STEP_VALUES = frozenset(member.value for member in SkippableStepEnum)
 
 
+def flow_no_clock(flow_config: object) -> bool:
+    """Whether a flow config requests the no-clock (omit CTS) mode."""
+    if not isinstance(flow_config, dict):
+        return False
+    value = flow_config.get("no_clock", False)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
 def resolve_skip_steps(flow_config: dict | None) -> tuple[str, ...]:
     """The effective skip policy carried by a flow config.
 
@@ -21,24 +35,36 @@ def resolve_skip_steps(flow_config: dict | None) -> tuple[str, ...]:
     to enable the synthesis LEC). Entries accept the same aliases as step
     ranges, must name skippable steps only, and normalize to canonical
     step values in canonical chain order (idempotently).
+
+    ``flow.no_clock`` always adds CTS to the effective skip set. Listing
+    CTS in ``skip_steps`` without ``no_clock`` is rejected — CTS is only
+    omitted for clockless designs.
     """
+    no_clock = flow_no_clock(flow_config)
     if not isinstance(flow_config, dict) or "skip_steps" not in flow_config:
-        return DEFAULT_SKIP_STEPS
-    raw = flow_config["skip_steps"]
-    if not isinstance(raw, list):
-        raise ValueError(f"skip_steps must be a list, not {type(raw).__name__}: {raw!r}")
-    requested = set()
-    for entry in raw:
-        if not isinstance(entry, str):
-            raise ValueError(f"skip_steps entries must be strings, not {entry!r}")
-        requested.add(normalize_flow_step(entry))
-    illegal = sorted(requested - SKIPPABLE_STEP_VALUES)
-    if illegal:
-        legal = ", ".join(sorted(SKIPPABLE_STEP_VALUES))
-        raise ValueError(
-            f"skip_steps names steps that cannot be skipped: {', '.join(illegal)}; "
-            f"skippable steps: {legal}"
-        )
+        requested = set(DEFAULT_SKIP_STEPS)
+    else:
+        raw = flow_config["skip_steps"]
+        if not isinstance(raw, list):
+            raise ValueError(f"skip_steps must be a list, not {type(raw).__name__}: {raw!r}")
+        requested = set()
+        for entry in raw:
+            if not isinstance(entry, str):
+                raise ValueError(f"skip_steps entries must be strings, not {entry!r}")
+            requested.add(normalize_flow_step(entry))
+        illegal = sorted(requested - SKIPPABLE_STEP_VALUES)
+        if illegal:
+            legal = ", ".join(sorted(SKIPPABLE_STEP_VALUES))
+            raise ValueError(
+                f"skip_steps names steps that cannot be skipped: {', '.join(illegal)}; "
+                f"skippable steps: {legal}"
+            )
+        if SkippableStepEnum.CTS.value in requested and not no_clock:
+            raise ValueError(
+                "skip_steps cannot include CTS unless flow.no_clock is true"
+            )
+    if no_clock:
+        requested.add(SkippableStepEnum.CTS.value)
     chain_names = [
         step.value if isinstance(step, StepBaseEnum) else str(step)
         for step, _tool, _state in build_rtl2gds_flow()
@@ -65,7 +91,7 @@ def build_rtl2gds_flow(*, skip: Collection[str] = ()) -> list:
     steps.append((StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
-    steps.append((StepEnum.CTS, "ecc", StateEnum.Unstart))
+    steps.append((SkippableStepEnum.CTS, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart))
     steps.append((SkippableStepEnum.TIMING_OPT, "sizer", StateEnum.Unstart))
     steps.append((StepEnum.ROUTING, "ecc", StateEnum.Unstart))
@@ -100,7 +126,7 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
         "postfloorplan": StepEnum.POST_FLOORPLAN.value,
         "place": StepEnum.PLACEMENT.value,
         "placement": StepEnum.PLACEMENT.value,
-        "cts": StepEnum.CTS.value,
+        "cts": SkippableStepEnum.CTS.value,
         "legal": StepEnum.LEGALIZATION.value,
         "legalization": StepEnum.LEGALIZATION.value,
         "timingopt": SkippableStepEnum.TIMING_OPT.value,

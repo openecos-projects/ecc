@@ -485,7 +485,7 @@ def _run_project(
     else:
         # Virgin projects have no manifest layer; an ecc.toml skip policy
         # still rides on the flow config (policy-only when no range applies).
-        from chipcompiler.cli.project.effective_config import _attach_skip_steps
+        from chipcompiler.cli.project.effective_config import _attach_no_clock, _attach_skip_steps
 
         skip_steps = (
             list(cfg.flow_skip_steps)
@@ -493,6 +493,7 @@ def _run_project(
             else None
         )
         flow_config = _attach_skip_steps(flow_config, skip_steps)
+        flow_config = _attach_no_clock(flow_config, bool(cfg.flow_no_clock))
 
     assert cfg is not None
 
@@ -512,20 +513,28 @@ def _run_project(
     # The resolved skip policy survives every target override below (the
     # policy comes from configuration, never from the target spelling).
     skip_policy = flow_config.get("skip_steps") if isinstance(flow_config, dict) else None
+    no_clock = bool(isinstance(flow_config, dict) and flow_config.get("no_clock")) or bool(
+        getattr(cfg, "flow_no_clock", False)
+    )
     if command_input.preset is not None:
         # The explicit CLI selection takes precedence over a manifest range
         # for this invocation without changing either project config file.
         cfg.flow_preset = effective_preset
         cfg.manifest_driven = False
         flow_config = {"skip_steps": skip_policy} if skip_policy is not None else None
+        if no_clock:
+            flow_config = {"no_clock": True, **(flow_config or {})}
 
     if command_input.from_step is not None and command_input.to_step is not None:
         try:
             from chipcompiler.rtl2gds import build_flow_range, resolve_skip_steps
 
-            skip = resolve_skip_steps(
-                {"skip_steps": skip_policy} if skip_policy is not None else None
-            )
+            skip_probe: dict = {}
+            if skip_policy is not None:
+                skip_probe["skip_steps"] = skip_policy
+            if no_clock:
+                skip_probe["no_clock"] = True
+            skip = resolve_skip_steps(skip_probe or None)
             build_flow_range(command_input.from_step, command_input.to_step, skip=skip)
         except ValueError as exc:
             return error("flow_range_invalid", reason=str(exc))
@@ -535,6 +544,8 @@ def _run_project(
         }
         if skip_policy is not None:
             flow_config["skip_steps"] = skip_policy
+        if no_clock:
+            flow_config["no_clock"] = True
 
     cli_overrides: dict[str, object] = {}
     raw_sets = command_input.param_set

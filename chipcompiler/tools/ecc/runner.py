@@ -40,7 +40,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.MACRO_PLACEMENT.value,
         StepEnum.POST_FLOORPLAN.value,
         StepEnum.PLACEMENT.value,
-        StepEnum.CTS.value,
+        SkippableStepEnum.CTS.value,
         SkippableStepEnum.TIMING_OPT.value,
         StepEnum.LEGALIZATION.value,
         StepEnum.ROUTING.value,
@@ -486,7 +486,7 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
             state = run_pre_floorplan(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.POST_FLOORPLAN.value:
             state = run_post_floorplan(workspace=workspace, step=step, ecc_module=ecc_module)
-        case StepEnum.CTS.value:
+        case SkippableStepEnum.CTS.value:
             state = run_cts(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.ROUTING.value:
             state = run_routing(workspace=workspace, step=step, ecc_module=ecc_module)
@@ -550,11 +550,11 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
         ecc_module.run_cts(
-            config=workspace.config.get(f"{StepEnum.CTS.value}", ""),
-            output=(step.data.steps or {}).get(StepEnum.CTS.value, ""),
+            config=workspace.config.get(f"{SkippableStepEnum.CTS.value}", ""),
+            output=(step.data.steps or {}).get(SkippableStepEnum.CTS.value, ""),
         )
 
-        ecc_module.report_cts(output=(step.data.steps or {}).get(StepEnum.CTS.value, ""))
+        ecc_module.report_cts(output=(step.data.steps or {}).get(SkippableStepEnum.CTS.value, ""))
 
         ecc_module.feature_cts_map(json_path=step.feature.map or "")
 

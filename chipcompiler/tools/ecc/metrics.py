@@ -4,7 +4,7 @@ from csv import reader as csv_reader
 from math import ceil, isfinite
 from pathlib import Path
 
-from chipcompiler.data import EccStep, StateEnum, StepEnum, StepMetrics, Workspace, WorkspaceStep
+from chipcompiler.data import EccStep, StateEnum, SkippableStepEnum, StepEnum, StepMetrics, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.qor_detail_facts import database_fact_summary, lvs_detail_summary
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
@@ -643,7 +643,7 @@ QOR_EXPECTED_METRICS_BY_STEP = {
         "place_rudy_utilization_max",
         "place_lutrudy_utilization_max",
     ],
-    StepEnum.CTS.value: [
+    SkippableStepEnum.CTS.value: [
         "cts_buffer_count",
         "cts_buffer_area",
         "clock_path_max_buffer",
@@ -1779,7 +1779,7 @@ def _metric_scope_and_roles(step: WorkspaceStep, metric_id: str) -> tuple[str, s
     elif step.name == StepEnum.PLACEMENT.value:
         scope = "placement"
         step_role = "primary" if metric_id.startswith("place_") else "secondary"
-    elif step.name == StepEnum.CTS.value:
+    elif step.name == SkippableStepEnum.CTS.value:
         scope = "cts"
         step_role = (
             "primary"
@@ -2928,7 +2928,7 @@ def _gate_state(*, available: bool, passed: bool) -> str:
 _MPC_AREA_SOURCE_STEPS = {
     StepEnum.POST_FLOORPLAN.value,
     StepEnum.PLACEMENT.value,
-    StepEnum.CTS.value,
+    SkippableStepEnum.CTS.value,
     StepEnum.LEGALIZATION.value,
     StepEnum.ROUTING.value,
 }
@@ -3509,7 +3509,7 @@ def build_step_metrics(
             metrics = build_metrics_floorplan(workspace, step)
         case StepEnum.PLACEMENT.value:
             metrics = build_metrics_placement(workspace, step)
-        case StepEnum.CTS.value:
+        case SkippableStepEnum.CTS.value:
             metrics = build_metrics_cts(workspace, step)
         case StepEnum.LEGALIZATION.value:
             metrics = build_metrics_legalization(workspace, step)

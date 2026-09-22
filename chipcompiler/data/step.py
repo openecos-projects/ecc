@@ -21,7 +21,7 @@ STEP_DIRECTORIES = {
     StepEnum.MACRO_PLACEMENT.value: "macroPlacement_dreamplace",
     StepEnum.POST_FLOORPLAN.value: "postFloorplan_ecc",
     StepEnum.PLACEMENT.value: "place_dreamplace",
-    StepEnum.CTS.value: "CTS_ecc",
+    SkippableStepEnum.CTS.value: "CTS_ecc",
     StepEnum.LEGALIZATION.value: "legalization_dreamplace",
     StepEnum.ROUTING.value: "route_ecc",
     StepEnum.FILLER.value: "filler_ecc",

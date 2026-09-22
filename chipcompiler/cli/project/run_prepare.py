@@ -464,11 +464,15 @@ def execute_fresh_run(
                 if workspace_parameters is not None:
                     flow_section: dict = {"preset": cfg.flow_preset}
                     if isinstance(flow_config, dict) and "skip_steps" in flow_config:
-                        from chipcompiler.data.workspace_config import validate_flow_config
+                        flow_section["skip_steps"] = flow_config["skip_steps"]
+                    if cfg.flow_no_clock or (
+                        isinstance(flow_config, dict) and flow_config.get("no_clock")
+                    ):
+                        flow_section["no_clock"] = True
+                        workspace_parameters.data["no_clock"] = True
+                    from chipcompiler.data.workspace_config import validate_flow_config
 
-                        flow_section = validate_flow_config(
-                            {"preset": cfg.flow_preset, "skip_steps": flow_config["skip_steps"]}
-                        )
+                    flow_section = validate_flow_config(flow_section)
                     workspace_parameters.data["_flow"] = flow_section
                     if not save_parameter(workspace_parameters):
                         return failed_workspace("failed to persist the flow target in params.toml")

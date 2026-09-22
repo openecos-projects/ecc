@@ -61,7 +61,7 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
         (StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart),
         (StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart),
         (StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart),
-        (StepEnum.CTS, "ecc", StateEnum.Unstart),
+        (SkippableStepEnum.CTS, "ecc", StateEnum.Unstart),
         (StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart),
         (SkippableStepEnum.TIMING_OPT, "sizer", StateEnum.Unstart),
         (StepEnum.ROUTING, "ecc", StateEnum.Unstart),
@@ -89,7 +89,7 @@ def test_build_flow_range_slices_the_canonical_chain():
     flow = builder_module.build_flow_range("CTS", "route")
 
     assert [(step, tool) for step, tool, _state in flow] == [
-        (StepEnum.CTS, "ecc"),
+        (SkippableStepEnum.CTS, "ecc"),
         (StepEnum.LEGALIZATION, "dreamplace"),
         (SkippableStepEnum.TIMING_OPT, "sizer"),
         (StepEnum.ROUTING, "ecc"),
@@ -99,7 +99,7 @@ def test_build_flow_range_slices_the_canonical_chain():
 def test_build_flow_range_normalizes_aliases_and_rejects_reverse_ranges():
     assert [step for step, _tool, _state in builder_module.build_flow_range("place", "cts")] == [
         StepEnum.PLACEMENT,
-        StepEnum.CTS,
+        SkippableStepEnum.CTS,
     ]
 
     with pytest.raises(ValueError, match="reversed"):
@@ -167,11 +167,34 @@ def test_resolve_skip_steps_normalizes_aliases_in_canonical_order(raw, expected)
         [1],
         ["lec", "route"],
         ["bogus"],
+        ["CTS"],  # CTS requires flow.no_clock
     ],
 )
 def test_resolve_skip_steps_rejects_invalid_values(raw):
     with pytest.raises(ValueError, match="skip_steps"):
         builder_module.resolve_skip_steps({"skip_steps": raw})
+
+
+def test_resolve_skip_steps_no_clock_always_omits_cts():
+    assert builder_module.resolve_skip_steps({"no_clock": True}) == (
+        "lec",
+        SkippableStepEnum.CTS.value,
+    )
+    assert builder_module.resolve_skip_steps({"no_clock": True, "skip_steps": []}) == (
+        SkippableStepEnum.CTS.value,
+    )
+    assert builder_module.resolve_skip_steps(
+        {"no_clock": True, "skip_steps": ["lec", "CTS"]}
+    ) == ("lec", SkippableStepEnum.CTS.value)
+
+
+def test_build_rtl2gds_flow_no_clock_skips_cts_via_policy():
+    skip = builder_module.resolve_skip_steps({"no_clock": True, "skip_steps": ["lec"]})
+    names = [step.value for step, _tool, _state in builder_module.build_rtl2gds_flow(skip=skip)]
+    assert SkippableStepEnum.CTS.value not in names
+    assert "lec" not in names
+    # place still chains into legalization without CTS in the ledger
+    assert names.index(StepEnum.PLACEMENT.value) < names.index(StepEnum.LEGALIZATION.value)
 
 
 def test_filter_flow_steps_removes_entries_without_reordering():

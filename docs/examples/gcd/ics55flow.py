@@ -1,6 +1,6 @@
 from chipcompiler.data import (
     StateEnum,
-    StepEnum,
+    SkippableStepEnum, StepEnum,
     create_workspace,
     get_design_parameters,
     get_pdk,
@@ -74,7 +74,7 @@ if not engine_flow.has_init():
     engine_flow.add_step(step=StepEnum.SYNTHESIS, tool="Yosys", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.PLACEMENT, tool="ecc", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.CTS, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=SkippableStepEnum.CTS, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.LEGALIZATION, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.ROUTING, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.FILLER, tool="ecc", state=StateEnum.Unstart)

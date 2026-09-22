@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from chipcompiler.data import EccStep, StepEnum, Workspace, step_from_value
+from chipcompiler.data import EccStep, SkippableStepEnum, StepEnum, Workspace, step_from_value
 from chipcompiler.tools.ecc.metrics import build_step_metrics
 from chipcompiler.utility import dict_to_str, json_read
 from chipcompiler.utility.path import stringify_paths
@@ -109,7 +109,7 @@ def build_maps(workspace: Workspace, step: EccStep) -> dict:
         case StepEnum.PLACEMENT:
             info.update(build_maps_congestion(workspace, step))
             info.update(build_maps_density(workspace, step))
-        case StepEnum.CTS:
+        case SkippableStepEnum.CTS:
             info.update(build_maps_congestion(workspace, step))
             info.update(build_maps_density(workspace, step))
         case StepEnum.LEGALIZATION:

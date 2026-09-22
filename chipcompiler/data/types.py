@@ -32,7 +32,6 @@ class StepEnum(StepBaseEnum):
     MACRO_PLACEMENT = "macroPlacement"
     POST_FLOORPLAN = "postFloorplan"
     PLACEMENT = "place"
-    CTS = "CTS"
     LEGALIZATION = "legalization"
     ROUTING = "route"
     FILLER = "filler"
@@ -49,13 +48,17 @@ class StepEnum(StepBaseEnum):
 class SkippableStepEnum(StepBaseEnum):
     """Optional flow steps a project may exclude from its ledger.
 
-    These are check/optimization steps whose outputs downstream steps can
-    do without; persisted string values match the former StepEnum members.
+    LEC / postRouteLec / Timing optimization are check/optimization steps
+    whose outputs downstream steps can do without. CTS is also skippable,
+    but only when ``flow.no_clock`` is set — resolve_skip_steps enforces
+    that gate so a clocked design cannot drop CTS by accident. Persisted
+    string values match the former StepEnum members.
     """
 
     LEC = "lec"
     POST_ROUTE_LEC = "postRouteLec"
     TIMING_OPT = "Timing optimization"
+    CTS = "CTS"
 
     def is_skippable(self) -> bool:
         return True

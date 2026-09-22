@@ -523,11 +523,11 @@ def test_run_cts_merges_structured_timing_into_step_feature(tmp_path, monkeypatc
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
-        config={StepEnum.CTS.value: tmp_path / "config" / "cts.json"},
+        config={SkippableStepEnum.CTS.value: tmp_path / "config" / "cts.json"},
     )
     step = build_step(
         workspace=workspace,
-        step_name=StepEnum.CTS.value,
+        step_name=SkippableStepEnum.CTS.value,
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
     )

@@ -15,7 +15,7 @@ docs/specification/filelist-grammar.md
 
 from chipcompiler.data import (
     StateEnum,
-    StepEnum,
+    SkippableStepEnum, StepEnum,
     create_workspace,
     get_design_parameters,
     get_pdk,
@@ -124,7 +124,7 @@ if not engine_flow.has_init():
     # CTS step: Clock Tree Synthesis - balance clock distribution
     # Input: Placed netlist
     # Output: DEF with clock tree inserted
-    engine_flow.add_step(step=StepEnum.CTS, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=SkippableStepEnum.CTS, tool="ecc", state=StateEnum.Unstart)
 
     # LEGALIZATION step: Legalize placement to match manufacturing constraints
     # Input: DEF after CTS

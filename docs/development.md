@@ -703,9 +703,11 @@ uv run ecc run --project gcd --preset rtl2gds
 
 ### Skippable Flow Steps
 
-Three optional steps can be excluded from a workspace at creation time:
-the synthesis LEC (`lec`), the post-route LEC (`postRouteLec`), and timing
-optimization (`Timing optimization`). Skipped steps never enter the
+Four optional steps can be excluded from a workspace at creation time:
+the synthesis LEC (`lec`), the post-route LEC (`postRouteLec`), timing
+optimization (`Timing optimization`), and CTS (`CTS`). CTS is only
+skippable when `[flow] no_clock = true` (clockless RTL2GDS); the skip
+resolver rejects a bare `CTS` entry otherwise. Skipped steps never enter the
 workspace's execution ledger — their inputs fall through to the previous
 retained step, and no step directory is created for them. State-machine,
 resume/rerun semantics are unchanged, and existing ledgers are never
@@ -731,6 +733,9 @@ skippable set.
 preset = "rtl2gds"
 # LEC is skipped by default; clear the list to enable it.
 skip_steps = ["lec"]
+# Clockless designs: omit CTS (requires no_clock; SDC uses virtual clock when
+# design.clock_port is empty — see create_default_sdc).
+# no_clock = true
 ```
 
 ### Reports

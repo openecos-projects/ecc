@@ -63,11 +63,22 @@ def _attach_skip_steps(flow_config: dict | None, skip_steps: list | None) -> dic
     return flow_config
 
 
+def _attach_no_clock(flow_config: dict | None, no_clock: bool) -> dict | None:
+    """Carry ``no_clock`` on the flow config so resolve_skip_steps omits CTS."""
+    if not no_clock:
+        return flow_config
+    if flow_config is None:
+        return {"no_clock": True}
+    flow_config = dict(flow_config)
+    flow_config["no_clock"] = True
+    return flow_config
+
+
 def flow_config_selects_steps(flow_config) -> bool:
     """Whether a flow config names steps (a range or explicit selection).
 
-    A policy-only config (just ``skip_steps``) selects nothing: it must
-    not satisfy a flow-target requirement nor trigger range preflight.
+    A policy-only config (just ``skip_steps`` / ``no_clock``) selects nothing:
+    it must not satisfy a flow-target requirement nor trigger range preflight.
     """
     if not isinstance(flow_config, dict):
         return False
@@ -113,6 +124,7 @@ def resolve_effective_config(
     # skip_steps is the one key where the manifest layer outranks ecc.toml.
     declared = declared_skip_steps(entry, cfg)
     flow_config = _attach_skip_steps(flow_config, declared)
+    flow_config = _attach_no_clock(flow_config, bool(getattr(cfg, "flow_no_clock", False)))
     # Provenance for inspection surfaces: the winning layer's name.
     if declared is not None:
         cfg._skip_steps_source = (

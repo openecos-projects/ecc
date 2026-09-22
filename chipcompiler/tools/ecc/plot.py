@@ -4,7 +4,7 @@ import os
 
 from tqdm import tqdm
 
-from chipcompiler.data import EccStep, StepEnum, Workspace
+from chipcompiler.data import EccStep, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.utility import (
     json_read,
     plot_csv_bar_chart,
@@ -25,7 +25,7 @@ class ECCToolsPlot:
                 state = state & self.default_plot()
             case StepEnum.PLACEMENT.value:
                 state = state & self.default_plot() & self.plot_placement_heatmap()
-            case StepEnum.CTS.value:
+            case SkippableStepEnum.CTS.value:
                 state = state & self.default_plot() & self.plot_placement_heatmap()
             case StepEnum.LEGALIZATION.value:
                 state = state & self.default_plot()

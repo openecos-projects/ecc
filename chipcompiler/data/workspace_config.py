@@ -13,6 +13,7 @@ Layout::
     [pdk]      name / root (absolute) / config (workspace-relative)
     [flow]     preset = "rtl2gds"  OR  start = "...", end = "..."
                skip_steps = [...]  (optional, normalized)
+               no_clock = true     (optional; omits CTS via skip policy)
     [params]   flat snake_case parameters; nested dicts map to subtables
 """
 
@@ -103,6 +104,33 @@ def parameters_have_chip_identity(data: object) -> bool:
     return False
 
 
+def coerce_bool(value: object) -> bool:
+    """Coerce a TOML / JSON boolean-ish value to bool."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def flow_no_clock(flow: object) -> bool:
+    """Whether a ``[flow]`` section (or flow_config) enables no-clock mode."""
+    if not isinstance(flow, dict):
+        return False
+    return coerce_bool(flow.get("no_clock", False))
+
+
+def _with_no_clock(section: dict, no_clock: bool) -> dict:
+    result = dict(section)
+    if no_clock:
+        result["no_clock"] = True
+    else:
+        result.pop("no_clock", None)
+    return result
+
+
 def validate_flow_config(flow: object) -> dict:
     """Validate a ``[flow]`` section; return it as a plain dict.
 
@@ -111,13 +139,15 @@ def validate_flow_config(flow: object) -> dict:
     names, ``start`` positioned after ``end`` in the canonical chain, or an
     invalid ``skip_steps`` list. ``skip_steps`` is stored normalized
     (canonical step values in canonical chain order); an explicit empty
-    list round-trips as ``[]`` and an absent key stays absent.
+    list round-trips as ``[]`` and an absent key stays absent. ``no_clock``
+    is preserved and folded into the skip policy (CTS is always skipped).
     """
     if flow is None:
         return {}
     if not isinstance(flow, dict):
         raise WorkspaceFlowTargetError(f"[flow] must be a table, not {type(flow).__name__}")
     section: dict = dict(flow)
+    no_clock = flow_no_clock(section)
     preset = section.get("preset")
     start = section.get("start")
     end = section.get("end")
@@ -125,20 +155,29 @@ def validate_flow_config(flow: object) -> dict:
         raise WorkspaceFlowTargetError("[flow] preset cannot be combined with start/end")
     if (start is None) != (end is None):
         raise WorkspaceFlowTargetError("[flow] start and end must be set together")
-    if preset is None and start is None and "skip_steps" not in section:
+    if preset is None and start is None and "skip_steps" not in section and not no_clock:
         return {}
 
     result: dict = {}
+    skip_probe: dict = {"no_clock": True} if no_clock else {}
     if "skip_steps" in section:
         from chipcompiler.rtl2gds import resolve_skip_steps
 
         try:
-            result["skip_steps"] = list(resolve_skip_steps({"skip_steps": section["skip_steps"]}))
+            result["skip_steps"] = list(
+                resolve_skip_steps({**skip_probe, "skip_steps": section["skip_steps"]})
+            )
         except ValueError as exc:
             raise WorkspaceFlowTargetError(f"[flow] {exc}") from None
+    elif no_clock:
+        from chipcompiler.rtl2gds import resolve_skip_steps
+
+        # Persist the effective policy so ledgers / reconcile see CTS omitted
+        # even when the author only set no_clock.
+        result["skip_steps"] = list(resolve_skip_steps(skip_probe))
     if preset is None and start is None:
-        # A policy-only section (skip_steps without a flow target).
-        return result
+        # A policy-only section (skip_steps / no_clock without a flow target).
+        return _with_no_clock(result, no_clock)
     if preset is not None:
         if not isinstance(preset, str) or not preset.strip():
             raise WorkspaceFlowTargetError(f"[flow] preset must be a non-empty string: {preset!r}")
@@ -152,7 +191,7 @@ def validate_flow_config(flow: object) -> dict:
                     f"or pick another preset"
                 )
         result["preset"] = preset
-        return result
+        return _with_no_clock(result, no_clock)
 
     from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
 
@@ -179,7 +218,7 @@ def validate_flow_config(flow: object) -> dict:
             f"[flow] start {normalized['start']!r} is after end {normalized['end']!r}"
         )
     result.update(normalized)
-    return result
+    return _with_no_clock(result, no_clock)
 
 
 def canonical_flow_chain() -> list[str]:
@@ -241,29 +280,43 @@ def flow_section_from_flow_config(flow_config: dict | None) -> dict:
     Uses the same selection resolution as the flow.json seeding, so both
     stores always describe the same contiguous range. A declared
     ``skip_steps`` policy rides along (normalized); an undeclared one
-    stays absent so the code default keeps applying. Returns {} when the
-    flow_config does not select steps.
+    stays absent so the code default keeps applying. ``no_clock`` rides
+    along and forces CTS into the skip policy. Returns {} when the
+    flow_config does not select steps and carries no policy.
     """
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
+
+    no_clock = flow_no_clock(flow_config)
 
     # A preset-shaped flow_config selects the preset's canonical range.
     if "preset" in flow_config and "start_step" not in flow_config and "steps" not in flow_config:
         section: dict = {"preset": flow_config["preset"]}
         if "skip_steps" in flow_config:
             section["skip_steps"] = flow_config["skip_steps"]
+        if no_clock:
+            section["no_clock"] = True
         return validate_flow_config(section)
 
     from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
 
     selected, _degraded = resolve_flow_selection(flow_config, _canonical_rtl2gds_flow_entries())
     if not selected:
+        if no_clock or "skip_steps" in flow_config:
+            policy: dict = {}
+            if "skip_steps" in flow_config:
+                policy["skip_steps"] = flow_config["skip_steps"]
+            if no_clock:
+                policy["no_clock"] = True
+            return validate_flow_config(policy)
         return {}
 
     # Names are already canonical here; validate to keep the contract explicit.
     section = {"start": selected[0], "end": selected[-1]}
     if "skip_steps" in flow_config:
         section["skip_steps"] = flow_config["skip_steps"]
+    if no_clock:
+        section["no_clock"] = True
     return validate_flow_config(section)
 
 

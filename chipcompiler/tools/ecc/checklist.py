@@ -3,7 +3,7 @@ import glob
 import os
 from pathlib import Path
 
-from chipcompiler.data import Checklist, CheckState, EccStep, StepEnum, Workspace
+from chipcompiler.data import Checklist, CheckState, EccStep, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.tools.ecc.qor_metrics import QorMetrics
 from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
 from chipcompiler.utility import json_read
@@ -18,7 +18,7 @@ class EccChecklist:
             ("Legality", "check cell overlap"),
             ("Congestion", "check placement congestion"),
         ],
-        StepEnum.CTS: [
+        SkippableStepEnum.CTS: [
             ("Clock", "check clock net"),
             ("Buffer", "check CTS buffers"),
             ("Timing", "check clock skew"),
@@ -176,10 +176,10 @@ class EccCtsChecklist(EccChecklist):
     def check(self) -> bool:
         return refresh_step_checklist(self.workspace, self.workspace_step)
 
-        step = StepEnum.CTS.value
+        step = SkippableStepEnum.CTS.value
         metrics = self.qor_metrics()
         db = json_read(self.workspace_step.feature.db or "")
-        config = json_read(self.workspace.config.get(StepEnum.CTS.value, ""))
+        config = json_read(self.workspace.config.get(SkippableStepEnum.CTS.value, ""))
 
         nets = db.get("Nets", {})
         instances = db.get("Instances", {})

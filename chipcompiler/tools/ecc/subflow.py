@@ -2,7 +2,7 @@
 import time
 from enum import Enum
 
-from chipcompiler.data import StateEnum, StepEnum, Workspace, WorkspaceStep, step_from_value
+from chipcompiler.data import StateEnum, SkippableStepEnum, StepEnum, Workspace, WorkspaceStep, step_from_value
 
 
 class EccSubFlowEnum(Enum):
@@ -89,7 +89,7 @@ class EccSubFlow:
                 steps.append(subflow_template(EccSubFlowEnum.run_placement.value))
                 steps.append(subflow_template(EccSubFlowEnum.save_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.analysis.value))
-            case StepEnum.CTS:
+            case SkippableStepEnum.CTS:
                 steps.append(subflow_template(EccSubFlowEnum.load_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.run_CTS.value))
                 steps.append(subflow_template(EccSubFlowEnum.save_data.value))

@@ -37,6 +37,11 @@ class ProjectConfig:
     # code default then applies). The manifest's per-workspace value wins
     # over this one for this key only.
     flow_skip_steps: list[str] | None = None
+    # Clockless RTL2GDS mode: omit CTS via the skippable-step policy and
+    # relax design.clock_port / design.frequency_mhz requirements. SDC
+    # falls back to the virtual clock from the default generator when
+    # clock_port is empty.
+    flow_no_clock: bool = False
     config_path: str = ""
     project_dir: str = ""
 
@@ -111,6 +116,8 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     # instead of silently dropping them.
     skip_steps = flow.get("skip_steps")
 
+    from chipcompiler.data.workspace_config import coerce_bool
+
     cfg = ProjectConfig(
         design_name=_str(design.get("name", "")),
         design_top=_str(design.get("top", "")),
@@ -127,6 +134,7 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         pdk_overrides=pdk_overrides,
         flow_preset=_str(flow.get("preset", "")),
         flow_skip_steps=skip_steps,
+        flow_no_clock=coerce_bool(flow.get("no_clock", False)),
         config_path=config_path,
         project_dir=project_dir,
     )
@@ -218,9 +226,9 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         errors.append("design.name is required")
     if not cfg.design_top:
         errors.append("design.top is required")
-    if not cfg.design_clock_port:
+    if not cfg.flow_no_clock and not cfg.design_clock_port:
         errors.append("design.clock_port is required")
-    if cfg.design_frequency_mhz <= 0:
+    if not cfg.flow_no_clock and cfg.design_frequency_mhz <= 0:
         errors.append("design.frequency_mhz must be greater than 0")
     if not cfg.pdk_name:
         errors.append("pdk.name is required")
@@ -243,11 +251,16 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
     elif cfg.flow_preset not in _supported_flow_presets():
         errors.append(f"unsupported flow.preset: {cfg.flow_preset}")
 
-    if "flow.skip_steps" in cfg._explicit_keys:
+    if "flow.skip_steps" in cfg._explicit_keys or cfg.flow_no_clock:
         from chipcompiler.rtl2gds import resolve_skip_steps
 
+        probe: dict = {}
+        if cfg.flow_no_clock:
+            probe["no_clock"] = True
+        if "flow.skip_steps" in cfg._explicit_keys:
+            probe["skip_steps"] = cfg.flow_skip_steps
         try:
-            resolve_skip_steps({"skip_steps": cfg.flow_skip_steps})
+            resolve_skip_steps(probe)
         except ValueError as exc:
             errors.append(str(exc))
 
