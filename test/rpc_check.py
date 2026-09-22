@@ -22,7 +22,6 @@ No CLI source changes; this is external glue for CI / local smoke.
 from __future__ import annotations
 
 import argparse
-import contextlib
 import json
 import os
 import shlex
@@ -30,6 +29,7 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RTL = REPO_ROOT / "test" / "fixtures" / "gcd" / "gcd.v"
@@ -161,7 +161,7 @@ def main() -> int:
 
 
 def _create_project_and_workspace(
-    client: RpcProcess,
+    client: "RpcProcess",
     *,
     project_dir: Path,
     workspace_name: str,
@@ -267,7 +267,10 @@ def cli_status_check(
 
     status = _parse_workspace_status(completed.stdout)
     if expect_status and status != expect_status:
-        fail(f"ecc status --project reported status={status!r}, expected {expect_status!r}")
+        fail(
+            f"ecc status --project reported status={status!r}, "
+            f"expected {expect_status!r}"
+        )
     print(f"ecc status --project ok status={status}", flush=True)
     return 0
 
@@ -347,8 +350,10 @@ class RpcProcess:
     def close(self) -> None:
         if self.proc.poll() is not None:
             return
-        with contextlib.suppress(Exception):
+        try:
             self.call("rpc.shutdown", {}, timeout=5)
+        except Exception:
+            pass
         if self.proc.stdin is not None:
             self.proc.stdin.close()
         try:
@@ -375,7 +380,10 @@ class RpcProcess:
                 err = b""
                 if self.proc.stderr is not None:
                     err = self.proc.stderr.read() or b""
-                fail("rpc server closed stdout\n" + err.decode("utf-8", errors="replace")[-2000:])
+                fail(
+                    "rpc server closed stdout\n"
+                    + err.decode("utf-8", errors="replace")[-2000:]
+                )
             self._buffer.extend(chunk)
 
 
