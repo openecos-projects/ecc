@@ -47,6 +47,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceInfoRequest,
     WorkspaceInspectSignoffRequest,
     WorkspaceOpenRequest,
+    WorkspaceRefreshConfigRequest,
     WorkspaceRecoverInterruptedRequest,
     WorkspaceSpecCreateRequest,
     WorkspaceSpecOpenRequest,
@@ -345,8 +346,17 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
         except ValueError as exc:
             raise RuntimeApiError("invalid_request", str(exc)) from exc
 
-    def refresh_config(self, request: WorkspaceIdRequest) -> dict:
+    def refresh_config(self, request: WorkspaceRefreshConfigRequest | WorkspaceIdRequest) -> dict:
         def refresh(session: WorkspaceSession) -> dict:
+            from chipcompiler.data.workspace.config_manifest import modified_derived_configs
+
+            modified = modified_derived_configs(session.directory)
+            if modified and not getattr(request, "force", False):
+                raise RuntimeApiError(
+                    "derived_configs_modified",
+                    "config files changed since the last derivation; refresh would overwrite those edits",
+                    {"files": modified},
+                )
             self._release_session_db(session)
             self._refresh_workspace_config(session.workspace)
             return {"directory": str(session.directory), "refreshed": True}

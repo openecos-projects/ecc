@@ -18,6 +18,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceIdRequest,
     WorkspaceInfoRequest,
     WorkspaceOpenRequest,
+    WorkspaceRefreshConfigRequest,
     WorkspaceRecoverInterruptedRequest,
     WorkspaceStepConfigurationReadRequest,
     WorkspaceSyncConfigRequest,
@@ -770,6 +771,34 @@ def test_refresh_config_releases_active_session_db(monkeypatch, tmp_path):
     assert result == {"directory": str(ws.resolve()), "refreshed": True}
     assert db_handle.close_calls == 1
     assert api.sessions.get_session(workspace_id).db_handle is None
+
+
+def test_refresh_config_rejects_modified_derived_configs_without_force(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    refreshed = []
+    monkeypatch.setattr(
+        "chipcompiler.data.refresh_workspace_config",
+        lambda workspace: refreshed.append(workspace.directory),
+    )
+    monkeypatch.setattr(
+        "chipcompiler.data.workspace.config_manifest.modified_derived_configs",
+        lambda _directory: ["route_ecc.json"],
+    )
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+
+    with pytest.raises(RuntimeApiError) as exc_info:
+        api.refresh_config(WorkspaceRefreshConfigRequest(workspace_id=workspace_id))
+
+    assert exc_info.value.code == "derived_configs_modified"
+    assert exc_info.value.data == {"files": ["route_ecc.json"]}
+    assert refreshed == []
+
+    result = api.refresh_config(
+        WorkspaceRefreshConfigRequest(workspace_id=workspace_id, force=True)
+    )
+    assert result == {"directory": str(ws.resolve()), "refreshed": True}
+    assert refreshed == [ws.resolve()]
 
 
 def test_sync_config_releases_active_session_db_only_when_parameters_change(
