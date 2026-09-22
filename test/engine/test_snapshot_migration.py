@@ -7,7 +7,6 @@ from types import SimpleNamespace
 import pytest
 
 from chipcompiler.engine.snapshot import (
-    SNAPSHOT_V3_SCHEMA_VERSION,
     EngineeringSnapshotError,
     create_engineering_snapshot,
     ensure_engineering_snapshot,
@@ -34,53 +33,20 @@ def _workspace(tmp_path):
     )
 
 
-def test_migration_preserves_identity_advances_revision_and_projects_qor(tmp_path):
+def test_new_snapshot_uses_clean_break_schema_and_projects_qor(tmp_path):
     workspace = _workspace(tmp_path)
     current = create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
-    assert current["schemaVersion"] == 2
+    assert current["schemaVersion"] == 4
     assert str(workspace.directory) not in json.dumps(current["qorSnapshotExtension"])
-
-    migrated = migrate_engineering_snapshot(
-        workspace,
-        expected_workspace_revision=current["workspaceRevision"],
-    )
-
-    assert migrated["schemaVersion"] == SNAPSHOT_V3_SCHEMA_VERSION
-    assert migrated["workspaceId"] == "engineering-gcd"
-    assert migrated["workspaceRevision"] == current["workspaceRevision"] + 1
-    assert migrated["cause"] == "snapshot.migrated.v2_to_v3"
-    assert migrated["qorSnapshotExtension"]["scoringEngine"] == "qor-v3"
-    assert read_engineering_snapshot(workspace)["schemaVersion"] == SNAPSHOT_V3_SCHEMA_VERSION
+    assert current["qorAssessment"].get("metrics") is None
+    assert read_engineering_snapshot(workspace)["schemaVersion"] == 4
 
 
-def test_migration_preserves_stale_predecessor_metadata(tmp_path):
-    workspace = _workspace(tmp_path)
-    current = create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
-    path = Path(workspace.directory) / "home" / "engineering-snapshot.json"
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    payload["stalePredecessor"] = {"workspaceRevision": 1, "invalidatedStepIds": ["route"]}
-    path.write_text(json.dumps(payload), encoding="utf-8")
-
-    migrated = migrate_engineering_snapshot(workspace)
-
-    assert migrated["workspaceRevision"] == current["workspaceRevision"] + 1
-    assert migrated["stalePredecessor"] == payload["stalePredecessor"]
-
-
-def test_migration_failure_keeps_previous_snapshot(tmp_path, monkeypatch):
+def test_legacy_migration_requires_explicit_rebuild(tmp_path):
     workspace = _workspace(tmp_path)
     create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
-    path = Path(workspace.directory) / "home" / "engineering-snapshot.json"
-    before = path.read_bytes()
-
-    def fail(_workspace):
-        raise RuntimeError("broken analysis")
-
-    monkeypatch.setattr("chipcompiler.analysis.qor.build_qor_analysis", fail)
-    with pytest.raises(EngineeringSnapshotError, match="regenerate QoR facts"):
+    with pytest.raises(EngineeringSnapshotError, match="rebuild the workspace"):
         migrate_engineering_snapshot(workspace)
-
-    assert path.read_bytes() == before
 
 
 def test_unsupported_schema_is_not_migrated(tmp_path):
@@ -88,17 +54,8 @@ def test_unsupported_schema_is_not_migrated(tmp_path):
     path = Path(workspace.directory) / "home" / "engineering-snapshot.json"
     path.write_text(json.dumps({"schemaVersion": 99}), encoding="utf-8")
 
-    with pytest.raises(EngineeringSnapshotError, match="invalid Engineering Snapshot"):
+    with pytest.raises(EngineeringSnapshotError, match="rebuild the workspace"):
         migrate_engineering_snapshot(workspace)
-
-
-def test_production_write_paths_reject_migrated_v3_snapshot(tmp_path):
-    workspace = _workspace(tmp_path)
-    create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
-    migrate_engineering_snapshot(workspace)
-
-    with pytest.raises(EngineeringSnapshotError, match="production Snapshot schema is still v2"):
-        ensure_engineering_snapshot(workspace)
 
 
 def test_qor_extension_validator_rejects_missing_and_invalid_nested_fields():
@@ -164,6 +121,7 @@ def test_snapshot_read_rejects_invalid_sections_and_only_checks_artifacts_when_r
     artifact.update(
         {
             "availability": "available",
+            "integrity": "verified",
             "sizeBytes": 6,
             "sha256": hashlib.sha256(b"before").hexdigest(),
         }

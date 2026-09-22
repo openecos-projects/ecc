@@ -7,11 +7,10 @@ Three kinds of files under ``home/`` are versioned:
 - ``params.toml`` — current version 1; a file without the field is version 0
   (the pre-versioning era) and loads through the legacy migration.
 - ``flow.json`` — current version 1; version 0 when the field is absent.
-- ``engineering-snapshot.json`` — versions 2 (production) and 3 (prepared);
-  its field is spelled ``schemaVersion`` because the contract predates this
-  registry and is shared with the GUI. The v2→v3 migration stays an explicit
-  write-only seam; loading reads both versions natively, so it is registered
-  for discovery rather than applied by the load chain.
+- ``engineering-snapshot.json`` — current version 4; its field is spelled
+  ``schemaVersion`` because the contract is shared with the GUI. Older
+  snapshots are intentionally not migrated: the v4 projection is a clean
+  break and callers must rebuild it from the workspace.
 
 The ad-hoc migrations that used to live at their call sites register here:
 ``{file type: {target version: migration}}``. A migration takes the workspace
@@ -40,7 +39,7 @@ WORKSPACE_CONFIGS = "workspace-configs"
 SUPPORTED_SCHEMA_VERSIONS: dict[str, int] = {
     PARAMS_TOML: 1,
     FLOW_JSON: 1,
-    ENGINEERING_SNAPSHOT: 3,
+    ENGINEERING_SNAPSHOT: 4,
 }
 
 
@@ -69,20 +68,11 @@ def _migrate_workspace_config_filenames_to_v1(workspace_dir: Path) -> None:
     migrate_workspace_config_filenames(workspace_dir)
 
 
-def _migrate_engineering_snapshot_to_v3(workspace_dir: Path) -> None:
-    # The v2→v3 seam regenerates QoR facts and therefore needs the loaded
-    # workspace, not just the directory; it stays an explicit operation.
-    from chipcompiler.data import load_workspace
-    from chipcompiler.engine import migrate_engineering_snapshot_v2_to_v3
-
-    migrate_engineering_snapshot_v2_to_v3(load_workspace(workspace_dir))
-
-
 #: {file type: {target version: migration producing that version}}.
 SCHEMA_MIGRATIONS: dict[str, dict[int, Callable[[Path], None]]] = {
     PARAMS_TOML: {1: _migrate_params_toml_to_v1},
     WORKSPACE_CONFIGS: {1: _migrate_workspace_config_filenames_to_v1},
-    ENGINEERING_SNAPSHOT: {3: _migrate_engineering_snapshot_to_v3},
+    ENGINEERING_SNAPSHOT: {},
 }
 
 

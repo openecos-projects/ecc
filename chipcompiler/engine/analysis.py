@@ -41,14 +41,20 @@ _CONGESTION_IMAGES = (
 
 
 def build_workspace_analysis(
-    workspace: Any, workspace_id: str
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    workspace: Any,
+    workspace_id: str,
+    *,
+    step_ids: set[str] | None = None,
+    inline: bool = True,
+) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, list[dict[str, Any]]], dict[str, str]]:
     root = Path(workspace.directory).resolve()
     flow = getattr(getattr(workspace, "flow", None), "data", {})
     raw_steps = flow.get("steps", []) if isinstance(flow, dict) else []
     design = str(getattr(getattr(workspace, "design", None), "name", "")).strip()
     steps: list[dict[str, Any]] = []
     artifacts: list[dict[str, Any]] = []
+    metrics_by_step: dict[str, list[dict[str, Any]]] = {}
+    summary_status_by_step: dict[str, str] = {}
     inline_budget = InlineJsonBudget(ANALYSIS_INLINE_BUDGET_BYTES)
     for order, raw_step in enumerate(raw_steps):
         if not isinstance(raw_step, dict):
@@ -56,6 +62,8 @@ def build_workspace_analysis(
         step_id = raw_step.get("name")
         tool_id = raw_step.get("tool")
         if not _safe_segment(step_id) or not _safe_segment(tool_id):
+            continue
+        if step_ids is not None and step_id not in step_ids:
             continue
         identity = "".join(character for character in step_id.casefold() if character.isalnum())
         if identity == "fixfanout":
@@ -84,13 +92,26 @@ def build_workspace_analysis(
                 root=root,
             )
             artifacts.append(artifact)
-            step[field] = _analysis_file(
+            payload = _analysis_file(
                 path,
                 artifact["artifactId"],
                 schema_version,
                 root,
-                inline_budget,
+                inline_budget if inline else None,
             )
+            if payload["status"] == "available" and isinstance(payload.get("data"), dict):
+                data = payload["data"]
+                if field == "metrics" and isinstance(data.get("metrics"), list):
+                    metrics_by_step[step_id] = [
+                        record for record in data["metrics"] if isinstance(record, dict)
+                    ]
+                elif field == "summary":
+                    status = data.get("quality_status")
+                    if isinstance(status, str) and status:
+                        summary_status_by_step[step_id] = status
+            if not inline and payload["status"] == "available":
+                payload = {**payload, "data": None}
+            step[field] = payload
         if "timingIssues" not in step:
             step["timingIssues"] = None
         if tool_id.lower() == "yosys_lec" and design:
@@ -104,11 +125,16 @@ def build_workspace_analysis(
                 root=root,
             )
             artifacts.append(artifact)
-            step["lecResult"] = _lec_result_file(
+            payload = _lec_result_file(
                 result,
                 artifact["artifactId"],
                 root,
-                inline_budget,
+                inline_budget if inline else None,
+            )
+            step["lecResult"] = (
+                {**payload, "data": None}
+                if not inline and payload["status"] == "available"
+                else payload
             )
         step["subflow"] = _subflow_summary(step_dir / "subflow.json", root)
         if design:
@@ -223,7 +249,7 @@ def build_workspace_analysis(
                     )
                 )
         steps.append(step)
-    return {"steps": steps}, artifacts
+    return {"steps": steps}, artifacts, metrics_by_step, summary_status_by_step
 
 
 def _lec_result_file(
@@ -397,19 +423,28 @@ def _artifact_ref(
         "name": path.name,
         "stepId": step_id,
         "availability": "missing",
+        "integrity": "not_checked",
         "reference": reference,
     }
     try:
-        if path.is_file() and not _has_symlink(path, root):
+        if path.is_file() and _has_symlink(path, root):
+            artifact.update(availability="available", integrity="unsafe")
+        elif path.is_file():
             size = path.stat().st_size
-            if size <= _ARTIFACT_HASH_MAX_BYTES:
+            fingerprintable = kind not in {"layout_image", "congestion_image"}
+            if fingerprintable and size <= _ARTIFACT_HASH_MAX_BYTES:
                 artifact.update(
                     availability="available",
+                    integrity="verified",
                     sizeBytes=size,
                     sha256=_sha256(path),
                 )
             else:
-                artifact.update(availability="stale", sizeBytes=size)
+                artifact.update(
+                    availability="available",
+                    integrity="unverified",
+                    sizeBytes=size,
+                )
     except OSError:
         pass
     return artifact

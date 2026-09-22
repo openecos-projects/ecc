@@ -9,6 +9,7 @@ from chipcompiler.engine.snapshot import (
     EngineeringSnapshotError,
     _write_snapshot,
     create_engineering_snapshot,
+    read_engineering_snapshot,
 )
 from chipcompiler.engine.snapshot_limits import (
     ANALYSIS_FILE_INLINE_MAX_BYTES,
@@ -209,3 +210,13 @@ def test_snapshot_size_guard_preserves_existing_file(tmp_path):
         _write_snapshot(path, {"payload": "x" * ENGINEERING_SNAPSHOT_MAX_BYTES})
 
     assert path.read_text(encoding="utf-8") == "previous"
+
+
+def test_snapshot_read_rejects_oversized_file(tmp_path):
+    workspace = tmp_path / "workspace"
+    path = workspace / "home" / "engineering-snapshot.json"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"{" + b"x" * ENGINEERING_SNAPSHOT_MAX_BYTES + b"}")
+
+    with pytest.raises(EngineeringSnapshotError, match="Engineering Snapshot exceeds"):
+        read_engineering_snapshot(SimpleNamespace(directory=workspace))

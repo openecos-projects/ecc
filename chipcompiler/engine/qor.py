@@ -15,7 +15,13 @@ from .qor_scoring import (
 )
 
 
-def build_workspace_qor_assessment(analysis: dict[str, Any]) -> dict[str, Any]:
+def build_workspace_qor_assessment(
+    analysis: dict[str, Any],
+    *,
+    metrics_by_step: dict[str, list[dict[str, Any]]] | None = None,
+    summary_status_by_step: dict[str, str] | None = None,
+    include_metrics: bool = True,
+) -> dict[str, Any]:
     metrics = []
     step_summaries = []
     metric_steps = []
@@ -25,17 +31,23 @@ def build_workspace_qor_assessment(analysis: dict[str, Any]) -> dict[str, Any]:
         step_id = step["stepId"]
         metrics_file = step["metrics"]
         payload = metrics_file["data"] if metrics_file["status"] == "available" else {}
-        records = payload.get("metrics")
+        records = (
+            metrics_by_step.get(step_id) if metrics_by_step is not None else payload.get("metrics")
+        )
         valid_records = [record for record in records or [] if _valid_metric(record)]
         metrics.extend(valid_records)
         metric_steps.extend((step_id, record) for record in valid_records)
         summary_file = step["summary"]
         summary = summary_file["data"] if summary_file["status"] == "available" else {}
         summary_status = (
-            str(summary.get("quality_status", "incomplete"))
-            if summary.get("schema_version") == 4
-            else "unavailable"
-        )
+            summary_status_by_step.get(step_id)
+            if summary_status_by_step is not None
+            else (
+                str(summary.get("quality_status", "incomplete"))
+                if summary.get("schema_version") == 4
+                else "unavailable"
+            )
+        ) or "unavailable"
         step_summaries.append(
             {
                 "stepId": step_id,
@@ -47,14 +59,16 @@ def build_workspace_qor_assessment(analysis: dict[str, Any]) -> dict[str, Any]:
         )
 
     if not metrics:
-        return {
+        result = {
             "status": "unavailable",
             "score": {"value": None, "threshold": QOR_SCORE_THRESHOLD, "gate": "unavailable"},
             "areaScoringStep": None,
             "dimensionScores": {},
-            "metrics": [],
             "steps": step_summaries,
         }
+        if include_metrics:
+            result["metrics"] = []
+        return result
 
     gate = _gate_status(step_summaries)
     scoring = score_qor(
@@ -73,7 +87,7 @@ def build_workspace_qor_assessment(analysis: dict[str, Any]) -> dict[str, Any]:
             for step_id, record in metric_steps
         ]
     )
-    return {
+    result = {
         "status": "ready",
         "score": {
             "value": scoring.overall_score,
@@ -84,9 +98,11 @@ def build_workspace_qor_assessment(analysis: dict[str, Any]) -> dict[str, Any]:
         "dimensionScores": {
             dimension: score for dimension, (score, _count) in scoring.dimensions.items()
         },
-        "metrics": metrics,
         "steps": step_summaries,
     }
+    if include_metrics:
+        result["metrics"] = metrics
+    return result
 
 
 def _valid_metric(record: Any) -> bool:

@@ -644,7 +644,7 @@ def test_recover_interrupted_returns_committed_workspace_revision(monkeypatch, t
     (home / "engineering-snapshot.json").write_text("{}", encoding="utf-8")
     monkeypatch.setattr(
         "chipcompiler.engine.snapshot.commit_engineering_snapshot",
-        lambda _workspace, *, workspace_id, cause: {
+        lambda _workspace, *, workspace_id, cause, **_kwargs: {
             "workspaceId": workspace_id,
             "workspaceRevision": 2,
         },
