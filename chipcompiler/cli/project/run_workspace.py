@@ -46,8 +46,10 @@ def execute_workspace_run(
         reconcile_workspace_locked,
     )
 
+    warnings: list[dict] = []
+
     def error(kind: str, **fields) -> CommandResult:
-        return CommandResult.err([{"kind": "error", "error": kind, **fields}])
+        return CommandResult.err(warnings + [{"kind": "error", "error": kind, **fields}])
 
     write_back_failures: list[dict] = []
 
@@ -80,7 +82,6 @@ def execute_workspace_run(
     from chipcompiler.cli.project.pdk_root_fallback import pdk_root_env_fallback_warning
     from chipcompiler.cli.project.spec_drift import workspace_spec_drift_warning
 
-    warnings = []
     pdk_root_warning = pdk_root_env_fallback_warning(workspace_path)
     if pdk_root_warning is not None:
         warnings.append(pdk_root_warning)
@@ -173,6 +174,7 @@ def execute_workspace_run(
             write_status("failed")
             return CommandResult.err(
                 write_back_failures
+                + warnings
                 + [
                     {
                         "kind": "error",
