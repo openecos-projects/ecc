@@ -1,5 +1,8 @@
 # ECC QoR 参考手册（质量评分 · 可行性门禁 · 证据与诊断）
 
+Engineering Snapshot schema 5 是 GUI 唯一输入契约。它嵌入本 V3 引擎产生的
+有界 `qorSnapshotExtension`；schema 4 及更早版本会被拒绝，必须重建 workspace。
+
 本文整理 ECC 当前 QoR 方案（**ECC-QoR V3**，报告 `schema_version: 3`），面向使用 ECC CLI 与 ECOS Studio 的工程师：分数怎么算、报告怎么读、参数怎么配、诊断怎么用。全部公式、阈值与默认值均与当前实现一致。
 
 - 命令用法与安装 → [ECC CLI 用户指南](ecc-user-guide.cn.md)；从零上手 → [入门教程](ecc-tutorial.cn.md)
@@ -12,7 +15,8 @@
 graph LR
     A["各步骤产物<br/>qor_metrics.json / qor_summary.json<br/>power_summary.json"] --> B["ECC QoR V3 引擎<br/>（唯一计算方）"]
     B --> C["home/qor_report.json<br/>每步成功后自动刷新"]
-    C --> D["ECOS Studio<br/>（渲染方：五维分解/门禁/诊断）"]
+    C --> S["Engineering Snapshot schema 5<br/>qorSnapshotExtension"]
+    S --> D["ECOS Studio<br/>（渲染方：五维分解/门禁/诊断）"]
     B --> E["ecc report qor<br/>文本报告 → signoff/*.txt"]
 ```
 
@@ -30,7 +34,7 @@ graph LR
 |---|---|---|
 | flow 引擎自动写 | `<workspace>/home/qor_report.json`（机器可读，schema_version 3，见 §10） | 每个步骤成功后（含跳过已成功步骤时）自动刷新 |
 | `ecc report qor` | `<workspace>/signoff/<design>_qor_report.txt`（人类可读文本报告） | 每次执行都按当前产物现算快照 |
-| ECOS Studio | 项目看板 QoR 卡、五维分解、诊断列表 | 读取 `home/qor_report.json`，无报告或陈旧时显示 NOT_RATED（§10.2） |
+| ECOS Studio | 项目看板 QoR 卡、五维分解、诊断列表 | 读取 schema 5 Engineering Snapshot 的 `qorSnapshotExtension`，缺失或陈旧时显示 NOT_RATED（§10.2） |
 
 ```bash
 ecc report qor --project gcd          # 写 signoff/gcd_qor_report.txt
@@ -233,7 +237,7 @@ Q_summary = 0.0                          若 Feasibility = PHYSICAL_FAIL（否�
 
 ### 4.3 状态色
 
-`GREEN ≥90` / `YELLOW ≥75` / `ORANGE ≥60` / `RED <60`；门禁失败 → `FAIL`（分数 0）；未评级 → `NOT_RATED`（分数 null）。ECOS Studio Home 的 pass/fail 线是 60 分，恰与 RED 边界重合。
+`GREEN ≥90` / `YELLOW ≥75` / `ORANGE ≥60` / `RED <60`；门禁失败 → `FAIL`（分数 0）；未评级 → `NOT_RATED`（分数 null）。ECOS Studio 直接渲染这个状态，不再应用第二套 pass/fail 阈值。
 
 ### 4.4 完整算例（gcd 参考夹具）
 
@@ -434,9 +438,11 @@ STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup
 
 ### 10.2 ECOS Studio 的消费方式（硬切语义）
 
-- Studio **不重复计分**：评分/状态/门禁只认 `home/qor_report.json`（校验 `schema_version: 3` 与 `scoring_engine: "qor-v3"`）。
-- **陈旧检测**：报告内 `flow_steps` 快照与当前 `home/flow.json` 不一致（如手改/重跑后报告未刷新）→ 视同无报告，一律 **NOT_RATED**——宁可缺分，不可错分。重跑任意一步即恢复。
+- Studio **不重复计分**：评分/状态/门禁只认 schema 5 Engineering Snapshot 的 `qorSnapshotExtension`（校验 `scoringEngine: "qor-v3"`）。
+- **陈旧检测**：混合或陈旧 Engineering Snapshot 会把
+  `qorSnapshotExtension` 标记为不可用，一律 **NOT_RATED**——宁可缺分，不可错分。重跑失效步骤即可恢复。
 - 逐步指标明细、跨 workspace 指标对比、趋势与回归检测仍读各步 `qor_metrics.json`，仅作数据展示，不产生分数。
+- Engineering Snapshot 的逐步指标按显式 `stepId` 分组，不读取旧 assessment 偏移或阈值字段。
 
 ## 11. 与旧评分方案的区别（迁移说明）
 
@@ -459,7 +465,8 @@ STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup
 ## 12. 常见问题
 
 **Q：分数是 NOT_RATED / 显示 "—"，为什么？**
-任一情形：无 `home/qor_report.json`（升级前完成的旧 workspace）；报告陈旧（`flow_steps` 与 flow.json 不一致）；可行性为 NOT_VERIFIED（某门禁依赖的步骤没跑成功）/ UNKNOWN（步骤成功但证据缺失或损坏，如 hold 报告缺失——ECC 的 hold STA 输出是可选的）；所有维度都不可评估。重跑相关步骤（补出对应证据）即可闭合。
+任一情形：workspace 尚未重建为 Snapshot schema 5、`qorSnapshotExtension`
+不可用、可行性为 NOT_VERIFIED/UNKNOWN，或所有维度都不可评估。重跑相关步骤即可闭合。
 
 **Q：维度分都不低，总分却是 0 / FAIL？**
 可行性否决：七条门禁有任一 failed（最常见是 setup/hold slack < 0 或 DRC/LVS 计数非 0）。看报告 `PRIMARY DIAGNOSES` 的 Tier 1 项。

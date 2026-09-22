@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -20,9 +21,9 @@ def test_engineering_snapshot_is_a_bounded_projection(tmp_path):
 
     snapshot = create_engineering_snapshot(workspace, workspace_id="workspace-gcd")
 
-    assert snapshot["schemaVersion"] == 4
+    assert snapshot["schemaVersion"] == 5
     assert "metrics" in snapshot
-    assert "metrics" not in snapshot["qorAssessment"]
+    assert "qorAssessment" not in snapshot
     assert snapshot["analysis"]["steps"]
     layout_artifact = next(
         artifact for artifact in snapshot["artifacts"] if artifact["kind"] == "layout_image"
@@ -34,6 +35,75 @@ def test_engineering_snapshot_is_a_bounded_projection(tmp_path):
             value = step.get(field)
             if value is not None:
                 assert value["data"] is None
+
+
+def test_engineering_snapshot_keeps_bounded_sta_timing_paths(tmp_path):
+    root = tmp_path / "workspace"
+    (root / "home").mkdir(parents=True)
+    issues = [
+        {
+            "issue_id": f"path-{index}",
+            "corner": "MAX_125/RCworst",
+            "analysis_type": "setup",
+            "path_group": "clk",
+            "start_point": f"u{index}/Q",
+            "end_point": f"u{index}/D",
+            "check_type": "max",
+            "slack_ns": slack,
+        }
+        for index, slack in enumerate((-1.0, -0.5, -0.1, 0.0, 0.1, 0.2, 0.3))
+    ]
+    timing_path = root / "sta_ecc" / "analysis" / "sta_timing_issues.json"
+    timing_path.parent.mkdir(parents=True)
+    timing_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "tool": "ecc",
+                "step": "STA",
+                "design": "gcd",
+                "near_fail_slack_ns": 0.05,
+                "source_files": [],
+                "artifact_paths": [],
+                "missing_corners": [],
+                "issues": issues,
+            }
+        ),
+        encoding="utf-8",
+    )
+    workspace = SimpleNamespace(
+        directory=root,
+        flow=SimpleNamespace(data={"steps": [{"name": "sta", "tool": "ecc", "state": "Success"}]}),
+        home=SimpleNamespace(data={}),
+        parameters=SimpleNamespace(data={"design": "gcd"}),
+        design=SimpleNamespace(name="gcd"),
+    )
+
+    snapshot = create_engineering_snapshot(workspace, workspace_id="workspace-gcd")
+
+    timing = snapshot["analysis"]["steps"][0]["timingIssues"]
+    assert timing["status"] == "available"
+    assert [path["slack_ns"] for path in timing["data"]["worst_paths"]] == [
+        -1.0,
+        -0.5,
+        -0.1,
+        0.0,
+        0.1,
+    ]
+    assert [path["slack_ns"] for path in timing["data"]["best_paths"]] == [
+        0.3,
+        0.2,
+        0.1,
+        0.0,
+        -0.1,
+    ]
+    assert [path["slack_ns"] for path in timing["data"]["issues"]] == [
+        -1.0,
+        -0.5,
+        -0.1,
+        0.0,
+        0.1,
+    ]
 
 
 def test_incremental_commit_only_reads_the_changed_step(tmp_path, monkeypatch):

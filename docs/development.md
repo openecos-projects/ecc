@@ -611,9 +611,8 @@ required by doctor.
   the GUI or CLI.
 - `engine/qor_report.py`: the CLI `ecc report qor` facade. It delegates to
   `analysis.qor` and does not own a second scoring implementation.
-- `engine/qor_scoring.py` and `engine/qor.py`: legacy v2 Snapshot assessment
-  kept only while production Snapshot writes remain v2. Do not extend this
-  path for QoR v3 consumers.
+- The deleted legacy assessment modules are not part of the product. QoR v3 and
+  Snapshot schema 5 are the only contracts.
 - `engine/signoff/report_checklist.py`: read-only rendering of
   `home/checklist.json` (reports unavailable on an invalid file; never writes
   back).
@@ -756,9 +755,10 @@ skip_steps = ["lec"]
 ### Reports
 
 `ecc report qor` delegates to the canonical QoR v3 Engine in
-`chipcompiler.analysis.qor`. The production v2 Snapshot `qorAssessment`
-projection remains available for GUI compatibility during the ECC-only
-rollout; it is not a second source for v3 conclusions.
+`chipcompiler.analysis.qor`. QoR v3 is the only scoring implementation. The
+GUI consumes only the bounded `qorSnapshotExtension` in Engineering Snapshot
+schema 5; it never re-scores a workspace or reads legacy QoR fields. Existing
+schema 4 (or earlier) workspaces must be rebuilt explicitly.
 `ecc report checklist` renders the signoff checklist status, and `ecc report
 summary` writes the GUI-parity text design summary. All three write to
 `<workspace>/signoff/` by default and accept `-o` plus the usual

@@ -5,7 +5,6 @@ from .rerun import StepRunResult
 from .signoff import SignoffPackageCollector, SignoffPackageOptions
 from .snapshot import (
     migrate_engineering_snapshot,
-    migrate_engineering_snapshot_v2_to_v3,
 )
 from .workspace_configuration import (
     read_step_configuration,
@@ -29,7 +28,6 @@ __all__ = [
     "EngineDB",
     "EngineFlow",
     "migrate_engineering_snapshot",
-    "migrate_engineering_snapshot_v2_to_v3",
     "ExecutionPlan",
     "ExecutionResult",
     "StepRunResult",

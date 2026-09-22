@@ -81,7 +81,7 @@ instead of parsing silently:
 | --- | --- | --- | --- |
 | `home/params.toml` | `schema_version` | 1 | absent = version 0 (pre-versioning); version 0 loads through the legacy `parameters.json` migration |
 | `home/flow.json` | `schema_version` | 1 | absent = version 0; writers stamp it, reconcile rejects newer versions |
-| `home/engineering-snapshot.json` | `schemaVersion` | 2 (production), 3 (prepared) | shared with the GUI; v2→v3 is an explicit write-only seam |
+| `home/engineering-snapshot.json` | `schemaVersion` | 5 | shared with the GUI; older snapshots are rejected and require workspace rebuild |
 
 The registry lives in `chipcompiler/data/schema_migrations.py`:
 `{file type: {target version: migration}}`, applied in ascending order at
@@ -89,9 +89,8 @@ workspace open. A `params.toml` or `flow.json` declaring a version newer than
 supported raises `unsupported_schema_version` with the file path and version —
 never a silent parse. An `engineering-snapshot.json` that does not match a
 supported shape instead raises `EngineeringSnapshotError`
-(`invalid Engineering Snapshot: <path>`) without a version number; v2 and v3
-both load natively, and the v2→v3 migration stays registered for discovery
-only — an explicit write-only seam, not applied by the load chain.
+(`invalid Engineering Snapshot: <path>`). Older snapshots are not migrated
+implicitly; rebuild the workspace to regenerate the schema 5 contract.
 
 ## Engineering Snapshot payload bounds
 
@@ -113,6 +112,10 @@ sections. Tests must cover the per-file limit, cumulative analysis budget,
 final write limit, and Studio validation. Do not raise the Studio read limit to
 accommodate a report; keep the report as an artifact and its body out of the
 Snapshot.
+
+The STA timing projection is the bounded exception: it keeps at most five
+`worst_paths`, five `best_paths`, and five near-fail `issues` in the Snapshot.
+Full corner timing paths remain artifact references and are loaded on demand.
 
 STA corner detail discovery is independent of the aggregate
 `sta_timing_issues.json` body. ECC indexes at most 32 deterministic

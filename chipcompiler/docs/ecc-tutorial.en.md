@@ -531,31 +531,27 @@ Excerpts from this gcd run (full report: `cat` the file above):
 
 ### 5.4 QoR score: ecc report qor
 
-Scores the workspace with ECC's shared `qor_scoring` rules (the same table Studio Snapshot uses): each metric maps to 0–100, dimensions are weighted (Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1), 60 is the pass line; absent dimensions are not renormalized (absence drags the overall score down):
+Scores the workspace with ECC QoR V3, the single scorer also consumed by ECOS Studio. The versioned report is written to `<workspace>/home/qor_report.json`; see [ECC QoR V3 reference](ecc-qor-ref.en.md) for the current rules:
 
 ```console
 $ ecc report qor
 [status]
   report: qor
-  path: default/signoff/gcd_qor_report.txt
-  bytes: 9661
-  view: cat default/signoff/gcd_qor_report.txt
+  path: default/home/qor_report.json
+  bytes: 25279
+  view: cat default/home/qor_report.json
   design: gcd
-  overall score: 58.1
-  qor status: Green
-  gate status: pass
-  dimensions: [{'dimension': 'Timing', 'score': 100.0, 'weight': 0.35, 'metrics': 7},
-               {'dimension': 'Routability / Physical', 'score': 56.8, 'weight': 0.2, 'metrics': 14},
-               {'dimension': 'Area', 'score': 44.0, 'weight': 0.1, 'metrics': 3},
-               {'dimension': 'Clock / DFM', 'score': 73.5, 'weight': 0.1, 'metrics': 8}]
+  overall score: 0.0
+  qor status: FAIL
+  gate status: PHYSICAL_FAIL
+  dimensions: timing / interconnect / area / power / robustness
   status: written
 ```
 
 How to read this:
 
-- **Flow status: Green, gate: pass** is the key conclusion — all four quality gates (DRC/LVS/RCX/STA) passed and Timing scored full marks; the design is signoff-ready;
-- The overall 58.1 sits slightly below the 60 pass line, mostly because small designs lose out on **absolute Area / wirelength metrics** (core area and clock wirelength are scored against fixed thresholds) and because the **Power dimension is absent** (this flow has no power analysis step, so that 0.25 weight goes to waste). This is normal for a design the size of gcd, not a flow problem;
-- Per-metric details are in the `[ METRIC SCORES ]` section of the report file.
+- `qor_status` is the ECC QoR V3 scalar status and `gate_status` is the physical feasibility result.
+- The five Qphys dimensions and diagnostic evidence are stored in `home/qor_report.json`.
 
 ### 5.5 Signoff checklist: ecc report checklist
 

@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any, TypeGuard
 
 from chipcompiler.data.step import STEP_DIRECTORIES, step_storage_name
-from chipcompiler.engine.qor_scoring import DIMENSION_WEIGHTS
 from chipcompiler.engine.snapshot_limits import (
     ANALYSIS_FILE_INLINE_MAX_BYTES,
     ANALYSIS_INLINE_BUDGET_BYTES,
@@ -13,8 +12,6 @@ from chipcompiler.engine.snapshot_limits import (
 )
 from chipcompiler.tools.ecc.sta_qor import STA_POWER_REPORT_FILENAME, STA_REPORT_FILENAMES
 from chipcompiler.utility import JsonReadError, file_digest, json_read_strict
-
-_LEGACY_METRIC_CATEGORIES = {"power": "power_integrity"}
 
 _ANALYSIS_FILES = (
     ("metrics", "qor_metrics", "qor_metrics.json", 3),
@@ -26,6 +23,7 @@ _SUBFLOW_MAX_BYTES = 1024 * 1024
 _SUBFLOW_MAX_STEPS = 256
 _ARTIFACT_HASH_MAX_BYTES = 16 * 1024 * 1024
 _STA_CORNER_LIMIT = 32
+_STA_TIMING_PATH_SUMMARY_LIMIT = 5
 _CONGESTION_IMAGES = (
     ("egr_congestion_map", "{step}_egr_horizontal_overflow.png"),
     ("egr_congestion_map", "{step}_egr_vertical_overflow.png"),
@@ -110,7 +108,14 @@ def build_workspace_analysis(
                     if isinstance(status, str) and status:
                         summary_status_by_step[step_id] = status
             if not inline and payload["status"] == "available":
-                payload = {**payload, "data": None}
+                payload = {
+                    **payload,
+                    "data": (
+                        _bounded_timing_projection(payload["data"])
+                        if field == "timingIssues"
+                        else None
+                    ),
+                }
             step[field] = payload
         if "timingIssues" not in step:
             step["timingIssues"] = None
@@ -252,6 +257,43 @@ def build_workspace_analysis(
     return {"steps": steps}, artifacts, metrics_by_step, summary_status_by_step
 
 
+def _bounded_timing_projection(data: object) -> dict[str, Any] | None:
+    if not isinstance(data, dict):
+        return None
+    issues = data.get("issues")
+    if not isinstance(issues, list):
+        return data
+    paths = [issue for issue in issues if isinstance(issue, dict)]
+    source_worst_paths = data.get("worst_paths")
+    source_best_paths = data.get("best_paths")
+    worst_paths = (
+        [path for path in source_worst_paths if isinstance(path, dict)]
+        if isinstance(source_worst_paths, list)
+        else sorted(paths, key=_timing_slack_sort_key)
+    )[:_STA_TIMING_PATH_SUMMARY_LIMIT]
+    best_paths = (
+        [path for path in source_best_paths if isinstance(path, dict)]
+        if isinstance(source_best_paths, list)
+        else sorted(paths, key=_timing_slack_sort_key, reverse=True)
+    )[:_STA_TIMING_PATH_SUMMARY_LIMIT]
+    bounded_issues = sorted(paths, key=_timing_slack_sort_key)[:_STA_TIMING_PATH_SUMMARY_LIMIT]
+    return {
+        **data,
+        "issues": bounded_issues,
+        "worst_paths": worst_paths,
+        "best_paths": best_paths,
+        "issue_count": len(paths),
+        "issues_truncated": len(paths) > _STA_TIMING_PATH_SUMMARY_LIMIT,
+    }
+
+
+def _timing_slack_sort_key(issue: dict[str, Any]) -> tuple[float, str]:
+    slack = issue.get("slack_ns")
+    if isinstance(slack, (int, float)) and not isinstance(slack, bool) and math.isfinite(slack):
+        return float(slack), str(issue.get("issue_id", ""))
+    return math.inf, str(issue.get("issue_id", ""))
+
+
 def _lec_result_file(
     path: Path,
     artifact_id: str,
@@ -336,8 +378,6 @@ def _analysis_file(
             "reasonCode": "ANALYSIS_SCHEMA_UNSUPPORTED",
             "data": None,
         }
-    if schema_version == 3 and isinstance(data.get("metrics"), list):
-        data = _canonical_metrics_payload(data)
     if inline_budget is not None and not inline_budget.admit(data):
         return {
             "artifactId": artifact_id,
@@ -346,29 +386,6 @@ def _analysis_file(
             "data": None,
         }
     return {"artifactId": artifact_id, "status": "available", "data": data}
-
-
-def _canonical_metrics_payload(data: dict[str, Any]) -> dict[str, Any]:
-    records = data.get("metrics")
-    if not isinstance(records, list):
-        return data
-    updated = []
-    changed = False
-    for record in records:
-        if not isinstance(record, dict):
-            updated.append(record)
-            continue
-        category = record.get("category")
-        mapped = _LEGACY_METRIC_CATEGORIES.get(category, category)
-        if mapped != category and mapped in DIMENSION_WEIGHTS:
-            record = {**record, "category": mapped}
-            changed = True
-        updated.append(record)
-    if not changed:
-        return data
-    payload = dict(data)
-    payload["metrics"] = updated
-    return payload
 
 
 def _subflow_summary(path: Path, root: Path) -> dict[str, Any]:

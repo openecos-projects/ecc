@@ -998,7 +998,7 @@ PDK / Node         : ics55
 
 ### 12.2 qor — QoR 总体计分报告
 
-用 ECC 共用的 `qor_scoring` 规则给当前 workspace 打分（Studio Snapshot 也用这一套）：每条 v3 `qor_metrics.json` 指标按固定失败阈值折算 0-100 分（slack 类线性、core_utilization 目标区间 [0.45,0.70]、lower/higher_is_better 比例），维度内取平均，再按权重（Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1）加权出总分——**缺项维度不重归一化**（缺项会拉低总分）；60 分为通过线。默认写 `<workspace>/signoff/<design>_qor_report.txt`：
+使用 ECC QoR V3 引擎为 workspace 计分，ECC 是唯一计分方，ECOS Studio 只消费其结果。机器可读报告写入 `<workspace>/home/qor_report.json`；维度、feasibility 门禁、状态和诊断见 [ECC QoR V3 参考](ecc-qor-ref.cn.md)：
 
 ```console
 $ ecc report qor --project gcd --plain

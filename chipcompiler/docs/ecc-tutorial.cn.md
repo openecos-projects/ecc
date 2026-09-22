@@ -530,31 +530,27 @@ $ ecc report summary
 
 ### 5.4 QoR 总分：ecc report qor
 
-用 ECC 共用的 `qor_scoring` 规则打分（Studio Snapshot 也用这一套）：每条指标折算 0–100 分，按维度加权（Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1），60 分为通过线；缺项维度不重归一化（缺项会拉低总分）：
+使用 ECC QoR V3 计分，ECC 是唯一计分方，ECOS Studio 只消费其结果。版本化报告写入 `<workspace>/home/qor_report.json`；当前规则见 [ECC QoR V3 参考](ecc-qor-ref.cn.md)：
 
 ```console
 $ ecc report qor
 [status]
   report: qor
-  path: default/signoff/gcd_qor_report.txt
-  bytes: 9661
-  view: cat default/signoff/gcd_qor_report.txt
+  path: default/home/qor_report.json
+  bytes: 25279
+  view: cat default/home/qor_report.json
   design: gcd
-  overall score: 58.1
-  qor status: Green
-  gate status: pass
-  dimensions: [{'dimension': 'Timing', 'score': 100.0, 'weight': 0.35, 'metrics': 7},
-               {'dimension': 'Routability / Physical', 'score': 56.8, 'weight': 0.2, 'metrics': 14},
-               {'dimension': 'Area', 'score': 44.0, 'weight': 0.1, 'metrics': 3},
-               {'dimension': 'Clock / DFM', 'score': 73.5, 'weight': 0.1, 'metrics': 8}]
+  overall score: 0.0
+  qor status: FAIL
+  gate status: PHYSICAL_FAIL
+  dimensions: timing / interconnect / area / power / robustness
   status: written
 ```
 
 怎么读这个结果：
 
-- **Flow status: Green、gate: pass** 是核心结论——DRC/LVS/RCX/STA 四个质量门全部通过，时序维度满分，设计可签核交付；
-- 总分 58.1 略低于 60 通过线，主要因为小规模设计在 **Area / 绕线长度类绝对值指标**上天然吃亏（如 core 面积、时钟线长度按固定阈值折算），且 **Power 维度缺项**（本流程未含功耗分析步骤，该维度 0.25 权重直接落空）。这是 gcd 这类小设计的常见现象，不代表 flow 有问题；
-- 逐指标明细在报告文件的 `[ METRIC SCORES ]` 区。
+- `qor_status` 是 ECC QoR V3 标量状态，`gate_status` 是物理 feasibility 结果。
+- 五个 Qphys 维度和诊断证据保存在 `home/qor_report.json`。
 
 ### 5.5 签核清单：ecc report checklist
 

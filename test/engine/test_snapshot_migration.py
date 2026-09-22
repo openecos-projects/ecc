@@ -33,13 +33,13 @@ def _workspace(tmp_path):
     )
 
 
-def test_new_snapshot_uses_clean_break_schema_and_projects_qor(tmp_path):
+def test_new_snapshot_uses_schema_five_and_projects_v3_qor(tmp_path):
     workspace = _workspace(tmp_path)
     current = create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
-    assert current["schemaVersion"] == 4
+    assert current["schemaVersion"] == 5
     assert str(workspace.directory) not in json.dumps(current["qorSnapshotExtension"])
-    assert current["qorAssessment"].get("metrics") is None
-    assert read_engineering_snapshot(workspace)["schemaVersion"] == 4
+    assert "qorAssessment" not in current
+    assert read_engineering_snapshot(workspace)["schemaVersion"] == 5
 
 
 def test_legacy_migration_requires_explicit_rebuild(tmp_path):

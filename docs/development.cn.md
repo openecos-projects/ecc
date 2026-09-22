@@ -447,7 +447,7 @@ config_param(
 - **设计总结**：`ecc report summary` 调用 `chipcompiler.engine.signoff.generate_text_report`。其实现按职责分模块（`report.py` 编排 / `report_data.py` 数据契约 / `report_extract.py` 解析器+workspace 收集 / `report_sections.py` 分区抽取 / `report_timing.py` timing 链 / `report_text.py` 格式化），全部经包 `__init__` 对外暴露。新增报告分区时，在 `report_sections.py`（或 timing 链）增加 `_extract_<family>(q)`，并在 `report.py` 编排处注册。
 - `analysis/qor/`：QoR v3 唯一分析引擎，负责指标加载、feature/维度计算、feasibility gates、evidence、评分、diagnosis、intervention、有界报告 schema 和文本渲染。新的工程结论只能在这里实现，GUI/CLI 不得复制阈值或公式。
 - `engine/qor_report.py`：CLI `ecc report qor` facade，委托 `analysis.qor`，不拥有第二套评分实现。
-- `engine/qor_scoring.py` 与 `engine/qor.py`：仅为生产 Snapshot v2 兼容保留；ECC-only 阶段不要让 QoR v3 消费这条路径。
+- 已删除旧的 assessment 模块。QoR v3 与 Snapshot schema 5 是唯一产品契约。
 - `engine/signoff/report_checklist.py`：只读渲染 `home/checklist.json`（不合法时报 unavailable，绝不回写文件）。
 - CLI：`cli/commands/report.py` + `cli/command_handlers/report.py`；workspace 解析复用 `inspection/discovery.py`（`resolve_workspace_path` 是无副作用核心，`resolve_command_workspace` 是核心加 `load_workspace`；signoff、report 与只读的 status/log/config 共用）。
 
@@ -530,7 +530,7 @@ skip_steps = ["lec"]
 
 ### 报告
 
-`ecc report qor` 委托 `chipcompiler.analysis.qor` QoR v3 引擎。生产 Snapshot v2 的 `qorAssessment` 仅为当前 GUI 兼容保留，不是 v3 工程结论的第二来源。`ecc report checklist` 渲染签核清单状态；`ecc report summary` 写出与 GUI 一致的文本设计总结。三者默认写入 `<workspace>/signoff/`，接受 `-o` 以及常规的 `--project` 和可选的受管 `--workspace NAME` 选择器：
+`ecc report qor` 委托 `chipcompiler.analysis.qor` QoR v3 引擎。ECC v3 是唯一评分实现。GUI 只消费 Engineering Snapshot schema 5 中有界的 `qorSnapshotExtension`，不会重新评分，也不会读取旧 QoR 字段。schema 4 及更早版本的 workspace 必须显式重建。`ecc report checklist` 渲染签核清单状态；`ecc report summary` 写出与 GUI 一致的文本设计总结。三者默认写入 `<workspace>/signoff/`，接受 `-o` 以及常规的 `--project` 和可选的受管 `--workspace NAME` 选择器：
 
 ```bash
 uv run ecc report qor --project gcd

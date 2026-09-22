@@ -645,7 +645,7 @@ def test_ecc_metrics_emits_bounded_drc_rule_layer_qor_hotspots(tmp_path):
         "display_name": "Minimum Spacing · M3",
         "value": 12,
         "unit": "count",
-        "category": "clock_robustness_dfm",
+        "category": "robustness",
         "source": {
             "kind": "feature",
             "path": "feature/drc.step.json",
@@ -912,7 +912,7 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
         "display_name": "Place EGR Overflow Total",
         "value": 13,
         "unit": "count",
-        "category": "routability_physical",
+        "category": "interconnect",
         "source": {
             "kind": "feature",
             "path": "feature/place.map.json",
@@ -985,7 +985,7 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
         "display_name": "CTS Worst Optimized Skew Estimate",
         "value": 0.11,
         "unit": "ns",
-        "category": "clock_robustness_dfm",
+        "category": "robustness",
         "direction": "lower_is_better",
         "scope": "cts",
         "corner": None,
@@ -1005,7 +1005,7 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
         "display_name": "CTS Worst Max Insertion Latency Estimate",
         "value": 0.42,
         "unit": "ns",
-        "category": "clock_robustness_dfm",
+        "category": "robustness",
         "direction": "lower_is_better",
         "scope": "cts",
         "corner": None,
@@ -1288,7 +1288,7 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
         "display_name": "Route LA Overflow",
         "value": 2,
         "unit": "count",
-        "category": "routability_physical",
+        "category": "interconnect",
         "source": {
             "kind": "feature",
             "path": "feature/route.step.json",
@@ -1797,6 +1797,14 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     assert [issue["issue_id"] for issue in issues["issues"]] == [
         "sta_timing:MAX_125/RCworst:setup:setup_path",
         "sta_timing:MIN_m40/Cbest:hold:hold_path",
+    ]
+    assert [path["issue_id"] for path in issues["worst_paths"]] == [
+        "sta_timing:MAX_125/RCworst:setup:setup_path",
+        "sta_timing:MIN_m40/Cbest:hold:hold_path",
+    ]
+    assert [path["issue_id"] for path in issues["best_paths"]] == [
+        "sta_timing:MIN_m40/Cbest:hold:hold_path",
+        "sta_timing:MAX_125/RCworst:setup:setup_path",
     ]
     assert issues["issues"][0]["dominant_stages"][0]["pin"] == "u_buf:Y"
     assert issues["issues"][0]["source_file"] == "feature/MAX_125/RCworst/timing_paths.json"

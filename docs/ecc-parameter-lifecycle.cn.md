@@ -69,7 +69,7 @@ workspace 文件带有显式 schema 版本，来自更新版本的文件会响�
 | --- | --- | --- | --- |
 | `home/params.toml` | `schema_version` | 1 | 缺省 = 版本 0（前版本化时代）；版本 0 仍走 legacy `parameters.json` 迁移 |
 | `home/flow.json` | `schema_version` | 1 | 缺省 = 版本 0；写入处盖章，reconcile 拒绝更高版本 |
-| `home/engineering-snapshot.json` | `schemaVersion` | 2（生产）、3（预备） | 与 GUI 共享；v2→v3 是显式只写迁移通道 |
+| `home/engineering-snapshot.json` | `schemaVersion` | 5 | 与 GUI 共享；旧快照会被拒绝，必须重建 workspace |
 
 注册表位于 `chipcompiler/data/schema_migrations.py`：
 `{文件类型: {目标版本: 迁移函数}}`，在 workspace 打开时按版本升序依次
@@ -77,8 +77,7 @@ workspace 文件带有显式 schema 版本，来自更新版本的文件会响�
 `unsupported_schema_version`，错误信息带文件路径与版本号——绝不静默解析。
 `engineering-snapshot.json` 不符合支持的形态时则抛出
 `EngineeringSnapshotError`（`invalid Engineering Snapshot: <路径>`），
-不含版本号；v2 与 v3 均原生加载，v2→v3 迁移仅登记供发现——它是显式
-只写通道，加载链不会自动应用。
+不含版本号；旧快照不会隐式迁移；必须重建 workspace 生成 schema 5 契约。
 
 ## Engineering Snapshot 载荷边界
 
@@ -98,6 +97,10 @@ workspace 文件带有显式 schema 版本，来自更新版本的文件会响�
 该状态，同时继续暴露 `flow` 和快照中其余有效分区。测试必须覆盖单文件
 上限、累计 analysis 预算、最终写入上限和 Studio 校验。不得为了容纳报告
 而提高 Studio 读取上限；完整报告应保持为 artifact，其正文不进入快照。
+
+STA timing 投影是有界例外：快照最多内联 5 条 `worst_paths`、5 条
+`best_paths` 和 5 条近失败 `issues`。完整 corner timing path 仍保留为 artifact
+引用，并在需要时按需读取。
 
 STA corner 明细的发现不依赖聚合文件 `sta_timing_issues.json` 的正文。即使
 聚合 analysis 正文超限，ECC 仍会按确定性顺序索引最多 32 组

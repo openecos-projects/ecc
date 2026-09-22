@@ -17,12 +17,10 @@ from chipcompiler.engine.snapshot_qor import (
 )
 from chipcompiler.utility import JsonReadError, file_digest, json_read_strict, json_write
 
-SNAPSHOT_SCHEMA_VERSION = 4
-SNAPSHOT_V3_SCHEMA_VERSION = 3
+SNAPSHOT_SCHEMA_VERSION = 5
 SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS = frozenset({SNAPSHOT_SCHEMA_VERSION})
 SNAPSHOT_FILENAME = "engineering-snapshot.json"
 STALE_SNAPSHOT_FILENAME = "engineering-snapshot.stale.json"
-SNAPSHOT_V2_TO_V3_MIGRATION_CAUSE = "snapshot.migrated.v2_to_v3"
 
 
 class EngineeringSnapshotError(RuntimeError):
@@ -51,7 +49,9 @@ def ensure_engineering_snapshot(workspace: Any) -> dict[str, Any]:
     if path.is_file():
         snapshot = _read_snapshot(path)
         if snapshot["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
-            raise EngineeringSnapshotError("Engineering Snapshot requires schema v4")
+            raise EngineeringSnapshotError(
+                "Engineering Snapshot requires schema v5; rebuild the workspace"
+            )
         return snapshot
     return create_engineering_snapshot(workspace, cause="workspace.migrated")
 
@@ -92,14 +92,11 @@ def migrate_engineering_snapshot(
     workspace: Any,
     *,
     expected_workspace_revision: int | None = None,
-    cause: str = SNAPSHOT_V2_TO_V3_MIGRATION_CAUSE,
+    cause: str = "snapshot.rebuild.required",
 ) -> dict[str, Any]:
     raise EngineeringSnapshotError(
         "Legacy Engineering Snapshot migration is unsupported; rebuild the workspace explicitly"
     )
-
-
-migrate_engineering_snapshot_v2_to_v3 = migrate_engineering_snapshot
 
 
 def commit_engineering_snapshot(
@@ -112,7 +109,9 @@ def commit_engineering_snapshot(
 ) -> dict[str, Any]:
     current = read_engineering_snapshot(workspace, validate_artifacts=False)
     if current["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
-        raise EngineeringSnapshotError("Engineering Snapshot requires schema v4")
+        raise EngineeringSnapshotError(
+            "Engineering Snapshot requires schema v5; rebuild the workspace"
+        )
     if current["workspaceId"] != workspace_id:
         raise EngineeringSnapshotError("Workspace identity changed before commit")
     dirty = {step for step in (dirty_steps or []) if isinstance(step, str) and step}
@@ -157,7 +156,9 @@ def invalidate_engineering_snapshot(
 ) -> dict[str, Any]:
     current = read_engineering_snapshot(workspace, validate_artifacts=False)
     if current["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
-        raise EngineeringSnapshotError("Engineering Snapshot requires schema v4")
+        raise EngineeringSnapshotError(
+            "Engineering Snapshot requires schema v5; rebuild the workspace"
+        )
     if current["workspaceId"] != workspace_id:
         raise EngineeringSnapshotError("Workspace identity changed before invalidation")
     flow = deepcopy(current.get("flow", {}))
@@ -231,7 +232,6 @@ def _build_snapshot(
     )
     checklist = checklist_result.data if checklist_result.status == "available" else {}
     from chipcompiler.engine.analysis import build_workspace_analysis
-    from chipcompiler.engine.qor import build_workspace_qor_assessment
     from chipcompiler.engine.signoff_assessment import build_signoff_assessment
 
     analysis, artifacts, metrics_by_step, summary_status_by_step = build_workspace_analysis(
@@ -249,12 +249,10 @@ def _build_snapshot(
             summary_status_by_step,
             dirty_steps or set(),
         )
-    qor_assessment = build_workspace_qor_assessment(
-        analysis,
-        metrics_by_step=metrics_by_step,
-        summary_status_by_step=summary_status_by_step,
-        include_metrics=False,
-    )
+    for step in analysis.get("steps", []):
+        if isinstance(step, dict) and isinstance(step.get("stepId"), str):
+            step["metricCount"] = len(metrics_by_step.get(step["stepId"], []))
+            step["summaryStatus"] = summary_status_by_step.get(step["stepId"], "unavailable")
     if previous is not None and not _flow_is_terminal(flow):
         qor_extension = unavailable_qor_snapshot_extension("incremental analysis pending")
     else:
@@ -279,7 +277,6 @@ def _build_snapshot(
         "checklist": checklist if isinstance(checklist, dict) else {},
         "analysis": analysis,
         "metrics": _flatten_metrics(analysis, metrics_by_step),
-        "qorAssessment": qor_assessment,
         "qorSnapshotExtension": qor_extension,
         "signoffAssessment": build_signoff_assessment(workspace, checklist=checklist),
         "artifacts": artifacts,
@@ -304,7 +301,10 @@ def _flow_is_terminal(flow: dict[str, Any]) -> bool:
     return (
         isinstance(steps, list)
         and bool(steps)
-        and all(isinstance(step, dict) and step.get("state") == "Success" for step in steps)
+        and all(
+            isinstance(step, dict) and step.get("state") in {"Success", "Skipped"}
+            for step in steps
+        )
     )
 
 
@@ -361,37 +361,35 @@ def _merge_incremental_analysis(
 
 def _metrics_by_step(snapshot: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     metrics = snapshot.get("metrics")
-    assessment = snapshot.get("qorAssessment")
-    steps = assessment.get("steps") if isinstance(assessment, dict) else None
-    if not isinstance(metrics, list) or not isinstance(steps, list):
+    if not isinstance(metrics, list):
         raise EngineeringSnapshotError("Engineering Snapshot comparison projection is unavailable")
     result: dict[str, list[dict[str, Any]]] = {}
-    offset = 0
-    for step in steps:
-        if not isinstance(step, dict) or not isinstance(step.get("stepId"), str):
+    for metric in metrics:
+        if not isinstance(metric, dict) or not isinstance(metric.get("stepId"), str):
             raise EngineeringSnapshotError("Engineering Snapshot comparison projection is invalid")
-        count = step.get("summaryMetricCount")
-        if type(count) is not int or count < 0 or offset + count > len(metrics):
-            raise EngineeringSnapshotError("Engineering Snapshot comparison projection is invalid")
-        result[step["stepId"]] = [
-            metric for metric in metrics[offset : offset + count] if isinstance(metric, dict)
-        ]
-        offset += count
-    if offset != len(metrics):
-        raise EngineeringSnapshotError("Engineering Snapshot comparison projection is invalid")
+        result.setdefault(metric["stepId"], []).append(metric)
     return result
 
 
 def _summary_status_by_step(snapshot: dict[str, Any]) -> dict[str, str]:
-    assessment = snapshot.get("qorAssessment")
-    steps = assessment.get("steps") if isinstance(assessment, dict) else None
+    analysis = snapshot.get("analysis")
+    steps = analysis.get("steps") if isinstance(analysis, dict) else None
     if not isinstance(steps, list):
         raise EngineeringSnapshotError("Engineering Snapshot QoR summary is unavailable")
-    return {
-        step["stepId"]: str(step.get("status", "unavailable"))
-        for step in steps
-        if isinstance(step, dict) and isinstance(step.get("stepId"), str)
-    }
+    result: dict[str, str] = {}
+    for step in steps:
+        if not isinstance(step, dict) or not isinstance(step.get("stepId"), str):
+            continue
+        summary = step.get("summary")
+        existing = step.get("summaryStatus")
+        data = summary.get("data") if isinstance(summary, dict) else None
+        status = data.get("quality_status") if isinstance(data, dict) else None
+        if not isinstance(status, str) or not status:
+            status = existing
+        result[step["stepId"]] = (
+            str(status) if isinstance(status, str) and status else "unavailable"
+        )
+    return result
 
 
 def _flatten_metrics(
@@ -439,10 +437,8 @@ def _read_snapshot(path: Path, *, validate_artifacts: bool = False) -> dict[str,
         or isinstance(snapshot.get("workspaceRevision"), bool)
         or not isinstance(snapshot.get("workspaceRevision"), int)
         or snapshot["workspaceRevision"] < 1
-        or (
-            snapshot.get("schemaVersion") == SNAPSHOT_SCHEMA_VERSION
-            and not validate_qor_snapshot_extension(snapshot.get("qorSnapshotExtension"))
-        )
+        or "qorAssessment" in snapshot
+        or not validate_qor_snapshot_extension(snapshot.get("qorSnapshotExtension"))
     ):
         raise EngineeringSnapshotError(f"invalid Engineering Snapshot: {path}")
     _validate_snapshot_sections(
@@ -464,7 +460,6 @@ def _validate_snapshot_sections(
         "parameters",
         "checklist",
         "analysis",
-        "qorAssessment",
         "signoffAssessment",
     ):
         if not isinstance(snapshot.get(key), dict):
@@ -476,6 +471,30 @@ def _validate_snapshot_sections(
     artifacts = snapshot.get("artifacts")
     if not isinstance(artifacts, list) or len(artifacts) > 4096:
         raise EngineeringSnapshotError("invalid Engineering Snapshot section: artifacts")
+    metrics = snapshot.get("metrics")
+    if not isinstance(metrics, list) or not all(
+        isinstance(metric, dict) and isinstance(metric.get("stepId"), str) and metric["stepId"]
+        for metric in metrics
+    ):
+        raise EngineeringSnapshotError("invalid Engineering Snapshot metrics")
+    metric_counts: dict[str, int] = {}
+    for metric in metrics:
+        metric_counts[metric["stepId"]] = metric_counts.get(metric["stepId"], 0) + 1
+    step_ids: set[str] = set()
+    for step in snapshot["analysis"].get("steps", []):
+        if not isinstance(step, dict) or not isinstance(step.get("stepId"), str):
+            raise EngineeringSnapshotError("invalid Engineering Snapshot analysis step")
+        if step["stepId"] in step_ids:
+            raise EngineeringSnapshotError("duplicate Engineering Snapshot analysis step")
+        step_ids.add(step["stepId"])
+        if type(step.get("metricCount")) is not int or step["metricCount"] < 0:
+            raise EngineeringSnapshotError("invalid Engineering Snapshot analysis metric count")
+        if step["metricCount"] != metric_counts.get(step["stepId"], 0):
+            raise EngineeringSnapshotError("invalid Engineering Snapshot analysis metric count")
+        if not isinstance(step.get("summaryStatus"), str) or not step["summaryStatus"]:
+            raise EngineeringSnapshotError("invalid Engineering Snapshot analysis summary status")
+    if any(metric["stepId"] not in step_ids for metric in metrics):
+        raise EngineeringSnapshotError("orphan Engineering Snapshot metric")
     workspace_root = workspace_root.resolve()
     metadata_id = _workspace_metadata_id(workspace_root)
     if metadata_id is not None and metadata_id != snapshot["workspaceId"]:

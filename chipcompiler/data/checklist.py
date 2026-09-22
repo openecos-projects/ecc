@@ -37,7 +37,7 @@ class Checklist:
 
     A checklist is replaced as a complete current-output snapshot.  The small
     add/update API remains for tool entry points, but always writes the V3
-    contract instead of preserving the removed V2 table model.
+    contract instead of preserving the removed legacy table model.
     """
 
     header = ["step", "category", "title", "owner", "policy", "state", "summary"]

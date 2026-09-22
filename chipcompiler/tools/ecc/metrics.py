@@ -24,28 +24,28 @@ QOR_METRIC_MAP = {
         "name": "synthesis_cell_area",
         "display_name": "Synthesis Cell Area",
         "unit": "um^2",
-        "dimension": "area_cost",
+        "dimension": "area",
         "polarity": "lower_is_better",
     },
     "Cell number": {
         "name": "synthesis_cell_count",
         "display_name": "Synthesis Cell Count",
         "unit": "count",
-        "dimension": "area_cost",
+        "dimension": "area",
         "polarity": "trend_only",
     },
     "Wire number": {
         "name": "synthesis_wire_count",
         "display_name": "Synthesis Wire Count",
         "unit": "count",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "trend_only",
     },
     "Port number": {
         "name": "synthesis_port_count",
         "display_name": "Synthesis Port Count",
         "unit": "count",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "trend_only",
     },
     # iSTA runs without VCD activity here: non-clock inputs use the default
@@ -55,7 +55,7 @@ QOR_METRIC_MAP = {
         "name": "synthesis_power_internal_uw",
         "display_name": "Synthesis Internal Power",
         "unit": "uW",
-        "dimension": "power_integrity",
+        "dimension": "power",
         "polarity": "trend_only",
         "confidence": "medium",
     },
@@ -63,7 +63,7 @@ QOR_METRIC_MAP = {
         "name": "synthesis_power_switching_uw",
         "display_name": "Synthesis Switching Power",
         "unit": "uW",
-        "dimension": "power_integrity",
+        "dimension": "power",
         "polarity": "trend_only",
         "confidence": "medium",
     },
@@ -71,7 +71,7 @@ QOR_METRIC_MAP = {
         "name": "synthesis_power_dynamic_uw",
         "display_name": "Synthesis Dynamic Power",
         "unit": "uW",
-        "dimension": "power_integrity",
+        "dimension": "power",
         "polarity": "trend_only",
         "confidence": "medium",
     },
@@ -79,7 +79,7 @@ QOR_METRIC_MAP = {
         "name": "synthesis_power_leakage_uw",
         "display_name": "Synthesis Leakage Power",
         "unit": "uW",
-        "dimension": "power_integrity",
+        "dimension": "power",
         "polarity": "trend_only",
         "confidence": "medium",
     },
@@ -87,245 +87,245 @@ QOR_METRIC_MAP = {
         "name": "die_area",
         "display_name": "Die Area",
         "unit": "um^2",
-        "dimension": "area_cost",
+        "dimension": "area",
         "polarity": "lower_is_better",
     },
     "Core area [μm^2]": {
         "name": "core_area",
         "display_name": "Core Area",
         "unit": "um^2",
-        "dimension": "area_cost",
+        "dimension": "area",
         "polarity": "lower_is_better",
     },
     "Die width [um]": {
         "name": "die_width",
         "display_name": "Die Width",
         "unit": "um",
-        "dimension": "area_cost",
+        "dimension": "area",
         "polarity": "trend_only",
     },
     "Die height [um]": {
         "name": "die_height",
         "display_name": "Die Height",
         "unit": "um",
-        "dimension": "area_cost",
+        "dimension": "area",
         "polarity": "trend_only",
     },
     "Die util": {
         "name": "die_utilization",
         "display_name": "Die Utilization",
         "unit": "ratio",
-        "dimension": "area_cost",
+        "dimension": "area",
         "polarity": "target_range",
     },
     "Core util": {
         "name": "core_utilization",
         "display_name": "Core Utilization",
         "unit": "ratio",
-        "dimension": "area_cost",
+        "dimension": "area",
         "polarity": "target_range",
     },
     "Total io pins": {
         "name": "io_pin_count",
         "display_name": "IO Pin Count",
         "unit": "count",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "trend_only",
     },
     "Total instances": {
         "name": "instance_count",
         "display_name": "Instance Count",
         "unit": "count",
-        "dimension": "area_cost",
+        "dimension": "area",
         "polarity": "trend_only",
     },
     "instance_area": {
         "name": "instance_area",
         "display_name": "Instance Area",
         "unit": "um^2",
-        "dimension": "area_cost",
+        "dimension": "area",
         "polarity": "trend_only",
     },
     "Total nets": {
         "name": "net_count",
         "display_name": "Net Count",
         "unit": "count",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "trend_only",
     },
     "macro_count": {
         "name": "macro_count",
         "display_name": "Macro Count",
         "unit": "count",
-        "dimension": "area_cost",
+        "dimension": "area",
         "polarity": "trend_only",
     },
     "macro_area": {
         "name": "macro_area",
         "display_name": "Macro Area",
         "unit": "um^2",
-        "dimension": "area_cost",
+        "dimension": "area",
         "polarity": "trend_only",
     },
     "std_cell_count": {
         "name": "std_cell_count",
         "display_name": "Standard Cell Count",
         "unit": "count",
-        "dimension": "area_cost",
+        "dimension": "area",
         "polarity": "trend_only",
     },
     "std_cell_area": {
         "name": "std_cell_area",
         "display_name": "Standard Cell Area",
         "unit": "um^2",
-        "dimension": "area_cost",
+        "dimension": "area",
         "polarity": "trend_only",
     },
     "clock_count": {
         "name": "clock_count",
         "display_name": "Clock Cell Count",
         "unit": "count",
-        "dimension": "area_cost",
+        "dimension": "area",
         "polarity": "trend_only",
     },
     "clock_area": {
         "name": "clock_area",
         "display_name": "Clock Cell Area",
         "unit": "um^2",
-        "dimension": "area_cost",
+        "dimension": "area",
         "polarity": "trend_only",
     },
     "io_pad_count": {
         "name": "io_pad_count",
         "display_name": "IO Pad Count",
         "unit": "count",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "trend_only",
     },
     "io_pad_area": {
         "name": "io_pad_area",
         "display_name": "IO Pad Area",
         "unit": "um^2",
-        "dimension": "area_cost",
+        "dimension": "area",
         "polarity": "trend_only",
     },
     "GP HPWL": {
         "name": "place_hpwl",
         "display_name": "Place HPWL",
         "unit": "um",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "lower_is_better",
     },
     "DP HPWL": {
         "name": "place_hpwl",
         "display_name": "Place HPWL",
         "unit": "um",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "lower_is_better",
     },
     "HPWL": {
         "name": "place_hpwl",
         "display_name": "Place HPWL",
         "unit": "um",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "lower_is_better",
     },
     "GRWL": {
         "name": "place_grwl",
         "display_name": "Place GRWL",
         "unit": "um",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "lower_is_better",
     },
     "FLUTE": {
         "name": "place_flute_wirelength",
         "display_name": "Place FLUTE Wirelength",
         "unit": "um",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "lower_is_better",
     },
     "place_congestion_egr_overflow_total": {
         "name": "place_congestion_egr_overflow_total",
         "display_name": "Place EGR Overflow Total",
         "unit": "count",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "lower_is_better",
     },
     "place_congestion_egr_overflow_max": {
         "name": "place_congestion_egr_overflow_max",
         "display_name": "Place EGR Overflow Max",
         "unit": "count",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "lower_is_better",
     },
     "place_rudy_utilization_max": {
         "name": "place_rudy_utilization_max",
         "display_name": "Place RUDY Utilization Max",
         "unit": "ratio",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "lower_is_better",
     },
     "place_lutrudy_utilization_max": {
         "name": "place_lutrudy_utilization_max",
         "display_name": "Place LUT-RUDY Utilization Max",
         "unit": "ratio",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "lower_is_better",
     },
     "buffer_num": {
         "name": "cts_buffer_count",
         "display_name": "CTS Buffer Count",
         "unit": "count",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "lower_is_better",
     },
     "buffer_area": {
         "name": "cts_buffer_area",
         "display_name": "CTS Buffer Area",
         "unit": "um^2",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "lower_is_better",
     },
     "clock_path_max_buffer": {
         "name": "clock_path_max_buffer",
         "display_name": "Clock Path Max Buffer",
         "unit": "count",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "lower_is_better",
     },
     "clock_path_min_buffer": {
         "name": "clock_path_min_buffer",
         "display_name": "Clock Path Min Buffer",
         "unit": "count",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "trend_only",
     },
     "total_clock_wirelength": {
         "name": "clock_wirelength",
         "display_name": "Clock Wirelength",
         "unit": "um",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "lower_is_better",
     },
     "max_clock_wirelength": {
         "name": "cts_clock_wirelength_max",
         "display_name": "CTS Max Clock Wirelength",
         "unit": "um",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "lower_is_better",
     },
     "max_level_of_clock_tree": {
         "name": "cts_clock_tree_max_level",
         "display_name": "CTS Clock Tree Max Level",
         "unit": "count",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "lower_is_better",
     },
     "cts_worst_optimized_skew_ns": {
         "name": "cts_worst_optimized_skew_ns",
         "display_name": "CTS Worst Optimized Skew Estimate",
         "unit": "ns",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "lower_is_better",
         "confidence": "medium",
     },
@@ -333,7 +333,7 @@ QOR_METRIC_MAP = {
         "name": "cts_worst_max_insertion_latency_ns",
         "display_name": "CTS Worst Max Insertion Latency Estimate",
         "unit": "ns",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "lower_is_better",
         "confidence": "medium",
     },
@@ -341,7 +341,7 @@ QOR_METRIC_MAP = {
         "name": "cts_skew_target_unmet_count",
         "display_name": "CTS Skew Target Unmet Count",
         "unit": "count",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "lower_is_better",
         "confidence": "medium",
     },
@@ -349,133 +349,133 @@ QOR_METRIC_MAP = {
         "name": "route_wirelength",
         "display_name": "Route Wirelength",
         "unit": "um",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "lower_is_better",
     },
     "num_via": {
         "name": "route_via_count",
         "display_name": "Route Via Count",
         "unit": "count",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "lower_is_better",
     },
     "drc_num": {
         "name": "drc_count",
         "display_name": "DRC Count",
         "unit": "count",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "lower_is_better",
     },
     "lvs_count": {
         "name": "lvs_count",
         "display_name": "LVS Violation Count",
         "unit": "count",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "lower_is_better",
     },
     "route_dr_total_violation_count": {
         "name": "route_dr_total_violation_count",
         "display_name": "Route DR Violations",
         "unit": "count",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "lower_is_better",
     },
     "route_dr_total_patch_count": {
         "name": "route_dr_total_patch_count",
         "display_name": "Route DR Patches",
         "unit": "count",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "lower_is_better",
     },
     "route_dr_total_wirelength": {
         "name": "route_dr_total_wirelength",
         "display_name": "Route DR Wirelength",
         "unit": "um",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "lower_is_better",
     },
     "route_dr_total_via_count": {
         "name": "route_dr_total_via_count",
         "display_name": "Route DR Via Count",
         "unit": "count",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "lower_is_better",
     },
     "route_la_total_overflow": {
         "name": "route_la_total_overflow",
         "display_name": "Route LA Overflow",
         "unit": "count",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "lower_is_better",
     },
     "route_la_total_demand": {
         "name": "route_la_total_demand",
         "display_name": "Route LA Demand",
         "unit": "count",
-        "dimension": "routability_physical",
+        "dimension": "interconnect",
         "polarity": "trend_only",
     },
     "rcx_spef_file_count": {
         "name": "rcx_spef_file_count",
         "display_name": "RCX SPEF File Count",
         "unit": "count",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "trend_only",
     },
     "rcx_expected_corner_count": {
         "name": "rcx_expected_corner_count",
         "display_name": "RCX Expected Corner Count",
         "unit": "count",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "trend_only",
     },
     "rcx_missing_corner_count": {
         "name": "rcx_missing_corner_count",
         "display_name": "RCX Missing Corner Count",
         "unit": "count",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "lower_is_better",
     },
     "rcx_spef_parse_failure_count": {
         "name": "rcx_spef_parse_failure_count",
         "display_name": "RCX SPEF Parse Failure Count",
         "unit": "count",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "lower_is_better",
     },
     "rcx_worst_total_capacitance_ff": {
         "name": "rcx_worst_total_capacitance_ff",
         "display_name": "RCX Worst Total Capacitance",
         "unit": "fF",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "lower_is_better",
     },
     "rcx_worst_coupling_capacitance_ff": {
         "name": "rcx_worst_coupling_capacitance_ff",
         "display_name": "RCX Worst Coupling Capacitance",
         "unit": "fF",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "lower_is_better",
     },
     "rcx_worst_total_resistance_ohm": {
         "name": "rcx_worst_total_resistance_ohm",
         "display_name": "RCX Worst Total Resistance",
         "unit": "ohm",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "lower_is_better",
     },
     "rcx_output_def_exists": {
         "name": "rcx_output_def_exists",
         "display_name": "RCX DEF Exists",
         "unit": "boolean",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "higher_is_better",
     },
     "rcx_output_gds_exists": {
         "name": "rcx_output_gds_exists",
         "display_name": "RCX GDS Exists",
         "unit": "boolean",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "higher_is_better",
     },
     "max_WNS": {
@@ -552,28 +552,28 @@ QOR_METRIC_MAP = {
         "name": "harden_gds_exists",
         "display_name": "Harden GDS Exists",
         "unit": "boolean",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "higher_is_better",
     },
     "harden_lef_exists": {
         "name": "harden_lef_exists",
         "display_name": "Harden LEF Exists",
         "unit": "boolean",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "higher_is_better",
     },
     "harden_lib_exists": {
         "name": "harden_lib_exists",
         "display_name": "Harden LIB Exists",
         "unit": "boolean",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "higher_is_better",
     },
     "harden_artifact_missing_count": {
         "name": "harden_artifact_missing_count",
         "display_name": "Harden Missing Artifact Count",
         "unit": "count",
-        "dimension": "clock_robustness_dfm",
+        "dimension": "robustness",
         "polarity": "lower_is_better",
     },
 }
@@ -1061,13 +1061,14 @@ def _sta_timing_issues_payload(
     expected_paths: list[tuple[str, Path]],
 ) -> dict:
     issues = []
+    paths = []
     source_files = []
     for artifact in timing_artifacts:
         source_file = _sta_timing_issue_source_file(step, artifact.path)
         source_files.append(source_file)
         for timing_path in artifact.paths:
             slack = _qor_number(timing_path.get("slack_ns"))
-            if slack is None or slack >= STA_TIMING_NEAR_FAIL_SLACK_NS:
+            if slack is None:
                 continue
             stages = [stage for stage in timing_path.get("stages", []) if isinstance(stage, dict)]
             dominant_stages = sorted(
@@ -1081,33 +1082,38 @@ def _sta_timing_issues_payload(
             path_id = timing_path["path_id"]
             launch_clock_delay = _qor_number(timing_path.get("launch_clock_network_delay_ns"))
             capture_clock_delay = _qor_number(timing_path.get("capture_clock_network_delay_ns"))
-            issues.append(
-                {
-                    "issue_id": f"sta_timing:{artifact.corner}:{analysis_type}:{path_id}",
-                    "severity": "critical" if slack < 0 else "warning",
-                    "corner": artifact.corner,
-                    "analysis_type": analysis_type,
-                    "path_group": timing_path["path_group"],
-                    "start_point": timing_path["start_point"],
-                    "end_point": timing_path["end_point"],
-                    "launch_clock": timing_path["launch_clock"],
-                    "capture_clock": timing_path["capture_clock"],
-                    "check_type": timing_path["check_type"],
-                    "slack_ns": slack,
-                    "arrival_ns": _qor_number(timing_path.get("arrival_ns")),
-                    "required_ns": _qor_number(timing_path.get("required_ns")),
-                    "cppr_ns": _qor_number(timing_path.get("cppr_ns")),
-                    "launch_clock_network_delay_ns": launch_clock_delay,
-                    "capture_clock_network_delay_ns": capture_clock_delay,
-                    "clock_network_delay_delta_ns": (
-                        capture_clock_delay - launch_clock_delay
-                        if launch_clock_delay is not None and capture_clock_delay is not None
-                        else None
-                    ),
-                    "source_file": source_file,
-                    "dominant_stages": dominant_stages,
-                }
-            )
+            path_summary = {
+                "issue_id": f"sta_timing:{artifact.corner}:{analysis_type}:{path_id}",
+                "corner": artifact.corner,
+                "analysis_type": analysis_type,
+                "path_group": timing_path["path_group"],
+                "start_point": timing_path["start_point"],
+                "end_point": timing_path["end_point"],
+                "launch_clock": timing_path["launch_clock"],
+                "capture_clock": timing_path["capture_clock"],
+                "check_type": timing_path["check_type"],
+                "slack_ns": slack,
+                "arrival_ns": _qor_number(timing_path.get("arrival_ns")),
+                "required_ns": _qor_number(timing_path.get("required_ns")),
+                "cppr_ns": _qor_number(timing_path.get("cppr_ns")),
+                "launch_clock_network_delay_ns": launch_clock_delay,
+                "capture_clock_network_delay_ns": capture_clock_delay,
+                "clock_network_delay_delta_ns": (
+                    capture_clock_delay - launch_clock_delay
+                    if launch_clock_delay is not None and capture_clock_delay is not None
+                    else None
+                ),
+                "source_file": source_file,
+                "dominant_stages": dominant_stages,
+            }
+            paths.append(path_summary)
+            if slack < STA_TIMING_NEAR_FAIL_SLACK_NS:
+                issues.append(
+                    {
+                        **path_summary,
+                        "severity": "critical" if slack < 0 else "warning",
+                    }
+                )
 
     loaded_corners = {artifact.corner for artifact in timing_artifacts}
     missing_corners = sorted(corner for corner, _ in expected_paths if corner not in loaded_corners)
@@ -1117,6 +1123,14 @@ def _sta_timing_issues_payload(
             issue["corner"],
             issue["analysis_type"],
             issue["issue_id"],
+        )
+    )
+    paths.sort(
+        key=lambda path: (
+            path["slack_ns"],
+            path["corner"],
+            path["analysis_type"],
+            path["issue_id"],
         )
     )
     return {
@@ -1129,6 +1143,8 @@ def _sta_timing_issues_payload(
         "artifact_paths": _sta_timing_artifact_paths_payload(step, timing_artifacts),
         "missing_corners": missing_corners,
         "issues": issues,
+        "worst_paths": paths[:5],
+        "best_paths": list(reversed(paths[-5:])),
     }
 
 
@@ -1840,7 +1856,7 @@ def _metric_analysis_group_and_rating(
     }
     group = f"{step.name.lower()}_metrics"
     if metric_id in {"runtime_seconds", "peak_memory_mb"}:
-        return "runtime", {"gate": False, "score": False, "trend": True}
+        return "execution", {"gate": False, "score": False, "trend": True}
     if step.name == StepEnum.RCX.value:
         if metric_id in {"rcx_output_def_exists", "rcx_output_gds_exists"}:
             return "rcx_output_artifacts", {
@@ -1977,13 +1993,13 @@ def _run_feature_qor_records(step: WorkspaceStep) -> list[dict]:
                 "display_name": display_name,
                 "value": value,
                 "unit": unit,
-                "category": "runtime",
+                "category": "execution",
                 "direction": "lower_is_better",
                 "scope": f"{step.name.lower()}_execution",
                 "corner": None,
                 "project_role": "trend",
                 "step_role": "secondary",
-                "analysis_group": "runtime",
+                "analysis_group": "execution",
                 "rating": {"gate": False, "score": False, "trend": True},
                 "confidence": "high",
                 "source": {
@@ -3380,7 +3396,7 @@ def _drc_rule_layer_hotspot_records(step: WorkspaceStep) -> list[dict]:
                 "display_name": f"{display_rule} · {raw_layer}",
                 "value": value,
                 "unit": "count",
-                "category": "clock_robustness_dfm",
+                "category": "robustness",
                 "source": {
                     "kind": "feature",
                     "path": source_file,
