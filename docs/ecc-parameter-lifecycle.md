@@ -1,9 +1,11 @@
-# Parameter Lifecycle
+# ECC Parameter Lifecycle
 
-How a parameter value travels from declaration to a running step, and what
-protects the persisted state along the way. For the command and file
-reference see the [CLI Config Reference](ecc-config-ref.en.md);
-this page is about semantics.
+This document is a maintainer- and integration-facing semantic contract for
+ECC workspace behavior. It explains how parameter values travel from
+declaration to a running step and how persisted state is protected. It is not
+a user command reference. For commands and file fields, see the
+[CLI Config Reference](../chipcompiler/docs/ecc-config-ref.en.md) and
+[CLI User Guide](../chipcompiler/docs/ecc-user-guide.en.md).
 
 ## Priority matrix
 

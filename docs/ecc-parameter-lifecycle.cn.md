@@ -1,8 +1,10 @@
-# 参数生命周期
+# ECC 参数生命周期
 
-参数值如何从声明流向运行中的步骤，以及沿途有哪些机制保护持久化
-状态。命令与文件字段参考见 [CLI 配置参考](ecc-config-ref.cn.md)；
-本页只讲语义。
+本文面向 ECC 维护者和集成方，是描述 workspace 行为的语义契约。本文
+说明参数值如何从声明流向运行中的步骤，以及沿途有哪些机制保护持久化
+状态。本文不是用户命令参考；命令和文件字段请参阅
+[CLI 配置参考](../chipcompiler/docs/ecc-config-ref.cn.md) 和
+[CLI 用户指南](../chipcompiler/docs/ecc-user-guide.cn.md)。
 
 ## 优先级矩阵
 
