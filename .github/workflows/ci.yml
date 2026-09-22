@@ -134,12 +134,18 @@ jobs:
           CHIPCOMPILER_ICS55_PDK_ROOT: ${{ github.workspace }}/../pdk/icsprout55-pdk
         run: |
           set -euo pipefail
+          # Use the workspace venv (Python >=3.11): system python3 in manylinux
+          # may lack tomllib and cannot import chipcompiler.
+          PY="${PYTHON:-$PWD/.venv/bin/python}"
+          ECC="${ECC:-$PWD/.venv/bin/ecc}"
+          test -x "$PY"
+          test -x "$ECC"
           rm -rf "$PROJECT"
           mkdir -p "$PROJECT/rtl" "$PROJECT/constraints"
           cp test/fixtures/gcd/gcd.v "$PROJECT/rtl/gcd.v"
-          python3 -c "from pathlib import Path; import os; p=Path(os.environ['PROJECT']); p.joinpath('ecc.toml').write_text('[design]\nname = \"gcd\"\ntop = \"gcd\"\nrtl = [\"rtl/gcd.v\"]\nclock_port = \"clk\"\nfrequency_mhz = 100.0\n\n[pdk]\nname = \"ics55\"\nroot = \"%s\"\n\n[flow]\npreset = \"rtl2gds\"\nskip_steps = [\"lec\"]\n' % os.environ['CHIPCOMPILER_ICS55_PDK_ROOT'])"
-          python3 test/rpc_check.py \
-            --ecc .venv/bin/ecc \
+          "$PY" -c "from pathlib import Path; import os; p=Path(os.environ['PROJECT']); p.joinpath('ecc.toml').write_text('[design]\nname = \"gcd\"\ntop = \"gcd\"\nrtl = [\"rtl/gcd.v\"]\nclock_port = \"clk\"\nfrequency_mhz = 100.0\n\n[pdk]\nname = \"ics55\"\nroot = \"%s\"\n\n[flow]\npreset = \"rtl2gds\"\nskip_steps = [\"lec\"]\n' % os.environ['CHIPCOMPILER_ICS55_PDK_ROOT'])"
+          "$PY" test/rpc_check.py \
+            --ecc "$ECC" \
             --project "$PROJECT" \
             --workspace default \
             --create \
