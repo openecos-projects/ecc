@@ -135,6 +135,33 @@ def test_params_toml_migration_registered_and_stamps_version_one(
     assert loaded.parameters.data["frequency_max"] == 250
 
 
+def test_preversioned_params_toml_is_stamped_without_reformatting(tmp_path):
+    workspace_dir = tmp_path / "workspace"
+    home = workspace_dir / "home"
+    home.mkdir(parents=True)
+    original_tail = b'# keep this comment\n[design]\nname = "gcd"\n[params]\ncustom = "value"\n'
+    config_path = home / "params.toml"
+    config_path.write_bytes(original_tail)
+
+    assert apply_schema_migrations(PARAMS_TOML, workspace_dir) == 1
+    content = config_path.read_bytes()
+    assert content == b"schema_version = 1\n" + original_tail
+    with open(config_path, "rb") as file:
+        assert tomllib.load(file)["params"]["custom"] == "value"
+
+
+def test_corrupt_preversioned_params_toml_is_left_untouched(tmp_path):
+    workspace_dir = tmp_path / "workspace"
+    home = workspace_dir / "home"
+    home.mkdir(parents=True)
+    config_path = home / "params.toml"
+    original = b"[design\nname = 'broken'\n"
+    config_path.write_bytes(original)
+
+    assert apply_schema_migrations(PARAMS_TOML, workspace_dir) == 1
+    assert config_path.read_bytes() == original
+
+
 def test_load_workspace_rejects_unsupported_params_toml_version(
     tmp_path, minimal_ics55_pdk_factory
 ):
