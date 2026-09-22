@@ -295,6 +295,18 @@ def test_macro_placement_engine_smoke_commits_candidates_as_fixed(mixed_macro_pl
     from chipcompiler.tools.ecc.module import ECCToolsModule
 
     ecc_py, place_db, tmp_path = mixed_macro_place_db
+    # Keep the smoke test focused on candidate macro writeback, not tiny-grid overflow.
+    ecc_module = ECCToolsModule()
+    assert ecc_module.place_instance(
+        "large_core",
+        80000,
+        0,
+        "N",
+        "LARGE_CORE",
+        placement_status="fixed",
+        create_if_missing=False,
+    )
+    assert ecc_module.clear_blockage("placement")
     input_nodes = {
         name: {
             "x": place_db.node_x[node_id],
@@ -319,8 +331,8 @@ def test_macro_placement_engine_smoke_commits_candidates_as_fixed(mixed_macro_pl
     params.routability_opt_flag = 0
     params.get_congestion_map = 0
     params.egr_padding_flag = 0
-    params.macro_halo_x = 1000
-    params.macro_halo_y = 1000
+    params.macro_halo_x = 10
+    params.macro_halo_y = 10
     params.macro_pin_halo_x = -1
     params.macro_pin_halo_y = -1
     params.cell_padding_x = 0
@@ -332,11 +344,13 @@ def test_macro_placement_engine_smoke_commits_candidates_as_fixed(mixed_macro_pl
     params.plot_flag = 0
     params.result_dir = str(tmp_path)
     params.base_design_name = "macro_status_test"
-    params.global_place_stages[0]["iteration"] = 5
+    params.global_place_stages[0]["num_bins_x"] = 4
+    params.global_place_stages[0]["num_bins_y"] = 4
+    params.global_place_stages[0]["iteration"] = 25
     params.stop_overflow = 1.0
 
     engine = PlacementEngine(params)
-    engine.setup_rawdb(ecc_module=ECCToolsModule())
+    engine.setup_rawdb(ecc_module=ecc_module)
     halo_setup = {}
     setup_placedb = engine.setup_placedb
 
