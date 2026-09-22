@@ -259,8 +259,23 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
             )
             snapshot_path = Path(session.workspace.directory) / "home" / "engineering-snapshot.json"
             if result["recovered"] and snapshot_path.is_file():
+                flow = session.workspace.flow
+                flow_data = getattr(flow, "data", {})
+                steps = (
+                    flow.steps()
+                    if callable(getattr(flow, "steps", None))
+                    else flow_data.get("steps", [])
+                    if isinstance(flow_data, dict)
+                    else []
+                )
                 result["workspaceRevision"] = self._commit_workspace_snapshot(
-                    session, "operation.recovered"
+                    session,
+                    "operation.recovered",
+                    dirty_steps=[
+                        str(step.get("name"))
+                        for step in steps
+                        if isinstance(step, dict) and step.get("name")
+                    ],
                 )
             return result
 
@@ -472,6 +487,9 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                     reset_revision = self._commit_rerun_snapshot(
                         session,
                         "flow.rerun_prepared",
+                        dirty_steps=[
+                            str(step.name) for step in affected_steps if getattr(step, "name", None)
+                        ],
                     )
                     self._notify_rerun_prepared(
                         observer,
@@ -494,6 +512,9 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                     reset_revision = self._commit_rerun_snapshot(
                         session,
                         "flow.rerun_prepared",
+                        dirty_steps=[
+                            str(step.name) for step in affected_steps if getattr(step, "name", None)
+                        ],
                     )
                     self._notify_rerun_prepared(
                         observer,
@@ -595,6 +616,9 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                     reset_revision = self._commit_rerun_snapshot(
                         session,
                         "flow.rerun_prepared",
+                        dirty_steps=[
+                            str(step.name) for step in affected_steps if getattr(step, "name", None)
+                        ],
                     )
                     self._notify_rerun_prepared(
                         observer,
@@ -1147,6 +1171,7 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                 workspace_revision = WorkspaceSpecRuntimeMixin._commit_workspace_snapshot(
                     session,
                     "layout.edit.save",
+                    changed_step=edit_session.step,
                 )
             edit_session.dirty = False
             result = _layout_edit_save_result(
@@ -1348,11 +1373,20 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
         ]
 
     @staticmethod
-    def _commit_rerun_snapshot(session: WorkspaceSession, cause: str) -> int | None:
+    def _commit_rerun_snapshot(
+        session: WorkspaceSession,
+        cause: str,
+        *,
+        dirty_steps: list[str] | None = None,
+    ) -> int | None:
         snapshot_path = Path(session.directory) / "home" / "engineering-snapshot.json"
         if not snapshot_path.is_file():
             return None
-        return WorkspaceSpecRuntimeMixin._commit_workspace_snapshot(session, cause)
+        return WorkspaceSpecRuntimeMixin._commit_workspace_snapshot(
+            session,
+            cause,
+            dirty_steps=dirty_steps or WorkspaceSpecRuntimeMixin._stale_step_ids(session.workspace),
+        )
 
     def _refresh_workspace_config(self, workspace) -> None:
         import chipcompiler.data as data_api

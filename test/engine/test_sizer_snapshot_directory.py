@@ -74,7 +74,7 @@ def test_snapshot_resolves_canonical_sizer_step_directory(tmp_path):
 
     step = snapshot["analysis"]["steps"][0]
     assert step["stepId"] == "Timing optimization"
-    assert step["metrics"]["data"]["metrics"] == [metric]
+    assert step["metrics"]["data"] is None
     assert step["subflow"]["status"] == "available"
     artifacts = {artifact["kind"]: artifact for artifact in snapshot["artifacts"]}
     assert artifacts["qor_metrics"]["reference"] == (

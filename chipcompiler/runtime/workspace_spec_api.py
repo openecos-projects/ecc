@@ -509,6 +509,7 @@ class WorkspaceSpecRuntimeMixin:
             return WorkspaceSpecRuntimeMixin._commit_workspace_snapshot(
                 session,
                 f"flow_step.{state_value}",
+                changed_step=str(getattr(workspace_step, "name", "")),
             )
         except RuntimeApiError as exc:
             raise RuntimeApiError(
@@ -521,7 +522,13 @@ class WorkspaceSpecRuntimeMixin:
             ) from exc
 
     @staticmethod
-    def _commit_workspace_snapshot(session: WorkspaceSession, cause: str) -> int:
+    def _commit_workspace_snapshot(
+        session: WorkspaceSession,
+        cause: str,
+        *,
+        changed_step: str | None = None,
+        dirty_steps: list[str] | None = None,
+    ) -> int:
         from chipcompiler.engine.snapshot import (
             EngineeringSnapshotError,
             commit_engineering_snapshot,
@@ -532,6 +539,8 @@ class WorkspaceSpecRuntimeMixin:
                 session.workspace,
                 workspace_id=session.workspace_id,
                 cause=cause,
+                changed_step=changed_step,
+                dirty_steps=dirty_steps,
             )
         except EngineeringSnapshotError as exc:
             raise RuntimeApiError("engineering_snapshot_commit_failed", str(exc)) from exc
