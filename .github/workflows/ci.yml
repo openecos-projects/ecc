@@ -128,6 +128,34 @@ jobs:
       - name: Pytest (agent)
         run: uv run --no-sync pytest agent/test -v --basetemp=pytest-agent-tmp
 
+      - name: RPC project smoke
+        env:
+          PROJECT: ${{ runner.temp }}/rpc-project-smoke
+          CHIPCOMPILER_ICS55_PDK_ROOT: ${{ github.workspace }}/../pdk/icsprout55-pdk
+        run: |
+          set -euo pipefail
+          # Use the workspace venv (Python >=3.11): system python3 in manylinux
+          # may lack tomllib and cannot import chipcompiler.
+          PY="${PYTHON:-$PWD/.venv/bin/python}"
+          ECC="${ECC:-$PWD/.venv/bin/ecc}"
+          test -x "$PY"
+          test -x "$ECC"
+          rm -rf "$PROJECT"
+          mkdir -p "$PROJECT/rtl" "$PROJECT/constraints"
+          cp test/fixtures/gcd/gcd.v "$PROJECT/rtl/gcd.v"
+          "$PY" -c "from pathlib import Path; import os; p=Path(os.environ['PROJECT']); p.joinpath('ecc.toml').write_text('[design]\nname = \"gcd\"\ntop = \"gcd\"\nrtl = [\"rtl/gcd.v\"]\nclock_port = \"clk\"\nfrequency_mhz = 100.0\n\n[pdk]\nname = \"ics55\"\nroot = \"%s\"\n\n[flow]\npreset = \"rtl2gds\"\nskip_steps = [\"lec\"]\n' % os.environ['CHIPCOMPILER_ICS55_PDK_ROOT'])"
+          "$PY" test/rpc_check.py \
+            --ecc "$ECC" \
+            --project "$PROJECT" \
+            --workspace default \
+            --create \
+            --run \
+            --pdk-root "$CHIPCOMPILER_ICS55_PDK_ROOT" \
+            --rtl "$PROJECT/rtl/gcd.v" \
+            --flow-start Synthesis \
+            --flow-end Synthesis \
+            --expect-status success
+
       - name: Prune test fixture symlinks before log upload
         if: failure()
         run: find pytest-tmp -type l -delete
