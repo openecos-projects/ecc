@@ -40,15 +40,26 @@ LEGACY_STEP_DIRECTORIES = {
     SkippableStepEnum.POST_ROUTE_LEC.value: "postRouteLec_yosys_lec",
 }
 
+# Directories of the dual cross-checking LEC engine. Like the legacy
+# single-engine directories, they resolve only through tool-aware lookup —
+# the name-keyed table alone cannot tell which engine a ledger recorded.
+DUAL_STEP_DIRECTORIES = {
+    SkippableStepEnum.LEC.value: "lec_dual",
+    SkippableStepEnum.POST_ROUTE_LEC.value: "postRouteLec_dual",
+}
+
 
 def step_directory_for_tool(step_name: str, tool: str | None) -> str:
     """Resolve a step directory for the engine the flow recorded.
 
     LEC steps own one directory per engine (yosys_lec historically,
-    kepler_formal today); every other step has a single directory.
+    kepler_formal today, lec_dual for cross-checking); every other step
+    has a single directory.
     """
     if tool == "yosys_lec" and step_name in LEGACY_STEP_DIRECTORIES:
         return LEGACY_STEP_DIRECTORIES[step_name]
+    if tool == "lec_dual" and step_name in DUAL_STEP_DIRECTORIES:
+        return DUAL_STEP_DIRECTORIES[step_name]
     return STEP_DIRECTORIES.get(step_name, f"{step_name}_{tool}")
 
 
@@ -58,7 +69,15 @@ def all_step_directories() -> list[str]:
     Directory scans (checklist aggregation, report extraction) iterate this so
     workspaces from either LEC-engine generation are covered.
     """
-    return list(dict.fromkeys([*STEP_DIRECTORIES.values(), *LEGACY_STEP_DIRECTORIES.values()]))
+    return list(
+        dict.fromkeys(
+            [
+                *STEP_DIRECTORIES.values(),
+                *LEGACY_STEP_DIRECTORIES.values(),
+                *DUAL_STEP_DIRECTORIES.values(),
+            ]
+        )
+    )
 
 
 def flow_step_directory(steps: list[dict] | None, step_name: str) -> str:

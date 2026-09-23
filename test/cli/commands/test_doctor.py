@@ -260,6 +260,52 @@ class TestRunPreflight:
             "sizer",
         )
 
+    def test_preflight_maps_lec_dual_to_the_composite_component(self):
+        from chipcompiler.cli.inspection import env_probe
+
+        steps = [("postRouteLec", "lec_dual", "Unstart")]
+        assert env_probe.probe_components_for_steps(steps) == ("lec-dual",)
+
+    def test_probe_lec_dual_reports_each_engine_separately(self, monkeypatch):
+        from chipcompiler.cli.inspection import env_probe
+        from chipcompiler.data import LECEngineEnum
+        from chipcompiler.tools.lec_dual import utility
+
+        availability = {
+            LECEngineEnum.YOSYS_LEC: (True, ""),
+            LECEngineEnum.KEPLER_FORMAL: (False, "kepler-formal not installed"),
+        }
+        monkeypatch.setattr(utility, "engine_availability", lambda engine: availability[engine])
+
+        result = env_probe.probe_lec_dual()
+
+        # Degraded: one engine missing still passes, with each engine's
+        # availability reported separately.
+        assert result.status == env_probe.PASS
+        assert "yosys_lec" in result.detail
+        assert "kepler_formal" in result.detail
+        assert "degraded" in result.detail
+
+    def test_probe_lec_dual_fails_only_when_both_engines_are_missing(self, monkeypatch):
+        from chipcompiler.cli.inspection import env_probe
+        from chipcompiler.data import LECEngineEnum
+        from chipcompiler.tools.lec_dual import utility
+
+        availability = {
+            LECEngineEnum.YOSYS_LEC: (False, "no yosys"),
+            LECEngineEnum.KEPLER_FORMAL: (False, "no kepler"),
+        }
+        monkeypatch.setattr(utility, "engine_availability", lambda engine: availability[engine])
+
+        result = env_probe.probe_lec_dual()
+        assert result.status == env_probe.FAIL
+        assert "no yosys" in result.remediation
+        assert "no kepler" in result.remediation
+
+        availability[LECEngineEnum.YOSYS_LEC] = (True, "")
+        result = env_probe.probe_lec_dual()
+        assert result.status == env_probe.PASS
+
     def test_preflight_resolves_components_from_filtered_steps(
         self, tmp_path, create_cli_project, monkeypatch
     ):

@@ -868,6 +868,63 @@ tool's stdout evidence (`No difference was found.`); upgrading kepler-formal
 requires rerunning the LEC integration tests, because the tool exits 0 even
 for an unequal design pair.
 
+### LEC Engine Selection (`lec_engine`)
+
+The `lec`/`postRouteLec` steps run one of three engines, selected by the
+`[flow] lec_engine` key (params.toml, or the GUI flow_config):
+
+```toml
+[flow]
+preset = "rtl2gds"
+lec_engine = "yosys_lec"   # kepler_formal (default) | yosys_lec | dual
+```
+
+An absent key keeps `kepler_formal`. The `dual` spelling is an alias for
+the `lec_dual` tool id; params.toml always stores the normalized
+`lec_dual` value. Engine identity is one ledger property: a workspace
+keeps the engine its ledger recorded, and editing `lec_engine` later never
+rewrites an existing ledger (reconcile classifies engines as
+interchangeable, so a yosys_lec ledger stays compatible with a
+kepler_formal target — the recorded engine keeps owning reruns). To
+actually switch an existing workspace, use the explicit engine switch
+(`switch_lec_engine` in `chipcompiler/runtime/workspace_api.py`): it
+rewrites the two LEC ledger tools, resets their state/subflow/checklist,
+and persists `lec_engine` — deliberately without clearing per-engine
+artifact directories, so prior-run evidence survives for A/B comparison.
+
+### Dual Cross-Checking (`lec_dual`)
+
+`lec_engine = "dual"` runs both physical engines concurrently inside the
+single LEC ledger step and merges their verdicts conservatively into
+`lec_dual/output/<design>_<step>_result.json`. The aggregate keeps the
+single-engine result contract (status, golden/gate paths and digests — so
+freshness checks and the signoff gate read it unchanged) and adds:
+
+- `engines`: per-engine status (plus the unavailable engine's reason in
+  degraded mode),
+- `agreement`: tri-state — `true`/`false` when both engines produced a
+  parseable verdict and their statuses match/differ, `null` when either
+  result is missing or unparseable.
+
+The aggregate is `proven` only when BOTH engines prove equivalence; any
+other outcome is `incomplete`. A disagreement usually means modeling
+differences, not a real bug: kepler-formal strips physical cells during
+netlist prep while yosys compares the raw netlists — start triage there.
+
+Dual is degraded-mode available: with one physical engine missing, the
+step still runs the available engine, records the missing one in
+`engines`, and reports `incomplete` + `agreement=null` — a degraded run
+never reports `proven`. Only when BOTH engines are missing does preflight
+(`ecc doctor` / `ecc run` preflight reports the `lec-dual` component with
+each engine's availability separately) fail the step before it starts.
+Both engines always run to completion (one engine's failure never kills
+the sibling — its verdict is the cross-check evidence), and prior result
+files are deleted before each run so a kill mid-run leaves no readable
+prior verdict. Dual holds both engines in memory at once; it is opt-in
+and never the default. Note: the aggregate JSON is written plainly (no
+temp-file rename) and carries no per-run identifier — both are deliberate
+deferrals, not contracts.
+
 
 ### Sizer
 
