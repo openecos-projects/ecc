@@ -442,7 +442,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                     source=lec_dir / "report" / "equiv_failed.v",
                     destination="final/reports/postRouteLec/report/equiv_failed.v",
                 )
-            from chipcompiler.tools.yosys_lec.utility import lec_result_status
+            from chipcompiler.tools.lec_result import lec_result_status
 
             lec_status = lec_result_status(
                 lec_result,
