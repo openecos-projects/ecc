@@ -1,10 +1,8 @@
-# ECC 参数生命周期
+# 参数生命周期
 
-本文面向 ECC 维护者和集成方，是描述 workspace 行为的语义契约。本文
-说明参数值如何从声明流向运行中的步骤，以及沿途有哪些机制保护持久化
-状态。本文不是用户命令参考；命令和文件字段请参阅
-[CLI 配置参考](../chipcompiler/docs/ecc-config-ref.cn.md) 和
-[CLI 用户指南](../chipcompiler/docs/ecc-user-guide.cn.md)。
+参数值如何从声明流向运行中的步骤，以及沿途有哪些机制保护持久化
+状态。命令与文件字段参考见 [CLI 配置参考](ecc-config-ref.cn.md)；
+本页只讲语义。
 
 ## 优先级矩阵
 
@@ -76,8 +74,8 @@ workspace 文件带有显式 schema 版本，来自更新版本的文件会响�
 应用。`params.toml` 或 `flow.json` 声明的版本高于支持范围时抛出
 `unsupported_schema_version`，错误信息带文件路径与版本号——绝不静默解析。
 `engineering-snapshot.json` 不符合支持的形态时则抛出
-`EngineeringSnapshotError`（`invalid Engineering Snapshot: <路径>`），
-不含版本号；旧快照不会隐式迁移；必须重建 workspace 生成 schema 5 契约。
+`EngineeringSnapshotError`（`invalid Engineering Snapshot: <路径>`）。
+旧快照不会隐式迁移；必须重建 workspace 生成 schema 5 契约。
 
 ## Engineering Snapshot 载荷边界
 
