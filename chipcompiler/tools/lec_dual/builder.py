@@ -4,9 +4,9 @@ from pathlib import Path
 from chipcompiler.data import (
     AnalysisPaths,
     ChecklistState,
-    KeplerFormalInput,
     LecDualStep,
     LECEngineEnum,
+    LecInput,
     LogPaths,
     OutputPaths,
     SubflowState,
@@ -59,7 +59,7 @@ def build_step(
         tool="lec_dual",
         version="0.1",
         directory=directory,
-        input=KeplerFormalInput(
+        input=LecInput(
             gate_verilog=gate_verilog,
             golden_verilog=golden_verilog,
             db=optional_path(input_db),

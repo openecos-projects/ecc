@@ -145,9 +145,19 @@ class YosysReport(StepReport):
 
 
 @dataclass
-class YosysLecInput(StepInput):
+class LecInput(StepInput):
+    """Golden/gate netlist inputs shared by every LEC engine step."""
+
     gate_verilog: Path | None = None
     golden_verilog: Path | None = None
+
+
+class YosysLecInput(LecInput):
+    """Yosys LEC step inputs (kept as the engine step's declared shape)."""
+
+
+class KeplerFormalInput(LecInput):
+    """kepler-formal step inputs (kept as the engine step's declared shape)."""
 
 
 @dataclass
@@ -161,12 +171,6 @@ class YosysLecReport(StepReport):
     equiv_status: Path | None = None
     failed_rtlil: Path | None = None
     failed_verilog: Path | None = None
-
-
-@dataclass
-class KeplerFormalInput(StepInput):
-    gate_verilog: Path | None = None
-    golden_verilog: Path | None = None
 
 
 @dataclass
@@ -314,7 +318,7 @@ class LecDualStep(WorkspaceStepBase):
     instead of trusting attached state across process boundaries.
     """
 
-    input: KeplerFormalInput = field(default_factory=KeplerFormalInput)
+    input: LecInput = field(default_factory=LecInput)
     engine_steps: dict = field(default_factory=dict, repr=False, compare=False)
 
 
