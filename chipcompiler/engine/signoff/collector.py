@@ -688,14 +688,31 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         }
         if require_lec:
             lec_payload = self._read_json(lec_result)
-            summary["lec"] = {
+            lec_summary = {
                 "status": lec_payload.get("status", ""),
                 "result": "final/reports/postRouteLec/result.json",
-                "equiv_status": "final/reports/postRouteLec/report/equiv_status.rpt",
-                "status_report": "final/reports/postRouteLec/report/run_lec_status.rpt",
                 "golden_verilog": lec_payload.get("golden_verilog", ""),
                 "gate_verilog": lec_payload.get("gate_verilog", ""),
             }
+            if lec_tool == "lec_dual":
+                # Dual packages evidence per engine; the summary must point
+                # at the paths that actually exist in the package.
+                from chipcompiler.data import LECEngineEnum
+
+                engines_root = "final/reports/postRouteLec/engines"
+                lec_summary["engines"] = {
+                    engine.value: {
+                        "result": f"{engines_root}/{engine.value}/result.json",
+                        "status_report": f"{engines_root}/{engine.value}/report/run_lec_status.rpt",
+                    }
+                    for engine in LECEngineEnum.DUAL.spawn_engines
+                }
+            else:
+                lec_summary["equiv_status"] = "final/reports/postRouteLec/report/equiv_status.rpt"
+                lec_summary["status_report"] = (
+                    "final/reports/postRouteLec/report/run_lec_status.rpt"
+                )
+            summary["lec"] = lec_summary
         if has_synthesis:
             summary["synthesis"] = {"verilog": f"synthesis/{design}.v.gz"}
         summary_path = package_dir / "summary.json"
