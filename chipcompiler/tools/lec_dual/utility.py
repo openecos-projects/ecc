@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from chipcompiler.data import LECEngineEnum
-from chipcompiler.utility import file_digest, json_read
+from chipcompiler.tools.lec_result import netlist_fields
+from chipcompiler.utility import json_read
 
 
 def engine_availability(engine: LECEngineEnum) -> tuple[bool, str]:
@@ -90,15 +91,6 @@ def read_engine_result(path: Path | str | None) -> dict | None:
     return data
 
 
-def _netlist_fields(path: Path | str | None) -> dict:
-    digest = file_digest(path)
-    return {
-        "path": str(path or ""),
-        "sha256": digest[0] if digest else "",
-        "size_bytes": digest[1] if digest else 0,
-    }
-
-
 def merge_outcomes(
     outcomes: list[EngineOutcome],
     *,
@@ -113,8 +105,8 @@ def merge_outcomes(
     match. The top-level digest fields keep the single-engine result
     contract so freshness checks and the signoff gate read it unchanged.
     """
-    golden = _netlist_fields(golden_verilog)
-    gate = _netlist_fields(gate_verilog)
+    golden = netlist_fields(golden_verilog)
+    gate = netlist_fields(gate_verilog)
     proven = bool(outcomes) and all(outcome.status == "proven" for outcome in outcomes)
     if any(outcome.result is None for outcome in outcomes):
         agreement = None

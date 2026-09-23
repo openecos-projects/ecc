@@ -7,7 +7,7 @@ from pathlib import Path
 from chipcompiler.data import KeplerFormalStep, StateEnum, Workspace
 from chipcompiler.tools.kepler_formal.subflow import KeplerFormalSubFlow
 from chipcompiler.tools.kepler_formal.utility import get_kepler_formal_runtime
-from chipcompiler.utility import file_digest
+from chipcompiler.tools.lec_result import netlist_fields
 
 # kepler-formal LEC exits 0 whether the designs are equivalent or not; the
 # verdict only appears in its stdout. Positive evidence is required for a
@@ -41,20 +41,11 @@ def _write_status_report(step: KeplerFormalStep, *, proven: bool, reason: str) -
     Path(step.report.status).write_text(message + "\n", encoding="utf-8")
 
 
-def _netlist_fields(path: Path | str | None) -> dict:
-    digest = file_digest(path)
-    return {
-        "path": str(path or ""),
-        "sha256": digest[0] if digest else "",
-        "size_bytes": digest[1] if digest else 0,
-    }
-
-
 def _write_result(step: KeplerFormalStep, *, proven: bool) -> None:
     if not step.output.json:
         return
-    golden = _netlist_fields(step.input.golden_verilog)
-    gate = _netlist_fields(step.input.gate_verilog)
+    golden = netlist_fields(step.input.golden_verilog)
+    gate = netlist_fields(step.input.gate_verilog)
     payload = {
         "status": "proven" if proven else "incomplete",
         "golden_verilog": golden["path"],

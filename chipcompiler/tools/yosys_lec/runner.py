@@ -5,9 +5,9 @@ import subprocess
 from pathlib import Path
 
 from chipcompiler.data import StateEnum, Workspace, YosysLecStep
+from chipcompiler.tools.lec_result import netlist_fields
 from chipcompiler.tools.yosys.utility import get_yosys_runtime
 from chipcompiler.tools.yosys_lec.subflow import YosysLecSubFlow
-from chipcompiler.utility import file_digest
 
 
 def _status_is_proven(path: Path | str | None) -> bool:
@@ -21,20 +21,11 @@ def _status_is_proven(path: Path | str | None) -> bool:
     )
 
 
-def _netlist_fields(path: Path | str | None) -> dict:
-    digest = file_digest(path)
-    return {
-        "path": str(path or ""),
-        "sha256": digest[0] if digest else "",
-        "size_bytes": digest[1] if digest else 0,
-    }
-
-
 def _write_result(step: YosysLecStep, *, proven: bool) -> None:
     if not step.output.json:
         return
-    golden = _netlist_fields(step.input.golden_verilog)
-    gate = _netlist_fields(step.input.gate_verilog)
+    golden = netlist_fields(step.input.golden_verilog)
+    gate = netlist_fields(step.input.gate_verilog)
     payload = {
         "status": "proven" if proven else "incomplete",
         "golden_verilog": golden["path"],
