@@ -927,6 +927,21 @@ def test_collect_signoff_package_dual_packages_aggregate_and_engine_evidence(tmp
 
     summary = json.loads((package_dir / "summary.json").read_text())
     assert summary["lec"]["status"] == "proven"
+    # The summary advertises only paths the dual branch actually packages:
+    # per-engine links, never the single-engine report leaves.
+    assert "equiv_status" not in summary["lec"]
+    assert "status_report" not in summary["lec"]
+    engines_root = "final/reports/postRouteLec/engines"
+    assert summary["lec"]["engines"] == {
+        "yosys_lec": {
+            "result": f"{engines_root}/yosys_lec/result.json",
+            "status_report": f"{engines_root}/yosys_lec/report/run_lec_status.rpt",
+        },
+        "kepler_formal": {
+            "result": f"{engines_root}/kepler_formal/result.json",
+            "status_report": f"{engines_root}/kepler_formal/report/run_lec_status.rpt",
+        },
+    }
     copied_roles = {entry["role"] for entry in result.copied}
     assert "lec.result" in copied_roles
     assert "lec.yosys_lec.result" in copied_roles
