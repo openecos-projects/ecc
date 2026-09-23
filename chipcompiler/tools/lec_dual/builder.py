@@ -13,17 +13,7 @@ from chipcompiler.data import (
     Workspace,
 )
 from chipcompiler.tools.lec_dual.engines import lec_engine_module
-
-
-def _derive_golden_path(gate_verilog: Path | str | None) -> Path | None:
-    if not gate_verilog:
-        return None
-    gate = Path(gate_verilog)
-    return gate.with_name(f"{gate.stem}_golden{gate.suffix or '.v'}")
-
-
-def _optional_path(path: Path | str | None) -> Path | None:
-    return Path(path) if path else None
+from chipcompiler.tools.lec_result import build_lec_step_space, derive_golden_path, optional_path
 
 
 def build_engine_steps(workspace: Workspace, step: LecDualStep) -> dict:
@@ -61,8 +51,8 @@ def build_step(
     """
     directory = Path(workspace.directory) / f"{step_name}_dual"
     output_dir = directory / "output"
-    gate_verilog = _optional_path(input_verilog)
-    golden_verilog = _optional_path(input_db) or _derive_golden_path(gate_verilog)
+    gate_verilog = optional_path(input_verilog)
+    golden_verilog = optional_path(input_db) or derive_golden_path(gate_verilog)
 
     step = LecDualStep(
         name=step_name,
@@ -72,7 +62,7 @@ def build_step(
         input=KeplerFormalInput(
             gate_verilog=gate_verilog,
             golden_verilog=golden_verilog,
-            db=_optional_path(input_db),
+            db=optional_path(input_db),
         ),
         output=OutputPaths(
             dir=output_dir,
@@ -91,11 +81,7 @@ def build_step(
 
 
 def build_step_space(step: LecDualStep) -> None:
-    step_directory = Path(step.directory)
-    step_directory.mkdir(parents=True, exist_ok=True)
-    Path(step.output.dir or step_directory / "output").mkdir(parents=True, exist_ok=True)
-    Path(step.log.dir or step_directory / "log").mkdir(parents=True, exist_ok=True)
-    Path(step.analysis.dir or step_directory / "analysis").mkdir(parents=True, exist_ok=True)
+    build_lec_step_space(step)
     for engine in LECEngineEnum.DUAL.spawn_engines:
         engine_step = step.engine_steps.get(engine.value)
         if engine_step is not None:

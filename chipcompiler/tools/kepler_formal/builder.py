@@ -16,17 +16,7 @@ from chipcompiler.data import (
     SubflowState,
     Workspace,
 )
-
-
-def _derive_golden_path(gate_verilog: Path | str | None) -> Path | None:
-    if not gate_verilog:
-        return None
-    gate = Path(gate_verilog)
-    return gate.with_name(f"{gate.stem}_golden{gate.suffix or '.v'}")
-
-
-def _optional_path(path: Path | str | None) -> Path | None:
-    return Path(path) if path else None
+from chipcompiler.tools.lec_result import build_lec_step_space, derive_golden_path, optional_path
 
 
 def build_step(
@@ -43,8 +33,8 @@ def build_step(
     output_dir = directory / "output"
     data_dir = directory / "data"
     report_dir = directory / "report"
-    gate_verilog = _optional_path(input_verilog)
-    golden_verilog = _optional_path(input_db) or _derive_golden_path(gate_verilog)
+    gate_verilog = optional_path(input_verilog)
+    golden_verilog = optional_path(input_db) or derive_golden_path(gate_verilog)
 
     return KeplerFormalStep(
         name=step_name,
@@ -54,7 +44,7 @@ def build_step(
         input=KeplerFormalInput(
             gate_verilog=gate_verilog,
             golden_verilog=golden_verilog,
-            db=_optional_path(input_db),
+            db=optional_path(input_db),
         ),
         output=OutputPaths(
             dir=output_dir,
@@ -85,14 +75,7 @@ def build_step(
 
 
 def build_step_space(step: KeplerFormalStep) -> None:
-    step_directory = Path(step.directory)
-    step_directory.mkdir(parents=True, exist_ok=True)
-    Path(step.output.dir or step_directory / "output").mkdir(parents=True, exist_ok=True)
-    Path(step.data.dir or step_directory / "data").mkdir(parents=True, exist_ok=True)
-    Path(step.report.dir or step_directory / "report").mkdir(parents=True, exist_ok=True)
-    Path(step.log.dir or step_directory / "log").mkdir(parents=True, exist_ok=True)
-    Path(step.script.dir or step_directory / "script").mkdir(parents=True, exist_ok=True)
-    Path(step.analysis.dir or step_directory / "analysis").mkdir(parents=True, exist_ok=True)
+    build_lec_step_space(step)
 
 
 def build_lec_config_yaml(
