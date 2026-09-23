@@ -4,6 +4,7 @@ from collections.abc import Callable, Collection
 from chipcompiler.data import (
     DEFAULT_LEC_ENGINE,
     DEFAULT_SKIP_STEPS,
+    LEC_STEP_TOOLS,
     LECEngineEnum,
     SkippableStepEnum,
     StateEnum,
@@ -68,6 +69,29 @@ def filter_flow_steps(steps: list, skip: Collection[str]) -> list:
         entry
         for entry in steps
         if (entry[0].value if isinstance(entry[0], StepBaseEnum) else str(entry[0])) not in excluded
+    ]
+
+
+def substitute_lec_engine(steps: list, lec_engine: LECEngineEnum = DEFAULT_LEC_ENGINE) -> list:
+    """Replace the tool of a built chain's LEC entries with the engine.
+
+    For callers that build a preset chain through the no-arg discovery
+    table (CLI run creation, preflight) and apply the configured engine
+    afterwards — the same rule the canonical builders apply at
+    construction time.
+    """
+    value = lec_engine_from_value(lec_engine).value
+    lec_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
+    return [
+        (
+            step,
+            value
+            if (step.value if isinstance(step, StepBaseEnum) else str(step)) in lec_names
+            and tool in LEC_STEP_TOOLS
+            else tool,
+            state,
+        )
+        for step, tool, state in steps
     ]
 
 

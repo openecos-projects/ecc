@@ -251,7 +251,9 @@ _TOOL_COMPONENTS = {
 }
 
 
-def probe_components_for_preset(preset: str, *, skip: tuple[str, ...] = ()) -> tuple[str, ...]:
+def probe_components_for_preset(
+    preset: str, *, skip: tuple[str, ...] = (), lec_engine=None
+) -> tuple[str, ...]:
     """Components a flow preset needs at minimum before it can start.
 
     The PDK is not probed here: `ecc run` already validates it through
@@ -260,8 +262,11 @@ def probe_components_for_preset(preset: str, *, skip: tuple[str, ...] = ()) -> t
     filtered out first, so their tools are never probed.
     """
     from chipcompiler import rtl2gds as rtl2gds_api
+    from chipcompiler.data import DEFAULT_LEC_ENGINE
 
-    steps = rtl2gds_api.filter_flow_steps(rtl2gds_api.get_flow_builders()[preset](), skip)
+    engine = DEFAULT_LEC_ENGINE if lec_engine is None else lec_engine
+    steps = rtl2gds_api.substitute_lec_engine(rtl2gds_api.get_flow_builders()[preset](), engine)
+    steps = rtl2gds_api.filter_flow_steps(steps, skip)
     return probe_components_for_steps(steps)
 
 
@@ -274,7 +279,7 @@ def probe_components_for_steps(steps) -> tuple[str, ...]:
     """
     tools = {tool for _step, tool, _state in steps}
     components = []
-    for component in ("ecc-tools", "yosys", "dreamplace", "sizer", "lec-dual"):
+    for component in ("ecc-tools", "yosys", "dreamplace", "sizer", "kepler-formal", "lec-dual"):
         if component in {_TOOL_COMPONENTS.get(tool) for tool in tools}:
             components.append(component)
     return tuple(components)

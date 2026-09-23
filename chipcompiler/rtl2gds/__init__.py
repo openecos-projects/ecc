@@ -8,6 +8,7 @@ from .builder import (
     normalize_flow_step,
     resolve_lec_engine,
     resolve_skip_steps,
+    substitute_lec_engine,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "normalize_flow_step",
     "resolve_lec_engine",
     "resolve_skip_steps",
+    "substitute_lec_engine",
 ]
