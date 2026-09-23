@@ -93,7 +93,7 @@ def test_lec_failure_blocks_export_for_both_lec_steps(monkeypatch, tmp_path):
     result = tmp_path / "lec-result.json"
     result.write_text("{}", encoding="utf-8")
     monkeypatch.setattr(
-        "chipcompiler.tools.yosys_lec.utility.lec_result_status",
+        "chipcompiler.tools.lec_result.lec_result_status",
         lambda *args, **kwargs: "incomplete",
     )
     workspace = Workspace(directory=tmp_path)

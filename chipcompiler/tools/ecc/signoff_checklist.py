@@ -461,7 +461,7 @@ def _lec_artifact_items(
     golden_verilog: Path | str | None,
     gate_verilog: Path | str | None,
 ) -> list[dict]:
-    from chipcompiler.tools.yosys_lec.utility import lec_result_status
+    from chipcompiler.tools.lec_result import lec_result_status
 
     status = lec_result_status(
         result_json,
@@ -644,19 +644,9 @@ def rebuild_home_checklist(
     flow = getattr(workspace, "flow", None)
     flow_steps = flow.steps() if flow is not None else None
     post_route_lec_dir = flow_step_directory(flow_steps, SkippableStepEnum.POST_ROUTE_LEC.value)
-    from chipcompiler.data import LEC_STEP_TOOLS
-    from chipcompiler.data.step import step_directory_for_tool
+    from chipcompiler.data.step import inactive_lec_step_directories
 
-    lec_step_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
-    ledger_names = {
-        str(step.get("name", "")) for step in flow_steps or [] if isinstance(step, dict)
-    }
-    active_lec_dirs = {
-        flow_step_directory(flow_steps, name) for name in lec_step_names & ledger_names
-    }
-    inactive_lec_dirs = {
-        step_directory_for_tool(name, tool) for name in lec_step_names for tool in LEC_STEP_TOOLS
-    } - active_lec_dirs
+    inactive_lec_dirs = inactive_lec_step_directories(flow_steps)
     for directory in all_step_directories():
         if directory == post_route_lec_dir or directory in inactive_lec_dirs:
             continue
