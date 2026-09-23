@@ -41,7 +41,7 @@ def test_sizer_success_legalize_failure_leaves_published_outputs_empty(tmp_path,
     monkeypatch.setattr(subprocess, "run", _fake_sizer_run(step))
     monkeypatch.setattr(sizer_runner, "legalize_layout", lambda *args, **kwargs: None)
 
-    assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
+    assert sizer_runner.run_step(workspace, step) is False
     states = _subflow_states(step)
     assert states["run sizer"] == StateEnum.Success.value
     assert states["run legalization"] == StateEnum.Imcomplete.value
@@ -81,7 +81,7 @@ def test_sizer_save_data_failure_deletes_partial_outputs(tmp_path, monkeypatch):
     monkeypatch.setattr(sizer_runner, "legalize_layout", lambda *args, **kwargs: legalize_module)
     monkeypatch.setattr(sizer_runner.ecc_runner, "save_data", fake_save)
 
-    assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
+    assert sizer_runner.run_step(workspace, step) is False
     assert _subflow_states(step)["save data"] == StateEnum.Imcomplete.value
     assert not Path(step.output.def_).exists()
     assert legalize_module.closed is True
@@ -119,7 +119,7 @@ def test_sizer_save_data_failure_deletes_feature_report_and_image(tmp_path, monk
     monkeypatch.setattr(sizer_runner, "legalize_layout", lambda *args, **kwargs: legalize_module)
     monkeypatch.setattr(sizer_runner.ecc_runner, "save_data", fake_save)
 
-    assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
+    assert sizer_runner.run_step(workspace, step) is False
     assert not Path(step.feature.db).exists()
     assert not Path(step.report.db).exists()
     assert not Path(step.output.image).exists()
@@ -235,7 +235,7 @@ def test_sizer_rerun_resets_previous_subflow_success(tmp_path, monkeypatch):
     monkeypatch.setattr(sizer_runner, "is_dreamplace_exist", lambda: True)
     monkeypatch.setattr(subprocess, "run", _fake_sizer_run(step))
 
-    assert sizer_runner.run_step(workspace, step) == StateEnum.Success
+    assert sizer_runner.run_step(workspace, step) is True
     assert _subflow_states(step)["run legalization"] == StateEnum.Success.value
     assert _subflow_states(step)["save data"] == StateEnum.Success.value
 
@@ -244,7 +244,7 @@ def test_sizer_rerun_resets_previous_subflow_success(tmp_path, monkeypatch):
         "run",
         lambda command, cwd, stdout, stderr, check: SimpleNamespace(returncode=0),
     )
-    assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
+    assert sizer_runner.run_step(workspace, step) is False
     states = _subflow_states(step)
     assert states["run sizer"] == StateEnum.Imcomplete.value
     assert states["run legalization"] == StateEnum.Unstart.value
@@ -287,7 +287,7 @@ def test_sizer_rerun_does_not_legalize_stale_staging_when_sizer_writes_nothing(
     )
     monkeypatch.setattr(sizer_runner, "legalize_layout", fake_legalize)
 
-    assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
+    assert sizer_runner.run_step(workspace, step) is False
     assert legalize_calls == []
     assert not sizer_builder.sizer_staging_def(step).exists()
     assert not sizer_builder.sizer_staging_verilog(step).exists()
@@ -323,7 +323,7 @@ def test_sizer_save_data_exception_deletes_partial_outputs(tmp_path, monkeypatch
     monkeypatch.setattr(sizer_runner, "legalize_layout", lambda *args, **kwargs: legalize_module)
     monkeypatch.setattr(sizer_runner.ecc_runner, "save_data", fake_save)
 
-    assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
+    assert sizer_runner.run_step(workspace, step) is False
     assert _subflow_states(step)["save data"] == StateEnum.Imcomplete.value
     assert not Path(step.output.def_).exists()
     assert legalize_module.closed is True
