@@ -88,6 +88,28 @@ def flow_step_directory(steps: list[dict] | None, step_name: str) -> str:
     return STEP_DIRECTORIES.get(step_name, step_name)
 
 
+def inactive_lec_step_directories(steps: list[dict] | None) -> frozenset:
+    """LEC step directories holding stale evidence for a flow ledger.
+
+    LEC steps own one directory per engine; after an engine switch the
+    previous engine's directory is preserved evidence, never current
+    state. Returns every engine's directory for lec/postRouteLec except
+    the one the ledger recorded (per step); when the ledger lacks a LEC
+    step, all of that step's engine directories count as inactive.
+    """
+    from chipcompiler.data.types import LEC_STEP_TOOLS
+
+    lec_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
+    ledger_names = {str(step.get("name", "")) for step in steps or [] if isinstance(step, dict)}
+    active = {flow_step_directory(steps, name) for name in lec_names & ledger_names}
+    return (
+        frozenset(
+            step_directory_for_tool(name, tool) for name in lec_names for tool in LEC_STEP_TOOLS
+        )
+        - active
+    )
+
+
 def step_storage_name(step_name: str, tool_name: str) -> str:
     """Directory stem for ``{stem}_{tool}`` workspace step folders.
 
