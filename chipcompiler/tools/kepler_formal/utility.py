@@ -3,7 +3,7 @@ import os
 import shutil
 from pathlib import Path
 
-from chipcompiler.tools.yosys_lec.utility import lec_result_is_proven, lec_result_status
+from chipcompiler.tools.lec_result import lec_result_is_proven, lec_result_status
 from chipcompiler.utility import file_digest  # noqa: F401 -- re-exported with the result contract
 
 __all__ = [

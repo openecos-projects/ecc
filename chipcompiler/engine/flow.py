@@ -296,7 +296,7 @@ class EngineFlow:
             SkippableStepEnum.LEC.value,
             SkippableStepEnum.POST_ROUTE_LEC.value,
         ):
-            from chipcompiler.tools.yosys_lec.utility import lec_result_is_proven
+            from chipcompiler.tools.lec_result import lec_result_is_proven
 
             step_input = workspace_step.input
             return lec_result_is_proven(
