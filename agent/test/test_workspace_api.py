@@ -625,13 +625,15 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
     def run_candidate_step(_flow, step, **_kwargs):
         if step.name == "place":
             report = {
-                "schema_version": "tool.parameter_runtime_report.v2",
-                "knob_id": "place.target_density",
-                "written_value": 0.6,
+                "schema_version": "tool.parameter_runtime_report.v3",
+                "parameter": {
+                    "knob_id": "place.target_density",
+                    "written": {"value": 0.6, "unit": "ratio"},
+                    "consumed": {"value": 0.6, "unit": "ratio", "source": "DREAMPlace.params.target_density"},
+                    "realized": None,
+                },
                 "tool": tool,
-                "status": "effective",
-                "actual_value": 0.6,
-                "reason": None,
+                "application": {"status": "applied", "relation": "exact", "reason": None},
                 "observation": {
                     "target_density": 0.6,
                     "density_tensor_value": 0.6,
@@ -639,7 +641,7 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
                     "utilization_floor": None,
                 },
             }
-            (candidate / "analysis" / "parameter_runtime_report.v2.json").write_text(
+            (candidate / "analysis" / "parameter_runtime_report.v3.json").write_text(
                 json.dumps(report), encoding="utf-8"
             )
             return
@@ -670,7 +672,7 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
     assert terminal["result"].get("evidenceError") is None, terminal["result"].get("evidenceError")
     assert "parameterApplicationReceipt" in terminal["result"], terminal
     application = terminal["result"]["parameterApplicationReceipt"]
-    assert application["status"] == "effective"
+    assert application["application"]["status"] == "applied"
     assert application["tool"] == tool
     assert application["context"]["tool_revision"] == tool["revision"]
     assert application["context"]["context_sha256"] == CONTEXT_SHA256
@@ -695,10 +697,10 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
         == terminal["result"]["candidateManifestSha256"]
     )
     assert terminal["result"]["parameterApplicationReceiptRef"] == (
-        ".agent/candidates/candidate-failed/analysis/parameter_application_receipt.v2.json"
+        ".agent/candidates/candidate-failed/analysis/parameter_application_receipt.v3.json"
     )
     assert terminal["result"]["parameterApplicationReceiptSha256"] == sha256_path(
-        candidate / "analysis" / "parameter_application_receipt.v2.json"
+        candidate / "analysis" / "parameter_application_receipt.v3.json"
     )
 
 
@@ -758,7 +760,7 @@ def test_candidate_rerun_removes_stale_top_level_parameter_receipts(monkeypatch,
     dreamplace = tmp_path / "config" / "dreamplace.json"
     dreamplace.parent.mkdir()
     dreamplace.write_text('{"random_seed": 3000}', encoding="utf-8")
-    for name in ("parameter_runtime_report.v2.json", "parameter_application_receipt.v2.json"):
+    for name in ("parameter_runtime_report.v3.json", "parameter_application_receipt.v3.json"):
         (analysis / name).write_text('{"stale": true}', encoding="utf-8")
     flow = SimpleNamespace(
         workspace=SimpleNamespace(
@@ -784,8 +786,8 @@ def test_candidate_rerun_removes_stale_top_level_parameter_receipts(monkeypatch,
         SimpleNamespace(directory=tmp_path, config={"dreamplace": dreamplace}), flow, request
     )
 
-    assert not (analysis / "parameter_runtime_report.v2.json").exists()
-    assert not (analysis / "parameter_application_receipt.v2.json").exists()
+    assert not (analysis / "parameter_runtime_report.v3.json").exists()
+    assert not (analysis / "parameter_application_receipt.v3.json").exists()
     assert json.loads(dreamplace.read_text(encoding="utf-8"))["random_seed"] == 17
 
 

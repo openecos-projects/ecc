@@ -658,8 +658,8 @@ def _candidate_workspace_receipt(
         ("floorplan_mode", FLOORPLAN_MODE_REF),
         ("candidate_materialization", "analysis/candidate_materialization.v1.json"),
         ("candidate_input_binding", "analysis/candidate_input_binding.v1.json"),
-        ("parameter_runtime_report", "analysis/parameter_runtime_report.v2.json"),
-        ("parameter_application_receipt", "analysis/parameter_application_receipt.v2.json"),
+        ("parameter_runtime_report", "analysis/parameter_runtime_report.v3.json"),
+        ("parameter_application_receipt", "analysis/parameter_application_receipt.v3.json"),
     ):
         artifact = candidate_root / relative
         if artifact.is_file() and not artifact.is_symlink():
@@ -761,9 +761,9 @@ def _candidate_rerun_result(
     }
     if parameter_receipt is not None:
         result["parameterApplicationReceipt"] = parameter_receipt
-        receipt_ref = f"{candidate_root_ref}/analysis/parameter_application_receipt.v2.json"
+        receipt_ref = f"{candidate_root_ref}/analysis/parameter_application_receipt.v3.json"
         receipt_sha256 = sha256_path(
-            Path(workspace.directory) / "analysis" / "parameter_application_receipt.v2.json"
+            Path(workspace.directory) / "analysis" / "parameter_application_receipt.v3.json"
         )
         if receipt_sha256 is None:
             raise RuntimeApiError("command_failed", "candidate application receipt is unavailable")
@@ -801,7 +801,7 @@ def _candidate_parameter_receipt(
     unit = _parameter_unit(knob_id)
     tool_name = "ECC-Floorplan" if knob_id.startswith("floorplan.") else "DREAMPlace"
     runtime_report_path = (
-        Path(workspace.directory) / "analysis" / "parameter_runtime_report.v2.json"
+        Path(workspace.directory) / "analysis" / "parameter_runtime_report.v3.json"
     )
     try:
         runtime_report = json.loads(runtime_report_path.read_text(encoding="utf-8"))
@@ -819,7 +819,7 @@ def _candidate_parameter_receipt(
     ):
         raise RuntimeApiError("command_failed", "candidate runtime report tool binding is invalid")
     tool = {key: runtime_tool[key] for key in ("name", "revision", "source_sha256")}
-    receipt_path = Path(workspace.directory) / "analysis" / "parameter_application_receipt.v2.json"
+    receipt_path = Path(workspace.directory) / "analysis" / "parameter_application_receipt.v3.json"
     if parent_flow_sha256 is None:
         raise RuntimeApiError("command_failed", "candidate parent flow fingerprint is unavailable")
     context = _parameter_receipt_context(workspace, request, parent_flow_sha256)
@@ -979,6 +979,8 @@ def _remove_stale_parameter_receipts(workspace_root: Path) -> None:
     for name in (
         "parameter_runtime_report.v2.json",
         "parameter_application_receipt.v2.json",
+        "parameter_runtime_report.v3.json",
+        "parameter_application_receipt.v3.json",
         "candidate_materialization.v1.json",
     ):
         path = analysis / name
@@ -998,9 +1000,11 @@ def _validate_runtime_report_binding(
     knob_id = patch["knob_id"]
     written_patch = materialization["patch"][0]
     if (
-        runtime_report.get("schema_version") != "tool.parameter_runtime_report.v2"
-        or runtime_report.get("knob_id") != knob_id
-        or runtime_report.get("written_value") != written_patch.get("value")
+        runtime_report.get("schema_version") != "tool.parameter_runtime_report.v3"
+        or not isinstance(runtime_report.get("parameter"), dict)
+        or runtime_report["parameter"].get("knob_id") != knob_id
+        or not isinstance(runtime_report["parameter"].get("written"), dict)
+        or runtime_report["parameter"]["written"].get("value") != written_patch.get("value")
     ):
         raise RuntimeApiError("command_failed", "candidate runtime report binding is invalid")
 

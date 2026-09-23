@@ -13,7 +13,7 @@ from .candidate_artifacts import sha256_path, write_json_atomic
 from .observed_callable import ObservedCallable
 
 DREAMPLACE_OBSERVER_REVISION = "ecc.agent.dreamplace_parameter_observer.v3"
-RUNTIME_REPORT_REF = "analysis/parameter_runtime_report.v2.json"
+RUNTIME_REPORT_REF = "analysis/parameter_runtime_report.v3.json"
 DREAMPLACE_KNOBS = frozenset(
     {
         "place.target_density",
@@ -253,58 +253,77 @@ def _build_dreamplace_report(patch, engine, ppa, probe, *, engine_succeeded):
     knob_id = patch["knob_id"]
     params = getattr(engine, "params", None)
     ppa = ppa if isinstance(ppa, dict) else {}
-    actual = None
+    consumed = None
+    consumed_unit = _parameter_unit(knob_id)
+    consumed_source = None
+    realized = None
+    realized_unit = None
+    realized_source = None
     status = "unknown"
+    relation = "unknown"
     reason = "Required runtime observation is unavailable."
     if knob_id == "place.target_density":
         observation = {
             key: probe.get(key)
-            for key in (
-                "target_density",
-                "density_tensor_value",
-                "utilization_floor",
-            )
+            for key in ("target_density", "density_tensor_value", "utilization_floor")
         }
         observation["density_operator_call_count"] = probe.get("density_operator_call_count", 0)
-        value = observation["target_density"]
-        # The density tensor ramps adaptively toward the configured target, so
-        # its live value tracks placement progress, not the parameter state.
-        if observation["density_operator_call_count"] > 0 and value is not None:
-            actual, status, reason = value, "effective", None
+        consumed = observation["target_density"]
+        consumed_source = "DREAMPlace.params.target_density"
+        if probe.get("density_operator_call_count", 0) > 0 and consumed is not None:
+            status = "applied"
+            if _same_value(consumed, patch["value"]):
+                relation = "exact"
+                reason = None
+            elif _same_value(consumed, observation.get("utilization_floor")):
+                relation = "floored"
+                reason = None
+            else:
+                relation = "transformed"
+                reason = None
     elif knob_id == "place.target_overflow":
         threshold = _scalar_value(getattr(params, "stop_overflow", None))
         final = _scalar_value(ppa.get("overflow"))
-        # DREAMPlace uses -1 when no global-placement overflow was measured.
         if final is not None and final < 0:
             final = None
         observation = {"stop_overflow": threshold, "final_overflow": final}
+        consumed = threshold
+        consumed_source = "DREAMPlace.params.stop_overflow"
+        if final is not None:
+            realized = final
+            realized_unit = "ratio"
+            realized_source = "DREAMPlace.final_overflow"
         if threshold is not None and final is not None:
             if final < threshold:
-                actual, status, reason = threshold, "effective", None
+                status, relation, reason = "applied", "exact", None
             else:
-                status, reason = "inactive", "Final overflow did not fall below the threshold."
+                status, relation = "inactive", "exact"
+                reason = "Final overflow did not fall below the threshold."
     elif knob_id == "place.cell_padding_x":
         padding = probe.get("cell_padding", {})
         observation = {
             "padding_sites": padding.get("padding_sites"),
             "geometry_apply_count": padding.get("geometry_apply_count", 0),
         }
-        if observation["padding_sites"] is not None and observation["geometry_apply_count"] > 0:
-            actual = observation["padding_sites"]
-            if actual == 0 and patch["value"] > 0:
-                status, reason = "inactive", "The requested positive padding was reduced to zero."
-            else:
-                status, reason = "effective", None
+        consumed = padding.get("padding_sites")
+        consumed_unit = "site"
+        consumed_source = "DREAMPlace.placedb.cell_padding_x"
+        if consumed is not None and observation["geometry_apply_count"] > 0:
+            status = "inactive" if consumed == 0 and patch["value"] > 0 else "applied"
+            relation = "converted"
+            reason = (
+                "The requested positive padding was reduced to zero."
+                if status == "inactive" else None
+            )
     elif knob_id == "place.density_weight":
         observation = {
             "configured_density_weight": probe.get("configured_density_weight"),
             "initialization_count": probe.get("initialization_count", 0),
         }
-        if (
-            observation["configured_density_weight"] is not None
-            and observation["initialization_count"] > 0
-        ):
-            actual, status, reason = observation["configured_density_weight"], "effective", None
+        consumed = observation["configured_density_weight"]
+        consumed_source = "DREAMPlace.params.density_weight"
+        if consumed is not None and observation["initialization_count"] > 0:
+            status, relation, reason = "applied", ("exact" if _same_value(consumed, patch["value"]) else "quantized"), None
     else:
         configured = _scalar_value(getattr(params, "routability_opt_flag", None))
         configured = bool(configured) if configured in (0, 1) else None
@@ -314,31 +333,61 @@ def _build_dreamplace_report(patch, engine, ppa, probe, *, engine_succeeded):
             "placement_completed": probe.get("placement_completed", False),
             "place_object_count": probe.get("place_object_count", 0),
         }
+        consumed = configured
+        consumed_unit = "boolean"
+        consumed_source = "DREAMPlace.params.routability_opt_flag"
         if configured is True and patch["value"] is True and observation["branch_round_count"] > 0:
-            actual, status, reason = True, "effective", None
+            status, relation, reason = "applied", "exact", None
         elif observation["placement_completed"] and observation["place_object_count"] > 0:
-            if (
-                configured is False
-                and patch["value"] is False
-                and observation["branch_round_count"] == 0
-            ):
-                actual, status, reason = False, "effective", None
+            if configured is False and patch["value"] is False and observation["branch_round_count"] == 0:
+                status, relation, reason = "applied", "exact", None
             elif configured is not None:
-                status, reason = "inactive", "The requested routability behavior did not occur."
+                status, relation = "inactive", "exact"
+                reason = "The requested routability behavior did not occur."
     return {
-        "schema_version": "tool.parameter_runtime_report.v2",
-        "knob_id": knob_id,
-        "written_value": patch["value"],
+        "schema_version": "tool.parameter_runtime_report.v3",
+        "parameter": {
+            "knob_id": knob_id,
+            "written": {"value": patch["value"], "unit": _written_unit(knob_id)},
+            "consumed": (
+                {"value": consumed, "unit": consumed_unit, "source": consumed_source}
+                if consumed is not None else None
+            ),
+            "realized": (
+                {"value": realized, "unit": realized_unit, "source": realized_source}
+                if realized is not None else None
+            ),
+        },
         "tool": {
             "name": "DREAMPlace",
             "revision": DREAMPLACE_OBSERVER_REVISION,
             "source_sha256": sha256_path(Path(__file__)),
         },
-        "actual_value": actual,
-        "status": status,
-        "reason": reason,
+        "application": {"status": status, "relation": relation, "reason": reason},
         "observation": observation,
     }
+
+
+def _parameter_unit(knob_id):
+    if knob_id.endswith("routability_opt"):
+        return "boolean"
+    if knob_id.endswith("cell_padding_x"):
+        return "site"
+    if knob_id.endswith("density_weight"):
+        return "objective_weight"
+    return "ratio"
+
+
+def _written_unit(knob_id):
+    return "dbu" if knob_id.endswith("cell_padding_x") else _parameter_unit(knob_id)
+
+
+def _same_value(left, right):
+    if type(left) is bool or type(right) is bool:
+        return type(left) is type(right) and left == right
+    return type(left) in {int, float} and type(right) in {int, float} and math.isclose(
+        left, right, rel_tol=1e-7, abs_tol=1e-12
+    )
 
 
 def _scalar_value(value):

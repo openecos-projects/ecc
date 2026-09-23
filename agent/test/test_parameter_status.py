@@ -8,7 +8,7 @@ from agent.data.parameter_runtime_observer import _build_dreamplace_report
 @pytest.mark.parametrize(
     "overflow,status,actual",
     [
-        (0.08, "effective", 0.1),
+        (0.08, "applied", 0.1),
         (0.1, "inactive", None),
         (0.3, "inactive", None),
         (None, "unknown", None),
@@ -23,4 +23,4 @@ def test_overflow_final_threshold(overflow, status, actual):
         {},
         engine_succeeded=True,
     )
-    assert (report["status"], report["actual_value"]) == (status, actual)
+    assert (report["application"]["status"], (report["parameter"]["consumed"] or {}).get("value")) == (status, actual)

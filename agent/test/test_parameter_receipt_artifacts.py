@@ -27,16 +27,22 @@ TOOL = {
 
 
 def _write_unknown_runtime_report(analysis: Path, *, knob_id: str, written_value: object) -> None:
-    (analysis / "parameter_runtime_report.v2.json").write_text(
+    (analysis / "parameter_runtime_report.v3.json").write_text(
         json.dumps(
             {
-                "knob_id": knob_id,
-                "written_value": written_value,
+                "parameter": {
+                    "knob_id": knob_id,
+                    "written": {"value": written_value, "unit": "ratio"},
+                    "consumed": None,
+                    "realized": None,
+                },
                 "tool": TOOL,
-                "schema_version": "tool.parameter_runtime_report.v2",
-                "status": "unknown",
-                "actual_value": None,
-                "reason": "Required runtime observation is unavailable.",
+                "schema_version": "tool.parameter_runtime_report.v3",
+                "application": {
+                    "status": "unknown",
+                    "relation": "unknown",
+                    "reason": "Required runtime observation is unavailable.",
+                },
                 "observation": {},
             }
         ),
@@ -118,7 +124,7 @@ def test_candidate_parameter_receipt_is_written_atomically(tmp_path: Path) -> No
         parent_flow_sha256=HASH,
     )
 
-    receipt_path = analysis / "parameter_application_receipt.v2.json"
+    receipt_path = analysis / "parameter_application_receipt.v3.json"
     assert receipt_path.is_file()
     assert json.loads(receipt_path.read_text(encoding="utf-8")) == receipt
     assert sha256_path(receipt_path) is not None
@@ -225,8 +231,9 @@ def test_cell_padding_receipt_preserves_surface_site_value(tmp_path: Path, monke
         materialization,
         parent_flow_sha256="sha256:" + "0" * 64,
     )
-    assert receipt["requested"] == {"knob_id": "place.cell_padding_x", "value": 1, "unit": "site"}
-    assert receipt["materialization"]["written_value"] == 200
+    assert receipt["parameter"]["requested"] == {"value": 1, "unit": "site"}
+    assert receipt["parameter"]["knob_id"] == "place.cell_padding_x"
+    assert receipt["parameter"]["written"] == {"value": 200, "unit": "dbu"}
     assert receipt["materialization"]["unit"] == "dbu"
 
 
@@ -274,16 +281,18 @@ def test_candidate_receipt_preserves_minimal_runtime_observation(
         "density_operator_call_count": 4,
         "utilization_floor": 0.8,
     }
-    (analysis / "parameter_runtime_report.v2.json").write_text(
+    (analysis / "parameter_runtime_report.v3.json").write_text(
         json.dumps(
             {
-                "schema_version": "tool.parameter_runtime_report.v2",
-                "knob_id": "place.target_density",
-                "written_value": 0.2,
+                "schema_version": "tool.parameter_runtime_report.v3",
+                "parameter": {
+                    "knob_id": "place.target_density",
+                    "written": {"value": 0.2, "unit": "ratio"},
+                    "consumed": {"value": 0.8, "unit": "ratio", "source": "DREAMPlace.params.target_density"},
+                    "realized": None,
+                },
                 "tool": TOOL,
-                "status": "effective",
-                "actual_value": 0.8,
-                "reason": None,
+                "application": {"status": "applied", "relation": "floored", "reason": None},
                 "observation": observation,
             }
         ),
@@ -307,9 +316,10 @@ def test_candidate_receipt_preserves_minimal_runtime_observation(
     )
 
     assert receipt["observation"] == observation
-    assert receipt["actual_value"] == 0.8
-    assert receipt["status"] == "effective"
-    assert receipt["schema_version"] == "tool.parameter_application_receipt.v2"
+    assert receipt["parameter"]["consumed"]["value"] == 0.8
+    assert receipt["application"]["status"] == "applied"
+    assert receipt["application"]["relation"] == "floored"
+    assert receipt["schema_version"] == "tool.parameter_application_receipt.v3"
 
 
 def test_candidate_parameter_receipt_rejects_runtime_report_for_another_knob(
@@ -422,10 +432,14 @@ def test_parameter_receipt_rejects_unbound_tool_metadata() -> None:
             requested={"knob_id": "place.target_density", "value": 0.85, "unit": "ratio"},
             materialization={},
             runtime_report={
-                "schema_version": "tool.parameter_runtime_report.v2",
-                "status": "unknown",
-                "actual_value": None,
-                "reason": "Not observed.",
+                "schema_version": "tool.parameter_runtime_report.v3",
+                "parameter": {
+                    "knob_id": "place.target_density",
+                    "written": {"value": 0.85, "unit": "ratio"},
+                    "consumed": None,
+                    "realized": None,
+                },
+                "application": {"status": "unknown", "relation": "unknown", "reason": "Not observed."},
                 "observation": {},
             },
         )

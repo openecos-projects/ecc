@@ -40,14 +40,14 @@ def test_density_floor_remains_effective_if_later_tool_operation_fails():
         },
         succeeded=False,
     )
-    assert (report["status"], report["actual_value"]) == ("effective", 0.65)
+    assert (report["application"]["status"], (report["parameter"]["consumed"] or {}).get("value")) == ("applied", 0.65)
     assert report["observation"]["utilization_floor"] == 0.65
-    assert report["schema_version"] == "tool.parameter_runtime_report.v2"
+    assert report["schema_version"] == "tool.parameter_runtime_report.v3"
 
 
 def test_configured_density_without_consumer_is_unknown():
     report = _report("place.target_density", 0.2, {"target_density": 0.65}, {})
-    assert (report["status"], report["actual_value"]) == ("unknown", None)
+    assert (report["application"]["status"], (report["parameter"]["consumed"] or {}).get("value")) == ("unknown", None)
 
 
 def test_adaptive_density_tensor_does_not_revoke_effectiveness():
@@ -62,7 +62,7 @@ def test_adaptive_density_tensor_does_not_revoke_effectiveness():
             "utilization_floor": 0.5196,
         },
     )
-    assert (report["status"], report["actual_value"]) == ("effective", 0.55)
+    assert (report["application"]["status"], (report["parameter"]["consumed"] or {}).get("value")) == ("applied", 0.55)
     assert report["observation"]["density_tensor_value"] == 0.709
 
 
@@ -81,14 +81,14 @@ def test_completed_placement_preserves_overflow_before_later_failure():
         recorder.probe,
         engine_succeeded=False,
     )
-    assert (report["status"], report["actual_value"]) == ("effective", 0.1)
+    assert (report["application"]["status"], (report["parameter"]["consumed"] or {}).get("value")) == ("applied", 0.1)
 
 
 @pytest.mark.parametrize(
     "requested,rounds,completed,status,actual",
     [
-        (False, 0, True, "effective", False),
-        (True, 1, False, "effective", True),
+        (False, 0, True, "applied", False),
+        (True, 1, False, "applied", True),
         (True, 0, True, "inactive", None),
         (True, 0, False, "unknown", None),
         (False, 0, False, "unknown", None),
@@ -106,7 +106,7 @@ def test_routability_disable_and_untriggered_enable(requested, rounds, completed
         },
         succeeded=completed,
     )
-    assert (report["status"], report["actual_value"]) == (status, actual)
+    assert (report["application"]["status"], (report["parameter"]["consumed"] or {}).get("value")) == (status, actual)
 
 
 def test_tool_disabled_flag_does_not_fulfill_enable_request():
@@ -120,14 +120,14 @@ def test_tool_disabled_flag_does_not_fulfill_enable_request():
             "placement_completed": True,
         },
     )
-    assert (report["status"], report["actual_value"]) == ("inactive", None)
+    assert (report["application"]["status"], (report["parameter"]["consumed"] or {}).get("value")) == ("inactive", None)
 
 
 @pytest.mark.parametrize(
     "written,sites,status",
     [
-        (400, 1, "effective"),
-        (0, 0, "effective"),
+        (400, 1, "applied"),
+        (0, 0, "applied"),
         (400, 0, "inactive"),
     ],
 )
@@ -138,8 +138,8 @@ def test_padding_uses_sites_and_distinguishes_deliberate_zero(written, sites, st
         {},
         {"cell_padding": {"padding_sites": sites, "geometry_apply_count": 1}},
     )
-    assert (report["status"], report["actual_value"]) == (status, sites)
-    assert report["written_value"] == written
+    assert (report["application"]["status"], (report["parameter"]["consumed"] or {}).get("value")) == (status, sites)
+    assert report["parameter"]["written"]["value"] == written
 
 
 def test_padding_capture_converts_before_database_scaling():
@@ -164,14 +164,14 @@ def test_density_weight_uses_coefficient_not_internal_tensor():
         _observe_native_model(model, recorder, stack)
         assert model.initialize_density_weight(params, None) == [0.004, 0.005]
     report = _report("place.density_weight", 0.001, {}, recorder.probe, succeeded=False)
-    assert (report["status"], report["actual_value"]) == ("effective", 0.001)
+    assert (report["application"]["status"], (report["parameter"]["consumed"] or {}).get("value")) == ("applied", 0.001)
     assert report["observation"] == {"configured_density_weight": 0.001, "initialization_count": 1}
 
 
 @pytest.mark.parametrize(
     "knob,value", [("floorplan.core_util", 0.8), ("floorplan.aspect_ratio", 1.0)]
 )
-@pytest.mark.parametrize("mode,status", [("die_util", "effective"), ("die_size", "inactive")])
+@pytest.mark.parametrize("mode,status", [("die_util", "applied"), ("die_size", "inactive")])
 def test_floorplan_actual_is_input_not_geometry(tmp_path, knob, value, mode, status):
     config = tmp_path / "fp.json"
     config.write_text(
@@ -202,7 +202,7 @@ def test_floorplan_actual_is_input_not_geometry(tmp_path, knob, value, mode, sta
         feature,
         engine_succeeded=False,
     )
-    assert (report["status"], report["actual_value"]) == (
+    assert (report["application"]["status"], (report["parameter"]["consumed"] or {}).get("value")) == (
         status,
         value if mode == "die_util" else None,
     )

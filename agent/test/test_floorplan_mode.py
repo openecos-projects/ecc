@@ -292,9 +292,10 @@ def test_parameter_patch_survives_native_refresh_in_selected_mode(
             "run_fp_call_count": 1,
             "run_fp_completed": True,
             "config_path": str(workspace.config["Floorplan"]),
+            "input_configured_value": {"utilization": value, "aspect_ratio": value},
         },
         feature,
         engine_succeeded=True,
     )
-    assert report["status"] == ("effective" if mode == "die_util" else "inactive")
-    assert report["actual_value"] == (value if mode == "die_util" else None)
+    assert report["application"]["status"] == ("applied" if mode == "die_util" else "inactive")
+    assert (report["parameter"]["consumed"] or {}).get("value") == (value if mode == "die_util" else None)
