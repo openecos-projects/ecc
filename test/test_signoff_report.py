@@ -38,6 +38,17 @@ class TestParsers:
         assert canonicalize_stage_name("legalization_dreamplace") == "Legal"
         assert canonicalize_stage_name("custom_step") == "custom_step"
 
+    def test_canonicalize_stage_name_covers_every_lec_engine_directory(self):
+        for directory in (
+            "lec_yosys_lec",
+            "lec_kepler_formal",
+            "lec_dual",
+            "postRouteLec_yosys_lec",
+            "postRouteLec_kepler_formal",
+            "postRouteLec_dual",
+        ):
+            assert canonicalize_stage_name(directory) == "LEC"
+
     def test_parse_power_rpt(self):
         text = (
             "Global Operating Voltage = 1.08\n"
