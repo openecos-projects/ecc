@@ -111,7 +111,7 @@ def run_step(
     workspace: Workspace,
     step: EccStep,
     ecc_module: object | None = None,
-) -> StateEnum:
+) -> bool:
     del ecc_module
 
     sub_flow = SizerSubFlow(workspace=workspace, workspace_step=step)
@@ -125,12 +125,12 @@ def run_step(
     if not is_eda_exist() or not is_sizer_runtime_exist():
         logger.error("Sizer tools not available for step %s", step.name)
         sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Invalid)
-        return StateEnum.Invalid
+        return False
 
     if not is_dreamplace_exist():
         logger.error("DreamPlace tools not available for inner legalization of %s", step.name)
         sub_flow.update_step(step_name=run_legalization_step, state=StateEnum.Invalid)
-        return StateEnum.Invalid
+        return False
 
     env_path = step.script.sizer_env or ""
     cmd_path = step.script.sizer_cmd or ""
@@ -142,7 +142,7 @@ def run_step(
             cmd_path,
         )
         sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Invalid)
-        return StateEnum.Invalid
+        return False
 
     output_dir = step.data.workdir_for(step.name) or ""
     os.makedirs(output_dir, exist_ok=True)
@@ -170,7 +170,7 @@ def run_step(
             _first_fatal_log_line(log_path),
         )
         sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Imcomplete)
-        return StateEnum.Imcomplete
+        return False
 
     sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Success)
     sub_flow.update_step(step_name=run_legalization_step, state=StateEnum.Ongoing)
@@ -185,7 +185,7 @@ def run_step(
     try:
         if ecc is None:
             sub_flow.update_step(step_name=run_legalization_step, state=StateEnum.Imcomplete)
-            return StateEnum.Imcomplete
+            return False
 
         sub_flow.update_step(step_name=run_legalization_step, state=StateEnum.Success)
         sub_flow.update_step(step_name=save_data_step, state=StateEnum.Ongoing)
@@ -201,11 +201,11 @@ def run_step(
             saved = False
         if not saved:
             sub_flow.update_step(step_name=save_data_step, state=StateEnum.Imcomplete)
-            return StateEnum.Imcomplete
+            return False
 
         published = True
         sub_flow.update_step(step_name=save_data_step, state=StateEnum.Success)
-        return StateEnum.Success
+        return True
     finally:
         try:
             if not published:

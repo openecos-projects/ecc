@@ -140,7 +140,7 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w", encoding="utf-8") as file:
                 file.write("\n")
-        return StateEnum.Success
+        return True
 
     monkeypatch.setattr(engine_flow, "init_db_engine", fake_init_db_engine)
     monkeypatch.setattr(tools_api, "run_step", fake_tool_run)
@@ -192,7 +192,7 @@ def test_engine_flow_clears_cached_db_after_incomplete_sizer_step(tmp_path, monk
     engine_flow.workspace_steps = [sizer_step]
     monkeypatch.setattr(engine_flow, "engine_db", CloseableDb())
     monkeypatch.setattr(engine_flow, "init_db_engine", lambda: True)
-    monkeypatch.setattr(tools_api, "run_step", lambda **kwargs: StateEnum.Imcomplete)
+    monkeypatch.setattr(tools_api, "run_step", lambda **kwargs: False)
     monkeypatch.setattr(tools_api, "save_layout_image", lambda workspace, step: True)
     monkeypatch.setattr(flow_module, "log_flow", lambda workspace: None)
 

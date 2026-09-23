@@ -11,9 +11,9 @@ def load_eda_module(eda_tool: str, *, check_dependency: bool = True):
     """
 
     def check_module(eda_module):
-        functions = ["is_eda_exist", "build_step_space", "build_step_config", "run_step"]
+        from chipcompiler.tools.protocol import ToolModule
 
-        return all(hasattr(eda_module, func) for func in functions)
+        return isinstance(eda_module, ToolModule)
 
     import importlib
 
@@ -32,8 +32,9 @@ def load_eda_module(eda_tool: str, *, check_dependency: bool = True):
 
     # check eda tool exist
     if not check_module(eda_module):
-        functions = ["is_eda_exist", "build_step_space", "build_step_config", "run_step"]
-        missing = [f for f in functions if not hasattr(eda_module, f)]
+        from chipcompiler.tools.protocol import tool_module_functions
+
+        missing = [f for f in tool_module_functions() if not hasattr(eda_module, f)]
         logging.error("EDA tool '%s': module loaded but missing interface: %s", eda_tool, missing)
         return None
 
