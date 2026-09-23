@@ -435,6 +435,7 @@ STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup
 ### 10.2 ECOS Studio 的消费方式（硬切语义）
 
 - Studio **不重复计分**：评分/状态/门禁只认 `home/qor_report.json`（校验 `schema_version: 3` 与 `scoring_engine: "qor-v3"`）。
+- Engineering Snapshot 同样遵守：其 `qorAssessment` 节只承载数据（校验后的指标记录 + Success 步摘要），分数只经同一次 qor-v3 分析投影到 `qorSnapshotExtension`。旧 Snapshot 打分器（`engine/qor_scoring.py`）已删除。
 - **陈旧检测**：报告内 `flow_steps` 快照与当前 `home/flow.json` 不一致（如手改/重跑后报告未刷新）→ 视同无报告，一律 **NOT_RATED**——宁可缺分，不可错分。重跑任意一步即恢复。
 - 逐步指标明细、跨 workspace 指标对比、趋势与回归检测仍读各步 `qor_metrics.json`，仅作数据展示，不产生分数。
 
@@ -455,6 +456,7 @@ STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup
 1. **分数刻度与颜色语义变化**：旧 75 分（当时的"满分"）在新刻度下属 YELLOW；GREEN 线从 40 提到 90。对比历史趋势时注意刻度切换点。
 2. **存量 workspace 置空**：升级前完成、没有 `qor_report.json` 的 workspace 显示 NOT_RATED，**重跑任意一步（或整体重跑）即恢复评分**。
 3. 报告字段 `scoring_engine: "qor-v3"` 可用于程序化辨识新评分。
+4. **旧 Snapshot 计分路径已移除**：`engine/qor_scoring.py` 与旧 `qorAssessment.score` 已删除——Snapshot 消费方从 `qorSnapshotExtension` 读分数；`qorAssessment` 保留为纯数据的指标/步骤透传。
 
 ## 12. 常见问题
 

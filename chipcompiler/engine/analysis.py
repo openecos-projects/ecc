@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any, TypeGuard
 
 from chipcompiler.data.step import STEP_DIRECTORIES, step_storage_name
-from chipcompiler.engine.qor_scoring import DIMENSION_WEIGHTS
 from chipcompiler.engine.snapshot_limits import (
     ANALYSIS_FILE_INLINE_MAX_BYTES,
     ANALYSIS_INLINE_BUDGET_BYTES,
@@ -15,6 +14,16 @@ from chipcompiler.tools.ecc.sta_qor import STA_POWER_REPORT_FILENAME, STA_REPORT
 from chipcompiler.utility import JsonReadError, file_digest, json_read_strict
 
 _LEGACY_METRIC_CATEGORIES = {"power": "power_integrity"}
+METRIC_CATEGORIES = frozenset(
+    {
+        "timing",
+        "power_integrity",
+        "routability_physical",
+        "area_cost",
+        "clock_robustness_dfm",
+        "runtime",
+    }
+)
 
 _ANALYSIS_FILES = (
     ("metrics", "qor_metrics", "qor_metrics.json", 3),
@@ -334,7 +343,7 @@ def _canonical_metrics_payload(data: dict[str, Any]) -> dict[str, Any]:
             continue
         category = record.get("category")
         mapped = _LEGACY_METRIC_CATEGORIES.get(category, category)
-        if mapped != category and mapped in DIMENSION_WEIGHTS:
+        if mapped != category and mapped in METRIC_CATEGORIES:
             record = {**record, "category": mapped}
             changed = True
         updated.append(record)

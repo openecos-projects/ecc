@@ -1048,17 +1048,17 @@ the report extracts the current state by default (the engine API
 
 ### 12.2 qor — overall QoR score report
 
-Scores the current workspace with ECC's shared `qor_scoring` rules (the same table Studio Snapshot uses): every v3 `qor_metrics.json` metric is converted to 0-100 against fixed fail thresholds (slack metrics linearly, core_utilization against the [0.45, 0.70] target window, lower/higher_is_better proportionally), averaged per dimension, then combined with the dimension weights (Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1) into the overall score — **absent dimensions are not renormalized** (missing dimensions lower the score); 60 is the pass line. By default written to `<workspace>/signoff/<design>_qor_report.txt`:
+Scores the current workspace with ECC's qor-v3 engine (`chipcompiler.analysis.qor`, the single scorer — the Studio Snapshot renders the same engine via `qorSnapshotExtension`): per-step analysis artifacts are distilled into features and five quality dimensions (timing / interconnect / area / power / robustness, each 0-100 or null for unevaluable), combined with design-intent profile weights re-normalized over the evaluated dimensions. A PHYSICAL_FAIL feasibility vetoes the composite to 0; missing evidence yields NOT_RATED instead of a fabricated number. Status colors: GREEN ≥ 90 / YELLOW ≥ 75 / ORANGE ≥ 60 / RED below. By default written to `<workspace>/signoff/<design>_qor_report.txt`:
 
 ```console
 $ ecc report qor --project gcd --plain
 report=qor path=.../signoff/gcd_qor_report.txt bytes=1717 design=gcd \
-  overall_score=61.8 qor_status=Green gate_status=pass \
-  dimensions="[{'dimension': 'Timing', 'score': 75.0, 'weight': 0.35, 'metrics': 2}, ...]" \
+  overall_score=68.4 qor_status=ORANGE gate_status=PASS \
+  dimensions="[{'dimension': 'area', 'score': 44.0, 'state': 'FAIL', 'features': 1}, ...]" \
   view="cat .../gcd_qor_report.txt" status=written
 ```
 
-The report contains: the overall score and verdict (PASS/BELOW THRESHOLD/NOT RATED), the flow status color (Green/Yellow/Orange/Red/Blocked) and gate (DRC/LVS/RCX/STA step states), the area scoring step (the last successful step carrying area metrics), the dimension table, and the per-metric detail (corners scored independently).
+The report contains: the overall score and status color (GREEN/YELLOW/ORANGE/RED, FAIL on a physical feasibility veto, NOT_RATED when evidence is missing), the feasibility status with its seven signoff gates, the five dimension scores with per-feature detail, and the diagnoses with intervention hypotheses.
 
 ### 12.3 checklist — signoff checklist report
 

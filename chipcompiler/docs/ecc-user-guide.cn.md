@@ -998,17 +998,17 @@ PDK / Node         : ics55
 
 ### 12.2 qor — QoR 总体计分报告
 
-用 ECC 共用的 `qor_scoring` 规则给当前 workspace 打分（Studio Snapshot 也用这一套）：每条 v3 `qor_metrics.json` 指标按固定失败阈值折算 0-100 分（slack 类线性、core_utilization 目标区间 [0.45,0.70]、lower/higher_is_better 比例），维度内取平均，再按权重（Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1）加权出总分——**缺项维度不重归一化**（缺项会拉低总分）；60 分为通过线。默认写 `<workspace>/signoff/<design>_qor_report.txt`：
+用 ECC 的 qor-v3 引擎（`chipcompiler.analysis.qor`，唯一计分实现——Studio Snapshot 经 `qorSnapshotExtension` 渲染同一引擎）给当前 workspace 打分：各步 analysis 产物蒸馏为 feature 与五个质量维度（timing / interconnect / area / power / robustness，各 0-100 分，不可评估为 null），按设计意图 profile 权重在已评估维度上归一化合成总分。物理可行性 PHYSICAL_FAIL 一票否决总分为 0；证据不足时给 NOT_RATED 而非编造分数。状态色：GREEN ≥ 90 / YELLOW ≥ 75 / ORANGE ≥ 60 / 以下为 RED。默认写 `<workspace>/signoff/<design>_qor_report.txt`：
 
 ```console
 $ ecc report qor --project gcd --plain
 report=qor path=.../signoff/gcd_qor_report.txt bytes=1717 design=gcd \
-  overall_score=61.8 qor_status=Green gate_status=pass \
-  dimensions="[{'dimension': 'Timing', 'score': 75.0, 'weight': 0.35, 'metrics': 2}, ...]" \
+  overall_score=68.4 qor_status=ORANGE gate_status=PASS \
+  dimensions="[{'dimension': 'area', 'score': 44.0, 'state': 'FAIL', 'features': 1}, ...]" \
   view="cat .../gcd_qor_report.txt" status=written
 ```
 
-报告含：总分与判定（PASS/BELOW THRESHOLD/NOT RATED）、Flow 状态色（Green/Yellow/Orange/Red/Blocked）与 gate（DRC/LVS/RCX/STA 步骤状态）、Area 计分步（最后一个成功的 area 指标步）、维度表、逐指标明细分（corner 维度独立计分）。
+报告含：总分与状态色（GREEN/YELLOW/ORANGE/RED，物理可行性否决为 FAIL，证据不足为 NOT_RATED）、feasibility 状态及其七条签核门禁、五维分数与逐 feature 明细、诊断与干预假设。
 
 ### 12.3 checklist — 签核清单报告
 

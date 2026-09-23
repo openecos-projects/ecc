@@ -447,7 +447,7 @@ config_param(
 - **设计总结**：`ecc report summary` 调用 `chipcompiler.engine.signoff.generate_text_report`。其实现按职责分模块（`report.py` 编排 / `report_data.py` 数据契约 / `report_extract.py` 解析器+workspace 收集 / `report_sections.py` 分区抽取 / `report_timing.py` timing 链 / `report_text.py` 格式化），全部经包 `__init__` 对外暴露。新增报告分区时，在 `report_sections.py`（或 timing 链）增加 `_extract_<family>(q)`，并在 `report.py` 编排处注册。
 - `analysis/qor/`：QoR v3 唯一分析引擎，负责指标加载、feature/维度计算、feasibility gates、evidence、评分、diagnosis、intervention、有界报告 schema 和文本渲染。新的工程结论只能在这里实现，GUI/CLI 不得复制阈值或公式。
 - `engine/qor_report.py`：CLI `ecc report qor` facade，委托 `analysis.qor`，不拥有第二套评分实现。
-- `engine/qor_scoring.py` 与 `engine/qor.py`：仅为生产 Snapshot v2 兼容保留；ECC-only 阶段不要让 QoR v3 消费这条路径。
+- `engine/qor.py`：Snapshot `qorAssessment` 收集器——只做合法指标记录与 Success 步摘要的透传，不计分。分数只经 `analysis/qor/` 的 `qorSnapshotExtension` 进入 Snapshot（旧 `qor_scoring.py` 打分器已删除）。
 - `engine/signoff/report_checklist.py`：只读渲染 `home/checklist.json`（不合法时报 unavailable，绝不回写文件）。
 - CLI：`cli/commands/report.py` + `cli/command_handlers/report.py`；workspace 解析复用 `inspection/discovery.py`（`resolve_workspace_path` 是无副作用核心，`resolve_command_workspace` 是核心加 `load_workspace`；signoff、report 与只读的 status/log/config 共用）。
 

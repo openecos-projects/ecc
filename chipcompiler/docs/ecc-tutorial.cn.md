@@ -530,7 +530,7 @@ $ ecc report summary
 
 ### 5.4 QoR 总分：ecc report qor
 
-用 ECC 共用的 `qor_scoring` 规则打分（Studio Snapshot 也用这一套）：每条指标折算 0–100 分，按维度加权（Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1），60 分为通过线；缺项维度不重归一化（缺项会拉低总分）：
+用 ECC 的 qor-v3 引擎打分（唯一计分实现——Studio Snapshot 渲染同一引擎）：各步产物蒸馏为五个质量维度——timing / interconnect / area / power / robustness，各 0–100 分，不可评估为 null——按 profile 权重在已评估维度上归一化合成总分；状态色 GREEN ≥ 90 / YELLOW ≥ 75 / ORANGE ≥ 60 / 以下为 RED，物理可行性失败一票否决总分为 0，证据不足时给 NOT_RATED 而非编造分数：
 
 ```console
 $ ecc report qor
@@ -540,21 +540,22 @@ $ ecc report qor
   bytes: 9661
   view: cat default/signoff/gcd_qor_report.txt
   design: gcd
-  overall score: 58.1
-  qor status: Green
-  gate status: pass
-  dimensions: [{'dimension': 'Timing', 'score': 100.0, 'weight': 0.35, 'metrics': 7},
-               {'dimension': 'Routability / Physical', 'score': 56.8, 'weight': 0.2, 'metrics': 14},
-               {'dimension': 'Area', 'score': 44.0, 'weight': 0.1, 'metrics': 3},
-               {'dimension': 'Clock / DFM', 'score': 73.5, 'weight': 0.1, 'metrics': 8}]
+  overall score: 68.4
+  qor status: ORANGE
+  gate status: PASS
+  dimensions: [{'dimension': 'area', 'score': 44.0, 'state': 'FAIL', 'features': 1},
+               {'dimension': 'interconnect', 'score': 56.8, 'state': 'FAIL', 'features': 6},
+               {'dimension': 'power', 'score': None, 'state': 'UNKNOWN', 'features': 1},
+               {'dimension': 'robustness', 'score': 73.5, 'state': 'WATCH', 'features': 4},
+               {'dimension': 'timing', 'score': 100.0, 'state': 'PASS', 'features': 1}]
   status: written
 ```
 
 怎么读这个结果：
 
-- **Flow status: Green、gate: pass** 是核心结论——DRC/LVS/RCX/STA 四个质量门全部通过，时序维度满分，设计可签核交付；
-- 总分 58.1 略低于 60 通过线，主要因为小规模设计在 **Area / 绕线长度类绝对值指标**上天然吃亏（如 core 面积、时钟线长度按固定阈值折算），且 **Power 维度缺项**（本流程未含功耗分析步骤，该维度 0.25 权重直接落空）。这是 gcd 这类小设计的常见现象，不代表 flow 有问题；
-- 逐指标明细在报告文件的 `[ METRIC SCORES ]` 区。
+- **qor status: ORANGE、gate status: PASS** 是核心结论——全部可行性门禁（DRC/LVS/RCX/STA …）通过、时序维度满分，设计可签核、质量上仍有余量；
+- 总分 68.4 落在 60–75 的 ORANGE 区间，主要被 **area / interconnect** 维度拖住（小设计在膨胀率与密度类坐标上天然偏低）；**power 维度为 null** 是因为未申报功耗预算——null 维度会从权重中归一化剔除，不会按 0 分拉低总分。在 `home/params.toml` 里配置 `qor_power_budget_w` 并重跑即可启用；
+- 逐维度 feature 明细与诊断列表在报告文件中。
 
 ### 5.5 签核清单：ecc report checklist
 

@@ -531,7 +531,7 @@ Excerpts from this gcd run (full report: `cat` the file above):
 
 ### 5.4 QoR score: ecc report qor
 
-Scores the workspace with ECC's shared `qor_scoring` rules (the same table Studio Snapshot uses): each metric maps to 0–100, dimensions are weighted (Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1), 60 is the pass line; absent dimensions are not renormalized (absence drags the overall score down):
+Scores the workspace with ECC's qor-v3 engine (the single scorer — the Studio Snapshot renders the same engine): per-step artifacts are distilled into five quality dimensions — timing / interconnect / area / power / robustness, each 0–100 or null when unevaluable — combined with profile weights re-normalized over the evaluated dimensions; status colors are GREEN ≥ 90 / YELLOW ≥ 75 / ORANGE ≥ 60 / RED, a physical feasibility failure vetoes the composite to 0, and missing evidence yields NOT_RATED rather than a fabricated number:
 
 ```console
 $ ecc report qor
@@ -541,21 +541,22 @@ $ ecc report qor
   bytes: 9661
   view: cat default/signoff/gcd_qor_report.txt
   design: gcd
-  overall score: 58.1
-  qor status: Green
-  gate status: pass
-  dimensions: [{'dimension': 'Timing', 'score': 100.0, 'weight': 0.35, 'metrics': 7},
-               {'dimension': 'Routability / Physical', 'score': 56.8, 'weight': 0.2, 'metrics': 14},
-               {'dimension': 'Area', 'score': 44.0, 'weight': 0.1, 'metrics': 3},
-               {'dimension': 'Clock / DFM', 'score': 73.5, 'weight': 0.1, 'metrics': 8}]
+  overall score: 68.4
+  qor status: ORANGE
+  gate status: PASS
+  dimensions: [{'dimension': 'area', 'score': 44.0, 'state': 'FAIL', 'features': 1},
+               {'dimension': 'interconnect', 'score': 56.8, 'state': 'FAIL', 'features': 6},
+               {'dimension': 'power', 'score': None, 'state': 'UNKNOWN', 'features': 1},
+               {'dimension': 'robustness', 'score': 73.5, 'state': 'WATCH', 'features': 4},
+               {'dimension': 'timing', 'score': 100.0, 'state': 'PASS', 'features': 1}]
   status: written
 ```
 
 How to read this:
 
-- **Flow status: Green, gate: pass** is the key conclusion — all four quality gates (DRC/LVS/RCX/STA) passed and Timing scored full marks; the design is signoff-ready;
-- The overall 58.1 sits slightly below the 60 pass line, mostly because small designs lose out on **absolute Area / wirelength metrics** (core area and clock wirelength are scored against fixed thresholds) and because the **Power dimension is absent** (this flow has no power analysis step, so that 0.25 weight goes to waste). This is normal for a design the size of gcd, not a flow problem;
-- Per-metric details are in the `[ METRIC SCORES ]` section of the report file.
+- **qor status: ORANGE, gate status: PASS** is the key conclusion — all feasibility gates (DRC/LVS/RCX/STA …) passed and timing scored full marks; the design is signoff-feasible with quality headroom;
+- The composite 68.4 sits in the 60–75 ORANGE band, held back mostly by the **area / interconnect** dimensions (small designs score worse on inflation- and density-based coordinates); the **power dimension is null** because no power budget is declared — null dimensions are re-normalized out of the weights, not counted as zero. Declare `qor_power_budget_w` in `home/params.toml` and rerun to enable it;
+- Per-dimension feature detail and the diagnosis list are in the report file.
 
 ### 5.5 Signoff checklist: ecc report checklist
 
