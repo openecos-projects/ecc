@@ -191,6 +191,8 @@ class EccScript(ScriptPaths):
     # Sizer extras.
     sizer_env: Path | None = None
     sizer_cmd: Path | None = None
+    sizer_hold_env: Path | None = None
+    sizer_hold_cmd: Path | None = None
 
 
 @dataclass
