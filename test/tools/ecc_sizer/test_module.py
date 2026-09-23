@@ -57,6 +57,12 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     assert "-min_route_layer M2" in cmd_text
     assert "-max_route_layer M7" in cmd_text
 
+    # No MIN corner declared: the hold-pass scripts stay absent.
+    assert step.script.sizer_hold_env is not None
+    assert step.script.sizer_hold_cmd is not None
+    assert not step.script.sizer_hold_env.exists()
+    assert not step.script.sizer_hold_cmd.exists()
+
     with open(str(step.subflow.path), encoding="utf-8") as file:
         subflow = json.load(file)
     assert [item["name"] for item in subflow["steps"]] == [
@@ -99,10 +105,11 @@ def test_sizer_step_config_writes_ff_hold_pass_from_sta_contract(tmp_path, monke
     sizer_builder.build_step_space(step)
     sizer_builder.build_step_config(workspace, step)
 
-    hold_env = sizer_builder.sizer_hold_env(step)
-    hold_cmd = sizer_builder.sizer_hold_cmd(step)
-    assert hold_env.is_file()
-    assert hold_cmd.is_file()
+    assert sizer_builder.min_corner_libs(workspace) == [min_lib]
+    hold_env = step.script.sizer_hold_env
+    hold_cmd = step.script.sizer_hold_cmd
+    assert hold_env is not None and hold_env.is_file()
+    assert hold_cmd is not None and hold_cmd.is_file()
     assert f"-lib {min_lib}" in hold_env.read_text(encoding="utf-8")
     hold_cmd_text = hold_cmd.read_text(encoding="utf-8")
     assert "-hold_only" in hold_cmd_text
@@ -112,6 +119,29 @@ def test_sizer_step_config_writes_ff_hold_pass_from_sta_contract(tmp_path, monke
     assert (
         f"-verilog_out_path {sizer_builder.sizer_staging_verilog(step).resolve()}" in hold_cmd_text
     )
+
+
+def test_min_corner_libs_reads_sta_contract_verbatim(tmp_path):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    workspace = _workspace(tmp_path)
+    assert sizer_builder.min_corner_libs(workspace) == []
+
+    workspace.config[StepEnum.STA.value] = tmp_path / "sta_ecc.json"
+    workspace.config[StepEnum.STA.value].write_text(
+        json.dumps(
+            {
+                "liberty": [
+                    {"corner": "MAX", "path": ["ss.lib"]},
+                    {"corner": "MIN", "path": ["ff.lib", "/abs/ff2.lib"]},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    # Liberty paths pass through untouched; workspace configuration owns
+    # anchoring them under the PDK root.
+    assert sizer_builder.min_corner_libs(workspace) == [Path("ff.lib"), Path("/abs/ff2.lib")]
 
 
 def test_sizer_metrics_write_qor_files_from_db_summary(tmp_path):

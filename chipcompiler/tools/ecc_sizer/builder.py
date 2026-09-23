@@ -1,4 +1,5 @@
 import shutil
+from collections.abc import Sequence
 from pathlib import Path
 
 from chipcompiler.data import EccStep, StepEnum, Workspace, step_storage_name
@@ -92,6 +93,8 @@ def build_step(
     script_dir = step.script.dir or step_directory / "script"
     step.script.sizer_env = script_dir / f"{workspace.design.name}.env_file"
     step.script.sizer_cmd = script_dir / f"{workspace.design.name}.cmd_file"
+    step.script.sizer_hold_env = script_dir / SIZER_HOLD_ENV_NAME
+    step.script.sizer_hold_cmd = script_dir / SIZER_HOLD_CMD_NAME
     return step
 
 
@@ -137,7 +140,7 @@ def _sizer_env_template() -> Path | None:
     return submit_dir / "env_base_file"
 
 
-def _tech_text(workspace: Workspace, libs=None) -> str:
+def _tech_text(workspace: Workspace, libs: Sequence[Path] | None = None) -> str:
     sizer_root = find_sizer_root()
     from rosettakit import cmdfile
 
@@ -194,42 +197,18 @@ def sizer_setup_staging_verilog(step: EccStep) -> Path:
     return Path(workdir) / SIZER_SETUP_STAGING_VERILOG_NAME
 
 
-def sizer_hold_env(step: EccStep) -> Path:
-    script_dir = step.script.dir or Path(step.data.workdir_for(step.name) or ".") / "script"
-    return Path(script_dir) / SIZER_HOLD_ENV_NAME
+def min_corner_libs(workspace: Workspace) -> list[Path]:
+    """Return the MIN/FF Liberty set declared by the final STA contract.
 
-
-def sizer_hold_cmd(step: EccStep) -> Path:
-    script_dir = step.script.dir or Path(step.data.workdir_for(step.name) or ".") / "script"
-    return Path(script_dir) / SIZER_HOLD_CMD_NAME
-
-
-def _hold_corner_libs(workspace: Workspace) -> list[Path]:
-    """Return the MIN/FF Liberty set declared by the final STA contract."""
+    Paths are consumed verbatim: workspace configuration already anchors
+    sta_ecc.json liberty paths under the PDK root, the same contract every
+    other sta_ecc.json reader relies on.
+    """
     config_path = workspace.config.get(StepEnum.STA.value)
-    if not config_path or not Path(config_path).is_file():
-        return []
-    try:
-        sta_config = json_read(config_path)
-    except (OSError, ValueError, TypeError):
-        return []
-
+    sta_config = json_read(config_path) if config_path else {}
     for liberty in sta_config.get("liberty", []):
-        if str(liberty.get("corner", "")).upper() != "MIN":
-            continue
-        paths = []
-        config_dir = Path(config_path).parent
-        for raw_path in liberty.get("path", []):
-            path = Path(raw_path)
-            pdk_root = Path(workspace.pdk.root) if workspace.pdk.root else None
-            if not path.is_absolute():
-                path = (pdk_root or config_dir) / path
-            elif pdk_root and not path.exists():
-                pdk_path = pdk_root / str(path).lstrip("/")
-                if pdk_path.exists():
-                    path = pdk_path
-            paths.append(path)
-        return paths
+        if str(liberty.get("corner", "")).upper() == "MIN":
+            return [Path(raw_path) for raw_path in liberty.get("path", [])]
     return []
 
 
@@ -267,12 +246,12 @@ def _cmd_text(workspace: Workspace, step: EccStep) -> str:
     command.option("outputPath", ".")
     command.option(
         "def_out_path",
-        str(sizer_staging_def(step).resolve()),
+        sizer_staging_def(step).resolve(),
         value_type=cmdfile.ValueType.PATH,
     )
     command.option(
         "verilog_out_path",
-        str(sizer_staging_verilog(step).resolve()),
+        sizer_staging_verilog(step).resolve(),
         value_type=cmdfile.ValueType.PATH,
     )
     _append_route_layer_options(command, workspace)
@@ -299,12 +278,12 @@ def _hold_cmd_text(workspace: Workspace, step: EccStep) -> str:
     command.option("outputPath", ".")
     command.option(
         "def_out_path",
-        str(sizer_staging_def(step).resolve()),
+        sizer_staging_def(step).resolve(),
         value_type=cmdfile.ValueType.PATH,
     )
     command.option(
         "verilog_out_path",
-        str(sizer_staging_verilog(step).resolve()),
+        sizer_staging_verilog(step).resolve(),
         value_type=cmdfile.ValueType.PATH,
     )
     _append_route_layer_options(command, workspace)
@@ -312,22 +291,25 @@ def _hold_cmd_text(workspace: Workspace, step: EccStep) -> str:
     return command.build()
 
 
-def build_hold_config(workspace: Workspace, step: EccStep) -> bool:
-    """Generate the optional FF/MIN hold-only Sizer invocation."""
-    hold_libs = _hold_corner_libs(workspace)
-    env_path = sizer_hold_env(step)
-    cmd_path = sizer_hold_cmd(step)
-    if not hold_libs:
-        env_path.unlink(missing_ok=True)
-        cmd_path.unlink(missing_ok=True)
-        return False
+def build_hold_config(workspace: Workspace, step: EccStep, libs: Sequence[Path]) -> None:
+    """Write the FF/MIN hold-only Sizer scripts for *step*."""
+    env_path = step.script.sizer_hold_env
+    cmd_path = step.script.sizer_hold_cmd
+    if env_path is None or cmd_path is None:
+        raise ValueError("sizer step is missing script env/cmd paths")
 
     env_template = _sizer_env_template()
-    _copy_or_seed_template(env_template, env_path, "-num_vt 1\n")
-    _append_text(env_path, _tech_text(workspace, libs=hold_libs))
-    cmd_path.parent.mkdir(parents=True, exist_ok=True)
-    cmd_path.write_text(_hold_cmd_text(workspace, step), encoding="utf-8")
-    return True
+    _copy_or_seed_template(env_template, Path(env_path), "-num_vt 1\n")
+    _append_text(Path(env_path), _tech_text(workspace, libs=libs))
+    Path(cmd_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(cmd_path).write_text(_hold_cmd_text(workspace, step), encoding="utf-8")
+
+
+def clear_hold_config(step: EccStep) -> None:
+    """Remove stale hold-pass scripts when no MIN corner is declared."""
+    for path in (step.script.sizer_hold_env, step.script.sizer_hold_cmd):
+        if path is not None:
+            Path(path).unlink(missing_ok=True)
 
 
 def build_step_config(workspace: Workspace, step: EccStep) -> None:
@@ -344,7 +326,12 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
 
     _append_text(env_path, _tech_text(workspace))
     _append_text(cmd_path, _cmd_text(workspace, step))
-    build_hold_config(workspace, step)
+
+    hold_libs = min_corner_libs(workspace)
+    if hold_libs:
+        build_hold_config(workspace, step, hold_libs)
+    else:
+        clear_hold_config(step)
 
     build_sub_flow(workspace=workspace, workspace_step=step)
     build_checklist(workspace=workspace, workspace_step=step)

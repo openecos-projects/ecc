@@ -128,9 +128,9 @@ def test_sizer_runner_runs_ff_hold_pass_before_legalization(tmp_path, monkeypatc
     assert calls[1] == [
         "/fake/sizer",
         "-env",
-        str(sizer_builder.sizer_hold_env(step)),
+        str(step.script.sizer_hold_env),
         "-f",
-        str(sizer_builder.sizer_hold_cmd(step)),
+        str(step.script.sizer_hold_cmd),
     ]
     assert legalize_module.closed is True
 
