@@ -228,7 +228,7 @@ def test_switch_lec_engine_rewrites_ledger_and_persists_config(
     _mark_lec_steps(workspace_dir, "Success")
     loaded = load_workspace(str(workspace_dir))
 
-    from chipcompiler.runtime.workspace_api import switch_lec_engine
+    from chipcompiler.runtime.lec_engine_switch import switch_lec_engine
 
     switched = switch_lec_engine(loaded, "yosys_lec")
 
@@ -293,7 +293,7 @@ def test_switch_lec_engine_preserves_prior_engine_evidence(
     checklist_path.write_text(json.dumps({"checklist": [{"id": "stale"}]}))
 
     loaded = load_workspace(str(workspace_dir))
-    from chipcompiler.runtime.workspace_api import switch_lec_engine
+    from chipcompiler.runtime.lec_engine_switch import switch_lec_engine
 
     switch_lec_engine(loaded, "yosys_lec")
 
@@ -313,7 +313,7 @@ def test_switch_lec_engine_rejects_an_unknown_engine(
     )
     loaded = load_workspace(str(workspace_dir))
 
-    from chipcompiler.runtime.workspace_api import switch_lec_engine
+    from chipcompiler.runtime.lec_engine_switch import switch_lec_engine
 
     with pytest.raises(ValueError, match="unknown LEC engine"):
         switch_lec_engine(loaded, "bogus")
@@ -336,12 +336,12 @@ def test_switch_lec_engine_config_save_failure_leaves_ledger_untouched(
     _mark_lec_steps(workspace_dir, "Success")
     loaded = load_workspace(str(workspace_dir))
 
-    import chipcompiler.runtime.workspace_api as workspace_api
+    import chipcompiler.runtime.lec_engine_switch as lec_engine_switch
 
-    monkeypatch.setattr(workspace_api, "_save_flow_parameters", lambda parameters: False)
+    monkeypatch.setattr(lec_engine_switch, "_save_flow_parameters", lambda parameters: False)
 
     with pytest.raises(Exception, match="lec_engine"):
-        workspace_api.switch_lec_engine(loaded, "yosys_lec")
+        lec_engine_switch.switch_lec_engine(loaded, "yosys_lec")
 
     # The ledger was never rewritten: tools and states are the pre-switch ones.
     flow_data = json_read(workspace_dir / "home" / "flow.json")
@@ -364,12 +364,12 @@ def test_switch_lec_engine_ledger_save_failure_rolls_the_config_back(
     loaded = load_workspace(str(workspace_dir))
 
     from chipcompiler.engine.flow import EngineFlow
-    from chipcompiler.runtime import workspace_api
+    from chipcompiler.runtime import lec_engine_switch
 
     monkeypatch.setattr(EngineFlow, "save", lambda self: False)
 
     with pytest.raises(Exception, match="flow ledger"):
-        workspace_api.switch_lec_engine(loaded, "yosys_lec")
+        lec_engine_switch.switch_lec_engine(loaded, "yosys_lec")
 
     # The config was rolled back to the pre-switch section...
     from chipcompiler.data.workspace_config import load_workspace_config
