@@ -67,10 +67,53 @@ class SkippableStepEnum(StepBaseEnum):
 DEFAULT_SKIP_STEPS: Final = (SkippableStepEnum.LEC.value,)
 
 
+class LECEngineEnum(Enum):
+    """Engines that can own the lec/postRouteLec steps.
+
+    DUAL is a composite: it runs both physical engines on the same inputs
+    and aggregates their verdicts.
+    """
+
+    YOSYS_LEC = "yosys_lec"
+    KEPLER_FORMAL = "kepler_formal"
+    DUAL = "lec_dual"
+
+    @property
+    def spawn_engines(self) -> tuple["LECEngineEnum", ...]:
+        """The physical engines to probe/launch (DUAL fans out)."""
+        if self is LECEngineEnum.DUAL:
+            return (LECEngineEnum.YOSYS_LEC, LECEngineEnum.KEPLER_FORMAL)
+        return (self,)
+
+
 # Tool identifiers that can own the lec/postRouteLec steps. Workspaces keep
 # the engine their ledger recorded, so every LEC-aware branch (input wiring,
 # result checks, DB skips) matches this set instead of one literal.
-LEC_STEP_TOOLS: Final = frozenset({"yosys_lec", "kepler_formal"})
+LEC_STEP_TOOLS: Final = frozenset(member.value for member in LECEngineEnum)
+
+DEFAULT_LEC_ENGINE: Final = LECEngineEnum.KEPLER_FORMAL
+
+
+def lec_engine_from_value(raw: object) -> LECEngineEnum:
+    """The LEC engine for a persisted/declared spelling.
+
+    Accepts every member value plus the ``dual`` alias (normalized to
+    ``lec_dual``); anything else raises ValueError listing the legal set.
+    Persisted and ledger strings always use the member value, never the
+    alias.
+    """
+    if isinstance(raw, LECEngineEnum):
+        return raw
+    token = str(raw or "").strip()
+    if token == "dual":
+        return LECEngineEnum.DUAL
+    try:
+        return LECEngineEnum(token)
+    except ValueError:
+        legal = ", ".join(sorted(member.value for member in LECEngineEnum))
+        raise ValueError(
+            f"unknown LEC engine: {raw!r}; available engines: {legal} (or the 'dual' alias)"
+        ) from None
 
 
 _STEP_ENUMS: tuple[type[StepBaseEnum], ...] = (StepEnum, SkippableStepEnum)

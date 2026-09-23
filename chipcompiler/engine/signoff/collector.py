@@ -427,9 +427,9 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                             "final/reports/postRouteLec/result.json",
                         ),
                         reason=(
-                            "Yosys LEC proof is stale; golden or gate netlist changed"
+                            "LEC proof is stale; golden or gate netlist changed"
                             if lec_status == "stale"
-                            else "Yosys LEC did not prove equivalence"
+                            else "LEC did not prove equivalence"
                         ),
                         required=True,
                         destination="final/reports/postRouteLec/result.json",

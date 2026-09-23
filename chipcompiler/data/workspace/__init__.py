@@ -996,13 +996,14 @@ def create_workspace(
         - input_filelist takes priority over origin_verilog for synthesis when both exist
         - All input files are copied to workspace/origin/ directory
     """
-    # The skip policy, the selected range, and the resulting ledger are
-    # fully resolved before anything on disk is touched: invalid
+    # The skip policy, the LEC engine, the selected range, and the resulting
+    # ledger are fully resolved before anything on disk is touched: invalid
     # configuration (including a preset target whose endpoint the policy
     # skips) is an error, never a partial workspace.
-    from chipcompiler.rtl2gds import resolve_skip_steps
+    from chipcompiler.rtl2gds import resolve_lec_engine, resolve_skip_steps
 
     resolve_skip_steps(flow_config)
+    resolve_lec_engine(flow_config)
     dynamic_flow_data = build_dynamic_flow_data(flow_config)
 
     # create workspace directory
@@ -1112,14 +1113,16 @@ def create_workspace(
             dynamic_flow_data["steps"][0]["info"]["spef"] = str(workspace.pdk.spef)
         if not json_write(workspace.flow.path, workspace.flow.data):
             raise OSError(f"Failed to write initial flow.json: {workspace.flow.path}")
-    elif isinstance(flow_config, dict) and "skip_steps" in flow_config:
+    elif isinstance(flow_config, dict) and (
+        "skip_steps" in flow_config or "lec_engine" in flow_config
+    ):
         # A policy-only flow config selects no steps (the preset or the
         # ledger-less rebuild owns the chain), but the declared policy must
         # still persist so later rebuilds resolve the same chain.
         from ..workspace_config import validate_flow_config
 
         workspace.parameters.data["_flow"] = validate_flow_config(
-            {"skip_steps": flow_config["skip_steps"]}
+            {key: flow_config[key] for key in ("skip_steps", "lec_engine") if key in flow_config}
         )
 
     if workspace.pdk.root:

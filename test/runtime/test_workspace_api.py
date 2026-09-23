@@ -223,7 +223,7 @@ def _install_runtime_mocks(monkeypatch, tmp_path, *, create_workspace_files=True
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
     monkeypatch.setattr(
         "chipcompiler.rtl2gds.build_rtl2gds_flow",
-        lambda *, skip=(): [("Synthesis", "yosys", "Unstart")],
+        lambda *, skip=(), lec_engine=None: [("Synthesis", "yosys", "Unstart")],
     )
 
     ws = tmp_path / "workspace"
@@ -242,7 +242,7 @@ def test_runtime_workspace_defaults_to_rtl2gds_flow(monkeypatch):
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
     monkeypatch.setattr(
         "chipcompiler.rtl2gds.build_rtl2gds_flow",
-        lambda *, skip: [("rtl2gds", "ecc", "Unstart")],
+        lambda *, skip, lec_engine=None: [("rtl2gds", "ecc", "Unstart")],
     )
 
     flow = build_flow_for_workspace(workspace)

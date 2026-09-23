@@ -2,15 +2,30 @@
 from collections.abc import Callable, Collection
 
 from chipcompiler.data import (
+    DEFAULT_LEC_ENGINE,
     DEFAULT_SKIP_STEPS,
+    LECEngineEnum,
     SkippableStepEnum,
     StateEnum,
     StepBaseEnum,
     StepEnum,
+    lec_engine_from_value,
 )
 
 # Step values a project is allowed to exclude from its ledger.
 SKIPPABLE_STEP_VALUES = frozenset(member.value for member in SkippableStepEnum)
+
+
+def resolve_lec_engine(flow_config: dict | None) -> LECEngineEnum:
+    """The LEC engine a flow config declares.
+
+    Presence-keyed like the skip policy: an absent ``lec_engine`` key yields
+    the code default; a declared value validates and normalizes through
+    :func:`lec_engine_from_value` (the ``dual`` alias becomes ``lec_dual``).
+    """
+    if not isinstance(flow_config, dict) or "lec_engine" not in flow_config:
+        return DEFAULT_LEC_ENGINE
+    return lec_engine_from_value(flow_config["lec_engine"])
 
 
 def resolve_skip_steps(flow_config: dict | None) -> tuple[str, ...]:
@@ -56,11 +71,14 @@ def filter_flow_steps(steps: list, skip: Collection[str]) -> list:
     ]
 
 
-def build_rtl2gds_flow(*, skip: Collection[str] = ()) -> list:
+def build_rtl2gds_flow(
+    *, skip: Collection[str] = (), lec_engine: LECEngineEnum = DEFAULT_LEC_ENGINE
+) -> list:
+    engine = lec_engine_from_value(lec_engine).value
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
-    steps.append((SkippableStepEnum.LEC, "kepler_formal", StateEnum.Unstart))
+    steps.append((SkippableStepEnum.LEC, engine, StateEnum.Unstart))
     steps.append((StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart))
@@ -73,7 +91,7 @@ def build_rtl2gds_flow(*, skip: Collection[str] = ()) -> list:
     steps.append((StepEnum.RCX, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.STA, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.LVS, "ecc", StateEnum.Unstart))
-    steps.append((SkippableStepEnum.POST_ROUTE_LEC, "kepler_formal", StateEnum.Unstart))
+    steps.append((SkippableStepEnum.POST_ROUTE_LEC, engine, StateEnum.Unstart))
     steps.append((StepEnum.DRC, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.HARDEN, "ecc", StateEnum.Unstart))
 
@@ -125,6 +143,7 @@ def build_flow_range(
     to_step: str | StepBaseEnum,
     *,
     skip: Collection[str] = (),
+    lec_engine: LECEngineEnum = DEFAULT_LEC_ENGINE,
 ) -> list:
     """Return the inclusive canonical RTL-to-GDS range requested by a workspace.
 
@@ -133,7 +152,7 @@ def build_flow_range(
     Skipped steps are excluded from the chain first, so a skipped step cannot
     serve as a range boundary (it is unknown in the filtered chain).
     """
-    steps = build_rtl2gds_flow(skip=skip)
+    steps = build_rtl2gds_flow(skip=skip, lec_engine=lec_engine)
     names = [
         step.value if isinstance(step, StepBaseEnum) else str(step) for step, _tool, _state in steps
     ]
@@ -159,11 +178,13 @@ def build_syn_sta_flow() -> list:
     return steps
 
 
-def build_synthesis_lec_flow() -> list:
+def build_synthesis_lec_flow(*, lec_engine: LECEngineEnum = DEFAULT_LEC_ENGINE) -> list:
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
-    steps.append((SkippableStepEnum.LEC, "kepler_formal", StateEnum.Unstart))
+    steps.append(
+        (SkippableStepEnum.LEC, lec_engine_from_value(lec_engine).value, StateEnum.Unstart)
+    )
 
     return steps
 
