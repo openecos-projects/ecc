@@ -54,7 +54,10 @@ def build_dynamic_flow_data(flow_config: dict | None) -> dict:
     import chipcompiler.rtl2gds as rtl2gds_api
 
     skip = rtl2gds_api.resolve_skip_steps(flow_config)
-    selected = rtl2gds_api.build_flow_range(selected_names[0], selected_names[-1], skip=skip)
+    lec_engine = rtl2gds_api.resolve_lec_engine(flow_config)
+    selected = rtl2gds_api.build_flow_range(
+        selected_names[0], selected_names[-1], skip=skip, lec_engine=lec_engine
+    )
     return {
         SCHEMA_VERSION_FIELD: FLOW_JSON_SCHEMA_VERSION,
         "steps": [

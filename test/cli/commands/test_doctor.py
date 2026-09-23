@@ -242,7 +242,7 @@ class TestRunPreflight:
         )
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-            lambda *, skip=(): [
+            lambda *, skip=(), lec_engine=None: [
                 ("Synthesis", "yosys", "Unstart"),
                 ("Floorplan", "ecc", "Unstart"),
                 ("place", "dreamplace", "Unstart"),
@@ -268,7 +268,7 @@ class TestRunPreflight:
 
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-            lambda *, skip=(): [
+            lambda *, skip=(), lec_engine=None: [
                 (step, tool, "Unstart")
                 for step, tool, _state in [
                     ("Synthesis", "yosys", "Unstart"),

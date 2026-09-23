@@ -20,14 +20,17 @@ from .step import (
     step_storage_name,
 )
 from .types import (
+    DEFAULT_LEC_ENGINE,
     DEFAULT_SKIP_STEPS,
     FINISHED_STEP_STATES,
     LEC_STEP_TOOLS,
+    LECEngineEnum,
     SkippableStepEnum,
     StateEnum,
     StepBaseEnum,
     StepEnum,
     is_finished_step_state,
+    lec_engine_from_value,
     step_from_value,
 )
 from .workspace import (
@@ -92,6 +95,9 @@ from .workspace_transaction import (
 
 __all__ = [
     "LEC_STEP_TOOLS",
+    "LECEngineEnum",
+    "DEFAULT_LEC_ENGINE",
+    "lec_engine_from_value",
     "all_step_directories",
     "flow_step_directory",
     "step_directory_for_tool",

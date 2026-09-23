@@ -164,10 +164,15 @@ def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
 
     The section's skip policy (its declared list, or the code default when
     undeclared) is applied to the chain, so the target never contains steps
-    the workspace excludes.
+    the workspace excludes. LEC steps name the section's configured engine
+    (code default when undeclared); classification still normalizes engine
+    identity away, so a ledger recorded under another engine stays
+    compatible and keeps owning its reruns.
     """
+    from chipcompiler.data import LEC_STEP_TOOLS, SkippableStepEnum
     from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
     from chipcompiler.data.workspace_config import flow_range_of
+    from chipcompiler.rtl2gds import resolve_lec_engine
 
     flow_range = flow_range_of(flow_section)
     if flow_range is None:
@@ -182,7 +187,12 @@ def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
     if skip:
         excluded = set(skip)
         entries = [entry for entry in entries if entry[0] not in excluded]
-    return entries
+    lec_engine = resolve_lec_engine(flow_section).value
+    lec_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
+    return [
+        (name, lec_engine) if name in lec_names and tool in LEC_STEP_TOOLS else (name, tool)
+        for name, tool in entries
+    ]
 
 
 def _derive_section_from_persisted(persisted: list[tuple[str, str]]) -> dict:
