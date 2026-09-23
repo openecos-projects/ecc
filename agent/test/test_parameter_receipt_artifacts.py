@@ -27,12 +27,13 @@ TOOL = {
 
 
 def _write_unknown_runtime_report(analysis: Path, *, knob_id: str, written_value: object) -> None:
+    written_unit = "dbu" if knob_id == "place.cell_padding_x" else "ratio"
     (analysis / "parameter_runtime_report.v3.json").write_text(
         json.dumps(
             {
                 "parameter": {
                     "knob_id": knob_id,
-                    "written": {"value": written_value, "unit": "ratio"},
+                    "written": {"value": written_value, "unit": written_unit},
                     "consumed": None,
                     "realized": None,
                 },
@@ -288,7 +289,11 @@ def test_candidate_receipt_preserves_minimal_runtime_observation(
                 "parameter": {
                     "knob_id": "place.target_density",
                     "written": {"value": 0.2, "unit": "ratio"},
-                    "consumed": {"value": 0.8, "unit": "ratio", "source": "DREAMPlace.params.target_density"},
+                    "consumed": {
+                        "value": 0.8,
+                        "unit": "ratio",
+                        "source": "DREAMPlace.params.target_density",
+                    },
                     "realized": None,
                 },
                 "tool": TOOL,
@@ -439,7 +444,11 @@ def test_parameter_receipt_rejects_unbound_tool_metadata() -> None:
                     "consumed": None,
                     "realized": None,
                 },
-                "application": {"status": "unknown", "relation": "unknown", "reason": "Not observed."},
+                "application": {
+                    "status": "unknown",
+                    "relation": "unknown",
+                    "reason": "Not observed.",
+                },
                 "observation": {},
             },
         )

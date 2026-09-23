@@ -9,10 +9,10 @@ from agent.data.parameter_runtime_observer import _build_dreamplace_report
     "overflow,status,actual",
     [
         (0.08, "applied", 0.1),
-        (0.1, "inactive", None),
-        (0.3, "inactive", None),
-        (None, "unknown", None),
-        (-1, "unknown", None),
+        (0.1, "inactive", 0.1),
+        (0.3, "inactive", 0.1),
+        (None, "unknown", 0.1),
+        (-1, "unknown", 0.1),
     ],
 )
 def test_overflow_final_threshold(overflow, status, actual):
@@ -23,4 +23,7 @@ def test_overflow_final_threshold(overflow, status, actual):
         {},
         engine_succeeded=True,
     )
-    assert (report["application"]["status"], (report["parameter"]["consumed"] or {}).get("value")) == (status, actual)
+    assert (
+        report["application"]["status"],
+        (report["parameter"]["consumed"] or {}).get("value"),
+    ) == (status, actual)

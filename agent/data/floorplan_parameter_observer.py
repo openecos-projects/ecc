@@ -51,7 +51,9 @@ def build_floorplan_report(patch, boundary, feature_path, *, engine_succeeded):
     field = "utilization" if knob_id == "floorplan.core_util" else "aspect_ratio"
     configured = _scalar_value(die_util.get(field))
     input_values = boundary.get("input_configured_value", {})
-    consumed = input_values.get(field) if isinstance(input_values, dict) else _scalar_value(input_values)
+    consumed = (
+        input_values.get(field) if isinstance(input_values, dict) else _scalar_value(input_values)
+    )
     feature = _read_json(feature_path).get("Design Layout", {})
     width = _scalar_value(feature.get("core_bounding_width"))
     height = _scalar_value(feature.get("core_bounding_height"))
@@ -73,12 +75,29 @@ def build_floorplan_report(patch, boundary, feature_path, *, engine_succeeded):
         "run_fp_call_count": boundary.get("run_fp_call_count", 0),
         "geometry_constructed": geometry,
     }
-    status, relation, reason = "unknown", "unknown", "Required floorplan observation is unavailable."
-    if boundary.get("init_fp_call_count") == 1 and boundary.get("run_fp_call_count") == 1 and boundary.get("run_fp_completed", False):
+    status, relation, reason = (
+        "unknown",
+        "unknown",
+        "Required floorplan observation is unavailable.",
+    )
+    if (
+        boundary.get("init_fp_call_count") == 1
+        and boundary.get("run_fp_call_count") == 1
+        and boundary.get("run_fp_completed", False)
+    ):
         if observation["mode"] == "die_size":
-            status, relation, reason = "inactive", "exact", "Fixed die dimensions do not use this parameter."
+            consumed = None
+            status, relation, reason = (
+                "inactive",
+                "exact",
+                "Fixed die dimensions do not use this parameter.",
+            )
         elif observation["mode"] == "die_util" and geometry and consumed is not None:
-            status, relation, reason = "applied", ("exact" if consumed == patch["value"] else "transformed"), None
+            status, relation, reason = (
+                "applied",
+                ("exact" if consumed == patch["value"] else "transformed"),
+                None,
+            )
     return {
         "schema_version": "tool.parameter_runtime_report.v3",
         "parameter": {
@@ -86,11 +105,13 @@ def build_floorplan_report(patch, boundary, feature_path, *, engine_succeeded):
             "written": {"value": patch["value"], "unit": "ratio"},
             "consumed": (
                 {"value": consumed, "unit": "ratio", "source": "floorplan.init_fp.config"}
-                if consumed is not None else None
+                if consumed is not None
+                else None
             ),
             "realized": (
                 {"value": realized, "unit": "ratio", "source": "floorplan.core_geometry"}
-                if realized is not None else None
+                if realized is not None
+                else None
             ),
         },
         "tool": {
@@ -110,8 +131,13 @@ def _configured_value(config_path, module, args, kwargs):
     if knob is None:
         # The caller binds the patch through the observer context; the config
         # contains both fields, so retain both and select in build_report.
-        return {"utilization": _scalar_value(die_util.get("utilization")), "aspect_ratio": _scalar_value(die_util.get("aspect_ratio"))}
-    return _scalar_value(die_util.get("utilization" if knob == "floorplan.core_util" else "aspect_ratio"))
+        return {
+            "utilization": _scalar_value(die_util.get("utilization")),
+            "aspect_ratio": _scalar_value(die_util.get("aspect_ratio")),
+        }
+    return _scalar_value(
+        die_util.get("utilization" if knob == "floorplan.core_util" else "aspect_ratio")
+    )
 
 
 def _read_json(path):
