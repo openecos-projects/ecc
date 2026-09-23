@@ -871,7 +871,7 @@ for an unequal design pair.
 ### LEC Engine Selection (`lec_engine`)
 
 The `lec`/`postRouteLec` steps run one of three engines, selected by the
-`[flow] lec_engine` key (params.toml, or the GUI flow_config):
+`[flow] lec_engine` key (ecc.toml, params.toml, or the GUI flow_config):
 
 ```toml
 [flow]

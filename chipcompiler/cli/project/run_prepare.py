@@ -474,17 +474,20 @@ def execute_fresh_run(
 
             if not flow_config_selects_steps(flow_config):
                 # CLI-born workspaces persist the named preset chain as
-                # their target; a declared skip policy rides along,
-                # normalized (validate_flow_config is the normalizer).
+                # their target; a declared skip policy or LEC engine rides
+                # along, normalized (validate_flow_config is the normalizer).
                 workspace_parameters = getattr(workspace, "parameters", None)
                 if workspace_parameters is not None:
                     flow_section: dict = {"preset": cfg.flow_preset}
+                    policies: dict = {}
                     if isinstance(flow_config, dict) and "skip_steps" in flow_config:
+                        policies["skip_steps"] = flow_config["skip_steps"]
+                    if isinstance(flow_config, dict) and "lec_engine" in flow_config:
+                        policies["lec_engine"] = flow_config["lec_engine"]
+                    if policies:
                         from chipcompiler.data.workspace_config import validate_flow_config
 
-                        flow_section = validate_flow_config(
-                            {"preset": cfg.flow_preset, "skip_steps": flow_config["skip_steps"]}
-                        )
+                        flow_section = validate_flow_config({"preset": cfg.flow_preset, **policies})
                     workspace_parameters.data["_flow"] = flow_section
                     if not save_parameter(workspace_parameters):
                         return failed_workspace("failed to persist the flow target in params.toml")
@@ -498,11 +501,15 @@ def execute_fresh_run(
             engine_flow = EngineFlow(workspace=workspace)
             flow_builders = rtl2gds_api.get_flow_builders()
             if not engine_flow.has_init():
-                # No-arg preset builders stay canonical; the skip policy is
-                # applied to their output so every ledger-creation path
-                # filters through one resolver.
-                for step, tool, state in rtl2gds_api.filter_flow_steps(
+                # No-arg preset builders stay canonical; the configured LEC
+                # engine and skip policy apply to their output so every
+                # ledger-creation path filters through the same resolvers.
+                seeded = rtl2gds_api.substitute_lec_engine(
                     flow_builders[cfg.flow_preset](),
+                    rtl2gds_api.resolve_lec_engine(flow_config),
+                )
+                for step, tool, state in rtl2gds_api.filter_flow_steps(
+                    seeded,
                     rtl2gds_api.resolve_skip_steps(flow_config),
                 ):
                     engine_flow.add_step(step=step, tool=tool, state=state)
