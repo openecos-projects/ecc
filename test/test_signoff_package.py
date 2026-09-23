@@ -418,7 +418,7 @@ def test_collect_signoff_package_requires_proven_post_route_lec(tmp_path):
     assert any(
         issue.label == "lec.result"
         and issue.destination == "final/reports/postRouteLec/result.json"
-        and issue.reason == "Yosys LEC did not prove equivalence"
+        and issue.reason == "LEC did not prove equivalence"
         and issue.required
         for issue in result.issues
     )
