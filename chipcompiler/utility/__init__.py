@@ -22,16 +22,10 @@ from .util import track_process_memory
 
 # Plot helpers pull in matplotlib (~1s import, font scan on cold cache), so
 # they are re-exported lazily via PEP 562 instead of at package import time.
-_PLOT_EXPORTS = frozenset(
-    {"plot_csv_bar_chart", "plot_csv_map", "plot_csv_table"}
-)
+_PLOT_EXPORTS = frozenset({"plot_csv_map"})
 
 if TYPE_CHECKING:
-    from .plot import (
-        plot_csv_bar_chart,
-        plot_csv_map,
-        plot_csv_table,
-    )
+    from .plot import plot_csv_map
 
 
 else:
@@ -62,8 +56,6 @@ __all__ = [
     "init_api_runtime_log",
     "track_process_memory",
     "plot_csv_map",
-    "plot_csv_table",
-    "plot_csv_bar_chart",
     "parse_filelist",
     "resolve_path",
     "validate_filelist",

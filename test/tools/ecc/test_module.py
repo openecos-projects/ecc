@@ -2208,7 +2208,7 @@ def test_ecc_metrics_harden_rejects_stale_signoff_summary(tmp_path):
     assert summary["gates"] == []
 
 
-def test_ecc_plot_drc_statis_accepts_path_statis_csv(tmp_path, monkeypatch):
+def test_ecc_plot_drc_statis_accepts_path_statis_csv(tmp_path):
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
@@ -2260,26 +2260,8 @@ def test_ecc_plot_drc_statis_accepts_path_statis_csv(tmp_path, monkeypatch):
         ),
         encoding="utf-8",
     )
-    plot_calls = []
-    metric_calls = []
-    workspace.home = SimpleNamespace(
-        set_metrics_drc_dist=lambda image_path: metric_calls.append(image_path),
-    )
-
-    def record_bar_chart(**kwargs):
-        assert isinstance(kwargs["input_path"], str)
-        assert isinstance(kwargs["output_path"], str)
-        plot_calls.append(kwargs)
-        return True
-
-    monkeypatch.setattr(ecc_plot, "plot_csv_bar_chart", record_bar_chart)
-
     assert ecc_plot.ECCToolsPlot(workspace, step).plot_drc_statis() is True
 
-    expected_image_path = str(step.analysis.statis_csv).replace(".csv", ".png")
-    assert plot_calls[0]["input_path"] == str(step.analysis.statis_csv)
-    assert plot_calls[0]["output_path"] == expected_image_path
-    assert metric_calls == [expected_image_path]
     with open(step.analysis.statis_csv, newline="") as csvfile:
         assert list(csv.DictReader(csvfile)) == [
             {"Type": "short", "M1": "2", "M2": "3", "total": "5"},

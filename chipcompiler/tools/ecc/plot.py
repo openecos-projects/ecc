@@ -7,7 +7,6 @@ from tqdm import tqdm
 from chipcompiler.data import EccStep, StepEnum, Workspace
 from chipcompiler.utility import (
     json_read,
-    plot_csv_bar_chart,
     plot_csv_map,
 )
 
@@ -194,19 +193,5 @@ class ECCToolsPlot:
                 for layer in layer_names:
                     row[layer] = layer_counts.get(layer, 0)
                 writer.writerow(row)
-
-        # Plot the CSV table
-        # plot_csv_table(input_path=statis_csv)
-        output_path = str(statis_csv).replace(".csv", ".png")
-        plot_csv_bar_chart(
-            input_path=statis_csv,
-            output_path=output_path,
-            title="DRC Violation Distribution by Layer",
-            xlabel="DRC Type",
-            ylabel="Violation Count",
-            integer_yaxis=True,
-        )
-
-        self.workspace.home.set_metrics_drc_dist(image_path=output_path)
 
         return True

@@ -52,7 +52,7 @@ def test_ecc_tools_probe_import_does_not_load_matplotlib(tmp_path):
 def test_plot_exports_resolve_lazily(tmp_path):
     result = _run_fresh(
         "import sys, chipcompiler.utility as u; "
-        "names = ['plot_csv_bar_chart', 'plot_csv_map', 'plot_csv_table']; "
+        "names = ['plot_csv_map']; "
         "funcs = [getattr(u, n) for n in names]; "
         "print(all(callable(f) for f in funcs), 'matplotlib' in sys.modules)",
         tmp_path,
@@ -85,7 +85,7 @@ def test_plot_exports_stay_discoverable(tmp_path):
     result = _run_fresh(
         "import chipcompiler.utility as u; "
         "print(all(n in dir(u) and n in u.__all__ for n in "
-        "['plot_csv_bar_chart', 'plot_csv_map', 'plot_csv_table']))",
+        "['plot_csv_map']))",
         tmp_path,
     )
     assert result.stdout.strip() == "True"
