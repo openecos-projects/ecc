@@ -287,6 +287,9 @@ def test_degraded_mode_runs_the_available_engine(tmp_path, monkeypatch):
     states = {stage["name"]: stage["state"] for stage in subflow["steps"]}
     assert states["run lec (yosys_lec)"] == "Success"
     assert states["run lec (kepler_formal)"] == "Invalid"
+    # Mirror the single-engine contract: analysis succeeds only with a
+    # proven verdict; anything less stays Unstart.
+    assert states["analysis"] == "Unstart"
 
 
 def test_both_engines_unavailable_starts_no_run(tmp_path, monkeypatch):
