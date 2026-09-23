@@ -139,6 +139,40 @@ def probe_kepler_formal() -> ProbeResult:
     return ProbeResult("kepler-formal", FAIL, remediation=get_kepler_formal_not_found_error())
 
 
+def probe_lec_dual() -> ProbeResult:
+    """Dual cross-checking preflight: probe both physical engines separately.
+
+    Degraded mode is allowed: the step runs the available engine and the
+    aggregate stays non-proven, so one missing engine is a pass with the
+    degradation named; only both missing is a failure.
+    """
+    from chipcompiler.data import LECEngineEnum
+    from chipcompiler.tools.lec_dual.utility import engine_availability
+
+    available = []
+    missing = []
+    for engine in LECEngineEnum.DUAL.spawn_engines:
+        ok, reason = engine_availability(engine)
+        if ok:
+            available.append(engine.value)
+        else:
+            missing.append(f"{engine.value}: {reason}")
+    detail = f"available: {', '.join(available) or 'none'}"
+    if not missing:
+        return ProbeResult("lec-dual", PASS, detail=detail)
+    if available:
+        return ProbeResult(
+            "lec-dual",
+            PASS,
+            detail=f"{detail} (degraded: missing {'; '.join(missing)})",
+        )
+    return ProbeResult(
+        "lec-dual",
+        FAIL,
+        remediation="lec_dual needs at least one LEC engine: " + "; ".join(missing),
+    )
+
+
 def probe_pdk(cfg) -> ProbeResult:
     if cfg is None:
         return ProbeResult(
@@ -178,6 +212,7 @@ _PROBES = {
     "klayout": probe_klayout,
     "sizer": probe_sizer,
     "kepler-formal": probe_kepler_formal,
+    "lec-dual": probe_lec_dual,
 }
 
 ALL_COMPONENTS = (*_PROBES, "pdk")
@@ -210,6 +245,7 @@ _TOOL_COMPONENTS = {
     "yosys": "yosys",
     "yosys_lec": "yosys",
     "kepler_formal": "kepler-formal",
+    "lec_dual": "lec-dual",
     "dreamplace": "dreamplace",
     "sizer": "sizer",
 }
@@ -238,7 +274,7 @@ def probe_components_for_steps(steps) -> tuple[str, ...]:
     """
     tools = {tool for _step, tool, _state in steps}
     components = []
-    for component in ("ecc-tools", "yosys", "dreamplace", "sizer"):
+    for component in ("ecc-tools", "yosys", "dreamplace", "sizer", "lec-dual"):
         if component in {_TOOL_COMPONENTS.get(tool) for tool in tools}:
             components.append(component)
     return tuple(components)

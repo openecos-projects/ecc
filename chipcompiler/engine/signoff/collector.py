@@ -372,12 +372,22 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             )
 
         lec_flow = getattr(self.workspace, "flow", None)
+        lec_flow_steps = lec_flow.steps() if lec_flow is not None else None
         lec_dir = workspace_dir / flow_step_directory(
-            lec_flow.steps() if lec_flow is not None else None,
+            lec_flow_steps,
             SkippableStepEnum.POST_ROUTE_LEC.value,
         )
         lec_result = (
             lec_dir / "output" / f"{design}_{SkippableStepEnum.POST_ROUTE_LEC.value}_result.json"
+        )
+        lec_tool = next(
+            (
+                str(step.get("tool", ""))
+                for step in lec_flow_steps or []
+                if isinstance(step, dict)
+                and step.get("name") == SkippableStepEnum.POST_ROUTE_LEC.value
+            ),
+            "",
         )
         if require_lec:
             add_file(
@@ -386,28 +396,52 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 destination="final/reports/postRouteLec/result.json",
                 required=True,
             )
-            add_file(
-                role="lec.equiv_status",
-                source=lec_dir / "report" / "equiv_status.rpt",
-                destination="final/reports/postRouteLec/report/equiv_status.rpt",
-                required=True,
-            )
-            add_file(
-                role="lec.status_report",
-                source=lec_dir / "report" / "run_lec_status.rpt",
-                destination="final/reports/postRouteLec/report/run_lec_status.rpt",
-                required=True,
-            )
-            add_file(
-                role="lec.failed_rtlil",
-                source=lec_dir / "report" / "equiv_failed.il",
-                destination="final/reports/postRouteLec/report/equiv_failed.il",
-            )
-            add_file(
-                role="lec.failed_verilog",
-                source=lec_dir / "report" / "equiv_failed.v",
-                destination="final/reports/postRouteLec/report/equiv_failed.v",
-            )
+            if lec_tool == "lec_dual":
+                # The aggregate drives the gate; per-engine evidence is
+                # additive — a degraded run's missing sibling is recorded
+                # missing-optional, never fatal.
+                from chipcompiler.data import LECEngineEnum
+                from chipcompiler.data.step import step_directory_for_tool
+
+                for engine in LECEngineEnum.DUAL.spawn_engines:
+                    engine_dir = workspace_dir / step_directory_for_tool(
+                        SkippableStepEnum.POST_ROUTE_LEC.value, engine.value
+                    )
+                    add_file(
+                        role=f"lec.{engine.value}.result",
+                        source=engine_dir
+                        / "output"
+                        / f"{design}_{SkippableStepEnum.POST_ROUTE_LEC.value}_result.json",
+                        destination=f"final/reports/postRouteLec/engines/{engine.value}/result.json",
+                    )
+                    add_file(
+                        role=f"lec.{engine.value}.status_report",
+                        source=engine_dir / "report" / "run_lec_status.rpt",
+                        destination=f"final/reports/postRouteLec/engines/{engine.value}/report/run_lec_status.rpt",
+                    )
+            else:
+                add_file(
+                    role="lec.equiv_status",
+                    source=lec_dir / "report" / "equiv_status.rpt",
+                    destination="final/reports/postRouteLec/report/equiv_status.rpt",
+                    required=True,
+                )
+                add_file(
+                    role="lec.status_report",
+                    source=lec_dir / "report" / "run_lec_status.rpt",
+                    destination="final/reports/postRouteLec/report/run_lec_status.rpt",
+                    required=True,
+                )
+                add_file(
+                    role="lec.failed_rtlil",
+                    source=lec_dir / "report" / "equiv_failed.il",
+                    destination="final/reports/postRouteLec/report/equiv_failed.il",
+                )
+                add_file(
+                    role="lec.failed_verilog",
+                    source=lec_dir / "report" / "equiv_failed.v",
+                    destination="final/reports/postRouteLec/report/equiv_failed.v",
+                )
             from chipcompiler.tools.yosys_lec.utility import lec_result_status
 
             lec_status = lec_result_status(

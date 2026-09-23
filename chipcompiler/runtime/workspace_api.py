@@ -134,13 +134,18 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
 
         import chipcompiler.rtl2gds as rtl2gds_api
 
-        # The skip policy is validated before any sidecar artifact (temp
-        # filelist, inline PDK) is materialized: invalid input must not
-        # reach workspace creation or leave temporaries behind.
+        # The skip policy and LEC engine are validated before any sidecar
+        # artifact (temp filelist, inline PDK) is materialized: invalid
+        # input must not reach workspace creation or leave temporaries
+        # behind.
         try:
             rtl2gds_api.resolve_skip_steps(request.flow_config)
         except ValueError as exc:
             raise RuntimeApiError("config_error", f"invalid skip_steps: {exc}") from exc
+        try:
+            rtl2gds_api.resolve_lec_engine(request.flow_config)
+        except ValueError as exc:
+            raise RuntimeApiError("config_error", f"invalid lec_engine: {exc}") from exc
 
         temp_filelist_dir = None
         input_filelist = request.filelist

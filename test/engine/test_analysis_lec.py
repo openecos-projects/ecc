@@ -62,3 +62,17 @@ def test_analysis_emits_lec_result_for_a_yosys_lec_ledger(tmp_path):
     step = analysis["steps"][0]
     assert step["lecResult"]["status"] == "available"
     assert step["lecResult"]["data"]["freshness_status"] == "proven"
+
+
+def test_analysis_resolves_a_dual_ledger_through_the_tool_aware_mapping(tmp_path):
+    # A raw name-keyed directory lookup would resolve lec_kepler_formal;
+    # the dual-recorded ledger must resolve lec_dual/.
+    workspace = _lec_workspace(tmp_path, "lec_dual", "lec_dual")
+
+    analysis, artifacts = build_workspace_analysis(workspace, "ws-1")
+
+    step = analysis["steps"][0]
+    assert step["lecResult"]["status"] == "available"
+    assert step["lecResult"]["data"]["freshness_status"] == "proven"
+    lec_artifact = next(a for a in artifacts if a["kind"] == "lec_result")
+    assert lec_artifact["reference"] == "lec_dual/output/gcd_lec_result.json"

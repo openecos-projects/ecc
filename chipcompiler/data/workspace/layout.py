@@ -303,6 +303,22 @@ class KeplerFormalStep(WorkspaceStepBase):
 
 
 @dataclass(frozen=True)
+class LecDualStep(WorkspaceStepBase):
+    """Dual-engine cross-checking LEC step.
+
+    One ledger step whose runner executes both physical engines on the
+    shared inputs and merges their verdicts into its output.json.
+    ``engine_steps`` is build-time wiring: the dual builder attaches the
+    per-engine step objects so build_step_space/build_step_config can
+    delegate without a workspace; the runner rebuilds them at run time
+    instead of trusting attached state across process boundaries.
+    """
+
+    input: KeplerFormalInput = field(default_factory=KeplerFormalInput)
+    engine_steps: dict = field(default_factory=dict, repr=False, compare=False)
+
+
+@dataclass(frozen=True)
 class EccStep(WorkspaceStepBase):
     """Place-and-route step, shared by ecc, dreamplace and sizer."""
 
