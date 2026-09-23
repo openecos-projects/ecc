@@ -219,7 +219,7 @@ def run_existing_workspace(
                 target_section["skip_steps"] = cfg.flow_skip_steps
 
     # Pure-read preflight: a divergent flow is rejected BEFORE load_workspace
-    # can migrate configs, create home.json/checklist, or take the lock.
+    # can migrate configs, create checklist state, or take the lock.
     probe = classify_workspace(run_dir, target_section)
     if probe.outcome == "mismatch":
         return mismatch_error(probe.error or "flow_mismatch")

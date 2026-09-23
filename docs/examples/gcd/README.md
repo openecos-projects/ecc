@@ -55,7 +55,6 @@ gcd_workspace/
 ├── home/
 │   ├── flow.json          # Flow state file
 │   ├── params.toml        # Workspace configuration (parameters, flow target)
-│   ├── home.json          # Workspace home state (flow/config/checklist pointers)
 │   └── checklist.json     # Checklist state
 ├── CTS_ecc                # CTS step workspace
 │   ├── analysis    # Analysis files extract from metrics

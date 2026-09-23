@@ -2,7 +2,14 @@
 import os
 from pathlib import Path
 
-from chipcompiler.data import Checklist, CheckState, StepEnum, Workspace, YosysStep
+from chipcompiler.data import (
+    Checklist,
+    CheckState,
+    StepEnum,
+    Workspace,
+    YosysStep,
+    workspace_checklist_path,
+)
 from chipcompiler.tools.ecc.qor_metrics import QorMetrics
 from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
 from chipcompiler.utility import json_read
@@ -35,7 +42,7 @@ class YosysChecklist:
     ):
         checklist.add(step=step, type=type, item=item, state=state, info=info)
 
-        self.workspace.home.update_checklist(
+        Checklist(workspace_checklist_path(self.workspace.directory)).update(
             step=step, type=type, item=item, state=state, info=info
         )
 
@@ -63,7 +70,7 @@ class YosysChecklist:
 
     def set_item_state(self, step: str, type: str, item: str, state: CheckState, info: str = ""):
         self.update_item(step=step, type=type, item=item, state=state, info=info)
-        self.workspace.home.update_checklist(
+        Checklist(workspace_checklist_path(self.workspace.directory)).update(
             step=step, type=type, item=item, state=state.value, info=info
         )
 

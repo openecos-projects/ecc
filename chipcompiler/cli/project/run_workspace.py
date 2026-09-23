@@ -103,7 +103,7 @@ def execute_workspace_run(
         )
 
     # Pure-read preflight: a divergent flow is rejected BEFORE load_workspace
-    # can migrate configs, create home.json/checklist, or take the lock.
+    # can migrate configs, create checklist state, or take the lock.
     probe = classify_workspace(workspace_path)
     if probe.outcome == "mismatch":
         return mismatch_error(probe.error or "")

@@ -455,7 +455,7 @@ class TestFlowMismatchZeroMutation:
         self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
     ):
         """AC-14 with a legacy-parameters workspace: the mismatch refusal must
-        not migrate parameters.json, create params.toml/lock/home.json, or touch
+        not migrate parameters.json, create params.toml/lock files, or touch
         any other path."""
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)

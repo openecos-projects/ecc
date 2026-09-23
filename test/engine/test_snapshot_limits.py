@@ -104,7 +104,6 @@ def test_snapshot_keeps_oversized_sta_as_artifact_reference(tmp_path):
     workspace = SimpleNamespace(
         directory=root,
         flow=SimpleNamespace(data={"steps": steps}),
-        home=SimpleNamespace(data={}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
     )
@@ -142,7 +141,6 @@ def test_snapshot_indexes_sta_corner_artifacts_when_aggregate_is_oversized(tmp_p
     workspace = SimpleNamespace(
         directory=root,
         flow=SimpleNamespace(data={"steps": [{"name": "sta", "tool": "ecc", "state": "Success"}]}),
-        home=SimpleNamespace(data={}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
     )
@@ -186,7 +184,6 @@ def test_snapshot_limits_sta_corner_artifacts_deterministically(tmp_path):
     workspace = SimpleNamespace(
         directory=root,
         flow=SimpleNamespace(data={"steps": [{"name": "sta", "tool": "ecc"}]}),
-        home=SimpleNamespace(data={}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
     )

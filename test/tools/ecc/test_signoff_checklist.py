@@ -1,6 +1,7 @@
 import json
 
 from chipcompiler.data import (
+    Checklist,
     ChecklistState,
     EccAnalysis,
     EccFeature,
@@ -254,8 +255,6 @@ def test_harden_mpc_area_gates_are_unavailable_without_a_successful_physical_db(
 def test_harden_checklist_does_not_require_mpc_area_gates_without_mpc(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     (tmp_path / "home").mkdir()
-    workspace.home.init(tmp_path / "home" / "home.json")
-    workspace.home.set_checklist(tmp_path / "home" / "checklist.json")
     summary_path = tmp_path / "Harden_ecc" / "analysis" / "qor_summary.json"
     summary_path.parent.mkdir(parents=True)
     summary_path.write_text(
@@ -315,8 +314,6 @@ def test_harden_qor_summary_persists_mpc_area_gate_results(tmp_path):
 def test_step_checklist_references_v4_qor_gate_without_recomputing_it(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     (tmp_path / "home").mkdir()
-    workspace.home.init(tmp_path / "home" / "home.json")
-    workspace.home.set_checklist(tmp_path / "home" / "checklist.json")
     workspace.flow.data = {
         "steps": [
             {"name": step.value, "state": StateEnum.Success.value}
@@ -378,8 +375,6 @@ def test_harden_checklist_blocks_on_failed_mpc_area_gate_and_keeps_route_evidenc
         parameters=Parameters(data={"mpc": {"core_template": {}}}),
     )
     (tmp_path / "home").mkdir()
-    workspace.home.init(tmp_path / "home" / "home.json")
-    workspace.home.set_checklist(tmp_path / "home" / "checklist.json")
     workspace.flow.data = {
         "steps": [
             {"name": step.value, "state": StateEnum.Success.value}
@@ -566,8 +561,6 @@ def test_initial_rtl_reports_configured_file_missing(tmp_path):
 def test_home_checklist_flow_completed_tracks_final_harden_state(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     (tmp_path / "home").mkdir()
-    workspace.home.init(tmp_path / "home" / "home.json")
-    workspace.home.set_checklist(tmp_path / "home" / "checklist.json")
     workspace.flow.path = tmp_path / "home" / "flow.json"
     workspace.flow.data = {
         "steps": [
@@ -730,8 +723,6 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
         directory=tmp_path,
         design=OriginDesign(name="gcd", origin_verilog=origin),
     )
-    workspace.home.init(tmp_path / "home" / "home.json")
-    workspace.home.set_checklist(tmp_path / "home" / "checklist.json")
     workspace.flow.data = {
         "steps": [
             {"name": step.value, "tool": "ecc", "state": StateEnum.Success.value}
@@ -750,11 +741,9 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
     assert home_items["artifact.postroutelec.result"]["blocked"] is False
 
 
-def test_rebuild_home_checklist_heals_empty_home_checklist_path(tmp_path):
+def test_rebuild_home_checklist_uses_canonical_workspace_path(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     (tmp_path / "home").mkdir()
-    workspace.home.init(tmp_path / "home" / "home.json")
-    assert workspace.home.data["checklist"] == ""
 
     data = rebuild_home_checklist(workspace)
 
@@ -763,10 +752,7 @@ def test_rebuild_home_checklist_heals_empty_home_checklist_path(tmp_path):
     persisted = json.loads(checklist_file.read_text(encoding="utf-8"))
     assert persisted["checklist"] == data["checklist"]
 
-    home_data = json.loads((tmp_path / "home" / "home.json").read_text(encoding="utf-8"))
-    assert home_data["checklist"] == str(checklist_file)
-
-    workspace.home.update_checklist(
+    Checklist(checklist_file).update(
         step="STA", type="Timing", item="check setup timing", state="Passed"
     )
     healed = json.loads(checklist_file.read_text(encoding="utf-8"))
@@ -782,8 +768,6 @@ def test_home_checklist_omits_post_route_lec_when_ledger_skips_it(tmp_path):
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     (tmp_path / "home").mkdir()
-    workspace.home.init(tmp_path / "home" / "home.json")
-    workspace.home.set_checklist(tmp_path / "home" / "checklist.json")
     workspace.flow.path = tmp_path / "home" / "flow.json"
     ledger_without_post_route_lec = [
         {"name": step.value, "tool": "ecc", "state": StateEnum.Success.value}

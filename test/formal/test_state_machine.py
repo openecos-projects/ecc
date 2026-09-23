@@ -275,23 +275,6 @@ def test_clear_states_resets_all(tmp_path: Path) -> None:
         )
 
 
-def test_run_steps_does_not_reset_home_directly(tmp_path: Path) -> None:
-    """Rerun preparation is handled before run_steps(); step execution should not reset home."""
-    ws: Workspace = _make_workspace(tmp_path, num_steps=1)
-    reset_calls = []
-    ws.home.reset = lambda: reset_calls.append(True)  # type: ignore[method-assign]
-
-    flow: EngineFlow = EngineFlow(workspace=ws)
-    flow.workspace_steps.append(WorkspaceStep(name="step_0", tool="mock"))
-    flow.run_step = lambda workspace_step, rerun=False: StateEnum.Success  # type: ignore[assignment]
-
-    assert flow.run_steps(rerun=False)
-    assert reset_calls == []
-
-    assert flow.run_steps(rerun=True)
-    assert reset_calls == []
-
-
 def test_run_steps_does_not_refresh_workspace_config_directly(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

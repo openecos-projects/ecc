@@ -333,7 +333,7 @@ def classify_workspace(
     """Pure-read classification of the workspace against the target range.
 
     Use before loading/initializing a workspace: a ``mismatch`` result
-    guarantees nothing was written (no lock, no migration, no home.json).
+    guarantees nothing was written (no lock and no migration).
     ``pending_mutation`` means the flow is compatible but an append/adopt
     is due — load the workspace and call :func:`reconcile_workspace`,
     which re-classifies under the lock before writing.

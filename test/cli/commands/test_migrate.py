@@ -30,7 +30,7 @@ def _manifest(project_dir):
 
 
 class TestMigrate:
-    def test_full_migration_moves_rebases_and_registers(
+    def test_full_migration_moves_cleans_legacy_home_and_registers(
         self,
         tmp_path,
         capsys,
@@ -50,11 +50,7 @@ class TestMigrate:
         assert os.path.isfile(os.path.join(target, "home", "params.toml"))
         assert not os.path.exists(os.path.join(project_dir, "runs"))
 
-        with open(os.path.join(target, "home", "home.json")) as f:
-            home = json.load(f)
-        assert home["parameters"] == os.path.join(target, "home", "params.toml")
-        assert home["flow"] == os.path.join(target, "home", "flow.json")
-        assert "runs" not in home["flow"]
+        assert not os.path.exists(os.path.join(target, "home", "home.json"))
 
         manifest = _manifest(project_dir)
         (entry,) = manifest["workspaces"]
@@ -234,14 +230,11 @@ class TestMigrate:
         records = _records(capsys)
         failures = [r for r in records if r.get("error") == "migration_failed"]
         assert len(failures) == 1
-        # Rolled back: the workspace is back under runs/, no manifest, and
-        # the rebased home.json pointers were restored to the source path.
+        # Rolled back: the workspace is back under runs/ with no manifest.
         assert os.path.isfile(os.path.join(run_dir, "home", "flow.json"))
         assert not os.path.exists(os.path.join(project_dir, "exp1"))
         assert not os.path.exists(os.path.join(project_dir, "project.json"))
-        with open(os.path.join(run_dir, "home", "home.json")) as f:
-            home = json.load(f)
-        assert home["flow"] == os.path.join(run_dir, "home", "flow.json")
+        assert not os.path.exists(os.path.join(run_dir, "home", "home.json"))
 
     def test_migrate_rejects_broken_ecc_toml(
         self,

@@ -1,5 +1,7 @@
 """Hydrate a Workspace from committed files without mixing migration policy."""
 
+import os
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +23,37 @@ from ..workspace_config import (
 from ..workspace_config import (
     workspace_config_path as workspace_config_toml_path,
 )
+
+_LEGACY_HOME_FILES = ("home.json", "home.json.lock")
+
+
+def remove_legacy_home_files(workspace_dir: str | Path) -> None:
+    """Remove obsolete home state without following filesystem links."""
+    root = Path(workspace_dir).expanduser().resolve()
+    home = root / "home"
+    from chipcompiler.utility.workspace_lock import workspace_lock
+
+    with workspace_lock(root):
+        try:
+            home_info = os.lstat(home)
+        except FileNotFoundError:
+            return
+        if not stat.S_ISDIR(home_info.st_mode) or stat.S_ISLNK(home_info.st_mode):
+            raise OSError(f"Workspace home directory is not a real directory: {home}")
+        legacy_paths = []
+        for name in _LEGACY_HOME_FILES:
+            path = home / name
+            try:
+                info = os.lstat(path)
+            except FileNotFoundError:
+                continue
+            if stat.S_ISDIR(info.st_mode):
+                raise OSError(f"Legacy home state path is a directory: {path}")
+            if not (stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode)):
+                raise OSError(f"Legacy home state path is not a file or symlink: {path}")
+            legacy_paths.append(path)
+        for path in legacy_paths:
+            path.unlink()
 
 
 def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
@@ -131,17 +164,11 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
 
     workspace.flow.path = home_dir / "flow.json"
     if read_only:
-        workspace.home.path = home_dir / "home.json"
-        home_data = json_read(workspace.home.path)
-        workspace.home.data = home_data if isinstance(home_data, dict) else {}
         workspace.logger = Logger(name=parameters.data["design"])
     else:
         home_dir.mkdir(parents=True, exist_ok=True)
         workspace.config["dir"].mkdir(parents=True, exist_ok=True)
-        workspace.home.init(path=home_dir / "home.json")
-        workspace.home.set_flow(workspace.flow.path)
-        workspace.home.set_checklist(home_dir / "checklist.json")
-        workspace.home.set_parameters(workspace.parameters.path)
+        remove_legacy_home_files(workspace_dir)
         workspace.logger = create_logger(
             name=parameters.data["design"], log_dir=workspace_dir / "log"
         )

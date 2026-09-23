@@ -47,8 +47,8 @@ from chipcompiler.runtime.requests import (
     WorkspaceInfoRequest,
     WorkspaceInspectSignoffRequest,
     WorkspaceOpenRequest,
-    WorkspaceRefreshConfigRequest,
     WorkspaceRecoverInterruptedRequest,
+    WorkspaceRefreshConfigRequest,
     WorkspaceSpecCreateRequest,
     WorkspaceSpecOpenRequest,
     WorkspaceStepConfigurationReadRequest,
@@ -270,13 +270,6 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
             recover,
         )
 
-    def workspace_home(self, request: WorkspaceIdRequest) -> dict:
-        session = self._get_session(request.workspace_id)
-        path = Path(session.workspace.home.path).resolve()
-        if not path.exists():
-            raise RuntimeApiError("command_failed", f"get home failed : {path}")
-        return {"path": str(path)}
-
     def workspace_info(self, request: WorkspaceInfoRequest) -> dict:
         session = self._get_session(request.workspace_id)
         workspace_step = _workspace_step_from_flow(session.workspace, request.step)
@@ -354,7 +347,8 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
             if modified and not getattr(request, "force", False):
                 raise RuntimeApiError(
                     "derived_configs_modified",
-                    "config files changed since the last derivation; refresh would overwrite those edits",
+                    "config files changed since the last derivation; "
+                    "refresh would overwrite those edits",
                     {"files": modified},
                 )
             self._release_session_db(session)
@@ -807,15 +801,6 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                 session.workspace.parameters = reload_parameter(parameter_path, parameters)
                 parameters_data = session.workspace.parameters.data or {}
 
-        home_data = deepcopy(getattr(session.workspace.home, "data", {}) or {})
-        if not str(home_data.get("parameters", "")).strip():
-            parameter_path = getattr(session.workspace.parameters, "path", None)
-            if parameter_path is None:
-                from chipcompiler.data.workspace_config import workspace_config_path
-
-                parameter_path = workspace_config_path(session.directory)
-            home_data["parameters"] = str(parameter_path)
-
         engineering_snapshot = self._read_engineering_snapshot(session)
         try:
             configuration = read_workspace_configuration(session.workspace)
@@ -834,7 +819,6 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
             "engineeringSnapshot": engineering_snapshot,
             "directory": str(session.directory),
             "flow": {"steps": steps},
-            "home": stringify_paths(home_data),
             "parameters": stringify_paths(deepcopy(parameters_data)),
             "configuration": stringify_paths(configuration) if configuration else None,
         }
@@ -2652,7 +2636,7 @@ def _looks_like_old_workspace(directory: str) -> bool:
     if not os.path.isdir(directory):
         return False
     home = os.path.join(directory, "home")
-    if not os.path.isfile(os.path.join(home, "home.json")):
+    if os.path.islink(home) or not os.path.isdir(home):
         return False
     from chipcompiler.data.workspace_config import (
         LEGACY_PARAMETERS_FILENAME,

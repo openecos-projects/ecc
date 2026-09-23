@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from chipcompiler.data.checklist import workspace_checklist_path
 from chipcompiler.engine.snapshot_limits import (
     CHECKLIST_INLINE_MAX_BYTES,
     ENGINEERING_SNAPSHOT_MAX_BYTES,
@@ -248,10 +249,7 @@ def _build_snapshot(
     if not flow and flow_owner is not None:
         steps = flow_owner.steps()
         flow = {"steps": deepcopy(steps)} if steps else {}
-    home = _data_mapping(getattr(workspace, "home", None))
-    checklist_path = home.get("checklist") or (
-        Path(workspace.directory) / "home" / "checklist.json"
-    )
+    checklist_path = workspace_checklist_path(getattr(workspace, "directory", None))
     checklist_result = read_bounded_json_object(
         Path(checklist_path),
         CHECKLIST_INLINE_MAX_BYTES,

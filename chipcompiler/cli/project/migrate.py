@@ -3,7 +3,7 @@
 """``ecc migrate``: upgrade a legacy runs/ project to the manifest layout.
 
 Moves each ``runs/<id>`` workspace to ``<root>/<id>``, rebases its
-home.json pointers, regenerates tool configs, and registers it in a
+persisted workspace paths, regenerates tool configs, and registers it in a
 generated project.json. Explicit and user-confirmed — never a side effect
 of another command. Idempotent: a partially migrated project resumes, an
 already migrated one is a no-op report. Planning and the exact preview

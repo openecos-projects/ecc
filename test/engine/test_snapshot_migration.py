@@ -28,7 +28,6 @@ def _workspace(tmp_path):
     return SimpleNamespace(
         directory=root,
         flow=SimpleNamespace(data={"steps": steps}),
-        home=SimpleNamespace(data={}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
     )
