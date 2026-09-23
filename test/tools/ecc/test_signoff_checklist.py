@@ -750,6 +750,65 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
     assert home_items["artifact.postroutelec.result"]["blocked"] is False
 
 
+def test_home_checklist_excludes_inactive_lec_engine_snapshots(tmp_path):
+    """After an engine switch, the previous engine's checklist.json is
+    preserved evidence on disk; it must never leak into the home checklist
+    when no current result replaces it."""
+    origin = tmp_path / "origin" / "gcd.v"
+    origin.parent.mkdir()
+    origin.write_text("module gcd; imported mapped netlist\nendmodule\n", encoding="utf-8")
+    (tmp_path / "home").mkdir()
+
+    stale_dir = tmp_path / "postRouteLec_yosys_lec"
+    stale_dir.mkdir()
+    (stale_dir / "checklist.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "kind": "signoff_checklist",
+                "checklist": [
+                    {
+                        "id": "artifact.postroutelec.result",
+                        "step": "postRouteLec",
+                        "category": "artifact",
+                        "owner": "checklist",
+                        "policy": "block",
+                        "state": "failed",
+                        "blocked": True,
+                        "title": "LEC result",
+                        "summary": "LEC did not prove equivalence.",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", origin_verilog=origin),
+    )
+    workspace.home.init(tmp_path / "home" / "home.json")
+    workspace.home.set_checklist(tmp_path / "home" / "checklist.json")
+    # The ledger records kepler_formal; no current netlists exist, so the
+    # fresh postRouteLec item is not computed (requires is False).
+    workspace.flow.data = {
+        "steps": [
+            {"name": step.value, "tool": "ecc", "state": StateEnum.Unstart.value}
+            for step in (
+                StepEnum.FILLER,
+                StepEnum.LVS,
+                SkippableStepEnum.POST_ROUTE_LEC,
+                StepEnum.HARDEN,
+            )
+        ]
+    }
+    workspace.flow.data["steps"][2]["tool"] = "kepler_formal"
+
+    home_items = {item["id"]: item for item in rebuild_home_checklist(workspace)["checklist"]}
+    assert "artifact.postroutelec.result" not in home_items
+
+
 def test_rebuild_home_checklist_heals_empty_home_checklist_path(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     (tmp_path / "home").mkdir()

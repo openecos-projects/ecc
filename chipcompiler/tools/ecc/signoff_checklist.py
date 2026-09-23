@@ -635,14 +635,30 @@ def rebuild_home_checklist(
         return {}
     workspace_dir = Path(workspace_directory)
     items = []
-    # postRouteLec artifacts live under the engine the flow recorded
-    # (yosys_lec historically, kepler_formal today).
+    # LEC artifacts live under the engine the flow recorded (yosys_lec
+    # historically, kepler_formal today, lec_dual for cross-checking).
+    # Checklist snapshots of every INACTIVE LEC engine are stale evidence —
+    # an engine switch deliberately preserves them on disk — so only the
+    # ledger-recorded directory may contribute; the recorded postRouteLec
+    # itself is recomputed fresh below.
     flow = getattr(workspace, "flow", None)
-    post_route_lec_dir = flow_step_directory(
-        flow.steps() if flow is not None else None, SkippableStepEnum.POST_ROUTE_LEC.value
-    )
+    flow_steps = flow.steps() if flow is not None else None
+    post_route_lec_dir = flow_step_directory(flow_steps, SkippableStepEnum.POST_ROUTE_LEC.value)
+    from chipcompiler.data import LEC_STEP_TOOLS
+    from chipcompiler.data.step import step_directory_for_tool
+
+    lec_step_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
+    ledger_names = {
+        str(step.get("name", "")) for step in flow_steps or [] if isinstance(step, dict)
+    }
+    active_lec_dirs = {
+        flow_step_directory(flow_steps, name) for name in lec_step_names & ledger_names
+    }
+    inactive_lec_dirs = {
+        step_directory_for_tool(name, tool) for name in lec_step_names for tool in LEC_STEP_TOOLS
+    } - active_lec_dirs
     for directory in all_step_directories():
-        if directory == post_route_lec_dir:
+        if directory == post_route_lec_dir or directory in inactive_lec_dirs:
             continue
         data = json_read(workspace_dir / directory / "checklist.json")
         if data.get("schema_version") == 3 and data.get("kind") == "signoff_checklist":
