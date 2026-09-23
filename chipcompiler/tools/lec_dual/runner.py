@@ -161,5 +161,8 @@ def run_step(workspace: Workspace, step: LecDualStep, ecc_module=None) -> bool:
         gate_verilog=step.input.gate_verilog,
     )
     write_aggregate_result(step.output.json, payload)
-    sub_flow.update_step(step_name="analysis", state=StateEnum.Success)
+    # Mirror the single-engine subflow contract: analysis succeeds only
+    # with a proven verdict; anything less stays Unstart.
+    if payload["status"] == "proven":
+        sub_flow.update_step(step_name="analysis", state=StateEnum.Success)
     return payload["status"] == "proven"
