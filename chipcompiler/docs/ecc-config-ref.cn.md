@@ -1,6 +1,6 @@
 # ECC Flow 工具配置参考（按步骤）
 
-本文整理 ECC RTL-to-Harden 流程中**每一步实际使用的工具配置文件、全部参数及其含义**。配置取值与生成逻辑均核对自 v0.1.0-alpha.11 源码（rebase main 之后；模板位于 [chipcompiler/tools/*/configs/](https://github.com/openecos-projects/ecc/tree/main/chipcompiler/tools/ecc/configs/)）与一次真实的 gcd@ics55 harden 运行。
+本文整理 ECC RTL-to-Harden 流程中**每一步实际使用的工具配置文件、全部参数及其含义**。配置取值与生成逻辑已按 v0.1.0-alpha.12 源码重新核对（模板位于 [chipcompiler/tools/*/configs/](https://github.com/openecos-projects/ecc/tree/main/chipcompiler/tools/ecc/configs/)），并对照了一次真实的 gcd@ics55 harden 运行。
 
 - 想了解命令用法 → [ECC CLI 用户指南](ecc-user-guide.cn.md)（终端：`ecc doc ug --lang cn`）；从零上手 → [入门教程](ecc-tutorial.cn.md)（终端：`ecc doc tutorial --lang cn`）
 - 配置查看命令：`ecc config <step>`（列出该步骤实际生效的配置文件）；参数查看与修改命令：`ecc param`（见 §1.4）
@@ -14,8 +14,9 @@
 ```
 <workspace>/                 # 新项目/manifest 项目为 <project>/<id>；legacy 项目为 runs/<id>
 ├── home/
-│   ├── params.toml        # 参数中枢：用户参数 + PDK 派生值（见 §1）
-│   └── flow.json          # 步骤状态
+│   ├── params.toml        # schema_version 1；参数中枢（见 §1）
+│   ├── flow.json          # schema_version 1；步骤状态
+│   └── config-derived-manifest.json # 上次配置派生后的文件哈希
 ├── config/                # ← 本文档的主角：9 个 JSON + Tcl 宏位置交接文件
 │   ├── db_ecc.json        # 数据库构建（读入 LEF/DEF/网表/LIB/SDC，每个 ecc 步骤共用）
 │   ├── floorplan_ecc.json # 布局规划
@@ -35,7 +36,7 @@
 └── postRouteLec_yosys_lec/  # 布线后 LEC 步骤（Tcl 脚本驱动）
 ```
 
-> 历史变化：旧版本的 `flow_ecc.json`（配置路径聚合器）与 `fixfanout_ecc.json`（高扇出修复，独立步骤）已随 ecc-tools 更新移除——高扇出约束现在只作用于 CTS（`cts.max_fanout`）。
+> 历史变化：旧版本的 `flow_ecc.json`（配置路径聚合器）与 `fixfanout_ecc.json`（高扇出修复，独立步骤）已随 ecc-tools 更新移除。`cts.max_fanout` 现在同时写入自动生成 SDC 的 `set_max_fanout` 约束和 CTS 的 `max_fanout` 字段。
 
 ### 0.2 配置值从哪来（生成机制）
 
@@ -57,7 +58,7 @@ graph LR
 | PDK | 工艺相关单元与库 | `buffer_type` ← PDK buffers 列表；STA liberty corners |
 | 步骤调度 | 输入/输出路径（链式传递） | `db_ecc.json` 的 `def_path` 每步指向上一步输出 |
 
-> ⚠️ **不要直接手改 `config/*.json`**：其中参数化字段在每次步骤运行前会按 `params.toml` + PDK 重新刷新，手改会被覆盖。正确入口是 `ecc param set`、`ecc.toml [params.*]` 或一次性 `ecc run --set`。workspace 的输入、输出、临时和生成文件路径不会作为 CLI 参数暴露；PDK 内容路径使用 `pdk.*` 参数（见 §1.2）。
+> ⚠️ **不要直接手改 `config/` 下的受管文件**：JSON 参数字段会在步骤运行前按 `params.toml` + PDK 重新刷新，宏摆放则有独立的 `ecc macro` 接口。`home/config-derived-manifest.json` 记录每次派生后的受管 JSON 和 `macro_location.tcl`；`ecc workspace refresh` 会先与该记录比对，发现后续修改时返回 `derived_configs_modified`，而不会默默丢弃手改内容；只有确定要覆盖时才加 `--force`。旧 workspace 若还没有该清单，因无比对基线，首次 refresh 会直接进行。正确入口是 `ecc param set`、`ecc macro`、`ecc.toml [params.*]` 或一次性 `ecc run --set`。workspace 的输入、输出、临时和生成文件路径不会作为 CLI 参数暴露；PDK 内容路径使用 `pdk.*` 参数（见 §1.2）。
 
 ### 0.3 每个步骤用到哪些配置
 
@@ -87,7 +88,7 @@ graph LR
 
 ### 1.1 旧语义参数（13 个）
 
-来源：[chipcompiler/cli/project/params.py](https://github.com/openecos-projects/ecc/blob/main/chipcompiler/cli/project/params.py) 的 `_LEGACY_PARAM_REGISTRY`（`PARAM_REGISTRY` 的兼容段；直配参数见 §1.2 的 `config_params/` schema）。这些参数保持兼容；优先级：`--set` > `ecc.toml [params]` > 默认值。「写入位置」列为该参数最终落到的工具配置字段。
+来源：[chipcompiler/data/parameter_schema.py](https://github.com/openecos-projects/ecc/blob/main/chipcompiler/data/parameter_schema.py) 的 `_LEGACY_PARAM_REGISTRY`（`PARAM_REGISTRY` 的兼容段；直配参数见 §1.2 的 `config_params/` schema）；`chipcompiler/cli/project/params.py` 现在仅是 CLI 兼容 facade。这些参数保持兼容；优先级：`--set` > `ecc.toml [params]` > 默认值。「写入位置」列为该参数最终落到的工具配置字段。
 
 | 参数 | 类型 / 范围 | 默认 | 写入位置（config 字段） | 含义 |
 |---|---|---|---|---|
@@ -95,7 +96,7 @@ graph LR
 | `floorplan.core_util` | float [0.01, 1.0] | 0.4 | floorplan `die_builder.die_util.utilization` | 核心利用率（面积按单元面积/利用率反推） |
 | `floorplan.core_margin` | int×2（µm） | [2, 2] | floorplan `die_builder.margin.{left,right,top,bottom}_micron` | 核心到 die 边的留白 [水平, 垂直] |
 | `floorplan.aspect_ratio` | float [0.1, 10] | 1.0 | floorplan `die_builder.die_util.aspect_ratio` | 核心宽高比 |
-| `cts.max_fanout` | int [1, 200] | 32 | cts `max_fanout` | 时钟树缓冲最大扇出（fixfanout 步骤移除后由 CTS 承接） |
+| `cts.max_fanout` | int [1, 200] | 32 | 自动生成 SDC 的 `set_max_fanout` + cts `max_fanout` | 设计与时钟树最大扇出约束 |
 | `place.target_density` | float [0.1, 0.95] | 0.2 | dreamplace `target_density` | 全局布局目标密度 |
 | `place.target_overflow` | float [0.0, 1.0] | 0.1 | dreamplace `stop_overflow` | 全局布局溢出收敛目标 |
 | `place.global_right_padding` | int [0, 100] | 0 | 仅记录于 params.toml | 布局 site 右侧全局 padding（当前版本尚未接入工具配置字段） |
@@ -135,7 +136,9 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 1.3 参数中枢 params.toml
 
-`home/params.toml` 保存规范化的 workspace 参数、`config_overrides` 以及 **flow 运行后回填的结果值**（如实际 die/core 尺寸、利用率）。`config_overrides` 是 CLI 从审核 schema 生成的嵌套 TOML 补丁；每次 workspace 刷新都会在 PDK 和语义参数映射之后重新应用。`home/parameters.json` 仅在迁移旧 workspace 时读取。
+`home/params.toml` 是带 schema 版本的文档。新文件在顶层写入 `schema_version = 1`；早于版本化机制的合法文件按 version 0 处理，workspace 迁移路径打开它时会补上 version 1 标记。如文件声明的版本高于当前 ECC 支持上限，则返回 `unsupported_schema_version`，不会静默解析。
+
+该文件保存规范化的 workspace 参数、`config_overrides` 以及 **flow 运行后回填的结果值**（如实际 die/core 尺寸、利用率）。`config_overrides` 是 CLI 从审核 schema 生成的嵌套 TOML 补丁；每次 workspace 刷新都会在 PDK 和语义参数映射之后重新应用。`home/parameters.json` 仅在迁移旧 workspace 时读取。
 
 文件由四个节区构成：
 
@@ -178,8 +181,8 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 |---|---|---|
 | 写入位置 | `ecc.toml` 的 `[params.<group>]` 或 `[pdk.overrides]`（保留注释与格式） | `<workspace>/home/params.toml` 的 `[params]`，同时记录 `workspace_param_overrides` |
 | 生效时机 | 下次 `ecc run` **新建** workspace 时 | 立即刷新生成配置；参数所属步骤及其后缀标记为待执行（输出 `from_step` / `invalidated_steps`），后续 `ecc run --workspace NAME` 从该步骤续跑 |
-| 可改参数 | 全部已审核 schema（含 `pdk.*` 路径参数） | 不含 `pdk.*`（路径改动必须改 `ecc.toml` 后执行 `ecc workspace refresh NAME`）；且参数所属步骤必须存在于该 workspace 的持久化 flow，否则报 `workspace_param_refresh_required` |
-| 前提 | 项目须有 `ecc.toml`；project.json 清单项目暂不支持（报 `param_requires_ecc_toml`） | 须为清单项目中声明的受管 workspace（否则报 `workspace_param_requires_managed_workspace`） |
+| 可改参数 | 全部已审核 schema（含 `pdk.*` 路径参数） | 不含 `pdk.*`（路径改动必须改 `ecc.toml` 后执行 `ecc workspace refresh NAME`）；且参数所属步骤必须存在于该 workspace 的持久化 flow，否则报 `workspace_param_refresh_failed` |
+| 前提 | 项目须有 `ecc.toml`；缺少该文件的纯清单项目会报 `param_requires_ecc_toml` | 须为清单项目中声明的受管 workspace（否则报 `workspace_param_requires_managed_workspace`） |
 | 恢复 | `unset` 从 `ecc.toml` 删除对应键 | `unset` 恢复 `baseline` 并清除该条覆盖记录 |
 
 取值解析：标量按 schema 类型解析；列表与对象必须写成 JSON 字面量，数组整体替换，例如 `ecc param set cts.routing_layer '[4, 5]'`。
@@ -202,6 +205,12 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 `ecc param` 的两种 scope 都适用：项目 scope（默认）把列表存进 `ecc.toml` `[params.macro]`，在下一次新建 run 或 `ecc workspace refresh` 时生效；`--workspace NAME` 写入 `home/params.toml`，立即重生成 Tcl，并把 `macroPlacement` 及其后缀标记为待重跑。该列表也可以按普通 JSON 参数设置，例如 `ecc param set macro.placements '[{"instance": "u0", "x": 10.0, "y": 20.0, "orientation": "R0"}]'`。
 
 交接文件必须覆盖设计中的全部硬宏，否则 `postFloorplan` 会报出缺失的实例名。文件格式详见 [floorplan-flow.cn.md](floorplan-flow.cn.md)。
+
+### 1.6 自动生成的 SDC
+
+未声明 `[design].sdc` 时，workspace 创建过程会写出 `origin/<design>.sdc`；用户提供的 SDC 则只复制、不重新生成。ECC 通过首行 `# Auto-generated SDC file` 标记识别自己生成的文件，参数变化时也只刷新带该标记的 SDC。
+
+当前生成器按 `design.frequency_mhz` 为 `design.clock_port` 创建真实时钟（无端口时创建虚拟时钟），把输入/输出 delay 设为 0，分别按周期的 1.5% 和 0.5% 设置 setup/hold uncertainty，把时钟 transition 上限设为 0.15 ns、输入 transition 上限设为 0.20 ns，按 `cts.max_fanout` 写入 `set_max_fanout`，并在 PDK 的 `sdc_load > 0` 时增加输出负载约束。
 
 ## 2. 公共配置：db_ecc.json
 
@@ -648,8 +657,8 @@ ecc param diff --workspace default        # 该 workspace 的局部覆盖及 bas
 ecc run --set place.target_density=0.55  # 一次性覆盖：仅新建（含 --overwrite）workspace 时生效
 ```
 
-修改层级建议：**统一走 `ecc param`；用 `--step` / `--all` 发现字段；不要直接改 `params.toml` 或 `config/*.json`**（刷新会覆盖手改）。
+修改层级建议：**参数统一走 `ecc param`（宏摆放走 `ecc macro`）；用 `--step` / `--all` 发现字段；不要直接改 `params.toml` 或 `config/` 下的受管文件**。步骤配置派生会覆盖映射字段；完整的 `ecc workspace refresh` 在检测到修改时会拒绝执行，除非显式传入 `--force`。
 
 ---
 
-*参数默认值核对自 v0.1.0-alpha.11（rebase main 后）源码模板与 ics55 PDK 下 gcd 设计的真实运行；`*` 标记表示该字段由用户参数驱动。*
+*参数默认值已按 v0.1.0-alpha.12 源码模板重新核对，并对照了 ics55 PDK 下 gcd 设计的真实运行；`*` 标记表示该字段由用户参数驱动。*

@@ -6,7 +6,7 @@
 - **签核包** `gcd_signoff_package.tar.gz`（含 RTL/配置/交付物/LEC 证明/报告等 300+ 文件）；
 - **三份报告**：设计总结（文本）、QoR 总分、签核清单。
 
-全程以官方 [ICS55 PDK](https://github.com/openecos-projects/icsprout55-pdk)（开源 55nm 工艺）为目标工艺。教程中所有命令输出均为真实执行结果（基于 v0.1.0-alpha.11，示例路径统一写作 `~/ecc-demo`）。
+全程以官方 [ICS55 PDK](https://github.com/openecos-projects/icsprout55-pdk)（开源 55nm 工艺）为目标工艺。命令与输出契约已按 v0.1.0-alpha.12 对齐；物理设计数值来自真实 gcd 运行，会随安装的工具链变化（示例路径统一写作 `~/ecc-demo`）。
 
 > 参考耗时：首次安装（下载 CLI 包 / OSS CAD Suite / PDK 数据，共约 3 GB 下载量）20–60 分钟，视网络而定；gcd 全流程运行约 **4–5 分钟**。
 
@@ -39,7 +39,7 @@ graph LR
 
 使用官方安装脚本安装 `ecc` CLI（Linux x86_64，glibc 2.34+，fontconfig）：
 
-> 本教程随 v0.1.0-alpha.12 版本发布可用：其中用到的命令（`ecc doctor`、`ecc doc`、`signoff`/`report` 命令组、`run` 的 workspace/范围选择器）不在更早的 Release 中。在 alpha.12 发布前，请按 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli) 从源码运行。
+> 本教程面向 v0.1.0-alpha.12。更早版本不具备本文用到的全部命令（`ecc doctor`、`ecc doc`、`signoff`/`report` 命令组和完整的 `run` workspace/范围选择器）。先用 `ecc --version` 确认版本；从当前源码树开发时，按 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli) 配置。
 
 ```bash
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
@@ -105,11 +105,11 @@ ecc pdk unset                    # 清除 ecc.toml 的 pdk.root，回落到环�
 
 ```console
 $ ecc version
-ecc 0.1.0a11
+ecc 0.1.0a12
 dreamplace 0.1.0a7
-ecc_tools 0.1.0a12
+ecc_tools 0.1.0a13
 runtime ECC CLI
-yosys 0.68+132
+yosys 0.69+24
 sizer 0.1.0-alpha
 klayout 0.30.2
 ```
@@ -228,7 +228,7 @@ ecc project show                              # 查看 ecc.toml 里声明的字�
 
 两个要点：
 
-- **无需手写 SDC**：flow 会根据 `clock_port` 与 `frequency_mhz` 自动生成约束（`create_clock` + I/O 延迟比例），生成的 SDC 落在 workspace 的 `origin/gcd.sdc`；
+- **无需手写 SDC**：flow 会根据 `clock_port` 与 `frequency_mhz` 自动生成 `origin/gcd.sdc`，其中输入/输出 delay 为 0，并包含独立的 setup/hold uncertainty、transition、最大扇出约束，以及 PDK 配置的输出负载；如提供 `design.sdc` 则原样复制，不重新生成；
 - **PDK 解析优先级**：`ecc.toml` 的 `pdk.root` > 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`。`ecc pdk show` 为方便查看还会显示仓库默认路径，但 `ecc check` 与 `ecc run` 必须使用前三种显式来源之一。用了一键安装脚本则环境变量已就绪，`root` 留空即可。
 
 ### 3.4 校验
@@ -530,31 +530,32 @@ $ ecc report summary
 
 ### 5.4 QoR 总分：ecc report qor
 
-用 ECC 共用的 `qor_scoring` 规则打分（Studio Snapshot 也用这一套）：每条指标折算 0–100 分，按维度加权（Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1），60 分为通过线；缺项维度不重归一化（缺项会拉低总分）：
+运行 ECC-QoR V3，输出五个质量坐标（`timing`、`interconnect`、`area`、`power`、`robustness`）、七条可行性门禁和证据完整度。标量总分使用当前 profile，并在可评估维度上重新归一化；因此未声明功耗预算时 `power` 为未知，不会拉低其余维度。任一可行性门禁失败都使总分为 0 / `FAIL`；门禁未执行或证据损坏则为 `NOT_RATED`。参考设计的代表性精简输出如下：
 
 ```console
 $ ecc report qor
 [status]
   report: qor
   path: default/signoff/gcd_qor_report.txt
-  bytes: 9661
+  bytes: ...
   view: cat default/signoff/gcd_qor_report.txt
   design: gcd
-  overall score: 58.1
-  qor status: Green
-  gate status: pass
-  dimensions: [{'dimension': 'Timing', 'score': 100.0, 'weight': 0.35, 'metrics': 7},
-               {'dimension': 'Routability / Physical', 'score': 56.8, 'weight': 0.2, 'metrics': 14},
-               {'dimension': 'Area', 'score': 44.0, 'weight': 0.1, 'metrics': 3},
-               {'dimension': 'Clock / DFM', 'score': 73.5, 'weight': 0.1, 'metrics': 8}]
+  overall score: 99.0
+  qor status: GREEN
+  gate status: PASS
+  dimensions: [{'dimension': 'timing', 'score': 100.0, 'state': 'OPPORTUNITY', 'features': ...},
+               {'dimension': 'interconnect', 'score': 100.0, 'state': 'PASS', 'features': ...},
+               {'dimension': 'area', 'score': 100.0, 'state': 'PASS', 'features': ...},
+               {'dimension': 'power', 'score': None, 'state': 'UNKNOWN', 'features': ...},
+               {'dimension': 'robustness', 'score': 94.1, 'state': 'PASS', 'features': ...}]
   status: written
 ```
 
 怎么读这个结果：
 
-- **Flow status: Green、gate: pass** 是核心结论——DRC/LVS/RCX/STA 四个质量门全部通过，时序维度满分，设计可签核交付；
-- 总分 58.1 略低于 60 通过线，主要因为小规模设计在 **Area / 绕线长度类绝对值指标**上天然吃亏（如 core 面积、时钟线长度按固定阈值折算），且 **Power 维度缺项**（本流程未含功耗分析步骤，该维度 0.25 权重直接落空）。这是 gcd 这类小设计的常见现象，不代表 flow 有问题；
-- 逐指标明细在报告文件的 `[ METRIC SCORES ]` 区。
+- `gate status: PASS` 表示七条物理签核门禁全部干净；高质量分不能掩盖 DRC、LVS、时序或 Harden 交付物失败；
+- `power: UNKNOWN` 表示未声明 `qor_power_budget_w`；在 balanced profile 中，它的权重会分配到可评估维度，不按零分处理；
+- 报告文件还包含证据指数、五维说明、确定性诊断和按优先级排列的干预假设。全部公式与 JSON 契约见 [QoR 参考手册](ecc-qor-ref.cn.md)。
 
 ### 5.5 签核清单：ecc report checklist
 
@@ -649,6 +650,8 @@ ecc workspace refresh default                      # 按 ecc.toml 重建输入/�
 ecc run --workspace default                        # 之后想跑再跑
 ```
 
+refresh 会把受管 JSON 配置和 `macro_location.tcl` 与 `home/config-derived-manifest.json` 比对。如文件在上次派生后被改过，命令返回 `derived_configs_modified`，不替换 workspace。应通过 `ecc param`/`ecc macro`/`ecc.toml` 保留有意修改；只有明确要丢弃时才执行 `ecc workspace refresh default --force`。旧 workspace 若没有派生清单，因无比对基线，首次 refresh 会直接进行。
+
 **③ 原地重跑一段/一步**（调试某步工具行为时用）：被重跑步骤的 `output/` 会被替换，其下游步骤标记为待重跑（输出保留）。
 
 ```bash
@@ -689,10 +692,10 @@ $ ecc run --from cts --to route
 rc=1
 ```
 
-> **步骤名怎么写**：`ecc status`/`ecc log` 展示的是小写展示名（如 `placement`、`timing_optimization`）；`--from`/`--only`/`--to` 选择器同时接受 `home/flow.json` 里的持久化名（如 `place`、`CTS`、`Timing optimization`）和小写别名（如 `placement`、`routing`）。记不住没关系——两者都不匹配时报 `unknown_step` 并列出全部可用名，照抄即可：
+> **步骤名怎么写**：`ecc status`/`ecc log` 展示的是小写展示名（如 `placement`、`timing_optimization`）。对已有 workspace，`--from`/`--only`/`--to` 必须使用 `home/flow.json` 里的精确持久化名（如 `place`、`CTS`、`Timing optimization`）；只有在同时给出 `--from` 和 `--to` 新建范围 workspace 时，才会归一化 `placement`、`routing` 等小写别名。不匹配时报 `unknown_step` 并列出当前操作的可用名，照抄即可：
 >
 > ```console
-> $ ecc run --workspace default --only placemen   # 拼错了：既不是持久化名也不是别名
+> $ ecc run --workspace default --only placemen   # 拼错了：不是持久化步骤名
 > [error]
 >   unknown_step unknown step 'placemen'; available steps: Synthesis, lec, preFloorplan,
 >   macroPlacement, postFloorplan, place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
@@ -737,8 +740,9 @@ ecc run --workspace default
 | `[error] env_not_ready`（run 时） | preset 必需工具缺失 | 按 `ecc doctor` 输出补齐；通常是 yosys/slang，重新运行 §2.1 安装脚本加 `--with-toolchain` |
 | `[error] run_exists` | workspace 目录已存在但不是有效 ECC workspace | `ecc run --overwrite`，或换 `--workspace NAME`。注意：**跑完再执行 `ecc run` 不会报这个错**——已成功时是 no_op，中断时自动续跑 |
 | `[error] workspace_required` | 项目里有多个活跃 workspace，没指明用哪个 | 按报错列出的名称传 `--workspace NAME` |
-| `[error] unknown_step` | `--from`/`--only` 的步骤名既不匹配 `home/flow.json` 持久化名也不匹配别名（如把 `place` 写成 `placemen`） | 照抄报错列出的可用步骤名；详见 §6.3 的「步骤名怎么写」 |
+| `[error] unknown_step` | 已有 workspace 的选择器没有精确匹配持久化名，或新建范围的边界名既不是持久化名也不是别名 | 照抄报错列出的可用步骤名；详见 §6.3 的「步骤名怎么写」 |
 | `[error] set_requires_fresh_run` | 对已有 workspace 用 `--set` | `--set` 只在新建时生效；改用 `--overwrite` 或新 `--workspace` |
+| `[error] derived_configs_modified` | `workspace refresh` 发现受管 JSON 或 `macro_location.tcl` 在上次派生后被改过 | 通过 `ecc param`/`ecc macro`/`ecc.toml` 保留修改，或加 `--force` 明确丢弃 |
 | run 汇总带 `warning: ecc.toml values override different project.json base values`（`config_layer_diverged`） | `ecc.toml` 与首次运行记录到 `project.json` 的基线实际不一致：`pdk.root` 解析到了与首次运行不同的 PDK（如环境变量改指向），或 `flow.preset` 与 workspace 声明的范围不一致（如用 `--preset synthesis_lec` 建的 workspace 配 `rtl2gds` 的 ecc.toml） | 不影响执行结果，可忽略；对齐两边即消失（`ecc pdk set-root` 或修正 `flow.preset`） |
 | `[error] signoff_incomplete`（export 时） | 必需交付物缺失（如某步失败） | `ecc signoff inspect` 看 blocked 项；`ecc status`/`ecc log` 排查失败步骤后重跑 |
 | `ecc check` 报 `pdk.root is required` | 未找到 PDK | `ecc pdk set-root <路径>` 或设 `CHIPCOMPILER_ICS55_PDK_ROOT` |
@@ -757,4 +761,4 @@ ecc run --workspace default
 
 ---
 
-*本教程的示例输出采集自 v0.1.0-alpha.11 + ICS55 PDK 在 Linux x86_64 上的真实运行。*
+*命令与输出契约已按 v0.1.0-alpha.12 重新核对；物理设计数值来自 Linux x86_64 上真实的 ICS55 gcd 运行，会随工具版本变化。*

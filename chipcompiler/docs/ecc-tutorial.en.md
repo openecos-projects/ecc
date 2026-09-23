@@ -6,7 +6,7 @@ This tutorial is for first-time ECC users: starting from a bare Linux machine, i
 - A **signoff package** `gcd_signoff_package.tar.gz` (300+ files: RTL / configs / deliverables / LEC proof / reports);
 - **Three reports**: design summary (text), QoR score, and signoff checklist.
 
-The target process is the official [ICS55 PDK](https://github.com/openecos-projects/icsprout55-pdk) (an open-source 55 nm educational PDK). Every command output in this tutorial is a real execution result (captured on v0.1.0-alpha.11; example paths are written as `~/ecc-demo`).
+The target process is the official [ICS55 PDK](https://github.com/openecos-projects/icsprout55-pdk) (an open-source 55 nm educational PDK). Command and output contracts are aligned with v0.1.0-alpha.12; physical-design numbers come from a real gcd run and vary with the installed toolchain (example paths are written as `~/ecc-demo`).
 
 > Reference timing: first-time install (downloads the PDK and OSS CAD Suite, roughly 3 GB total) takes 20–60 minutes depending on network; the gcd flow itself runs in about **4–5 minutes**.
 
@@ -39,7 +39,7 @@ graph LR
 
 Install the `ecc` CLI (Linux x86_64, glibc 2.34+, fontconfig) with the official installer:
 
-> This tutorial ships with release v0.1.0-alpha.12: the commands it uses (`ecc doctor`, `ecc doc`, the `signoff`/`report` groups, and the `run` workspace/range selectors) are not in earlier releases. Until alpha.12 is out, run from source per [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli).
+> This tutorial targets v0.1.0-alpha.12. Earlier releases do not provide every command used here (`ecc doctor`, `ecc doc`, the `signoff`/`report` groups, and all `run` workspace/range selectors). Check with `ecc --version`; for source-tree development, follow [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli).
 
 ```bash
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
@@ -105,11 +105,11 @@ ecc pdk unset                    # clear pdk.root in ecc.toml (falls back to env
 
 ```console
 $ ecc version
-ecc 0.1.0a11
+ecc 0.1.0a12
 dreamplace 0.1.0a7
-ecc_tools 0.1.0a12
+ecc_tools 0.1.0a13
 runtime ECC CLI
-yosys 0.68+132
+yosys 0.69+24
 sizer 0.1.0-alpha
 klayout 0.30.2
 ```
@@ -229,7 +229,7 @@ ecc project show                              # list what ecc.toml declares
 
 Two things worth knowing:
 
-- **No hand-written SDC needed**: the flow generates constraints automatically from `clock_port` and `frequency_mhz` (`create_clock` + an I/O delay ratio); the generated SDC lands in the workspace's `origin/gcd.sdc`;
+- **No hand-written SDC needed**: the flow generates `origin/gcd.sdc` from `clock_port` and `frequency_mhz`, with zero input/output delay, separate setup/hold uncertainty, transition and maximum-fanout constraints, and the PDK output load when configured. A user-supplied `design.sdc` is copied unchanged instead;
 - **PDK resolution order**: `pdk.root` in `ecc.toml` > env var `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`. `ecc pdk show` also reports a repository-default path for convenience, but `ecc check` and `ecc run` require one of the three explicit sources. If you used the one-shot installer, the env var is already set, so leaving `root` empty is fine.
 
 ### 3.4 Validate
@@ -531,31 +531,32 @@ Excerpts from this gcd run (full report: `cat` the file above):
 
 ### 5.4 QoR score: ecc report qor
 
-Scores the workspace with ECC's shared `qor_scoring` rules (the same table Studio Snapshot uses): each metric maps to 0–100, dimensions are weighted (Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1), 60 is the pass line; absent dimensions are not renormalized (absence drags the overall score down):
+Runs ECC-QoR V3, which reports five quality coordinates (`timing`, `interconnect`, `area`, `power`, `robustness`), seven feasibility gates, and evidence completeness. The scalar score uses the selected profile and renormalizes over evaluated dimensions, so an undeclared power budget leaves `power` unknown without depressing the other dimensions. Any failed feasibility gate forces score 0 / `FAIL`; unexecuted or corrupt gate evidence produces `NOT_RATED`. Representative abridged output from the reference design is:
 
 ```console
 $ ecc report qor
 [status]
   report: qor
   path: default/signoff/gcd_qor_report.txt
-  bytes: 9661
+  bytes: ...
   view: cat default/signoff/gcd_qor_report.txt
   design: gcd
-  overall score: 58.1
-  qor status: Green
-  gate status: pass
-  dimensions: [{'dimension': 'Timing', 'score': 100.0, 'weight': 0.35, 'metrics': 7},
-               {'dimension': 'Routability / Physical', 'score': 56.8, 'weight': 0.2, 'metrics': 14},
-               {'dimension': 'Area', 'score': 44.0, 'weight': 0.1, 'metrics': 3},
-               {'dimension': 'Clock / DFM', 'score': 73.5, 'weight': 0.1, 'metrics': 8}]
+  overall score: 99.0
+  qor status: GREEN
+  gate status: PASS
+  dimensions: [{'dimension': 'timing', 'score': 100.0, 'state': 'OPPORTUNITY', 'features': ...},
+               {'dimension': 'interconnect', 'score': 100.0, 'state': 'PASS', 'features': ...},
+               {'dimension': 'area', 'score': 100.0, 'state': 'PASS', 'features': ...},
+               {'dimension': 'power', 'score': None, 'state': 'UNKNOWN', 'features': ...},
+               {'dimension': 'robustness', 'score': 94.1, 'state': 'PASS', 'features': ...}]
   status: written
 ```
 
 How to read this:
 
-- **Flow status: Green, gate: pass** is the key conclusion — all four quality gates (DRC/LVS/RCX/STA) passed and Timing scored full marks; the design is signoff-ready;
-- The overall 58.1 sits slightly below the 60 pass line, mostly because small designs lose out on **absolute Area / wirelength metrics** (core area and clock wirelength are scored against fixed thresholds) and because the **Power dimension is absent** (this flow has no power analysis step, so that 0.25 weight goes to waste). This is normal for a design the size of gcd, not a flow problem;
-- Per-metric details are in the `[ METRIC SCORES ]` section of the report file.
+- `gate status: PASS` means all seven physical signoff gates are clean; a high quality score can never hide DRC, LVS, timing, or missing Harden-deliverable failures;
+- `power: UNKNOWN` means no `qor_power_budget_w` was declared. Its balanced-profile weight is redistributed over the evaluated dimensions rather than counted as zero;
+- The report file adds the evidence index, five-dimension notes, deterministic diagnoses, and prioritized intervention hypotheses. See the [QoR Reference](ecc-qor-ref.en.md) for the full formulas and JSON contract.
 
 ### 5.5 Signoff checklist: ecc report checklist
 
@@ -650,6 +651,8 @@ ecc workspace refresh default                      # rebuild inputs/config from 
 ecc run --workspace default                        # then run when ready
 ```
 
+Refresh compares the managed JSON configs and `macro_location.tcl` with `home/config-derived-manifest.json`. If any changed after the last derivation, it returns `derived_configs_modified` without replacing the workspace. Carry the intended change through `ecc param`/`ecc macro`/`ecc.toml`, or use `ecc workspace refresh default --force` only when discarding it is deliberate. Older workspaces without a manifest have no comparison baseline, so their first refresh proceeds.
+
 **③ Rerun a range or a single step in place** (when debugging a step's tool behavior): the rerun steps' `output/` is replaced, and their downstream steps are marked for rerun (outputs kept).
 
 ```bash
@@ -690,10 +693,10 @@ $ ecc run --from cts --to route
 rc=1
 ```
 
-> **How to spell step names**: `ecc status`/`ecc log` show lowercase display names (e.g. `placement`, `timing_optimization`); the `--from`/`--only`/`--to` selectors accept the persisted names from `home/flow.json` (e.g. `place`, `CTS`, `Timing optimization`) and the lowercase aliases (e.g. `placement`, `routing`) alike. Don't worry about memorizing this — a name matching neither fails with `unknown_step` and lists every accepted name, so just copy one:
+> **How to spell step names**: `ecc status`/`ecc log` show lowercase display names (e.g. `placement`, `timing_optimization`). On an existing workspace, `--from`/`--only`/`--to` require the exact persisted names from `home/flow.json` (e.g. `place`, `CTS`, `Timing optimization`); lowercase aliases such as `placement` and `routing` are normalized only while creating a fresh range with both `--from` and `--to`. A mismatch fails with `unknown_step` and lists the names valid for that operation, so copy one as printed:
 >
 > ```console
-> $ ecc run --workspace default --only placemen   # typo: neither a persisted name nor an alias
+> $ ecc run --workspace default --only placemen   # typo: not a persisted step name
 > [error]
 >   unknown_step unknown step 'placemen'; available steps: Synthesis, lec, preFloorplan,
 >   macroPlacement, postFloorplan, place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
@@ -738,8 +741,9 @@ The list must cover **every** hard macro in the design and use real instance nam
 | `[error] env_not_ready` (at run) | tools required by the preset are missing | Follow `ecc doctor`; usually yosys/slang — re-run the §2.1 installer with `--with-toolchain` |
 | `[error] run_exists` | the workspace directory already exists but is not a valid ECC workspace | `ecc run --overwrite`, or select a different `--workspace NAME`. Note: **running `ecc run` again after the flow completed does NOT raise this error** — it no-ops when everything succeeded, and auto-resumes after an interruption |
 | `[error] workspace_required` | the project has multiple active workspaces and none was specified | pass `--workspace NAME` with one of the names listed in the error |
-| `[error] unknown_step` | a step name passed to `--from`/`--only` matches neither a persisted name in `home/flow.json` nor an alias (e.g. you wrote `placemen` for `place`) | copy one of the available step names listed in the error; see the "How to spell step names" note in §6.3 |
+| `[error] unknown_step` | an existing-workspace selector does not exactly match a persisted name, or a fresh-range boundary matches neither a persisted name nor an alias | copy one of the available step names listed in the error; see the "How to spell step names" note in §6.3 |
 | `[error] set_requires_fresh_run` | `--set` used on an existing workspace | `--set` applies only at creation; use `--overwrite` or a new `--workspace` instead |
+| `[error] derived_configs_modified` | `workspace refresh` found a managed JSON config or `macro_location.tcl` changed since the last derivation | preserve the change through `ecc param`/`ecc macro`/`ecc.toml`, or rerun refresh with `--force` to discard it |
 | run summary carries `warning: ecc.toml values override different project.json base values` (`config_layer_diverged`) | `ecc.toml` effectively disagrees with the baseline the first run recorded in `project.json`: `pdk.root` resolves to a different PDK than the first run used (e.g. the env var was repointed), or `flow.preset` differs from the workspace's declared range (e.g. a workspace created with `--preset synthesis_lec` under an `rtl2gds` ecc.toml) | does not affect the run result — safe to ignore; aligning the two sides makes it go away (`ecc pdk set-root`, or fix `flow.preset`) |
 | `[error] signoff_incomplete` (at export) | required deliverables missing (e.g. a failed step) | `ecc signoff inspect` for blocked items; debug with `ecc status`/`ecc log`, then rerun |
 | `ecc check` reports `pdk.root is required` | no PDK found | `ecc pdk set-root <path>` or set `CHIPCOMPILER_ICS55_PDK_ROOT` |
@@ -758,4 +762,4 @@ The list must cover **every** hard macro in the design and use real instance nam
 
 ---
 
-*Outputs in this tutorial were captured from a real run of v0.1.0-alpha.11 + the ICS55 PDK on Linux x86_64.*
+*Command and output contracts were rechecked against v0.1.0-alpha.12; physical-design numbers come from a real ICS55 gcd run on Linux x86_64 and vary with tool versions.*

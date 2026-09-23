@@ -1,6 +1,6 @@
 # ECC Flow Tool Configuration Reference (by step)
 
-This document consolidates **the tool configuration files actually used by each step of the ECC RTL-to-Harden flow, all of their parameters, and what each parameter means**. Configuration values and generation logic were verified against the v0.1.0-alpha.11 source (after the rebase onto main; templates live in [chipcompiler/tools/*/configs/](https://github.com/openecos-projects/ecc/tree/main/chipcompiler/tools/ecc/configs/)) and a real gcd@ics55 harden run.
+This document consolidates **the tool configuration files actually used by each step of the ECC RTL-to-Harden flow, all of their parameters, and what each parameter means**. Configuration values and generation logic were rechecked against the v0.1.0-alpha.12 source (templates live in [chipcompiler/tools/*/configs/](https://github.com/openecos-projects/ecc/tree/main/chipcompiler/tools/ecc/configs/)) and a real gcd@ics55 harden run.
 
 - For command usage, see the [ECC CLI User Guide](ecc-user-guide.en.md) (`ecc doc ug`); to get started from scratch, see the [Tutorial](ecc-tutorial.en.md) (`ecc doc tutorial`)
 - Config inspection command: `ecc config <step>` (lists the configuration files actually in effect for that step); parameter inspection/modification command: `ecc param` (see §1.4)
@@ -14,8 +14,9 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 ```
 <workspace>/                 # <project>/<id> for fresh/manifest projects; runs/<id> for legacy projects
 ├── home/
-│   ├── params.toml        # parameter hub: user params + PDK-derived values (see §1)
-│   └── flow.json          # step status
+│   ├── params.toml        # schema_version 1; parameter hub (see §1)
+│   ├── flow.json          # schema_version 1; step status
+│   └── config-derived-manifest.json # hashes from the last config derivation
 ├── config/                # ← this document's focus: 9 JSON files + the Tcl macro-location handoff
 │   ├── db_ecc.json        # database build (loads LEF/DEF/netlist/LIB/SDC; shared by every ecc step)
 │   ├── floorplan_ecc.json # floorplanning
@@ -35,7 +36,7 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 └── postRouteLec_yosys_lec/  # post-route LEC step (Tcl-script driven)
 ```
 
-> History: the old `flow_ecc.json` (configuration-path aggregator) and `fixfanout_ecc.json` (high-fanout fixing, a standalone step) were removed along with an ecc-tools update — the high-fanout constraint now applies only to CTS (`cts.max_fanout`).
+> History: the old `flow_ecc.json` (configuration-path aggregator) and `fixfanout_ecc.json` (high-fanout fixing, a standalone step) were removed along with an ecc-tools update. `cts.max_fanout` now feeds both the auto-generated SDC `set_max_fanout` constraint and CTS's `max_fanout` field.
 
 ### 0.2 Where configuration values come from (generation mechanism)
 
@@ -57,7 +58,7 @@ graph LR
 | PDK | Process-specific cells and libraries | `buffer_type` ← PDK buffers list; STA liberty corners |
 | Step scheduling | Input/output paths (chained between steps) | `db_ecc.json`'s `def_path` points to the previous step's output at every step |
 
-> ⚠️ **Do not hand-edit `config/*.json`**: parameterized fields are re-refreshed from `params.toml` + PDK before every step run, so manual edits get overwritten. The proper entry points are `ecc param set`, `ecc.toml [params.*]`, or a one-off `ecc run --set`. Workspace input, output, temporary, and generated file paths are not exposed as CLI parameters; PDK content paths use the `pdk.*` parameters (see §1.2).
+> ⚠️ **Do not hand-edit managed files under `config/`**: parameterized JSON fields are re-refreshed from `params.toml` + PDK before a step runs, and macro placement has its own `ecc macro` interface. `home/config-derived-manifest.json` records the managed JSON files and `macro_location.tcl` after each derivation. `ecc workspace refresh` compares them with that record and returns `derived_configs_modified` instead of discarding later edits; use `--force` only when overwriting them is intentional. Workspaces created before this manifest existed have no comparison baseline, so their first refresh proceeds. The proper entry points are `ecc param set`, `ecc macro`, `ecc.toml [params.*]`, or a one-off `ecc run --set`. Workspace input, output, temporary, and generated file paths are not exposed as CLI parameters; PDK content paths use the `pdk.*` parameters (see §1.2).
 
 ### 0.3 Which configurations each step uses
 
@@ -87,7 +88,7 @@ Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG
 
 ### 1.1 Legacy-semantic parameters (13)
 
-Source: `_LEGACY_PARAM_REGISTRY` in [chipcompiler/cli/project/params.py](https://github.com/openecos-projects/ecc/blob/main/chipcompiler/cli/project/params.py) (the compatibility section of `PARAM_REGISTRY`; the direct-config parameters are the `config_params/` schemas in §1.2). These parameters are kept for compatibility; precedence: `--set` > `ecc.toml [params]` > defaults. The "Written to" column shows the tool configuration field each parameter ultimately lands in.
+Source: `_LEGACY_PARAM_REGISTRY` in [chipcompiler/data/parameter_schema.py](https://github.com/openecos-projects/ecc/blob/main/chipcompiler/data/parameter_schema.py) (the compatibility section of `PARAM_REGISTRY`; the direct-config parameters are the `config_params/` schemas in §1.2). `chipcompiler/cli/project/params.py` is now only the CLI compatibility facade. These parameters are kept for compatibility; precedence: `--set` > `ecc.toml [params]` > defaults. The "Written to" column shows the tool configuration field each parameter ultimately lands in.
 
 | Parameter | Type / range | Default | Written to (config field) | Meaning |
 |---|---|---|---|---|
@@ -95,7 +96,7 @@ Source: `_LEGACY_PARAM_REGISTRY` in [chipcompiler/cli/project/params.py](https:/
 | `floorplan.core_util` | float [0.01, 1.0] | 0.4 | floorplan `die_builder.die_util.utilization` | Core utilization (area back-calculated as cell area / utilization) |
 | `floorplan.core_margin` | int×2 (µm) | [2, 2] | floorplan `die_builder.margin.{left,right,top,bottom}_micron` | Margin from core to die edge [horizontal, vertical] |
 | `floorplan.aspect_ratio` | float [0.1, 10] | 1.0 | floorplan `die_builder.die_util.aspect_ratio` | Core width/height ratio |
-| `cts.max_fanout` | int [1, 200] | 32 | cts `max_fanout` | Max fanout of clock tree buffers (taken over by CTS after the fixfanout step was removed) |
+| `cts.max_fanout` | int [1, 200] | 32 | auto-generated SDC `set_max_fanout` + cts `max_fanout` | Design and clock-tree maximum fanout constraint |
 | `place.target_density` | float [0.1, 0.95] | 0.2 | dreamplace `target_density` | Global placement target density |
 | `place.target_overflow` | float [0.0, 1.0] | 0.1 | dreamplace `stop_overflow` | Global placement overflow convergence target |
 | `place.global_right_padding` | int [0, 100] | 0 | recorded only in params.toml | Global padding on the right side of placement sites (not yet wired into a tool config field in the current version) |
@@ -133,7 +134,9 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 1.3 The parameter hub: params.toml
 
-`home/params.toml` holds canonical workspace parameters, `config_overrides`, and **result values back-filled after a flow run** (for example actual die/core dimensions and utilization). `config_overrides` is a nested TOML patch generated by the CLI from reviewed schemas and reapplied after PDK and semantic parameter mappings on each workspace refresh. `home/parameters.json` is read only when migrating a legacy workspace.
+`home/params.toml` is a schema-versioned document. New files carry the top-level marker `schema_version = 1`; a valid file from the pre-versioning era is treated as version 0 and stamped as version 1 when the workspace migration path opens it. A version newer than the running ECC supports is rejected as `unsupported_schema_version` rather than parsed silently.
+
+The file holds canonical workspace parameters, `config_overrides`, and **result values back-filled after a flow run** (for example actual die/core dimensions and utilization). `config_overrides` is a nested TOML patch generated by the CLI from reviewed schemas and reapplied after PDK and semantic parameter mappings on each workspace refresh. `home/parameters.json` is read only when migrating a legacy workspace.
 
 The file has four sections:
 
@@ -176,8 +179,8 @@ Behavior differences between the two scopes:
 |---|---|---|
 | Written to | `[params.<group>]` or `[pdk.overrides]` in `ecc.toml` (comments and formatting preserved) | `[params]` in `<workspace>/home/params.toml`, plus a `workspace_param_overrides` record |
 | When it takes effect | On the next `ecc run` that **creates** a workspace | Immediately refreshes the generated configuration; the owning step and its suffix are marked pending (`from_step` / `invalidated_steps` are reported) and a later `ecc run --workspace NAME` resumes from that step |
-| What can be changed | The full reviewed schema (including the `pdk.*` path parameters) | Not `pdk.*` (path changes require editing `ecc.toml` and running `ecc workspace refresh NAME`); the owning step must exist in the workspace's persisted flow, otherwise `workspace_param_refresh_required` is reported |
-| Precondition | The project must have an `ecc.toml`; project.json manifest projects are not supported yet (`param_requires_ecc_toml`) | Must be a managed workspace declared in the manifest (otherwise `workspace_param_requires_managed_workspace`) |
+| What can be changed | The full reviewed schema (including the `pdk.*` path parameters) | Not `pdk.*` (path changes require editing `ecc.toml` and running `ecc workspace refresh NAME`); the owning step must exist in the workspace's persisted flow, otherwise `workspace_param_refresh_failed` is reported |
+| Precondition | The project must have an `ecc.toml`; a manifest-only project without that file is rejected with `param_requires_ecc_toml` | Must be a managed workspace declared in the manifest (otherwise `workspace_param_requires_managed_workspace`) |
 | Undo | `unset` deletes the corresponding key from `ecc.toml` | `unset` restores the `baseline` and removes the override record |
 
 Value parsing: scalars are parsed according to the schema type; list and object values must be JSON literals and arrays are replaced wholesale, e.g. `ecc param set cts.routing_layer '[4, 5]'`.
@@ -200,6 +203,12 @@ For full command output examples, see [ECC CLI User Guide §9](ecc-user-guide.en
 Both `ecc param` scopes apply: project scope (default) stores the list in `ecc.toml` `[params.macro]` and takes effect on the next fresh run or `ecc workspace refresh`; `--workspace NAME` writes `home/params.toml`, regenerates the Tcl immediately, and marks `macroPlacement` and its suffix pending. The list is also accepted as a plain JSON parameter, e.g. `ecc param set macro.placements '[{"instance": "u0", "x": 10.0, "y": 20.0, "orientation": "R0"}]'`.
 
 The file must cover every hard macro in the design — `postFloorplan` fails with the missing instance names otherwise. See [floorplan-flow.en.md](floorplan-flow.en.md) for the handoff format.
+
+### 1.6 Auto-generated SDC
+
+When `[design].sdc` is absent, workspace creation writes `origin/<design>.sdc`; a user-provided SDC is copied instead and is never regenerated. ECC recognizes its own file by the first-line `# Auto-generated SDC file` marker and refreshes only such generated files when parameters change.
+
+The current generator creates the real clock from `design.clock_port` (or a virtual clock when no port is available) at `design.frequency_mhz`, sets input/output delay to 0, applies setup uncertainty at 1.5% and hold uncertainty at 0.5% of the period, caps clock transition at 0.15 ns and input transition at 0.20 ns, applies `set_max_fanout` from `cts.max_fanout`, and adds the PDK's output-load constraint when `sdc_load > 0`.
 
 ## 2. Shared configuration: db_ecc.json
 
@@ -646,8 +655,8 @@ ecc param diff --workspace default        # that workspace's local overrides and
 ecc run --set place.target_density=0.55  # one-off override: applies only to a freshly created (or --overwrite) workspace
 ```
 
-Recommended practice for making changes: **always go through `ecc param`; use `--step` / `--all` to discover fields; never edit `params.toml` or `config/*.json` directly** (refresh will overwrite manual edits).
+Recommended practice for making changes: **use `ecc param` (and `ecc macro` for macro placement); use `--step` / `--all` to discover fields; never edit `params.toml` or managed `config/` files directly**. Step configuration derivation can overwrite mapped fields, while a full `ecc workspace refresh` refuses detected changes unless `--force` is supplied.
 
 ---
 
-*Parameter defaults were verified against the v0.1.0-alpha.11 source templates (after the rebase onto main) and a real run of the gcd design under the ics55 PDK; a `*` mark means the field is driven by a user parameter.*
+*Parameter defaults were rechecked against the v0.1.0-alpha.12 source templates and a real run of the gcd design under the ics55 PDK; a `*` mark means the field is driven by a user parameter.*
