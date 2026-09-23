@@ -37,6 +37,9 @@ class ProjectConfig:
     # code default then applies). An explicit declaration wins over the
     # manifest's per-workspace value, like every other key.
     flow_skip_steps: list[str] | None = None
+    # Declared [flow] lec_engine spelling; None when the key is absent (the
+    # code default engine then applies).
+    flow_lec_engine: str | None = None
     config_path: str = ""
     project_dir: str = ""
 
@@ -110,6 +113,7 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     # _explicit_keys, and validate_project_config surfaces invalid shapes
     # instead of silently dropping them.
     skip_steps = flow.get("skip_steps")
+    lec_engine = flow.get("lec_engine")
 
     cfg = ProjectConfig(
         design_name=_str(design.get("name", "")),
@@ -127,6 +131,7 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         pdk_overrides=pdk_overrides,
         flow_preset=_str(flow.get("preset", "")),
         flow_skip_steps=skip_steps,
+        flow_lec_engine=lec_engine,
         config_path=config_path,
         project_dir=project_dir,
     )
@@ -248,6 +253,14 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
 
         try:
             resolve_skip_steps({"skip_steps": cfg.flow_skip_steps})
+        except ValueError as exc:
+            errors.append(str(exc))
+
+    if "flow.lec_engine" in cfg._explicit_keys:
+        from chipcompiler.rtl2gds import resolve_lec_engine
+
+        try:
+            resolve_lec_engine({"lec_engine": cfg.flow_lec_engine})
         except ValueError as exc:
             errors.append(str(exc))
 

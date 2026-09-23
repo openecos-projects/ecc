@@ -83,13 +83,28 @@ def skip_steps_shadow_warning(entry, cfg) -> dict | None:
 def _attach_skip_steps(flow_config: dict | None, skip_steps: list | None) -> dict | None:
     """Carry a declared skip policy on the flow config (policy-only when
     the config selects no steps)."""
-    if skip_steps is None:
+    return _attach_flow_key(flow_config, "skip_steps", skip_steps)
+
+
+def _attach_lec_engine(flow_config: dict | None, lec_engine: str | None) -> dict | None:
+    """Carry a declared LEC engine on the flow config (policy-only when the
+    config selects no steps)."""
+    return _attach_flow_key(flow_config, "lec_engine", lec_engine)
+
+
+def _attach_flow_key(flow_config: dict | None, key: str, value) -> dict | None:
+    if value is None:
         return flow_config
-    if flow_config is None:
-        return {"skip_steps": skip_steps}
-    flow_config = dict(flow_config)
-    flow_config["skip_steps"] = skip_steps
+    flow_config = dict(flow_config or {})
+    flow_config[key] = value
     return flow_config
+
+
+def declared_lec_engine(cfg) -> str | None:
+    """The declared [flow] lec_engine spelling; None when the key is absent."""
+    if "flow.lec_engine" in getattr(cfg, "_explicit_keys", frozenset()):
+        return cfg.flow_lec_engine
+    return None
 
 
 def flow_config_selects_steps(flow_config) -> bool:
@@ -143,6 +158,7 @@ def resolve_effective_config(
     # declaration outranks the manifest entry (the base layer).
     declared = declared_skip_steps(entry, cfg)
     flow_config = _attach_skip_steps(flow_config, declared)
+    flow_config = _attach_lec_engine(flow_config, declared_lec_engine(cfg))
     # Provenance for inspection surfaces: the winning layer's name.
     if declared is not None:
         cfg._skip_steps_source = (

@@ -414,7 +414,7 @@ class TestRunPreflight:
 
 
 def _capture_preset(seen):
-    def fake(preset, *, skip=()):
+    def fake(preset, *, skip=(), lec_engine=None):
         seen["preset"] = preset
         return ("ecc-tools",)
 
