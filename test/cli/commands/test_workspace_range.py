@@ -30,7 +30,7 @@ def test_new_workspace_range_uses_ecc_toml_inputs_and_registers_before_execution
     design_def, netlist = _set_design_inputs(project_dir)
     monkeypatch.setattr(
         "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-        lambda *, skip=(): [("CTS", "ecc", "Unstart")],
+        lambda *, skip=(), lec_engine=None: [("CTS", "ecc", "Unstart")],
     )
 
     rc = cli_main.run(

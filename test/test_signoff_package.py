@@ -418,7 +418,7 @@ def test_collect_signoff_package_requires_proven_post_route_lec(tmp_path):
     assert any(
         issue.label == "lec.result"
         and issue.destination == "final/reports/postRouteLec/result.json"
-        and issue.reason == "Yosys LEC did not prove equivalence"
+        and issue.reason == "LEC did not prove equivalence"
         and issue.required
         for issue in result.issues
     )
@@ -848,3 +848,133 @@ def test_signoff_required_qor_steps_contain_no_skippable_step():
 
     skippable = {member.value for member in SkippableStepEnum}
     assert not (SIGNOFF_REQUIRED_QOR_STEPS & skippable)
+
+
+def _make_dual_signoff_workspace(tmp_path: Path) -> Path:
+    """A signoff workspace whose postRouteLec ledger records the dual engine."""
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    design = "gcd"
+
+    flow_path = workspace_dir / "home" / "flow.json"
+    flow = json.loads(flow_path.read_text(encoding="utf-8"))
+    for step in flow["steps"]:
+        if step["name"] == "postRouteLec":
+            step["tool"] = "lec_dual"
+    flow_path.write_text(json.dumps(flow), encoding="utf-8")
+
+    yosys_result = json.loads(
+        (
+            workspace_dir
+            / "postRouteLec_yosys_lec"
+            / "output"
+            / f"{design}_postRouteLec_result.json"
+        ).read_text(encoding="utf-8")
+    )
+    contract = {
+        key: yosys_result[key]
+        for key in (
+            "status",
+            "golden_verilog",
+            "gate_verilog",
+            "golden_sha256",
+            "gate_sha256",
+            "golden_size_bytes",
+            "gate_size_bytes",
+        )
+    }
+    kepler_result = dict(contract)
+    _write_json(
+        workspace_dir
+        / "postRouteLec_kepler_formal"
+        / "output"
+        / f"{design}_postRouteLec_result.json",
+        kepler_result,
+    )
+    _write(
+        workspace_dir / "postRouteLec_kepler_formal" / "report" / "run_lec_status.rpt",
+        "kepler-formal LEC completed with proven equivalence.\n",
+    )
+    _write_json(
+        workspace_dir / "postRouteLec_dual" / "output" / f"{design}_postRouteLec_result.json",
+        {
+            **contract,
+            "engines": {"yosys_lec": yosys_result, "kepler_formal": kepler_result},
+            "agreement": True,
+        },
+    )
+    return workspace_dir
+
+
+def test_collect_signoff_package_dual_packages_aggregate_and_engine_evidence(tmp_path):
+    workspace_dir = _make_dual_signoff_workspace(tmp_path)
+
+    result = _make_engine_flow(workspace_dir).collect_signoff_package(
+        SignoffPackageOptions(archive=True)
+    )
+
+    package_dir = Path(result.package_dir)
+    assert result.ok is True
+    # The aggregate drives the require_lec gate...
+    assert (package_dir / "final" / "reports" / "postRouteLec" / "result.json").is_file()
+    # ...plus both per-engine result JSONs and present status reports.
+    engines_dir = package_dir / "final" / "reports" / "postRouteLec" / "engines"
+    assert (engines_dir / "yosys_lec" / "result.json").is_file()
+    assert (engines_dir / "kepler_formal" / "result.json").is_file()
+    assert (engines_dir / "yosys_lec" / "report" / "run_lec_status.rpt").is_file()
+    assert (engines_dir / "kepler_formal" / "report" / "run_lec_status.rpt").is_file()
+    # The dual branch does not require single-engine report files.
+    assert not (package_dir / "final" / "reports" / "postRouteLec" / "report").exists()
+
+    summary = json.loads((package_dir / "summary.json").read_text())
+    assert summary["lec"]["status"] == "proven"
+    # The summary advertises only paths the dual branch actually packages:
+    # per-engine links, never the single-engine report leaves.
+    assert "equiv_status" not in summary["lec"]
+    assert "status_report" not in summary["lec"]
+    engines_root = "final/reports/postRouteLec/engines"
+    assert summary["lec"]["engines"] == {
+        "yosys_lec": {
+            "result": f"{engines_root}/yosys_lec/result.json",
+            "status_report": f"{engines_root}/yosys_lec/report/run_lec_status.rpt",
+        },
+        "kepler_formal": {
+            "result": f"{engines_root}/kepler_formal/result.json",
+            "status_report": f"{engines_root}/kepler_formal/report/run_lec_status.rpt",
+        },
+    }
+    copied_roles = {entry["role"] for entry in result.copied}
+    assert "lec.result" in copied_roles
+    assert "lec.yosys_lec.result" in copied_roles
+    assert "lec.kepler_formal.status_report" in copied_roles
+
+
+def test_collect_signoff_package_dual_absent_engine_status_report_is_not_fatal(tmp_path):
+    workspace_dir = _make_dual_signoff_workspace(tmp_path)
+    (workspace_dir / "postRouteLec_kepler_formal" / "report" / "run_lec_status.rpt").unlink()
+
+    result = _make_engine_flow(workspace_dir).collect_signoff_package(
+        SignoffPackageOptions(archive=False, materialize=False)
+    )
+
+    assert result.ok is True
+    assert any(
+        issue.destination
+        == "final/reports/postRouteLec/engines/kepler_formal/report/run_lec_status.rpt"
+        and not issue.required
+        for issue in result.issues
+    )
+
+
+def test_collect_signoff_package_dual_without_aggregate_fails_the_gate(tmp_path):
+    workspace_dir = _make_dual_signoff_workspace(tmp_path)
+    (workspace_dir / "postRouteLec_dual" / "output" / "gcd_postRouteLec_result.json").unlink()
+
+    result = _make_engine_flow(workspace_dir).collect_signoff_package(
+        SignoffPackageOptions(archive=False, materialize=False)
+    )
+
+    assert result.ok is False
+    assert any(
+        issue.destination == "final/reports/postRouteLec/result.json" and issue.required
+        for issue in result.issues
+    )

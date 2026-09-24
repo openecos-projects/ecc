@@ -6,7 +6,9 @@ from .builder import (
     filter_flow_steps,
     get_flow_builders,
     normalize_flow_step,
+    resolve_lec_engine,
     resolve_skip_steps,
+    substitute_lec_engine,
 )
 
 __all__ = [
@@ -17,5 +19,7 @@ __all__ = [
     "filter_flow_steps",
     "get_flow_builders",
     "normalize_flow_step",
+    "resolve_lec_engine",
     "resolve_skip_steps",
+    "substitute_lec_engine",
 ]

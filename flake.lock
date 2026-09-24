@@ -105,6 +105,25 @@
         "type": "github"
       }
     },
+    "nix-eda": {
+      "inputs": {
+        "nixpkgs": "nixpkgs_2"
+      },
+      "locked": {
+        "lastModified": 1789992932,
+        "narHash": "sha256-GX7vEo4QdZEDcMIYY8K3fHpTX5w5GglnhK/F7c4HQYA=",
+        "owner": "fossi-foundation",
+        "repo": "nix-eda",
+        "rev": "93b4808044ee1d92eb088f02e90bc9ae0b2bcf46",
+        "type": "github"
+      },
+      "original": {
+        "owner": "fossi-foundation",
+        "repo": "nix-eda",
+        "rev": "93b4808044ee1d92eb088f02e90bc9ae0b2bcf46",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1771423170,
@@ -183,6 +202,22 @@
     },
     "nixpkgs_2": {
       "locked": {
+        "lastModified": 1780734595,
+        "narHash": "sha256-DmTfP92QFYRLOGXlMIE54MAgxSJjDWocl3gRNOu72Os=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "9b696460ac78b5ccfc17c854d8c976f20456e943",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "nixos-26.05",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_3": {
+      "locked": {
         "lastModified": 1758213207,
         "narHash": "sha256-rqoqF0LEi+6ZT59tr+hTQlxVwrzQsET01U4uUdmqRtM=",
         "owner": "NixOS",
@@ -221,7 +256,8 @@
         "ecc-tools": "ecc-tools",
         "flake-parts": "flake-parts_3",
         "infra": "infra",
-        "nixpkgs": "nixpkgs_2"
+        "nix-eda": "nix-eda",
+        "nixpkgs": "nixpkgs_3"
       }
     },
     "treefmt-nix": {

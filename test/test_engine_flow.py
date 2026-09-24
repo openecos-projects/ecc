@@ -70,7 +70,7 @@ def test_engine_flow_default_steps_include_synthesis_lec(tmp_path):
 
     assert [(step["name"], step["tool"]) for step in workspace.flow.data["steps"][:5]] == [
         (StepEnum.SYNTHESIS.value, "yosys"),
-        (SkippableStepEnum.LEC.value, "yosys_lec"),
+        (SkippableStepEnum.LEC.value, "kepler_formal"),
         (StepEnum.PRE_FLOORPLAN.value, "ecc"),
         (StepEnum.MACRO_PLACEMENT.value, "dreamplace"),
         (StepEnum.POST_FLOORPLAN.value, "ecc"),
@@ -731,6 +731,7 @@ class TestRunStepReturnContract:
         [
             False,
             None,
+            StateEnum.Success,
             StateEnum.Imcomplete,
             StateEnum.Invalid,
             StateEnum.Pending,
@@ -758,13 +759,12 @@ class TestRunStepReturnContract:
             )
         ]
 
-    @pytest.mark.parametrize("returned", [True, StateEnum.Success])
-    def test_success_returns_reach_success(self, monkeypatch, tmp_path, returned):
+    def test_success_returns_reach_success(self, monkeypatch, tmp_path):
         engine_flow, workspace, workspace_step = self._make_flow(
             tmp_path, "route", "ecc", self._valid_route_output(tmp_path)
         )
         observer = CompletionObserver()
-        monkeypatch.setattr(tools, "run_step", lambda **_kwargs: returned)
+        monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
         monkeypatch.setattr(tools, "save_layout_image", lambda **_kwargs: True)
         monkeypatch.setattr(tools, "build_step_metrics", lambda **_kwargs: StepMetrics(data={}))
 
@@ -775,8 +775,7 @@ class TestRunStepReturnContract:
         assert persisted_step["state"] == StateEnum.Success.value
         assert observer.completed == [(StateEnum.Success, None)]
 
-    @pytest.mark.parametrize("returned", [True, StateEnum.Success])
-    def test_sizer_state_enum_return_keeps_success_contract(self, monkeypatch, tmp_path, returned):
+    def test_sizer_bool_return_keeps_success_contract(self, monkeypatch, tmp_path):
         output_dir = tmp_path / "output"
         output_dir.mkdir()
         def_path = output_dir / "sized.def"
@@ -790,7 +789,7 @@ class TestRunStepReturnContract:
             EccOutput(def_=def_path, verilog=verilog_path),
         )
         observer = CompletionObserver()
-        monkeypatch.setattr(tools, "run_step", lambda **_kwargs: returned)
+        monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
         monkeypatch.setattr(tools, "save_layout_image", lambda **_kwargs: True)
         monkeypatch.setattr(tools, "build_step_metrics", lambda **_kwargs: StepMetrics(data={}))
 

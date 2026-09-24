@@ -134,13 +134,18 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
 
         import chipcompiler.rtl2gds as rtl2gds_api
 
-        # The skip policy is validated before any sidecar artifact (temp
-        # filelist, inline PDK) is materialized: invalid input must not
-        # reach workspace creation or leave temporaries behind.
+        # The skip policy and LEC engine are validated before any sidecar
+        # artifact (temp filelist, inline PDK) is materialized: invalid
+        # input must not reach workspace creation or leave temporaries
+        # behind.
         try:
             rtl2gds_api.resolve_skip_steps(request.flow_config)
         except ValueError as exc:
             raise RuntimeApiError("config_error", f"invalid skip_steps: {exc}") from exc
+        try:
+            rtl2gds_api.resolve_lec_engine(request.flow_config)
+        except ValueError as exc:
+            raise RuntimeApiError("config_error", f"invalid lec_engine: {exc}") from exc
 
         temp_filelist_dir = None
         input_filelist = request.filelist
@@ -2555,13 +2560,14 @@ def build_flow_for_workspace(workspace, *, create_step_workspaces: bool = True):
     engine_flow = engine_api.EngineFlow(workspace=workspace)
     if not engine_flow.has_init():
         # Ledger-less rebuild: the workspace's persisted flow target carries
-        # the skip policy; the code default applies when none was persisted.
+        # the skip policy and LEC engine; the code defaults apply when none
+        # were persisted.
         parameters_data = getattr(getattr(workspace, "parameters", None), "data", None)
         persisted_flow = parameters_data.get("_flow") if isinstance(parameters_data, dict) else None
-        skip = rtl2gds_api.resolve_skip_steps(
-            persisted_flow if isinstance(persisted_flow, dict) else None
-        )
-        for step, tool, state in rtl2gds_api.build_rtl2gds_flow(skip=skip):
+        persisted_flow = persisted_flow if isinstance(persisted_flow, dict) else None
+        skip = rtl2gds_api.resolve_skip_steps(persisted_flow)
+        lec_engine = rtl2gds_api.resolve_lec_engine(persisted_flow)
+        for step, tool, state in rtl2gds_api.build_rtl2gds_flow(skip=skip, lec_engine=lec_engine):
             engine_flow.add_step(step=step, tool=tool, state=state)
 
     if create_step_workspaces:
@@ -2751,3 +2757,8 @@ def _run_engine_flow_step(engine_flow, workspace_step, *, rerun: bool, observer)
         event_sink=observer,
     )
     return _success_state() if result.succeeded else result.state
+
+
+# switch_lec_engine lives in the focused lec_engine_switch module (this file
+# is over the module-size guideline); re-exported here as the API entry point.
+from chipcompiler.runtime.lec_engine_switch import switch_lec_engine  # noqa: E402,F401

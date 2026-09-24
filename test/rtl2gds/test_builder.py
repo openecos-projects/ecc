@@ -56,7 +56,7 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
 
     assert flow == [
         (StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart),
-        (SkippableStepEnum.LEC, "yosys_lec", StateEnum.Unstart),
+        (SkippableStepEnum.LEC, "kepler_formal", StateEnum.Unstart),
         (StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart),
         (StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart),
         (StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart),
@@ -69,7 +69,7 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
         (StepEnum.RCX, "ecc", StateEnum.Unstart),
         (StepEnum.STA, "ecc", StateEnum.Unstart),
         (StepEnum.LVS, "ecc", StateEnum.Unstart),
-        (SkippableStepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart),
+        (SkippableStepEnum.POST_ROUTE_LEC, "kepler_formal", StateEnum.Unstart),
         (StepEnum.DRC, "ecc", StateEnum.Unstart),
         (StepEnum.HARDEN, "ecc", StateEnum.Unstart),
     ]
@@ -128,6 +128,77 @@ def test_build_flow_range_skip_excludes_steps_from_the_slice():
 def test_build_flow_range_rejects_skipped_step_as_boundary():
     with pytest.raises(ValueError, match="unknown flow step"):
         builder_module.build_flow_range("Synthesis", "lec", skip=("lec",))
+
+
+def test_resolve_lec_engine_absent_key_yields_the_code_default():
+    from chipcompiler.data import DEFAULT_LEC_ENGINE, LECEngineEnum
+
+    assert builder_module.resolve_lec_engine(None) is DEFAULT_LEC_ENGINE
+    assert builder_module.resolve_lec_engine({}) is DEFAULT_LEC_ENGINE
+    assert builder_module.resolve_lec_engine({"start_step": "Synthesis"}) is DEFAULT_LEC_ENGINE
+    assert DEFAULT_LEC_ENGINE is LECEngineEnum.KEPLER_FORMAL
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("yosys_lec", "yosys_lec"),
+        ("kepler_formal", "kepler_formal"),
+        ("lec_dual", "lec_dual"),
+        ("dual", "lec_dual"),
+    ],
+)
+def test_resolve_lec_engine_normalizes_declared_values(raw, expected):
+    assert builder_module.resolve_lec_engine({"lec_engine": raw}).value == expected
+
+
+def test_resolve_lec_engine_rejects_unknown_values_with_the_legal_set():
+    with pytest.raises(ValueError, match="unknown LEC engine: 'bogus'.*yosys_lec"):
+        builder_module.resolve_lec_engine({"lec_engine": "bogus"})
+
+
+@pytest.mark.parametrize("engine", ["yosys_lec", "kepler_formal", "lec_dual"])
+def test_build_rtl2gds_flow_substitutes_the_lec_engine(engine):
+    flow = builder_module.build_rtl2gds_flow(lec_engine=engine)
+
+    tools = {step.value: tool for step, tool, _state in flow}
+    assert tools["lec"] == engine
+    assert tools["postRouteLec"] == engine
+    default_tools = {step.value: tool for step, tool, _state in builder_module.build_rtl2gds_flow()}
+    assert {name: tool for name, tool in tools.items() if name not in {"lec", "postRouteLec"}} == {
+        name: tool for name, tool in default_tools.items() if name not in {"lec", "postRouteLec"}
+    }
+
+
+def test_build_rtl2gds_flow_default_engine_is_kepler_formal():
+    flow = builder_module.build_rtl2gds_flow()
+    tools = {step.value: tool for step, tool, _state in flow}
+    assert tools["lec"] == "kepler_formal"
+    assert tools["postRouteLec"] == "kepler_formal"
+
+
+def test_build_rtl2gds_flow_rejects_an_unknown_engine():
+    with pytest.raises(ValueError, match="unknown LEC engine"):
+        builder_module.build_rtl2gds_flow(lec_engine="bogus")
+
+
+def test_build_flow_range_passes_the_lec_engine_through():
+    flow = builder_module.build_flow_range("Synthesis", "preFloorplan", lec_engine="yosys_lec")
+
+    assert [(step, tool) for step, tool, _state in flow] == [
+        (StepEnum.SYNTHESIS, "yosys"),
+        (SkippableStepEnum.LEC, "yosys_lec"),
+        (StepEnum.PRE_FLOORPLAN, "ecc"),
+    ]
+
+
+def test_build_synthesis_lec_flow_substitutes_the_lec_engine():
+    flow = builder_module.build_synthesis_lec_flow(lec_engine="dual")
+
+    assert [(step, tool) for step, tool, _state in flow] == [
+        (StepEnum.SYNTHESIS, "yosys"),
+        (SkippableStepEnum.LEC, "lec_dual"),
+    ]
 
 
 def test_resolve_skip_steps_absent_key_yields_the_code_default():

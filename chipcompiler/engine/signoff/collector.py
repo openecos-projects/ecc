@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 
 from chipcompiler.data import SkippableStepEnum, StateEnum, StepEnum, Workspace
+from chipcompiler.data.step import flow_step_directory
 from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
 from chipcompiler.engine.signoff.discovery import CollectorDiscoveryMixin
 from chipcompiler.engine.signoff.models import (
@@ -370,9 +371,23 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 required=True,
             )
 
-        lec_dir = workspace_dir / self._step_dirs()[SkippableStepEnum.POST_ROUTE_LEC.value]
+        lec_flow = getattr(self.workspace, "flow", None)
+        lec_flow_steps = lec_flow.steps() if lec_flow is not None else None
+        lec_dir = workspace_dir / flow_step_directory(
+            lec_flow_steps,
+            SkippableStepEnum.POST_ROUTE_LEC.value,
+        )
         lec_result = (
             lec_dir / "output" / f"{design}_{SkippableStepEnum.POST_ROUTE_LEC.value}_result.json"
+        )
+        lec_tool = next(
+            (
+                str(step.get("tool", ""))
+                for step in lec_flow_steps or []
+                if isinstance(step, dict)
+                and step.get("name") == SkippableStepEnum.POST_ROUTE_LEC.value
+            ),
+            "",
         )
         if require_lec:
             add_file(
@@ -381,29 +396,53 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 destination="final/reports/postRouteLec/result.json",
                 required=True,
             )
-            add_file(
-                role="lec.equiv_status",
-                source=lec_dir / "report" / "equiv_status.rpt",
-                destination="final/reports/postRouteLec/report/equiv_status.rpt",
-                required=True,
-            )
-            add_file(
-                role="lec.status_report",
-                source=lec_dir / "report" / "run_lec_status.rpt",
-                destination="final/reports/postRouteLec/report/run_lec_status.rpt",
-                required=True,
-            )
-            add_file(
-                role="lec.failed_rtlil",
-                source=lec_dir / "report" / "equiv_failed.il",
-                destination="final/reports/postRouteLec/report/equiv_failed.il",
-            )
-            add_file(
-                role="lec.failed_verilog",
-                source=lec_dir / "report" / "equiv_failed.v",
-                destination="final/reports/postRouteLec/report/equiv_failed.v",
-            )
-            from chipcompiler.tools.yosys_lec.utility import lec_result_status
+            if lec_tool == "lec_dual":
+                # The aggregate drives the gate; per-engine evidence is
+                # additive — a degraded run's missing sibling is recorded
+                # missing-optional, never fatal.
+                from chipcompiler.data import LECEngineEnum
+                from chipcompiler.data.step import step_directory_for_tool
+
+                for engine in LECEngineEnum.DUAL.spawn_engines:
+                    engine_dir = workspace_dir / step_directory_for_tool(
+                        SkippableStepEnum.POST_ROUTE_LEC.value, engine.value
+                    )
+                    add_file(
+                        role=f"lec.{engine.value}.result",
+                        source=engine_dir
+                        / "output"
+                        / f"{design}_{SkippableStepEnum.POST_ROUTE_LEC.value}_result.json",
+                        destination=f"final/reports/postRouteLec/engines/{engine.value}/result.json",
+                    )
+                    add_file(
+                        role=f"lec.{engine.value}.status_report",
+                        source=engine_dir / "report" / "run_lec_status.rpt",
+                        destination=f"final/reports/postRouteLec/engines/{engine.value}/report/run_lec_status.rpt",
+                    )
+            else:
+                add_file(
+                    role="lec.equiv_status",
+                    source=lec_dir / "report" / "equiv_status.rpt",
+                    destination="final/reports/postRouteLec/report/equiv_status.rpt",
+                    required=True,
+                )
+                add_file(
+                    role="lec.status_report",
+                    source=lec_dir / "report" / "run_lec_status.rpt",
+                    destination="final/reports/postRouteLec/report/run_lec_status.rpt",
+                    required=True,
+                )
+                add_file(
+                    role="lec.failed_rtlil",
+                    source=lec_dir / "report" / "equiv_failed.il",
+                    destination="final/reports/postRouteLec/report/equiv_failed.il",
+                )
+                add_file(
+                    role="lec.failed_verilog",
+                    source=lec_dir / "report" / "equiv_failed.v",
+                    destination="final/reports/postRouteLec/report/equiv_failed.v",
+                )
+            from chipcompiler.tools.lec_result import lec_result_status
 
             lec_status = lec_result_status(
                 lec_result,
@@ -422,9 +461,9 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                             "final/reports/postRouteLec/result.json",
                         ),
                         reason=(
-                            "Yosys LEC proof is stale; golden or gate netlist changed"
+                            "LEC proof is stale; golden or gate netlist changed"
                             if lec_status == "stale"
-                            else "Yosys LEC did not prove equivalence"
+                            else "LEC did not prove equivalence"
                         ),
                         required=True,
                         destination="final/reports/postRouteLec/result.json",
@@ -649,14 +688,31 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         }
         if require_lec:
             lec_payload = self._read_json(lec_result)
-            summary["lec"] = {
+            lec_summary = {
                 "status": lec_payload.get("status", ""),
                 "result": "final/reports/postRouteLec/result.json",
-                "equiv_status": "final/reports/postRouteLec/report/equiv_status.rpt",
-                "status_report": "final/reports/postRouteLec/report/run_lec_status.rpt",
                 "golden_verilog": lec_payload.get("golden_verilog", ""),
                 "gate_verilog": lec_payload.get("gate_verilog", ""),
             }
+            if lec_tool == "lec_dual":
+                # Dual packages evidence per engine; the summary must point
+                # at the paths that actually exist in the package.
+                from chipcompiler.data import LECEngineEnum
+
+                engines_root = "final/reports/postRouteLec/engines"
+                lec_summary["engines"] = {
+                    engine.value: {
+                        "result": f"{engines_root}/{engine.value}/result.json",
+                        "status_report": f"{engines_root}/{engine.value}/report/run_lec_status.rpt",
+                    }
+                    for engine in LECEngineEnum.DUAL.spawn_engines
+                }
+            else:
+                lec_summary["equiv_status"] = "final/reports/postRouteLec/report/equiv_status.rpt"
+                lec_summary["status_report"] = (
+                    "final/reports/postRouteLec/report/run_lec_status.rpt"
+                )
+            summary["lec"] = lec_summary
         if has_synthesis:
             summary["synthesis"] = {"verilog": f"synthesis/{design}.v.gz"}
         summary_path = package_dir / "summary.json"

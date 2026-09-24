@@ -11,9 +11,12 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     infra.url = "github:Emin017/ieda-infra";
+    # nix-eda's packaging needs its own (much newer) nixpkgs — do NOT make
+    # it follow the root pin (onetbb and the newer fmt only exist there).
+    nix-eda.url = "github:fossi-foundation/nix-eda/93b4808044ee1d92eb088f02e90bc9ae0b2bcf46";
   };
   outputs = inputs@{
-    self, nixpkgs, flake-parts, ecc-dreamplace, ecc-tools, infra,
+    self, nixpkgs, flake-parts, ecc-dreamplace, ecc-tools, infra, nix-eda,
   }: let
     rosettakit = {
       fetchFromGitHub,
@@ -41,6 +44,34 @@
 
       pythonImportsCheck = [ "rosettakit" ];
     };
+
+    # kepler-formal, the GPL-3.0-only LEC engine for the lec/postRouteLec
+    # steps: nix-eda's packaging with src pointed at the openecos fork.
+    # Built from source for local development only: ECOS ships Apache-2.0
+    # and does not redistribute kepler-formal binaries, so the derivation
+    # stays on the developer's machine (no distribution, no GPL conveyance
+    # obligations). The ECC runtime resolves it through
+    # CHIPCOMPILER_KEPLER_FORMAL_ROOT. First build takes a while (naja and
+    # its submodules compile in the nix sandbox).
+    keplerFormal = {
+      fetchgit,
+      lib,
+      nix-eda,
+      system,
+    }: nix-eda.packages.${system}.kepler-formal.overrideAttrs (old: {
+      version = "0-unstable-2026-09-24";
+      src = fetchgit {
+        url = "https://github.com/openecos-projects/kepler-formal";
+        rev = "d4d896705065f8a6b4457745dd25ffccfa83c301";
+        hash = "sha256-zkOmBTBMkrZPLaZv2o1ZrPD4lFP9w3u8hoIOnoVGAoY=";
+        fetchSubmodules = true;
+      };
+      meta = old.meta // {
+        description = "Equivalence checking engine (GPL-3.0-only, local dev build)";
+        homepage = "https://github.com/openecos-projects/kepler-formal";
+        license = lib.licenses.gpl3Only;
+      };
+    });
 
     # Not in the pinned nixpkgs; required by chipcompiler's runtime server.
     # Use the wheel: the sdist's bundled versioneer is incompatible with
@@ -90,6 +121,7 @@
       ecc-dreamplace,
       ecc-tools,
       jsonrpcserver,
+      keplerFormal,
       rosettakit,
       yosysWithSlang,
       lib,
@@ -139,6 +171,7 @@
       postFixup = ''
         wrapProgram "$out/bin/ecc" \
           --set CHIPCOMPILER_OSS_CAD_DIR "${yosysWithSlang}" \
+          --set CHIPCOMPILER_KEPLER_FORMAL_ROOT "${keplerFormal}" \
           --prefix PATH : "${yosysWithSlang}/bin"
       '';
 
@@ -154,10 +187,14 @@
   in flake-parts.lib.mkFlake { inherit inputs; } {
     systems = [ "x86_64-linux" ];
     perSystem = { self', pkgs, system, ... }: {
+      packages.keplerFormal = pkgs.callPackage keplerFormal {
+        inherit nix-eda system;
+      };
       packages.default = pkgs.callPackage chipcompiler {
         ecc-dreamplace = ecc-dreamplace.packages.${system}.default;
         ecc-tools = ecc-tools.packages.${system}.default;
         jsonrpcserver = pkgs.callPackage jsonrpcserver { oslash = pkgs.callPackage oslash {}; };
+        keplerFormal = self'.packages.keplerFormal;
         rosettakit = pkgs.callPackage rosettakit {};
         yosysWithSlang = infra.packages.${system}.yosysWithSlang;
       };
@@ -172,6 +209,7 @@
           cairo
         ])}";
         CHIPCOMPILER_OSS_CAD_DIR = "${infra.packages.${system}.yosysWithSlang}";
+        CHIPCOMPILER_KEPLER_FORMAL_ROOT = "${self'.packages.keplerFormal}";
         # inputsFrom will add python3.13 to the environment. Using rawBuildInputs and rawNativeBuildInputs to avoid that.
         buildInputs = ecc-dreamplace.packages.${system}.default.rawBuildInputs ++
           ecc-tools.packages.${system}.default.rawBuildInputs;

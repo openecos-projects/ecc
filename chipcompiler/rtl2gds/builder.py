@@ -2,7 +2,10 @@
 from collections.abc import Callable, Collection
 
 from chipcompiler.data import (
+    DEFAULT_LEC_ENGINE,
     DEFAULT_SKIP_STEPS,
+    LEC_STEP_TOOLS,
+    LECEngineEnum,
     SkippableStepEnum,
     StateEnum,
     StepBaseEnum,
@@ -11,6 +14,18 @@ from chipcompiler.data import (
 
 # Step values a project is allowed to exclude from its ledger.
 SKIPPABLE_STEP_VALUES = frozenset(member.value for member in SkippableStepEnum)
+
+
+def resolve_lec_engine(flow_config: dict | None) -> LECEngineEnum:
+    """The LEC engine a flow config declares.
+
+    Presence-keyed like the skip policy: an absent ``lec_engine`` key yields
+    the code default; a declared value validates and normalizes through
+    :meth:`LECEngineEnum.from_value` (the ``dual`` alias becomes ``lec_dual``).
+    """
+    if not isinstance(flow_config, dict) or "lec_engine" not in flow_config:
+        return DEFAULT_LEC_ENGINE
+    return LECEngineEnum.from_value(flow_config["lec_engine"])
 
 
 def resolve_skip_steps(flow_config: dict | None) -> tuple[str, ...]:
@@ -56,11 +71,37 @@ def filter_flow_steps(steps: list, skip: Collection[str]) -> list:
     ]
 
 
-def build_rtl2gds_flow(*, skip: Collection[str] = ()) -> list:
+def substitute_lec_engine(steps: list, lec_engine: LECEngineEnum = DEFAULT_LEC_ENGINE) -> list:
+    """Replace the tool of a built chain's LEC entries with the engine.
+
+    For callers that build a preset chain through the no-arg discovery
+    table (CLI run creation, preflight) and apply the configured engine
+    afterwards — the same rule the canonical builders apply at
+    construction time.
+    """
+    lec_tool = LECEngineEnum.from_value(lec_engine).value
+    lec_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
+    return [
+        (
+            step,
+            lec_tool
+            if (step.value if isinstance(step, StepBaseEnum) else str(step)) in lec_names
+            and tool in LEC_STEP_TOOLS
+            else tool,
+            state,
+        )
+        for step, tool, state in steps
+    ]
+
+
+def build_rtl2gds_flow(
+    *, skip: Collection[str] = (), lec_engine: LECEngineEnum = DEFAULT_LEC_ENGINE
+) -> list:
+    lec_tool = LECEngineEnum.from_value(lec_engine).value
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
-    steps.append((SkippableStepEnum.LEC, "yosys_lec", StateEnum.Unstart))
+    steps.append((SkippableStepEnum.LEC, lec_tool, StateEnum.Unstart))
     steps.append((StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart))
@@ -73,7 +114,7 @@ def build_rtl2gds_flow(*, skip: Collection[str] = ()) -> list:
     steps.append((StepEnum.RCX, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.STA, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.LVS, "ecc", StateEnum.Unstart))
-    steps.append((SkippableStepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart))
+    steps.append((SkippableStepEnum.POST_ROUTE_LEC, lec_tool, StateEnum.Unstart))
     steps.append((StepEnum.DRC, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.HARDEN, "ecc", StateEnum.Unstart))
 
@@ -125,6 +166,7 @@ def build_flow_range(
     to_step: str | StepBaseEnum,
     *,
     skip: Collection[str] = (),
+    lec_engine: LECEngineEnum = DEFAULT_LEC_ENGINE,
 ) -> list:
     """Return the inclusive canonical RTL-to-GDS range requested by a workspace.
 
@@ -133,7 +175,7 @@ def build_flow_range(
     Skipped steps are excluded from the chain first, so a skipped step cannot
     serve as a range boundary (it is unknown in the filtered chain).
     """
-    steps = build_rtl2gds_flow(skip=skip)
+    steps = build_rtl2gds_flow(skip=skip, lec_engine=lec_engine)
     names = [
         step.value if isinstance(step, StepBaseEnum) else str(step) for step, _tool, _state in steps
     ]
@@ -159,11 +201,12 @@ def build_syn_sta_flow() -> list:
     return steps
 
 
-def build_synthesis_lec_flow() -> list:
+def build_synthesis_lec_flow(*, lec_engine: LECEngineEnum = DEFAULT_LEC_ENGINE) -> list:
+    lec_tool = LECEngineEnum.from_value(lec_engine).value
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
-    steps.append((SkippableStepEnum.LEC, "yosys_lec", StateEnum.Unstart))
+    steps.append((SkippableStepEnum.LEC, lec_tool, StateEnum.Unstart))
 
     return steps
 

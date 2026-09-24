@@ -3,7 +3,8 @@ import math
 from pathlib import Path
 from typing import Any, TypeGuard
 
-from chipcompiler.data.step import STEP_DIRECTORIES, step_storage_name
+from chipcompiler.data import LEC_STEP_TOOLS
+from chipcompiler.data.step import STEP_DIRECTORIES, flow_step_directory, step_storage_name
 from chipcompiler.engine.qor_scoring import DIMENSION_WEIGHTS
 from chipcompiler.engine.snapshot_limits import (
     ANALYSIS_FILE_INLINE_MAX_BYTES,
@@ -60,9 +61,14 @@ def build_workspace_analysis(
         identity = "".join(character for character in step_id.casefold() if character.isalnum())
         if identity == "fixfanout":
             continue
-        step_dir = root / STEP_DIRECTORIES.get(
-            step_id, f"{step_storage_name(step_id, tool_id)}_{tool_id}"
-        )
+        # LEC steps own one directory per engine: resolve through the
+        # ledger's (name, tool) record, never the name-keyed table.
+        if tool_id in LEC_STEP_TOOLS:
+            step_dir = root / flow_step_directory(raw_steps, step_id)
+        else:
+            step_dir = root / STEP_DIRECTORIES.get(
+                step_id, f"{step_storage_name(step_id, tool_id)}_{tool_id}"
+            )
         step: dict[str, Any] = {
             "stepId": step_id,
             "toolId": tool_id,
@@ -93,7 +99,7 @@ def build_workspace_analysis(
             )
         if "timingIssues" not in step:
             step["timingIssues"] = None
-        if tool_id.lower() == "yosys_lec" and design:
+        if tool_id in LEC_STEP_TOOLS and design:
             result = step_dir / "output" / f"{design}_{step_id}_result.json"
             artifact = _artifact_ref(
                 result,

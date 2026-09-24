@@ -95,6 +95,23 @@ def compare_flows(persisted: list[tuple[str, str]], target: list[tuple[str, str]
     return "divergent"
 
 
+def _normalized_entries(entries: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """Canonical comparison form where LEC engines are interchangeable.
+
+    A ledger that ran lec/postRouteLec under yosys_lec stays compatible when
+    the default chain wires those steps to kepler_formal (and vice versa):
+    the ledger's recorded tool keeps owning reruns, so only classification
+    needs a canonical form — mutations still apply the raw target entries.
+    """
+    from chipcompiler.data import LEC_STEP_TOOLS, SkippableStepEnum
+
+    lec_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
+    return [
+        (name, "yosys_lec") if name in lec_names and tool in LEC_STEP_TOOLS else (name, tool)
+        for name, tool in entries
+    ]
+
+
 def _relation_with_skipped_steps(
     persisted: list[tuple[str, str]], target: list[tuple[str, str]], skip: tuple[str, ...]
 ) -> str:
@@ -110,7 +127,16 @@ def _relation_with_skipped_steps(
     """
     from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
 
-    canonical_tools = {name: tool for name, tool, _state in _canonical_rtl2gds_flow_entries()}
+    # Both sides arrive in normalized form (LEC engines interchangeable), so
+    # the canonical chain is normalized too: a yosys_lec ledger entry counts
+    # as the canonical LEC step, while a corrupted (right name, foreign tool)
+    # entry is still never silently ignored.
+    canonical_tools = {
+        name: tool
+        for name, tool in _normalized_entries(
+            [(name, tool) for name, tool, _state in _canonical_rtl2gds_flow_entries()]
+        )
+    }
     excluded = set(skip)
     kept = [
         entry
@@ -138,10 +164,15 @@ def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
 
     The section's skip policy (its declared list, or the code default when
     undeclared) is applied to the chain, so the target never contains steps
-    the workspace excludes.
+    the workspace excludes. LEC steps name the section's configured engine
+    (code default when undeclared); classification still normalizes engine
+    identity away, so a ledger recorded under another engine stays
+    compatible and keeps owning its reruns.
     """
+    from chipcompiler.data import LEC_STEP_TOOLS, SkippableStepEnum
     from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
     from chipcompiler.data.workspace_config import flow_range_of
+    from chipcompiler.rtl2gds import resolve_lec_engine
 
     flow_range = flow_range_of(flow_section)
     if flow_range is None:
@@ -156,7 +187,12 @@ def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
     if skip:
         excluded = set(skip)
         entries = [entry for entry in entries if entry[0] not in excluded]
-    return entries
+    lec_tool = resolve_lec_engine(flow_section).value
+    lec_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
+    return [
+        (name, lec_tool) if name in lec_names and tool in LEC_STEP_TOOLS else (name, tool)
+        for name, tool in entries
+    ]
 
 
 def _derive_section_from_persisted(persisted: list[tuple[str, str]]) -> dict:
@@ -251,13 +287,17 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
     if not persisted:
         return ReconcileResult(outcome="no_op", target=_entry_names(target)), {}
 
-    relation = compare_flows(persisted, target)
+    normalized_persisted = _normalized_entries(persisted)
+    normalized_target = _normalized_entries(target)
+    relation = compare_flows(normalized_persisted, normalized_target)
     if relation == "divergent":
         # A ledger holding steps the target's policy skips stays compatible:
         # the skipped entries are inert, never removed or re-inserted.
         relation = (
             _relation_with_skipped_steps(
-                persisted, target, _resolved_skip_steps(target_section or {})
+                normalized_persisted,
+                normalized_target,
+                _resolved_skip_steps(target_section or {}),
             )
             or relation
         )
@@ -404,16 +444,18 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
         # Append the missing suffix as Unstart, then adopt the target.
         # Entries already in the ledger (e.g. steps the effective policy
         # now skips) are never appended twice, so the suffix is computed
-        # against what the ledger actually holds.
+        # against what the ledger actually holds. Membership is checked in
+        # normalized form: a ledger whose LEC ran under yosys_lec already
+        # holds the step even though the target names kepler_formal.
         import copy
 
         from chipcompiler.data.workspace import _flow_step_template
 
         context["flow_data_original"] = copy.deepcopy(flow_data)
         steps = flow_data.setdefault("steps", [])
-        present = set(persisted)
-        for name, tool in target:
-            if (name, tool) in present:
+        present = set(_normalized_entries(persisted))
+        for (name, tool), normalized_entry in zip(target, _normalized_entries(target), strict=True):
+            if normalized_entry in present:
                 continue
             steps.append(_flow_step_template(name, tool, "Unstart"))
             appended.append(name)

@@ -208,12 +208,15 @@ def _preflight_environment(
     None means ready.
     """
     from chipcompiler.cli.inspection import env_probe
-    from chipcompiler.rtl2gds import resolve_skip_steps
+    from chipcompiler.rtl2gds import resolve_lec_engine, resolve_skip_steps
 
     if preset is None:
         return None
     skip = resolve_skip_steps(flow_config)
-    probes = env_probe.probe_environment(env_probe.probe_components_for_preset(preset, skip=skip))
+    lec_engine = resolve_lec_engine(flow_config)
+    probes = env_probe.probe_environment(
+        env_probe.probe_components_for_preset(preset, skip=skip, lec_engine=lec_engine)
+    )
     return _preflight_failures(probes, project, preset)
 
 
@@ -226,13 +229,14 @@ def _preflight_flow_range(flow_config: dict, project: str | None) -> CommandResu
     from the policy-filtered chain, matching ledger creation.
     """
     from chipcompiler.cli.inspection import env_probe
-    from chipcompiler.rtl2gds import build_flow_range, resolve_skip_steps
+    from chipcompiler.rtl2gds import build_flow_range, resolve_lec_engine, resolve_skip_steps
 
     try:
         steps = build_flow_range(
             flow_config["start_step"],
             flow_config["end_step"],
             skip=resolve_skip_steps(flow_config),
+            lec_engine=resolve_lec_engine(flow_config),
         )
     except ValueError:
         # Range spellings are validated where they are declared (CLI ranges
@@ -502,7 +506,10 @@ def _run_project(
     else:
         # Virgin projects have no manifest layer; an ecc.toml skip policy
         # still rides on the flow config (policy-only when no range applies).
-        from chipcompiler.cli.project.effective_config import _attach_skip_steps
+        from chipcompiler.cli.project.effective_config import (
+            _attach_lec_engine,
+            _attach_skip_steps,
+        )
 
         skip_steps = (
             list(cfg.flow_skip_steps)
@@ -510,6 +517,12 @@ def _run_project(
             else None
         )
         flow_config = _attach_skip_steps(flow_config, skip_steps)
+        lec_engine = (
+            cfg.flow_lec_engine
+            if "flow.lec_engine" in cfg._explicit_keys and cfg.flow_lec_engine is not None
+            else None
+        )
+        flow_config = _attach_lec_engine(flow_config, lec_engine)
 
     assert cfg is not None
 
@@ -526,15 +539,19 @@ def _run_project(
                 )
             ]
         )
-    # The resolved skip policy survives every target override below (the
-    # policy comes from configuration, never from the target spelling).
+    # The resolved skip policy and LEC engine survive every target override
+    # below (they come from configuration, never from the target spelling).
     skip_policy = flow_config.get("skip_steps") if isinstance(flow_config, dict) else None
+    lec_engine_policy = flow_config.get("lec_engine") if isinstance(flow_config, dict) else None
     if command_input.preset is not None:
         # The explicit CLI selection takes precedence over a manifest range
         # for this invocation without changing either project config file.
         cfg.flow_preset = effective_preset
         cfg.manifest_driven = False
         flow_config = {"skip_steps": skip_policy} if skip_policy is not None else None
+        if lec_engine_policy is not None:
+            flow_config = flow_config or {}
+            flow_config["lec_engine"] = lec_engine_policy
 
     if command_input.from_step is not None and command_input.to_step is not None:
         try:
@@ -552,6 +569,8 @@ def _run_project(
         }
         if skip_policy is not None:
             flow_config["skip_steps"] = skip_policy
+        if lec_engine_policy is not None:
+            flow_config["lec_engine"] = lec_engine_policy
 
     cli_overrides: dict[str, object] = {}
     raw_sets = command_input.param_set
