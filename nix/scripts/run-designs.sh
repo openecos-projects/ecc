@@ -84,7 +84,8 @@ run_one() {
   rm -rf "$dst"
   mkdir -p "$OUT_ROOT"
   cp -a "$src" "$dst"
-  if CHIPCOMPILER_ICS55_PDK_ROOT="$PDK_ROOT" "$ECC" run --project "$dst" --workspace default --plain 2>&1 | tee "$log" \
+  if CHIPCOMPILER_ICS55_PDK_ROOT="$PDK_ROOT" PYTHONUNBUFFERED=1 \
+    stdbuf -oL -eL "$ECC" run --project "$dst" --workspace default --plain 2>&1 | tee "$log" \
     && [[ -f "$dst/default/home/flow.json" ]]; then
     echo "PASS $name"
   else
