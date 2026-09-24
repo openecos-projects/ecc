@@ -149,14 +149,9 @@ def probe_lec_dual() -> ProbeResult:
     from chipcompiler.data import LECEngineEnum
     from chipcompiler.tools.lec_dual.utility import engine_availability
 
-    available = []
-    missing = []
-    for engine in LECEngineEnum.DUAL.spawn_engines:
-        ok, reason = engine_availability(engine)
-        if ok:
-            available.append(engine.value)
-        else:
-            missing.append(f"{engine.value}: {reason}")
+    probed = [(engine, *engine_availability(engine)) for engine in LECEngineEnum.DUAL.spawn_engines]
+    available = [engine.value for engine, ok, _reason in probed if ok]
+    missing = [f"{engine.value}: {reason}" for engine, ok, reason in probed if not ok]
     detail = f"available: {', '.join(available) or 'none'}"
     if not missing:
         return ProbeResult("lec-dual", PASS, detail=detail)
@@ -278,8 +273,9 @@ def probe_components_for_steps(steps) -> tuple[str, ...]:
     each exactly once, in stable order.
     """
     tools = {tool for _step, tool, _state in steps}
-    components = []
-    for component in ("ecc-tools", "yosys", "dreamplace", "sizer", "kepler-formal", "lec-dual"):
-        if component in {_TOOL_COMPONENTS.get(tool) for tool in tools}:
-            components.append(component)
-    return tuple(components)
+    mapped = {_TOOL_COMPONENTS.get(tool) for tool in tools}
+    return tuple(
+        component
+        for component in ("ecc-tools", "yosys", "dreamplace", "sizer", "kepler-formal", "lec-dual")
+        if component in mapped
+    )
