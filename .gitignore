@@ -193,6 +193,3 @@ task_plan.md
 .ccache
 
 .trellis
-
-# Stray runtime artifact from cwd-polluted test runs
-/checklist.json
