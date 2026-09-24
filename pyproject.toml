@@ -105,10 +105,14 @@ lint.select = [
   "UP",  # pyupgrade
 ]
 extend-include = ["*.spec"]
-extend-exclude = ["chipcompiler/thirdparty"]
+extend-exclude = ["chipcompiler/thirdparty", "test/lit"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["chipcompiler", "csv_gates"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
+pythonpath = ["test/lit"]
 norecursedirs = [".venv"]
 markers = [
   "integration: tests that run an ECC flow or large workspace orchestration",

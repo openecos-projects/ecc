@@ -1,0 +1,6 @@
+; Checklist blocked: quality.drc.clean must gate status=fail.
+;
+; RUN: rm -rf %t && mkdir -p %t
+; RUN: %materialize %t/ws --variant checklist_blocked
+; RUN: env ECC_REPO_ROOT=%repo PYTHON=%python %export_csv --workspace %t/ws --out-dir %t/out --spec %spec
+; RUN: %filecheck --input-file=%t/out/reports/metrics.check.txt %gatefile_checklist_blocked

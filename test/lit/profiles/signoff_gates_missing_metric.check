@@ -1,0 +1,6 @@
+# Expect missing drc_count → gate fail (present=false).
+CHECK: section: metrics
+CHECK: metric drc_count {{.*}}present=false
+CHECK: section: gates
+CHECK: gate metric drc_count status=fail
+CHECK-NOT: gate metric drc_count status=pass

@@ -1,0 +1,7 @@
+; Metric fail: drc_count=3 must gate status=fail (not just CHECK-NOT on pass suite).
+;
+; RUN: rm -rf %t && mkdir -p %t
+; RUN: %materialize %t/ws --variant metric_fail
+; RUN: env ECC_REPO_ROOT=%repo PYTHON=%python ECC_SIGNOFF_RUN_ID=lit-metric-fail %export_csv --workspace %t/ws --out-dir %t/out --spec %spec
+; RUN: %filecheck --input-file=%t/out/reports/metrics.check.txt %gatefile_metric_fail
+; RUN: %python -c "import json; m=json.load(open('%t/out/reports/run_manifest.json')); assert m['gates_failed']>=1"

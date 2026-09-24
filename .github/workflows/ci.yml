@@ -125,6 +125,21 @@ jobs:
       - name: Pytest
         run: uv run --no-sync pytest test/ -v --basetemp=pytest-tmp --cov=chipcompiler --cov-report=
 
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v19
+        with:
+          # manylinux container: root but no sudo/systemd (cachix/install-nix-action needs sudo).
+          init: none
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Signoff CSV lit gates
+        run: |
+          # Fixture-only lit (no ics55 rtl2gds).
+          # lit from nixpkgs; FileCheck from llvmPackages_23.libllvm (not PyPI).
+          # Nix store cache actions deferred — not required for lit; was blocking the gate.
+          # Parallel-with-pytest reorder (after PyInstaller) deferred until CI is stable.
+          ECC_REPO_ROOT="$PWD" bash nix/scripts/signoff_lit_nix.sh
+
       - name: Pytest (agent)
         run: uv run --no-sync pytest agent/test -v --basetemp=pytest-agent-tmp
 

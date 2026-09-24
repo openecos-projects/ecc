@@ -1,0 +1,5 @@
+# Expect checklist quality.drc.clean gate fail when blocked.
+CHECK: section: gates
+CHECK: gate checklist quality.drc.clean status=fail
+CHECK-DAG: gate checklist quality.lvs.clean status=pass
+CHECK-NOT: gate checklist quality.drc.clean status=pass

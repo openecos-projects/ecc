@@ -1,0 +1,7 @@
+; Ready fixture → export CSV/gates/manifest → FileCheck.
+;
+; RUN: rm -rf %t && mkdir -p %t
+; RUN: %materialize %t/ws --variant ready
+; RUN: env ECC_REPO_ROOT=%repo PYTHON=%python ECC_SIGNOFF_RUN_ID=lit-ready %export_csv --workspace %t/ws --out-dir %t/out --spec %spec
+; RUN: %filecheck --input-file=%t/out/reports/metrics.check.txt %gatefile_pass
+; RUN: %python -c "import json; m=json.load(open('%t/out/reports/run_manifest.json')); assert m['schema_version']==1; assert m['kind']=='signoff_csv_run'; assert m['run_id']=='lit-ready'; assert m['gates_failed']==0; assert 'ecc' in m['tools']"

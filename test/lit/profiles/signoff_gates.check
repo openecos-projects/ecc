@@ -1,0 +1,12 @@
+# FileCheck: every profile gate must be status=pass (positive assertions).
+CHECK: design: {{.*}}
+CHECK: section: gates
+CHECK-DAG: gate metric drc_count status=pass
+CHECK-DAG: gate metric lvs_count status=pass
+CHECK-DAG: gate metric sta_setup_wns status=pass
+CHECK-DAG: gate metric sta_hold_wns status=pass
+CHECK-DAG: gate checklist quality.drc.clean status=pass
+CHECK-DAG: gate checklist quality.lvs.clean status=pass
+CHECK-DAG: gate checklist quality.sta.setup_closed status=pass
+CHECK-DAG: gate checklist quality.sta.hold_closed status=pass
+CHECK-NOT: status=fail
