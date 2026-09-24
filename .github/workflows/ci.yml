@@ -49,7 +49,7 @@ jobs:
 
   test:
     name: Test
-    needs: check-version
+    needs: [check-version, pdk]
     runs-on: ubuntu-latest
     container: quay.io/pypa/manylinux_2_34_x86_64
     steps:
@@ -64,9 +64,15 @@ jobs:
           build-all: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['build-all'] == 'true' && 'true' || 'false' }}
 
       - name: Setup PDK
+        uses: actions/download-artifact@v4
+        with:
+          name: icsprout55-pdk
+          path: ../pdk
+
+      - name: Extract PDK
         run: |
-          git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git ../pdk/icsprout55-pdk
-          cd ../pdk/icsprout55-pdk && make unzip
+          mkdir -p ../pdk/icsprout55-pdk
+          tar -xzf ../pdk/icsprout55-pdk.tar.gz -C ../pdk/icsprout55-pdk
 
       - name: Setup OSS CAD Suite
         uses: YosysHQ/setup-oss-cad-suite@v4
@@ -196,6 +202,25 @@ jobs:
           path: |
             dist/ecc.tar
 
+  pdk:
+    name: Fetch PDK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PDK
+        run: git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git pdk
+
+      - name: Unpack PDK
+        run: cd pdk && make unzip
+
+      - name: Package PDK
+        run: tar -czf icsprout55-pdk.tar.gz -C pdk .
+
+      - name: Upload PDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: icsprout55-pdk
+          path: icsprout55-pdk.tar.gz
+
   e2e-designs:
     name: List e2e designs
     runs-on: ubuntu-latest
@@ -219,7 +244,7 @@ jobs:
 
   e2e-packaged-flow:
     name: E2E Packaged Flow (${{ matrix.design }})
-    needs: [build-pyinstaller, e2e-designs]
+    needs: [build-pyinstaller, e2e-designs, pdk]
     strategy:
       fail-fast: false
       matrix:
@@ -251,9 +276,15 @@ jobs:
           test -x dist/ecc-bundle/ecc
 
       - name: Setup PDK
+        uses: actions/download-artifact@v4
+        with:
+          name: icsprout55-pdk
+          path: ../pdk
+
+      - name: Extract PDK
         run: |
-          git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git ../pdk/icsprout55-pdk
-          cd ../pdk/icsprout55-pdk && make unzip
+          mkdir -p ../pdk/icsprout55-pdk
+          tar -xzf ../pdk/icsprout55-pdk.tar.gz -C ../pdk/icsprout55-pdk
 
       - name: Setup OSS CAD Suite
         uses: YosysHQ/setup-oss-cad-suite@v4
