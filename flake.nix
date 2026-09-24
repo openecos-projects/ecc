@@ -152,9 +152,10 @@
       meta.mainProgram = "ecc";
     };
   in flake-parts.lib.mkFlake { inherit inputs; } {
-    imports = [ ./nix/signoff.nix ];
     systems = [ "x86_64-linux" ];
     perSystem = { self', pkgs, system, config, ... }: {
+      imports = [ ./nix/signoff.nix ];
+
       packages.default = pkgs.callPackage chipcompiler {
         ecc-dreamplace = ecc-dreamplace.packages.${system}.default;
         ecc-tools = ecc-tools.packages.${system}.default;
@@ -162,9 +163,6 @@
         rosettakit = pkgs.callPackage rosettakit {};
         yosysWithSlang = infra.packages.${system}.yosysWithSlang;
       };
-
-      # signoff packages/apps come from imports = [ ./nix/signoff.nix ]
-      # (flake-parts merges perSystem attrsets).
 
       devShells.default = pkgs.mkShell.override {
         stdenv = pkgs.ccacheStdenv;
@@ -185,7 +183,6 @@
             uv
           ]) ++ [
             config.packages.signoff-tools
-            config.packages.run-design
           ];
         shellHook = ''
           export CCACHE_DIR="$PWD/.ccache"

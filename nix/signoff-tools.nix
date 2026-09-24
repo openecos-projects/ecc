@@ -22,17 +22,7 @@ let
 
   exportCsvSh = ./scripts/export_signoff_csv.sh;
   materializeSh = ./scripts/materialize_signoff_workspace.sh;
-  runDesignSh = ./scripts/run_design.sh;
   signoffLitSh = ./scripts/signoff_lit.sh;
-
-  run-design = writeShellApplication {
-    name = "run-design";
-    text = ''
-      root="''${ECC_REPO_ROOT:-$PWD}"
-      export ECC_REPO_ROOT="$root"
-      exec bash ${runDesignSh} "$@"
-    '';
-  };
 
   signoff-lit = writeShellApplication {
     name = "signoff-lit";
@@ -70,7 +60,6 @@ in
   inherit
     filecheck
     lit
-    run-design
     signoff-lit
     signoff-tools
     ;

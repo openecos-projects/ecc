@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Run lit against test/lit (checked-in lit.cfg.py).
-# Usage: signoff_lit.sh [lit-args...]
+# Run lit against a checked-in lit suite (default: test/lit).
+# Usage: signoff_lit.sh [SUITE_DIR] [lit-args...]
 # Env: ECC_REPO_ROOT, PYTHON, FILECHECK, LIT,
 #      ECC_EXPORT_SIGNOFF_CSV, ECC_MATERIALIZE_READY,
-#      ECC_SIGNOFF_CSV_SPEC, ECC_TEST_WORKSPACE
+#      ECC_SIGNOFF_CSV_SPEC
 
 set -euo pipefail
 
@@ -44,8 +44,15 @@ export PYTHON="$py"
 export PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}:$root/test/lit"
 
 suite="$root/test/lit"
-if [[ ! -f "$suite/lit.cfg.py" || ! -d "$suite/cases" ]]; then
-  echo "error: missing checked-in lit suite under $suite" >&2
+if [[ $# -gt 0 && -d "$1" ]]; then
+  suite="$(cd "$1" && pwd)"
+  shift
+elif [[ $# -gt 0 && -d "$root/$1" ]]; then
+  suite="$(cd "$root/$1" && pwd)"
+  shift
+fi
+if [[ ! -f "$suite/lit.cfg.py" ]]; then
+  echo "error: missing lit.cfg.py under $suite" >&2
   exit 1
 fi
 

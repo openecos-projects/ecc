@@ -22,7 +22,6 @@ scripts = Path(repo) / "nix" / "scripts"
 export_csv = os.environ.get("ECC_EXPORT_SIGNOFF_CSV") or str(scripts / "export_signoff_csv.sh")
 materialize = os.environ.get("ECC_MATERIALIZE_READY") or str(scripts / "materialize_signoff_workspace.sh")
 spec = os.environ.get("ECC_SIGNOFF_CSV_SPEC") or str(_ROOT / "profiles" / "signoff.yml")
-workspace = os.environ.get("ECC_TEST_WORKSPACE") or ""
 profiles = _ROOT / "profiles"
 
 config.environment["ECC_REPO_ROOT"] = repo
@@ -32,9 +31,6 @@ _existing = os.environ.get("PYTHONPATH", "")
 config.environment["PYTHONPATH"] = os.pathsep.join(
     [repo, _lit_path] + ([_existing] if _existing else [])
 )
-if workspace:
-    config.environment["ECC_TEST_WORKSPACE"] = workspace
-    config.available_features.add("packaged-workspace")
 
 config.substitutions.extend(
     [
@@ -49,6 +45,5 @@ config.substitutions.extend(
         ("%gatefile_metric_fail", str(profiles / "signoff_gates_metric_fail.check")),
         ("%gatefile_checklist_blocked", str(profiles / "signoff_gates_checklist_blocked.check")),
         ("%gatefile_missing_metric", str(profiles / "signoff_gates_missing_metric.check")),
-        ("%workspace", workspace),
     ]
 )

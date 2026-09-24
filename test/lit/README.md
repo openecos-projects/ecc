@@ -65,12 +65,11 @@ bash nix/scripts/signoff_lit.sh
 
 Default PR CI: `DeterminateSystems/nix-installer-action` (`init: none`, no sudo)
 on manylinux → `nix/scripts/signoff_lit_nix.sh` (fixture lit only, no ics55 rtl2gds).
-No Nix store cache action (optional; not required for lit). Optional packaged path:
-`ECC_TEST_WORKSPACE` + `REQUIRES: packaged-workspace`.
+No Nix store cache action (optional; not required for lit).
 
-Packaged rtl2gds driver (optional, not default PR CI): `nix/scripts/run_design.sh`
-(`nix run .#run-design`), default `--design ics55-gcd`; more IP presets land
-here when fixtures exist (`--ecc-toml` / `--rtl` for ad-hoc designs).
+Real packaged-binary flows over external designs live in the separate
+`test/e2e` suite (see `test/e2e/README.md`); the signoff suite stays
+fixture-only.
 
 ## Environment
 
@@ -81,7 +80,6 @@ here when fixtures exist (`--ecc-toml` / `--rtl` for ad-hoc designs).
 | `ECC_EXPORT_SIGNOFF_CSV` / `ECC_MATERIALIZE_READY` | Override script paths |
 | `ECC_SIGNOFF_CSV_SPEC` | Override profile YAML |
 | `ECC_SIGNOFF_RUN_ID` | Stable run id in manifest |
-| `ECC_TEST_WORKSPACE` | Enables packaged-workspace feature |
 | `FILECHECK` / `LIT` | `FileCheck` (llvmPackages_23.libllvm) / `lit` (nixpkgs) |
 | `NIXPKGS_REF` | nixpkgs flake ref for CI lit shell (pinned LLVM 23) |
 
