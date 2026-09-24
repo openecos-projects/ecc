@@ -1,6 +1,6 @@
 # ECC CLI 用户指南（当前支持的全部命令）
 
-`ecc` 是 ECOS Chip Compiler 的项目制命令行入口，覆盖 RTL-to-GDS 流水的建项、校验、运行、状态/日志/配置查询、参数管理、签核与报告。本文基于 `ecc/` 子模块当前源码（v0.1.0-alpha.11）整理，所有示例输出均为真实执行结果（示例中的 run 状态为手工构造的演示数据）。
+`ecc` 是 ECOS Chip Compiler 的项目制命令行入口，覆盖 RTL-to-GDS 流水的建项、校验、运行、状态/日志/配置查询、参数管理、签核与报告。本文已按 `ecc/` 子模块当前源码（v0.1.0-alpha.12）对齐；命令输出或采集自实际执行，或会明确标为示例（其中 run 状态可能是手工构造的演示数据）。
 
 - 源码位置：[chipcompiler/cli/](https://github.com/openecos-projects/ecc/tree/main/chipcompiler/cli/)
 - 命令扩展开发方式见 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli)
@@ -63,7 +63,7 @@ which ecc && ecc --version          # 任意目录下应输出 ecc <版本号>
 # 升级 = 用新包覆盖解压目录内容；方式 B/C 的软链接无需改动
 ```
 
-> 本文及其记载的功能——内置 `ecc doc` 文档、`doctor`/`signoff`/`report` 命令组、`run` 的 workspace/范围选择器——随 v0.1.0-alpha.12 版本发布可用；更早的 Release（截至 v0.1.0-alpha.9）不包含它们。在 alpha.12 发布前，按 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli) 的源码开发方式用 `uv run ecc` 即可体验（editable 安装，改源码下次导入即生效）。重新运行安装脚本会装回官方发行版，未发布的新行为随之消失，属预期回退。
+> 本文面向 v0.1.0-alpha.12。更早版本不具备这里记载的完整命令面，包括内置 `ecc doc` 文档、`doctor`/`signoff`/`report` 命令组和全部 workspace/范围选择器。先用 `ecc --version` 确认版本；从当前源码树开发时，按 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli) 使用 `uv run ecc`。
 
 > 注：`ecc` 的项目定位默认取当前目录（`ecc.toml` 所在处），所以「任意文件夹启动」是常态用法；在其他目录操作项目时加 `--project <dir>` 即可。
 
@@ -81,7 +81,7 @@ uv run ecc --help
 
 - 全局：`ecc --version`（单行版本号）、`ecc --help`。
 - 项目定位：项目级命令接受 `--project <dir>`（缺少参数指定即为当前目录）。`--workspace <路径指定>` 可以是受工具管理的非空简单文件夹路径，也可以是完整绝对路径。名称继续使用项目内的 `<project>/<workspace-id>` 布局；绝对路径创建或选择项目外 workspace，新路径默认以目录 basename 作为 workspace ID，已登记路径沿用清单中的 ID。新项目裸执行 `ecc run` 创建 `default`；只有一个活跃 workspace 时自动选择，多个活跃 workspace 时必须指定 `--workspace`。命名 workspace 会在创建文件前登记到 `project.json`。遗留的 `runs/` 项目必须先执行 `ecc migrate`。每个项目只有一个 `ecc.toml`；创建时会把声明的输入复制到各 workspace 的 `origin/`。
-- 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`param`、`pdk`、`project`、`workspace`、`signoff`、`report` 都支持 `--plain`（`key=value`，便于脚本解析），缺省为人类可读 TEXT。`rpc serve` 和 `layout-image` 使用各自的协议。
+- 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`param`、`macro`、`pdk`、`project`、`workspace`、`signoff`、`report` 都支持 `--plain`（`key=value`，便于脚本解析），缺省为人类可读 TEXT。`rpc serve` 和 `layout-image` 使用各自的协议。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。
 - 步骤名（step token）有三套写法，按场景区分：
   - **展示名**（`ecc status` / `ecc log` / `ecc report step` 的输出与入参，统一小写/下划线）：`synthesis / lec / pre_floorplan / macro_placement / post_floorplan / placement / cts / legalization / timing_optimization / routing / filler / rcx / sta / lvs / postroutelec / drc / harden`；
@@ -106,11 +106,13 @@ Commands:
   migrate       Migrate a legacy runs/ project to the manifest layout
   doctor        Check host environment: PDK, tools, and components
   param         Manage EDA parameters
+  macro         Manage manual macro placement (macro_location.tcl)
   pdk           Show and configure the PDK path used by this project
   project       Edit project declarations in ecc.toml
-  workspace     Refresh managed workspaces from project configuration
+  workspace     Import or refresh managed workspaces
   signoff       Inspect and export signoff packages
   report        Generate design-summary, QoR score, checklist, and step reports
+  rpc           Run the private ECC JSON-RPC runtime
 ```
 
 ## 1.5. doc — 在终端阅读内置指南
@@ -152,11 +154,11 @@ ecc --version         # 仅一行 ecc 版本
 
 ```console
 $ ecc version
-ecc 0.1.0a11
+ecc 0.1.0a12
 dreamplace 0.1.0a7
-ecc_tools 0.1.0a12
+ecc_tools 0.1.0a13
 runtime ECC CLI
-yosys 0.68+132
+yosys 0.69+24
 sizer 0.1.0-alpha
 klayout 0.30.2
 ```
@@ -483,7 +485,7 @@ $ ecc run --from cts --to route --preset rtl2gds   # 新建范围与其他选择
 [error]
   selector_conflict
 
-$ ecc run --workspace a/b     # workspace 必须是单段名称，不能是路径
+$ ecc run --workspace a/b     # 相对路径非法；应使用单段名称或完整绝对路径
 [error]
   invalid_workspace invalid_workspace: 'a/b' is not a single workspace name
 ```
@@ -663,7 +665,7 @@ ecc run --project /projects/gcd --workspace archive --resume
 
 导入会拒绝格式错误或不兼容的 workspace、重复 ID/路径、受保护路径，以及仍需先执行 `ecc migrate` 的 legacy 项目。如果只有 `ecc.toml` 而还没有 `project.json`，成功导入时会先创建 schema-v1 manifest，再登记该 workspace。
 
-`ecc workspace refresh NAME --project DIR` 用当前 `ecc.toml` 重建一个已在 `project.json` 声明的 workspace，但不执行 flow。它会在清单已声明的路径上替换该 workspace 的复制输入、工具配置、状态和产物；完成后再执行 `ecc run --workspace NAME`。`ecc run --workspace NAME --overwrite` 则是刷新后立即执行的既有快捷方式：
+`ecc workspace refresh NAME --project DIR` 用当前 `ecc.toml` 重建一个已在 `project.json` 声明的 workspace，但不执行 flow。它会在清单已声明的路径上替换该 workspace 的复制输入、工具配置、状态和产物；完成后再执行 `ecc run --workspace NAME`。替换前会把受管 JSON 配置和 `macro_location.tcl` 与 `home/config-derived-manifest.json` 比对；如其中任一文件在上次派生后被改过，则返回 `derived_configs_modified`、列出文件，并保持 workspace 不变。应先审查修改，尽量通过 `ecc param`/`ecc macro`/`ecc.toml` 表达；确定丢弃时才传 `--force`。旧 workspace 若还没有派生清单，因无比对基线，首次 refresh 会直接进行。`ecc run --workspace NAME --overwrite` 仍是显式重建并立即执行的快捷方式：
 
 ```console
 $ ecc workspace refresh default
@@ -677,6 +679,8 @@ $ ecc workspace refresh nosuch
 [error]
   workspace_not_declared workspace_not_declared: unknown workspace 'nosuch'; declared workspaces: default
 rc=1
+
+$ ecc workspace refresh default --force   # 明确要丢弃检测到的配置修改
 ```
 
 入口输入、PDK 路径和 `flow.preset` 的改动必须走 refresh，因为它们会改变 workspace 的输入快照或 flow 结构。只调已有 workspace 的参数还可以用 `ecc param set KEY VALUE --workspace NAME`（见 §9），不经过 `ecc.toml`。
@@ -998,17 +1002,19 @@ PDK / Node         : ics55
 
 ### 12.2 qor — QoR 总体计分报告
 
-用 ECC 共用的 `qor_scoring` 规则给当前 workspace 打分（Studio Snapshot 也用这一套）：每条 v3 `qor_metrics.json` 指标按固定失败阈值折算 0-100 分（slack 类线性、core_utilization 目标区间 [0.45,0.70]、lower/higher_is_better 比例），维度内取平均，再按权重（Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1）加权出总分——**缺项维度不重归一化**（缺项会拉低总分）；60 分为通过线。默认写 `<workspace>/signoff/<design>_qor_report.txt`：
+对当前 workspace 运行 ECC-QoR V3 引擎。它把三个问题分开：五个物理质量坐标（`timing`、`interconnect`、`area`、`power`、`robustness`）、七条零容忍可行性门禁，以及证据完整度。ECOS Studio 直接消费同一份带版本的 `home/qor_report.json`，不另维护计分表。
+
+标量总分使用 `qor_profile` 选中的权重（缺省为 `balanced`），并且**只在可评估维度上重新归一化**。因此未声明功耗预算时 `power` 为 null，不会压缩其余维度的分数。任一可行性门禁失败都把总分置为 `0` / `FAIL`；门禁依赖的步骤未执行，或门禁证据损坏，则返回 `NOT_RATED`，不伪造分数。状态区间为 `GREEN >= 90`、`YELLOW >= 75`、`ORANGE >= 60`、`RED < 60`。文本报告默认写入 `<workspace>/signoff/<design>_qor_report.txt`。以下是基于参考 fixture 的精简 `--plain` 响应：
 
 ```console
 $ ecc report qor --project gcd --plain
-report=qor path=.../signoff/gcd_qor_report.txt bytes=1717 design=gcd \
-  overall_score=61.8 qor_status=Green gate_status=pass \
-  dimensions="[{'dimension': 'Timing', 'score': 75.0, 'weight': 0.35, 'metrics': 2}, ...]" \
+report=qor path=.../signoff/gcd_qor_report.txt bytes=... design=gcd \
+  overall_score=98.96 qor_status=GREEN gate_status=PASS \
+  dimensions="[{'dimension': 'timing', 'score': 100.0, 'state': 'OPPORTUNITY', 'features': ...}, ...]" \
   view="cat .../gcd_qor_report.txt" status=written
 ```
 
-报告含：总分与判定（PASS/BELOW THRESHOLD/NOT RATED）、Flow 状态色（Green/Yellow/Orange/Red/Blocked）与 gate（DRC/LVS/RCX/STA 步骤状态）、Area 计分步（最后一个成功的 area 指标步）、维度表、逐指标明细分（corner 维度独立计分）。
+报告包含总分与 profile、五维分解、可行性门禁、证据状态、确定性诊断和按优先级排列的干预假设。公式、profile、阈值和 JSON 契约见 [ECC QoR 参考手册](ecc-qor-ref.cn.md)。
 
 ### 12.3 checklist — 签核清单报告
 
@@ -1074,11 +1080,11 @@ $ ecc report step drc --section analysis
 ecc rpc serve --stdio [--persistent-db]
 ```
 
-供 GUI 等前端使用的 JSON-RPC 2.0 服务，`Content-Length` 帧封装于 stdio。`--persistent-db` 额外开放 `db.ensure` / `db.release` 与 `layout.edit.*` / `floorplan.edit.*` 系列方法。握手与调用示例（完整方法列表和参数见 [rpc-guide.md](https://github.com/openecos-projects/ecc/blob/main/docs/rpc-guide.md)）：
+供 GUI 等前端使用的 JSON-RPC 2.0 服务，`Content-Length` 帧封装于 stdio。`--persistent-db` 额外开放 `db.ensure` / `db.release` 与 `layout.edit.*` / `floorplan.edit.*` 系列方法。握手返回的 capability 列表从当前注册的 runtime 方法动态生成，客户端应当实时检查，不要假定一份固定列表。`workspace.refresh_config` 与 CLI 共用生成配置保护，确定覆盖检测到的修改时可传 `force: true`。下面是当前基础模式的完整握手响应与 ping；方法参数见 [rpc-guide.md](https://github.com/openecos-projects/ecc/blob/main/docs/rpc-guide.md)：
 
 ```console
 → {"jsonrpc":"2.0","method":"rpc.hello","params":{"version":1},"id":"hello-1"}
-← {"jsonrpc":"2.0","result":{"version":1,"eccVersion":"0.1.0-alpha.11","capabilities":["rpc.hello","rpc.ping","rpc.shutdown","runtime.v2","operation.events","workspace.create","workspace.open","workspace.close","workspace.home","workspace.info","workspace.refresh_config","workspace.sync_config","workspace.reset_flow","workspace.export_signoff","workspace.inspect_signoff","flow.run","flow.run_step","operation.start_flow","operation.start_step","operation.status","operation.cancel","operation.ack_step_rendered","workspace.snapshot","workspace.recover_interrupted"]},"id":"hello-1"}
+← {"jsonrpc":"2.0","result":{"version":1,"protocolVersion":1,"eccVersion":"0.1.0-alpha.12","capabilities":["rpc.hello","rpc.ping","rpc.shutdown","runtime.v2","operation.events","workspace_spec.describe","workspace_spec.validate","project.discover","project.manifest.load","project.manifest.mutate","workspace.create","workspace.open","workspace.derive","workspace.binding_requirement","workspace.update","workspace.configuration.update","workspace.configuration.read","workspace.step_configuration.update","workspace.step_configuration.read","workspace.step_outputs","workspace.close","workspace.info","workspace.refresh_config","workspace.sync_config","workspace.reset_flow","workspace.export_signoff","workspace.inspect_signoff","flow.run","flow.run_step","operation.start_flow","operation.start_step","operation.status","operation.cancel","operation.ack_step_rendered","workspace.snapshot","workspace.engineering_snapshot","workspace.recover_interrupted"]},"id":"hello-1"}
 
 → {"jsonrpc":"2.0","method":"rpc.ping","params":{},"id":"ping-1"}
 ← {"jsonrpc":"2.0","result":{"ok":true},"id":"ping-1"}

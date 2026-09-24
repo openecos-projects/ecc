@@ -133,15 +133,10 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
     assert isinstance(workspace.design.origin_def, Path)
     assert isinstance(workspace.flow.path, Path)
     assert isinstance(workspace.parameters.path, Path)
-    assert isinstance(workspace.home.path, Path)
     assert all(isinstance(path, Path) for path in workspace.config.values())
     assert workspace.config["macro_location"].is_file()
-
-    home_data = json.loads((workspace_dir / "home" / "home.json").read_text())
-    assert home_data["flow"] == str(workspace.flow.path)
-    assert home_data["parameters"] == str(workspace.parameters.path)
-    assert home_data["checklist"] == str(workspace_dir.resolve() / "home" / "checklist.json")
-    assert isinstance(home_data["flow"], str)
+    assert not (workspace_dir / "home" / "home.json").exists()
+    assert not (workspace_dir / "home" / "home.json.lock").exists()
 
     cts = json_read(workspace.config[StepEnum.CTS.value])
     assert cts["max_fanout"] == 37
@@ -716,8 +711,56 @@ def test_load_workspace_restores_path_fields_from_existing_json(
     assert loaded.design.origin_def == workspace_dir.resolve() / "origin" / "gcd.def"
     assert loaded.flow.path == workspace_dir.resolve() / "home" / "flow.json"
     assert loaded.parameters.path == workspace_dir.resolve() / "home" / "params.toml"
-    assert loaded.home.path == workspace_dir.resolve() / "home" / "home.json"
     assert all(isinstance(path, Path) for path in loaded.config.values())
+
+
+def test_writable_load_removes_legacy_home_files_but_read_only_load_preserves_them(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    workspace_dir, _workspace = _create_loaded_ics55_workspace(
+        tmp_path, "workspace", minimal_ics55_pdk_factory, default_ics55_parameters
+    )
+    home_json = workspace_dir / "home" / "home.json"
+    home_lock = workspace_dir / "home" / "home.json.lock"
+    home_json.write_text("{}", encoding="utf-8")
+    home_lock.write_text("", encoding="utf-8")
+
+    assert load_workspace(workspace_dir, read_only=True) is not None
+    assert home_json.is_file()
+    assert home_lock.is_file()
+
+    assert load_workspace(workspace_dir) is not None
+    assert not home_json.exists()
+    assert not home_lock.exists()
+
+
+def test_writable_load_unlinks_legacy_home_symlink_without_following_target(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    workspace_dir, _workspace = _create_loaded_ics55_workspace(
+        tmp_path, "workspace", minimal_ics55_pdk_factory, default_ics55_parameters
+    )
+    external = tmp_path / "external-home.json"
+    external.write_text('{"keep": true}', encoding="utf-8")
+    legacy_link = workspace_dir / "home" / "home.json"
+    legacy_link.symlink_to(external)
+
+    assert load_workspace(workspace_dir) is not None
+    assert not legacy_link.exists()
+    assert external.read_text(encoding="utf-8") == '{"keep": true}'
+
+
+@pytest.mark.parametrize("legacy_name", ["home.json", "home.json.lock"])
+def test_writable_load_refuses_legacy_home_directory(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, legacy_name
+):
+    workspace_dir, _workspace = _create_loaded_ics55_workspace(
+        tmp_path, "workspace", minimal_ics55_pdk_factory, default_ics55_parameters
+    )
+    (workspace_dir / "home" / legacy_name).mkdir()
+
+    with pytest.raises(OSError, match="Legacy home state path is a directory"):
+        load_workspace(workspace_dir)
 
 
 def test_load_workspace_migrates_legacy_config_filenames(
@@ -1393,6 +1436,17 @@ def test_update_step_config_keeps_sta_liberty_expanded_after_override_replay(
     assert sta["liberty"][0]["path"] == expected
 
 
+def test_refresh_sta_config_does_not_overwrite_corrupt_json(tmp_path):
+    sta_path = tmp_path / "sta_ecc.json"
+    workspace = Workspace(config={StepEnum.STA.value: sta_path})
+    workspace.pdk.root = tmp_path / "pdk"
+    sta_path.write_text("{corrupt", encoding="utf-8")
+
+    with pytest.raises(Exception):  # noqa: B017 - exact parser error is implementation-specific
+        workspace_data._refresh_sta_config(workspace)
+    assert sta_path.read_text(encoding="utf-8") == "{corrupt"
+
+
 def test_update_step_config_preserves_floorplan_mode_override_after_result_backfill(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
@@ -1540,7 +1594,7 @@ def test_sync_workspace_config_to_parameters_ignores_unmanaged_fields(
     assert after == before
 
 
-def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state(
+def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_runtime_state(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
@@ -1570,12 +1624,10 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     (step_dir / "output" / "gcd_floorplan.png").write_text("old layout")
     (step_dir / "feature" / "floorplan.db.inst_dist.png").write_text("old metric")
     (step_dir / "log" / "floorplan.log").write_text("old log")
-
-    home_path = workspace_dir / "home" / "home.json"
-    home = json_read(home_path)
-    home["layout"] = str(step_dir / "output" / "gcd_floorplan.png")
-    home["metrics"] = {"instances dist.": str(step_dir / "feature" / "floorplan.db.inst_dist.png")}
-    json_write(home_path, home)
+    legacy_home = workspace_dir / "home" / "home.json"
+    legacy_home_lock = workspace_dir / "home" / "home.json.lock"
+    legacy_home.write_text("{}", encoding="utf-8")
+    legacy_home_lock.write_text("", encoding="utf-8")
 
     flow_path = workspace_dir / "home" / "flow.json"
     json_write(
@@ -1642,6 +1694,8 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     assert not (step_dir / "output" / "gcd_floorplan.png").exists()
     assert not (step_dir / "feature" / "floorplan.db.inst_dist.png").exists()
     assert not (step_dir / "log" / "floorplan.log").exists()
+    assert not legacy_home.exists()
+    assert not legacy_home_lock.exists()
     assert (workspace_dir / "config" / "filler_ecc.json").read_text() == config_before
     assert (workspace_dir / "origin" / "gcd.v").read_text() == origin_before
     assert (workspace_dir / "log").exists()
@@ -1665,13 +1719,6 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
     assert reset_parameters["core"]["size"] == []
     assert reset_parameters["core"]["area"] == 0
     assert reset_parameters["core"]["bounding_box"] == ""
-
-    reset_home = json_read(home_path)
-    assert reset_home["parameters"] == str(workspace_dir / "home" / "params.toml")
-    assert reset_home["flow"] == str(flow_path)
-    assert reset_home["checklist"] == str(checklist_path)
-    assert reset_home["layout"] == ""
-    assert reset_home["metrics"] == {}
 
     reset_flow = json_read(flow_path)
     assert reset_flow["steps"][0]["state"] == "Unstart"
@@ -1709,7 +1756,6 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_home_state
 
     assert parameter_path.read_text() == preserved_parameter_text
     assert workspace.parameters.path == parameter_path
-    assert json_read(home_path)["parameters"] == str(parameter_path)
     assert (workspace_dir / "config" / "filler_ecc.json").read_text() == config_before
 
 

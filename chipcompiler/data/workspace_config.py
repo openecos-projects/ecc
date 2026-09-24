@@ -504,6 +504,44 @@ def _stage_config_bytes(target: Path, content: bytes) -> Path | None:
         return None
 
 
+def _stamp_preversioned_params_toml(config_path: Path, workspace_dir: Path) -> None:
+    """Add the v1 marker to a valid pre-versioning TOML file without re-rendering it."""
+    try:
+        original = config_path.read_bytes()
+        text = original.decode("utf-8")
+        document = tomllib.loads(text)
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        logger.warning(
+            "params.toml schema stamp deferred (read/parse failed): %s: %s",
+            config_path,
+            exc,
+        )
+        return
+    if not isinstance(document, dict) or SCHEMA_VERSION_FIELD in document:
+        return
+
+    prefix = b"schema_version = 1\n"
+    if original.startswith(b"\xef\xbb\xbf"):
+        content = original[:3] + prefix + original[3:]
+    else:
+        content = prefix + original
+    candidate = _stage_config_bytes(config_path, content)
+    if candidate is None:
+        return
+    try:
+        # Parse the exact candidate before installation and preserve the same
+        # workspace-root checks used by normal params.toml loading.
+        _decode_workspace_config(candidate, workspace_dir)
+        os.replace(candidate, config_path)
+    except Exception as exc:
+        logger.warning(
+            "params.toml schema stamp deferred (verify/install failed): %s: %s",
+            config_path,
+            exc,
+        )
+        _unlink_best_effort(candidate)
+
+
 def save_workspace_config(
     workspace_dir: str | Path,
     data: dict,
@@ -625,6 +663,7 @@ def migrate_legacy_parameters(workspace_dir: Path) -> None:
     config_path = workspace_config_path(workspace_dir)
     legacy_path = legacy_parameters_path(workspace_dir)
     if config_path.exists():
+        _stamp_preversioned_params_toml(config_path, Path(workspace_dir).resolve())
         if legacy_path.exists():
             logger.warning(
                 "workspace_config_shadowed: both %s and %s exist; using the TOML",

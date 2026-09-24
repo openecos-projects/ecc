@@ -10,7 +10,6 @@ from typing_extensions import deprecated
 from chipcompiler.utility import Logger, create_logger, dict_to_str
 from chipcompiler.utility.path import path_is_within, path_text
 
-from ..home import HomeData
 from ..parameter import (
     Parameters,
     get_parameters,
@@ -122,7 +121,6 @@ class Workspace:
     pdk: PDK = field(default_factory=PDK)  # pdk information
     parameters: Parameters = field(default_factory=Parameters)  # design parameters
     flow: Flow = field(default_factory=Flow)  # design flow for this workspace
-    home: HomeData = field(default_factory=HomeData)  # home data for this workspace
     config: dict[str, Path] = field(default_factory=dict)  # workspace-level config paths
 
     # logger
@@ -474,9 +472,12 @@ def _has_new_floorplan_schema(config: dict) -> bool:
 def _refresh_sta_config(workspace: Workspace) -> None:
     import os
 
-    from chipcompiler.utility import json_read, json_write
+    from chipcompiler.utility import json_read_strict, json_write
 
-    sta = json_read(workspace.config[f"{StepEnum.STA.value}"])
+    sta_path = workspace.config[f"{StepEnum.STA.value}"]
+    sta = json_read_strict(sta_path)
+    if not isinstance(sta, dict):
+        raise TypeError(f"STA config must be a JSON object: {sta_path}")
     pdk_root = str(workspace.pdk.root or "").rstrip(os.sep)
     for liberty in sta.get("liberty", []):
         liberty["path"] = [
@@ -773,11 +774,9 @@ def sync_workspace_config_to_parameters(workspace: Workspace, config_path: Path)
 def _reset_workspace_checklist(workspace: Workspace) -> None:
     from chipcompiler.utility import json_write
 
-    checklist_path_text = workspace.home.data.get("checklist", "")
-    if checklist_path_text:
-        checklist_path = Path(checklist_path_text)
-    else:
-        checklist_path = Path(workspace.directory) / "home" / "checklist.json"
+    from ..checklist import workspace_checklist_path
+
+    checklist_path = workspace_checklist_path(workspace.directory)
     json_write(
         checklist_path,
         {
@@ -857,15 +856,15 @@ def prepare_workspace_for_rerun(
         else:
             shutil.rmtree(step_directory)
 
+    from .loader import remove_legacy_home_files
+
+    remove_legacy_home_files(workspace_root)
+
     if hasattr(engine_flow, "clear_states"):
         engine_flow.clear_states()
 
-    workspace.home.reset()
-    workspace.home.set_flow(workspace.flow.path)
-    workspace.home.set_checklist(workspace_root / "home" / "checklist.json")
     parameter_path = workspace.parameters.path or workspace_config_toml_path(workspace_root)
     workspace.parameters.path = Path(parameter_path)
-    workspace.home.set_parameters(workspace.parameters.path)
     _reset_workspace_checklist(workspace)
     if not preserve_user_inputs:
         _reset_workspace_runtime_parameters(workspace)
@@ -1086,14 +1085,10 @@ def create_workspace(
 
     init_workspace_config(workspace)
 
-    # set home data
+    # set workspace state paths
     home_dir.mkdir(parents=True, exist_ok=True)
     workspace.flow.path = home_dir / "flow.json"
     workspace.parameters.path = workspace_config_toml_path(home_dir.parent)
-    workspace.home.init(path=home_dir / "home.json")
-    workspace.home.set_flow(workspace.flow.path)
-    workspace.home.set_checklist(home_dir / "checklist.json")
-    workspace.home.set_parameters(workspace.parameters.path)
     if dynamic_flow_data:
         from chipcompiler.utility import json_write
 

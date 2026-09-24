@@ -67,7 +67,7 @@ def extract_design_report_data(inputs) -> DesignReportData:
     """Build a DesignReportData from collected workspace inputs.
 
     `inputs` carries: design_name, top_module, pdk, pdk_version,
-    frequency_target, parameters, flow, home_data, step_metrics,
+    frequency_target, parameters, flow, step_metrics,
     step_summaries, step_hotspots, sta_timing_issues, sta_corner_reports,
     version_info (dict), generated_at, workspace_name, workspace_path.
     """
@@ -76,10 +76,9 @@ def extract_design_report_data(inputs) -> DesignReportData:
 
     params = inputs.get("parameters") or {}
     flow = inputs.get("flow") or {}
-    home = inputs.get("home_data") or {}
     version_info = inputs.get("version_info") or {}
 
-    design, run_id, timestamp = _extract_design_info(inputs, params, flow, home, version_info)
+    design, run_id, timestamp = _extract_design_info(inputs, params, flow, version_info)
 
     store = StepMetricStore()
     store.run_id = run_id
@@ -91,13 +90,10 @@ def extract_design_report_data(inputs) -> DesignReportData:
         store.add("STA", inputs["sta_timing_issues"])
     if params:
         store.add("Parameters", params)
-    if home:
-        store.add("Home", home)
-        store.add("Parameters", home)
 
     def q(category, display_name, stage_priority, aliases, unit=""):
         return _query(
-            store, params, home, provenance, category, display_name, stage_priority, aliases, unit
+            store, params, provenance, category, display_name, stage_priority, aliases, unit
         )
 
     physical = _extract_physical(q, warnings)
@@ -126,7 +122,7 @@ def extract_design_report_data(inputs) -> DesignReportData:
     )
 
 
-def _extract_design_info(inputs, params, flow, home, version_info):
+def _extract_design_info(inputs, params, flow, version_info):
     """Resolve DesignInfo plus the run_id/timestamp the store needs."""
     design_name = (
         _first_str(
@@ -138,7 +134,6 @@ def _extract_design_info(inputs, params, flow, home, version_info):
             params.get("top_module"),
             params.get("TOP_MODULE"),
             flow.get("design") if _is_record(flow) else None,
-            home.get("design") if _is_record(home) else None,
             inputs.get("workspace_name"),
         )
         or "Unknown_Design"
@@ -149,14 +144,12 @@ def _extract_design_info(inputs, params, flow, home, version_info):
             params.get("PDK"),
             params.get("pdk"),
             flow.get("pdk") if _is_record(flow) else None,
-            home.get("pdk") if _is_record(home) else None,
         )
         or "sky130hd"
     )
     pdk_version = _first_str(
         params.get("PDK_VERSION"),
         params.get("pdk_version"),
-        home.get("pdk_version") if _is_record(home) else None,
     )
     pdk_commit = _first_str(
         params.get("PDK_COMMIT"),
@@ -166,13 +159,6 @@ def _extract_design_info(inputs, params, flow, home, version_info):
         params.get("PDK_COMMIT_ID"),
         params.get("pdk_commit_id"),
         params.get("pdkCommit"),
-        home.get("pdk_commit") if _is_record(home) else None,
-        home.get("pdk_commit_id") if _is_record(home) else None,
-        home.get("pdkCommit") if _is_record(home) else None,
-        home.get("pdk_git_commit") if _is_record(home) else None,
-        home.get("commit") if _is_record(home) else None,
-        home.get("commit_id") if _is_record(home) else None,
-        home.get("git_commit") if _is_record(home) else None,
     )
     ecc_tool = (
         _first_str(
@@ -189,7 +175,6 @@ def _extract_design_info(inputs, params, flow, home, version_info):
         version_info.get("ecc"),
         params.get("ECC_VERSION"),
         params.get("ecc_version"),
-        home.get("ecc_version") if _is_record(home) else None,
     )
     ecc_version = None if raw_ecc_version == "unknown" else raw_ecc_version
     ecos_studio_version = _first_str(

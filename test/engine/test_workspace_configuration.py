@@ -179,7 +179,7 @@ def test_configuration_update_recovers_after_process_exit_during_commit_cleanup(
     )
 
 
-def test_read_workspace_configuration_does_not_materialize_missing_home_files(
+def test_read_workspace_configuration_does_not_materialize_missing_runtime_files(
     tmp_path, minimal_ics55_pdk_factory
 ):
     import shutil
@@ -187,11 +187,9 @@ def test_read_workspace_configuration_does_not_materialize_missing_home_files(
     spec, bindings = _workspace_spec_fixture()
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
     workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings)
-    home_file = workspace.directory / "home" / "home.json"
     checklist_file = workspace.directory / "home" / "checklist.json"
     log_dir = workspace.directory / "log"
-    home_file.unlink()
-    checklist_file.unlink()
+    checklist_file.unlink(missing_ok=True)
     if log_dir.exists():
         shutil.rmtree(log_dir)
     shutil.rmtree(Path(bindings["pdk"]["root"]))
@@ -203,7 +201,6 @@ def test_read_workspace_configuration_does_not_materialize_missing_home_files(
     rebuild_home_checklist(readonly_workspace, persist=False)
 
     assert configuration["workspaceSpec"]["pdk"]["familyId"] == "ics55"
-    assert not home_file.exists()
     assert not checklist_file.exists()
     assert not log_dir.exists()
 

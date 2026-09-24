@@ -7,7 +7,6 @@ from types import SimpleNamespace
 
 import pytest
 
-import chipcompiler.utility as chipcompiler_utility
 from chipcompiler.data import OriginDesign, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.tools.ecc import metrics as ecc_metrics
 from chipcompiler.tools.ecc import plot as ecc_plot
@@ -2209,69 +2208,7 @@ def test_ecc_metrics_harden_rejects_stale_signoff_summary(tmp_path):
     assert summary["gates"] == []
 
 
-def test_ecc_plot_step_metrics_accepts_path_metrics(tmp_path, monkeypatch):
-    workspace = Workspace(
-        directory=tmp_path,
-        design=OriginDesign(name="gcd", top_module="gcd"),
-    )
-    step = build_step(
-        workspace=workspace,
-        step_name=StepEnum.FLOORPLAN.value,
-        input_def=tmp_path / "input.def",
-        input_verilog=tmp_path / "input.v",
-    )
-    build_step_space(step)
-    assert step.analysis.metrics is not None
-    step.analysis.metrics.write_text("{}", encoding="utf-8")
-    calls = []
-    monkeypatch.setattr(
-        ecc_plot,
-        "plot_metrics",
-        lambda metrics, output_path: calls.append((metrics, output_path)) or True,
-    )
-
-    assert ecc_plot.ECCToolsPlot(workspace, step).plot_step_metrics() is True
-    assert calls == [
-        ({}, str(step.analysis.metrics).replace(".json", ".png")),
-    ]
-
-
-def test_ecc_plot_instance_distribution_accepts_path_feature_db(tmp_path, monkeypatch):
-    workspace = Workspace(
-        directory=tmp_path,
-        design=OriginDesign(name="gcd", top_module="gcd"),
-    )
-    step = build_step(
-        workspace=workspace,
-        step_name=StepEnum.FLOORPLAN.value,
-        input_def=tmp_path / "input.def",
-        input_verilog=tmp_path / "input.v",
-    )
-    build_step_space(step)
-    assert step.feature.db is not None
-    step.feature.db.write_text(
-        json.dumps({"Instances": {"stdcell": {"num": 1, "area": 2, "pin_num": 3}}}),
-        encoding="utf-8",
-    )
-    plot_calls = []
-    metric_calls = []
-    workspace.home = SimpleNamespace(
-        set_metrics_inst_dist=lambda image_path: metric_calls.append(image_path),
-    )
-    monkeypatch.setattr(
-        chipcompiler_utility,
-        "plot_bar_chart",
-        lambda **kwargs: plot_calls.append(kwargs) or True,
-    )
-
-    assert ecc_plot.ECCToolsPlot(workspace, step).plot_instance_distribution() is True
-
-    expected_image_path = str(step.feature.db).replace(".json", ".inst_dist.png")
-    assert plot_calls[0]["output_path"] == expected_image_path
-    assert metric_calls == [expected_image_path]
-
-
-def test_ecc_plot_drc_statis_accepts_path_statis_csv(tmp_path, monkeypatch):
+def test_ecc_plot_drc_statis_accepts_path_statis_csv(tmp_path):
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
@@ -2323,26 +2260,8 @@ def test_ecc_plot_drc_statis_accepts_path_statis_csv(tmp_path, monkeypatch):
         ),
         encoding="utf-8",
     )
-    plot_calls = []
-    metric_calls = []
-    workspace.home = SimpleNamespace(
-        set_metrics_drc_dist=lambda image_path: metric_calls.append(image_path),
-    )
-
-    def record_bar_chart(**kwargs):
-        assert isinstance(kwargs["input_path"], str)
-        assert isinstance(kwargs["output_path"], str)
-        plot_calls.append(kwargs)
-        return True
-
-    monkeypatch.setattr(ecc_plot, "plot_csv_bar_chart", record_bar_chart)
-
     assert ecc_plot.ECCToolsPlot(workspace, step).plot_drc_statis() is True
 
-    expected_image_path = str(step.analysis.statis_csv).replace(".csv", ".png")
-    assert plot_calls[0]["input_path"] == str(step.analysis.statis_csv)
-    assert plot_calls[0]["output_path"] == expected_image_path
-    assert metric_calls == [expected_image_path]
     with open(step.analysis.statis_csv, newline="") as csvfile:
         assert list(csv.DictReader(csvfile)) == [
             {"Type": "short", "M1": "2", "M2": "3", "total": "5"},

@@ -10,6 +10,7 @@ from chipcompiler.data import (
     EccStep,
     StepEnum,
     Workspace,
+    workspace_checklist_path,
 )
 from chipcompiler.tools.ecc.qor_metrics import QorMetrics
 from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
@@ -47,7 +48,7 @@ class DreamplaceChecklist:
         self, checklist: Checklist, step: str, type: str, item: str, state: str, info: str = ""
     ):
         checklist.add(step=step, type=type, item=item, state=state, info=info)
-        self.workspace.home.update_checklist(
+        Checklist(workspace_checklist_path(self.workspace.directory)).update(
             step=step, type=type, item=item, state=state, info=info
         )
 
@@ -75,7 +76,7 @@ class DreamplaceChecklist:
 
     def set_item_state(self, step: str, type: str, item: str, state: CheckState, info: str = ""):
         self.update_item(step=step, type=type, item=item, state=state, info=info)
-        self.workspace.home.update_checklist(
+        Checklist(workspace_checklist_path(self.workspace.directory)).update(
             step=step, type=type, item=item, state=state.value, info=info
         )
 

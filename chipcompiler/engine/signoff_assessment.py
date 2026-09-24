@@ -1,6 +1,6 @@
-from pathlib import Path
 from typing import Any, TypedDict
 
+from chipcompiler.data.checklist import workspace_checklist_path
 from chipcompiler.engine.snapshot_limits import (
     CHECKLIST_INLINE_MAX_BYTES,
     read_bounded_json_object,
@@ -42,7 +42,7 @@ def build_signoff_assessment(
         return _unavailable_assessment()
     if checklist is None:
         checklist_result = read_bounded_json_object(
-            Path(workspace.directory) / "home" / "checklist.json",
+            workspace_checklist_path(workspace.directory),
             CHECKLIST_INLINE_MAX_BYTES,
         )
         checklist = checklist_result.data if checklist_result.status == "available" else {}

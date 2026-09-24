@@ -133,6 +133,9 @@ def test_workspace_param_refresh_failure_rolls_back_params(
     workspace_dir = Path(project_dir) / "baseline"
     _write_manifest(project_dir)
     workspace = _workspace(workspace_dir)
+    derived_manifest = workspace_dir / "home" / "config-derived-manifest.json"
+    derived_manifest.write_text('{"files":{"cts_ecc.json":{"sha256":"before"}}}')
+    manifest_before = derived_manifest.read_bytes()
     monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _path: workspace)
 
     def fail_refresh(_workspace):
@@ -163,6 +166,7 @@ def test_workspace_param_refresh_failure_rolls_back_params(
     # paired with old configs and an untouched ledger. params.toml did not
     # exist before the mutation, so restoring it means removing it again.
     assert not workspace.parameters.path.exists()
+    assert derived_manifest.read_bytes() == manifest_before
     assert [step["state"] for step in workspace.flow.data["steps"]] == [
         "Success",
         "Success",

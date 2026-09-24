@@ -52,6 +52,27 @@ def _records(capsys, plain_records):
     return plain_records(capsys.readouterr().out)
 
 
+def test_diverging_parameter_fix_quotes_json_values_and_workspace_names(monkeypatch):
+    from chipcompiler.cli.project.run_existing import _diverging_workspace_param_fixes
+
+    monkeypatch.setattr(
+        "chipcompiler.data.workspace_parameters.workspace_param_value",
+        lambda _workspace, _schema: [1, 2],
+    )
+    fixes = _diverging_workspace_param_fixes(
+        object(),
+        "workspace name",
+        {"floorplan.core_margin": [3, 4]},
+        "/project with spaces",
+    )
+
+    assert len(fixes) == 1
+    assert (
+        fixes[0][1] == "ecc param set floorplan.core_margin '[3, 4]' --workspace 'workspace name' "
+        "--project '/project with spaces'"
+    )
+
+
 class TestFlowContinuation:
     def test_noop_when_flow_already_complete(
         self,
@@ -434,7 +455,7 @@ class TestFlowMismatchZeroMutation:
         self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
     ):
         """AC-14 with a legacy-parameters workspace: the mismatch refusal must
-        not migrate parameters.json, create params.toml/lock/home.json, or touch
+        not migrate parameters.json, create params.toml/lock files, or touch
         any other path."""
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)

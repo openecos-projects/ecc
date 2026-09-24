@@ -19,6 +19,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceInfoRequest,
     WorkspaceOpenRequest,
     WorkspaceRecoverInterruptedRequest,
+    WorkspaceRefreshConfigRequest,
     WorkspaceStepConfigurationReadRequest,
     WorkspaceSyncConfigRequest,
 )
@@ -179,7 +180,6 @@ def _workspace(directory: Path):
         directory=directory.resolve(),
         design=design,
         flow=SimpleNamespace(path=directory / "home" / "flow.json", data={"steps": []}),
-        home=SimpleNamespace(path=directory / "home" / "home.json"),
     )
 
 
@@ -231,7 +231,6 @@ def _install_runtime_mocks(monkeypatch, tmp_path, *, create_workspace_files=True
         (ws / "home").mkdir(parents=True)
         (ws / "home" / "parameters.json").write_text("{}")
         (ws / "home" / "flow.json").write_text(json.dumps({"steps": []}))
-        (ws / "home" / "home.json").write_text("{}")
     return capture, ws
 
 
@@ -670,7 +669,7 @@ def test_create_workspace_replaces_existing_same_directory_session(monkeypatch, 
     assert created["workspaceId"] != opened["workspaceId"]
     assert opened_session.db_handle is None
     with pytest.raises(RuntimeApiError, match="workspace session not found"):
-        api.workspace_home(WorkspaceIdRequest(workspace_id=opened["workspaceId"]))
+        api._get_session(opened["workspaceId"])
     created_session = api.sessions.get_session(created["workspaceId"])
     assert created_session.workspace is not opened_session.workspace
 
@@ -687,7 +686,7 @@ def test_open_workspace_reuses_existing_same_directory_session(monkeypatch, tmp_
     assert api.sessions.get_session(second["workspaceId"]).workspace is first_session.workspace
 
 
-def test_workspace_home_and_info_use_session_id(monkeypatch, tmp_path):
+def test_workspace_info_uses_session_id(monkeypatch, tmp_path):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     monkeypatch.setattr(
         "chipcompiler.tools.get_step_info",
@@ -697,12 +696,10 @@ def test_workspace_home_and_info_use_session_id(monkeypatch, tmp_path):
     opened = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))
     workspace_id = opened["workspaceId"]
 
-    home = api.workspace_home(WorkspaceIdRequest(workspace_id=workspace_id))
     info = api.workspace_info(
         WorkspaceInfoRequest(workspace_id=workspace_id, step="Synthesis", info_id="layout")
     )
 
-    assert home == {"path": str(ws.resolve() / "home" / "home.json")}
     assert info == {
         "step": "Synthesis",
         "id": "layout",
@@ -770,6 +767,34 @@ def test_refresh_config_releases_active_session_db(monkeypatch, tmp_path):
     assert result == {"directory": str(ws.resolve()), "refreshed": True}
     assert db_handle.close_calls == 1
     assert api.sessions.get_session(workspace_id).db_handle is None
+
+
+def test_refresh_config_rejects_modified_derived_configs_without_force(monkeypatch, tmp_path):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    refreshed = []
+    monkeypatch.setattr(
+        "chipcompiler.data.refresh_workspace_config",
+        lambda workspace: refreshed.append(workspace.directory),
+    )
+    monkeypatch.setattr(
+        "chipcompiler.data.workspace.config_manifest.modified_derived_configs",
+        lambda _directory: ["route_ecc.json"],
+    )
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+
+    with pytest.raises(RuntimeApiError) as exc_info:
+        api.refresh_config(WorkspaceRefreshConfigRequest(workspace_id=workspace_id))
+
+    assert exc_info.value.code == "derived_configs_modified"
+    assert exc_info.value.data == {"files": ["route_ecc.json"]}
+    assert refreshed == []
+
+    result = api.refresh_config(
+        WorkspaceRefreshConfigRequest(workspace_id=workspace_id, force=True)
+    )
+    assert result == {"directory": str(ws.resolve()), "refreshed": True}
+    assert refreshed == [ws.resolve()]
 
 
 def test_sync_config_releases_active_session_db_only_when_parameters_change(
@@ -905,7 +930,7 @@ def test_unknown_session_returns_structured_runtime_error():
     api = WorkspaceRuntimeApi()
 
     with pytest.raises(RuntimeApiError) as exc_info:
-        api.workspace_home(WorkspaceIdRequest(workspace_id="missing"))
+        api._get_session("missing")
 
     assert exc_info.value.code == "workspace_session_not_found"
 
@@ -1083,7 +1108,6 @@ def test_workspace_snapshot_includes_configuration_and_engineering_snapshot(monk
     workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
     session = api.sessions.get_session(workspace_id)
     session.workspace.parameters = SimpleNamespace(data={}, path=ws / "home" / "params.toml")
-    session.workspace.home.data = {}
 
     snapshot = api.workspace_snapshot(WorkspaceIdRequest(workspace_id))
 
@@ -1092,6 +1116,7 @@ def test_workspace_snapshot_includes_configuration_and_engineering_snapshot(monk
         "workspaceId": "workspace-1",
         "workspaceRevision": 2,
     }
+    assert "home" not in snapshot
 
 
 def test_workspace_snapshot_falls_back_to_persisted_flow_steps(monkeypatch, tmp_path):
@@ -1102,7 +1127,6 @@ def test_workspace_snapshot_falls_back_to_persisted_flow_steps(monkeypatch, tmp_
     flow = workspace.flow
     flow.data = {}
     workspace.parameters = SimpleNamespace(data={}, path=ws / "home" / "parameters.json")
-    workspace.home = SimpleNamespace(data={})
     monkeypatch.setattr(
         flow,
         "steps",
@@ -1911,21 +1935,7 @@ def _make_derive_source(tmp_path):
     (home / "flow.json").write_text(
         json.dumps({"path": str(home / "flow.json"), "steps": steps}), encoding="utf-8"
     )
-    (home / "home.json").write_text(
-        json.dumps(
-            {
-                "parameters": str(home / "params.toml"),
-                "flow": str(home / "flow.json"),
-                "layout": str(source / "Floorplan_ecc" / "output" / "fp.png"),
-                "checklist": str(home / "checklist.json"),
-                "metrics": {
-                    "instances dist.": str(source / "Synthesis_yosys" / "output" / "dist.png"),
-                    "pin dist.": str(source / "Route_ecc" / "output" / "pin.png"),
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
+    (home / "home.json").write_text('{"legacy": true}', encoding="utf-8")
     (home / "params.toml").write_text("", encoding="utf-8")
     (home / "engineering-snapshot.json").write_text(
         json.dumps(
@@ -2002,8 +2012,10 @@ def _install_derive_mocks(monkeypatch):
     def fake_load_workspace(directory, *, read_only=False):
         directory = Path(directory)
         flow_path = directory / "home" / "flow.json"
-        home_path = directory / "home" / "home.json"
-        workspace = SimpleNamespace(
+        if not read_only:
+            (directory / "home" / "home.json").unlink(missing_ok=True)
+            (directory / "home" / "home.json.lock").unlink(missing_ok=True)
+        return SimpleNamespace(
             directory=directory.resolve(),
             design=SimpleNamespace(name="gcd"),
             flow=SimpleNamespace(
@@ -2011,27 +2023,13 @@ def _install_derive_mocks(monkeypatch):
                 data=json.loads(flow_path.read_text(encoding="utf-8")),
             ),
             parameters=SimpleNamespace(data={}, path=None),
-            home=SimpleNamespace(
-                path=home_path,
-                data=json.loads(home_path.read_text(encoding="utf-8")),
-            ),
         )
-
-        def save(home=workspace.home):
-            home.path.write_text(json.dumps(home.data), encoding="utf-8")
-
-        workspace.home.save = save
-        return workspace
 
     def fake_prepare_workspace_for_rerun(workspace, engine_flow, **_kwargs):
         for step in workspace.flow.data.get("steps", []):
             step.update({"state": "Unstart", "runtime": "", "peak memory (mb)": 0, "info": {}})
         Path(workspace.flow.path).write_text(json.dumps(workspace.flow.data), encoding="utf-8")
         checklist_path = Path(workspace.directory) / "home" / "checklist.json"
-        workspace.home.data["checklist"] = str(checklist_path)
-        workspace.home.data["layout"] = ""
-        workspace.home.data["metrics"] = {}
-        workspace.home.save()
         checklist_path.write_text(
             json.dumps({"path": str(checklist_path), "checklist": []}), encoding="utf-8"
         )
@@ -2122,11 +2120,7 @@ def test_derive_workspace_resets_only_step_suffix(monkeypatch, tmp_path):
     assert list((target / "Floorplan_ecc" / "output").iterdir()) == []
     assert list((target / "Route_ecc" / "output").iterdir()) == []
 
-    home = json.loads((target / "home" / "home.json").read_text("utf-8"))
-    assert home["layout"] == ""
-    assert home["metrics"] == {
-        "instances dist.": str(target.resolve() / "Synthesis_yosys" / "output" / "dist.png")
-    }
+    assert not (target / "home" / "home.json").exists()
 
     checklist = json.loads((target / "home" / "checklist.json").read_text("utf-8"))
     assert [item["step"] for item in checklist["checklist"]] == ["Synthesis"]

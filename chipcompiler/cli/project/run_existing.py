@@ -8,6 +8,7 @@ existing-run lifecycles are separate responsibilities, and the reconcile
 wiring belongs next to the ledger it owns.
 """
 
+import shlex
 from pathlib import Path
 
 from chipcompiler.cli.core.output import disclosure_cmd
@@ -72,10 +73,15 @@ def _diverging_workspace_param_fixes(
         if current == value:
             continue
         rendered = _json.dumps(value) if isinstance(value, (list, dict, bool)) else str(value)
+        rendered = shlex.quote(rendered)
+        workspace_arg = shlex.quote(run_name)
         fixes.append(
             (
                 key,
-                disclosure_cmd(f"ecc param set {key} {rendered} --workspace {run_name}", project),
+                disclosure_cmd(
+                    f"ecc param set {key} {rendered} --workspace {workspace_arg}",
+                    project,
+                ),
             )
         )
     return fixes
@@ -213,7 +219,7 @@ def run_existing_workspace(
                 target_section["skip_steps"] = cfg.flow_skip_steps
 
     # Pure-read preflight: a divergent flow is rejected BEFORE load_workspace
-    # can migrate configs, create home.json/checklist, or take the lock.
+    # can migrate configs, create checklist state, or take the lock.
     probe = classify_workspace(run_dir, target_section)
     if probe.outcome == "mismatch":
         return mismatch_error(probe.error or "flow_mismatch")

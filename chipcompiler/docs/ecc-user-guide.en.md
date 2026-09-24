@@ -1,6 +1,6 @@
 # ECC CLI User Guide (all currently supported commands)
 
-`ecc` is the project-oriented command-line entry point of ECOS Chip Compiler, covering the full RTL-to-GDS flow: project creation, validation, execution, status/log/config inspection, parameter management, signoff, and reporting. This guide is based on the current source tree (v0.1.0-alpha.11); all example outputs are real execution results (run states in the examples are hand-crafted demo data).
+`ecc` is the project-oriented command-line entry point of ECOS Chip Compiler, covering the full RTL-to-GDS flow: project creation, validation, execution, status/log/config inspection, parameter management, signoff, and reporting. This guide is aligned with the current source tree (v0.1.0-alpha.12); command outputs are either captured results or explicitly marked examples (run states in examples may be hand-crafted demo data).
 
 - Source code: [chipcompiler/cli/](https://github.com/openecos-projects/ecc/tree/main/chipcompiler/cli/)
 - For how to extend the CLI with new commands, see [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli)
@@ -63,7 +63,7 @@ which ecc && ecc --version          # from any directory, should print ecc <vers
 # Upgrading = overwrite the extraction directory with the new bundle; symlinks from options B/C need no change
 ```
 
-> This guide and the features it documents — the bundled `ecc doc` guides, the `doctor`/`signoff`/`report` command groups, and the `run` workspace/range selectors — ship with release v0.1.0-alpha.12; earlier releases (up to v0.1.0-alpha.9) do not include them. Until alpha.12 is out, run from source with `uv run ecc` as described in [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli) (editable install — source changes take effect on the next import). Re-running the installer reinstalls the official release, and unreleased behavior disappears with it — the expected rollback.
+> This guide targets v0.1.0-alpha.12. Earlier releases do not provide the complete command surface documented here, including the bundled `ecc doc` guides, the `doctor`/`signoff`/`report` groups, and all workspace/range selectors. Check with `ecc --version`; when developing from this source tree, use `uv run ecc` as described in [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli).
 
 > `ecc` resolves the project from the current directory by default (wherever `ecc.toml` lives), so "launch from any folder" is the normal usage; to operate on a project from elsewhere, add `--project <dir>`.
 
@@ -81,7 +81,7 @@ uv run ecc --help
 
 - Global: `ecc --version` (single version line), `ecc --help`.
 - Project location: project-scoped commands accept `--project <dir>` (when the option is not given, the current directory is used). `--workspace <path>` accepts either a tool-managed, non-empty simple folder name or a complete absolute filesystem path. A name keeps the project-local `<project>/<workspace-id>` layout; an absolute path creates or selects an external workspace and uses its basename as the new ID unless the path is already registered. A fresh project creates `default` on bare `ecc run`; a project with one active workspace auto-selects it, while one with multiple active workspaces requires `--workspace`. A named workspace is created and registered in `project.json` before its files are created. Legacy `runs/` projects must be upgraded with `ecc migrate` before running a flow. Each project has one `ecc.toml`; workspace inputs are copied to its own `origin/` directory at creation time.
-- Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `param`, `pdk`, `project`, `workspace`, `signoff`, and `report` accept `--plain` (`key=value`, for scripting), with human-readable TEXT by default. `rpc serve` and `layout-image` use their own protocols instead.
+- Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `param`, `macro`, `pdk`, `project`, `workspace`, `signoff`, and `report` accept `--plain` (`key=value`, for scripting), with human-readable TEXT by default. `rpc serve` and `layout-image` use their own protocols instead.
 - Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`).
 - Step tokens come in three vocabularies, distinguished by context:
   - **display names** (output and input of `ecc status` / `ecc log` / `ecc report step`, uniformly lowercase/underscore): `synthesis / lec / pre_floorplan / macro_placement / post_floorplan / placement / cts / legalization / timing_optimization / routing / filler / rcx / sta / lvs / postroutelec / drc / harden`;
@@ -106,11 +106,13 @@ Commands:
   migrate       Migrate a legacy runs/ project to the manifest layout
   doctor        Check host environment: PDK, tools, and components
   param         Manage EDA parameters
+  macro         Manage manual macro placement (macro_location.tcl)
   pdk           Show and configure the PDK path used by this project
   project       Edit project declarations in ecc.toml
-  workspace     Refresh managed workspaces from project configuration
+  workspace     Import or refresh managed workspaces
   signoff       Inspect and export signoff packages
   report        Generate design-summary, QoR score, checklist, and step reports
+  rpc           Run the private ECC JSON-RPC runtime
 ```
 
 ## 1.5. doc — read the bundled guides in the terminal
@@ -153,11 +155,11 @@ same way a flow run resolves them, and show the binary's own version, or
 
 ```console
 $ ecc version
-ecc 0.1.0a11
+ecc 0.1.0a12
 dreamplace 0.1.0a7
-ecc_tools 0.1.0a12
+ecc_tools 0.1.0a13
 runtime ECC CLI
-yosys 0.68+132
+yosys 0.69+24
 sizer 0.1.0-alpha
 klayout 0.30.2
 ```
@@ -486,7 +488,7 @@ $ ecc run --from cts --to route --preset rtl2gds   # a fresh range conflicts wit
 [error]
   selector_conflict
 
-$ ecc run --workspace a/b     # a workspace must be a single name, never a path
+$ ecc run --workspace a/b     # a relative path is invalid; use a simple name or an absolute path
 [error]
   invalid_workspace invalid_workspace: 'a/b' is not a single workspace name
 ```
@@ -709,7 +711,7 @@ ecc run --project /projects/gcd --workspace archive --resume
 
 Import rejects malformed or incompatible workspaces, duplicate IDs/paths, protected paths, and legacy projects that still require `ecc migrate`. If an `ecc.toml` project has no `project.json` yet, a successful import creates the schema-v1 manifest before registering the workspace.
 
-`ecc workspace refresh NAME --project DIR` rebuilds a workspace already declared in `project.json` from the current `ecc.toml`, without running the flow. It replaces the workspace's copied inputs, tool configuration, state, and artifacts at the path already declared in the manifest; run `ecc run --workspace NAME` afterwards. `ecc run --workspace NAME --overwrite` is the existing shortcut that refreshes and immediately re-executes:
+`ecc workspace refresh NAME --project DIR` rebuilds a workspace already declared in `project.json` from the current `ecc.toml`, without running the flow. It replaces the workspace's copied inputs, tool configuration, state, and artifacts at the path already declared in the manifest; run `ecc run --workspace NAME` afterwards. Before replacing anything, it compares the managed JSON configs and `macro_location.tcl` with `home/config-derived-manifest.json`. If one changed since the last derivation, refresh returns `derived_configs_modified`, lists the files, and leaves the workspace intact. Review the edit and either express it through `ecc param`/`ecc macro`/`ecc.toml` or pass `--force` to discard it. A workspace predating the manifest has no comparison baseline, so its first refresh proceeds. `ecc run --workspace NAME --overwrite` remains the explicit rebuild-and-run shortcut:
 
 ```console
 $ ecc workspace refresh default
@@ -723,6 +725,8 @@ $ ecc workspace refresh nosuch
 [error]
   workspace_not_declared workspace_not_declared: unknown workspace 'nosuch'; declared workspaces: default
 rc=1
+
+$ ecc workspace refresh default --force   # intentionally discard detected config edits
 ```
 
 Changes to entry inputs, PDK paths, and `flow.preset` must go through refresh, because they alter the workspace's input snapshot or flow structure. For parameter-only tweaks on an existing workspace there is also `ecc param set KEY VALUE --workspace NAME` (§9), which does not touch `ecc.toml`.
@@ -1048,17 +1052,19 @@ the report extracts the current state by default (the engine API
 
 ### 12.2 qor — overall QoR score report
 
-Scores the current workspace with ECC's shared `qor_scoring` rules (the same table Studio Snapshot uses): every v3 `qor_metrics.json` metric is converted to 0-100 against fixed fail thresholds (slack metrics linearly, core_utilization against the [0.45, 0.70] target window, lower/higher_is_better proportionally), averaged per dimension, then combined with the dimension weights (Timing 0.35 / Power 0.25 / Routability 0.2 / Area 0.1 / Clock-DFM 0.1) into the overall score — **absent dimensions are not renormalized** (missing dimensions lower the score); 60 is the pass line. By default written to `<workspace>/signoff/<design>_qor_report.txt`:
+Runs the ECC-QoR V3 engine over the current workspace. It separates three questions: five physical-quality coordinates (`timing`, `interconnect`, `area`, `power`, `robustness`), seven zero-tolerance feasibility gates, and evidence completeness. ECOS Studio consumes the same versioned `home/qor_report.json`; it does not maintain a second scoring table.
+
+The scalar score uses the selected `qor_profile` weights (balanced by default) and **renormalizes over dimensions that can actually be evaluated**. Thus an undeclared power budget makes `power` null without compressing the remaining score. A failed feasibility gate forces score `0` / `FAIL`; an unexecuted gate stage or corrupt gate evidence produces `NOT_RATED` instead of a fabricated score. Status bands are `GREEN >= 90`, `YELLOW >= 75`, `ORANGE >= 60`, and `RED < 60`. The text report is written to `<workspace>/signoff/<design>_qor_report.txt` by default. An abridged `--plain` response using the reference fixture looks like this:
 
 ```console
 $ ecc report qor --project gcd --plain
-report=qor path=.../signoff/gcd_qor_report.txt bytes=1717 design=gcd \
-  overall_score=61.8 qor_status=Green gate_status=pass \
-  dimensions="[{'dimension': 'Timing', 'score': 75.0, 'weight': 0.35, 'metrics': 2}, ...]" \
+report=qor path=.../signoff/gcd_qor_report.txt bytes=... design=gcd \
+  overall_score=98.96 qor_status=GREEN gate_status=PASS \
+  dimensions="[{'dimension': 'timing', 'score': 100.0, 'state': 'OPPORTUNITY', 'features': ...}, ...]" \
   view="cat .../gcd_qor_report.txt" status=written
 ```
 
-The report contains: the overall score and verdict (PASS/BELOW THRESHOLD/NOT RATED), the flow status color (Green/Yellow/Orange/Red/Blocked) and gate (DRC/LVS/RCX/STA step states), the area scoring step (the last successful step carrying area metrics), the dimension table, and the per-metric detail (corners scored independently).
+The report contains the composite/profile, five-dimension breakdown, feasibility gates, evidence state, deterministic diagnoses, and prioritized intervention hypotheses. See the [ECC QoR Reference](ecc-qor-ref.en.md) for formulas, profiles, thresholds, and the JSON contract.
 
 ### 12.3 checklist — signoff checklist report
 
@@ -1124,11 +1130,11 @@ $ ecc report step drc --section analysis
 ecc rpc serve --stdio [--persistent-db]
 ```
 
-A JSON-RPC 2.0 service for front ends such as the GUI, framed with `Content-Length` over stdio. `--persistent-db` additionally exposes `db.ensure` / `db.release` plus the `layout.edit.*` / `floorplan.edit.*` method families. Handshake and call examples (full method list and parameters in [rpc-guide.md](https://github.com/openecos-projects/ecc/blob/main/docs/rpc-guide.md)):
+A JSON-RPC 2.0 service for front ends such as the GUI, framed with `Content-Length` over stdio. `--persistent-db` additionally exposes `db.ensure` / `db.release` plus the `layout.edit.*` / `floorplan.edit.*` method families. The handshake capability list is generated from the registered runtime methods; clients must inspect it instead of assuming a fixed list. `workspace.refresh_config` applies the same generated-config protection as the CLI and accepts `force: true` when overwriting detected edits is intentional. The current base-mode handshake and a ping are shown below; full method parameters are in [rpc-guide.md](https://github.com/openecos-projects/ecc/blob/main/docs/rpc-guide.md):
 
 ```console
 → {"jsonrpc":"2.0","method":"rpc.hello","params":{"version":1},"id":"hello-1"}
-← {"jsonrpc":"2.0","result":{"version":1,"eccVersion":"0.1.0-alpha.11","capabilities":["rpc.hello","rpc.ping","rpc.shutdown","runtime.v2","operation.events","workspace.create","workspace.open","workspace.derive","workspace.close","workspace.home","workspace.info","workspace.refresh_config","workspace.sync_config","workspace.reset_flow","workspace.export_signoff","workspace.inspect_signoff","flow.run","flow.run_step","operation.start_flow","operation.start_step","operation.status","operation.cancel","operation.ack_step_rendered","workspace.snapshot","workspace.recover_interrupted"]},"id":"hello-1"}
+← {"jsonrpc":"2.0","result":{"version":1,"protocolVersion":1,"eccVersion":"0.1.0-alpha.12","capabilities":["rpc.hello","rpc.ping","rpc.shutdown","runtime.v2","operation.events","workspace_spec.describe","workspace_spec.validate","project.discover","project.manifest.load","project.manifest.mutate","workspace.create","workspace.open","workspace.derive","workspace.binding_requirement","workspace.update","workspace.configuration.update","workspace.configuration.read","workspace.step_configuration.update","workspace.step_configuration.read","workspace.step_outputs","workspace.close","workspace.info","workspace.refresh_config","workspace.sync_config","workspace.reset_flow","workspace.export_signoff","workspace.inspect_signoff","flow.run","flow.run_step","operation.start_flow","operation.start_step","operation.status","operation.cancel","operation.ack_step_rendered","workspace.snapshot","workspace.engineering_snapshot","workspace.recover_interrupted"]},"id":"hello-1"}
 
 → {"jsonrpc":"2.0","method":"rpc.ping","params":{},"id":"ping-1"}
 ← {"jsonrpc":"2.0","result":{"ok":true},"id":"ping-1"}

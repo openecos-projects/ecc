@@ -258,7 +258,7 @@ def test_rpc_stdio_subprocess_persistent_db_smoke():
     assert "db.release" in responses[0]["result"]["capabilities"]
 
 
-def test_rpc_stdio_subprocess_workspace_open_home_smoke(tmp_path, minimal_ics55_pdk_factory):
+def test_rpc_stdio_subprocess_workspace_open_smoke(tmp_path, minimal_ics55_pdk_factory):
     ws = _create_real_workspace(tmp_path, minimal_ics55_pdk_factory)
     process = subprocess.Popen(
         [sys.executable, "-m", "chipcompiler.cli.main", "rpc", "serve", "--stdio"],
@@ -273,15 +273,7 @@ def test_rpc_stdio_subprocess_workspace_open_home_smoke(tmp_path, minimal_ics55_
         open_response = _read_subprocess_response(process)
         workspace_id = open_response["result"]["workspaceId"]
 
-        _write_subprocess_request(
-            process,
-            "workspace.home",
-            2,
-            {"workspaceId": workspace_id},
-        )
-        home_response = _read_subprocess_response(process)
-
-        _write_subprocess_request(process, "rpc.shutdown", 3)
+        _write_subprocess_request(process, "rpc.shutdown", 2)
         shutdown_response = _read_subprocess_response(process)
         stderr = process.communicate(timeout=5)[1]
     finally:
@@ -294,9 +286,4 @@ def test_rpc_stdio_subprocess_workspace_open_home_smoke(tmp_path, minimal_ics55_
         "workspaceId": workspace_id,
         "directory": str(ws.resolve()),
     }
-    assert home_response == {
-        "jsonrpc": "2.0",
-        "result": {"path": str(ws.resolve() / "home" / "home.json")},
-        "id": 2,
-    }
-    assert shutdown_response == {"jsonrpc": "2.0", "result": {"ok": True}, "id": 3}
+    assert shutdown_response == {"jsonrpc": "2.0", "result": {"ok": True}, "id": 2}

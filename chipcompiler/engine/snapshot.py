@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from chipcompiler.data.checklist import workspace_checklist_path
 from chipcompiler.engine.snapshot_limits import (
     CHECKLIST_INLINE_MAX_BYTES,
     ENGINEERING_SNAPSHOT_MAX_BYTES,
@@ -37,12 +38,14 @@ def create_engineering_snapshot(
     workspace_id: str | None = None,
     workspace_revision: int = 1,
     cause: str = "workspace.created",
+    workspace_spec: object | None = None,
 ) -> dict[str, Any]:
     snapshot = _build_snapshot(
         workspace,
         workspace_id=workspace_id or f"workspace-{uuid4().hex}",
         workspace_revision=workspace_revision,
         cause=cause,
+        workspace_spec=workspace_spec,
     )
     _write_snapshot(_snapshot_path(workspace), snapshot)
     return snapshot
@@ -124,6 +127,8 @@ def migrate_engineering_snapshot(
         raise EngineeringSnapshotError(
             "failed to regenerate QoR facts for Snapshot migration"
         ) from exc
+    if isinstance(current.get("workspaceSpec"), dict):
+        snapshot["workspaceSpec"] = deepcopy(current["workspaceSpec"])
     if isinstance(current.get("stalePredecessor"), dict):
         snapshot["stalePredecessor"] = deepcopy(current["stalePredecessor"])
     _write_snapshot(_snapshot_path(workspace), snapshot)
@@ -150,6 +155,8 @@ def commit_engineering_snapshot(
         workspace_revision=current["workspaceRevision"] + 1,
         cause=cause,
     )
+    if isinstance(current.get("workspaceSpec"), dict):
+        snapshot["workspaceSpec"] = deepcopy(current["workspaceSpec"])
     stale = current.get("stalePredecessor")
     if isinstance(stale, dict):
         states = {
@@ -216,6 +223,8 @@ def invalidate_engineering_snapshot(
         workspace_revision=current["workspaceRevision"] + 1,
         cause=cause,
     )
+    if isinstance(current.get("workspaceSpec"), dict):
+        snapshot["workspaceSpec"] = deepcopy(current["workspaceSpec"])
     snapshot["flow"] = flow
     snapshot["stalePredecessor"] = {
         "workspaceRevision": current["workspaceRevision"],
@@ -233,16 +242,14 @@ def _build_snapshot(
     cause: str,
     schema_version: int = SNAPSHOT_SCHEMA_VERSION,
     strict_qor: bool = False,
+    workspace_spec: object | None = None,
 ) -> dict[str, Any]:
     flow_owner = getattr(workspace, "flow", None)
     flow = _data_mapping(flow_owner)
     if not flow and flow_owner is not None:
         steps = flow_owner.steps()
         flow = {"steps": deepcopy(steps)} if steps else {}
-    home = _data_mapping(getattr(workspace, "home", None))
-    checklist_path = home.get("checklist") or (
-        Path(workspace.directory) / "home" / "checklist.json"
-    )
+    checklist_path = workspace_checklist_path(getattr(workspace, "directory", None))
     checklist_result = read_bounded_json_object(
         Path(checklist_path),
         CHECKLIST_INLINE_MAX_BYTES,
@@ -265,7 +272,7 @@ def _build_snapshot(
         if strict_qor:
             raise
         qor_extension = unavailable_qor_snapshot_extension(str(exc))
-    return {
+    snapshot = {
         "schemaVersion": schema_version,
         "workspaceId": workspace_id,
         "workspaceRevision": workspace_revision,
@@ -280,6 +287,11 @@ def _build_snapshot(
         "signoffAssessment": build_signoff_assessment(workspace, checklist=checklist),
         "artifacts": artifacts,
     }
+    if isinstance(workspace_spec, dict) and isinstance(workspace_spec.get("parameters"), dict):
+        snapshot["workspaceSpec"] = {
+            "parameters": deepcopy(workspace_spec["parameters"]),
+        }
+    return snapshot
 
 
 def _snapshot_path(workspace: Any) -> Path:

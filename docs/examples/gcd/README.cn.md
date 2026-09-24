@@ -55,7 +55,6 @@ gcd_workspace/
 ├── home/
 │   ├── flow.json          # 流程状态文件
 │   ├── params.toml        # 工作区配置文件（设计参数、流程目标）
-│   ├── home.json          # 工作区主状态（flow/config/checklist 指针）
 │   └── checklist.json     # 检查清单状态
 ├── CTS_ecc                # CTS 步骤工作空间
 │   ├── analysis    # 从指标数据中提取的分析数据文件

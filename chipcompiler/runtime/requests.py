@@ -139,6 +139,11 @@ class WorkspaceIdRequest:
 
 
 @dataclass(frozen=True)
+class WorkspaceRefreshConfigRequest(WorkspaceIdRequest):
+    force: bool = False
+
+
+@dataclass(frozen=True)
 class WorkspaceRecoverInterruptedRequest:
     workspace_id: str
     operation_id: str = ""
@@ -331,6 +336,7 @@ FIELD_ALIASES = {
     "resetFromStep": "reset_from_step",
     "writeMacroLocation": "write_macro_location",
     "resetRuntimeParams": "reset_runtime_params",
+    "force": "force",
 }
 
 
@@ -363,6 +369,7 @@ def parse_request_model(model: type, params: object):
             "reset_dependents",
             "write_macro_location",
             "reset_runtime_params",
+            "force",
         } and not isinstance(values[field.name], bool):
             raise RequestValidationError(f"{field.name} must be a boolean")
         if field.name == "additional_files":

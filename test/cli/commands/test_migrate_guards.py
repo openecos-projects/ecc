@@ -2,8 +2,6 @@ import json
 import os
 from pathlib import Path
 
-import pytest
-
 from chipcompiler.cli import main as cli_main
 
 
@@ -170,7 +168,7 @@ class TestMigrationFailLoud:
             r for r in _records(capsys, plain_records) if r.get("error") == "migration_failed"
         ]
         assert "rollback incomplete" in failure["reason"]
-        # The unconfirmed replacement was never reverse-rebased.
+        # The unconfirmed replacement was never refreshed.
         current = json.loads((Path(run_dir) / "home" / "home.json").read_text())
         assert current == replacement_home_json
         assert not os.path.exists(os.path.join(project_dir, "project.json"))
@@ -333,46 +331,6 @@ class TestDestinationBinding:
         assert not os.path.exists(os.path.join(project_dir, "project.json"))
         assert not (other / "project.json").exists()
 
-
-class TestRollbackMalformedState:
-    """Rollback re-reads the same state files after a failed content phase;
-    a malformed home.json downgrades the rebase to a warning — it never
-    escapes the rollback as an uncaught exception."""
-
-    @pytest.mark.parametrize("payload", [b"\xff", b"[]"], ids=["undecodable", "not_an_object"])
-    def test_corrupt_home_json_does_not_crash_rollback(
-        self,
-        tmp_path,
-        capsys,
-        create_cli_project,
-        minimal_ics55_pdk_factory,
-        create_legacy_workspace,
-        monkeypatch,
-        payload,
-        plain_records,
-    ):
-        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-        project_dir = create_cli_project(pdk_root=pdk_root)
-        create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
-        target = os.path.join(project_dir, "exp1")
-
-        def corrupting_refresh(workspace):
-            # The forward load heals home.json, so the rollback's re-read
-            # only sees a malformed file when it turns corrupt mid-flight.
-            Path(target, "home", "home.json").write_bytes(payload)
-            raise RuntimeError("boom")
-
-        monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", corrupting_refresh)
-
-        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
-
-        assert rc != 0
-        records = _records(capsys, plain_records)
-        assert any(r.get("error") == "migration_failed" for r in records)
-        # The move was rolled back; nothing was registered.
-        assert os.path.isfile(os.path.join(project_dir, "runs", "exp1", "home", "flow.json"))
-        assert not os.path.exists(os.path.join(project_dir, "project.json"))
-
     def test_manifest_lock_failure_rolls_back_the_moves(
         self,
         tmp_path,
@@ -449,7 +407,7 @@ class TestMigrationExecutionLock:
         assert released.is_set()
         assert os.path.isfile(os.path.join(project_dir, "exp1", "home", "flow.json"))
 
-    def test_rollback_with_unrestored_content_reports_incomplete(
+    def test_rollback_cleans_obsolete_home_content(
         self,
         tmp_path,
         capsys,
@@ -467,9 +425,7 @@ class TestMigrationExecutionLock:
         target = os.path.join(project_dir, "exp1")
 
         def corrupting_update(project_dir_arg, mutator):
-            # Registration fails AND the moved workspace's home.json is now
-            # undecodable: the rollback moves it back but cannot reverse the
-            # rebase — that is incomplete, not "rolled back".
+            # Registration fails after obsolete home content reappears.
             Path(target, "home", "home.json").write_bytes(b"\xff")
             return False
 
@@ -479,8 +435,9 @@ class TestMigrationExecutionLock:
 
         assert rc != 0
         records = _records(capsys, plain_records)
-        assert any(r.get("error") == "migration_rollback_incomplete" for r in records)
-        assert not any(r.get("error") == "migration_rolled_back" for r in records)
+        assert any(r.get("error") == "migration_rolled_back" for r in records)
+        assert not any(r.get("error") == "migration_rollback_incomplete" for r in records)
         assert os.path.isfile(os.path.join(project_dir, "runs", "exp1", "home", "flow.json"))
+        assert not os.path.exists(os.path.join(project_dir, "runs", "exp1", "home", "home.json"))
         manifest = json.loads(Path(project_dir, "project.json").read_text())
         assert manifest["workspaces"] == []
