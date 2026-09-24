@@ -53,9 +53,12 @@ def _tree_rss_mb(pid):
 def _metric_payload(root):
     sta = root / "sta_ecc"
     payload = {}
-    for pattern in ("*/*/qor_summary.json", "*/*/power_summary.json"):
+    for pattern in ("*/*/qor_summary.json",):
         for path in sorted((sta / "feature").glob(pattern)):
             payload[str(path.relative_to(sta))] = json.loads(path.read_text())
+    power_summary = root / "powerAnalysis_ecc" / "feature" / "power_summary.json"
+    if power_summary.is_file():
+        payload[str(power_summary.relative_to(root))] = json.loads(power_summary.read_text())
     if not payload:
         raise ValueError("STA corner artifacts are absent")
     for stage in ("sta_ecc", "Harden_ecc"):
@@ -70,18 +73,14 @@ def _metric_payload(root):
     metrics = payload["sta_ecc/metrics"]
     expected = metrics.get("sta_expected_corner_count", 0)
     qor_corners = {str(Path(key).parent) for key in payload if key.endswith("/qor_summary.json")}
-    power_corners = {
-        str(Path(key).parent) for key in payload if key.endswith("/power_summary.json")
-    }
     if (
         type(expected) is not int
         or expected <= 0
         or metrics.get("sta_corner_count") != expected
         or metrics.get("sta_missing_corner_count") != 0
         or len(qor_corners) != expected
-        or qor_corners != power_corners
     ):
-        raise ValueError("STA timing/power corner coverage is incomplete")
+        raise ValueError("STA timing corner coverage is incomplete")
     return payload
 
 

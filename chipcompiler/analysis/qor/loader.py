@@ -13,6 +13,7 @@ from pathlib import Path
 from chipcompiler.analysis.qor.metric_registry import SCORED_STEP_VALUES
 from chipcompiler.data import StateEnum, StepEnum
 from chipcompiler.data.step import STEP_DIRECTORIES
+from chipcompiler.tools.ecc.power_artifacts import workspace_power_summary_path
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
     STA_POWER_SUMMARY_FILENAME,
@@ -198,7 +199,25 @@ def _corner_slack(workspace, workspace_root: Path, flow_states: dict) -> tuple[l
 
 def _power_summary(workspace, workspace_root: Path, flow_states: dict):
     """Select the worst available signoff power, with synthesis fallback."""
-    if flow_states.get(StepEnum.STA.value) == StateEnum.Success.value:
+    power_state = flow_states.get(StepEnum.POWER_ANALYSIS.value)
+    if power_state == StateEnum.Success.value:
+        path = workspace_power_summary_path(workspace_root)
+        summary = read_sta_power_summary_json(path)
+        if summary is not None:
+            return (
+                summary.dynamic_uw + summary.leakage_uw,
+                path,
+                "signoff",
+                StepEnum.POWER_ANALYSIS.value,
+            )
+
+    # Workspaces created before powerAnalysis retain their historical STA
+    # feature layout. Current workspaces must not score stale STA power when
+    # their dedicated power step failed or is unfinished.
+    if (
+        StepEnum.POWER_ANALYSIS.value not in flow_states
+        and flow_states.get(StepEnum.STA.value) == StateEnum.Success.value
+    ):
         feature_root = workspace_root / _STA_FEATURE_DIR
         totals = []
         configured = configured_sta_artifact_directories(workspace, feature_root)

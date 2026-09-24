@@ -188,7 +188,7 @@ $$
 | P_total ≥ P_budget | 0.0（钳位） |
 | 未申报预算 | null（UNKNOWN，排除出总分） |
 
-- P_total 取**签核 STA** 各 corner 中总功耗（dynamic + leakage，单位 µW）最大者；STA 功耗不可得时回退综合后 post-synthesis STA 功耗估计（报告 `power.source_kind` 标明 `signoff` / `synthesis`）。
+- P_total 取独立 `powerAnalysis` 步骤中 iPW 的总签核功耗（dynamic + leakage，单位 µW）；该结果不可得时回退综合后 post-synthesis STA 功耗估计（报告 `power.source_kind` 标明 `signoff` / `synthesis`）。
 - 预算单位是**瓦**：`qor_power_budget_w = 0.5` 即 0.5 W（§8）。
 
 ### 3.5 Q_R 鲁棒性质量
@@ -342,7 +342,7 @@ qor_power_budget_w = 0.5
 |---|---|---|
 | 逐步指标 | `<step_dir>/analysis/qor_metrics.json`（schema_version 3，由各步骤产出，**保持不变**） | 指标值与溯源 |
 | 逐 corner 时序 | `sta_ecc/feature/<corner>/Cworst/qor_summary.json` | 有符号 setup/hold WS、TNS、NVP；PVT 离散度 |
-| 功耗 | `sta_ecc/feature/<corner>/Cworst/power_summary.json`（回退 `Synthesis_yosys/feature/post_synthesis/power_summary.json`） | P_total |
+| 功耗 | `powerAnalysis_ecc/feature/power_summary.json`（回退 `Synthesis_yosys/feature/post_synthesis/power_summary.json`） | P_total |
 | 步骤状态 | `home/flow.json` | 只有状态为 `Success` 的步骤参与分析（invalidation 后的陈旧产物不计分） |
 | 参数 | `home/params.toml` | profile / 预算 / 频率 |
 

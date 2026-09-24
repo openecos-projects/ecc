@@ -590,6 +590,18 @@ class ECCToolsModule:
         return destroy_rcx()
 
     ########################################################################
+    # power analysis api
+    ########################################################################
+    def init_pw(self, output_dir: PathArg):
+        return self.ecc.init_pw(config_dict={"-temp_directory_path": path_text(output_dir)})
+
+    def run_pw(self):
+        return self.ecc.run_pw()
+
+    def destroy_pw(self):
+        return self.ecc.destroy_pw()
+
+    ########################################################################
     # STA api
     ########################################################################
     def run_timing(

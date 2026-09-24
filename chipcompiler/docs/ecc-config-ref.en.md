@@ -523,10 +523,17 @@ For each corner, ecc-tools splits the reports by path type (`sta_ecc/report/<lib
 
 | File | Description |
 |---|---|
-| `qor_summary.rpt` | Timing/power quality summary |
+| `qor_summary.rpt` | Timing quality summary |
 | `timing_max_{in2out,in2reg,reg2out,reg2reg}.rpt` | Setup reports (by path type: input-to-output / input-to-register / register-to-output / register-to-register); **signoff requires all 4** |
 | `timing_min_{in2out,in2reg,reg2out,reg2reg}.rpt` | Hold reports (same split; not required for signoff) |
-| `power.rpt` | Power report (optionally collected into the signoff package) |
+
+Power is produced by the separate `powerAnalysis` iPW step, not by each STA
+corner. Its native outputs are
+`powerAnalysis_ecc/data/pw/power_reporter/power.rpt` and
+`powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`; ECC derives
+`powerAnalysis_ecc/feature/power_summary.json` from the report for QoR. When
+present, the signoff package includes the report once at
+`final/timing/power/power.rpt`.
 
 ## 14. harden (ecc-tools)
 

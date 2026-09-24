@@ -164,6 +164,38 @@ def test_snapshot_indexes_sta_corner_artifacts_when_aggregate_is_oversized(tmp_p
     assert all(len(artifact["sha256"]) == 64 for artifact in timing_artifacts)
 
 
+def test_snapshot_indexes_power_analysis_artifacts(tmp_path):
+    root = tmp_path / "workspace"
+    (root / "home").mkdir(parents=True)
+    report = root / "powerAnalysis_ecc" / "data" / "pw" / "power_reporter" / "power.rpt"
+    report.parent.mkdir(parents=True)
+    report.write_text("Total Dynamic Power = 1.0 mW\n", encoding="utf-8")
+    summary = root / "powerAnalysis_ecc" / "feature" / "power_summary.json"
+    summary.parent.mkdir(parents=True)
+    summary.write_text('{"schema_version": 1}\n', encoding="utf-8")
+    workspace = SimpleNamespace(
+        directory=root,
+        flow=SimpleNamespace(
+            data={"steps": [{"name": "powerAnalysis", "tool": "ecc", "state": "Success"}]}
+        ),
+        parameters=SimpleNamespace(data={"design": "gcd"}),
+        design=SimpleNamespace(name="gcd"),
+    )
+
+    snapshot = create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
+
+    power_artifacts = [
+        artifact
+        for artifact in snapshot["artifacts"]
+        if artifact["kind"] in {"power_report", "power_summary"}
+    ]
+    assert [(artifact["kind"], artifact["reference"]) for artifact in power_artifacts] == [
+        ("power_report", "powerAnalysis_ecc/data/pw/power_reporter/power.rpt"),
+        ("power_summary", "powerAnalysis_ecc/feature/power_summary.json"),
+    ]
+    assert all(artifact["availability"] == "available" for artifact in power_artifacts)
+
+
 def test_snapshot_limits_sta_corner_artifacts_deterministically(tmp_path):
     root = tmp_path / "workspace"
     (root / "home").mkdir(parents=True)

@@ -36,7 +36,7 @@ def test_benchmark_inventory_rejects_directory_symlinks(tmp_path):
         _inventory(tmp_path)
 
 
-def test_benchmark_requires_complete_power_and_timing_coverage(tmp_path):
+def test_benchmark_records_dedicated_power_summary_and_requires_timing_coverage(tmp_path):
     metrics = {
         "sta_expected_corner_count": 1,
         "sta_corner_count": 1,
@@ -52,7 +52,11 @@ def test_benchmark_requires_complete_power_and_timing_coverage(tmp_path):
     corner = tmp_path / "sta_ecc/feature/MAX/RCworst"
     corner.mkdir(parents=True)
     (corner / "qor_summary.json").write_text("{}")
-    with pytest.raises(ValueError, match="coverage is incomplete"):
-        _metric_payload(tmp_path)
-    (corner / "power_summary.json").write_text("{}")
-    assert _metric_payload(tmp_path)["sta_ecc/metrics"] == metrics
+    power_summary = tmp_path / "powerAnalysis_ecc/feature/power_summary.json"
+    power_summary.parent.mkdir(parents=True)
+    power_summary.write_text("{}")
+
+    payload = _metric_payload(tmp_path)
+
+    assert payload["sta_ecc/metrics"] == metrics
+    assert payload["powerAnalysis_ecc/feature/power_summary.json"] == {}

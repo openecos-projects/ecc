@@ -12,7 +12,6 @@ STA_REPORT_NAMES = (
     "timing_max_in2reg.rpt",
     "timing_max_reg2out.rpt",
     "timing_max_reg2reg.rpt",
-    "power.rpt",
 )
 
 
@@ -79,6 +78,7 @@ def _make_signoff_workspace(
                 {"name": "postRouteLec", "tool": "yosys_lec", "state": StateEnum.Success.value},
                 {"name": "RCX", "tool": "ecc", "state": StateEnum.Success.value},
                 {"name": "sta", "tool": "ecc", "state": StateEnum.Success.value},
+                {"name": "powerAnalysis", "tool": "ecc", "state": StateEnum.Success.value},
                 {"name": "Harden", "tool": "ecc", "state": StateEnum.Success.value},
             ],
         },
@@ -146,6 +146,10 @@ def _make_signoff_workspace(
     _write_json(
         workspace_dir / "sta_ecc" / "feature" / "MAX_125" / "RCworst" / "timing_paths.json",
         {"schema_version": 1, "corner": "MAX_125/RCworst", "path_limit": 20, "paths": []},
+    )
+    _write(
+        workspace_dir / "powerAnalysis_ecc" / "data" / "pw" / "power_reporter" / "power.rpt",
+        "power.rpt\n",
     )
 
     _write_json(
@@ -275,6 +279,7 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
     assert {
         f"final/timing/sta/MAX_125/RCworst/report/{report_name}" for report_name in STA_REPORT_NAMES
     }.issubset(destinations)
+    assert "final/timing/power/power.rpt" in destinations
     assert {
         "final/timing/sta/MAX_125/RCworst/feature/qor_summary.json",
         "final/timing/sta/MAX_125/RCworst/feature/timing_paths.json",
@@ -524,11 +529,11 @@ def test_collect_signoff_package_ignores_leftover_synthesis_for_floorplan_start(
     assert summary["lec"]["golden_verilog"] == str(origin)
 
 
-def test_collect_signoff_package_tolerates_missing_sta_power_report(tmp_path):
-    # Workspaces completed before power collection have no per-corner power.rpt;
-    # it is packaged when present but must not be required for export.
+def test_collect_signoff_package_tolerates_missing_power_analysis_report(tmp_path):
+    # The power report remains optional for a package, as it was when STA
+    # produced it, but its source is now iPW's dedicated output.
     workspace_dir = _make_signoff_workspace(tmp_path)
-    (workspace_dir / "sta_ecc" / "report" / "MAX_125" / "RCworst" / "power.rpt").unlink()
+    (workspace_dir / "powerAnalysis_ecc" / "data" / "pw" / "power_reporter" / "power.rpt").unlink()
     engine_flow = _make_engine_flow(workspace_dir)
 
     result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
@@ -536,7 +541,7 @@ def test_collect_signoff_package_tolerates_missing_sta_power_report(tmp_path):
     assert result.ok is True
     manifest = json.loads((Path(result.package_dir) / "manifest.json").read_text())
     destinations = {item["destination"] for item in manifest["files"]}
-    assert "final/timing/sta/MAX_125/RCworst/report/power.rpt" not in destinations
+    assert "final/timing/power/power.rpt" not in destinations
 
 
 def test_collect_signoff_package_uses_top_module_for_rcx_spef(tmp_path):

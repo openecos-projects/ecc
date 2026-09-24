@@ -29,8 +29,8 @@ from chipcompiler.engine.signoff.models import (
     SignoffPackageOptions,
     SignoffPackageResult,
 )
+from chipcompiler.tools.ecc.power_artifacts import workspace_power_report_path
 from chipcompiler.tools.ecc.sta_qor import (
-    STA_POWER_REPORT_FILENAME,
     STA_QOR_SUMMARY_FILENAME,
     STA_REPORT_FILENAMES,
     STA_TIMING_PATHS_FILENAME,
@@ -492,13 +492,6 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                     destination=f"{report_dest}/{report_name}",
                     required=True,
                 )
-            # Optional: workspaces whose STA ran before power collection have
-            # no per-corner power report; package it when present.
-            add_file(
-                role="final.sta_report",
-                source=report_dir / STA_POWER_REPORT_FILENAME,
-                destination=f"{report_dest}/{STA_POWER_REPORT_FILENAME}",
-            )
             item["report"] = f"{report_dest}/qor_summary.rpt"
             feature_dest = report_dest.removesuffix("/report") + "/feature"
             add_file(
@@ -515,6 +508,12 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             )
             item["qor_summary"] = f"{feature_dest}/{STA_QOR_SUMMARY_FILENAME}"
             item["timing_paths"] = f"{feature_dest}/{STA_TIMING_PATHS_FILENAME}"
+
+        add_file(
+            role="final.power_report",
+            source=workspace_power_report_path(workspace_dir),
+            destination="final/timing/power/power.rpt",
+        )
 
         rcx_output_dir = workspace_dir / "RCX_ecc" / "output"
         spef_paths = sorted(rcx_output_dir.glob("*.spef")) if rcx_output_dir.is_dir() else []

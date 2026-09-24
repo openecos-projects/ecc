@@ -26,6 +26,7 @@ class EccSubFlowEnum(Enum):
     run_harden = "run harden"
     run_rcx = "run rcx"
     run_sta = "run sta"
+    run_power_analysis = "run power analysis"
 
 
 class EccSubFlow:
@@ -131,6 +132,12 @@ class EccSubFlow:
             case StepEnum.STA:
                 steps.append(subflow_template(EccSubFlowEnum.load_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.run_sta.value))
+
+            case StepEnum.POWER_ANALYSIS:
+                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
+                steps.append(subflow_template(EccSubFlowEnum.run_power_analysis.value))
+                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
+                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
 
         self.workspace_step.subflow.steps = steps
 
