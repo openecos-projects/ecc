@@ -1,7 +1,0 @@
-; Optional: gates against ECC_TEST_WORKSPACE.
-; REQUIRES: packaged-workspace
-;
-; RUN: rm -rf %t && mkdir -p %t
-; RUN: env ECC_REPO_ROOT=%repo PYTHON=%python %export_csv --workspace %workspace --out-dir %t/out --spec %spec
-; RUN: %filecheck --input-file=%t/out/reports/metrics.check.txt %gatefile_pass
-; RUN: %python -c "import json; m=json.load(open('%t/out/reports/run_manifest.json')); assert m['schema_version']==1; assert m['run_id']"

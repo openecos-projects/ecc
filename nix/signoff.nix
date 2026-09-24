@@ -1,33 +1,20 @@
-# flake-parts module: signoff lit packages/apps.
-# See https://flake.parts/options/flake-parts-modules.html (imports into mkFlake).
+# flake-parts perSystem module: signoff lit packages/apps.
+# Imported from flake.nix perSystem imports; no perSystem wrapper here.
 
-{ ... }:
+{ pkgs, ... }:
+
+let
+  tools = pkgs.callPackage ./signoff-tools.nix {
+    inherit (pkgs) llvmPackages_23;
+  };
+in
 {
-  perSystem =
-    { pkgs, ... }:
-    let
-      tools = pkgs.callPackage ./signoff-tools.nix {
-        llvmPackages_23 = pkgs.llvmPackages_23;
-      };
-    in
-    {
-      packages = {
-        filecheck = tools.filecheck;
-        lit = tools.lit;
-        signoff-tools = tools.signoff-tools;
-        run-design = tools.run-design;
-        signoff-lit = tools.signoff-lit;
-      };
+  packages = {
+    inherit (tools) filecheck lit signoff-tools signoff-lit;
+  };
 
-      apps = {
-        signoff-lit = {
-          type = "app";
-          program = "${tools.signoff-lit}/bin/signoff-lit";
-        };
-        run-design = {
-          type = "app";
-          program = "${tools.run-design}/bin/run-design";
-        };
-      };
-    };
+  apps.signoff-lit = {
+    type = "app";
+    program = "${tools.signoff-lit}/bin/signoff-lit";
+  };
 }
