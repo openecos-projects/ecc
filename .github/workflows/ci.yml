@@ -196,9 +196,31 @@ jobs:
           path: |
             dist/ecc.tar
 
+  e2e-designs:
+    name: List e2e designs
+    runs-on: ubuntu-latest
+    outputs:
+      designs: ${{ steps.list.outputs.designs }}
+    steps:
+      - name: Checkout designs
+        uses: actions/checkout@v4
+        with:
+          repository: openecos-projects/ecc-ci-designs
+          path: designs
+
+      - name: List designs
+        id: list
+        run: |
+          designs="$(find designs -mindepth 2 -maxdepth 2 -name ecc.toml -printf '%h\n' | xargs -n1 basename | jq -R . | jq -cs .)"
+          echo "designs=$designs" >> "$GITHUB_OUTPUT"
+
   e2e-packaged-flow:
-    name: E2E Packaged Flow
-    needs: build-pyinstaller
+    name: E2E Packaged Flow (${{ matrix.design }})
+    needs: [build-pyinstaller, e2e-designs]
+    strategy:
+      fail-fast: false
+      matrix:
+        design: ${{ fromJSON(needs.e2e-designs.outputs.designs) }}
     runs-on: ubuntu-latest
     container: quay.io/pypa/manylinux_2_34_x86_64
     timeout-minutes: 60
@@ -222,7 +244,7 @@ jobs:
       - name: Extract PyInstaller bundle
         run: |
           mkdir -p dist/ecc-bundle
-          tar -xf dist/ecc.tar -C dist/ecc-bundle
+          tar -xf ecc.tar -C dist/ecc-bundle
           test -x dist/ecc-bundle/ecc
 
       - name: Setup PDK
@@ -288,7 +310,7 @@ jobs:
           bash nix/scripts/run-designs.sh \
             --ecc "$PWD/dist/ecc-bundle/ecc" \
             --designs-dir designs \
-            --design xtea \
+            --design "${{ matrix.design }}" \
             --out-root "$RUNNER_TEMP/e2e"
 
       - name: Lit check flow artifacts
@@ -300,7 +322,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-flow-workspaces
+          name: e2e-flow-workspace-${{ matrix.design }}
           if-no-files-found: ignore
           path: |
             ${{ runner.temp }}/e2e
