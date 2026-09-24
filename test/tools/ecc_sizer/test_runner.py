@@ -116,7 +116,7 @@ def test_sizer_runner_runs_ff_hold_pass_before_legalization(tmp_path, monkeypatc
     monkeypatch.setattr(sizer_runner, "is_dreamplace_exist", lambda: True)
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    assert sizer_runner.run_step(workspace, step) == StateEnum.Success
+    assert sizer_runner.run_step(workspace, step) is True
     assert len(calls) == 2
     assert calls[0] == [
         "/fake/sizer",
@@ -170,7 +170,7 @@ def test_sizer_runner_rejects_ff_hold_pass_without_new_outputs(tmp_path, monkeyp
     monkeypatch.setattr(sizer_runner, "is_dreamplace_exist", lambda: True)
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
+    assert sizer_runner.run_step(workspace, step) is False
     assert len(calls) == 2
     assert legalize_module.seen == []
     assert _subflow_states(step)["run sizer"] == StateEnum.Imcomplete.value

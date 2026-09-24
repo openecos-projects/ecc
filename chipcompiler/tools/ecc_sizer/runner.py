@@ -223,7 +223,7 @@ def run_step(
             label="Sizer FF hold repair",
         ):
             sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Imcomplete)
-            return StateEnum.Imcomplete
+            return False
         logger.info("Sizer FF hold repair completed for step %s", step.name)
 
     sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Success)
