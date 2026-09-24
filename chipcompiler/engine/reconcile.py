@@ -187,10 +187,10 @@ def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
     if skip:
         excluded = set(skip)
         entries = [entry for entry in entries if entry[0] not in excluded]
-    lec_engine = resolve_lec_engine(flow_section).value
+    lec_tool = resolve_lec_engine(flow_section).value
     lec_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
     return [
-        (name, lec_engine) if name in lec_names and tool in LEC_STEP_TOOLS else (name, tool)
+        (name, lec_tool) if name in lec_names and tool in LEC_STEP_TOOLS else (name, tool)
         for name, tool in entries
     ]
 
