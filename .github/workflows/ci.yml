@@ -260,8 +260,13 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Only designs whose .lit cases use csv-gates need the Python venv
-      # (csv_gates imports chipcompiler). None while xtea is disabled.
+      # gh is needed by Setup Sizer; setup-python-deps normally brings it,
+      # but the e2e job skips that step (csv_gates is disabled with xtea).
+      - name: Install gh
+        run: |
+          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          dnf install -y gh
+
       - name: Setup Sizer
         env:
           GH_TOKEN: ${{ github.token }}
