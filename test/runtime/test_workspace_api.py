@@ -19,6 +19,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceInfoRequest,
     WorkspaceOpenRequest,
     WorkspaceRecoverInterruptedRequest,
+    WorkspaceSpecOpenRequest,
     WorkspaceStepConfigurationReadRequest,
     WorkspaceSyncConfigRequest,
 )
@@ -447,16 +448,20 @@ def test_open_workspace_loads_without_creating_step_workspaces(monkeypatch, tmp_
 
     assert result == {
         "workspaceId": result["workspaceId"],
+        "workspaceRevision": 1,
         "directory": str(ws.resolve()),
     }
     assert capture["loaded"] == [str(ws)]
     assert not DummyFlow.instances[0].created
+    rebuilt = json.loads((ws / "home" / "engineering-snapshot.json").read_text(encoding="utf-8"))
+    assert rebuilt["cause"] == "workspace.rebuild.on_open"
+    assert rebuilt["workspaceId"] == result["workspaceId"]
 
 
 def test_open_workspace_reuses_engineering_snapshot_identity(monkeypatch, tmp_path):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     monkeypatch.setattr(
-        "chipcompiler.engine.snapshot.read_engineering_snapshot",
+        "chipcompiler.engine.snapshot.open_workspace_snapshot",
         lambda _workspace: {"workspaceId": "cli-workspace", "workspaceRevision": 7},
     )
     api = WorkspaceRuntimeApi()
@@ -473,7 +478,7 @@ def test_open_workspace_reuses_engineering_snapshot_identity(monkeypatch, tmp_pa
 def test_step_configuration_keeps_cli_workspace_identity_after_open(monkeypatch, tmp_path):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     monkeypatch.setattr(
-        "chipcompiler.engine.snapshot.read_engineering_snapshot",
+        "chipcompiler.engine.snapshot.open_workspace_snapshot",
         lambda _workspace: {"workspaceId": "cli-workspace", "workspaceRevision": 7},
     )
     monkeypatch.setattr(
@@ -587,7 +592,8 @@ def test_recover_interrupted_is_marker_scoped_and_idempotent(monkeypatch, tmp_pa
                 "operationId": "operation-1",
                 "logFile": str(ws / "place_dreamplace" / "log" / "place.log"),
             }
-        ]
+        ],
+        "workspaceRevision": 2,
     }
     assert session.workspace.flow.data["steps"][0]["state"] == StateEnum.Imcomplete.value
     assert session.workspace.flow.data["steps"][0]["info"] == {}
@@ -607,7 +613,8 @@ def test_recover_interrupted_is_marker_scoped_and_idempotent(monkeypatch, tmp_pa
                 "operationId": "operation-previous",
                 "logFile": str(ws / "DRC_ecc" / "log" / "DRC.log"),
             }
-        ]
+        ],
+        "workspaceRevision": 3,
     }
     assert session.workspace.flow.data["steps"][3]["state"] == "Ongoing"
     assert session.workspace.flow.data["steps"][4]["state"] == "Ongoing"
@@ -685,6 +692,176 @@ def test_open_workspace_reuses_existing_same_directory_session(monkeypatch, tmp_
 
     assert second["workspaceId"] == first["workspaceId"]
     assert api.sessions.get_session(second["workspaceId"]).workspace is first_session.workspace
+
+
+_OPEN_ENTRY_IDS = ("legacy", "spec", "gui_directory_read")
+
+
+def _gui_directory_read_workspace(directory: Path):
+    workspace = _workspace(directory)
+    workspace.design.origin_def = None
+    workspace.design.origin_verilog = None
+    workspace.design.input_filelist = None
+    workspace.design.golden_verilog = None
+    workspace.flow.steps = lambda: []
+    workspace.parameters = SimpleNamespace(data={}, path=directory / "home" / "params.toml")
+    workspace.config = {}
+    workspace.pdk = SimpleNamespace(
+        name="ics55",
+        version="",
+        root="",
+        sdc=None,
+        spef=None,
+        tech=None,
+        lefs=[],
+        libs=[],
+        mapping_file=None,
+    )
+    return workspace
+
+
+def _install_open_entry_mocks(monkeypatch, tmp_path, entry):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        "chipcompiler.engine.assess_execution_readiness",
+        lambda _directory, _bindings: {"ready": False, "code": "pdk_binding_missing"},
+    )
+    if entry == "gui_directory_read":
+        workspace = _gui_directory_read_workspace(ws)
+        monkeypatch.setattr(
+            "chipcompiler.engine.workspace_configuration.load_workspace",
+            lambda *_args, **_kwargs: workspace,
+        )
+    return ws
+
+
+def _open_workspace_via_entry(api, ws, entry):
+    if entry == "legacy":
+        return api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))
+    if entry == "spec":
+        return api.open_workspace(
+            WorkspaceSpecOpenRequest(directory=str(ws), workspace_bindings={})
+        )
+    return api.read_workspace_configuration(WorkspaceOpenRequest(directory=str(ws)))
+
+
+@pytest.mark.parametrize("entry", _OPEN_ENTRY_IDS)
+def test_open_entry_rebuilds_missing_snapshot_with_rebuild_cause(monkeypatch, tmp_path, entry):
+    ws = _install_open_entry_mocks(monkeypatch, tmp_path, entry)
+    api = WorkspaceRuntimeApi()
+
+    result = _open_workspace_via_entry(api, ws, entry)
+
+    snapshot_path = ws / "home" / "engineering-snapshot.json"
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    assert snapshot["cause"] == "workspace.rebuild.on_open"
+    assert snapshot["workspaceRevision"] == 1
+    assert result["workspaceId"] == snapshot["workspaceId"]
+    assert result["workspaceRevision"] == 1
+
+
+@pytest.mark.parametrize("entry", _OPEN_ENTRY_IDS)
+def test_open_entry_never_rewrites_existing_snapshot(monkeypatch, tmp_path, entry):
+    from chipcompiler.engine.snapshot import create_engineering_snapshot
+
+    ws = _install_open_entry_mocks(monkeypatch, tmp_path, entry)
+    existing = create_engineering_snapshot(
+        _workspace(ws),
+        workspace_id="workspace-existing",
+        workspace_revision=5,
+        cause="workspace.created",
+    )
+    snapshot_path = ws / "home" / "engineering-snapshot.json"
+    before = snapshot_path.read_bytes()
+    api = WorkspaceRuntimeApi()
+
+    result = _open_workspace_via_entry(api, ws, entry)
+
+    assert snapshot_path.read_bytes() == before
+    assert result["workspaceId"] == existing["workspaceId"]
+    assert result["workspaceRevision"] == 5
+
+
+@pytest.mark.parametrize("entry", _OPEN_ENTRY_IDS)
+@pytest.mark.parametrize(
+    "payload",
+    ["not json", json.dumps({"schemaVersion": 5})],
+    ids=["corrupt", "unsupported-version"],
+)
+def test_open_entry_fails_closed_and_preserves_unreadable_snapshot(
+    monkeypatch,
+    tmp_path,
+    entry,
+    payload,
+):
+    ws = _install_open_entry_mocks(monkeypatch, tmp_path, entry)
+    snapshot_path = ws / "home" / "engineering-snapshot.json"
+    snapshot_path.write_text(payload, encoding="utf-8")
+    api = WorkspaceRuntimeApi()
+
+    with pytest.raises(RuntimeApiError) as exc_info:
+        _open_workspace_via_entry(api, ws, entry)
+
+    assert exc_info.value.code == "snapshot_rebuild_required"
+    assert snapshot_path.read_bytes() == payload.encode("utf-8")
+
+
+@pytest.mark.parametrize("entry", _OPEN_ENTRY_IDS)
+def test_open_entry_fails_closed_on_snapshot_identity_conflict(monkeypatch, tmp_path, entry):
+    from chipcompiler.engine.snapshot import create_engineering_snapshot
+
+    ws = _install_open_entry_mocks(monkeypatch, tmp_path, entry)
+    create_engineering_snapshot(_workspace(ws), workspace_id="workspace-original")
+    (ws / "home" / "workspace-commands.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "commands": {
+                    "cmd-1": {
+                        "fingerprint": "copied",
+                        "result": {
+                            "workspaceId": "workspace-copied",
+                            "workspaceRevision": 1,
+                        },
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    snapshot_path = ws / "home" / "engineering-snapshot.json"
+    before = snapshot_path.read_bytes()
+    api = WorkspaceRuntimeApi()
+
+    with pytest.raises(RuntimeApiError) as exc_info:
+        _open_workspace_via_entry(api, ws, entry)
+
+    assert exc_info.value.code == "snapshot_identity_mismatch"
+    assert snapshot_path.read_bytes() == before
+
+
+def test_rpc_workspace_open_surfaces_snapshot_error_code_on_the_wire(monkeypatch, tmp_path):
+    from chipcompiler.runtime.server import RuntimeServer
+
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    (ws / "home" / "engineering-snapshot.json").write_text("not json", encoding="utf-8")
+    server = RuntimeServer(api=WorkspaceRuntimeApi())
+
+    response = json.loads(
+        server.dispatch(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "workspace.open",
+                    "id": 1,
+                    "params": {"directory": str(ws)},
+                }
+            )
+        )
+    )
+
+    assert response["id"] == 1
+    assert response["error"]["message"] == "snapshot_rebuild_required"
 
 
 def test_workspace_home_and_info_use_session_id(monkeypatch, tmp_path):
@@ -1065,8 +1242,8 @@ def test_runtime_modules_do_not_import_typer_or_click():
 def test_workspace_snapshot_includes_configuration_and_engineering_snapshot(monkeypatch, tmp_path):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     configuration = {
-        "workspaceId": "workspace-1",
-        "workspaceRevision": 2,
+        "workspaceId": "",
+        "workspaceRevision": 0,
         "workspaceSpec": {"design": {"name": "gcd"}},
         "workspaceBindings": {},
     }
@@ -1075,12 +1252,18 @@ def test_workspace_snapshot_includes_configuration_and_engineering_snapshot(monk
         lambda _workspace: configuration,
     )
     api = WorkspaceRuntimeApi()
+    opened = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))
+    workspace_id = opened["workspaceId"]
+    configuration["workspaceId"] = workspace_id
+    configuration["workspaceRevision"] = opened["workspaceRevision"]
     monkeypatch.setattr(
         api,
         "_read_engineering_snapshot",
-        lambda _owner: {"workspaceId": "workspace-1", "workspaceRevision": 2},
+        lambda _owner: {
+            "workspaceId": workspace_id,
+            "workspaceRevision": opened["workspaceRevision"],
+        },
     )
-    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
     session = api.sessions.get_session(workspace_id)
     session.workspace.parameters = SimpleNamespace(data={}, path=ws / "home" / "params.toml")
     session.workspace.home.data = {}
@@ -1089,8 +1272,8 @@ def test_workspace_snapshot_includes_configuration_and_engineering_snapshot(monk
 
     assert snapshot["configuration"] == configuration
     assert snapshot["engineeringSnapshot"] == {
-        "workspaceId": "workspace-1",
-        "workspaceRevision": 2,
+        "workspaceId": workspace_id,
+        "workspaceRevision": opened["workspaceRevision"],
     }
 
 

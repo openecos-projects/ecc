@@ -1,39 +1,31 @@
+"""Workspace artifact index and bounded projections for the Engineering Snapshot.
+
+The Snapshot never inlines payload content and never hashes artifact files:
+the artifact index carries identity and availability only, and overview data
+is projected into bounded top-N shapes. Authoritative content always remains
+in the workspace files.
+"""
+
 import hashlib
 import math
 from pathlib import Path
 from typing import Any, TypeGuard
 
 from chipcompiler.data.step import STEP_DIRECTORIES, step_storage_name
-from chipcompiler.engine.snapshot_limits import (
-    ANALYSIS_FILE_INLINE_MAX_BYTES,
-    ANALYSIS_INLINE_BUDGET_BYTES,
-    InlineJsonBudget,
-    read_bounded_json_object,
-)
+from chipcompiler.engine.qor import collect_metric_records
 from chipcompiler.tools.ecc.sta_qor import STA_POWER_REPORT_FILENAME, STA_REPORT_FILENAMES
 from chipcompiler.utility import JsonReadError, file_digest, json_read_strict
 
-_LEGACY_METRIC_CATEGORIES = {"power": "power_integrity"}
-METRIC_CATEGORIES = frozenset(
-    {
-        "timing",
-        "power_integrity",
-        "routability_physical",
-        "area_cost",
-        "clock_robustness_dfm",
-        "runtime",
-    }
-)
-
 _ANALYSIS_FILES = (
-    ("metrics", "qor_metrics", "qor_metrics.json", 3),
-    ("summary", "qor_summary", "qor_summary.json", 4),
-    ("hotspots", "qor_hotspots", "qor_hotspots.json", 3),
+    ("qor_metrics", "qor_metrics.json"),
+    ("qor_summary", "qor_summary.json"),
+    ("qor_hotspots", "qor_hotspots.json"),
 )
-_TIMING_FILE = ("timingIssues", "sta_timing_issues", "sta_timing_issues.json", 1)
-_SUBFLOW_MAX_BYTES = 1024 * 1024
-_SUBFLOW_MAX_STEPS = 256
-_ARTIFACT_HASH_MAX_BYTES = 16 * 1024 * 1024
+_TIMING_ISSUES_KIND = "sta_timing_issues"
+_TIMING_ISSUES_FILENAME = "sta_timing_issues.json"
+_TIMING_PREVIEW_ISSUE_LIMIT = 5
+_HOTSPOT_PREVIEW_LIMIT = 5
+_HOTSPOT_SEVERITY_RANK = {"critical": 0, "warning": 1}
 _STA_CORNER_LIMIT = 32
 _CONGESTION_IMAGES = (
     ("egr_congestion_map", "{step}_egr_horizontal_overflow.png"),
@@ -49,17 +41,21 @@ _CONGESTION_IMAGES = (
 )
 
 
-def build_workspace_analysis(
-    workspace: Any, workspace_id: str
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str, Any]:
+    """Build the pure artifact index and the bounded metrics/timing/hotspot projections.
+
+    Metrics and previews are collected from Success steps only, so a failed or
+    reset step never contributes stale records to the committed projection.
+    """
     root = Path(workspace.directory).resolve()
     flow = getattr(getattr(workspace, "flow", None), "data", {})
     raw_steps = flow.get("steps", []) if isinstance(flow, dict) else []
     design = str(getattr(getattr(workspace, "design", None), "name", "")).strip()
-    steps: list[dict[str, Any]] = []
     artifacts: list[dict[str, Any]] = []
-    inline_budget = InlineJsonBudget(ANALYSIS_INLINE_BUDGET_BYTES)
-    for order, raw_step in enumerate(raw_steps):
+    metrics: list[dict[str, Any]] = []
+    hotspots: list[dict[str, Any]] = []
+    timing_preview = _empty_timing_preview()
+    for raw_step in raw_steps:
         if not isinstance(raw_step, dict):
             continue
         step_id = raw_step.get("name")
@@ -72,61 +68,55 @@ def build_workspace_analysis(
         step_dir = root / STEP_DIRECTORIES.get(
             step_id, f"{step_storage_name(step_id, tool_id)}_{tool_id}"
         )
-        step: dict[str, Any] = {
-            "stepId": step_id,
-            "toolId": tool_id,
-            "order": order,
-            "flowState": str(raw_step.get("state", "")),
-        }
-        declared = list(_ANALYSIS_FILES)
-        if step_id.lower() == "sta":
-            declared.append(_TIMING_FILE)
-        for field, kind, filename, schema_version in declared:
-            path = step_dir / "analysis" / filename
-            reference = path.relative_to(root).as_posix()
-            artifact = _artifact_ref(
-                path,
-                workspace_id=workspace_id,
-                reference=reference,
-                step_id=step_id,
-                kind=kind,
-                root=root,
-            )
-            artifacts.append(artifact)
-            step[field] = _analysis_file(
-                path,
-                artifact["artifactId"],
-                schema_version,
-                root,
-                inline_budget,
-            )
-        if "timingIssues" not in step:
-            step["timingIssues"] = None
-        if tool_id.lower() == "yosys_lec" and design:
-            result = step_dir / "output" / f"{design}_{step_id}_result.json"
-            artifact = _artifact_ref(
-                result,
-                workspace_id=workspace_id,
-                reference=result.relative_to(root).as_posix(),
-                step_id=step_id,
-                kind="lec_result",
-                root=root,
-            )
-            artifacts.append(artifact)
-            step["lecResult"] = _lec_result_file(
-                result,
-                artifact["artifactId"],
-                root,
-                inline_budget,
-            )
-        step["subflow"] = _subflow_summary(step_dir / "subflow.json", root)
-        if design:
-            layout = step_dir / "output" / f"{design}_{step_id}.png"
+        analysis_dir = step_dir / "analysis"
+        for kind, filename in _ANALYSIS_FILES:
             artifacts.append(
                 _artifact_ref(
-                    layout,
+                    analysis_dir / filename,
                     workspace_id=workspace_id,
-                    reference=layout.relative_to(root).as_posix(),
+                    step_id=step_id,
+                    kind=kind,
+                    root=root,
+                )
+            )
+        succeeded = str(raw_step.get("state", "")) == "Success"
+        if succeeded:
+            metrics.extend(
+                collect_metric_records(_read_analysis_json(analysis_dir / "qor_metrics.json", root))
+            )
+            hotspots.extend(
+                _step_hotspots(
+                    step_id, _read_analysis_json(analysis_dir / "qor_hotspots.json", root)
+                )
+            )
+        if step_id.lower() == "sta":
+            timing_path = analysis_dir / _TIMING_ISSUES_FILENAME
+            artifacts.append(
+                _artifact_ref(
+                    timing_path,
+                    workspace_id=workspace_id,
+                    step_id=step_id,
+                    kind=_TIMING_ISSUES_KIND,
+                    root=root,
+                )
+            )
+            if succeeded:
+                timing_preview = _timing_preview(_read_analysis_json(timing_path, root))
+        if tool_id.lower() == "yosys_lec" and design:
+            artifacts.append(
+                _artifact_ref(
+                    step_dir / "output" / f"{design}_{step_id}_result.json",
+                    workspace_id=workspace_id,
+                    step_id=step_id,
+                    kind="lec_result",
+                    root=root,
+                )
+            )
+        if design:
+            artifacts.append(
+                _artifact_ref(
+                    step_dir / "output" / f"{design}_{step_id}.png",
+                    workspace_id=workspace_id,
                     step_id=step_id,
                     kind="layout_image",
                     root=root,
@@ -134,23 +124,19 @@ def build_workspace_analysis(
             )
             if step_id.lower() == "harden":
                 for suffix in ("gds", "lef", "lib"):
-                    output = step_dir / "output" / f"{design}_{step_id}.{suffix}"
                     artifacts.append(
                         _artifact_ref(
-                            output,
+                            step_dir / "output" / f"{design}_{step_id}.{suffix}",
                             workspace_id=workspace_id,
-                            reference=output.relative_to(root).as_posix(),
                             step_id=step_id,
                             kind="harden_output",
                             root=root,
                         )
                     )
-        geometry = step_dir / "output" / "geometry" / "geometry.manifest"
         artifacts.append(
             _artifact_ref(
-                geometry,
+                step_dir / "output" / "geometry" / "geometry.manifest",
                 workspace_id=workspace_id,
-                reference=geometry.relative_to(root).as_posix(),
                 step_id=step_id,
                 kind="layout_geometry",
                 root=root,
@@ -162,12 +148,10 @@ def build_workspace_analysis(
             else (f"{step_id}.db.rpt", f"{step_id}.rpt")
         )
         for report_name in report_names:
-            report = step_dir / "report" / report_name
             artifacts.append(
                 _artifact_ref(
-                    report,
+                    step_dir / "report" / report_name,
                     workspace_id=workspace_id,
-                    reference=report.relative_to(root).as_posix(),
                     step_id=step_id,
                     kind="report_text",
                     root=root,
@@ -185,15 +169,13 @@ def build_workspace_analysis(
         if step_id.lower() == "sta":
             for relative_corner, feature_dir in _sta_corner_directories(step_dir, root):
                 report_dir = step_dir / "report" / relative_corner
-                report_names = list(STA_REPORT_FILENAMES)
+                corner_report_names = list(STA_REPORT_FILENAMES)
                 if (report_dir / STA_POWER_REPORT_FILENAME).is_file():
-                    report_names.append(STA_POWER_REPORT_FILENAME)
-                for report_name in report_names:
-                    report = report_dir / report_name
+                    corner_report_names.append(STA_POWER_REPORT_FILENAME)
+                for report_name in corner_report_names:
                     artifact = _artifact_ref(
-                        report,
+                        report_dir / report_name,
                         workspace_id=workspace_id,
-                        reference=report.relative_to(root).as_posix(),
                         step_id=step_id,
                         kind="report_text",
                         root=root,
@@ -210,7 +192,6 @@ def build_workspace_analysis(
             artifact = _artifact_ref(
                 path,
                 workspace_id=workspace_id,
-                reference=path.relative_to(root).as_posix(),
                 step_id=step_id,
                 kind=kind,
                 root=root,
@@ -220,205 +201,128 @@ def build_workspace_analysis(
             artifacts.append(artifact)
         if step_id.lower() in {"place", "cts"}:
             for directory, filename in _CONGESTION_IMAGES:
-                image = step_dir / "feature" / directory / filename.format(step=step_id)
                 artifacts.append(
                     _artifact_ref(
-                        image,
+                        step_dir / "feature" / directory / filename.format(step=step_id),
                         workspace_id=workspace_id,
-                        reference=image.relative_to(root).as_posix(),
                         step_id=step_id,
                         kind="congestion_image",
                         root=root,
                     )
                 )
-        steps.append(step)
-    return {"steps": steps}, artifacts
+    checklist_artifact = _artifact_ref(
+        root / "home" / "checklist.json",
+        workspace_id=workspace_id,
+        step_id="",
+        kind="checklist",
+        root=root,
+    )
+    if checklist_artifact["availability"] == "available":
+        artifacts.append(checklist_artifact)
+    return {
+        "artifacts": artifacts,
+        "metrics": metrics,
+        "timingPreview": timing_preview,
+        "hotspotPreview": _hotspot_preview(hotspots),
+    }
 
 
-def _lec_result_file(
-    path: Path,
-    artifact_id: str,
-    root: Path,
-    inline_budget: InlineJsonBudget | None = None,
-) -> dict[str, Any]:
+def _read_analysis_json(path: Path, root: Path) -> dict[str, Any] | None:
     if _has_symlink(path, root):
-        return {
-            "artifactId": artifact_id,
-            "status": "unsafe",
-            "reasonCode": "LEC_RESULT_UNSAFE",
-            "data": None,
-        }
-    result = read_bounded_json_object(path, ANALYSIS_FILE_INLINE_MAX_BYTES)
-    if result.status != "available":
-        return {
-            "artifactId": artifact_id,
-            "status": result.status,
-            "reasonCode": f"LEC_RESULT_{result.status.upper()}",
-            "data": None,
-        }
-    data = result.data
-    assert data is not None
-    result = dict(data)
-    result["freshness_status"] = _lec_freshness_status(data, root)
-    if inline_budget is not None and not inline_budget.admit(result):
-        return {
-            "artifactId": artifact_id,
-            "status": "oversized",
-            "reasonCode": "LEC_RESULT_INLINE_BUDGET_EXCEEDED",
-            "data": None,
-        }
-    return {"artifactId": artifact_id, "status": "available", "data": result}
-
-
-def _lec_freshness_status(data: dict[str, Any], root: Path) -> str:
-    if data.get("status") != "proven":
-        return "incomplete"
-    for role in ("golden", "gate"):
-        path = data.get(f"{role}_verilog")
-        digest = data.get(f"{role}_sha256")
-        size = data.get(f"{role}_size_bytes")
-        if not isinstance(path, str) or not isinstance(digest, str) or type(size) is not int:
-            return "stale"
-        candidate = Path(path).resolve()
-        if not candidate.is_relative_to(root) or not candidate.is_file():
-            return "stale"
-        actual = file_digest(candidate)
-        if actual is None or actual != (digest, size):
-            return "stale"
-    return "proven"
-
-
-def _analysis_file(
-    path: Path,
-    artifact_id: str,
-    schema_version: int,
-    root: Path,
-    inline_budget: InlineJsonBudget | None = None,
-) -> dict[str, Any]:
-    if _has_symlink(path, root):
-        return {
-            "artifactId": artifact_id,
-            "status": "unsafe",
-            "reasonCode": "ANALYSIS_REFERENCE_UNSAFE",
-            "data": None,
-        }
-    result = read_bounded_json_object(path, ANALYSIS_FILE_INLINE_MAX_BYTES)
-    if result.status != "available":
-        return {
-            "artifactId": artifact_id,
-            "status": result.status,
-            "reasonCode": f"ANALYSIS_FILE_{result.status.upper()}",
-            "data": None,
-        }
-    data = result.data
-    assert data is not None
-    if data.get("schema_version") != schema_version:
-        return {
-            "artifactId": artifact_id,
-            "status": "unsupported",
-            "reasonCode": "ANALYSIS_SCHEMA_UNSUPPORTED",
-            "data": None,
-        }
-    if schema_version == 3 and isinstance(data.get("metrics"), list):
-        data = _canonical_metrics_payload(data)
-    if inline_budget is not None and not inline_budget.admit(data):
-        return {
-            "artifactId": artifact_id,
-            "status": "oversized",
-            "reasonCode": "ANALYSIS_INLINE_BUDGET_EXCEEDED",
-            "data": None,
-        }
-    return {"artifactId": artifact_id, "status": "available", "data": data}
-
-
-def _canonical_metrics_payload(data: dict[str, Any]) -> dict[str, Any]:
-    records = data.get("metrics")
-    if not isinstance(records, list):
-        return data
-    updated = []
-    changed = False
-    for record in records:
-        if not isinstance(record, dict):
-            updated.append(record)
-            continue
-        category = record.get("category")
-        mapped = _LEGACY_METRIC_CATEGORIES.get(category, category)
-        if mapped != category and mapped in METRIC_CATEGORIES:
-            record = {**record, "category": mapped}
-            changed = True
-        updated.append(record)
-    if not changed:
-        return data
-    payload = dict(data)
-    payload["metrics"] = updated
-    return payload
-
-
-def _subflow_summary(path: Path, root: Path) -> dict[str, Any]:
-    if _has_symlink(path, root):
-        return {"status": "unsafe", "steps": []}
-    if not path.is_file():
-        return {"status": "missing", "steps": []}
+        return None
     try:
-        if path.stat().st_size > _SUBFLOW_MAX_BYTES:
-            return {"status": "oversized", "steps": []}
         data = json_read_strict(path)
     except (OSError, JsonReadError):
-        return {"status": "invalid", "steps": []}
-    raw_steps = data.get("steps") if isinstance(data, dict) else None
-    if not isinstance(raw_steps, list) or len(raw_steps) > _SUBFLOW_MAX_STEPS:
-        return {"status": "invalid", "steps": []}
-    steps: list[dict[str, Any]] = []
-    for item in raw_steps:
-        if not isinstance(item, dict):
-            return {"status": "invalid", "steps": []}
-        name = item.get("name")
-        state = item.get("state")
-        if not isinstance(name, str) or not name or not isinstance(state, str):
-            return {"status": "invalid", "steps": []}
-        runtime = item.get("runtime")
-        peak_memory = item.get("peak memory (mb)")
-        step: dict[str, Any] = {"name": name, "state": state}
-        if isinstance(runtime, str):
-            step["runtime"] = runtime
-        if (
-            isinstance(peak_memory, (int, float))
-            and not isinstance(peak_memory, bool)
-            and math.isfinite(peak_memory)
-        ):
-            step["peakMemoryMb"] = peak_memory
-        steps.append(step)
-    return {"status": "available", "steps": steps}
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _empty_timing_preview() -> dict[str, Any]:
+    return {"issues": [], "issueCount": 0, "issuesTruncated": False}
+
+
+def _timing_preview(data: dict[str, Any] | None) -> dict[str, Any]:
+    if data is None or data.get("schema_version") != 1:
+        return _empty_timing_preview()
+    raw_issues = data.get("issues")
+    if not isinstance(raw_issues, list):
+        return _empty_timing_preview()
+    issues = [issue for issue in raw_issues if isinstance(issue, dict)]
+    issues.sort(key=_timing_issue_sort_key)
+    return {
+        "issues": [_scalar_fields(issue) for issue in issues[:_TIMING_PREVIEW_ISSUE_LIMIT]],
+        "issueCount": len(issues),
+        "issuesTruncated": len(issues) > _TIMING_PREVIEW_ISSUE_LIMIT,
+    }
+
+
+def _timing_issue_sort_key(issue: dict[str, Any]) -> tuple:
+    slack = issue.get("slack_ns")
+    if isinstance(slack, bool) or not isinstance(slack, (int, float)) or not math.isfinite(slack):
+        slack = math.inf
+    return (
+        slack,
+        str(issue.get("corner", "")),
+        str(issue.get("analysis_type", "")),
+        str(issue.get("issue_id", "")),
+    )
+
+
+def _step_hotspots(step_id: str, data: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if data is None or data.get("schema_version") != 3:
+        return []
+    raw_hotspots = data.get("hotspots")
+    if not isinstance(raw_hotspots, list):
+        return []
+    return [
+        {"stepId": step_id, **_scalar_fields(hotspot)}
+        for hotspot in raw_hotspots
+        if isinstance(hotspot, dict)
+    ]
+
+
+def _hotspot_preview(hotspots: list[dict[str, Any]]) -> dict[str, Any]:
+    ranked = sorted(
+        hotspots,
+        key=lambda hotspot: _HOTSPOT_SEVERITY_RANK.get(
+            str(hotspot.get("severity")), len(_HOTSPOT_SEVERITY_RANK)
+        ),
+    )
+    return {
+        "hotspots": ranked[:_HOTSPOT_PREVIEW_LIMIT],
+        "hotspotCount": len(ranked),
+        "hotspotsTruncated": len(ranked) > _HOTSPOT_PREVIEW_LIMIT,
+    }
+
+
+def _scalar_fields(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in record.items()
+        if value is None or isinstance(value, (str, int, float, bool))
+    }
 
 
 def _artifact_ref(
     path: Path,
     *,
     workspace_id: str,
-    reference: str,
     step_id: str,
     kind: str,
     root: Path,
 ) -> dict[str, Any]:
+    reference = path.relative_to(root).as_posix()
     artifact: dict[str, Any] = {
         "artifactId": _artifact_id(workspace_id, reference),
         "kind": kind,
         "name": path.name,
         "stepId": step_id,
-        "availability": "missing",
         "reference": reference,
+        "availability": "missing",
     }
     try:
         if path.is_file() and not _has_symlink(path, root):
-            size = path.stat().st_size
-            if size <= _ARTIFACT_HASH_MAX_BYTES:
-                artifact.update(
-                    availability="available",
-                    sizeBytes=size,
-                    sha256=_sha256(path),
-                )
-            else:
-                artifact.update(availability="stale", sizeBytes=size)
+            artifact["availability"] = "available"
     except OSError:
         pass
     return artifact
@@ -459,6 +363,30 @@ def _sta_corner_directories(step_dir: Path, root: Path) -> list[tuple[Path, Path
     return corners
 
 
+def _lec_freshness_status(data: dict[str, Any], root: Path) -> str:
+    """LEC input freshness ("proven" semantics); kept per ADR-0010.
+
+    Currently unreferenced: it used to back the inlined ``lecResult`` snapshot
+    payload, which the bounded-projection contract removed. Retained so the LEC
+    freshness digest keeps a producer-side home until a consumer reattaches it.
+    """
+    if data.get("status") != "proven":
+        return "incomplete"
+    for role in ("golden", "gate"):
+        path = data.get(f"{role}_verilog")
+        digest = data.get(f"{role}_sha256")
+        size = data.get(f"{role}_size_bytes")
+        if not isinstance(path, str) or not isinstance(digest, str) or type(size) is not int:
+            return "stale"
+        candidate = Path(path).resolve()
+        if not candidate.is_relative_to(root) or not candidate.is_file():
+            return "stale"
+        actual = file_digest(candidate)
+        if actual is None or actual != (digest, size):
+            return "stale"
+    return "proven"
+
+
 def _safe_segment(value: object) -> TypeGuard[str]:
     return (
         isinstance(value, str)
@@ -483,11 +411,3 @@ def _has_symlink(path: Path, root: Path) -> bool:
 def _artifact_id(workspace_id: str, reference: str) -> str:
     digest = hashlib.sha256(f"{workspace_id}\0{reference}".encode()).hexdigest()
     return f"artifact-{digest[:32]}"
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as artifact:
-        for chunk in iter(lambda: artifact.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()

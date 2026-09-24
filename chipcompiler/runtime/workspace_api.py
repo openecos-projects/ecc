@@ -201,17 +201,20 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
     def _open_legacy_workspace(self, request: WorkspaceOpenRequest) -> dict:
         workspace = self._load_workspace(request.directory)
         build_flow_for_workspace(workspace, create_step_workspaces=False)
-        from chipcompiler.engine.snapshot import EngineeringSnapshotError, read_engineering_snapshot
+        from chipcompiler.engine.snapshot import (
+            EngineeringSnapshotError,
+            open_workspace_snapshot,
+        )
 
         try:
-            snapshot = read_engineering_snapshot(workspace)
-        except EngineeringSnapshotError:
-            snapshot = None
+            snapshot = open_workspace_snapshot(workspace)
+        except EngineeringSnapshotError as exc:
+            raise RuntimeApiError(exc.code, str(exc)) from exc
         session = self.sessions.open_session(
             workspace.directory,
             workspace=workspace,
-            workspace_id=snapshot["workspaceId"] if snapshot else None,
-            workspace_revision=snapshot["workspaceRevision"] if snapshot else 0,
+            workspace_id=snapshot["workspaceId"],
+            workspace_revision=snapshot["workspaceRevision"],
         )
         self.operations.load_workspace_ledger(
             session.workspace_id,

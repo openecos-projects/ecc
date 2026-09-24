@@ -72,10 +72,7 @@ def test_snapshot_resolves_canonical_sizer_step_directory(tmp_path):
 
     snapshot = create_engineering_snapshot(workspace, workspace_id="engineering-a")
 
-    step = snapshot["analysis"]["steps"][0]
-    assert step["stepId"] == "Timing optimization"
-    assert step["metrics"]["data"]["metrics"] == [metric]
-    assert step["subflow"]["status"] == "available"
+    assert snapshot["metrics"] == [metric]
     artifacts = {artifact["kind"]: artifact for artifact in snapshot["artifacts"]}
     assert artifacts["qor_metrics"]["reference"] == (
         "timing_optimization_sizer/analysis/qor_metrics.json"

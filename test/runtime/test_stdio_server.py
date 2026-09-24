@@ -292,6 +292,7 @@ def test_rpc_stdio_subprocess_workspace_open_home_smoke(tmp_path, minimal_ics55_
     assert process.returncode == 0, stderr.decode("utf-8", errors="replace")
     assert open_response["result"] == {
         "workspaceId": workspace_id,
+        "workspaceRevision": 1,
         "directory": str(ws.resolve()),
     }
     assert home_response == {

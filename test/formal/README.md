@@ -64,6 +64,15 @@ Verifies parameters reach tool configs correctly through builder/helper propagat
 | `test_runtime_forced_overrides` | z3 proves forced values are immutable | PASS |
 | `test_propagation_z3` | z3 proves parameter reaches config field | PASS |
 
+### `test_snapshot_fixtures.py` -- Engineering Snapshot contract fixtures
+
+Not z3-based: cross-language contract tests against the canonical fixtures in
+`fixtures/snapshot/` (ADR-0005). Asserts that a snapshot generated from a
+deterministic synthetic workspace matches `v6-valid.json` byte for byte, and
+that the reader rejects every `v6-invalid-*.json` fixture fail-closed. The GUI
+consumes the same fixtures read-only through the parent repository's ECC
+submodule pin.
+
 ## Running
 
 ```bash

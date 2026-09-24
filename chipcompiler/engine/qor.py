@@ -1,51 +1,50 @@
-"""Assemble Snapshot `qorAssessment` from committed analysis.
+"""Validated QoR metric records collected into the Snapshot `metrics` projection.
 
-The assessment is pure data collection: validated per-step metric
-records and Success-step summaries. QoR scoring lives in the qor-v3
-engine (`chipcompiler.analysis.qor`) and reaches the Snapshot through
-`qorSnapshotExtension`; this module keeps no scoring rules of its own.
+The collection is pure data filtering: metric records from per-step
+``analysis/qor_metrics.json`` files are canonicalized and validated. QoR
+scoring lives in the qor-v3 engine (`chipcompiler.analysis.qor`) and reaches
+the Snapshot through `qorSnapshotExtension`; this module keeps no scoring
+rules of its own.
 """
 
 import math
 from typing import Any
 
-from chipcompiler.engine.analysis import METRIC_CATEGORIES
-
-
-def build_workspace_qor_assessment(analysis: dict[str, Any]) -> dict[str, Any]:
-    metrics = []
-    step_summaries = []
-    for step in analysis["steps"]:
-        if step["flowState"] != "Success":
-            continue
-        step_id = step["stepId"]
-        metrics_file = step["metrics"]
-        payload = metrics_file["data"] if metrics_file["status"] == "available" else {}
-        records = payload.get("metrics")
-        valid_records = [record for record in records or [] if _valid_metric(record)]
-        metrics.extend(valid_records)
-        summary_file = step["summary"]
-        summary = summary_file["data"] if summary_file["status"] == "available" else {}
-        summary_status = (
-            str(summary.get("quality_status", "incomplete"))
-            if summary.get("schema_version") == 4
-            else "unavailable"
-        )
-        step_summaries.append(
-            {
-                "stepId": step_id,
-                "order": step["order"],
-                "name": step_id,
-                "status": summary_status,
-                "summaryMetricCount": len(valid_records),
-            }
-        )
-
-    return {
-        "status": "ready" if metrics else "unavailable",
-        "metrics": metrics,
-        "steps": step_summaries,
+_LEGACY_METRIC_CATEGORIES = {"power": "power_integrity"}
+METRIC_CATEGORIES = frozenset(
+    {
+        "timing",
+        "power_integrity",
+        "routability_physical",
+        "area_cost",
+        "clock_robustness_dfm",
+        "runtime",
     }
+)
+
+
+def collect_metric_records(payload: Any) -> list[dict[str, Any]]:
+    """Validated metric records from one ``qor_metrics.json`` payload (schema 3)."""
+    if not isinstance(payload, dict) or payload.get("schema_version") != 3:
+        return []
+    records = payload.get("metrics")
+    if not isinstance(records, list):
+        return []
+    return [
+        record
+        for record in (_canonical_metric_category(record) for record in records)
+        if _valid_metric(record)
+    ]
+
+
+def _canonical_metric_category(record: Any) -> Any:
+    if not isinstance(record, dict):
+        return record
+    category = record.get("category")
+    mapped = _LEGACY_METRIC_CATEGORIES.get(category, category)
+    if mapped != category and mapped in METRIC_CATEGORIES:
+        return {**record, "category": mapped}
+    return record
 
 
 def _valid_metric(record: Any) -> bool:

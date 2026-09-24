@@ -4,131 +4,30 @@ from types import SimpleNamespace
 
 import pytest
 
-from chipcompiler.engine.analysis import _analysis_file, _lec_result_file
 from chipcompiler.engine.snapshot import (
     EngineeringSnapshotError,
     _write_snapshot,
     create_engineering_snapshot,
+    read_engineering_snapshot,
 )
-from chipcompiler.engine.snapshot_limits import (
-    ANALYSIS_FILE_INLINE_MAX_BYTES,
-    ENGINEERING_SNAPSHOT_MAX_BYTES,
-    InlineJsonBudget,
-)
+from chipcompiler.engine.snapshot_limits import ENGINEERING_SNAPSHOT_MAX_BYTES
 
 
-def _write_large_json(path: Path, schema_version: int = 1) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {
-                "schema_version": schema_version,
-                "issues": ["x" * ANALYSIS_FILE_INLINE_MAX_BYTES],
-            }
-        ),
-        encoding="utf-8",
-    )
-
-
-def test_analysis_file_excludes_oversized_payload(tmp_path):
-    path = tmp_path / "analysis.json"
-    _write_large_json(path)
-
-    result = _analysis_file(path, "artifact-analysis", 1, tmp_path)
-
-    assert result == {
-        "artifactId": "artifact-analysis",
-        "status": "oversized",
-        "reasonCode": "ANALYSIS_FILE_OVERSIZED",
-        "data": None,
-    }
-
-
-def test_analysis_file_limits_embedded_size_for_minified_json(tmp_path):
-    path = tmp_path / "analysis.json"
-    path.write_text(
-        json.dumps(
-            {"schema_version": 1, "issues": [""] * 40_000},
-            separators=(",", ":"),
-        ),
-        encoding="utf-8",
-    )
-    assert path.stat().st_size < ANALYSIS_FILE_INLINE_MAX_BYTES
-
-    result = _analysis_file(path, "artifact-analysis", 1, tmp_path)
-
-    assert result["status"] == "oversized"
-    assert result["data"] is None
-
-
-def test_analysis_file_respects_shared_inline_budget(tmp_path):
-    path = tmp_path / "analysis.json"
-    path.write_text('{"schema_version": 1, "issues": []}', encoding="utf-8")
-
-    result = _analysis_file(
-        path,
-        "artifact-analysis",
-        1,
-        tmp_path,
-        InlineJsonBudget(1),
-    )
-
-    assert result == {
-        "artifactId": "artifact-analysis",
-        "status": "oversized",
-        "reasonCode": "ANALYSIS_INLINE_BUDGET_EXCEEDED",
-        "data": None,
-    }
-
-
-def test_lec_result_excludes_oversized_payload(tmp_path):
-    path = tmp_path / "result.json"
-    _write_large_json(path)
-
-    result = _lec_result_file(path, "artifact-lec", tmp_path)
-
-    assert result == {
-        "artifactId": "artifact-lec",
-        "status": "oversized",
-        "reasonCode": "LEC_RESULT_OVERSIZED",
-        "data": None,
-    }
-
-
-def test_snapshot_keeps_oversized_sta_as_artifact_reference(tmp_path):
+def _sta_workspace(tmp_path):
     root = tmp_path / "workspace"
     (root / "home").mkdir(parents=True)
-    timing_path = root / "sta_ecc" / "analysis" / "sta_timing_issues.json"
-    _write_large_json(timing_path)
-    steps = [{"name": "sta", "tool": "ecc", "state": "Success"}]
-    workspace = SimpleNamespace(
+    return SimpleNamespace(
         directory=root,
-        flow=SimpleNamespace(data={"steps": steps}),
+        flow=SimpleNamespace(data={"steps": [{"name": "sta", "tool": "ecc", "state": "Success"}]}),
         home=SimpleNamespace(data={}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
     )
 
-    snapshot = create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
 
-    assert snapshot["analysis"]["steps"][0]["timingIssues"] == {
-        "artifactId": snapshot["analysis"]["steps"][0]["timingIssues"]["artifactId"],
-        "status": "oversized",
-        "reasonCode": "ANALYSIS_FILE_OVERSIZED",
-        "data": None,
-    }
-    artifact = next(item for item in snapshot["artifacts"] if item["kind"] == "sta_timing_issues")
-    assert artifact["reference"] == "sta_ecc/analysis/sta_timing_issues.json"
-    assert artifact["sizeBytes"] == timing_path.stat().st_size
-    assert (root / "home" / "engineering-snapshot.json").stat().st_size < (
-        ENGINEERING_SNAPSHOT_MAX_BYTES
-    )
-
-
-def test_snapshot_indexes_sta_corner_artifacts_when_aggregate_is_oversized(tmp_path):
-    root = tmp_path / "workspace"
-    (root / "home").mkdir(parents=True)
-    _write_large_json(root / "sta_ecc" / "analysis" / "sta_timing_issues.json")
+def test_snapshot_indexes_sta_corner_artifacts(tmp_path):
+    workspace = _sta_workspace(tmp_path)
+    root = Path(workspace.directory)
     feature = root / "sta_ecc" / "feature" / "MAX_125" / "RCworst"
     feature.mkdir(parents=True)
     (feature / "qor_summary.json").write_text(
@@ -138,13 +37,6 @@ def test_snapshot_indexes_sta_corner_artifacts_when_aggregate_is_oversized(tmp_p
     (feature / "timing_paths.json").write_text(
         '{"schema_version":1,"corner":"MAX_125/RCworst","path_limit":0,"paths":[]}',
         encoding="utf-8",
-    )
-    workspace = SimpleNamespace(
-        directory=root,
-        flow=SimpleNamespace(data={"steps": [{"name": "sta", "tool": "ecc", "state": "Success"}]}),
-        home=SimpleNamespace(data={}),
-        parameters=SimpleNamespace(data={"design": "gcd"}),
-        design=SimpleNamespace(name="gcd"),
     )
 
     snapshot = create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
@@ -163,12 +55,11 @@ def test_snapshot_indexes_sta_corner_artifacts_when_aggregate_is_oversized(tmp_p
         "MAX_125/RCworst/timing_paths.json",
     ]
     assert all(artifact["availability"] == "available" for artifact in timing_artifacts)
-    assert all(len(artifact["sha256"]) == 64 for artifact in timing_artifacts)
 
 
 def test_snapshot_limits_sta_corner_artifacts_deterministically(tmp_path):
-    root = tmp_path / "workspace"
-    (root / "home").mkdir(parents=True)
+    workspace = _sta_workspace(tmp_path)
+    root = Path(workspace.directory)
     for index in range(33):
         feature = root / "sta_ecc" / "feature" / f"P{index:02d}" / "RC"
         feature.mkdir(parents=True)
@@ -183,13 +74,6 @@ def test_snapshot_limits_sta_corner_artifacts_deterministically(tmp_path):
             ),
             encoding="utf-8",
         )
-    workspace = SimpleNamespace(
-        directory=root,
-        flow=SimpleNamespace(data={"steps": [{"name": "sta", "tool": "ecc"}]}),
-        home=SimpleNamespace(data={}),
-        parameters=SimpleNamespace(data={"design": "gcd"}),
-        design=SimpleNamespace(name="gcd"),
-    )
 
     snapshot = create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
 
@@ -209,3 +93,68 @@ def test_snapshot_size_guard_preserves_existing_file(tmp_path):
         _write_snapshot(path, {"payload": "x" * ENGINEERING_SNAPSHOT_MAX_BYTES})
 
     assert path.read_text(encoding="utf-8") == "previous"
+
+
+def test_checklist_projection_cap_is_a_producer_error(tmp_path):
+    root = tmp_path / "workspace"
+    (root / "home").mkdir(parents=True)
+    items = [
+        {"id": f"item-{index}", "title": f"Item {index}", "state": "pass"} for index in range(513)
+    ]
+    (root / "home" / "checklist.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "kind": "signoff_checklist",
+                "status": "ready",
+                "checklist": items,
+            }
+        ),
+        encoding="utf-8",
+    )
+    workspace = SimpleNamespace(
+        directory=root,
+        flow=SimpleNamespace(data={"steps": []}),
+        home=SimpleNamespace(data={}),
+        parameters=SimpleNamespace(data={"design": "gcd"}),
+        design=SimpleNamespace(name="gcd"),
+    )
+
+    with pytest.raises(EngineeringSnapshotError, match="512 items"):
+        create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
+
+    assert not (root / "home" / "engineering-snapshot.json").exists()
+
+
+def test_artifact_index_cap_is_a_producer_error(tmp_path):
+    root = tmp_path / "workspace"
+    (root / "home").mkdir(parents=True)
+    # 7 indexed artifacts per step (3 analysis files, layout image, geometry
+    # manifest, 2 reports): 586 steps overshoot the 4096-entry index limit.
+    steps = [
+        {"name": f"Step{index:04d}", "tool": "ecc", "state": "Unstart"} for index in range(586)
+    ]
+    workspace = SimpleNamespace(
+        directory=root,
+        flow=SimpleNamespace(data={"steps": steps}),
+        home=SimpleNamespace(data={}),
+        parameters=SimpleNamespace(data={"design": "gcd"}),
+        design=SimpleNamespace(name="gcd"),
+    )
+
+    with pytest.raises(EngineeringSnapshotError, match="4096 entries"):
+        create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
+
+    assert not (root / "home" / "engineering-snapshot.json").exists()
+
+
+def test_read_rejects_artifact_index_beyond_limit(tmp_path):
+    workspace = _sta_workspace(tmp_path)
+    create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
+    path = Path(workspace.directory) / "home" / "engineering-snapshot.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["artifacts"] = payload["artifacts"] * 600
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(EngineeringSnapshotError, match="section: artifacts"):
+        read_engineering_snapshot(workspace)

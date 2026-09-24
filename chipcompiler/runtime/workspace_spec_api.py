@@ -269,7 +269,7 @@ class WorkspaceSpecRuntimeMixin:
         request: WorkspaceOpenRequest | WorkspaceSpecOpenRequest,
     ) -> dict:
         workspace = self._load_workspace(request.directory)
-        snapshot = self._ensure_engineering_snapshot(workspace)
+        snapshot = self._open_engineering_snapshot(workspace)
         bindings = (
             request.workspace_bindings if isinstance(request, WorkspaceSpecOpenRequest) else None
         )
@@ -454,16 +454,16 @@ class WorkspaceSpecRuntimeMixin:
         raise RuntimeApiError(code, "Workspace is not ready for execution", readiness)
 
     @staticmethod
-    def _ensure_engineering_snapshot(workspace) -> dict:
+    def _open_engineering_snapshot(workspace) -> dict:
         from chipcompiler.engine.snapshot import (
             EngineeringSnapshotError,
-            read_engineering_snapshot,
+            open_workspace_snapshot,
         )
 
         try:
-            return read_engineering_snapshot(workspace)
+            return open_workspace_snapshot(workspace)
         except EngineeringSnapshotError as exc:
-            raise RuntimeApiError("engineering_snapshot_unavailable", str(exc)) from exc
+            raise RuntimeApiError(exc.code, str(exc)) from exc
 
     @staticmethod
     def _create_engineering_snapshot(workspace) -> dict:
