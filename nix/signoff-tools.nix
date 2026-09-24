@@ -21,7 +21,6 @@ let
   };
 
   exportCsvSh = ./scripts/export_signoff_csv.sh;
-  materializeSh = ./scripts/materialize_signoff_workspace.sh;
   signoffLitSh = ./scripts/signoff_lit.sh;
 
   signoff-lit = writeShellApplication {
@@ -35,7 +34,6 @@ let
       root="''${ECC_REPO_ROOT:-$PWD}"
       export ECC_REPO_ROOT="$root"
       export ECC_EXPORT_SIGNOFF_CSV="''${ECC_EXPORT_SIGNOFF_CSV:-${exportCsvSh}}"
-      export ECC_MATERIALIZE_READY="''${ECC_MATERIALIZE_READY:-${materializeSh}}"
       export FILECHECK="''${FILECHECK:-filecheck}"
       export LIT="''${LIT:-lit}"
       if [ -x "$root/.venv/bin/python" ]; then

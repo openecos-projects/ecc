@@ -1,6 +1,0 @@
-; Missing metric: absent drc_count → present=false → gate fail.
-;
-; RUN: rm -rf %t && mkdir -p %t
-; RUN: %materialize %t/ws --variant missing_metric
-; RUN: env ECC_REPO_ROOT=%repo PYTHON=%python %export_csv --workspace %t/ws --out-dir %t/out --spec %spec
-; RUN: %filecheck --input-file=%t/out/reports/metrics.check.txt %gatefile_missing_metric

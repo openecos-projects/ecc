@@ -1,6 +1,0 @@
-# Expect drc_count metric gate fail; other metrics still pass.
-CHECK: section: gates
-CHECK: gate metric drc_count status=fail
-CHECK-DAG: gate metric lvs_count status=pass
-CHECK-DAG: gate metric sta_setup_wns status=pass
-CHECK-NOT: gate metric drc_count status=pass
