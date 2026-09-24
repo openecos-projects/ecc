@@ -155,10 +155,10 @@ def validate_flow_config(flow: object) -> dict:
         except ValueError as exc:
             raise WorkspaceFlowTargetError(f"[flow] {exc}") from None
     if "lec_engine" in section:
-        from chipcompiler.data.types import lec_engine_from_value
+        from chipcompiler.data.types import LECEngineEnum
 
         try:
-            result["lec_engine"] = lec_engine_from_value(section["lec_engine"]).value
+            result["lec_engine"] = LECEngineEnum.from_value(section["lec_engine"]).value
         except ValueError as exc:
             raise WorkspaceFlowTargetError(f"[flow] {exc}") from None
     if preset is None and start is None:

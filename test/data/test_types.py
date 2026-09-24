@@ -7,7 +7,6 @@ from chipcompiler.data.types import (
     SkippableStepEnum,
     StepBaseEnum,
     StepEnum,
-    lec_engine_from_value,
     step_from_value,
 )
 
@@ -75,18 +74,18 @@ def test_lec_engine_enum_members_and_derived_constants():
     ],
 )
 def test_lec_engine_from_value_accepts_member_values_and_the_dual_alias(raw, expected):
-    assert lec_engine_from_value(raw) is expected
+    assert LECEngineEnum.from_value(raw) is expected
 
 
 def test_lec_engine_from_value_normalizes_the_dual_alias_away():
     # Persisted/ledger strings are always the member value, never the alias.
-    assert lec_engine_from_value("dual").value == "lec_dual"
+    assert LECEngineEnum.from_value("dual").value == "lec_dual"
     assert "dual" not in {member.value for member in LECEngineEnum}
 
 
 def test_lec_engine_from_value_rejects_unknown_values_with_the_legal_set():
     with pytest.raises(ValueError, match="unknown LEC engine: 'nonsense'.*yosys_lec"):
-        lec_engine_from_value("nonsense")
+        LECEngineEnum.from_value("nonsense")
 
 
 def test_spawn_engines_fans_out_only_for_dual():

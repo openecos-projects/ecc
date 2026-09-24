@@ -30,7 +30,6 @@ from .types import (
     StepBaseEnum,
     StepEnum,
     is_finished_step_state,
-    lec_engine_from_value,
     step_from_value,
 )
 from .workspace import (
@@ -99,7 +98,6 @@ __all__ = [
     "LEC_STEP_TOOLS",
     "LECEngineEnum",
     "DEFAULT_LEC_ENGINE",
-    "lec_engine_from_value",
     "all_step_directories",
     "flow_step_directory",
     "step_directory_for_tool",
