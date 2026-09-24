@@ -80,12 +80,12 @@ def substitute_lec_engine(steps: list, lec_engine: LECEngineEnum = DEFAULT_LEC_E
     afterwards — the same rule the canonical builders apply at
     construction time.
     """
-    value = lec_engine_from_value(lec_engine).value
+    lec_tool = lec_engine_from_value(lec_engine).value
     lec_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
     return [
         (
             step,
-            value
+            lec_tool
             if (step.value if isinstance(step, StepBaseEnum) else str(step)) in lec_names
             and tool in LEC_STEP_TOOLS
             else tool,
@@ -98,11 +98,11 @@ def substitute_lec_engine(steps: list, lec_engine: LECEngineEnum = DEFAULT_LEC_E
 def build_rtl2gds_flow(
     *, skip: Collection[str] = (), lec_engine: LECEngineEnum = DEFAULT_LEC_ENGINE
 ) -> list:
-    engine = lec_engine_from_value(lec_engine).value
+    lec_tool = lec_engine_from_value(lec_engine).value
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
-    steps.append((SkippableStepEnum.LEC, engine, StateEnum.Unstart))
+    steps.append((SkippableStepEnum.LEC, lec_tool, StateEnum.Unstart))
     steps.append((StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart))
@@ -115,7 +115,7 @@ def build_rtl2gds_flow(
     steps.append((StepEnum.RCX, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.STA, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.LVS, "ecc", StateEnum.Unstart))
-    steps.append((SkippableStepEnum.POST_ROUTE_LEC, engine, StateEnum.Unstart))
+    steps.append((SkippableStepEnum.POST_ROUTE_LEC, lec_tool, StateEnum.Unstart))
     steps.append((StepEnum.DRC, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.HARDEN, "ecc", StateEnum.Unstart))
 
@@ -203,12 +203,11 @@ def build_syn_sta_flow() -> list:
 
 
 def build_synthesis_lec_flow(*, lec_engine: LECEngineEnum = DEFAULT_LEC_ENGINE) -> list:
+    lec_tool = lec_engine_from_value(lec_engine).value
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
-    steps.append(
-        (SkippableStepEnum.LEC, lec_engine_from_value(lec_engine).value, StateEnum.Unstart)
-    )
+    steps.append((SkippableStepEnum.LEC, lec_tool, StateEnum.Unstart))
 
     return steps
 
