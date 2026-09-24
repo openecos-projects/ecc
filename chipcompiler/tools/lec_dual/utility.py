@@ -34,12 +34,10 @@ def engine_availability(engine: LECEngineEnum) -> tuple[bool, str]:
 
 def is_eda_exist() -> bool:
     """At least one physical engine must be available (degraded mode)."""
-    missing = []
-    for engine in LECEngineEnum.DUAL.spawn_engines:
-        available, reason = engine_availability(engine)
-        if available:
-            return True
-        missing.append(reason)
+    probed = [engine_availability(engine) for engine in LECEngineEnum.DUAL.spawn_engines]
+    if any(available for available, _reason in probed):
+        return True
+    missing = [reason for available, reason in probed if not available]
     raise RuntimeError("lec_dual needs at least one LEC engine: " + "; ".join(missing))
 
 
