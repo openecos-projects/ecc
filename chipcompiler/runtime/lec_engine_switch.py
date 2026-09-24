@@ -22,14 +22,14 @@ def switch_lec_engine(workspace, engine) -> tuple[str, ...]:
     ledger-less rebuilds agree; editing the config alone never performs
     this switch. Returns the switched step names.
     """
-    from chipcompiler.data import LEC_STEP_TOOLS, SkippableStepEnum, lec_engine_from_value
+    from chipcompiler.data import LEC_STEP_TOOLS, LECEngineEnum, SkippableStepEnum
     from chipcompiler.runtime.workspace_api import (
         WorkspaceRuntimeApi,
         _workspace_step_from_flow,
         build_flow_for_workspace,
     )
 
-    engine_value = lec_engine_from_value(engine).value
+    engine_value = LECEngineEnum.from_value(engine).value
     lec_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
 
     # Persist the config first: a failed config save leaves the ledger

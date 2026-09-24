@@ -10,7 +10,6 @@ from chipcompiler.data import (
     StateEnum,
     StepBaseEnum,
     StepEnum,
-    lec_engine_from_value,
 )
 
 # Step values a project is allowed to exclude from its ledger.
@@ -22,11 +21,11 @@ def resolve_lec_engine(flow_config: dict | None) -> LECEngineEnum:
 
     Presence-keyed like the skip policy: an absent ``lec_engine`` key yields
     the code default; a declared value validates and normalizes through
-    :func:`lec_engine_from_value` (the ``dual`` alias becomes ``lec_dual``).
+    :meth:`LECEngineEnum.from_value` (the ``dual`` alias becomes ``lec_dual``).
     """
     if not isinstance(flow_config, dict) or "lec_engine" not in flow_config:
         return DEFAULT_LEC_ENGINE
-    return lec_engine_from_value(flow_config["lec_engine"])
+    return LECEngineEnum.from_value(flow_config["lec_engine"])
 
 
 def resolve_skip_steps(flow_config: dict | None) -> tuple[str, ...]:
@@ -80,7 +79,7 @@ def substitute_lec_engine(steps: list, lec_engine: LECEngineEnum = DEFAULT_LEC_E
     afterwards — the same rule the canonical builders apply at
     construction time.
     """
-    lec_tool = lec_engine_from_value(lec_engine).value
+    lec_tool = LECEngineEnum.from_value(lec_engine).value
     lec_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
     return [
         (
@@ -98,7 +97,7 @@ def substitute_lec_engine(steps: list, lec_engine: LECEngineEnum = DEFAULT_LEC_E
 def build_rtl2gds_flow(
     *, skip: Collection[str] = (), lec_engine: LECEngineEnum = DEFAULT_LEC_ENGINE
 ) -> list:
-    lec_tool = lec_engine_from_value(lec_engine).value
+    lec_tool = LECEngineEnum.from_value(lec_engine).value
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
@@ -203,7 +202,7 @@ def build_syn_sta_flow() -> list:
 
 
 def build_synthesis_lec_flow(*, lec_engine: LECEngineEnum = DEFAULT_LEC_ENGINE) -> list:
-    lec_tool = lec_engine_from_value(lec_engine).value
+    lec_tool = LECEngineEnum.from_value(lec_engine).value
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
