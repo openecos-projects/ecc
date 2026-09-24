@@ -11,7 +11,7 @@ _LIT = _REPO / "test" / "lit"
 if str(_LIT) not in sys.path:
     sys.path.insert(0, str(_LIT))
 
-from csv_gates.cli import main
-
 if __name__ == "__main__":
+    from csv_gates.cli import main
+
     raise SystemExit(main())

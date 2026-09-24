@@ -282,7 +282,7 @@ jobs:
 
       - name: Run design flows
         run: |
-          bash nix/scripts/run_designs.sh \
+          bash nix/scripts/run-designs.sh \
             --ecc "$PWD/dist/ecc-bundle/ecc" \
             --designs-dir designs \
             --design xtea \
@@ -291,7 +291,7 @@ jobs:
       - name: Lit check flow artifacts
         run: |
           ECC_FLOW_WORKSPACES="$RUNNER_TEMP/e2e" \
-            bash nix/scripts/signoff_lit_nix.sh designs
+            bash nix/scripts/signoff-lit-nix.sh designs
 
       - name: Upload e2e workspaces on failure
         if: failure()

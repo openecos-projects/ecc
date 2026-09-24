@@ -8,7 +8,7 @@
 # CHIPCOMPILER_ICS55_PDK_ROOT.
 #
 # Usage:
-#   run_designs.sh --ecc BIN --designs-dir DIR [--design NAME ...]
+#   run-designs.sh --ecc BIN --designs-dir DIR [--design NAME ...]
 #                  [--jobs N] [--out-root DIR] [--pdk-root DIR]
 #
 # Layout produced under --out-root (default: ci-artifacts/e2e):

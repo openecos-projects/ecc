@@ -1,6 +1,6 @@
 """Signoff CSV export and CI gate projection helpers.
 
-``nix/scripts/export_signoff_csv*`` are thin entrypoints. Run-vs-run
+``nix/scripts/export-signoff-csv*`` are thin entrypoints. Run-vs-run
 dashboard diffs are intentionally not part of this package.
 """
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run lit against a lit suite directory (one containing lit.cfg.py), e.g. an
 # ecc-ci-designs checkout. lit suites carry their own config and cases.
-# Usage: signoff_lit.sh SUITE_DIR [lit-args...]
+# Usage: signoff-lit.sh SUITE_DIR [lit-args...]
 # Env: ECC_REPO_ROOT, PYTHON, FILECHECK, LIT,
 #      ECC_EXPORT_SIGNOFF_CSV, ECC_SIGNOFF_CSV_SPEC
 
@@ -11,7 +11,7 @@ root="${ECC_REPO_ROOT:-$PWD}"
 export ECC_REPO_ROOT="$root"
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export ECC_EXPORT_SIGNOFF_CSV="${ECC_EXPORT_SIGNOFF_CSV:-$here/export_signoff_csv.sh}"
+export ECC_EXPORT_SIGNOFF_CSV="${ECC_EXPORT_SIGNOFF_CSV:-$here/export-signoff-csv.sh}"
 # Prefer LLVM FileCheck from nix; lit from nixpkgs `lit` (or llvm-lit if present).
 if [[ -z "${FILECHECK:-}" ]]; then
   if command -v FileCheck >/dev/null 2>&1; then

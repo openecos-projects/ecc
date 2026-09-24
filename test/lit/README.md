@@ -5,7 +5,7 @@ workspace (`home/flow.json`, `home/checklist.json`, `*/analysis/qor_*.json`),
 projects it to CSV tables plus a FileCheck-friendly text projection, evaluates
 the gates declared in a profile YAML, and writes a `run_manifest.json`.
 
-Entry point: `nix/scripts/export_signoff_csv.sh --workspace WS --out-dir DIR
+Entry point: `nix/scripts/export-signoff-csv.sh --workspace WS --out-dir DIR
 --spec SPEC` (thin wrapper over `csv_gates.cli`).
 
 Status: **v0 / trial** — this is a CI contract, not product signoff truth.
@@ -25,7 +25,7 @@ this repo keeps only the library and the runner scripts.
 uv run pytest test/test_signoff_csv_export.py -q   # unit coverage incl. negative gates
 
 ECC_FLOW_WORKSPACES=<workspaces> \
-  bash nix/scripts/signoff_lit_nix.sh <ecc-ci-designs checkout>
+  bash nix/scripts/signoff-lit-nix.sh <ecc-ci-designs checkout>
 ```
 
 ## Profile schema (`version: 1`)
