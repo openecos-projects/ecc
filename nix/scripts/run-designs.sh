@@ -71,6 +71,7 @@ fi
 [[ ${#designs[@]} -gt 0 ]] || { echo "error: no designs (no */ecc.toml under $designs_dir)" >&2; exit 2; }
 
 run_one() {
+  set -o pipefail
   local name="$1"
   local src="$DESIGNS_DIR/$name"
   local dst="$OUT_ROOT/$name"
@@ -83,7 +84,7 @@ run_one() {
   rm -rf "$dst"
   mkdir -p "$OUT_ROOT"
   cp -a "$src" "$dst"
-  if CHIPCOMPILER_ICS55_PDK_ROOT="$PDK_ROOT" "$ECC" run --project "$dst" --workspace default --plain >"$log" 2>&1 \
+  if CHIPCOMPILER_ICS55_PDK_ROOT="$PDK_ROOT" "$ECC" run --project "$dst" --workspace default --plain 2>&1 | tee "$log" \
     && [[ -f "$dst/default/home/flow.json" ]]; then
     echo "PASS $name"
   else
