@@ -193,3 +193,6 @@ task_plan.md
 .ccache
 
 .trellis
+
+# Lit suite exec root (ephemeral)
+ci-artifacts/

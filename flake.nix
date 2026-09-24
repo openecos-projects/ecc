@@ -153,7 +153,9 @@
     };
   in flake-parts.lib.mkFlake { inherit inputs; } {
     systems = [ "x86_64-linux" ];
-    perSystem = { self', pkgs, system, ... }: {
+    perSystem = { self', pkgs, system, config, ... }: {
+      imports = [ ./nix/signoff.nix ];
+
       packages.default = pkgs.callPackage chipcompiler {
         ecc-dreamplace = ecc-dreamplace.packages.${system}.default;
         ecc-tools = ecc-tools.packages.${system}.default;
@@ -161,6 +163,7 @@
         rosettakit = pkgs.callPackage rosettakit {};
         yosysWithSlang = infra.packages.${system}.yosysWithSlang;
       };
+
       devShells.default = pkgs.mkShell.override {
         stdenv = pkgs.ccacheStdenv;
       } {
@@ -178,9 +181,12 @@
         nativeBuildInputs = ecc-dreamplace.packages.${system}.default.rawNativeBuildInputs ++
           ecc-tools.packages.${system}.default.rawNativeBuildInputs ++ (with pkgs; [
             uv
-          ]);
+          ]) ++ [
+            config.packages.signoff-tools
+          ];
         shellHook = ''
           export CCACHE_DIR="$PWD/.ccache"
+          export ECC_REPO_ROOT="$PWD"
         '';
       };
     };
