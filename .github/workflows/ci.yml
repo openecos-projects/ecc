@@ -211,6 +211,107 @@ jobs:
           path: |
             dist/ecc.tar
 
+  e2e-packaged-flow:
+    name: E2E Packaged Flow
+    needs: build-pyinstaller
+    runs-on: ubuntu-latest
+    container: quay.io/pypa/manylinux_2_34_x86_64
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Checkout designs
+        uses: actions/checkout@v4
+        with:
+          repository: openecos-projects/ecc-ci-designs
+          path: designs
+
+      - name: Download PyInstaller artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-cli-linux-x86_64
+
+      - name: Extract PyInstaller bundle
+        run: |
+          mkdir -p dist/ecc-bundle
+          tar -xf dist/ecc.tar -C dist/ecc-bundle
+          test -x dist/ecc-bundle/ecc
+
+      - name: Setup PDK
+        run: |
+          git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git ../pdk/icsprout55-pdk
+          cd ../pdk/icsprout55-pdk && make unzip
+
+      - name: Setup OSS CAD Suite
+        uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Sizer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          run_id="$(
+            gh api "repos/openecos-projects/ecc-sizer/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=20" \
+              --jq '[.workflow_runs[] | select(.conclusion == "success") | .id][0] // empty'
+          )"
+          if [ -z "$run_id" ]; then
+            echo "::error::No successful ecc-sizer CI artifact found on main"
+            exit 1
+          fi
+
+          install_root="${RUNNER_TEMP}/ecc-sizer"
+          mkdir -p "$install_root"
+          gh run download "$run_id" \
+            --repo openecos-projects/ecc-sizer \
+            --name ecc-sizer-linux-x64 \
+            --dir "$install_root"
+
+          archive="$(find "$install_root" -name 'ecc-sizer-linux-x64.tar.gz' -print -quit)"
+          tar -xzf "$archive" -C "$install_root"
+
+          sizer_root="$(find "$install_root" -type f -path '*/src/sizer_os.tcl' -printf '%h\n' | sed 's#/src$##' | head -n 1)"
+          if [ -z "$sizer_root" ] || [ ! -x "${sizer_root}/bin/Sizer" ]; then
+            echo "::error::Downloaded ecc-sizer artifact is missing bin/Sizer or src/sizer_os.tcl"
+            exit 1
+          fi
+
+          echo "${sizer_root}/bin" >> "$GITHUB_PATH"
+          echo "CHIPCOMPILER_ECC_SIZER_ROOT=${sizer_root}" >> "$GITHUB_ENV"
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v19
+        with:
+          init: none
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run design flows
+        run: |
+          bash nix/scripts/run_designs.sh \
+            --ecc "$PWD/dist/ecc-bundle/ecc" \
+            --designs-dir designs \
+            --design xtea \
+            --out-root "$RUNNER_TEMP/e2e"
+
+      - name: Lit check flow artifacts
+        run: |
+          ECC_E2E_DESIGNS=designs ECC_FLOW_WORKSPACES="$RUNNER_TEMP/e2e" \
+            bash nix/scripts/signoff_lit_nix.sh test/e2e
+
+      - name: Upload e2e workspaces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-flow-workspaces
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/e2e
+
   lint:
     needs: check-version
     runs-on: ubuntu-latest
