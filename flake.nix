@@ -11,9 +11,12 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     infra.url = "github:Emin017/ieda-infra";
+    # nix-eda's packaging needs its own (much newer) nixpkgs — do NOT make
+    # it follow the root pin (onetbb and the newer fmt only exist there).
+    nix-eda.url = "github:fossi-foundation/nix-eda/93b4808044ee1d92eb088f02e90bc9ae0b2bcf46";
   };
   outputs = inputs@{
-    self, nixpkgs, flake-parts, ecc-dreamplace, ecc-tools, infra,
+    self, nixpkgs, flake-parts, ecc-dreamplace, ecc-tools, infra, nix-eda,
   }: let
     rosettakit = {
       fetchFromGitHub,
@@ -42,125 +45,33 @@
       pythonImportsCheck = [ "rosettakit" ];
     };
 
-    # slang (naja's SystemVerilog frontend) requires fmt 12.2 through
-    # FetchContent with a find_package fallback; the pinned nixpkgs fmt is
-    # older, and the nix sandbox has no network, so hand FetchContent an
-    # offline source tree instead of letting it clone at configure time.
-    fmtSource12 = { fetchFromGitHub }: fetchFromGitHub {
-      owner = "fmtlib";
-      repo = "fmt";
-      rev = "12.2.0";
-      hash = "sha256-Tc7PmNxUv7ajw6GaHPGEEtrD/fl6is7RB8TPestJa1o=";
-    };
-
-    # Same offline treatment for slang's header-only tomlplusplus (3.4).
-    tomlplusplusSource = { fetchFromGitHub }: fetchFromGitHub {
-      owner = "marzer";
-      repo = "tomlplusplus";
-      rev = "v3.4.0";
-      hash = "sha256-h5tbO0Rv2tZezY58yUbyRVpsfRjY3i+5TPkkxr6La8M=";
-    };
-
     # kepler-formal, the GPL-3.0-only LEC engine for the lec/postRouteLec
-    # steps. Built from source for local development only: ECOS ships
-    # Apache-2.0 and does not redistribute kepler-formal binaries, so the
-    # derivation stays on the developer's machine (no distribution, no GPL
-    # conveyance obligations). The ECC runtime resolves it through
+    # steps: nix-eda's packaging with src pointed at the Emin017 fork.
+    # Built from source for local development only: ECOS ships Apache-2.0
+    # and does not redistribute kepler-formal binaries, so the derivation
+    # stays on the developer's machine (no distribution, no GPL conveyance
+    # obligations). The ECC runtime resolves it through
     # CHIPCOMPILER_KEPLER_FORMAL_ROOT. First build takes a while (naja and
     # its submodules compile in the nix sandbox).
     keplerFormal = {
-      autoPatchelfHook,
-      boost,
-      bison,
-      capnproto,
-      cmake,
       fetchgit,
-      flex,
-      fmt,
-      fmtSource12,
       lib,
-      ninja,
-      pkg-config,
-      python3,
-      spdlog,
-      stdenv,
-      tomlplusplusSource,
-      tbb_2022,
-      zlib,
-    }: stdenv.mkDerivation rec {
-      pname = "kepler-formal";
-      version = "1.0.0";
-
+      nix-eda,
+      system,
+    }: nix-eda.packages.${system}.kepler-formal.overrideAttrs (old: {
+      version = "0-unstable-2026-09-22";
       src = fetchgit {
-        url = "https://github.com/keplertech/kepler-formal";
-        rev = "11d8ac4e44d69bcb4cc53ef8ccb60d99999cb975";
-        hash = "sha256-LbGpW2bvRns4RAIRUk0zTQqM1TwVpJ++UiVIhaC0OHc=";
+        url = "https://github.com/Emin017/kepler-formal";
+        rev = "c2e6a070bb32a4035d3e672776695403cd9781b0";
+        hash = "sha256-mcUeZVaklQv/E0tkxCjh4Sb8jazu6pA+ovqhz0r2mOE=";
         fetchSubmodules = true;
       };
-
-      # naja's CMake requires the oneTBB package config.
-      buildInputs = [ boost capnproto fmt spdlog tbb_2022 zlib ];
-
-      nativeBuildInputs = [
-        autoPatchelfHook
-        bison
-        cmake
-        flex
-        ninja
-        pkg-config
-        # naja's CMake unconditionally find_package(Python3 ...) even with
-        # the kepler Python interface disabled.
-        python3
-      ];
-
-      cmakeFlags = [
-        "-DCMAKE_BUILD_TYPE=Release"
-        "-DPYTHON_INTERFACE=OFF"
-        "-DENABLE_UNIT_TESTS=OFF"
-        "-DFETCHCONTENT_SOURCE_DIR_FMT=${fmtSource12}"
-        "-DFETCHCONTENT_SOURCE_DIR_TOMLPLUSPLUS=${tomlplusplusSource}"
-        # slang defaults mimalloc on and would FetchContent it too; the
-        # default allocator is fine for kepler-formal.
-        "-DSLANG_USE_MIMALLOC=OFF"
-        # No build-tree rpaths: autoPatchelf owns the final RUNPATH.
-        "-DCMAKE_SKIP_BUILD_RPATH=ON"
-      ];
-
-      # Upstream installs only the kepler-formal executable; stage the
-      # layout the ECC CLI expects under CHIPCOMPILER_KEPLER_FORMAL_ROOT
-      # (bin/kepler-formal plus the bundled naja libraries in lib/).
-      # Locate artifacts by search: the stdenv cmake hook decides where
-      # the build tree lands.
-      installPhase = ''
-        runHook preInstall
-        mkdir -p $out/bin $out/lib
-        kepler_bin="$(find . -type f -name kepler-formal -perm -u+x | head -n1)"
-        [ -n "$kepler_bin" ] || { echo "kepler-formal binary not found" >&2; exit 1; }
-        install -Dm755 "$kepler_bin" $out/bin/kepler-formal
-        install -Dm755 "$(dirname "$kepler_bin")/naja.so" $out/bin/naja.so
-        find . -type f -name 'libnaja_*.so' -exec cp {} $out/lib/ \;
-        # Drop the build-tree rpaths; autoPatchelf rewrites them to store
-        # paths during fixup. naja.so carries an explicit BUILD_RPATH
-        # (CMAKE_SKIP_BUILD_RPATH does not cover it), so replace it with the
-        # installed layout instead of just removing it.
-        patchelf --set-rpath '$ORIGIN/../lib' $out/bin/naja.so
-        for elf in $out/bin/kepler-formal $out/lib/*.so*; do
-          patchelf --remove-rpath "$elf" || true
-        done
-        runHook postInstall
-      '';
-
-      # Sanity check that the packaged binary starts.
-      postInstallCheck = ''
-        $out/bin/kepler-formal --help > /dev/null
-      '';
-
-      meta = {
+      meta = old.meta // {
         description = "Equivalence checking engine (GPL-3.0-only, local dev build)";
-        homepage = "https://github.com/keplertech/kepler-formal";
+        homepage = "https://github.com/Emin017/kepler-formal";
         license = lib.licenses.gpl3Only;
       };
-    };
+    });
 
     # Not in the pinned nixpkgs; required by chipcompiler's runtime server.
     # Use the wheel: the sdist's bundled versioneer is incompatible with
@@ -277,8 +188,7 @@
     systems = [ "x86_64-linux" ];
     perSystem = { self', pkgs, system, ... }: {
       packages.keplerFormal = pkgs.callPackage keplerFormal {
-        fmtSource12 = pkgs.callPackage fmtSource12 {};
-        tomlplusplusSource = pkgs.callPackage tomlplusplusSource {};
+        inherit nix-eda system;
       };
       packages.default = pkgs.callPackage chipcompiler {
         ecc-dreamplace = ecc-dreamplace.packages.${system}.default;
