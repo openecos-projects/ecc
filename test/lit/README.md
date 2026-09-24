@@ -67,9 +67,11 @@ Default PR CI: `DeterminateSystems/nix-installer-action` (`init: none`, no sudo)
 on manylinux → `nix/scripts/signoff_lit_nix.sh` (fixture lit only, no ics55 rtl2gds).
 No Nix store cache action (optional; not required for lit).
 
-Real packaged-binary flows over external designs live in the separate
-`test/e2e` suite (see `test/e2e/README.md`); the signoff suite stays
-fixture-only.
+Real packaged-binary flows over external designs are checked by the lit
+suite hosted in
+[openecos-projects/ecc-ci-designs](https://github.com/openecos-projects/ecc-ci-designs)
+(its own `lit.cfg.py`; workspaces produced by `nix/scripts/run_designs.sh`).
+The signoff suite here stays fixture-only.
 
 ## Environment
 
