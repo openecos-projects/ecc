@@ -330,6 +330,9 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Cache Nix store
+        uses: DeterminateSystems/magic-nix-cache-action@v15
+
       - name: Run design flows
         run: |
           bash nix/scripts/run-designs.sh \
