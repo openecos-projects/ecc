@@ -291,7 +291,7 @@ jobs:
       - name: Lit check flow artifacts
         run: |
           ECC_FLOW_WORKSPACES="$RUNNER_TEMP/e2e" \
-            bash nix/scripts/signoff-lit-nix.sh designs
+            nix run .#signoff-lit -- designs
 
       - name: Upload e2e workspaces on failure
         if: failure()

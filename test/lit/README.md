@@ -25,7 +25,7 @@ this repo keeps only the library and the runner scripts.
 uv run pytest test/test_signoff_csv_export.py -q   # unit coverage incl. negative gates
 
 ECC_FLOW_WORKSPACES=<workspaces> \
-  bash nix/scripts/signoff-lit-nix.sh <ecc-ci-designs checkout>
+  nix run .#signoff-lit -- <ecc-ci-designs checkout>
 ```
 
 ## Profile schema (`version: 1`)
