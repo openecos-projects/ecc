@@ -25,6 +25,10 @@ on:
       - '.github/actions/**'
       - '.github/scripts/**'
       - 'nix/**'
+  # Nightly on main: same pipeline, e2e matrix additionally covers the big
+  # designs (see e2e-designs).
+  schedule:
+    - cron: "17 18 * * *"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -49,7 +53,7 @@ jobs:
 
   test:
     name: Test
-    needs: [check-version, pdk]
+    needs: [check-version, pdk, sizer]
     runs-on: ubuntu-latest
     container: quay.io/pypa/manylinux_2_34_x86_64
     steps:
@@ -85,43 +89,16 @@ jobs:
           yosys -p "plugin -i slang"
 
       - name: Setup Sizer
-        env:
-          GH_TOKEN: ${{ github.token }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-sizer
+
+      - name: Extract Sizer
         run: |
-          set -euo pipefail
-
-          run_id="$(
-            gh api "repos/openecos-projects/ecc-sizer/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=20" \
-              --jq '[.workflow_runs[] | select(.conclusion == "success") | .id][0] // empty'
-          )"
-          if [ -z "$run_id" ]; then
-            echo "::error::No successful ecc-sizer CI artifact found on main"
-            exit 1
-          fi
-
-          install_root="${RUNNER_TEMP}/ecc-sizer"
-          mkdir -p "$install_root"
-          echo "Downloading ecc-sizer-linux-x64 from openecos-projects/ecc-sizer CI run ${run_id}"
-          gh run download "$run_id" \
-            --repo openecos-projects/ecc-sizer \
-            --name ecc-sizer-linux-x64 \
-            --dir "$install_root"
-
-          archive="$(find "$install_root" -name 'ecc-sizer-linux-x64.tar.gz' -print -quit)"
-          if [ -z "$archive" ]; then
-            echo "::error::ecc-sizer-linux-x64.tar.gz was not in the downloaded artifact"
-            exit 1
-          fi
-          tar -xzf "$archive" -C "$install_root"
-
-          sizer_root="$(find "$install_root" -type f -path '*/src/sizer_os.tcl' -printf '%h\n' | sed 's#/src$##' | head -n 1)"
-          if [ -z "$sizer_root" ] || [ ! -x "${sizer_root}/bin/Sizer" ]; then
-            echo "::error::Downloaded ecc-sizer artifact is missing bin/Sizer or src/sizer_os.tcl"
-            exit 1
-          fi
-
-          echo "${sizer_root}/bin" >> "$GITHUB_PATH"
-          echo "CHIPCOMPILER_ECC_SIZER_ROOT=${sizer_root}" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/ecc-sizer"
+          tar -xzf ecc-sizer.tar.gz -C "$RUNNER_TEMP/ecc-sizer"
+          echo "$RUNNER_TEMP/ecc-sizer/bin" >> "$GITHUB_PATH"
+          echo "CHIPCOMPILER_ECC_SIZER_ROOT=$RUNNER_TEMP/ecc-sizer" >> "$GITHUB_ENV"
 
       - name: Verify Sizer
         run: |
@@ -221,6 +198,44 @@ jobs:
           name: icsprout55-pdk
           path: icsprout55-pdk.tar.gz
 
+  sizer:
+    name: Fetch Sizer
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download ecc-sizer CI artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          run_id="$(
+            gh api "repos/openecos-projects/ecc-sizer/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=20" \
+              --jq '[.workflow_runs[] | select(.conclusion == "success") | .id][0] // empty'
+          )"
+          if [ -z "$run_id" ]; then
+            echo "::error::No successful ecc-sizer CI artifact found on main"
+            exit 1
+          fi
+
+          gh run download "$run_id" \
+            --repo openecos-projects/ecc-sizer \
+            --name ecc-sizer-linux-x64 \
+            --dir .
+
+          tar -xzf ecc-sizer-linux-x64.tar.gz
+          sizer_root="$(find . -type f -path '*/src/sizer_os.tcl' -printf '%h\n' | sed 's#/src$##' | head -n 1)"
+          if [ -z "$sizer_root" ] || [ ! -x "${sizer_root}/bin/Sizer" ]; then
+            echo "::error::Downloaded ecc-sizer artifact is missing bin/Sizer or src/sizer_os.tcl"
+            exit 1
+          fi
+          tar -czf ecc-sizer.tar.gz -C "$sizer_root" .
+
+      - name: Upload Sizer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecc-sizer
+          path: ecc-sizer.tar.gz
+
   e2e-designs:
     name: List e2e designs
     runs-on: ubuntu-latest
@@ -236,21 +251,28 @@ jobs:
       - name: List designs
         id: list
         run: |
-          # xtea disabled for now: real run shows hold WNS < 0, which would
-          # keep its strict signoff gates red until the design/flow is tuned.
+          # xtea disabled everywhere for now: real run shows hold WNS < 0,
+          # which would keep its strict signoff gates red until tuned.
+          # aes is nightly-only: its ~50min flow would dominate PR feedback.
+          excludes=(xtea)
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            excludes+=(aes)
+          fi
           designs="$(find designs -mindepth 2 -maxdepth 2 -name ecc.toml -printf '%h\n' \
-            | xargs -n1 basename | grep -vx xtea | jq -R . | jq -cs .)"
+            | xargs -n1 basename | grep -vxFf <(printf '%s\n' "${excludes[@]}") \
+            | jq -R . | jq -cs .)"
           echo "designs=$designs" >> "$GITHUB_OUTPUT"
 
   e2e-packaged-flow:
     name: E2E Packaged Flow (${{ matrix.design }})
-    needs: [build-pyinstaller, e2e-designs, pdk]
+    needs: [build-pyinstaller, e2e-designs, pdk, sizer]
     strategy:
       fail-fast: false
       matrix:
         design: ${{ fromJSON(needs.e2e-designs.outputs.designs) }}
+    # Bare ubuntu-latest (not the manylinux container): also proves the
+    # manylinux-built bundle runs on a current distro.
     runs-on: ubuntu-latest
-    container: quay.io/pypa/manylinux_2_34_x86_64
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -291,51 +313,21 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # gh is needed by Setup Sizer; setup-python-deps normally brings it,
-      # but the e2e job skips that step (csv_gates is disabled with xtea).
-      - name: Install gh
-        run: |
-          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
-          dnf install -y gh
-
       - name: Setup Sizer
-        env:
-          GH_TOKEN: ${{ github.token }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-sizer
+
+      - name: Extract Sizer
         run: |
-          set -euo pipefail
-
-          run_id="$(
-            gh api "repos/openecos-projects/ecc-sizer/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=20" \
-              --jq '[.workflow_runs[] | select(.conclusion == "success") | .id][0] // empty'
-          )"
-          if [ -z "$run_id" ]; then
-            echo "::error::No successful ecc-sizer CI artifact found on main"
-            exit 1
-          fi
-
-          install_root="${RUNNER_TEMP}/ecc-sizer"
-          mkdir -p "$install_root"
-          gh run download "$run_id" \
-            --repo openecos-projects/ecc-sizer \
-            --name ecc-sizer-linux-x64 \
-            --dir "$install_root"
-
-          archive="$(find "$install_root" -name 'ecc-sizer-linux-x64.tar.gz' -print -quit)"
-          tar -xzf "$archive" -C "$install_root"
-
-          sizer_root="$(find "$install_root" -type f -path '*/src/sizer_os.tcl' -printf '%h\n' | sed 's#/src$##' | head -n 1)"
-          if [ -z "$sizer_root" ] || [ ! -x "${sizer_root}/bin/Sizer" ]; then
-            echo "::error::Downloaded ecc-sizer artifact is missing bin/Sizer or src/sizer_os.tcl"
-            exit 1
-          fi
-
-          echo "${sizer_root}/bin" >> "$GITHUB_PATH"
-          echo "CHIPCOMPILER_ECC_SIZER_ROOT=${sizer_root}" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/ecc-sizer"
+          tar -xzf ecc-sizer.tar.gz -C "$RUNNER_TEMP/ecc-sizer"
+          echo "$RUNNER_TEMP/ecc-sizer/bin" >> "$GITHUB_PATH"
+          echo "CHIPCOMPILER_ECC_SIZER_ROOT=$RUNNER_TEMP/ecc-sizer" >> "$GITHUB_ENV"
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v19
         with:
-          init: none
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run design flows
@@ -345,9 +337,6 @@ jobs:
             --designs-dir designs \
             --design "${{ matrix.design }}" \
             --out-root "$RUNNER_TEMP/e2e"
-
-      - name: Trust GitHub workspace
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Lit check flow artifacts
         run: |
