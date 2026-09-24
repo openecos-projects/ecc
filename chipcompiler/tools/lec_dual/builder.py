@@ -22,16 +22,16 @@ def build_engine_steps(workspace: Workspace, step: LecDualStep) -> dict:
     The gate/golden paths come from the aggregate step's already-resolved
     inputs, so each engine consumes exactly what the ledger step consumed.
     """
-    built = {}
-    for engine in LECEngineEnum.DUAL.spawn_engines:
-        built[engine.value] = lec_engine_module(engine).build_step(
+    return {
+        engine.value: lec_engine_module(engine).build_step(
             workspace=workspace,
             step_name=step.name,
             input_def=None,
             input_verilog=step.input.gate_verilog,
             input_db=step.input.golden_verilog,
         )
-    return built
+        for engine in LECEngineEnum.DUAL.spawn_engines
+    }
 
 
 def build_step(
