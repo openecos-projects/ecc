@@ -46,7 +46,7 @@
     };
 
     # kepler-formal, the GPL-3.0-only LEC engine for the lec/postRouteLec
-    # steps: nix-eda's packaging with src pointed at the Emin017 fork.
+    # steps: nix-eda's packaging with src pointed at the openecos fork.
     # Built from source for local development only: ECOS ships Apache-2.0
     # and does not redistribute kepler-formal binaries, so the derivation
     # stays on the developer's machine (no distribution, no GPL conveyance
@@ -59,16 +59,16 @@
       nix-eda,
       system,
     }: nix-eda.packages.${system}.kepler-formal.overrideAttrs (old: {
-      version = "0-unstable-2026-09-22";
+      version = "0-unstable-2026-09-24";
       src = fetchgit {
-        url = "https://github.com/Emin017/kepler-formal";
-        rev = "c2e6a070bb32a4035d3e672776695403cd9781b0";
-        hash = "sha256-mcUeZVaklQv/E0tkxCjh4Sb8jazu6pA+ovqhz0r2mOE=";
+        url = "https://github.com/openecos-projects/kepler-formal";
+        rev = "d4d896705065f8a6b4457745dd25ffccfa83c301";
+        hash = "sha256-zkOmBTBMkrZPLaZv2o1ZrPD4lFP9w3u8hoIOnoVGAoY=";
         fetchSubmodules = true;
       };
       meta = old.meta // {
         description = "Equivalence checking engine (GPL-3.0-only, local dev build)";
-        homepage = "https://github.com/Emin017/kepler-formal";
+        homepage = "https://github.com/openecos-projects/kepler-formal";
         license = lib.licenses.gpl3Only;
       };
     });
