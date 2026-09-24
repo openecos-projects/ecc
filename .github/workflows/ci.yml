@@ -346,6 +346,9 @@ jobs:
             --design "${{ matrix.design }}" \
             --out-root "$RUNNER_TEMP/e2e"
 
+      - name: Trust GitHub workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Lit check flow artifacts
         run: |
           ECC_FLOW_WORKSPACES="$RUNNER_TEMP/e2e" \
