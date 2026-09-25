@@ -54,6 +54,7 @@ class CandidateResumeRequest:
     context_sha256: str
     parameter_card_sha256: str
     seed: int
+    parent_candidate_root_ref: str | None = None
 
 
 _FIELD_ALIASES = {

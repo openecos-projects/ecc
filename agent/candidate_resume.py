@@ -30,6 +30,7 @@ from .workspace_api import (
     _prepare_candidate_rerun,
     _reapply_candidate_input,
     _required_file_sha256,
+    _validate_parent_candidate_root_ref,
     _workspace_state_sha256,
     candidate_operation_workspace_id,
     run_candidate_steps_isolated,
@@ -67,9 +68,7 @@ def _candidate_resume(api, session, request: CandidateResumeRequest, observer) -
         # candidate workspace without holding the source lock.
         candidate_workspace, manifest, parent = api._with_workspace_lock(
             request.workspace_id,
-            lambda locked: _load_candidate_resume(
-                api.ecc_api, locked.workspace, request.candidate_id
-            ),
+            lambda locked: _load_candidate_resume(api.ecc_api, locked.workspace, request),
         )
         flow = api._build_flow(candidate_workspace, create_step_workspaces=False)
         create_step_workspaces = getattr(flow, "create_step_workspaces", None)
@@ -156,6 +155,8 @@ def _validate_candidate_resume_request(request: CandidateResumeRequest) -> None:
         or re.fullmatch(r"sha256:[0-9a-f]{64}", request.context_sha256) is None
     ):
         raise RuntimeApiError("invalid_request", "candidate resume context_sha256 is invalid")
+    if request.parent_candidate_root_ref is not None:
+        _validate_parent_candidate_root_ref(request.parent_candidate_root_ref)
     if (
         not isinstance(request.parameter_card_sha256, str)
         or re.fullmatch(r"sha256:[0-9a-f]{64}", request.parameter_card_sha256) is None
@@ -178,9 +179,9 @@ def _candidate_resume_steps(flow, target_step: str) -> list:
     raise RuntimeApiError("command_failed", "failed candidate has no resumable step")
 
 
-def _load_candidate_resume(ecc_api, workspace, candidate_id: str):
+def _load_candidate_resume(ecc_api, workspace, request: CandidateResumeRequest):
     workspace_root = _parent_workspace_root(workspace)
-    candidate_root_ref = f".agent/candidates/{validate_candidate_id(candidate_id)}"
+    candidate_root_ref = f".agent/candidates/{validate_candidate_id(request.candidate_id)}"
     candidate_root = workspace_root / candidate_root_ref
     if (
         candidate_root.is_symlink()
@@ -193,15 +194,91 @@ def _load_candidate_resume(ecc_api, workspace, candidate_id: str):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise RuntimeApiError("command_failed", "candidate resume manifest is invalid") from exc
-    _validate_candidate_resume_manifest(
-        workspace_root, candidate_root, candidate_root_ref, manifest
-    )
-    parent = _candidate_parent_binding(workspace_root, manifest.get("parent_candidate_root_ref"))
-    _validate_candidate_resume_parent(manifest, parent)
     candidate_workspace = ecc_api._load_workspace(str(candidate_root))
     if Path(candidate_workspace.directory).resolve() != candidate_root:
         raise RuntimeApiError("command_failed", "candidate resume workspace escaped its root")
+    if isinstance(manifest, dict) and manifest.get("candidate_id") != request.candidate_id:
+        parent = _candidate_parent_binding(workspace_root, request.parent_candidate_root_ref)
+        manifest = _interrupted_candidate_resume_manifest(
+            candidate_root, candidate_root_ref, parent, request
+        )
+    else:
+        parent = _candidate_parent_binding(
+            workspace_root, manifest.get("parent_candidate_root_ref")
+        )
+    _validate_candidate_resume_manifest(
+        workspace_root, candidate_root, candidate_root_ref, manifest
+    )
+    _validate_candidate_resume_parent(manifest, parent)
     return candidate_workspace, manifest, parent
+
+
+def _interrupted_candidate_resume_manifest(
+    candidate_root: Path,
+    candidate_root_ref: str,
+    parent: dict,
+    request: CandidateResumeRequest,
+) -> dict:
+    analysis = candidate_root / "analysis"
+    materialization_path = analysis / "candidate_materialization.v1.json"
+    input_binding_path = analysis / "candidate_input_binding.v1.json"
+    try:
+        materialization = json.loads(materialization_path.read_text(encoding="utf-8"))
+        input_binding = json.loads(input_binding_path.read_text(encoding="utf-8"))
+        flow = json.loads((candidate_root / "home" / "flow.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeApiError(
+            "command_failed", "interrupted candidate resume evidence is invalid"
+        ) from exc
+    target_step = materialization.get("target_step") if isinstance(materialization, dict) else None
+    steps = flow.get("steps") if isinstance(flow, dict) else None
+    if (
+        materialization.get("schema") != "ecc.workspace.candidate_materialization.v1"
+        or materialization.get("candidate_id") != request.candidate_id
+        or input_binding.get("schema") != "ecc.workspace.candidate_input_binding.v1"
+        or input_binding.get("candidate_id") != request.candidate_id
+        or input_binding.get("target_step") != target_step
+        or not isinstance(target_step, str)
+        or not isinstance(steps, list)
+        or not any(isinstance(step, dict) and step.get("state") != "Success" for step in steps)
+    ):
+        raise RuntimeApiError("command_failed", "interrupted candidate resume evidence is invalid")
+    artifacts = {
+        "candidate_materialization": {
+            "ref": "analysis/candidate_materialization.v1.json",
+            "sha256": _required_file_sha256(materialization_path, "resume materialization"),
+        },
+        "candidate_input_binding": {
+            "ref": "analysis/candidate_input_binding.v1.json",
+            "sha256": _required_file_sha256(input_binding_path, "resume input binding"),
+        },
+    }
+    mode_path = candidate_root / FLOORPLAN_MODE_REF
+    if mode_path.is_file():
+        artifacts["floorplan_mode"] = {
+            "ref": FLOORPLAN_MODE_REF,
+            "sha256": _required_file_sha256(mode_path, "resume floorplan mode"),
+        }
+    return {
+        "schema": _CANDIDATE_WORKSPACE_SCHEMA,
+        "schema_version": 1,
+        "candidate_id": request.candidate_id,
+        "candidate_root_ref": candidate_root_ref,
+        "terminal_state": "failed",
+        "target_step": target_step,
+        "end_step": "Harden",
+        "execution_scope": "full_flow",
+        "candidate_flow_sha256": _required_file_sha256(
+            candidate_root / "home" / "flow.json", "resume flow"
+        ),
+        "candidate_state_sha256": _workspace_state_sha256(candidate_root),
+        "parent_candidate_root_ref": parent["root_ref"],
+        "parent_manifest_ref": parent["manifest_ref"],
+        "parent_manifest_sha256": parent["manifest_sha256"],
+        "parent_flow_sha256": parent["flow_sha256"],
+        "parent_state_sha256": parent["state_sha256"],
+        "artifacts": artifacts,
+    }
 
 
 def _validate_candidate_resume_manifest(

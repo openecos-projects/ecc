@@ -6,6 +6,7 @@ import pytest
 
 from agent.candidate_resume import (
     _candidate_resume_steps,
+    _interrupted_candidate_resume_manifest,
     _validate_candidate_resume_binding,
     _validate_candidate_resume_manifest,
 )
@@ -188,6 +189,84 @@ def test_candidate_resume_manifest_rejects_illegal_state_missing_receipt_and_sta
     config.write_text('{"random_seed": 18}', encoding="utf-8")
     with pytest.raises(RuntimeApiError, match="manifest binding"):
         _validate_candidate_resume_manifest(tmp_path, candidate, candidate_ref, manifest)
+
+
+def test_interrupted_candidate_resume_rebinds_copied_parent_manifest(tmp_path) -> None:
+    candidate_id = "candidate-child"
+    candidate_ref = f".agent/candidates/{candidate_id}"
+    candidate = tmp_path / candidate_ref
+    analysis = candidate / "analysis"
+    home = candidate / "home"
+    config = candidate / "config"
+    analysis.mkdir(parents=True)
+    home.mkdir()
+    config.mkdir()
+    (home / "flow.json").write_text(
+        json.dumps(
+            {
+                "steps": [
+                    {"name": "place", "tool": "dreamplace", "state": "Success"},
+                    {"name": "CTS", "tool": "ecc", "state": "Ongoing"},
+                    {"name": "Harden", "tool": "ecc", "state": "Unstart"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    (config / "dreamplace.json").write_text('{"random_seed": 17}', encoding="utf-8")
+    materialization = analysis / "candidate_materialization.v1.json"
+    materialization.write_text(
+        json.dumps(
+            {
+                "schema": "ecc.workspace.candidate_materialization.v1",
+                "candidate_id": candidate_id,
+                "target_step": "place",
+            }
+        ),
+        encoding="utf-8",
+    )
+    input_binding = analysis / "candidate_input_binding.v1.json"
+    input_binding.write_text(
+        json.dumps(
+            {
+                "schema": "ecc.workspace.candidate_input_binding.v1",
+                "candidate_id": candidate_id,
+                "target_step": "place",
+            }
+        ),
+        encoding="utf-8",
+    )
+    parent_ref = ".agent/candidates/candidate-parent"
+    parent = {
+        "root_ref": parent_ref,
+        "manifest_ref": f"{parent_ref}/analysis/candidate_workspace.v1.json",
+        "manifest_sha256": "sha256:" + "1" * 64,
+        "flow_sha256": "sha256:" + "2" * 64,
+        "state_sha256": "sha256:" + "3" * 64,
+    }
+    manifest = _interrupted_candidate_resume_manifest(
+        candidate,
+        candidate_ref,
+        parent,
+        CandidateResumeRequest(
+            workspace_id="workspace-1",
+            candidate_id=candidate_id,
+            idempotency_key="episode-1.resume-1",
+            context_sha256=CONTEXT_SHA256,
+            parameter_card_sha256=CONTEXT_SHA256,
+            seed=17,
+            parent_candidate_root_ref=parent_ref,
+        ),
+    )
+
+    assert manifest["candidate_id"] == candidate_id
+    assert manifest["terminal_state"] == "failed"
+    assert manifest["parent_candidate_root_ref"] == parent_ref
+    assert set(manifest["artifacts"]) == {
+        "candidate_input_binding",
+        "candidate_materialization",
+    }
+    _validate_candidate_resume_manifest(tmp_path, candidate, candidate_ref, manifest)
 
 
 def test_candidate_resume_restores_drifted_target_config_before_strict_validation(
