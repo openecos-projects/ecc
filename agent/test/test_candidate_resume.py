@@ -323,6 +323,87 @@ def test_candidate_resume_restores_drifted_target_config_before_strict_validatio
     assert json.loads(config.read_text(encoding="utf-8"))["target_density"] == 0.6
 
 
+def _padding_resume_binding(monkeypatch, tmp_path, *, mode_value):
+    tech = tmp_path / "pdk" / "tech.lef"
+    tech.parent.mkdir(parents=True)
+    tech.write_text(
+        "UNITS\n  DATABASE MICRONS 1000 ;\nEND UNITS\nSITE core7\n  SIZE 0.2 BY 1.4 ;\nEND core7\n",
+        encoding="utf-8",
+    )
+    config = tmp_path / "config" / "dreamplace.json"
+    config.parent.mkdir()
+    config.write_text('{"random_seed": 17, "cell_padding_x": 200}', encoding="utf-8")
+    workspace = SimpleNamespace(
+        directory=tmp_path,
+        config={"dreamplace": config},
+        pdk=SimpleNamespace(tech=tech, site_core="core7"),
+        flow=SimpleNamespace(data={"steps": [{"name": "place", "tool": "dreamplace"}]}),
+    )
+    monkeypatch.setattr(
+        "agent.candidate_resume.validate_floorplan_mode_resume",
+        lambda *_args: {
+            "target_step": "place",
+            "patch": [{"knob_id": "place.cell_padding_x", "value": mode_value}],
+        },
+    )
+    monkeypatch.setattr(
+        "agent.candidate_resume.reapply_materialized_candidate_config",
+        lambda *_args: None,
+    )
+    monkeypatch.setattr(
+        "agent.candidate_resume.validate_candidate_materialization_receipt",
+        lambda *_args: {
+            "candidate_id": "candidate-1",
+            "patch": [{"knob_id": "place.cell_padding_x", "value": 200}],
+        },
+    )
+    monkeypatch.setattr("agent.candidate_resume._reapply_candidate_input", lambda *_args: None)
+    return workspace, {"target_step": "place", "artifacts": {}}
+
+
+def test_candidate_resume_accepts_surface_floorplan_patch_matching_written_dbu(
+    monkeypatch, tmp_path
+) -> None:
+    workspace, manifest = _padding_resume_binding(monkeypatch, tmp_path, mode_value=1)
+
+    patch = _validate_candidate_resume_binding(
+        workspace,
+        SimpleNamespace(),
+        manifest,
+        CandidateResumeRequest(
+            workspace_id="workspace-1",
+            candidate_id="candidate-1",
+            idempotency_key="episode-1.resume-padding",
+            context_sha256=CONTEXT_SHA256,
+            parameter_card_sha256=CONTEXT_SHA256,
+            seed=17,
+        ),
+    )
+
+    assert patch == [{"knob_id": "place.cell_padding_x", "value": 1}]
+
+
+def test_candidate_resume_rejects_floorplan_patch_with_different_written_value(
+    monkeypatch, tmp_path
+) -> None:
+    workspace, manifest = _padding_resume_binding(monkeypatch, tmp_path, mode_value=2)
+
+    with pytest.raises(RuntimeApiError, match="floorplan mode patch is invalid"):
+        _validate_candidate_resume_binding(
+            workspace,
+            SimpleNamespace(),
+            manifest,
+            CandidateResumeRequest(
+                workspace_id="workspace-1",
+                candidate_id="candidate-1",
+                idempotency_key="episode-1.resume-padding-mismatch",
+                context_sha256=CONTEXT_SHA256,
+                parameter_card_sha256=CONTEXT_SHA256,
+                seed=17,
+            ),
+        )
+
+
 class _EccApi:
     def __init__(self, workspace):
         self.session = SimpleNamespace(workspace=workspace, db_handle=None)

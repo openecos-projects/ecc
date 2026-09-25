@@ -423,7 +423,17 @@ def _validated_candidate_resume_patch(
         workspace, manifest, request, materialization["patch"], target_step
     )
     if mode is not None and mode["patch"] != requested_patch:
-        raise RuntimeApiError("command_failed", "candidate resume floorplan mode patch is invalid")
+        try:
+            mode_written_patch = candidate_written_patch(workspace, target_step, mode["patch"])
+        except ValueError as exc:
+            raise RuntimeApiError(
+                "command_failed", "candidate resume floorplan mode patch is invalid"
+            ) from exc
+        if mode_written_patch != materialization["patch"]:
+            raise RuntimeApiError(
+                "command_failed", "candidate resume floorplan mode patch is invalid"
+            )
+        requested_patch = mode["patch"]
     try:
         written_patch = candidate_written_patch(workspace, target_step, requested_patch)
     except ValueError as exc:
