@@ -419,6 +419,7 @@ def _validated_candidate_resume_patch(
         raise RuntimeApiError("command_failed", "candidate resume seed binding is invalid")
     if mode_only:
         return []
+    requested_is_written = "parameter_application_receipt" not in manifest["artifacts"]
     requested_patch = _candidate_resume_requested_patch(
         workspace, manifest, request, materialization["patch"], target_step
     )
@@ -434,12 +435,16 @@ def _validated_candidate_resume_patch(
                 "command_failed", "candidate resume floorplan mode patch is invalid"
             )
         requested_patch = mode["patch"]
-    try:
-        written_patch = candidate_written_patch(workspace, target_step, requested_patch)
-    except ValueError as exc:
-        raise RuntimeApiError(
-            "command_failed", "candidate resume requested patch binding is invalid"
-        ) from exc
+        requested_is_written = False
+    if requested_is_written:
+        written_patch = requested_patch
+    else:
+        try:
+            written_patch = candidate_written_patch(workspace, target_step, requested_patch)
+        except ValueError as exc:
+            raise RuntimeApiError(
+                "command_failed", "candidate resume requested patch binding is invalid"
+            ) from exc
     if written_patch != materialization["patch"]:
         raise RuntimeApiError(
             "command_failed", "candidate resume requested patch binding is invalid"

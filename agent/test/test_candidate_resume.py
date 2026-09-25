@@ -404,6 +404,76 @@ def test_candidate_resume_rejects_floorplan_patch_with_different_written_value(
         )
 
 
+def test_candidate_resume_accepts_written_materialized_patch_without_receipt(
+    monkeypatch, tmp_path
+) -> None:
+    workspace, manifest = _padding_resume_binding(monkeypatch, tmp_path, mode_value=1)
+    monkeypatch.setattr(
+        "agent.candidate_resume.validate_floorplan_mode_resume", lambda *_args: None
+    )
+
+    patch = _validate_candidate_resume_binding(
+        workspace,
+        SimpleNamespace(),
+        manifest,
+        CandidateResumeRequest(
+            workspace_id="workspace-1",
+            candidate_id="candidate-1",
+            idempotency_key="episode-1.resume-written-padding",
+            context_sha256=CONTEXT_SHA256,
+            parameter_card_sha256=CONTEXT_SHA256,
+            seed=17,
+        ),
+    )
+
+    assert patch == [{"knob_id": "place.cell_padding_x", "value": 200}]
+
+
+def test_candidate_resume_rejects_receipt_surface_patch_with_different_written_value(
+    monkeypatch, tmp_path
+) -> None:
+    workspace, manifest = _padding_resume_binding(monkeypatch, tmp_path, mode_value=1)
+    monkeypatch.setattr(
+        "agent.candidate_resume.validate_floorplan_mode_resume", lambda *_args: None
+    )
+    receipt = {
+        "context": {
+            "context_sha256": CONTEXT_SHA256,
+            "parameter_card_sha256": CONTEXT_SHA256,
+            "seed": 17,
+            "run_id": "candidate-1",
+            "stage": "place",
+        },
+        "requested": {"knob_id": "place.cell_padding_x", "value": 3},
+    }
+    receipt_path = tmp_path / "analysis" / "parameter_application_receipt.v3.json"
+    receipt_path.parent.mkdir()
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    manifest = {
+        "target_step": "place",
+        "artifacts": {
+            "parameter_application_receipt": {
+                "ref": "analysis/parameter_application_receipt.v3.json"
+            }
+        },
+    }
+
+    with pytest.raises(RuntimeApiError, match="requested patch binding is invalid"):
+        _validate_candidate_resume_binding(
+            workspace,
+            SimpleNamespace(),
+            manifest,
+            CandidateResumeRequest(
+                workspace_id="workspace-1",
+                candidate_id="candidate-1",
+                idempotency_key="episode-1.resume-receipt-mismatch",
+                context_sha256=CONTEXT_SHA256,
+                parameter_card_sha256=CONTEXT_SHA256,
+                seed=17,
+            ),
+        )
+
+
 class _EccApi:
     def __init__(self, workspace):
         self.session = SimpleNamespace(workspace=workspace, db_handle=None)
