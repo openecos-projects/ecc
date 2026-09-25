@@ -57,6 +57,84 @@ def test_snapshot_indexes_sta_corner_artifacts(tmp_path):
     assert all(artifact["availability"] == "available" for artifact in timing_artifacts)
 
 
+def test_snapshot_indexes_step_subflow_artifact(tmp_path):
+    workspace = _sta_workspace(tmp_path)
+    root = Path(workspace.directory)
+    step_dir = root / "sta_ecc"
+    step_dir.mkdir(parents=True)
+    (step_dir / "subflow.json").write_text(
+        json.dumps(
+            {
+                "path": str(step_dir / "subflow.json"),
+                "steps": [
+                    {
+                        "name": "run sta",
+                        "state": "Success",
+                        "runtime": "0:00:01",
+                        "peak memory (mb)": 12.5,
+                        "info": "",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    snapshot = create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
+
+    subflow_artifacts = [
+        artifact for artifact in snapshot["artifacts"] if artifact["kind"] == "subflow"
+    ]
+    assert [artifact["reference"] for artifact in subflow_artifacts] == ["sta_ecc/subflow.json"]
+    assert subflow_artifacts[0]["stepId"] == "sta"
+    assert subflow_artifacts[0]["availability"] == "available"
+
+
+def test_snapshot_indexes_lec_reports_and_rcx_feature_facts(tmp_path):
+    root = tmp_path / "workspace"
+    (root / "home").mkdir(parents=True)
+    workspace = SimpleNamespace(
+        directory=root,
+        flow=SimpleNamespace(
+            data={
+                "steps": [
+                    {"name": "postRouteLec", "tool": "yosys_lec", "state": "Success"},
+                    {"name": "RCX", "tool": "ecc", "state": "Success"},
+                ]
+            }
+        ),
+        home=SimpleNamespace(data={}),
+        parameters=SimpleNamespace(data={"design": "gcd"}),
+        design=SimpleNamespace(name="gcd"),
+    )
+    lec_report = root / "postRouteLec_yosys_lec" / "report"
+    lec_report.mkdir(parents=True)
+    (lec_report / "run_lec_status.rpt").write_text("status", encoding="utf-8")
+    (lec_report / "equiv_status.rpt").write_text("equiv", encoding="utf-8")
+    rcx_feature = root / "RCX_ecc" / "feature"
+    rcx_feature.mkdir(parents=True)
+    (rcx_feature / "RCX.step.json").write_text('{"rcx": {}}', encoding="utf-8")
+
+    snapshot = create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
+
+    lec_reports = [
+        artifact["reference"]
+        for artifact in snapshot["artifacts"]
+        if artifact["kind"] == "report_text" and artifact["stepId"] == "postRouteLec"
+    ]
+    assert lec_reports == [
+        "postRouteLec_yosys_lec/report/run_lec_status.rpt",
+        "postRouteLec_yosys_lec/report/equiv_status.rpt",
+    ]
+    rcx_facts = [
+        artifact
+        for artifact in snapshot["artifacts"]
+        if artifact["kind"] == "rcx_feature_facts"
+    ]
+    assert [artifact["reference"] for artifact in rcx_facts] == ["RCX_ecc/feature/RCX.step.json"]
+    assert rcx_facts[0]["availability"] == "available"
+
+
 def test_snapshot_limits_sta_corner_artifacts_deterministically(tmp_path):
     workspace = _sta_workspace(tmp_path)
     root = Path(workspace.directory)

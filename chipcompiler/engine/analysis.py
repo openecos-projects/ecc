@@ -112,6 +112,16 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
                     root=root,
                 )
             )
+        if step_id.lower() == "rcx":
+            artifacts.append(
+                _artifact_ref(
+                    step_dir / "feature" / f"{step_id}.step.json",
+                    workspace_id=workspace_id,
+                    step_id=step_id,
+                    kind="rcx_feature_facts",
+                    root=root,
+                )
+            )
         if design:
             artifacts.append(
                 _artifact_ref(
@@ -142,9 +152,20 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
                 root=root,
             )
         )
+        artifacts.append(
+            _artifact_ref(
+                step_dir / "subflow.json",
+                workspace_id=workspace_id,
+                step_id=step_id,
+                kind="subflow",
+                root=root,
+            )
+        )
         report_names = (
             (f"{step_id}_stat.json", f"{step_id}_check.rpt")
             if tool_id.lower() == "yosys"
+            else ("run_lec_status.rpt", "equiv_status.rpt")
+            if tool_id.lower() == "yosys_lec"
             else (f"{step_id}.db.rpt", f"{step_id}.rpt")
         )
         for report_name in report_names:

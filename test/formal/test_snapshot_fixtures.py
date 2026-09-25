@@ -134,6 +134,25 @@ def build_fixture_workspace(root: Path) -> SimpleNamespace:
             ],
         },
     )
+    for step_directory, subflow_step in (
+        ("Synthesis_yosys", "run yosys"),
+        ("sta_ecc", "run sta"),
+    ):
+        _write_json(
+            root / step_directory / "subflow.json",
+            {
+                "path": str(root / step_directory / "subflow.json"),
+                "steps": [
+                    {
+                        "name": subflow_step,
+                        "state": "Success",
+                        "runtime": "0:00:01",
+                        "peak memory (mb)": 12.5,
+                        "info": {},
+                    },
+                ],
+            },
+        )
     _write_json(
         root / "home" / "checklist.json",
         {
