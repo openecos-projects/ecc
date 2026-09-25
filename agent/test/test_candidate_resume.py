@@ -11,7 +11,10 @@ from agent.candidate_resume import (
     _validate_candidate_resume_manifest,
 )
 from agent.data.candidate_artifacts import sha256_path
-from agent.data.candidate_materialization import materialize_candidate_config
+from agent.data.candidate_materialization import (
+    candidate_written_patch,
+    materialize_candidate_config,
+)
 from agent.requests import CandidateResumeRequest
 from agent.workspace_api import FlowAgentRuntimeApi, _workspace_state_sha256
 from chipcompiler.runtime.operations import RuntimeOperationManager
@@ -426,7 +429,10 @@ def test_candidate_resume_accepts_written_materialized_patch_without_receipt(
         ),
     )
 
-    assert patch == [{"knob_id": "place.cell_padding_x", "value": 200}]
+    assert patch == [{"knob_id": "place.cell_padding_x", "value": 1}]
+    assert candidate_written_patch(workspace, "place", patch) == [
+        {"knob_id": "place.cell_padding_x", "value": 200}
+    ]
 
 
 def test_candidate_resume_rejects_receipt_surface_patch_with_different_written_value(

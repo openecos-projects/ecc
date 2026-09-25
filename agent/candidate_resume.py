@@ -13,6 +13,7 @@ from chipcompiler.utility.path import path_is_within
 from .data.candidate_artifacts import validate_candidate_id
 from .data.candidate_input_binding import reapply_candidate_input_binding
 from .data.candidate_materialization import (
+    _site_width_dbu,
     candidate_written_patch,
     reapply_materialized_candidate_config,
     validate_candidate_materialization_receipt,
@@ -423,6 +424,11 @@ def _validated_candidate_resume_patch(
     requested_patch = _candidate_resume_requested_patch(
         workspace, manifest, request, materialization["patch"], target_step
     )
+    if requested_is_written:
+        # Without an application receipt the only recorded request evidence is
+        # the materialized written patch; recover the surface patch the
+        # proposal asked for so the receipt keeps the surface request domain.
+        requested_patch = _candidate_surface_patch(workspace, target_step, requested_patch)
     if mode is not None and mode["patch"] != requested_patch:
         try:
             mode_written_patch = candidate_written_patch(workspace, target_step, mode["patch"])
@@ -435,21 +441,31 @@ def _validated_candidate_resume_patch(
                 "command_failed", "candidate resume floorplan mode patch is invalid"
             )
         requested_patch = mode["patch"]
-        requested_is_written = False
-    if requested_is_written:
-        written_patch = requested_patch
-    else:
-        try:
-            written_patch = candidate_written_patch(workspace, target_step, requested_patch)
-        except ValueError as exc:
-            raise RuntimeApiError(
-                "command_failed", "candidate resume requested patch binding is invalid"
-            ) from exc
+    try:
+        written_patch = candidate_written_patch(workspace, target_step, requested_patch)
+    except ValueError as exc:
+        raise RuntimeApiError(
+            "command_failed", "candidate resume requested patch binding is invalid"
+        ) from exc
     if written_patch != materialization["patch"]:
         raise RuntimeApiError(
             "command_failed", "candidate resume requested patch binding is invalid"
         )
     return requested_patch
+
+
+def _candidate_surface_patch(workspace, target_step: str, written_patch: list[dict]) -> list[dict]:
+    """Invert candidate_written_patch for a resumed written-domain patch."""
+    surface = [dict(item) for item in written_patch]
+    if surface[0]["knob_id"] == "place.cell_padding_x":
+        site_width = _site_width_dbu(workspace)
+        value = surface[0]["value"]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value % site_width:
+            raise RuntimeApiError(
+                "command_failed", "candidate resume requested patch binding is invalid"
+            )
+        surface[0]["value"] = int(value // site_width)
+    return surface
 
 
 def _candidate_resume_requested_patch(
