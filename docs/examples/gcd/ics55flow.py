@@ -17,7 +17,9 @@ pdk = get_pdk("ics55")
 parameters = get_design_parameters("ics55", "gcd")
 
 # Create workspace
-# The workspace will be created from scratch, the structure is as follows:
+# This single-source call copies the RTL basename into origin/; it does not
+# create an implicit origin/rtl/ directory. The workspace will be created from
+# scratch with the following structure:
 # gcd_workspace/
 # ├── home/
 # │   ├── flow.json          # Flow state file

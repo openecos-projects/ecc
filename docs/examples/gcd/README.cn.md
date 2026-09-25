@@ -48,7 +48,10 @@ workspace = create_workspace(
 # workspace = load_workspace(directory=workspace_dir)
 ```
 
-工作空间将从零开始创建，结构如下：
+工作空间将从零开始创建，结构如下。这里展示的是上方调用生成的单 RTL
+文件工作空间：`create_workspace` 会将 RTL 文件按 basename 复制到 `origin/`，
+不会隐式创建 `origin/rtl/`。这与 `ecc init` 创建的项目源文件布局不同；项目
+目录仍然包含 `<project>/rtl/`。
 
 ```
 gcd_workspace/
@@ -163,8 +166,8 @@ rtl/utils.v
 - **注释**：使用 `#` 或 `//` 表示整行或行内注释
 - **包含目录**：`+incdir+<路径>` - 将这些目录中的所有文件复制到工作空间
 - **引号路径**：支持包含空格的路径：`"path with spaces/file.v"`
-- **相对/绝对路径**：都支持
-- **嵌套结构**：将文件复制到工作空间时保留目录层次结构
+- **相对/绝对路径**：都支持；绝对源文件路径会按 basename 重新安放，同名文件会消歧
+- **嵌套结构**：保留相对条目中的目录层次；ECC 不会隐式添加 `rtl/` 目录
 
 ### 使用 Filelist 创建工作空间
 
@@ -196,10 +199,11 @@ workspace = create_workspace(
 当你提供 filelist 时，filelist 中引用的文件会被处理如下：
 1. **文件复制**：filelist 中引用的所有文件会自动复制到工作空间
 2. **包含目录**：`+incdir+` 目录中的文件也会被复制
-3. **目录结构**：相对目录结构会被保留
+3. **目录结构**：保留相对条目路径；裸文件名和绝对源文件路径会直接安放在 `origin/` 下
 4. **去重**：同时出现在 filelist 和 `+incdir+` 中的文件只会被复制一次
 
-复制的文件会在 `workspace/origin/` 中组织，保留目录结构：
+复制的文件会按照 filelist 条目路径组织在 `workspace/origin/` 中。随附示例使用
+裸条目 `gcd.v`，因此 RTL 文件直接位于 `origin/` 下：
 ```
 gcd_workspace_with_filelist/
 ├── origin/

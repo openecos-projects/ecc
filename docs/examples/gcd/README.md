@@ -48,7 +48,11 @@ workspace = create_workspace(
 # workspace = load_workspace(directory=workspace_dir)
 ```
 
-The workspace will be created from scratch, the structure is as follows:
+The workspace will be created from scratch, the structure is as follows. This
+is the single-source workspace produced by the call above: `create_workspace`
+copies the RTL basename into `origin/` and does not create an implicit
+`origin/rtl/` directory. This is separate from the project source layout
+created by `ecc init`, which still includes `<project>/rtl/`.
 
 ```
 gcd_workspace/
@@ -163,8 +167,8 @@ rtl/utils.v
 - **Comments**: Use `#` or `//` for full-line or inline comments
 - **Include directories**: `+incdir+<path>` - copies all files in these directories to workspace
 - **Quoted paths**: Support for paths with spaces: `"path with spaces/file.v"`
-- **Relative/absolute paths**: Both are supported
-- **Nested structures**: Directory hierarchy is preserved when files are copied to workspace
+- **Relative/absolute paths**: Both are supported; absolute source paths are rebased to basenames and duplicate basenames are disambiguated
+- **Nested structures**: Directory hierarchy in relative entries is preserved; ECC does not add an implicit `rtl/` directory
 
 ### Creating a Workspace with Filelist
 
@@ -196,10 +200,12 @@ workspace = create_workspace(
 When you provide a filelist, the files referenced in the filelist will be processed as follows:
 1. **File copying**: All files referenced in the filelist are automatically copied to the workspace
 2. **Include directories**: Files in `+incdir+` directories are also copied
-3. **Directory structure**: The relative directory structure is preserved
+3. **Directory structure**: Relative entry paths are preserved; bare filenames and absolute source paths are placed directly under `origin/`
 4. **Deduplication**: Files listed in both filelist and `+incdir+` are copied only once
 
-The copied files will be organized in `workspace/origin/` with preserved directory structure:
+The copied files will be organized in `workspace/origin/` according to their
+filelist entry paths. The bundled example uses the bare entry `gcd.v`, so its
+RTL file is placed directly under `origin/`:
 ```
 gcd_workspace_with_filelist/
 ├── origin/

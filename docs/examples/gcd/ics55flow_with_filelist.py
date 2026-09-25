@@ -80,9 +80,9 @@ parameters = get_design_parameters("ics55", "gcd")
 #
 # When using a filelist:
 # 1. All files referenced in the filelist are copied to workspace/origin/
-# 2. Directory structure is preserved
-# 3. +incdir+ directories are also copied
-# 4. The filelist itself is copied to workspace/origin/
+# 2. Relative entry paths preserve their directory structure
+# 3. Bare and absolute source entries are rebased directly under origin/
+# 4. +incdir+ directories and the filelist itself are also copied
 workspace = create_workspace(
     directory=workspace_dir,
     origin_def="",
