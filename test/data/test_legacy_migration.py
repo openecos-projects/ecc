@@ -121,8 +121,7 @@ def test_legacy_parameters_migrate_on_open(tmp_path, minimal_ics55_pdk_factory, 
     assert loaded.parameters.data["frequency_max"] == 250
     assert loaded.parameters.data["core"]["utilitization"] == 0.55
     assert loaded.parameters.data["pdk_root"] == str(pdk_root.resolve())
-    home_data = json.loads((workspace_dir / "home" / "home.json").read_text())
-    assert home_data["parameters"] == str(config_path)
+    assert not (workspace_dir / "home" / "home.json").exists()
 
 
 def test_both_files_present_toml_wins_json_untouched(

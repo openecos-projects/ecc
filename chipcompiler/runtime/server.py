@@ -20,6 +20,7 @@ BASE_CAPABILITIES = (
 ERROR_CODES = {
     "workspace_session_not_found": -32010,
     "command_failed": -32020,
+    "derived_configs_modified": -32021,
     "invalid_request": -32602,
 }
 

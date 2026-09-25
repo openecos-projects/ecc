@@ -31,9 +31,6 @@ class CompleteFakeApi:
     def close_workspace(self, _request):
         raise AssertionError("unexpected close_workspace call")
 
-    def workspace_home(self, _request):
-        raise AssertionError("unexpected workspace_home call")
-
     def workspace_info(self, _request):
         raise AssertionError("unexpected workspace_info call")
 
@@ -342,18 +339,19 @@ def test_request_validation_errors_map_to_json_rpc_invalid_params():
 
     response = _dispatch(
         server,
-        '{"jsonrpc":"2.0","method":"workspace.home","params":{"directory":"/ws"},"id":5}',
+        '{"jsonrpc":"2.0","method":"workspace.open",'
+        '"params":{"directory":"/ws","extra":true},"id":5}',
     )
 
     assert response["id"] == 5
     assert response["error"]["code"] == -32602
     assert response["error"]["message"] == "invalid_request"
-    assert response["error"]["data"]["message"] == "unknown field: directory"
+    assert response["error"]["data"]["message"] == "unknown field: extra"
 
 
 def test_workspace_session_errors_map_to_json_rpc_runtime_error():
     class FakeApi(CompleteFakeApi):
-        def workspace_home(self, _request):
+        def workspace_info(self, _request):
             raise RuntimeApiError(
                 "workspace_session_not_found",
                 "workspace session not found: missing",
@@ -363,7 +361,8 @@ def test_workspace_session_errors_map_to_json_rpc_runtime_error():
 
     response = _dispatch(
         server,
-        '{"jsonrpc":"2.0","method":"workspace.home","params":{"workspaceId":"missing"},"id":6}',
+        '{"jsonrpc":"2.0","method":"workspace.info",'
+        '"params":{"workspaceId":"missing","step":"STA","id":"metrics"},"id":6}',
     )
 
     assert response["id"] == 6

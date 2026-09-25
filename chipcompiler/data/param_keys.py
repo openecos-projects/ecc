@@ -67,7 +67,7 @@ DIE_AREA_MODE_TO_DIE_BUILDER_MODE: dict[str, str] = {
 
 AGENT_KNOB_MAP: dict[str, AgentKnob] = {
     "design.frequency_max": AgentKnob("design.frequency_mhz"),
-    "floorplan.utilitization": AgentKnob("floorplan.core_util"),
+    "floorplan.utilization": AgentKnob("floorplan.core_util"),
     "floorplan.aspect_ratio": AgentKnob("floorplan.aspect_ratio"),
     "floorplan.die_width": AgentKnob("floorplan.die_builder.die_size.width_micron"),
     "floorplan.die_height": AgentKnob("floorplan.die_builder.die_size.height_micron"),

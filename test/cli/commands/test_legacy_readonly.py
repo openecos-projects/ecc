@@ -27,8 +27,8 @@ def _create_legacy_workspace(project_dir, pdk_root):
     )
     assert workspace is not None
 
-    # Downgrade: long-key parameters.json replaces the TOML config, and
-    # home.json's parameters pointer goes back to the legacy JSON file.
+    # Downgrade: long-key parameters.json replaces the TOML config and an
+    # obsolete home.json is retained to prove read-only commands do not clean it.
     home = os.path.join(run_dir, "home")
     legacy = {
         "PDK": "ics55",
@@ -41,11 +41,8 @@ def _create_legacy_workspace(project_dir, pdk_root):
     with open(os.path.join(home, "parameters.json"), "w") as f:
         json.dump(legacy, f)
     home_json_path = os.path.join(home, "home.json")
-    with open(home_json_path) as f:
-        home_data = json.load(f)
-    home_data["parameters"] = os.path.join(home, "parameters.json")
     with open(home_json_path, "w") as f:
-        json.dump(home_data, f)
+        json.dump({"parameters": os.path.join(home, "parameters.json")}, f)
     return run_dir
 
 
@@ -71,8 +68,7 @@ def test_readonly_commands_never_migrate_legacy_workspace(
 ):
     """status/log/check/config on a legacy workspace rewrite nothing: they
     resolve the managed <project>/<id> path and never touch runs/, so no
-    params.toml appears, the legacy JSON is not deleted, and home.json keeps
-    its legacy pointer byte-identical."""
+    params.toml appears and the legacy JSON/home.json files stay byte-identical."""
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     project_dir = create_cli_project(pdk_root=pdk_root)
     run_dir = _create_legacy_workspace(project_dir, pdk_root)

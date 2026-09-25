@@ -163,11 +163,11 @@ Use the returned `workspaceId` to inspect session state:
 ```json
 {
   "jsonrpc": "2.0",
-  "method": "workspace.home",
+  "method": "workspace.snapshot",
   "params": {
     "workspaceId": "workspace-1"
   },
-  "id": "home-1"
+  "id": "snapshot-1"
 }
 ```
 

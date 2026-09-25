@@ -11,6 +11,12 @@ CHECKLIST_SCHEMA_VERSION = 3
 CHECKLIST_REVISION = "signoff-v1"
 
 
+def workspace_checklist_path(workspace_dir: Path | str | None) -> Path:
+    if workspace_dir is None:
+        raise ValueError("Workspace directory is not set")
+    return Path(workspace_dir) / "home" / "checklist.json"
+
+
 class CheckState(Enum):
     """States retained for tool code that constructs checklist records."""
 

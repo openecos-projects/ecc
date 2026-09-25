@@ -3,6 +3,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+from chipcompiler.data.checklist import workspace_checklist_path
 from chipcompiler.engine import EngineFlow, SignoffPackageOptions
 from chipcompiler.runtime.workspace_api import RuntimeApiError
 from chipcompiler.utility import json_read
@@ -23,7 +24,7 @@ def inspect_signoff_package(workspace) -> dict:
     EngineFlow(workspace).collect_signoff_package(
         SignoffPackageOptions(archive=False, materialize=False, refresh_analysis=True)
     )
-    checklist_path = Path(workspace.directory) / "home" / "checklist.json"
+    checklist_path = workspace_checklist_path(workspace.directory)
     checklist_data = json_read(checklist_path)
     if (
         not isinstance(checklist_data, dict)

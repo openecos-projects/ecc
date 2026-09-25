@@ -83,7 +83,6 @@ def test_workspace_create_maps_camel_case_fields_and_preserves_pdk_json():
             WorkspaceDeriveRequest,
         ),
         ("workspace.close", {"workspaceId": "ws-1"}, WorkspaceCloseRequest),
-        ("workspace.home", {"workspaceId": "ws-1"}, WorkspaceIdRequest),
         ("workspace.refresh_config", {"workspaceId": "ws-1"}, WorkspaceIdRequest),
         ("workspace.reset_flow", {"workspaceId": "ws-1"}, WorkspaceIdRequest),
         (

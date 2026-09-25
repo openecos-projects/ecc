@@ -294,17 +294,26 @@ def test_run_path_selector_registers_and_resumes_existing_external_workspace(
     _existing_workspace(workspace, state="Unstart")
     seen = {"ran": False, "created": False}
 
+    from chipcompiler.engine.rerun import StepRunResult
+
+    def spy_run_resume(flow, *, through=None):
+        seen["ran"] = True
+        return StepRunResult(ok=True, executed=("Synthesis",))
+
     class Flow:
         def __init__(self, workspace):
             self.workspace = workspace
-            self.workspace_steps = []
 
         def create_step_workspaces(self, *, executable_steps=None):
             seen["created"] = executable_steps == {"Synthesis"}
 
-        def run_steps(self, **_kwargs):
-            seen["ran"] = True
-            return True
+        def load(self):
+            from chipcompiler.utility import json_read
+
+            path = self.workspace.flow.path
+            if path:
+                self.workspace.flow.data = json_read(path)
+            return bool(self.workspace.flow.data.get("steps", []))
 
     monkeypatch.setattr(
         "chipcompiler.data.load_workspace",
@@ -315,6 +324,7 @@ def test_run_path_selector_registers_and_resumes_existing_external_workspace(
         )(),
     )
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
+    monkeypatch.setattr("chipcompiler.engine.rerun.run_resume", spy_run_resume)
     monkeypatch.setattr(
         "chipcompiler.cli.project.config._validate_pdk_contents",
         lambda name, root, overrides=None: None,

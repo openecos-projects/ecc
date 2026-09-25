@@ -52,6 +52,27 @@ def _records(capsys, plain_records):
     return plain_records(capsys.readouterr().out)
 
 
+def test_diverging_parameter_fix_quotes_json_values_and_workspace_names(monkeypatch):
+    from chipcompiler.cli.project.run_existing import _diverging_workspace_param_fixes
+
+    monkeypatch.setattr(
+        "chipcompiler.data.workspace_parameters.workspace_param_value",
+        lambda _workspace, _schema: [1, 2],
+    )
+    fixes = _diverging_workspace_param_fixes(
+        object(),
+        "workspace name",
+        {"floorplan.core_margin": [3, 4]},
+        "/project with spaces",
+    )
+
+    assert len(fixes) == 1
+    assert (
+        fixes[0][1] == "ecc param set floorplan.core_margin '[3, 4]' --workspace 'workspace name' "
+        "--project '/project with spaces'"
+    )
+
+
 class TestFlowContinuation:
     def test_noop_when_flow_already_complete(
         self,
@@ -86,6 +107,68 @@ class TestFlowContinuation:
         records = _records(capsys, plain_records)
         assert records[0]["status"] == "success"
         assert records[0]["no_op"] == "True"
+
+    def test_stale_suffix_reexecuted_via_run_resume(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        monkeypatch,
+        plain_records,
+    ):
+        """Regression: place=Incomplete + CTS=Success must call run_resume
+        (not run_steps), so the stale suffix is re-executed."""
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        run_dir = os.path.join(project_dir, "default")
+        _write_existing_workspace(
+            run_dir,
+            RTL2GDS_NAMES,
+            states=(
+                ["Success", "Success", "Success", "Incomplete", "Success"]
+                + ["Unstart"] * (len(RTL2GDS_NAMES) - 5)
+            ),
+            pdk_root=pdk_root,
+        )
+
+        from chipcompiler.engine.rerun import StepRunResult
+
+        resume_calls = []
+
+        def spy_run_resume(flow, *, through=None):
+            resume_calls.append(through)
+            return StepRunResult(ok=True, executed=())
+
+        class Flow:
+            def __init__(self, workspace):
+                self.workspace = workspace
+
+            def create_step_workspaces(self, *, executable_steps=None):
+                return None
+
+            def load(self):
+                from chipcompiler.utility import json_read
+
+                path = self.workspace.flow.path
+                if path:
+                    self.workspace.flow.data = json_read(path)
+                return bool(self.workspace.flow.data.get("steps", []))
+
+        monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
+        monkeypatch.setattr("chipcompiler.engine.rerun.run_resume", spy_run_resume)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
+
+        assert rc == 0
+        assert len(resume_calls) == 1
+        assert resume_calls[0] == RTL2GDS_NAMES[-1]
+        records = _records(capsys, plain_records)
+        assert records[0]["status"] == "success"
 
     def test_set_rejected_on_existing_run(
         self,
@@ -372,7 +455,7 @@ class TestFlowMismatchZeroMutation:
         self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
     ):
         """AC-14 with a legacy-parameters workspace: the mismatch refusal must
-        not migrate parameters.json, create params.toml/lock/home.json, or touch
+        not migrate parameters.json, create params.toml/lock files, or touch
         any other path."""
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
@@ -507,10 +590,14 @@ class TestFlowMismatchZeroMutation:
             def create_step_workspaces(self, *, executable_steps=None):
                 return None
 
-            def run_steps(self, **_kwargs):
-                raise RuntimeError("engine exploded")
+            def load(self):
+                return True
+
+        def fake_run_resume(*_args, **_kwargs):
+            raise RuntimeError("engine exploded")
 
         monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
+        monkeypatch.setattr("chipcompiler.engine.rerun.run_resume", fake_run_resume)
 
         rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 

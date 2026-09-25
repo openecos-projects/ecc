@@ -676,13 +676,9 @@ def rebuild_home_checklist(
     for item in items:
         if isinstance(item, dict):
             deduplicated[item.get("id")] = item
-    checklist_path = workspace.home.data.get("checklist")
-    if not checklist_path:
-        # Recover home.json files whose checklist path was cleared by an older
-        # home.reset(); persist so later checklist updates resolve as well.
-        checklist_path = workspace_dir / "home" / "checklist.json"
-        if persist and workspace.home.path is not None:
-            workspace.home.set_checklist(checklist_path)
+    from chipcompiler.data import workspace_checklist_path
+
+    checklist_path = workspace_checklist_path(workspace_dir)
     from chipcompiler.tools.ecc.checklist_render import render_checklist
 
     return render_checklist(checklist_path, deduplicated.values(), persist=persist)

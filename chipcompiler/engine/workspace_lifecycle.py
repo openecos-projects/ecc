@@ -297,7 +297,9 @@ def _update_workspace_from_spec(
             },
         )
 
-    update_spec, preserved_parameters = _merge_workspace_update_parameters(current, spec)
+    update_spec, preserved_parameters = _merge_workspace_update_parameters(
+        current, spec, committed_snapshot=snapshot
+    )
     staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=target.parent))
     staging.rmdir()
     try:
@@ -336,6 +338,8 @@ def _update_workspace_from_spec(
 def _merge_workspace_update_parameters(
     current: Any,
     spec: object,
+    *,
+    committed_snapshot: dict[str, Any] | None = None,
 ) -> tuple[object, frozenset[str]]:
     """Overlay an update request on the committed Workspace parameters.
 
@@ -362,13 +366,24 @@ def _merge_workspace_update_parameters(
             "Current Workspace configuration is unavailable",
         ) from exc
 
+    snapshot_spec = (
+        committed_snapshot.get("workspaceSpec") if isinstance(committed_snapshot, dict) else None
+    )
+    snapshot_parameters = (
+        snapshot_spec.get("parameters") if isinstance(snapshot_spec, dict) else None
+    )
     current_spec = current_configuration.get("workspaceSpec")
-    current_parameters = current_spec.get("parameters") if isinstance(current_spec, dict) else None
+    current_parameters = (
+        snapshot_parameters
+        if isinstance(snapshot_parameters, dict)
+        else (current_spec.get("parameters") if isinstance(current_spec, dict) else None)
+    )
     if not isinstance(current_parameters, dict):
         raise WorkspaceLifecycleError(
             "workspace_invalid",
             "Current Workspace parameters are unavailable",
         )
+    current_parameters = _declared_pdk_relative_parameters(current, current_parameters)
 
     merged = deepcopy(spec)
     merged["parameters"] = {
@@ -377,6 +392,31 @@ def _merge_workspace_update_parameters(
     }
     preserved = frozenset(str(key) for key in current_parameters.keys() - requested.keys())
     return merged, preserved
+
+
+def _declared_pdk_relative_parameters(workspace: Any, parameters: dict) -> dict:
+    """Return sta.liberty paths in their declared PDK-relative form.
+
+    The materialized STA config expands paths against the PDK root, so the
+    configuration view carries absolute paths. An update baseline must carry
+    the declared relative form for a PDK migration to re-resolve them
+    against the new root instead of pinning the old one.
+    """
+    liberty = parameters.get("sta.liberty")
+    if not isinstance(liberty, list):
+        return parameters
+    pdk_root = str(workspace.pdk.root or "").rstrip(os.sep)
+    if not pdk_root:
+        return parameters
+    declared = deepcopy(parameters)
+    for entry in declared["sta.liberty"]:
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), list):
+            continue
+        entry["path"] = [
+            path[len(pdk_root) + 1 :] if path.startswith(f"{pdk_root}{os.sep}") else path
+            for path in entry["path"]
+        ]
+    return declared
 
 
 def _preserve_workspace_config_extensions(source: Path, destination: Path) -> None:

@@ -422,7 +422,7 @@ class TestMigrationIdentityBinding:
         replacement_home_json = {"flow": os.path.join(run_dir, "home", "flow.json")}
 
         def failing_refresh(workspace):
-            # A rebase failure AFTER a replacement appeared at the source.
+            # A content refresh failure AFTER a replacement appeared at the source.
             (Path(run_dir) / "home").mkdir(parents=True)
             (Path(run_dir) / "home" / "home.json").write_text(json.dumps(replacement_home_json))
             raise RuntimeError("boom")
@@ -436,12 +436,11 @@ class TestMigrationIdentityBinding:
             r for r in _records(capsys, plain_records) if r.get("error") == "migration_failed"
         ]
         assert "rollback incomplete" in failure["reason"]
-        # The replacement was NEVER reverse-rebased or refreshed, and the
+        # The replacement was never refreshed, and the
         # honestly-reported moved workspace stays at the root untouched.
         current = json.loads((Path(run_dir) / "home" / "home.json").read_text())
         assert current == replacement_home_json
-        moved_home = json.loads((Path(target) / "home" / "home.json").read_text())
-        assert moved_home["flow"] == os.path.join(target, "home", "flow.json")
+        assert not (Path(target) / "home" / "home.json").exists()
         assert not os.path.exists(os.path.join(project_dir, "project.json"))
 
     def test_target_replacement_before_move_back_is_skipped(

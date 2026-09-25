@@ -67,7 +67,6 @@ def test_snapshot_resolves_canonical_sizer_step_directory(tmp_path):
             }
         ),
         parameters=SimpleNamespace(data={}),
-        home=SimpleNamespace(data={}),
     )
 
     snapshot = create_engineering_snapshot(workspace, workspace_id="engineering-a")

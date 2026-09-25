@@ -15,7 +15,13 @@ import tarfile
 import time
 from pathlib import Path
 
-from chipcompiler.data import SkippableStepEnum, StateEnum, StepEnum, Workspace
+from chipcompiler.data import (
+    SkippableStepEnum,
+    StateEnum,
+    StepEnum,
+    Workspace,
+    workspace_checklist_path,
+)
 from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
 from chipcompiler.engine.signoff.discovery import CollectorDiscoveryMixin
 from chipcompiler.engine.signoff.models import (
@@ -117,7 +123,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             )
 
         flow_path = workspace_dir / "home" / "flow.json"
-        checklist_path = workspace_dir / "home" / "checklist.json"
+        checklist_path = workspace_checklist_path(workspace_dir)
         if self.workspace.flow.path is None:
             self.workspace.flow.path = flow_path
         checklist_data = self._read_json(checklist_path)

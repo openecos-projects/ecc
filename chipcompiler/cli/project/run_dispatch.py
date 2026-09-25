@@ -33,13 +33,7 @@ def _is_ecc_run_dir(path: str) -> bool:
         return False
     home = os.path.join(path, "home")
     flow_json = os.path.join(home, "flow.json")
-    home_json = os.path.join(home, "home.json")
-    return (
-        not os.path.islink(home)
-        and not os.path.islink(flow_json)
-        and not os.path.islink(home_json)
-        and os.path.isfile(flow_json)
-    )
+    return not os.path.islink(home) and not os.path.islink(flow_json) and os.path.isfile(flow_json)
 
 
 def _resolves_as_spelled(path: str, anchor: str) -> bool:

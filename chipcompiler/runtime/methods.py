@@ -31,6 +31,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceInspectSignoffRequest,
     WorkspaceOpenRequest,
     WorkspaceRecoverInterruptedRequest,
+    WorkspaceRefreshConfigRequest,
     WorkspaceSpecOpenRequest,
     WorkspaceSpecValidateRequest,
     WorkspaceStepConfigurationReadRequest,
@@ -132,18 +133,13 @@ RUNTIME_METHODS: Final[tuple[RuntimeMethodSpec[Any], ...]] = (
         handler_name="close_workspace",
     ),
     RuntimeMethodSpec(
-        method_name="workspace.home",
-        request_model=WorkspaceIdRequest,
-        handler_name="workspace_home",
-    ),
-    RuntimeMethodSpec(
         method_name="workspace.info",
         request_model=WorkspaceInfoRequest,
         handler_name="workspace_info",
     ),
     RuntimeMethodSpec(
         method_name="workspace.refresh_config",
-        request_model=WorkspaceIdRequest,
+        request_model=WorkspaceRefreshConfigRequest,
         handler_name="refresh_config",
     ),
     RuntimeMethodSpec(

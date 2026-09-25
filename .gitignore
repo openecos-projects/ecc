@@ -194,5 +194,5 @@ task_plan.md
 
 .trellis
 
-# Stray runtime artifact from cwd-polluted test runs
-/checklist.json
+# Lit suite exec root (ephemeral)
+ci-artifacts/

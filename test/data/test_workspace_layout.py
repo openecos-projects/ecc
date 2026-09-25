@@ -220,8 +220,11 @@ def test_log_projection_sizer_shape_includes_sizer_script_keys(tmp_path):
         workspace, "Timing optimization", tmp_path / "i.def", tmp_path / "i.v"
     )
     keys = _shape_keys(step)
-    # sizer is the only shape that populates sizer_env/sizer_cmd.
-    assert keys["script"] == sorted(["dir", "main", "sizer_env", "sizer_cmd"])
+    # sizer is the only shape that populates sizer_env/sizer_cmd and the
+    # hold-pass sizer_hold_env/sizer_hold_cmd.
+    assert keys["script"] == sorted(
+        ["dir", "main", "sizer_env", "sizer_cmd", "sizer_hold_env", "sizer_hold_cmd"]
+    )
     assert isinstance(step.output.db, Path)
 
 

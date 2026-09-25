@@ -89,10 +89,6 @@ def derive_workspace(
             if reset_from_step:
                 reset_steps = _reset_step_suffix(engine_flow, reset_from_step)
                 WorkspaceRuntimeApi._prepare_steps_for_rerun(workspace, engine_flow, reset_steps)
-                home_data = getattr(getattr(workspace, "home", None), "data", None)
-                if isinstance(home_data, dict):
-                    home_data["checklist"] = str(home / "checklist.json")
-                _prune_derived_home(workspace, reset_steps)
                 _prune_derived_checklist(workspace, reset_steps)
             else:
                 import chipcompiler.data as data_api
@@ -155,43 +151,10 @@ def _reset_step_suffix(engine_flow, reset_from_step: str) -> list:
     return workspace_steps[index:]
 
 
-def _prune_derived_home(workspace, reset_steps) -> None:
-    home = getattr(workspace, "home", None)
-    data = getattr(home, "data", None)
-    if home is None or not isinstance(data, dict):
-        return
-    wiped = {Path(str(getattr(step, "directory", ""))).name for step in reset_steps}
-    wiped.discard("")
-    if isinstance(data.get("layout"), str) and _path_in_reset_scope(data["layout"], wiped):
-        data["layout"] = ""
-    metrics = data.get("metrics")
-    if isinstance(metrics, dict):
-        data["metrics"] = {
-            key: value
-            for key, value in metrics.items()
-            if not (isinstance(value, str) and _path_in_reset_scope(value, wiped))
-        }
-    save = getattr(home, "save", None)
-    if callable(save):
-        save()
-
-
-def _path_in_reset_scope(value: str, wiped: set[str]) -> bool:
-    segments = value.strip().replace("\\", "/").split("/")
-    return any(segment in wiped for segment in segments if segment)
-
-
 def _prune_derived_checklist(workspace, reset_steps) -> None:
-    from chipcompiler.data import Checklist
+    from chipcompiler.data import Checklist, workspace_checklist_path
 
-    home = getattr(workspace, "home", None)
-    data = getattr(home, "data", None)
-    checklist_text = data.get("checklist", "") if isinstance(data, dict) else ""
-    path = (
-        Path(checklist_text)
-        if checklist_text
-        else Path(str(getattr(workspace, "directory", ""))) / "home" / "checklist.json"
-    )
+    path = workspace_checklist_path(getattr(workspace, "directory", None))
     if not path.is_file():
         return
     wiped = {str(getattr(step, "name", "")) for step in reset_steps}

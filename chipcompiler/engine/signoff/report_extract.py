@@ -236,7 +236,7 @@ class StepMetricStore:
         return self._stages.get(name)
 
     def query(self, category, display_name, stage_priority, aliases, unit="", provenance=None):
-        """Return (value, stage, source_key); falls back to parameters/home."""
+        """Return (value, stage, source_key); falls back to parameters."""
         for stage in stage_priority:
             step_data = self._stages.get(stage)
             if not step_data:
@@ -280,37 +280,34 @@ def _first_str(*candidates):
     return None
 
 
-def _query(
-    store, params, home, provenance, category, display_name, stage_priority, aliases, unit=""
-):
-    """queryMetric: stage sweep, then parameters/home fallback (CONFIGURED)."""
+def _query(store, params, provenance, category, display_name, stage_priority, aliases, unit=""):
+    """queryMetric: stage sweep, then parameter fallback (CONFIGURED)."""
     value, stage, source_key = store.query(
         category, display_name, stage_priority, aliases, unit, provenance
     )
     if value is not None:
         return value, stage, source_key
     for alias in aliases:
-        for source, source_name in ((params, "Parameters"), (home, "Home")):
-            if _is_record(source) and source.get(alias) is not None:
-                number = _parse_number(source[alias])
-                if number is not None:
-                    if provenance is not None and source_name == "Parameters":
-                        provenance.append(
-                            EvidenceProvenanceRecord(
-                                category=category,
-                                metric=display_name,
-                                value=number,
-                                unit=unit,
-                                status="CONFIGURED",
-                                stage="Parameters",
-                                corner=None,
-                                tool="Configuration",
-                                source_metric_id=alias,
-                                run_id=store.run_id or "run_latest",
-                                timestamp=store.timestamp,
-                            )
+        if _is_record(params) and params.get(alias) is not None:
+            number = _parse_number(params[alias])
+            if number is not None:
+                if provenance is not None:
+                    provenance.append(
+                        EvidenceProvenanceRecord(
+                            category=category,
+                            metric=display_name,
+                            value=number,
+                            unit=unit,
+                            status="CONFIGURED",
+                            stage="Parameters",
+                            corner=None,
+                            tool="Configuration",
+                            source_metric_id=alias,
+                            run_id=store.run_id or "run_latest",
+                            timestamp=store.timestamp,
                         )
-                    return number, source_name, alias
+                    )
+                return number, "Parameters", alias
     return None, "", ""
 
 

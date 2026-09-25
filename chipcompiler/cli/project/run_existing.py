@@ -8,13 +8,12 @@ existing-run lifecycles are separate responsibilities, and the reconcile
 wiring belongs next to the ledger it owns.
 """
 
-import sys
+import shlex
 from pathlib import Path
 
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandResult
 from chipcompiler.cli.project.run_prepare import _write_back_status
-from chipcompiler.data import is_finished_step_state
 
 
 def _manifest_skip_target(run_dir: str, flow_config) -> dict | None:
@@ -74,10 +73,15 @@ def _diverging_workspace_param_fixes(
         if current == value:
             continue
         rendered = _json.dumps(value) if isinstance(value, (list, dict, bool)) else str(value)
+        rendered = shlex.quote(rendered)
+        workspace_arg = shlex.quote(run_name)
         fixes.append(
             (
                 key,
-                disclosure_cmd(f"ecc param set {key} {rendered} --workspace {run_name}", project),
+                disclosure_cmd(
+                    f"ecc param set {key} {rendered} --workspace {workspace_arg}",
+                    project,
+                ),
             )
         )
     return fixes
@@ -215,7 +219,7 @@ def run_existing_workspace(
                 target_section["skip_steps"] = cfg.flow_skip_steps
 
     # Pure-read preflight: a divergent flow is rejected BEFORE load_workspace
-    # can migrate configs, create home.json/checklist, or take the lock.
+    # can migrate configs, create checklist state, or take the lock.
     probe = classify_workspace(run_dir, target_section)
     if probe.outcome == "mismatch":
         return mismatch_error(probe.error or "flow_mismatch")
@@ -312,7 +316,9 @@ def run_existing_workspace(
                 ]
             )
 
+        from chipcompiler.cli.rendering.progress import preserve_cli_stdio
         from chipcompiler.engine import EngineFlow
+        from chipcompiler.engine.rerun import bounded_resume_names, run_resume, selected_step_names
 
         try:
             engine_flow = EngineFlow(workspace=workspace)
@@ -320,49 +326,19 @@ def run_existing_workspace(
             if result.outcome != "no_op":
                 # Re-read the ledger: reconcile may have appended suffix steps
                 # after load_workspace populated the in-memory copy.
-                from chipcompiler.utility import json_read
+                engine_flow.load()
 
-                flow_data = json_read(workspace.flow.path or Path(run_dir) / "home" / "flow.json")
-                target_names = set(result.target)
-                executable = {
-                    step["name"]
-                    for step in flow_data.get("steps", [])
-                    if isinstance(step, dict)
-                    and isinstance(step.get("name"), str)
-                    and not is_finished_step_state(step.get("state"))
-                    and step["name"] in target_names
-                }
-                engine_flow.create_step_workspaces(executable_steps=executable)
-                # executable_steps only gates dependency verification; the
-                # actual runner iterates every workspace step. Bind execution
-                # to the reconciled target so a wider persisted ledger (e.g.
-                # RCX/sta beyond the requested end) never runs on resume.
-                engine_flow.workspace_steps = [
-                    step
-                    for step in getattr(engine_flow, "workspace_steps", None) or []
-                    if step.name in target_names
-                ]
-
-                from chipcompiler.cli.rendering.progress import (
-                    run_flow_with_progress,
-                    should_enable_run_progress,
-                )
-
-                if should_enable_run_progress(ctx, sys.stderr):
-                    flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
+                through = result.target[-1] if result.target else None
+                if through is not None:
+                    selected = bounded_resume_names(engine_flow, through)
                 else:
-                    # The persisted ledger may be wider than the reconciled
-                    # target by design (workspace_steps is bound above), so
-                    # the full-ledger completeness check does not apply.
-                    from chipcompiler.engine import ExecutionPlan, execute
+                    selected = selected_step_names(engine_flow)
+                if selected:
+                    engine_flow.create_step_workspaces(executable_steps=set(selected))
 
-                    flow_ok = execute(
-                        engine_flow,
-                        ExecutionPlan(
-                            intent="run",
-                            step_ids=tuple(step.name for step in engine_flow.workspace_steps),
-                        ),
-                    ).succeeded
+                with preserve_cli_stdio():
+                    run_result = run_resume(engine_flow, through=through)
+                flow_ok = run_result.ok
         except Exception as exc:
             if workspace_registered:
                 _write_back_status(

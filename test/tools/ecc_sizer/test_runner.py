@@ -1,10 +1,11 @@
+import json
 import logging
 import os
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.data import SkippableStepEnum, StateEnum
+from chipcompiler.data import SkippableStepEnum, StateEnum, StepEnum
 
 from ._sizer_helpers import (
     ExplodingEccModule,
@@ -75,6 +76,104 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
             False,
         )
     ]
+
+
+def test_sizer_runner_runs_ff_hold_pass_before_legalization(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+    from chipcompiler.tools.ecc_sizer import runner as sizer_runner
+
+    workspace = _workspace(tmp_path)
+    min_lib = tmp_path / "ff_rcbest.lib"
+    workspace.config[StepEnum.STA.value] = tmp_path / "sta_ecc.json"
+    workspace.config[StepEnum.STA.value].write_text(
+        json.dumps({"liberty": [{"corner": "MIN", "path": [str(min_lib)]}]}),
+        encoding="utf-8",
+    )
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
+    )
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_step_config(workspace, step)
+
+    calls = []
+
+    def fake_run(command, cwd, stdout, stderr, check):
+        del cwd, stdout, stderr, check
+        calls.append(command)
+        if len(calls) == 2:
+            assert sizer_builder.sizer_setup_staging_def(step).is_file()
+            assert sizer_builder.sizer_setup_staging_verilog(step).is_file()
+        _write_staging(step)
+        return type("Result", (), {"returncode": 0})()
+
+    legalize_module = _patch_success_legalize(monkeypatch, sizer_runner, step)
+    monkeypatch.setattr(sizer_runner, "get_sizer_command", lambda: ["/fake/sizer"])
+    monkeypatch.setattr(sizer_runner, "is_eda_exist", lambda: True)
+    monkeypatch.setattr(sizer_runner, "is_sizer_runtime_exist", lambda: True)
+    monkeypatch.setattr(sizer_runner, "is_dreamplace_exist", lambda: True)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert sizer_runner.run_step(workspace, step) == StateEnum.Success
+    assert len(calls) == 2
+    assert calls[0] == [
+        "/fake/sizer",
+        "-env",
+        str(step.script.sizer_env),
+        "-f",
+        str(step.script.sizer_cmd),
+    ]
+    assert calls[1] == [
+        "/fake/sizer",
+        "-env",
+        str(step.script.sizer_hold_env),
+        "-f",
+        str(step.script.sizer_hold_cmd),
+    ]
+    assert legalize_module.closed is True
+
+
+def test_sizer_runner_rejects_ff_hold_pass_without_new_outputs(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+    from chipcompiler.tools.ecc_sizer import runner as sizer_runner
+
+    workspace = _workspace(tmp_path)
+    workspace.config[StepEnum.STA.value] = tmp_path / "sta_ecc.json"
+    workspace.config[StepEnum.STA.value].write_text(
+        json.dumps({"liberty": [{"corner": "MIN", "path": ["ff.lib"]}]}),
+        encoding="utf-8",
+    )
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
+    )
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_step_config(workspace, step)
+
+    calls = []
+
+    def fake_run(command, cwd, stdout, stderr, check):
+        del command, cwd, stdout, stderr, check
+        calls.append(True)
+        if len(calls) == 1:
+            _write_staging(step)
+        return SimpleNamespace(returncode=0)
+
+    legalize_module = _patch_success_legalize(monkeypatch, sizer_runner, step)
+    monkeypatch.setattr(sizer_runner, "get_sizer_command", lambda: ["/fake/sizer"])
+    monkeypatch.setattr(sizer_runner, "is_eda_exist", lambda: True)
+    monkeypatch.setattr(sizer_runner, "is_sizer_runtime_exist", lambda: True)
+    monkeypatch.setattr(sizer_runner, "is_dreamplace_exist", lambda: True)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
+    assert len(calls) == 2
+    assert legalize_module.seen == []
+    assert _subflow_states(step)["run sizer"] == StateEnum.Imcomplete.value
 
 
 def test_sizer_runner_marks_subflow_invalid_when_tool_or_config_missing(tmp_path, monkeypatch):

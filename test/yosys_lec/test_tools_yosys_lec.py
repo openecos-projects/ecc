@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 from chipcompiler.data import (
     PDK,
-    HomeData,
     OriginDesign,
     OutputPaths,
     Parameters,
@@ -43,7 +42,6 @@ def _workspace(tmp_path: Path, *, use_undef: bool = True) -> Workspace:
                 "lec": {"use_undef": use_undef},
             }
         ),
-        home=HomeData(),
     )
 
 

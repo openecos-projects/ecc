@@ -253,32 +253,6 @@ def _unsafe_workspace_source(source: str) -> str | None:
     "after the transition period",
     category=None,
 )
-def _rebase_home_pointers(workspace_dir: str, old_prefix: str, new_prefix: str) -> None:
-    """Rewrite home.json path values from the old workspace location."""
-    home_path = os.path.join(workspace_dir, "home", "home.json")
-    with open(home_path, encoding="utf-8") as f:
-        data = json.load(f)
-    if not isinstance(data, dict):
-        raise ValueError(f"home.json is not a JSON object: {home_path}")
-
-    def rebase(value):
-        if isinstance(value, str):
-            if value == old_prefix or value.startswith(old_prefix + os.sep):
-                return new_prefix + value[len(old_prefix) :]
-            return value
-        if isinstance(value, dict):
-            return {key: rebase(item) for key, item in value.items()}
-        if isinstance(value, list):
-            return [rebase(item) for item in value]
-        return value
-
-    rebased = {key: rebase(value) for key, value in data.items()}
-    from chipcompiler.utility import json_write
-
-    if not json_write(home_path, rebased):
-        raise OSError(f"failed to write rebased home.json: {home_path}")
-
-
 @deprecated(
     "legacy runs/ -> manifest layout migration machinery; slated for removal "
     "after the transition period",
@@ -339,16 +313,14 @@ def _rollback_workspace(entry, container_fd: int, project_fd: int) -> bool:
         return False
     restored = True
     try:
-        # Reverse the pre-load config path retarget as well as home.json:
-        # all-or-nothing covers the legacy "PDK Config" pointer too.
+        # Reverse the pre-load config path retarget and flow metadata.
         _pre_rebase_legacy_config_paths(entry.source, entry.target, entry.source)
-        _rebase_home_pointers(entry.source, entry.target, entry.source)
         _rebase_flow_step_info(entry.source, entry.target, entry.source)
     except (OSError, ValueError):
         # ValueError covers JSONDecodeError/UnicodeDecodeError and the
         # not-an-object guard: a malformed state file only downgrades the
         # rollback's rebase step, never escapes as an uncaught exception.
-        logger.warning("rollback: home.json reverse rebase failed for %s", entry.run_id)
+        logger.warning("rollback: workspace path reverse rebase failed for %s", entry.run_id)
         restored = False
     try:
         from chipcompiler.data import load_workspace, refresh_workspace_config
@@ -486,7 +458,6 @@ def _move_workspace(entry, container_fd: int, project_fd: int) -> tuple[str, str
             workspace = load_workspace(entry.target)
             if workspace is None:
                 raise ValueError(f"moved workspace fails to load: {entry.target}")
-            _rebase_home_pointers(entry.target, entry.source, entry.target)
             _rebase_flow_step_info(entry.target, entry.source, entry.target)
             workspace = load_workspace(entry.target)
             refresh_workspace_config(workspace)

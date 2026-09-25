@@ -1,5 +1,4 @@
-from .checklist import Checklist, CheckState
-from .home import HomeData
+from .checklist import Checklist, CheckState, workspace_checklist_path
 from .parameter import (
     Parameters,
     get_design_parameters,
@@ -158,5 +157,5 @@ __all__ = [
     "save_metrics",
     "STEP_DIRECTORIES",
     "Checklist",
-    "HomeData",
+    "workspace_checklist_path",
 ]

@@ -32,7 +32,6 @@ def test_runtime_method_registry_contains_current_methods_once():
         "workspace.step_configuration.read",
         "workspace.step_outputs",
         "workspace.close",
-        "workspace.home",
         "workspace.info",
         "workspace.refresh_config",
         "workspace.sync_config",

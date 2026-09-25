@@ -498,7 +498,6 @@ rpc.shutdown
 workspace.create
 workspace.open
 workspace.close
-workspace.home
 workspace.info
 workspace.refresh_config
 workspace.sync_config
