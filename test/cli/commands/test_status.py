@@ -39,6 +39,7 @@ class TestStatus:
             "filler",
             "rcx",
             "sta",
+            "poweranalysis",
             "lvs",
             "postroutelec",
             "drc",
