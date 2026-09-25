@@ -525,10 +525,16 @@ ics55 的 corner 命名：`Cworst/Cbest`=电容最差/最好，`RCworst/RCbest`=
 
 | 文件 | 说明 |
 |---|---|
-| `qor_summary.rpt` | 时序/功耗质量摘要 |
+| `qor_summary.rpt` | 时序质量摘要 |
 | `timing_max_{in2out,in2reg,reg2out,reg2reg}.rpt` | setup 报告（按路径类型：输入到输出/输入到寄存器/寄存器到输出/寄存器到寄存器），**签核要求 4 份齐全** |
 | `timing_min_{in2out,in2reg,reg2out,reg2reg}.rpt` | hold 报告（同上拆分，非签核必需） |
-| `power.rpt` | 功耗报告（签核包可选收集） |
+
+功耗由独立的 `powerAnalysis` iPW 步骤产生，而不是由每个 STA corner
+产生。其原生输出为
+`powerAnalysis_ecc/data/pw/power_reporter/power.rpt` 和
+`powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`；ECC 从报告
+生成 `powerAnalysis_ecc/feature/power_summary.json` 供 QoR 使用。报告存在时，
+签核包会将其单独收录为 `final/timing/power/power.rpt`。
 
 ## 14. harden（ecc-tools）
 

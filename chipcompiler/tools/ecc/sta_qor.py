@@ -17,9 +17,8 @@ STA_REPORT_FILENAMES = (
 )
 STA_QOR_SUMMARY_FILENAME = "qor_summary.json"
 STA_TIMING_PATHS_FILENAME = "timing_paths.json"
-# power.rpt stays out of STA_REPORT_FILENAMES: that list drives required
-# artifacts, while signoff packaging adds the power report as an optional
-# file so workspaces completed before power collection existed still export.
+# iPW writes power.rpt from the separate powerAnalysis step, so it is not an
+# STA report artifact.
 STA_POWER_REPORT_FILENAME = "power.rpt"
 STA_POWER_SUMMARY_FILENAME = "power_summary.json"
 POST_SYNTHESIS_STA_CORNER = "post_synthesis"

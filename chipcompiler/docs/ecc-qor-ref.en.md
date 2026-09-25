@@ -188,7 +188,7 @@ $$
 | P_total ≥ P_budget | 0.0 (clamped) |
 | No budget declared | null (UNKNOWN, excluded from the composite) |
 
-- P_total is the **worst (maximum) total signoff power** across STA corners (dynamic + leakage, µW); when signoff power is unavailable it falls back to the post-synthesis STA estimate (the report's `power.source_kind` says `signoff` / `synthesis`).
+- P_total is the total iPW signoff power (dynamic + leakage, µW) from the dedicated `powerAnalysis` step; when that result is unavailable it falls back to the post-synthesis STA estimate (the report's `power.source_kind` says `signoff` / `synthesis`).
 - The budget unit is **watts**: `qor_power_budget_w = 0.5` means 0.5 W (§8).
 
 ### 3.5 Q_R — Robustness Quality
@@ -342,7 +342,7 @@ qor_power_budget_w = 0.5
 |---|---|---|
 | Per-step metrics | `<step_dir>/analysis/qor_metrics.json` (schema_version 3, emitted by every step — **unchanged**) | metric values and provenance |
 | Per-corner timing | `sta_ecc/feature/<corner>/Cworst/qor_summary.json` | signed setup/hold WS, TNS, NVP; PVT dispersion |
-| Power | `sta_ecc/feature/<corner>/Cworst/power_summary.json` (falls back to `Synthesis_yosys/feature/post_synthesis/power_summary.json`) | P_total |
+| Power | `powerAnalysis_ecc/feature/power_summary.json` (falls back to `Synthesis_yosys/feature/post_synthesis/power_summary.json`) | P_total |
 | Step states | `home/flow.json` | only steps whose state is `Success` are analyzed (stale artifacts after invalidation never score) |
 | Parameters | `home/params.toml` | profile / budget / frequency |
 

@@ -42,6 +42,7 @@ class StepEnum(StepBaseEnum):
     DRC = "drc"
     LVS = "lvs"
     RCX = "RCX"
+    POWER_ANALYSIS = "powerAnalysis"
     ABSTRACT_LEF = "Abstract lef"
     HARDEN = "Harden"
 
