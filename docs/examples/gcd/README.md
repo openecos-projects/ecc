@@ -58,20 +58,14 @@ gcd_workspace/
 │   └── checklist.json     # Checklist state
 ├── CTS_ecc                # CTS step workspace
 │   ├── analysis    # Analysis files extract from metrics
-│   ├── config      # Configuration files
 │   ├── data        # Data files that generated during the step
 │   ├── feature     # Metrics feature files
 │   ├── log         # Each step log files
 │   ├── output      # Output artifacts
 │   ├── report      # Reports generated during the step
 │   └── script      # Step scripts
-├── drc_ecc
-│   ...             # Similar structure as above, same below
-│   └── script
+├── config/                # Workspace-level tool configuration files
 ├── filler_ecc
-│   ...
-│   └── script
-├── Harden_ecc
 │   ...
 │   └── script
 ├── legalization_dreamplace
@@ -79,16 +73,12 @@ gcd_workspace/
 │   └── script
 ├── log
 │   └── gcd.xxxx-01-22_16-05-25 # Global log file
-├── lvs_ecc
-│   ...
-│   └── script
 ├── macroPlacement_dreamplace
 │   ...
 │   └── script
 ├── origin
-│   ├── gcd.sdc
-│   ├── filelist.f
-│   └── rtl
+│   ├── gcd.sdc            # Constraint file
+│   └── gcd.v              # RTL source file
 ├── place_dreamplace
 │   ...
 │   └── script
@@ -98,13 +88,7 @@ gcd_workspace/
 ├── preFloorplan_ecc
 │   ...
 │   └── script
-├── RCX_ecc
-│   ...
-│   └── script
 ├── route_ecc
-│   ...
-│   └── script
-├── sta_ecc
 │   ...
 │   └── script
 └── Synthesis_yosys
@@ -120,11 +104,13 @@ from chipcompiler.engine import EngineFlow
 engine_flow = EngineFlow(workspace=workspace)
 if not engine_flow.has_init():
     # Use `add_step` to add steps to the flow
-    engine_flow.add_step(step=StepEnum.SYNTHESIS, tool="Yosys", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.PLACEMENT, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.SYNTHESIS, tool="yosys", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.PRE_FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.MACRO_PLACEMENT, tool="dreamplace", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.POST_FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.PLACEMENT, tool="dreamplace", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.CTS, tool="ecc", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.LEGALIZATION, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.LEGALIZATION, tool="dreamplace", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.ROUTING, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.FILLER, tool="ecc", state=StateEnum.Unstart)
 
@@ -137,12 +123,14 @@ The flow we defined is:
 
 ```mermaid
 graph LR
-    A[Synthesis<br/>Yosys] --> B[Floorplan<br/>ECC-Tools]
-    B --> C[Placement<br/>ECC-Tools]
-    D --> E[CTS<br/>ECC-Tools]
-    E --> F[Legalization<br/>ECC-Tools]
-    F --> G[Routing<br/>ECC-Tools]
-    G --> H[Filler<br/>ECC-Tools]
+    A[Synthesis<br/>Yosys] --> B[preFloorplan<br/>ECC-Tools]
+    B --> C[macroPlacement<br/>DreamPlace]
+    C --> D[postFloorplan<br/>ECC-Tools]
+    D --> E[place<br/>DreamPlace]
+    E --> F[CTS<br/>ECC-Tools]
+    F --> G[legalization<br/>DreamPlace]
+    G --> H[route<br/>ECC-Tools]
+    H --> I[filler<br/>ECC-Tools]
 ```
 
 Then the flow engine will execute the steps sequentially, and you can check the logs and outputs in each step workspace.
@@ -216,14 +204,8 @@ The copied files will be organized in `workspace/origin/` with preserved directo
 gcd_workspace_with_filelist/
 ├── origin/
 │   ├── filelist.f        # Copied filelist
-│   ├── rtl/
-│   │   ├── gcd.v
-│   │   ├── gcd_pkg.v
-│   │   ├── utils.v
-│   │   ├── include/      # Files from +incdir+rtl/include
-│   │   └── common/       # Files from +incdir+rtl/common
-│   ├── gcd.sdc           # Constraint file
-│   └── ...
+│   ├── gcd.v             # RTL source file referenced by the filelist
+│   └── gcd.sdc           # Constraint file
 └── ...
 ```
 

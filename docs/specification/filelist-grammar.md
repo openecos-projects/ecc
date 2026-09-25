@@ -72,6 +72,11 @@ whitespace = " " | "\t" ;
 any_char = ? any Unicode character ? ;
 ```
 
+Note: inline comment markers (`#`, `//`) are stripped before quotes are
+removed, so they also terminate a quoted path (`"a#b.v"` parses as `a`). Only
+`#` and `//` start inline comments; a backtick only starts a comment at the
+beginning of a line.
+
 ## Testing
 
 See `test/utility/filelist/` and `test/data/test_workspace_filelist.py` for test coverage:

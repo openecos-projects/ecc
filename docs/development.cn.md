@@ -268,6 +268,8 @@ chipcompiler/cli/command_handlers/  # 业务处理层（唯一的处理器包，
   ├── signoff.py                  # signoff inspect/export
   └── report.py                   # report 四子命令（文件写出 + 记录汇总）
 chipcompiler/cli/core/            # 框架层
+  ├── apps.py                     # 共享 typer app 工厂（create_app()：no_args_is_help、补全）
+  ├── docs.py                     # 定位并加载 `ecc doc` 的内置指南文档
   ├── inputs.py                   # 各命令的 frozen dataclass 输入模型
   ├── invocation.py               # execute_command()：上下文构建→handler→渲染→退出码
   ├── options.py                  # 共享 Annotated 选项别名
@@ -277,9 +279,10 @@ chipcompiler/cli/core/            # 框架层
   └── version_info.py             # version 命令的包元数据版本（环境工具版本见 inspection/tool_versions.py）
 chipcompiler/cli/inspection/      # 只读探查逻辑
   ├── discovery.py / config_view.py / log_view.py
+  ├── step_view.py                # `ecc report step` 的逐步骤查看记录
   ├── env_probe.py                # doctor/run 预检的环境探查（ProbeResult 体系）
   └── tool_versions.py            # ecc version 的环境工具版本（yosys/sizer/klayout）
-chipcompiler/cli/project/         # config.py（ecc.toml 解析校验）/ config_fields.py（`ecc project` 的项目声明 schema）/ params.py（参数注册表）/ toml_edit.py（TOML 定点改写）/ workspace_params.py（workspace 局部覆盖记录）/ manifest.py（项目形态分类）/ manifest_write.py（project.json 状态写回）/ workspace_registration.py（外部 workspace 登记）/ effective_config.py / pdk_root_fallback.py（PDK root 环境变量回退警告）/ spec_drift.py（workspace_spec_drift 披露）/ design_inputs.py（`[design]` 输入声明）/ config_params/（直配参数 schema）/ migrate*.py（旧布局迁移）/ run_*.py（run 目标解析与分发）
+chipcompiler/cli/project/         # config.py（ecc.toml 解析校验）/ config_fields.py（`ecc project` 的项目声明 schema）/ params.py（参数注册表）/ toml_edit.py（TOML 定点改写）/ workspace_params.py（workspace 局部覆盖记录）/ manifest.py（项目形态分类）/ manifest_write.py（project.json 状态写回）/ workspace_registration.py（外部 workspace 登记）/ workspace_location.py（显式路径规范化校验）/ effective_config.py / pdk_root_fallback.py（PDK root 环境变量回退警告）/ spec_drift.py（workspace_spec_drift 披露）/ design_inputs.py（`[design]` 输入声明）/ config_params/（直配参数 schema）/ migrate*.py（旧布局迁移）/ run_*.py（run 目标解析与分发）
 chipcompiler/cli/rendering/       # 输出渲染（render / renderers / pretty / progress）
 chipcompiler/engine/signoff/      # 签核收集器 + 设计/checklist 报告（包，见下文）
 chipcompiler/analysis/qor/ # QoR v3 唯一分析、评分与报告契约
@@ -305,7 +308,7 @@ chipcompiler/engine/qor_report.py # CLI QoR facade，委托 analysis.qor
    - handler 返回后按需追加记录（`_with_legacy_hint` / `_with_config_shadow_hint`）：legacy 项目的 `run/check/status` 附加迁移提示（指向 `ecc migrate`）；workspace 的 `home/` 同时存在 `params.toml` 与旧 `parameters.json` 时打 `workspace_config_shadowed` 警告（旧 JSON 已失效）。
    - 渲染：`rendering/renderers.py::render_command_result()` 先查 `RENDERERS[(render_key, output_mode)]` 定制渲染器，没有则落到通用 `rendering/render.py::render_result()`。
    - `raise typer.Exit(code=result.exit_code)` 把退出码透传给 `invoke_typer_app`。
-4. `invoke_typer_app` 以 `standalone_mode=False` 运行 click 命令，捕获 `click.exceptions.Exit` / `ClickException` 并转换成进程退出码，保证测试里 `cli_main.run([...])` 能拿到返回值。
+4. `invoke_typer_app` 运行 click 命令并捕获成功/失败退出时抛出的 `SystemExit`，转换成进程退出码，保证测试里 `cli_main.run([...])` 能拿到返回值。
 
 ### 输出约定（records 模型）
 
@@ -368,12 +371,12 @@ chipcompiler/engine/qor_report.py # CLI QoR facade，委托 analysis.qor
        execute_command("check", command_input, project_handlers.check)
    ```
 
-   顶层单命令直接 `app.command(...)`（现成范例：`cli/commands/doctor.py`，全链路最短）；命令组则新建 `xxx_app = typer.Typer(...)` 再在 `app.py` 里 `app.add_typer(xxx_app, name="xxx")`（现成范例：`cli/commands/signoff.py`，含子命令经 `execute_command(..., render_key=f"signoff:{sub}")` 复用同一 handler 模块）。注意 `app.py` 构建的根 app 设置了 `add_completion=False, no_args_is_help=True`。
+   顶层单命令直接 `app.command(...)`（现成范例：`cli/commands/doctor.py`，全链路最短）；命令组则新建 `xxx_app = typer.Typer(...)` 再在 `app.py` 里 `app.add_typer(xxx_app, name="xxx")`（现成范例：`cli/commands/signoff.py`，含子命令经 `execute_command(..., render_key=f"signoff:{sub}")` 复用同一 handler 模块）。注意 `app.py` 构建的根 app 设置了 `add_completion=True, no_args_is_help=True`（经由共享工厂 `cli/core/apps.py::create_app`）。
 
-4. **（可选）定制 TEXT 渲染**。默认 TEXT 是 `key=value`。若要更友好的输出：
+4. **（可选）定制 TEXT 渲染**。默认 TEXT 是 `key=value`。若要更友好的输出，在 `cli/rendering/renderers.py` 的 `RENDERERS` 字典加一个 `(render_key, OutputMode)` 条目：
 
-   - 单命令：在 `cli/rendering/pretty.py` 的 `get_pretty_renderer()` 注册表加一个渲染函数（现有 `init/check/run/status/config` 即此路径）；
-   - 子命令组：在 `cli/rendering/renderers.py` 的 `RENDERERS` 字典加 `(render_key, OutputMode)` 条目，`render_key` 通过 `execute_command(..., render_key="param:show")` 传入（param 即此路径）。
+   - 单命令：在 `cli/rendering/pretty.py` 写一个 pretty 渲染函数，经 `_pretty(...)` 包装后以命令名注册（现有 `init/check/run/status/config` 即此路径）；
+   - 子命令组：经 `execute_command(..., render_key="param:show")` 传入 `render_key`，并按该键注册（param 即此路径）。
 
    PLAIN 无需任何定制。
 
@@ -396,7 +399,7 @@ chipcompiler/engine/qor_report.py # CLI QoR facade，委托 analysis.qor
 
 #### 新增可调参数（param 体系）
 
-旧的语义参数仍在 `cli/project/params.py::_LEGACY_PARAM_REGISTRY`。工具 JSON 的直配字段按 owner 分别放在 `data/config_params/`（`cts.py`、`floorplan.py`、`dreamplace.py` 等），每项都必须人工审核。`ParamSchema` 只能拥有一种目标：旧的 `maps_to`、JSON `config_target` 或白名单 PDK `pdk_target`。
+旧的语义参数仍在 `chipcompiler/data/parameter_schema.py::_LEGACY_PARAM_REGISTRY`；`cli/project/params.py` 现在只是该目录的兼容 facade。工具 JSON 的直配字段按 owner 分别放在 `data/config_params/`（`cts.py`、`floorplan.py`、`dreamplace.py` 等），每项都必须人工审核。`ParamSchema` 只能拥有一种目标：旧的 `maps_to`、JSON `config_target` 或白名单 PDK `pdk_target`。
 
 已审核的静态模板字段使用 `config_param()` 声明（`description` 为必填关键字参数，逐参数人工撰写，`test/data/test_descriptions.py` 会校验）：
 
@@ -416,7 +419,7 @@ config_param(
 
 项目 run 创建时，非默认 `config_target` 会以结构化 `config_overrides` 存入 `home/params.toml`；每次刷新 workspace 配置后由 `data.workspace.config_overrides` 重放。PDK 路径 schema 在 `config_params/pdk.py`，写入 `[pdk.overrides]`；`pdk.root` 始终使用 `ecc pdk set-root`。不得将 workspace 的输入、输出、临时、生成产物或 STA 多 corner liberty 路径暴露为 CLI 参数。
 
-`config_params/coverage.py` 会把每个 JSON 模板字段与唯一一个直配 schema、旧映射或受保护路径清单比对。模板变化时必须同步更新该清单和 `test/cli/params/test_config_coverage.py`。解析仍在 `params.py`，外科手术式 TOML 编辑在 `cli/project/toml_edit.py`，命令测试仍放在 `test/cli/params/`。
+`test/data/test_config_coverage.py` 中的覆盖清单会把每个 JSON 模板字段与唯一一个直配 schema、旧映射或受保护路径清单比对；模板变化时必须同步更新该清单。解析仍在 `params.py`，外科手术式 TOML 编辑在 `cli/project/toml_edit.py`，命令测试仍放在 `test/cli/params/`。
 
 #### 扩展 `ecc run`
 
@@ -435,11 +438,11 @@ config_param(
 
 #### 扩展环境探查（doctor / 预检）
 
-`cli/inspection/env_probe.py` 是唯一的探查层：`ProbeResult(component, status, required, detail, remediation)` + 每组件一个 probe 函数（yosys / yosys-slang / ecc-tools / dreamplace / klayout / sizer / pdk）。新增组件 = 加一个 probe 函数并登记进 `_PROBES`/`ALL_COMPONENTS`；`probe_environment()` 对异常兜底（探查失败计为 fail 而非崩溃）。`probe_components_for_preset()` 决定当前 run 预检范围（始终 ecc-tools，yosys↔含 Synthesis，dreamplace↔含 place/legalization，sizer↔含 Timing optimization）。PDK 由配置校验覆盖，slang 留给综合步骤；Sizer 也是 doctor 的必需组件。
+`cli/inspection/env_probe.py` 是唯一的探查层：`ProbeResult(component, status, required, detail, remediation)` + 每组件一个 probe 函数（yosys / yosys-slang / ecc-tools / dreamplace / klayout / sizer / pdk）。新增组件 = 加一个 probe 函数并登记进 `_PROBES`/`ALL_COMPONENTS`；`probe_environment()` 对异常兜底（探查失败计为 fail 而非崩溃）。`probe_components_for_preset()` 决定当前 run 预检范围：先构建 preset 的步骤链（先做 skip 过滤），再经 `_TOOL_COMPONENTS` 把每个步骤的工具映射为组件（`ecc` → ecc-tools，`yosys`/`yosys_lec` → yosys，`dreamplace` → dreamplace，`sizer` → sizer），因此每个所需组件恰好探查一次。PDK 由配置校验覆盖，slang 留给综合步骤；Sizer 也是 doctor 的必需组件。
 
 #### 扩展签核（`ecc signoff inspect/export`）
 
-- **CLI 层**：`cli/commands/signoff.py` + `cli/command_handlers/signoff.py`。`inspection/discovery.py::resolve_loaded_workspace()` 在选定项目中解析受管 `--workspace NAME`（或唯一活跃 workspace）。inspect 复用 `runtime/signoff_export.py::inspect_signoff_package`（blocked 也 rc=0）；export 复用 `export_signoff_package_archive`（`RuntimeApiError` → `signoff_incomplete`）。
+- **CLI 层**：`cli/commands/signoff.py` + `cli/command_handlers/signoff.py`。`inspection/discovery.py::resolve_loaded_workspace()` 在选定项目中解析受管 `--workspace NAME`（或唯一活跃 workspace）。inspect 复用 `engine/signoff_export.py::inspect_signoff_package`（blocked 也 rc=0）；export 复用 `export_signoff_package_archive`（`SignoffExportError` → `signoff_incomplete`）。
 - **引擎层**：`chipcompiler/engine/signoff/` 包负责签核收集器 `SignoffPackageCollector`，以及就绪度检查和归档导出所使用的包级 API。
 
 #### 扩展报告（`ecc report summary/qor/checklist/step`）
@@ -501,7 +504,7 @@ uv run ecc pdk show
 
 ### Flow Preset 覆盖
 
-`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（规范链 17 步，含 Synthesis 后紧跟的综合级 LEC，默认策略会跳过该步，见下文「可跳过的 Flow Step」；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
+`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（规范链 18 步，含 Synthesis 后紧跟的综合级 LEC，默认策略会跳过该步，见下文「可跳过的 Flow Step」；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
 
 ```bash
 uv run ecc run --project gcd --preset rtl2gds
@@ -589,7 +592,7 @@ filelist 模式下把 `design.rtl` 设为单个 filelist 路径，如 `rtl = ["r
 
 - `get_yosys_command()` 做无副作用探测；
 - `get_yosys_runtime()` 返回供子进程使用的 `(command, env)`；
-- `check_slang_plugin()` 执行预检 `yosys -p "plugin -i slang"`。
+- `check_slang_support()` 执行 slang 前端预检：先探测内置前端（`yosys -p "help read_slang"`），再回退到旧式插件构建的 `yosys -p "plugin -i slang"`。
 
 找不到 Yosys 时，用 ECC 安装脚本的 `--with-toolchain` 安装受管工具链（见 [README](../README.cn.md#安装)）。安装脚本的 wrapper 会导出 `CHIPCOMPILER_OSS_CAD_DIR` 与 `CHIPCOMPILER_ICS55_PDK_ROOT`。指向已有的 OSS CAD Suite：
 

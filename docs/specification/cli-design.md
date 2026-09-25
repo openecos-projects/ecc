@@ -97,7 +97,7 @@ config=place_default_config.json scope=step step=placement role=config path=gcd/
 
 Current implementation note: `--plain` provides this stable key-value output.
 The default text mode renders human-oriented pretty output with disclosure
-commands. JSON and JSONL modes are unchanged.
+commands.
 
 ```bash
 ecc status --plain
@@ -131,7 +131,7 @@ Current implementation status:
 | `ecc param list/show/set/unset/diff` | `--plain` |
 | `ecc pdk set-root/show/unset` | `--plain` |
 | `ecc project set/unset/add/remove/show` | `--plain` |
-| `ecc workspace refresh` | `--plain` |
+| `ecc workspace refresh/import` | `--plain` |
 | `ecc signoff inspect/export` | `--plain` |
 | `ecc report summary/qor/checklist/step` | `--plain` |
 | `ecc doc` | `--plain` |
@@ -238,8 +238,9 @@ Responsibilities:
 | `ecc doc` | Render a bundled guide (config reference, user guide, tutorial) in the terminal |
 | `ecc layout-image` | Render a GDS file into an image |
 
-`ecc run` preflights the tools its preset needs (yosys for synthesis,
-dreamplace for placement/legalization, ecc-tools always) and fails with
+`ecc run` preflights the tools its preset needs (yosys for synthesis and
+LEC, dreamplace for macro placement/placement/legalization, sizer for timing
+optimization, ecc-tools for the ecc-driven steps) and fails with
 `env_not_ready` before creating a workspace. `ecc signoff inspect` is
 advisory — a blocked readiness review still exits 0; `ecc signoff export`
 enforces completeness (`signoff_incomplete` on missing required resources).
@@ -489,32 +490,62 @@ After `workspace.create` or `workspace.open`, follow-up calls use the returned
 `workspaceId` rather than repeatedly passing the workspace directory. The
 default sidecar does not advertise or persist native DB handles.
 
-First-slice runtime methods include:
+Runtime methods include:
 
 ```text
 rpc.hello
 rpc.ping
 rpc.shutdown
+workspace_spec.describe
+workspace_spec.validate
+project.discover
+project.manifest.load
+project.manifest.mutate
 workspace.create
 workspace.open
+workspace.derive
+workspace.binding_requirement
+workspace.update
+workspace.configuration.update
+workspace.configuration.read
+workspace.step_configuration.update
+workspace.step_configuration.read
+workspace.step_outputs
 workspace.close
 workspace.info
 workspace.refresh_config
 workspace.sync_config
 workspace.reset_flow
+workspace.export_signoff
+workspace.inspect_signoff
 flow.run
 flow.run_step
+operation.start_flow
+operation.start_step
+operation.status
+operation.cancel
+operation.ack_step_rendered
+workspace.snapshot
+workspace.engineering_snapshot
+workspace.recover_interrupted
 ```
 
 `--persistent-db` is an opt-in process capability. When enabled, `rpc.hello`
-also advertises:
+also advertises the persistent-DB and edit-session methods:
 
 ```text
 db.ensure
 db.release
+layout.edit.begin
+layout.edit.apply
+layout.edit.save
+layout.edit.discard
+floorplan.edit.inspect
+floorplan.edit.run_auto
+floorplan.edit.validate
 ```
 
-These DB methods are not part of the default first-slice method list. They start
+These DB methods are not part of the default method list. They start
 and stop session-scoped DB reuse explicitly; `workspace.open`,
 `workspace.create`, `flow.run`, and `flow.run_step` must not start persistent DB
 reuse for a session that has not called `db.ensure`.

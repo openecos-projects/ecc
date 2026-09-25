@@ -34,38 +34,41 @@ parameters = get_design_parameters("ics55", "gcd")
 # Create workspace with filelist
 # The workspace will be created from scratch, the structure is as follows:
 # gcd_workspace_with_filelist/
-# ├── flow.json       # Flow state file tracking step states and runtime
-# ├── params.toml        # Workspace configuration (die size, clock freq, flow target)
-# ├── CTS_ecc         # Clock Tree Synthesis step workspace
+# ├── home/
+# │   ├── flow.json       # Flow state file tracking step states and runtime
+# │   ├── params.toml     # Workspace configuration (die size, clock freq, flow target)
+# │   └── checklist.json  # Checklist state
+# ├── config/             # Workspace-level tool configuration files
+# ├── CTS_ecc             # Clock Tree Synthesis step workspace
 # │   ├── analysis    # Analysis files extracted from metrics
-# │   ├── config      # Configuration files (JSON configs for ecc)
 # │   ├── data        # Data files that generated during the step
 # │   ├── feature     # Metrics feature files
-# │   ├── input       # Input files from previous step (DEF/Verilog)
 # │   ├── log         # Each step log files
 # │   ├── output      # Output artifacts (DEF/Verilog for next step)
 # │   ├── report      # Reports generated during the step
 # │   └── script      # Step scripts (TCL, Python, shell)
-# ├── drc_ecc
-# │   ...             # Similar structure as above
-# │   └── script
 # ├── filler_ecc      # Filler cell insertion step
 # │   ...
 # │   └── script
-# ├── Floorplan_ecc   # Floorplanning step
-# │   ...
-# │   └── script
-# ├── legalization_ecc # Legalization step
+# ├── legalization_dreamplace # Legalization step
 # │   ...
 # │   └── script
 # ├── log
-# │   └── gcd.xxxx-01-27_xx-xx-xx # Global log file
+# │   └── gcd.xxxx-xx-xx_xx-xx-xx # Global log file
+# ├── macroPlacement_dreamplace # Macro placement step
+# │   ...
+# │   └── script
 # ├── origin          # Original design files
 # │   ├── gcd.sdc     # Timing constraints file
 # │   ├── filelist.f  # Verilog filelist (all RTL sources are listed here)
-# │   └── rtl/        # RTL source files (copied from filelist)
-# │       └── gcd.v   # GCD design source
-# ├── place_ecc       # Placement step
+# │   └── gcd.v       # GCD design source (copied from filelist)
+# ├── place_dreamplace # Placement step
+# │   ...
+# │   └── script
+# ├── postFloorplan_ecc # Floorplanning step (post)
+# │   ...
+# │   └── script
+# ├── preFloorplan_ecc  # Floorplanning step (pre)
 # │   ...
 # │   └── script
 # ├── route_ecc       # Routing step
@@ -76,7 +79,7 @@ parameters = get_design_parameters("ics55", "gcd")
 #     └── script
 #
 # When using a filelist:
-# 1. All files referenced in the filelist are copied to workspace/origin/rtl/
+# 1. All files referenced in the filelist are copied to workspace/origin/
 # 2. Directory structure is preserved
 # 3. +incdir+ directories are also copied
 # 4. The filelist itself is copied to workspace/origin/
@@ -109,17 +112,27 @@ if not engine_flow.has_init():
     # SYNTHESIS step: RTL to gate-level netlist using Yosys
     # Input: filelist.f with RTL sources
     # Output: Synthesized netlist (Verilog) and reports
-    engine_flow.add_step(step=StepEnum.SYNTHESIS, tool="Yosys", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.SYNTHESIS, tool="yosys", state=StateEnum.Unstart)
 
-    # FLOORPLAN step: Define chip die size and placement regions
+    # PRE_FLOORPLAN step: Define chip die size and core region
     # Input: Synthesized netlist
-    # Output: Floorplan definition
-    engine_flow.add_step(step=StepEnum.FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
+    # Output: Initial floorplan definition
+    engine_flow.add_step(step=StepEnum.PRE_FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
+
+    # MACRO_PLACEMENT step: Place macro cells
+    # Input: Initial floorplan
+    # Output: Floorplan with placed macros
+    engine_flow.add_step(step=StepEnum.MACRO_PLACEMENT, tool="dreamplace", state=StateEnum.Unstart)
+
+    # POST_FLOORPLAN step: Adjust floorplan around placed macros
+    # Input: Floorplan with placed macros
+    # Output: Final floorplan definition
+    engine_flow.add_step(step=StepEnum.POST_FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
 
     # PLACEMENT step: Place cells on the die
     # Input: Synthesized netlist, floorplan
     # Output: DEF with cell placement
-    engine_flow.add_step(step=StepEnum.PLACEMENT, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.PLACEMENT, tool="dreamplace", state=StateEnum.Unstart)
 
     # CTS step: Clock Tree Synthesis - balance clock distribution
     # Input: Placed netlist
@@ -129,7 +142,7 @@ if not engine_flow.has_init():
     # LEGALIZATION step: Legalize placement to match manufacturing constraints
     # Input: DEF after CTS
     # Output: Legalized DEF
-    engine_flow.add_step(step=StepEnum.LEGALIZATION, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.LEGALIZATION, tool="dreamplace", state=StateEnum.Unstart)
 
     # ROUTING step: Route all signal and power nets
     # Input: Legalized DEF
@@ -155,7 +168,7 @@ engine_flow.run_steps()
 print("\nFlow completed successfully!")
 print(f"Check logs and outputs in: {workspace_dir}")
 print("\nKey files to inspect:")
-print(f"  - Flow state: {workspace_dir}/flow.json")
+print(f"  - Flow state: {workspace_dir}/home/flow.json")
 print(f"  - Synthesis output: {workspace_dir}/Synthesis_yosys/output/")
 print(f"  - Final DEF: {workspace_dir}/filler_ecc/output/")
 print(f"  - Global log: {workspace_dir}/log/")
