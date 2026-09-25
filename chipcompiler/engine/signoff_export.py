@@ -33,7 +33,7 @@ def export_signoff_package_archive(
                     output_dir=temporary_root,
                     archive=False,
                     include_debug=include_debug,
-                    materialize=False,
+                    materialize=True,
                     refresh_analysis=False,
                 )
             )
@@ -46,6 +46,8 @@ def export_signoff_package_archive(
             raise SignoffExportError("signoff package directory was not created")
 
         package_dir = Path(result.package_dir)
+        if not package_dir.is_dir():
+            raise SignoffExportError("signoff package directory was not created")
 
         if additional_files is not None and not isinstance(additional_files, list):
             raise SignoffExportError("additional_files must be a list")

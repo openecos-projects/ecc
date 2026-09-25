@@ -48,7 +48,11 @@ workspace = create_workspace(
 # workspace = load_workspace(directory=workspace_dir)
 ```
 
-The workspace will be created from scratch, the structure is as follows:
+The workspace will be created from scratch, the structure is as follows. This
+is the single-source workspace produced by the call above: `create_workspace`
+copies the RTL basename into `origin/` and does not create an implicit
+`origin/rtl/` directory. This is separate from the project source layout
+created by `ecc init`, which still includes `<project>/rtl/`.
 
 ```
 gcd_workspace/
@@ -58,20 +62,14 @@ gcd_workspace/
 │   └── checklist.json     # Checklist state
 ├── CTS_ecc                # CTS step workspace
 │   ├── analysis    # Analysis files extract from metrics
-│   ├── config      # Configuration files
 │   ├── data        # Data files that generated during the step
 │   ├── feature     # Metrics feature files
 │   ├── log         # Each step log files
 │   ├── output      # Output artifacts
 │   ├── report      # Reports generated during the step
 │   └── script      # Step scripts
-├── drc_ecc
-│   ...             # Similar structure as above, same below
-│   └── script
+├── config/                # Workspace-level tool configuration files
 ├── filler_ecc
-│   ...
-│   └── script
-├── Harden_ecc
 │   ...
 │   └── script
 ├── legalization_dreamplace
@@ -79,16 +77,12 @@ gcd_workspace/
 │   └── script
 ├── log
 │   └── gcd.xxxx-01-22_16-05-25 # Global log file
-├── lvs_ecc
-│   ...
-│   └── script
 ├── macroPlacement_dreamplace
 │   ...
 │   └── script
 ├── origin
-│   ├── gcd.sdc
-│   ├── filelist.f
-│   └── rtl
+│   ├── gcd.sdc            # Constraint file
+│   └── gcd.v              # RTL source file
 ├── place_dreamplace
 │   ...
 │   └── script
@@ -98,13 +92,7 @@ gcd_workspace/
 ├── preFloorplan_ecc
 │   ...
 │   └── script
-├── RCX_ecc
-│   ...
-│   └── script
 ├── route_ecc
-│   ...
-│   └── script
-├── sta_ecc
 │   ...
 │   └── script
 └── Synthesis_yosys
@@ -120,11 +108,13 @@ from chipcompiler.engine import EngineFlow
 engine_flow = EngineFlow(workspace=workspace)
 if not engine_flow.has_init():
     # Use `add_step` to add steps to the flow
-    engine_flow.add_step(step=StepEnum.SYNTHESIS, tool="Yosys", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.PLACEMENT, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.SYNTHESIS, tool="yosys", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.PRE_FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.MACRO_PLACEMENT, tool="dreamplace", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.POST_FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.PLACEMENT, tool="dreamplace", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.CTS, tool="ecc", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.LEGALIZATION, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=StepEnum.LEGALIZATION, tool="dreamplace", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.ROUTING, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.FILLER, tool="ecc", state=StateEnum.Unstart)
 
@@ -137,12 +127,14 @@ The flow we defined is:
 
 ```mermaid
 graph LR
-    A[Synthesis<br/>Yosys] --> B[Floorplan<br/>ECC-Tools]
-    B --> C[Placement<br/>ECC-Tools]
-    D --> E[CTS<br/>ECC-Tools]
-    E --> F[Legalization<br/>ECC-Tools]
-    F --> G[Routing<br/>ECC-Tools]
-    G --> H[Filler<br/>ECC-Tools]
+    A[Synthesis<br/>Yosys] --> B[preFloorplan<br/>ECC-Tools]
+    B --> C[macroPlacement<br/>DreamPlace]
+    C --> D[postFloorplan<br/>ECC-Tools]
+    D --> E[place<br/>DreamPlace]
+    E --> F[CTS<br/>ECC-Tools]
+    F --> G[legalization<br/>DreamPlace]
+    G --> H[route<br/>ECC-Tools]
+    H --> I[filler<br/>ECC-Tools]
 ```
 
 Then the flow engine will execute the steps sequentially, and you can check the logs and outputs in each step workspace.
@@ -175,8 +167,8 @@ rtl/utils.v
 - **Comments**: Use `#` or `//` for full-line or inline comments
 - **Include directories**: `+incdir+<path>` - copies all files in these directories to workspace
 - **Quoted paths**: Support for paths with spaces: `"path with spaces/file.v"`
-- **Relative/absolute paths**: Both are supported
-- **Nested structures**: Directory hierarchy is preserved when files are copied to workspace
+- **Relative/absolute paths**: Both are supported; absolute source paths are rebased to basenames and duplicate basenames are disambiguated
+- **Nested structures**: Directory hierarchy in relative entries is preserved; ECC does not add an implicit `rtl/` directory
 
 ### Creating a Workspace with Filelist
 
@@ -208,22 +200,18 @@ workspace = create_workspace(
 When you provide a filelist, the files referenced in the filelist will be processed as follows:
 1. **File copying**: All files referenced in the filelist are automatically copied to the workspace
 2. **Include directories**: Files in `+incdir+` directories are also copied
-3. **Directory structure**: The relative directory structure is preserved
+3. **Directory structure**: Relative entry paths are preserved; bare filenames and absolute source paths are placed directly under `origin/`
 4. **Deduplication**: Files listed in both filelist and `+incdir+` are copied only once
 
-The copied files will be organized in `workspace/origin/` with preserved directory structure:
+The copied files will be organized in `workspace/origin/` according to their
+filelist entry paths. The bundled example uses the bare entry `gcd.v`, so its
+RTL file is placed directly under `origin/`:
 ```
 gcd_workspace_with_filelist/
 ├── origin/
 │   ├── filelist.f        # Copied filelist
-│   ├── rtl/
-│   │   ├── gcd.v
-│   │   ├── gcd_pkg.v
-│   │   ├── utils.v
-│   │   ├── include/      # Files from +incdir+rtl/include
-│   │   └── common/       # Files from +incdir+rtl/common
-│   ├── gcd.sdc           # Constraint file
-│   └── ...
+│   ├── gcd.v             # RTL source file referenced by the filelist
+│   └── gcd.sdc           # Constraint file
 └── ...
 ```
 
