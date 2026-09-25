@@ -13,7 +13,11 @@ from typing import Any, TypeGuard
 
 from chipcompiler.data.step import STEP_DIRECTORIES, step_storage_name
 from chipcompiler.engine.qor import collect_metric_records
-from chipcompiler.tools.ecc.sta_qor import STA_POWER_REPORT_FILENAME, STA_REPORT_FILENAMES
+from chipcompiler.tools.ecc.power_artifacts import (
+    workspace_power_report_path,
+    workspace_power_summary_path,
+)
+from chipcompiler.tools.ecc.sta_qor import STA_REPORT_FILENAMES
 from chipcompiler.utility import JsonReadError, file_digest, json_read_strict
 
 _ANALYSIS_FILES = (
@@ -190,10 +194,7 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
         if step_id.lower() == "sta":
             for relative_corner, feature_dir in _sta_corner_directories(step_dir, root):
                 report_dir = step_dir / "report" / relative_corner
-                corner_report_names = list(STA_REPORT_FILENAMES)
-                if (report_dir / STA_POWER_REPORT_FILENAME).is_file():
-                    corner_report_names.append(STA_POWER_REPORT_FILENAME)
-                for report_name in corner_report_names:
+                for report_name in STA_REPORT_FILENAMES:
                     artifact = _artifact_ref(
                         report_dir / report_name,
                         workspace_id=workspace_id,
@@ -209,6 +210,13 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
                         ("timing_paths", feature_dir / "timing_paths.json"),
                     )
                 )
+        if step_id == "powerAnalysis":
+            timing_files.extend(
+                (
+                    ("power_report", workspace_power_report_path(root)),
+                    ("power_summary", workspace_power_summary_path(root)),
+                )
+            )
         for kind, path in timing_files:
             artifact = _artifact_ref(
                 path,

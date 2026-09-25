@@ -68,6 +68,7 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
         (StepEnum.FILLER, "ecc", StateEnum.Unstart),
         (StepEnum.RCX, "ecc", StateEnum.Unstart),
         (StepEnum.STA, "ecc", StateEnum.Unstart),
+        (StepEnum.POWER_ANALYSIS, "ecc", StateEnum.Unstart),
         (StepEnum.LVS, "ecc", StateEnum.Unstart),
         (SkippableStepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart),
         (StepEnum.DRC, "ecc", StateEnum.Unstart),
@@ -100,6 +101,12 @@ def test_build_flow_range_normalizes_aliases_and_rejects_reverse_ranges():
     assert [step for step, _tool, _state in builder_module.build_flow_range("place", "cts")] == [
         StepEnum.PLACEMENT,
         StepEnum.CTS,
+    ]
+    assert [
+        step for step, _tool, _state in builder_module.build_flow_range("power_analysis", "lvs")
+    ] == [
+        StepEnum.POWER_ANALYSIS,
+        StepEnum.LVS,
     ]
 
     with pytest.raises(ValueError, match="reversed"):

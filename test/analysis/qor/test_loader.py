@@ -58,6 +58,7 @@ _STEP_DIRECTORIES = {
     "lvs": "lvs_ecc",
     "RCX": "RCX_ecc",
     "sta": "sta_ecc",
+    "powerAnalysis": "powerAnalysis_ecc",
     "Harden": "Harden_ecc",
 }
 
@@ -297,6 +298,73 @@ class TestCornerLoading:
         assert inputs.power_source_path.endswith("MIN_m40/Cbest/power_summary.json")
         assert inputs.power_source_kind == "signoff"
         assert inputs.power_corner == "MIN_m40/Cbest"
+
+    def test_power_analysis_summary_replaces_sta_power_source(self, tmp_path):
+        steps = {**_FULL_FLOW, "powerAnalysis": SUCCESS}
+        workspace = _make_workspace(tmp_path, steps)
+        _write(
+            os.path.join(
+                workspace.directory,
+                "powerAnalysis_ecc",
+                "feature",
+                "power_summary.json",
+            ),
+            {
+                "schema_version": 1,
+                "dynamic_uw": 8.0,
+                "leakage_uw": 1.0,
+                "internal_uw": 2.0,
+                "switching_uw": 6.0,
+            },
+        )
+        # A current workspace must not fall back to the old STA location.
+        _write(
+            os.path.join(
+                workspace.directory,
+                "sta_ecc",
+                "feature",
+                "MAX_125",
+                "Cworst",
+                "power_summary.json",
+            ),
+            {
+                "schema_version": 1,
+                "dynamic_uw": 90.0,
+                "leakage_uw": 10.0,
+                "internal_uw": 20.0,
+                "switching_uw": 70.0,
+            },
+        )
+
+        inputs = load_workspace_qor_inputs(workspace)
+
+        assert inputs.power_total_uw == 9.0
+        assert inputs.power_source_path.endswith("powerAnalysis_ecc/feature/power_summary.json")
+        assert inputs.power_source_kind == "signoff"
+        assert inputs.power_corner == "powerAnalysis"
+
+    def test_incomplete_power_analysis_does_not_score_stale_power_summary(self, tmp_path):
+        steps = {**_FULL_FLOW, "powerAnalysis": "Incomplete"}
+        workspace = _make_workspace(tmp_path, steps)
+        _write(
+            os.path.join(
+                workspace.directory,
+                "powerAnalysis_ecc",
+                "feature",
+                "power_summary.json",
+            ),
+            {
+                "schema_version": 1,
+                "dynamic_uw": 8.0,
+                "leakage_uw": 1.0,
+                "internal_uw": 2.0,
+                "switching_uw": 6.0,
+            },
+        )
+
+        inputs = load_workspace_qor_inputs(workspace)
+
+        assert inputs.power_total_uw is None
 
     def test_setup_only_corner_is_loaded_with_fallback_marker(self, tmp_path):
         workspace = _make_workspace(tmp_path, _FULL_FLOW)

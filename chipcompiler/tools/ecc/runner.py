@@ -20,6 +20,10 @@ from chipcompiler.tools.ecc.metrics import (
     save_rcx_spef_feature_facts,
 )
 from chipcompiler.tools.ecc.module import ECCToolsModule
+from chipcompiler.tools.ecc.power_artifacts import (
+    discard_power_artifacts,
+    publish_power_summary,
+)
 from chipcompiler.tools.ecc.rcx_artifacts import (
     copy_rcx_spef_outputs,
     resolve_rcx_dirs,
@@ -504,6 +508,8 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
             state = run_rcx(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.STA.value:
             state = run_sta(workspace=workspace, step=step, ecc_module=ecc_module)
+        case StepEnum.POWER_ANALYSIS.value:
+            state = run_power_analysis(workspace=workspace, step=step, ecc_module=ecc_module)
 
     return state
 
@@ -906,6 +912,125 @@ def run_rcx(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         result = True
 
     return result
+
+
+def run_power_analysis(
+    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
+) -> bool:
+    """Run iPW power analysis and release its native resources."""
+    sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
+    ecc_module = get_eda_instance(workspace=workspace, step=step, ecc_module=ecc_module)
+
+    if ecc_module is None:
+        return False
+
+    sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
+    signoff_items = collect_sta_signoff_items(workspace)
+    if not signoff_items:
+        workspace.logger.error("No signoff STA items found for power analysis")
+        sub_flow.update_step(
+            step_name=EccSubFlowEnum.run_power_analysis.value,
+            state=StateEnum.Imcomplete,
+        )
+        return False
+
+    # iPW produces one report, so use the first user-configured STA signoff
+    # item and preserve the same Liberty/SDC/SPEF initialization sequence.
+    power_item = signoff_items[0]
+    liberty_files = power_item["liberty_files"]
+    spef_file = power_item["spef_file"]
+    if not workspace.pdk.sdc or not os.path.exists(workspace.pdk.sdc):
+        workspace.logger.error("Power SDC does not exist: %s", workspace.pdk.sdc)
+        sub_flow.update_step(
+            step_name=EccSubFlowEnum.run_power_analysis.value,
+            state=StateEnum.Imcomplete,
+        )
+        return False
+    if not os.path.exists(spef_file):
+        workspace.logger.error("Power SPEF does not exist: %s", spef_file)
+        sub_flow.update_step(
+            step_name=EccSubFlowEnum.run_power_analysis.value,
+            state=StateEnum.Imcomplete,
+        )
+        return False
+    missing_liberty_files = [lib_path for lib_path in liberty_files if not os.path.exists(lib_path)]
+    if not liberty_files or missing_liberty_files:
+        workspace.logger.error(
+            "Power liberty does not exist: %s; missing: %s",
+            liberty_files,
+            missing_liberty_files,
+        )
+        sub_flow.update_step(
+            step_name=EccSubFlowEnum.run_power_analysis.value,
+            state=StateEnum.Imcomplete,
+        )
+        return False
+
+    power_data_dir = (step.data.steps or {}).get(StepEnum.POWER_ANALYSIS.value, "")
+    if not power_data_dir:
+        workspace.logger.error("Power analysis data directory is not configured")
+        sub_flow.update_step(
+            step_name=EccSubFlowEnum.run_power_analysis.value,
+            state=StateEnum.Imcomplete,
+        )
+        return False
+
+    power_feature_dir = step.feature.dir
+    if not power_feature_dir:
+        workspace.logger.error("Power analysis feature directory is not configured")
+        sub_flow.update_step(
+            step_name=EccSubFlowEnum.run_power_analysis.value,
+            state=StateEnum.Imcomplete,
+        )
+        return False
+
+    discard_power_artifacts(power_data_dir, power_feature_dir)
+
+    if not ecc_module.init_pw(
+        output_dir=power_data_dir,
+        lib_paths=liberty_files,
+        sdc_path=workspace.pdk.sdc,
+        spef_path=spef_file,
+    ):
+        workspace.logger.error("Failed to initialize power analysis")
+        sub_flow.update_step(
+            step_name=EccSubFlowEnum.run_power_analysis.value,
+            state=StateEnum.Imcomplete,
+        )
+        return False
+
+    try:
+        if not ecc_module.run_pw():
+            workspace.logger.error("Power analysis failed")
+            sub_flow.update_step(
+                step_name=EccSubFlowEnum.run_power_analysis.value,
+                state=StateEnum.Imcomplete,
+            )
+            return False
+    finally:
+        ecc_module.destroy_pw()
+
+    try:
+        publish_power_summary(power_data_dir, power_feature_dir)
+    except (FileNotFoundError, OSError, ValueError) as error:
+        workspace.logger.error("Power analysis artifact publication failed: %s", error)
+        sub_flow.update_step(
+            step_name=EccSubFlowEnum.run_power_analysis.value,
+            state=StateEnum.Imcomplete,
+        )
+        return False
+
+    sub_flow.update_step(
+        step_name=EccSubFlowEnum.run_power_analysis.value,
+        state=StateEnum.Success,
+    )
+
+    if not save_data(workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False):
+        return False
+
+    sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
+    run_analysis(workspace=workspace, step=step, subflow=sub_flow)
+    return True
 
 
 def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None) -> bool:

@@ -97,6 +97,7 @@ def build_step(
                 SkippableStepEnum.TIMING_OPT.value: data_dir / "to",
                 StepEnum.ROUTING.value: data_dir / "rt",
                 StepEnum.STA.value: sta_dir,
+                StepEnum.POWER_ANALYSIS.value: data_dir / "pw",
                 StepEnum.DRC.value: data_dir / "drc",
                 StepEnum.LVS.value: data_dir / "lvs",
                 StepEnum.RCX.value: data_dir / "rcx",

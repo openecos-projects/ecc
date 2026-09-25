@@ -13,6 +13,7 @@ from chipcompiler.engine.signoff.report_data import (
     ParsedQorSummaryMetrics,
     canonicalize_stage_name,
 )
+from chipcompiler.tools.ecc.power_artifacts import workspace_power_report_path
 from chipcompiler.utility.json import json_read
 
 # ---------------------------------------------------------------------------
@@ -354,7 +355,7 @@ def _step_metric_payloads(step_dir: Path) -> list[dict]:
 
 
 def _sta_corner_reports(workspace, workspace_root: Path) -> tuple[dict, dict | None]:
-    """Return ({corner_label: payload}, power_payload) from configured STA dirs."""
+    """Return STA corner timing plus the dedicated iPW power payload."""
     from chipcompiler.tools.ecc import sta_qor
 
     corners: dict[str, dict] = {}
@@ -376,9 +377,9 @@ def _sta_corner_reports(workspace, workspace_root: Path) -> tuple[dict, dict | N
             payload.setdefault("violating_endpoints_hold", rpt.hold_nvp)
         if payload:
             corners[label] = payload
-        power_rpt = parse_power_rpt(_read_text(report_dir / "power.rpt"))
-        if power_rpt.total_power_mw is not None and power_payload is None:
-            power_payload = dataclasses.asdict(power_rpt)
+    power_rpt = parse_power_rpt(_read_text(workspace_power_report_path(workspace_root)))
+    if power_rpt.total_power_mw is not None:
+        power_payload = dataclasses.asdict(power_rpt)
 
     if not corners:
         # syn_sta-style workspace: post-synthesis STA lives in Synthesis_yosys.

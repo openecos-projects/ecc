@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 from types import SimpleNamespace
 
 from chipcompiler.engine.signoff import SignoffPackageCollector, generate_text_report
@@ -352,6 +353,35 @@ class TestCollectWorkspaceReport:
 
         assert data.design.design_name == "from_params"
         assert data.design.pdk == "from_pdk"
+
+    def test_collect_reads_power_analysis_report(self, tmp_path):
+        workspace = _make_workspace(tmp_path, full=True)
+        _write_json(
+            Path(workspace.directory) / "home" / "flow.json",
+            {
+                "steps": [
+                    {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+                    {"name": "powerAnalysis", "tool": "ecc", "state": "Success"},
+                ]
+            },
+        )
+        report_path = (
+            Path(workspace.directory)
+            / "powerAnalysis_ecc"
+            / "data"
+            / "pw"
+            / "power_reporter"
+            / "power.rpt"
+        )
+        report_path.parent.mkdir(parents=True)
+        report_path.write_text(
+            "Total Dynamic Power = 2.5 mW\nCell Leakage Power = 500 uW\n",
+            encoding="utf-8",
+        )
+
+        data = collect_workspace_report(workspace)
+
+        assert data.power.total_power_mw == 3.0
 
     def test_generate_text_report_end_to_end(self, tmp_path):
         report = generate_text_report(_make_workspace(tmp_path, full=True))

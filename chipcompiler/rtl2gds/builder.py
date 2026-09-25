@@ -72,6 +72,7 @@ def build_rtl2gds_flow(*, skip: Collection[str] = ()) -> list:
     steps.append((StepEnum.FILLER, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.RCX, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.STA, "ecc", StateEnum.Unstart))
+    steps.append((StepEnum.POWER_ANALYSIS, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.LVS, "ecc", StateEnum.Unstart))
     steps.append((SkippableStepEnum.POST_ROUTE_LEC, "yosys_lec", StateEnum.Unstart))
     steps.append((StepEnum.DRC, "ecc", StateEnum.Unstart))
@@ -115,6 +116,7 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
         "postroutelec": SkippableStepEnum.POST_ROUTE_LEC.value,
         "rcx": StepEnum.RCX.value,
         "sta": StepEnum.STA.value,
+        "poweranalysis": StepEnum.POWER_ANALYSIS.value,
         "harden": StepEnum.HARDEN.value,
     }
     return aliases.get(alias_key, token)

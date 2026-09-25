@@ -27,6 +27,7 @@ STEP_DIRECTORIES = {
     StepEnum.FILLER.value: "filler_ecc",
     StepEnum.RCX.value: "RCX_ecc",
     StepEnum.STA.value: "sta_ecc",
+    StepEnum.POWER_ANALYSIS.value: "powerAnalysis_ecc",
     StepEnum.LVS.value: "lvs_ecc",
     SkippableStepEnum.POST_ROUTE_LEC.value: "postRouteLec_yosys_lec",
     StepEnum.DRC.value: "drc_ecc",
