@@ -263,7 +263,7 @@ def validate_qor_snapshot_extension(value: object) -> bool:
         if (
             not _bounded_text(diagnosis["diagnosisId"])
             or not _bounded_text(diagnosis["state"])
-            or not _bounded_number(diagnosis["severity"], 0, 1)
+            or not _bounded_number(diagnosis["severity"], 0, 1, nullable=False)
             or diagnosis["confidence"] not in CONFIDENCES
             or not _bounded_strings(diagnosis["triggerFeatures"], 32)
             or not _bounded_strings(diagnosis["affectedDimensions"], 16)

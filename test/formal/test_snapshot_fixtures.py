@@ -233,6 +233,42 @@ def test_generated_snapshot_matches_valid_fixture(tmp_path):
     assert snapshot["schemaVersion"] == SNAPSHOT_SCHEMA_VERSION
 
 
+def test_valid_fixture_with_qor_diagnoses_is_accepted(tmp_path):
+    payload = json.loads(VALID_FIXTURE.read_bytes())
+    payload["qorSnapshotExtension"]["diagnoses"] = [
+        {
+            "diagnosisId": "diag-timing-1",
+            "state": "OPEN",
+            "severity": 0.85,
+            "confidence": "HIGH",
+            "triggerFeatures": ["F_STA_HEADROOM"],
+            "affectedDimensions": ["timing"],
+            "interventions": [
+                {
+                    "hypothesis": "Reduce clock uncertainty",
+                    "tier": "TIER_2_BOTTLENECK",
+                    "confidence": "MEDIUM",
+                    "parameterKnob": None,
+                    "validationProcedure": None,
+                }
+            ],
+            "interventionConfidence": "MEDIUM",
+            "validationRequired": None,
+        }
+    ]
+    root = tmp_path / "workspace"
+    (root / "home").mkdir(parents=True)
+    (root / "home" / "engineering-snapshot.json").write_text(json.dumps(payload), encoding="utf-8")
+    workspace = SimpleNamespace(directory=root)
+
+    snapshot = read_engineering_snapshot(workspace)
+
+    assert (
+        snapshot["qorSnapshotExtension"]["diagnoses"]
+        == payload["qorSnapshotExtension"]["diagnoses"]
+    )
+
+
 @pytest.mark.parametrize(
     ("fixture_name", "match"),
     sorted(INVALID_FIXTURES.items()),
