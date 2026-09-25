@@ -592,7 +592,18 @@ class ECCToolsModule:
     ########################################################################
     # power analysis api
     ########################################################################
-    def init_pw(self, output_dir: PathArg):
+    def init_pw(
+        self,
+        output_dir: PathArg,
+        lib_paths: list[Path] | list[str] | None = None,
+        sdc_path: PathArg = "",
+        spef_path: PathArg = "",
+    ):
+        if lib_paths is None:
+            lib_paths = []
+        self.ecc.lib_init(lib_paths=path_texts(lib_paths))
+        self.ecc.sdc_init(path_text(sdc_path))
+        self.ecc.spef_init(path_text(spef_path))
         return self.ecc.init_pw(config_dict={"-temp_directory_path": path_text(output_dir)})
 
     def run_pw(self):
