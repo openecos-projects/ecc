@@ -56,6 +56,53 @@ def test_register_workspace_uses_main_manifest_shape(tmp_path):
     assert updated["workspaces"][0]["end_step"] == "Synth"
 
 
+def test_register_workspace_canonicalizes_studio_display_step_names(tmp_path):
+    workspace = tmp_path / "ws_rerun"
+    (workspace / "home").mkdir(parents=True)
+    (workspace / "home" / "flow.json").write_text(
+        json.dumps({"steps": [{"name": "postRouteLec", "state": "Unstart"}]})
+    )
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+
+    updated = mutate_project_manifest(
+        tmp_path,
+        {
+            "type": "register_workspace",
+            "workspace_id": "ws_rerun",
+            "workspace_path": str(workspace),
+            "start_step": "Timing Opt",
+            "end_step": "Post-route LEC",
+            "created_at": "2026-02-01T00:00:00Z",
+            "updated_at": "2026-02-01T00:00:00Z",
+        },
+    )
+
+    assert updated == load_project_manifest(tmp_path)
+    assert updated["workspaces"][0]["start_step"] == "TimingOpt"
+    assert updated["workspaces"][0]["end_step"] == "PostRouteLEC"
+
+
+def test_manifest_with_studio_display_step_names_still_loads(tmp_path):
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+    manifest_path = tmp_path / "project.json"
+    document = json.loads(manifest_path.read_text(encoding="utf-8"))
+    document["workspaces"].append(
+        {
+            "workspace_id": "ws_legacy",
+            "workspace_path": "ws_legacy",
+            "start_step": "Post-route LEC",
+            "end_step": "Post-route LEC",
+            "status": "not_started",
+        }
+    )
+    manifest_path.write_text(json.dumps(document), encoding="utf-8")
+
+    loaded = load_project_manifest(tmp_path)
+
+    assert loaded["workspaces"][0]["start_step"] == "PostRouteLEC"
+    assert loaded["workspaces"][0]["end_step"] == "PostRouteLEC"
+
+
 def test_register_workspace_allows_existing_external_workspace(tmp_path):
     create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
     external = tmp_path.parent / "external" / "workspace"

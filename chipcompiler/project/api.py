@@ -6,6 +6,7 @@ from pathlib import Path
 
 from chipcompiler.project.manifest import (
     _CANONICAL_TO_MANIFEST_STEP,
+    _MANIFEST_STEP_ALIASES,
     ManifestError,
     load_manifest,
 )
@@ -235,7 +236,13 @@ def _workspace_range(workspace: Path, mutation: dict) -> tuple[str, str]:
     start = mutation.get("start_step")
     end = mutation.get("end_step")
     if isinstance(start, str) and isinstance(end, str) and start and end:
-        return start, end
+        # Registration callers may spell steps with Studio display names;
+        # persist the canonical manifest spelling so reads do not reject the
+        # entry afterwards.
+        return (
+            _MANIFEST_STEP_ALIASES.get(start, start),
+            _MANIFEST_STEP_ALIASES.get(end, end),
+        )
     try:
         ledger = json.loads((workspace / "home" / "flow.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):

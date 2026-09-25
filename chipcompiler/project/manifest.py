@@ -46,7 +46,14 @@ MANIFEST_FLOW_STEPS = (
 # ``Floor`` was the public manifest value before floorplanning was split into
 # pre/macro/post stages.  Read it as the completed handoff stage so old ranges
 # keep their original start/end meaning without rewriting project.json.
-_MANIFEST_STEP_ALIASES = {"Floor": "PostFloorplan"}
+# ``Timing Opt``/``Post-route LEC`` are the Studio display spellings the GUI
+# sends on workspace registration; accept them so a manifest carrying display
+# names still loads (entries self-heal to canonical spellings on next write).
+_MANIFEST_STEP_ALIASES = {
+    "Floor": "PostFloorplan",
+    "Timing Opt": "TimingOpt",
+    "Post-route LEC": "PostRouteLEC",
+}
 
 PRESET_MANIFEST_RANGE = {
     "syn_sta": ("Synth", "Synth"),
