@@ -1,6 +1,8 @@
 import json
 from contextlib import contextmanager
 
+import pytest
+
 import chipcompiler.project.api as project_api
 from chipcompiler.cli.project.manifest import load_manifest
 from chipcompiler.project import (
@@ -9,6 +11,7 @@ from chipcompiler.project import (
     load_project_manifest,
     mutate_project_manifest,
 )
+from chipcompiler.project.manifest import ManifestError
 from chipcompiler.project.manifest_write import append_workspace_entry
 
 
@@ -101,6 +104,87 @@ def test_manifest_with_studio_display_step_names_still_loads(tmp_path):
 
     assert loaded["workspaces"][0]["start_step"] == "PostRouteLEC"
     assert loaded["workspaces"][0]["end_step"] == "PostRouteLEC"
+
+
+def test_power_analysis_bounds_the_flow_range_between_sta_and_lvs(tmp_path):
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+    manifest_path = tmp_path / "project.json"
+    document = json.loads(manifest_path.read_text(encoding="utf-8"))
+    document["workspaces"].append(
+        {
+            "workspace_id": "ws_sta_power",
+            "workspace_path": "ws_sta_power",
+            "start_step": "STA",
+            "end_step": "PowerAnalysis",
+            "status": "not_started",
+        }
+    )
+    document["workspaces"].append(
+        {
+            "workspace_id": "ws_power_lvs",
+            "workspace_path": "ws_power_lvs",
+            "start_step": "PowerAnalysis",
+            "end_step": "LVS",
+            "status": "not_started",
+        }
+    )
+    manifest_path.write_text(json.dumps(document), encoding="utf-8")
+
+    loaded = load_project_manifest(tmp_path)
+
+    assert (loaded["workspaces"][0]["start_step"], loaded["workspaces"][0]["end_step"]) == (
+        "STA",
+        "PowerAnalysis",
+    )
+    assert (loaded["workspaces"][1]["start_step"], loaded["workspaces"][1]["end_step"]) == (
+        "PowerAnalysis",
+        "LVS",
+    )
+
+
+def test_power_analysis_cannot_precede_sta_in_a_flow_range(tmp_path):
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+    manifest_path = tmp_path / "project.json"
+    document = json.loads(manifest_path.read_text(encoding="utf-8"))
+    document["workspaces"].append(
+        {
+            "workspace_id": "ws_reversed",
+            "workspace_path": "ws_reversed",
+            "start_step": "PowerAnalysis",
+            "end_step": "STA",
+            "status": "not_started",
+        }
+    )
+    manifest_path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(ManifestError, match="reversed"):
+        load_project_manifest(tmp_path)
+
+
+def test_power_analysis_display_name_self_heals_to_manifest_spelling(tmp_path):
+    workspace = tmp_path / "ws_power"
+    (workspace / "home").mkdir(parents=True)
+    (workspace / "home" / "flow.json").write_text(
+        json.dumps({"steps": [{"name": "powerAnalysis", "state": "Unstart"}]})
+    )
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+
+    updated = mutate_project_manifest(
+        tmp_path,
+        {
+            "type": "register_workspace",
+            "workspace_id": "ws_power",
+            "workspace_path": str(workspace),
+            "start_step": "Power Analysis",
+            "end_step": "Power Analysis",
+            "created_at": "2026-02-01T00:00:00Z",
+            "updated_at": "2026-02-01T00:00:00Z",
+        },
+    )
+
+    assert updated == load_project_manifest(tmp_path)
+    assert updated["workspaces"][0]["start_step"] == "PowerAnalysis"
+    assert updated["workspaces"][0]["end_step"] == "PowerAnalysis"
 
 
 def test_register_workspace_allows_existing_external_workspace(tmp_path):
