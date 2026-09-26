@@ -21,6 +21,8 @@ def test_runtime_method_registry_contains_current_methods_once():
         "project.discover",
         "project.manifest.load",
         "project.manifest.mutate",
+        "project.doctor.check",
+        "project.doctor.repair",
         "workspace.create",
         "workspace.open",
         "workspace.derive",

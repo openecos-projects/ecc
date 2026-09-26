@@ -10,9 +10,22 @@ from chipcompiler.project import (
     discover_project_manifest,
     load_project_manifest,
     mutate_project_manifest,
+    register_workspace_backup,
+    repoint_generation_pointers,
 )
 from chipcompiler.project.manifest import ManifestError
-from chipcompiler.project.manifest_write import append_workspace_entry
+from chipcompiler.project.manifest_refresh import refresh_workspace_derived_fields
+from chipcompiler.project.manifest_write import append_workspace_entry, write_back_workspace_status
+
+
+def _write_workspace_facts(workspace, *, steps, parameters):
+    """Materialize workspace directory facts: home/flow.json + home/params.toml."""
+    from chipcompiler.data.parameter import Parameters, save_parameter
+
+    home = workspace / "home"
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "flow.json").write_text(json.dumps({"steps": steps}))
+    assert save_parameter(Parameters(path=home / "params.toml", data=parameters))
 
 
 def test_domain_created_manifest_is_cli_readable(tmp_path):
@@ -313,6 +326,291 @@ def test_reregister_workspace_completes_lineage_fields(tmp_path):
     entry = reregistered["workspaces"][0]
     assert entry["source_workspace_id"] == "ws_0002"
     assert entry["branch_from"] == branch_from
+
+
+def test_reregister_workspace_silently_corrects_derived_fields(tmp_path):
+    workspace = tmp_path / "ws_0009"
+    _write_workspace_facts(
+        workspace,
+        steps=[{"name": "Synthesis", "tool": "yosys", "state": "Success"}],
+        parameters={
+            "pdk": "ics55",
+            "design": "gcd",
+            "top_module": "gcd",
+            "clock": "clk",
+            "frequency_max": 125,
+            "_flow": {"start": "Synthesis", "end": "Synthesis"},
+        },
+    )
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+    branch_from = {
+        "source_workspace_id": "ws_0002",
+        "source_step": "Floor",
+        "source_output_path": str(tmp_path / "ws_0002" / "floorplan" / "outputs" / "gcd.def"),
+        "source_output_type": "def",
+    }
+    registered = mutate_project_manifest(
+        tmp_path,
+        {
+            "type": "register_workspace",
+            "workspace_id": "ws_0009",
+            "workspace_path": str(workspace),
+            "name": "ws_0009",
+            "source_workspace_id": "ws_0002",
+            "branch_from": branch_from,
+            "updated_at": "2026-02-01T00:00:00Z",
+        },
+    )
+    entry = registered["workspaces"][0]
+    assert entry["status"] == "not_started"
+    assert entry["parameter_patch"] == {}
+
+    # Re-registration with stale derived fields: silently corrected from the
+    # directory, only updated_at records it, lineage is never rewritten.
+    corrected = mutate_project_manifest(
+        tmp_path,
+        {
+            "type": "register_workspace",
+            "workspace_id": "ws_0009",
+            "workspace_path": str(workspace),
+            "updated_at": "2026-03-01T00:00:00Z",
+        },
+    )
+    entry = corrected["workspaces"][0]
+    assert entry["start_step"] == "Synth"
+    assert entry["end_step"] == "Synth"
+    assert entry["status"] == "success"
+    assert entry["parameter_patch"] == {"frequency_max": {"from": None, "to": 125}}
+    assert entry["updated_at"] == "2026-03-01T00:00:00Z"
+    assert entry["source_workspace_id"] == "ws_0002"
+    assert entry["branch_from"] == branch_from
+
+    # The workspace changed in place (new generation): the next
+    # re-registration re-converges every derived field on the new facts.
+    _write_workspace_facts(
+        workspace,
+        steps=[
+            {"name": "CTS", "tool": "ecc", "state": "Unstart"},
+            {"name": "route", "tool": "ecc", "state": "Unstart"},
+        ],
+        parameters={
+            "pdk": "ics55",
+            "design": "gcd",
+            "top_module": "gcd",
+            "clock": "clk",
+            "_flow": {"start": "CTS", "end": "route"},
+        },
+    )
+    refreshed = mutate_project_manifest(
+        tmp_path,
+        {
+            "type": "register_workspace",
+            "workspace_id": "ws_0009",
+            "workspace_path": str(workspace),
+            "updated_at": "2026-04-01T00:00:00Z",
+        },
+    )
+    entry = refreshed["workspaces"][0]
+    assert entry["start_step"] == "CTS"
+    assert entry["end_step"] == "Route"
+    assert entry["status"] == "not_started"
+    assert entry["parameter_patch"] == {}
+    assert entry["updated_at"] == "2026-04-01T00:00:00Z"
+    assert entry["source_workspace_id"] == "ws_0002"
+    assert entry["branch_from"] == branch_from
+
+
+def test_reregister_workspace_without_drift_keeps_updated_at(tmp_path):
+    workspace = tmp_path / "ws_0009"
+    _write_workspace_facts(
+        workspace,
+        steps=[{"name": "Synthesis", "tool": "yosys", "state": "Success"}],
+        parameters={
+            "pdk": "ics55",
+            "design": "gcd",
+            "top_module": "gcd",
+            "clock": "clk",
+            "_flow": {"start": "Synthesis", "end": "Synthesis"},
+        },
+    )
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+    mutation = {
+        "type": "register_workspace",
+        "workspace_id": "ws_0009",
+        "workspace_path": str(workspace),
+        "name": "ws_0009",
+    }
+    mutate_project_manifest(tmp_path, {**mutation, "updated_at": "2026-02-01T00:00:00Z"})
+    # First re-registration converges the derived fields on the directory.
+    mutate_project_manifest(tmp_path, {**mutation, "updated_at": "2026-03-01T00:00:00Z"})
+
+    # A consistent re-registration is a pure no-op: no updated_at bump.
+    reregistered = mutate_project_manifest(
+        tmp_path, {**mutation, "updated_at": "2026-04-01T00:00:00Z"}
+    )
+
+    entry = reregistered["workspaces"][0]
+    assert entry["status"] == "success"
+    assert entry["updated_at"] == "2026-03-01T00:00:00Z"
+
+
+def test_refresh_workspace_derived_fields_realigns_entry_with_directory(tmp_path):
+    workspace = tmp_path / "ws_0001"
+    _write_workspace_facts(
+        workspace,
+        steps=[{"name": "Synthesis", "tool": "yosys", "state": "Success"}],
+        parameters={
+            "pdk": "ics55",
+            "design": "gcd",
+            "top_module": "gcd",
+            "clock": "clk",
+            "frequency_max": 125,
+            "_flow": {"start": "Synthesis", "end": "Synthesis"},
+        },
+    )
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+    mutate_project_manifest(
+        tmp_path,
+        {
+            "type": "register_workspace",
+            "workspace_id": "ws_0001",
+            "workspace_path": str(workspace),
+            "source_workspace_id": "ws_0000",
+            "updated_at": "2026-02-01T00:00:00Z",
+        },
+    )
+    assert write_back_workspace_status(str(tmp_path), "ws_0001", "success") is True
+
+    # An in-place update replaces the directory facts: new range, fresh
+    # (never-run) ledger, parameters back to the project base.
+    _write_workspace_facts(
+        workspace,
+        steps=[
+            {"name": "CTS", "tool": "ecc", "state": "Unstart"},
+            {"name": "route", "tool": "ecc", "state": "Unstart"},
+        ],
+        parameters={
+            "pdk": "ics55",
+            "design": "gcd",
+            "top_module": "gcd",
+            "clock": "clk",
+            "_flow": {"start": "CTS", "end": "route"},
+        },
+    )
+
+    assert refresh_workspace_derived_fields(str(tmp_path), "ws_0001") is True
+
+    entry = load_project_manifest(tmp_path)["workspaces"][0]
+    assert entry["start_step"] == "CTS"
+    assert entry["end_step"] == "Route"
+    # A new-generation workspace has never run: not_started.
+    assert entry["status"] == "not_started"
+    assert entry["parameter_patch"] == {}
+    assert entry["updated_at"] != "2026-02-01T00:00:00Z"
+    assert entry["source_workspace_id"] == "ws_0000"
+
+
+def test_refresh_workspace_derived_fields_freezes_archived_entries(tmp_path):
+    workspace = tmp_path / "ws_0001"
+    _write_workspace_facts(
+        workspace,
+        steps=[{"name": "CTS", "tool": "ecc", "state": "Unstart"}],
+        parameters={
+            "pdk": "ics55",
+            "design": "gcd",
+            "top_module": "gcd",
+            "clock": "clk",
+            "_flow": {"start": "CTS", "end": "CTS"},
+        },
+    )
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+    mutate_project_manifest(
+        tmp_path,
+        {
+            "type": "register_workspace",
+            "workspace_id": "ws_0001",
+            "workspace_path": str(workspace),
+            "start_step": "Synth",
+            "end_step": "Harden",
+            "updated_at": "2026-02-01T00:00:00Z",
+        },
+    )
+    mutate_project_manifest(tmp_path, {"type": "archive_workspace", "workspace_id": "ws_0001"})
+
+    assert refresh_workspace_derived_fields(str(tmp_path), "ws_0001") is True
+
+    entry = load_project_manifest(tmp_path)["workspaces"][0]
+    assert entry["status"] == "archived"
+    assert (entry["start_step"], entry["end_step"]) == ("Synth", "Harden")
+
+
+def test_select_archived_workspace_as_baseline_and_best(tmp_path):
+    workspace = tmp_path / "ws_0001"
+    (workspace / "home").mkdir(parents=True)
+    (workspace / "home" / "flow.json").write_text(json.dumps({"steps": []}))
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+    mutate_project_manifest(
+        tmp_path,
+        {
+            "type": "register_workspace",
+            "workspace_id": "ws_0001",
+            "workspace_path": str(workspace),
+            "updated_at": "2026-02-01T00:00:00Z",
+        },
+    )
+    mutate_project_manifest(tmp_path, {"type": "archive_workspace", "workspace_id": "ws_0001"})
+
+    # An archived entry (e.g. a retained replace backup holding the previous
+    # generation's artifacts) is a valid baseline/best target.
+    updated = mutate_project_manifest(
+        tmp_path,
+        {"type": "select_qor_baseline", "workspace_id": "ws_0001", "reason": "Pinned"},
+    )
+    assert updated["qor_baseline"] == {"workspace_id": "ws_0001", "reason": "Pinned"}
+    updated = mutate_project_manifest(
+        tmp_path,
+        {"type": "select_best_workspace", "workspace_id": "ws_0001", "reason": "Best"},
+    )
+    assert updated["best_workspace"] == {"workspace_id": "ws_0001", "reason": "Best"}
+
+
+def test_repoint_generation_pointers_follows_backup_and_keeps_unrelated(tmp_path):
+    workspace = tmp_path / "ws_0001"
+    other = tmp_path / "ws_0002"
+    backup = tmp_path / ".ws_0001.replace-backup-1"
+    for directory in (workspace, other, backup):
+        (directory / "home").mkdir(parents=True)
+        (directory / "home" / "flow.json").write_text(json.dumps({"steps": []}))
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+    for workspace_id, directory in (("ws_0001", workspace), ("ws_0002", other)):
+        mutate_project_manifest(
+            tmp_path,
+            {
+                "type": "register_workspace",
+                "workspace_id": workspace_id,
+                "workspace_path": str(directory),
+            },
+        )
+    mutate_project_manifest(
+        tmp_path, {"type": "select_qor_baseline", "workspace_id": "ws_0001", "reason": "Pinned"}
+    )
+    mutate_project_manifest(
+        tmp_path, {"type": "select_best_workspace", "workspace_id": "ws_0002", "reason": "Best"}
+    )
+    register_workspace_backup(tmp_path, backup, source_workspace_id="ws_0001")
+
+    updated = repoint_generation_pointers(tmp_path, "ws_0001", backup.name)
+
+    # The baseline followed the retained backup entry (keeping its reason);
+    # the unrelated best pointer is untouched.
+    assert updated["qor_baseline"] == {"workspace_id": backup.name, "reason": "Pinned"}
+    assert updated["best_workspace"] == {"workspace_id": "ws_0002", "reason": "Best"}
+
+    # Without a registered backup entry the pointer clears instead of
+    # dangling at an unregistered id.
+    updated = repoint_generation_pointers(tmp_path, "ws_0002", None)
+    assert updated["best_workspace"] is None
+    assert updated["qor_baseline"] == {"workspace_id": backup.name, "reason": "Pinned"}
 
 
 def test_manifest_mutation_without_timestamp_keeps_audit_timestamp(tmp_path):

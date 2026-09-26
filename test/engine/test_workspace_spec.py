@@ -267,7 +267,7 @@ def test_workspace_spec_update_is_atomic_revisioned_and_idempotent(
         bindings,
         "update-1",
     )
-    after = read_engineering_snapshot(updated)
+    after = read_engineering_snapshot(updated.workspace)
     repeated = update_workspace_from_spec(
         target,
         before["workspaceRevision"],
@@ -278,8 +278,8 @@ def test_workspace_spec_update_is_atomic_revisioned_and_idempotent(
 
     assert after["workspaceId"] == before["workspaceId"]
     assert after["workspaceRevision"] == before["workspaceRevision"] + 1
-    assert read_engineering_snapshot(repeated) == after
-    assert repeated.parameters.data["frequency_max"] == 250.0
+    assert read_engineering_snapshot(repeated.workspace) == after
+    assert repeated.workspace.parameters.data["frequency_max"] == 250.0
 
     with pytest.raises(WorkspaceLifecycleError) as conflict:
         update_workspace_from_spec(
@@ -290,7 +290,7 @@ def test_workspace_spec_update_is_atomic_revisioned_and_idempotent(
             "update-2",
         )
     assert conflict.value.code == "revision_conflict"
-    assert read_engineering_snapshot(repeated) == after
+    assert read_engineering_snapshot(repeated.workspace) == after
 
 
 def test_workspace_spec_update_preserves_omitted_config_parameters(
@@ -321,7 +321,7 @@ def test_workspace_spec_update_preserves_omitted_config_parameters(
         "preserve-config-1",
     )
 
-    reopened = load_workspace(updated.directory)
+    reopened = load_workspace(updated.workspace.directory)
     cts = json.loads(reopened.config["CTS"].read_text(encoding="utf-8"))
     assert reopened.parameters.data["frequency_max"] == 250.0
     assert cts["skew_bound"] == "0.20"
@@ -401,9 +401,9 @@ def test_workspace_spec_update_preserves_inapplicable_parameters_when_flow_chang
         "preserve-config-flow-1",
     )
 
-    configuration = workspace_configuration.read_workspace_configuration(updated)
+    configuration = workspace_configuration.read_workspace_configuration(updated.workspace)
     assert configuration["workspaceSpec"]["parameters"]["cts.skew_bound"] == "0.12"
-    cts = json.loads(updated.config["CTS"].read_text(encoding="utf-8"))
+    cts = json.loads(updated.workspace.config["CTS"].read_text(encoding="utf-8"))
     assert cts["skew_bound"] == "0.12"
 
 
@@ -525,6 +525,226 @@ def test_workspace_spec_update_keeps_generated_filelist_relocatable(
     assert not persisted.is_absolute()
     assert (target / persisted).is_file()
     assert reopened.design.input_filelist == target / persisted
+
+
+def test_workspace_spec_update_retain_backup_preserves_replaced_generation(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    from chipcompiler.data.parameter import load_parameter
+    from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
+    from chipcompiler.engine.snapshot import (
+        read_engineering_snapshot,
+        read_engineering_snapshot_from_directory,
+    )
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    created = create_workspace_from_spec(target, payload["workspaceSpec"], bindings, "create-1")
+    before = read_engineering_snapshot(created)
+    updated_spec = deepcopy(payload["workspaceSpec"])
+    updated_spec["parameters"]["design.frequency_mhz"] = 250.0
+
+    first = update_workspace_from_spec(
+        target,
+        before["workspaceRevision"],
+        updated_spec,
+        bindings,
+        "retain-update-1",
+        retain_backup=True,
+    )
+
+    backup = tmp_path / ".workspace.replace-backup-1"
+    assert first.backup_directory == backup
+    assert backup.is_dir()
+    # The new generation stands at the original path on the same lineage.
+    after = read_engineering_snapshot(first.workspace)
+    assert after["workspaceId"] == before["workspaceId"]
+    assert after["workspaceRevision"] == before["workspaceRevision"] + 1
+    assert after["cause"] == "workspace.updated"
+    assert first.workspace.parameters.data["frequency_max"] == 250.0
+    # The backup is the replaced generation, old snapshot and config included.
+    retained = read_engineering_snapshot_from_directory(backup)
+    assert retained["workspaceId"] == before["workspaceId"]
+    assert retained["workspaceRevision"] == before["workspaceRevision"]
+    assert retained["cause"] == "workspace.created"
+    assert load_parameter(backup / "home" / "params.toml").data["frequency_max"] == 200.0
+
+    # An idempotent retry neither recreates nor re-reports the backup.
+    retry = update_workspace_from_spec(
+        target,
+        before["workspaceRevision"],
+        updated_spec,
+        bindings,
+        "retain-update-1",
+        retain_backup=True,
+    )
+    assert retry.backup_directory is None
+    assert backup.is_dir()
+
+    # The next retaining update takes the lowest free backup number.
+    second = update_workspace_from_spec(
+        target,
+        after["workspaceRevision"],
+        updated_spec,
+        bindings,
+        "retain-update-2",
+        retain_backup=True,
+    )
+    assert second.backup_directory == tmp_path / ".workspace.replace-backup-2"
+    retained_second = read_engineering_snapshot_from_directory(second.backup_directory)
+    assert retained_second["workspaceRevision"] == after["workspaceRevision"]
+
+
+def test_workspace_spec_update_without_retain_backup_keeps_no_backup(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
+    from chipcompiler.engine.snapshot import read_engineering_snapshot
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    created = create_workspace_from_spec(target, payload["workspaceSpec"], bindings, "create-1")
+    updated_spec = deepcopy(payload["workspaceSpec"])
+    updated_spec["parameters"]["design.frequency_mhz"] = 250.0
+
+    result = update_workspace_from_spec(
+        target,
+        read_engineering_snapshot(created)["workspaceRevision"],
+        updated_spec,
+        bindings,
+        "default-update-1",
+    )
+
+    assert result.backup_directory is None
+    assert _update_sidecars(tmp_path) == []
+
+
+def test_workspace_spec_update_retain_backup_failure_keeps_original_tree(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    from chipcompiler.engine import (
+        WorkspaceLifecycleError,
+        create_workspace_from_spec,
+        update_workspace_from_spec,
+    )
+    from chipcompiler.engine.snapshot import read_engineering_snapshot
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    created = create_workspace_from_spec(target, payload["workspaceSpec"], bindings, "create-1")
+    before = read_engineering_snapshot(created)
+    updated_spec = deepcopy(payload["workspaceSpec"])
+    updated_spec["inputs"].append({"inputId": "rtl-extra", "role": "rtl"})
+
+    with pytest.raises(WorkspaceLifecycleError) as failed:
+        update_workspace_from_spec(
+            target,
+            before["workspaceRevision"],
+            updated_spec,
+            bindings,
+            "retain-fail-1",
+            retain_backup=True,
+        )
+
+    assert failed.value.code == "workspace_spec_invalid"
+    assert read_engineering_snapshot(created) == before
+    assert _update_sidecars(tmp_path) == []
+
+
+def test_workspace_spec_update_retain_backup_rolls_back_when_reload_fails(
+    tmp_path, minimal_ics55_pdk_factory, monkeypatch
+):
+    import chipcompiler.engine.workspace_lifecycle as lifecycle
+    from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
+    from chipcompiler.engine.snapshot import read_engineering_snapshot
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    created = create_workspace_from_spec(target, payload["workspaceSpec"], bindings, "create-1")
+    before = read_engineering_snapshot(created)
+    updated_spec = deepcopy(payload["workspaceSpec"])
+    updated_spec["parameters"]["design.frequency_mhz"] = 250.0
+
+    original_load = lifecycle._load_committed_workspace
+    loads = {"count": 0}
+
+    def fail_post_exchange_load(path):
+        if Path(path) == target:
+            loads["count"] += 1
+            if loads["count"] > 1:
+                raise OSError("simulated post-exchange load failure")
+        return original_load(path)
+
+    monkeypatch.setattr(lifecycle, "_load_committed_workspace", fail_post_exchange_load)
+
+    with pytest.raises(OSError, match="simulated post-exchange load failure"):
+        update_workspace_from_spec(
+            target,
+            before["workspaceRevision"],
+            updated_spec,
+            bindings,
+            "retain-rollback-1",
+            retain_backup=True,
+        )
+
+    # The rollback re-exchange restored the old tree; a failed update retains
+    # no backup and leaves no staging residue.
+    assert read_engineering_snapshot(created) == before
+    assert _update_sidecars(tmp_path) == []
+
+
+def test_workspace_spec_update_sweeps_stale_staging_siblings(tmp_path, minimal_ics55_pdk_factory):
+    from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
+    from chipcompiler.engine.snapshot import (
+        read_engineering_snapshot,
+        read_engineering_snapshot_from_directory,
+    )
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    created = create_workspace_from_spec(target, payload["workspaceSpec"], bindings, "create-1")
+    before = read_engineering_snapshot(created)
+    # Residue from a hard-killed earlier update: only staging siblings are
+    # swept; retained backups and unrelated siblings stay untouched.
+    stale = tmp_path / ".workspace.staging-crashed"
+    (stale / "home").mkdir(parents=True)
+    (stale / "home" / "params.toml").write_text("residue = true\n", encoding="utf-8")
+    backup = tmp_path / ".workspace.replace-backup-3"
+    backup.mkdir()
+    unrelated = tmp_path / ".other.staging-crashed"
+    unrelated.mkdir()
+    updated_spec = deepcopy(payload["workspaceSpec"])
+    updated_spec["parameters"]["design.frequency_mhz"] = 250.0
+
+    update_workspace_from_spec(
+        target,
+        before["workspaceRevision"],
+        updated_spec,
+        bindings,
+        "sweep-update-1",
+    )
+
+    assert not stale.exists()
+    assert backup.is_dir()
+    assert unrelated.is_dir()
+    # No staging tree of this workspace remains (lock files are not trees).
+    assert _update_sidecars(tmp_path) == [".other.staging-crashed", ".workspace.replace-backup-3"]
+    after = read_engineering_snapshot_from_directory(target)
+    assert after["workspaceRevision"] == before["workspaceRevision"] + 1
+
+
+def _update_sidecars(directory: Path) -> list[str]:
+    """Staging/backup tree siblings left behind by an in-place update."""
+    return sorted(
+        path.name
+        for path in directory.iterdir()
+        if path.is_dir() and (".staging-" in path.name or ".replace-backup-" in path.name)
+    )
 
 
 def test_workspace_spec_stale_revision_does_not_create_missing_snapshot(
