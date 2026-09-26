@@ -106,6 +106,40 @@ def test_manifest_with_studio_display_step_names_still_loads(tmp_path):
     assert loaded["workspaces"][0]["end_step"] == "PostRouteLEC"
 
 
+def test_register_workspace_rejects_unknown_step_without_poisoning_manifest(tmp_path):
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+
+    with pytest.raises(ManifestError, match="not on the canonical flow chain"):
+        mutate_project_manifest(
+            tmp_path,
+            {
+                "type": "register_workspace",
+                "workspace_id": "ws_bad",
+                "workspace_path": str(tmp_path / "ws_bad"),
+                "start_step": "Spin",
+                "end_step": "Spin",
+            },
+        )
+
+    assert load_manifest(str(tmp_path)).workspaces == ()
+
+
+def test_register_workspace_rejects_reversed_range(tmp_path):
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+
+    with pytest.raises(ManifestError, match="reversed"):
+        mutate_project_manifest(
+            tmp_path,
+            {
+                "type": "register_workspace",
+                "workspace_id": "ws_rev",
+                "workspace_path": str(tmp_path / "ws_rev"),
+                "start_step": "Harden",
+                "end_step": "Synth",
+            },
+        )
+
+
 def test_power_analysis_bounds_the_flow_range_between_sta_and_lvs(tmp_path):
     create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
     manifest_path = tmp_path / "project.json"

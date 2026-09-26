@@ -93,6 +93,19 @@ _CANONICAL_TO_MANIFEST_STEP = {
 # Display name -> canonical step value, for skip-policy boundary checks.
 _MANIFEST_TO_CANONICAL_STEP = {v: k for k, v in _CANONICAL_TO_MANIFEST_STEP.items()}
 
+
+def validate_manifest_range(start_step: str, end_step: str) -> tuple[str, str]:
+    """Alias-resolve and validate a persisted start/end range."""
+    start_step = _MANIFEST_STEP_ALIASES.get(start_step, start_step)
+    end_step = _MANIFEST_STEP_ALIASES.get(end_step, end_step)
+    for step_name, field_name in ((start_step, "start_step"), (end_step, "end_step")):
+        if step_name not in MANIFEST_FLOW_STEPS:
+            raise ManifestError(f"{field_name} is not on the canonical flow chain: {step_name}")
+    if MANIFEST_FLOW_STEPS.index(start_step) > MANIFEST_FLOW_STEPS.index(end_step):
+        raise ManifestError(f"flow range is reversed: {start_step} -> {end_step}")
+    return start_step, end_step
+
+
 _WORKSPACE_STATUSES = frozenset(
     {"success", "failed", "running", "in_progress", "not_started", "archived"}
 )
@@ -205,23 +218,16 @@ def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> Mani
     declared_skip, skipped = _workspace_skip_steps(source, index)
     start_step = _optional_str(source.get("start_step")) or "Synth"
     end_step = _optional_str(source.get("end_step")) or "Harden"
-    start_step = _MANIFEST_STEP_ALIASES.get(start_step, start_step)
-    end_step = _MANIFEST_STEP_ALIASES.get(end_step, end_step)
-    for step_name, field_name in ((start_step, "start_step"), (end_step, "end_step")):
-        if step_name not in MANIFEST_FLOW_STEPS:
-            raise ManifestError(
-                f"workspaces[{index}] {field_name} is not on the canonical flow chain: {step_name}"
-            )
+    try:
+        start_step, end_step = validate_manifest_range(start_step, end_step)
+    except ManifestError as exc:
+        raise ManifestError(f"workspaces[{index}] {exc}") from None
     for step_name, field_name in ((start_step, "start_step"), (end_step, "end_step")):
         if _MANIFEST_TO_CANONICAL_STEP[step_name] in skipped:
             raise ManifestError(
                 f"workspaces[{index}] {field_name} {step_name!r} is skipped by skip_steps "
                 f"and cannot bound the flow range"
             )
-    if MANIFEST_FLOW_STEPS.index(start_step) > MANIFEST_FLOW_STEPS.index(end_step):
-        raise ManifestError(
-            f"workspaces[{index}] flow range is reversed: {start_step} -> {end_step}"
-        )
     return ManifestWorkspace(
         workspace_id=workspace_id,
         workspace_path=str(canonical),
