@@ -5,12 +5,6 @@
   "max_sink_tran": "0.5",
   "max_cap": "0.15",
   "max_fanout": "32",
-  "max_length": "300",
-  "wirelength_iterations": "3",
-  "slew_steps": "10",
-  "cap_steps": "10",
   "routing_layer": [4, 5],
-  "buffer_type": [],
-  "use_netlist": "OFF",
-  "net_list": []
+  "buffer_type": []
 }
