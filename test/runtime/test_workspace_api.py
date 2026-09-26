@@ -664,6 +664,41 @@ def test_recover_interrupted_returns_committed_workspace_revision(monkeypatch, t
     assert session.workspace_revision == 2
 
 
+def test_recover_interrupted_rejects_active_operation_before_waiting_for_session_lock(
+    monkeypatch, tmp_path
+):
+    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+    api = WorkspaceRuntimeApi()
+    workspace_id = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))["workspaceId"]
+    session = api.sessions.get_session(workspace_id)
+    monkeypatch.setattr(api.operations, "has_active_workspace", lambda _workspace_id: True)
+    finished = threading.Event()
+    outcome = queue.Queue()
+
+    def recover():
+        try:
+            outcome.put(
+                api.recover_interrupted(
+                    WorkspaceRecoverInterruptedRequest(workspace_id=workspace_id)
+                )
+            )
+        except RuntimeApiError as error:
+            outcome.put(error)
+        finally:
+            finished.set()
+
+    with session.mutation_lock:
+        worker = threading.Thread(target=recover)
+        worker.start()
+        finished_while_locked = finished.wait(0.1)
+
+    worker.join(timeout=2)
+    assert finished_while_locked
+    error = outcome.get_nowait()
+    assert isinstance(error, RuntimeApiError)
+    assert error.code == "operation_conflict"
+
+
 def test_create_workspace_replaces_existing_same_directory_session(monkeypatch, tmp_path):
     _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     api = WorkspaceRuntimeApi()
@@ -681,16 +716,21 @@ def test_create_workspace_replaces_existing_same_directory_session(monkeypatch, 
     assert created_session.workspace is not opened_session.workspace
 
 
-def test_open_workspace_reuses_existing_same_directory_session(monkeypatch, tmp_path):
-    _capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
+def test_open_workspace_reuses_active_same_directory_session_without_reloading(
+    monkeypatch, tmp_path
+):
+    capture, ws = _install_runtime_mocks(monkeypatch, tmp_path)
     api = WorkspaceRuntimeApi()
 
     first = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))
     first_session = api.sessions.get_session(first["workspaceId"])
+    monkeypatch.setattr(api.operations, "has_active_workspace", lambda _workspace_id: True)
     second = api.open_workspace(WorkspaceOpenRequest(directory=str(ws)))
 
     assert second["workspaceId"] == first["workspaceId"]
+    assert second["reused"] is True
     assert api.sessions.get_session(second["workspaceId"]).workspace is first_session.workspace
+    assert capture["loaded"] == [str(ws)]
 
 
 _OPEN_ENTRY_IDS = ("legacy", "spec", "gui_directory_read")

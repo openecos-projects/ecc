@@ -117,6 +117,12 @@ class WorkspaceSessionRegistry:
         except KeyError as exc:
             raise WorkspaceSessionNotFound(workspace_id) from exc
 
+    def find_session(self, directory: str | Path) -> WorkspaceSession | None:
+        resolved_directory = Path(directory).resolve()
+        with self._lock:
+            workspace_id = self._sessions_by_directory.get(resolved_directory)
+            return self._sessions.get(workspace_id) if workspace_id is not None else None
+
     def close_session(self, workspace_id: str) -> None:
         with self._lock:
             self._remove_session(workspace_id)
