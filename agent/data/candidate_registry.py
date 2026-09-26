@@ -213,9 +213,6 @@ CANDIDATE_KNOBS = (
     _cts_number("max_sink_tran"),
     _cts_number("max_cap"),
     _cts_number("wirelength_unit_um"),
-    _cts_uint("wirelength_iterations"),
-    _cts_uint("slew_steps"),
-    _cts_uint("cap_steps"),
     _cts_number("wire_width"),
     _cts_uint("max_fanout"),
     CandidateKnob("cts.routing_layer", "CTS", "CTS", ("routing_layer",), "uint_list", 1),
@@ -229,7 +226,6 @@ CANDIDATE_KNOBS = (
     ),
     _cts_number("char_buf_redundancy_pct"),
     CandidateKnob("cts.force_branch_buffer", "CTS", "CTS", ("force_branch_buffer",), "bool"),
-    _cts_uint("htree_depth_explore_window"),
     _cts_number("htree_topology_tolerance"),
     CandidateKnob(
         "cts.enable_analytical_htree",
@@ -253,7 +249,7 @@ CANDIDATE_KNOBS = (
         "number",
         0.0,
         available=False,
-        unavailable_reason="iCTS keeps max_length as a legacy placeholder",
+        unavailable_reason="iCTS does not accept max_length",
     ),
     CandidateKnob(
         "cts.use_netlist",
@@ -262,7 +258,7 @@ CANDIDATE_KNOBS = (
         ("use_netlist",),
         "string",
         available=False,
-        unavailable_reason="iCTS netlist mode is deprecated",
+        unavailable_reason="iCTS does not accept use_netlist",
     ),
     CandidateKnob(
         "cts.net_list",
@@ -271,7 +267,7 @@ CANDIDATE_KNOBS = (
         ("net_list",),
         "string_list",
         available=False,
-        unavailable_reason="iCTS net list is deprecated",
+        unavailable_reason="iCTS does not accept net_list",
     ),
     CandidateKnob(
         "legalization.cell_padding_x",

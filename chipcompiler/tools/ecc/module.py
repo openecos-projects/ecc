@@ -601,7 +601,8 @@ class ECCToolsModule:
     ):
         if lib_paths is None:
             lib_paths = []
-        self.ecc.lib_init(lib_paths=path_texts(lib_paths))
+        if not self.ecc.lib_init(lib_paths=path_texts(lib_paths)):
+            return False
         self.ecc.sdc_init(path_text(sdc_path))
         self.ecc.spef_init(path_text(spef_path))
         return self.ecc.init_pw(config_dict={"-temp_directory_path": path_text(output_dir)})
@@ -649,7 +650,8 @@ class ECCToolsModule:
 
         discard_sta_run_outputs(work_dir, report_dir, feature_dir, modes)
 
-        self.ecc.lib_init(lib_paths=path_texts(lib_paths))
+        if not self.ecc.lib_init(lib_paths=path_texts(lib_paths)):
+            raise RuntimeError("Failed to load Liberty libraries for STA")
         self.ecc.sdc_init(path_text(sdc_path))
         self.ecc.spef_init(path_text(spef_path))
         config_dict = {}
@@ -705,7 +707,8 @@ class ECCToolsModule:
                 design_name = design_name[: -len("_Harden")]
 
         sta_output_dir = Path(output_dir) if output_dir else output_lib_path.parent
-        self.ecc.lib_init(lib_paths=path_texts(lib_paths))
+        if not self.ecc.lib_init(lib_paths=path_texts(lib_paths)):
+            raise RuntimeError("Failed to load Liberty libraries for timing model")
         self.ecc.sdc_init(path_text(sdc_path))
         self.ecc.spef_init(path_text(spef_path))
         config_dict = {"-temp_directory_path": path_text(sta_output_dir)}

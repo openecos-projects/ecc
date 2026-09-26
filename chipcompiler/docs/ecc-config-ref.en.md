@@ -447,12 +447,8 @@ Configuration file `cts_ecc.json`. Sub-phases: load data → run CTS → save da
 | `max_sink_tran` | `"0.5"` | 0.5 | Max slew at clock sinks (ns) |
 | `max_cap` | `"0.15"` | 0.15 | Max buffer load capacitance (pF) |
 | `max_fanout` | `"32"` | 32 `*cts.max_fanout` | Max fanout of clock buffers |
-| `max_length` | `"300"` | 300 | Max wirelength per buffer level (µm) |
-| `wirelength_iterations` | `"3"` | 3 | Wirelength balancing iteration count |
-| `slew_steps` / `cap_steps` | `"10"` / `"10"` | 10 / 10 | Slew/capacitance lookup-table interpolation steps |
 | `routing_layer` | `[4,5]` | [4,5] | Clock routing layer range (layer indices, MET4–MET5) |
 | `buffer_type` | `[]` | PDK → `[BUFX8H7L, BUFX12H7L, BUFX16H7L, BUFX20H7L]` | Candidate clock buffer cells (increasing drive strength) |
-| `use_netlist` / `net_list` | `"OFF"` / `[]` | OFF / [] | Restrict CTS to specific nets (default: all clock nets) |
 
 ## 8. routing (ecc-tools)
 
