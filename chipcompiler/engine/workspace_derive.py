@@ -14,6 +14,7 @@ from chipcompiler.engine.snapshot import (
 )
 from chipcompiler.engine.workspace_lifecycle import (
     WorkspaceLifecycleError,
+    _command_retry_matches,
     _replace_string_prefix,
     _workspace_command_fingerprint,
     _write_workspace_command,
@@ -31,6 +32,10 @@ def derive_workspace(
     reset_from_step: str = "",
     command_id: str = "",
     cause: str = "workspace.derived",
+    blocking: bool = True,
+    project_id: str = "",
+    source_workspace_id: str = "",
+    target_workspace_id: str = "",
 ) -> Any:
     """Copy ``source_directory`` to ``target_directory`` under a new identity.
 
@@ -48,8 +53,6 @@ def derive_workspace(
 
     source = Path(source_directory).expanduser().resolve()
     target = Path(target_directory).expanduser().resolve()
-    if target.exists():
-        raise WorkspaceLifecycleError("workspace_exists", f"Workspace already exists: {target}")
     if path_is_within(target, source):
         raise WorkspaceLifecycleError(
             "workspace_invalid", f"Target directory is inside the source Workspace: {target}"
@@ -59,8 +62,23 @@ def derive_workspace(
             "workspace_invalid", f"Workspace has no Engineering Snapshot: {source}"
         )
 
-    with _workspace_lock(source), _workspace_lock(target):
+    locks = sorted((source, target), key=str)
+    with _workspace_lock(locks[0], blocking=blocking), _workspace_lock(locks[1], blocking=blocking):
         if target.exists():
+            if command_id:
+                fingerprint = _workspace_command_fingerprint(
+                    "derive",
+                    {
+                        "directory": str(source),
+                        "targetDirectory": str(target),
+                        "resetFromStep": reset_from_step,
+                    },
+                    None,
+                )
+                if _command_retry_matches(target, command_id, fingerprint):
+                    workspace = load_workspace(target)
+                    if workspace is not None:
+                        return workspace
             raise WorkspaceLifecycleError("workspace_exists", f"Workspace already exists: {target}")
         staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=target.parent))
         staging.rmdir()
@@ -80,15 +98,15 @@ def derive_workspace(
                     "workspace_invalid", f"Workspace cannot be opened: {source}"
                 )
 
-            from chipcompiler.runtime.workspace_api import (
-                WorkspaceRuntimeApi,
+            from chipcompiler.engine.workspace_reset import (
                 build_flow_for_workspace,
+                prepare_steps_for_rerun,
             )
 
             engine_flow = build_flow_for_workspace(workspace)
             if reset_from_step:
                 reset_steps = _reset_step_suffix(engine_flow, reset_from_step)
-                WorkspaceRuntimeApi._prepare_steps_for_rerun(workspace, engine_flow, reset_steps)
+                prepare_steps_for_rerun(workspace, engine_flow, reset_steps)
                 _prune_derived_checklist(workspace, reset_steps)
             else:
                 import chipcompiler.data as data_api
@@ -103,20 +121,29 @@ def derive_workspace(
             )
             snapshot = create_engineering_snapshot(workspace, cause=cause)
             if command_id:
+                command_spec = {
+                    "directory": str(source),
+                    "targetDirectory": str(target),
+                    "resetFromStep": reset_from_step,
+                }
                 _write_workspace_command(
                     staging,
                     command_id,
                     _workspace_command_fingerprint(
                         "derive",
-                        {
-                            "directory": str(source),
-                            "targetDirectory": str(target),
-                            "resetFromStep": reset_from_step,
-                        },
+                        command_spec,
                         None,
                     ),
                     snapshot["workspaceId"],
                     snapshot["workspaceRevision"],
+                    metadata={
+                        "operation": "derive",
+                        "projectId": project_id,
+                        "workspaceId": target_workspace_id,
+                        "workspacePath": str(target),
+                        "sourceWorkspaceId": source_workspace_id,
+                        "request": command_spec,
+                    },
                 )
             staging.rename(target)
             try:

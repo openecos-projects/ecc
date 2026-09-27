@@ -34,9 +34,10 @@ class TestVirginFirstRun:
         assert entry["workspace_path"] == run_dir
         assert entry["start_step"] == "Synth"
         assert entry["end_step"] == "Harden"
-        # The DummyFlow run succeeds, so the D4 write-back finalizes the
-        # initial "running" status.
-        assert entry["status"] == "success"
+        # Flow state belongs to flow.json. The manifest status is legacy
+        # compatibility data and is not changed by a run.
+        assert entry["status"] == "not_started"
+        assert manifest["runtime_processes"] == {}
         assert entry["parameter_patch"] == {}
         # The complete D3 source shape, GUI-flat parameters included.
         assert manifest["base_design"] == {
@@ -67,7 +68,7 @@ class TestVirginFirstRun:
         assert "max_fanout" not in manifest["base_design"]["parameters"]
         assert manifest["base_design"]["parameters"]["frequency_max"] == 100.0
 
-    def test_virgin_run_failed_writes_back_failed(
+    def test_virgin_run_failure_does_not_write_manifest_flow_status(
         self, tmp_path, capsys, create_cli_project, flow_mocks
     ):
         flow_mocks.flow.run_steps_value = False
@@ -77,7 +78,8 @@ class TestVirginFirstRun:
 
         assert rc != 0
         manifest = json.loads((tmp_path / "gcd" / "project.json").read_text())
-        assert manifest["workspaces"][0]["status"] == "failed"
+        assert manifest["workspaces"][0]["status"] == "not_started"
+        assert manifest["runtime_processes"] == {}
 
     def test_virgin_run_rejects_nested_workspace_name(
         self, tmp_path, capsys, create_cli_project, flow_mocks, manifest_stubs
@@ -175,9 +177,10 @@ class TestManifestRunCommand:
         # A new --workspace id is registered before filesystem creation.
         manifest = json.loads((project_dir / "project.json").read_text())
         assert [w["workspace_id"] for w in manifest["workspaces"]] == ["ws_0001", "exp2"]
-        assert manifest["workspaces"][1]["status"] == "success"
+        assert manifest["workspaces"][1]["status"] == "not_started"
+        assert manifest["runtime_processes"] == {}
 
-    def test_declared_workspace_run_writes_back_status(
+    def test_declared_workspace_run_preserves_manifest_status(
         self, tmp_path, capsys, flow_mocks, manifest_stubs
     ):
         project_dir = tmp_path / "proj"
@@ -191,14 +194,10 @@ class TestManifestRunCommand:
         manifest = json.loads((project_dir / "project.json").read_text())
         assert manifest["workspaces"][0]["status"] == "success"
 
-    def test_write_back_failure_is_a_diagnosable_error(
+    def test_run_does_not_call_legacy_status_write_back(
         self, tmp_path, capsys, flow_mocks, manifest_stubs, monkeypatch
     ):
-        """AC-10: a failed status write-back never changes the run result —
-        the successful run stays successful — but each lost write is an
-        error record (manifest_write_back_failed) carrying the lost status
-        and a repair command, never a silent warning (the pre-engine
-        "running" update and the final status update)."""
+        """Runtime registry and flow.json replace manifest status writes."""
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         manifest_stubs.write(
@@ -206,7 +205,9 @@ class TestManifestRunCommand:
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.manifest_write.write_back_workspace_status",
-            lambda project_dir, workspace_id, status: False,
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("legacy status write-back must not be called")
+            ),
         )
 
         rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
@@ -215,13 +216,10 @@ class TestManifestRunCommand:
         records = manifest_stubs.records()
         statuses = [r for r in records if r.get("status") == "success"]
         assert len(statuses) == 1
-        failures = [r for r in records if r.get("error") == "manifest_write_back_failed"]
-        assert len(failures) == 2
-        assert {f["lost_status"] for f in failures} == {"running", "success"}
-        assert all(f["repair"].startswith("ecc run") for f in failures)
-        # The on-disk manifest keeps its pre-run entry status.
+        assert not [r for r in records if r.get("error") == "manifest_write_back_failed"]
         manifest = json.loads((project_dir / "project.json").read_text())
         assert manifest["workspaces"][0]["status"] == "running"
+        assert manifest["runtime_processes"] == {}
 
     def test_terminal_write_back_converges_derived_fields_before_status(
         self, tmp_path, capsys, flow_mocks, manifest_stubs, monkeypatch

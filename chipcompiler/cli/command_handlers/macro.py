@@ -1,6 +1,8 @@
 """Handlers for the manual macro-placement commands."""
 
 import math
+import sys
+import uuid
 from pathlib import Path
 
 from chipcompiler.cli.command_handlers.param import (
@@ -23,6 +25,7 @@ from chipcompiler.data.workspace.macro_location import (
 )
 
 MACRO_PARAM = "macro.placements"
+_MAX_STDIN_BYTES = 4 * 1024 * 1024
 
 
 def macro_set(args, ctx: CommandContext) -> CommandResult:
@@ -48,8 +51,8 @@ def macro_import(args, ctx: CommandContext) -> CommandResult:
     schema = lookup_schema(MACRO_PARAM)
 
     try:
-        text = Path(args.path).read_text(encoding="utf-8")
-    except OSError as exc:
+        text = _read_import_text(args.path)
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
         return CommandResult.err(
             [error_record("file_unreadable", param=MACRO_PARAM, reason=str(exc))],
             exit_code=1,
@@ -190,12 +193,63 @@ def _workspace_placements(workspace, schema) -> tuple[list, CommandResult | None
 
 
 def _workspace_import(args, ctx, schema, placements: list) -> CommandResult:
-    from chipcompiler.cli.command_handlers.workspace_params import _mutate
+    snapshot_path = Path(ctx.run_dir) / "home" / "engineering-snapshot.json"
+    if not snapshot_path.is_file():
+        from chipcompiler.cli.command_handlers.workspace_params import _mutate
 
-    def mutation(workspace):
-        return set_workspace_param(workspace, schema, placements)
+        def mutation(workspace):
+            return set_workspace_param(workspace, schema, placements)
 
-    result = _mutate(ctx, schema, mutation, placements, "set")
+        result = _mutate(ctx, schema, mutation, placements, "set")
+        _annotate_import(result, args.path, placements)
+        return result
+    from chipcompiler.engine import apply_workspace_parameters
+    from chipcompiler.engine.reconcile import _workspace_lock
+    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+
+    if ctx.manifest_error or ctx.project_state != "manifest" or ctx.run_id is None:
+        return CommandResult.err(
+            [
+                error_record(
+                    "workspace_macro_requires_managed_workspace",
+                    reason=ctx.manifest_error or "Workspace must be declared in project.json",
+                )
+            ]
+        )
+    try:
+        with _workspace_lock(Path(ctx.run_dir), blocking=not args.no_wait):
+            current = read_engineering_snapshot_from_directory(ctx.run_dir)
+            expected = args.expected_revision or current["workspaceRevision"]
+            apply_workspace_parameters(
+                ctx.run_dir,
+                expected,
+                {MACRO_PARAM: placements},
+                (),
+                command_id=args.command_id or str(uuid.uuid4()),
+            )
+            committed = read_engineering_snapshot_from_directory(ctx.run_dir)
+    except BlockingIOError:
+        return CommandResult.err([error_record("workspace_busy")], exit_code=20)
+    except WorkspaceLifecycleError as exc:
+        return CommandResult.err(
+            [error_record(exc.code, param=MACRO_PARAM, reason=str(exc), **exc.details)],
+            exit_code=21 if exc.code == "revision_conflict" else 1,
+        )
+    except Exception as exc:
+        return CommandResult.err(
+            [error_record("workspace_macro_import_failed", param=MACRO_PARAM, reason=str(exc))]
+        )
+    result = CommandResult.ok(
+        [
+            {
+                "param": MACRO_PARAM,
+                "source": "workspace",
+                "workspace": ctx.run_id,
+                "workspace_revision": committed["workspaceRevision"],
+            }
+        ]
+    )
     _annotate_import(result, args.path, placements)
     return result
 
@@ -310,6 +364,15 @@ def _project_placements(ctx: CommandContext) -> tuple[list, CommandResult | None
 
 
 def _project_import(args, ctx, schema, placements: list) -> CommandResult:
+    if args.expected_revision is not None or args.command_id or args.no_wait:
+        return CommandResult.err(
+            [
+                error_record(
+                    "workspace_option_requires_workspace",
+                    reason="revision, command ID, and no-wait options require --workspace",
+                )
+            ]
+        )
     manifest_error = _manifest_mode_error(ctx)
     if manifest_error is not None:
         return manifest_error
@@ -414,6 +477,18 @@ def _read_file_placements(path) -> tuple[list | None, str | None]:
         return parse_macro_location_tcl(text), None
     except ValueError as exc:
         return None, str(exc)
+
+
+def _read_import_text(path: str) -> str:
+    if path != "-":
+        return Path(path).read_text(encoding="utf-8")
+    stream = getattr(sys.stdin, "buffer", sys.stdin)
+    payload = stream.read(_MAX_STDIN_BYTES + 1)
+    if isinstance(payload, str):
+        payload = payload.encode("utf-8")
+    if len(payload) > _MAX_STDIN_BYTES:
+        raise ValueError("stdin exceeds the 4 MiB limit")
+    return payload.decode("utf-8")
 
 
 def _same_placements(left: list, right: list) -> bool:

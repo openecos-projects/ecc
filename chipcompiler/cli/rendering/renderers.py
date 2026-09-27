@@ -4,6 +4,7 @@ from typing import Protocol
 
 from chipcompiler.cli.core.inputs import LogInput
 from chipcompiler.cli.core.invocation import CommandInput
+from chipcompiler.cli.core.line_records import serialize_line_records
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
 from chipcompiler.cli.rendering.pretty import (
     render_check,
@@ -94,6 +95,19 @@ def _plain_text(render_text: PlainTextRenderer) -> Callable[..., None]:
         render_text(records)
 
     return renderer
+
+
+def _render_line_records(
+    result: CommandResult,
+    ctx: CommandContext,
+    command_input: CommandInput,
+    *,
+    color: bool,
+) -> None:
+    if result.exit_code != 0:
+        render_result(result, OutputMode.PLAIN)
+        return
+    print(serialize_line_records(result.records), end="")
 
 
 def _render_report_step_text(
@@ -219,6 +233,8 @@ RENDERERS: dict[RendererKey, Renderer] = {
     ("status", OutputMode.TEXT): _pretty(render_status),
     ("config", OutputMode.TEXT): _pretty(render_config),
     ("param:list", OutputMode.TEXT): _plain_text(render_param_list_text),
+    ("param:catalog", OutputMode.PLAIN): _render_line_records,
+    ("flow:list", OutputMode.PLAIN): _render_line_records,
     ("param:show", OutputMode.TEXT): _plain_text(render_param_show_text),
     ("param:set", OutputMode.TEXT): _plain_text(render_param_set_text),
     ("param:unset", OutputMode.TEXT): _plain_text(render_param_set_text),

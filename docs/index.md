@@ -15,7 +15,6 @@ The `ecc` command-line tool ships bilingual guides (`.en.md` / `.cn.md`):
   - Run selectors (`--resume`/`--from`/`--to`/`--only`), error-code reference, end-to-end workflows
 - **[CLI Config Reference](../chipcompiler/docs/ecc-config-ref.en.md)** / **[中文配置参考](../chipcompiler/docs/ecc-config-ref.cn.md)** - `ecc.toml`, workspace files, and the parameter system
 - **[Staged Floorplan Flow](../chipcompiler/docs/floorplan-flow.en.md)** / **[分阶段 Floorplan 流程](../chipcompiler/docs/floorplan-flow.cn.md)** - Pre-floorplan, macro placement, post-floorplan, and the macro-location Tcl handoff
-- **[RPC Guide](rpc-guide.md)** - Private JSON-RPC runtime sidecar protocol (`ecc rpc serve`)
 - **[ECC Parameter Lifecycle](ecc-parameter-lifecycle.md)** / **[ECC 参数生命周期](ecc-parameter-lifecycle.cn.md)** - Maintainer/integration contract for parameter precedence, effective timing, CLI/GUI differences, and schema versioning
   - Priority matrix (`--set` > `ecc.toml [params]` > `project.json` base + workspace `parameter_patch` > schema defaults)
   - Fresh vs existing runs, `skip_steps` convergence
@@ -62,7 +61,7 @@ ChipCompiler supports various EDA file formats. Technical specifications for par
 - **Look up an `ecc` command or option** → [CLI User Guide](../chipcompiler/docs/ecc-user-guide.en.md) / [中文用户指南](../chipcompiler/docs/ecc-user-guide.cn.md)
 - **Understand `ecc.toml` / workspace files / parameters** → [CLI Config Reference](../chipcompiler/docs/ecc-config-ref.en.md) / [中文配置参考](../chipcompiler/docs/ecc-config-ref.cn.md)
 - **Extend the CLI with new commands** → [CLI Dev Guide](development.md#extending-the-cli)
-- **Use legacy workspace commands** → [RPC Guide](rpc-guide.md)
+- **Manage GUI/background runs** → [CLI User Guide](../chipcompiler/docs/ecc-user-guide.en.md)
 - **Set up development environment** → [Development Guide](development.md)
 - **Create a release** → [Release Guide](release.md)
 - **Add new tools** → [Development Guide - Adding EDA Tools](development.md#add-a-new-eda-tool)

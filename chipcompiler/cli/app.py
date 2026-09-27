@@ -7,13 +7,14 @@ import typer
 
 from chipcompiler.cli.commands.doc import register_doc_commands
 from chipcompiler.cli.commands.doctor import register_doctor_commands
+from chipcompiler.cli.commands.flow import flow_app
 from chipcompiler.cli.commands.macro import macro_app
 from chipcompiler.cli.commands.param import param_app
 from chipcompiler.cli.commands.pdk import pdk_app
+from chipcompiler.cli.commands.process import process_app
 from chipcompiler.cli.commands.project import register_project_commands
 from chipcompiler.cli.commands.project_config import project_app
 from chipcompiler.cli.commands.report import report_app
-from chipcompiler.cli.commands.rpc import rpc_app
 from chipcompiler.cli.commands.signoff import signoff_app
 from chipcompiler.cli.commands.workspace import workspace_app
 from chipcompiler.cli.core.apps import create_app
@@ -47,8 +48,10 @@ def root_callback(
 @app.command("version", help="Show ECC runtime, component, and installed tool versions")
 def version_cmd(
     *,
-    # Machine-readable output for the desktop app; not part of the documented CLI surface.
-    json_output: Annotated[bool, typer.Option("--json", hidden=True)] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit the version and CLI contract as JSON."),
+    ] = False,
 ) -> None:
     payload = version_payload()
     tools = tool_versions()
@@ -78,13 +81,14 @@ def layout_image_cmd(
 register_project_commands(app)
 register_doctor_commands(app)
 app.add_typer(param_app, name="param")
+app.add_typer(flow_app, name="flow")
 app.add_typer(macro_app, name="macro")
 app.add_typer(pdk_app, name="pdk")
 app.add_typer(project_app, name="project")
+app.add_typer(process_app, name="process")
 app.add_typer(workspace_app, name="workspace")
 app.add_typer(signoff_app, name="signoff")
 app.add_typer(report_app, name="report")
-app.add_typer(rpc_app, name="rpc")
 
 
 def invoke_typer_app(argv: Sequence[str]) -> int:

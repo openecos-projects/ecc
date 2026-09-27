@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from chipcompiler.runtime import subflow_events
+from chipcompiler.engine import subflow_events
 
 
 def test_interrupted_subflow_write_failure_restores_ongoing_state(monkeypatch, tmp_path):

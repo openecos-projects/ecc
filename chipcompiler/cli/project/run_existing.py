@@ -13,7 +13,6 @@ from pathlib import Path
 
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandResult
-from chipcompiler.cli.project.run_prepare import _write_back_status
 
 
 def _manifest_skip_target(run_dir: str, flow_config) -> dict | None:
@@ -229,7 +228,16 @@ def run_existing_workspace(
     # processes can never execute the same workspace concurrently.
     from chipcompiler.engine.reconcile import _workspace_lock, reconcile_workspace_locked
 
-    with _workspace_lock(Path(run_dir)):
+    with _workspace_lock(Path(run_dir), blocking=not command_input.no_wait):
+        from chipcompiler.cli.project.revision import expected_revision_error
+
+        conflict = expected_revision_error(
+            run_dir,
+            command_input.expected_revision,
+            workspace_id=run_name,
+        )
+        if conflict is not None:
+            return conflict
         probe = classify_workspace(run_dir, target_section)
         if probe.outcome == "mismatch":
             return mismatch_error(probe.error or "flow_mismatch")
@@ -321,32 +329,47 @@ def run_existing_workspace(
         from chipcompiler.engine.rerun import bounded_resume_names, run_resume, selected_step_names
 
         try:
-            engine_flow = EngineFlow(workspace=workspace)
-            flow_ok = True
-            if result.outcome != "no_op":
-                # Re-read the ledger: reconcile may have appended suffix steps
-                # after load_workspace populated the in-memory copy.
-                engine_flow.load()
+            from contextlib import nullcontext
 
-                through = result.target[-1] if result.target else None
-                if through is not None:
-                    selected = bounded_resume_names(engine_flow, through)
-                else:
-                    selected = selected_step_names(engine_flow)
-                if selected:
-                    engine_flow.create_step_workspaces(executable_steps=set(selected))
-
-                with preserve_cli_stdio():
-                    run_result = run_resume(engine_flow, through=through)
-                flow_ok = run_result.ok
-        except Exception as exc:
             if workspace_registered:
-                _write_back_status(
+                from chipcompiler.cli.project.run_process import managed_run_process
+
+                process_context = managed_run_process(
+                    command_input,
                     project_dir,
                     run_name,
-                    "failed",
-                    warnings,
-                    repair=disclosure_cmd("ecc run", project, run_name),
+                    workspace,
+                    workspace_path=run_dir,
+                )
+            else:
+                process_context = nullcontext()
+            with process_context:
+                engine_flow = EngineFlow(workspace=workspace)
+                flow_ok = True
+                if result.outcome != "no_op":
+                    # Re-read the ledger: reconcile may have appended suffix steps
+                    # after load_workspace populated the in-memory copy.
+                    engine_flow.load()
+
+                    through = result.target[-1] if result.target else None
+                    if through is not None:
+                        selected = bounded_resume_names(engine_flow, through)
+                    else:
+                        selected = selected_step_names(engine_flow)
+                    if selected:
+                        engine_flow.create_step_workspaces(executable_steps=set(selected))
+
+                    with preserve_cli_stdio():
+                        run_result = run_resume(engine_flow, through=through)
+                    flow_ok = run_result.ok
+        except Exception as exc:
+            from chipcompiler.project.runtime_processes import RuntimeProcessError
+
+            if isinstance(exc, RuntimeProcessError):
+                from chipcompiler.cli.project.run_process import runtime_process_error_result
+
+                return runtime_process_error_result(
+                    exc, workspace_id=run_name, workspace=run_dir
                 )
             return CommandResult.err(
                 warnings
@@ -358,15 +381,6 @@ def run_existing_workspace(
                         reason=str(exc),
                     )
                 ]
-            )
-
-        if workspace_registered:
-            _write_back_status(
-                project_dir,
-                run_name,
-                "success" if flow_ok else "failed",
-                warnings,
-                repair=disclosure_cmd("ecc run", project, run_name),
             )
 
         record: dict = {

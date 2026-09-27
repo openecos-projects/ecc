@@ -25,7 +25,7 @@ def normalize_legacy_terminal_state(flow, workspace_step, step_tag) -> None:
 
 def finalize_interrupted_subflow(observer, workspace_step, runtime, peak_memory_mb) -> None:
     try:
-        from chipcompiler.runtime.subflow_events import finalize_interrupted_subflow as finalize
+        from chipcompiler.engine.subflow_events import finalize_interrupted_subflow as finalize
 
         for subflow_step in finalize(workspace_step, runtime, peak_memory_mb):
             notify_flow_observer(observer, "on_subflow_stage", workspace_step, subflow_step)

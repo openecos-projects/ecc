@@ -137,7 +137,6 @@ Current implementation status:
 | `ecc doc` | `--plain` |
 | `ecc macro set/remove/import/show` | `--plain` |
 | `ecc version` | hidden `--json` only (desktop app contract) |
-| `ecc rpc serve` | none (machine protocol) |
 | `ecc layout-image` | none (tool invocation; produces a file) |
 
 When `--plain` is given, the implementation renders plain records; otherwise it
@@ -302,12 +301,11 @@ The command graph follows these rules; new commands must follow them too:
   registration in `cli/commands/`, framework in `cli/core/`, read-only probing
   in `cli/inspection/`, all rendering in `cli/rendering/` behind a single
   registry keyed by full command path (top-level name, or `group:sub`).
-- **Frozen surfaces.** The GUI invokes `ecc rpc serve --stdio
-  [--persistent-db]`, `ecc version --json` (schema: `schema_version`, `runtime`,
-  `ecc`, `dreamplace`, `ecc_tools`, `tools`), the `ecc --version` single line,
-  and `ecc layout-image --gds <gds> --image <png>` as subprocess contracts.
-  Additive optional flags are allowed; these names, flags, and output schemas
-  must not change.
+- **Frozen surfaces.** The GUI invokes the public domain CLI plus `ecc version
+  --json` for capability negotiation and `ecc layout-image --gds <gds>
+  --image <png>` for rendering. Parameter and flow discovery use their
+  explicitly versioned line-record contracts; mutation commands use exit codes
+  followed by reads of authoritative Project/Workspace files.
 
 ### Project-Oriented Entry
 
@@ -477,84 +475,12 @@ version` prints fixed-order text lines for `ecc`, `dreamplace`, `ecc_tools`, and
 reported as `unknown`, except the `ecc` field may fall back to the source
 package `__version__`.
 
-### Runtime Sidecar RPC
+### Desktop CLI Contract
 
-The old workspace create/run compatibility commands are not exposed as a public
-CLI namespace. The supported runtime session surface is the private stdio
-sidecar:
-
-```bash
-ecc rpc serve --stdio
-ecc rpc serve --stdio --persistent-db
-```
-
-The sidecar uses JSON-RPC 2.0 payloads framed with `Content-Length` headers.
-After `workspace.create` or `workspace.open`, follow-up calls use the returned
-`workspaceId` rather than repeatedly passing the workspace directory. The
-default sidecar does not advertise or persist native DB handles.
-
-Runtime methods include:
-
-```text
-rpc.hello
-rpc.ping
-rpc.shutdown
-workspace_spec.describe
-workspace_spec.validate
-project.discover
-project.manifest.load
-project.manifest.mutate
-workspace.create
-workspace.open
-workspace.derive
-workspace.binding_requirement
-workspace.update
-workspace.configuration.update
-workspace.configuration.read
-workspace.step_configuration.update
-workspace.step_configuration.read
-workspace.step_outputs
-workspace.close
-workspace.info
-workspace.refresh_config
-workspace.sync_config
-workspace.reset_flow
-workspace.export_signoff
-workspace.inspect_signoff
-flow.run
-flow.run_step
-operation.start_flow
-operation.start_step
-operation.status
-operation.cancel
-operation.ack_step_rendered
-workspace.snapshot
-workspace.engineering_snapshot
-workspace.recover_interrupted
-```
-
-`--persistent-db` is an opt-in process capability. When enabled, `rpc.hello`
-also advertises the persistent-DB and edit-session methods:
-
-```text
-db.ensure
-db.release
-layout.edit.begin
-layout.edit.apply
-layout.edit.save
-layout.edit.discard
-floorplan.edit.inspect
-floorplan.edit.run_auto
-floorplan.edit.validate
-```
-
-These DB methods are not part of the default method list. They start
-and stop session-scoped DB reuse explicitly; `workspace.open`,
-`workspace.create`, `flow.run`, and `flow.run_step` must not start persistent DB
-reuse for a session that has not called `db.ensure`.
-
-The former custom workspace JSON object is not part of the supported output
-contract. See `docs/rpc-guide.md` for framing examples and method payloads.
+Desktop clients use the same public domain commands as terminal users. Long
+flows are detached `ecc run` processes registered in `project.json`; progress
+comes from the Workspace `flow.json`. The `ecc process` commands inspect,
+cancel, and reconcile those processes without introducing a second transport.
 
 ## Output Contracts
 
@@ -810,7 +736,7 @@ Success criteria:
 - [x] `ecc config`
 - [x] Managed workspace selection for inspection commands with `--workspace NAME`
 - [x] Parameter overrides with `ecc param` and `ecc run --set`
-- [x] Private runtime sidecar under `ecc rpc serve --stdio`
+- [x] Versioned desktop CLI contract and process lifecycle commands
 - [ ] Run tags and run comparison basics
 
 Success criteria:

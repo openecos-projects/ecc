@@ -9,6 +9,7 @@ from chipcompiler.cli.core.inputs import (
     OutputOptions,
     ProjectOptions,
     RunInput,
+    WorkspaceCreateInput,
     WorkspaceImportInput,
 )
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
@@ -126,7 +127,9 @@ def build_context(command_input: CommandInput) -> CommandContext:
     workspace_name = getattr(command_input, "workspace", None)
     workspace_path_selector = False
     supplied_workspace_path = (
-        command_input.path if isinstance(command_input, WorkspaceImportInput) else None
+        command_input.path
+        if isinstance(command_input, (WorkspaceCreateInput, WorkspaceImportInput))
+        else None
     )
     workspace_path = None
     workspace_path_explicit = False
@@ -206,7 +209,9 @@ def build_context(command_input: CommandInput) -> CommandContext:
             run_dir, run_id, manifest_error = _resolve_manifest_workspace(
                 project_dir,
                 workspace_name,
-                allow_create=isinstance(command_input, (RunInput, WorkspaceImportInput)),
+                allow_create=isinstance(
+                    command_input, (RunInput, WorkspaceCreateInput, WorkspaceImportInput)
+                ),
                 workspace_path=workspace_path,
                 path_selector=workspace_path_selector,
             )

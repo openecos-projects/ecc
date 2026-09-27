@@ -47,6 +47,9 @@ def export_cmd(
         bool,
         typer.Option("--include-debug", help="Include debug artifacts in the package"),
     ] = False,
+    expected_revision: Annotated[int | None, typer.Option("--expected-revision", min=1)] = None,
+    no_wait: Annotated[bool, typer.Option("--no-wait")] = False,
+    additional_files: Annotated[str | None, typer.Option("--additional-files")] = None,
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
     plain: PlainOption = False,
@@ -57,5 +60,8 @@ def export_cmd(
         workspace=workspace,
         output_path=output_path,
         include_debug=include_debug,
+        expected_revision=expected_revision,
+        no_wait=no_wait,
+        additional_files=additional_files,
     )
     _finish("export", command_input, signoff_handlers.export)
