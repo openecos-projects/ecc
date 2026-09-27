@@ -11,6 +11,11 @@ def workspace_update_spec(workspace_path: str, cfg, flow_config: dict | None):
     snapshot = read_engineering_snapshot_from_directory(workspace_path)
     spec = deepcopy(snapshot["workspaceSpec"])
     bindings = deepcopy(snapshot["workspaceBindings"])
+    # A Project refresh owns structural settings only. Existing Workspace
+    # parameters are merged and marked as preserved by update_workspace_from_spec;
+    # carrying the Snapshot's resolved defaults here would incorrectly turn
+    # every one of them into an explicit request for the new flow.
+    spec["parameters"] = {}
     spec["design"] = {
         "name": cfg.design_name,
         "topModule": cfg.design_top,

@@ -39,6 +39,18 @@ def test_refresh_projection_uses_rtl_for_synthesis_entry(tmp_path, monkeypatch):
     assert spec["inputMode"] == "rtl"
     assert [item["role"] for item in spec["inputs"]] == ["rtl", "def"]
     assert "netlist" not in bindings["inputs"]
+    assert spec["parameters"] == {}
+
+
+def test_refresh_projection_does_not_resubmit_resolved_workspace_defaults(tmp_path, monkeypatch):
+    _snapshot(monkeypatch)
+    cfg = _config(tmp_path)
+    cfg.flow_preset = "syn_sta"
+
+    spec, _bindings = workspace_update_spec("workspace", cfg, None)
+
+    assert spec["flow"] == {"flowId": "syn_sta"}
+    assert spec["parameters"] == {}
 
 
 def test_refresh_projection_uses_netlist_for_physical_entry(tmp_path, monkeypatch):

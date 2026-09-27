@@ -127,3 +127,28 @@ def test_reconcile_cleans_a_proven_post_exchange_refresh_staging(
     assert "refresh_exchange:baseline" in report.repairs
     assert not staging.exists()
     assert read_engineering_snapshot_from_directory(workspace)["workspaceRevision"] == 2
+
+
+def test_reconcile_rolls_forward_a_portable_refresh_with_missing_target(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    project, spec, bindings = _project_and_spec(tmp_path, minimal_ics55_pdk_factory)
+    workspace = project / "baseline"
+    create_workspace_from_spec(workspace, spec, bindings, "create-1")
+    _register(project, "baseline")
+    old_staging = project / ".baseline.staging-crash"
+    shutil.copytree(workspace, old_staging)
+    update_workspace_from_spec(workspace, 1, spec, bindings, "refresh-1")
+
+    backup = Path(f"{old_staging}.exchange-old")
+    old_staging.rename(backup)
+    workspace.rename(old_staging)
+
+    report = reconcile_project_state(project, blocking=True)
+
+    assert report.errors == ()
+    assert "refresh_exchange:baseline" in report.repairs
+    assert workspace.is_dir()
+    assert not old_staging.exists()
+    assert not backup.exists()
+    assert read_engineering_snapshot_from_directory(workspace)["workspaceRevision"] == 2

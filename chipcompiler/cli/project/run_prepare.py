@@ -552,7 +552,7 @@ def execute_fresh_run(
             from chipcompiler.engine.snapshot import create_engineering_snapshot
 
             if getattr(workspace, "directory", None):
-                snapshot = create_engineering_snapshot(workspace)
+                snapshot = create_engineering_snapshot(workspace, workspace_id=run_name)
                 if command_input.command_id and not execute_flow:
                     from chipcompiler.engine.workspace_lifecycle import (
                         _workspace_command_fingerprint,
