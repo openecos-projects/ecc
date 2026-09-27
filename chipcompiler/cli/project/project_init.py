@@ -17,6 +17,16 @@ _AT_FDCWD = -100
 _RENAME_NOREPLACE = 1
 _RENAME_EXCHANGE = 2
 _MAX_MPC_SPEC_BYTES = 16 * 1024 * 1024
+_RENAMEAT2_UNSUPPORTED_ERRNOS = frozenset(
+    error
+    for error in (
+        errno.EINVAL,
+        errno.ENOSYS,
+        getattr(errno, "ENOTSUP", errno.EOPNOTSUPP),
+        errno.EOPNOTSUPP,
+        errno.EXDEV,
+    )
+)
 
 
 class ProjectInitError(RuntimeError):
@@ -32,7 +42,6 @@ def create_project(command_input: InitInput) -> Path:
     target = Path(command_input.name).expanduser().absolute()
     parent = target.parent
     parent.mkdir(parents=True, exist_ok=True)
-    _require_renameat2(parent)
 
     existing = _existing_empty_directory(target)
     default_name = target.name or "project"
@@ -46,11 +55,16 @@ def create_project(command_input: InitInput) -> Path:
         if existing is not None:
             os.chmod(staging, stat.S_IMODE(existing.st_mode))
         _populate(staging, target, project_name, design_name, mpc)
-        if existing is None:
-            _renameat2(staging, target, _RENAME_NOREPLACE)
-        else:
-            _verify_same_empty_directory(target, existing)
-            _renameat2(staging, target, _RENAME_EXCHANGE)
+        try:
+            if existing is None:
+                _renameat2(staging, target, _RENAME_NOREPLACE)
+            else:
+                _verify_same_empty_directory(target, existing)
+                _renameat2(staging, target, _RENAME_EXCHANGE)
+        except OSError as exc:
+            if exc.errno not in _RENAMEAT2_UNSUPPORTED_ERRNOS:
+                raise
+            _publish_without_renameat2(staging, target, existing)
         published = True
         _fsync_directory(parent)
     except ProjectInitError:
@@ -64,6 +78,57 @@ def create_project(command_input: InitInput) -> Path:
         if staging.exists() and (published or not target.exists() or staging != target):
             shutil.rmtree(staging, ignore_errors=True)
     return target.resolve()
+
+
+def _publish_without_renameat2(
+    staging: Path, target: Path, existing: os.stat_result | None
+) -> None:
+    """Publish a project on filesystems that reject renameat2 flags.
+
+    NFS commonly implements rename but rejects RENAME_NOREPLACE and
+    RENAME_EXCHANGE with EINVAL. The fallback keeps the no-overwrite check at
+    the directory boundary, then moves only the files ECC created. A failure
+    restores moved entries and removes a newly-created target when possible.
+    """
+    created_target = existing is None
+    moved: list[str] = []
+    if created_target:
+        try:
+            target.mkdir(mode=stat.S_IMODE(staging.stat().st_mode))
+        except FileExistsError as exc:
+            raise ProjectInitError("already_exists", "Project path already exists", target) from exc
+    else:
+        _verify_same_empty_directory(target, existing)
+
+    try:
+        entries = sorted(staging.iterdir(), key=lambda entry: entry.name)
+        for entry in entries:
+            destination = target / entry.name
+            if os.path.lexists(destination):
+                raise ProjectInitError(
+                    "already_exists",
+                    "Project directory is no longer empty",
+                    target,
+                )
+            os.rename(entry, destination)
+            moved.append(entry.name)
+        _fsync_directory(target)
+    except BaseException:
+        for name in reversed(moved):
+            source = target / name
+            destination = staging / name
+            try:
+                if os.path.lexists(source) and not os.path.lexists(destination):
+                    os.rename(source, destination)
+            except OSError:
+                pass
+        if created_target:
+            try:
+                if not os.listdir(target):
+                    target.rmdir()
+            except OSError:
+                pass
+        raise
 
 
 def _existing_empty_directory(target: Path) -> os.stat_result | None:
@@ -248,7 +313,10 @@ def _fsync_directory(path: Path) -> None:
 
 def _renameat2(source: Path, target: Path, flags: int) -> None:
     libc = ctypes.CDLL(None, use_errno=True)
-    result = libc.renameat2(
+    renameat2 = getattr(libc, "renameat2", None)
+    if renameat2 is None:
+        raise OSError(errno.ENOSYS, "renameat2 is not available", target)
+    result = renameat2(
         _AT_FDCWD,
         os.fsencode(source),
         _AT_FDCWD,
@@ -261,16 +329,6 @@ def _renameat2(source: Path, target: Path, flags: int) -> None:
     if error == errno.EEXIST:
         raise FileExistsError(error, os.strerror(error), target)
     raise OSError(error, os.strerror(error), target)
-
-
-def _require_renameat2(parent: Path) -> None:
-    libc = ctypes.CDLL(None)
-    if not hasattr(libc, "renameat2"):
-        raise ProjectInitError(
-            "atomic_project_create_unsupported",
-            "This platform does not support renameat2",
-            parent,
-        )
 
 
 def _nonempty(value: str | None, fallback: str, label: str) -> str:

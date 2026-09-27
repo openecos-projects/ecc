@@ -78,6 +78,17 @@ def test_project_reconcile_repairs_stale_base_design(tmp_path, monkeypatch):
     assert manifest["base_design"]["pdk_root"] == str(pdk)
 
 
+def test_project_reconcile_accepts_fresh_project_before_pdk_binding(tmp_path):
+    project = tmp_path / "project"
+    assert cli_main.run(["init", str(project)]) == 0
+
+    assert cli_main.run(["project", "reconcile", "--project", str(project), "--no-wait"]) == 0
+
+    manifest = json.loads((project / "project.json").read_text())
+    assert manifest["workspaces"] == []
+    assert manifest["base_design"].get("pdk_root", "") == ""
+
+
 def test_project_apply_no_wait_returns_busy_without_changes(tmp_path, monkeypatch):
     from chipcompiler.project.manifest_write import manifest_lock
 

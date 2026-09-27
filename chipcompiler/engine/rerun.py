@@ -119,7 +119,10 @@ def run_only(flow: "EngineFlow", name: str, *, force: bool = False) -> StepRunRe
     if not force and is_finished_step_state(steps[index].get("state")):
         return StepRunResult(ok=True, executed=())
     _require_steps_available(flow, index)
-    workspace_step = flow.get_workspace_step(name)
+    # Selectors accept CLI aliases and case-insensitive spellings. Resolve the
+    # actual WorkspaceStep through the persisted canonical name, not the raw
+    # selector (for example, ``synthesis`` maps to persisted ``Synthesis``).
+    workspace_step = flow.get_workspace_step(steps[index]["name"])
     (output_dir,) = _validated_output_dirs(flow.workspace, [workspace_step])
     _invalidate_suffix(flow, index)
     return _run_selected(flow, [(workspace_step, output_dir)])
