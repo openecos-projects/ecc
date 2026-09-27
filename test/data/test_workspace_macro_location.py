@@ -8,6 +8,7 @@ from chipcompiler.data.parameter import Parameters, load_parameter, save_paramet
 from chipcompiler.data.workspace.macro_location import (
     MACRO_LOCATION_MARKER,
     parse_macro_location_tcl,
+    prune_macro_location_tcl,
     render_macro_location_tcl,
 )
 
@@ -103,6 +104,68 @@ def test_refresh_leaves_macro_location_untouched_without_placements(
     refresh_workspace_config(workspace)
 
     assert tcl.read_text() == handwritten
+
+
+def test_prune_rewrites_stale_tcl_header_only_when_placements_emptied(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    # §20.5.4: after a committed write emptied macro.placements, no stale
+    # placeInstance lines may survive in the generated handoff.
+    workspace_dir = _create_workspace(
+        tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, {}
+    )
+    workspace = load_workspace(workspace_dir)
+    tcl = Path(workspace.config["macro_location"])
+    data = dict(workspace.parameters.data)
+    data["macro"] = {"placements": deepcopy(PLACEMENTS)}
+    workspace.parameters.data = data
+    assert save_parameter(workspace.parameters)
+    refresh_workspace_config(workspace)
+    assert "placeInstance" in tcl.read_text()
+
+    emptied = dict(workspace.parameters.data)
+    emptied["macro"] = {"placements": []}
+    workspace.parameters.data = emptied
+    assert save_parameter(workspace.parameters)
+
+    prune_macro_location_tcl(workspace)
+
+    text = tcl.read_text()
+    assert "placeInstance" not in text
+    assert parse_macro_location_tcl(text) == []
+
+
+def test_prune_keeps_missing_file_absent(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    workspace_dir = _create_workspace(
+        tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, {}
+    )
+    workspace = load_workspace(workspace_dir)
+    tcl = Path(workspace.config["macro_location"])
+    tcl.unlink()
+
+    prune_macro_location_tcl(workspace)
+
+    assert not tcl.exists()
+
+
+def test_prune_leaves_non_empty_placements_to_refresh(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    workspace_dir = _create_workspace(
+        tmp_path,
+        minimal_ics55_pdk_factory,
+        default_ics55_parameters,
+        {"macro": {"placements": deepcopy(PLACEMENTS)}},
+    )
+    workspace = load_workspace(workspace_dir)
+    tcl = Path(workspace.config["macro_location"])
+    rendered = tcl.read_text()
+
+    prune_macro_location_tcl(workspace)
+
+    assert tcl.read_text() == rendered
 
 
 def test_refresh_rejects_invalid_placement_and_preserves_file(

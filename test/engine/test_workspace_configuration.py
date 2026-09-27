@@ -342,3 +342,44 @@ def test_step_configuration_update_invalidates_only_target_suffix(
         )
     assert inapplicable.value.code == "parameter_not_applicable"
     assert read_engineering_snapshot(updated)["workspaceRevision"] == 2
+
+
+def test_macro_placements_apply_prunes_stale_tcl_when_emptied(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    """§20.5.4: the macro-import commit path keeps params.toml and
+    macro_location.tcl consistent — an empty import after a non-empty one
+    leaves no stale placeInstance lines."""
+    from chipcompiler.data.workspace.macro_location import (
+        MACRO_LOCATION_MARKER,
+        macro_placements,
+    )
+
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
+    tcl = Path(workspace.directory) / "config" / "macro_location.tcl"
+    placements = [{"instance": "u_ram0", "x": 10.0, "y": 20.0, "orientation": "R0"}]
+
+    apply_workspace_parameters(
+        workspace.directory,
+        1,
+        {"macro.placements": placements},
+        (),
+        command_id="macro-1",
+    )
+    assert "placeInstance u_ram0" in tcl.read_text()
+
+    apply_workspace_parameters(
+        workspace.directory,
+        2,
+        {"macro.placements": []},
+        (),
+        command_id="macro-2",
+    )
+
+    text = tcl.read_text()
+    assert "placeInstance" not in text
+    assert text == f"{MACRO_LOCATION_MARKER}\n\n"
+    updated = load_workspace(workspace.directory)
+    assert macro_placements(updated) == []

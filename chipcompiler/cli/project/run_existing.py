@@ -104,12 +104,10 @@ def run_existing_workspace(
     no-ops when everything already succeeded, and fails divergent flows with
     flow_mismatch before any mutation.
     """
-    from chipcompiler.cli.core.records import error_record, warning_record
-
-    project = ctx.project
-    project_dir = ctx.project_dir
 
     if cli_overrides:
+        from chipcompiler.cli.core.records import error_record
+
         return CommandResult.err(
             [
                 error_record(
@@ -123,26 +121,113 @@ def run_existing_workspace(
                 )
             ]
         )
+    return _resume_existing_workspace(
+        command_input,
+        ctx,
+        cfg,
+        run_dir,
+        run_name,
+        warning_records,
+        flow_config=flow_config,
+        workspace_registered=workspace_registered,
+    )
 
-    warnings = list(warning_records)
+
+def _resume_existing_workspace(
+    command_input,
+    ctx,
+    cfg,
+    run_dir: str,
+    run_name: str,
+    warning_records: list[dict],
+    *,
+    flow_config,
+    workspace_registered: bool,
+) -> CommandResult:
+    from chipcompiler.cli.core.records import warning_record
+
     if cfg.params_overrides:
-        warnings.append(
+        warning_records = [
+            *warning_records,
             warning_record(
                 "params_ignored_on_existing_run",
                 reason="[params] in ecc.toml apply only to fresh runs; "
                 "the workspace reuses its persisted home/params.toml",
-            )
-        )
+            ),
+        ]
     from chipcompiler.cli.project.pdk_root_fallback import pdk_root_env_fallback_warning
     from chipcompiler.cli.project.spec_drift import workspace_spec_drift_warning
 
     pdk_root_warning = pdk_root_env_fallback_warning(run_dir)
     if pdk_root_warning is not None:
-        warnings.append(pdk_root_warning)
+        warning_records = [*warning_records, pdk_root_warning]
     spec_drift = workspace_spec_drift_warning(run_dir)
     if spec_drift is not None:
-        warnings.append(spec_drift)
+        warning_records = [*warning_records, spec_drift]
 
+    if cfg.manifest_driven:
+        # Manifest mode: the workspace's own [flow] governs the range (the
+        # seeded start/end is not re-consulted), but the effective declared
+        # skip policy (ecc.toml over the project.json entry, carried on the
+        # flow config) is applied over it so classification and any extension
+        # use the same policy a fresh creation would.
+        target_section = _manifest_skip_target(run_dir, flow_config)
+    else:
+        # The target carries the preset plus the effective declared skip
+        # policy (already resolved through the shared ecc.toml-over-manifest
+        # precedence onto the flow config), so an existing workspace
+        # classifies against the same policy a fresh creation would use.
+        target_section = {"preset": cfg.flow_preset} if cfg.flow_preset else None
+        if target_section is not None:
+            if isinstance(flow_config, dict) and "skip_steps" in flow_config:
+                target_section["skip_steps"] = flow_config["skip_steps"]
+            elif "flow.skip_steps" in cfg._explicit_keys:
+                target_section["skip_steps"] = cfg.flow_skip_steps
+
+    from chipcompiler.cli.project.run_process import run_log_stdio
+    from chipcompiler.project.runtime_processes import RuntimeProcessError
+
+    try:
+        # §13.1 step 2: an explicit --log-file owns stdout/stderr before the
+        # pure-read preflight below; a log-open failure exits without running
+        # the flow.
+        with run_log_stdio(command_input, run_dir) as run_log:
+            return _execute_existing_run(
+                command_input,
+                ctx,
+                cfg,
+                run_dir,
+                run_name,
+                flow_config,
+                target_section,
+                warning_records,
+                workspace_registered=workspace_registered,
+                run_log=run_log,
+            )
+    except RuntimeProcessError as exc:
+        from chipcompiler.cli.project.run_process import runtime_process_error_result
+
+        return runtime_process_error_result(exc, workspace_id=run_name, workspace=run_dir)
+
+
+def _execute_existing_run(
+    command_input,
+    ctx,
+    cfg,
+    run_dir: str,
+    run_name: str,
+    flow_config,
+    target_section,
+    warning_records: list[dict],
+    *,
+    workspace_registered: bool,
+    run_log,
+) -> CommandResult:
+    from chipcompiler.cli.core.records import error_record
+
+    project = ctx.project
+    project_dir = ctx.project_dir
+    warnings = list(warning_records)
     from chipcompiler.data import load_workspace
     from chipcompiler.data.schema_migrations import UnsupportedSchemaVersionError
     from chipcompiler.data.workspace_config import (
@@ -197,25 +282,6 @@ def run_existing_workspace(
                 )
             ]
         )
-
-    if cfg.manifest_driven:
-        # Manifest mode: the workspace's own [flow] governs the range (the
-        # seeded start/end is not re-consulted), but the effective declared
-        # skip policy (ecc.toml over the project.json entry, carried on the
-        # flow config) is applied over it so classification and any extension
-        # use the same policy a fresh creation would.
-        target_section = _manifest_skip_target(run_dir, flow_config)
-    else:
-        # The target carries the preset plus the effective declared skip
-        # policy (already resolved through the shared ecc.toml-over-manifest
-        # precedence onto the flow config), so an existing workspace
-        # classifies against the same policy a fresh creation would use.
-        target_section = {"preset": cfg.flow_preset} if cfg.flow_preset else None
-        if target_section is not None:
-            if isinstance(flow_config, dict) and "skip_steps" in flow_config:
-                target_section["skip_steps"] = flow_config["skip_steps"]
-            elif "flow.skip_steps" in cfg._explicit_keys:
-                target_section["skip_steps"] = cfg.flow_skip_steps
 
     # Pure-read preflight: a divergent flow is rejected BEFORE load_workspace
     # can migrate configs, create checklist state, or take the lock.
@@ -340,6 +406,7 @@ def run_existing_workspace(
                     run_name,
                     workspace,
                     workspace_path=run_dir,
+                    run_log=run_log,
                 )
             else:
                 process_context = nullcontext()

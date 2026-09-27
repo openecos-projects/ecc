@@ -2,10 +2,12 @@
 
 ``macro_placements`` reads the manual hard-macro placements from the
 workspace parameters; ``refresh_generated_macro_location`` renders them
-into ``config/macro_location.tcl``; ``parse_macro_location_tcl`` parses a
-handoff back into placements for ``ecc macro import``. An empty placement
-list leaves the file untouched so the seeded template and DreamPlace's own
-handoff survive parameter refreshes.
+into ``config/macro_location.tcl``; ``prune_macro_location_tcl`` clears a
+stale handoff after a committed write emptied the placements;
+``parse_macro_location_tcl`` parses a handoff back into placements for
+``ecc macro import``. An empty placement list leaves the file untouched on
+plain refreshes so the seeded template and DreamPlace's own handoff survive
+parameter refreshes.
 """
 
 import math
@@ -86,6 +88,27 @@ def refresh_generated_macro_location(workspace: "Workspace") -> None:
     if not target:
         return
     write_text_atomic(Path(target), render_macro_location_tcl(placements))
+
+
+def prune_macro_location_tcl(workspace: "Workspace") -> None:
+    """Drop stale placeInstance lines when the placement set is empty.
+
+    Called after a committed parameter write that rewrote
+    ``macro.placements`` so the generated Tcl stays consistent with an empty
+    params table (§20.5.4): an existing file is rewritten header-only, a
+    missing file stays absent. A non-empty placement set is the refresher's
+    job, and DreamPlace's own handoff is only ever pruned by a write that
+    actually emptied the placements.
+    """
+    if macro_placements(workspace):
+        return
+    target = workspace.config.get("macro_location")
+    if not target:
+        return
+    path = Path(target)
+    if not path.exists():
+        return
+    write_text_atomic(path, render_macro_location_tcl([]))
 
 
 def parse_macro_location_tcl(text: str) -> list[dict]:
