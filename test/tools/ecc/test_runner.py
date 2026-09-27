@@ -270,6 +270,7 @@ class SnapshotSaveEccModule:
         self.write_snapshot = write_snapshot
         self.geometry_output = None
         self.geometry_includes_drc = None
+        self.gds_save_kwargs = None
 
     def def_save(self, **_kwargs):
         return True
@@ -277,7 +278,8 @@ class SnapshotSaveEccModule:
     def verilog_save(self, **_kwargs):
         return True
 
-    def gds_save(self, **_kwargs):
+    def gds_save(self, **kwargs):
+        self.gds_save_kwargs = kwargs
         return True
 
     def save_data(self, **_kwargs):
@@ -1030,11 +1032,21 @@ def test_rcx_checklist_uses_top_module_for_spef_design_token(tmp_path):
     "step_name", (StepEnum.ROUTING.value, StepEnum.LVS.value, StepEnum.DRC.value)
 )
 def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path, step_name):
-    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    layer_map = tmp_path / "ics55.layermap"
+    layer_map.write_text("MET1 drawing 81 1\n", encoding="utf-8")
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        pdk=PDK(mapping_file=layer_map),
+    )
     step = build_step(workspace, step_name, None, None)
     module = SnapshotSaveEccModule(write_snapshot=True)
 
     assert ecc_runner.save_data(workspace, step, module, feature_step=False) is True
+    assert module.gds_save_kwargs == {
+        "output_path": step.output.gds or "",
+        "layer_map_path": layer_map,
+    }
     assert module.geometry_output == step.output.geometry
     assert module.geometry_includes_drc is (step_name == StepEnum.DRC.value)
     assert step.output.geometry_manifest is not None

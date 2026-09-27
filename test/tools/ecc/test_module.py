@@ -385,7 +385,11 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     assert module.read_verilog(Path("/ws/input.v"), "gcd") is True
     assert module.read_lvs_verilog(Path("/ws/input_lvs.v"), "gcd") is True
     module.def_save(Path("/ws/output/gcd.def.gz"))
-    module.gds_save(Path("/ws/output/gcd.gds.gz"), is_harden=True)
+    module.gds_save(
+        Path("/ws/output/gcd.gds.gz"),
+        Path("/pdk/ics55.layermap"),
+        is_harden=True,
+    )
     assert module.tcl_save(Path("/ws/script/out.tcl")) is True
     module.verilog_save(Path("/ws/output/gcd.v.gz"))
     module.json_save(Path("/ws/output/gcd.json"))
@@ -444,6 +448,15 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.eval_macro_io_pin_connection(Path("/ws/eval/macro_io.png"), 1, 1)
 
     _assert_no_path_values(module.ecc.calls)
+    assert (
+        "gds_save",
+        (),
+        {
+            "gds_name": "/ws/output/gcd.gds.gz",
+            "layer_map_path": "/pdk/ics55.layermap",
+            "is_harden": True,
+        },
+    ) in module.ecc.calls
     assert timing_output.read_text(encoding="utf-8") == module.ecc.generated_timing_lib_contents
     assert [
         call[0]
