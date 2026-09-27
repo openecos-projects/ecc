@@ -74,6 +74,57 @@ class TestCompareFlows:
         assert compare_flows(RTL2GDS_STEPS[:3], RTL2GDS_STEPS[1:4]) == "divergent"
 
 
+class TestLecEngineReconcile:
+    def test_target_entries_substitute_the_configured_engine(self):
+        from chipcompiler.engine.reconcile import _target_entries
+
+        entries = _target_entries(
+            {"start": "Synthesis", "end": "Harden", "skip_steps": [], "lec_engine": "yosys_lec"}
+        )
+
+        assert [(name, tool) for name, tool in entries if name in {"lec", "postRouteLec"}] == [
+            ("lec", "yosys_lec"),
+            ("postRouteLec", "yosys_lec"),
+        ]
+
+    def test_target_entries_default_to_kepler_formal(self):
+        from chipcompiler.engine.reconcile import _target_entries
+
+        entries = _target_entries({"start": "Synthesis", "end": "Harden", "skip_steps": []})
+
+        assert [(name, tool) for name, tool in entries if name in {"lec", "postRouteLec"}] == [
+            ("lec", "kepler_formal"),
+            ("postRouteLec", "kepler_formal"),
+        ]
+
+    def test_yosys_lec_ledger_stays_compatible_with_a_kepler_target(self, tmp_path):
+        yosys_ledger = [
+            (name, "yosys_lec" if tool == "kepler_formal" else tool) for name, tool in RTL2GDS_STEPS
+        ]
+        workspace_dir = _write_workspace(tmp_path, yosys_ledger, flow_section={"preset": "rtl2gds"})
+
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
+
+        assert result.outcome == "no_op"
+        # No silent re-evidence: the recorded engine keeps owning the steps.
+        assert [(s["name"], s["tool"]) for s in _flow_steps(workspace_dir)] == yosys_ledger
+
+    def test_single_engine_ledger_stays_compatible_with_a_dual_target(self, tmp_path):
+        workspace_dir = _write_workspace(
+            tmp_path, RTL2GDS_STEPS, flow_section={"preset": "rtl2gds"}
+        )
+
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds", "lec_engine": "dual"})
+
+        # Normalized comparison: a kepler ledger matches a dual target, and
+        # the config edit alone never rewrites the ledger's engine.
+        assert result.outcome == "no_op"
+        assert [s["tool"] for s in _flow_steps(workspace_dir) if s["name"] == "postRouteLec"] == [
+            "kepler_formal"
+        ]
+        assert _flow_section(workspace_dir) == {"preset": "rtl2gds"}
+
+
 class TestReconcile:
     def test_extension_appends_suffix_and_adopts_target(self, tmp_path):
         workspace_dir = _write_workspace(
@@ -112,6 +163,22 @@ class TestReconcile:
 
     def test_equal_with_non_success_is_resume(self, tmp_path):
         states = ["Success"] * (len(RTL2GDS_STEPS) - 1) + ["Imcomplete"]
+        workspace_dir = _write_workspace(
+            tmp_path, RTL2GDS_STEPS, states=states, flow_section={"preset": "rtl2gds"}
+        )
+
+        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
+
+        assert result.outcome == "resume"
+
+    def test_equal_with_legacy_warned_lec_resumes(self, tmp_path):
+        # The removed terminal Warning state is not finished: a persisted
+        # warned LEC reconciles to a resume that re-runs it and its suffix.
+        lec_index = next(
+            index for index, (name, _tool) in enumerate(RTL2GDS_STEPS) if name == "lec"
+        )
+        states = ["Success"] * len(RTL2GDS_STEPS)
+        states[lec_index] = "Warning"
         workspace_dir = _write_workspace(
             tmp_path, RTL2GDS_STEPS, states=states, flow_section={"preset": "rtl2gds"}
         )
