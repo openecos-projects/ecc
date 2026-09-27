@@ -391,20 +391,11 @@ def _update_workspace_from_spec(
             staging_consumed = True
         return WorkspaceUpdateResult(workspace=workspace, backup_directory=backup_directory)
     finally:
-        if not staging_consumed:
-            shutil.rmtree(staging, ignore_errors=True)
-
-
-def _sweep_staging_siblings(target: Path) -> None:
-    """Best-effort removal of staging trees stranded by a killed update."""
-    prefix = f".{target.name}.staging-"
-    try:
-        siblings = list(target.parent.iterdir())
-    except OSError:
-        return
-    for sibling in siblings:
-        if sibling.is_dir() and not sibling.is_symlink() and sibling.name.startswith(prefix):
-            shutil.rmtree(sibling, ignore_errors=True)
+        # A failed portable exchange can leave both trees as recovery proof.
+        # Reconcile owns that state; deleting staging here would strand the
+        # previous committed Workspace under the exchange backup name.
+        if not _exchange_backup_path(staging).exists():
+            _remove_refresh_staging(staging)
 
 
 def _merge_workspace_update_parameters(
@@ -619,10 +610,20 @@ def _string_keyed_dict(value: object) -> dict[str, Any]:
 
 
 def _load_committed_workspace(path: Path):
-    workspace = load_workspace(path)
+    # Lifecycle inspection must not attach a file logger to the source tree.
+    # After a directory exchange that open file would move under staging and
+    # prevent its removal on NFS.
+    workspace = load_workspace(path, read_only=True)
     if workspace is None:
         raise WorkspaceLifecycleError("workspace_invalid", f"Workspace cannot be opened: {path}")
     return workspace
+
+
+def _remove_refresh_staging(staging: Path) -> None:
+    if staging.exists() or staging.is_symlink():
+        shutil.rmtree(staging)
+    if not staging.exists() and not staging.is_symlink():
+        Path(f"{staging}.lock").unlink(missing_ok=True)
 
 
 def _workspace_command_fingerprint(
@@ -727,9 +728,41 @@ def _replace_string_prefix(value: Any, source: str, target: str) -> Any:
 def _exchange_directories(left: Path, right: Path) -> None:
     libc = ctypes.CDLL(None, use_errno=True)
     renameat2 = getattr(libc, "renameat2", None)
-    if os.name != "posix" or renameat2 is None:
-        raise OSError(errno.ENOTSUP, "atomic Workspace Update is unavailable")
-    if renameat2(-100, os.fsencode(left), -100, os.fsencode(right), 2) == 0:
-        return
-    error = ctypes.get_errno()
-    raise OSError(error, os.strerror(error))
+    if os.name == "posix" and renameat2 is not None:
+        if renameat2(-100, os.fsencode(left), -100, os.fsencode(right), 2) == 0:
+            return
+        error = ctypes.get_errno()
+        unsupported = {errno.EINVAL, errno.ENOSYS, errno.ENOTSUP}
+        if hasattr(errno, "EOPNOTSUPP"):
+            unsupported.add(errno.EOPNOTSUPP)
+        if error not in unsupported:
+            raise OSError(error, os.strerror(error))
+    _exchange_directories_portable(left, right)
+
+
+def _exchange_backup_path(staging: Path) -> Path:
+    return staging.with_name(f"{staging.name}.exchange-old")
+
+
+def _exchange_directories_portable(left: Path, right: Path) -> None:
+    """Swap sibling directories with crash-recoverable plain renames.
+
+    Some NFS servers reject ``RENAME_EXCHANGE`` with ``EINVAL``. The caller
+    holds the Workspace lock, and Project reconcile recognizes either
+    intermediate state using the two Workspace snapshots and command ledger.
+    """
+    if left.parent != right.parent:
+        raise OSError(errno.EXDEV, "Workspace exchange requires sibling directories")
+    if left.is_symlink() or right.is_symlink() or not left.is_dir() or not right.is_dir():
+        raise OSError(errno.EINVAL, "Workspace exchange requires real directories")
+    backup = _exchange_backup_path(right)
+    if backup.exists() or backup.is_symlink():
+        raise FileExistsError(errno.EEXIST, "Workspace exchange backup exists", backup)
+
+    os.rename(left, backup)
+    try:
+        os.rename(right, left)
+    except Exception:
+        os.rename(backup, left)
+        raise
+    os.rename(backup, right)
