@@ -298,6 +298,8 @@ chipcompiler/cli/command_handlers/  # business logic layer (stateful / heavy)
   ├── signoff.py                  # signoff inspect/export
   └── report.py                   # the four report subcommands (file writing + record summary)
 chipcompiler/cli/core/            # framework layer
+  ├── apps.py                     # shared typer app factory (create_app(): no_args_is_help, completion)
+  ├── docs.py                     # locate and load the bundled guide documents for ecc doc
   ├── inputs.py                   # frozen dataclass input models per command
   ├── invocation.py               # execute_command(): context build → handler → rendering → exit code
   ├── options.py                  # shared Annotated option aliases
@@ -307,9 +309,10 @@ chipcompiler/cli/core/            # framework layer
   └── version_info.py             # package-metadata versions for the version command (environment tool versions live in inspection/tool_versions.py)
 chipcompiler/cli/inspection/      # read-only probing logic
   ├── discovery.py / config_view.py / log_view.py
+  ├── step_view.py                # per-step view records for ecc report step
   ├── env_probe.py                # environment probes for doctor/run preflight (the ProbeResult model)
   └── tool_versions.py            # environment tool versions for ecc version (yosys/sizer/klayout)
-chipcompiler/cli/project/         # config.py (ecc.toml parsing and validation) / config_fields.py (project declaration schema for `ecc project`) / params.py (parameter registry) / toml_edit.py (surgical TOML editing) / workspace_params.py (workspace-local override records) / manifest.py (project-state classification) / manifest_write.py (project.json status write-back) / workspace_registration.py (external workspace import) / effective_config.py / pdk_root_fallback.py (PDK root env-fallback warning) / spec_drift.py (workspace_spec_drift disclosure) / design_inputs.py (`[design]` input declarations) / config_params/ (direct-config schemas) / migrate*.py (legacy-layout migration) / run_*.py (workspace target resolution and dispatch)
+chipcompiler/cli/project/         # config.py (ecc.toml parsing and validation) / config_fields.py (project declaration schema for `ecc project`) / params.py (parameter registry) / toml_edit.py (surgical TOML editing) / workspace_params.py (workspace-local override records) / manifest.py (project-state classification) / manifest_write.py (project.json status write-back) / workspace_registration.py (external workspace import) / workspace_location.py (canonical explicit-path validation) / effective_config.py / pdk_root_fallback.py (PDK root env-fallback warning) / spec_drift.py (workspace_spec_drift disclosure) / design_inputs.py (`[design]` input declarations) / config_params/ (direct-config schemas) / migrate*.py (legacy-layout migration) / run_*.py (workspace target resolution and dispatch)
 chipcompiler/cli/rendering/       # output rendering (render / renderers / pretty / progress)
 chipcompiler/engine/signoff/      # signoff collector + design/checklist reports (package, see below)
 chipcompiler/analysis/qor/ # canonical QoR v3 analysis, scoring, and report contract
@@ -347,7 +350,9 @@ Using `ecc check --project gcd --plain` as the example:
    - After the handler, records are appended as needed (`_with_legacy_hint` / `_with_config_shadow_hint`): `run/check/status` on a legacy project carry a migration hint (pointing at `ecc migrate`); when a workspace's `home/` holds both `params.toml` and the legacy `parameters.json`, a `workspace_config_shadowed` warning is emitted (the JSON is inert).
    - Renders: `rendering/renderers.py::render_command_result()` first looks up a custom renderer in `RENDERERS[(render_key, output_mode)]`, falling back to the generic `rendering/render.py::render_result()`.
    - `raise typer.Exit(code=result.exit_code)` passes the exit code through to `invoke_typer_app`.
-4. `invoke_typer_app` runs the click command with `standalone_mode=False`, catching `click.exceptions.Exit` / `ClickException` and converting them into a process exit code, so tests can read the return value of `cli_main.run([...])`.
+4. `invoke_typer_app` runs the click command and catches the `SystemExit`
+   raised for both success and error exits, converting it into a process
+   exit code, so tests can read the return value of `cli_main.run([...])`.
 
 ### CLI Output Conventions
 
@@ -428,18 +433,19 @@ are mandatory, the last 2 as needed):
    `app.add_typer(xxx_app, name="xxx")` (working example:
    `cli/commands/signoff.py`, whose subcommands reuse one handler module via
    `execute_command(..., render_key=f"signoff:{sub}")`). Note that the root app
-   built in `app.py` sets `add_completion=False, no_args_is_help=True`.
+   built in `app.py` sets `add_completion=True, no_args_is_help=True` (through
+   the shared factory `cli/core/apps.py::create_app`).
 
 4. **(Optional) Customize TEXT rendering.** The default TEXT output is
-   `key=value`. For friendlier output:
+   `key=value`. For friendlier output, add a `(render_key, OutputMode)` entry
+   to the `RENDERERS` dict in `cli/rendering/renderers.py`:
 
-   - Single commands: add a renderer function to the `get_pretty_renderer()`
-     registry in `cli/rendering/pretty.py` (the existing
-     `init/check/run/status/config` commands take this path);
-   - Subcommand groups: add a `(render_key, OutputMode)` entry to the
-     `RENDERERS` dict in `cli/rendering/renderers.py`, passing `render_key` via
-     `execute_command(..., render_key="param:show")` (the param group takes
-     this path).
+   - Single commands: write a pretty renderer in `cli/rendering/pretty.py`
+     and register it wrapped in `_pretty(...)` under the command name (the
+     existing `init/check/run/status/config` commands take this path);
+   - Subcommand groups: pass `render_key` via
+     `execute_command(..., render_key="param:show")` and register the
+     renderer under that key (the param group takes this path).
 
    PLAIN needs no customization at all.
 
@@ -477,8 +483,10 @@ are mandatory, the last 2 as needed):
 
 #### Adding a tunable parameter (the param system)
 
-Legacy semantic parameters remain in `cli/project/params.py::_LEGACY_PARAM_REGISTRY`.
-Direct tool configuration belongs in one reviewed module per owner under
+Legacy semantic parameters remain in
+`chipcompiler/data/parameter_schema.py::_LEGACY_PARAM_REGISTRY`;
+`cli/project/params.py` is now a thin compatibility facade over that
+catalog. Direct tool configuration belongs in one reviewed module per owner under
 `data/config_params/` (`cts.py`, `floorplan.py`, `dreamplace.py`, and so on).
 `ParamSchema` has one target: legacy `maps_to`, a JSON `config_target`, or a
 whitelisted PDK `pdk_target`.
@@ -512,9 +520,9 @@ write `[pdk.overrides]`; keep `pdk.root` on `ecc pdk set-root`. Never add
 workspace input, output, temporary, generated-artifact, or STA multi-corner
 liberty paths as CLI parameters.
 
-`config_params/coverage.py` compares each JSON template field with exactly one
-direct schema, legacy mapping, or protected-path entry. Update that manifest
-and `test/cli/params/test_config_coverage.py` whenever a template changes.
+`test/data/test_config_coverage.py` compares each JSON template field with
+exactly one direct schema, legacy mapping, or protected-path entry. Update
+that manifest whenever a template changes.
 Parsing remains in `params.py`; surgical TOML editing lives in
 `cli/project/toml_edit.py`; command tests remain
 in `test/cli/params/`.
@@ -576,9 +584,11 @@ function per component (yosys / yosys-slang / ecc-tools / dreamplace / klayout
 / sizer / pdk). Adding a component = adding a probe function and registering it
 in `_PROBES`/`ALL_COMPONENTS`; `probe_environment()` guards against exceptions
 (a crashing probe counts as a fail rather than aborting the sweep).
-`probe_components_for_preset()` decides the current run-preflight scope
-(ecc-tools always, yosys ↔ contains Synthesis, dreamplace ↔ contains
-place/legalization, sizer ↔ contains Timing optimization). The PDK is covered
+`probe_components_for_preset()` decides the current run-preflight scope: it
+builds the preset's step chain (skip-filtered first) and maps each step's
+tool through `_TOOL_COMPONENTS` (`ecc` → ecc-tools, `yosys`/`yosys_lec` →
+yosys, `dreamplace` → dreamplace, `sizer` → sizer), so every needed
+component is probed exactly once. The PDK is covered
 by configuration validation, slang is left to synthesis, and Sizer is also
 required by doctor.
 
@@ -587,9 +597,9 @@ required by doctor.
 - **CLI layer**: `cli/commands/signoff.py` + `cli/command_handlers/signoff.py`.
   `inspection/discovery.py::resolve_loaded_workspace()` resolves a managed
   `--workspace NAME` in the selected project (or its sole active workspace).
-  inspect reuses `runtime/signoff_export.py::inspect_signoff_package` (blocked
+  inspect reuses `engine/signoff_export.py::inspect_signoff_package` (blocked
   still exits 0); export reuses `export_signoff_package_archive`
-  (`RuntimeApiError` → `signoff_incomplete`).
+  (`SignoffExportError` → `signoff_incomplete`).
 - **Engine layer**: the `chipcompiler/engine/signoff/` package owns the signoff
   collector `SignoffPackageCollector` and the package-export APIs used by
   readiness inspection and archive generation.
@@ -707,7 +717,7 @@ uv run ecc pdk show
 `ecc run --preset <name>` overrides `[flow] preset` for a single run without
 editing `ecc.toml`. Valid names are auto-discovered from
 `chipcompiler/rtl2gds/builder.py` (`rtl2gds | syn_sta | synthesis_lec`); the
-`rtl2gds` preset is the full synthesis-to-harden chain (17 canonical steps,
+`rtl2gds` preset is the full synthesis-to-harden chain (18 canonical steps,
 including a synthesis-level LEC immediately after Synthesis that the default
 skip policy excludes — see [Skippable Flow Steps](#skippable-flow-steps);
 Harden emits GDS + abstract LEF + timing LIB):
@@ -825,7 +835,9 @@ Runtime handling:
 
 - `get_yosys_command()` performs side-effect-free detection.
 - `get_yosys_runtime()` returns `(command, env)` for subprocess use.
-- `check_slang_plugin()` runs the preflight check `yosys -p "plugin -i slang"`.
+- `check_slang_support()` runs the preflight slang check: it first probes the
+  builtin frontend (`yosys -p "help read_slang"`), then falls back to
+  `yosys -p "plugin -i slang"` for older plugin-based builds.
 
 If Yosys is not found, install the managed toolchain with the ECC installer
 `--with-toolchain` flag (see the [README](../README.md#installation)). The

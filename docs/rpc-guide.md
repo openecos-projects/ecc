@@ -63,11 +63,14 @@ first-slice method list:
 
 The result includes `version`, `eccVersion`, and `capabilities`.
 
-Default `ecc rpc serve --stdio` capabilities include Candidate methods
-(`candidate.capabilities`, `candidate.rerun`, `candidate.resume`) composed
-onto the generic runtime. They do not include persistent DB methods. When
-`--persistent-db` is enabled, `rpc.hello` also advertises `db.ensure` and
-`db.release`.
+Default `ecc rpc serve --stdio` capabilities include the Agent methods
+(`workspace.extract_foundation`, `candidate.capabilities`,
+`candidate.rerun`, `candidate.resume`) composed onto the generic runtime.
+They do not include persistent DB methods. When `--persistent-db` is
+enabled, `rpc.hello` also advertises `db.ensure`, `db.release`, and the
+layout edit methods (`layout.edit.begin`, `layout.edit.apply`,
+`layout.edit.save`, `layout.edit.discard`, `floorplan.edit.inspect`,
+`floorplan.edit.run_auto`, `floorplan.edit.validate`).
 
 ## Open A Workspace
 
@@ -383,6 +386,9 @@ End the sidecar with `rpc.shutdown`:
 ```
 
 The server closes workspace sessions and exits after the response is written.
+When a flow or step operation is still active, shutdown is deferred instead:
+the response carries `ok: false`, `deferred: true`, and a `shutdownBarrier`
+summary of the blocking operation, and the server keeps running.
 
 ## Errors
 
