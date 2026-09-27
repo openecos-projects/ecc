@@ -18,6 +18,45 @@ class TestRun:
             project_dir, "default"
         )
 
+    def test_fresh_workspace_snapshot_uses_manifest_workspace_id(
+        self,
+        tmp_path,
+        monkeypatch,
+        create_cli_project,
+        flow_mocks,
+    ):
+        project_dir = create_cli_project()
+        workspace = SimpleNamespace(
+            directory=os.path.join(project_dir, "ws_0001"),
+            flow=SimpleNamespace(data={"steps": []}),
+        )
+        captured = {}
+
+        monkeypatch.setattr("chipcompiler.data.create_workspace", lambda **_kwargs: workspace)
+        monkeypatch.setattr(
+            "chipcompiler.engine.snapshot.create_engineering_snapshot",
+            lambda _workspace, **kwargs: captured.update(kwargs)
+            or {"workspaceId": kwargs["workspace_id"], "workspaceRevision": 1},
+        )
+        monkeypatch.setattr(
+            "chipcompiler.engine.workspace_lifecycle._write_workspace_command",
+            lambda *_args, **_kwargs: None,
+        )
+
+        rc = cli_main.run(
+            [
+                "workspace",
+                "create",
+                "ws_0001",
+                "--project",
+                project_dir,
+                "--no-wait",
+            ]
+        )
+
+        assert rc == 0
+        assert captured["workspace_id"] == "ws_0001"
+
     def test_run_adds_flow_steps_when_no_init(self, tmp_path, create_cli_project, flow_mocks):
         project_dir = create_cli_project()
 

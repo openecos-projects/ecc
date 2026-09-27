@@ -405,6 +405,7 @@ def test_workspace_spec_update_preserves_inapplicable_parameters_when_flow_chang
     assert configuration["workspaceSpec"]["parameters"]["cts.skew_bound"] == "0.12"
     cts = json.loads(updated.workspace.config["CTS"].read_text(encoding="utf-8"))
     assert cts["skew_bound"] == "0.12"
+    assert list(tmp_path.glob(".workspace.staging-*")) == []
 
 
 def test_workspace_spec_update_preserves_unknown_config_extensions(

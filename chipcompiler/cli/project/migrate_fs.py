@@ -159,17 +159,44 @@ def child_stat(container_fd: int, name: str):
     category=None,
 )
 def move_noreplace(src_fd: int, src_name: str, dst_fd: int, dst_name: str) -> int:
-    """renameat2(RENAME_NOREPLACE); 0 on success, an errno otherwise."""
-    if _renameat2 is None:
-        return errno.ENOSYS
-    rc = _renameat2(
-        src_fd,
-        os.fsencode(src_name),
-        dst_fd,
-        os.fsencode(dst_name),
-        RENAME_NOREPLACE,
-    )
-    return 0 if rc == 0 else ctypes.get_errno()
+    """Move without replacing an existing destination where supported.
+
+    NFS servers commonly reject ``RENAME_NOREPLACE`` with ``EINVAL``. The
+    fallback stays anchored to the already-verified directory handles and
+    runs under the migration lock. A directory rename cannot replace a file,
+    symlink, or non-empty directory; the remaining check/rename race is limited
+    to an empty directory appearing between the two operations.
+    """
+    unsupported = {errno.EINVAL, errno.ENOSYS, errno.ENOTSUP}
+    if hasattr(errno, "EOPNOTSUPP"):
+        unsupported.add(errno.EOPNOTSUPP)
+    if _renameat2 is not None:
+        rc = _renameat2(
+            src_fd,
+            os.fsencode(src_name),
+            dst_fd,
+            os.fsencode(dst_name),
+            RENAME_NOREPLACE,
+        )
+        if rc == 0:
+            return 0
+        error = ctypes.get_errno()
+        if error not in unsupported:
+            return error
+
+    try:
+        os.stat(dst_name, dir_fd=dst_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        return exc.errno or errno.EIO
+    else:
+        return errno.EEXIST
+    try:
+        os.rename(src_name, dst_name, src_dir_fd=src_fd, dst_dir_fd=dst_fd)
+    except OSError as exc:
+        return exc.errno or errno.EIO
+    return 0
 
 
 @deprecated(

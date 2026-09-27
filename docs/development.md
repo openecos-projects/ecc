@@ -639,16 +639,23 @@ required by doctor.
   type / `list_value`). Add a field there and the subcommands pick it up;
   `add`/`remove` are hard-restricted to `design.rtl`
   (`unsupported_project_collection` otherwise).
-- `ecc workspace refresh` is implemented as the run path with `overwrite=True,
-  execute_flow=False` (`cli/command_handlers/project.py::refresh_workspace`),
-  which is why it runs the same environment preflight as a fresh run (`preset:
-  rtl2gds` from `ecc.toml` means the full tool set must be ready, even though
-  no step executes). On a non-manifest project it reports
-  `workspace_refresh_requires_managed_workspace`. Before overwriting it
-  compares `config/*.json` against the last derivation record
-  (`home/config-derived-manifest.json`, written by
-  `refresh_workspace_config`); a detected difference refuses with
-  `derived_configs_modified` listing the files unless `--force` is given.
+- `ecc workspace refresh` projects the current Project structure into an
+  Engine workspace-update transaction. The transaction validates the expected
+  revision, builds a staging Workspace, preserves Workspace-local parameter
+  overrides, then exchanges the directories and advances the revision once.
+  It still runs the fresh-workspace environment preflight (`preset: rtl2gds`
+  requires the full tool set even though no step executes). A non-manifest
+  project reports `workspace_refresh_requires_managed_workspace`. Before the
+  transaction it compares `config/*.json` against
+  `home/config-derived-manifest.json`; a difference reports
+  `derived_configs_modified` unless `--force` is given.
+- Directory publication first uses Linux `renameat2` exchange/no-replace
+  operations. Filesystems such as NFS can reject those flags with `EINVAL`; in
+  that case refresh performs a lock-protected three-rename exchange and leaves
+  snapshot/command-ledger evidence for `project reconcile` after a crash.
+  Legacy migration similarly rechecks the destination through already-bound
+  directory descriptors before a plain rename under the migration lock. A
+  destination conflict remains fail-closed and is never silently replaced.
 - Workspace-scoped `param set/unset/list/diff --workspace NAME` mutate
   `home/params.toml` through `cli/command_handlers/workspace_params.py`
   (records in `workspace_param_overrides`, suffix invalidation via

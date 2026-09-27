@@ -127,8 +127,21 @@ def reconcile_project_state(project_dir: str | Path, *, blocking: bool) -> Proje
     for entry in manifest.workspaces:
         workspace = Path(entry.workspace_path).resolve()
         if not workspace.is_dir() or workspace.is_symlink():
-            errors.append(f"{entry.workspace_id}: workspace directory is unavailable")
-            continue
+            try:
+                from chipcompiler.engine.reconcile import _workspace_lock
+
+                with _workspace_lock(workspace, blocking=blocking):
+                    if _recover_missing_workspace_refresh_exchange(workspace):
+                        repairs.append(f"refresh_exchange:{entry.workspace_id}")
+            except BlockingIOError:
+                busy.append(entry.workspace_id)
+                continue
+            except Exception as exc:
+                errors.append(f"{entry.workspace_id}: {exc}")
+                continue
+            if not workspace.is_dir() or workspace.is_symlink():
+                errors.append(f"{entry.workspace_id}: workspace directory is unavailable")
+                continue
         try:
             _reconcile_workspace_state(
                 project,
@@ -414,6 +427,50 @@ def _reconcile_workspace_refresh_exchange(workspace: Path) -> bool:
         "workspace_refresh_recovery_unproven",
         "Refresh staging revisions do not form one committed update",
     )
+
+
+def _recover_missing_workspace_refresh_exchange(workspace: Path) -> bool:
+    """Roll forward the portable exchange state after its first rename."""
+    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+
+    if workspace.exists() or workspace.is_symlink():
+        return False
+    prefix = f".{workspace.name}.staging-"
+    candidates = [
+        candidate
+        for candidate in workspace.parent.iterdir()
+        if candidate.name.startswith(prefix) and (candidate.is_dir() or candidate.is_symlink())
+    ]
+    if not candidates:
+        return False
+    backups = [candidate for candidate in candidates if candidate.name.endswith(".exchange-old")]
+    staged = [candidate for candidate in candidates if not candidate.name.endswith(".exchange-old")]
+    if len(backups) != 1 or len(staged) != 1 or backups[0] != Path(f"{staged[0]}.exchange-old"):
+        raise WorkspaceLifecycleError(
+            "workspace_refresh_recovery_ambiguous",
+            "Portable refresh exchange evidence is incomplete or ambiguous",
+        )
+    staging, backup = staged[0], backups[0]
+    if staging.is_symlink() or backup.is_symlink():
+        raise WorkspaceLifecycleError(
+            "workspace_refresh_recovery_unsafe",
+            "Refresh exchange directories must not be symlinks",
+        )
+    updated = read_engineering_snapshot_from_directory(staging)
+    previous = read_engineering_snapshot_from_directory(backup)
+    if (
+        updated["workspaceId"] != previous["workspaceId"]
+        or updated["workspaceRevision"] != previous["workspaceRevision"] + 1
+    ):
+        raise WorkspaceLifecycleError(
+            "workspace_refresh_recovery_unproven",
+            "Portable refresh exchange revisions or identity do not match",
+        )
+    _require_refresh_command_proof(staging, updated, previous["workspaceRevision"])
+    os.rename(staging, workspace)
+    shutil.rmtree(backup)
+    return True
 
 
 def _require_refresh_command_proof(
