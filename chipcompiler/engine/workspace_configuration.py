@@ -12,7 +12,10 @@ from chipcompiler.data.parameter_schema import (
 )
 from chipcompiler.data.workspace import workspace_config_paths
 from chipcompiler.data.workspace_parameters import (
+    unset_workspace_param,
     update_workspace_param_value,
+    workspace_param_diff,
+    workspace_param_step,
     workspace_param_value,
 )
 from chipcompiler.data.workspace_transaction import WorkspaceFileTransaction
@@ -57,6 +60,155 @@ def update_workspace_configuration(
             workspace_bindings,
             command_id,
         ),
+    )
+
+
+def apply_workspace_parameters(
+    target_directory: str | Path,
+    expected_workspace_revision: int,
+    sets: dict[str, object],
+    unsets: tuple[str, ...],
+    *,
+    step_id: str | None = None,
+    command_id: str = "",
+):
+    """Atomically apply a validated batch of Workspace-local parameters."""
+    target = Path(target_directory).expanduser().resolve()
+    if not target.is_dir():
+        raise WorkspaceLifecycleError("workspace_missing", f"Workspace not found: {target}")
+    return _run_file_transaction(
+        target,
+        lambda: _apply_workspace_parameters(
+            target,
+            expected_workspace_revision,
+            sets,
+            unsets,
+            step_id=step_id,
+            command_id=command_id,
+        ),
+    )
+
+
+def _apply_workspace_parameters(
+    target: Path,
+    expected_workspace_revision: int,
+    sets: dict[str, object],
+    unsets: tuple[str, ...],
+    *,
+    step_id: str | None,
+    command_id: str,
+):
+    set_keys = set(sets)
+    unset_keys = set(unsets)
+    if not set_keys and not unset_keys:
+        raise WorkspaceLifecycleError("parameter_patch_empty", "At least one change is required")
+    if len(unset_keys) != len(unsets) or set_keys & unset_keys:
+        raise WorkspaceLifecycleError(
+            "conflicting_parameter_patch", "Parameters cannot be repeated or set and unset"
+        )
+    fingerprint = _workspace_command_fingerprint(
+        "parameter_apply",
+        {"sets": sets, "unsets": sorted(unset_keys), "stepId": step_id},
+        {},
+        expected_workspace_revision,
+    )
+    if command_id and _command_retry_matches(target, command_id, fingerprint):
+        return _load_committed_workspace(target)
+
+    workspace = _load_committed_workspace(target)
+    snapshot = ensure_engineering_snapshot(workspace)
+    if snapshot["workspaceRevision"] != expected_workspace_revision:
+        raise WorkspaceLifecycleError(
+            "revision_conflict",
+            "Workspace Revision does not match",
+            {
+                "expectedWorkspaceRevision": expected_workspace_revision,
+                "actualWorkspaceRevision": snapshot["workspaceRevision"],
+            },
+        )
+
+    allowed: set[str] | None = None
+    if step_id is not None:
+        _step, step_schemas = _step_catalog(workspace, step_id)
+        allowed = {schema.param for schema in step_schemas}
+
+    schemas = {}
+    normalized_sets = {}
+    affected_steps = []
+    for parameter in (*sets, *unsets):
+        schema = lookup_schema(parameter)
+        if schema is None or schema.pdk_target is not None:
+            raise WorkspaceLifecycleError("unknown_parameter", f"Unknown parameter: {parameter}")
+        if allowed is not None and parameter not in allowed:
+            raise WorkspaceLifecycleError(
+                "parameter_not_applicable",
+                f"Parameter {parameter} is not configurable at {step_id}",
+            )
+        try:
+            affected_steps.append(workspace_param_step(schema))
+        except ValueError as exc:
+            raise WorkspaceLifecycleError("parameter_requires_refresh", str(exc)) from exc
+        schemas[parameter] = schema
+    for parameter, value in sets.items():
+        schema = schemas[parameter]
+        normalized, type_error = validate_schema_type(value, schema)
+        errors = [type_error] if type_error else validate_value(normalized, schema)
+        if errors:
+            raise WorkspaceLifecycleError("invalid_parameter", str(errors[0]))
+        normalized_sets[parameter] = normalized
+
+    changed = False
+    existing_overrides = {item["key"] for item in workspace_param_diff(workspace)}
+    for parameter, value in normalized_sets.items():
+        schema = schemas[parameter]
+        if workspace_param_value(workspace, schema) != value:
+            update_workspace_param_value(workspace, schema, value)
+            changed = True
+    for parameter in unsets:
+        if parameter in existing_overrides:
+            unset_workspace_param(workspace, schemas[parameter])
+            changed = True
+
+    if not changed:
+        _write_workspace_command(
+            target,
+            command_id,
+            fingerprint,
+            snapshot["workspaceId"],
+            snapshot["workspaceRevision"],
+        )
+        return workspace
+    if not save_parameter(workspace.parameters):
+        raise OSError("Failed to save Workspace parameters")
+    from chipcompiler.data import refresh_workspace_config
+
+    refresh_workspace_config(workspace)
+    first_step = _earliest_flow_step(workspace, affected_steps)
+    invalidate_from(EngineFlow(workspace), first_step)
+    updated = invalidate_engineering_snapshot(
+        workspace,
+        workspace_id=snapshot["workspaceId"],
+        cause="workspace.parameters_applied",
+        first_invalidated_step=first_step,
+    )
+    _write_workspace_command(
+        target,
+        command_id,
+        fingerprint,
+        updated["workspaceId"],
+        updated["workspaceRevision"],
+    )
+    return _load_committed_workspace(target)
+
+
+def _earliest_flow_step(workspace: Any, affected_steps: list[str]) -> str:
+    identities = {normalize_flow_step(step).casefold() for step in affected_steps}
+    for step in workspace.flow.steps():
+        name = str(step.get("name", ""))
+        if normalize_flow_step(name).casefold() in identities:
+            return name
+    raise WorkspaceLifecycleError(
+        "parameter_not_in_flow", "No affected parameter step exists in this Workspace flow"
     )
 
 
@@ -151,6 +303,15 @@ def _update_workspace_configuration(
 
 
 def read_workspace_configuration(workspace: Any, *, strict: bool = False) -> dict[str, Any]:
+    projection = build_workspace_configuration_projection(workspace, strict=strict)
+    snapshot = _read_snapshot_metadata(workspace)
+    return {**snapshot, **projection}
+
+
+def build_workspace_configuration_projection(
+    workspace: Any, *, strict: bool = False
+) -> dict[str, Any]:
+    """Build configuration fields without reading Snapshot metadata."""
     parameters = {}
     for schema in list_schemas():
         if schema.pdk_target is not None:
@@ -175,10 +336,7 @@ def read_workspace_configuration(workspace: Any, *, strict: bool = False) -> dic
     pdk_files, pdk_file_bindings = (
         _workspace_pdk_files(workspace) if pdk_mode == "manual" else ([], {})
     )
-    snapshot = _read_snapshot_metadata(workspace)
     return {
-        "workspaceId": snapshot["workspaceId"],
-        "workspaceRevision": snapshot["workspaceRevision"],
         "workspaceSpec": {
             "schemaVersion": 1,
             "design": {

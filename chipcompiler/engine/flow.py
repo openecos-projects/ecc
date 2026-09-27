@@ -243,7 +243,9 @@ class EngineFlow:
                 if peak_memory is not None:
                     step["peak memory (mb)"] = peak_memory
                 if clear_runtime_operation:
-                    step.get("info", {}).pop("runtime_operation", None)
+                    info = step.get("info", {})
+                    info.pop("runtime_operation", None)
+                    info.pop("execution", None)
 
                 if self.workspace.flow.path is None:
                     return True
@@ -615,8 +617,9 @@ class EngineFlow:
         start_time = time.time()
         timing_constraints = self.timing_constraint_facts()
         flow_step = self.get_step(workspace_step.name, workspace_step.tool)
+        execution_marker = getattr(observer, "execution", None)
         operation_marker = getattr(observer, "runtime_operation", None)
-        if operation_marker:
+        if execution_marker or operation_marker:
             if flow_step is None:
                 raise RuntimeError(f"cannot persist runtime operation marker for {step_tag}")
             previous_state = flow_step.get("state")
@@ -627,10 +630,14 @@ class EngineFlow:
                 workspace_step.tool,
             )
             previous_info = dict(flow_step.get("info", {}))
-            flow_step.setdefault("info", {})["runtime_operation"] = {
-                **operation_marker,
-                "started_at": start_time,
-            }
+            info = flow_step.setdefault("info", {})
+            if execution_marker:
+                info["execution"] = {**execution_marker, "started_at": start_time}
+            else:
+                info["runtime_operation"] = {
+                    **operation_marker,
+                    "started_at": start_time,
+                }
             flow_step["state"] = StateEnum.Ongoing.value
             if not self.save():
                 flow_step["state"] = previous_state

@@ -6,14 +6,6 @@ from hashlib import sha256
 from pathlib import Path
 
 import chipcompiler
-from chipcompiler.runtime.operations import RuntimeOperationConflict, RuntimeOperationFailed
-from chipcompiler.runtime.requests import WorkspaceIdRequest
-from chipcompiler.runtime.workspace_api import (
-    RuntimeApiError,
-    WorkspaceRuntimeApi,
-    _init_db_engine_for_workspace_step,
-    _state_value,
-)
 from chipcompiler.utility.path import path_is_within
 
 from .candidate_clone import candidate_clone_ignore
@@ -42,12 +34,23 @@ from .floorplan_mode import (
     validate_floorplan_mode_request,
     validate_floorplan_mode_result,
 )
+from .operations import RuntimeOperationConflict, RuntimeOperationFailed
 from .requests import (
     CandidateRerunRequest,
     CandidateResumeRequest,
     WorkspaceExtractFoundationRequest,
+    WorkspaceIdRequest,
 )
 from .runtime_env import preflight_sizer_runtime
+from .runtime_support import (
+    AgentApplicationError as RuntimeApiError,
+)
+from .runtime_support import (
+    init_db_engine_for_workspace_step as _init_db_engine_for_workspace_step,
+)
+from .runtime_support import (
+    state_value as _state_value,
+)
 
 
 def _stable_hash(value) -> str:
@@ -91,9 +94,9 @@ def build_agent_flow_for_workspace(workspace, *, create_step_workspaces: bool = 
 
 
 class FlowAgentRuntimeApi:
-    """Optional Flow Agent RPC handlers over one ECC workspace runtime."""
+    """Candidate execution facade over one ECC workspace application."""
 
-    def __init__(self, ecc_api: WorkspaceRuntimeApi):
+    def __init__(self, ecc_api):
         self.ecc_api = ecc_api
 
     def extract_foundation(self, request: WorkspaceExtractFoundationRequest) -> dict:

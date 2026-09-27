@@ -16,12 +16,13 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from chipcompiler.engine.step_execution import get_process_rss_mb
-from chipcompiler.runtime.operations import RuntimeFlowObserver, RuntimeOperationCancelled
 from chipcompiler.tools.ecc import runner
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.sta_artifacts import copy_sta_artifact, discard_sta_outputs
 from chipcompiler.tools.ecc.sta_qor import sta_artifact_directory
 from chipcompiler.utility.log import redirect_stdio_to_file
+
+from .operations import RuntimeFlowObserver, RuntimeOperationCancelled
 
 
 def sta_workers(step) -> int:
@@ -38,7 +39,7 @@ def sta_workers(step) -> int:
 def _arm_parent_death_signal(parent_pid=None):
     import ctypes
 
-    # RPC close can kill the parent without running its Python cleanup.
+    # A caller can be killed without running its Python cleanup.
     if parent_pid is None:
         parent_pid = multiprocessing.parent_process().pid
     libc = ctypes.CDLL(None, use_errno=True)

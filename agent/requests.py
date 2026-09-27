@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 from typing import Any
 
-from chipcompiler.runtime.requests import RequestValidationError, parse_request_model
+
+@dataclass(frozen=True)
+class WorkspaceIdRequest:
+    workspace_id: str
 
 
 @dataclass(frozen=True)
@@ -35,29 +38,3 @@ class CandidateResumeRequest:
     parameter_card_sha256: str
     seed: int
     expected_workspace_revision: int | None = None
-
-
-_FIELD_ALIASES = {
-    "workspaceId": "workspace_id",
-    "targetStep": "target_step",
-    "endStep": "end_step",
-    "candidateId": "candidate_id",
-    "executionScope": "execution_scope",
-    "idempotencyKey": "idempotency_key",
-    "contextSha256": "context_sha256",
-    "parameterCardSha256": "parameter_card_sha256",
-    "parentCandidateRootRef": "parent_candidate_root_ref",
-    "floorplanMode": "floorplan_mode",
-}
-
-
-def parse_agent_request_model(model: type, params: object):
-    if not isinstance(params, dict):
-        raise RequestValidationError("params must be an object")
-    normalized = {}
-    for key, value in params.items():
-        name = _FIELD_ALIASES.get(str(key), str(key))
-        if name in normalized:
-            raise RequestValidationError(f"duplicate field: {name}")
-        normalized[name] = value
-    return parse_request_model(model, normalized)

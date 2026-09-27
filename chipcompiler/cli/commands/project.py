@@ -40,9 +40,26 @@ def register_project_commands(app: typer.Typer) -> None:
 def init_cmd(
     *,
     name: Annotated[str, typer.Argument()],
+    project_name: Annotated[str | None, typer.Option("--project-name")] = None,
+    design_name: Annotated[str | None, typer.Option("--design-name")] = None,
+    mpc_resource_id: Annotated[str | None, typer.Option("--mpc-resource-id")] = None,
+    mpc_display_name: Annotated[str | None, typer.Option("--mpc-display-name")] = None,
+    mpc_version: Annotated[str | None, typer.Option("--mpc-version")] = None,
+    mpc_root: Annotated[str | None, typer.Option("--mpc-root")] = None,
+    mpc_design_index: Annotated[int | None, typer.Option("--mpc-design-index", min=0)] = None,
     plain: PlainOption = False,
 ) -> None:
-    command_input = InitInput(name=name, output=output_options(plain=plain))
+    command_input = InitInput(
+        name=name,
+        output=output_options(plain=plain),
+        project_name=project_name,
+        design_name=design_name,
+        mpc_resource_id=mpc_resource_id,
+        mpc_display_name=mpc_display_name,
+        mpc_version=mpc_version,
+        mpc_root=mpc_root,
+        mpc_design_index=mpc_design_index,
+    )
     execute_command("init", command_input, project_handlers.init)
 
 
@@ -105,6 +122,12 @@ def run_cmd(
             help="Set parameter override (repeatable, e.g. --set place.target_density=0.65)",
         ),
     ] = None,
+    expected_revision: Annotated[int | None, typer.Option("--expected-revision", min=1)] = None,
+    command_id: Annotated[str, typer.Option("--command-id")] = "",
+    no_wait: Annotated[bool, typer.Option("--no-wait")] = False,
+    run_id: Annotated[str, typer.Option("--run-id")] = "",
+    runtime_id: Annotated[str, typer.Option("--runtime-id")] = "",
+    log_file: Annotated[str, typer.Option("--log-file")] = "",
     plain: PlainOption = False,
 ) -> None:
     """Run the configured RTL-to-GDS flow.
@@ -135,6 +158,12 @@ def run_cmd(
         only=only,
         force=force,
         preset=preset,
+        expected_revision=expected_revision,
+        command_id=command_id,
+        no_wait=no_wait,
+        run_id=run_id,
+        runtime_id=runtime_id,
+        log_file=log_file,
     )
     execute_command("run", command_input, project_handlers.run)
 

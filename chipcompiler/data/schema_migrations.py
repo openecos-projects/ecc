@@ -7,11 +7,10 @@ Three kinds of files under ``home/`` are versioned:
 - ``params.toml`` — current version 1; a file without the field is version 0
   (the pre-versioning era) and loads through the legacy migration.
 - ``flow.json`` — current version 1; version 0 when the field is absent.
-- ``engineering-snapshot.json`` — current version 6, a breaking-change
-  counter (no in-place migration seam; unsupported versions fail closed and
-  the Snapshot is rebuilt); its field is spelled ``schemaVersion`` because
-  the contract predates this registry and is shared with the GUI. It is
-  registered for discovery rather than applied by the load chain.
+- ``engineering-snapshot.json`` — version 4 (production), with v2/v3 read support;
+  its field is spelled ``schemaVersion`` because the contract predates this
+  registry and is shared with the GUI. Legacy snapshots are rebuilt explicitly
+  by Project reconciliation while holding the Workspace lock.
 
 The ad-hoc migrations that used to live at their call sites register here:
 ``{file type: {target version: migration}}``. A migration takes the workspace
@@ -40,7 +39,7 @@ WORKSPACE_CONFIGS = "workspace-configs"
 SUPPORTED_SCHEMA_VERSIONS: dict[str, int] = {
     PARAMS_TOML: 1,
     FLOW_JSON: 1,
-    ENGINEERING_SNAPSHOT: 6,
+    ENGINEERING_SNAPSHOT: 4,
 }
 
 
@@ -69,10 +68,20 @@ def _migrate_workspace_config_filenames_to_v1(workspace_dir: Path) -> None:
     migrate_workspace_config_filenames(workspace_dir)
 
 
+def _migrate_engineering_snapshot_to_v4(workspace_dir: Path) -> None:
+    # Snapshot regeneration needs the loaded
+    # workspace, not just the directory; it stays an explicit operation.
+    from chipcompiler.data import load_workspace
+    from chipcompiler.engine import migrate_engineering_snapshot
+
+    migrate_engineering_snapshot(load_workspace(workspace_dir))
+
+
 #: {file type: {target version: migration producing that version}}.
 SCHEMA_MIGRATIONS: dict[str, dict[int, Callable[[Path], None]]] = {
     PARAMS_TOML: {1: _migrate_params_toml_to_v1},
     WORKSPACE_CONFIGS: {1: _migrate_workspace_config_filenames_to_v1},
+    ENGINEERING_SNAPSHOT: {4: _migrate_engineering_snapshot_to_v4},
 }
 
 

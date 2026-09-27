@@ -26,6 +26,10 @@ PROJECT_FIELDS = (
     ProjectField("design.frequency_mhz", "design", "frequency_mhz", "float"),
     ProjectField("pdk.name", "pdk", "name", "str"),
     ProjectField("pdk.root", "pdk", "root", "str"),
+    ProjectField("pdk.external_paths", "pdk", "external_paths", "str", list_value=True),
+    ProjectField("pdk.overrides.tech", "pdk.overrides", "tech", "str"),
+    ProjectField("pdk.overrides.lefs", "pdk.overrides", "lefs", "str", list_value=True),
+    ProjectField("pdk.overrides.libs", "pdk.overrides", "libs", "str", list_value=True),
     ProjectField("flow.preset", "flow", "preset", "str"),
 )
 

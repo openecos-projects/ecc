@@ -10,12 +10,12 @@ from agent.data.candidate_materialization import (
     materialize_candidate_config,
 )
 from agent.data.parameter_application_receipt import build_parameter_application_receipt
+from agent.runtime_support import AgentApplicationError as RuntimeApiError
 from agent.workspace_api import (
     _candidate_parameter_receipt,
     _parameter_receipt_context,
     _stable_hash,
 )
-from chipcompiler.runtime.workspace_api import RuntimeApiError
 
 HASH = "sha256:" + "a" * 64
 PRODUCER = Path(__file__).parents[1] / "data/parameter_runtime_observer.py"

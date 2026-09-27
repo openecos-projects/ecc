@@ -4,7 +4,6 @@
 
 - Source code: [chipcompiler/cli/](https://github.com/openecos-projects/ecc/tree/main/chipcompiler/cli/)
 - For how to extend the CLI with new commands, see [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli)
-- RPC sidecar protocol: [rpc-guide.md](https://github.com/openecos-projects/ecc/blob/main/docs/rpc-guide.md)
 
 ## 0. Invocation
 
@@ -81,7 +80,7 @@ uv run ecc --help
 
 - Global: `ecc --version` (single version line), `ecc --help`.
 - Project location: project-scoped commands accept `--project <dir>` (when the option is not given, the current directory is used). `--workspace <path>` accepts either a tool-managed, non-empty simple folder name or a complete absolute filesystem path. A name keeps the project-local `<project>/<workspace-id>` layout; an absolute path creates or selects an external workspace and uses its basename as the new ID unless the path is already registered. A fresh project creates `default` on bare `ecc run`; a project with one active workspace auto-selects it, while one with multiple active workspaces requires `--workspace`. A named workspace is created and registered in `project.json` before its files are created. Legacy `runs/` projects must be upgraded with `ecc migrate` before running a flow. Each project has one `ecc.toml`; workspace inputs are copied to its own `origin/` directory at creation time.
-- Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `param`, `macro`, `pdk`, `project`, `workspace`, `signoff`, and `report` accept `--plain` (`key=value`, for scripting), with human-readable TEXT by default. `rpc serve` and `layout-image` use their own protocols instead.
+- Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `param`, `macro`, `pdk`, `project`, `workspace`, `process`, `flow`, `signoff`, and `report` accept `--plain` where documented, with human-readable TEXT by default. `layout-image` produces a file instead.
 - Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`).
 - Step tokens come in three vocabularies, distinguished by context:
   - **display names** (output and input of `ecc status` / `ecc log` / `ecc report step`, uniformly lowercase/underscore): `synthesis / lec / pre_floorplan / macro_placement / post_floorplan / placement / cts / legalization / timing_optimization / routing / filler / rcx / sta / lvs / postroutelec / drc / harden`;
@@ -109,10 +108,11 @@ Commands:
   macro         Manage manual macro placement (macro_location.tcl)
   pdk           Show and configure the PDK path used by this project
   project       Edit project declarations in ecc.toml
-  workspace     Import or refresh managed workspaces
+  workspace     Create, derive, import, update, and remove workspaces
+  process       Inspect, cancel, and reconcile background runs
+  flow          List the installed flow catalog
   signoff       Inspect and export signoff packages
   report        Generate design-summary, QoR score, checklist, and step reports
-  rpc           Run the private ECC JSON-RPC runtime
 ```
 
 ## 1.5. doc — read the bundled guides in the terminal
@@ -1124,23 +1124,7 @@ $ ecc report step drc --section analysis
     [BLOCK] qor.drc.clean — drc_count=336 == 0
 ```
 
-## 13. rpc — JSON-RPC runtime sidecar (private)
-
-```bash
-ecc rpc serve --stdio [--persistent-db]
-```
-
-A JSON-RPC 2.0 service for front ends such as the GUI, framed with `Content-Length` over stdio. `--persistent-db` additionally exposes `db.ensure` / `db.release` plus the `layout.edit.*` / `floorplan.edit.*` method families. The handshake capability list is generated from the registered runtime methods; clients must inspect it instead of assuming a fixed list. `workspace.refresh_config` applies the same generated-config protection as the CLI and accepts `force: true` when overwriting detected edits is intentional. The current base-mode handshake and a ping are shown below; full method parameters are in [rpc-guide.md](https://github.com/openecos-projects/ecc/blob/main/docs/rpc-guide.md):
-
-```console
-→ {"jsonrpc":"2.0","method":"rpc.hello","params":{"version":1},"id":"hello-1"}
-← {"jsonrpc":"2.0","result":{"version":1,"protocolVersion":1,"eccVersion":"0.1.0-alpha.12","capabilities":["rpc.hello","rpc.ping","rpc.shutdown","runtime.v2","operation.events","workspace_spec.describe","workspace_spec.validate","project.discover","project.manifest.load","project.manifest.mutate","workspace.create","workspace.open","workspace.derive","workspace.binding_requirement","workspace.update","workspace.configuration.update","workspace.configuration.read","workspace.step_configuration.update","workspace.step_configuration.read","workspace.step_outputs","workspace.close","workspace.info","workspace.refresh_config","workspace.sync_config","workspace.reset_flow","workspace.export_signoff","workspace.inspect_signoff","flow.run","flow.run_step","operation.start_flow","operation.start_step","operation.status","operation.cancel","operation.ack_step_rendered","workspace.snapshot","workspace.engineering_snapshot","workspace.recover_interrupted"]},"id":"hello-1"}
-
-→ {"jsonrpc":"2.0","method":"rpc.ping","params":{},"id":"ping-1"}
-← {"jsonrpc":"2.0","result":{"ok":true},"id":"ping-1"}
-```
-
-## 14. layout-image — render a GDS to an image
+## 13. layout-image — render a GDS to an image
 
 ```bash
 ecc layout-image --gds <in.gds> --image <out.png> [--width N] [--height N]
@@ -1152,7 +1136,7 @@ Renders a GDS layout snapshot via KLayout (default 1920×1920; KLayout must be a
 ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image layout.png --width 2560 --height 1600
 ```
 
-## 15. Typical end-to-end workflow
+## 14. Typical end-to-end workflow
 
 ```bash
 ecc init gcd && cd gcd

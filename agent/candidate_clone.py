@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from chipcompiler.runtime.workspace_api import RuntimeApiError
+from .runtime_support import AgentApplicationError as RuntimeApiError
 
 _ARTIFACT_DIR_NAMES = frozenset({"output", "data", "feature", "analysis", "report", "log"})
 

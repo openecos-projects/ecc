@@ -30,7 +30,6 @@ def test_root_help_returns_zero_and_lists_commands(capsys):
         "workspace",
         "signoff",
         "report",
-        "rpc",
     ):
         assert command in out
     for removed_command in ("metrics", "artifacts", "diagnose"):
@@ -92,8 +91,17 @@ def test_version_command_returns_json_payload(monkeypatch, capsys):
 
     data = json.loads(capsys.readouterr().out)
     assert rc == 0
-    assert set(data) == {"schema_version", "runtime", "ecc", "dreamplace", "ecc_tools", "tools"}
-    assert data["schema_version"] == 1
+    assert set(data) == {
+        "schema_version",
+        "runtime",
+        "ecc",
+        "dreamplace",
+        "ecc_tools",
+        "cli_contract",
+        "tools",
+    }
+    assert data["schema_version"] == 2
+    assert data["cli_contract"] == 1
     assert data["runtime"] == "ECC CLI"
     assert data["tools"] == {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"}
 
@@ -114,11 +122,12 @@ def test_version_metadata_missing_uses_unknown(monkeypatch, capsys):
     data = json.loads(capsys.readouterr().out)
     assert rc == 0
     assert data == {
-        "schema_version": 1,
+        "schema_version": 2,
         "runtime": "ECC CLI",
         "ecc": "source-fallback",
         "dreamplace": "unknown",
         "ecc_tools": "unknown",
+        "cli_contract": 1,
         "tools": {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"},
     }
 

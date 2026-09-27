@@ -9,6 +9,7 @@ from chipcompiler.data import load_workspace
 from chipcompiler.engine import (
     EngineFlow,
     WorkspaceLifecycleError,
+    apply_workspace_parameters,
     create_workspace_from_spec,
     read_step_configuration,
     read_workspace_configuration_from_directory,
@@ -71,6 +72,84 @@ def test_workspace_configuration_update_is_revision_aware_and_idempotent(
         )
     assert conflict.value.code == "revision_conflict"
     assert read_engineering_snapshot(updated)["workspaceRevision"] == 2
+
+
+def test_workspace_parameter_batch_commits_once_and_invalidates_from_earliest_step(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
+    baseline_density = workspace.parameters.data["dreamplace"]["target_density"]
+    flow = EngineFlow(workspace)
+    for step in flow.workspace.flow.data["steps"]:
+        step["state"] = "Success"
+    assert flow.save()
+    initial = read_engineering_snapshot(workspace)
+    create_engineering_snapshot(
+        workspace,
+        workspace_id=initial["workspaceId"],
+        workspace_revision=initial["workspaceRevision"],
+    )
+
+    updated = apply_workspace_parameters(
+        workspace.directory,
+        1,
+        {"place.target_density": 0.65, "cts.skew_bound": "0.10"},
+        (),
+        command_id="batch-1",
+    )
+    committed = read_engineering_snapshot(updated)
+    states = [step["state"] for step in updated.flow.steps()]
+    names = [step["name"] for step in updated.flow.steps()]
+    first = names.index("place")
+
+    assert committed["workspaceRevision"] == 2
+    assert states[:first] == ["Success"] * first
+    assert all(state == "Unstart" for state in states[first:])
+    assert updated.parameters.data["dreamplace"]["target_density"] == 0.65
+
+    repeated = apply_workspace_parameters(
+        workspace.directory,
+        1,
+        {"place.target_density": 0.65, "cts.skew_bound": "0.10"},
+        (),
+        command_id="batch-1",
+    )
+    assert read_engineering_snapshot(repeated)["workspaceRevision"] == 2
+
+    restored = apply_workspace_parameters(
+        workspace.directory,
+        2,
+        {},
+        ("place.target_density", "cts.skew_bound"),
+        command_id="batch-2",
+    )
+    assert read_engineering_snapshot(restored)["workspaceRevision"] == 3
+    assert restored.parameters.data["dreamplace"]["target_density"] == baseline_density
+
+
+def test_workspace_parameter_batch_rejects_step_mismatch_without_writes(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
+    before_params = (workspace.directory / "home" / "params.toml").read_bytes()
+    before_snapshot = read_engineering_snapshot(workspace)
+
+    with pytest.raises(WorkspaceLifecycleError) as mismatch:
+        apply_workspace_parameters(
+            workspace.directory,
+            1,
+            {"cts.skew_bound": "0.10"},
+            (),
+            step_id="placement",
+        )
+
+    assert mismatch.value.code == "parameter_not_applicable"
+    assert (workspace.directory / "home" / "params.toml").read_bytes() == before_params
+    assert read_engineering_snapshot(workspace) == before_snapshot
 
 
 def test_workspace_configuration_update_rolls_back_refresh_failure(

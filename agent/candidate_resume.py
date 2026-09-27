@@ -6,8 +6,6 @@ import re
 import tempfile
 from pathlib import Path
 
-from chipcompiler.runtime.operations import RuntimeOperationConflict, RuntimeOperationFailed
-from chipcompiler.runtime.workspace_api import RuntimeApiError, _state_value
 from chipcompiler.utility.path import path_is_within
 
 from .data.candidate_artifacts import validate_candidate_id
@@ -18,7 +16,14 @@ from .data.candidate_materialization import (
     validate_candidate_materialization_receipt,
 )
 from .floorplan_mode import FLOORPLAN_MODE_REF, validate_floorplan_mode_resume
+from .operations import RuntimeOperationConflict, RuntimeOperationFailed
 from .requests import CandidateRerunRequest, CandidateResumeRequest
+from .runtime_support import (
+    AgentApplicationError as RuntimeApiError,
+)
+from .runtime_support import (
+    state_value as _state_value,
+)
 from .workspace_api import (
     _CANDIDATE_WORKSPACE_MANIFEST,
     _CANDIDATE_WORKSPACE_SCHEMA,

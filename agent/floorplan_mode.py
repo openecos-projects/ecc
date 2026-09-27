@@ -4,8 +4,6 @@ import math
 import re
 from pathlib import Path
 
-from chipcompiler.runtime.workspace_api import RuntimeApiError
-
 from .data.candidate_artifacts import (
     canonical_json_bytes,
     read_json_object,
@@ -13,6 +11,7 @@ from .data.candidate_artifacts import (
     sha256_path,
     write_json_atomic,
 )
+from .runtime_support import AgentApplicationError as RuntimeApiError
 
 FLOORPLAN_MODE_REF = "analysis/floorplan_mode.v1.json"
 _SCHEMA = "ecc.agent.floorplan_mode.v1"

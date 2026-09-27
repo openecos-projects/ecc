@@ -4,7 +4,6 @@
 
 - 源码位置：[chipcompiler/cli/](https://github.com/openecos-projects/ecc/tree/main/chipcompiler/cli/)
 - 命令扩展开发方式见 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli)
-- RPC sidecar 协议详见 [rpc-guide.md](https://github.com/openecos-projects/ecc/blob/main/docs/rpc-guide.md)
 
 ## 0. 调用方式
 
@@ -81,7 +80,7 @@ uv run ecc --help
 
 - 全局：`ecc --version`（单行版本号）、`ecc --help`。
 - 项目定位：项目级命令接受 `--project <dir>`（缺少参数指定即为当前目录）。`--workspace <路径指定>` 可以是受工具管理的非空简单文件夹路径，也可以是完整绝对路径。名称继续使用项目内的 `<project>/<workspace-id>` 布局；绝对路径创建或选择项目外 workspace，新路径默认以目录 basename 作为 workspace ID，已登记路径沿用清单中的 ID。新项目裸执行 `ecc run` 创建 `default`；只有一个活跃 workspace 时自动选择，多个活跃 workspace 时必须指定 `--workspace`。命名 workspace 会在创建文件前登记到 `project.json`。遗留的 `runs/` 项目必须先执行 `ecc migrate`。每个项目只有一个 `ecc.toml`；创建时会把声明的输入复制到各 workspace 的 `origin/`。
-- 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`param`、`macro`、`pdk`、`project`、`workspace`、`signoff`、`report` 都支持 `--plain`（`key=value`，便于脚本解析），缺省为人类可读 TEXT。`rpc serve` 和 `layout-image` 使用各自的协议。
+- 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`param`、`macro`、`pdk`、`project`、`workspace`、`process`、`flow`、`signoff`、`report` 在相应命令中支持 `--plain`，缺省为人类可读 TEXT。`layout-image` 直接生成文件。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。
 - 步骤名（step token）有三套写法，按场景区分：
   - **展示名**（`ecc status` / `ecc log` / `ecc report step` 的输出与入参，统一小写/下划线）：`synthesis / lec / pre_floorplan / macro_placement / post_floorplan / placement / cts / legalization / timing_optimization / routing / filler / rcx / sta / lvs / postroutelec / drc / harden`；
@@ -109,10 +108,11 @@ Commands:
   macro         Manage manual macro placement (macro_location.tcl)
   pdk           Show and configure the PDK path used by this project
   project       Edit project declarations in ecc.toml
-  workspace     Import or refresh managed workspaces
+  workspace     Create, derive, import, update, and remove workspaces
+  process       Inspect, cancel, and reconcile background runs
+  flow          List the installed flow catalog
   signoff       Inspect and export signoff packages
   report        Generate design-summary, QoR score, checklist, and step reports
-  rpc           Run the private ECC JSON-RPC runtime
 ```
 
 ## 1.5. doc — 在终端阅读内置指南
@@ -1074,23 +1074,7 @@ $ ecc report step drc --section analysis
     [BLOCK] qor.drc.clean — drc_count=336 == 0
 ```
 
-## 13. rpc — JSON-RPC runtime sidecar（私有）
-
-```bash
-ecc rpc serve --stdio [--persistent-db]
-```
-
-供 GUI 等前端使用的 JSON-RPC 2.0 服务，`Content-Length` 帧封装于 stdio。`--persistent-db` 额外开放 `db.ensure` / `db.release` 与 `layout.edit.*` / `floorplan.edit.*` 系列方法。握手返回的 capability 列表从当前注册的 runtime 方法动态生成，客户端应当实时检查，不要假定一份固定列表。`workspace.refresh_config` 与 CLI 共用生成配置保护，确定覆盖检测到的修改时可传 `force: true`。下面是当前基础模式的完整握手响应与 ping；方法参数见 [rpc-guide.md](https://github.com/openecos-projects/ecc/blob/main/docs/rpc-guide.md)：
-
-```console
-→ {"jsonrpc":"2.0","method":"rpc.hello","params":{"version":1},"id":"hello-1"}
-← {"jsonrpc":"2.0","result":{"version":1,"protocolVersion":1,"eccVersion":"0.1.0-alpha.12","capabilities":["rpc.hello","rpc.ping","rpc.shutdown","runtime.v2","operation.events","workspace_spec.describe","workspace_spec.validate","project.discover","project.manifest.load","project.manifest.mutate","workspace.create","workspace.open","workspace.derive","workspace.binding_requirement","workspace.update","workspace.configuration.update","workspace.configuration.read","workspace.step_configuration.update","workspace.step_configuration.read","workspace.step_outputs","workspace.close","workspace.info","workspace.refresh_config","workspace.sync_config","workspace.reset_flow","workspace.export_signoff","workspace.inspect_signoff","flow.run","flow.run_step","operation.start_flow","operation.start_step","operation.status","operation.cancel","operation.ack_step_rendered","workspace.snapshot","workspace.engineering_snapshot","workspace.recover_interrupted"]},"id":"hello-1"}
-
-→ {"jsonrpc":"2.0","method":"rpc.ping","params":{},"id":"ping-1"}
-← {"jsonrpc":"2.0","result":{"ok":true},"id":"ping-1"}
-```
-
-## 14. layout-image — GDS 渲染为图片
+## 13. layout-image — GDS 渲染为图片
 
 ```bash
 ecc layout-image --gds <in.gds> --image <out.png> [--width N] [--height N]
@@ -1102,7 +1086,7 @@ ecc layout-image --gds <in.gds> --image <out.png> [--width N] [--height N]
 ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image layout.png --width 2560 --height 1600
 ```
 
-## 15. 端到端典型工作流
+## 14. 端到端典型工作流
 
 ```bash
 ecc init gcd && cd gcd

@@ -165,10 +165,6 @@ def collect_ecc_resources():
     return datas
 
 
-def collect_jsonrpcserver_resources():
-    return collect_data_files("jsonrpcserver")
-
-
 def collect_dreamplace_thirdparty_files():
     datas = []
     thirdparty_root = ECC_DIR / "chipcompiler" / "thirdparty" / "ecc-dreamplace"
@@ -299,7 +295,6 @@ datas.extend(dreamplace_datas)
 datas.extend(torch_datas)
 datas.extend(collect_required_metadata())
 datas.extend(collect_ecc_resources())
-datas.extend(collect_jsonrpcserver_resources())
 datas.extend(collect_dreamplace_thirdparty_files())
 xplace_datas, xplace_binaries = collect_xplace_runtime()
 datas.extend(xplace_datas)
@@ -365,7 +360,6 @@ if BUNDLE_MODE == "onedir":
         upx=False,
         name="ecc",
     )
-    ecc_exe_path = Path(coll.name) / "ecc"
 else:
     exe = EXE(
         pyz,
@@ -380,8 +374,3 @@ else:
         console=True,
         codesign_identity=CODESIGN_IDENTITY,
     )
-    ecc_exe_path = Path(exe.name)
-
-agent_exe_path = ecc_exe_path.with_name(f"ecc-agent-rpc{ecc_exe_path.suffix}")
-agent_exe_path.unlink(missing_ok=True)
-os.link(ecc_exe_path, agent_exe_path)

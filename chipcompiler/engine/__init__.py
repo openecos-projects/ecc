@@ -4,6 +4,7 @@ from .flow import EngineFlow
 from .rerun import StepRunResult
 from .signoff import SignoffPackageCollector, SignoffPackageOptions
 from .workspace_configuration import (
+    apply_workspace_parameters,
     read_step_configuration,
     read_step_configuration_from_directory,
     read_workspace_configuration,
@@ -19,6 +20,7 @@ from .workspace_lifecycle import (
     describe_workspace_binding_requirement,
     update_workspace_from_spec,
 )
+from .workspace_reset import reset_workspace_flow
 from .workspace_spec import describe_workspace_spec, validate_workspace_spec
 
 __all__ = [
@@ -31,6 +33,7 @@ __all__ = [
     "SignoffPackageOptions",
     "WorkspaceLifecycleError",
     "apply_workspace_bindings",
+    "apply_workspace_parameters",
     "assess_execution_readiness",
     "create_workspace_from_spec",
     "describe_workspace_spec",
@@ -40,6 +43,7 @@ __all__ = [
     "read_step_configuration_from_directory",
     "read_workspace_configuration",
     "read_workspace_configuration_from_directory",
+    "reset_workspace_flow",
     "update_workspace_from_spec",
     "update_workspace_step_configuration",
     "update_workspace_configuration",
