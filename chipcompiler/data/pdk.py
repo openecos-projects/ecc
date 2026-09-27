@@ -323,7 +323,8 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
             / "ics55_LLSC_H7CL_ss_rcworst_1p08_125_nldm.lib"
         ),
     ]
-    mapping_file = None
+    mapping_path = resolved_root / "techfile" / "icsprout55.layermap"
+    mapping_file = mapping_path if mapping_path.is_file() else None
     corners = [
         {"name": "TYPICAL", "temperature": [25], "spef_file": "./TYP.spef"},
         {"name": "RCbest", "temperature": [-40, 125], "spef_file": "./RCbest.spef"},

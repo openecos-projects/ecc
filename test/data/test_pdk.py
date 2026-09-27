@@ -307,6 +307,17 @@ def test_pdk_validate_optional_paths_absent_ok(tmp_path, minimal_ics55_pdk_facto
     assert pdk.spef is None
 
 
+def test_get_pdk_discovers_conventional_ics55_layer_map(tmp_path, minimal_ics55_pdk_factory):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    layer_map = pdk_root / "techfile" / "icsprout55.layermap"
+    layer_map.parent.mkdir()
+    layer_map.write_text("MET1 drawing 11 0\n", encoding="utf-8")
+
+    pdk = get_pdk("ics55", pdk_root=pdk_root)
+
+    assert pdk.mapping_file == layer_map
+
+
 def test_builtin_pdk_external_config_keeps_explicit_buffer_override(
     tmp_path, minimal_ics55_pdk_factory
 ):

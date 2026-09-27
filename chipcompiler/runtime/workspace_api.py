@@ -2200,7 +2200,10 @@ def _publish_layout_edit_artifacts(edit_session: LayoutEditSession, workspace) -
             staged_path.parent.mkdir(parents=True, exist_ok=True)
         module.def_save(def_path=str(staged["def"]))
         module.save_data(path=str(staged["db"]))
-        module.gds_save(output_path=str(staged["gds"]))
+        module.gds_save(
+            output_path=str(staged["gds"]),
+            layer_map_path=workspace.pdk.mapping_file,
+        )
         if not module.geometry_snapshot_save(output_dir=str(staged["geometry"])):
             raise RuntimeApiError("command_failed", "failed to export layout geometry snapshot")
         _stage_layout_edit_workspace_state(staged, staged_workspace_data, workspace)
