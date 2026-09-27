@@ -405,7 +405,10 @@ def save_data(
         return False
     ecc_module.def_save(def_path=step.output.def_ or "")
     ecc_module.verilog_save(output_verilog=step.output.verilog or "")
-    ecc_module.gds_save(output_path=step.output.gds or "")
+    ecc_module.gds_save(
+        output_path=step.output.gds or "",
+        layer_map_path=workspace.pdk.mapping_file,
+    )
     # ecc_module.save_data(path=step.output.db or "")
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
@@ -556,10 +559,13 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        ecc_module.run_cts(
+        if not ecc_module.run_cts(
             config=workspace.config.get(f"{StepEnum.CTS.value}", ""),
             output=(step.data.steps or {}).get(StepEnum.CTS.value, ""),
-        )
+        ):
+            workspace.logger.error("CTS failed")
+            sub_flow.update_step(step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Imcomplete)
+            return False
 
         ecc_module.report_cts(output=(step.data.steps or {}).get(StepEnum.CTS.value, ""))
 
@@ -709,7 +715,9 @@ def run_filler(
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
+        ecc_module.init_mj(output_dir=(step.data.steps or {}).get(StepEnum.FILLER.value, ""))
         ecc_module.run_filler(config=workspace.config.get(f"{StepEnum.FILLER.value}", ""))
+        ecc_module.destroy_mj()
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_filler.value, state=StateEnum.Success)
 
@@ -838,7 +846,10 @@ def run_harden(
             spef_path=signoff_item["spef_file"],
             design_name=workspace.design.name,
         )
-        ecc_module.gds_save(output_path=step.output.gds or "", is_harden=True)
+        ecc_module.gds_save(
+            output_path=step.output.gds or "",
+            layer_map_path=workspace.pdk.mapping_file,
+        )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)
 

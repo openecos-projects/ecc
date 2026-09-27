@@ -385,7 +385,10 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     assert module.read_verilog(Path("/ws/input.v"), "gcd") is True
     assert module.read_lvs_verilog(Path("/ws/input_lvs.v"), "gcd") is True
     module.def_save(Path("/ws/output/gcd.def.gz"))
-    module.gds_save(Path("/ws/output/gcd.gds.gz"), is_harden=True)
+    module.gds_save(
+        Path("/ws/output/gcd.gds.gz"),
+        Path("/pdk/ics55.layermap"),
+    )
     assert module.tcl_save(Path("/ws/script/out.tcl")) is True
     module.verilog_save(Path("/ws/output/gcd.v.gz"))
     module.json_save(Path("/ws/output/gcd.json"))
@@ -414,7 +417,9 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.destroy_drc()
     module.pnp(Path("/ws/config/pnp.json"))
     module.feature_placement_map(Path("/ws/feature/place_map.json"))
+    module.init_mj(Path("/ws/data/mj"))
     module.run_filler(Path("/ws/config/filler.json"))
+    module.destroy_mj()
     module.run_routing(Path("/ws/config/route.json"))
     module.feature_route_read(Path("/ws/feature/route_read.json"))
     module.feature_route(Path("/ws/feature/route.json"))
@@ -444,6 +449,25 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.eval_macro_io_pin_connection(Path("/ws/eval/macro_io.png"), 1, 1)
 
     _assert_no_path_values(module.ecc.calls)
+    assert (
+        "gds_save",
+        (),
+        {
+            "gds_name": "/ws/output/gcd.gds.gz",
+            "layer_map_path": "/pdk/ics55.layermap",
+        },
+    ) in module.ecc.calls
+    assert (
+        "init_mj",
+        (),
+        {"config_dict": {"-temp_directory_path": "/ws/data/mj"}},
+    ) in module.ecc.calls
+    assert (
+        "insert_filler",
+        (),
+        {"config": "/ws/config/filler.json"},
+    ) in module.ecc.calls
+    assert ("destroy_mj", (), {}) in module.ecc.calls
     assert timing_output.read_text(encoding="utf-8") == module.ecc.generated_timing_lib_contents
     assert [
         call[0]
@@ -458,6 +482,40 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
             "destroy_sta",
         }
     ] == ["lib_init", "sdc_init", "spef_init", "init_sta", "extract_lib", "destroy_sta"]
+
+
+def test_liberty_load_failure_stops_power_initialization(tmp_path):
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+    module.ecc.lib_init = lambda **_kwargs: False
+
+    assert module.init_pw(output_dir=tmp_path, lib_paths=["/pdk/lib.lib"]) is False
+    assert module.ecc.calls == []
+
+
+def test_liberty_load_failure_stops_sta_run(tmp_path):
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+    module.ecc.lib_init = lambda **_kwargs: False
+
+    with pytest.raises(RuntimeError, match="Failed to load Liberty libraries for STA"):
+        module.run_timing(
+            work_dir=tmp_path / "data",
+            report_dir=tmp_path / "report",
+            feature_dir=tmp_path / "feature",
+            lib_paths=["/pdk/lib.lib"],
+        )
+    assert module.ecc.calls == []
+
+
+def test_liberty_load_failure_stops_timing_model_generation(tmp_path):
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+    module.ecc.lib_init = lambda **_kwargs: False
+
+    with pytest.raises(RuntimeError, match="Failed to load Liberty libraries for timing model"):
+        module.write_timing_model(tmp_path / "gcd.lib", lib_paths=["/pdk/lib.lib"])
+    assert module.ecc.calls == []
 
 
 def test_ecc_metrics_qor_summary_marks_blocking_lvs_violations(tmp_path):
@@ -2485,3 +2543,18 @@ def test_ecc_builder_uses_explicit_step_directory(tmp_path):
     assert str(step.output.dir) == f"{step_directory}/output"
     assert str(step.data.steps[SkippableStepEnum.TIMING_OPT.value]) == f"{step_directory}/data/to"
     assert str(step.log.file) == f"{step_directory}/log/{SkippableStepEnum.TIMING_OPT.value}.log"
+
+
+def test_ecc_builder_uses_mj_directory_for_filler(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.FILLER.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+
+    assert step.data.steps[StepEnum.FILLER.value] == tmp_path / "filler_ecc" / "data" / "mj"

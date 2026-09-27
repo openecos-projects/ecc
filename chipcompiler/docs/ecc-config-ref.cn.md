@@ -449,12 +449,8 @@ FF hold pass 只使用 `sta_ecc.json` 的 `MIN` Liberty 组，用于在 setup si
 | `max_sink_tran` | `"0.5"` | 0.5 | 时钟叶节点（sink）最大翻转（ns） |
 | `max_cap` | `"0.15"` | 0.15 | 缓冲最大负载电容（pF） |
 | `max_fanout` | `"32"` | 32 `*cts.max_fanout` | 时钟缓冲最大扇出 |
-| `max_length` | `"300"` | 300 | 单级缓冲最大线长（µm） |
-| `wirelength_iterations` | `"3"` | 3 | 线长平衡迭代次数 |
-| `slew_steps` / `cap_steps` | `"10"` / `"10"` | 10 / 10 | 翻转/电容查找表插值步数 |
 | `routing_layer` | `[4,5]` | [4,5] | 时钟走线层范围（层序号，MET4–MET5） |
 | `buffer_type` | `[]` | PDK → `[BUFX8H7L, BUFX12H7L, BUFX16H7L, BUFX20H7L]` | 可选时钟缓冲单元（驱动强度递增） |
-| `use_netlist` / `net_list` | `"OFF"` / `[]` | OFF / [] | 指定特定网络做 CTS（默认全部时钟网络） |
 
 ## 8. routing（ecc-tools）
 

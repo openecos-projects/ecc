@@ -244,12 +244,14 @@ class FakeRcxModule:
 
 
 class FakeCtsModule:
-    def __init__(self, timing_quality):
+    def __init__(self, timing_quality, *, run_ok=True):
         self.calls = []
         self.timing_quality = timing_quality
+        self.run_ok = run_ok
 
     def run_cts(self, **kwargs):
         self.calls.append(("run_cts", kwargs))
+        return self.run_ok
 
     def update_step_paths(self, **kwargs):
         self.calls.append(("update_step_paths", kwargs))
@@ -270,6 +272,7 @@ class SnapshotSaveEccModule:
         self.write_snapshot = write_snapshot
         self.geometry_output = None
         self.geometry_includes_drc = None
+        self.gds_save_kwargs = None
 
     def def_save(self, **_kwargs):
         return True
@@ -277,7 +280,8 @@ class SnapshotSaveEccModule:
     def verilog_save(self, **_kwargs):
         return True
 
-    def gds_save(self, **_kwargs):
+    def gds_save(self, **kwargs):
+        self.gds_save_kwargs = kwargs
         return True
 
     def save_data(self, **_kwargs):
@@ -577,6 +581,35 @@ def test_run_cts_merges_structured_timing_into_step_feature(tmp_path, monkeypatc
         "feature_cts_map",
         "feature_cts_timing",
     ]
+
+
+def test_run_cts_stops_when_native_run_fails(tmp_path, monkeypatch):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        config={StepEnum.CTS.value: tmp_path / "config" / "cts.json"},
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.CTS.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    module = FakeCtsModule({}, run_ok=False)
+    sub_flow = Mock()
+    save = Mock(return_value=True)
+    analysis = Mock()
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", lambda **_kwargs: sub_flow)
+    monkeypatch.setattr(ecc_runner, "save_data", save)
+    monkeypatch.setattr(ecc_runner, "run_analysis", analysis)
+
+    assert ecc_runner.run_cts(workspace, step, module) is False
+    assert [call[0] for call in module.calls] == ["update_step_paths", "run_cts"]
+    sub_flow.update_step.assert_any_call(
+        step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Imcomplete
+    )
+    save.assert_not_called()
+    analysis.assert_not_called()
 
 
 def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_feature(
@@ -1004,6 +1037,42 @@ def test_run_sta_returns_false_when_sdc_is_missing(tmp_path, monkeypatch):
     assert logger.errors[0][0] == "STA SDC does not exist: %s"
 
 
+def test_run_filler_uses_mj_lifecycle(tmp_path, monkeypatch):
+    class FakeFillerModule:
+        def __init__(self):
+            self.calls = []
+
+        def init_mj(self, output_dir):
+            self.calls.append(("init_mj", output_dir))
+
+        def run_filler(self, config):
+            self.calls.append(("run_filler", config))
+
+        def destroy_mj(self):
+            self.calls.append(("destroy_mj",))
+
+    filler_config = tmp_path / "config" / "filler_ecc.json"
+    filler_data_dir = tmp_path / "filler_ecc" / "data" / "mj"
+    workspace = Workspace(config={StepEnum.FILLER.value: filler_config})
+    step = EccStep(
+        name=StepEnum.FILLER.value,
+        data=EccData(steps={StepEnum.FILLER.value: filler_data_dir}),
+    )
+    module = FakeFillerModule()
+
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
+    monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **_kwargs: module)
+    monkeypatch.setattr(ecc_runner, "save_data", lambda **_kwargs: True)
+    monkeypatch.setattr(ecc_runner, "run_analysis", lambda **_kwargs: None)
+
+    assert ecc_runner.run_filler(workspace, step) is True
+    assert module.calls == [
+        ("init_mj", filler_data_dir),
+        ("run_filler", filler_config),
+        ("destroy_mj",),
+    ]
+
+
 def test_rcx_checklist_strips_top_module_from_spef_corner(tmp_path):
     checklist = EccRcxChecklist.__new__(EccRcxChecklist)
     checklist.workspace = Workspace(
@@ -1030,11 +1099,21 @@ def test_rcx_checklist_uses_top_module_for_spef_design_token(tmp_path):
     "step_name", (StepEnum.ROUTING.value, StepEnum.LVS.value, StepEnum.DRC.value)
 )
 def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path, step_name):
-    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    layer_map = tmp_path / "ics55.layermap"
+    layer_map.write_text("MET1 drawing 81 1\n", encoding="utf-8")
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        pdk=PDK(mapping_file=layer_map),
+    )
     step = build_step(workspace, step_name, None, None)
     module = SnapshotSaveEccModule(write_snapshot=True)
 
     assert ecc_runner.save_data(workspace, step, module, feature_step=False) is True
+    assert module.gds_save_kwargs == {
+        "output_path": step.output.gds or "",
+        "layer_map_path": layer_map,
+    }
     assert module.geometry_output == step.output.geometry
     assert module.geometry_includes_drc is (step_name == StepEnum.DRC.value)
     assert step.output.geometry_manifest is not None
