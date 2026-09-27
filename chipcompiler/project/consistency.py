@@ -14,7 +14,13 @@ Checks are read-only. Repair (``--fix``) rebuilds derived fields from
 directory facts, removes dead entries (mirroring the delete-workspace
 reference cleanup), and registers unregistered directories through the
 existing inspection + registration path. Archived entries keep their
-lifecycle status — only their directory existence is checked.
+lifecycle status — only their directory existence is checked. Running
+entries are skipped beyond directory existence: a live run keeps
+rewriting the directory, and the terminal run write-back re-converges
+the derived fields. Status comparison is tolerant
+(``_STATUS_CONSISTENT_WITH_DERIVED``) because the ledger cannot encode
+every run outcome (cancellation, a deliberate partial or single-step
+run, a fatal completion-commit failure rolling steps back to Ongoing).
 
 Like the other manifest modules, this one may sit on the CLI startup
 path: keep module-level imports cheap — no chipcompiler.data imports.
@@ -30,6 +36,25 @@ from chipcompiler.project.manifest_write import _now_iso, update_manifest
 DERIVED_FIELD_MISMATCH = "derived-field-mismatch"
 MISSING_DIRECTORY = "missing-directory"
 UNREGISTERED_DIRECTORY = "unregistered-directory"
+
+# Manifest entry statuses consistent with each directory-derived status.
+# Anything outside the set is an outright contradiction worth flagging.
+_STATUS_CONSISTENT_WITH_DERIVED = {
+    "not_started": {"not_started"},
+    # Ongoing ledger: a live run, a crashed/killed run, or a fatal
+    # completion-commit failure that rolled steps back to Ongoing.
+    "running": {"running", "in_progress", "failed"},
+    # Partial ledger: a cancelled or deliberately partial/single-step
+    # run, or a live run caught in the gap between steps.
+    "in_progress": {"running", "in_progress", "success"},
+    "success": {"success"},
+    "failed": {"failed"},
+}
+
+
+def _status_consistent(entry_status: str, derived_status: str) -> bool:
+    allowed = _STATUS_CONSISTENT_WITH_DERIVED.get(derived_status, {derived_status})
+    return entry_status in allowed
 
 
 @dataclass(frozen=True)
@@ -105,6 +130,11 @@ def _check_entry(manifest: ProjectManifest, entry) -> ConsistencyFinding | None:
         # Archival is a lifecycle decision, not a directory fact; only the
         # directory's existence is checked for archived entries.
         return None
+    if entry.status == "running":
+        # A live run keeps rewriting the directory (geometry write-back,
+        # status transitions), so derived fields cannot converge yet; the
+        # terminal run write-back re-converges them.
+        return None
     try:
         derived = _derive_fields(manifest, path)
     except (WorkspaceRegistrationError, ManifestError) as exc:
@@ -116,13 +146,13 @@ def _check_entry(manifest: ProjectManifest, entry) -> ConsistencyFinding | None:
         )
     mismatched = [
         field
-        for field, current, wanted in (
-            ("start_step", entry.start_step, derived.start_step),
-            ("end_step", entry.end_step, derived.end_step),
-            ("status", entry.status, derived.status),
-            ("parameter_patch", entry.parameter_patch, derived.parameter_patch),
+        for field, consistent in (
+            ("start_step", entry.start_step == derived.start_step),
+            ("end_step", entry.end_step == derived.end_step),
+            ("status", _status_consistent(entry.status, derived.status)),
+            ("parameter_patch", entry.parameter_patch == derived.parameter_patch),
         )
-        if current != wanted
+        if not consistent
     ]
     if not mismatched:
         return None

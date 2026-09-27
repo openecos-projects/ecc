@@ -34,6 +34,21 @@ def _make_workspace(project_dir, name, *, state="Success", start="Synthesis", en
     )
 
 
+def _make_partial_workspace(project_dir, name):
+    """A consistent workspace whose ledger mixes Success/Unstart (partial)."""
+    _make_workspace(project_dir, name)
+    (project_dir / name / "home" / "flow.json").write_text(
+        json.dumps(
+            {
+                "steps": [
+                    {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+                    {"name": "Floorplan", "tool": "ecc", "state": "Unstart"},
+                ]
+            }
+        )
+    )
+
+
 def _run_doctor(project_dir, *extra):
     return cli_main.run(["project", "doctor", "--project", str(project_dir), "--plain", *extra])
 
@@ -161,6 +176,70 @@ class TestProjectDoctorReport:
         assert [r["check"] for r in records[1:]] == ["missing-directory"]
         assert records[1]["workspace_id"] == "ghost"
 
+    def test_running_entry_skips_derived_fields_but_not_existence(
+        self, tmp_path, capsys, manifest_stubs, plain_records
+    ):
+        project_dir = tmp_path / "gcd"
+        _make_workspace(project_dir, "ws_0001")
+        running = {
+            **manifest_stubs.entry(project_dir, "ws_0001", status="running"),
+            "start_step": "Place",
+            "parameter_patch": {"frequency_max": {"from": 100, "to": 125}},
+        }
+        missing_running = manifest_stubs.entry(project_dir, "ghost", status="running")
+        manifest_stubs.write(project_dir, [running, missing_running])
+
+        rc = _run_doctor(project_dir)
+
+        records = plain_records(capsys.readouterr().out)
+        assert rc == 1
+        assert [r["check"] for r in records[1:]] == ["missing-directory"]
+        assert records[1]["workspace_id"] == "ghost"
+
+    def test_failed_entry_with_ongoing_ledger_is_consistent(
+        self, tmp_path, capsys, manifest_stubs, plain_records
+    ):
+        # A fatal completion-commit failure rolls steps back to Ongoing while
+        # the terminal write-back records failed: not an inconsistency.
+        project_dir = tmp_path / "gcd"
+        _make_workspace(project_dir, "ws_0001", state="Ongoing")
+        manifest_stubs.write(
+            project_dir, [manifest_stubs.entry(project_dir, "ws_0001", status="failed")]
+        )
+
+        rc = _run_doctor(project_dir)
+
+        assert rc == 0
+        assert plain_records(capsys.readouterr().out)[0]["status"] == "ok"
+
+    def test_success_entry_with_partial_ledger_is_consistent(
+        self, tmp_path, capsys, manifest_stubs, plain_records
+    ):
+        # A deliberate single-step/bounded run leaves a partial ledger next
+        # to a success entry: not an inconsistency.
+        project_dir = tmp_path / "gcd"
+        _make_partial_workspace(project_dir, "ws_0001")
+        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
+
+        rc = _run_doctor(project_dir)
+
+        assert rc == 0
+        assert plain_records(capsys.readouterr().out)[0]["status"] == "ok"
+
+    def test_success_entry_with_failed_ledger_is_flagged(
+        self, tmp_path, capsys, manifest_stubs, plain_records
+    ):
+        project_dir = tmp_path / "gcd"
+        _make_workspace(project_dir, "ws_0001", state="Incomplete")
+        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
+
+        rc = _run_doctor(project_dir)
+
+        records = plain_records(capsys.readouterr().out)
+        assert rc == 1
+        assert records[1]["check"] == "derived-field-mismatch"
+        assert "status" in records[1]["detail"]
+
     def test_project_without_manifest_is_an_error(
         self, tmp_path, capsys, create_cli_project, plain_records
     ):
@@ -210,6 +289,28 @@ class TestProjectDoctorFix:
         capsys.readouterr()
         assert _run_doctor(project_dir) == 0
         assert plain_records(capsys.readouterr().out)[0]["status"] == "ok"
+
+    def test_fix_maps_partial_ledger_to_in_progress(
+        self, tmp_path, capsys, manifest_stubs, plain_records
+    ):
+        project_dir = tmp_path / "gcd"
+        _make_partial_workspace(project_dir, "ws_0001")
+        manifest_stubs.write(
+            project_dir, [manifest_stubs.entry(project_dir, "ws_0001", status="not_started")]
+        )
+
+        rc = _run_doctor(project_dir, "--fix")
+
+        records = plain_records(capsys.readouterr().out)
+        assert rc == 0
+        assert records[1]["check"] == "derived-field-mismatch"
+        assert "status" in records[1]["detail"]
+        assert records[1]["fix"] == "rebuilt"
+        (repaired,) = _manifest(project_dir)["workspaces"]
+        assert repaired["status"] == "in_progress"
+
+        capsys.readouterr()
+        assert _run_doctor(project_dir) == 0
 
     def test_fix_removes_missing_directory_entry_and_nulls_references(
         self, tmp_path, capsys, manifest_stubs, plain_records

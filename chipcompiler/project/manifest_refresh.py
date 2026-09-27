@@ -59,19 +59,29 @@ def flow_range_from_ledger(flow_data: object) -> tuple[str, str] | None:
     )
 
 
+_LEDGER_TO_MANIFEST_STATUS = {
+    "success": "success",
+    "failed": "failed",
+    "ongoing": "running",
+    "partial": "in_progress",
+}
+
+
 def manifest_status_of(flow_data: object) -> str:
     """Manifest status for a parsed flow.json ledger.
 
-    Terminal run results surface verbatim; anything else — a fresh or
-    partially executed ledger, a missing or corrupt file — is a workspace
-    without a completed run: ``not_started``.
+    Terminal run results surface verbatim; an in-flight ledger is
+    ``running`` and a mixed success/unstarted one ``in_progress``. A fresh
+    ledger, a missing file, or a corrupt file is a workspace without a
+    completed run: ``not_started``.
     """
     if isinstance(flow_data, dict):
         from chipcompiler.cli.inspection.discovery import get_run_status
 
         observed = get_run_status(flow_data)
-        if observed in ("success", "failed"):
-            return observed
+        mapped = _LEDGER_TO_MANIFEST_STATUS.get(observed)
+        if mapped is not None:
+            return mapped
     return "not_started"
 
 
@@ -139,12 +149,18 @@ def apply_derived_fields(entry: dict, derived: dict) -> bool:
     return changed
 
 
-def refresh_workspace_derived_fields(project_dir: str, workspace_id: str) -> bool:
+def refresh_workspace_derived_fields(
+    project_dir: str, workspace_id: str, *, include_status: bool = True
+) -> bool:
     """Re-derive one entry's derived fields from its workspace directory.
 
     The whole read-derive-write runs under the project manifest lock.
     Returns False only when the manifest write itself fails (see
     ``update_manifest``); a missing entry degrades to a no-op.
+
+    ``include_status=False`` is for the run terminal-writeback path: run
+    status is written explicitly (the ledger cannot encode a cancellation
+    vs. a deliberate partial run), so only range/patch converge here.
     """
 
     def mutate(document: dict) -> None:
@@ -158,6 +174,8 @@ def refresh_workspace_derived_fields(project_dir: str, workspace_id: str) -> boo
             if not workspace_dir.is_absolute():
                 workspace_dir = Path(project_dir) / workspace_dir
             derived = derive_workspace_fields(workspace_dir, manifest_base_parameters(document))
+            if not include_status:
+                derived.pop("status", None)
             if apply_derived_fields(entry, derived):
                 timestamp = _now_iso()
                 entry["updated_at"] = timestamp

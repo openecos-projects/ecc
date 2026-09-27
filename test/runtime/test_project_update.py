@@ -6,12 +6,18 @@ import json
 from copy import deepcopy
 from pathlib import Path
 
+from chipcompiler.data.workspace_config import load_workspace_config
 from chipcompiler.project import (
     create_project_manifest,
     load_project_manifest,
     mutate_project_manifest,
 )
-from chipcompiler.runtime.requests import WorkspaceSpecCreateRequest, WorkspaceUpdateRequest
+from chipcompiler.project.manifest_refresh import parameter_patch_of
+from chipcompiler.runtime.requests import (
+    ProjectDoctorCheckRequest,
+    WorkspaceSpecCreateRequest,
+    WorkspaceUpdateRequest,
+)
 from chipcompiler.runtime.workspace_api import WorkspaceRuntimeApi
 
 
@@ -21,6 +27,29 @@ def _spec_fixture(name: str):
     bindings = deepcopy(payload["workspaceBindings"])
     bindings["inputs"] = {key: str(root / value) for key, value in bindings["inputs"].items()}
     return payload, bindings
+
+
+def test_create_workspace_is_doctor_consistent(tmp_path, minimal_ics55_pdk_factory):
+    """A freshly created project workspace must not trip project doctor."""
+    project_dir = tmp_path / "proj"
+    create_project_manifest(project_dir, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+    payload, bindings = _spec_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    api = WorkspaceRuntimeApi()
+    api.create_workspace(
+        WorkspaceSpecCreateRequest(
+            command_id="create-1",
+            target_directory=str(project_dir / "experiment"),
+            workspace_spec=payload["workspaceSpec"],
+            workspace_bindings=bindings,
+            project_root=str(project_dir),
+        )
+    )
+
+    result = api.check_project_doctor(ProjectDoctorCheckRequest(project_dir=str(project_dir)))
+
+    assert result["status"] == "ok"
+    assert result["findings"] == []
 
 
 def test_update_workspace_refreshes_project_manifest_derived_fields(
@@ -40,8 +69,14 @@ def test_update_workspace_refreshes_project_manifest_derived_fields(
             project_root=str(project_dir),
         )
     )
-    (entry,) = load_project_manifest(project_dir)["workspaces"]
-    assert entry["parameter_patch"] == {}
+    manifest = load_project_manifest(project_dir)
+    (entry,) = manifest["workspaces"]
+    # Creation registers the directory-derived patch: a fresh entry equals
+    # what a doctor repair would write.
+    assert entry["parameter_patch"] == parameter_patch_of(
+        load_workspace_config(project_dir / "experiment"),
+        manifest["base_design"]["parameters"],
+    )
 
     updated_spec = deepcopy(payload["workspaceSpec"])
     updated_spec["parameters"]["design.frequency_mhz"] = 250.0

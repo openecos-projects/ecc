@@ -77,6 +77,30 @@ def execute_workspace_run(
                 )
             )
 
+    def refresh_derived() -> None:
+        """Converge the entry's other derived fields at terminal write-back.
+
+        A run writes back computed geometry, so range/patch re-derive from
+        the directory here; status stays with ``write_status`` (the ledger
+        cannot encode a cancellation vs. a deliberate partial run). Same
+        diagnosable-error contract as ``write_status``.
+        """
+        from chipcompiler.cli.core.records import error_record
+        from chipcompiler.project.manifest_refresh import refresh_workspace_derived_fields
+
+        if project_dir is None or not workspace_id:
+            return
+        if not refresh_workspace_derived_fields(project_dir, workspace_id, include_status=False):
+            write_back_failures.append(
+                error_record(
+                    "manifest_write_back_failed",
+                    workspace_id=workspace_id,
+                    reason="derived fields could not be refreshed in project.json; "
+                    "the manifest is out of date until repaired",
+                    repair="ecc project doctor --fix",
+                )
+            )
+
     workspace_path = os.path.abspath(workspace_path)
 
     from chipcompiler.cli.project.pdk_root_fallback import pdk_root_env_fallback_warning
@@ -151,6 +175,7 @@ def execute_workspace_run(
             # still re-execute on request. The flow is complete, so the
             # manifest entry reads success even if a previous failed state
             # is stale.
+            refresh_derived()
             write_status("success")
             return CommandResult.ok(
                 write_back_failures
@@ -171,6 +196,7 @@ def execute_workspace_run(
         def run_failed(kind: str, reason: str | None = None) -> CommandResult:
             """A failure after the running marker must leave a terminal
             status, never a workspace stuck as running."""
+            refresh_derived()
             write_status("failed")
             return CommandResult.err(
                 write_back_failures
@@ -237,6 +263,7 @@ def execute_workspace_run(
 
         # Written inside the workspace lock: a second run acquiring the lock
         # afterwards must observe this terminal status, not overwrite it.
+        refresh_derived()
         write_status("success" if result.ok else "failed")
     record = {
         "workspace_id": workspace_id or "default",

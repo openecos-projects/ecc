@@ -180,15 +180,23 @@ def _write_back_status(
 
 
 def _refresh_derived_fields(
-    project_dir: str, run_name: str, warning_records: list, *, repair: str
+    project_dir: str,
+    run_name: str,
+    warning_records: list,
+    *,
+    repair: str,
+    include_status: bool = True,
 ) -> None:
     """Derived-field write-back after an in-place recreation; failure is a
     diagnosable error record, never silent — the refreshed workspace stands.
+
+    ``include_status=False`` is for the run terminal-writeback path, where
+    status stays with ``_write_back_status``.
     """
     from chipcompiler.cli.core.records import error_record
     from chipcompiler.project.manifest_refresh import refresh_workspace_derived_fields
 
-    if not refresh_workspace_derived_fields(project_dir, run_name):
+    if not refresh_workspace_derived_fields(project_dir, run_name, include_status=include_status):
         warning_records.append(
             error_record(
                 "manifest_write_back_failed",
@@ -679,6 +687,13 @@ def execute_fresh_run(
 
             if not flow_ok:
                 if workspace_registered:
+                    _refresh_derived_fields(
+                        project_dir,
+                        run_name,
+                        warning_records,
+                        repair=write_back_repair,
+                        include_status=False,
+                    )
                     _write_back_status(
                         project_dir, run_name, "failed", warning_records, repair=write_back_repair
                     )
@@ -718,6 +733,13 @@ def execute_fresh_run(
             ws_locks.close()
 
     if workspace_registered:
+        _refresh_derived_fields(
+            project_dir,
+            run_name,
+            warning_records,
+            repair=write_back_repair,
+            include_status=False,
+        )
         _write_back_status(
             project_dir, run_name, "success", warning_records, repair=write_back_repair
         )

@@ -168,3 +168,62 @@ def test_manifest_run_status_records_in_progress_on_cancel(monkeypatch, tmp_path
         raise RuntimeOperationCancelled("cancelled at a step boundary")
 
     assert statuses == ["running", "in_progress"]
+
+
+def _recorded_write_backs(monkeypatch):
+    """Both manifest write-backs as an ordered (kind, payload) event list."""
+    events = []
+    monkeypatch.setattr(
+        "chipcompiler.runtime.manifest_status.write_back_workspace_run_status",
+        lambda _directory, status: events.append(("status", status)),
+    )
+    monkeypatch.setattr(
+        "chipcompiler.runtime.manifest_status.write_back_workspace_derived_fields",
+        lambda _directory, *, include_status=True: events.append(("derived", include_status)),
+    )
+    return events
+
+
+def test_manifest_run_status_converges_derived_fields_before_success(monkeypatch, tmp_path):
+    events = _recorded_write_backs(monkeypatch)
+
+    with manifest_run_status(tmp_path):
+        pass
+
+    assert events == [("status", "running"), ("derived", False), ("status", "success")]
+
+
+def test_manifest_run_status_converges_derived_fields_before_failed(monkeypatch, tmp_path):
+    events = _recorded_write_backs(monkeypatch)
+
+    with pytest.raises(ValueError, match="boom"), manifest_run_status(tmp_path):
+        raise ValueError("boom")
+
+    assert events == [("status", "running"), ("derived", False), ("status", "failed")]
+
+
+def test_manifest_run_status_converges_derived_fields_before_in_progress(monkeypatch, tmp_path):
+    events = _recorded_write_backs(monkeypatch)
+
+    with pytest.raises(RuntimeOperationCancelled), manifest_run_status(tmp_path):
+        raise RuntimeOperationCancelled("cancelled at a step boundary")
+
+    assert events == [("status", "running"), ("derived", False), ("status", "in_progress")]
+
+
+def test_manifest_run_status_converges_entry_on_terminal_exit(tmp_path):
+    """A run writes back computed parameters: at the terminal exit the
+    entry's range/patch re-converge on the directory, then the terminal
+    status lands — doctor finds nothing afterwards."""
+    workspace_path = _project_with_workspace(tmp_path)
+    _workspace_facts(workspace_path)
+
+    with manifest_run_status(workspace_path):
+        pass
+
+    document = json.loads((tmp_path / "project.json").read_text())
+    (entry,) = document["workspaces"]
+    assert entry["status"] == "success"
+    assert entry["start_step"] == "Synth"
+    assert entry["end_step"] == "Synth"
+    assert entry["parameter_patch"] == {"frequency_max": {"from": None, "to": 125}}
