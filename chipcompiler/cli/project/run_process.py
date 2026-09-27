@@ -21,8 +21,33 @@ from chipcompiler.project.runtime_processes import (
 
 
 @contextmanager
+def run_log_stdio(command_input, workspace_path):
+    """Open the explicit ``--log-file`` run log and redirect stdio to it.
+
+    §13.1 step 2: with an explicit ``--log-file`` the run log (opened with
+    O_NOFOLLOW and a restricted mode by ``create_run_log``) must exist and own
+    stdout/stderr before any preflight, and a log-open failure aborts the
+    command without running the flow. Without ``--log-file`` stdio is left on
+    the TTY and the default run log is opened later by
+    ``managed_run_process``; GUI-spawned runs already inherit the log as
+    their spawn stdio, so nothing redirects there either.
+    """
+    if not command_input.log_file:
+        yield None
+        return
+    run_id = normalize_run_id(command_input.run_id)
+    log_path = normalize_log_path(command_input.log_file, run_id)
+    log_descriptor = create_run_log(workspace_path, log_path)
+    try:
+        with _redirect_stdio_to_descriptor(log_descriptor, enabled=True):
+            yield log_descriptor
+    finally:
+        os.close(log_descriptor)
+
+
+@contextmanager
 def managed_run_process(
-    command_input, project_dir, workspace_id, workspace, *, workspace_path: str
+    command_input, project_dir, workspace_id, workspace, *, workspace_path: str, run_log=None
 ):
     """Register this process and expose its execution marker to Engine."""
     from chipcompiler import __version__
@@ -33,7 +58,14 @@ def managed_run_process(
         default=f"external:{__version__}",
     )
     log_path = normalize_log_path(command_input.log_file, run_id)
-    log_descriptor = create_run_log(workspace_path, log_path)
+    if run_log is None:
+        log_descriptor = create_run_log(workspace_path, log_path)
+        close_log = True
+    else:
+        # Explicit --log-file: run_log_stdio already opened the log and
+        # redirected stdio before preflight; this context only registers.
+        log_descriptor = run_log
+        close_log = False
     cancel_event = threading.Event()
     old_handler = None
     registered = False
@@ -60,8 +92,11 @@ def managed_run_process(
         workspace._ecc_run_id = run_id
         workspace._ecc_cancel_event = cancel_event
         os.write(log_descriptor, f"ECC run {run_id} started\n".encode())
+        # The existing-run paths redirect from run_log_stdio before preflight;
+        # the fresh-run path (workspace created above this context) redirects
+        # here, only when --log-file is explicit.
         with _redirect_stdio_to_descriptor(
-            log_descriptor, enabled=bool(command_input.log_file)
+            log_descriptor, enabled=run_log is None and bool(command_input.log_file)
         ):
             yield entry
     finally:
@@ -87,7 +122,8 @@ def managed_run_process(
             workspace._ecc_cancel_event = old_cancel_event
         if old_handler is not None:
             signal.signal(signal.SIGUSR1, old_handler)
-        os.close(log_descriptor)
+        if close_log:
+            os.close(log_descriptor)
 
 
 @contextmanager

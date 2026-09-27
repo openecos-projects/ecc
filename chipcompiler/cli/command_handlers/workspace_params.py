@@ -209,6 +209,12 @@ def _mutate(
                 )
             try:
                 refresh_workspace_config(workspace)
+                if schema.param == "macro.placements":
+                    from chipcompiler.data.workspace.macro_location import (
+                        prune_macro_location_tcl,
+                    )
+
+                    prune_macro_location_tcl(workspace)
                 flow = EngineFlow(workspace=workspace)
                 invalidated = rerun.invalidate_from(flow, step)
             except Exception as exc:

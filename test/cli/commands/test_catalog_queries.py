@@ -38,3 +38,28 @@ def test_flow_catalog_is_context_free_and_ordered(tmp_path, monkeypatch, capsys)
         actual = [record for record in records if record["flow_id"] == flow["flowId"]]
         assert [record["step_id"] for record in actual] == flow["stepIds"]
         assert [int(record["ordinal"]) for record in actual] == list(range(len(actual)))
+
+
+def test_flow_catalog_empty_step_flow_fails_whole_command(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    spec = describe_workspace_spec()
+    spec["flowDefinitions"] = [
+        *spec["flowDefinitions"],
+        {
+            "flowId": "empty-flow",
+            "stepIds": [],
+            "skippableStepIds": [],
+            "defaultSkippedStepIds": [],
+        },
+    ]
+    monkeypatch.setattr(
+        "chipcompiler.cli.command_handlers.flow.describe_workspace_spec", lambda: spec
+    )
+
+    assert cli_main.run(["flow", "list", "--plain"]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "invalid_flow" in captured.err
+    assert "empty-flow" in captured.err
+    assert "no steps" in captured.err

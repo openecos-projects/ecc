@@ -75,7 +75,10 @@ def normalize_log_path(value: str | None, run_id: str) -> str:
 def create_run_log(workspace: str | Path, log_path: str) -> int:
     root = Path(workspace).resolve()
     target = root.joinpath(*PurePosixPath(log_path).parts)
-    target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    try:
+        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except OSError as exc:
+        raise RuntimeProcessError("run_log_open_failed", str(exc)) from exc
     try:
         parent = target.parent.resolve(strict=True)
         parent.relative_to(root)

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import chipcompiler.project.process_control as process_control
 from chipcompiler.project.process_control import reconcile_process
 from chipcompiler.project.runtime_processes import RuntimeProcessError, default_log_path
 
@@ -122,3 +123,40 @@ def test_run_id_does_not_fall_back_to_orphan_mode(tmp_path):
 
     assert caught.value.code == "process_not_found"
     assert (workspace / "home" / "flow.json").read_text() == before
+
+
+def test_orphan_reconcile_new_registry_entry_is_workspace_busy(tmp_path, monkeypatch):
+    # §14.3: a registry entry appearing between acquiring the Workspace lock
+    # and reading the manifest must fail busy (exit 20), not recover the new
+    # run's Ongoing flow as interrupted (exit 22).
+    project, workspace, run_id = _project(tmp_path, registered=False)
+    before_flow = (workspace / "home" / "flow.json").read_text()
+    real_load = process_control.load_manifest
+    reads = {"count": 0}
+
+    def racing_load(project_dir):
+        manifest = real_load(project_dir)
+        reads["count"] += 1
+        if reads["count"] == 2:  # the manifest read inside the locks
+            manifest.raw.setdefault("runtime_processes", {})["baseline"] = {
+                "schema_version": 1,
+                "run_id": run_id,
+                "pid": 999999,
+                "pgid": 999999,
+                "process_start_id": "1",
+                "boot_id": "remote-boot",
+                "host_id": "remote-host",
+                "workspace_path": "baseline",
+                "started_at": 1.0,
+                "runtime_id": "ecc-test",
+                "log_path": default_log_path(run_id),
+            }
+        return manifest
+
+    monkeypatch.setattr(process_control, "load_manifest", racing_load)
+
+    with pytest.raises(RuntimeProcessError) as caught:
+        reconcile_process(project, "baseline", None, blocking=False)
+
+    assert caught.value.code == "workspace_busy"
+    assert (workspace / "home" / "flow.json").read_text() == before_flow

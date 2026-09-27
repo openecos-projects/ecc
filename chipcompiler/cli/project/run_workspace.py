@@ -32,6 +32,40 @@ def execute_workspace_run(
     runs only within the reconciled target range. Manifest projects register
     the active process in project.json without writing flow status there.
     """
+    from chipcompiler.cli.project.run_process import run_log_stdio
+    from chipcompiler.project.runtime_processes import RuntimeProcessError
+
+    workspace_path = os.path.abspath(workspace_path)
+    try:
+        # §13.1 step 2: an explicit --log-file must exist and own stdout/
+        # stderr before the pure-read preflight below; a log-open failure
+        # exits here without running the flow.
+        with run_log_stdio(command_input, workspace_path) as run_log:
+            return _execute_workspace_run(
+                command_input,
+                workspace_path,
+                workspace_id,
+                project_dir=project_dir,
+                run_log=run_log,
+            )
+    except RuntimeProcessError as exc:
+        from chipcompiler.cli.project.run_process import runtime_process_error_result
+
+        return runtime_process_error_result(
+            exc,
+            workspace_id=workspace_id or "default",
+            workspace=workspace_path,
+        )
+
+
+def _execute_workspace_run(
+    command_input,
+    workspace_path: str,
+    workspace_id: str | None,
+    *,
+    project_dir: str | None,
+    run_log,
+) -> CommandResult:
     from chipcompiler.data import load_workspace
     from chipcompiler.data.schema_migrations import UnsupportedSchemaVersionError
     from chipcompiler.data.workspace_config import (
@@ -171,6 +205,7 @@ def execute_workspace_run(
                     workspace_id,
                     workspace,
                     workspace_path=workspace_path,
+                    run_log=run_log,
                 )
             else:
                 process_context = nullcontext()

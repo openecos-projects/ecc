@@ -71,7 +71,14 @@ def reconcile_process(
             recovered = recover_interrupted_run(workspace, run_id=None, allow_markerless=True)
             return recovered
         entry = validate_runtime_entry(raw_entry)
-        if run_id is None or entry["run_id"] != run_id:
+        if run_id is None:
+            # Orphan mode: a registry entry appeared after the Workspace lock
+            # was acquired — a live run owns the Workspace, so back off busy
+            # instead of recovering its flow as interrupted (§14.3).
+            raise RuntimeProcessError(
+                "workspace_busy", "A runtime process registered during orphan reconcile"
+            )
+        if entry["run_id"] != run_id:
             raise RuntimeProcessError("process_not_found", "Registered run ID does not match")
         if _entry_is_local(entry) and identity_is_live(entry):
             raise RuntimeProcessError("workspace_busy", "Runtime process is still alive")

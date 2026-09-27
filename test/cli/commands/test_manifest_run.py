@@ -1,5 +1,6 @@
 import json
 import os
+import uuid
 from pathlib import Path
 
 from chipcompiler.cli import main as cli_main
@@ -717,3 +718,105 @@ class TestFreshRunCoercionCleanup:
         assert result.exit_code == 1
         assert run_dir.exists()
         assert (run_dir / "marker.txt").read_text() == "keep"
+
+
+class TestExplicitRunLogOrdering:
+    """§13.1 step 2: an explicit --log-file owns stdout/stderr before the
+    pure-read preflight, and a log-open failure exits without running flow."""
+
+    @staticmethod
+    def _divergent_workspace(project_dir, pdk_root):
+        """An existing workspace whose persisted ledger diverges from the
+        rtl2gds preset, so the pure-read preflight rejects the run."""
+        run_dir = os.path.join(project_dir, "default")
+        home = os.path.join(run_dir, "home")
+        os.makedirs(home)
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            json.dump(
+                {
+                    "steps": [
+                        {
+                            "name": "place",
+                            "tool": "ecc",
+                            "state": "Success",
+                            "runtime": "",
+                            "info": {},
+                        }
+                    ]
+                },
+                f,
+            )
+        from chipcompiler.data.workspace_config import save_workspace_config
+
+        assert save_workspace_config(
+            run_dir,
+            {
+                "pdk": "ics55",
+                "pdk_root": str(pdk_root),
+                "design": "gcd",
+                "top_module": "gcd",
+                "clock": "clk",
+            },
+            {"preset": "rtl2gds"},
+        )
+        return run_dir
+
+    def test_explicit_log_file_exists_before_preflight_rejects_run(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, manifest_stubs
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = self._divergent_workspace(project_dir, pdk_root)
+        run_id = str(uuid.uuid4())
+        log_rel = f"home/run-logs/{run_id}.log"
+
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                project_dir,
+                "--run-id",
+                run_id,
+                "--log-file",
+                log_rel,
+                "--plain",
+            ]
+        )
+
+        assert rc != 0
+        (record,) = [r for r in manifest_stubs.records() if r.get("error") == "flow_mismatch"]
+        assert record["workspace"] == run_dir
+        # The run log exists even though preflight rejected the run: it was
+        # opened before the preflight ran.
+        assert Path(run_dir, log_rel).is_file()
+
+    def test_log_open_failure_exits_without_running_flow(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, manifest_stubs
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = self._divergent_workspace(project_dir, pdk_root)
+        # A regular file blocks the run-logs directory: opening the log must
+        # fail before preflight (which would report flow_mismatch) and before
+        # any flow execution.
+        Path(run_dir, "home", "run-logs").write_text("not a directory")
+        run_id = str(uuid.uuid4())
+
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                project_dir,
+                "--run-id",
+                run_id,
+                "--log-file",
+                f"home/run-logs/{run_id}.log",
+                "--plain",
+            ]
+        )
+
+        assert rc == 1
+        (record,) = manifest_stubs.records()
+        assert record["error"] == "run_log_open_failed"
+        ledger = json.loads(Path(run_dir, "home", "flow.json").read_text())
+        assert [step["name"] for step in ledger["steps"]] == ["place"]

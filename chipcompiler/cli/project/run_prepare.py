@@ -105,8 +105,10 @@ def resolve_manifest_run_target(command_input, ctx):
         )
     # An undeclared id that canonically lands on a DECLARED workspace's
     # path would operate that workspace under an alias the document never
-    # spelled — bypassing its registration and status write-back. Refuse
-    # and name the declared selector instead.
+    # spelled — bypassing its registration and runtime-process tracking
+    # (live state comes from runtime_processes plus home/flow.json, not
+    # from a workspaces[].status write-back). Refuse and name the declared
+    # selector instead.
     candidate_path = explicit_path or os.path.join(project_dir, workspace_name)
     candidate_real = os.path.realpath(candidate_path)
     for workspace in manifest.workspaces:
@@ -222,12 +224,14 @@ def execute_fresh_run(
 
     Fresh-run preparation and execution for a project run: parameter
     assembly, workspace creation, flow target seeding, virgin manifest
-    generation, engine execution, and status write-back. When *backup_path*
-    is set the invocation overwrote an existing workspace by renaming it
-    aside: a failure before the replacement is fully constructed restores
-    the backup, and only a verified construction discards it. *ws_locks* is
-    the caller's lock stack already holding the workspace lock (taken before
-    the overwrite rename); when None this function takes the lock itself.
+    generation, and engine execution. Live run state is never written back
+    into workspaces[].status — it is derived from the runtime_processes
+    registry plus home/flow.json. When *backup_path* is set the invocation
+    overwrote an existing workspace by renaming it aside: a failure before
+    the replacement is fully constructed restores the backup, and only a
+    verified construction discards it. *ws_locks* is the caller's lock
+    stack already holding the workspace lock (taken before the overwrite
+    rename); when None this function takes the lock itself.
     """
     import shutil
 
