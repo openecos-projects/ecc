@@ -339,7 +339,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `routability_opt_flag` | 1 `*place.routability_opt` | 绕线拥塞驱动的布局优化 |
 | `timing_opt_flag` / `timing_eval_flag` | 0 | 时序驱动布局（本流程未启用，需 sizer/STA 配合） |
 | `macro_place_flag` | 0 | 专用 `macroPlacement` 步骤会启用该开关 |
-| `plot_flag` / `get_congestion_map` / `evaluate_pl` | 0 / 1 / 0 | 出图 / 拥塞图导出 / 布局评估 |
+| `plot_flag` / `get_congestion_map` / `evaluate_pl` | 1 / 1 / 0 | 出图 / 拥塞图导出 / 布局评估 |
 | `dump_global_place_solution_flag` / `dump_legalize_solution_flag` | 0 | 导出中间解 |
 
 ### 全局布局核心（★ 主要调优区）
@@ -351,7 +351,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `density_weight` | 0.00085 | 密度项初始权重（自动调整的起点） |
 | `num_bins_x/y` | 32/32 | 密度网格划分数 |
 | `global_place_stages[]` | 见下 | 多阶段全局布局表（可多段） |
-| `global_place_stages[].iteration` | 1000 | 本阶段迭代次数 |
+| `global_place_stages[].iteration` | 3000 | 本阶段迭代上限，收敛时可提前停止 |
 | `global_place_stages[].learning_rate` | 1.0 | 学习率 |
 | `global_place_stages[].learning_rate_decay` | 0.99 | 学习率衰减 |
 | `global_place_stages[].wirelength` | `weighted_average` | 线长模型 |
@@ -373,12 +373,22 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `node_area_adjust_overflow` | 0.15 | 面积调整触发溢出阈值 |
 | `two_stage_density_scaler` | 1000 | 两阶段密度缩放因子 |
 | `max_num_area_adjust` | 3 | 最大面积调整轮数 |
-| `adjust_nctugr_area_flag` / `adjust_rudy_area_flag` / `adjust_pin_area_flag` | 1 / 0 / 0 | 启用 NCTUgr/RUDY/引脚面积调整 |
+| `adjust_gpugr_area_flag` | 1 | 使用 GGR 拥塞图指导面积膨胀 |
+| `adjust_nctugr_area_flag` / `adjust_rudy_area_flag` / `adjust_pin_area_flag` | 0 / 0 / 0 | 旧 ECC/iRT EGR 兼容路径 / RUDY / 引脚面积调整 |
+| `gpugr_backend` | `auto` | 设备和扩展均支持 CUDA 时使用 CUDA，否则使用并行 CPU `cpu_pr_mt`，线程数由 `num_threads` 控制 |
+| `gpugr_area_adjust_rrr_iters` | 0 | inflation 只运行 pattern routing，CPU 后端要求为 0 |
+| `gpugr_area_adjust_congestion_mode` | `max_hv` | 水平和垂直 overflow 按最大值聚合 |
+| `l_shape_routability_flag` / `l_shape_update_interval` | 0 / 30 | 启用 L-shape 目标 / 拓扑与方向更新间隔 |
 | `area_adjust_stop_ratio` / `route_area_adjust_stop_ratio` / `pin_area_adjust_stop_ratio` | 0.01 / 0.01 / 0.05 | 各类面积调整停止比例 |
 | `unit_horizontal_capacity` / `unit_vertical_capacity` / `unit_pin_capacity` | 1.5625 / 1.45 / 0.058 | 单位绕线/引脚容量 |
 | `max_route_opt_adjust_rate` / `route_opt_adjust_exponent` | 2.0 / 2.0 | 绕线面积调整倍率上限/指数 |
 | `pin_stretch_ratio` / `max_pin_opt_adjust_rate` | 1.4142 / 1.5 | 引脚拉伸比 / 调整倍率上限 |
 | `risa_weights` | 0 | 使用 RISA 拥塞权重 |
+
+GPUGR 默认继承 workspace 的 `bottom_layer`/`top_layer`。
+`[params.dreamplace]` 中显式设置的
+`gpugr_bottom_routing_layer`/`gpugr_top_routing_layer` 优先。
+其他 DreamPlace 专用参数也可放在该节，不必新增 ECC 顶层参数。
 
 ### 单元 padding 与边界
 

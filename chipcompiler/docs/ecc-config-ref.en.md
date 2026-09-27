@@ -337,7 +337,7 @@ The three steps share `config/dreamplace_ecc.json`; before each step runs, `def_
 | `routability_opt_flag` | 1 `*place.routability_opt` | Routing-congestion-driven placement optimization |
 | `timing_opt_flag` / `timing_eval_flag` | 0 | Timing-driven placement (not enabled in this flow; requires sizer/STA support) |
 | `macro_place_flag` | 0 | Enabled for the dedicated `macroPlacement` step |
-| `plot_flag` / `get_congestion_map` / `evaluate_pl` | 0 / 1 / 0 | Plotting / congestion-map export / placement evaluation |
+| `plot_flag` / `get_congestion_map` / `evaluate_pl` | 1 / 1 / 0 | Plotting / congestion-map export / placement evaluation |
 | `dump_global_place_solution_flag` / `dump_legalize_solution_flag` | 0 | Export intermediate solutions |
 
 ### Global placement core (★ the main tuning area)
@@ -349,7 +349,7 @@ The three steps share `config/dreamplace_ecc.json`; before each step runs, `def_
 | `density_weight` | 0.00085 | Initial weight of the density term (starting point of auto-adjustment) |
 | `num_bins_x/y` | 32/32 | Number of density grid bins |
 | `global_place_stages[]` | see below | Multi-stage global placement table (multiple entries allowed) |
-| `global_place_stages[].iteration` | 1000 | Iterations in this stage |
+| `global_place_stages[].iteration` | 3000 | Iteration limit in this stage; convergence can stop earlier |
 | `global_place_stages[].learning_rate` | 1.0 | Learning rate |
 | `global_place_stages[].learning_rate_decay` | 0.99 | Learning-rate decay |
 | `global_place_stages[].wirelength` | `weighted_average` | Wirelength model |
@@ -371,12 +371,22 @@ The three steps share `config/dreamplace_ecc.json`; before each step runs, `def_
 | `node_area_adjust_overflow` | 0.15 | Overflow threshold that triggers area adjustment |
 | `two_stage_density_scaler` | 1000 | Two-stage density scaling factor |
 | `max_num_area_adjust` | 3 | Maximum number of area-adjustment rounds |
-| `adjust_nctugr_area_flag` / `adjust_rudy_area_flag` / `adjust_pin_area_flag` | 1 / 0 / 0 | Enable NCTUgr/RUDY/pin area adjustment |
+| `adjust_gpugr_area_flag` | 1 | Use GGR congestion for area inflation |
+| `adjust_nctugr_area_flag` / `adjust_rudy_area_flag` / `adjust_pin_area_flag` | 0 / 0 / 0 | Legacy ECC/iRT EGR compatibility / RUDY / pin area adjustment |
+| `gpugr_backend` | `auto` | CUDA when both device and extension support it; otherwise parallel CPU `cpu_pr_mt`, using `num_threads` |
+| `gpugr_area_adjust_rrr_iters` | 0 | Pattern-routing-only inflation; CPU routing requires 0 |
+| `gpugr_area_adjust_congestion_mode` | `max_hv` | Aggregate horizontal and vertical overflow by maximum |
+| `l_shape_routability_flag` / `l_shape_update_interval` | 0 / 30 | Enable the L-shape objective / iterations between topology and direction refreshes |
 | `area_adjust_stop_ratio` / `route_area_adjust_stop_ratio` / `pin_area_adjust_stop_ratio` | 0.01 / 0.01 / 0.05 | Stop ratios for each kind of area adjustment |
 | `unit_horizontal_capacity` / `unit_vertical_capacity` / `unit_pin_capacity` | 1.5625 / 1.45 / 0.058 | Unit routing/pin capacities |
 | `max_route_opt_adjust_rate` / `route_opt_adjust_exponent` | 2.0 / 2.0 | Max multiplier / exponent for routing-area adjustment |
 | `pin_stretch_ratio` / `max_pin_opt_adjust_rate` | 1.4142 / 1.5 | Pin stretch ratio / max adjustment multiplier |
 | `risa_weights` | 0 | Use RISA congestion weights |
+
+GPUGR inherits the workspace `bottom_layer`/`top_layer`. Explicit
+`gpugr_bottom_routing_layer`/`gpugr_top_routing_layer` entries under
+`[params.dreamplace]` take precedence. Other DreamPlace-specific options can
+also be set in that section without adding top-level ECC parameters.
 
 ### Cell padding and boundaries
 
