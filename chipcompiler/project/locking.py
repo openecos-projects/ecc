@@ -5,9 +5,12 @@ from contextlib import contextmanager
 
 
 @contextmanager
-def flock_file(path: str, *, exclusive: bool = True):
+def flock_file(path: str, *, exclusive: bool = True, blocking: bool = True):
     with open(path, "a") as lock_file:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        flags = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+        if not blocking:
+            flags |= fcntl.LOCK_NB
+        fcntl.flock(lock_file.fileno(), flags)
         try:
             yield lock_file
         finally:

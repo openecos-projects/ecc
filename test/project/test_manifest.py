@@ -637,7 +637,7 @@ def test_manifest_mutation_without_timestamp_keeps_audit_timestamp(tmp_path):
     assert updated["workspaces"][0]["updated_at"]
 
 
-def test_project_workspace_acquires_manifest_lock_before_workspace_lock(tmp_path, monkeypatch):
+def test_project_workspace_acquires_workspace_lock_before_manifest_lock(tmp_path, monkeypatch):
     create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
     events = []
 
@@ -665,4 +665,4 @@ def test_project_workspace_acquires_manifest_lock_before_workspace_lock(tmp_path
         command_id="create-1",
     )
 
-    assert events == ["manifest:acquire", "workspace:acquire"]
+    assert events == ["workspace:acquire", "manifest:acquire"]

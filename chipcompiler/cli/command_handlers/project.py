@@ -16,68 +16,20 @@ from chipcompiler.cli.core.types import CommandContext, CommandResult
 
 
 def init(command_input: InitInput, ctx: CommandContext) -> CommandResult:
-    name = command_input.name
-    if not name or not name.strip():
-        return CommandResult.err([{"kind": "error", "error": "project name is required"}])
+    from chipcompiler.cli.project.project_init import ProjectInitError, create_project
 
-    project_dir = os.path.abspath(name)
-    config_path = os.path.join(project_dir, "ecc.toml")
-    design_name = os.path.basename(project_dir)
+    try:
+        project_dir = create_project(command_input)
+    except ProjectInitError as exc:
+        return CommandResult.err([error_record(exc.code, reason=str(exc), path=exc.path)])
 
-    if os.path.isfile(project_dir):
-        return CommandResult.err(
-            [
-                {
-                    "kind": "error",
-                    "error": "path_is_file",
-                    "path": project_dir,
-                }
-            ]
-        )
-
-    if os.path.exists(config_path):
-        return CommandResult.err(
-            [
-                {
-                    "kind": "error",
-                    "error": "already_exists",
-                    "path": config_path,
-                }
-            ]
-        )
-
-    os.makedirs(project_dir, exist_ok=True)
-    os.makedirs(os.path.join(project_dir, "rtl"), exist_ok=True)
-    os.makedirs(os.path.join(project_dir, "constraints"), exist_ok=True)
-
-    default_toml = """[design]
-name = "{name}"
-top = "{name}"
-rtl = ["rtl/{name}.v"]
-clock_port = "clk"
-frequency_mhz = 100.0
-
-[pdk]
-name = "ics55"
-root = ""
-
-[flow]
-# preset: rtl2gds | syn_sta | synthesis_lec
-preset = "rtl2gds"
-# LEC is skipped by default; clear the list to enable it.
-skip_steps = ["lec"]
-"""
-
-    with open(config_path, "w") as f:
-        f.write(default_toml.format(name=design_name))
-
-    project_arg = ctx.project or name
+    project_arg = ctx.project or command_input.name
     return CommandResult.ok(
         [
             {
-                "project": name,
+                "project": command_input.name,
                 "status": "created",
-                "path": name,
+                "path": str(project_dir),
                 "check": disclosure_cmd("ecc check", project_arg),
                 "run": disclosure_cmd("ecc run", project_arg),
             }
@@ -295,7 +247,43 @@ def migrate(command_input: MigrateInput, ctx: CommandContext) -> CommandResult:
 
 
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
-    return _run_project(command_input, ctx, execute_flow=True)
+    try:
+        return _run_project(command_input, ctx, execute_flow=True)
+    except BlockingIOError:
+        return CommandResult.err([error_record("workspace_busy")], exit_code=20)
+
+
+def create_workspace(command_input, ctx: CommandContext) -> CommandResult:
+    """Create and register a Workspace without executing its flow."""
+    import uuid
+    from pathlib import Path
+
+    target = Path(ctx.run_dir).expanduser().absolute()
+    project = Path(ctx.project_dir).expanduser().resolve()
+    if target.parent.resolve() != project:
+        return CommandResult.err(
+            [
+                error_record(
+                    "workspace_path_outside_standard_parent",
+                    path=str(target),
+                    reason="new Workspaces must be direct children of the Project root",
+                )
+            ]
+        )
+    run_input = RunInput(
+        output=command_input.output,
+        project=command_input.project,
+        workspace=command_input.workspace,
+        from_step=command_input.from_step,
+        to_step=command_input.to_step,
+        param_set=command_input.param_set,
+        command_id=command_input.command_id or str(uuid.uuid4()),
+        no_wait=command_input.no_wait,
+    )
+    try:
+        return _run_project(run_input, ctx, execute_flow=False)
+    except BlockingIOError:
+        return CommandResult.err([error_record("workspace_busy")], exit_code=20)
 
 
 def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
@@ -326,14 +314,64 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
                 )
             ]
         )
-    refresh_input = RunInput(
-        output=command_input.output,
-        project=command_input.project,
-        overwrite=True,
-        workspace=command_input.workspace,
-        keep_backup=command_input.keep_backup,
+    cfg = ctx.config
+    from chipcompiler.cli.project import effective_config
+
+    resolved = effective_config.resolve_effective_config(ctx, ctx.run_id, cfg)
+    if isinstance(resolved, CommandResult):
+        return resolved
+    cfg, flow_config, warnings = resolved
+    errors = effective_config.validate_effective(
+        ctx,
+        cfg,
+        fresh=True,
+        flow_config=flow_config,
     )
-    return _run_project(refresh_input, ctx, execute_flow=False)
+    if errors:
+        return CommandResult.err(
+            [error_record(_config_error_code(problem), reason=problem) for problem in errors]
+        )
+    from chipcompiler.cli.project.workspace_spec import workspace_update_spec
+    from chipcompiler.engine import update_workspace_from_spec
+    from chipcompiler.engine.snapshot import (
+        read_engineering_snapshot,
+        read_engineering_snapshot_from_directory,
+    )
+    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+
+    try:
+        current = read_engineering_snapshot_from_directory(ctx.run_dir)
+        expected = command_input.expected_revision or current["workspaceRevision"]
+        spec, bindings = workspace_update_spec(ctx.run_dir, cfg, flow_config)
+        workspace = update_workspace_from_spec(
+            ctx.run_dir,
+            expected,
+            spec,
+            bindings,
+            command_input.command_id,
+            blocking=not command_input.no_wait,
+        )
+        snapshot = read_engineering_snapshot(workspace)
+    except BlockingIOError:
+        return CommandResult.err([error_record("workspace_busy")], exit_code=20)
+    except WorkspaceLifecycleError as exc:
+        return CommandResult.err(
+            [error_record(exc.code, reason=str(exc), **exc.details)],
+            exit_code=21 if exc.code == "revision_conflict" else 1,
+        )
+    except Exception as exc:
+        return CommandResult.err([error_record("workspace_refresh_failed", reason=str(exc))])
+    return CommandResult.ok(
+        warnings
+        + [
+            {
+                "workspace_id": ctx.run_id,
+                "status": "refreshed",
+                "workspace": ctx.run_dir,
+                "workspace_revision": snapshot["workspaceRevision"],
+            }
+        ]
+    )
 
 
 def import_workspace(command_input: WorkspaceImportInput, ctx: CommandContext) -> CommandResult:
@@ -384,7 +422,10 @@ def import_workspace(command_input: WorkspaceImportInput, ctx: CommandContext) -
             pdk_root=resolve_pdk_root(cfg),
             workspace_id=command_input.workspace,
             workspace_path=ctx.run_dir,
+            blocking=not command_input.no_wait,
         )
+    except BlockingIOError:
+        return CommandResult.err([error_record("workspace_busy")], exit_code=20)
     except WorkspaceRegistrationError as exc:
         return CommandResult.err(
             [
@@ -427,6 +468,202 @@ def import_workspace(command_input: WorkspaceImportInput, ctx: CommandContext) -
                 "status": metadata.status,
                 "workspace": ctx.run_dir,
                 "run_cmd": disclosure_cmd("ecc run", ctx.project, command_input.workspace),
+            }
+        ]
+    )
+
+
+def derive_workspace(command_input, ctx: CommandContext) -> CommandResult:
+    import shutil
+    import uuid
+    from pathlib import Path
+
+    from chipcompiler.cli.project.run_prepare import invalid_workspace_name
+    from chipcompiler.engine.workspace_derive import derive_workspace as derive
+    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+    from chipcompiler.project.api import _project_manifest_mutator
+    from chipcompiler.project.manifest import load_manifest
+    from chipcompiler.project.manifest_write import manifest_lock, update_manifest_locked
+
+    if ctx.project_state != "manifest" or ctx.manifest_error or ctx.run_id is None:
+        return CommandResult.err(
+            [error_record("workspace_derive_requires_managed_source", reason=ctx.manifest_error)]
+        )
+    target_id = command_input.target_workspace
+    if invalid_workspace_name(target_id):
+        return CommandResult.err([error_record("invalid_workspace", workspace_id=target_id)])
+    project = Path(ctx.project_dir).resolve()
+    target = project / target_id
+    target_existed = target.exists()
+    command_id = command_input.command_id or str(uuid.uuid4())
+    try:
+        project_manifest = load_manifest(str(project))
+        derived = derive(
+            ctx.run_dir,
+            target,
+            reset_from_step=command_input.from_step or "",
+            command_id=command_id,
+            blocking=not command_input.no_wait,
+            project_id=project_manifest.project_id,
+            source_workspace_id=ctx.run_id,
+            target_workspace_id=target_id,
+        )
+        with manifest_lock(project, blocking=not command_input.no_wait):
+            load_manifest(str(project))
+            mutation = {
+                "type": "register_workspace",
+                "workspace_id": target_id,
+                "workspace_path": str(target),
+                "source_workspace_id": ctx.run_id,
+                "branch_from": {
+                    "source_workspace_id": ctx.run_id,
+                    **({"source_step": command_input.from_step} if command_input.from_step else {}),
+                },
+            }
+            if not update_manifest_locked(project, _project_manifest_mutator(project, mutation)):
+                raise OSError("Project Manifest update failed")
+    except BlockingIOError:
+        return CommandResult.err([error_record("workspace_busy")], exit_code=20)
+    except (WorkspaceLifecycleError, OSError, ValueError) as exc:
+        if not target_existed and target.is_dir() and target != Path(ctx.run_dir):
+            shutil.rmtree(target, ignore_errors=True)
+        code = exc.code if isinstance(exc, WorkspaceLifecycleError) else "workspace_derive_failed"
+        return CommandResult.err([error_record(code, reason=str(exc))])
+    from chipcompiler.engine.snapshot import read_engineering_snapshot
+
+    snapshot = read_engineering_snapshot(derived)
+    return CommandResult.ok(
+        [
+            {
+                "workspace_id": target_id,
+                "status": "derived",
+                "workspace": str(target),
+                "workspace_revision": snapshot["workspaceRevision"],
+            }
+        ]
+    )
+
+
+def archive_workspace(command_input, ctx: CommandContext) -> CommandResult:
+    return _manage_workspace_lifecycle(command_input, ctx, "archive")
+
+
+def delete_workspace(command_input, ctx: CommandContext) -> CommandResult:
+    return _manage_workspace_lifecycle(command_input, ctx, "delete")
+
+
+def _manage_workspace_lifecycle(
+    command_input, ctx: CommandContext, operation: str
+) -> CommandResult:
+    import uuid
+
+    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+    from chipcompiler.engine.workspace_management import (
+        archive_managed_workspace,
+        delete_managed_workspace,
+    )
+
+    if ctx.project_state != "manifest" or ctx.manifest_error or ctx.run_id is None:
+        return CommandResult.err(
+            [error_record("workspace_not_declared", reason=ctx.manifest_error)]
+        )
+    try:
+        current = read_engineering_snapshot_from_directory(ctx.run_dir)
+        expected = command_input.expected_revision or current["workspaceRevision"]
+        command_id = command_input.command_id or str(uuid.uuid4())
+        if operation == "archive":
+            workspace = archive_managed_workspace(
+                ctx.project_dir,
+                ctx.run_id,
+                expected,
+                command_id=command_id,
+                blocking=not command_input.no_wait,
+            )
+        else:
+            workspace = delete_managed_workspace(
+                ctx.project_dir,
+                ctx.run_id,
+                expected,
+                command_id=command_id,
+                delete_directory=command_input.delete_directory,
+                blocking=not command_input.no_wait,
+            )
+    except BlockingIOError:
+        return CommandResult.err([error_record("workspace_busy")], exit_code=20)
+    except WorkspaceLifecycleError as exc:
+        return CommandResult.err(
+            [error_record(exc.code, reason=str(exc), **exc.details)],
+            exit_code=21 if exc.code == "revision_conflict" else 1,
+        )
+    except Exception as exc:
+        return CommandResult.err([error_record(f"workspace_{operation}_failed", reason=str(exc))])
+    return CommandResult.ok(
+        [{"workspace_id": ctx.run_id, "status": f"{operation}d", "workspace": str(workspace)}]
+    )
+
+
+def reconcile_workspace_deletes(command_input, ctx: CommandContext) -> CommandResult:
+    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+    from chipcompiler.engine.workspace_management import reconcile_workspace_deletes as reconcile
+
+    if ctx.project_state != "manifest" or ctx.manifest_error:
+        return CommandResult.err([error_record("manifest_invalid", reason=ctx.manifest_error)])
+    try:
+        recovered = reconcile(ctx.project_dir, blocking=not command_input.no_wait)
+    except BlockingIOError:
+        return CommandResult.err([error_record("workspace_busy")], exit_code=20)
+    except WorkspaceLifecycleError as exc:
+        return CommandResult.err([error_record(exc.code, reason=str(exc), **exc.details)])
+    except Exception as exc:
+        return CommandResult.err(
+            [error_record("workspace_delete_reconcile_failed", reason=str(exc))]
+        )
+    return CommandResult.ok(
+        [{"status": "reconciled", "recovered_deletes": list(recovered)}]
+    )
+
+
+def reset_workspace_flow(command_input, ctx: CommandContext) -> CommandResult:
+    import uuid
+
+    from chipcompiler.engine.snapshot import (
+        read_engineering_snapshot,
+        read_engineering_snapshot_from_directory,
+    )
+    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+    from chipcompiler.engine.workspace_reset import reset_workspace_flow as reset
+
+    if ctx.project_state != "manifest" or ctx.manifest_error or ctx.run_id is None:
+        return CommandResult.err(
+            [error_record("workspace_not_declared", reason=ctx.manifest_error)]
+        )
+    try:
+        current = read_engineering_snapshot_from_directory(ctx.run_dir)
+        expected = command_input.expected_revision or current["workspaceRevision"]
+        workspace = reset(
+            ctx.run_dir,
+            expected,
+            command_id=command_input.command_id or str(uuid.uuid4()),
+            blocking=not command_input.no_wait,
+        )
+        snapshot = read_engineering_snapshot(workspace)
+    except BlockingIOError:
+        return CommandResult.err([error_record("workspace_busy")], exit_code=20)
+    except WorkspaceLifecycleError as exc:
+        return CommandResult.err(
+            [error_record(exc.code, reason=str(exc), **exc.details)],
+            exit_code=21 if exc.code == "revision_conflict" else 1,
+        )
+    except Exception as exc:
+        return CommandResult.err([error_record("workspace_reset_failed", reason=str(exc))])
+    return CommandResult.ok(
+        [
+            {
+                "workspace_id": ctx.run_id,
+                "status": "flow_reset",
+                "workspace": ctx.run_dir,
+                "workspace_revision": snapshot["workspaceRevision"],
             }
         ]
     )
@@ -599,7 +836,7 @@ def _run_project(
             layer_warnings.append(set_warning)
 
     # TODO: Move non-interactive project run preparation/execution into
-    # chipcompiler.runtime.project_runner.run_project or
+    # the historical project runner or
     # chipcompiler.engine.project_run.prepare_and_run. Keep CLI ownership limited
     # to input parsing, progress renderer selection, and CommandResult mapping.
     project_state = ctx.project_state

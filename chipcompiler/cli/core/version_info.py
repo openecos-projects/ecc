@@ -2,7 +2,8 @@ from importlib import metadata
 
 UNKNOWN_VERSION = "unknown"
 RUNTIME_LABEL = "ECC CLI"
-VERSION_SCHEMA = 1
+VERSION_SCHEMA = 2
+CLI_CONTRACT = 1
 
 
 def distribution_version(distribution: str, fallback: str | None = None) -> str:
@@ -29,6 +30,7 @@ def version_payload() -> dict[str, int | str]:
         "ecc": ecc_version(),
         "dreamplace": distribution_version("ecc-dreamplace"),
         "ecc_tools": distribution_version("ecc-tools-bin"),
+        "cli_contract": CLI_CONTRACT,
     }
 
 

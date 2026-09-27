@@ -143,7 +143,7 @@ class SizerSubFlow:
                 step_dict["info"] = info
                 self.save()
 
-                from chipcompiler.runtime.subflow_events import publish_subflow_stage
+                from chipcompiler.engine.subflow_events import publish_subflow_stage
 
                 publish_subflow_stage(self.workspace, self.workspace_step, step_dict)
 

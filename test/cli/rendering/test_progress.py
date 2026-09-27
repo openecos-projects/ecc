@@ -1289,9 +1289,9 @@ class TestFailureContextIntegration:
         assert "error:" not in plain
         assert "For more log info:" not in plain
 
-    def test_missing_log_no_context_block(self):
+    def test_missing_log_no_context_block(self, tmp_path):
         flow = _make_flow(
-            _make_ws(),
+            _make_ws(str(tmp_path)),
             [_make_step("Synthesis", "yosys", "/nonexistent/synth.log")],
             lambda self, s: StateEnum.Imcomplete,
         )

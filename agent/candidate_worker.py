@@ -16,7 +16,12 @@ import sys
 import time
 from pathlib import Path
 
-from chipcompiler.runtime.workspace_api import RuntimeApiError
+from .runtime_support import (
+    AgentApplicationError as RuntimeApiError,
+)
+from .runtime_support import (
+    init_db_engine_for_workspace_step,
+)
 
 PAYLOAD_SCHEMA_VERSION = 1
 RESULT_SCHEMA_VERSION = 1
@@ -32,7 +37,7 @@ def _state_value(state) -> str:
 
 
 class _MarkerObserver:
-    """Persist the parent's runtime operation marker without RPC wiring."""
+    """Persist the parent's candidate operation marker in the worker."""
 
     def __init__(self, marker):
         self.runtime_operation = marker
@@ -123,8 +128,8 @@ def _replay_step_started(result_path: Path, step_by_name, observer, emitted: set
     """Re-emit step.started for steps the worker picked up.
 
     The worker cannot reach the operation manager, so the parent replays
-    start markers from the worker result to keep operation.current_step and
-    the RPC event stream equivalent to in-process execution.
+    start markers from the worker result to keep operation.current_step
+    equivalent to in-process execution.
     """
     callback = getattr(observer, "on_step_started", None)
     if not callable(callback):
@@ -149,7 +154,7 @@ def _read_result(result_path: Path):
 def main() -> int:
     payload = json.loads(sys.stdin.read())
     if sys.platform == "linux":
-        # RPC close can kill the parent without reaping this worker.
+        # A caller can be killed without reaping this worker.
         from .sta_parallel import _arm_parent_death_signal
 
         _arm_parent_death_signal(payload["parent_pid"])
@@ -162,7 +167,6 @@ def main() -> int:
 
     try:
         import chipcompiler.data as data_api
-        from chipcompiler.runtime.workspace_api import _init_db_engine_for_workspace_step
 
         from .workspace_api import build_agent_flow_for_workspace
 
@@ -178,7 +182,7 @@ def main() -> int:
             step = flow.get_workspace_step(name)
             if step is None:
                 raise RuntimeError(f"candidate step missing: {name}")
-            _init_db_engine_for_workspace_step(flow, step)
+            init_db_engine_for_workspace_step(flow, step)
             result["steps"].append({"name": name, "state": "Ongoing"})
             flush()
             state = _state_value(flow.run_step(step, rerun=True, observer=observer))

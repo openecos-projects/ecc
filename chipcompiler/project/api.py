@@ -183,12 +183,11 @@ def create_project_workspace(
     except ValueError as exc:
         raise ManifestError("Workspace must be inside the Project root") from exc
     existed = target.exists()
-    with manifest_lock(project):
-        manifest = load_project_manifest(project)
-        if expected_project_id is not None and manifest["project_id"] != expected_project_id:
-            raise ManifestError("Project identity does not match")
-        try:
-            with _workspace_lock(target):
+    with _workspace_lock(target), manifest_lock(project):
+            manifest = load_project_manifest(project)
+            if expected_project_id is not None and manifest["project_id"] != expected_project_id:
+                raise ManifestError("Project identity does not match")
+            try:
                 workspace = _create_workspace_from_spec(str(target), spec, bindings, command_id)
                 if workspace is None:
                     raise ManifestError("Workspace creation returned no Workspace")
@@ -210,10 +209,10 @@ def create_project_workspace(
                     project, _project_manifest_mutator(project, mutation)
                 ):
                     raise ManifestError("Project Manifest update failed")
-        except Exception:
-            if not existed:
-                shutil.rmtree(target, ignore_errors=True)
-            raise
+            except Exception:
+                if not existed:
+                    shutil.rmtree(target, ignore_errors=True)
+                raise
     return workspace
 
 

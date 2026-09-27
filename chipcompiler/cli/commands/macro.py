@@ -116,6 +116,9 @@ def import_cmd(
     ],
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
+    expected_revision: Annotated[int | None, typer.Option("--expected-revision", min=1)] = None,
+    command_id: Annotated[str, typer.Option("--command-id")] = "",
+    no_wait: Annotated[bool, typer.Option("--no-wait")] = False,
     plain: PlainOption = False,
 ) -> None:
     """Import a macro_location.tcl file as the manual macro placements.
@@ -143,6 +146,9 @@ def import_cmd(
         project=project_options(project),
         path=path,
         workspace=workspace,
+        expected_revision=expected_revision,
+        command_id=command_id,
+        no_wait=no_wait,
     )
     _finish_macro("import", command_input, macro_import_handler)
 

@@ -107,6 +107,7 @@ def register_existing_workspace(
     workspace_id: str,
     workspace_path: str,
     project_lock_held: bool = False,
+    blocking: bool = True,
 ) -> tuple[str, ExistingWorkspaceMetadata]:
     """Inspect and atomically register an existing workspace."""
     from chipcompiler.project.manifest import base_design_from_config
@@ -120,6 +121,7 @@ def register_existing_workspace(
         expected_pdk=str(cfg.pdk_name or ""),
         base_parameters=base_parameters,
         project_lock_held=project_lock_held,
+        blocking=blocking,
         register=lambda metadata: pre_register_workspace(
             project_dir,
             cfg=cfg,
@@ -141,6 +143,7 @@ def import_managed_workspace(
     workspace_path: str,
     expected_pdk: str = "",
     base_parameters: dict | None = None,
+    blocking: bool = True,
 ) -> tuple[str, ExistingWorkspaceMetadata]:
     """Import an existing workspace into an existing Project manifest.
 
@@ -181,6 +184,7 @@ def import_managed_workspace(
         expected_pdk=expected_pdk,
         base_parameters=base_parameters,
         project_lock_held=False,
+        blocking=blocking,
         register=register,
     )
 
@@ -193,6 +197,7 @@ def _inspect_and_register(
     expected_pdk: str,
     base_parameters: dict | None,
     project_lock_held: bool,
+    blocking: bool,
     register: Callable[[ExistingWorkspaceMetadata], str],
 ) -> tuple[str, ExistingWorkspaceMetadata]:
     """Inspect (once unlocked, once locked) then register from locked metadata.
@@ -215,7 +220,7 @@ def _inspect_and_register(
         if project_lock_held
         else migrate_fs.project_migrate_lock(project_dir, exclusive=False)
     )
-    with project_lock, _workspace_lock(Path(workspace_path)):
+    with project_lock, _workspace_lock(Path(workspace_path), blocking=blocking):
         metadata = inspect_existing_workspace(
             workspace_path,
             expected_design=expected_design,

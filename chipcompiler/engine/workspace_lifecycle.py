@@ -263,14 +263,14 @@ def update_workspace_from_spec(
     bindings: object,
     command_id: str = "",
     *,
-    retain_backup: bool = False,
-) -> WorkspaceUpdateResult:
+    blocking: bool = True,
+):
     target = Path(target_directory).expanduser().resolve()
     if not target.is_dir():
         raise WorkspaceLifecycleError("workspace_missing", f"Workspace not found: {target}")
     from chipcompiler.engine.reconcile import _workspace_lock
 
-    with _workspace_lock(target):
+    with _workspace_lock(target, blocking=blocking):
         return _update_workspace_from_spec(
             target,
             expected_workspace_revision,
@@ -365,6 +365,14 @@ def _update_workspace_from_spec(
             fingerprint,
             snapshot["workspaceId"],
             snapshot["workspaceRevision"] + 1,
+            metadata={
+                "operation": "update",
+                "expectedRevision": expected_workspace_revision,
+                "request": {
+                    "workspaceSpec": deepcopy(spec),
+                    "workspaceBindings": deepcopy(bindings),
+                },
+            },
         )
         _rewrite_workspace_paths(staging, target)
         _exchange_directories(target, staging)
@@ -664,19 +672,23 @@ def _write_workspace_command(
     fingerprint: str,
     workspace_id: str,
     workspace_revision: int,
+    metadata: dict[str, Any] | None = None,
 ) -> None:
     if not command_id:
         return
     from chipcompiler.utility import json_write
 
     payload = _workspace_commands(path)
-    payload["commands"][command_id] = {
+    record = {
         "fingerprint": fingerprint,
         "result": {
             "workspaceId": workspace_id,
             "workspaceRevision": workspace_revision,
         },
     }
+    if metadata is not None:
+        record["metadata"] = deepcopy(metadata)
+    payload["commands"][command_id] = record
     if not json_write(path / "home" / "workspace-commands.json", payload):
         raise OSError("Failed to persist Workspace command ledger")
 

@@ -29,9 +29,8 @@ def execute_workspace_run(
 
     Selector validity was already checked by the handler. Explicit
     selectors (--from/--only) re-execute on request; the default resume
-    runs only within the reconciled target range. When *project_dir* names
-    a manifest project, the run lifecycle is written back to project.json
-    (running, then the terminal status) so the GUI never reads a stale one.
+    runs only within the reconciled target range. Manifest projects register
+    the active process in project.json without writing flow status there.
     """
     from chipcompiler.data import load_workspace
     from chipcompiler.data.schema_migrations import UnsupportedSchemaVersionError
@@ -50,56 +49,6 @@ def execute_workspace_run(
 
     def error(kind: str, **fields) -> CommandResult:
         return CommandResult.err(warnings + [{"kind": "error", "error": kind, **fields}])
-
-    write_back_failures: list[dict] = []
-
-    def write_status(status: str) -> None:
-        """Manifest status write-back; failure is a diagnosable error record.
-
-        The run itself is NOT failed on a write-back failure: the flow
-        already executed and its result stands. The record names the status
-        that did not persist and the repair command that rewrites it.
-        """
-        from chipcompiler.cli.core.records import error_record
-        from chipcompiler.cli.project.manifest_write import write_back_workspace_status
-
-        if project_dir is None or not workspace_id:
-            return
-        if not write_back_workspace_status(project_dir, workspace_id, status):
-            write_back_failures.append(
-                error_record(
-                    "manifest_write_back_failed",
-                    workspace_id=workspace_id,
-                    lost_status=status,
-                    reason="run status could not be written back to project.json; "
-                    "the manifest is out of date until repaired",
-                    repair=f"ecc run --workspace {shlex.quote(workspace_id)}",
-                )
-            )
-
-    def refresh_derived() -> None:
-        """Converge the entry's other derived fields at terminal write-back.
-
-        A run writes back computed geometry, so range/patch re-derive from
-        the directory here; status stays with ``write_status`` (the ledger
-        cannot encode a cancellation vs. a deliberate partial run). Same
-        diagnosable-error contract as ``write_status``.
-        """
-        from chipcompiler.cli.core.records import error_record
-        from chipcompiler.project.manifest_refresh import refresh_workspace_derived_fields
-
-        if project_dir is None or not workspace_id:
-            return
-        if not refresh_workspace_derived_fields(project_dir, workspace_id, include_status=False):
-            write_back_failures.append(
-                error_record(
-                    "manifest_write_back_failed",
-                    workspace_id=workspace_id,
-                    reason="derived fields could not be refreshed in project.json; "
-                    "the manifest is out of date until repaired",
-                    repair="ecc project doctor --fix",
-                )
-            )
 
     workspace_path = os.path.abspath(workspace_path)
 
@@ -141,7 +90,16 @@ def execute_workspace_run(
     # Everything from here holds the workspace lock: two runs of the same
     # workspace never execute concurrently, and an overwrite or migration
     # replacing the tree serializes against this execution.
-    with _workspace_lock(Path(workspace_path)):
+    with _workspace_lock(Path(workspace_path), blocking=not command_input.no_wait):
+        from chipcompiler.cli.project.revision import expected_revision_error
+
+        conflict = expected_revision_error(
+            workspace_path,
+            command_input.expected_revision,
+            workspace_id=workspace_id,
+        )
+        if conflict is not None:
+            return conflict
         # Re-probe under the lock: a concurrent reconcile may have changed
         # the classification since the preflight read.
         probe = classify_workspace(workspace_path)
@@ -175,11 +133,8 @@ def execute_workspace_run(
             # still re-execute on request. The flow is complete, so the
             # manifest entry reads success even if a previous failed state
             # is stale.
-            refresh_derived()
-            write_status("success")
             return CommandResult.ok(
-                write_back_failures
-                + warnings
+                warnings
                 + [
                     {
                         "workspace_id": workspace_id or "default",
@@ -191,16 +146,9 @@ def execute_workspace_run(
                 ]
             )
 
-        write_status("running")
-
         def run_failed(kind: str, reason: str | None = None) -> CommandResult:
-            """A failure after the running marker must leave a terminal
-            status, never a workspace stuck as running."""
-            refresh_derived()
-            write_status("failed")
             return CommandResult.err(
-                write_back_failures
-                + warnings
+                warnings
                 + [
                     {
                         "kind": "error",
@@ -212,59 +160,76 @@ def execute_workspace_run(
             )
 
         try:
-            engine_flow = EngineFlow(workspace=workspace)
-        except Exception as exc:
-            return run_failed("invalid_workspace", str(exc))
-        if not engine_flow.has_init():
-            return run_failed("missing_flow")
+            from contextlib import nullcontext
 
-        try:
-            selected = rerun.selected_step_names(
-                engine_flow,
-                from_step=command_input.from_step,
-                through=command_input.to_step,
-                only=command_input.only,
-                force=command_input.force,
-            )
-            if command_input.from_step is None and command_input.only is None:
-                # The default resume is bounded to the reconciled target:
-                # steps beyond it are never selected, invalidated, or
-                # re-executed, however wide the persisted ledger is.
-                target_names = reconcile_result.target
-                if target_names:
-                    selected = rerun.bounded_resume_names(engine_flow, target_names[-1])
-        except ValueError as exc:
-            return run_failed("unknown_step", str(exc))
+            if project_dir is not None and workspace_id:
+                from chipcompiler.cli.project.run_process import managed_run_process
 
-        from chipcompiler.cli.rendering.progress import preserve_cli_stdio
+                process_context = managed_run_process(
+                    command_input,
+                    project_dir,
+                    workspace_id,
+                    workspace,
+                    workspace_path=workspace_path,
+                )
+            else:
+                process_context = nullcontext()
+            with process_context:
+                engine_flow = EngineFlow(workspace=workspace)
+                if not engine_flow.has_init():
+                    return run_failed("missing_flow")
 
-        try:
-            with preserve_cli_stdio():
-                if selected:
-                    engine_flow.create_step_workspaces(executable_steps=set(selected))
-                if command_input.only is not None:
-                    result = rerun.run_only(
-                        engine_flow, command_input.only, force=command_input.force
-                    )
-                elif command_input.from_step is not None:
-                    result = rerun.run_from(
+                try:
+                    selected = rerun.selected_step_names(
                         engine_flow,
-                        command_input.from_step,
+                        from_step=command_input.from_step,
                         through=command_input.to_step,
+                        only=command_input.only,
+                        force=command_input.force,
                     )
-                elif reconcile_result.target:
-                    result = rerun.run_resume(engine_flow, through=reconcile_result.target[-1])
-                else:
-                    result = rerun.run_resume(engine_flow)
-        except ValueError as exc:
-            return run_failed("step_unavailable", str(exc))
-        except Exception as exc:
-            return run_failed("flow_failed", str(exc))
+                    if command_input.from_step is None and command_input.only is None:
+                        target_names = reconcile_result.target
+                        if target_names:
+                            selected = rerun.bounded_resume_names(engine_flow, target_names[-1])
+                except ValueError as exc:
+                    return run_failed("unknown_step", str(exc))
 
-        # Written inside the workspace lock: a second run acquiring the lock
-        # afterwards must observe this terminal status, not overwrite it.
-        refresh_derived()
-        write_status("success" if result.ok else "failed")
+                from chipcompiler.cli.rendering.progress import preserve_cli_stdio
+
+                try:
+                    with preserve_cli_stdio():
+                        if selected:
+                            engine_flow.create_step_workspaces(executable_steps=set(selected))
+                        if command_input.only is not None:
+                            result = rerun.run_only(
+                                engine_flow, command_input.only, force=command_input.force
+                            )
+                        elif command_input.from_step is not None:
+                            result = rerun.run_from(
+                                engine_flow,
+                                command_input.from_step,
+                                through=command_input.to_step,
+                            )
+                        elif reconcile_result.target:
+                            result = rerun.run_resume(
+                                engine_flow, through=reconcile_result.target[-1]
+                            )
+                        else:
+                            result = rerun.run_resume(engine_flow)
+                except ValueError as exc:
+                    return run_failed("step_unavailable", str(exc))
+        except Exception as exc:
+            from chipcompiler.project.runtime_processes import RuntimeProcessError
+
+            if isinstance(exc, RuntimeProcessError):
+                from chipcompiler.cli.project.run_process import runtime_process_error_result
+
+                return runtime_process_error_result(
+                    exc,
+                    workspace_id=workspace_id or "default",
+                    workspace=workspace_path,
+                )
+            return run_failed("flow_failed", str(exc))
     record = {
         "workspace_id": workspace_id or "default",
         "status": "success" if result.ok else "failed",
@@ -273,7 +238,7 @@ def execute_workspace_run(
         "no_op": result.ok and not result.executed,
     }
     if result.ok:
-        return CommandResult.ok(write_back_failures + warnings + [record])
+        return CommandResult.ok(warnings + [record])
     record["failed_step"] = result.failed
     record["resume_cmd"] = f"ecc run --workspace {shlex.quote(workspace_id or 'default')} --resume"
-    return CommandResult.err(write_back_failures + warnings + [record])
+    return CommandResult.err(warnings + [record])

@@ -1,17 +1,54 @@
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from chipcompiler.cli import main as cli_main
+
+
+@pytest.fixture(autouse=True)
+def refresh_engine_mocks(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "chipcompiler.cli.project.effective_config.validate_effective",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        "chipcompiler.engine.snapshot.read_engineering_snapshot_from_directory",
+        lambda _path: {
+            "workspaceId": "workspace-baseline",
+            "workspaceRevision": 1,
+        },
+    )
+    monkeypatch.setattr(
+        "chipcompiler.cli.project.workspace_spec.workspace_update_spec",
+        lambda _path, _cfg, _flow: ({"schemaVersion": 1}, {}),
+    )
+
+    def update(path, expected, spec, bindings, command_id, *, blocking):
+        calls.append((path, expected, spec, bindings, command_id, blocking))
+        return SimpleNamespace(directory=Path(path))
+
+    monkeypatch.setattr("chipcompiler.engine.update_workspace_from_spec", update)
+    monkeypatch.setattr(
+        "chipcompiler.engine.snapshot.read_engineering_snapshot",
+        lambda _workspace: {
+            "workspaceId": "workspace-baseline",
+            "workspaceRevision": 2,
+        },
+    )
+    return calls
 
 
 def test_workspace_refresh_recreates_without_running(
     capsys,
     create_cli_project,
     create_flow_json,
-    flow_mocks,
     manifest_stubs,
     plain_records,
+    refresh_engine_mocks,
 ):
     project_dir = create_cli_project()
     workspace_dir = os.path.join(project_dir, "baseline")
@@ -24,17 +61,15 @@ def test_workspace_refresh_recreates_without_running(
     assert rc == 0
     records = plain_records(capsys.readouterr().out)
     assert records[-1]["status"] == "refreshed"
-    assert flow_mocks.flow.instances[-1].create_called is True
-    assert flow_mocks.flow.instances[-1].run_called is False
+    assert refresh_engine_mocks[0][1] == 1
     document = json.loads((project_path / "project.json").read_text())
-    assert document["workspaces"][0]["status"] == "not_started"
+    assert document["workspaces"][0]["status"] == "success"
 
 
 def test_refresh_failure_restores_the_previous_workspace(
     capsys,
     create_cli_project,
     create_flow_json,
-    flow_mocks,
     manifest_stubs,
     monkeypatch,
     plain_records,
@@ -51,10 +86,10 @@ def test_refresh_failure_restores_the_previous_workspace(
     sentinel.parent.mkdir(parents=True)
     sentinel.write_text("previous artifacts")
 
-    def failing_create(**_kwargs):
+    def failing_update(*_args, **_kwargs):
         raise RuntimeError("config generation exploded")
 
-    monkeypatch.setattr("chipcompiler.data.create_workspace", failing_create)
+    monkeypatch.setattr("chipcompiler.engine.update_workspace_from_spec", failing_update)
 
     rc = cli_main.run(["workspace", "refresh", "baseline", "--project", project_dir, "--plain"])
 
@@ -216,7 +251,6 @@ def test_refresh_proceeds_when_derived_configs_match(
     capsys,
     create_cli_project,
     create_flow_json,
-    flow_mocks,
     manifest_stubs,
     plain_records,
 ):
@@ -241,7 +275,6 @@ def test_refresh_refuses_and_lists_files_after_hand_edit(
     capsys,
     create_cli_project,
     create_flow_json,
-    flow_mocks,
     manifest_stubs,
     plain_records,
 ):
@@ -268,9 +301,9 @@ def test_refresh_force_overwrites_modified_configs(
     capsys,
     create_cli_project,
     create_flow_json,
-    flow_mocks,
     manifest_stubs,
     plain_records,
+    refresh_engine_mocks,
 ):
     project_dir = create_cli_project()
     workspace_dir = os.path.join(project_dir, "baseline")
@@ -289,21 +322,18 @@ def test_refresh_force_overwrites_modified_configs(
     assert rc == 0
     records = plain_records(capsys.readouterr().out)
     assert records[-1]["status"] == "refreshed"
-    assert flow_mocks.flow.instances[-1].create_called is True
+    assert len(refresh_engine_mocks) == 1
 
 
-def test_refresh_surfaces_manifest_write_back_failure(
+def test_refresh_does_not_write_manifest_flow_status(
     capsys,
     create_cli_project,
     create_flow_json,
-    flow_mocks,
     manifest_stubs,
     monkeypatch,
     plain_records,
 ):
-    """A failed project.json derived-field write-back is a diagnosable error
-    record with a repair command, not a silent warning — and the refresh
-    itself still succeeds."""
+    """Refresh state is owned by Snapshot/flow, not Workspace manifest status."""
     project_dir = create_cli_project()
     workspace_dir = os.path.join(project_dir, "baseline")
     project_path = Path(project_dir)
@@ -311,8 +341,8 @@ def test_refresh_surfaces_manifest_write_back_failure(
     create_flow_json(workspace_dir)
 
     monkeypatch.setattr(
-        "chipcompiler.project.manifest_refresh.refresh_workspace_derived_fields",
-        lambda *args, **kwargs: False,
+        "chipcompiler.project.manifest_write.write_back_workspace_status",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("must not write status")),
     )
 
     rc = cli_main.run(["workspace", "refresh", "baseline", "--project", project_dir, "--plain"])
@@ -320,6 +350,5 @@ def test_refresh_surfaces_manifest_write_back_failure(
     assert rc == 0
     records = plain_records(capsys.readouterr().out)
     assert records[-1]["status"] == "refreshed"
-    failure = [record for record in records if record.get("error") == "manifest_write_back_failed"]
-    assert len(failure) == 1
-    assert failure[0]["repair"].startswith("ecc run")
+    document = json.loads((project_path / "project.json").read_text())
+    assert document["workspaces"][0]["status"] == "success"

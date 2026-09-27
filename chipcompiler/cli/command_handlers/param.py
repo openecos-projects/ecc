@@ -1,9 +1,10 @@
 import os
 
+from chipcompiler.cli.core.line_records import json_literal
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
-from chipcompiler.cli.core.types import CommandContext, CommandResult
-from chipcompiler.cli.project import toml_edit
+from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
+from chipcompiler.cli.project.param_edit import set_parameter, unset_parameter
 from chipcompiler.cli.project.params import (
     lookup_schema,
     parse_value,
@@ -11,6 +12,8 @@ from chipcompiler.cli.project.params import (
     validate_pdk_target,
     validate_value,
 )
+from chipcompiler.data.param_keys import display_key_for, knob_id_for
+from chipcompiler.data.parameter_schema import list_schemas
 from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
 from chipcompiler.utility.file import write_text_atomic
 
@@ -45,6 +48,13 @@ def _parameter_flow_error(schema, ctx: CommandContext) -> CommandResult | None:
 
 
 def param_list(args, ctx: CommandContext) -> CommandResult:
+    if (
+        bool(getattr(args, "all", False))
+        and ctx.output_mode == OutputMode.PLAIN
+        and getattr(args, "workspace", None) is None
+        and getattr(args, "step", None) is None
+    ):
+        return CommandResult.ok(_parameter_catalog_records())
     if getattr(args, "workspace", None) is not None:
         from chipcompiler.cli.command_handlers import workspace_params
 
@@ -114,6 +124,35 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
         records.append(record)
 
     return CommandResult.ok(records)
+
+
+def _parameter_catalog_records() -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    for schema in sorted(list_schemas(), key=lambda item: item.param):
+        record: dict[str, object] = {
+            "record": "parameter",
+            "id": schema.param,
+            "type": schema.type,
+            "default_literal": json_literal(schema.default),
+            "applies_to": schema.applies,
+            "maps_to_literal": json_literal(schema.maps_to),
+        }
+        display_key = display_key_for(schema.param)
+        knob_id = knob_id_for(schema.param)
+        if display_key is not None:
+            record["display_key"] = display_key
+        if knob_id is not None:
+            record["knob_id"] = knob_id
+        if schema.range is not None:
+            record["range_literal"] = json_literal(list(schema.range))
+        if schema.choices is not None:
+            record["choices_literal"] = json_literal(list(schema.choices))
+        if schema.unit is not None:
+            record["unit"] = schema.unit
+        if schema.description:
+            record["description"] = schema.description
+        records.append(record)
+    return records
 
 
 def param_show(args, ctx: CommandContext) -> CommandResult:
@@ -371,6 +410,160 @@ def param_diff(args, ctx: CommandContext) -> CommandResult:
     return CommandResult.ok(records)
 
 
+def param_apply(args, ctx: CommandContext) -> CommandResult:
+    """Apply a parameter batch at Project or managed Workspace scope."""
+    try:
+        parsed_sets = _parse_parameter_sets(args.sets)
+        _validate_parameter_patch(parsed_sets, args.unsets)
+        values = _parse_parameter_values(parsed_sets, ctx)
+    except ValueError as exc:
+        return CommandResult.err([error_record("invalid_parameter_patch", reason=str(exc))])
+    if args.workspace is None:
+        if args.step is not None or args.expected_revision is not None:
+            return CommandResult.err(
+                [
+                    error_record(
+                        "invalid_parameter_scope",
+                        reason="--step/--expected-revision require --workspace",
+                    )
+                ]
+            )
+        manifest_error = _manifest_mode_error(ctx)
+        if manifest_error is not None:
+            return manifest_error
+        from chipcompiler.cli.project.project_application import (
+            ProjectApplicationError,
+            apply_project,
+        )
+
+        encoded_sets = tuple(f"{key}={raw}" for key, raw in parsed_sets)
+        try:
+            changed = apply_project(
+                ctx.project_dir,
+                sets=encoded_sets,
+                unsets=args.unsets,
+                add_rtl=(),
+                remove_rtl=(),
+                blocking=not args.no_wait,
+            )
+        except BlockingIOError:
+            return CommandResult.err([error_record("project_busy")], exit_code=20)
+        except ProjectApplicationError as exc:
+            return CommandResult.err([error_record(exc.code, param=exc.key, reason=str(exc))])
+        return CommandResult.ok(
+            [
+                {
+                    "status": "applied",
+                    "scope": "project",
+                    "changed": ", ".join(changed),
+                }
+            ]
+        )
+
+    if ctx.manifest_error or ctx.project_state != "manifest" or ctx.run_id is None:
+        return CommandResult.err(
+            [
+                error_record(
+                    "workspace_param_requires_managed_workspace",
+                    reason=ctx.manifest_error
+                    or "--workspace must select a workspace declared in project.json",
+                )
+            ]
+        )
+    from pathlib import Path
+
+    from chipcompiler.engine import apply_workspace_parameters
+    from chipcompiler.engine.reconcile import _workspace_lock
+    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+
+    try:
+        with _workspace_lock(Path(ctx.run_dir), blocking=not args.no_wait):
+            current = read_engineering_snapshot_from_directory(ctx.run_dir)
+            expected = args.expected_revision or current["workspaceRevision"]
+            updated = apply_workspace_parameters(
+                ctx.run_dir,
+                expected,
+                values,
+                args.unsets,
+                step_id=args.step,
+                command_id=args.command_id,
+            )
+            committed = read_engineering_snapshot_from_directory(ctx.run_dir)
+    except BlockingIOError:
+        return CommandResult.err([error_record("workspace_busy")], exit_code=20)
+    except WorkspaceLifecycleError as exc:
+        return CommandResult.err(
+            [error_record(exc.code, reason=str(exc), **exc.details)],
+            exit_code=21 if exc.code == "revision_conflict" else 1,
+        )
+    except Exception as exc:
+        return CommandResult.err(
+            [error_record("workspace_parameter_apply_failed", reason=str(exc))]
+        )
+    return CommandResult.ok(
+        [
+            {
+                "status": "applied",
+                "scope": "workspace",
+                "workspace_id": ctx.run_id,
+                "workspace": str(updated.directory),
+                "workspace_revision": committed["workspaceRevision"],
+            }
+        ]
+    )
+
+
+def _parse_parameter_sets(values: tuple[str, ...]) -> tuple[tuple[str, str], ...]:
+    parsed = []
+    seen = set()
+    for value in values:
+        key, separator, raw = value.partition("=")
+        key = key.strip()
+        if not separator or not key:
+            raise ValueError(f"Invalid --set: {value}")
+        if key in seen:
+            raise ValueError(f"Duplicate --set: {key}")
+        seen.add(key)
+        parsed.append((key, raw))
+    return tuple(parsed)
+
+
+def _validate_parameter_patch(sets: tuple[tuple[str, str], ...], unsets: tuple[str, ...]) -> None:
+    if not sets and not unsets:
+        raise ValueError("At least one --set or --unset is required")
+    unset_keys = set(unsets)
+    if len(unset_keys) != len(unsets):
+        raise ValueError("Duplicate --unset")
+    overlap = {key for key, _raw in sets} & unset_keys
+    if overlap:
+        raise ValueError(f"Parameter cannot be set and unset: {min(overlap)}")
+    for key in (*[key for key, _raw in sets], *unsets):
+        if lookup_schema(key) is None:
+            raise ValueError(f"Unknown parameter: {key}")
+
+
+def _parse_parameter_values(
+    sets: tuple[tuple[str, str], ...], ctx: CommandContext
+) -> dict[str, object]:
+    result = {}
+    for key, raw in sets:
+        schema = lookup_schema(key)
+        assert schema is not None
+        flow_error = _parameter_flow_error(schema, ctx)
+        if flow_error is not None and ctx.config is not None:
+            raise ValueError(f"Parameter is not in the configured flow: {key}")
+        try:
+            value = parse_value(raw, schema)
+        except ValueError as exc:
+            raise ValueError(f"{key}: {exc}") from exc
+        errors = validate_value(value, schema)
+        if errors:
+            raise ValueError(f"{key}: {errors[0]}")
+        result[key] = value
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -435,30 +628,18 @@ def _load_toml_overrides(project_dir: str) -> tuple[dict[str, object], list[str]
 # or the future EccTomlConfig owner. CLI should only call the edit operation and
 # translate its result into command records.
 def _write_param_to_toml(config_path: str, schema, value: object) -> None:
-    if schema.pdk_target is not None:
-        target_table, name = "pdk.overrides", schema.pdk_target
-    else:
-        group, _, name = schema.param.rpartition(".")
-        target_table = f"params.{group}"
-
     with open(config_path) as f:
         original = f.read()
 
-    new_text = toml_edit.set_scoped_key(original, target_table, name, value)
+    new_text = set_parameter(original, schema, value)
     write_text_atomic(config_path, new_text)
 
 
 def _remove_param_from_toml(config_path: str, schema) -> bool:
-    if schema.pdk_target is not None:
-        target_table, name = "pdk.overrides", schema.pdk_target
-    else:
-        group, _, name = schema.param.rpartition(".")
-        target_table = f"params.{group}"
-
     with open(config_path) as f:
         original = f.read()
 
-    result = toml_edit.remove_scoped_key(original, target_table, name)
+    result = unset_parameter(original, schema)
     if result is None:
         return False
 

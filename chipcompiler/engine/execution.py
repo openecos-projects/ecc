@@ -112,6 +112,10 @@ class ExecutionObserver:
     def runtime_operation(self):
         return getattr(self.delegate, "runtime_operation", None)
 
+    @property
+    def execution(self):
+        return getattr(self.delegate, "execution", None)
+
     def raise_if_cancelled(self) -> None:
         self._delegate_call("raise_if_cancelled")
 
@@ -158,6 +162,18 @@ class _EngineeringCommitSink:
             workspace_id=self.snapshot["workspaceId"],
             cause=f"flow_step.{getattr(state, 'value', str(state)).lower()}",
         )
+
+    @property
+    def execution(self) -> dict[str, Any] | None:
+        run_id = getattr(self.workspace, "_ecc_run_id", None)
+        if isinstance(run_id, str) and run_id:
+            return {"schema_version": 1, "run_id": run_id}
+        return None
+
+    def raise_if_cancelled(self) -> None:
+        event = getattr(self.workspace, "_ecc_cancel_event", None)
+        if event is not None and event.is_set():
+            raise RuntimeError("run cancelled at a step boundary")
 
 
 def event_sink_for_workspace(workspace: Any) -> _EngineeringCommitSink | None:

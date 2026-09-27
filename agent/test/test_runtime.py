@@ -4,12 +4,12 @@ import threading
 
 import pytest
 
+from agent.operations import RuntimeOperationFailed, RuntimeOperationManager
 from agent.runtime_env import (
     SizerRuntimePreflightError,
     preflight_sizer_runtime,
     prepare_agent_runtime_environment,
 )
-from chipcompiler.runtime.operations import RuntimeOperationFailed, RuntimeOperationManager
 
 
 @pytest.mark.parametrize(

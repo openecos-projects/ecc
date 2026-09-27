@@ -1,4 +1,6 @@
+import io
 import json
+import sys
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
@@ -340,6 +342,22 @@ def test_macro_import_project_replaces_placements_wholesale(
     assert _read_macro_placements(project_dir) == [
         {"instance": "u_a", "x": 10.0, "y": 20.5, "orientation": "R0"},
         {"instance": "u_b", "x": 1.0, "y": 2.0, "orientation": "MY90"},
+    ]
+
+
+def test_macro_import_reads_tcl_from_stdin(
+    capsys, create_cli_project, monkeypatch, plain_records
+):
+    project_dir = create_cli_project()
+    monkeypatch.setattr(sys, "stdin", io.StringIO("placeInstance u_stdin 4 5 R90\n"))
+
+    rc = cli_main.run(["macro", "import", "-", "--project", project_dir, "--plain"])
+
+    assert rc == 0
+    record = plain_records(capsys.readouterr().out)[0]
+    assert record["source_file"] == "-"
+    assert _read_macro_placements(project_dir) == [
+        {"instance": "u_stdin", "x": 4.0, "y": 5.0, "orientation": "R90"}
     ]
 
 
