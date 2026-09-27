@@ -1006,6 +1006,42 @@ def test_run_sta_returns_false_when_sdc_is_missing(tmp_path, monkeypatch):
     assert logger.errors[0][0] == "STA SDC does not exist: %s"
 
 
+def test_run_filler_uses_mj_lifecycle(tmp_path, monkeypatch):
+    class FakeFillerModule:
+        def __init__(self):
+            self.calls = []
+
+        def init_mj(self, output_dir):
+            self.calls.append(("init_mj", output_dir))
+
+        def run_filler(self, config):
+            self.calls.append(("run_filler", config))
+
+        def destroy_mj(self):
+            self.calls.append(("destroy_mj",))
+
+    filler_config = tmp_path / "config" / "filler_ecc.json"
+    filler_data_dir = tmp_path / "filler_ecc" / "data" / "mj"
+    workspace = Workspace(config={StepEnum.FILLER.value: filler_config})
+    step = EccStep(
+        name=StepEnum.FILLER.value,
+        data=EccData(steps={StepEnum.FILLER.value: filler_data_dir}),
+    )
+    module = FakeFillerModule()
+
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
+    monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **_kwargs: module)
+    monkeypatch.setattr(ecc_runner, "save_data", lambda **_kwargs: True)
+    monkeypatch.setattr(ecc_runner, "run_analysis", lambda **_kwargs: None)
+
+    assert ecc_runner.run_filler(workspace, step) is True
+    assert module.calls == [
+        ("init_mj", filler_data_dir),
+        ("run_filler", filler_config),
+        ("destroy_mj",),
+    ]
+
+
 def test_rcx_checklist_strips_top_module_from_spef_corner(tmp_path):
     checklist = EccRcxChecklist.__new__(EccRcxChecklist)
     checklist.workspace = Workspace(

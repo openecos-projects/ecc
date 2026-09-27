@@ -237,18 +237,11 @@ class ECCToolsModule:
         """save def file"""
         self.ecc.def_save(def_name=path_text(def_path))
 
-    def gds_save(
-        self,
-        output_path: PathArg,
-        layer_map_path: PathArg,
-        *,
-        is_harden: bool = False,
-    ) -> bool:
+    def gds_save(self, output_path: PathArg, layer_map_path: PathArg) -> bool:
         """save gds file"""
         return self.ecc.gds_save(
             gds_name=path_text(output_path),
             layer_map_path=path_text(layer_map_path),
-            is_harden=is_harden,
         )
 
     def tcl_save(self, output_path: PathArg) -> bool:
@@ -555,8 +548,17 @@ class ECCToolsModule:
         """
         self.ecc.feature_pl_eval(path_text(json_path), map_grid_size)
 
-    def run_filler(self, config: str):
-        self.ecc.insert_filler(path_text(config))
+    ########################################################################
+    # iMJ api
+    ########################################################################
+    def init_mj(self, output_dir: PathArg) -> bool:
+        return self.ecc.init_mj(config_dict={"-temp_directory_path": path_text(output_dir)})
+
+    def run_filler(self, config: PathArg) -> bool:
+        return self.ecc.insert_filler(config=path_text(config))
+
+    def destroy_mj(self) -> bool:
+        return self.ecc.destroy_mj()
 
     ########################################################################
     # routing api

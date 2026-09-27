@@ -712,7 +712,9 @@ def run_filler(
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
+        ecc_module.init_mj(output_dir=(step.data.steps or {}).get(StepEnum.FILLER.value, ""))
         ecc_module.run_filler(config=workspace.config.get(f"{StepEnum.FILLER.value}", ""))
+        ecc_module.destroy_mj()
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_filler.value, state=StateEnum.Success)
 
@@ -844,7 +846,6 @@ def run_harden(
         ecc_module.gds_save(
             output_path=step.output.gds or "",
             layer_map_path=workspace.pdk.mapping_file,
-            is_harden=True,
         )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)

@@ -388,7 +388,6 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.gds_save(
         Path("/ws/output/gcd.gds.gz"),
         Path("/pdk/ics55.layermap"),
-        is_harden=True,
     )
     assert module.tcl_save(Path("/ws/script/out.tcl")) is True
     module.verilog_save(Path("/ws/output/gcd.v.gz"))
@@ -418,7 +417,9 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.destroy_drc()
     module.pnp(Path("/ws/config/pnp.json"))
     module.feature_placement_map(Path("/ws/feature/place_map.json"))
+    module.init_mj(Path("/ws/data/mj"))
     module.run_filler(Path("/ws/config/filler.json"))
+    module.destroy_mj()
     module.run_routing(Path("/ws/config/route.json"))
     module.feature_route_read(Path("/ws/feature/route_read.json"))
     module.feature_route(Path("/ws/feature/route.json"))
@@ -454,9 +455,19 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
         {
             "gds_name": "/ws/output/gcd.gds.gz",
             "layer_map_path": "/pdk/ics55.layermap",
-            "is_harden": True,
         },
     ) in module.ecc.calls
+    assert (
+        "init_mj",
+        (),
+        {"config_dict": {"-temp_directory_path": "/ws/data/mj"}},
+    ) in module.ecc.calls
+    assert (
+        "insert_filler",
+        (),
+        {"config": "/ws/config/filler.json"},
+    ) in module.ecc.calls
+    assert ("destroy_mj", (), {}) in module.ecc.calls
     assert timing_output.read_text(encoding="utf-8") == module.ecc.generated_timing_lib_contents
     assert [
         call[0]
@@ -2498,3 +2509,18 @@ def test_ecc_builder_uses_explicit_step_directory(tmp_path):
     assert str(step.output.dir) == f"{step_directory}/output"
     assert str(step.data.steps[SkippableStepEnum.TIMING_OPT.value]) == f"{step_directory}/data/to"
     assert str(step.log.file) == f"{step_directory}/log/{SkippableStepEnum.TIMING_OPT.value}.log"
+
+
+def test_ecc_builder_uses_mj_directory_for_filler(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.FILLER.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+
+    assert step.data.steps[StepEnum.FILLER.value] == tmp_path / "filler_ecc" / "data" / "mj"
