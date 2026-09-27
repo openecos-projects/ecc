@@ -92,7 +92,7 @@ def build_step(
                 StepEnum.POST_FLOORPLAN.value: data_dir / "fp",
                 StepEnum.PLACEMENT.value: data_dir / "pl",
                 StepEnum.LEGALIZATION.value: data_dir / "pl",
-                StepEnum.FILLER.value: data_dir / "pl",
+                StepEnum.FILLER.value: data_dir / "mj",
                 StepEnum.CTS.value: data_dir / "cts",
                 SkippableStepEnum.TIMING_OPT.value: data_dir / "to",
                 StepEnum.ROUTING.value: data_dir / "rt",

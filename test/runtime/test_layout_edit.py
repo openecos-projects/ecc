@@ -66,7 +66,7 @@ class FakeLayoutModule:
         (db_path / "metadata.idb").write_text("new db", encoding="utf-8")
         return True
 
-    def gds_save(self, output_path):
+    def gds_save(self, output_path, layer_map_path):
         self.export_calls.append("gds")
         Path(output_path).write_text("new gds", encoding="utf-8")
 
@@ -185,7 +185,10 @@ def _make_layout_workspace(tmp_path, *, with_db=False, with_editor_workspace=Fal
             "verilog": output_dir / "gcd_postFloorplan.v",
         },
     )
-    workspace = SimpleNamespace(directory=workspace_dir)
+    workspace = SimpleNamespace(
+        directory=workspace_dir,
+        pdk=SimpleNamespace(mapping_file=None),
+    )
     if with_editor_workspace:
         config_path = workspace_dir / "config" / "floorplan_ecc.json"
         config_path.parent.mkdir()

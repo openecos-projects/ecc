@@ -237,9 +237,12 @@ class ECCToolsModule:
         """save def file"""
         self.ecc.def_save(def_name=path_text(def_path))
 
-    def gds_save(self, output_path: PathArg, *, is_harden: bool = False):
+    def gds_save(self, output_path: PathArg, layer_map_path: PathArg) -> bool:
         """save gds file"""
-        self.ecc.gds_save(path_text(output_path), is_harden)
+        return self.ecc.gds_save(
+            gds_name=path_text(output_path),
+            layer_map_path=path_text(layer_map_path),
+        )
 
     def tcl_save(self, output_path: PathArg) -> bool:
         """Save hard-macro placement commands in Tcl format."""
@@ -545,8 +548,17 @@ class ECCToolsModule:
         """
         self.ecc.feature_pl_eval(path_text(json_path), map_grid_size)
 
-    def run_filler(self, config: str):
-        self.ecc.insert_filler(path_text(config))
+    ########################################################################
+    # iMJ api
+    ########################################################################
+    def init_mj(self, output_dir: PathArg) -> bool:
+        return self.ecc.init_mj(config_dict={"-temp_directory_path": path_text(output_dir)})
+
+    def run_filler(self, config: PathArg) -> bool:
+        return self.ecc.insert_filler(config=path_text(config))
+
+    def destroy_mj(self) -> bool:
+        return self.ecc.destroy_mj()
 
     ########################################################################
     # routing api
@@ -601,7 +613,8 @@ class ECCToolsModule:
     ):
         if lib_paths is None:
             lib_paths = []
-        self.ecc.lib_init(lib_paths=path_texts(lib_paths))
+        if not self.ecc.lib_init(lib_paths=path_texts(lib_paths)):
+            return False
         self.ecc.sdc_init(path_text(sdc_path))
         self.ecc.spef_init(path_text(spef_path))
         return self.ecc.init_pw(config_dict={"-temp_directory_path": path_text(output_dir)})
@@ -649,7 +662,8 @@ class ECCToolsModule:
 
         discard_sta_run_outputs(work_dir, report_dir, feature_dir, modes)
 
-        self.ecc.lib_init(lib_paths=path_texts(lib_paths))
+        if not self.ecc.lib_init(lib_paths=path_texts(lib_paths)):
+            raise RuntimeError("Failed to load Liberty libraries for STA")
         self.ecc.sdc_init(path_text(sdc_path))
         self.ecc.spef_init(path_text(spef_path))
         config_dict = {}
@@ -705,7 +719,8 @@ class ECCToolsModule:
                 design_name = design_name[: -len("_Harden")]
 
         sta_output_dir = Path(output_dir) if output_dir else output_lib_path.parent
-        self.ecc.lib_init(lib_paths=path_texts(lib_paths))
+        if not self.ecc.lib_init(lib_paths=path_texts(lib_paths)):
+            raise RuntimeError("Failed to load Liberty libraries for timing model")
         self.ecc.sdc_init(path_text(sdc_path))
         self.ecc.spef_init(path_text(spef_path))
         config_dict = {"-temp_directory_path": path_text(sta_output_dir)}
