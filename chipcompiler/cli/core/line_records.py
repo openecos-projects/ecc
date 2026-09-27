@@ -42,7 +42,11 @@ def serialize_line_record(record: Mapping[str, object]) -> str:
     if not record or next(iter(record)) != "record":
         raise LineRecordError("record must be the first field")
     fields: list[str] = []
+    seen: set[str] = set()
     for key, value in record.items():
+        if key in seen:
+            raise LineRecordError(f"duplicate line record key: {key!r}")
+        seen.add(key)
         if not _KEY.fullmatch(key):
             raise LineRecordError(f"invalid line record key: {key!r}")
         if value is None:

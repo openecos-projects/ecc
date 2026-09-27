@@ -285,7 +285,7 @@ chipcompiler/cli/commands/        # typer command definition layer (thin)
   ├── workspace.py                # workspace sub-app (import/refresh)
   ├── signoff.py                  # signoff sub-app (inspect/export)
   ├── report.py                   # report sub-app (summary/qor/checklist/step)
-  └── rpc.py                      # rpc sub-app (serve)
+  └── process.py                  # process sub-app (inspect/cancel/reconcile)
 chipcompiler/cli/command_handlers/  # business logic layer (stateful / heavy)
   ├── project.py                  # init / check / run / migrate / workspace refresh (preset resolution and environment preflight)
   ├── inspect.py                  # status / log / config
@@ -989,8 +989,8 @@ Resolution priority for `get_pdk("ics55")` in `chipcompiler/data/pdk.py`:
 4. Default: `../pdk/icsprout55-pdk` next to the ecc checkout (the ecos-studio
    workspace location).
 
-The runtime path is carried by the `pdkRoot` field of the RPC
-`workspace.create` request and, for CLI projects, by `ecc pdk set-root`.
+The runtime path is carried by the manifest project's PDK bindings
+(`pdk_root` in `base_design`) and, for CLI projects, by `ecc pdk set-root`.
 Workspace creation persists the resolved root in `home/params.toml` as `pdk_root`
 (under `[pdk] root`), so a workspace resolves identically on every machine.
 Loading an existing workspace whose persisted root is empty/missing still

@@ -1,4 +1,5 @@
 import os
+import sys
 from collections.abc import Callable
 from typing import Protocol
 
@@ -105,7 +106,8 @@ def _render_line_records(
     color: bool,
 ) -> None:
     if result.exit_code != 0:
-        render_result(result, OutputMode.PLAIN)
+        # Narrow-query failures must leave stdout clean (§6.2).
+        render_result(result, OutputMode.PLAIN, file=sys.stderr)
         return
     print(serialize_line_records(result.records), end="")
 

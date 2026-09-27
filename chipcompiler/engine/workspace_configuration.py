@@ -89,6 +89,15 @@ def apply_workspace_parameters(
     )
 
 
+def _prune_macro_location_after_write(workspace, written: set[str]) -> None:
+    """Keep config/macro_location.tcl consistent when a committed write
+    emptied macro.placements (§20.5.4): no stale placeInstance lines."""
+    if "macro.placements" in written:
+        from chipcompiler.data.workspace.macro_location import prune_macro_location_tcl
+
+        prune_macro_location_tcl(workspace)
+
+
 def _apply_workspace_parameters(
     target: Path,
     expected_workspace_revision: int,
@@ -183,6 +192,7 @@ def _apply_workspace_parameters(
     from chipcompiler.data import refresh_workspace_config
 
     refresh_workspace_config(workspace)
+    _prune_macro_location_after_write(workspace, set_keys)
     first_step = _earliest_flow_step(workspace, affected_steps)
     invalidate_from(EngineFlow(workspace), first_step)
     updated = invalidate_engineering_snapshot(
@@ -283,6 +293,7 @@ def _update_workspace_configuration(
     from chipcompiler.data import refresh_workspace_config
 
     refresh_workspace_config(workspace)
+    _prune_macro_location_after_write(workspace, set(parameters))
     flow = EngineFlow(workspace)
     steps = workspace.flow.steps()
     if steps:
@@ -485,6 +496,7 @@ def _update_workspace_step_configuration(
     from chipcompiler.data import refresh_workspace_config
 
     refresh_workspace_config(workspace)
+    _prune_macro_location_after_write(workspace, set(patch))
     invalidate_from(EngineFlow(workspace), step)
     updated = invalidate_engineering_snapshot(
         workspace,
