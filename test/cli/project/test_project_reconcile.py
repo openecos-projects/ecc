@@ -20,9 +20,7 @@ def _project_and_spec(tmp_path, minimal_ics55_pdk_factory):
     assert cli_main.run(["init", str(project), "--design-name", "gcd"]) == 0
     pdk = minimal_ics55_pdk_factory(tmp_path / "pdk")
     text = (project / "ecc.toml").read_text(encoding="utf-8")
-    text = text.replace('name = ""', 'name = "ics55"', 1).replace(
-        'root = ""', f'root = "{pdk}"', 1
-    )
+    text = text.replace('name = ""', 'name = "ics55"', 1).replace('root = ""', f'root = "{pdk}"', 1)
     (project / "ecc.toml").write_text(text, encoding="utf-8")
     fixture = Path(__file__).parents[2] / "fixtures" / "workspace_spec" / "valid.json"
     payload = json.loads(fixture.read_text(encoding="utf-8"))
@@ -48,9 +46,7 @@ def _register(project: Path, workspace_id: str) -> Path:
     return workspace
 
 
-def test_reconcile_registers_a_proven_create_orphan(
-    tmp_path, minimal_ics55_pdk_factory
-):
+def test_reconcile_registers_a_proven_create_orphan(tmp_path, minimal_ics55_pdk_factory):
     project, spec, bindings = _project_and_spec(tmp_path, minimal_ics55_pdk_factory)
     target = project / "created"
     create_workspace_from_spec(target, spec, bindings)
@@ -80,9 +76,7 @@ def test_reconcile_registers_a_proven_create_orphan(
     assert load_project_manifest(project)["workspaces"][0]["workspace_id"] == "created"
 
 
-def test_reconcile_registers_a_proven_derive_orphan(
-    tmp_path, minimal_ics55_pdk_factory
-):
+def test_reconcile_registers_a_proven_derive_orphan(tmp_path, minimal_ics55_pdk_factory):
     project, spec, bindings = _project_and_spec(tmp_path, minimal_ics55_pdk_factory)
     source = project / "source"
     create_workspace_from_spec(source, spec, bindings, "source-create")
