@@ -127,9 +127,7 @@ def test_snapshot_indexes_lec_reports_and_rcx_feature_facts(tmp_path):
         "postRouteLec_yosys_lec/report/equiv_status.rpt",
     ]
     rcx_facts = [
-        artifact
-        for artifact in snapshot["artifacts"]
-        if artifact["kind"] == "rcx_feature_facts"
+        artifact for artifact in snapshot["artifacts"] if artifact["kind"] == "rcx_feature_facts"
     ]
     assert [artifact["reference"] for artifact in rcx_facts] == ["RCX_ecc/feature/RCX.step.json"]
     assert rcx_facts[0]["availability"] == "available"
