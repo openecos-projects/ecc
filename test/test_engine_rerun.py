@@ -354,6 +354,16 @@ class TestRunOnly:
         assert not stale_place.exists()
         assert keep_cts.read_text(encoding="utf-8") == "old"
 
+    def test_alias_runs_persisted_canonical_step(self, monkeypatch, tmp_path):
+        flow = _make_run_flow(tmp_path, [("Synthesis", "Success")])
+        calls = _fake_execution(flow, monkeypatch)
+
+        result = rerun.run_only(flow, "synthesis", force=True)
+
+        assert result.ok
+        assert result.executed == ("Synthesis",)
+        assert calls == [("Synthesis", True)]
+
     def test_non_success_step_runs_without_force(self, monkeypatch, tmp_path):
         flow = _make_run_flow(tmp_path, [("place", "Incomplete")])
         calls = _fake_execution(flow, monkeypatch)

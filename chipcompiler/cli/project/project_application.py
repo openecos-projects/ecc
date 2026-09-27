@@ -107,16 +107,21 @@ def reconcile_project_summary(project_dir: str | Path, *, blocking: bool) -> boo
         return True
 
 
-def reconcile_project_state(
-    project_dir: str | Path, *, blocking: bool
-) -> ProjectReconcileReport:
+def reconcile_project_state(project_dir: str | Path, *, blocking: bool) -> ProjectReconcileReport:
     """Repair provable Project and Workspace intermediate states."""
     project = Path(project_dir).expanduser().resolve()
     repairs: list[str] = []
     busy: list[str] = []
     errors: list[str] = []
-    if reconcile_project_summary(project, blocking=blocking):
-        repairs.append("base_design")
+    try:
+        if reconcile_project_summary(project, blocking=blocking):
+            repairs.append("base_design")
+    except ProjectApplicationError as exc:
+        # ``ecc init`` deliberately creates a Project before the user chooses
+        # a PDK.  Its manifest is already usable by Project Management, and
+        # structural recovery below must remain available in that state.
+        if exc.code != "invalid_project_config" or str(exc) != "pdk.root is required":
+            raise
 
     manifest = load_manifest(str(project))
     for entry in manifest.workspaces:
@@ -148,9 +153,7 @@ def reconcile_project_state(
         ):
             continue
         try:
-            workspace_id = _reconcile_orphan_workspace(
-                project, candidate, blocking=blocking
-            )
+            workspace_id = _reconcile_orphan_workspace(project, candidate, blocking=blocking)
             repairs.append(f"orphan_workspace:{workspace_id}")
         except BlockingIOError:
             busy.append(candidate.name)
@@ -168,9 +171,7 @@ def reconcile_project_state(
     return ProjectReconcileReport(tuple(repairs), tuple(busy), tuple(errors))
 
 
-def _reconcile_orphan_workspace(
-    project: Path, candidate: Path, *, blocking: bool
-) -> str:
+def _reconcile_orphan_workspace(project: Path, candidate: Path, *, blocking: bool) -> str:
     from chipcompiler.engine.reconcile import _workspace_lock
     from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
     from chipcompiler.engine.workspace_lifecycle import (
@@ -193,9 +194,7 @@ def _reconcile_orphan_workspace(
         snapshot = read_engineering_snapshot_from_directory(candidate)
         try:
             ledger = json.loads(
-                (candidate / "home" / "workspace-commands.json").read_text(
-                    encoding="utf-8"
-                )
+                (candidate / "home" / "workspace-commands.json").read_text(encoding="utf-8")
             )
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise WorkspaceLifecycleError(
@@ -237,14 +236,10 @@ def _reconcile_orphan_workspace(
                 None,
                 expected_revision if operation == "create" else None,
             )
-            if (
-                record.get("fingerprint") != expected
-                or record.get("result")
-                != {
-                    "workspaceId": snapshot["workspaceId"],
-                    "workspaceRevision": snapshot["workspaceRevision"],
-                }
-            ):
+            if record.get("fingerprint") != expected or record.get("result") != {
+                "workspaceId": snapshot["workspaceId"],
+                "workspaceRevision": snapshot["workspaceRevision"],
+            }:
                 continue
             matches.append((workspace_id, operation, metadata, request))
         if len(matches) != 1:
@@ -290,9 +285,7 @@ def _reconcile_orphan_workspace(
                 raise WorkspaceLifecycleError(
                     "workspace_identity_changed", "Project identity changed during reconcile"
                 )
-            if not update_manifest_locked(
-                project, _project_manifest_mutator(project, mutation)
-            ):
+            if not update_manifest_locked(project, _project_manifest_mutator(project, mutation)):
                 raise WorkspaceLifecycleError(
                     "project_manifest_update_failed", "Project Manifest update failed"
                 )
@@ -348,9 +341,7 @@ def _reconcile_workspace_state(
         raw_processes = current.raw.get("runtime_processes", {})
         raw_entry = raw_processes.get(workspace_id) if isinstance(raw_processes, dict) else None
         if raw_entry is None:
-            recovered = recover_interrupted_run(
-                workspace, run_id=None, allow_markerless=True
-            )
+            recovered = recover_interrupted_run(workspace, run_id=None, allow_markerless=True)
             if recovered:
                 repairs.append(f"orphan_flow:{workspace_id}")
             return
@@ -386,8 +377,7 @@ def _reconcile_workspace_refresh_exchange(workspace: Path) -> bool:
     candidates = [
         candidate
         for candidate in workspace.parent.iterdir()
-        if candidate.name.startswith(prefix)
-        and (candidate.is_dir() or candidate.is_symlink())
+        if candidate.name.startswith(prefix) and (candidate.is_dir() or candidate.is_symlink())
     ]
     if not candidates:
         return False
@@ -436,9 +426,7 @@ def _require_refresh_command_proof(
 
     try:
         ledger = json.loads(
-            (updated_workspace / "home" / "workspace-commands.json").read_text(
-                encoding="utf-8"
-            )
+            (updated_workspace / "home" / "workspace-commands.json").read_text(encoding="utf-8")
         )
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise WorkspaceLifecycleError(

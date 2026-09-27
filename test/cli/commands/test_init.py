@@ -1,9 +1,24 @@
+import errno
 import json
 
 from chipcompiler.cli import main as cli_main
+from chipcompiler.cli.project import project_init
 
 
 class TestInit:
+    def test_init_falls_back_when_filesystem_rejects_renameat2_flags(self, tmp_path, monkeypatch):
+        def unsupported_renameat2(source, target, flags):
+            raise OSError(errno.EINVAL, "Invalid argument", target)
+
+        monkeypatch.setattr(project_init, "_renameat2", unsupported_renameat2)
+        selected = tmp_path / "selected"
+        selected.mkdir(mode=0o750)
+
+        assert cli_main.run(["init", str(selected), "--design-name", "gcd"]) == 0
+        assert (selected / "project.json").is_file()
+        assert (selected / "ecc.toml").is_file()
+        assert selected.stat().st_mode & 0o777 == 0o750
+
     def test_init_creates_skeleton(self, tmp_path):
         project_path = str(tmp_path / "gcd")
         rc = cli_main.run(["init", project_path])

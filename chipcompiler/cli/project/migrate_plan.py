@@ -21,7 +21,6 @@ from typing_extensions import deprecated
 from chipcompiler.cli.project.manifest import (
     base_design_from_config,
     find_manifest,
-    load_manifest,
 )
 from chipcompiler.cli.project.manifest_write import (
     build_manifest_document,
@@ -66,6 +65,9 @@ class MigrationEntry:
     # real directory fails the move-time check, not just a symlink.
     source_dev: int = 0
     source_ino: int = 0
+    # A legacy manifest may have a stable workspace id that differs from the
+    # runs/ directory name. Preserve that identity when rebinding the path.
+    workspace_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -93,6 +95,9 @@ class MigrationPlan:
     project_dev: int = 0
     project_ino: int = 0
     resume: bool = False
+    # Tolerantly parsed legacy manifest used only by migration. Normal CLI
+    # commands continue to use the strict manifest loader.
+    resume_manifest: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -104,6 +109,52 @@ class MigrationPreview:
     plan: MigrationPlan
     manifest_document: dict = field(default_factory=dict)
     manifest_appends: tuple[dict, ...] = field(default_factory=tuple)
+    resume_manifest: dict | None = None
+
+
+def read_migration_manifest(project_dir: str) -> dict | None:
+    """Read the minimal manifest shape needed to migrate legacy workspaces.
+
+    This intentionally accepts a workspace path under ``runs/`` and stale
+    ``root_path`` values. The strict loader remains authoritative after the
+    migration has rewritten those fields.
+    """
+    path = os.path.join(project_dir, "project.json")
+    if not os.path.lexists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            document = json.load(f)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise ValueError(f"invalid project manifest: {path}: {exc}") from exc
+    if not isinstance(document, dict):
+        raise ValueError(f"invalid project manifest: {path}: top level must be an object")
+    if document.get("schema_version") != 1:
+        raise ValueError("invalid project manifest: schema_version 1 is required")
+    if not isinstance(document.get("workspaces"), list):
+        raise ValueError("invalid project manifest: workspaces must be an array")
+    return document
+
+
+def legacy_workspace_id(project_dir: str, source: str, document: dict | None) -> str | None:
+    """Return a stable id declared for *source*, if a legacy manifest has one."""
+    if document is None:
+        return None
+    for workspace in document.get("workspaces", []):
+        if not isinstance(workspace, dict):
+            continue
+        workspace_path = workspace.get("workspace_path")
+        workspace_id = workspace.get("workspace_id")
+        if not isinstance(workspace_path, str) or not isinstance(workspace_id, str):
+            continue
+        candidate = (
+            workspace_path
+            if os.path.isabs(workspace_path)
+            else os.path.join(project_dir, workspace_path)
+        )
+        if os.path.realpath(candidate) == os.path.realpath(source):
+            return workspace_id
+    return None
 
 
 @deprecated(
@@ -249,6 +300,7 @@ def plan_migration(project_dir: str) -> MigrationPlan:
     fails the move-time check.
     """
     runs_dir = os.path.join(project_dir, "runs")
+    resume_manifest = read_migration_manifest(project_dir)
     container_unsafe = None
     container_dev = container_ino = 0
     try:
@@ -270,6 +322,7 @@ def plan_migration(project_dir: str) -> MigrationPlan:
             entries=(),
             container_unsafe=container_unsafe,
             resume=find_manifest(project_dir) is not None,
+            resume_manifest=resume_manifest,
         )
 
     entries: list[MigrationEntry] = []
@@ -346,6 +399,7 @@ def plan_migration(project_dir: str) -> MigrationPlan:
                 skip_steps=persisted_skip,
                 source_dev=source_stat.st_dev,
                 source_ino=source_stat.st_ino,
+                workspace_id=legacy_workspace_id(project_dir, source, resume_manifest),
             )
         )
     project_identity = (0, 0)
@@ -365,6 +419,7 @@ def plan_migration(project_dir: str) -> MigrationPlan:
         project_dev=project_identity[0],
         project_ino=project_identity[1],
         resume=find_manifest(project_dir) is not None,
+        resume_manifest=resume_manifest,
     )
 
 
@@ -380,7 +435,7 @@ def _workspace_entries(
     the applied objects are these, copied — never a partial reconstruction)."""
     return tuple(
         manifest_workspace_entry(
-            entry.run_id,
+            entry.workspace_id or entry.run_id,
             name=name,
             workspace_path=entry.target,
             start_step=entry.start_step,
@@ -406,8 +461,12 @@ def build_migration_preview(project_dir: str, cfg) -> MigrationPreview:
     appends: tuple[dict, ...] = ()
     if plan.entries:
         if plan.resume:
-            # load_manifest guarantees a non-empty design_name.
-            name = load_manifest(project_dir).design_name
+            resume_document = plan.resume_manifest or {}
+            name = str(
+                resume_document.get("design_name")
+                or resume_document.get("name")
+                or "project"
+            )
             appends = _workspace_entries(plan.entries, name=name, now=datetime.now(UTC).isoformat())
         else:
             from chipcompiler.cli.project.config import resolve_pdk_root
@@ -429,7 +488,12 @@ def build_migration_preview(project_dir: str, cfg) -> MigrationPreview:
                     plan.entries[1:], name=cfg.design_name, now=document["created_at"]
                 )
             )
-    return MigrationPreview(plan=plan, manifest_document=document, manifest_appends=appends)
+    return MigrationPreview(
+        plan=plan,
+        manifest_document=document,
+        manifest_appends=appends,
+        resume_manifest=plan.resume_manifest,
+    )
 
 
 @deprecated(
