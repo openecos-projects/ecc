@@ -405,7 +405,10 @@ def save_data(
         return False
     ecc_module.def_save(def_path=step.output.def_ or "")
     ecc_module.verilog_save(output_verilog=step.output.verilog or "")
-    ecc_module.gds_save(output_path=step.output.gds or "")
+    ecc_module.gds_save(
+        output_path=step.output.gds or "",
+        layer_map_path=workspace.pdk.mapping_file,
+    )
     # ecc_module.save_data(path=step.output.db or "")
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
@@ -841,7 +844,11 @@ def run_harden(
             spef_path=signoff_item["spef_file"],
             design_name=workspace.design.name,
         )
-        ecc_module.gds_save(output_path=step.output.gds or "", is_harden=True)
+        ecc_module.gds_save(
+            output_path=step.output.gds or "",
+            layer_map_path=workspace.pdk.mapping_file,
+            is_harden=True,
+        )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)
 

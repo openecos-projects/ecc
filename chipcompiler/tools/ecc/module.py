@@ -237,9 +237,19 @@ class ECCToolsModule:
         """save def file"""
         self.ecc.def_save(def_name=path_text(def_path))
 
-    def gds_save(self, output_path: PathArg, *, is_harden: bool = False):
+    def gds_save(
+        self,
+        output_path: PathArg,
+        layer_map_path: PathArg,
+        *,
+        is_harden: bool = False,
+    ) -> bool:
         """save gds file"""
-        self.ecc.gds_save(path_text(output_path), is_harden)
+        return self.ecc.gds_save(
+            gds_name=path_text(output_path),
+            layer_map_path=path_text(layer_map_path),
+            is_harden=is_harden,
+        )
 
     def tcl_save(self, output_path: PathArg) -> bool:
         """Save hard-macro placement commands in Tcl format."""
