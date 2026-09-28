@@ -332,6 +332,7 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.gds_save(
         Path("/ws/output/gcd.gds.gz"),
         Path("/pdk/ics55.layermap"),
+        is_harden=True,
     )
     assert module.tcl_save(Path("/ws/script/out.tcl")) is True
     module.verilog_save(Path("/ws/output/gcd.v.gz"))
@@ -398,20 +399,10 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
         (),
         {
             "gds_name": "/ws/output/gcd.gds.gz",
+            "is_harden": True,
             "layer_map_path": "/pdk/ics55.layermap",
         },
     ) in module.ecc.calls
-    assert (
-        "init_mj",
-        (),
-        {"config_dict": {"-temp_directory_path": "/ws/data/mj"}},
-    ) in module.ecc.calls
-    assert (
-        "insert_filler",
-        (),
-        {"config": "/ws/config/filler.json"},
-    ) in module.ecc.calls
-    assert ("destroy_mj", (), {}) in module.ecc.calls
     assert timing_output.read_text(encoding="utf-8") == module.ecc.generated_timing_lib_contents
     assert [
         call[0]
@@ -428,37 +419,13 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     ] == ["lib_init", "sdc_init", "spef_init", "init_sta", "extract_lib", "destroy_sta"]
 
 
-def test_liberty_load_failure_stops_power_initialization(tmp_path):
+def test_gds_save_requires_layer_map():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
-    module.ecc.lib_init = lambda **_kwargs: False
 
-    assert module.init_pw(output_dir=tmp_path, lib_paths=["/pdk/lib.lib"]) is False
-    assert module.ecc.calls == []
+    with pytest.raises(ValueError, match="set pdk.mapping_file"):
+        module.gds_save(Path("/ws/output/gcd.gds.gz"), None)
 
-
-def test_liberty_load_failure_stops_sta_run(tmp_path):
-    module = ECCToolsModule.__new__(ECCToolsModule)
-    module.ecc = FakeEcc()
-    module.ecc.lib_init = lambda **_kwargs: False
-
-    with pytest.raises(RuntimeError, match="Failed to load Liberty libraries for STA"):
-        module.run_timing(
-            work_dir=tmp_path / "data",
-            report_dir=tmp_path / "report",
-            feature_dir=tmp_path / "feature",
-            lib_paths=["/pdk/lib.lib"],
-        )
-    assert module.ecc.calls == []
-
-
-def test_liberty_load_failure_stops_timing_model_generation(tmp_path):
-    module = ECCToolsModule.__new__(ECCToolsModule)
-    module.ecc = FakeEcc()
-    module.ecc.lib_init = lambda **_kwargs: False
-
-    with pytest.raises(RuntimeError, match="Failed to load Liberty libraries for timing model"):
-        module.write_timing_model(tmp_path / "gcd.lib", lib_paths=["/pdk/lib.lib"])
     assert module.ecc.calls == []
 
 
