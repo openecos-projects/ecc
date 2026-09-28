@@ -80,7 +80,7 @@ class DreamplaceModule:
         elif mode is DreamplaceRunMode.LEGALIZATION:
             params.global_place_flag = 0
             params.legalize_flag = 1
-            params.detailed_place_flag = 1
+            params.detailed_place_flag = int(self.step.name != StepEnum.LEGALIZATION.value)
             params.enable_fillers = 0
             params.random_center_init_flag = 0
             params.auto_adjust_bins = 1
@@ -144,6 +144,8 @@ class DreamplaceModule:
 
             engine = PlacementEngine(params)
             engine.setup_rawdb(ecc_module=self.ecc_module)
+            if mode is DreamplaceRunMode.LEGALIZATION and self.step.name == StepEnum.LEGALIZATION.value:
+                params.cell_padding_x = engine.placedb.pydb.site_width
             ppa = engine.run()
 
             skipped_empty_macro_placement = (

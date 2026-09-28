@@ -237,7 +237,14 @@ def test_macro_placement_forces_selective_non_routable_placement_params(tmp_path
     }
 
 
-def test_legalization_enables_detailed_place_without_padding(tmp_path):
+@pytest.mark.parametrize(
+    ("owner", "detailed_place_flag"),
+    [
+        (StepEnum.LEGALIZATION.value, 0),
+        (SkippableStepEnum.TIMING_OPT.value, 1),
+    ],
+)
+def test_legalization_params_follow_owner(tmp_path, owner, detailed_place_flag):
     config_path = tmp_path / "dreamplace_ecc.json"
     json_write(
         config_path,
@@ -254,10 +261,10 @@ def test_legalization_enables_detailed_place_without_padding(tmp_path):
         config={"dreamplace": config_path},
     )
     step = EccStep(
-        name=StepEnum.LEGALIZATION.value,
+        name=owner,
         data=EccData(
             dir=tmp_path / "data",
-            steps={StepEnum.LEGALIZATION.value: tmp_path / "data" / "pl"},
+            steps={owner: tmp_path / "data" / "pl"},
         ),
     )
     module = DreamplaceModule(
@@ -279,10 +286,46 @@ def test_legalization_enables_detailed_place_without_padding(tmp_path):
         "post_legalization_adaptive_padding_flag": params.post_legalization_adaptive_padding_flag,
     } == {
         "macro_only": 0,
-        "detailed_place_flag": 1,
+        "detailed_place_flag": detailed_place_flag,
         "cell_padding_x": 0,
         "post_legalization_adaptive_padding_flag": 0,
     }
+
+
+@pytest.mark.parametrize(
+    ("owner", "site_width", "expected_padding"),
+    [
+        (StepEnum.LEGALIZATION.value, 200, 200),
+        (StepEnum.LEGALIZATION.value, 420, 420),
+        (SkippableStepEnum.TIMING_OPT.value, 200, 0),
+    ],
+)
+def test_legalization_uses_site_padding_only_for_cts(
+    tmp_path, monkeypatch, owner, site_width, expected_padding
+):
+    import dreamplace.Params as params_module
+    import dreamplace.Placer as placer_module
+
+    seen = []
+
+    class FakeEngine:
+        def __init__(self, params):
+            self.params = params
+
+        def setup_rawdb(self, **_kwargs):
+            self.placedb = SimpleNamespace(pydb=SimpleNamespace(site_width=site_width))
+
+        def run(self):
+            seen.append((self.params.detailed_place_flag, self.params.cell_padding_x))
+            return {"hpwl": 1.0}
+
+    module = _module_for_owner(tmp_path, owner)
+    json_write(module.param_path, {"cell_padding_x": 999, "detailed_place_flag": 1})
+    monkeypatch.setattr(params_module, "Params", FakeParams)
+    monkeypatch.setattr(placer_module, "PlacementEngine", FakeEngine)
+
+    assert module.run_legalization() is True
+    assert seen == [(int(owner != StepEnum.LEGALIZATION.value), expected_padding)]
 
 
 def test_dreamplace_step_info_stringifies_path_config(tmp_path):
