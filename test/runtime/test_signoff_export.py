@@ -164,6 +164,7 @@ def test_inspect_signoff_package_reads_current_home_checklist(monkeypatch, tmp_p
     review = signoff_export.inspect_signoff_package(SimpleNamespace(directory=workspace_dir))
 
     assert review["status"] == "blocked"
+    assert review["readiness"] == "ERROR"
     assert [group["id"] for group in review["groups"]] == [
         "initial",
         "config",

@@ -11,6 +11,11 @@ Entry point: `nix/scripts/export-signoff-csv.sh --workspace WS --out-dir DIR
 Status: **v0 / trial** — this is a CI contract, not product signoff truth.
 Product readiness is `ecc signoff inspect/export`.
 
+Milestone (inputs → readiness PASS/WARN/MISS/ERROR + package archive, ICS55
+fixture-first): see repo-adjacent `/root/ec/SIGNOFF_MILESTONE.md` and GitHub
+milestone `signoff-readiness+package` on `plitenh/ecc`. Projection emits a
+`readiness:` line derived from checklist CSV (no PDK required).
+
 ## Where it runs
 
 The gates run against **real design workspaces** produced by the
@@ -22,7 +27,7 @@ this repo keeps only the library and the runner scripts.
 ## Local run
 
 ```bash
-uv run pytest test/test_signoff_csv_export.py -q   # unit coverage incl. negative gates
+uv run pytest test/test_signoff_csv_export.py test/engine/test_signoff_readiness.py -q
 
 ECC_FLOW_WORKSPACES=<workspaces> \
   nix run .#signoff-lit -- <ecc-ci-designs checkout>
