@@ -77,8 +77,7 @@ jobs:
         run: |
           mkdir -p ../pdk/icsprout55-pdk
           tar -xzf ../pdk/icsprout55-pdk.tar.gz -C ../pdk/icsprout55-pdk
-          mkdir -p ../pdk/icsprout55-pdk/techfile
-          cp test/fixtures/ics55_ci.layermap ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
+          test -s ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
 
       - name: Setup OSS CAD Suite
         uses: YosysHQ/setup-oss-cad-suite@v4
@@ -327,8 +326,7 @@ jobs:
         run: |
           mkdir -p ../pdk/icsprout55-pdk
           tar -xzf ../pdk/icsprout55-pdk.tar.gz -C ../pdk/icsprout55-pdk
-          mkdir -p ../pdk/icsprout55-pdk/techfile
-          cp test/fixtures/ics55_ci.layermap ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
+          test -s ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
 
       - name: Setup OSS CAD Suite
         uses: YosysHQ/setup-oss-cad-suite@v4
