@@ -217,7 +217,7 @@ SCHEMAS = (
     _place("init_loc_perc_x", 0.5),
     _place("init_loc_perc_y", 0.5),
     _place("legalize_flag", 1),
-    _place("l_shape_routability_flag", 0),
+    _place("l_shape_routability_flag", 1),
     _place("l_shape_update_interval", 30),
     _place("macro_halo_x", 0.0),
     _place("macro_halo_y", 0.0),

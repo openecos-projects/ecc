@@ -59,7 +59,7 @@
     "gpugr_backend": "auto",
     "gpugr_area_adjust_rrr_iters": 0,
     "gpugr_area_adjust_congestion_mode": "max_hv",
-    "l_shape_routability_flag": 0,
+    "l_shape_routability_flag": 1,
     "l_shape_update_interval": 30,
     "macro_place_flag": 0,
     "macro_only": 0,
