@@ -11,6 +11,7 @@ from chipcompiler.cli.core.inputs import (
     ProjectAddInput,
     ProjectApplyInput,
     ProjectBaselineInput,
+    ProjectDoctorInput,
     ProjectReconcileInput,
     ProjectSetInput,
     ProjectShowInput,

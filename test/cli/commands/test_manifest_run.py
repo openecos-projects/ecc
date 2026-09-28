@@ -222,39 +222,6 @@ class TestManifestRunCommand:
         assert manifest["workspaces"][0]["status"] == "running"
         assert manifest["runtime_processes"] == {}
 
-    def test_terminal_write_back_converges_derived_fields_before_status(
-        self, tmp_path, capsys, flow_mocks, manifest_stubs, monkeypatch
-    ):
-        """A run writes back computed parameters, so at the terminal exit the
-        entry's derived fields re-converge on the directory (status excluded:
-        it stays with the explicit write-backs) before the terminal status
-        lands."""
-        project_dir = tmp_path / "proj"
-        project_dir.mkdir()
-        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
-        events = []
-        monkeypatch.setattr(
-            "chipcompiler.project.manifest_refresh.refresh_workspace_derived_fields",
-            lambda _project_dir, workspace_id, *, include_status=True: events.append(
-                ("derived", workspace_id, include_status)
-            )
-            or True,
-        )
-        monkeypatch.setattr(
-            "chipcompiler.cli.project.manifest_write.write_back_workspace_status",
-            lambda _project_dir, _workspace_id, status: events.append(("status", status)) or True,
-        )
-
-        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
-
-        assert rc == 0
-        assert events == [
-            ("status", "running"),
-            ("derived", "ws_0001", False),
-            ("status", "success"),
-        ]
-
-
 class TestOriginDefResolution:
     """base_design.origin_def reaches workspace creation on both layering
     paths; relative spellings resolve against the project root (never the

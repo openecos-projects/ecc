@@ -224,6 +224,7 @@ def refresh_cmd(
         project=project_options(project),
         workspace=workspace,
         force=force,
+        keep_backup=keep_backup,
         expected_revision=expected_revision,
         command_id=command_id,
         no_wait=no_wait,

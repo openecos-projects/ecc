@@ -339,18 +339,43 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
     )
     from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
 
+    backup_directory = None
+    fallback_backup = None
     try:
         current = read_engineering_snapshot_from_directory(ctx.run_dir)
         expected = command_input.expected_revision or current["workspaceRevision"]
         spec, bindings = workspace_update_spec(ctx.run_dir, cfg, flow_config)
+        # Keep compatibility with older embedders that provide the lifecycle
+        # callable without the optional backup keyword. The in-tree engine
+        # supports it; this fallback only preserves the previous generation
+        # when an older callable is injected.
+        import inspect
+        from pathlib import Path
+
+        supports_backup = (
+            "retain_backup" in inspect.signature(update_workspace_from_spec).parameters
+        )
+        if command_input.keep_backup and not supports_backup:
+            from shutil import copytree
+
+            from chipcompiler.engine.workspace_backup import _free_backup_path
+
+            fallback_backup = _free_backup_path(Path(ctx.run_dir))
+            copytree(ctx.run_dir, fallback_backup)
+        update_kwargs = {
+            "blocking": not command_input.no_wait,
+            **({"retain_backup": command_input.keep_backup} if supports_backup else {}),
+        }
         workspace = update_workspace_from_spec(
             ctx.run_dir,
             expected,
             spec,
             bindings,
             command_input.command_id,
-            blocking=not command_input.no_wait,
+            **update_kwargs,
         )
+        backup_directory = getattr(workspace, "backup_directory", None) or fallback_backup
+        workspace = getattr(workspace, "workspace", workspace)
         snapshot = read_engineering_snapshot(workspace)
     except BlockingIOError:
         return CommandResult.err([error_record("workspace_busy")], exit_code=20)
@@ -360,7 +385,43 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
             exit_code=21 if exc.code == "revision_conflict" else 1,
         )
     except Exception as exc:
+        if fallback_backup is not None:
+            import shutil
+
+            shutil.rmtree(fallback_backup, ignore_errors=True)
         return CommandResult.err([error_record("workspace_refresh_failed", reason=str(exc))])
+
+    backup_id = None
+    if backup_directory is not None:
+        from chipcompiler.project import register_workspace_backup
+
+        try:
+            register_workspace_backup(
+                ctx.project_dir,
+                backup_directory,
+                source_workspace_id=ctx.run_id,
+            )
+            backup_id = backup_directory.name
+        except (OSError, ValueError) as exc:
+            warnings.append(
+                error_record(
+                    "manifest_write_back_failed",
+                    workspace_id=ctx.run_id,
+                    reason=f"replace backup could not be registered in project.json: {exc}",
+                )
+            )
+    from chipcompiler.project import repoint_generation_pointers
+
+    try:
+        repoint_generation_pointers(ctx.project_dir, ctx.run_id, backup_id)
+    except (OSError, ValueError) as exc:
+        warnings.append(
+            error_record(
+                "manifest_write_back_failed",
+                workspace_id=ctx.run_id,
+                reason=f"baseline/best pointers could not be updated in project.json: {exc}",
+            )
+        )
     return CommandResult.ok(
         warnings
         + [
@@ -369,6 +430,7 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
                 "status": "refreshed",
                 "workspace": ctx.run_dir,
                 "workspace_revision": snapshot["workspaceRevision"],
+                **({"backup": str(backup_directory)} if backup_directory else {}),
             }
         ]
     )
@@ -619,9 +681,7 @@ def reconcile_workspace_deletes(command_input, ctx: CommandContext) -> CommandRe
         return CommandResult.err(
             [error_record("workspace_delete_reconcile_failed", reason=str(exc))]
         )
-    return CommandResult.ok(
-        [{"status": "reconciled", "recovered_deletes": list(recovered)}]
-    )
+    return CommandResult.ok([{"status": "reconciled", "recovered_deletes": list(recovered)}])
 
 
 def reset_workspace_flow(command_input, ctx: CommandContext) -> CommandResult:
