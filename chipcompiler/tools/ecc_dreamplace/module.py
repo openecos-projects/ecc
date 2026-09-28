@@ -80,9 +80,12 @@ class DreamplaceModule:
         elif mode is DreamplaceRunMode.LEGALIZATION:
             params.global_place_flag = 0
             params.legalize_flag = 1
+            params.detailed_place_flag = 1
             params.enable_fillers = 0
             params.random_center_init_flag = 0
             params.auto_adjust_bins = 1
+            params.cell_padding_x = 0
+            params.post_legalization_adaptive_padding_flag = 0
 
         return params
 

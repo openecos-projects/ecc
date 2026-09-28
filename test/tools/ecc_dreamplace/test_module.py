@@ -237,9 +237,17 @@ def test_macro_placement_forces_selective_non_routable_placement_params(tmp_path
     }
 
 
-def test_legalization_forces_macro_only_off(tmp_path):
+def test_legalization_enables_detailed_place_without_padding(tmp_path):
     config_path = tmp_path / "dreamplace_ecc.json"
-    json_write(config_path, {"macro_only": 1})
+    json_write(
+        config_path,
+        {
+            "macro_only": 1,
+            "cell_padding_x": 300,
+            "detailed_place_flag": 0,
+            "post_legalization_adaptive_padding_flag": 1,
+        },
+    )
     workspace = Workspace(
         directory=str(tmp_path / "workspace"),
         design=OriginDesign(name="gcd"),
@@ -264,7 +272,17 @@ def test_legalization_forces_macro_only_off(tmp_path):
 
     params = module._build_params(FakeParams, mode=DreamplaceRunMode.LEGALIZATION)
 
-    assert params.macro_only == 0
+    assert {
+        "macro_only": params.macro_only,
+        "detailed_place_flag": params.detailed_place_flag,
+        "cell_padding_x": params.cell_padding_x,
+        "post_legalization_adaptive_padding_flag": params.post_legalization_adaptive_padding_flag,
+    } == {
+        "macro_only": 0,
+        "detailed_place_flag": 1,
+        "cell_padding_x": 0,
+        "post_legalization_adaptive_padding_flag": 0,
+    }
 
 
 def test_dreamplace_step_info_stringifies_path_config(tmp_path):
