@@ -16,6 +16,8 @@ from chipcompiler.runtime.requests import (
     LayoutEditDiscardRequest,
     LayoutEditSaveRequest,
     OperationStartStepRequest,
+    ProjectDoctorCheckRequest,
+    ProjectDoctorRepairRequest,
     RequestValidationError,
     WorkspaceCloseRequest,
     WorkspaceCreateRequest,
@@ -26,6 +28,7 @@ from chipcompiler.runtime.requests import (
     WorkspaceInspectSignoffRequest,
     WorkspaceOpenRequest,
     WorkspaceSyncConfigRequest,
+    WorkspaceUpdateRequest,
     parse_request_model,
 )
 
@@ -131,6 +134,24 @@ def test_first_slice_payloads_parse_to_typed_request_models(method, params, requ
 
     assert isinstance(request, request_type)
     assert is_dataclass(request)
+
+
+@pytest.mark.parametrize(
+    ("method", "request_type"),
+    [
+        ("project.doctor.check", ProjectDoctorCheckRequest),
+        ("project.doctor.repair", ProjectDoctorRepairRequest),
+    ],
+)
+def test_project_doctor_payloads_parse_project_dir_alias(method, request_type):
+    request = _parse_runtime_request(method, {"projectDir": "/work/proj"})
+
+    assert isinstance(request, request_type)
+    assert is_dataclass(request)
+    assert request.project_dir == "/work/proj"
+
+    with pytest.raises(RequestValidationError):
+        _parse_runtime_request(method, {})
 
 
 def test_flow_run_parses_reset_runtime_params_and_defaults_to_preserving():
@@ -378,6 +399,36 @@ def test_reset_dependents_must_be_boolean(method, params):
         _parse_runtime_request(method, params)
 
     assert exc_info.value.reason == "reset_dependents must be a boolean"
+
+
+_WORKSPACE_UPDATE_PARAMS = {
+    "commandId": "cmd-1",
+    "workspaceId": "ws-1",
+    "expectedWorkspaceRevision": 1,
+    "workspaceSpec": {"schemaVersion": 1},
+    "workspaceBindings": {},
+}
+
+
+def test_workspace_update_retain_backup_defaults_off():
+    request = _parse_runtime_request("workspace.update", _WORKSPACE_UPDATE_PARAMS)
+
+    assert isinstance(request, WorkspaceUpdateRequest)
+    assert request.retain_backup is False
+
+    retained = _parse_runtime_request(
+        "workspace.update", {**_WORKSPACE_UPDATE_PARAMS, "retainBackup": True}
+    )
+    assert retained.retain_backup is True
+
+
+def test_workspace_update_retain_backup_must_be_boolean():
+    with pytest.raises(RequestValidationError) as exc_info:
+        _parse_runtime_request(
+            "workspace.update", {**_WORKSPACE_UPDATE_PARAMS, "retainBackup": "yes"}
+        )
+
+    assert exc_info.value.reason == "retain_backup must be a boolean"
 
 
 def test_direct_flow_run_step_rejects_gui_only_reset_dependents_field():

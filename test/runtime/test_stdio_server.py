@@ -284,6 +284,7 @@ def test_rpc_stdio_subprocess_workspace_open_smoke(tmp_path, minimal_ics55_pdk_f
     assert process.returncode == 0, stderr.decode("utf-8", errors="replace")
     assert open_response["result"] == {
         "workspaceId": workspace_id,
+        "workspaceRevision": 1,
         "directory": str(ws.resolve()),
     }
     assert shutdown_response == {"jsonrpc": "2.0", "result": {"ok": True}, "id": 2}

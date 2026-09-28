@@ -4,6 +4,8 @@ from pathlib import Path
 
 from chipcompiler.runtime.errors import RuntimeApiError
 from chipcompiler.runtime.requests import (
+    ProjectDoctorCheckRequest,
+    ProjectDoctorRepairRequest,
     ProjectManifestDiscoverRequest,
     ProjectManifestLoadRequest,
     ProjectManifestMutationRequest,
@@ -205,6 +207,62 @@ class WorkspaceSpecRuntimeMixin:
         except (OSError, ValueError) as exc:
             raise RuntimeApiError("project_manifest_invalid", str(exc)) from exc
 
+    def check_project_doctor(self, request: ProjectDoctorCheckRequest) -> dict:
+        from chipcompiler.project.consistency import find_inconsistencies
+
+        manifest = self._doctor_manifest(request.project_dir)
+        if manifest is None:
+            return _project_doctor_result("not_applicable", project_root=None, findings=[])
+        findings = find_inconsistencies(manifest)
+        return _project_doctor_result(
+            "failed" if findings else "ok",
+            project_root=manifest.project_dir,
+            checked=len(manifest.workspaces),
+            findings=[_doctor_finding_record(finding) for finding in findings],
+        )
+
+    def repair_project_doctor(self, request: ProjectDoctorRepairRequest) -> dict:
+        from chipcompiler.project.consistency import find_inconsistencies, repair_findings
+
+        manifest = self._doctor_manifest(request.project_dir)
+        if manifest is None:
+            return _project_doctor_result("not_applicable", project_root=None, findings=[])
+        findings = find_inconsistencies(manifest)
+        if not findings:
+            return _project_doctor_result(
+                "ok",
+                project_root=manifest.project_dir,
+                checked=len(manifest.workspaces),
+                findings=[],
+            )
+        actions = repair_findings(manifest, findings)
+        failed = [action for action in actions if action.action == "failed"]
+        return _project_doctor_result(
+            "failed" if failed else "fixed",
+            project_root=manifest.project_dir,
+            checked=len(manifest.workspaces),
+            findings=[_doctor_action_record(action) for action in actions],
+            fixed=len(actions) - len(failed),
+        )
+
+    @staticmethod
+    def _doctor_manifest(project_dir: str):
+        """The ProjectManifest for doctor checks, or None when the directory
+        is not part of a manifest project (callers then stay silent)."""
+        from chipcompiler.project import discover_project_manifest
+        from chipcompiler.project.manifest import load_manifest
+
+        if not project_dir or not os.path.isdir(project_dir):
+            return None
+        try:
+            discovered = discover_project_manifest(project_dir)
+            if discovered is None:
+                return None
+            project_root, _document = discovered
+            return load_manifest(str(project_root))
+        except (OSError, ValueError) as exc:
+            raise RuntimeApiError("project_manifest_invalid", str(exc)) from exc
+
     def create_workspace(
         self,
         request: WorkspaceSpecCreateRequest,
@@ -269,7 +327,7 @@ class WorkspaceSpecRuntimeMixin:
         request: WorkspaceOpenRequest | WorkspaceSpecOpenRequest,
     ) -> dict:
         workspace = self._load_workspace(request.directory)
-        snapshot = self._ensure_engineering_snapshot(workspace)
+        snapshot = self._open_engineering_snapshot(workspace)
         bindings = (
             request.workspace_bindings if isinstance(request, WorkspaceSpecOpenRequest) else None
         )
@@ -317,23 +375,41 @@ class WorkspaceSpecRuntimeMixin:
             )
             self._release_session_db(session)
             try:
-                workspace = update_workspace_from_spec(
+                update_result = update_workspace_from_spec(
                     session.directory,
                     request.expected_workspace_revision,
                     request.workspace_spec,
                     request.workspace_bindings,
                     request.command_id,
+                    retain_backup=request.retain_backup,
                 )
             except WorkspaceLifecycleError as exc:
                 raise RuntimeApiError(exc.code, str(exc), exc.details) from exc
             except (OSError, ValueError) as exc:
                 raise RuntimeApiError("workspace_update_failed", str(exc)) from exc
+            workspace = update_result.workspace
             snapshot = self._read_engineering_snapshot(workspace)
             session.workspace = workspace
             session.workspace_revision = snapshot["workspaceRevision"]
             session.workspace_bindings = request.workspace_bindings
             session.execution_readiness = {"ready": True}
-            return _workspace_session_result(session)
+            from chipcompiler.runtime.manifest_status import (
+                register_replace_backup_workspace,
+                repoint_generation_pointers_after_update,
+                write_back_workspace_derived_fields,
+            )
+
+            write_back_workspace_derived_fields(session.directory)
+            backup_directory = update_result.backup_directory
+            if backup_directory is not None:
+                register_replace_backup_workspace(session.directory, backup_directory)
+            repoint_generation_pointers_after_update(session.directory, backup_directory)
+            return {
+                **_workspace_session_result(session),
+                "backupDirectory": (
+                    str(backup_directory) if backup_directory is not None else None
+                ),
+            }
 
         return self._with_session_mutation_lock(
             request.workspace_id,
@@ -454,16 +530,16 @@ class WorkspaceSpecRuntimeMixin:
         raise RuntimeApiError(code, "Workspace is not ready for execution", readiness)
 
     @staticmethod
-    def _ensure_engineering_snapshot(workspace) -> dict:
+    def _open_engineering_snapshot(workspace) -> dict:
         from chipcompiler.engine.snapshot import (
             EngineeringSnapshotError,
-            read_engineering_snapshot,
+            open_workspace_snapshot,
         )
 
         try:
-            return read_engineering_snapshot(workspace)
+            return open_workspace_snapshot(workspace)
         except EngineeringSnapshotError as exc:
-            raise RuntimeApiError("engineering_snapshot_unavailable", str(exc)) from exc
+            raise RuntimeApiError(exc.code, str(exc)) from exc
 
     @staticmethod
     def _create_engineering_snapshot(workspace) -> dict:
@@ -537,6 +613,45 @@ class WorkspaceSpecRuntimeMixin:
             raise RuntimeApiError("engineering_snapshot_commit_failed", str(exc)) from exc
         session.workspace_revision = snapshot["workspaceRevision"]
         return session.workspace_revision
+
+
+def _project_doctor_result(
+    status: str,
+    *,
+    project_root: str | None,
+    findings: list[dict],
+    checked: int = 0,
+    fixed: int | None = None,
+) -> dict:
+    result = {
+        "doctor": "project",
+        "status": status,
+        "projectRoot": str(project_root) if project_root else None,
+        "checked": checked,
+        "inconsistent": len(findings),
+        "findings": findings,
+    }
+    if fixed is not None:
+        result["fixed"] = fixed
+    return result
+
+
+def _doctor_finding_record(finding) -> dict:
+    return {
+        "check": finding.check,
+        "status": "fail",
+        "workspace_id": finding.workspace_id,
+        "workspace": finding.workspace_path,
+        "detail": finding.detail,
+    }
+
+
+def _doctor_action_record(action) -> dict:
+    record = _doctor_finding_record(action.finding)
+    record["fix"] = action.action
+    if action.detail:
+        record["fix_detail"] = action.detail
+    return record
 
 
 def _workspace_session_result(session: WorkspaceSession) -> dict:

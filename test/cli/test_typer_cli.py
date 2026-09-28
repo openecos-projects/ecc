@@ -132,6 +132,15 @@ def test_param_help_returns_zero_and_lists_subcommands(capsys):
         assert command in out
 
 
+def test_project_help_returns_zero_and_lists_subcommands(capsys):
+    rc = cli_main.run(["project", "--help"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    for command in ("set", "unset", "add", "remove", "show", "doctor"):
+        assert command in out
+
+
 def test_unknown_command_returns_nonzero_without_system_exit(capsys):
     rc = cli_main.run(["missing-command"])
 

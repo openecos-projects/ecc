@@ -192,6 +192,9 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
         return _workspace_session_result(session)
 
     def open_workspace(self, request: WorkspaceOpenRequest | WorkspaceSpecOpenRequest) -> dict:
+        existing = self.sessions.find_session(request.directory)
+        if existing is not None and self.operations.has_active_workspace(existing.workspace_id):
+            return _workspace_session_result(existing, reused=True)
         if isinstance(request, WorkspaceSpecOpenRequest) or request.workspace_bindings is not None:
             spec_request = (
                 request
@@ -207,17 +210,20 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
     def _open_legacy_workspace(self, request: WorkspaceOpenRequest) -> dict:
         workspace = self._load_workspace(request.directory)
         build_flow_for_workspace(workspace, create_step_workspaces=False)
-        from chipcompiler.engine.snapshot import EngineeringSnapshotError, read_engineering_snapshot
+        from chipcompiler.engine.snapshot import (
+            EngineeringSnapshotError,
+            open_workspace_snapshot,
+        )
 
         try:
-            snapshot = read_engineering_snapshot(workspace)
-        except EngineeringSnapshotError:
-            snapshot = None
+            snapshot = open_workspace_snapshot(workspace)
+        except EngineeringSnapshotError as exc:
+            raise RuntimeApiError(exc.code, str(exc)) from exc
         session = self.sessions.open_session(
             workspace.directory,
             workspace=workspace,
-            workspace_id=snapshot["workspaceId"] if snapshot else None,
-            workspace_revision=snapshot["workspaceRevision"] if snapshot else 0,
+            workspace_id=snapshot["workspaceId"],
+            workspace_revision=snapshot["workspaceRevision"],
         )
         self.operations.load_workspace_ledger(
             session.workspace_id,
@@ -533,7 +539,11 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                     )
                 return {"rerun": request.rerun}
 
-        return self._with_session_mutation_lock(request.workspace_id, run)
+        return self._with_session_mutation_lock(
+            request.workspace_id,
+            run,
+            reject_active_operation=False,
+        )
 
     def flow_run_step(self, request: FlowRunStepRequest) -> dict:
         return self._flow_run_step(request)
@@ -647,7 +657,11 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                     )
                 return result
 
-        return self._with_session_mutation_lock(request.workspace_id, run_step)
+        return self._with_session_mutation_lock(
+            request.workspace_id,
+            run_step,
+            reject_active_operation=False,
+        )
 
     def start_flow_operation(self, request: OperationStartFlowRequest) -> dict:
         self._require_gui_operation_origin(request.origin)
@@ -1285,7 +1299,7 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
         workspace_id: str,
         operation: Callable[[WorkspaceSession], _T],
         *,
-        reject_active_operation: bool = False,
+        reject_active_operation: bool = True,
     ) -> _T:
         session = self._get_session(workspace_id)
         if reject_active_operation:
@@ -2572,10 +2586,12 @@ def build_flow_for_workspace(workspace, *, create_step_workspaces: bool = True):
     return engine_flow
 
 
-def _workspace_session_result(session: WorkspaceSession) -> dict:
+def _workspace_session_result(session: WorkspaceSession, *, reused: bool = False) -> dict:
     result = {"workspaceId": session.workspace_id, "directory": str(session.directory)}
     if session.workspace_revision > 0:
         result["workspaceRevision"] = session.workspace_revision
+    if reused:
+        result["reused"] = True
     return result
 
 

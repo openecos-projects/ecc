@@ -435,6 +435,7 @@ Field quick reference: `feasibility` (gates), `evidence`, `qor_record` (five dim
 ### 10.2 How ECOS Studio consumes it (hard-cut semantics)
 
 - Studio **never re-scores**: scores, statuses, and gates come only from `home/qor_report.json` (validated for `schema_version: 3` and `scoring_engine: "qor-v3"`).
+- The Engineering Snapshot follows the same rule: its `qorAssessment` section is data-only (validated metric records + Success-step summaries); scores reach the Snapshot exclusively through `qorSnapshotExtension`, projected from the same qor-v3 analysis. The legacy Snapshot scorer (`engine/qor_scoring.py`) has been removed.
 - **Staleness detection**: when the report's embedded `flow_steps` snapshot disagrees with the current `home/flow.json` (e.g., artifacts changed after the report was written), the report is treated as absent → **NOT_RATED** — prefer no score over a wrong score. Rerunning any step restores it.
 - Per-step metric detail, cross-workspace metric comparison, trend, and regression detection still read the per-step `qor_metrics.json`; they are pure data display and never produce scores.
 
@@ -455,6 +456,7 @@ Migration impact (to know before upgrading):
 1. **Score scale and color semantics change**: a legacy 75 (the then-ceiling) lands in YELLOW on the new scale; the GREEN line moves from 40 to 90. Watch for the scale switch when comparing historical trends.
 2. **Legacy workspaces are blanked**: workspaces completed before the upgrade (no `qor_report.json`) show NOT_RATED; **rerunning any step (or the whole flow) restores scoring**.
 3. The report field `scoring_engine: "qor-v3"` identifies the new scorer programmatically.
+4. **The legacy Snapshot scoring path is gone**: `engine/qor_scoring.py` and the old `qorAssessment.score` were removed — Snapshot consumers read scores from `qorSnapshotExtension`; `qorAssessment` remains as data-only metric/step passthrough.
 
 ## 12. FAQ
 

@@ -69,38 +69,38 @@ workspace 文件带有显式 schema 版本，来自更新版本的文件会响�
 | --- | --- | --- | --- |
 | `home/params.toml` | `schema_version` | 1 | 缺省 = 版本 0（前版本化时代）；版本 0 仍走 legacy `parameters.json` 迁移 |
 | `home/flow.json` | `schema_version` | 1 | 缺省 = 版本 0；写入处盖章，reconcile 拒绝更高版本 |
-| `home/engineering-snapshot.json` | `schemaVersion` | 2（生产）、3（预备） | 与 GUI 共享；v2→v3 是显式只写迁移通道 |
+| `home/engineering-snapshot.json` | `schemaVersion` | 6 | 与 GUI 共享；破坏性变更计数器（ADR-0005）——不支持的版本 fail-closed，从不迁移 |
 
 注册表位于 `chipcompiler/data/schema_migrations.py`：
 `{文件类型: {目标版本: 迁移函数}}`，在 workspace 打开时按版本升序依次
 应用。`params.toml` 或 `flow.json` 声明的版本高于支持范围时抛出
 `unsupported_schema_version`，错误信息带文件路径与版本号——绝不静默解析。
-`engineering-snapshot.json` 不符合支持的形态时则抛出
-`EngineeringSnapshotError`（`invalid Engineering Snapshot: <路径>`），
-不含版本号；v2 与 v3 均原生加载，v2→v3 迁移仅登记供发现——它是显式
-只写通道，加载链不会自动应用。
+`engineering-snapshot.json` 不符合支持的形态时则 fail-closed：损坏或
+结构非法的文件抛出 `EngineeringSnapshotError`
+（`invalid Engineering Snapshot: <路径>`），不支持的 `schemaVersion`
+抛出 `snapshot_rebuild_required`。快照是可再生的投影，因此没有为它
+注册迁移链——不支持的版本走重建，从不迁移。
 
 ## Engineering Snapshot 载荷边界
 
-`home/engineering-snapshot.json` 是有界索引，不是完整 EDA 报告的容器。
-`build_workspace_analysis()` 会保留所有已声明分析文件的 artifact 元数据，
-但只有同时满足以下边界时才内联 JSON 正文：
+`home/engineering-snapshot.json` 是有界投影，不是完整 EDA 报告的容器。
+`collect_workspace_projections()` 构建纯 artifact 索引——只含身份与可用性，
+payload 正文与内容哈希绝不进入快照（ADR-0010）——以及有界 top-N 预览：
 
 | 边界 | 上限 | 超限行为 |
 | --- | ---: | --- |
-| 单个 analysis 或 LEC JSON 正文 | 256 KiB | `status: oversized`、`data: null`，保留 artifact 引用 |
-| 所有内联 analysis 正文累计 | 2 MiB | 后续正文使用 `ANALYSIS_INLINE_BUDGET_EXCEEDED` |
-| Signoff checklist 正文 | 1 MiB | checklist 与 signoff 投影变为 unavailable |
+| artifact 索引条目数 | 4096 | 快照构建以 `EngineeringSnapshotError` 失败；不写入新文件 |
+| Signoff checklist 源文件正文 | 1 MiB | checklist 与 signoff 投影退化为空 / unavailable |
+| Signoff checklist 投影条目数 | 512 | 快照构建以 `EngineeringSnapshotError` 失败；不写入新文件 |
 | 序列化后的 Engineering Snapshot | 16 MiB | 写入以 `EngineeringSnapshotError` 失败；原子写保证旧文件不变 |
+| timing / hotspot 预览条目 | 各 5 条 | 截断，并置 `issuesTruncated` / `hotspotsTruncated` |
 
-不可用分析文件的契约为
-`{artifactId, status: "oversized", reasonCode, data: null}`。Studio 必须接受
-该状态，同时继续暴露 `flow` 和快照中其余有效分区。测试必须覆盖单文件
-上限、累计 analysis 预算、最终写入上限和 Studio 校验。不得为了容纳报告
-而提高 Studio 读取上限；完整报告应保持为 artifact，其正文不进入快照。
+索引绝不内联报告正文：Studio 沿 artifact 的 workspace 相对 `reference`
+按需读取并校验文件。不得为了容纳报告而提高 Studio 读取上限；完整报告
+保持为 artifact，其正文不进入快照。
 
-STA corner 明细的发现不依赖聚合文件 `sta_timing_issues.json` 的正文。即使
-聚合 analysis 正文超限，ECC 仍会按确定性顺序索引最多 32 组
-`feature/<process>/<rc>/qor_summary.json` 和 `timing_paths.json`，并将它们
-记录为可校验 artifact。Studio 通过 artifact ID 按需读取并校验用户选中的
-单个 corner；真实文件引用和报告正文不会进入 renderer 可见的快照投影。
+STA corner 明细的发现不依赖聚合文件 `sta_timing_issues.json` 的投影。ECC
+按确定性顺序索引最多 32 组 `feature/<process>/<rc>/qor_summary.json` 和
+`timing_paths.json`，并记录为可校验 artifact。Studio 通过 artifact ID
+按需读取并校验用户选中的单个 corner；真实文件引用和报告正文不会进入
+renderer 可见的快照投影。

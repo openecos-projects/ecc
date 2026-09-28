@@ -4,6 +4,8 @@ from .api import (
     discover_project_manifest,
     load_project_manifest,
     mutate_project_manifest,
+    register_workspace_backup,
+    repoint_generation_pointers,
 )
 
 __all__ = [
@@ -12,4 +14,6 @@ __all__ = [
     "discover_project_manifest",
     "load_project_manifest",
     "mutate_project_manifest",
+    "register_workspace_backup",
+    "repoint_generation_pointers",
 ]

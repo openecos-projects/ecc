@@ -237,3 +237,34 @@ def test_lvs_qor_metrics_include_connectivity_summary(tmp_path):
             },
         ],
     }
+
+
+def test_lvs_detail_summary_reads_ilvs_count_objects(tmp_path):
+    from chipcompiler.tools.ecc.qor_detail_facts import lvs_detail_summary
+
+    path = tmp_path / "lvs.step.json"
+    path.write_text(
+        json.dumps(
+            {
+                "entity": [{"entity": "Net", "netlist": 337, "def": 337, "difference": 0}],
+                "connectivity": [
+                    {
+                        "connectivity": "Routing",
+                        "open": {"count": 0, "percentage": 0.0},
+                        "short": {"count": 1, "percentage": 0.3},
+                        "connected": {"count": 336, "percentage": 99.7},
+                        "total": 337,
+                    }
+                ],
+                "violations": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = lvs_detail_summary(path)
+
+    assert summary is not None
+    assert summary["connectivity"] == [
+        {"connectivity": "Routing", "open": 0, "short": 1, "connected": 336, "total": 337}
+    ]

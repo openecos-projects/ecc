@@ -3,7 +3,6 @@
 import os
 from collections.abc import Callable
 from contextlib import nullcontext
-from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -57,8 +56,9 @@ def inspect_existing_workspace(
             "directory does not contain an ECC home/flow.json and home/params.toml",
         )
 
-    from chipcompiler.cli.inspection.discovery import get_run_status, read_flow_json
+    from chipcompiler.cli.inspection.discovery import read_flow_json
     from chipcompiler.data.workspace_config import flow_range_of, load_workspace_config
+    from chipcompiler.project.manifest_refresh import manifest_status_of, parameter_patch_of
 
     try:
         parameters = load_workspace_config(path)
@@ -90,28 +90,8 @@ def inspect_existing_workspace(
             f"workspace PDK {workspace_pdk!r} does not match project PDK {expected_pdk!r}",
         )
 
-    observed = get_run_status(flow_data)
-    status = observed if observed in ("success", "failed") else "not_started"
-    parameter_patch = {}
-    for key, value in parameters.items():
-        if key in {
-            "_flow",
-            "pdk",
-            "pdk_root",
-            "pdk_config",
-            "design",
-            "top_module",
-            "clock",
-            "config_overrides",
-            "workspace_param_overrides",
-        }:
-            continue
-        previous = (base_parameters or {}).get(key)
-        if previous != value:
-            parameter_patch[key] = {
-                "from": deepcopy(previous),
-                "to": deepcopy(value),
-            }
+    status = manifest_status_of(flow_data)
+    parameter_patch = parameter_patch_of(parameters, base_parameters)
     return ExistingWorkspaceMetadata(
         flow_config={"start_step": flow_range[0], "end_step": flow_range[1]},
         status=status,

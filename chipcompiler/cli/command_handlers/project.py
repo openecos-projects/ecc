@@ -331,6 +331,7 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
         project=command_input.project,
         overwrite=True,
         workspace=command_input.workspace,
+        keep_backup=command_input.keep_backup,
     )
     return _run_project(refresh_input, ctx, execute_flow=False)
 

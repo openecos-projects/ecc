@@ -151,6 +151,13 @@ def lvs_text(value) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def lvs_count(value) -> int | float | None:
+    """iLVS writes open/short/connected as {count, percentage} objects."""
+    if isinstance(value, dict):
+        value = value.get("count")
+    return qor_number(value)
+
+
 def lvs_detail_summary(feature_path) -> dict | None:
     feature = json_read(feature_path or "")
     if not isinstance(feature, dict):
@@ -179,10 +186,10 @@ def lvs_detail_summary(feature_path) -> dict | None:
         connectivity.append(
             {
                 "connectivity": lvs_text(item.get("connectivity")),
-                "open": qor_number(item.get("open")),
-                "short": qor_number(item.get("short")),
-                "connected": qor_number(item.get("connected")),
-                "total": qor_number(item.get("total")),
+                "open": lvs_count(item.get("open")),
+                "short": lvs_count(item.get("short")),
+                "connected": lvs_count(item.get("connected")),
+                "total": lvs_count(item.get("total")),
             }
         )
     violations = []

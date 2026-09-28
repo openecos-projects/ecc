@@ -130,7 +130,7 @@ Current implementation status:
 | `ecc run`, `ecc status`, `ecc log`, `ecc config`, `ecc migrate` | `--plain` |
 | `ecc param list/show/set/unset/diff` | `--plain` |
 | `ecc pdk set-root/show/unset` | `--plain` |
-| `ecc project set/unset/add/remove/show` | `--plain` |
+| `ecc project set/unset/add/remove/show/doctor` | `--plain` |
 | `ecc workspace refresh/import` | `--plain` |
 | `ecc signoff inspect/export` | `--plain` |
 | `ecc report summary/qor/checklist/step` | `--plain` |
@@ -231,7 +231,7 @@ Responsibilities:
 | `ecc param` | List, inspect, set, unset, and diff parameter overrides |
 | `ecc macro` | Manage manual macro placement (`macro_location.tcl`): `set`, `remove`, `import`, `show` |
 | `ecc pdk` | `set-root`/`show`/`unset` manage the `[pdk] root` path |
-| `ecc project` | Edit declared design, PDK, and flow resource fields in `ecc.toml` |
+| `ecc project` | Edit declared design, PDK, and flow resource fields in `ecc.toml`; `doctor` checks `project.json` against workspace directories (`--fix` repairs explicitly) |
 | `ecc workspace` | Refresh a declared workspace from current `ecc.toml` without running it |
 | `ecc signoff` | Inspect package readiness and export the tar.gz package |
 | `ecc report` | Write design-summary, QoR, and checklist reports; show step evidence |
@@ -260,7 +260,7 @@ implementation detail:
 | `ecc report` | `summary`, `qor`, `checklist`, `step` | File reports and per-step evidence viewing |
 | `ecc pdk` | `set-root`, `show`, `unset` | Project PDK configuration |
 | `ecc param` | `list`, `show`, `set`, `unset`, `diff` | Project parameter overrides |
-| `ecc project` | `set`, `unset`, `add`, `remove`, `show` | Project design, PDK, and flow declarations in `ecc.toml` |
+| `ecc project` | `set`, `unset`, `add`, `remove`, `show`, `doctor` | Project design, PDK, and flow declarations in `ecc.toml`; manifest ↔ directory consistency |
 | `ecc workspace` | `refresh`, `import` | Recreate or register one declared workspace from `ecc.toml`, without execution |
 
 Commands that consume a workspace use `--project DIR` (default: current
@@ -454,7 +454,10 @@ status `not_started`, and never executes the flow. If any generated
 `config/*.json` was hand-edited since the last derivation, refresh refuses
 with `derived_configs_modified`, listing the differing files; `--force`
 overwrites those edits and updates the recorded
-`home/config-derived-manifest.json`. `ecc run --workspace NAME
+`home/config-derived-manifest.json`. With `--keep-backup` the replaced tree
+is kept as a sibling `.<name>.replace-backup-<N>` directory and registered
+in `project.json` as an archived workspace entry instead of being deleted.
+`ecc run --workspace NAME
 --overwrite` remains the refresh-and-run form.
 
 ### Version Information
