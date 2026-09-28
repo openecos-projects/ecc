@@ -159,6 +159,37 @@ class TestProjection:
         lines = projection_lines(csv_dir, "gcd", spec=spec)
         assert any("gate metric drc_count status=pass" in line for line in lines)
         assert any("gate checklist quality.drc.clean status=pass" in line for line in lines)
+        assert "readiness: PASS" in lines
+
+    def test_projection_readiness_error_on_failed_gate(self, tmp_path: Path):
+        csv_dir = tmp_path / "csv"
+        csv_dir.mkdir()
+        (csv_dir / "qor_metrics.csv").write_text(
+            "step,metric_name,value,unit,scope,corner,project_role,reference,present\n",
+            encoding="utf-8",
+        )
+        (csv_dir / "checklist.csv").write_text(
+            "id,step,category,title,state,policy,blocked,summary,evidence,present\n"
+            "quality.drc.clean,,,,failed,,true,,,true\n",
+            encoding="utf-8",
+        )
+        lines = projection_lines(csv_dir, "gcd", spec=None)
+        assert "readiness: ERROR" in lines
+
+    def test_projection_readiness_miss_on_absent(self, tmp_path: Path):
+        csv_dir = tmp_path / "csv"
+        csv_dir.mkdir()
+        (csv_dir / "qor_metrics.csv").write_text(
+            "step,metric_name,value,unit,scope,corner,project_role,reference,present\n",
+            encoding="utf-8",
+        )
+        (csv_dir / "checklist.csv").write_text(
+            "id,step,category,title,state,policy,blocked,summary,evidence,present\n"
+            "artifact.sta,,,,unavailable,,true,,,false\n",
+            encoding="utf-8",
+        )
+        lines = projection_lines(csv_dir, "gcd", spec=None)
+        assert "readiness: MISS" in lines
 
 
 class TestManifest:

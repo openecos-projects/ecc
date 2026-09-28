@@ -64,6 +64,7 @@ def projection_lines(csv_dir: Path, design: str, *, spec: CsvExportSpec | None =
         )
     if not seen:
         lines.append("checklist: empty")
+    lines.append(f"readiness: {_readiness_from_checklist_rows(list(checklist_rows.values()))}")
     lines.append("section: gates")
     if spec and spec.metrics:
         for item in spec.metrics:
@@ -83,3 +84,41 @@ def projection_lines(csv_dir: Path, design: str, *, spec: CsvExportSpec | None =
                 f"state={row.get('state', '')} blocked={row.get('blocked', '')}"
             )
     return lines
+
+
+def _truthy(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes"}
+
+
+def _readiness_from_checklist_rows(rows: list[dict]) -> str:
+    """Map checklist CSV rows to milestone readiness (fixture-friendly, no PDK)."""
+    if not rows:
+        return "PASS"
+    saw_failed = False
+    saw_unavailable = False
+    saw_attention = False
+    for row in rows:
+        state = str(row.get("state") or "").strip().lower()
+        # CSV may use fail / failed
+        if state == "fail":
+            state = "failed"
+        present = str(row.get("present") or "true").strip().lower()
+        blocked = _truthy(row.get("blocked"))
+        if present == "false" or state in {"", "unavailable", "missing"}:
+            if blocked or present == "false":
+                saw_unavailable = True
+            else:
+                saw_unavailable = True
+        elif blocked and state == "failed":
+            saw_failed = True
+        elif state == "failed":
+            saw_attention = True
+        elif state not in {"pass", "passed"}:
+            saw_attention = True
+    if saw_failed:
+        return "ERROR"
+    if saw_unavailable:
+        return "MISS"
+    if saw_attention:
+        return "WARN"
+    return "PASS"

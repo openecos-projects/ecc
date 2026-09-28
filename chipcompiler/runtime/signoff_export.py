@@ -5,6 +5,7 @@ from pathlib import Path
 
 from chipcompiler.data.checklist import workspace_checklist_path
 from chipcompiler.engine import EngineFlow, SignoffPackageOptions
+from chipcompiler.engine.signoff_readiness import attach_readiness
 from chipcompiler.runtime.workspace_api import RuntimeApiError
 from chipcompiler.utility import json_read
 
@@ -115,11 +116,14 @@ def inspect_signoff_package(workspace) -> dict:
 
     risks.sort(key=lambda risk: risk["severity"] != "blocked")
     status = checklist_data.get("status")
-    return {
-        "status": status if status in {"ready", "attention", "blocked"} else "blocked",
-        "groups": review_groups,
-        "risks": risks,
-    }
+    return attach_readiness(
+        {
+            "status": status if status in {"ready", "attention", "blocked"} else "blocked",
+            "groups": review_groups,
+            "risks": risks,
+        },
+        checklist=checklist_data,
+    )
 
 
 def _unavailable_review() -> dict:
@@ -133,28 +137,33 @@ def _unavailable_review() -> dict:
         "state": "unavailable",
         "evidence": [],
     }
-    return {
-        "status": "blocked",
-        "groups": [
-            {
-                "id": group_id,
-                "label": label,
-                "status": "blocked" if group_id == "reports" else "ready",
-                "available": 0,
-                "expected": 0,
-                "summary": "Checklist unavailable" if group_id == "reports" else "No requirements",
-            }
-            for group_id, label in _REVIEW_GROUPS
-        ],
-        "risks": [
-            {
-                "severity": "blocked",
-                "title": "Signoff checklist unavailable",
-                "summary": "Re-run signoff inspection after current-output analysis completes.",
-                "details": [detail],
-            }
-        ],
-    }
+    return attach_readiness(
+        {
+            "status": "blocked",
+            "groups": [
+                {
+                    "id": group_id,
+                    "label": label,
+                    "status": "blocked" if group_id == "reports" else "ready",
+                    "available": 0,
+                    "expected": 0,
+                    "summary": (
+                        "Checklist unavailable" if group_id == "reports" else "No requirements"
+                    ),
+                }
+                for group_id, label in _REVIEW_GROUPS
+            ],
+            "risks": [
+                {
+                    "severity": "blocked",
+                    "title": "Signoff checklist unavailable",
+                    "summary": "Re-run signoff inspection after current-output analysis completes.",
+                    "details": [detail],
+                }
+            ],
+        },
+        checklist=None,
+    )
 
 
 def _review_detail(item: dict) -> dict:
