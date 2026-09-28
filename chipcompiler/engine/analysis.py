@@ -11,7 +11,8 @@ import math
 from pathlib import Path
 from typing import Any, TypeGuard
 
-from chipcompiler.data.step import STEP_DIRECTORIES, step_storage_name
+from chipcompiler.data import LEC_STEP_TOOLS
+from chipcompiler.data.step import STEP_DIRECTORIES, flow_step_directory, step_storage_name
 from chipcompiler.engine.qor import collect_metric_records
 from chipcompiler.tools.ecc.power_artifacts import (
     workspace_power_report_path,
@@ -69,9 +70,12 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
         identity = "".join(character for character in step_id.casefold() if character.isalnum())
         if identity == "fixfanout":
             continue
-        step_dir = root / STEP_DIRECTORIES.get(
-            step_id, f"{step_storage_name(step_id, tool_id)}_{tool_id}"
-        )
+        if tool_id in LEC_STEP_TOOLS:
+            step_dir = root / flow_step_directory(raw_steps, step_id)
+        else:
+            step_dir = root / STEP_DIRECTORIES.get(
+                step_id, f"{step_storage_name(step_id, tool_id)}_{tool_id}"
+            )
         analysis_dir = step_dir / "analysis"
         for kind, filename in _ANALYSIS_FILES:
             artifacts.append(
@@ -106,7 +110,7 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
             )
             if succeeded:
                 timing_preview = _timing_preview(_read_analysis_json(timing_path, root))
-        if tool_id.lower() == "yosys_lec" and design:
+        if tool_id in LEC_STEP_TOOLS and design:
             artifacts.append(
                 _artifact_ref(
                     step_dir / "output" / f"{design}_{step_id}_result.json",

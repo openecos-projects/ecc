@@ -145,9 +145,19 @@ class YosysReport(StepReport):
 
 
 @dataclass
-class YosysLecInput(StepInput):
+class LecInput(StepInput):
+    """Golden/gate netlist inputs shared by every LEC engine step."""
+
     gate_verilog: Path | None = None
     golden_verilog: Path | None = None
+
+
+class YosysLecInput(LecInput):
+    """Yosys LEC step inputs (kept as the engine step's declared shape)."""
+
+
+class KeplerFormalInput(LecInput):
+    """kepler-formal step inputs (kept as the engine step's declared shape)."""
 
 
 @dataclass
@@ -161,6 +171,18 @@ class YosysLecReport(StepReport):
     equiv_status: Path | None = None
     failed_rtlil: Path | None = None
     failed_verilog: Path | None = None
+
+
+@dataclass
+class KeplerFormalData(StepData):
+    config: Path | None = None
+
+
+@dataclass
+class KeplerFormalReport(StepReport):
+    status: Path | None = None
+    equiv_status: Path | None = None
+    miter_log: Path | None = None
 
 
 @dataclass
@@ -273,6 +295,31 @@ class YosysLecStep(WorkspaceStepBase):
     input: YosysLecInput = field(default_factory=YosysLecInput)
     data: YosysLecData = field(default_factory=YosysLecData)
     report: YosysLecReport = field(default_factory=YosysLecReport)
+
+
+@dataclass(frozen=True)
+class KeplerFormalStep(WorkspaceStepBase):
+    """kepler-formal equivalence-checking step."""
+
+    input: KeplerFormalInput = field(default_factory=KeplerFormalInput)
+    data: KeplerFormalData = field(default_factory=KeplerFormalData)
+    report: KeplerFormalReport = field(default_factory=KeplerFormalReport)
+
+
+@dataclass(frozen=True)
+class LecDualStep(WorkspaceStepBase):
+    """Dual-engine cross-checking LEC step.
+
+    One ledger step whose runner executes both physical engines on the
+    shared inputs and merges their verdicts into its output.json.
+    ``engine_steps`` is build-time wiring: the dual builder attaches the
+    per-engine step objects so build_step_space/build_step_config can
+    delegate without a workspace; the runner rebuilds them at run time
+    instead of trusting attached state across process boundaries.
+    """
+
+    input: LecInput = field(default_factory=LecInput)
+    engine_steps: dict = field(default_factory=dict, repr=False, compare=False)
 
 
 @dataclass(frozen=True)

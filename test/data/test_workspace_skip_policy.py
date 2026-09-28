@@ -88,7 +88,7 @@ def test_create_workspace_explicit_empty_skip_enables_lec_in_the_ledger(
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [(step["name"], step["tool"]) for step in flow_data["steps"]] == [
         ("Synthesis", "yosys"),
-        ("lec", "yosys_lec"),
+        ("lec", "kepler_formal"),
         ("preFloorplan", "ecc"),
     ]
 

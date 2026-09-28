@@ -51,7 +51,7 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
             step,
             ecc_module=ExplodingEccModule(),
         )
-        == StateEnum.Success
+        is True
     )
     states = _subflow_states(step)
     assert states["run sizer"] == StateEnum.Success.value
@@ -116,7 +116,7 @@ def test_sizer_runner_runs_ff_hold_pass_before_legalization(tmp_path, monkeypatc
     monkeypatch.setattr(sizer_runner, "is_dreamplace_exist", lambda: True)
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    assert sizer_runner.run_step(workspace, step) == StateEnum.Success
+    assert sizer_runner.run_step(workspace, step) is True
     assert len(calls) == 2
     assert calls[0] == [
         "/fake/sizer",
@@ -170,7 +170,7 @@ def test_sizer_runner_rejects_ff_hold_pass_without_new_outputs(tmp_path, monkeyp
     monkeypatch.setattr(sizer_runner, "is_dreamplace_exist", lambda: True)
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
+    assert sizer_runner.run_step(workspace, step) is False
     assert len(calls) == 2
     assert legalize_module.seen == []
     assert _subflow_states(step)["run sizer"] == StateEnum.Imcomplete.value
@@ -193,7 +193,7 @@ def test_sizer_runner_marks_subflow_invalid_when_tool_or_config_missing(tmp_path
     monkeypatch.setattr(sizer_runner, "is_eda_exist", lambda: False)
     monkeypatch.setattr(sizer_runner, "is_sizer_runtime_exist", lambda: True)
 
-    assert sizer_runner.run_step(workspace, step) == StateEnum.Invalid
+    assert sizer_runner.run_step(workspace, step) is False
     assert _subflow_states(step)["run sizer"] == StateEnum.Invalid.value
 
     monkeypatch.setattr(sizer_runner, "is_eda_exist", lambda: True)
@@ -201,7 +201,7 @@ def test_sizer_runner_marks_subflow_invalid_when_tool_or_config_missing(tmp_path
     assert step.script.sizer_cmd is not None
     os.remove(step.script.sizer_cmd)
 
-    assert sizer_runner.run_step(workspace, step) == StateEnum.Invalid
+    assert sizer_runner.run_step(workspace, step) is False
     assert _subflow_states(step)["run sizer"] == StateEnum.Invalid.value
 
 
@@ -229,7 +229,7 @@ def test_sizer_runner_does_not_run_sizer_when_dreamplace_is_missing(tmp_path, mo
         lambda *args, **kwargs: ran.append((args, kwargs)) or SimpleNamespace(returncode=0),
     )
 
-    assert sizer_runner.run_step(workspace, step) == StateEnum.Invalid
+    assert sizer_runner.run_step(workspace, step) is False
     assert ran == []
     assert _subflow_states(step)["run legalization"] == StateEnum.Invalid.value
     assert not Path(step.output.def_).exists()
@@ -262,7 +262,7 @@ def test_sizer_runner_marks_subflow_incomplete_when_outputs_are_missing(
         lambda command, cwd, stdout, stderr, check: SimpleNamespace(returncode=0),
     )
 
-    assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
+    assert sizer_runner.run_step(workspace, step) is False
     assert _subflow_states(step)["run sizer"] == StateEnum.Imcomplete.value
 
 
@@ -301,7 +301,7 @@ def test_sizer_runner_marks_subflow_incomplete_when_tool_is_signal_terminated(
     )
 
     with caplog.at_level(logging.ERROR, logger=sizer_runner.__name__):
-        assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
+        assert sizer_runner.run_step(workspace, step) is False
 
     assert _subflow_states(step)["run sizer"] == StateEnum.Imcomplete.value
     assert not sizer_builder.sizer_staging_def(step).exists()
@@ -340,7 +340,7 @@ def test_sizer_runner_reports_plain_exit_code_without_signal_or_fatal_line(
     )
 
     with caplog.at_level(logging.ERROR, logger=sizer_runner.__name__):
-        assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
+        assert sizer_runner.run_step(workspace, step) is False
 
     failure = caplog.records[-1].getMessage()
     assert "exit_code=1" in failure
@@ -379,7 +379,7 @@ def test_sizer_runner_inherits_captured_stdio_instead_of_truncating_step_log(
     monkeypatch.setattr(sizer_runner, "is_dreamplace_exist", lambda: True)
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    assert sizer_runner.run_step(workspace, step) == StateEnum.Imcomplete
+    assert sizer_runner.run_step(workspace, step) is False
     assert seen["stdout"] is None
     assert seen["stderr"] is subprocess.STDOUT
     assert Path(step.log.file).read_text(encoding="utf-8") == "preface\n"
@@ -403,7 +403,7 @@ def test_public_sizer_run_marks_invalid_when_tool_missing(tmp_path, monkeypatch)
     )
     sizer_builder.build_step_space(step)
 
-    assert public_run_step(workspace, step) == StateEnum.Invalid
+    assert public_run_step(workspace, step) is False
     assert _subflow_states(step)["run sizer"] == StateEnum.Invalid.value
 
 
@@ -428,7 +428,7 @@ def test_public_sizer_run_marks_invalid_when_runtime_missing(tmp_path, monkeypat
     )
     sizer_builder.build_step_space(step)
 
-    assert public_run_step(workspace, step) == StateEnum.Invalid
+    assert public_run_step(workspace, step) is False
     assert _subflow_states(step)["run sizer"] == StateEnum.Invalid.value
     with open(str(step.script.sizer_env), encoding="utf-8") as file:
         assert "-tclFile" not in file.read()
