@@ -68,7 +68,7 @@
     "route_num_bins_y": 512,
     "node_area_adjust_overflow": 0.15,
     "two_stage_density_scaler": 1000,
-    "max_num_area_adjust": 3,
+    "max_num_area_adjust": 5,
     "adjust_nctugr_area_flag": 0,
     "adjust_rudy_area_flag": 0,
     "adjust_pin_area_flag": 0,

@@ -228,7 +228,7 @@ SCHEMAS = (
     _place("macro_pin_halo_y", 0.0),
     _place("macro_place_flag", 0),
     _place("max_net_weight", "inf"),
-    _place("max_num_area_adjust", 3),
+    _place("max_num_area_adjust", 5),
     _place("max_pin_opt_adjust_rate", 1.5),
     _place("max_route_opt_adjust_rate", 2.0),
     _place("momentum_decay_factor", 0.5),
