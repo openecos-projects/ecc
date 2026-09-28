@@ -156,6 +156,50 @@ def test_qor_extension_validator_rejects_missing_and_invalid_nested_fields():
     assert not validate_qor_snapshot_extension(invalid_gate)
 
 
+@pytest.mark.parametrize("severity", [0, 0.5, 1])
+def test_qor_extension_validator_accepts_diagnosis_severity(severity):
+    extension = unavailable_qor_snapshot_extension("analysis unavailable")
+    extension["status"] = "available"
+    extension.pop("reason")
+    extension["diagnoses"] = [
+        {
+            "diagnosisId": "diag.place.congestion",
+            "state": "WATCH",
+            "severity": severity,
+            "confidence": "HIGH",
+            "triggerFeatures": ["congestion_severity_index"],
+            "affectedDimensions": ["interconnect"],
+            "interventions": [],
+            "interventionConfidence": "MEDIUM",
+            "validationRequired": None,
+        }
+    ]
+
+    assert validate_qor_snapshot_extension(extension)
+
+
+@pytest.mark.parametrize("severity", [None, True, -0.01, 1.01])
+def test_qor_extension_validator_rejects_invalid_diagnosis_severity(severity):
+    extension = unavailable_qor_snapshot_extension("analysis unavailable")
+    extension["status"] = "available"
+    extension.pop("reason")
+    extension["diagnoses"] = [
+        {
+            "diagnosisId": "diag.place.congestion",
+            "state": "WATCH",
+            "severity": severity,
+            "confidence": "HIGH",
+            "triggerFeatures": ["congestion_severity_index"],
+            "affectedDimensions": ["interconnect"],
+            "interventions": [],
+            "interventionConfidence": "MEDIUM",
+            "validationRequired": None,
+        }
+    ]
+
+    assert not validate_qor_snapshot_extension(extension)
+
+
 def test_snapshot_read_validates_expected_identity_and_revision(tmp_path):
     workspace = _workspace(tmp_path)
     create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
