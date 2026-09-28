@@ -29,7 +29,10 @@ def build_flow_for_workspace(workspace: Any, *, create_step_workspaces: bool = T
         for step, tool, state in rtl2gds_api.build_rtl2gds_flow(skip=skip):
             engine_flow.add_step(step=step, tool=tool, state=state)
     if create_step_workspaces:
-        engine_flow.create_step_workspaces()
+        # Reset/derive only rebuild metadata; they do not execute EDA tools.
+        # Avoid requiring every optional executable (notably kepler-formal)
+        # merely to reconstruct the flow graph.
+        engine_flow.create_step_workspaces(executable_steps=set())
     return engine_flow
 
 
