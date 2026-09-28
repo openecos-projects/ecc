@@ -241,11 +241,23 @@ class ECCToolsModule:
         """save def file"""
         self.ecc.def_save(def_name=path_text(def_path))
 
-    def gds_save(self, output_path: PathArg, layer_map_path: PathArg) -> bool:
+    def gds_save(
+        self,
+        output_path: PathArg,
+        layer_map_path: PathArg,
+        *,
+        is_harden: bool = False,
+    ) -> bool:
         """save gds file"""
+        layer_map = path_text(layer_map_path)
+        if not layer_map:
+            raise ValueError(
+                "PDK layer mapping file is required for GDS export; set pdk.mapping_file"
+            )
         return self.ecc.gds_save(
             gds_name=path_text(output_path),
-            layer_map_path=path_text(layer_map_path),
+            layer_map_path=layer_map,
+            is_harden=is_harden,
         )
 
     def tcl_save(self, output_path: PathArg) -> bool:
