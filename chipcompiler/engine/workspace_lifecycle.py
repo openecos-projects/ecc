@@ -255,6 +255,7 @@ def update_workspace_from_spec(
     command_id: str = "",
     *,
     blocking: bool = True,
+    retain_backup: bool = False,
 ):
     target = Path(target_directory).expanduser().resolve()
     if not target.is_dir():
@@ -332,7 +333,6 @@ def _update_workspace_from_spec(
     )
     staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=target.parent))
     staging.rmdir()
-    staging_consumed = False
     backup_directory: Path | None = None
     try:
         staged = create_workspace_from_spec(
@@ -378,7 +378,6 @@ def _update_workspace_from_spec(
             # leaves the tree at the staging path rather than deleting a
             # tree the caller asked to retain.
             backup_directory = retain_replaced_tree(staging, target)
-            staging_consumed = True
         return WorkspaceUpdateResult(workspace=workspace, backup_directory=backup_directory)
     finally:
         # A failed portable exchange can leave both trees as recovery proof.
@@ -580,6 +579,22 @@ def _load_committed_workspace(path: Path):
     if workspace is None:
         raise WorkspaceLifecycleError("workspace_invalid", f"Workspace cannot be opened: {path}")
     return workspace
+
+
+def _sweep_staging_siblings(target: Path) -> None:
+    prefix = f".{target.name}.staging-"
+    try:
+        siblings = list(target.parent.iterdir())
+    except OSError:
+        return
+    for sibling in siblings:
+        if sibling.is_dir() and not sibling.is_symlink() and sibling.name.startswith(prefix):
+            # A sibling with a committed snapshot may be an exchange-recovery
+            # candidate. Leave it for project reconciliation to validate and
+            # either roll forward or remove atomically.
+            if (sibling / "home" / "engineering-snapshot.json").is_file():
+                continue
+            shutil.rmtree(sibling, ignore_errors=True)
 
 
 def _remove_refresh_staging(staging: Path) -> None:

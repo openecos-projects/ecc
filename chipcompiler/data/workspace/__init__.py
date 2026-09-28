@@ -875,7 +875,16 @@ def prepare_workspace_for_rerun(
     if hasattr(engine_flow, "workspace_steps"):
         engine_flow.workspace_steps.clear()
     if hasattr(engine_flow, "create_step_workspaces"):
-        engine_flow.create_step_workspaces()
+        # Reset/derive preparation must not require optional execution tools;
+        # dependency checks belong to the subsequent flow run.
+        try:
+            engine_flow.create_step_workspaces(executable_steps=set())
+        except TypeError as exc:
+            # Keep compatibility with lightweight EngineFlow test doubles and
+            # older embedders that predate the executable_steps keyword.
+            if "executable_steps" not in str(exc):
+                raise
+            engine_flow.create_step_workspaces()
 
 
 def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:

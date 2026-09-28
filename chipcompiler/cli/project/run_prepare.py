@@ -250,6 +250,7 @@ def execute_fresh_run(
 
     project = ctx.project
     project_dir = ctx.project_dir
+    write_back_repair = disclosure_cmd("ecc run", project, run_name)
     # Commit point: once the replacement is verified and the backup is
     # discarded, execution failures are a normal failed run — the new tree
     # stays, and cleanup must no longer touch it.
@@ -586,7 +587,7 @@ def execute_fresh_run(
                             "expectedRevision": command_input.expected_revision,
                         },
                     )
-            commit_replacement()
+            retained_backup = commit_replacement()
 
             if not workspace_registered:
                 from chipcompiler.cli.project.config import resolve_pdk_root
@@ -720,3 +721,28 @@ def execute_fresh_run(
         }
     ]
     return CommandResult.ok(warning_records + success_records)
+
+
+def _repoint_generation_pointers(
+    project_dir: str,
+    run_name: str,
+    backup_workspace_id: str | None,
+    warning_records: list,
+    *,
+    repair: str,
+) -> None:
+    """Keep project generation pointers coherent after replacement."""
+    from chipcompiler.cli.core.records import error_record
+    from chipcompiler.project import repoint_generation_pointers
+
+    try:
+        repoint_generation_pointers(project_dir, run_name, backup_workspace_id)
+    except (OSError, ValueError) as exc:
+        warning_records.append(
+            error_record(
+                "manifest_write_back_failed",
+                workspace_id=run_name,
+                reason=f"baseline/best pointers could not be updated in project.json: {exc}",
+                repair=repair,
+            )
+        )

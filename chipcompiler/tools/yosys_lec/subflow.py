@@ -1,5 +1,7 @@
 #!/usr/bin/env python
-from chipcompiler.tools.lec_subflow import LecSubFlow
+import time
+
+from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
 
 
 class YosysLecSubFlow:
