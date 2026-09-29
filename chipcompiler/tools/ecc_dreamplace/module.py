@@ -145,7 +145,10 @@ class DreamplaceModule:
 
             engine = PlacementEngine(params)
             engine.setup_rawdb(ecc_module=self.ecc_module)
-            if mode is DreamplaceRunMode.LEGALIZATION and self.step.name == StepEnum.LEGALIZATION.value:
+            if (
+                mode is DreamplaceRunMode.LEGALIZATION
+                and self.step.name == StepEnum.LEGALIZATION.value
+            ):
                 params.cell_padding_x = engine.placedb.pydb.site_width
             ppa = engine.run()
 
