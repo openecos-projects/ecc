@@ -388,16 +388,14 @@ def test_detailed_place_default_respects_run_mode(
     assert module._build_params(FakeParams, mode=mode).detailed_place_flag == expected
 
 
-def test_placement_respects_explicit_detailed_place_disable(
-    tmp_path, dreamplace_default_config
-):
+def test_placement_respects_explicit_detailed_place_disable(tmp_path, dreamplace_default_config):
     module = _module_for_owner(tmp_path, StepEnum.PLACEMENT.value)
     dreamplace_default_config["detailed_place_flag"] = 0
     json_write(module.param_path, dreamplace_default_config)
 
-    assert module._build_params(
-        FakeParams, mode=DreamplaceRunMode.PLACEMENT
-    ).detailed_place_flag == 0
+    assert (
+        module._build_params(FakeParams, mode=DreamplaceRunMode.PLACEMENT).detailed_place_flag == 0
+    )
 
 
 def test_run_legalization_allows_timing_opt_and_legalization_owners(tmp_path, monkeypatch):
