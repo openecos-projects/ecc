@@ -726,6 +726,12 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     from .config_overrides import apply_config_overrides
 
     apply_config_overrides(workspace.config, workspace.parameters.data)
+    cts_path = workspace.config[f"{StepEnum.CTS.value}"]
+    cts = json_read(cts_path)
+    if not cts.get("buffer_type") and workspace.pdk.buffers:
+        cts["buffer_type"] = workspace.pdk.buffers
+        if not json_write(cts_path, cts):
+            raise OSError(f"Failed to restore PDK CTS buffers: {cts_path}")
     # Expand PDK-relative liberty paths only after overrides are applied:
     # explicit sta.liberty parameters carry the same PDK-relative defaults,
     # and re-applying them above must not resurrect unexpanded paths.

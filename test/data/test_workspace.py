@@ -1334,7 +1334,7 @@ def test_refresh_workspace_config_reapplies_direct_config_overrides(
         parameters={
             **default_ics55_parameters,
             "Config Overrides": {
-                "CTS": {"skew_bound": "0.05"},
+                "CTS": {"skew_bound": "0.05", "buffer_type": []},
                 "dreamplace": {"num_threads": 12},
             },
         },
@@ -1344,6 +1344,7 @@ def test_refresh_workspace_config_reapplies_direct_config_overrides(
     cts = json_read(workspace.config[StepEnum.CTS.value])
     dreamplace = json_read(workspace.config["dreamplace"])
     assert cts["skew_bound"] == "0.05"
+    assert cts["buffer_type"] == workspace.pdk.buffers
     assert dreamplace["num_threads"] == 12
 
     cts["skew_bound"] = "0.20"
@@ -1353,7 +1354,9 @@ def test_refresh_workspace_config_reapplies_direct_config_overrides(
 
     refresh_workspace_config(workspace)
 
-    assert json_read(workspace.config[StepEnum.CTS.value])["skew_bound"] == "0.05"
+    cts = json_read(workspace.config[StepEnum.CTS.value])
+    assert cts["skew_bound"] == "0.05"
+    assert cts["buffer_type"] == workspace.pdk.buffers
     assert json_read(workspace.config["dreamplace"])["num_threads"] == 12
 
 
