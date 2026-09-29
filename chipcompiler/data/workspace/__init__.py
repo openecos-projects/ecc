@@ -956,6 +956,12 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
                 ]
         json_write(workspace.config[f"{StepEnum.RCX.value}"], rcx)
 
+    # Step-dependent paths are written after the common parameter/PDK refresh.
+    # Record the final managed JSON state so refresh detects only later edits.
+    from .config_manifest import record_derived_config
+
+    record_derived_config(workspace)
+
 
 def _workspace_directory_has_existing_data(workspace_dir: Path) -> bool:
     if not workspace_dir.exists():

@@ -98,6 +98,8 @@ def list_cmd(
     render_key = (
         "param:catalog"
         if all_params and plain and workspace is None and step is None
+        else "param:workspace:list"
+        if plain and workspace is not None
         else "param:list"
     )
     execute_command("param", command_input, param_list_handler, render_key=render_key)
