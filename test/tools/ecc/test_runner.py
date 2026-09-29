@@ -142,6 +142,9 @@ def test_split_floorplan_runs_pre_and_post_phases_independently(monkeypatch, tmp
     analyzed_steps = []
 
     class FakeFloorplanModule:
+        def set_net(self, net_name, net_type):
+            calls.append(("set_net", net_name, net_type))
+
         def init_fp(self, config):
             calls.append(("init_fp", config))
 
@@ -167,10 +170,11 @@ def test_split_floorplan_runs_pre_and_post_phases_independently(monkeypatch, tmp
     macro_location = tmp_path / "macro_location.tcl"
     macro_location.write_text("# macro locations\n")
     workspace = Workspace(
+        parameters=Parameters(data={"clock": "clk"}),
         config={
             StepEnum.FLOORPLAN.value: floorplan_config,
             "macro_location": macro_location,
-        }
+        },
     )
     module = FakeFloorplanModule()
 
@@ -192,6 +196,7 @@ def test_split_floorplan_runs_pre_and_post_phases_independently(monkeypatch, tmp
         step=EccStep(name=StepEnum.PRE_FLOORPLAN.value),
     )
     assert calls == [
+        ("set_net", "clk", "CLOCK"),
         ("init_fp", str(simple_floorplan_config)),
         ("run_simple_fp",),
         ("destroy_fp",),
@@ -209,7 +214,7 @@ def test_split_floorplan_runs_pre_and_post_phases_independently(monkeypatch, tmp
         workspace=workspace,
         step=EccStep(name=StepEnum.POST_FLOORPLAN.value),
     )
-    assert calls[3:] == [
+    assert calls[4:] == [
         ("init_fp", str(floorplan_config)),
         ("run_fp",),
         ("destroy_fp",),
@@ -294,12 +299,6 @@ class SnapshotSaveEccModule:
             return False
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         (Path(output_dir) / "geometry.manifest").write_text("schema=ecc.geometry.v1\n")
-        return True
-
-    def view_json_save(self, **_kwargs):
-        return True
-
-    def view_json_apply_edits(self, **_kwargs):
         return True
 
     def feature_sammry(self, **_kwargs):

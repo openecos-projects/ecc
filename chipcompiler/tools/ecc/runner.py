@@ -742,6 +742,13 @@ def run_pre_floorplan(
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
+        clock_name = workspace.parameters.data.get("clock", "")
+        if clock_name:
+            ecc_module.set_net(net_name=clock_name, net_type="CLOCK")
+            sub_flow.update_step(
+                step_name=EccSubFlowEnum.set_clock_net.value, state=StateEnum.Success
+            )
+
         floorplan_config = os.fspath(workspace.config.get(StepEnum.FLOORPLAN.value, ""))
         floorplan_path = Path(floorplan_config)
         simple_floorplan_config = os.fspath(
@@ -796,7 +803,6 @@ def run_post_floorplan(
         sub_flow.update_step(step_name=EccSubFlowEnum.PDN.value, state=StateEnum.Success)
 
         ecc_module.destroy_fp()
-        sub_flow.update_step(step_name=EccSubFlowEnum.set_clock_net.value, state=StateEnum.Success)
 
         reslut = save_data(
             workspace=workspace,

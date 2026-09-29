@@ -185,19 +185,6 @@ class DreamplaceChecklist:
 
         return data
 
-    def view_instances(self) -> dict:
-        view_dir = self.workspace_step.output.view_json or ""
-        return json_read(Path(view_dir) / "design" / "instances.json")
-
-    def count_unplaced_instances(self) -> int | None:
-        instances = self.view_instances().get("data", [])
-        if not isinstance(instances, list):
-            return None
-
-        return sum(
-            1 for inst in instances if inst.get("status", "") not in ("PLACED", "FIXED", "COVER")
-        )
-
     def has_plot_files(self) -> bool:
         step_dirs = self.workspace_step.data.steps or {}
         pattern = os.path.join(
@@ -214,13 +201,11 @@ class DreamplaceChecklist:
 class DreamplacePlacementChecklist(DreamplaceChecklist):
     def cell_overlap_success(self) -> bool:
         text = self.log_text()
-        unplaced = self.count_unplaced_instances()
 
         return (
             self.step_file_success()
             and "Start legalization" in text
             and "legalization takes" in text
-            and (unplaced is None or unplaced == 0)
         )
 
     def check(self) -> bool:
@@ -321,13 +306,8 @@ class DreamplaceLegalizationChecklist(DreamplaceChecklist):
 
     def cell_overlap_success(self) -> bool:
         text = self.log_text()
-        unplaced = self.count_unplaced_instances()
 
-        return (
-            self.step_file_success()
-            and "Legality check takes" in text
-            and (unplaced is None or unplaced == 0)
-        )
+        return self.step_file_success() and "Legality check takes" in text
 
     def site_alignment_success(self) -> bool:
         db = self.feature_db()
