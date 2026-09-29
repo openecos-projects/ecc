@@ -193,7 +193,7 @@ def test_workspace_param_list_honors_step_filter(
             "--workspace",
             "baseline",
             "--step",
-            "cts",
+            "place",
             "--project",
             project_dir,
             "--plain",
@@ -201,9 +201,40 @@ def test_workspace_param_list_honors_step_filter(
     )
 
     assert rc == 0
-    assert plain_records(capsys.readouterr().out) == [
-        {"param": "list", "status": "clean", "workspace": "baseline"}
-    ]
+    record = plain_records(capsys.readouterr().out)[0]
+    assert record["id"] == "place.target_density"
+    assert record["value_literal"] == "0.2"
+
+
+def test_workspace_param_list_rejects_unknown_step(
+    capsys, create_cli_project, monkeypatch, plain_records
+):
+    project_dir = create_cli_project()
+    workspace_dir = Path(project_dir) / "baseline"
+    _write_manifest(project_dir)
+    workspace = _workspace(workspace_dir)
+    monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _path: workspace)
+
+    rc = cli_main.run(
+        [
+            "param",
+            "list",
+            "--workspace",
+            "baseline",
+            "--step",
+            "cts",
+            "--project",
+            project_dir,
+            "--plain",
+        ]
+    )
+
+    assert rc == 1
+    assert plain_records(capsys.readouterr().err)[0] == {
+        "kind": "error",
+        "error": "unknown_step",
+        "step": "cts",
+    }
 
 
 def test_workspace_param_list_matches_first_step_configuration(
@@ -231,7 +262,13 @@ def test_workspace_param_list_matches_first_step_configuration(
     )
 
     assert rc == 0
-    assert [record["param"] for record in plain_records(capsys.readouterr().out)] == [
+    records = plain_records(capsys.readouterr().out)
+    assert [record["id"] for record in records] == [
         "design.frequency_mhz",
         "flow.run_analysis",
     ]
+    assert records[0]["record"] == "parameter"
+    assert records[0]["step_id"] == "Synthesis"
+    assert records[0]["type"] == "float"
+    assert records[0]["applies_to"] == "synthesis"
+    assert records[0]["value_literal"] == "100.0"
