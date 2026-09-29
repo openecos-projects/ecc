@@ -8,6 +8,7 @@ Build:
 
 import os
 import sys
+import sysconfig
 import warnings
 from importlib.util import find_spec
 from pathlib import Path
@@ -183,6 +184,21 @@ def collect_dreamplace_thirdparty_files():
     return datas
 
 
+def collect_xplace_runtime():
+    root = Path(sysconfig.get_path("platlib")) / "thirdparty" / "xplace"
+    datas = []
+    binaries = []
+    if not root.is_dir():
+        return datas, binaries
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        destination = str(Path("thirdparty/xplace") / path.relative_to(root).parent)
+        entry = (str(path), destination)
+        (binaries if path.suffix == ".so" else datas).append(entry)
+    return datas, binaries
+
+
 def collect_doc_guides():
     datas = []
     for relpath in DOC_GUIDES:
@@ -285,6 +301,8 @@ datas.extend(collect_required_metadata())
 datas.extend(collect_ecc_resources())
 datas.extend(collect_jsonrpcserver_resources())
 datas.extend(collect_dreamplace_thirdparty_files())
+xplace_datas, xplace_binaries = collect_xplace_runtime()
+datas.extend(xplace_datas)
 datas.extend(collect_doc_guides())
 
 binaries = []
@@ -294,6 +312,7 @@ binaries.extend(collect_ecc_tools_extension_binaries())
 binaries.extend(klayout_binaries)
 binaries.extend(dreamplace_binaries)
 binaries.extend(torch_binaries)
+binaries.extend(xplace_binaries)
 binaries.extend(collect_platform_runtime_libs())
 binaries = filter_collected_payloads(binaries)
 
