@@ -58,7 +58,7 @@ def normalize_runtime_id(value: str | None, *, default: str) -> str:
 
 
 def default_log_path(run_id: str) -> str:
-    return f"home/run-logs/{run_id}.log"
+    return f"log/{run_id}.log"
 
 
 def normalize_log_path(value: str | None, run_id: str) -> str:

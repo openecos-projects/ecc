@@ -735,7 +735,7 @@ class TestExplicitRunLogOrdering:
         project_dir = create_cli_project(pdk_root=pdk_root)
         run_dir = self._divergent_workspace(project_dir, pdk_root)
         run_id = str(uuid.uuid4())
-        log_rel = f"home/run-logs/{run_id}.log"
+        log_rel = f"log/{run_id}.log"
 
         rc = cli_main.run(
             [
@@ -763,10 +763,10 @@ class TestExplicitRunLogOrdering:
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
         run_dir = self._divergent_workspace(project_dir, pdk_root)
-        # A regular file blocks the run-logs directory: opening the log must
+        # A regular file blocks the log directory: opening the log must
         # fail before preflight (which would report flow_mismatch) and before
         # any flow execution.
-        Path(run_dir, "home", "run-logs").write_text("not a directory")
+        Path(run_dir, "log").write_text("not a directory")
         run_id = str(uuid.uuid4())
 
         rc = cli_main.run(
@@ -777,7 +777,7 @@ class TestExplicitRunLogOrdering:
                 "--run-id",
                 run_id,
                 "--log-file",
-                f"home/run-logs/{run_id}.log",
+                f"log/{run_id}.log",
                 "--plain",
             ]
         )
