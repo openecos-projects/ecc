@@ -77,8 +77,7 @@ jobs:
         run: |
           mkdir -p ../pdk/icsprout55-pdk
           tar -xzf ../pdk/icsprout55-pdk.tar.gz -C ../pdk/icsprout55-pdk
-          mkdir -p ../pdk/icsprout55-pdk/techfile
-          cp test/fixtures/ics55_ci.layermap ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
+          test -s ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
 
       - name: Setup OSS CAD Suite
         uses: YosysHQ/setup-oss-cad-suite@v4
@@ -106,6 +105,24 @@ jobs:
         run: |
           command -v Sizer
           test -f "${CHIPCOMPILER_ECC_SIZER_ROOT}/src/sizer_os.tcl"
+
+      - name: Setup kepler-formal
+        uses: ./.github/actions/install-ci-tool
+        with:
+          repo: openecos-projects/kepler-formal
+          workflow: package.yml
+          artifact: kepler-formal-linux-x64
+          archive: kepler-formal-linux-x64.tar.gz
+          root-marker: bin/kepler-formal
+          root-env: CHIPCOMPILER_KEPLER_FORMAL_ROOT
+          # TODO: drop once the kepler-formal package workflow runs on main.
+          fallback-branch: emin/add-ci-pkgs
+          github-token: ${{ github.token }}
+
+      - name: Verify kepler-formal
+        run: |
+          command -v kepler-formal
+          "${CHIPCOMPILER_KEPLER_FORMAL_ROOT}/bin/kepler-formal" --version
 
       - name: Pytest
         run: uv run --no-sync pytest test/ -v --basetemp=pytest-tmp --cov=chipcompiler --cov-report=
@@ -309,8 +326,7 @@ jobs:
         run: |
           mkdir -p ../pdk/icsprout55-pdk
           tar -xzf ../pdk/icsprout55-pdk.tar.gz -C ../pdk/icsprout55-pdk
-          mkdir -p ../pdk/icsprout55-pdk/techfile
-          cp test/fixtures/ics55_ci.layermap ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
+          test -s ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
 
       - name: Setup OSS CAD Suite
         uses: YosysHQ/setup-oss-cad-suite@v4
@@ -328,6 +344,19 @@ jobs:
           tar -xzf ecc-sizer.tar.gz -C "$RUNNER_TEMP/ecc-sizer"
           echo "$RUNNER_TEMP/ecc-sizer/bin" >> "$GITHUB_PATH"
           echo "CHIPCOMPILER_ECC_SIZER_ROOT=$RUNNER_TEMP/ecc-sizer" >> "$GITHUB_ENV"
+
+      - name: Setup kepler-formal
+        uses: ./.github/actions/install-ci-tool
+        with:
+          repo: openecos-projects/kepler-formal
+          workflow: package.yml
+          artifact: kepler-formal-linux-x64
+          archive: kepler-formal-linux-x64.tar.gz
+          root-marker: bin/kepler-formal
+          root-env: CHIPCOMPILER_KEPLER_FORMAL_ROOT
+          # TODO: drop once the kepler-formal package workflow runs on main.
+          fallback-branch: emin/add-ci-pkgs
+          github-token: ${{ github.token }}
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v19

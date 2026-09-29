@@ -44,6 +44,7 @@ class RunInput:
     only: str | None = None
     force: bool = False
     preset: str | None = None
+    keep_backup: bool = False
 
 
 @dataclass(frozen=True)
@@ -216,11 +217,19 @@ class ProjectShowInput:
 
 
 @dataclass(frozen=True)
+class ProjectDoctorInput:
+    output: OutputOptions
+    project: ProjectOptions
+    fix: bool = False
+
+
+@dataclass(frozen=True)
 class WorkspaceRefreshInput:
     output: OutputOptions
     project: ProjectOptions
     workspace: str
     force: bool = False
+    keep_backup: bool = False
 
 
 @dataclass(frozen=True)

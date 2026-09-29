@@ -179,6 +179,65 @@ def _write_back_status(
         )
 
 
+def _refresh_derived_fields(
+    project_dir: str,
+    run_name: str,
+    warning_records: list,
+    *,
+    repair: str,
+    include_status: bool = True,
+) -> None:
+    """Derived-field write-back after an in-place recreation; failure is a
+    diagnosable error record, never silent — the refreshed workspace stands.
+
+    ``include_status=False`` is for the run terminal-writeback path, where
+    status stays with ``_write_back_status``.
+    """
+    from chipcompiler.cli.core.records import error_record
+    from chipcompiler.project.manifest_refresh import refresh_workspace_derived_fields
+
+    if not refresh_workspace_derived_fields(project_dir, run_name, include_status=include_status):
+        warning_records.append(
+            error_record(
+                "manifest_write_back_failed",
+                workspace_id=run_name,
+                reason="workspace derived fields could not be written back to project.json; "
+                "the manifest is out of date until repaired",
+                repair=repair,
+            )
+        )
+
+
+def _repoint_generation_pointers(
+    project_dir: str,
+    run_name: str,
+    backup_workspace_id: str | None,
+    warning_records: list,
+    *,
+    repair: str,
+) -> None:
+    """Baseline/best pointer maintenance after an in-place replacement.
+
+    Pointers at the replaced workspace follow the registered archived backup
+    entry, or clear when no backup was retained. Failure is a diagnosable
+    error record, never silent — the committed replacement stands.
+    """
+    from chipcompiler.cli.core.records import error_record
+    from chipcompiler.project import repoint_generation_pointers
+
+    try:
+        repoint_generation_pointers(project_dir, run_name, backup_workspace_id)
+    except (OSError, ValueError) as exc:
+        warning_records.append(
+            error_record(
+                "manifest_write_back_failed",
+                workspace_id=run_name,
+                reason=f"baseline/best pointers could not be updated in project.json: {exc}",
+                repair=repair,
+            )
+        )
+
+
 def _materialize_rtl_filelist(cfg) -> str:
     """Write the declared multi-entry rtl list as one generated filelist.
 
@@ -275,15 +334,73 @@ def execute_fresh_run(
     # the existing-run path rewrites the terminal status on every invocation.
     write_back_repair = disclosure_cmd("ecc run", project, run_name)
 
-    # Commit point: once the replacement is verified and the backup is
-    # discarded, execution failures are a normal failed run — the new tree
-    # stays, and cleanup must no longer touch it.
+    # Commit point: once the replacement is verified and the renamed-aside
+    # tree is disposed of (deleted, or retained under keep_backup), execution
+    # failures are a normal failed run — the new tree stays, and cleanup must
+    # no longer touch it.
     committed_state = {"value": False}
 
-    def commit_replacement():
+    def commit_replacement() -> str | None:
+        """Commit the verified replacement and dispose of the renamed-aside tree.
+
+        Default: delete it. With ``keep_backup`` the replaced tree is kept as
+        a sibling ``.<name>.replace-backup-<N>`` directory and registered as
+        an archived manifest entry — best-effort bookkeeping that never fails
+        the committed replacement. Either way, baseline/best pointers at the
+        replaced generation follow the registered backup entry or clear when
+        none was retained. Returns the retained backup path.
+        """
         committed_state["value"] = True
-        if backup_path is not None:
+        if backup_path is None:
+            return None
+        if not command_input.keep_backup:
             shutil.rmtree(backup_path, ignore_errors=True)
+            if workspace_registered:
+                _repoint_generation_pointers(
+                    project_dir, run_name, None, warning_records, repair=write_back_repair
+                )
+            return None
+        from chipcompiler.cli.core.records import error_record
+        from chipcompiler.engine.workspace_backup import retain_replaced_tree
+        from chipcompiler.project import register_workspace_backup
+
+        retained = retain_replaced_tree(Path(backup_path), Path(run_dir))
+        if retained is None:
+            warning_records.append(
+                error_record(
+                    "workspace_backup_retain_failed",
+                    workspace_id=run_name,
+                    reason=f"backup rename failed; replaced workspace left at {backup_path}",
+                )
+            )
+            if workspace_registered:
+                _repoint_generation_pointers(
+                    project_dir, run_name, None, warning_records, repair=write_back_repair
+                )
+            return None
+        backup_workspace_id = None
+        try:
+            register_workspace_backup(project_dir, retained, source_workspace_id=run_name)
+            backup_workspace_id = retained.name
+        except (OSError, ValueError) as exc:
+            warning_records.append(
+                error_record(
+                    "manifest_write_back_failed",
+                    workspace_id=run_name,
+                    reason=f"replace backup could not be registered in project.json: {exc}; "
+                    "the backup directory remains on disk",
+                    repair=write_back_repair,
+                )
+            )
+        if workspace_registered:
+            _repoint_generation_pointers(
+                project_dir,
+                run_name,
+                backup_workspace_id,
+                warning_records,
+                repair=write_back_repair,
+            )
+        return str(retained)
 
     def terminal_failure() -> bool:
         """A failure marks the entry failed when the target stays; a
@@ -474,17 +591,20 @@ def execute_fresh_run(
 
             if not flow_config_selects_steps(flow_config):
                 # CLI-born workspaces persist the named preset chain as
-                # their target; a declared skip policy rides along,
-                # normalized (validate_flow_config is the normalizer).
+                # their target; a declared skip policy or LEC engine rides
+                # along, normalized (validate_flow_config is the normalizer).
                 workspace_parameters = getattr(workspace, "parameters", None)
                 if workspace_parameters is not None:
                     flow_section: dict = {"preset": cfg.flow_preset}
+                    policies: dict = {}
                     if isinstance(flow_config, dict) and "skip_steps" in flow_config:
+                        policies["skip_steps"] = flow_config["skip_steps"]
+                    if isinstance(flow_config, dict) and "lec_engine" in flow_config:
+                        policies["lec_engine"] = flow_config["lec_engine"]
+                    if policies:
                         from chipcompiler.data.workspace_config import validate_flow_config
 
-                        flow_section = validate_flow_config(
-                            {"preset": cfg.flow_preset, "skip_steps": flow_config["skip_steps"]}
-                        )
+                        flow_section = validate_flow_config({"preset": cfg.flow_preset, **policies})
                     workspace_parameters.data["_flow"] = flow_section
                     if not save_parameter(workspace_parameters):
                         return failed_workspace("failed to persist the flow target in params.toml")
@@ -498,11 +618,15 @@ def execute_fresh_run(
             engine_flow = EngineFlow(workspace=workspace)
             flow_builders = rtl2gds_api.get_flow_builders()
             if not engine_flow.has_init():
-                # No-arg preset builders stay canonical; the skip policy is
-                # applied to their output so every ledger-creation path
-                # filters through one resolver.
-                for step, tool, state in rtl2gds_api.filter_flow_steps(
+                # No-arg preset builders stay canonical; the configured LEC
+                # engine and skip policy apply to their output so every
+                # ledger-creation path filters through the same resolvers.
+                seeded = rtl2gds_api.substitute_lec_engine(
                     flow_builders[cfg.flow_preset](),
+                    rtl2gds_api.resolve_lec_engine(flow_config),
+                )
+                for step, tool, state in rtl2gds_api.filter_flow_steps(
+                    seeded,
                     rtl2gds_api.resolve_skip_steps(flow_config),
                 ):
                     engine_flow.add_step(step=step, tool=tool, state=state)
@@ -521,13 +645,14 @@ def execute_fresh_run(
                 return failed_workspace(f"step workspace creation failed at {missing}")
 
             # The replacement is fully constructed and verified: commit it.
-            # The previous workspace's backup is obsolete, the new tree owns
+            # The previous workspace's backup is obsolete (or retained as an
+            # archived replace-backup under --keep-backup), the new tree owns
             # the target, and later failures are a normal failed run.
             from chipcompiler.engine.snapshot import create_engineering_snapshot
 
             if getattr(workspace, "directory", None):
                 create_engineering_snapshot(workspace)
-            commit_replacement()
+            retained_backup = commit_replacement()
 
             if workspace_registered and execute_flow:
                 _write_back_status(
@@ -536,12 +661,11 @@ def execute_fresh_run(
 
             if not execute_flow:
                 if workspace_registered:
-                    _write_back_status(
-                        project_dir,
-                        run_name,
-                        "not_started",
-                        warning_records,
-                        repair=write_back_repair,
+                    # The workspace was recreated in place: re-derive the
+                    # manifest entry from the directory facts (a fresh,
+                    # never-run tree derives status ``not_started``).
+                    _refresh_derived_fields(
+                        project_dir, run_name, warning_records, repair=write_back_repair
                     )
                 return CommandResult.ok(
                     warning_records
@@ -551,6 +675,7 @@ def execute_fresh_run(
                             "status": "refreshed",
                             "workspace": run_dir,
                             "run": disclosure_cmd("ecc run", project, run_name),
+                            **({"backup": retained_backup} if retained_backup else {}),
                         }
                     ]
                 )
@@ -569,6 +694,13 @@ def execute_fresh_run(
 
             if not flow_ok:
                 if workspace_registered:
+                    _refresh_derived_fields(
+                        project_dir,
+                        run_name,
+                        warning_records,
+                        repair=write_back_repair,
+                        include_status=False,
+                    )
                     _write_back_status(
                         project_dir, run_name, "failed", warning_records, repair=write_back_repair
                     )
@@ -608,6 +740,13 @@ def execute_fresh_run(
             ws_locks.close()
 
     if workspace_registered:
+        _refresh_derived_fields(
+            project_dir,
+            run_name,
+            warning_records,
+            repair=write_back_repair,
+            include_status=False,
+        )
         _write_back_status(
             project_dir, run_name, "success", warning_records, repair=write_back_repair
         )

@@ -7,6 +7,7 @@ import shutil
 import tempfile
 from collections.abc import Collection
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ from chipcompiler.data.parameter_schema import (
 )
 from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
 from chipcompiler.engine.snapshot import create_engineering_snapshot
+from chipcompiler.engine.workspace_backup import retain_replaced_tree
 from chipcompiler.engine.workspace_spec import validate_workspace_spec
 from chipcompiler.rtl2gds import get_flow_builders
 
@@ -27,6 +29,20 @@ class WorkspaceLifecycleError(RuntimeError):
         super().__init__(message)
         self.code = code
         self.details = details or {}
+
+
+@dataclass(frozen=True)
+class WorkspaceUpdateResult:
+    """Outcome of an in-place Workspace update.
+
+    ``backup_directory`` is the retained previous generation — a sibling
+    ``.<name>.replace-backup-<N>`` directory still holding the old
+    Engineering Snapshot — when the update ran with ``retain_backup``;
+    None otherwise.
+    """
+
+    workspace: Any
+    backup_directory: Path | None = None
 
 
 def describe_workspace_binding_requirement(
@@ -212,7 +228,7 @@ def _create_workspace_from_spec(
 
         if not save_parameter(workspace.parameters):
             raise OSError(f"Failed to persist input mode: {workspace.parameters.path}")
-        snapshot = create_engineering_snapshot(workspace, workspace_spec=resolved)
+        snapshot = create_engineering_snapshot(workspace)
         _write_workspace_command(
             target,
             command_id,
@@ -237,7 +253,9 @@ def update_workspace_from_spec(
     spec: object,
     bindings: object,
     command_id: str = "",
-):
+    *,
+    retain_backup: bool = False,
+) -> WorkspaceUpdateResult:
     target = Path(target_directory).expanduser().resolve()
     if not target.is_dir():
         raise WorkspaceLifecycleError("workspace_missing", f"Workspace not found: {target}")
@@ -245,7 +263,12 @@ def update_workspace_from_spec(
 
     with _workspace_lock(target):
         return _update_workspace_from_spec(
-            target, expected_workspace_revision, spec, bindings, command_id
+            target,
+            expected_workspace_revision,
+            spec,
+            bindings,
+            command_id,
+            retain_backup=retain_backup,
         )
 
 
@@ -255,7 +278,9 @@ def _update_workspace_from_spec(
     spec: object,
     bindings: object,
     command_id: str = "",
-):
+    *,
+    retain_backup: bool = False,
+) -> WorkspaceUpdateResult:
     from chipcompiler.engine.snapshot import (
         EngineeringSnapshotError,
         ensure_engineering_snapshot,
@@ -263,11 +288,16 @@ def _update_workspace_from_spec(
     )
 
     target = Path(target_directory).expanduser().resolve()
+    # Crash recovery: a hard-killed update can strand its staging sibling; the
+    # workspace lock held by the caller guarantees any leftover is orphaned.
+    _sweep_staging_siblings(target)
     fingerprint = _workspace_command_fingerprint(
         "update", spec, bindings, expected_workspace_revision
     )
     if command_id and _command_retry_matches(target, command_id, fingerprint):
-        return _load_committed_workspace(target)
+        # An idempotent retry re-reads the committed generation; the backup
+        # retained by the original run is neither recreated nor re-reported.
+        return WorkspaceUpdateResult(workspace=_load_committed_workspace(target))
     current = _load_committed_workspace(target)
     snapshot_path = target / "home" / "engineering-snapshot.json"
     try:
@@ -302,6 +332,8 @@ def _update_workspace_from_spec(
     )
     staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=target.parent))
     staging.rmdir()
+    staging_consumed = False
+    backup_directory: Path | None = None
     try:
         staged = create_workspace_from_spec(
             staging,
@@ -315,7 +347,6 @@ def _update_workspace_from_spec(
             workspace_id=snapshot["workspaceId"],
             workspace_revision=snapshot["workspaceRevision"] + 1,
             cause="workspace.updated",
-            workspace_spec=update_spec,
         )
         _copy_workspace_commands(target, staging)
         _write_workspace_command(
@@ -328,12 +359,34 @@ def _update_workspace_from_spec(
         _rewrite_workspace_paths(staging, target)
         _exchange_directories(target, staging)
         try:
-            return _load_committed_workspace(target)
+            workspace = _load_committed_workspace(target)
         except Exception:
             _exchange_directories(target, staging)
             raise
+        if retain_backup:
+            # The exchange moved the OLD tree onto the staging path and the
+            # update is committed: keep the replaced generation as a sibling
+            # backup instead of deleting it below. A failed backup rename
+            # leaves the tree at the staging path rather than deleting a
+            # tree the caller asked to retain.
+            backup_directory = retain_replaced_tree(staging, target)
+            staging_consumed = True
+        return WorkspaceUpdateResult(workspace=workspace, backup_directory=backup_directory)
     finally:
-        shutil.rmtree(staging, ignore_errors=True)
+        if not staging_consumed:
+            shutil.rmtree(staging, ignore_errors=True)
+
+
+def _sweep_staging_siblings(target: Path) -> None:
+    """Best-effort removal of staging trees stranded by a killed update."""
+    prefix = f".{target.name}.staging-"
+    try:
+        siblings = list(target.parent.iterdir())
+    except OSError:
+        return
+    for sibling in siblings:
+        if sibling.is_dir() and not sibling.is_symlink() and sibling.name.startswith(prefix):
+            shutil.rmtree(sibling, ignore_errors=True)
 
 
 def _merge_workspace_update_parameters(
@@ -384,6 +437,7 @@ def _merge_workspace_update_parameters(
             "workspace_invalid",
             "Current Workspace parameters are unavailable",
         )
+    current_parameters = _declared_pdk_relative_parameters(current, current_parameters)
 
     merged = deepcopy(spec)
     merged["parameters"] = {
@@ -392,6 +446,31 @@ def _merge_workspace_update_parameters(
     }
     preserved = frozenset(str(key) for key in current_parameters.keys() - requested.keys())
     return merged, preserved
+
+
+def _declared_pdk_relative_parameters(workspace: Any, parameters: dict) -> dict:
+    """Return sta.liberty paths in their declared PDK-relative form.
+
+    The materialized STA config expands paths against the PDK root, so the
+    configuration view carries absolute paths. An update baseline must carry
+    the declared relative form for a PDK migration to re-resolve them
+    against the new root instead of pinning the old one.
+    """
+    liberty = parameters.get("sta.liberty")
+    if not isinstance(liberty, list):
+        return parameters
+    pdk_root = str(workspace.pdk.root or "").rstrip(os.sep)
+    if not pdk_root:
+        return parameters
+    declared = deepcopy(parameters)
+    for entry in declared["sta.liberty"]:
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), list):
+            continue
+        entry["path"] = [
+            path[len(pdk_root) + 1 :] if path.startswith(f"{pdk_root}{os.sep}") else path
+            for path in entry["path"]
+        ]
+    return declared
 
 
 def _preserve_workspace_config_extensions(source: Path, destination: Path) -> None:

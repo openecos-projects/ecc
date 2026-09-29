@@ -310,6 +310,23 @@ def test_flow_section_policy_only_skip_steps_is_valid():
     assert flow_range_of({"skip_steps": ["lec"]}) is None
 
 
+def test_flow_section_lec_engine_normalizes_the_dual_alias():
+    assert validate_flow_config({"lec_engine": "dual"}) == {"lec_engine": "lec_dual"}
+    assert validate_flow_config({"preset": "rtl2gds", "lec_engine": "yosys_lec"}) == {
+        "preset": "rtl2gds",
+        "lec_engine": "yosys_lec",
+    }
+    # Policy-only section: no flow target, just the engine.
+    assert flow_range_of({"lec_engine": "lec_dual"}) is None
+
+
+def test_flow_section_rejects_invalid_lec_engine():
+    with pytest.raises(WorkspaceFlowTargetError, match="unknown LEC engine"):
+        validate_flow_config({"lec_engine": "bogus"})
+    with pytest.raises(WorkspaceFlowTargetError, match="unknown LEC engine"):
+        validate_flow_config({"preset": "rtl2gds", "lec_engine": 42})
+
+
 def test_flow_section_rejects_invalid_skip_steps():
     with pytest.raises(WorkspaceFlowTargetError, match="skip_steps"):
         validate_flow_config({"skip_steps": "lec"})

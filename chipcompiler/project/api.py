@@ -5,9 +5,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from chipcompiler.project.manifest import (
-    _CANONICAL_TO_MANIFEST_STEP,
     ManifestError,
     load_manifest,
+    validate_manifest_range,
+)
+from chipcompiler.project.manifest_refresh import (
+    apply_derived_fields,
+    derive_workspace_fields,
+    flow_range_from_ledger,
+    manifest_base_parameters,
 )
 from chipcompiler.project.manifest_write import (
     build_project_document,
@@ -86,6 +92,55 @@ def mutate_project_manifest(project_dir: str | Path, mutation: dict) -> dict:
     return load_project_manifest(project)
 
 
+def register_workspace_backup(
+    project_dir: str | Path,
+    backup_directory: str | Path,
+    *,
+    source_workspace_id: str | None = None,
+) -> dict:
+    """Register a retained replace-backup directory as an archived entry.
+
+    The backup gets its own workspace_id derived from the backup directory
+    basename and its flow range derived from the backup's own flow.json
+    (inside ``_register_workspace``); ``source_workspace_id`` records the
+    lineage back to the replaced workspace.
+    """
+    backup = Path(backup_directory).expanduser().resolve()
+    return mutate_project_manifest(
+        project_dir,
+        {
+            "type": "register_workspace",
+            "workspace_id": backup.name,
+            "name": f"{backup.name} backup",
+            "workspace_path": str(backup),
+            "source_workspace_id": source_workspace_id,
+            "lifecycle": "archived",
+        },
+    )
+
+
+def repoint_generation_pointers(
+    project_dir: str | Path,
+    replaced_workspace_id: str,
+    backup_workspace_id: str | None,
+) -> dict:
+    """Repoint qor_baseline/best_workspace after an in-place replacement.
+
+    Pointers referencing the replaced workspace's manifest id follow the
+    retained archived backup entry (the latest generation with artifacts);
+    they clear when no backup entry was registered, so default resolution
+    applies. Pointers at any other workspace are untouched.
+    """
+    return mutate_project_manifest(
+        project_dir,
+        {
+            "type": "repoint_generation_pointers",
+            "replaced_workspace_id": replaced_workspace_id,
+            "backup_workspace_id": backup_workspace_id,
+        },
+    )
+
+
 def _project_manifest_mutator(project: Path, mutation: dict):
     def apply(document: dict) -> None:
         kind = mutation.get("type")
@@ -93,6 +148,8 @@ def _project_manifest_mutator(project: Path, mutation: dict):
             _register_workspace(document, mutation, project)
         elif kind in {"select_qor_baseline", "select_best_workspace"}:
             _select_workspace(document, mutation)
+        elif kind == "repoint_generation_pointers":
+            _repoint_generation_pointers(document, mutation)
         elif kind == "archive_workspace":
             _archive_workspace(document, mutation)
         elif kind == "delete_workspace":
@@ -136,6 +193,9 @@ def create_project_workspace(
                 if workspace is None:
                     raise ManifestError("Workspace creation returned no Workspace")
                 identity = workspace_id or target.name
+                # Register the directory-derived patch so a fresh entry equals
+                # what doctor/re-registration would derive from the workspace.
+                derived = derive_workspace_fields(target, manifest_base_parameters(manifest))
                 mutation = {
                     "type": "register_workspace",
                     "workspace_id": identity,
@@ -144,6 +204,7 @@ def create_project_workspace(
                     "source_workspace_id": source_workspace_id,
                     "created_at": now,
                     "updated_at": now,
+                    "parameter_patch": derived.get("parameter_patch", {}),
                 }
                 if not update_manifest_locked(
                     project, _project_manifest_mutator(project, mutation)
@@ -187,13 +248,16 @@ def _register_workspace(document: dict, mutation: dict, project: Path) -> None:
         if same_id and same_path:
             # The workspace is pre-registered at creation time; a later
             # re-registration carrying branch metadata completes the entry
-            # instead of being swallowed by idempotency.
+            # instead of being swallowed by idempotency. Derived fields
+            # silently re-converge on the workspace directory's facts.
             changed = False
             for key in ("source_workspace_id", "branch_from"):
                 value = mutation.get(key)
                 if value is not None:
                     existing[key] = deepcopy(value)
                     changed = True
+            derived = derive_workspace_fields(workspace_path, manifest_base_parameters(document))
+            changed = apply_derived_fields(existing, derived) or changed
             if changed:
                 timestamp = str(
                     mutation.get("updated_at")
@@ -235,32 +299,58 @@ def _workspace_range(workspace: Path, mutation: dict) -> tuple[str, str]:
     start = mutation.get("start_step")
     end = mutation.get("end_step")
     if isinstance(start, str) and isinstance(end, str) and start and end:
-        return start, end
+        return validate_manifest_range(start, end)
     try:
         ledger = json.loads((workspace / "home" / "flow.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return "Synth", "Harden"
-    names = [
-        step.get("name")
-        for step in ledger.get("steps", [])
-        if isinstance(step, dict) and isinstance(step.get("name"), str)
-    ]
-    if not names:
-        return "Synth", "Harden"
-    return (
-        _CANONICAL_TO_MANIFEST_STEP.get(names[0], names[0]),
-        _CANONICAL_TO_MANIFEST_STEP.get(names[-1], names[-1]),
-    )
+    return flow_range_from_ledger(ledger) or ("Synth", "Harden")
 
 
 def _select_workspace(document: dict, mutation: dict) -> None:
     workspace_id = _required_string(mutation, "workspace_id")
-    workspace = _find_workspace(document, workspace_id)
-    if workspace.get("status") == "archived":
-        raise ManifestError(f"Workspace is not active: {workspace_id}")
+    _find_workspace(document, workspace_id)
+    # Archived entries (e.g. a retained replace backup holding the previous
+    # generation's artifacts) are valid baseline/best targets.
     field = "qor_baseline" if mutation["type"] == "select_qor_baseline" else "best_workspace"
     document[field] = {"workspace_id": workspace_id, "reason": str(mutation.get("reason") or "")}
     document["updated_at"] = str(mutation.get("updated_at") or datetime.now(UTC).isoformat())
+
+
+def _repoint_generation_pointers(document: dict, mutation: dict) -> None:
+    """Move qor_baseline/best_workspace off a replaced workspace generation.
+
+    Only pointers referencing the replaced workspace's manifest id change:
+    they follow the retained backup entry when it is registered, and clear
+    otherwise (default resolution then applies). Pointers at any other
+    workspace are untouched.
+    """
+    replaced_workspace_id = _required_string(mutation, "replaced_workspace_id")
+    backup_workspace_id = mutation.get("backup_workspace_id")
+    if isinstance(backup_workspace_id, str) and backup_workspace_id.strip():
+        backup_workspace_id = backup_workspace_id.strip()
+        registered = any(
+            isinstance(workspace, dict) and workspace.get("workspace_id") == backup_workspace_id
+            for workspace in document.get("workspaces", [])
+        )
+        if not registered:
+            # A retained backup that never made it into the manifest cannot be
+            # pointed at: clear instead of leaving a dangling reference.
+            backup_workspace_id = None
+    else:
+        backup_workspace_id = None
+    changed = False
+    for field in ("qor_baseline", "best_workspace"):
+        selection = document.get(field)
+        if isinstance(selection, dict) and selection.get("workspace_id") == replaced_workspace_id:
+            document[field] = (
+                {"workspace_id": backup_workspace_id, "reason": str(selection.get("reason") or "")}
+                if backup_workspace_id is not None
+                else None
+            )
+            changed = True
+    if changed:
+        document["updated_at"] = str(mutation.get("updated_at") or datetime.now(UTC).isoformat())
 
 
 def _archive_workspace(document: dict, mutation: dict) -> None:

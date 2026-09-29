@@ -1,92 +1,50 @@
-"""Assemble Snapshot `qorAssessment` from committed analysis.
+"""Validated QoR metric records collected into the Snapshot `metrics` projection.
 
-Scoring rules live in `qor_scoring`; this module only validates metric
-records, calls `score_qor`, and attaches gate status from step summaries.
+The collection is pure data filtering: metric records from per-step
+``analysis/qor_metrics.json`` files are canonicalized and validated. QoR
+scoring lives in the qor-v3 engine (`chipcompiler.analysis.qor`) and reaches
+the Snapshot through `qorSnapshotExtension`; this module keeps no scoring
+rules of its own.
 """
 
 import math
 from typing import Any
 
-from .qor_scoring import (
-    DIMENSION_WEIGHTS,
-    QOR_SCORE_THRESHOLD,
-    QorScoringMetric,
-    score_qor,
+_LEGACY_METRIC_CATEGORIES = {"power": "power_integrity"}
+METRIC_CATEGORIES = frozenset(
+    {
+        "timing",
+        "power_integrity",
+        "routability_physical",
+        "area_cost",
+        "clock_robustness_dfm",
+        "runtime",
+    }
 )
 
 
-def build_workspace_qor_assessment(analysis: dict[str, Any]) -> dict[str, Any]:
-    metrics = []
-    step_summaries = []
-    metric_steps = []
-    for step in analysis["steps"]:
-        if step["flowState"] != "Success":
-            continue
-        step_id = step["stepId"]
-        metrics_file = step["metrics"]
-        payload = metrics_file["data"] if metrics_file["status"] == "available" else {}
-        records = payload.get("metrics")
-        valid_records = [record for record in records or [] if _valid_metric(record)]
-        metrics.extend(valid_records)
-        metric_steps.extend((step_id, record) for record in valid_records)
-        summary_file = step["summary"]
-        summary = summary_file["data"] if summary_file["status"] == "available" else {}
-        summary_status = (
-            str(summary.get("quality_status", "incomplete"))
-            if summary.get("schema_version") == 4
-            else "unavailable"
-        )
-        step_summaries.append(
-            {
-                "stepId": step_id,
-                "order": step["order"],
-                "name": step_id,
-                "status": summary_status,
-                "summaryMetricCount": len(valid_records),
-            }
-        )
+def collect_metric_records(payload: Any) -> list[dict[str, Any]]:
+    """Validated metric records from one ``qor_metrics.json`` payload (schema 3)."""
+    if not isinstance(payload, dict) or payload.get("schema_version") != 3:
+        return []
+    records = payload.get("metrics")
+    if not isinstance(records, list):
+        return []
+    return [
+        record
+        for record in (_canonical_metric_category(record) for record in records)
+        if _valid_metric(record)
+    ]
 
-    if not metrics:
-        return {
-            "status": "unavailable",
-            "score": {"value": None, "threshold": QOR_SCORE_THRESHOLD, "gate": "unavailable"},
-            "areaScoringStep": None,
-            "dimensionScores": {},
-            "metrics": [],
-            "steps": step_summaries,
-        }
 
-    gate = _gate_status(step_summaries)
-    scoring = score_qor(
-        [
-            QorScoringMetric(
-                step=step_id,
-                metric_id=record["id"],
-                value=float(record["value"]),
-                dimension=record["category"],
-                direction=record["direction"],
-                scope=record["scope"],
-                corner=record.get("corner"),
-                project_role=record["project_role"],
-                rating_score=record["rating"]["score"],
-            )
-            for step_id, record in metric_steps
-        ]
-    )
-    return {
-        "status": "ready",
-        "score": {
-            "value": scoring.overall_score,
-            "threshold": QOR_SCORE_THRESHOLD,
-            "gate": gate,
-        },
-        "areaScoringStep": scoring.area_scoring_step,
-        "dimensionScores": {
-            dimension: score for dimension, (score, _count) in scoring.dimensions.items()
-        },
-        "metrics": metrics,
-        "steps": step_summaries,
-    }
+def _canonical_metric_category(record: Any) -> Any:
+    if not isinstance(record, dict):
+        return record
+    category = record.get("category")
+    mapped = _LEGACY_METRIC_CATEGORIES.get(category, category)
+    if mapped != category and mapped in METRIC_CATEGORIES:
+        return {**record, "category": mapped}
+    return record
 
 
 def _valid_metric(record: Any) -> bool:
@@ -102,7 +60,7 @@ def _valid_metric(record: Any) -> bool:
         and isinstance(value, (int, float))
         and not isinstance(value, bool)
         and math.isfinite(value)
-        and record.get("category") in DIMENSION_WEIGHTS
+        and record.get("category") in METRIC_CATEGORIES
         and record.get("direction")
         in {"higher_is_better", "lower_is_better", "target_range", "trend_only"}
         and isinstance(record.get("scope"), str)
@@ -118,12 +76,3 @@ def _valid_metric(record: Any) -> bool:
         and record.get("confidence") in {"high", "medium", "low"}
         and isinstance(record.get("source"), dict)
     )
-
-
-def _gate_status(steps: list[dict[str, Any]]) -> str:
-    statuses = {step["status"] for step in steps}
-    if "blocked" in statuses:
-        return "blocked"
-    if statuses & {"incomplete", "unavailable"}:
-        return "incomplete"
-    return "pass"

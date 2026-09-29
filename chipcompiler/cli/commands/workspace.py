@@ -54,6 +54,13 @@ def refresh_cmd(
             help="Overwrite hand-edited config/*.json without asking",
         ),
     ] = False,
+    keep_backup: Annotated[
+        bool,
+        typer.Option(
+            "--keep-backup",
+            help="Keep the replaced workspace as an archived .replace-backup-* directory",
+        ),
+    ] = False,
     project: ProjectOption = None,
     plain: PlainOption = False,
 ) -> None:
@@ -65,7 +72,9 @@ def refresh_cmd(
     unless --force is given. The workspace hub `home/params.toml` keeps four
     sections: `[design]`, `[pdk]`, `[flow]`, and `[params]`. `pdk.*` path
     changes cannot be applied with `ecc param set --workspace`; edit
-    `ecc.toml` and refresh instead.
+    `ecc.toml` and refresh instead. With --keep-backup the replaced tree is
+    kept as a sibling `.<name>.replace-backup-<N>` directory and registered
+    in `project.json` as an archived workspace.
 
     See 'ecc doc config' for the full reference.
     """
@@ -74,6 +83,7 @@ def refresh_cmd(
         project=project_options(project),
         workspace=workspace,
         force=force,
+        keep_backup=keep_backup,
     )
     execute_command(
         "workspace",

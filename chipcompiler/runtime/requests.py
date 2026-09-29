@@ -72,6 +72,16 @@ class ProjectManifestMutationRequest:
 
 
 @dataclass(frozen=True)
+class ProjectDoctorCheckRequest:
+    project_dir: str
+
+
+@dataclass(frozen=True)
+class ProjectDoctorRepairRequest:
+    project_dir: str
+
+
+@dataclass(frozen=True)
 class WorkspaceSpecCreateRequest:
     command_id: str = ""
     target_directory: str = ""
@@ -99,6 +109,7 @@ class WorkspaceUpdateRequest:
     expected_workspace_revision: int
     workspace_spec: dict[str, Any]
     workspace_bindings: dict[str, Any]
+    retain_backup: bool = False
 
 
 @dataclass(frozen=True)
@@ -332,11 +343,13 @@ FIELD_ALIASES = {
     "targetDirectory": "target_directory",
     "projectId": "project_id",
     "projectRoot": "project_root",
+    "projectDir": "project_dir",
     "stepId": "step_id",
     "resetFromStep": "reset_from_step",
     "writeMacroLocation": "write_macro_location",
     "resetRuntimeParams": "reset_runtime_params",
     "force": "force",
+    "retainBackup": "retain_backup",
 }
 
 
@@ -370,6 +383,7 @@ def parse_request_model(model: type, params: object):
             "write_macro_location",
             "reset_runtime_params",
             "force",
+            "retain_backup",
         } and not isinstance(values[field.name], bool):
             raise RequestValidationError(f"{field.name} must be a boolean")
         if field.name == "additional_files":

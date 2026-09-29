@@ -8,6 +8,7 @@ from chipcompiler.tools import eda
 def _install_tool_module(monkeypatch, module_name, *, exists=True, build_metrics=None):
     module = ModuleType(f"chipcompiler.tools.{module_name}")
     module.is_eda_exist = lambda: exists
+    module.build_step = lambda **kwargs: None
     module.build_step_space = lambda step: None
     module.build_step_config = lambda workspace, step: None
     module.run_step = lambda workspace, step, ecc_module=None: True

@@ -5,9 +5,11 @@ from typing import Annotated
 import typer
 
 from chipcompiler.cli.command_handlers import project_config as handlers
+from chipcompiler.cli.command_handlers import project_doctor as doctor_handlers
 from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import (
     ProjectAddInput,
+    ProjectDoctorInput,
     ProjectSetInput,
     ProjectShowInput,
     ProjectUnsetInput,
@@ -117,4 +119,37 @@ def show_cmd(
             key=key,
         ),
         handlers.project_show,
+    )
+
+
+@project_app.command("doctor", help="Check project.json against workspace directories")
+def doctor_cmd(
+    *,
+    fix: Annotated[
+        bool,
+        typer.Option("--fix", help="Repair every reported inconsistency explicitly"),
+    ] = False,
+    project: ProjectOption = None,
+    plain: PlainOption = False,
+) -> None:
+    """Check manifest ↔ workspace-directory consistency.
+
+    Reports three classes: entries whose derived fields
+    (start_step/end_step/status/parameter_patch) disagree with the
+    workspace directory, entries pointing at missing directories, and
+    workspace directories under the project root with no manifest entry.
+    Read-only by default and exits 1 when inconsistencies are found.
+    With --fix, derived fields are rebuilt from directory facts, dead
+    entries are removed, unregistered directories are registered, and
+    every repair is printed as a record; the exit code is 1 only when a
+    repair failed.
+    """
+    _finish(
+        "doctor",
+        ProjectDoctorInput(
+            output=output_options(plain=plain),
+            project=project_options(project),
+            fix=fix,
+        ),
+        doctor_handlers.project_doctor,
     )

@@ -81,43 +81,42 @@ instead of parsing silently:
 | --- | --- | --- | --- |
 | `home/params.toml` | `schema_version` | 1 | absent = version 0 (pre-versioning); version 0 loads through the legacy `parameters.json` migration |
 | `home/flow.json` | `schema_version` | 1 | absent = version 0; writers stamp it, reconcile rejects newer versions |
-| `home/engineering-snapshot.json` | `schemaVersion` | 2 (production), 3 (prepared) | shared with the GUI; v2→v3 is an explicit write-only seam |
+| `home/engineering-snapshot.json` | `schemaVersion` | 6 | shared with the GUI; a breaking-change counter (ADR-0005) — unsupported versions fail closed, never migrate |
 
 The registry lives in `chipcompiler/data/schema_migrations.py`:
 `{file type: {target version: migration}}`, applied in ascending order at
 workspace open. A `params.toml` or `flow.json` declaring a version newer than
 supported raises `unsupported_schema_version` with the file path and version —
-never a silent parse. An `engineering-snapshot.json` that does not match a
-supported shape instead raises `EngineeringSnapshotError`
-(`invalid Engineering Snapshot: <path>`) without a version number; v2 and v3
-both load natively, and the v2→v3 migration stays registered for discovery
-only — an explicit write-only seam, not applied by the load chain.
+never a silent parse. An `engineering-snapshot.json` instead fails closed: a
+corrupt or structurally invalid file raises `EngineeringSnapshotError`
+(`invalid Engineering Snapshot: <path>`), and an unsupported `schemaVersion`
+raises `snapshot_rebuild_required`. Snapshots are regenerable projections, so
+no migration chain is registered for them — unsupported versions are rebuilt,
+never migrated.
 
 ## Engineering Snapshot payload bounds
 
-`home/engineering-snapshot.json` is a bounded index, not a container for full
-EDA reports. `build_workspace_analysis()` keeps artifact metadata for every
-declared analysis file, but only embeds a JSON body when both limits allow it:
+`home/engineering-snapshot.json` is a bounded projection, not a container for
+full EDA reports. `collect_workspace_projections()` builds a pure artifact
+index — identity and availability only; payload bodies and content hashes
+never enter the Snapshot (ADR-0010) — plus bounded top-N previews:
 
 | Boundary | Limit | Oversize behavior |
 | --- | ---: | --- |
-| One analysis or LEC JSON body | 256 KiB | `status: oversized`, `data: null`, artifact reference retained |
-| All embedded analysis bodies | 2 MiB | later bodies use `ANALYSIS_INLINE_BUDGET_EXCEEDED` |
-| Signoff checklist body | 1 MiB | checklist and signoff projections become unavailable |
+| Artifact index entries | 4096 | snapshot build fails with `EngineeringSnapshotError`; no file is written |
+| Signoff checklist source body | 1 MiB | checklist and signoff projections degrade to empty / unavailable |
+| Signoff checklist projection items | 512 | snapshot build fails with `EngineeringSnapshotError`; no file is written |
 | Serialized Engineering Snapshot | 16 MiB | write fails with `EngineeringSnapshotError`; the previous atomic file remains |
+| Timing and hotspot preview entries | 5 each | truncated, with `issuesTruncated` / `hotspotsTruncated` set |
 
-The unavailable analysis-file contract is
-`{artifactId, status: "oversized", reasonCode, data: null}`. Studio must accept
-that status while continuing to expose `flow` and the remaining valid Snapshot
-sections. Tests must cover the per-file limit, cumulative analysis budget,
-final write limit, and Studio validation. Do not raise the Studio read limit to
-accommodate a report; keep the report as an artifact and its body out of the
-Snapshot.
+The index never inlines report content: Studio follows an artifact's
+workspace-relative `reference` to read and validate the file on demand. Do
+not raise the Studio read limit to accommodate a report; keep the report as
+an artifact and its body out of the Snapshot.
 
 STA corner detail discovery is independent of the aggregate
-`sta_timing_issues.json` body. ECC indexes at most 32 deterministic
+`sta_timing_issues.json` projection. ECC indexes at most 32 deterministic
 `feature/<process>/<rc>/qor_summary.json` and `timing_paths.json` pairs as
-verified artifacts, even when the aggregate analysis body is oversized. Studio
-uses the artifact ID to read and validate one selected corner on demand; file
-references and report bodies remain outside the renderer-facing Snapshot
-projection.
+verified artifacts. Studio uses the artifact ID to read and validate one
+selected corner on demand; file references and report bodies remain outside
+the renderer-facing Snapshot projection.

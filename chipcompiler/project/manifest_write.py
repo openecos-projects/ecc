@@ -392,6 +392,21 @@ def append_workspace_entry(
                 workspace_path
             )
             if same_id and same_path:
+                # Idempotent re-registration: the workspace directory is the
+                # truth for derived fields, so a drifted entry silently
+                # re-converges (only updated_at records the correction).
+                from chipcompiler.project.manifest_refresh import (
+                    apply_derived_fields,
+                    derive_workspace_fields,
+                    manifest_base_parameters,
+                )
+
+                derived = derive_workspace_fields(
+                    workspace_path, manifest_base_parameters(document)
+                )
+                if apply_derived_fields(entry, derived):
+                    entry["updated_at"] = timestamp
+                    document["updated_at"] = timestamp
                 outcome = "existing"
                 return
             if same_id or same_path:

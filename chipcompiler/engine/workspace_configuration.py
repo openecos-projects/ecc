@@ -24,7 +24,7 @@ from chipcompiler.engine.snapshot import (
     EngineeringSnapshotError,
     ensure_engineering_snapshot,
     invalidate_engineering_snapshot,
-    read_engineering_snapshot,
+    open_workspace_snapshot,
 )
 from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
 from chipcompiler.utility import JsonReadError
@@ -437,9 +437,9 @@ def _workspace_pdk_files(workspace: Any) -> tuple[list[dict[str, str]], dict[str
 
 def _read_snapshot_metadata(workspace: Any) -> dict[str, Any]:
     try:
-        snapshot = read_engineering_snapshot(workspace)
-    except (EngineeringSnapshotError, OSError):
-        return {"workspaceId": None, "workspaceRevision": None}
+        snapshot = open_workspace_snapshot(workspace)
+    except EngineeringSnapshotError as exc:
+        raise WorkspaceLifecycleError(exc.code, str(exc)) from exc
     return {
         "workspaceId": snapshot["workspaceId"],
         "workspaceRevision": snapshot["workspaceRevision"],

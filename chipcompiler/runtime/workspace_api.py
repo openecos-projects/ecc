@@ -135,13 +135,18 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
 
         import chipcompiler.rtl2gds as rtl2gds_api
 
-        # The skip policy is validated before any sidecar artifact (temp
-        # filelist, inline PDK) is materialized: invalid input must not
-        # reach workspace creation or leave temporaries behind.
+        # The skip policy and LEC engine are validated before any sidecar
+        # artifact (temp filelist, inline PDK) is materialized: invalid
+        # input must not reach workspace creation or leave temporaries
+        # behind.
         try:
             rtl2gds_api.resolve_skip_steps(request.flow_config)
         except ValueError as exc:
             raise RuntimeApiError("config_error", f"invalid skip_steps: {exc}") from exc
+        try:
+            rtl2gds_api.resolve_lec_engine(request.flow_config)
+        except ValueError as exc:
+            raise RuntimeApiError("config_error", f"invalid lec_engine: {exc}") from exc
 
         temp_filelist_dir = None
         input_filelist = request.filelist
@@ -187,6 +192,9 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
         return _workspace_session_result(session)
 
     def open_workspace(self, request: WorkspaceOpenRequest | WorkspaceSpecOpenRequest) -> dict:
+        existing = self.sessions.find_session(request.directory)
+        if existing is not None and self.operations.has_active_workspace(existing.workspace_id):
+            return _workspace_session_result(existing, reused=True)
         if isinstance(request, WorkspaceSpecOpenRequest) or request.workspace_bindings is not None:
             spec_request = (
                 request
@@ -202,17 +210,20 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
     def _open_legacy_workspace(self, request: WorkspaceOpenRequest) -> dict:
         workspace = self._load_workspace(request.directory)
         build_flow_for_workspace(workspace, create_step_workspaces=False)
-        from chipcompiler.engine.snapshot import EngineeringSnapshotError, read_engineering_snapshot
+        from chipcompiler.engine.snapshot import (
+            EngineeringSnapshotError,
+            open_workspace_snapshot,
+        )
 
         try:
-            snapshot = read_engineering_snapshot(workspace)
-        except EngineeringSnapshotError:
-            snapshot = None
+            snapshot = open_workspace_snapshot(workspace)
+        except EngineeringSnapshotError as exc:
+            raise RuntimeApiError(exc.code, str(exc)) from exc
         session = self.sessions.open_session(
             workspace.directory,
             workspace=workspace,
-            workspace_id=snapshot["workspaceId"] if snapshot else None,
-            workspace_revision=snapshot["workspaceRevision"] if snapshot else 0,
+            workspace_id=snapshot["workspaceId"],
+            workspace_revision=snapshot["workspaceRevision"],
         )
         self.operations.load_workspace_ledger(
             session.workspace_id,
@@ -528,7 +539,11 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                     )
                 return {"rerun": request.rerun}
 
-        return self._with_session_mutation_lock(request.workspace_id, run)
+        return self._with_session_mutation_lock(
+            request.workspace_id,
+            run,
+            reject_active_operation=False,
+        )
 
     def flow_run_step(self, request: FlowRunStepRequest) -> dict:
         return self._flow_run_step(request)
@@ -642,7 +657,11 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
                     )
                 return result
 
-        return self._with_session_mutation_lock(request.workspace_id, run_step)
+        return self._with_session_mutation_lock(
+            request.workspace_id,
+            run_step,
+            reject_active_operation=False,
+        )
 
     def start_flow_operation(self, request: OperationStartFlowRequest) -> dict:
         self._require_gui_operation_origin(request.origin)
@@ -1280,7 +1299,7 @@ class WorkspaceRuntimeApi(WorkspaceSpecRuntimeMixin):
         workspace_id: str,
         operation: Callable[[WorkspaceSession], _T],
         *,
-        reject_active_operation: bool = False,
+        reject_active_operation: bool = True,
     ) -> _T:
         session = self._get_session(workspace_id)
         if reject_active_operation:
@@ -2552,13 +2571,14 @@ def build_flow_for_workspace(workspace, *, create_step_workspaces: bool = True):
     engine_flow = engine_api.EngineFlow(workspace=workspace)
     if not engine_flow.has_init():
         # Ledger-less rebuild: the workspace's persisted flow target carries
-        # the skip policy; the code default applies when none was persisted.
+        # the skip policy and LEC engine; the code defaults apply when none
+        # were persisted.
         parameters_data = getattr(getattr(workspace, "parameters", None), "data", None)
         persisted_flow = parameters_data.get("_flow") if isinstance(parameters_data, dict) else None
-        skip = rtl2gds_api.resolve_skip_steps(
-            persisted_flow if isinstance(persisted_flow, dict) else None
-        )
-        for step, tool, state in rtl2gds_api.build_rtl2gds_flow(skip=skip):
+        persisted_flow = persisted_flow if isinstance(persisted_flow, dict) else None
+        skip = rtl2gds_api.resolve_skip_steps(persisted_flow)
+        lec_engine = rtl2gds_api.resolve_lec_engine(persisted_flow)
+        for step, tool, state in rtl2gds_api.build_rtl2gds_flow(skip=skip, lec_engine=lec_engine):
             engine_flow.add_step(step=step, tool=tool, state=state)
 
     if create_step_workspaces:
@@ -2566,10 +2586,12 @@ def build_flow_for_workspace(workspace, *, create_step_workspaces: bool = True):
     return engine_flow
 
 
-def _workspace_session_result(session: WorkspaceSession) -> dict:
+def _workspace_session_result(session: WorkspaceSession, *, reused: bool = False) -> dict:
     result = {"workspaceId": session.workspace_id, "directory": str(session.directory)}
     if session.workspace_revision > 0:
         result["workspaceRevision"] = session.workspace_revision
+    if reused:
+        result["reused"] = True
     return result
 
 
@@ -2748,3 +2770,8 @@ def _run_engine_flow_step(engine_flow, workspace_step, *, rerun: bool, observer)
         event_sink=observer,
     )
     return _success_state() if result.succeeded else result.state
+
+
+# switch_lec_engine lives in the focused lec_engine_switch module (this file
+# is over the module-size guideline); re-exported here as the API entry point.
+from chipcompiler.runtime.lec_engine_switch import switch_lec_engine  # noqa: E402,F401
