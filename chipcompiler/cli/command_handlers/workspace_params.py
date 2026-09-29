@@ -2,8 +2,9 @@
 
 from pathlib import Path
 
+from chipcompiler.cli.core.line_records import json_literal
 from chipcompiler.cli.core.records import error_record
-from chipcompiler.cli.core.types import CommandContext, CommandResult
+from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
 from chipcompiler.cli.project.params import list_schemas, lookup_schema, parse_value, validate_value
 from chipcompiler.cli.project.workspace_params import (
     set_workspace_param,
@@ -64,7 +65,15 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
         return workspace_error
     overrides = {record["key"] for record in workspace_param_diff(workspace)}
     selected_step = normalize_flow_step(args.step or "").casefold()
+    canonical_step = normalize_flow_step(args.step or "")
     flow_steps = workspace.flow.data.get("steps", [])
+    flow_step_names = {
+        normalize_flow_step(step.get("name", "")).casefold()
+        for step in flow_steps
+        if isinstance(step, dict) and step.get("name")
+    }
+    if selected_step and selected_step not in flow_step_names:
+        return CommandResult.err([error_record("unknown_step", step=args.step)], exit_code=1)
     first_step = normalize_flow_step(flow_steps[0]["name"]).casefold() if flow_steps else ""
     records = []
     for schema in list_schemas():
@@ -81,8 +90,24 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
             value = workspace_param_value(workspace, schema)
         except ValueError:
             continue
-        records.append(
-            _record(ctx, schema.param, value, "workspace" if schema.param in overrides else "base")
+        status = "workspace" if schema.param in overrides else "base"
+        if ctx.output_mode == OutputMode.PLAIN:
+            record = _line_record(ctx, schema, value, status)
+            if canonical_step:
+                record["step_id"] = canonical_step
+            records.append(record)
+        else:
+            records.append(_record(ctx, schema.param, value, status))
+    if ctx.output_mode == OutputMode.PLAIN and not records:
+        return CommandResult.ok(
+            [
+                {
+                    "record": "parameter_list",
+                    "status": "clean",
+                    **({"step_id": canonical_step} if canonical_step else {}),
+                    "workspace": ctx.run_id,
+                }
+            ]
         )
     return CommandResult.ok(
         records or [{"param": "list", "status": "clean", "workspace": ctx.run_id}]
@@ -349,3 +374,27 @@ def _record(ctx: CommandContext, key: str, value: object, status: str) -> dict:
         "source": "workspace",
         "workspace": ctx.run_id,
     }
+
+
+def _line_record(ctx: CommandContext, schema, value: object, status: str) -> dict:
+    """Return the stable machine record used by GUI workspace parameter reads."""
+    record: dict[str, object] = {
+        "record": "parameter",
+        "id": schema.param,
+        "type": schema.type,
+        "value_literal": json_literal(value),
+        "default_literal": json_literal(schema.default),
+        "applies_to": schema.applies,
+        "status": status,
+        "source": status,
+        "workspace": ctx.run_id,
+    }
+    if schema.range is not None:
+        record["range_literal"] = json_literal(list(schema.range))
+    if schema.choices is not None:
+        record["choices_literal"] = json_literal(list(schema.choices))
+    if schema.unit is not None:
+        record["unit"] = schema.unit
+    if schema.description:
+        record["description"] = schema.description
+    return record
