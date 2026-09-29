@@ -128,7 +128,7 @@ def test_current_process_identity_is_live():
         "workspace_path": "baseline",
         "started_at": 1.0,
         "runtime_id": "ecc-test",
-        "log_path": "home/run-logs/placeholder.log",
+        "log_path": "log/placeholder.log",
     }
     entry["log_path"] = default_log_path(entry["run_id"])
     assert identity_is_live(entry)
