@@ -177,7 +177,7 @@ SCHEMAS = (
     _place("density_weight", 0.00085),
     _place("detailed_place_command", ""),
     _place("detailed_place_engine", ""),
-    _place("detailed_place_flag", 0),
+    _place("detailed_place_flag", 1),
     _place("deterministic_flag", 1),
     _place("differentiable_timing_obj", 0),
     _place("dtype", "float32"),

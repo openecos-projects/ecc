@@ -68,6 +68,7 @@ class DreamplaceModule:
         params.macro_only = 0
         if mode is DreamplaceRunMode.MACRO_PLACEMENT:
             params.macro_only = 1
+            params.detailed_place_flag = 0
             params.global_place_flag = 1
             params.macro_place_flag = 1
             params.legalize_flag = 1

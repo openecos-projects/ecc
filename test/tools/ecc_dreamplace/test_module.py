@@ -370,6 +370,36 @@ def _module_for_owner(tmp_path, step_name: str) -> DreamplaceModule:
     )
 
 
+@pytest.mark.parametrize(
+    ("mode", "step_name", "expected"),
+    [
+        (DreamplaceRunMode.PLACEMENT, StepEnum.PLACEMENT.value, 1),
+        (DreamplaceRunMode.MACRO_PLACEMENT, StepEnum.MACRO_PLACEMENT.value, 0),
+        (DreamplaceRunMode.LEGALIZATION, StepEnum.LEGALIZATION.value, 0),
+        (DreamplaceRunMode.LEGALIZATION, SkippableStepEnum.TIMING_OPT.value, 1),
+    ],
+)
+def test_detailed_place_default_respects_run_mode(
+    tmp_path, dreamplace_default_config, mode, step_name, expected
+):
+    module = _module_for_owner(tmp_path, step_name)
+    json_write(module.param_path, dreamplace_default_config)
+
+    assert module._build_params(FakeParams, mode=mode).detailed_place_flag == expected
+
+
+def test_placement_respects_explicit_detailed_place_disable(
+    tmp_path, dreamplace_default_config
+):
+    module = _module_for_owner(tmp_path, StepEnum.PLACEMENT.value)
+    dreamplace_default_config["detailed_place_flag"] = 0
+    json_write(module.param_path, dreamplace_default_config)
+
+    assert module._build_params(
+        FakeParams, mode=DreamplaceRunMode.PLACEMENT
+    ).detailed_place_flag == 0
+
+
 def test_run_legalization_allows_timing_opt_and_legalization_owners(tmp_path, monkeypatch):
     seen: list[str] = []
 
