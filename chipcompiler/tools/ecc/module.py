@@ -241,13 +241,7 @@ class ECCToolsModule:
         """save def file"""
         self.ecc.def_save(def_name=path_text(def_path))
 
-    def gds_save(
-        self,
-        output_path: PathArg,
-        layer_map_path: PathArg,
-        *,
-        is_harden: bool = False,
-    ) -> bool:
+    def gds_save(self, output_path: PathArg, layer_map_path: PathArg) -> bool:
         """save gds file"""
         layer_map = path_text(layer_map_path)
         if not layer_map:
@@ -257,7 +251,6 @@ class ECCToolsModule:
         return self.ecc.gds_save(
             gds_name=path_text(output_path),
             layer_map_path=layer_map,
-            is_harden=is_harden,
         )
 
     def tcl_save(self, output_path: PathArg) -> bool:

@@ -72,6 +72,16 @@ class FakeEcc:
         self.calls.append(("idb_init", config_path))
         return True
 
+    def gds_save(self, *, gds_name, layer_map_path):
+        self.calls.append(
+            (
+                "gds_save",
+                (),
+                {"gds_name": gds_name, "layer_map_path": layer_map_path},
+            )
+        )
+        return True
+
     def extract_lib(self):
         self.calls.append(("extract_lib", (), {}))
         for call in reversed(self.calls):
@@ -388,7 +398,6 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.gds_save(
         Path("/ws/output/gcd.gds.gz"),
         Path("/pdk/ics55.layermap"),
-        is_harden=True,
     )
     assert module.tcl_save(Path("/ws/script/out.tcl")) is True
     module.verilog_save(Path("/ws/output/gcd.v.gz"))
@@ -455,7 +464,6 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
         (),
         {
             "gds_name": "/ws/output/gcd.gds.gz",
-            "is_harden": True,
             "layer_map_path": "/pdk/ics55.layermap",
         },
     ) in module.ecc.calls
