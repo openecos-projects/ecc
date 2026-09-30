@@ -877,7 +877,6 @@ def run_harden(
         ecc_module.gds_save(
             output_path=step.output.gds or "",
             layer_map_path=layer_map_path,
-            is_harden=True,
         )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)
