@@ -14,7 +14,7 @@
 ```
 <workspace>/                 # 新项目/manifest 项目为 <project>/<id>；legacy 项目为 runs/<id>
 ├── home/
-│   ├── params.toml        # schema_version 1；参数中枢（见 §1）
+│   ├── params.toml        # schema_version 2；参数中枢（见 §1）
 │   ├── flow.json          # schema_version 1；步骤状态
 │   └── config-derived-manifest.json # 上次配置派生后的文件哈希
 ├── config/                # ← 本文档的主角：9 个 JSON + Tcl 宏位置交接文件
@@ -136,7 +136,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 1.3 参数中枢 params.toml
 
-`home/params.toml` 是带 schema 版本的文档。新文件在顶层写入 `schema_version = 1`；早于版本化机制的合法文件按 version 0 处理，workspace 迁移路径打开它时会补上 version 1 标记。如文件声明的版本高于当前 ECC 支持上限，则返回 `unsupported_schema_version`，不会静默解析。
+`home/params.toml` 是带 schema 版本的文档。新文件在顶层写入 `schema_version = 2`；早于版本化机制的合法文件按 version 0 处理，workspace 迁移路径打开它时会依次迁移到 version 2。如文件声明的版本高于当前 ECC 支持上限，则返回 `unsupported_schema_version`，不会静默解析。
 
 该文件保存规范化的 workspace 参数、`config_overrides` 以及 **flow 运行后回填的结果值**（如实际 die/core 尺寸、利用率）。`config_overrides` 是 CLI 从审核 schema 生成的嵌套 TOML 补丁；每次 workspace 刷新都会在 PDK 和语义参数映射之后重新应用。`home/parameters.json` 仅在迁移旧 workspace 时读取。
 
@@ -149,9 +149,9 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `[flow]` | `preset = "rtl2gds"`，或 `start` + `end` 成对出现（只接受持久化规范步骤名）；缺省时由 `home/flow.json` 的首末步骤推导 |
 | `[params]` | 规范扁平参数（snake_case）；嵌套值渲染为子表（如 `[params.die]`、`[params.floorplan.phy_placer.well_tap]`） |
 
-**身份参数的双份存储是刻意设计，不是冗余错误**：`design`、`top_module`、`clock`、`frequency_max`、`pdk`、`pdk_root`、`pdk_config` 七个身份键在 `[params]` 扁平键与 `[design]`/`[pdk]` 节区各存一份（如 `[design] top` ↔ `[params] top_module`、`[design] frequency_mhz` ↔ `[params] frequency_max`、`[pdk] root` ↔ `[params] pdk_root`）。两套词汇各司其职：`[design]`/`[pdk]`/`[flow]` 是与 `ecc.toml` 同词汇的人读视图，使 workspace 自描述；`[params]` 是程序消费的规范扁平存储（步骤参数、`config_overrides` 与回填结果都在其中）。
+**身份参数在运行时仍使用规范扁平键，但 v2 不再在文件中保存两份**：`design`、`top_module`、`clock`、`frequency_max`、`pdk`、`pdk_root`、`pdk_config` 以 `[design]`/`[pdk]` 的人读词汇持久化；加载时重建为程序消费的 `[params]` 扁平键。旧版 v1 文件仍接受读取，并在可写 workspace 打开时迁移去重。这样 `[design]`/`[pdk]`/`[flow]` 保持与 `ecc.toml` 同词汇，步骤参数、`config_overrides` 与回填结果仍由运行时扁平参数中枢提供。
 
-保存时两份由同一份扁平参数渲染，正常情况下永远一致。若文件被手工改到两处不一致，加载规则为：**`[design]`/`[pdk]` 的非空值覆盖 `[params]` 副本；节区键为空或缺失时回落到 `[params]` 副本**。写入采用临时文件 + 原子 rename，不穿透 symlink。
+保存时身份字段只渲染到 `[design]`/`[pdk]`，加载仍兼容 v1 的 `[params]` 镜像。若旧文件被手工改到两处不一致，加载规则为：**`[design]`/`[pdk]` 的非空值覆盖 `[params]` 副本；节区键为空或缺失时回落到 `[params]` 副本**。写入采用临时文件 + 原子 rename，不穿透 symlink。
 
 通过 `ecc param set KEY VALUE --workspace NAME` 写入的已创建 workspace 覆盖也保存在 `[params]`：实际参数值与 `config_overrides` 共同决定刷新后的步骤配置，`workspace_param_overrides` 列表记录 `key`、首次修改前的 `baseline` 和当前 `value`，供 `ecc param diff --workspace NAME` 使用。`ecc param unset KEY --workspace NAME` 会恢复该 `baseline` 并清除这条本地覆盖记录；其所属步骤及后续步骤会失效，直到再次运行。PDK 资源路径和引用不能在此处局部修改，应更新 `ecc.toml` 后执行 `ecc workspace refresh NAME`。
 

@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+import tomllib
+
 import pytest
 
 from chipcompiler.data.parameter import (
@@ -86,10 +88,69 @@ def test_design_section_mirrors_identity_keys(tmp_path):
     save_workspace_config(tmp_path, payload)
 
     text = workspace_config_path(tmp_path).read_text()
+    document = tomllib.loads(text)
     assert "[design]" in text
     assert 'name = "gcd"' in text
     assert 'top = "gcd"' in text
     assert 'clock_port = "clk"' in text
+    assert "design" not in document["params"]
+    assert "top_module" not in document["params"]
+    assert "clock" not in document["params"]
+
+
+def test_save_deduplicates_identity_and_dreamplace_mirrors(tmp_path):
+    payload = {
+        "design": "gcd",
+        "top_module": "gcd",
+        "clock": "clk",
+        "frequency_max": 50.0,
+        "pdk": "ics55",
+        "pdk_root": "/abs/pdk",
+        "target_density": 0.2,
+        "target_overflow": 0.1,
+        "cell_padding_x": 300,
+        "routability_opt_flag": 1,
+        "dreamplace": {
+            "target_density": 0.2,
+            "stop_overflow": 0.1,
+            "cell_padding_x": 300,
+            "routability_opt_flag": 1,
+            "num_threads": 8,
+        },
+    }
+
+    assert save_workspace_config(tmp_path, payload)
+
+    document = tomllib.loads(workspace_config_path(tmp_path).read_text())
+    assert document["schema_version"] == 2
+    assert document["design"] == {
+        "name": "gcd",
+        "top": "gcd",
+        "clock_port": "clk",
+        "frequency_mhz": 50.0,
+    }
+    assert document["pdk"] == {"name": "ics55", "root": "/abs/pdk"}
+    assert set(document["params"]) == {
+        "target_density",
+        "target_overflow",
+        "cell_padding_x",
+        "routability_opt_flag",
+        "dreamplace",
+    }
+    assert document["params"]["dreamplace"] == {"num_threads": 8}
+
+    loaded = load_workspace_config(tmp_path)
+    loaded.pop("_flow", None)
+    assert loaded == payload | {"dreamplace": {"num_threads": 8}}
+
+
+def test_save_load_preserves_internal_input_mode(tmp_path):
+    payload = {"design": "gcd", "_input_mode": "postSynthesis"}
+    assert save_workspace_config(tmp_path, payload)
+
+    loaded = load_workspace_config(tmp_path)
+    loaded.pop("_flow", None)
+    assert loaded == payload
 
 
 def test_workspace_relative_pdk_config_resolves_on_load(tmp_path):
