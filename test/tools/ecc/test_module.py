@@ -89,14 +89,6 @@ class FakeEcc:
             return True
         return True
 
-    def view_json_save(self, **kwargs):
-        self.calls.append(("view_json_save", kwargs))
-        return True
-
-    def view_json_apply_edits(self, **kwargs):
-        self.calls.append(("view_json_apply_edits", kwargs))
-        return True
-
     def __getattr__(self, name):
         def record_call(*args, **kwargs):
             self.calls.append((name, args, kwargs))
@@ -164,54 +156,6 @@ def test_run_simple_fp_calls_native_api():
     assert module.run_simple_fp() is True
 
     assert module.ecc.calls == [("run_simple_fp", (), {})]
-
-
-def test_view_json_save_passes_output_options():
-    module = ECCToolsModule.__new__(ECCToolsModule)
-    module.ecc = FakeEcc()
-
-    assert (
-        module.view_json_save(
-            output_dir=Path("/tmp/view_json"),
-            json_format="compact",
-            compress=True,
-        )
-        is True
-    )
-
-    assert module.ecc.calls == [
-        (
-            "view_json_save",
-            {
-                "output_dir": "/tmp/view_json",
-                "json_format": "compact",
-                "compress": True,
-            },
-        ),
-    ]
-
-
-def test_view_json_apply_edits_passes_compress_option():
-    module = ECCToolsModule.__new__(ECCToolsModule)
-    module.ecc = FakeEcc()
-
-    assert (
-        module.view_json_apply_edits(
-            edits_path=Path("/tmp/view_json/edits/layout_edits.json.gz"),
-            compress=True,
-        )
-        is True
-    )
-
-    assert module.ecc.calls == [
-        (
-            "view_json_apply_edits",
-            {
-                "edits_path": "/tmp/view_json/edits/layout_edits.json.gz",
-                "compress": True,
-            },
-        ),
-    ]
 
 
 def test_place_instance_forwards_legacy_defaults():
@@ -2345,14 +2289,11 @@ def test_ecc_builder_constructs_path_objects_without_changing_text(tmp_path):
 
     expected_step_dir = tmp_path / f"{StepEnum.PLACEMENT.value}_ecc"
     expected_output_dir = expected_step_dir / "output"
-    expected_view_dir = expected_output_dir / f"gcd_{StepEnum.PLACEMENT.value}_view"
     assert step.directory == expected_step_dir
     assert isinstance(step.directory, Path)
     assert step.input.def_ == input_def
     assert step.input.verilog == input_verilog
     assert step.output.dir == expected_output_dir
-    assert step.output.view_json == expected_view_dir
-    assert step.output.view_json_edits == expected_view_dir / "edits" / "layout_edits.json"
     assert step.analysis.qor_metrics == expected_step_dir / "analysis" / "qor_metrics.json"
     assert step.analysis.qor_summary == expected_step_dir / "analysis" / "qor_summary.json"
     assert step.analysis.qor_hotspots == expected_step_dir / "analysis" / "qor_hotspots.json"
@@ -2365,12 +2306,6 @@ def test_ecc_builder_constructs_path_objects_without_changing_text(tmp_path):
         "qor_summary_root": expected_step_dir / "feature",
         "timing_paths_root": expected_step_dir / "feature",
     }
-    assert str(step.output.view_json) == (
-        f"{expected_step_dir}/output/gcd_{StepEnum.PLACEMENT.value}_view"
-    )
-    assert str(step.output.view_json_edits) == (
-        f"{expected_step_dir}/output/gcd_{StepEnum.PLACEMENT.value}_view/edits/layout_edits.json"
-    )
 
 
 def test_ecc_build_step_space_creates_path_directories(tmp_path):
@@ -2426,7 +2361,7 @@ def test_ecc_subflow_writes_path_payload_as_json_strings(tmp_path):
     [
         (
             StepEnum.PRE_FLOORPLAN.value,
-            ["load data", "init floorplan", "save data"],
+            ["load data", "set clock net", "init floorplan", "save data"],
         ),
         (
             StepEnum.MACRO_PLACEMENT.value,
@@ -2440,7 +2375,6 @@ def test_ecc_subflow_writes_path_payload_as_json_strings(tmp_path):
                 "place io pins",
                 "tap cell",
                 "PDN",
-                "set clock net",
                 "save data",
                 "analysis",
             ],

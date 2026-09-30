@@ -171,7 +171,7 @@ def test_log_projection_yosys_shape_has_no_foreign_keys(tmp_path):
         ["dir", "metrics", "qor_metrics", "qor_summary", "qor_hotspots"]
     )
     # foreign ecc-only keys never appear on the synthesis shape
-    for foreign in ("db", "gds", "lef", "lib", "spef", "view_json"):
+    for foreign in ("db", "gds", "lef", "lib", "spef"):
         assert foreign not in keys["output"]
 
 
@@ -190,8 +190,6 @@ def test_log_projection_ecc_shape_has_no_sizer_keys(tmp_path):
             "gds",
             "geometry",
             "geometry_manifest",
-            "view_json",
-            "view_json_edits",
             "lef",
             "lib",
             "spef",

@@ -107,8 +107,6 @@ def _published_paths(step: EccStep) -> list[Path]:
         output.geometry_manifest,
         output.image,
         output.json,
-        output.view_json,
-        output.view_json_edits,
         output.lef,
         output.lib,
         step.feature.db,

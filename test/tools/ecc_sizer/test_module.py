@@ -552,8 +552,6 @@ def test_sizer_step_info_surfaces_include_step_local_config(tmp_path, monkeypatc
         "db": str(output.db),
         "image": str(output.image),
         "json": str(output.json),
-        "view_json": str(output.view_json),
-        "view_json_edits": str(output.view_json_edits),
         "lef": str(output.lef),
         "lib": str(output.lib),
         "spef": [str(p) for p in output.spef],

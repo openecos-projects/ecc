@@ -70,6 +70,7 @@ class EccSubFlow:
         match step:
             case StepEnum.PRE_FLOORPLAN:
                 steps.append(subflow_template(EccSubFlowEnum.load_data.value))
+                steps.append(subflow_template(EccSubFlowEnum.set_clock_net.value))
                 steps.append(subflow_template(EccSubFlowEnum.init_floorplan.value))
                 steps.append(subflow_template(EccSubFlowEnum.save_data.value))
             case StepEnum.MACRO_PLACEMENT:
@@ -82,7 +83,6 @@ class EccSubFlow:
                 steps.append(subflow_template(EccSubFlowEnum.place_io_pins.value))
                 steps.append(subflow_template(EccSubFlowEnum.tap_cell.value))
                 steps.append(subflow_template(EccSubFlowEnum.PDN.value))
-                steps.append(subflow_template(EccSubFlowEnum.set_clock_net.value))
                 steps.append(subflow_template(EccSubFlowEnum.save_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.analysis.value))
             case StepEnum.PLACEMENT:

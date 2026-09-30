@@ -51,7 +51,6 @@ def build_step(
     report_dir = directory / "report"
     analysis_dir = directory / "analysis"
     qor_metrics_path = analysis_dir / "qor_metrics.json"
-    output_view = output_dir / f"{design}_{step_name}_view"
     output_geometry = output_dir / "geometry"
 
     return EccStep(
@@ -78,8 +77,6 @@ def build_step(
             json=output_dir / f"{design}_{step_name}.json",
             geometry=output_geometry,
             geometry_manifest=output_geometry / "geometry.manifest",
-            view_json=output_view,
-            view_json_edits=output_view / "edits" / "layout_edits.json",
             lef=output_dir / f"{design}_{step_name}.lef",
             lib=output_dir / f"{design}_{step_name}.lib",
             spef=[],

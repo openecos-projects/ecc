@@ -42,8 +42,6 @@ def build_output(step: EccStep) -> dict:
         "db": stringify_paths(output.db),
         "image": stringify_paths(output.image),
         "json": stringify_paths(output.json),
-        "view_json": stringify_paths(output.view_json),
-        "view_json_edits": stringify_paths(output.view_json_edits),
         "lef": stringify_paths(output.lef),
         "lib": stringify_paths(output.lib),
         "spef": stringify_paths(output.spef),
