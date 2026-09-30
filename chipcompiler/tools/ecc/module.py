@@ -75,6 +75,8 @@ class ECCToolsModule:
         route_num_bins_y: int,
         routability_opt_flag: int,
         with_sta: int,
+        include_m2_pg_rail_blockage: bool = False,  # noqa: FBT001, FBT002
+        include_m2_pg_rail_density: bool = True,  # noqa: FBT001, FBT002
     ):
         return self.ecc.pydb(
             dm_inst_ptr,
@@ -82,6 +84,8 @@ class ECCToolsModule:
             route_num_bins_y,
             routability_opt_flag,
             with_sta,
+            include_m2_pg_rail_blockage,
+            include_m2_pg_rail_density,
         )
 
     def build_macro_connection_map(self, max_hop: int):

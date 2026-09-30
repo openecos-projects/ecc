@@ -13,7 +13,11 @@ DREAMPLACE_PARAMETER_DESCRIPTIONS = {
     "RePlAce_skip_energy_flag": (
         "whether skip density energy computation for fast mode, may not work with some solvers"
     ),
-    "adjust_nctugr_area_flag": ("whether use ECC/iRT EGR congestion map to guide area adjustment"),
+    "adjust_gpugr_area_flag": "whether use Xplace gpugr overflow map to guide area adjustment",
+    "adjust_nctugr_area_flag": (
+        "legacy compatibility key; when enabled use the ECC/iRT EGR congestion map for area "
+        "adjustment (NCTUgr is not invoked)"
+    ),
     "adjust_pin_area_flag": "whether use pin utilization map to guide area adjustment",
     "adjust_rudy_area_flag": "whether use RUDY/RISA map to guide area adjustment",
     "area_adjust_stop_ratio": "area_adjust_stop_ratio",
@@ -55,6 +59,20 @@ DREAMPLACE_PARAMETER_DESCRIPTIONS = {
     "gp_noise_ratio": "noise to initial positions for global placement",
     "gpu": "enable gpu or not",
     "gpu_id": "which gpu to use",
+    "gpugr_backend": (
+        "GGR backend selection: auto chooses cuda when available and cpu_pr_mt otherwise; "
+        "cuda requires a CUDA-capable gpugr build; cpu_pr is explicit serial diagnostic pattern "
+        "routing; cpu_pr_mt is deterministic parallel CPU pattern routing and uses num_threads "
+        "as its requested worker count; all CPU pattern backends require rrrIters=0"
+    ),
+    "gpugr_area_adjust_rrr_iters": (
+        "rrrIters passed to gpugr when adjust_gpugr_area_flag is enabled"
+    ),
+    "gpugr_area_adjust_congestion_mode": (
+        "congestion signal used by GPUGR area inflation: union, direction-sensitive max_hv, "
+        "or direction-sensitive max_hv_effective using routed wire plus via demand over "
+        "nominal capacity minus fixed and movable obstacle usage"
+    ),
     "ignore_net_degree": "ignore net degree larger than some value",
     "ignore_net_weight": "ignore net weight larger than some value for weight_hpwl reporting",
     "init_loc_perc_x": (
@@ -64,6 +82,10 @@ DREAMPLACE_PARAMETER_DESCRIPTIONS = {
         "initial vertical location of cells for global placement (% of layout height)"
     ),
     "legalize_flag": "whether use internal legalization",
+    "l_shape_routability_flag": "whether enable L-shape routability optimization",
+    "l_shape_update_interval": (
+        "number of global-placement iterations between L-shape topology and direction refreshes"
+    ),
     "macro_halo_x": "horizontal halo around movable macros",
     "macro_halo_y": "vertical halo around movable macros",
     "macro_overlap_flag": "whether enable MFP macro overlap",
@@ -144,7 +166,8 @@ SCHEMAS = (
     _place("RePlAce_UPPER_PCOF", 1.05),
     _place("RePlAce_ref_hpwl", 350000),
     _place("RePlAce_skip_energy_flag", 0),
-    _place("adjust_nctugr_area_flag", 1),
+    _place("adjust_gpugr_area_flag", 1),
+    _place("adjust_nctugr_area_flag", 0),
     _place("adjust_pin_area_flag", 0),
     _place("adjust_rudy_area_flag", 0),
     _place("area_adjust_stop_ratio", 0.01),
@@ -154,7 +177,7 @@ SCHEMAS = (
     _place("density_weight", 0.00085),
     _place("detailed_place_command", ""),
     _place("detailed_place_engine", ""),
-    _place("detailed_place_flag", 0),
+    _place("detailed_place_flag", 1),
     _place("deterministic_flag", 1),
     _place("differentiable_timing_obj", 0),
     _place("dtype", "float32"),
@@ -172,7 +195,7 @@ SCHEMAS = (
             {
                 "Llambda_density_weight_iteration": 1,
                 "Lsub_iteration": 1,
-                "iteration": 1000,
+                "iteration": 3000,
                 "learning_rate": 1.0,
                 "learning_rate_decay": 0.99,
                 "num_bins_x": 32,
@@ -186,11 +209,16 @@ SCHEMAS = (
     _place("gp_noise_ratio", 0.0),
     _place("gpu", 0),
     _place("gpu_id", 0),
+    _place("gpugr_backend", "auto"),
+    _place("gpugr_area_adjust_rrr_iters", 0),
+    _place("gpugr_area_adjust_congestion_mode", "max_hv"),
     _place("ignore_net_degree", 100),
     _place("ignore_net_weight", 1),
     _place("init_loc_perc_x", 0.5),
     _place("init_loc_perc_y", 0.5),
     _place("legalize_flag", 1),
+    _place("l_shape_routability_flag", 1),
+    _place("l_shape_update_interval", 30),
     _place("macro_halo_x", 0.0),
     _place("macro_halo_y", 0.0),
     _place("macro_overlap_flag", 0),
@@ -200,7 +228,7 @@ SCHEMAS = (
     _place("macro_pin_halo_y", 0.0),
     _place("macro_place_flag", 0),
     _place("max_net_weight", "inf"),
-    _place("max_num_area_adjust", 3),
+    _place("max_num_area_adjust", 5),
     _place("max_pin_opt_adjust_rate", 1.5),
     _place("max_route_opt_adjust_rate", 2.0),
     _place("momentum_decay_factor", 0.5),
@@ -217,7 +245,7 @@ SCHEMAS = (
     _place("pin_area_adjust_stop_ratio", 0.05),
     _place("pin_density", 0.6),
     _place("pin_stretch_ratio", 1.414213562),
-    _place("plot_flag", 0),
+    _place("plot_flag", 1),
     _place("random_center_init_flag", 1),
     _place("random_seed", 3000),
     _place("risa_weights", 0),
