@@ -579,7 +579,7 @@ requires-dist = [
     { name = "shap", specifier = ">=0.45.0,<0.51" },
     { name = "shapely", specifier = ">=1.7.0" },
     { name = "statsmodels", specifier = ">=0.13.2" },
-    { name = "torch", specifier = ">=1.6.0", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torch", specifier = ">=2.11,<2.12", index = "https://download.pytorch.org/whl/cpu" },
     { name = "xgboost", specifier = ">=1.5.1" },
 ]
 
