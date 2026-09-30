@@ -45,9 +45,38 @@
       pythonImportsCheck = [ "rosettakit" ];
     };
 
+    # kepler-formal, the GPL-3.0-only LEC engine for the lec/postRouteLec
+    # steps: nix-eda's packaging with src pointed at the openecos fork.
+    # Built from source for local development only: ECOS ships Apache-2.0
+    # and does not redistribute kepler-formal binaries, so the derivation
+    # stays on the developer's machine (no distribution, no GPL conveyance
+    # obligations). The ECC runtime resolves it through
+    # CHIPCOMPILER_KEPLER_FORMAL_ROOT. First build takes a while (naja and
+    # its submodules compile in the nix sandbox).
+    keplerFormal = {
+      fetchgit,
+      lib,
+      nix-eda,
+      system,
+    }: nix-eda.packages.${system}.kepler-formal.overrideAttrs (old: {
+      version = "0-unstable-2026-09-24";
+      src = fetchgit {
+        url = "https://github.com/openecos-projects/kepler-formal";
+        rev = "d4d896705065f8a6b4457745dd25ffccfa83c301";
+        hash = "sha256-zkOmBTBMkrZPLaZv2o1ZrPD4lFP9w3u8hoIOnoVGAoY=";
+        fetchSubmodules = true;
+      };
+      meta = old.meta // {
+        description = "Equivalence checking engine (GPL-3.0-only, local dev build)";
+        homepage = "https://github.com/openecos-projects/kepler-formal";
+        license = lib.licenses.gpl3Only;
+      };
+    });
+
     chipcompiler = {
       ecc-dreamplace,
       ecc-tools,
+      keplerFormal,
       rosettakit,
       yosysWithSlang,
       lib,
@@ -120,6 +149,7 @@
       packages.default = pkgs.callPackage chipcompiler {
         ecc-dreamplace = ecc-dreamplace.packages.${system}.default;
         ecc-tools = ecc-tools.packages.${system}.default;
+        keplerFormal = self'.packages.keplerFormal;
         rosettakit = pkgs.callPackage rosettakit {};
         yosysWithSlang = infra.packages.${system}.yosysWithSlang;
       };
