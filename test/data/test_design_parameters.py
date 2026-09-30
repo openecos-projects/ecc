@@ -155,7 +155,7 @@ def test_get_parameters_accepts_path_and_save_writes_to_path(tmp_path):
     assert parameters.path == path
     assert save_parameter(parameters)
     with open(path, "rb") as f:
-        assert tomllib.load(f)["params"]["design"] == "gcd"
+        assert tomllib.load(f)["design"]["name"] == "gcd"
 
 
 def test_get_parameters_without_path_uses_none():
