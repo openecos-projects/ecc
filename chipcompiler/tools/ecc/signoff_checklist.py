@@ -17,6 +17,18 @@ from chipcompiler.data import (
     WorkspaceStep,
 )
 from chipcompiler.data.step import STEP_DIRECTORIES, all_step_directories, flow_step_directory
+from chipcompiler.engine.signoff.catalog import (
+    CONFIG_FILENAMES as _CONFIG_FILENAMES,
+)
+from chipcompiler.engine.signoff.catalog import (
+    QUALITY_GATES_BY_STEP as _QUALITY_GATES_BY_STEP,
+)
+from chipcompiler.engine.signoff.catalog import (
+    REQUIRED_FLOW_STEPS as _REQUIRED_FLOW_STEPS,
+)
+from chipcompiler.engine.signoff.catalog import (
+    catalog_defaults,
+)
 from chipcompiler.tools.ecc.lec_gates import (
     post_route_lec_netlists as _post_route_lec_netlists,
 )
@@ -33,40 +45,6 @@ from chipcompiler.tools.ecc.sta_qor import (
 )
 from chipcompiler.utility import json_read
 from chipcompiler.utility.filelist import resolve_initial_rtl
-
-_QUALITY_GATES_BY_STEP = {
-    StepEnum.DRC.value: ("qor.drc.clean",),
-    StepEnum.LVS.value: ("qor.lvs.clean",),
-    StepEnum.RCX.value: (
-        "qor.rcx.corner_coverage",
-        "qor.rcx.spef_parse_health",
-    ),
-    StepEnum.STA.value: (
-        "qor.sta.setup_closed",
-        "qor.sta.hold_closed",
-    ),
-    StepEnum.HARDEN.value: (
-        "qor.mpc.minimum_area",
-        "qor.mpc.maximum_area",
-    ),
-}
-
-_REQUIRED_FLOW_STEPS = (
-    StepEnum.ROUTING.value,
-    StepEnum.DRC.value,
-    StepEnum.LVS.value,
-    StepEnum.FILLER.value,
-    SkippableStepEnum.POST_ROUTE_LEC.value,
-    StepEnum.RCX.value,
-    StepEnum.STA.value,
-    StepEnum.HARDEN.value,
-)
-
-_CONFIG_FILENAMES = {
-    "db": "db_ecc.json",
-    StepEnum.RCX.value: "rcx_ecc.json",
-    StepEnum.STA.value: "sta_ecc.json",
-}
 
 
 def _path_text(workspace: Workspace, path: Path | str | None) -> str:
@@ -116,6 +94,13 @@ def _item(
     source: dict | None = None,
     evidence: list[dict] | None = None,
 ) -> dict:
+    defaults = catalog_defaults(item_id)
+    if defaults:
+        step = defaults["step"] or step
+        category = defaults["category"] or category
+        owner = defaults["owner"] or owner
+        policy = defaults["policy"] or policy
+        title = title or defaults["title"]
     return {
         "id": item_id,
         "step": step,
@@ -594,6 +579,94 @@ def _workspace_items(workspace: Workspace) -> list[dict]:
     return items
 
 
+def _filesystem_artifact_items(workspace: Workspace) -> list[dict]:
+    """Catalog artifact slots from conventional paths (no per-step checklist required)."""
+    workspace_dir = Path(workspace.directory)
+    design = getattr(getattr(workspace, "design", None), "name", "") or ""
+    files = [
+        (
+            "artifact.harden.gds",
+            workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.gds",
+            "Harden GDS",
+        ),
+        (
+            "artifact.harden.lef",
+            workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.lef",
+            "Harden LEF",
+        ),
+        (
+            "artifact.harden.lib",
+            workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.lib",
+            "Harden LIB",
+        ),
+        (
+            "artifact.synthesis.netlist",
+            workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz",
+            "Mapped synthesis netlist",
+        ),
+        (
+            "artifact.lvs.verilog",
+            workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz",
+            "LVS Verilog",
+        ),
+        (
+            "artifact.lvs.def",
+            workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.def.gz",
+            "LVS DEF",
+        ),
+        (
+            "artifact.lvs.gds",
+            workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.gds",
+            "LVS GDS",
+        ),
+    ]
+    items = []
+    for item_id, path, title in files:
+        skip_if_absent = (
+            item_id.startswith("artifact.lvs.") or item_id == "artifact.synthesis.netlist"
+        )
+        if skip_if_absent and _file_state(path)[0] != "pass":
+            continue
+        state, summary = _file_state(path)
+        items.append(
+            _item(
+                item_id=item_id,
+                step="workspace",
+                category="artifact",
+                owner="checklist",
+                policy="block",
+                state=state,
+                title=title,
+                summary=summary,
+                source={"kind": "output", "path": _path_text(workspace, path)},
+                evidence=[{"kind": "output", "path": _path_text(workspace, path)}] if path else [],
+            )
+        )
+    spefs = sorted((workspace_dir / "RCX_ecc" / "output").glob("*.spef"))
+    spef_state = (
+        "pass" if spefs and all(_file_state(path)[0] == "pass" for path in spefs) else "failed"
+    )
+    items.append(
+        _item(
+            item_id="artifact.rcx.spef_outputs",
+            step=StepEnum.RCX.value,
+            category="artifact",
+            owner="checklist",
+            policy="block",
+            state=spef_state,
+            title="RCX SPEF outputs",
+            summary=(
+                f"{len(spefs)} current SPEF output files are present."
+                if spef_state == "pass"
+                else "Current RCX SPEF output files are missing or empty."
+            ),
+            source={"kind": "output", "path": "RCX_ecc/output"},
+            evidence=[{"kind": "output", "path": _path_text(workspace, path)} for path in spefs],
+        )
+    )
+    return items
+
+
 def _package_items(resource_issues) -> list[dict]:
     items = []
     for issue in resource_issues or []:
@@ -679,6 +752,7 @@ def rebuild_home_checklist(
         )
     items.extend(_flow_items(workspace))
     items.extend(_workspace_items(workspace))
+    items.extend(_filesystem_artifact_items(workspace))
     items.extend(_package_items(resource_issues))
 
     # Package errors are refreshed as a group.  Deduplicate by requirement id

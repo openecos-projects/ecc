@@ -11,6 +11,9 @@ from csv_gates.compare import METRIC_OPS
 
 TABLE_KEYS = ("qor_summary", "qor_metrics", "checklist", "flow_steps")
 TABLE_KEY_TO_FILE = {key: f"{key}.csv" for key in TABLE_KEYS}
+# Gate projection only needs metrics + checklist. The other two tables stay
+# available when a profile sets ``tables:``.
+DEFAULT_TABLES = ("qor_metrics", "checklist")
 
 
 class CsvSpecError(ValueError):
@@ -154,7 +157,7 @@ def load_csv_spec(path: str) -> CsvExportSpec:
             raise CsvSpecError(f"unknown table(s): {', '.join(unknown)}")
     return CsvExportSpec(
         version=1,
-        tables=tables,
+        tables=tables if tables is not None else DEFAULT_TABLES,
         metrics=_parse_metrics(payload.get("metrics")),
         checklist=_parse_checklist(payload.get("checklist")),
         flow_steps=_optional_string_list(payload.get("flow_steps"), field="flow_steps"),

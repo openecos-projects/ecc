@@ -34,6 +34,17 @@ def inspect(command_input, ctx: CommandContext) -> CommandResult:
                 "summary": group.get("summary"),
             }
         )
+    for item in review.get("items") or []:
+        records.append(
+            {
+                "item": item.get("id", ""),
+                "state": item.get("state", ""),
+                "blocked": item.get("blocked"),
+                "policy": item.get("policy", ""),
+                "owner": item.get("owner", ""),
+                "title": item.get("title", ""),
+            }
+        )
     for risk in review.get("risks", []):
         record = {
             "risk": risk.get("severity", ""),

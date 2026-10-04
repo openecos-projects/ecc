@@ -246,7 +246,7 @@ def build_csv_bundle(workspace, spec=None) -> CsvExportBundle:
         "checklist": lambda: _checklist_table(checklist, spec),
         "flow_steps": lambda: _flow_steps_table(workspace, spec),
     }
-    selected = list(builders) if spec is None or spec.tables is None else list(spec.tables)
+    selected = list(builders) if spec is None else list(spec.tables or ("qor_metrics", "checklist"))
     unknown = [key for key in selected if key not in builders]
     if unknown:
         raise ValueError(f"unsupported csv table(s): {', '.join(unknown)}")

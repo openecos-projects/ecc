@@ -59,6 +59,24 @@ REVIEW = {
             "details": [{"location": "sta_ecc/report/MAX_125", "reason": "file missing"}],
         },
     ],
+    "items": [
+        {
+            "id": "quality.drc.clean",
+            "state": "pass",
+            "blocked": False,
+            "policy": "block",
+            "owner": "qor",
+            "title": "Final DRC clean",
+        },
+        {
+            "id": "report.sta.timing_reports",
+            "state": "failed",
+            "blocked": False,
+            "policy": "warn",
+            "owner": "checklist",
+            "title": "STA timing reports",
+        },
+    ],
 }
 
 
@@ -110,6 +128,8 @@ class TestSignoffInspect:
         assert summary["readiness"] == "WARN"
         groups = [r for r in records if "group" in r]
         assert [g["group"] for g in groups] == ["harden", "sta"]
+        items = [r for r in records if "item" in r]
+        assert [i["item"] for i in items] == ["quality.drc.clean", "report.sta.timing_reports"]
         risks = [r for r in records if "risk" in r]
         assert risks[0]["title"] == "STA report missing"
 
@@ -118,7 +138,9 @@ class TestSignoffInspect:
     ):
         project_dir = create_cli_project()
         os.makedirs(os.path.join(project_dir, "default"))
-        _patch_inspect(monkeypatch, {"status": "blocked", "readiness": "ERROR", "groups": [], "risks": []})
+        _patch_inspect(
+            monkeypatch, {"status": "blocked", "readiness": "ERROR", "groups": [], "risks": []}
+        )
 
         rc = cli_main.run(["signoff", "inspect", "--project", project_dir, "--plain"])
 

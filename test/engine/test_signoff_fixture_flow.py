@@ -7,11 +7,11 @@ import tarfile
 from pathlib import Path
 
 import pytest
+from test_signoff_package import _make_engine_flow, _make_signoff_workspace, _qor_gate, _qor_summary
 
 from chipcompiler.engine.signoff import SignoffPackageOptions
 from chipcompiler.engine.signoff_assessment import build_signoff_assessment
 from chipcompiler.engine.signoff_export import SignoffExportError, export_signoff_package_archive
-from test_signoff_package import _make_engine_flow, _make_signoff_workspace, _qor_gate, _qor_summary
 
 
 def _write_json(path: Path, data: dict) -> None:
@@ -41,6 +41,17 @@ def test_fixture_workspace_pass_and_export_archive(tmp_path: Path):
     assessment = build_signoff_assessment(flow.workspace)
     assert assessment["status"] == "ready"
     assert assessment["readiness"] == "PASS"
+    from chipcompiler.engine.signoff.catalog import lookup_item
+
+    produced = {item["id"] for item in assessment.get("items") or []}
+    assert produced
+    assert [item_id for item_id in produced if lookup_item(item_id) is None] == []
+    assert "quality.drc.clean" in produced
+    assert "artifact.harden.gds" in produced
+    assert "artifact.rcx.spef_outputs" in produced
+    assert "provenance.initial.rtl" in produced
+    assert "flow.drc.completed" in produced
+    assert "configuration.sta" in produced
 
     archive_path = tmp_path / "gcd_signoff.tar.gz"
     exported = export_signoff_package_archive(flow.workspace, str(archive_path))

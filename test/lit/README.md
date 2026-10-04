@@ -11,10 +11,13 @@ Entry point: `nix/scripts/export-signoff-csv.sh --workspace WS --out-dir DIR
 Status: **v0 / trial** — this is a CI contract, not product signoff truth.
 Product readiness is `ecc signoff inspect/export`.
 
+Default CSV tables are **qor_metrics + checklist** only. `qor_summary` and
+`flow_steps` remain available when a profile sets `tables:`. FileCheck
+projection can be built from in-memory rows without extra CSV files.
+
 Milestone (inputs → readiness PASS/WARN/MISS/ERROR + package archive, ICS55
-fixture-first): see repo-adjacent `/root/ec/SIGNOFF_MILESTONE.md` and GitHub
-milestone `signoff-readiness+package` on `plitenh/ecc`. Projection emits a
-`readiness:` line derived from checklist CSV (no PDK required).
+fixture-first): item identities live in `chipcompiler.engine.signoff.catalog`.
+Projection emits a `readiness:` line derived from checklist rows (no PDK).
 
 ## Where it runs
 

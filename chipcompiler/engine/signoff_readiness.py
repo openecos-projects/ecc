@@ -104,4 +104,28 @@ def attach_readiness(
         readiness = "MISS"
     out = dict(assessment)
     out["readiness"] = readiness
+    if "items" not in out:
+        out["items"] = item_summaries(checklist)
     return out
+
+
+def item_summaries(checklist: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(checklist, dict) or not isinstance(checklist.get("checklist"), list):
+        return []
+    rows = []
+    for item in checklist["checklist"]:
+        if not isinstance(item, dict) or not item.get("id"):
+            continue
+        rows.append(
+            {
+                "id": item.get("id"),
+                "state": item.get("state", "unavailable"),
+                "blocked": bool(item.get("blocked")),
+                "policy": item.get("policy", "warn"),
+                "owner": item.get("owner", "checklist"),
+                "title": item.get("title", ""),
+                "step": item.get("step", ""),
+                "category": item.get("category", ""),
+            }
+        )
+    return rows
