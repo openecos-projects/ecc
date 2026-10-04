@@ -5,6 +5,7 @@ model (see collector.py and models.py), plus the GUI-parity text design
 summary implemented in engine.signoff.report*.
 """
 
+from chipcompiler.engine.signoff.catalog import SIGNOFF_ITEM_CATALOG
 from chipcompiler.engine.signoff.collector import SignoffPackageCollector
 from chipcompiler.engine.signoff.models import (
     SIGNOFF_REQUIRED_QOR_STEPS,
@@ -14,6 +15,7 @@ from chipcompiler.engine.signoff.models import (
 )
 
 __all__ = [
+    "SIGNOFF_ITEM_CATALOG",
     "SIGNOFF_REQUIRED_QOR_STEPS",
     "SignoffPackageCollector",
     "SignoffPackageIssue",
