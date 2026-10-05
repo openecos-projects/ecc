@@ -67,7 +67,7 @@ workspace 文件带有显式 schema 版本，来自更新版本的文件会响�
 
 | 文件 | 字段 | 当前版本 | 说明 |
 | --- | --- | --- | --- |
-| `home/params.toml` | `schema_version` | 1 | 缺省 = 版本 0（前版本化时代）；版本 0 仍走 legacy `parameters.json` 迁移 |
+| `home/params.toml` | `schema_version` | 2 | 缺省 = 版本 0（前版本化时代）；版本 0 走 legacy `parameters.json` 迁移，版本 1 迁移为去重后的 v2 |
 | `home/flow.json` | `schema_version` | 1 | 缺省 = 版本 0；写入处盖章，reconcile 拒绝更高版本 |
 | `home/engineering-snapshot.json` | `schemaVersion` | 6 | 与 GUI 共享；破坏性变更计数器（ADR-0005）——不支持的版本 fail-closed，从不迁移 |
 

@@ -4,8 +4,9 @@
 
 Three kinds of files under ``home/`` are versioned:
 
-- ``params.toml`` — current version 1; a file without the field is version 0
-  (the pre-versioning era) and loads through the legacy migration.
+- ``params.toml`` — current version 2; version 1 is the first structured
+  workspace format, and a file without the field is version 0 (the
+  pre-versioning era) and loads through the legacy migration.
 - ``flow.json`` — current version 1; version 0 when the field is absent.
 - ``engineering-snapshot.json`` — current version 6, a breaking-change
   counter (no in-place migration seam; unsupported versions fail closed and
@@ -38,7 +39,7 @@ WORKSPACE_CONFIGS = "workspace-configs"
 #: Newest schema version each file type supports. Types without an entry
 #: derive it from their registered migrations.
 SUPPORTED_SCHEMA_VERSIONS: dict[str, int] = {
-    PARAMS_TOML: 1,
+    PARAMS_TOML: 2,
     FLOW_JSON: 1,
     ENGINEERING_SNAPSHOT: 6,
 }
@@ -63,6 +64,12 @@ def _migrate_params_toml_to_v1(workspace_dir: Path) -> None:
     migrate_legacy_parameters(workspace_dir)
 
 
+def _migrate_params_toml_to_v2(workspace_dir: Path) -> None:
+    from .workspace_config_migrations import migrate_workspace_config_to_v2
+
+    migrate_workspace_config_to_v2(workspace_dir)
+
+
 def _migrate_workspace_config_filenames_to_v1(workspace_dir: Path) -> None:
     from .workspace import migrate_workspace_config_filenames
 
@@ -71,7 +78,7 @@ def _migrate_workspace_config_filenames_to_v1(workspace_dir: Path) -> None:
 
 #: {file type: {target version: migration producing that version}}.
 SCHEMA_MIGRATIONS: dict[str, dict[int, Callable[[Path], None]]] = {
-    PARAMS_TOML: {1: _migrate_params_toml_to_v1},
+    PARAMS_TOML: {1: _migrate_params_toml_to_v1, 2: _migrate_params_toml_to_v2},
     WORKSPACE_CONFIGS: {1: _migrate_workspace_config_filenames_to_v1},
 }
 

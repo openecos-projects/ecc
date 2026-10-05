@@ -79,7 +79,7 @@ instead of parsing silently:
 
 | File | Field | Current version | Notes |
 | --- | --- | --- | --- |
-| `home/params.toml` | `schema_version` | 1 | absent = version 0 (pre-versioning); version 0 loads through the legacy `parameters.json` migration |
+| `home/params.toml` | `schema_version` | 2 | absent = version 0 (pre-versioning); version 0 migrates through the legacy `parameters.json` path and version 1 is deduplicated to v2 |
 | `home/flow.json` | `schema_version` | 1 | absent = version 0; writers stamp it, reconcile rejects newer versions |
 | `home/engineering-snapshot.json` | `schemaVersion` | 6 | shared with the GUI; a breaking-change counter (ADR-0005) — unsupported versions fail closed, never migrate |
 
