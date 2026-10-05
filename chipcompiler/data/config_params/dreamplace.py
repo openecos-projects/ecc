@@ -243,7 +243,7 @@ SCHEMAS = (
     _place("pin2pin_net_weighting", 0),
     _place("pin2pin_weight", 2.5e-05),
     _place("pin_area_adjust_stop_ratio", 0.05),
-    _place("pin_density", 0.6),
+    _place("pin_density", -1),
     _place("pin_stretch_ratio", 1.414213562),
     _place("plot_flag", 1),
     _place("random_center_init_flag", 1),

@@ -100,7 +100,7 @@ graph LR
 | `place.target_density` | float [0.1, 0.95] | 0.2 | dreamplace `target_density` | 全局布局目标密度 |
 | `place.target_overflow` | float [0.0, 1.0] | 0.1 | dreamplace `stop_overflow` | 全局布局溢出收敛目标 |
 | `place.global_right_padding` | int [0, 100] | 0 | 仅记录于 params.toml | 布局 site 右侧全局 padding（当前版本尚未接入工具配置字段） |
-| `place.cell_padding_x` | int [0, 10000]（dbu） | 300 | dreamplace `cell_padding_x` | 单元 X 方向 padding（绕线拥塞缓解） |
+| `place.cell_padding_x` | int [0, 10000]（dbu） | 200 | dreamplace `cell_padding_x` | 单元 X 方向 padding（绕线拥塞缓解） |
 | `place.routability_opt` | {0, 1} | 1 | dreamplace `routability_opt_flag` | 布局阶段开启绕线拥塞驱动优化 |
 | `route.bottom_layer` | MET1–MET5 | MET2 | route `RT.-bottom_routing_layer` + db `LayerSettings.routing_layer_1st` | 绕线最低层 |
 | `route.top_layer` | MET2–MET6 | MET5 | route `RT.-top_routing_layer` | 绕线最高层 |
@@ -394,7 +394,7 @@ GPUGR 默认继承 workspace 的 `bottom_layer`/`top_layer`。
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `cell_padding_x` | 300 dbu `*place.cell_padding_x` | 单元 X 向 padding（数据库单位） |
+| `cell_padding_x` | 200 dbu `*place.cell_padding_x` | 单元 X 向 padding（数据库单位） |
 | `bndry_padding_x/y` | 0 | 边界 padding |
 
 ### 宏单元
@@ -427,7 +427,7 @@ GPUGR 默认继承 workspace 的 `bottom_layer`/`top_layer`。
 | `ignore_net_weight` / `ignore_net_degree` | 1 / 100 | 忽略网表权重 / 最大处理网度 |
 | `sort_nets_by_degree` | 0 | 按网度排序 |
 | `detailed_place_engine` / `detailed_place_command` | `""` | 外部详细布局引擎及命令 |
-| `pin_density` | 0.6 | 引脚密度阈值 |
+| `pin_density` | -1 | 默认关闭引脚密度 inflation；设置为 (0, 1) 内的值可启用 |
 | `use_bb` | 0 | 使用包围盒线长 |
 
 ## 6. timing optimization（Sizer）

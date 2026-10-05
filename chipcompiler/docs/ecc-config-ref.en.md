@@ -100,7 +100,7 @@ Source: `_LEGACY_PARAM_REGISTRY` in [chipcompiler/data/parameter_schema.py](http
 | `place.target_density` | float [0.1, 0.95] | 0.2 | dreamplace `target_density` | Global placement target density |
 | `place.target_overflow` | float [0.0, 1.0] | 0.1 | dreamplace `stop_overflow` | Global placement overflow convergence target |
 | `place.global_right_padding` | int [0, 100] | 0 | recorded only in params.toml | Global padding on the right side of placement sites (not yet wired into a tool config field in the current version) |
-| `place.cell_padding_x` | int [0, 10000] (dbu) | 300 | dreamplace `cell_padding_x` | Cell padding in X (routing congestion relief) |
+| `place.cell_padding_x` | int [0, 10000] (dbu) | 200 | dreamplace `cell_padding_x` | Cell padding in X (routing congestion relief) |
 | `place.routability_opt` | {0, 1} | 1 | dreamplace `routability_opt_flag` | Enable routability (congestion-driven) optimization during placement |
 | `route.bottom_layer` | MET1–MET5 | MET2 | route `RT.-bottom_routing_layer` + db `LayerSettings.routing_layer_1st` | Lowest routing layer |
 | `route.top_layer` | MET2–MET6 | MET5 | route `RT.-top_routing_layer` | Highest routing layer |
@@ -392,7 +392,7 @@ also be set in that section without adding top-level ECC parameters.
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `cell_padding_x` | 300 dbu `*place.cell_padding_x` | Cell padding in X (database units) |
+| `cell_padding_x` | 200 dbu `*place.cell_padding_x` | Cell padding in X (database units) |
 | `bndry_padding_x/y` | 0 | Boundary padding |
 
 ### Macros
@@ -425,7 +425,7 @@ also be set in that section without adding top-level ECC parameters.
 | `ignore_net_weight` / `ignore_net_degree` | 1 / 100 | Ignore netlist weights / max net degree handled |
 | `sort_nets_by_degree` | 0 | Sort nets by degree |
 | `detailed_place_engine` / `detailed_place_command` | `""` | External detailed placement engine and command |
-| `pin_density` | 0.6 | Pin density threshold |
+| `pin_density` | -1 | Pin-density inflation disabled by default; set a value in (0, 1) to enable it |
 | `use_bb` | 0 | Use bounding-box wirelength |
 
 ## 6. timing optimization (Sizer)
