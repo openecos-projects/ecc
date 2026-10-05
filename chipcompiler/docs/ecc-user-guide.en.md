@@ -779,7 +779,7 @@ $ ecc param list
     place.target_density           0.2
     place.target_overflow          0.1
     place.global_right_padding     0
-    place.cell_padding_x           300
+    place.cell_padding_x           200
     place.routability_opt          1
   route
     route.bottom_layer             MET2
@@ -845,7 +845,7 @@ Legacy semantic parameters:
 | `place.target_density` | float | 0.2 | [0.1, 0.95] | placement |
 | `place.target_overflow` | float | 0.1 | [0.0, 1.0] | placement |
 | `place.global_right_padding` | int | 0 | [0, 100] | placement |
-| `place.cell_padding_x` | int | 300 | [0, 10000] | placement |
+| `place.cell_padding_x` | int | 200 | [0, 10000] | placement |
 | `place.routability_opt` | int | 1 | {0, 1} | placement |
 | `route.bottom_layer` | str | MET2 | MET1–MET5 | routing |
 | `route.top_layer` | str | MET5 | MET2–MET6 | routing |

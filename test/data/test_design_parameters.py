@@ -52,7 +52,7 @@ def test_get_parameters_returns_independent_copies():
 def test_ics55_template_has_dreamplace_padding_defaults():
     parameters = get_parameters("ics55")
 
-    assert parameters.data["cell_padding_x"] == 300
+    assert parameters.data["cell_padding_x"] == 200
     assert parameters.data["routability_opt_flag"] == 1
 
 

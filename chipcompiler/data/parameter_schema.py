@@ -114,7 +114,7 @@ _LEGACY_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         "place",
         "cell_padding_x",
         "int",
-        300,
+        200,
         "placement",
         "Cell padding in x-direction in database units",
         {"dreamplace": "cell_padding_x"},

@@ -21,7 +21,7 @@ ICS55_PARAMETERS_TEMPLATE = {
     "target_density": 0.2,
     "target_overflow": 0.1,
     "global_right_padding": 0,
-    "cell_padding_x": 300,
+    "cell_padding_x": 200,
     "routability_opt_flag": 1,
     "run_analysis": True,
     "clock": "",

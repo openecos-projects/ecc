@@ -94,7 +94,7 @@ def test_key_spelling_matches_template() -> None:
 PARAM_CONFIG_DEFAULTS: list[tuple[str, float, float, str]] = [
     ("Target density", 0.2, 0.8, "dreamplace.target_density"),
     ("Target overflow", 0.1, 0.1, "dreamplace.stop_overflow"),
-    ("Cell padding x", 300, 300, "dreamplace.cell_padding_x"),
+    ("Cell padding x", 200, 200, "dreamplace.cell_padding_x"),
     ("Routability opt flag", 1, 1, "dreamplace.routability_opt_flag"),
 ]
 
