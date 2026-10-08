@@ -78,7 +78,7 @@ _LEGACY_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         "place",
         "target_density",
         "float",
-        0.2,
+        0.4,
         "placement",
         "Target placement density",
         {"dreamplace": "target_density"},
@@ -207,12 +207,14 @@ def validate_schema_record(schema: ParamSchema) -> list[str]:
     return [
         f"missing required field: {field}"
         for field in _REQUIRED_FIELDS
-        if getattr(schema, field, None) is None
-        or (field != "default" and getattr(schema, field) == "")
+        if field != "default" and getattr(schema, field, None) in (None, "")
     ]
 
 
 def validate_schema_type(value: object, schema: ParamSchema) -> tuple[object, str | None]:
+    # An unset default is also valid in exported, resolved workspace parameters.
+    if value is None and schema.default is None:
+        return None, None
     key, ptype = schema.param, schema.type
     if ptype == "int":
         return (
@@ -314,6 +316,8 @@ def parse_value(raw: str, schema: ParamSchema) -> object:
 
 
 def validate_value(value: object, schema: ParamSchema) -> list[str]:
+    if value is None and schema.default is None:
+        return []
     errors = []
     if schema.range is not None:
         if not isinstance(value, (int, float)) or isinstance(value, bool):

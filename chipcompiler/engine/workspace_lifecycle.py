@@ -76,7 +76,11 @@ def assess_execution_readiness(
                 return {"ready": False, "code": "pdk_binding_mismatch"}
             workspace.pdk.validate()
         else:
-            get_pdk(workspace.pdk.name, pdk_root=root).validate()
+            get_pdk(
+                workspace.pdk.name,
+                pdk_root=root,
+                overrides=workspace.parameters.data.get("pdk_overrides", {}),
+            ).validate()
     except (OSError, ValueError):
         return {"ready": False, "code": "pdk_binding_mismatch"}
     return {"ready": True}
@@ -94,7 +98,11 @@ def apply_workspace_bindings(workspace, bindings: object) -> None:
             raise WorkspaceLifecycleError("pdk_binding_mismatch", "PDK binding root does not match")
         workspace.pdk.validate()
     else:
-        workspace.pdk = get_pdk(workspace.pdk.name, pdk_root=root)
+        workspace.pdk = get_pdk(
+            workspace.pdk.name,
+            pdk_root=root,
+            overrides=workspace.parameters.data.get("pdk_overrides", {}),
+        )
     workspace.pdk.sdc, workspace.pdk.spef = sdc, spef
     from chipcompiler.data import refresh_workspace_config
 

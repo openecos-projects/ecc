@@ -107,6 +107,7 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
         pdk_name=parameters.data.get("pdk", ""),
         pdk_root=parameters.data.get("pdk_root", ""),
         pdk_config=parameters.data.get("pdk_config", ""),
+        overrides=parameters.data.get("pdk_overrides", {}),
         validate=not read_only,
     )
     sdc_path = list(origin_dir.rglob("*.sdc"))

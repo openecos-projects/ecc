@@ -2,6 +2,7 @@ import json
 import os
 
 from chipcompiler.cli import main as cli_main
+from chipcompiler.data.parameter_schema import lookup_schema
 
 
 class TestParamList:
@@ -43,7 +44,7 @@ class TestParamShow:
         assert rc == 0
         record = plain_records(capsys.readouterr().out)[0]
         assert record["param"] == "place.target_density"
-        assert record["default"] == "0.2"
+        assert record["default"] == str(lookup_schema("place.target_density").default)
         assert "source" in record
         assert "maps_to" in record
 
@@ -642,7 +643,7 @@ class TestDiffFiltering:
         self, tmp_path, capsys, create_cli_project, plain_records
     ):
         project_dir = create_cli_project()
-        schema_default = 0.2
+        schema_default = lookup_schema("place.target_density").default
         cli_main.run(
             ["param", "set", "place.target_density", str(schema_default), "--project", project_dir]
         )

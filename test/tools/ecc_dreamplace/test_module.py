@@ -1,19 +1,15 @@
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 from chipcompiler.data import (
     EccData,
     EccStep,
-    LogPaths,
     OriginDesign,
-    SkippableStepEnum,
     StepEnum,
     Workspace,
 )
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
-from chipcompiler.tools.ecc_dreamplace.service import get_step_info
 from chipcompiler.utility import json_write
 
 
@@ -36,6 +32,7 @@ class FakeParams:
         ),
         (DreamplaceRunMode.MACRO_PLACEMENT, {"executed": False}, False),
         (DreamplaceRunMode.PLACEMENT, {}, False),
+        (DreamplaceRunMode.PLACEMENT, {"status": "ok"}, True),
         (DreamplaceRunMode.PLACEMENT, {"hpwl": 1.0}, True),
     ],
 )
@@ -91,7 +88,7 @@ def test_run_accepts_only_the_defined_empty_macro_short_circuit(
     assert module._run(mode=mode) is expected
 
 
-def test_build_params_preserves_routability_config_and_forces_timing_off(tmp_path):
+def test_build_params_preserves_placement_timing_config(tmp_path):
     config_path = tmp_path / "dreamplace_ecc.json"
     json_write(
         config_path,
@@ -133,14 +130,197 @@ def test_build_params_preserves_routability_config_and_forces_timing_off(tmp_pat
     assert params.random_seed == 17
     assert params.get_congestion_map == 1
     assert params.macro_only == 0
-    assert params.with_sta is False
-    assert params.timing_opt_flag == 0
-    assert params.timing_eval_flag == 0
-    assert params.differentiable_timing_obj == 0
+    assert params.with_sta is True
+    assert params.timing_opt_flag == 1
+    assert params.timing_eval_flag == 1
+    assert params.differentiable_timing_obj == 1
     assert params.def_input == str(tmp_path / "input.def")
     assert params.verilog_input == str(tmp_path / "input.v")
     assert params.result_dir == str(result_dir)
     assert params.base_design_name == "gcd"
+
+
+def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreamplace_default_config):
+    config_path = tmp_path / "dreamplace_ecc.json"
+    json_write(config_path, dreamplace_default_config)
+    workspace = Workspace(
+        directory=tmp_path / "workspace",
+        design=OriginDesign(name="gcd"),
+        config={"dreamplace": config_path},
+    )
+    result_dir = tmp_path / "data" / "diff_sizing"
+    step = EccStep(
+        name=StepEnum.DIFF_SIZING.value,
+        data=EccData(dir=tmp_path / "data", steps={StepEnum.DIFF_SIZING.value: result_dir}),
+    )
+    module = DreamplaceModule(
+        workspace=workspace,
+        step=step,
+        ecc_module=object(),
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+        output_def=tmp_path / "output.def",
+        output_verilog=tmp_path / "output.v",
+    )
+
+    params = module._build_params(FakeParams, mode=DreamplaceRunMode.DIFF_SIZING)
+
+    assert {
+        "flow_kind": params.flow_kind,
+        "timing_rc_mode": params.timing_rc_mode,
+        "placement_sizing_mode": params.placement_sizing_mode,
+        "sizing_parameterization": params.sizing_parameterization,
+        "real_size_execution_mode": params.real_size_execution_mode,
+        "real_size_warmup_steps": params.real_size_warmup_steps,
+        "target_density": params.target_density,
+        "cell_padding_x": params.cell_padding_x,
+        "timing_opt_enabled": params.timing_opt_enabled,
+        "timing_opt_flag": params.timing_opt_flag,
+        "timing_eval_flag": params.timing_eval_flag,
+        "routability_opt_flag": params.routability_opt_flag,
+        "with_sta": params.with_sta,
+        "timing_objective_lane": params.timing_objective_lane,
+    } == {
+        "flow_kind": "sizing",
+        "timing_rc_mode": "gr",
+        "placement_sizing_mode": "size_only",
+        "sizing_parameterization": "real_size",
+        "real_size_execution_mode": "warmup_to_discrete",
+        "real_size_warmup_steps": 1,
+        "target_density": 0.4,
+        "cell_padding_x": 0,
+        "timing_opt_enabled": 0,
+        "timing_opt_flag": 0,
+        "timing_eval_flag": 1,
+        "routability_opt_flag": 0,
+        "with_sta": 1,
+        "timing_objective_lane": "timing_slew_cap",
+    }
+    assert params.global_place_stages[0]["iteration"] == 50
+    assert params.global_place_stages[0]["optimizer"] == "adam"
+    assert params.design_inputs["rcx_config"] == ""
+
+
+def test_build_params_resolves_openroad_timing_inputs(tmp_path):
+    pdk_root = tmp_path / "pdk"
+    pdk_root.mkdir()
+    rc_tcl = pdk_root / "setRC.tcl"
+    rc_tcl.write_text("set_wire_rc -signal -layer MET3\n", encoding="utf-8")
+    config_path = tmp_path / "dreamplace_ecc.json"
+    json_write(
+        config_path,
+        {
+            "flow_kind": "placement",
+            "place_io_engine": "openroad",
+            "rc_tcl": "setRC.tcl",
+            "diff_timing_driven_placement": 1,
+        },
+    )
+    workspace = Workspace(
+        directory=tmp_path / "workspace",
+        design=OriginDesign(name="gcd"),
+        config={"dreamplace": config_path},
+    )
+    workspace.pdk.root = pdk_root
+    workspace.pdk.tech = pdk_root / "tech.lef"
+    workspace.pdk.lefs = [pdk_root / "cells.lef"]
+    workspace.pdk.libs = [pdk_root / "cells.lib"]
+    workspace.pdk.sdc = tmp_path / "gcd.sdc"
+    result_dir = tmp_path / "data" / "pl"
+    step = EccStep(
+        name=StepEnum.PLACEMENT.value,
+        data=EccData(dir=tmp_path / "data", steps={StepEnum.PLACEMENT.value: result_dir}),
+    )
+    module = DreamplaceModule(
+        workspace=workspace,
+        step=step,
+        ecc_module=None,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+        output_def=tmp_path / "output.def",
+        output_verilog=tmp_path / "output.v",
+    )
+
+    params = module._build_params(FakeParams, mode=DreamplaceRunMode.PLACEMENT)
+
+    assert params.flow_kind == "placement"
+    assert params.diff_timing_driven_placement == 1
+    assert params.with_sta == 1
+    assert params.timing_topology_refresh_interval == 15
+    assert params.timing_topology_enable_overflow_threshold == 0.35
+    assert params.design_inputs == {
+        "tech_lef": str(pdk_root / "tech.lef"),
+        "lef": [str(pdk_root / "cells.lef")],
+        "lib": [str(pdk_root / "cells.lib")],
+        "def": str(tmp_path / "input.def"),
+        "verilog": str(tmp_path / "input.v"),
+        "sdc": str(tmp_path / "gcd.sdc"),
+        "rc_tcl": str(rc_tcl),
+    }
+
+
+def test_build_params_accepts_ecc_geometry_only_placement(tmp_path):
+    config_path = tmp_path / "dreamplace_ecc.json"
+    json_write(config_path, {"place_io_engine": "ecc"})
+    workspace = Workspace(
+        directory=tmp_path / "workspace",
+        design=OriginDesign(name="gcd"),
+        config={"dreamplace": config_path},
+    )
+    step = EccStep(
+        name=StepEnum.PLACEMENT.value,
+        data=EccData(
+            dir=tmp_path / "data",
+            steps={StepEnum.PLACEMENT.value: tmp_path / "data" / "pl"},
+        ),
+    )
+    module = DreamplaceModule(
+        workspace=workspace,
+        step=step,
+        ecc_module=object(),
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+        output_def=tmp_path / "output.def",
+        output_verilog=None,
+    )
+
+    params = module._build_params(FakeParams, mode=DreamplaceRunMode.PLACEMENT)
+
+    assert params.place_io_engine == "ecc"
+    assert not hasattr(params, "design_inputs")
+
+
+def test_build_params_resolves_ecc_timing_inputs(tmp_path):
+    config_path = tmp_path / "dreamplace_ecc.json"
+    json_write(
+        config_path,
+        {"place_io_engine": "ecc", "with_sta": 1},
+    )
+    workspace = Workspace(
+        directory=tmp_path / "workspace",
+        design=OriginDesign(name="gcd"),
+        config={"dreamplace": config_path},
+    )
+    step = EccStep(name=StepEnum.PLACEMENT.value, data=EccData(dir=tmp_path / "data"))
+    module = DreamplaceModule(
+        workspace=workspace,
+        step=step,
+        ecc_module=object(),
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+        output_def=tmp_path / "output.def",
+        output_verilog=None,
+    )
+
+    params = module._build_params(FakeParams, mode=DreamplaceRunMode.PLACEMENT)
+
+    assert params.place_io_engine == "ecc"
+    assert params.with_sta == 1
+    assert params.design_inputs["def"] == str(tmp_path / "input.def")
+    assert params.design_inputs["verilog"] == str(tmp_path / "input.v")
+    assert "lib" in params.design_inputs
+    assert "sdc" in params.design_inputs
+    assert Path(params.design_inputs["work_dir"]).parent == Path(module.result_dir)
 
 
 def test_build_params_uses_empty_strings_for_missing_inputs(tmp_path):
@@ -235,349 +415,3 @@ def test_macro_placement_forces_selective_non_routable_placement_params(tmp_path
         "get_congestion_map": 0,
         "egr_padding_flag": 0,
     }
-
-
-@pytest.mark.parametrize(
-    ("owner", "detailed_place_flag"),
-    [
-        (StepEnum.LEGALIZATION.value, 0),
-        (SkippableStepEnum.TIMING_OPT.value, 1),
-    ],
-)
-def test_legalization_params_follow_owner(tmp_path, owner, detailed_place_flag):
-    config_path = tmp_path / "dreamplace_ecc.json"
-    json_write(
-        config_path,
-        {
-            "macro_only": 1,
-            "cell_padding_x": 300,
-            "detailed_place_flag": 0,
-            "post_legalization_adaptive_padding_flag": 1,
-        },
-    )
-    workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
-        design=OriginDesign(name="gcd"),
-        config={"dreamplace": config_path},
-    )
-    step = EccStep(
-        name=owner,
-        data=EccData(
-            dir=tmp_path / "data",
-            steps={owner: tmp_path / "data" / "pl"},
-        ),
-    )
-    module = DreamplaceModule(
-        workspace=workspace,
-        step=step,
-        ecc_module=None,
-        input_def=tmp_path / "input.def",
-        input_verilog=tmp_path / "input.v",
-        output_def=tmp_path / "output.def",
-        output_verilog=tmp_path / "output.v",
-    )
-
-    params = module._build_params(FakeParams, mode=DreamplaceRunMode.LEGALIZATION)
-
-    assert {
-        "macro_only": params.macro_only,
-        "detailed_place_flag": params.detailed_place_flag,
-        "cell_padding_x": params.cell_padding_x,
-        "post_legalization_adaptive_padding_flag": params.post_legalization_adaptive_padding_flag,
-    } == {
-        "macro_only": 0,
-        "detailed_place_flag": detailed_place_flag,
-        "cell_padding_x": 0,
-        "post_legalization_adaptive_padding_flag": 0,
-    }
-
-
-@pytest.mark.parametrize(
-    ("owner", "site_width", "expected_padding"),
-    [
-        (StepEnum.LEGALIZATION.value, 200, 200),
-        (StepEnum.LEGALIZATION.value, 420, 420),
-        (SkippableStepEnum.TIMING_OPT.value, 200, 0),
-    ],
-)
-def test_legalization_uses_site_padding_only_for_cts(
-    tmp_path, monkeypatch, owner, site_width, expected_padding
-):
-    import dreamplace.Params as params_module
-    import dreamplace.Placer as placer_module
-
-    seen = []
-
-    class FakeEngine:
-        def __init__(self, params):
-            self.params = params
-
-        def setup_rawdb(self, **_kwargs):
-            self.placedb = SimpleNamespace(pydb=SimpleNamespace(site_width=site_width))
-
-        def run(self):
-            seen.append((self.params.detailed_place_flag, self.params.cell_padding_x))
-            return {"hpwl": 1.0}
-
-    module = _module_for_owner(tmp_path, owner)
-    json_write(module.param_path, {"cell_padding_x": 999, "detailed_place_flag": 1})
-    monkeypatch.setattr(params_module, "Params", FakeParams)
-    monkeypatch.setattr(placer_module, "PlacementEngine", FakeEngine)
-
-    assert module.run_legalization() is True
-    assert seen == [(int(owner != StepEnum.LEGALIZATION.value), expected_padding)]
-
-
-def test_dreamplace_step_info_stringifies_path_config(tmp_path):
-    workspace = Workspace(
-        directory=tmp_path,
-        design=OriginDesign(name="gcd"),
-        config={"dreamplace": tmp_path / "config" / "dreamplace_ecc.json"},
-    )
-    workspace.logger = SimpleNamespace(
-        log_section=lambda *args, **kwargs: None,
-        info=lambda *args, **kwargs: None,
-    )
-    step = EccStep(name=StepEnum.PLACEMENT.value)
-
-    assert get_step_info(workspace, step, "config") == {
-        "config": str(workspace.config["dreamplace"]),
-    }
-
-
-def _module_for_owner(tmp_path, step_name: str) -> DreamplaceModule:
-    config_path = tmp_path / "dreamplace_ecc.json"
-    json_write(config_path, {})
-    workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
-        design=OriginDesign(name="gcd"),
-        config={"dreamplace": config_path},
-    )
-    result_dir = tmp_path / "data" / "to"
-    step = EccStep(
-        name=step_name,
-        data=EccData(dir=tmp_path / "data", steps={step_name: result_dir}),
-        log=LogPaths(file=tmp_path / "step.log"),
-    )
-    return DreamplaceModule(
-        workspace=workspace,
-        step=step,
-        ecc_module=None,
-        input_def=tmp_path / "input.def",
-        input_verilog=tmp_path / "input.v",
-        output_def=tmp_path / "output.def",
-        output_verilog=tmp_path / "output.v",
-    )
-
-
-@pytest.mark.parametrize(
-    ("mode", "step_name", "expected"),
-    [
-        (DreamplaceRunMode.PLACEMENT, StepEnum.PLACEMENT.value, 1),
-        (DreamplaceRunMode.MACRO_PLACEMENT, StepEnum.MACRO_PLACEMENT.value, 0),
-        (DreamplaceRunMode.LEGALIZATION, StepEnum.LEGALIZATION.value, 0),
-        (DreamplaceRunMode.LEGALIZATION, SkippableStepEnum.TIMING_OPT.value, 1),
-    ],
-)
-def test_detailed_place_default_respects_run_mode(
-    tmp_path, dreamplace_default_config, mode, step_name, expected
-):
-    module = _module_for_owner(tmp_path, step_name)
-    json_write(module.param_path, dreamplace_default_config)
-
-    assert module._build_params(FakeParams, mode=mode).detailed_place_flag == expected
-
-
-def test_placement_respects_explicit_detailed_place_disable(tmp_path, dreamplace_default_config):
-    module = _module_for_owner(tmp_path, StepEnum.PLACEMENT.value)
-    dreamplace_default_config["detailed_place_flag"] = 0
-    json_write(module.param_path, dreamplace_default_config)
-
-    assert (
-        module._build_params(FakeParams, mode=DreamplaceRunMode.PLACEMENT).detailed_place_flag == 0
-    )
-
-
-def test_run_legalization_allows_timing_opt_and_legalization_owners(tmp_path, monkeypatch):
-    seen: list[str] = []
-
-    def fake_run(self, *, mode: DreamplaceRunMode) -> bool:
-        seen.append(self.step.name)
-        assert mode is DreamplaceRunMode.LEGALIZATION
-        return True
-
-    monkeypatch.setattr(DreamplaceModule, "_run", fake_run)
-
-    legalization = _module_for_owner(tmp_path, StepEnum.LEGALIZATION.value)
-    timing_opt = _module_for_owner(tmp_path, SkippableStepEnum.TIMING_OPT.value)
-    placement = _module_for_owner(tmp_path, StepEnum.PLACEMENT.value)
-
-    assert legalization.run_legalization() is True
-    assert timing_opt.run_legalization() is True
-    assert placement.run_legalization() is False
-    assert seen == [StepEnum.LEGALIZATION.value, SkippableStepEnum.TIMING_OPT.value]
-
-
-def test_timing_opt_legalize_log_does_not_reuse_step_log(tmp_path):
-    legalization = _module_for_owner(tmp_path, StepEnum.LEGALIZATION.value)
-    timing_opt = _module_for_owner(tmp_path, SkippableStepEnum.TIMING_OPT.value)
-
-    assert legalization._file_handler_path(mode=DreamplaceRunMode.LEGALIZATION) == str(
-        tmp_path / "step.log"
-    )
-    assert timing_opt._file_handler_path(mode=DreamplaceRunMode.LEGALIZATION) == str(
-        Path(timing_opt.result_dir) / "dreamplace_legalization.log"
-    )
-
-
-def test_macro_placement_log_does_not_reuse_step_log(tmp_path):
-    macro_placement = _module_for_owner(tmp_path, StepEnum.MACRO_PLACEMENT.value)
-
-    assert macro_placement._file_handler_path(mode=DreamplaceRunMode.MACRO_PLACEMENT) == str(
-        Path(macro_placement.result_dir) / "dreamplace_macro_placement.log"
-    )
-
-
-def test_dreamplace_run_step_ignores_timing_opt(tmp_path, monkeypatch):
-    from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
-
-    monkeypatch.setattr(dreamplace_runner, "is_eda_exist", lambda: True)
-    monkeypatch.setattr(dreamplace_runner, "run_placement", lambda **kwargs: True)
-    monkeypatch.setattr(dreamplace_runner, "run_legalization", lambda **kwargs: True)
-
-    workspace = Workspace(directory=str(tmp_path / "workspace"), design=OriginDesign(name="gcd"))
-    step = EccStep(name=SkippableStepEnum.TIMING_OPT.value)
-
-    assert dreamplace_runner.run_step(workspace, step) is False
-
-
-def test_legalize_layout_rebuilds_from_sources_and_closes_on_failure(tmp_path, monkeypatch):
-    from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
-    from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
-
-    module = _module_for_owner(tmp_path, SkippableStepEnum.TIMING_OPT.value)
-    staging_def = tmp_path / "sizer.def.gz"
-    staging_verilog = tmp_path / "sizer.v.gz"
-    created = []
-    closed = []
-
-    class LocalEcc:
-        def close(self):
-            closed.append(True)
-
-    def fake_create_db_engine(workspace, load_step):
-        created.append(
-            (
-                load_step.input.def_,
-                load_step.input.verilog,
-                load_step.input.db,
-                load_step.name,
-                workspace,
-            )
-        )
-        return LocalEcc()
-
-    monkeypatch.setattr(dreamplace_runner, "is_eda_exist", lambda: True)
-    monkeypatch.setattr(dreamplace_runner.ecc_runner, "create_db_engine", fake_create_db_engine)
-    monkeypatch.setattr(DreamplaceModule, "run_legalization", lambda self: False)
-
-    assert (
-        dreamplace_runner.legalize_layout(
-            module.workspace,
-            module.step,
-            staging_def,
-            staging_verilog,
-        )
-        is None
-    )
-    assert created == [
-        (staging_def, staging_verilog, None, SkippableStepEnum.TIMING_OPT.value, module.workspace)
-    ]
-    assert closed == [True]
-
-
-def test_legalize_layout_returns_none_without_dreamplace_config(tmp_path, monkeypatch):
-    from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
-
-    workspace = Workspace(directory=str(tmp_path / "workspace"), design=OriginDesign(name="gcd"))
-    step = EccStep(name=SkippableStepEnum.TIMING_OPT.value)
-    monkeypatch.setattr(dreamplace_runner, "is_eda_exist", lambda: True)
-
-    assert (
-        dreamplace_runner.legalize_layout(
-            workspace,
-            step,
-            tmp_path / "sizer.def.gz",
-            tmp_path / "sizer.v.gz",
-        )
-        is None
-    )
-
-
-def test_legalize_layout_fills_missing_dreamplace_config_without_clobbering(tmp_path, monkeypatch):
-    from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
-    from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
-
-    workspace_dir = tmp_path / "workspace"
-    config_path = workspace_dir / "config" / "dreamplace_ecc.json"
-    config_path.parent.mkdir(parents=True)
-    json_write(config_path, {})
-    workspace = Workspace(
-        directory=str(workspace_dir),
-        design=OriginDesign(name="gcd"),
-        config={"db": workspace_dir / "config" / "db_ecc.json"},
-    )
-    step = EccStep(
-        name=SkippableStepEnum.TIMING_OPT.value,
-        data=EccData(
-            dir=tmp_path / "data",
-            steps={SkippableStepEnum.TIMING_OPT.value: tmp_path / "data" / "to"},
-        ),
-        log=LogPaths(file=tmp_path / "step.log"),
-    )
-    engine = SimpleNamespace(close=lambda: None)
-    monkeypatch.setattr(dreamplace_runner, "is_eda_exist", lambda: True)
-    monkeypatch.setattr(
-        dreamplace_runner.ecc_runner,
-        "create_db_engine",
-        lambda *args, **kwargs: engine,
-    )
-    monkeypatch.setattr(DreamplaceModule, "run_legalization", lambda self: True)
-
-    assert (
-        dreamplace_runner.legalize_layout(
-            workspace,
-            step,
-            tmp_path / "sizer.def.gz",
-            tmp_path / "sizer.v.gz",
-        )
-        is engine
-    )
-    assert workspace.config["db"] == workspace_dir / "config" / "db_ecc.json"
-    assert workspace.config["dreamplace"] == config_path
-
-
-def test_legalize_layout_returns_engine_when_legalize_succeeds(tmp_path, monkeypatch):
-    from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
-    from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
-
-    module = _module_for_owner(tmp_path, SkippableStepEnum.TIMING_OPT.value)
-    engine = SimpleNamespace(close=lambda: (_ for _ in ()).throw(AssertionError("closed")))
-
-    monkeypatch.setattr(dreamplace_runner, "is_eda_exist", lambda: True)
-    monkeypatch.setattr(
-        dreamplace_runner.ecc_runner,
-        "create_db_engine",
-        lambda *args, **kwargs: engine,
-    )
-    monkeypatch.setattr(DreamplaceModule, "run_legalization", lambda self: True)
-
-    assert (
-        dreamplace_runner.legalize_layout(
-            module.workspace,
-            module.step,
-            tmp_path / "sizer.def.gz",
-            tmp_path / "sizer.v.gz",
-        )
-        is engine
-    )

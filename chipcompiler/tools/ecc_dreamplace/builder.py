@@ -1,10 +1,20 @@
 #!/usr/bin/env python
 
 import os
+from copy import deepcopy
 from pathlib import Path
 
-from chipcompiler.data import EccStep, Workspace, WorkspaceStep, build_workspace_config_paths
+from chipcompiler.data import (
+    EccStep,
+    StepEnum,
+    Workspace,
+    WorkspaceStep,
+    build_workspace_config_paths,
+)
 from chipcompiler.tools.ecc import builder as ecc_builder
+from chipcompiler.tools.ecc_dreamplace.parameter_overrides import (
+    apply_direct_config_overrides,
+)
 from chipcompiler.tools.ecc_dreamplace.parameter_overrides import (
     apply_parameter_overrides as _apply_parameter_overrides,
 )
@@ -39,6 +49,56 @@ def _set_step_fields(params: dict, step: WorkspaceStep) -> dict:
     params["verilog_input"] = str(step.input.verilog or "")
     params["result_dir"] = str(step.data.workdir_for(step.name))
     return params
+
+
+def step_config_path(workspace: Workspace, step: WorkspaceStep) -> Path:
+    if step.name == StepEnum.DIFF_SIZING.value:
+        return Path(step.data.workdir_for(step.name)) / "dreamplace_diff_sizing.json"
+    return Path(workspace.config["dreamplace"])
+
+
+def _apply_diff_sizing_defaults(params: dict) -> dict:
+    """Apply the standalone DreamPlace S50 profile to a diff-sizing step."""
+    result = deepcopy(params)
+    result.update(
+        flow_kind="sizing",
+        place_io_engine="ecc",
+        timing_rc_mode="gr",
+        placement_sizing_mode="size_only",
+        sizing_parameterization="real_size",
+        real_size_execution_mode="warmup_to_discrete",
+        real_size_warmup_steps=1,
+        continuous_size_dynamics_mode="none",
+        target_density=0.4,
+        cell_padding_x=0,
+        timing_opt_enabled=0,
+        timing_opt_flag=0,
+        timing_eval_flag=1,
+        routability_opt_flag=0,
+        l_shape_routability_flag=0,
+        adjust_gpugr_area_flag=0,
+        gpugr_final_eval_flag=0,
+        enable_net_weighting=0,
+        pin2pin_net_weighting=0,
+        buffering_continuous_relaxed_optimization=False,
+        buffering_segment_count_tns_gradient=False,
+        buffering_segment_strategy="continuous",
+        buffering_candidate_strategy="continuous",
+        enable_relaxed_buffer_timing=False,
+        joint_segment_virtual_density_enabled=0,
+        gpu=0,
+        gpugr_backend="cpu_pr_mt",
+        enable_fillers=0,
+        random_center_init_flag=0,
+        legalize_flag=1,
+        detailed_place_flag=0,
+        detailed_place_engine="",
+    )
+    stages = list(result.get("global_place_stages") or [{}])
+    first_stage = dict(stages[0]) if isinstance(stages[0], dict) else {}
+    first_stage.update(iteration=50, optimizer="adam")
+    result["global_place_stages"] = [first_stage]
+    return result
 
 
 def build_step(
@@ -82,8 +142,28 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
         workspace.config = build_workspace_config_paths(workspace)
 
     params = json_read(workspace.config["dreamplace"])
+    parameter_data = _current_parameter_data(workspace)
+    params = apply_parameter_overrides(params, parameter_data)
+    params = apply_direct_config_overrides(params, parameter_data)
+    if step.name == StepEnum.DIFF_SIZING.value:
+        params = _apply_diff_sizing_defaults(params)
 
-    params = apply_parameter_overrides(params, _current_parameter_data(workspace))
+    from dreamplace.flows.flow_config import resolve_flow_config
+
+    dreamplace_overrides = parameter_data.get("dreamplace")
+    explicit_keys = set(dreamplace_overrides) if isinstance(dreamplace_overrides, dict) else set()
+    explicit_keys.update(apply_direct_config_overrides({}, parameter_data))
+    params = resolve_flow_config(params, explicit_keys=explicit_keys)
+    # Canonical profiles own defaults; explicit workspace values own the final
+    # effective config and therefore must be replayed after profile expansion.
+    params = apply_parameter_overrides(params, parameter_data)
+    params = apply_direct_config_overrides(params, parameter_data)
+    if step.name == StepEnum.DIFF_SIZING.value:
+        # Workspace-level placement values (density, padding and routability)
+        # are intentionally not shared with the standalone sizing lane.
+        params = _apply_diff_sizing_defaults(params)
     params = _set_step_fields(params, step)
 
-    json_write(workspace.config["dreamplace"], params)
+    config_path = step_config_path(workspace, step)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    json_write(config_path, params)

@@ -25,7 +25,9 @@ _PHYSICAL_STEPS = frozenset(
     {
         "macroPlacement",
         "postFloorplan",
+        "preplace",
         "place",
+        "diff_sizing",
         "CTS",
         "legalization",
         "Timing optimization",

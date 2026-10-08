@@ -1,5 +1,6 @@
 from .cts import SCHEMAS as CTS_SCHEMAS
 from .dreamplace import SCHEMAS as DREAMPLACE_SCHEMAS
+from .dreamplace_cooptimization import SCHEMAS as DREAMPLACE_COOPTIMIZATION_SCHEMAS
 from .filler import SCHEMAS as FILLER_SCHEMAS
 from .floorplan import SCHEMAS as FLOORPLAN_SCHEMAS
 from .pdk import SCHEMAS as PDK_SCHEMAS
@@ -11,6 +12,7 @@ CONFIG_PARAM_SCHEMAS = (
     *CTS_SCHEMAS,
     *FLOORPLAN_SCHEMAS,
     *DREAMPLACE_SCHEMAS,
+    *DREAMPLACE_COOPTIMIZATION_SCHEMAS,
     *ROUTE_SCHEMAS,
     *FILLER_SCHEMAS,
     *RCX_SCHEMAS,

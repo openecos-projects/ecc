@@ -55,8 +55,10 @@ class TestSchemaRegistry:
         )
         for schema in PARAM_REGISTRY:
             for field_name in required:
+                assert hasattr(schema, field_name)
                 val = getattr(schema, field_name, None)
-                assert val is not None, f"{schema.param} missing required field: {field_name}"
+                if field_name != "default":
+                    assert val is not None, f"{schema.param} missing required field: {field_name}"
             assert (
                 schema.maps_to or schema.config_target is not None or schema.pdk_target is not None
             )
