@@ -1,0 +1,4 @@
+interface:
+  display_name: "ECC Chip Design & PPA"
+  short_description: "Run ECC chip flows, close signoff, and optimize PPA"
+  default_prompt: "Use $ecc-cli to inspect my chip-design project, run the requested flow, and diagnose or optimize it within my constraints."
