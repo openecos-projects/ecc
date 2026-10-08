@@ -66,12 +66,12 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
         (SkippableStepEnum.TIMING_OPT, "sizer", StateEnum.Unstart),
         (StepEnum.ROUTING, "ecc", StateEnum.Unstart),
         (StepEnum.FILLER, "ecc", StateEnum.Unstart),
+        (StepEnum.LVS, "ecc", StateEnum.Unstart),
+        (StepEnum.DRC, "ecc", StateEnum.Unstart),
+        (SkippableStepEnum.POST_ROUTE_LEC, "kepler_formal", StateEnum.Unstart),
         (StepEnum.RCX, "ecc", StateEnum.Unstart),
         (StepEnum.STA, "ecc", StateEnum.Unstart),
         (StepEnum.POWER_ANALYSIS, "ecc", StateEnum.Unstart),
-        (StepEnum.LVS, "ecc", StateEnum.Unstart),
-        (SkippableStepEnum.POST_ROUTE_LEC, "kepler_formal", StateEnum.Unstart),
-        (StepEnum.DRC, "ecc", StateEnum.Unstart),
         (StepEnum.HARDEN, "ecc", StateEnum.Unstart),
     ]
 
@@ -103,14 +103,16 @@ def test_build_flow_range_normalizes_aliases_and_rejects_reverse_ranges():
         StepEnum.CTS,
     ]
     assert [
-        step for step, _tool, _state in builder_module.build_flow_range("power_analysis", "lvs")
+        step for step, _tool, _state in builder_module.build_flow_range("sta", "power_analysis")
     ] == [
+        StepEnum.STA,
         StepEnum.POWER_ANALYSIS,
-        StepEnum.LVS,
     ]
 
     with pytest.raises(ValueError, match="reversed"):
         builder_module.build_flow_range("route", "CTS")
+    with pytest.raises(ValueError, match="reversed"):
+        builder_module.build_flow_range("power_analysis", "lvs")
 
 
 def test_build_flow_range_exposes_split_floorplan_steps():

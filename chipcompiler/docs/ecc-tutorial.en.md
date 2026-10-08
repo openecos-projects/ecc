@@ -16,7 +16,7 @@ The target process is the official [ICS55 PDK](https://github.com/openecos-proje
 graph LR
     A[Install ecc CLI<br/>+ PDK + Yosys] --> B[ecc init gcd<br/>create project, add RTL]
     B --> C[ecc doctor / check<br/>environment & config checks]
-    C --> D[ecc run --preset rtl2gds<br/>17-step flow]
+    C --> D[ecc run --preset rtl2gds<br/>18-step flow]
     D --> E[ecc status / log<br/>inspect results & logs]
     E --> F[ecc signoff export<br/>signoff tar.gz]
     E --> G[ecc report summary<br/>design summary]
@@ -254,7 +254,7 @@ rc=0
 
 ### 4.1 Start
 
-The `rtl2gds` preset is the full 17-step chain, running all the way through Harden (which produces the GDS + abstract LEF + timing LIB). The synthesis LEC (step 2) is part of the chain but **skipped by default**: `[flow] skip_steps` defaults to `["lec"]`, and setting `skip_steps = []` in `ecc.toml` is the only way to run it. To reproduce every step shown below (including the LEC), clear the list once before running:
+The `rtl2gds` preset is the full 18-step chain, running all the way through Harden (which produces the GDS + abstract LEF + timing LIB). The synthesis LEC (step 2) is part of the chain but **skipped by default**: `[flow] skip_steps` defaults to `["lec"]`, and setting `skip_steps = []` in `ecc.toml` is the only way to run it. To reproduce every step shown below (including the LEC), clear the list once before running:
 
 ```bash
 # enable the synthesis LEC for this tutorial
@@ -280,18 +280,19 @@ In an interactive terminal the CLI renders live per-step progress and log tails;
 | 9 | timing optimization | sizer | Timing optimization (cell sizing) |
 | 10 | routing | ecc | Routing |
 | 11 | filler | ecc | Filler cell insertion |
-| 12 | rcx | ecc | Parasitic extraction (multi-corner SPEF) |
-| 13 | sta | ecc | Multi-corner static timing analysis |
-| 14 | lvs | ecc | Layout-vs-schematic check |
-| 15 | postroutelec | yosys_lec | Logic equivalence check: synthesis netlist vs post-route netlist |
-| 16 | drc | ecc | Design rule check |
-| 17 | harden | ecc | Hardened handoff: GDS + abstract LEF + timing LIB + layout snapshot |
+| 12 | lvs | ecc | Layout-vs-schematic check |
+| 13 | drc | ecc | Design rule check |
+| 14 | postroutelec | kepler_formal | Logic equivalence check: synthesis netlist vs post-route netlist |
+| 15 | rcx | ecc | Parasitic extraction (multi-corner SPEF) |
+| 16 | sta | ecc | Multi-corner static timing analysis |
+| 17 | poweranalysis | ecc | Power analysis using extracted parasitics |
+| 18 | harden | ecc | Hardened handoff: GDS + abstract LEF + timing LIB + layout snapshot |
 
 ```mermaid
 graph LR
     A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> D[Placement<br/>dreamplace]
     D --> E[CTS] --> F[Legalization<br/>dreamplace] --> T[Timing Opt<br/>sizer] --> G[Routing]
-    G --> J[Filler] --> K[RCX] --> L[STA] --> I[LVS] --> N[LEC<br/>yosys_lec] --> H[DRC] --> M[Harden<br/>GDS/LEF/LIB]
+    G --> J[Filler] --> I[LVS] --> H[DRC] --> N[Post-route LEC<br/>kepler_formal] --> K[RCX] --> L[STA] --> W[Power Analysis] --> M[Harden<br/>GDS/LEF/LIB]
 ```
 
 For a fresh or `--overwrite` target, `ecc run` pre-checks bundled ecc-tools plus preset-selected Yosys, DreamPlace, and Sizer (Sizer only for flows containing Timing optimization, such as `rtl2gds`), and returns `env_not_ready` with a pointer to `ecc doctor` when a component is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail at Timing optimization.
@@ -699,8 +700,8 @@ rc=1
 > $ ecc run --workspace default --only placemen   # typo: not a persisted step name
 > [error]
 >   unknown_step unknown step 'placemen'; available steps: Synthesis, lec, preFloorplan,
->   macroPlacement, postFloorplan, place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
->   postRouteLec, drc, Harden
+>   macroPlacement, postFloorplan, place, CTS, legalization, Timing optimization, route, filler, lvs, drc,
+>   postRouteLec, RCX, sta, powerAnalysis, Harden
 > ```
 
 ### 6.4 Inspecting a step's effective configuration
@@ -756,7 +757,7 @@ The list must cover **every** hard macro in the design and use real instance nam
 ## 8. Next Steps
 
 - Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist) for multi-file designs;
-- Preset differences: `rtl2gds` (the complete 17-step synthesis-to-Harden chain; the synthesis-level LEC is in the chain but skipped by default — `skip_steps = []` enables it), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps, requires `skip_steps = []`);
+- Preset differences: `rtl2gds` (the complete 18-step synthesis-to-Harden chain; the synthesis-level LEC is in the chain but skipped by default — `skip_steps = []` enables it), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps, requires `skip_steps = []`);
 - Full command details in the **[ECC CLI User Guide](ecc-user-guide.en.md)** (`ecc doc ug`); extending the CLI is covered in [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli);
 - Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/ics55flow.py).
 
