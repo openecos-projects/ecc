@@ -262,6 +262,7 @@ def _hold_cmd_text(workspace: Workspace, step: EccStep) -> str:
 
     command = cmdfile.CommandFile(prefix="-", dialect=cmdfile.PLAIN_DIALECT)
     command.flag("useOpenSTA")
+    command.option("use_gr_rc", int(step.name == SkippableStepEnum.TIMING_OPT.value))
     command.option("top", workspace.design.top_module or workspace.design.name)
     command.option(
         "def",
