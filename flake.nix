@@ -135,6 +135,7 @@
         root = ./.;
         fileset = unions [
           ./README.md
+          ./agent
           ./chipcompiler
           ./pyproject.toml
           ./uv.lock
@@ -169,13 +170,16 @@
       nativeBuildInputs = [ makeWrapper ];
 
       postFixup = ''
-        wrapProgram "$out/bin/ecc" \
-          --set CHIPCOMPILER_OSS_CAD_DIR "${yosysWithSlang}" \
-          --set CHIPCOMPILER_KEPLER_FORMAL_ROOT "${keplerFormal}" \
-          --prefix PATH : "${yosysWithSlang}/bin"
+        for bin in ecc ecc-agent-rpc; do
+          wrapProgram "$out/bin/$bin" \
+            --set CHIPCOMPILER_OSS_CAD_DIR "${yosysWithSlang}" \
+            --set CHIPCOMPILER_KEPLER_FORMAL_ROOT "${keplerFormal}" \
+            --prefix PATH : "${yosysWithSlang}/bin"
+        done
       '';
 
       pythonImportsCheck = [
+        "agent"
         "chipcompiler"
         "chipcompiler.engine"
         "chipcompiler.tools"
@@ -188,6 +192,12 @@
     systems = [ "x86_64-linux" ];
     perSystem = { self', pkgs, system, config, ... }: {
       imports = [ ./nix/signoff.nix ];
+
+      # buildbot-nix builds only the flake `checks` output; re-export all
+      # packages and the devShell here so CI builds them.
+      checks = config.packages // {
+        devShell = config.devShells.default;
+      };
 
       packages.keplerFormal = pkgs.callPackage keplerFormal {
         inherit nix-eda system;
