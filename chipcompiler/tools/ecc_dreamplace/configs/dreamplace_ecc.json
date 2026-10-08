@@ -40,7 +40,7 @@
     ],
     "ignore_net_degree": 100,
     "gp_noise_ratio": 0.0,
-    "auto_adjust_bins": 0,
+    "auto_adjust_bins": 1,
     "enable_fillers": 0,
     "global_place_flag": 1,
     "legalize_flag": 1,

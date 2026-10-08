@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from textwrap import dedent
 
@@ -292,7 +291,9 @@ def test_macro_placement_engine_smoke_commits_candidates_as_fixed(mixed_macro_pl
     from dreamplace.Params import Params
     from dreamplace.Placer import PlacementEngine
 
+    from chipcompiler.data import EccData, EccStep, OriginDesign, StepEnum, Workspace
     from chipcompiler.tools.ecc.module import ECCToolsModule
+    from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
 
     ecc_py, place_db, tmp_path = mixed_macro_place_db
     # Keep the smoke test focused on candidate macro writeback, not tiny-grid overflow.
@@ -321,22 +322,30 @@ def test_macro_placement_engine_smoke_commits_candidates_as_fixed(mixed_macro_pl
         Path(__file__).resolve().parents[3]
         / "chipcompiler/tools/ecc_dreamplace/configs/dreamplace_ecc.json"
     )
-    params = Params()
-    params.fromJson(json.loads(config_path.read_text(encoding="utf-8")))
-    params.macro_only = 1
-    params.global_place_flag = 1
-    params.macro_place_flag = 1
-    params.legalize_flag = 1
-    params.two_stage_flag = 0
-    params.routability_opt_flag = 0
-    params.get_congestion_map = 0
-    params.egr_padding_flag = 0
+    owner = StepEnum.MACRO_PLACEMENT.value
+    module = DreamplaceModule(
+        workspace=Workspace(
+            directory=tmp_path,
+            design=OriginDesign(name="macro_status_test"),
+            config={"dreamplace": config_path},
+        ),
+        step=EccStep(name=owner, data=EccData(dir=tmp_path, steps={owner: tmp_path})),
+        ecc_module=ecc_module,
+        input_def=None,
+        input_verilog=None,
+        output_def=None,
+        output_verilog=None,
+    )
+    params = module._build_params(Params, mode=DreamplaceRunMode.MACRO_PLACEMENT)
     params.macro_halo_x = 10
     params.macro_halo_y = 10
     params.macro_pin_halo_x = -1
     params.macro_pin_halo_y = -1
     params.cell_padding_x = 0
     params.enable_fillers = 0
+    params.target_density = 1.0
+    # The single tiny standard cell amplifies sub-percent bin discretization error.
+    params.placement_overflow_tolerance = 0.01
     params.auto_adjust_bins = 0
     params.num_bins_x = 4
     params.num_bins_y = 4
@@ -350,7 +359,7 @@ def test_macro_placement_engine_smoke_commits_candidates_as_fixed(mixed_macro_pl
     params.stop_overflow = 1.0
 
     engine = PlacementEngine(params)
-    engine.setup_rawdb(ecc_module=ecc_module)
+    engine.setup_rawdb(data_manager=ecc_module)
     halo_setup = {}
     setup_placedb = engine.setup_placedb
 
@@ -375,6 +384,7 @@ def test_macro_placement_engine_smoke_commits_candidates_as_fixed(mixed_macro_pl
         list(engine.placedb.pydb.macro_writeback_candidate),
         list(engine.placedb.pydb.node_names),
     )
+    assert result["status"] == "ok", result
     assert result["hpwl"] != float("inf")
     assert halo_setup["halo_x"] > 0
     assert halo_setup["halo_y"] > 0
@@ -429,8 +439,8 @@ def test_macro_placement_engine_smoke_commits_candidates_as_fixed(mixed_macro_pl
     assert updated_db.num_terminals == place_db.num_terminals + 2
 
     committed_locations = {name: updated_locations[name] for name in candidate_names}
-    normal_params = Params()
-    normal_params.fromJson(json.loads(config_path.read_text(encoding="utf-8")))
+    normal_params = module._build_params(Params, mode=DreamplaceRunMode.LEGALIZATION)
+    normal_params.global_place_flag = 1
     normal_params.macro_only = 0
     normal_params.routability_opt_flag = 0
     normal_params.get_congestion_map = 0
@@ -449,7 +459,7 @@ def test_macro_placement_engine_smoke_commits_candidates_as_fixed(mixed_macro_pl
     normal_params.stop_overflow = 1.0
 
     normal_engine = PlacementEngine(normal_params)
-    normal_engine.setup_rawdb(ecc_module=ECCToolsModule())
+    normal_engine.setup_rawdb(data_manager=ECCToolsModule())
     normal_result = normal_engine.run()
 
     assert normal_result["hpwl"] != float("inf")

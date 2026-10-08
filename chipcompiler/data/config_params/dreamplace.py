@@ -214,7 +214,7 @@ SCHEMAS = (
     _place("adjust_pin_area_flag", 0),
     _place("adjust_rudy_area_flag", 0),
     _place("area_adjust_stop_ratio", 0.01),
-    _place("auto_adjust_bins", 0),
+    _place("auto_adjust_bins", 1),
     _place("bndry_padding_x", 0),
     _place("bndry_padding_y", 0),
     _place("buffering_continuous_steps", 120),
