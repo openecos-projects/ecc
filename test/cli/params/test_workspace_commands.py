@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.data.parameter import Parameters
+from chipcompiler.data.workspace import Flow
 
 
 class _Flow:
@@ -272,3 +273,40 @@ def test_workspace_param_list_matches_first_step_configuration(
     assert records[0]["type"] == "float"
     assert records[0]["applies_to"] == "synthesis"
     assert records[0]["value_literal"] == "100.0"
+
+
+def test_workspace_param_list_hydrates_persisted_flow_ledger(
+    capsys, create_cli_project, monkeypatch, plain_records
+):
+    project_dir = create_cli_project()
+    workspace_dir = Path(project_dir) / "baseline"
+    _write_manifest(project_dir)
+    workspace = _workspace(workspace_dir)
+    flow_data = workspace.flow.data
+    workspace.flow = Flow(path=workspace_dir / "home" / "flow.json")
+    workspace.flow.path.parent.mkdir(parents=True, exist_ok=True)
+    workspace.flow.path.write_text(json.dumps(flow_data), encoding="utf-8")
+    monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _path: workspace)
+
+    rc = cli_main.run(
+        [
+            "param",
+            "list",
+            "--workspace",
+            "baseline",
+            "--step",
+            "synthesis",
+            "--all",
+            "--project",
+            project_dir,
+            "--plain",
+        ]
+    )
+
+    assert rc == 0
+    records = plain_records(capsys.readouterr().out)
+    assert [record["id"] for record in records] == [
+        "design.frequency_mhz",
+        "flow.run_analysis",
+    ]
+    assert records[0]["step_id"] == "Synthesis"
