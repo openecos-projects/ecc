@@ -138,6 +138,10 @@ graph LR
 
 随后流程引擎会按顺序执行各步骤，你可以在每个步骤工作空间中查看日志和输出结果。
 
+此示例显式定义了到 filler 为止的自定义流程。完整默认 `rtl2gds` 预设会继续
+执行 `lvs → drc → postRouteLec → RCX → sta → powerAnalysis → Harden`。
+已有自定义流程仍保留显式指定的顺序。
+
 ## 使用 Filelist
 
 除了指定单个 RTL 文件，你还可以使用 **filelist** 来指定多个源文件和包含目录。这对于包含多个 RTL 模块的复杂项目非常有用。

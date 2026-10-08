@@ -139,6 +139,10 @@ graph LR
 
 Then the flow engine will execute the steps sequentially, and you can check the logs and outputs in each step workspace.
 
+This example defines a custom flow ending at filler. The full default `rtl2gds`
+preset continues with `lvs → drc → postRouteLec → RCX → sta → powerAnalysis →
+Harden`. Existing custom flows keep their explicitly selected order.
+
 ## Using Filelist
 
 Instead of specifying a single RTL file, you can use a **filelist** to specify multiple source files and include directories. This is useful for complex projects with multiple RTL modules.

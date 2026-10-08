@@ -282,12 +282,12 @@ class TestStepOverview:
             "timing_optimization",
             "routing",
             "filler",
+            "lvs",
+            "drc",
+            "postroutelec",
             "rcx",
             "sta",
             "poweranalysis",
-            "lvs",
-            "postroutelec",
-            "drc",
             "harden",
         ]
 

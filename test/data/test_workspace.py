@@ -327,11 +327,7 @@ def test_create_workspace_persists_dynamic_flow_steps(
         "Timing optimization",
         "route",
         "filler",
-        "RCX",
-        "sta",
-        "powerAnalysis",
         "lvs",
-        "postRouteLec",
         "drc",
     ]
     assert [step["tool"] for step in flow_data["steps"]] == [
@@ -342,10 +338,6 @@ def test_create_workspace_persists_dynamic_flow_steps(
         "ecc",
         "ecc",
         "ecc",
-        "ecc",
-        "ecc",
-        "ecc",
-        "kepler_formal",
         "ecc",
     ]
     assert all(step["state"] == "Unstart" for step in flow_data["steps"])
@@ -504,22 +496,22 @@ def test_create_workspace_derives_dynamic_flow_from_boundaries(
         "Timing optimization",
         "route",
         "filler",
+        "lvs",
+        "drc",
+        "postRouteLec",
         "RCX",
         "sta",
         "powerAnalysis",
-        "lvs",
-        "postRouteLec",
-        "drc",
         "Harden",
     ]
 
 
 POST_ROUTE_LEC_STEP_ALIAS_CASES = (
-    ["lvs", "postRouteLec", "DRC"],
-    ["lvs", "postlec", "DRC"],
-    ["lvs", "postroutelec", "DRC"],
-    ["lvs", "post_route_lec", "DRC"],
-    ["lvs", "Post-Route-LEC", "DRC"],
+    ["lvs", "DRC", "postRouteLec"],
+    ["lvs", "DRC", "postlec"],
+    ["lvs", "DRC", "postroutelec"],
+    ["lvs", "DRC", "post_route_lec"],
+    ["lvs", "DRC", "Post-Route-LEC"],
 )
 
 
@@ -543,7 +535,7 @@ def test_create_workspace_normalizes_post_route_lec_step_aliases(
         pdk_root=pdk_root,
         flow_config={
             "start_step": "lvs",
-            "end_step": "DRC",
+            "end_step": steps[-1],
             "steps": steps,
         },
     )
@@ -551,8 +543,8 @@ def test_create_workspace_normalizes_post_route_lec_step_aliases(
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [(step["name"], step["tool"]) for step in flow_data["steps"]] == [
         ("lvs", "ecc"),
-        ("postRouteLec", "kepler_formal"),
         ("drc", "ecc"),
+        ("postRouteLec", "kepler_formal"),
     ]
 
 

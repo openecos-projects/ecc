@@ -16,7 +16,7 @@
 graph LR
     A[安装 ecc CLI<br/>+ PDK + Yosys] --> B[ecc init gcd<br/>建项目放 RTL]
     B --> C[ecc doctor / check<br/>环境与配置体检]
-    C --> D[ecc run --preset rtl2gds<br/>17 步全流程]
+    C --> D[ecc run --preset rtl2gds<br/>18 步全流程]
     D --> E[ecc status / log<br/>查看结果与日志]
     E --> F[ecc signoff export<br/>签核包 tar.gz]
     E --> G[ecc report summary<br/>设计总结报告]
@@ -253,7 +253,7 @@ rc=0
 
 ### 4.1 启动
 
-`rtl2gds` preset 是完整 17 步链，一步到位跑到 Harden（产出 GDS + 抽象 LEF + 时序 LIB）。综合级 LEC（第 2 步）在链路中但**默认被跳过**：`[flow] skip_steps` 默认为 `["lec"]`，在 `ecc.toml` 中设 `skip_steps = []` 是启用它的唯一方式。要完整复现下文展示的每一步（包括 LEC），先清空该列表再运行：
+`rtl2gds` preset 是完整 18 步链，一步到位跑到 Harden（产出 GDS + 抽象 LEF + 时序 LIB）。综合级 LEC（第 2 步）在链路中但**默认被跳过**：`[flow] skip_steps` 默认为 `["lec"]`，在 `ecc.toml` 中设 `skip_steps = []` 是启用它的唯一方式。要完整复现下文展示的每一步（包括 LEC），先清空该列表再运行：
 
 ```bash
 # 为本教程启用综合级 LEC
@@ -264,7 +264,7 @@ ecc run --preset rtl2gds
 
 （生成的 `ecc.toml` 已选择 `rtl2gds`；`--preset` 只对本次运行生效，不写回配置。）
 
-交互终端下会实时渲染各步骤进度与日志尾部；输出重定向到文件时则静默执行，结束时打印汇总。`rtl2gds` 的 17 步依次为：
+交互终端下会实时渲染各步骤进度与日志尾部；输出重定向到文件时则静默执行，结束时打印汇总。`rtl2gds` 的 18 步依次为：
 
 | # | 步骤 | 工具 | 作用 |
 |---|------|------|------|
@@ -279,18 +279,19 @@ ecc run --preset rtl2gds
 | 9 | timing optimization | sizer | 时序优化（cell sizing） |
 | 10 | routing | ecc | 布线 |
 | 11 | filler | ecc | 填充单元插入 |
-| 12 | rcx | ecc | 寄生参数提取（多 corner SPEF） |
-| 13 | sta | ecc | 多 corner 静态时序分析 |
-| 14 | lvs | ecc | 版图与原理图一致性检查 |
-| 15 | postroutelec | yosys_lec | 逻辑等价性检查：综合网表 vs 布线后网表 |
-| 16 | drc | ecc | 物理规则检查 |
-| 17 | harden | ecc | 硬化交付：GDS + 抽象 LEF + 时序 LIB + 版图快照 |
+| 12 | lvs | ecc | 版图与原理图一致性检查 |
+| 13 | drc | ecc | 物理规则检查 |
+| 14 | postroutelec | kepler_formal | 逻辑等价性检查：综合网表 vs 布线后网表 |
+| 15 | rcx | ecc | 寄生参数提取（多 corner SPEF） |
+| 16 | sta | ecc | 多 corner 静态时序分析 |
+| 17 | poweranalysis | ecc | 使用提取的寄生参数进行功耗分析 |
+| 18 | harden | ecc | 硬化交付：GDS + 抽象 LEF + 时序 LIB + 版图快照 |
 
 ```mermaid
 graph LR
     A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> D[Placement<br/>dreamplace]
     D --> E[CTS] --> F[Legalization<br/>dreamplace] --> T[Timing Opt<br/>sizer] --> G[Routing]
-    G --> J[Filler] --> K[RCX] --> L[STA] --> I[LVS] --> N[LEC<br/>yosys_lec] --> H[DRC] --> M[Harden<br/>GDS/LEF/LIB]
+    G --> J[Filler] --> I[LVS] --> H[DRC] --> N[Post-route LEC<br/>kepler_formal] --> K[RCX] --> L[STA] --> W[Power Analysis] --> M[Harden<br/>GDS/LEF/LIB]
 ```
 
 对新建或 `--overwrite` 的目标，`ecc run` 启动前会预检捆绑的 ecc-tools，以及 preset 选中的 Yosys、DreamPlace 和 Sizer（仅含 Timing optimization 的 flow，如 `rtl2gds`）；缺失则以 `env_not_ready` fail-fast 并提示 `ecc doctor`。已有 workspace 或 `--workspace` 重跑不做预检，缺 Sizer 时仍可能在 Timing optimization 步骤失败。
@@ -698,8 +699,8 @@ rc=1
 > $ ecc run --workspace default --only placemen   # 拼错了：不是持久化步骤名
 > [error]
 >   unknown_step unknown step 'placemen'; available steps: Synthesis, lec, preFloorplan,
->   macroPlacement, postFloorplan, place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
->   postRouteLec, drc, Harden
+>   macroPlacement, postFloorplan, place, CTS, legalization, Timing optimization, route, filler, lvs, drc,
+>   postRouteLec, RCX, sta, powerAnalysis, Harden
 > ```
 
 ### 6.4 查看某步实际生效的配置
@@ -755,7 +756,7 @@ ecc run --workspace default
 ## 8. 下一步
 
 - 换你自己的设计：改 `ecc.toml` 的 `top`/`rtl`/`clock_port`/`frequency_mhz`，多文件用 [filelist](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist)；
-- 了解 preset 差异：`rtl2gds`（完整 17 步综合到 Harden 链；综合级 LEC 在链路中但默认跳过——`skip_steps = []` 启用）、`syn_sta`（仅综合）、`synthesis_lec`（综合 + LEC，两步，需要 `skip_steps = []`）；
+- 了解 preset 差异：`rtl2gds`（完整 18 步综合到 Harden 链；综合级 LEC 在链路中但默认跳过——`skip_steps = []` 启用）、`syn_sta`（仅综合）、`synthesis_lec`（综合 + LEC，两步，需要 `skip_steps = []`）；
 - 全部命令细节见 **[ECC CLI 用户指南](ecc-user-guide.cn.md)**（终端：`ecc doc ug --lang cn`）；CLI 扩展开发见 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli)；
 - 用 Python API 直接编排 flow（`EngineFlow`）见 [examples/gcd/ics55flow.py](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/ics55flow.py)。
 
