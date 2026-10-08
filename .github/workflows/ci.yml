@@ -210,7 +210,12 @@ jobs:
         run: git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git pdk
 
       - name: Unpack PDK
-        run: cd pdk && make unzip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd pdk
+          gh release download --repo openecos-projects/icsprout55-pdk --pattern '*.tar.bz2'
+          make unzip
 
       - name: Package PDK
         run: tar -czf icsprout55-pdk.tar.gz -C pdk .
