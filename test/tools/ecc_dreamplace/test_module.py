@@ -142,7 +142,15 @@ def test_build_params_preserves_placement_timing_config(tmp_path):
 
 def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreamplace_default_config):
     config_path = tmp_path / "dreamplace_ecc.json"
-    json_write(config_path, dreamplace_default_config)
+    inherited = dict(
+        dreamplace_default_config,
+        auto_adjust_bins=1,
+        num_bins_x=64,
+        num_bins_y=64,
+        route_num_bins_x=128,
+        route_num_bins_y=128,
+    )
+    json_write(config_path, inherited)
     workspace = Workspace(
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
@@ -176,6 +184,11 @@ def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreampla
         "cell_padding_x": params.cell_padding_x,
         "gpugr_backend": params.gpugr_backend,
         "gr_sizing_rrr_iters": params.gr_sizing_rrr_iters,
+        "auto_adjust_bins": params.auto_adjust_bins,
+        "num_bins_x": params.num_bins_x,
+        "num_bins_y": params.num_bins_y,
+        "route_num_bins_x": params.route_num_bins_x,
+        "route_num_bins_y": params.route_num_bins_y,
         "timing_opt_enabled": params.timing_opt_enabled,
         "timing_opt_flag": params.timing_opt_flag,
         "timing_eval_flag": params.timing_eval_flag,
@@ -193,6 +206,11 @@ def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreampla
         "cell_padding_x": 0,
         "gpugr_backend": "cpu_pr_maze",
         "gr_sizing_rrr_iters": 3,
+        "auto_adjust_bins": 0,
+        "num_bins_x": 512,
+        "num_bins_y": 512,
+        "route_num_bins_x": 512,
+        "route_num_bins_y": 512,
         "timing_opt_enabled": 0,
         "timing_opt_flag": 0,
         "timing_eval_flag": 1,
@@ -200,8 +218,10 @@ def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreampla
         "with_sta": 1,
         "timing_objective_lane": "timing_slew_cap",
     }
-    assert params.global_place_stages[0]["iteration"] == 50
-    assert params.global_place_stages[0]["optimizer"] == "adam"
+    assert {
+        key: params.global_place_stages[0][key]
+        for key in ("num_bins_x", "num_bins_y", "iteration", "optimizer")
+    } == {"num_bins_x": 512, "num_bins_y": 512, "iteration": 50, "optimizer": "adam"}
     assert params.design_inputs["rcx_config"] == ""
 
 

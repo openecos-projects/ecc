@@ -71,6 +71,11 @@ def _apply_diff_sizing_defaults(params: dict) -> dict:
         continuous_size_dynamics_mode="none",
         target_density=0.4,
         cell_padding_x=0,
+        auto_adjust_bins=0,
+        num_bins_x=512,
+        num_bins_y=512,
+        route_num_bins_x=512,
+        route_num_bins_y=512,
         timing_opt_enabled=0,
         timing_opt_flag=0,
         timing_eval_flag=1,
@@ -97,7 +102,7 @@ def _apply_diff_sizing_defaults(params: dict) -> dict:
     )
     stages = list(result.get("global_place_stages") or [{}])
     first_stage = dict(stages[0]) if isinstance(stages[0], dict) else {}
-    first_stage.update(iteration=50, optimizer="adam")
+    first_stage.update(num_bins_x=512, num_bins_y=512, iteration=50, optimizer="adam")
     result["global_place_stages"] = [first_stage]
     return result
 
