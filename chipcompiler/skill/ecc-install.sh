@@ -44,7 +44,7 @@ command -v curl >/dev/null || { echo 'curl is required.' >&2; exit 1; }
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/ecc-install.XXXXXX")"
 installer="$tmp/ecc-installer.sh"
-cleanup() { [[ -n "$keep" ]] || rm -r -- "$tmp"; }
+cleanup() { rm -r -- "$tmp"; }
 trap cleanup EXIT
 
 echo "Downloading ECC installer: $url"
