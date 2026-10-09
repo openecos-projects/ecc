@@ -4,7 +4,7 @@ import os
 
 from tqdm import tqdm
 
-from chipcompiler.data import EccStep, StepEnum, Workspace
+from chipcompiler.data import EccStep, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.utility import (
     json_read,
     plot_csv_map,
@@ -21,7 +21,7 @@ class ECCToolsPlot:
         match self.step.name:
             case StepEnum.PLACEMENT.value:
                 state = state & self.plot_placement_heatmap()
-            case StepEnum.CTS.value:
+            case SkippableStepEnum.CTS.value:
                 state = state & self.plot_placement_heatmap()
             case StepEnum.DRC.value:
                 state = state & self.plot_drc_statis()

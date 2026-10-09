@@ -509,6 +509,7 @@ def _run_project(
         # still rides on the flow config (policy-only when no range applies).
         from chipcompiler.cli.project.effective_config import (
             _attach_lec_engine,
+            _attach_no_clock,
             _attach_skip_steps,
         )
 
@@ -524,6 +525,7 @@ def _run_project(
             else None
         )
         flow_config = _attach_lec_engine(flow_config, lec_engine)
+        flow_config = _attach_no_clock(flow_config, bool(cfg.flow_no_clock))
 
     assert cfg is not None
 
@@ -544,6 +546,9 @@ def _run_project(
     # below (they come from configuration, never from the target spelling).
     skip_policy = flow_config.get("skip_steps") if isinstance(flow_config, dict) else None
     lec_engine_policy = flow_config.get("lec_engine") if isinstance(flow_config, dict) else None
+    no_clock = bool(isinstance(flow_config, dict) and flow_config.get("no_clock")) or bool(
+        getattr(cfg, "flow_no_clock", False)
+    )
     if command_input.preset is not None:
         # The explicit CLI selection takes precedence over a manifest range
         # for this invocation without changing either project config file.
@@ -553,14 +558,19 @@ def _run_project(
         if lec_engine_policy is not None:
             flow_config = flow_config or {}
             flow_config["lec_engine"] = lec_engine_policy
+        if no_clock:
+            flow_config = {"no_clock": True, **(flow_config or {})}
 
     if command_input.from_step is not None and command_input.to_step is not None:
         try:
             from chipcompiler.rtl2gds import build_flow_range, resolve_skip_steps
 
-            skip = resolve_skip_steps(
-                {"skip_steps": skip_policy} if skip_policy is not None else None
-            )
+            skip_probe: dict = {}
+            if skip_policy is not None:
+                skip_probe["skip_steps"] = skip_policy
+            if no_clock:
+                skip_probe["no_clock"] = True
+            skip = resolve_skip_steps(skip_probe or None)
             build_flow_range(command_input.from_step, command_input.to_step, skip=skip)
         except ValueError as exc:
             return error("flow_range_invalid", reason=str(exc))
@@ -572,6 +582,8 @@ def _run_project(
             flow_config["skip_steps"] = skip_policy
         if lec_engine_policy is not None:
             flow_config["lec_engine"] = lec_engine_policy
+        if no_clock:
+            flow_config["no_clock"] = True
 
     cli_overrides: dict[str, object] = {}
     raw_sets = command_input.param_set
@@ -747,9 +759,14 @@ def resolve_skip_steps_for_flow_config(flow_config) -> tuple[str, ...]:
     """The effective skip policy of a creation flow config (default when none)."""
     from chipcompiler.rtl2gds import resolve_skip_steps
 
-    return resolve_skip_steps(
-        flow_config if isinstance(flow_config, dict) and "skip_steps" in flow_config else None
-    )
+    if not isinstance(flow_config, dict):
+        return resolve_skip_steps(None)
+    probe: dict = {}
+    if "skip_steps" in flow_config:
+        probe["skip_steps"] = flow_config["skip_steps"]
+    if flow_config.get("no_clock"):
+        probe["no_clock"] = True
+    return resolve_skip_steps(probe or None)
 
 
 def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResult:

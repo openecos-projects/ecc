@@ -92,6 +92,13 @@ def _attach_lec_engine(flow_config: dict | None, lec_engine: str | None) -> dict
     return _attach_flow_key(flow_config, "lec_engine", lec_engine)
 
 
+def _attach_no_clock(flow_config: dict | None, no_clock: bool) -> dict | None:
+    """Carry ``no_clock`` on the flow config so resolve_skip_steps omits CTS."""
+    if not no_clock:
+        return flow_config
+    return _attach_flow_key(flow_config, "no_clock", True)
+
+
 def _attach_flow_key(flow_config: dict | None, key: str, value) -> dict | None:
     if value is None:
         return flow_config
@@ -110,8 +117,9 @@ def declared_lec_engine(cfg) -> str | None:
 def flow_config_selects_steps(flow_config) -> bool:
     """Whether a flow config names steps (a range or explicit selection).
 
-    A policy-only config (just ``skip_steps``) selects nothing: it must
-    not satisfy a flow-target requirement nor trigger range preflight.
+    A policy-only config (just ``skip_steps`` / ``no_clock`` / ``lec_engine``)
+    selects nothing: it must not satisfy a flow-target requirement nor
+    trigger range preflight.
     """
     if not isinstance(flow_config, dict):
         return False
@@ -159,6 +167,7 @@ def resolve_effective_config(
     declared = declared_skip_steps(entry, cfg)
     flow_config = _attach_skip_steps(flow_config, declared)
     flow_config = _attach_lec_engine(flow_config, declared_lec_engine(cfg))
+    flow_config = _attach_no_clock(flow_config, bool(getattr(cfg, "flow_no_clock", False)))
     # Provenance for inspection surfaces: the winning layer's name.
     if declared is not None:
         cfg._skip_steps_source = (
