@@ -1,6 +1,8 @@
 ---
 name: ecc-cli
 description: "Use the OpenECOS ECC EDA CLI to design chips from RTL or physical entry inputs, manage projects and workspaces, diagnose and resume flows, close timing and physical signoff, optimize PPA/QoR, and export reproducible deliverables. Use for ECC-managed RTL-to-GDS chip-design tasks; not for error-correcting codes or ECC source development."
+type: prompt
+whenToUse: When the user asks to run, diagnose, resume, sign off, or optimize an ECC chip-design flow (RTL-to-GDS), manage ECC projects/workspaces, or check QoR/PPA
 ---
 
 # ECC 芯片设计、签核与调优

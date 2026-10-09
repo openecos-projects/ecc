@@ -12,13 +12,13 @@
 bash chipcompiler/skill/install-ecc-skill.sh
 ```
 
-默认目标为 `$HOME/.agents/skills/ecc-cli`。已有同名目录会拒绝；审查后显式替换：
+默认目标为 `$HOME/.agents/skills/ecc-cli`（Codex 搜索位置），脚本随后在 `$HOME/.claude/skills/ecc-cli` 建立指向它的符号链接（Claude Code 不搜索 `~/.agents/skills`，个人 skill 位于 `~/.claude/skills`，符号链接条目受官方支持）；两处指向同一实体，不会产生两个可漂移的副本。已有同名目录会拒绝；审查后显式替换：
 
 ```bash
 bash chipcompiler/skill/install-ecc-skill.sh --replace
 ```
 
-替换前将完整旧目录保存为同级 tar.gz 备份并打印路径，归档成功才替换目录；备份不是可发现的 skill 目录，避免加载两个同名版本。自定义安装目标用于本地验证或已确认的旧版 Codex 搜索位置：
+替换前将完整旧目录保存为同级 tar.gz 备份并打印路径，归档成功才替换目录；备份不是可发现的 skill 目录，避免加载两个同名版本。`$HOME/.claude/skills/ecc-cli` 条目遵循同样的拒绝/`--replace`/备份规则；已是正确指向的符号链接时直接复用。自定义安装目标用于本地验证或已确认的旧版 Codex 搜索位置，此时不创建 Claude Code 符号链接：
 
 ```bash
 bash chipcompiler/skill/install-ecc-skill.sh /absolute/skills/ecc-cli
@@ -42,9 +42,9 @@ ecc-cli/
     └── installation-sources.md
 ```
 
-新开 Codex 会话/按实例要求刷新发现，使用 `$ecc-cli` 请求“先检查指定 project 的环境、配置与 workspace，不运行 flow”。应能加载参考并通过真实 ecc --help/CLI 工作，不应要求 Studio checkout、未配置 MCP、私有 RPC 或 Python 包导入。skill 不自动安装 ECC/PDK。
+新开 Codex 会话使用 `$ecc-cli`，新开 Claude Code 会话使用 `/ecc-cli`，或新开 Kimi Code 会话使用 `/skill:ecc-cli`，请求“先检查指定 project 的环境、配置与 workspace，不运行 flow”。应能加载参考并通过真实 ecc --help/CLI 工作，不应要求 Studio checkout、未配置 MCP、私有 RPC 或 Python 包导入。skill 不自动安装 ECC/PDK。
 
-Codex 官方 skill 结构/搜索位置参考为 `https://developers.openai.com/codex/skills/`；版本变化时重新核对。安装结构验证只证明文件/frontmatter/引用正确，不证明已完成真实芯片设计或物理调优。
+Codex 官方 skill 结构/搜索位置参考为 `https://developers.openai.com/codex/skills/`；Claude Code 的搜索位置与符号链接条目参考为 `https://code.claude.com/docs/en/skills`；Kimi Code 的 skill 格式/搜索位置参考为 `https://www.kimi.com/code/docs/en/kimi-code-cli/customization/skills.html`；版本变化时重新核对。安装结构验证只证明文件/frontmatter/引用正确，不证明已完成真实芯片设计或物理调优。
 
 ## 2. 文档覆盖表
 

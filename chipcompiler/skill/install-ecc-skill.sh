@@ -4,9 +4,12 @@ set -euo pipefail
 usage() {
   printf '%s\n' \
     'Usage: bash install-ecc-skill.sh [--replace] [SKILL_DIR]' \
-    'Default: $HOME/.agents/skills/ecc-cli' \
+    'Default: $HOME/.agents/skills/ecc-cli plus a $HOME/.claude/skills/ecc-cli symlink to it.' \
+    'The default target serves Codex; the symlink exposes the same installation to Claude Code.' \
+    'Kimi Code discovers the default target through its own ~/.agents/skills/ scan; no extra entry is created.' \
     'Existing installations are refused unless --replace is supplied.' \
-    'Replacement preserves the previous directory as a sibling tar.gz backup.'
+    'Replacement preserves the previous directory as a sibling tar.gz backup.' \
+    'A custom SKILL_DIR is installed as-is without the Claude Code symlink.'
 }
 
 replace=false
@@ -28,6 +31,7 @@ while (($#)); do
 done
 
 source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+home_dir="$(cd -- "$HOME" && pwd -P)"
 target="${target:-$HOME/.agents/skills/ecc-cli}"
 while [[ "$target" == */ ]]; do
   target="${target%/}"
@@ -61,6 +65,26 @@ if [[ "$target" == "$source_dir" || "$source_dir" == "$target/"* ]]; then
   printf 'Refusing to replace the source directory or its ancestor.\n' >&2
   exit 1
 fi
+
+claude_skills_dir="$HOME/.claude/skills"
+claude_entry="$claude_skills_dir/ecc-cli"
+claude_link=false
+if [[ "$target" == "$home_dir/.agents/skills/ecc-cli" ]]; then
+  claude_link=true
+  if [[ -L "$claude_entry" ]]; then
+    [[ "$(readlink -- "$claude_entry")" == "$target" ]] || {
+      printf 'Claude Code entry is a symlink pointing elsewhere; review it: %s\n' "$claude_entry" >&2
+      exit 1
+    }
+  elif [[ -e "$claude_entry" ]]; then
+    [[ -d "$claude_entry" ]] || { printf 'Claude Code entry is not a directory: %s\n' "$claude_entry" >&2; exit 1; }
+    [[ "$replace" == true ]] || {
+      printf 'Claude Code entry exists; review it before using --replace: %s\n' "$claude_entry" >&2
+      exit 1
+    }
+  fi
+fi
+
 stage="$(mktemp -d "$parent/.ecc-cli-install.XXXXXX")"
 old_stage=''
 cleanup() {
@@ -107,4 +131,46 @@ printf 'Installed: %s\n' "$target"
 if [[ -n "$backup" ]]; then
   printf 'Previous installation preserved: %s\n' "$backup"
 fi
-printf 'Start a new Codex session in the appropriate skill scope and invoke $ecc-cli.\n'
+
+claude_backup=''
+claude_old=''
+if [[ "$claude_link" != true ]]; then
+  printf 'Custom SKILL_DIR given; no Claude Code symlink created: %s\n' "$claude_entry"
+else
+  if [[ -d "$claude_entry" && ! -L "$claude_entry" ]]; then
+    claude_backup="$(mktemp --suffix=.tar.gz "$claude_skills_dir/.ecc-cli-backup.XXXXXX")"
+    if ! tar -czf "$claude_backup" -C "$claude_skills_dir" ecc-cli; then
+      rm -f -- "$claude_backup"
+      printf 'Could not preserve the existing Claude Code entry; no replacement performed.\n' >&2
+      exit 1
+    fi
+    claude_old="$(mktemp -d "$claude_skills_dir/.ecc-cli-old.XXXXXX")"
+    rmdir -- "$claude_old"
+    if ! mv -T -- "$claude_entry" "$claude_old"; then
+      printf 'Could not set aside the existing Claude Code entry; it was left unchanged.\n' >&2
+      exit 1
+    fi
+  fi
+  if [[ ! -e "$claude_entry" && ! -L "$claude_entry" ]]; then
+    mkdir -p -- "$claude_skills_dir"
+    if ! ln -s -- "$target" "$claude_entry"; then
+      printf 'Could not create the Claude Code symlink: %s\n' "$claude_entry" >&2
+      if [[ -n "$claude_old" && -d "$claude_old" && ! -e "$claude_entry" && ! -L "$claude_entry" ]]; then
+        if mv -T -- "$claude_old" "$claude_entry"; then
+          printf 'Previous Claude Code entry restored.\n'
+        else
+          printf 'Could not restore the previous Claude Code entry; it remains at: %s\n' "$claude_old" >&2
+        fi
+      fi
+      exit 1
+    fi
+  fi
+  if [[ -n "$claude_old" && -d "$claude_old" ]]; then
+    rm -rf -- "$claude_old"
+  fi
+  printf 'Claude Code entry: %s -> %s\n' "$claude_entry" "$target"
+  if [[ -n "$claude_backup" ]]; then
+    printf 'Previous Claude Code entry preserved: %s\n' "$claude_backup"
+  fi
+fi
+printf 'Start a new session and invoke the skill (Codex: $ecc-cli; Claude Code: /ecc-cli; Kimi Code: /skill:ecc-cli).\n'
