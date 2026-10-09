@@ -28,7 +28,7 @@ from .test_module import FakeParams
         {"place.timing_opt_overflow_milestones": [0.6, 0.5, 0.4, 0.3, 0.2]},
         {"place.timing_opt_buffering_enabled": 0},
         {"place.timing_opt_buffering_enabled": 1},
-        {"place.timing_opt_sizing_rounds": 10},
+        {"place.timing_opt_sizing_rounds": 5},
         {"place.timing_placement_carrier": "pin2pin"},
         {"place.timing_placement_carrier": "direct_loss"},
     ],

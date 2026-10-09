@@ -1,4 +1,4 @@
-"""Public parameters for timing/routability placement and S5B1 windows."""
+"""Public parameters for timing/routability placement and timing-optimization windows."""
 
 from .common import config_param
 
@@ -241,7 +241,7 @@ SCHEMAS = (
         "place.timing_opt_buffering_enabled",
         "dreamplace",
         ("timing_opt_buffering_enabled",),
-        1,
+        0,
         applies="placement",
         description="enable segment buffering in electrical timing-optimization windows",
     ),
@@ -269,7 +269,7 @@ SCHEMAS = (
         "place.timing_opt_sizing_rounds",
         "dreamplace",
         ("timing_opt_sizing_rounds",),
-        5,
+        10,
         applies="placement",
         description="maximum discrete size/VT rounds in each timing-optimization window, up to ten",
     ),
@@ -287,7 +287,7 @@ SCHEMAS = (
         "place.inflation_s5b1_buffering_enabled",
         "dreamplace",
         ("timing_opt_buffering_enabled",),
-        1,
+        0,
         applies="placement",
         description="Deprecated alias for place.timing_opt_buffering_enabled",
     ),
@@ -312,7 +312,7 @@ SCHEMAS = (
         "place.inflation_sizing_rounds",
         "dreamplace",
         ("timing_opt_sizing_rounds",),
-        5,
+        10,
         applies="placement",
         description="Deprecated alias for place.timing_opt_sizing_rounds",
     ),
