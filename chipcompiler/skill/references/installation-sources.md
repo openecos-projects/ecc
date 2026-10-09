@@ -4,7 +4,7 @@
 
 ## 1. 可安装结构
 
-源入口为 ECC 仓库的 `chipcompiler/skill/SKILL.md`。安装脚本一起安装入口、references/ 和 agents/openai.yaml，不能只复制入口；不需要 ECOS Studio 父仓库。
+源入口为 ECC 仓库的 `chipcompiler/skill/SKILL.md`，元数据源文件为 `chipcompiler/skill/agents/config.yaml`。安装脚本一起安装入口、references/ 和元数据，并将源 `agents/config.yaml` 复制为安装目标的 `agents/openai.yaml`；不能只复制入口，也不能直接复制整个源目录作为安装目录。不需要 ECOS Studio 父仓库。
 
 从 ECC 仓库根目录运行：
 
@@ -25,6 +25,8 @@ bash chipcompiler/skill/install-ecc-skill.sh /absolute/skills/ecc-cli
 ```
 
 部分现有部署把 skills 放在 `$CODEX_HOME/skills` 或 `$HOME/.codex/skills`；先核对该 Codex 实例实际搜索位置，不假定 CODEX_HOME 自动改变当前默认路径。避免多个搜索根中安装不同内容但同名 ecc-cli；先审查旧副本，再按实例要求更新。脚本不自动修改它们。
+
+安装后的目录结构（与源目录的元数据文件名不同）：
 
 ```text
 ecc-cli/
