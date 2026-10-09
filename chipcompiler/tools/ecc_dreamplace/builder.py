@@ -58,7 +58,7 @@ def step_config_path(workspace: Workspace, step: WorkspaceStep) -> Path:
 
 
 def _apply_diff_sizing_defaults(params: dict) -> dict:
-    """Apply the standalone DreamPlace S50 profile to a diff-sizing step."""
+    """Apply the standalone DreamPlace S50/RRR3 profile to a diff-sizing step."""
     result = deepcopy(params)
     result.update(
         flow_kind="sizing",
@@ -87,7 +87,8 @@ def _apply_diff_sizing_defaults(params: dict) -> dict:
         enable_relaxed_buffer_timing=False,
         joint_segment_virtual_density_enabled=0,
         gpu=0,
-        gpugr_backend="cpu_pr_mt",
+        gpugr_backend="cpu_pr_maze",
+        gr_sizing_rrr_iters=3,
         enable_fillers=0,
         random_center_init_flag=0,
         legalize_flag=1,
