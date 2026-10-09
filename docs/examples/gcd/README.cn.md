@@ -101,7 +101,7 @@ gcd_workspace/
 
 然后可以按如下方式设置流程引擎、添加步骤、创建步骤工作空间并运行：
 ```python
-from chipcompiler.data import StepEnum, StateEnum
+from chipcompiler.data import SkippableStepEnum, StepEnum, StateEnum
 from chipcompiler.engine import EngineFlow
 
 engine_flow = EngineFlow(workspace=workspace)
@@ -112,7 +112,7 @@ if not engine_flow.has_init():
     engine_flow.add_step(step=StepEnum.MACRO_PLACEMENT, tool="dreamplace", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.POST_FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.PLACEMENT, tool="dreamplace", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.CTS, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=SkippableStepEnum.CTS, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.LEGALIZATION, tool="dreamplace", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.ROUTING, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.FILLER, tool="ecc", state=StateEnum.Unstart)
