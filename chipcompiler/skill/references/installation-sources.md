@@ -4,7 +4,7 @@
 
 ## 1. 可安装结构
 
-源入口为 ECC 仓库的 `chipcompiler/skill/SKILL.md`，元数据源文件为 `chipcompiler/skill/agents/config.yaml`。安装脚本一起安装入口、references/ 和元数据，并将源 `agents/config.yaml` 复制为安装目标的 `agents/openai.yaml`；不能只复制入口，也不能直接复制整个源目录作为安装目录。不需要 ECOS Studio 父仓库。
+源入口为 ECC 仓库的 `chipcompiler/skill/SKILL.md`，ECC CLI 安装器为 `chipcompiler/skill/ecc-install.sh`，元数据源文件为 `chipcompiler/skill/agents/config.yaml`。安装脚本一起安装入口、`ecc-install.sh`、references/ 和元数据，并将源 `agents/config.yaml` 复制为安装目标的 `agents/openai.yaml`；不能只复制入口，也不能直接复制整个源目录作为安装目录。不需要 ECOS Studio 父仓库。
 
 从 ECC 仓库根目录运行：
 
@@ -31,6 +31,7 @@ bash chipcompiler/skill/install-ecc-skill.sh /absolute/skills/ecc-cli
 ```text
 ecc-cli/
 ├── SKILL.md
+├── ecc-install.sh
 ├── agents/openai.yaml
 └── references/
     ├── environment-project.md
@@ -63,7 +64,7 @@ Codex 官方 skill 结构/搜索位置参考为 `https://developers.openai.com/c
 | chipcompiler/docs/floorplan-flow.cn.md | 三阶段规划、宏交接、恢复边界 |
 | chipcompiler/docs/floorplan-flow.en.md | 对照 Tcl格式/单位、auto/manual、无 GUI暂停协议 |
 
-安装后不要求这些源路径存在。CLI 带 `ecc doc ug/config/tutorial --lang cn|en --plain`；没有在这组文档中承诺 `ecc doc qor/floorplan` 主题，不虚构。此 skill 的专题保存操作决策；需要未收录精确字段时先查当前 CLI/bundled docs，仍无依据则说明未知。
+安装后不要求这些源路径存在。ECC CLI 的官方安装器包装在源目录的 `ecc-install.sh`：它下载到临时文件后执行，支持 `--with-toolchain`，不使用 `curl | sh`。由于官方文档当前给出的 release URL 是 HTTP，AI 必须在用户确认后使用 `--allow-insecure-http`，或传入已核验的 `--installer-url`；不得自动 sudo、改 shell rc 或覆盖未知安装。CLI 带 `ecc doc ug/config/tutorial --lang cn|en --plain`；没有在这组文档中承诺 `ecc doc qor/floorplan` 主题，不虚构。此 skill 的专题保存操作决策；需要未收录精确字段时先查当前 CLI/bundled docs，仍无依据则说明未知。
 
 ## 3. 已知差异和未暴露能力
 

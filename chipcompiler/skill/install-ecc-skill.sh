@@ -50,7 +50,7 @@ if [[ -d "$target" && "$replace" != true ]]; then
 fi
 
 references=(environment-project run-workspaces config-floorplan qor-signoff optimization troubleshooting installation-sources)
-for relative_path in SKILL.md agents/config.yaml; do
+for relative_path in SKILL.md ecc-install.sh agents/config.yaml; do
   [[ -f "$source_dir/$relative_path" ]] || { printf 'Missing source: %s\n' "$relative_path" >&2; exit 1; }
 done
 for reference in "${references[@]}"; do
@@ -100,6 +100,8 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 mkdir -- "$stage/references" "$stage/agents"
 cp -- "$source_dir/SKILL.md" "$stage/SKILL.md"
+cp -- "$source_dir/ecc-install.sh" "$stage/ecc-install.sh"
+chmod 700 "$stage/ecc-install.sh"
 cp -- "$source_dir/agents/config.yaml" "$stage/agents/openai.yaml"
 for reference in "${references[@]}"; do
   cp -- "$source_dir/references/$reference.md" "$stage/references/$reference.md"

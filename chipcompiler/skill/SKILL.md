@@ -25,6 +25,18 @@ whenToUse: When the user asks to run, diagnose, resume, sign off, or optimize an
 
 ## 先确定任务边界
 
+## 安装 ECC CLI
+
+当 `command -v ecc` 失败时，先确认安装版本、目录和是否安装工具链。仓库提供 `ecc-install.sh`：它先下载官方安装器到临时文件，再执行，不使用 `curl | sh`。
+
+```bash
+bash chipcompiler/skill/ecc-install.sh --help
+bash chipcompiler/skill/ecc-install.sh --allow-insecure-http
+bash chipcompiler/skill/ecc-install.sh --allow-insecure-http --with-toolchain
+```
+
+官方文档当前给出的 release 地址是 HTTP；执行前审查来源，优先使用已核验 HTTPS 地址或传入 `--installer-url`。安装后执行 `command -v ecc`、`ecc --version` 和 `ecc doctor --project "$PROJECT" --plain`。不要自动 `sudo`、修改 shell 启动文件或覆盖未知旧版本；若 `~/.local/bin` 不在 PATH，只报告并给出当前 shell 的 `export PATH="$HOME/.local/bin:$PATH"`。
+
 - **检查**：不启动 flow、不隐式重建、不顺带调优。`report qor/summary/checklist` 写报告，`signoff inspect` 刷新分析；严格只读任务优先 `status/log/config/report step`。
 - **建项**：确认 RTL、top、时钟/频率、PDK、约束和宏。可以编写授权的 RTL、测试平台、独立 SDC/输入文件，但只通过 CLI 注册到 project。RTL 修改须有功能验证，flow 成功不能替代功能正确性。
 - **执行/恢复**：确认 workspace、范围和已有证据；一次完整运行不自动授权多轮 PPA 搜索。
