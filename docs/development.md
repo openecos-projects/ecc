@@ -901,12 +901,9 @@ the `lec_dual` tool id; params.toml always stores the normalized
 keeps the engine its ledger recorded, and editing `lec_engine` later never
 rewrites an existing ledger (reconcile classifies engines as
 interchangeable, so a yosys_lec ledger stays compatible with a
-kepler_formal target — the recorded engine keeps owning reruns). To
-actually switch an existing workspace, use the explicit engine switch
-(`switch_lec_engine` in `chipcompiler/runtime/workspace_api.py`): it
-rewrites the two LEC ledger tools, resets their state/subflow/checklist,
-and persists `lec_engine` — deliberately without clearing per-engine
-artifact directories, so prior-run evidence survives for A/B comparison.
+kepler_formal target — the recorded engine keeps owning reruns).
+Editing `lec_engine` on an existing workspace therefore never switches
+its engine; the key only takes effect at workspace creation.
 
 ### Dual Cross-Checking (`lec_dual`)
 
