@@ -84,8 +84,8 @@ uv run ecc --help
 - Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `param`, `macro`, `pdk`, `project`, `workspace`, `signoff`, and `report` accept `--plain` (`key=value`, for scripting), with human-readable TEXT by default. `rpc serve` and `layout-image` use their own protocols instead.
 - Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`).
 - Step tokens come in three vocabularies, distinguished by context:
-  - **display names** (output and input of `ecc status` / `ecc log` / `ecc report step`, uniformly lowercase/underscore): `synthesis / lec / pre_floorplan / macro_placement / post_floorplan / placement / cts / legalization / timing_optimization / routing / filler / rcx / sta / lvs / postroutelec / drc / harden`;
-  - **persisted names** (the original names in `home/flow.json`; required by `--from`/`--only`/`--to` on existing workspaces, e.g. `place`, `CTS`, `Timing optimization`): `Synthesis / lec / preFloorplan / macroPlacement / postFloorplan / place / CTS / legalization / Timing optimization / route / filler / RCX / sta / lvs / postRouteLec / drc / Harden`;
+  - **display names** (output and input of `ecc status` / `ecc log` / `ecc report step`, uniformly lowercase/underscore): `synthesis / lec / pre_floorplan / macro_placement / post_floorplan / placement / cts / legalization / timing_optimization / routing / filler / lvs / drc / postroutelec / rcx / sta / poweranalysis / harden`;
+  - **persisted names** (the original names in `home/flow.json`; required by `--from`/`--only`/`--to` on existing workspaces, e.g. `place`, `CTS`, `Timing optimization`): `Synthesis / lec / preFloorplan / macroPlacement / postFloorplan / place / CTS / legalization / Timing optimization / route / filler / lvs / drc / postRouteLec / RCX / sta / powerAnalysis / Harden`;
   - **aliases when creating a new range** (the first `--from A --to B` workspace creation normalizes aliases; both spellings are accepted): e.g. `cts`↔`CTS`, `route`↔`routing`, `timingopt`↔`Timing optimization`, `postlec`↔`postRouteLec`.
   A misspelled name returns `unknown_step` with the full list of available step names — copy one of them as printed.
 
@@ -331,7 +331,7 @@ ecc run [OPTIONS]
   --plain            key=value output for scripting
 ```
 
-For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` when the selector is a name, or at the exact absolute path when the selector is a path → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. An absolute workspace selector must be a complete external directory whose parent already exists; its basename becomes the new workspace ID unless the path is already registered. An existing valid workspace at an external path can be registered and resumed with the same command. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full 17-step chain (Synthesis→LEC (Yosys equivalence check; skipped by default — `[flow] skip_steps` defaults to `["lec"]`, set `[]` to enable)→preFloorplan→macroPlacement→postFloorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→RCX→sta→LVS→postRouteLec (Yosys equivalence check)→DRC→Harden; Harden emits GDS + Abstract LEF + timing LIB).
+For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` when the selector is a name, or at the exact absolute path when the selector is a path → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. An absolute workspace selector must be a complete external directory whose parent already exists; its basename becomes the new workspace ID unless the path is already registered. An existing valid workspace at an external path can be registered and resumed with the same command. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full 18-step chain (Synthesis→LEC (Yosys equivalence check; skipped by default — `[flow] skip_steps` defaults to `["lec"]`, set `[]` to enable)→preFloorplan→macroPlacement→postFloorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→LVS→DRC→postRouteLec (kepler-formal equivalence check)→RCX→sta→powerAnalysis→Harden; Harden emits GDS + Abstract LEF + timing LIB).
 
 #### External workspace paths
 
@@ -450,8 +450,8 @@ ecc run [--workspace NAME] [--resume | --from STEP [--to STEP] | --only STEP [--
 $ ecc run --workspace default --from synthesis   # the persisted name is "Synthesis"
 [error]
   unknown_step unknown step 'synthesis'; available steps: Synthesis, lec, preFloorplan,
-  macroPlacement, postFloorplan, place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
-  postRouteLec, drc, Harden
+  macroPlacement, postFloorplan, place, CTS, legalization, Timing optimization, route, filler, lvs, drc,
+  postRouteLec, RCX, sta, powerAnalysis, Harden
   workspace: /tmp/gcd/default
 ```
 
@@ -1209,3 +1209,18 @@ ecc macro show --workspace default
 ```
 
 Once `project.json` exists, project-scoped inspection, signoff, and report commands select among declared workspaces; a single active workspace is auto-selected, while multiple active workspaces require an explicit `--workspace NAME` (otherwise `workspace_required` is reported, listing the available names). A workspace no longer in use can be dropped from auto-selection by changing its `status` to `archived` in `project.json`.
+
+## 16. Automation and safety boundaries
+
+This section adds operating rules for automation, agents, and batch experiments; the command contracts above still apply.
+
+### 16.1 Public boundaries and state claims
+
+- Change project, workspace, parameter, macro, PDK, run, report, and signoff state only through the public `ecc` CLI.
+- Never bypass the CLI by editing `ecc.toml`, `project.json`, `home/params.toml`, `home/flow.json`, managed JSON/Tcl, analysis reports, or checklists directly.
+- If the CLI does not expose a field, report the capability gap — do not invent commands or force-write internal files. Parse `--plain` output as repeated `key=value` records; it is not JSON, and never `eval` or `source` it.
+- Report four things separately: CLI success, completion of the requested flow, QoR/signoff gate results, and export reproducibility. Missing data is not zero, and ECC export-ready is not foundry tapeout certification.
+
+### 16.2 Experiments, recovery, and diagnosis
+
+Run serially by default — never run, tune, refresh, or export the same workspace concurrently. Give every new candidate its own workspace, and record its inputs, PDK/library, tool versions, parameter overrides, seed, thread count, device, resource budget, and raw reports. Before recovering a run, look at `status`, `log`, and the ledger; prefer `--resume` or an exact range rerun, and never `--overwrite`, delete directories, or kill unrelated processes without confirmation. On failure, keep the first error and its context, then check in order: versions, project declaration, workspace registration, `doctor`, PDK/library files, entry inputs, and the failed step's log. Do not manufacture success by relaxing constraints, lowering frequency, dropping corners, or skipping verification.

@@ -483,3 +483,11 @@ WS 超过 0.20·T_clk 的过约束提示：设计可能过度缓冲，可尝试�
 
 **Q：`ecc report qor` 和 `home/qor_report.json` 数值会不一致吗？**
 正常不会：报告每步成功后自动刷新，CLI 每次现算。若你手改了产物文件或正在并发跑 flow，两者可能短暂不一致；flow 走完后以重跑的 `ecc report qor` 为准。
+
+## 13. 自动化实验与证据边界
+
+本节面向自动化代理（agent）和批量实验，约束 QoR 优化的记录与比较行为。
+
+做 QoR 优化时，baseline、每个候选和最终复验的结果要各自保留，并同时记录原始指标、兼容性状态、工具/PDK 版本、参数覆盖（override）、seed、资源消耗和停止原因。指标缺失、状态为 `UNKNOWN` 或 `NOT_RATED`、以及口径不一致的结果，一律不能填 0；也不许靠删 corner、放宽约束、降频率或跳过验证来抬高分数。最终选出的 winner 配置必须带上创建时的 `--set` 覆盖，并在一个全新的 workspace 里完整复验一遍。
+
+QoR 分数、可行性门禁（feasibility gate）、证据完整度（evidence completeness）、导出就绪（export readiness），是四个互相独立的结论。`signoff inspect` 报出的阻塞项比分数更优先；可导出（export-ready）不等于通过代工厂的 tapeout signoff。功耗数据缺失时，要如实标为未知并写明原因，不能用静态估算值或其他 corner 下的数值冒充可比较的结果。

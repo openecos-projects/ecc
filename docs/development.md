@@ -735,6 +735,14 @@ uv run ecc run --project gcd --preset rtl2gds
 
 ### Skippable Flow Steps
 
+The default post-route sequence is `route → filler → lvs → drc → postRouteLec
+→ RCX → sta → powerAnalysis → Harden`. LVS and DRC check the filled layout
+before post-route equivalence checking; RCX then provides the parasitics for
+timing and power analysis. LEC is a verification-only step: RCX consumes the
+preceding DRC physical outputs, not the LEC proof. This order applies to newly
+created preset flows and canonical ranges; existing workspace ledgers and
+explicit custom flows retain their stored order.
+
 Three optional steps can be excluded from a workspace at creation time:
 the synthesis LEC (`lec`), the post-route LEC (`postRouteLec`), and timing
 optimization (`Timing optimization`). Skipped steps never enter the

@@ -84,8 +84,8 @@ uv run ecc --help
 - 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`param`、`macro`、`pdk`、`project`、`workspace`、`signoff`、`report` 都支持 `--plain`（`key=value`，便于脚本解析），缺省为人类可读 TEXT。`rpc serve` 和 `layout-image` 使用各自的协议。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。
 - 步骤名（step token）有三套写法，按场景区分：
-  - **展示名**（`ecc status` / `ecc log` / `ecc report step` 的输出与入参，统一小写/下划线）：`synthesis / lec / pre_floorplan / macro_placement / post_floorplan / placement / cts / legalization / timing_optimization / routing / filler / rcx / sta / lvs / postroutelec / drc / harden`；
-  - **持久化名**（`home/flow.json` 中的原始名；已有 workspace 上的 `--from`/`--only`/`--to` 必须用它，如 `place`、`CTS`、`Timing optimization`）：`Synthesis / lec / preFloorplan / macroPlacement / postFloorplan / place / CTS / legalization / Timing optimization / route / filler / RCX / sta / lvs / postRouteLec / drc / Harden`；
+  - **展示名**（`ecc status` / `ecc log` / `ecc report step` 的输出与入参，统一小写/下划线）：`synthesis / lec / pre_floorplan / macro_placement / post_floorplan / placement / cts / legalization / timing_optimization / routing / filler / lvs / drc / postroutelec / rcx / sta / poweranalysis / harden`；
+  - **持久化名**（`home/flow.json` 中的原始名；已有 workspace 上的 `--from`/`--only`/`--to` 必须用它，如 `place`、`CTS`、`Timing optimization`）：`Synthesis / lec / preFloorplan / macroPlacement / postFloorplan / place / CTS / legalization / Timing optimization / route / filler / lvs / drc / postRouteLec / RCX / sta / powerAnalysis / Harden`；
   - **新建范围时的别名**（首次 `--from A --to B` 建 workspace 会做别名归一化，两种拼法都接受）：如 `cts`↔`CTS`、`route`↔`routing`、`timingopt`↔`Timing optimization`、`postlec`↔`postRouteLec`。
   拼错时返回 `unknown_step` 并列出全部可用步骤名，照抄即可。
 
@@ -330,7 +330,7 @@ ecc run [OPTIONS]
   --plain           面向脚本的 key=value 输出
 ```
 
-新建或 `--overwrite` 的 workspace 会按以下流程执行：读 `ecc.toml` → 只解析入口步骤所需的设计文件以及 PDK/参数 → 预检所需工具 → 先写入 `project.json` 登记 → `--workspace` 是名称时默认在 `<project>/<workspace 名称>` 创建，是绝对路径时在该完整目录创建 → 将声明的设计输入复制到 `origin/`、写入对应步骤配置并运行 flow。绝对路径必须是完整的项目外目录且父目录已存在；新路径以 basename 作为 workspace ID，已登记路径沿用清单中的 ID。外部目录中已有有效 ECC workspace 时，也可以用同一命令登记并续跑。workspace 不会存放第二份项目输入清单。已有 workspace 按持久化 flow 续跑，不会改写已有输入或步骤配置。`rtl2gds` 是完整 17 步链（Synthesis→LEC（Yosys 等价性检查；默认跳过——`[flow] skip_steps` 默认为 `["lec"]`，设为 `[]` 才启用）→preFloorplan→macroPlacement→postFloorplan→place→CTS→legalization→Timing optimization（sizer）→route→filler→RCX→sta→LVS→postRouteLec（Yosys 等价性检查）→DRC→Harden，Harden 产出 GDS + Abstract LEF + 时序 LIB）。
+新建或 `--overwrite` 的 workspace 会按以下流程执行：读 `ecc.toml` → 只解析入口步骤所需的设计文件以及 PDK/参数 → 预检所需工具 → 先写入 `project.json` 登记 → `--workspace` 是名称时默认在 `<project>/<workspace 名称>` 创建，是绝对路径时在该完整目录创建 → 将声明的设计输入复制到 `origin/`、写入对应步骤配置并运行 flow。绝对路径必须是完整的项目外目录且父目录已存在；新路径以 basename 作为 workspace ID，已登记路径沿用清单中的 ID。外部目录中已有有效 ECC workspace 时，也可以用同一命令登记并续跑。workspace 不会存放第二份项目输入清单。已有 workspace 按持久化 flow 续跑，不会改写已有输入或步骤配置。`rtl2gds` 是完整 18 步链（Synthesis→LEC（Yosys 等价性检查；默认跳过——`[flow] skip_steps` 默认为 `["lec"]`，设为 `[]` 才启用）→preFloorplan→macroPlacement→postFloorplan→place→CTS→legalization→Timing optimization（sizer）→route→filler→LVS→DRC→postRouteLec（kepler-formal 等价性检查）→RCX→sta→powerAnalysis→Harden，Harden 产出 GDS + Abstract LEF + 时序 LIB）。
 
 #### 外部 workspace 路径
 
@@ -447,8 +447,8 @@ ecc run [--workspace NAME] [--resume | --from STEP [--to STEP] | --only STEP [--
 $ ecc run --workspace default --from synthesis   # 持久化名是 "Synthesis"
 [error]
   unknown_step unknown step 'synthesis'; available steps: Synthesis, lec, preFloorplan,
-  macroPlacement, postFloorplan, place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
-  postRouteLec, drc, Harden
+  macroPlacement, postFloorplan, place, CTS, legalization, Timing optimization, route, filler, lvs, drc,
+  postRouteLec, RCX, sta, powerAnalysis, Harden
   workspace: /tmp/gcd/default
 ```
 
@@ -1158,3 +1158,18 @@ ecc macro show --workspace default
 ```
 
 `project.json` 生成后，项目级查看、签核和报告命令按已声明的 workspace 选择；只有一个活跃 workspace 时自动选中，多个活跃 workspace 时必须显式传 `--workspace NAME`（否则报 `workspace_required` 并列出可用名称）。不再使用的 workspace 可在 `project.json` 中把其 `status` 改为 `archived`，使其退出自动选择。
+
+## 16. 自动化使用与安全边界
+
+本节面向自动化代理（agent）、脚本和批量实验补充操作约束，前文的命令契约仍然有效。
+
+### 16.1 公开边界与状态判定
+
+- 项目、workspace、参数、宏、PDK、运行、报告和签核状态，一律只通过公开的 `ecc` CLI 修改。
+- 不要绕过 CLI 直接编辑 `ecc.toml`、`project.json`、`home/params.toml`、`home/flow.json`、受管的 JSON/Tcl、分析报告或 checklist。
+- CLI 尚未暴露的字段，如实报告能力缺口（capability gap）即可；不要编造命令，也不要强行写内部文件。`--plain` 输出要按重复的 `key=value` 记录来解析——它不是 JSON，也不要对它用 `eval` 或 `source`。
+- CLI 执行成功、请求的 flow 完成、QoR/签核门禁通过、导出物可复现，这四件事要分开报告。缺失的数据不是零；ECC 的 export-ready 也不等于代工厂的 tapeout 认证。
+
+### 16.2 实验、恢复与诊断
+
+默认串行执行，同一个 workspace 不要并发地运行、调参、刷新或导出。每个新候选都用新 workspace，并记录输入、PDK/库、工具版本、参数覆盖（override）、seed、线程数、设备、资源预算和原始报告。恢复运行前先查看 `status`、`log` 和 ledger，优先用 `--resume` 或按精确范围重跑；不要未经确认就 `--overwrite`、删目录或杀掉无关进程。失败时保留第一个错误及其上下文，然后按顺序排查：版本、项目声明、workspace 注册、`doctor`、PDK/库文件、入口输入、失败步骤的日志。不要靠放宽约束、降低频率、删除 corner 或跳过验证来"制造成功"。

@@ -733,3 +733,11 @@ Recommended practice for making changes: **use `ecc param` (and `ecc macro` for 
 ---
 
 *Parameter defaults were rechecked against the v0.1.0-alpha.12 source templates and a real run of the gcd design under the ics55 PDK; a `*` mark means the field is driven by a user parameter.*
+
+## 17. Automation boundaries for configuration
+
+This section targets automation agents and batch scripts; it sets the boundaries for changing configuration.
+
+Before tuning parameters, check which fields are actually public — run `ecc param list --all`, `ecc param show`, or the installed version's `--help` — then change them with `ecc param set` or `ecc param unset` in the scope that owns them. As a rule, do not edit `home/params.toml`, generated JSON/Tcl, or internal templates by hand. The one exception is the QoR reference's `qor_profile` and `qor_power_budget_w`: both are workspace parameters outside the CLI schema, and they must still follow the QoR document's semantics and revalidation rules. `run --set` only applies when creating a new workspace, and the override must be recorded as part of the candidate's provenance. When changing parameters on an existing workspace, first work out which steps are invalidated and what range must be rerun.
+
+A field mentioned in documentation but absent from the current public schema is not a usable interface. In particular, do not bypass the CLI by writing to internal `flow.skip_steps`, QoR profiles/budgets, or unreviewed DreamPlace fields. If the CLI lacks a capability you need, record the version, the command output, and the impact — do not claim the configuration succeeded. Changing frequency, corners, constraints, or verification coverage changes what an experiment means: give it its own candidate and never compare it directly against the original result.

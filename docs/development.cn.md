@@ -512,6 +512,13 @@ uv run ecc run --project gcd --preset rtl2gds
 
 ### 可跳过的 Flow Step
 
+默认布线后流程为 `route → filler → lvs → drc → postRouteLec → RCX → sta
+→ powerAnalysis → Harden`。LVS、DRC 先检查填充后的版图，随后执行布线后
+等价性检查，再由 RCX 为时序和功耗分析提供寄生参数。LEC 只做验证，不参与
+物理产物传递：RCX 使用前一步 DRC 的物理输出，而不是 LEC 的证明文件。
+新顺序适用于新建的预设流程及规范步骤范围；已有工作区的执行记录和显式
+自定义流程仍保留原顺序。
+
 三个可选 step 可在创建 workspace 时按配置排除：综合级 LEC（`lec`）、布线后 LEC（`postRouteLec`）、时序优化（`Timing optimization`）。被跳过的 step 不会进入 workspace 的执行 ledger——其输入自然落到前一个保留 step，也不会为其创建 step 目录。状态机与 resume/rerun 语义零改动；已创建的 ledger 永远不会按新配置重过滤——事后修改策略不会向已有 workspace 插入或删除 step。
 
 策略在两个配置面声明，优先级与其他键一致（ecc.toml 显式声明覆盖 project.json 基准层）：
