@@ -16,7 +16,7 @@ from chipcompiler.engine.snapshot_qor import (
     unavailable_qor_snapshot_extension,
     validate_qor_snapshot_extension,
 )
-from chipcompiler.utility import JsonReadError, file_digest, json_read_strict, json_write
+from chipcompiler.utility import JsonReadError, json_read_strict, json_write
 
 LEGACY_SNAPSHOT_SCHEMA_VERSION = 2
 SNAPSHOT_V3_SCHEMA_VERSION = 3
@@ -78,17 +78,13 @@ def read_engineering_snapshot(
     *,
     expected_workspace_id: str | None = None,
     expected_workspace_revision: int | None = None,
-    validate_artifacts: bool = False,
 ) -> dict[str, Any]:
     """Read the committed Snapshot projection.
 
     Artifacts are path references into the workspace, never versioned copies;
     readers get path-safety validation but no content fingerprinting.
     """
-    snapshot = _read_snapshot(
-        _snapshot_path(workspace),
-        validate_artifacts=validate_artifacts,
-    )
+    snapshot = _read_snapshot(_snapshot_path(workspace))
     if expected_workspace_id is not None and snapshot["workspaceId"] != expected_workspace_id:
         raise EngineeringSnapshotError(
             "Engineering Snapshot workspace identity mismatch",
@@ -111,7 +107,7 @@ def read_engineering_snapshot_from_directory(directory: str | Path) -> dict[str,
 
 def read_stale_engineering_snapshot(workspace: Any) -> dict[str, Any] | None:
     path = _stale_snapshot_path(workspace)
-    return _read_snapshot(path, validate_artifacts=False) if path.is_file() else None
+    return _read_snapshot(path) if path.is_file() else None
 
 
 def migrate_engineering_snapshot(
@@ -162,7 +158,7 @@ def commit_engineering_snapshot(
     workspace_id: str,
     cause: str,
 ) -> dict[str, Any]:
-    current = read_engineering_snapshot(workspace, validate_artifacts=False)
+    current = read_engineering_snapshot(workspace)
     if current["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
         raise EngineeringSnapshotError("Engineering Snapshot requires schemaVersion 4")
     if current["workspaceId"] != workspace_id:
@@ -202,7 +198,7 @@ def invalidate_engineering_snapshot(
     cause: str,
     first_invalidated_step: str | None = None,
 ) -> dict[str, Any]:
-    current = read_engineering_snapshot(workspace, validate_artifacts=False)
+    current = read_engineering_snapshot(workspace)
     if current["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
         raise EngineeringSnapshotError("Engineering Snapshot requires schemaVersion 4")
     if current["workspaceId"] != workspace_id:
@@ -411,7 +407,7 @@ def _write_snapshot(path: Path, snapshot: dict[str, Any]) -> None:
         raise EngineeringSnapshotError(f"failed to persist Engineering Snapshot: {path}")
 
 
-def _read_snapshot(path: Path, *, validate_artifacts: bool = False) -> dict[str, Any]:
+def _read_snapshot(path: Path) -> dict[str, Any]:
     try:
         snapshot = json_read_strict(path)
     except (OSError, JsonReadError) as exc:
@@ -437,19 +433,13 @@ def _read_snapshot(path: Path, *, validate_artifacts: bool = False) -> dict[str,
         )
     ):
         raise EngineeringSnapshotError(f"invalid Engineering Snapshot: {path}")
-    _validate_snapshot_sections(
-        snapshot,
-        path.parent.parent,
-        validate_artifacts=validate_artifacts,
-    )
+    _validate_snapshot_sections(snapshot, path.parent.parent)
     return snapshot
 
 
 def _validate_snapshot_sections(
     snapshot: dict[str, Any],
     workspace_root: Path,
-    *,
-    validate_artifacts: bool,
 ) -> None:
     required = ["flow", "parameters", "checklist", "signoffAssessment"]
     if snapshot["schemaVersion"] == SNAPSHOT_SCHEMA_VERSION:
@@ -477,12 +467,7 @@ def _validate_snapshot_sections(
             code=SNAPSHOT_IDENTITY_MISMATCH,
         )
     for artifact in artifacts:
-        _validate_snapshot_artifact(
-            artifact,
-            snapshot["workspaceId"],
-            workspace_root,
-            validate_artifacts=validate_artifacts,
-        )
+        _validate_snapshot_artifact(artifact, snapshot["workspaceId"])
     stale = snapshot.get("stalePredecessor")
     if stale is not None and (
         not isinstance(stale, dict)
@@ -579,13 +564,7 @@ def _validate_step_output_artifact(
     raise EngineeringSnapshotError("invalid Engineering Snapshot step output path")
 
 
-def _validate_snapshot_artifact(
-    artifact: object,
-    workspace_id: str,
-    workspace_root: Path,
-    *,
-    validate_artifacts: bool,
-) -> None:
+def _validate_snapshot_artifact(artifact: object, workspace_id: str) -> None:
     if not isinstance(artifact, dict):
         raise EngineeringSnapshotError("invalid Engineering Snapshot artifact")
     artifact_id = artifact.get("artifactId")
@@ -601,38 +580,6 @@ def _validate_snapshot_artifact(
         or availability not in {"missing", "available", "stale"}
     ):
         raise EngineeringSnapshotError("invalid Engineering Snapshot artifact reference")
-    if availability != "available" or not validate_artifacts:
-        return
-    digest = artifact.get("sha256")
-    size = artifact.get("sizeBytes")
-    if (
-        not isinstance(digest, str)
-        or len(digest) != 64
-        or any(character not in "0123456789abcdef" for character in digest.lower())
-        or type(size) is not int
-        or size < 0
-    ):
-        raise EngineeringSnapshotError("invalid Engineering Snapshot artifact fingerprint")
-    candidate = workspace_root / reference
-    try:
-        candidate.relative_to(workspace_root)
-    except ValueError as exc:
-        raise EngineeringSnapshotError("invalid Engineering Snapshot artifact path") from exc
-    if _contains_symlink(candidate, workspace_root):
-        raise EngineeringSnapshotError("invalid Engineering Snapshot artifact path")
-    if file_digest(candidate) != (digest, size):
-        raise EngineeringSnapshotError(
-            f"Engineering Snapshot artifact fingerprint mismatch: {reference}"
-        )
-
-
-def _contains_symlink(path: Path, root: Path) -> bool:
-    current = path
-    while current != root:
-        if current.is_symlink() or current.parent == current:
-            return True
-        current = current.parent
-    return root.is_symlink()
 
 
 def _workspace_metadata_id(workspace_root: Path) -> str | None:

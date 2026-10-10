@@ -224,7 +224,7 @@ def test_snapshot_read_validates_expected_identity_and_revision(tmp_path):
         read_engineering_snapshot(workspace)
 
 
-def test_snapshot_read_rejects_invalid_sections_and_only_checks_artifacts_when_requested(
+def test_snapshot_read_rejects_invalid_sections_and_keeps_artifact_reads_identity_only(
     tmp_path,
 ):
     workspace = _workspace(tmp_path)
@@ -256,8 +256,3 @@ def test_snapshot_read_rejects_invalid_sections_and_only_checks_artifacts_when_r
     artifact_path.write_bytes(b"after")
     assert read_engineering_snapshot(workspace)["artifacts"][0]["availability"] == "available"
     assert ensure_engineering_snapshot(workspace)["workspaceId"] == "engineering-gcd"
-    with pytest.raises(
-        EngineeringSnapshotError,
-        match=f"fingerprint mismatch: {artifact['reference']}",
-    ):
-        read_engineering_snapshot(workspace, validate_artifacts=True)
