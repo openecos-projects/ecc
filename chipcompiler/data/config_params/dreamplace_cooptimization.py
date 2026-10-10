@@ -62,7 +62,7 @@ SCHEMAS = (
         "place.timing_aggregation_mode",
         "dreamplace",
         ("timing_aggregation_mode",),
-        "hard",
+        "smooth",
         applies="placement",
         choices=("hard", "smooth"),
         description=(
@@ -311,7 +311,7 @@ SCHEMAS = (
         "place.timing_coeff_growth_factor",
         "dreamplace",
         ("timing_coeff_growth_factor",),
-        1.01,
+        1.0,
         applies="placement",
         description=(
             "positive finite multiplier applied to WNS/TNS coefficients at each GP "
@@ -322,7 +322,7 @@ SCHEMAS = (
         "place.timing_opt_coefficients",
         "dreamplace",
         ("timing_opt_coefficients",),
-        {"mode": "inherit"},
+        {"mode": "fixed", "wns": 500.0, "tns": 5.0, "cap": 1.0, "slew": 1.0},
         applies="placement",
         description=(
             "GP sizing-window coefficient policy: mode=inherit uses live placement values; "

@@ -20,6 +20,33 @@ from chipcompiler.tools.ecc_dreamplace.parameter_overrides import apply_direct_c
 from .test_module import FakeParams
 
 
+def test_default_placement_recipe_preserves_tested_optimization_policy(dreamplace_default_config):
+    from dreamplace.flows.flow_config import resolve_flow_config
+
+    profile = json.loads(
+        (
+            Path(__file__).resolve().parents[2] / "regression/ics55/placement_fixed500_smooth2.json"
+        ).read_text()
+    )
+    fields = (
+        "cell_padding_x",
+        "target_density",
+        "stop_overflow",
+        "overflow_reference_mode",
+        "timing_placement_carrier",
+        "timing_coeff_growth_factor",
+        "timing_grad_balance_target_ratio",
+        "timing_opt_enabled",
+        "timing_opt_sizing_rounds",
+        "timing_opt_buffering_enabled",
+        "timing_opt_coefficients",
+        "timing_aggregation_mode",
+        "timing_aggregation_tau_ps",
+    )
+    effective = resolve_flow_config(dreamplace_default_config)
+    assert {key: effective[key] for key in fields} == {key: profile[key] for key in fields}
+
+
 @pytest.mark.parametrize(
     "public",
     [
@@ -72,7 +99,12 @@ def test_window_override_reaches_dreamplace_config(public, dreamplace_default_co
     actual = apply_direct_config_overrides(
         dreamplace_default_config, {"config_overrides": overrides}
     )
-    assert actual == dreamplace_default_config | direct
+    expected = dreamplace_default_config | direct
+    if "timing_opt_coefficients" in direct:
+        expected["timing_opt_coefficients"] = (
+            dreamplace_default_config["timing_opt_coefficients"] | direct["timing_opt_coefficients"]
+        )
+    assert actual == expected
 
 
 def test_coefficient_mode_can_switch_without_removing_fixed_preset(dreamplace_default_config):
