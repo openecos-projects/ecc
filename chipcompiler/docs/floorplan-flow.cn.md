@@ -87,3 +87,7 @@ ecc run --workspace default --from postFloorplan --to postFloorplan
 请通过 `ecc param` 或 `ecc.toml` 参数修改已审核的 floorplan 设置，不要依赖每次
 运行生成的字段。可调参数和 JSON 字段见
 [配置参考](ecc-config-ref.cn.md)。
+
+## 自动化边界
+
+Floorplan 三阶段之间通过受管的 `macro_location.tcl` 交接；不要直接编辑派生文件来改变设计状态。宏列表必须覆盖所有硬宏，坐标使用 µm，方向使用受支持的 orientation。任何宏、die/core、密度或 padding 变更都应记录参数来源、单位、workspace、失效的下游步骤和实际重跑范围；不以降低利用率或删除宏来伪造布线收敛。

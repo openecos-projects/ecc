@@ -673,3 +673,9 @@ Recommended practice for making changes: **use `ecc param` (and `ecc macro` for 
 ---
 
 *Parameter defaults were rechecked against the v0.1.0-alpha.12 source templates and a real run of the gcd design under the ics55 PDK; a `*` mark means the field is driven by a user parameter.*
+
+## 17. Automation boundaries for configuration
+
+Discover actual public fields first with `ecc param list --all`, `ecc param show`, or the installed version's `--help`. Then use `ecc param set` or `ecc param unset` in the correct scope; do not edit `home/params.toml`, derived JSON/Tcl, or internal templates directly. `run --set` applies only to a new workspace and must be retained as candidate provenance; changes to an existing workspace require an explicit review of invalidated steps and rerun range.
+
+A field absent from the current public schema is not an executable interface. In particular, do not bypass the CLI with internal `flow.skip_steps`, QoR profiles/budgets, or unreviewed DreamPlace fields. Record the version, command output, and impact of a capability gap instead of claiming configuration success. Changing frequency, corners, constraints, or verification coverage changes the experiment semantics; create an independent candidate and do not compare it directly with the original result.

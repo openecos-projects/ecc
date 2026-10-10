@@ -483,3 +483,9 @@ They are engine constants today, not user parameters. They are calibrated engine
 
 **Q: Can `ecc report qor` and `home/qor_report.json` disagree?**
 Not normally: the report refreshes after every successful step and the CLI recomputes on the fly. If you hand-edit artifact files or run the flow concurrently, they may diverge briefly; after the flow finishes, a rerun of `ecc report qor` is authoritative.
+
+## 13. Automated experiments and evidence boundaries
+
+QoR optimization must preserve independent baseline, candidate, and final revalidation results, including raw metrics, compatibility state, tool/PDK versions, parameter overrides, seed, resources, and the stopping reason. Missing metrics, `UNKNOWN`, `NOT_RATED`, and incompatible results must not be filled with zero or compared as if compatible. Do not improve a score by removing corners, relaxing constraints, lowering frequency, or skipping verification. The winning configuration must include creation-time `--set` overrides and pass a complete fresh-workspace revalidation.
+
+QoR score, feasibility gates, evidence completeness, and export readiness are separate conclusions. Blockers from `signoff inspect` take precedence over the score; export-ready is not foundry tapeout signoff. If power evidence is missing, report it as unknown with its cause; do not present a static estimate or a different-corner number as a compatible comparison.

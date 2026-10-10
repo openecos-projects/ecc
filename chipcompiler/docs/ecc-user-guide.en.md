@@ -1209,3 +1209,18 @@ ecc macro show --workspace default
 ```
 
 Once `project.json` exists, project-scoped inspection, signoff, and report commands select among declared workspaces; a single active workspace is auto-selected, while multiple active workspaces require an explicit `--workspace NAME` (otherwise `workspace_required` is reported, listing the available names). A workspace no longer in use can be dropped from auto-selection by changing its `status` to `archived` in `project.json`.
+
+## 16. Automation and safety boundaries
+
+This section adds operating rules for automation, agents, and batch experiments; it does not replace the command contracts above.
+
+### 16.1 Public boundaries and state claims
+
+- Use the public `ecc` CLI for project, workspace, parameter, macro, PDK, run, report, and signoff state changes.
+- Do not edit `ecc.toml`, `project.json`, `home/params.toml`, `home/flow.json`, managed JSON/Tcl, analysis reports, or checklists to bypass the CLI.
+- Report capability gaps for fields not exposed by the current CLI; do not invent commands or force internal-file edits. Parse `--plain` output as repeated `key=value` records, not JSON; never use `eval` or `source` on command output.
+- Report CLI success, requested-flow completion, QoR/signoff gates, and export reproducibility separately. Missing data is not zero, and ECC export-ready is not foundry tapeout certification.
+
+### 16.2 Experiments, recovery, and diagnosis
+
+Run serially by default; do not run, tune, refresh, or export the same workspace concurrently. Use a new workspace for each candidate and record inputs, PDK/library, tool versions, parameter overrides, seed, threads, device, resource budget, and raw reports. Before recovery, inspect `status`, `log`, and the ledger; prefer `--resume` or an exact range rerun, and do not automatically overwrite, delete directories, or stop unrelated processes. Preserve the first error and its context, then check versions, project declarations, workspace registration, `doctor`, PDK/library files, entry inputs, and the failed-step log. Do not manufacture success by relaxing constraints, lowering frequency, removing corners, or skipping verification.
