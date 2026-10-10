@@ -8,6 +8,7 @@ from chipcompiler.cli.core.inputs import (
     InitInput,
     MigrateInput,
     RunInput,
+    RtlImportInput,
     WorkspaceImportInput,
 )
 from chipcompiler.cli.core.output import disclosure_cmd
@@ -35,6 +36,21 @@ def init(command_input: InitInput, ctx: CommandContext) -> CommandResult:
             }
         ]
     )
+
+
+def import_rtl(command_input: RtlImportInput, ctx: CommandContext) -> CommandResult:
+    from chipcompiler.cli.project.rtl_import import RtlImportError, import_project_rtl
+
+    try:
+        result = import_project_rtl(
+            ctx.project_dir,
+            filelist=command_input.filelist,
+            verilog=command_input.verilog,
+            force=command_input.force,
+        )
+    except RtlImportError as exc:
+        return CommandResult.err([error_record(exc.code, reason=str(exc), path=exc.path)])
+    return CommandResult.ok([result])
 
 
 def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:

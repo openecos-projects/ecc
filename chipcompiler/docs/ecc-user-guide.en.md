@@ -654,6 +654,51 @@ ecc project remove design.rtl <FILES...>  # remove RTL sources (design.rtl only)
 ecc project show [KEY]                # show declarations stored in ecc.toml
 ```
 
+### Importing RTL into a project
+
+`ecc project rtl import` copies design inputs into the project-owned `rtl/`
+directory and updates both `ecc.toml` and `project.json`. This is the preferred
+setup before opening the project in ECOS Studio, because a later Workspace can
+use project-local inputs without depending on the original source directory:
+
+```bash
+ecc project rtl import \
+  --filelist /designs/gcd/sources/sources.f \
+  --project /projects/gcd
+
+ecc project rtl import \
+  --verilog /designs/gcd/top/gcd.v \
+  --verilog /designs/gcd/common/defs.vh \
+  --project /projects/gcd
+```
+
+For a filelist, paths are resolved relative to the filelist's directory. The
+filelist and referenced files are copied below `<project>/rtl/` while retaining
+their relative layout. The copied filelist is rewritten to reference only
+project-local paths. Existing targets are rejected unless `--force` is passed.
+Unsupported recursive/library filelist options (`-f`, `-v`, and `-y`) must be
+expanded before import.
+
+The command writes `design.rtl` in `ecc.toml` and updates
+`project.json.base_design.rtl_list` plus the origin input metadata. Verify the
+project before creating a Workspace:
+
+```bash
+ecc check --project /projects/gcd
+ecc workspace create default --project /projects/gcd
+```
+
+If a Workspace already exists, importing new RTL does not mutate that
+Workspace. Rebuild it explicitly from the updated project inputs:
+
+```bash
+ecc workspace refresh default --project /projects/gcd
+```
+
+ECOS Studio can then open `/projects/gcd/project.json`; its Workspace creation
+flow consumes the project-local RTL declarations. Do not delete or move the
+`rtl/` directory after import without updating `ecc.toml`.
+
 All subcommands accept `--project DIR` and `--plain`. Real outputs:
 
 ```console

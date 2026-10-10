@@ -11,6 +11,7 @@ from chipcompiler.cli.core.inputs import (
     LogInput,
     MigrateInput,
     RunInput,
+    RtlImportInput,
     StatusInput,
     output_options,
     project_options,
@@ -25,6 +26,7 @@ from chipcompiler.cli.core.options import (
 
 def register_project_commands(app: typer.Typer) -> None:
     app.command("init", help="Create a new ECC project")(init_cmd)
+    app.add_typer(rtl_app, name="rtl")
     app.command("check", help="Validate the current project setup")(check_cmd)
     app.command("run")(run_cmd)
     app.command(
@@ -35,6 +37,30 @@ def register_project_commands(app: typer.Typer) -> None:
     app.command("migrate", help="Migrate a legacy runs/ project to the manifest layout")(
         migrate_cmd
     )
+
+
+rtl_app = typer.Typer(help="Import project RTL sources")
+
+
+@rtl_app.command("import")
+def rtl_import_cmd(
+    *,
+    filelist: Annotated[str | None, typer.Option("--filelist")] = None,
+    verilog: Annotated[list[str] | None, typer.Option("--verilog")] = None,
+    project: ProjectOption = None,
+    force: Annotated[bool, typer.Option("--force")] = False,
+    plain: PlainOption = False,
+) -> None:
+    if not filelist and not verilog:
+        raise typer.BadParameter("provide --filelist or at least one --verilog")
+    command_input = RtlImportInput(
+        output=output_options(plain=plain),
+        project=project_options(project),
+        filelist=filelist,
+        verilog=tuple(verilog or ()),
+        force=force,
+    )
+    execute_command("project", command_input, project_handlers.import_rtl)
 
 
 def init_cmd(
