@@ -1209,3 +1209,18 @@ ecc macro show --workspace default
 ```
 
 Once `project.json` exists, project-scoped inspection, signoff, and report commands select among declared workspaces; a single active workspace is auto-selected, while multiple active workspaces require an explicit `--workspace NAME` (otherwise `workspace_required` is reported, listing the available names). A workspace no longer in use can be dropped from auto-selection by changing its `status` to `archived` in `project.json`.
+
+## 16. Automation and safety boundaries
+
+This section adds operating rules for automation, agents, and batch experiments; the command contracts above still apply.
+
+### 16.1 Public boundaries and state claims
+
+- Change project, workspace, parameter, macro, PDK, run, report, and signoff state only through the public `ecc` CLI.
+- Never bypass the CLI by editing `ecc.toml`, `project.json`, `home/params.toml`, `home/flow.json`, managed JSON/Tcl, analysis reports, or checklists directly.
+- If the CLI does not expose a field, report the capability gap — do not invent commands or force-write internal files. Parse `--plain` output as repeated `key=value` records; it is not JSON, and never `eval` or `source` it.
+- Report four things separately: CLI success, completion of the requested flow, QoR/signoff gate results, and export reproducibility. Missing data is not zero, and ECC export-ready is not foundry tapeout certification.
+
+### 16.2 Experiments, recovery, and diagnosis
+
+Run serially by default — never run, tune, refresh, or export the same workspace concurrently. Give every new candidate its own workspace, and record its inputs, PDK/library, tool versions, parameter overrides, seed, thread count, device, resource budget, and raw reports. Before recovering a run, look at `status`, `log`, and the ledger; prefer `--resume` or an exact range rerun, and never `--overwrite`, delete directories, or kill unrelated processes without confirmation. On failure, keep the first error and its context, then check in order: versions, project declaration, workspace registration, `doctor`, PDK/library files, entry inputs, and the failed step's log. Do not manufacture success by relaxing constraints, lowering frequency, dropping corners, or skipping verification.
