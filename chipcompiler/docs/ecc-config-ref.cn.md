@@ -97,7 +97,7 @@ graph LR
 | `floorplan.core_margin` | int×2（µm） | [2, 2] | floorplan `die_builder.margin.{left,right,top,bottom}_micron` | 核心到 die 边的留白 [水平, 垂直] |
 | `floorplan.aspect_ratio` | float [0.1, 10] | 1.0 | floorplan `die_builder.die_util.aspect_ratio` | 核心宽高比 |
 | `cts.max_fanout` | int [1, 200] | 32 | 自动生成 SDC 的 `set_max_fanout` + cts `max_fanout` | 设计与时钟树最大扇出约束 |
-| `place.target_density` | float [0.1, 0.95] | 0.2 | dreamplace `target_density` | 全局布局目标密度 |
+| `place.target_density` | float [0.1, 0.95] | 0.4 | dreamplace `target_density` | 全局布局目标密度 |
 | `place.target_overflow` | float [0.0, 1.0] | 0.1 | dreamplace `stop_overflow` | 全局布局溢出收敛目标 |
 | `place.global_right_padding` | int [0, 100] | 0 | 仅记录于 params.toml | 布局 site 右侧全局 padding（当前版本尚未接入工具配置字段） |
 | `place.cell_padding_x` | int [0, 10000]（dbu） | 200 | dreamplace `cell_padding_x` | 单元 X 方向 padding（绕线拥塞缓解） |
@@ -393,7 +393,7 @@ timing_aggregation_tau_ps = 2.0
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `target_density` | 0.2 `*place.target_density`（模板 0.8） | 目标布局密度（越低越松、越利绕线） |
+| `target_density` | 0.4 `*place.target_density`（模板 0.4） | 目标布局密度（越低越松、越利绕线） |
 | `stop_overflow` | 0.1 `*place.target_overflow` | 溢出收敛阈值，达标即停 |
 | `overflow_reference_mode` | `initial` | overflow 面积归一化模式：`initial` 固定 GP 起始面积；`ordinary` 保留原 PR 的面积发布行为，有联合面积时使用 native + virtual，否则沿用 PlaceDB 面积。均不含 filler；归一化值也用于 gamma 和基于 overflow 的调度 |
 | `density_weight` | 0.00085 | 密度项初始权重（自动调整的起点） |

@@ -97,7 +97,7 @@ Source: `_LEGACY_PARAM_REGISTRY` in [chipcompiler/data/parameter_schema.py](http
 | `floorplan.core_margin` | int×2 (µm) | [2, 2] | floorplan `die_builder.margin.{left,right,top,bottom}_micron` | Margin from core to die edge [horizontal, vertical] |
 | `floorplan.aspect_ratio` | float [0.1, 10] | 1.0 | floorplan `die_builder.die_util.aspect_ratio` | Core width/height ratio |
 | `cts.max_fanout` | int [1, 200] | 32 | auto-generated SDC `set_max_fanout` + cts `max_fanout` | Design and clock-tree maximum fanout constraint |
-| `place.target_density` | float [0.1, 0.95] | 0.2 | dreamplace `target_density` | Global placement target density |
+| `place.target_density` | float [0.1, 0.95] | 0.4 | dreamplace `target_density` | Global placement target density |
 | `place.target_overflow` | float [0.0, 1.0] | 0.1 | dreamplace `stop_overflow` | Global placement overflow convergence target |
 | `place.global_right_padding` | int [0, 100] | 0 | recorded only in params.toml | Global padding on the right side of placement sites (not yet wired into a tool config field in the current version) |
 | `place.cell_padding_x` | int [0, 10000] (dbu) | 200 | dreamplace `cell_padding_x` | Cell padding in X (routing congestion relief) |
@@ -399,7 +399,7 @@ timing_aggregation_tau_ps = 2.0
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `target_density` | 0.2 `*place.target_density` (template 0.8) | Target placement density (lower = looser, friendlier to routing) |
+| `target_density` | 0.4 `*place.target_density` (template 0.4) | Target placement density (lower = looser, friendlier to routing) |
 | `stop_overflow` | 0.1 `*place.target_overflow` | Overflow convergence threshold; stop once met |
 | `overflow_reference_mode` | `initial` | Overflow normalization: `initial` freezes GP-entry area; `ordinary` preserves the original PR's area publication behavior, using published native + virtual area when available, otherwise PlaceDB area. Both exclude fillers; normalized overflow also feeds gamma and overflow-based scheduling |
 | `density_weight` | 0.00085 | Initial weight of the density term (starting point of auto-adjustment) |
