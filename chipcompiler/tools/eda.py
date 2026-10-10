@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import logging
+import os
 from pathlib import Path
 
 from chipcompiler.data import StepMetrics, Workspace, WorkspaceStep, log_workspace_step
@@ -182,6 +183,11 @@ def save_layout_image(workspace: Workspace, step: WorkspaceStep) -> bool:
     """
     Save the layout image for the given step.
     """
+    image = step.output.image
+    if image is not None and os.path.exists(image) and os.path.getsize(image) > 0:
+        # Geometry snapshots already render the thumbnail; keep it.
+        return True
+
     # check eda tool exist
     eda_module = load_eda_module("klayout")
     if eda_module is None:

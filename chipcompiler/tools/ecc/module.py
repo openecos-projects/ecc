@@ -266,13 +266,20 @@ class ECCToolsModule:
     def json_save(self, path: str):
         self.ecc.json_save(path=path_text(path))
 
-    def geometry_snapshot_save(self, output_dir: PathArg, *, include_drc: bool = False):
+    def geometry_snapshot_save(
+        self,
+        output_dir: PathArg,
+        *,
+        include_drc: bool = False,
+        thumbnail_path: PathArg | None = None,
+    ):
         """Export the current in-memory IDB geometry for GUI rendering."""
+        kwargs: dict[str, object] = {"output_dir": path_text(output_dir)}
         if include_drc:
-            return self.ecc.geometry_snapshot_save(
-                output_dir=path_text(output_dir), include_drc=True
-            )
-        return self.ecc.geometry_snapshot_save(output_dir=path_text(output_dir))
+            kwargs["include_drc"] = True
+        if thumbnail_path is not None:
+            kwargs["thumbnail_path"] = path_text(thumbnail_path)
+        return self.ecc.geometry_snapshot_save(**kwargs)
 
     def initialize_geometry_session(self):
         """Begin a geometry edit session for incremental GUI updates."""

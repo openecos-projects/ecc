@@ -322,7 +322,6 @@ class EngineFlow:
                     ecc_output
                     and os.path.exists(output.def_ or "")
                     and os.path.exists(output.verilog or "")
-                    and os.path.exists(output.gds or "")
                     and os.path.exists(workspace_step.report.step or "")
                     and os.path.exists(workspace_step.feature.step or "")
                 ):
@@ -336,12 +335,7 @@ class EngineFlow:
                 if os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""):
                     success = True
             case _:
-                gds = ecc_output.gds if ecc_output else None
-                if (
-                    os.path.exists(output.def_ or "")
-                    and os.path.exists(output.verilog or "")
-                    and os.path.exists(gds or "")
-                ):
+                if os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""):
                     success = True
         if success and workspace_step.name in _GEOMETRY_SNAPSHOT_STEPS:
             geometry_manifest = ecc_output.geometry_manifest if ecc_output else None

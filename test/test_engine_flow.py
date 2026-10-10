@@ -272,15 +272,14 @@ def test_check_step_result_harden_reads_ecc_only_lef_lib(tmp_path):
     assert EngineFlow(Workspace()).check_step_result(step_missing) is False
 
 
-def test_check_step_result_default_requires_def_verilog_gds(tmp_path):
-    for name in ("gcd.def", "gcd.v", "gcd.gds"):
+def test_check_step_result_default_requires_def_verilog(tmp_path):
+    for name in ("gcd.def", "gcd.v"):
         (tmp_path / name).write_text("")
     step = EccStep(
         name=StepEnum.PLACEMENT.value,
         output=EccOutput(
             def_=tmp_path / "gcd.def",
             verilog=tmp_path / "gcd.v",
-            gds=tmp_path / "gcd.gds",
         ),
     )
     assert EngineFlow(Workspace()).check_step_result(step) is True
@@ -952,7 +951,8 @@ class TestMandatoryArtifactFailure:
         state = engine_flow.run_step(ws_step)
         assert state == StateEnum.Imcomplete
 
-    def test_floorplan_missing_gds_gives_incomplete(self, monkeypatch, tmp_path):
+    def test_floorplan_missing_gds_succeeds(self, monkeypatch, tmp_path):
+        (tmp_path / "home").mkdir()
         workspace = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
         workspace.flow.data = {"steps": [{"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"}]}
@@ -969,11 +969,14 @@ class TestMandatoryArtifactFailure:
         (tmp_path / "gcd.def").write_text("")
         (tmp_path / "gcd.v").write_text("")
         engine_flow.workspace_steps = [ws_step]
+        engine_flow.engine_db = SimpleNamespace(engine=None)
 
         monkeypatch.setattr("chipcompiler.tools.run_step", lambda **kw: True)
+        monkeypatch.setattr("chipcompiler.tools.save_layout_image", lambda **kw: True)
+        monkeypatch.setattr("chipcompiler.tools.build_step_metrics", lambda **kw: None)
 
         state = engine_flow.run_step(ws_step)
-        assert state == StateEnum.Imcomplete
+        assert state == StateEnum.Success
 
     def test_exception_with_partial_output_gives_incomplete(self, monkeypatch, tmp_path):
         workspace = Workspace(directory=tmp_path)

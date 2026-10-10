@@ -405,16 +405,14 @@ def save_data(
         return False
     ecc_module.def_save(def_path=step.output.def_ or "")
     ecc_module.verilog_save(output_verilog=step.output.verilog or "")
-    ecc_module.gds_save(
-        output_path=step.output.gds or "",
-        layer_map_path=workspace.pdk.mapping_file,
-    )
     # ecc_module.save_data(path=step.output.db or "")
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
         geometry_manifest = step.output.geometry_manifest
         snapshot_options = {"include_drc": True} if step.name == StepEnum.DRC.value else {}
-        if not ecc_module.geometry_snapshot_save(output_dir=geometry_dir, **snapshot_options):
+        if not ecc_module.geometry_snapshot_save(
+            output_dir=geometry_dir, thumbnail_path=step.output.image, **snapshot_options
+        ):
             workspace.logger.error("Failed to write geometry snapshot for %s", step.name)
             return False
         if geometry_manifest is None or not geometry_manifest.is_file():
@@ -722,6 +720,10 @@ def run_filler(
         sub_flow.update_step(step_name=EccSubFlowEnum.run_filler.value, state=StateEnum.Success)
 
         reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
+        ecc_module.gds_save(
+            output_path=step.output.gds or "",
+            layer_map_path=workspace.pdk.mapping_file,
+        )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
