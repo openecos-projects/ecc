@@ -677,6 +677,8 @@ ecc run --set place.target_density=0.55  # 一次性覆盖：仅新建（含 --o
 
 ## 17. 自动化配置边界
 
-参数调优必须先通过 `ecc param list --all`、`ecc param show` 或当前版本的 `--help` 发现实际公开字段，再按所属 scope 使用 `ecc param set` 或 `ecc param unset`。通常不要直接编辑 `home/params.toml`、派生 JSON/Tcl 或内部模板；QoR 参考明确列出的 `qor_profile` 与 `qor_power_budget_w` 是当前 CLI schema 之外的 workspace 参数例外，仍需按 QoR 文档的语义和复验要求处理。`run --set` 只适用于新 workspace，且必须记录到候选实验 provenance；已有 workspace 的修改要确认失效步骤和重跑范围。
+本节面向自动化代理（agent）和批量脚本，约束配置参数时的操作边界。
 
-未在当前公开 schema 中出现的文档字段不是可执行接口。尤其不要用内部 `flow.skip_steps`、QoR profile/预算或未审核的 DreamPlace 字段绕过 CLI；遇到能力缺口应记录版本、命令输出和影响，而不是伪造配置成功。改变 frequency、corner、约束或验证覆盖会改变实验语义，必须建立独立候选并避免与原始结果直接混比。
+调参之前，先用 `ecc param list --all`、`ecc param show` 或当前版本的 `--help` 确认哪些字段是公开的，再按字段所属的 scope 用 `ecc param set` / `ecc param unset` 修改。一般不要直接编辑 `home/params.toml`、生成的 JSON/Tcl 或内部模板。唯一的例外是 QoR 参考中列出的 `qor_profile` 和 `qor_power_budget_w`：它们是 workspace 参数，不在 CLI schema 里，但仍要遵守 QoR 文档中的语义和复验要求。`run --set` 只对新 workspace 生效，并且要记录到候选实验的来源信息（provenance）里；在已有 workspace 上改参数时，先确认哪些步骤会失效、需要重跑哪些范围。
+
+文档里提到、但当前公开 schema 中没有的字段，不等于可以直接使用的接口。尤其不要绕过 CLI 去写内部的 `flow.skip_steps`、QoR profile/预算或未经审核的 DreamPlace 字段。如果遇到能力缺口（capability gap），如实记录版本、命令输出和影响即可，不要假装配置成功。修改 frequency、corner、约束或验证覆盖都会改变实验的语义：这类实验要建独立候选，不能和原始结果直接对比。

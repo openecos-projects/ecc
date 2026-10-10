@@ -90,4 +90,4 @@ ecc run --workspace default --from postFloorplan --to postFloorplan
 
 ## 自动化边界
 
-Floorplan 三阶段之间通过受管的 `macro_location.tcl` 交接；不要直接编辑派生文件来改变设计状态。宏列表必须覆盖所有硬宏，坐标使用 µm，方向使用受支持的 orientation。任何宏、die/core、密度或 padding 变更都应记录参数来源、单位、workspace、失效的下游步骤和实际重跑范围；不以降低利用率或删除宏来伪造布线收敛。
+自动化代理（agent）和脚本改动 floorplan 时遵守以下约束。Floorplan 三个阶段之间通过受管的 `macro_location.tcl` 交接状态，不要直接编辑生成的文件来改设计。宏列表必须覆盖所有硬宏，坐标单位是 µm，orientation 必须取受支持的值。每次改动宏、die/core、密度或 padding，都要记下参数来源、单位、所在 workspace、会让哪些下游步骤失效，以及实际重跑了哪些范围；不要靠降低利用率或删掉宏来"凑"出布线收敛。

@@ -1161,15 +1161,15 @@ ecc macro show --workspace default
 
 ## 16. 自动化使用与安全边界
 
-本节补充面向自动化代理、脚本和批量实验的操作约束，不替代前文的命令契约。
+本节面向自动化代理（agent）、脚本和批量实验补充操作约束，前文的命令契约仍然有效。
 
 ### 16.1 公开边界与状态判定
 
-- 项目、workspace、参数、宏、PDK、运行、报告和签核状态的修改只通过公开 `ecc` CLI。
-- 不直接编辑 `ecc.toml`、`project.json`、`home/params.toml`、`home/flow.json`、受管 JSON/Tcl、分析报告或 checklist 来绕过 CLI。
-- 当前 CLI 未暴露的字段应报告能力缺口，不伪造命令，也不通过内部文件强行写入；`--plain` 输出按重复的 `key=value` 记录解析，不当作 JSON，不使用 `eval` 或 `source`。
-- 分别报告 CLI 成功、请求的 flow 完成、QoR/签核门禁和导出物可复现性。缺失数据不是零值；ECC export-ready 不是代工厂 tapeout 认证。
+- 项目、workspace、参数、宏、PDK、运行、报告和签核状态，一律只通过公开的 `ecc` CLI 修改。
+- 不要绕过 CLI 直接编辑 `ecc.toml`、`project.json`、`home/params.toml`、`home/flow.json`、受管的 JSON/Tcl、分析报告或 checklist。
+- CLI 尚未暴露的字段，如实报告能力缺口（capability gap）即可；不要编造命令，也不要强行写内部文件。`--plain` 输出要按重复的 `key=value` 记录来解析——它不是 JSON，也不要对它用 `eval` 或 `source`。
+- CLI 执行成功、请求的 flow 完成、QoR/签核门禁通过、导出物可复现，这四件事要分开报告。缺失的数据不是零；ECC 的 export-ready 也不等于代工厂的 tapeout 认证。
 
 ### 16.2 实验、恢复与诊断
 
-默认串行执行，同一 workspace 不同时运行、调参、刷新或导出。新候选使用新 workspace，并记录输入、PDK/库、工具版本、参数覆盖、seed、线程、设备、资源预算和原始报告。恢复前先查 `status`、`log` 和 ledger，优先 `--resume` 或精确范围重跑，不自动 `--overwrite`、删除目录或停止无关进程。失败时保留首个错误及上下文，依次核对版本、项目声明、workspace、`doctor`、PDK/库、入口文件和失败步骤日志；不通过放宽约束、降低频率、删除 corner 或跳过验证制造成功。
+默认串行执行，同一个 workspace 不要并发地运行、调参、刷新或导出。每个新候选都用新 workspace，并记录输入、PDK/库、工具版本、参数覆盖（override）、seed、线程数、设备、资源预算和原始报告。恢复运行前先查看 `status`、`log` 和 ledger，优先用 `--resume` 或按精确范围重跑；不要未经确认就 `--overwrite`、删目录或杀掉无关进程。失败时保留第一个错误及其上下文，然后按顺序排查：版本、项目声明、workspace 注册、`doctor`、PDK/库文件、入口输入、失败步骤的日志。不要靠放宽约束、降低频率、删除 corner 或跳过验证来"制造成功"。

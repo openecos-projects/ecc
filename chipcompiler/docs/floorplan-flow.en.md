@@ -99,4 +99,4 @@ parameters and JSON fields.
 
 ## Automation boundaries
 
-The three floorplan stages exchange state through the managed `macro_location.tcl`; do not edit derived files directly to change the design. The macro list must cover every hard macro, coordinates are in microns, and orientations must be supported. Record the parameter source, units, workspace, invalidated downstream steps, and actual rerun range for every macro, die/core, density, or padding change; do not manufacture routing convergence by lowering utilization or removing macros.
+Automation agents and scripts must follow these constraints when changing the floorplan. The three floorplan stages hand off state through the managed `macro_location.tcl`; never edit generated files to change the design. The macro list must cover every hard macro, coordinates are in microns, and orientations must be one of the supported values. For every change to macros, die/core, density, or padding, record where the parameter came from, its units, the workspace, which downstream steps it invalidates, and what range you actually reran. Do not fake routing convergence by lowering utilization or dropping macros.
