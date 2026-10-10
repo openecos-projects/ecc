@@ -401,7 +401,7 @@ timing_aggregation_tau_ps = 2.0
 |---|---|---|
 | `target_density` | 0.4 `*place.target_density` (template 0.4) | Target placement density (lower = looser, friendlier to routing) |
 | `stop_overflow` | 0.1 `*place.target_overflow` | Overflow convergence threshold; stop once met |
-| `overflow_reference_mode` | `ordinary` | Overflow normalization: `initial` freezes GP-entry area; `ordinary` preserves the original PR's area publication behavior, using published native + virtual area when available, otherwise PlaceDB area. Both exclude fillers; normalized overflow also feeds gamma and overflow-based scheduling |
+| `overflow_reference_mode` | `initial` | Overflow normalization: `initial` freezes GP-entry area; `ordinary` preserves the original PR's area publication behavior, using published native + virtual area when available, otherwise PlaceDB area. Both exclude fillers; normalized overflow also feeds gamma and overflow-based scheduling |
 | `density_weight` | 0.00085 | Initial weight of the density term (starting point of auto-adjustment) |
 | `timing_coeff_growth_factor` | 1.0 `*place.timing_coeff_growth_factor` | Multiplier for both WNS/TNS coefficients at each GP density-weight update; 1.0 disables growth; skipped in `size_only` |
 | `timing_grad_balance_target_ratio` | 0.2 `*place.timing_grad_balance_target_ratio` | Initial timing / wirelength gradient L1 norm ratio in direct-loss placement; 0.0 disables balancing |

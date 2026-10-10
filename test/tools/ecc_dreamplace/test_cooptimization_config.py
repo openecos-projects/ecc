@@ -32,7 +32,6 @@ def test_default_placement_recipe_preserves_tested_optimization_policy(dreamplac
         "cell_padding_x",
         "target_density",
         "stop_overflow",
-        "overflow_reference_mode",
         "timing_placement_carrier",
         "timing_coeff_growth_factor",
         "timing_grad_balance_target_ratio",
@@ -45,6 +44,8 @@ def test_default_placement_recipe_preserves_tested_optimization_policy(dreamplac
     )
     effective = resolve_flow_config(dreamplace_default_config)
     assert {key: effective[key] for key in fields} == {key: profile[key] for key in fields}
+    assert effective["overflow_reference_mode"] == "initial"
+    assert profile["overflow_reference_mode"] == "ordinary"
 
 
 @pytest.mark.parametrize(
