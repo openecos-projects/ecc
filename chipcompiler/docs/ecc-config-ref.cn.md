@@ -344,11 +344,63 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 全局布局核心（★ 主要调优区）
 
+`place.timing_grad_balance_target_ratio` 默认 0.2，在 direct-loss placement
+首次启用 timing 梯度时，根据 timing 与 wirelength 梯度的 L1 范数初始化
+外层 timing 权重，之后沿用该权重。设为 0.0 可关闭平衡，保留外层权重 1.0。
+它是初始梯度比例目标，不是直接将 WNS/TNS 系数乘以 0.2。
+独立 `size_only` sizing 不初始化坐标梯度平衡；显式配置仍优先于默认值。
+
+GP 内 sizing 窗口的系数策略使用一个参数 `place.timing_opt_coefficients`。
+默认 `{mode = "inherit"}` 在每个窗口使用 placement 当时的 WNS/TNS 系数和
+slew/cap 权重。指定固定值可在 `ecc.toml` 中写：
+
+```toml
+[params.place.timing_opt_coefficients]
+mode = "fixed"
+wns = 500.0
+tns = 5.0
+slew = 1.0
+cap = 1.0
+```
+
+固定模式必须提供四个非负有限数值，窗口内外层 timing 权重固定为 1.0，
+四个值直接作为实际权重；继承模式沿用 placement 的实时系数和外层 α。
+该策略只在 GP 内 S 轮期间覆盖系数及外层权重，正常或异常退出均恢复；独立 `diff_sizing`
+继续使用自己的配置。窗口报告的 `sizing.coefficients` 保存实际使用值。
+切回继承模式时只需将 `mode` 改为 `"inherit"`；可保留固定预设的四项数值，
+继承模式始终使用 placement 实时值。
+
+`place.timing_coeff_growth_factor` 控制每次 GP density-weight 更新时，WNS/TNS
+系数共同乘上的倍率，默认 `1.01`；设为 `1.0` 停止增长，设为 `0.99` 则逐次衰减。
+倍率必须为正的有限数值，slew/cap 和 norm 外层权重沿用各自设置。
+窗口的继承模式读取增长后的实时系数，固定模式使用指定值；独立
+`diff_sizing` S50 的 `size_only` 模式跳过这项增长。新建 workspace 可通过
+`ecc run --set place.timing_coeff_growth_factor=1.0` 或 `ecc.toml` 的
+`[params.place] timing_coeff_growth_factor = 1.0` 配置；已有 workspace 使用
+`ecc param set place.timing_coeff_growth_factor 1.0 --workspace NAME`。
+
+`place.timing_aggregation_mode` 控制 AAT/RAT 传播的聚合方式：默认 `hard`
+使用 max/min，`smooth` 使用 LSE。`place.timing_aggregation_tau_ps` 是正的
+平滑温度，默认 2.0 ps；越小越接近硬 max/min，越大梯度分配越平滑。
+这两个参数不改变最终 endpoint WNS 的硬 min 和 TNS 的负 slack 求和。
+例如，在 `ecc.toml` 中设置：
+
+```toml
+[params.place]
+timing_aggregation_mode = "smooth"
+timing_aggregation_tau_ps = 2.0
+```
+
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `target_density` | 0.2 `*place.target_density`（模板 0.8） | 目标布局密度（越低越松、越利绕线） |
 | `stop_overflow` | 0.1 `*place.target_overflow` | 溢出收敛阈值，达标即停 |
+| `overflow_reference_mode` | `initial` | overflow 面积归一化模式：`initial` 固定 GP 起始面积；`ordinary` 保留原 PR 的面积发布行为，有联合面积时使用 native + virtual，否则沿用 PlaceDB 面积。均不含 filler；归一化值也用于 gamma 和基于 overflow 的调度 |
 | `density_weight` | 0.00085 | 密度项初始权重（自动调整的起点） |
+| `timing_coeff_growth_factor` | 1.01 `*place.timing_coeff_growth_factor` | GP density-weight 更新时 WNS/TNS 系数的共同倍率；1.0 停止增长，`size_only` 不应用 |
+| `timing_grad_balance_target_ratio` | 0.2 `*place.timing_grad_balance_target_ratio` | direct-loss placement 初始 timing / wirelength 梯度 L1 范数比例目标；0.0 关闭 |
+| `timing_aggregation_mode` | `hard` `*place.timing_aggregation_mode` | AAT/RAT 传播聚合方式：`hard` 或 `smooth`（LSE） |
+| `timing_aggregation_tau_ps` | 2.0 `*place.timing_aggregation_tau_ps` | `smooth` 模式的正平滑温度，单位 ps |
 | `num_bins_x/y` | 32/32 | 密度网格划分数 |
 | `global_place_stages[]` | 见下 | 多阶段全局布局表（可多段） |
 | `global_place_stages[].iteration` | 3000 | 本阶段迭代上限，收敛时可提前停止 |

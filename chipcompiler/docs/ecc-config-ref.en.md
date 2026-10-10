@@ -342,11 +342,71 @@ The three steps share `config/dreamplace_ecc.json`; before each step runs, `def_
 
 ### Global placement core (★ the main tuning area)
 
+`place.timing_grad_balance_target_ratio` defaults to 0.2. At the first active
+timing-gradient step in direct-loss placement, it initializes the outer timing
+weight from the timing and wirelength gradient L1 norms, then reuses that weight.
+Set it to 0.0 to disable balancing and retain an outer weight of 1.0. The value
+is an initial gradient-ratio target, rather than a multiplier on WNS/TNS
+coefficients. Standalone `size_only` sizing does not initialize coordinate
+gradient balancing; explicit values retain precedence over defaults.
+
+`place.timing_opt_coefficients` controls the coefficients used by GP sizing
+windows. The default `{mode = "inherit"}` reads placement's live WNS/TNS
+coefficients and slew/cap weights at each window. Fixed values in `ecc.toml`:
+
+```toml
+[params.place.timing_opt_coefficients]
+mode = "fixed"
+wns = 500.0
+tns = 5.0
+slew = 1.0
+cap = 1.0
+```
+
+Fixed mode requires all four finite, nonnegative values and uses outer timing
+weight 1.0, so those values are the effective weights. Inherit mode retains
+placement's live coefficients and outer weight. Overrides apply during GP S
+rounds and are restored on normal or exceptional exit;
+standalone `diff_sizing` uses its own configuration. Each window records its
+effective values in `sizing.coefficients`.
+Switching `mode` to `"inherit"` may retain the fixed preset in the object;
+inherit mode always reads the live placement values.
+
+`place.timing_coeff_growth_factor` multiplies both WNS/TNS coefficients at each
+GP density-weight update. The default `1.01` preserves the existing schedule;
+`1.0` disables growth and `0.99` decays the coefficients. The factor must be
+positive and finite. Slew/cap and the outer norm weight retain their own settings.
+Inherit-mode windows read the resulting live coefficients; fixed-mode windows
+use their configured values. Standalone `diff_sizing` S50 in `size_only` mode
+skips this schedule. For a fresh workspace, configure it with
+`ecc run --set place.timing_coeff_growth_factor=1.0` or
+`timing_coeff_growth_factor = 1.0` under `[params.place]` in `ecc.toml`. For an
+existing workspace, use
+`ecc param set place.timing_coeff_growth_factor 1.0 --workspace NAME`.
+
+`place.timing_aggregation_mode` selects AAT/RAT propagation aggregation:
+`hard` (default) uses max/min, and `smooth` uses LSE.
+`place.timing_aggregation_tau_ps` is its positive temperature, defaulting to
+2.0 ps; smaller values approach hard max/min, while larger values spread
+gradients more evenly. Endpoint WNS still uses hard min, and TNS still sums
+negative slacks. For example, set the following in `ecc.toml`:
+
+```toml
+[params.place]
+timing_aggregation_mode = "smooth"
+timing_aggregation_tau_ps = 2.0
+```
+
 | Parameter | Default | Meaning |
 |---|---|---|
 | `target_density` | 0.2 `*place.target_density` (template 0.8) | Target placement density (lower = looser, friendlier to routing) |
 | `stop_overflow` | 0.1 `*place.target_overflow` | Overflow convergence threshold; stop once met |
+| `overflow_reference_mode` | `initial` | Overflow normalization: `initial` freezes GP-entry area; `ordinary` preserves the original PR's area publication behavior, using published native + virtual area when available, otherwise PlaceDB area. Both exclude fillers; normalized overflow also feeds gamma and overflow-based scheduling |
 | `density_weight` | 0.00085 | Initial weight of the density term (starting point of auto-adjustment) |
+| `timing_coeff_growth_factor` | 1.01 `*place.timing_coeff_growth_factor` | Multiplier for both WNS/TNS coefficients at each GP density-weight update; 1.0 disables growth; skipped in `size_only` |
+| `timing_grad_balance_target_ratio` | 0.2 `*place.timing_grad_balance_target_ratio` | Initial timing / wirelength gradient L1 norm ratio in direct-loss placement; 0.0 disables balancing |
+| `timing_aggregation_mode` | `hard` `*place.timing_aggregation_mode` | AAT/RAT propagation aggregation: `hard` or `smooth` (LSE) |
+| `timing_aggregation_tau_ps` | 2.0 `*place.timing_aggregation_tau_ps` | Positive temperature in ps for `smooth` mode |
 | `num_bins_x/y` | 32/32 | Number of density grid bins |
 | `global_place_stages[]` | see below | Multi-stage global placement table (multiple entries allowed) |
 | `global_place_stages[].iteration` | 3000 | Iteration limit in this stage; convergence can stop earlier |

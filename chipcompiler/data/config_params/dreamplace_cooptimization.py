@@ -48,6 +48,40 @@ SCHEMAS = (
         description="timing objective terms, timing_only | timing_slew_cap",
     ),
     config_param(
+        "place.timing_grad_balance_target_ratio",
+        "dreamplace",
+        ("timing_grad_balance_target_ratio",),
+        0.2,
+        applies="placement",
+        description=(
+            "initial target ratio between weighted timing-gradient and wirelength-gradient "
+            "L1 norms in direct-loss placement; 0 disables automatic balancing"
+        ),
+    ),
+    config_param(
+        "place.timing_aggregation_mode",
+        "dreamplace",
+        ("timing_aggregation_mode",),
+        "hard",
+        applies="placement",
+        choices=("hard", "smooth"),
+        description=(
+            "AAT/RAT aggregation: hard max/min or smooth LSE; "
+            "endpoint WNS/TNS retain hard reductions"
+        ),
+    ),
+    config_param(
+        "place.timing_aggregation_tau_ps",
+        "dreamplace",
+        ("timing_aggregation_tau_ps",),
+        2.0,
+        applies="placement",
+        description=(
+            "positive LSE temperature in ps for smooth AAT/RAT aggregation; "
+            "smaller values approach hard max/min"
+        ),
+    ),
+    config_param(
         "place.placement_sizing_mode",
         "dreamplace",
         ("placement_sizing_mode",),
@@ -272,6 +306,29 @@ SCHEMAS = (
         10,
         applies="placement",
         description="maximum discrete size/VT rounds in each timing-optimization window, up to ten",
+    ),
+    config_param(
+        "place.timing_coeff_growth_factor",
+        "dreamplace",
+        ("timing_coeff_growth_factor",),
+        1.01,
+        applies="placement",
+        description=(
+            "positive finite multiplier applied to WNS/TNS coefficients at each GP "
+            "density-weight update; 1 disables growth; size_only skips this schedule"
+        ),
+    ),
+    config_param(
+        "place.timing_opt_coefficients",
+        "dreamplace",
+        ("timing_opt_coefficients",),
+        {"mode": "inherit"},
+        applies="placement",
+        description=(
+            "GP sizing-window coefficient policy: mode=inherit uses live placement values; "
+            "mode=fixed requires wns, tns, slew and cap during S rounds only, "
+            "with outer timing weight 1; placement weights are restored on exit"
+        ),
     ),
     # Compatibility aliases for existing 13-case profiles and workspace
     # configs.  Aliases write the canonical timing_opt_* fields directly.

@@ -29,6 +29,28 @@ from .test_module import FakeParams
         {"place.timing_opt_buffering_enabled": 0},
         {"place.timing_opt_buffering_enabled": 1},
         {"place.timing_opt_sizing_rounds": 5},
+        {"place.timing_coeff_growth_factor": 1.0},
+        {"place.timing_coeff_growth_factor": 1.02},
+        {"place.timing_grad_balance_target_ratio": 0.2},
+        {"place.timing_grad_balance_target_ratio": 0.0},
+        {
+            "place.timing_aggregation_mode": "smooth",
+            "place.timing_aggregation_tau_ps": 10.0,
+        },
+        {
+            "place.timing_aggregation_mode": "hard",
+            "place.timing_aggregation_tau_ps": 0.5,
+        },
+        {"place.timing_opt_coefficients": {"mode": "inherit"}},
+        {
+            "place.timing_opt_coefficients": {
+                "mode": "fixed",
+                "wns": 500,
+                "tns": 5,
+                "slew": 1,
+                "cap": 1,
+            }
+        },
         {"place.timing_placement_carrier": "pin2pin"},
         {"place.timing_placement_carrier": "direct_loss"},
     ],
@@ -51,6 +73,28 @@ def test_window_override_reaches_dreamplace_config(public, dreamplace_default_co
         dreamplace_default_config, {"config_overrides": overrides}
     )
     assert actual == dreamplace_default_config | direct
+
+
+def test_coefficient_mode_can_switch_without_removing_fixed_preset(dreamplace_default_config):
+    from dreamplace.flows.flow_config import resolve_flow_config
+
+    preset = {"mode": "fixed", "wns": 500.0, "tns": 5.0, "slew": 1.0, "cap": 1.0}
+    config = dreamplace_default_config | {"timing_opt_coefficients": preset}
+    for mode in ("inherit", "fixed"):
+        cli, errors = parse_cli_overrides(
+            [
+                "place.timing_opt_coefficients=" + json.dumps({"mode": mode}),
+            ]
+        )
+        assert errors == []
+        resolved, errors = resolve_parameters(cli_overrides=cli)
+        assert errors == []
+        config = apply_direct_config_overrides(
+            config,
+            {"config_overrides": build_config_overrides(resolved)},
+        )
+        effective = resolve_flow_config(config, explicit_keys=("timing_opt_coefficients",))
+        assert effective["timing_opt_coefficients"] == preset | {"mode": mode}
 
 
 @pytest.mark.parametrize("enabled", [0, 1])
