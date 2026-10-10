@@ -111,3 +111,73 @@ def test_gr_routing_stays_on_cpu(requested, expected, dreamplace_default_config,
         "gpu": 0,
         "gpugr_backend": expected,
     }
+
+
+@pytest.mark.parametrize(
+    ("steps", "parameterization", "execution", "dynamics"),
+    [
+        (0, "logits", "continuous_only", "discrete_gradient_topk"),
+        (3, "real_size", "warmup_to_discrete", "none"),
+    ],
+)
+def test_gr_sizing_resolves_diff_sizing_continuous_steps(
+    steps, parameterization, execution, dynamics, dreamplace_default_config
+):
+    from dreamplace.flows.flow_config import resolve_flow_config
+
+    config = {
+        **dreamplace_default_config,
+        "flow_kind": "sizing",
+        "timing_rc_mode": "gr",
+        "place_io_engine": "ecc",
+        "timing_opt_enabled": 0,
+        "routability_opt_flag": 0,
+        "l_shape_routability_flag": 0,
+        "adjust_gpugr_area_flag": 0,
+        "gpugr_final_eval_flag": 0,
+        "enable_net_weighting": 0,
+        "pin2pin_net_weighting": 0,
+        "diff_sizing_continuous_steps": steps,
+    }
+
+    resolved = resolve_flow_config(config, explicit_keys=tuple(config))
+
+    assert {
+        key: resolved[key]
+        for key in (
+            "diff_sizing_continuous_steps",
+            "sizing_parameterization",
+            "real_size_execution_mode",
+            "real_size_warmup_steps",
+            "continuous_size_dynamics_mode",
+        )
+    } == {
+        "diff_sizing_continuous_steps": steps,
+        "sizing_parameterization": parameterization,
+        "real_size_execution_mode": execution,
+        "real_size_warmup_steps": steps,
+        "continuous_size_dynamics_mode": dynamics,
+    }
+
+
+@pytest.mark.parametrize("steps", [-1, 1001, 1.5, True])
+def test_gr_sizing_rejects_invalid_diff_sizing_continuous_steps(steps, dreamplace_default_config):
+    from dreamplace.flows.flow_config import resolve_flow_config
+
+    config = {
+        **dreamplace_default_config,
+        "flow_kind": "sizing",
+        "timing_rc_mode": "gr",
+        "place_io_engine": "ecc",
+        "timing_opt_enabled": 0,
+        "routability_opt_flag": 0,
+        "l_shape_routability_flag": 0,
+        "adjust_gpugr_area_flag": 0,
+        "gpugr_final_eval_flag": 0,
+        "enable_net_weighting": 0,
+        "pin2pin_net_weighting": 0,
+        "diff_sizing_continuous_steps": steps,
+    }
+
+    with pytest.raises(ValueError, match="diff_sizing_continuous_steps"):
+        resolve_flow_config(config, explicit_keys=tuple(config))

@@ -130,6 +130,8 @@
     "timing_opt_sizing_rounds": 10,
     "timing_coeff_growth_factor": 1.0,
     "timing_opt_coefficients": {"mode": "fixed", "wns": 500.0, "tns": 5.0, "cap": 1.0, "slew": 1.0},
+    "diff_sizing_continuous_steps": 0,
+    "diff_sizing_coefficients": {"wns": 500.0, "tns": 5.0, "cap": 1.0, "slew": 1.0},
     "timing_placement_carrier": "direct_loss",
     "max_net_weight": "inf",
     "base_design_name": "",

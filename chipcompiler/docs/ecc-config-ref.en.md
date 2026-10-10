@@ -372,6 +372,34 @@ effective values in `sizing.coefficients`.
 Switching `mode` to `"inherit"` may retain the fixed preset in the object;
 inherit mode always reads the live placement values.
 
+Standalone S50 uses a separate `place.diff_sizing_coefficients` parameter,
+also defaulting to WNS/TNS/cap/slew = 500/5/1/1. It applies only to the
+`diff_sizing` step with outer timing weight 1. It neither inherits placement's
+live coefficients or outer weight nor changes GP S10 windows. Partial overrides
+retain the other configured values (or their defaults); all values must be
+finite and nonnegative. For example, configure S50 independently at 1000/10/1/1:
+
+```toml
+[params.place.diff_sizing_coefficients]
+wns = 1000.0
+tns = 10.0
+cap = 1.0
+slew = 1.0
+```
+
+For a fresh workspace, use
+`ecc run --set 'place.diff_sizing_coefficients={"tns":10.0}'` to override TNS alone.
+For an existing workspace, use
+`ecc param set place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`.
+S50 retains RRR=3, zero padding, fixed 512×512 bins and final legalization.
+
+The number of continuous sizing steps in standalone S50 is controlled by
+`place.diff_sizing_continuous_steps`, which defaults to 0. It is the number of
+continuous real-size steps before projection to legal cells. Set it to 0 to
+start directly from the input masters with logits and `discrete_gradient_topk`;
+set it to 3 to run three continuous sizing steps before switching to discrete
+sizing.
+
 `place.timing_coeff_growth_factor` multiplies both WNS/TNS coefficients at each
 GP density-weight update. The default `1.0` disables growth;
 `1.01` increases the coefficients and `0.99` decays them. The factor must be

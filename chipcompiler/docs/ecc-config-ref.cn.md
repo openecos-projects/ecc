@@ -370,6 +370,31 @@ cap = 1.0
 切回继承模式时只需将 `mode` 改为 `"inherit"`；可保留固定预设的四项数值，
 继承模式始终使用 placement 实时值。
 
+独立 S50 使用单独的 `place.diff_sizing_coefficients`，默认 WNS/TNS/cap/slew
+也是 500/5/1/1。该参数只在 `diff_sizing` 步骤生效，外层 timing 权重固定为 1，
+不继承 placement 的实时系数或外层 α，也不影响 GP 内 S10 窗口。
+只覆盖部分字段时，其余字段保留原有配置（未配置则使用默认值）；数值必须非负且有限。
+例如单独调整 S50 为 1000/10/1/1：
+
+```toml
+[params.place.diff_sizing_coefficients]
+wns = 1000.0
+tns = 10.0
+cap = 1.0
+slew = 1.0
+```
+
+新建 workspace 也可使用
+`ecc run --set 'place.diff_sizing_coefficients={"tns":10.0}'` 单独覆盖 TNS。
+已有 workspace 使用
+`ecc param set place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`。
+S50 继续使用 RRR=3、padding=0、固定 512×512 bins 和最终 legalization。
+
+独立 S50 的连续 sizing step 数由 `place.diff_sizing_continuous_steps` 控制，默认值为 0。
+它表示投影到合法 cell 之前执行的 continuous real-size step 数；设为 0 会直接使用
+输入 master 的 logits 进入 `discrete_gradient_topk`，设为 3 则执行 3 个连续 sizing
+step 后再投影到合法 cell 并切换到离散 sizing。
+
 `place.timing_coeff_growth_factor` 控制每次 GP density-weight 更新时，WNS/TNS
 系数共同乘上的倍率，默认 `1.0`，不增长；设为 `1.01` 逐次增长，设为 `0.99` 则逐次衰减。
 倍率必须为正的有限数值，slew/cap 和 norm 外层权重沿用各自设置。

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import math
 import os
 from copy import deepcopy
 from pathlib import Path
@@ -11,6 +12,7 @@ from chipcompiler.data import (
     WorkspaceStep,
     build_workspace_config_paths,
 )
+from chipcompiler.data.config_params.dreamplace_sizing import DEFAULT_DIFF_SIZING_COEFFICIENTS
 from chipcompiler.tools.ecc import builder as ecc_builder
 from chipcompiler.tools.ecc_dreamplace.parameter_overrides import (
     apply_direct_config_overrides,
@@ -60,6 +62,26 @@ def step_config_path(workspace: Workspace, step: WorkspaceStep) -> Path:
 def _apply_diff_sizing_defaults(params: dict) -> dict:
     """Apply the standalone DreamPlace S50/RRR3 profile to a diff-sizing step."""
     result = deepcopy(params)
+    continuous_steps = result.get("diff_sizing_continuous_steps", 0)
+    if (
+        isinstance(continuous_steps, bool)
+        or not isinstance(continuous_steps, int)
+        or not 0 <= continuous_steps <= 1000
+    ):
+        raise ValueError("diff_sizing_continuous_steps must be an integer in [0, 1000]")
+    policy = result.get("diff_sizing_coefficients", {})
+    if not isinstance(policy, dict) or set(policy) - DEFAULT_DIFF_SIZING_COEFFICIENTS.keys():
+        raise ValueError("diff_sizing_coefficients must be an object with wns, tns, cap, slew")
+    coefficients = DEFAULT_DIFF_SIZING_COEFFICIENTS | policy
+    for name, value in coefficients.items():
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or value < 0
+        ):
+            raise ValueError(f"diff_sizing_coefficients.{name} must be finite and nonnegative")
+    result["diff_sizing_coefficients"] = coefficients
     result.update(
         flow_kind="sizing",
         place_io_engine="ecc",
@@ -67,7 +89,7 @@ def _apply_diff_sizing_defaults(params: dict) -> dict:
         placement_sizing_mode="size_only",
         sizing_parameterization="real_size",
         real_size_execution_mode="warmup_to_discrete",
-        real_size_warmup_steps=1,
+        real_size_warmup_steps=continuous_steps,
         continuous_size_dynamics_mode="none",
         target_density=0.4,
         cell_padding_x=0,
@@ -99,7 +121,21 @@ def _apply_diff_sizing_defaults(params: dict) -> dict:
         legalize_flag=1,
         detailed_place_flag=0,
         detailed_place_engine="",
+        diff_sizing_continuous_steps=continuous_steps,
+        timing_wns_coeff=coefficients["wns"],
+        timing_tns_coeff=coefficients["tns"],
+        timing_cap_weight=coefficients["cap"],
+        timing_slew_weight=coefficients["slew"],
+        timing_grad_balance_weight=1.0,
+        timing_grad_balance_target_ratio=0.0,
     )
+    if continuous_steps == 0:
+        result.update(
+            sizing_parameterization="logits",
+            real_size_execution_mode="continuous_only",
+            real_size_warmup_steps=0,
+            continuous_size_dynamics_mode="discrete_gradient_topk",
+        )
     stages = list(result.get("global_place_stages") or [{}])
     first_stage = dict(stages[0]) if isinstance(stages[0], dict) else {}
     first_stage.update(num_bins_x=512, num_bins_y=512, iteration=50, optimizer="adam")
