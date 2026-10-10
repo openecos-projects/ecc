@@ -26,6 +26,15 @@ class InitInput:
 
 
 @dataclass(frozen=True)
+class RtlImportInput:
+    output: OutputOptions
+    project: ProjectOptions
+    filelist: str | None = None
+    verilog: tuple[str, ...] = ()
+    force: bool = False
+
+
+@dataclass(frozen=True)
 class CheckInput:
     output: OutputOptions
     project: ProjectOptions

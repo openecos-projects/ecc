@@ -651,6 +651,49 @@ ecc project unset design.spef
 ecc project show [KEY]
 ```
 
+### 将 RTL 导入项目
+
+`ecc project rtl import` 会把设计输入复制到项目自己的 `rtl/` 目录，
+并同步更新 `ecc.toml` 与 `project.json`。建议在用 ECOS Studio 打开项目前
+先完成这一步，这样后续创建 Workspace 时不再依赖原始源码目录：
+
+```bash
+ecc project rtl import \
+  --filelist /designs/gcd/sources/sources.f \
+  --project /projects/gcd
+
+ecc project rtl import \
+  --verilog /designs/gcd/top/gcd.v \
+  --verilog /designs/gcd/common/defs.vh \
+  --project /projects/gcd
+```
+
+对于 filelist，路径以 filelist 所在目录为基准解析。filelist 本身和它引用
+的文件都会复制到 `<project>/rtl/` 下，并保留原有的相对目录结构。复制后的
+filelist 会被重写为只引用项目内路径。目标文件默认不能覆盖，确认要覆盖时
+才使用 `--force`。不支持的递归/库文件选项（`-f`、`-v`、`-y`）需要在导入
+前手动展开。
+
+该命令会写入 `ecc.toml` 的 `design.rtl`，并更新
+`project.json.base_design.rtl_list` 及源输入元数据。创建 Workspace 前建议先
+检查项目：
+
+```bash
+ecc check --project /projects/gcd
+ecc workspace create default --project /projects/gcd
+```
+
+如果项目中已经存在 Workspace，导入新的 RTL 不会直接修改已有 Workspace。
+需要显式使用更新后的项目配置重建：
+
+```bash
+ecc workspace refresh default --project /projects/gcd
+```
+
+随后可以在 ECOS Studio 中打开 `/projects/gcd/project.json`；Workspace 创建流程
+会使用项目内的 RTL 声明。导入后不要直接删除或移动 `rtl/` 目录，除非同步更新
+`ecc.toml`。
+
 `ecc workspace import WORKSPACE --path DIR --project PROJECT` 把已有 ECC workspace 登记到 `project.json`，不执行 flow、不修改 workspace 内文件，也不移动目录。`WORKSPACE` 是后续命令使用的逻辑 ID；`--path` 必填且必须是完整绝对目录。导入会只读检查持久化 flow、状态、design、PDK 和参数，然后原子地登记路径：
 
 ```bash
