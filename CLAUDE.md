@@ -30,7 +30,7 @@ If you need to worry about feature compatibility between different 3.xx point re
 
 - ECC-Tools tool identifier in code is `"ecc"`, not `"ecc-tools"`. Wrapper: `chipcompiler/tools/ecc/`
 - Every tool module must implement `is_eda_exist`, `build_step`, `run_step`
-- Steps run in `multiprocessing.Process`; state persisted in `workspace.flow.json`
+- Step tool execution runs in a `python -m chipcompiler.engine.step_subprocess` subprocess by default; `ECC_STEP_SUBPROCESS=0` runs steps in process (also the automatic fallback for frozen builds); flow state persisted in `workspace.flow.json`
 - File chaining: each step reads previous step's `output/`; first step uses `workspace.design.origin_verilog/origin_def`
 - `uv.lock` is source of truth for Python deps; `requirements_lock.txt` is auto-generated and gitignored
 

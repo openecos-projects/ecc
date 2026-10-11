@@ -48,6 +48,15 @@ def execute_tool_step(
     started_at: float | None = None,
 ) -> StepExecutionResult:
     """Run one tool while containing its stdio, memory monitor, and failures."""
+    from chipcompiler.engine import step_subprocess
+
+    if step_subprocess.is_enabled():
+        return step_subprocess.execute_step_subprocess(
+            workspace,
+            workspace_step,
+            observer=observer,
+            started_at=started_at,
+        )
     start_time = time.time() if started_at is None else started_at
     step_tag = f"{workspace_step.name}({workspace_step.tool})"
     log_file = _prepare_log_file(workspace_step)

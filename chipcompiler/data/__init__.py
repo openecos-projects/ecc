@@ -23,12 +23,15 @@ from .types import (
     DEFAULT_LEC_ENGINE,
     DEFAULT_SKIP_STEPS,
     FINISHED_STEP_STATES,
+    FLOW_STEP_CATEGORIES,
     LEC_STEP_TOOLS,
+    FlowStepCategory,
     LECEngineEnum,
     SkippableStepEnum,
     StateEnum,
     StepBaseEnum,
     StepEnum,
+    default_flow_step_category,
     is_finished_step_state,
     step_from_value,
 )
@@ -95,6 +98,9 @@ from .workspace_transaction import (
 )
 
 __all__ = [
+    "FlowStepCategory",
+    "FLOW_STEP_CATEGORIES",
+    "default_flow_step_category",
     "LEC_STEP_TOOLS",
     "LECEngineEnum",
     "DEFAULT_LEC_ENGINE",
