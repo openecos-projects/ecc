@@ -97,7 +97,7 @@ graph LR
 | `floorplan.core_margin` | int×2（µm） | [2, 2] | floorplan `die_builder.margin.{left,right,top,bottom}_micron` | 核心到 die 边的留白 [水平, 垂直] |
 | `floorplan.aspect_ratio` | float [0.1, 10] | 1.0 | floorplan `die_builder.die_util.aspect_ratio` | 核心宽高比 |
 | `cts.max_fanout` | int [1, 200] | 32 | 自动生成 SDC 的 `set_max_fanout` + cts `max_fanout` | 设计与时钟树最大扇出约束 |
-| `place.target_density` | float [0.1, 0.95] | 0.2 | dreamplace `target_density` | 全局布局目标密度 |
+| `place.target_density` | float [0.1, 0.95] | 0.4 | dreamplace `target_density` | 全局布局目标密度 |
 | `place.target_overflow` | float [0.0, 1.0] | 0.1 | dreamplace `stop_overflow` | 全局布局溢出收敛目标 |
 | `place.global_right_padding` | int [0, 100] | 0 | 仅记录于 params.toml | 布局 site 右侧全局 padding（当前版本尚未接入工具配置字段） |
 | `place.cell_padding_x` | int [0, 10000]（dbu） | 200 | dreamplace `cell_padding_x` | 单元 X 方向 padding（绕线拥塞缓解） |
@@ -344,11 +344,88 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 全局布局核心（★ 主要调优区）
 
+`place.timing_grad_balance_target_ratio` 默认 0.2，在 direct-loss placement
+首次启用 timing 梯度时，根据 timing 与 wirelength 梯度的 L1 范数初始化
+外层 timing 权重，之后沿用该权重。设为 0.0 可关闭平衡，保留外层权重 1.0。
+它是初始梯度比例目标，不是直接将 WNS/TNS 系数乘以 0.2。
+独立 `size_only` sizing 不初始化坐标梯度平衡；显式配置仍优先于默认值。
+
+GP 内 sizing 窗口的系数策略使用一个参数 `place.timing_opt_coefficients`。
+默认固定为 WNS/TNS/cap/slew = 500/5/1/1，窗口外层 α=1。
+以下 `ecc.toml` 配置与默认值一致：
+
+```toml
+[params.place.timing_opt_coefficients]
+mode = "fixed"
+wns = 500.0
+tns = 5.0
+slew = 1.0
+cap = 1.0
+```
+
+固定模式必须提供四个非负有限数值，窗口内外层 timing 权重固定为 1.0，
+四个值直接作为实际权重；继承模式沿用 placement 的实时系数和外层 α。
+该策略只在 GP 内 S 轮期间覆盖系数及外层权重，正常或异常退出均恢复；独立 `diff_sizing`
+继续使用自己的配置。窗口报告的 `sizing.coefficients` 保存实际使用值。
+切回继承模式时只需将 `mode` 改为 `"inherit"`；可保留固定预设的四项数值，
+继承模式始终使用 placement 实时值。
+
+独立 S50 使用单独的 `place.diff_sizing_coefficients`，默认 WNS/TNS/cap/slew
+也是 500/5/1/1。该参数只在 `diff_sizing` 步骤生效，外层 timing 权重固定为 1，
+不继承 placement 的实时系数或外层 α，也不影响 GP 内 S10 窗口。
+只覆盖部分字段时，其余字段保留原有配置（未配置则使用默认值）；数值必须非负且有限。
+例如单独调整 S50 为 1000/10/1/1：
+
+```toml
+[params.place.diff_sizing_coefficients]
+wns = 1000.0
+tns = 10.0
+cap = 1.0
+slew = 1.0
+```
+
+新建 workspace 也可使用
+`ecc run --set 'place.diff_sizing_coefficients={"tns":10.0}'` 单独覆盖 TNS。
+已有 workspace 使用
+`ecc param set place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`。
+S50 继续使用 RRR=3、padding=0、固定 512×512 bins 和最终 legalization。
+
+独立 S50 的连续 sizing step 数由 `place.diff_sizing_continuous_steps` 控制，默认值为 0。
+它表示投影到合法 cell 之前执行的 continuous real-size step 数；设为 0 会直接使用
+输入 master 的 logits 进入 `discrete_gradient_topk`，设为 3 则执行 3 个连续 sizing
+step 后再投影到合法 cell 并切换到离散 sizing。
+
+`place.timing_coeff_growth_factor` 控制每次 GP density-weight 更新时，WNS/TNS
+系数共同乘上的倍率，默认 `1.0`，不增长；设为 `1.01` 逐次增长，设为 `0.99` 则逐次衰减。
+倍率必须为正的有限数值，slew/cap 和 norm 外层权重沿用各自设置。
+窗口的继承模式读取增长后的实时系数，固定模式使用指定值；独立
+`diff_sizing` S50 的 `size_only` 模式跳过这项增长。新建 workspace 可通过
+`ecc run --set place.timing_coeff_growth_factor=1.0` 或 `ecc.toml` 的
+`[params.place] timing_coeff_growth_factor = 1.0` 配置；已有 workspace 使用
+`ecc param set place.timing_coeff_growth_factor 1.0 --workspace NAME`。
+
+`place.timing_aggregation_mode` 控制 AAT/RAT 传播的聚合方式：默认 `smooth`
+使用 LSE，`hard` 使用 max/min。`place.timing_aggregation_tau_ps` 是正的
+平滑温度，默认 2.0 ps；越小越接近硬 max/min，越大梯度分配越平滑。
+这两个参数不改变最终 endpoint WNS 的硬 min 和 TNS 的负 slack 求和。
+例如，在 `ecc.toml` 中设置：
+
+```toml
+[params.place]
+timing_aggregation_mode = "smooth"
+timing_aggregation_tau_ps = 2.0
+```
+
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `target_density` | 0.2 `*place.target_density`（模板 0.8） | 目标布局密度（越低越松、越利绕线） |
+| `target_density` | 0.4 `*place.target_density`（模板 0.4） | 目标布局密度（越低越松、越利绕线） |
 | `stop_overflow` | 0.1 `*place.target_overflow` | 溢出收敛阈值，达标即停 |
+| `overflow_reference_mode` | `initial` | overflow 面积归一化模式：`initial` 固定 GP 起始面积；`ordinary` 保留原 PR 的面积发布行为，有联合面积时使用 native + virtual，否则沿用 PlaceDB 面积。均不含 filler；归一化值也用于 gamma 和基于 overflow 的调度 |
 | `density_weight` | 0.00085 | 密度项初始权重（自动调整的起点） |
+| `timing_coeff_growth_factor` | 1.0 `*place.timing_coeff_growth_factor` | GP density-weight 更新时 WNS/TNS 系数的共同倍率；1.0 停止增长，`size_only` 不应用 |
+| `timing_grad_balance_target_ratio` | 0.2 `*place.timing_grad_balance_target_ratio` | direct-loss placement 初始 timing / wirelength 梯度 L1 范数比例目标；0.0 关闭 |
+| `timing_aggregation_mode` | `smooth` `*place.timing_aggregation_mode` | AAT/RAT 传播聚合方式：`hard` 或 `smooth`（LSE） |
+| `timing_aggregation_tau_ps` | 2.0 `*place.timing_aggregation_tau_ps` | `smooth` 模式的正平滑温度，单位 ps |
 | `num_bins_x/y` | 32/32 | 密度网格划分数 |
 | `global_place_stages[]` | 见下 | 多阶段全局布局表（可多段） |
 | `global_place_stages[].iteration` | 3000 | 本阶段迭代上限，收敛时可提前停止 |

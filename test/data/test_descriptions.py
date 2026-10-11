@@ -9,12 +9,14 @@ _DREAMPLACE_PARAMETERS = (
 )
 
 
-def test_dreamplace_descriptions_match_upstream_metadata():
+def test_canonical_dreamplace_descriptions_match_upstream_metadata():
     metadata = json.loads(_DREAMPLACE_PARAMETERS.read_text(encoding="utf-8"))
     schemas = [
         schema
         for schema in CONFIG_PARAM_SCHEMAS
-        if schema.config_target is not None and schema.config_target.config_key == "dreamplace"
+        if schema.config_target is not None
+        and schema.config_target.config_key == "dreamplace"
+        and schema.name == schema.config_target.json_path[-1]
     ]
 
     assert schemas

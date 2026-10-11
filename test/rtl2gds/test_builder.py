@@ -60,7 +60,9 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
         (StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart),
         (StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart),
         (StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart),
+        (StepEnum.PREPLACE, "sizer", StateEnum.Unstart),
         (StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart),
+        (StepEnum.DIFF_SIZING, "dreamplace", StateEnum.Unstart),
         (StepEnum.CTS, "ecc", StateEnum.Unstart),
         (StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart),
         (SkippableStepEnum.TIMING_OPT, "sizer", StateEnum.Unstart),
@@ -87,9 +89,10 @@ def test_build_rtl2gds_flow_skip_removes_exactly_the_skipped_steps():
 
 
 def test_build_flow_range_slices_the_canonical_chain():
-    flow = builder_module.build_flow_range("CTS", "route")
+    flow = builder_module.build_flow_range("diff_sizing", "route")
 
     assert [(step, tool) for step, tool, _state in flow] == [
+        (StepEnum.DIFF_SIZING, "dreamplace"),
         (StepEnum.CTS, "ecc"),
         (StepEnum.LEGALIZATION, "dreamplace"),
         (SkippableStepEnum.TIMING_OPT, "sizer"),
@@ -100,6 +103,7 @@ def test_build_flow_range_slices_the_canonical_chain():
 def test_build_flow_range_normalizes_aliases_and_rejects_reverse_ranges():
     assert [step for step, _tool, _state in builder_module.build_flow_range("place", "cts")] == [
         StepEnum.PLACEMENT,
+        StepEnum.DIFF_SIZING,
         StepEnum.CTS,
     ]
     assert [

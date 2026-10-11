@@ -2,7 +2,7 @@ import shutil
 from collections.abc import Sequence
 from pathlib import Path
 
-from chipcompiler.data import EccStep, StepEnum, Workspace, step_storage_name
+from chipcompiler.data import EccStep, SkippableStepEnum, StepEnum, Workspace, step_storage_name
 from chipcompiler.tools.ecc import builder as ecc_builder
 from chipcompiler.utility import json_read
 
@@ -93,6 +93,8 @@ def build_step(
     script_dir = step.script.dir or step_directory / "script"
     step.script.sizer_env = script_dir / f"{workspace.design.name}.env_file"
     step.script.sizer_cmd = script_dir / f"{workspace.design.name}.cmd_file"
+    if step_name == StepEnum.PREPLACE.value:
+        step.output.db = None
     step.script.sizer_hold_env = script_dir / SIZER_HOLD_ENV_NAME
     step.script.sizer_hold_cmd = script_dir / SIZER_HOLD_CMD_NAME
     return step
@@ -218,6 +220,9 @@ def _cmd_text(workspace: Workspace, step: EccStep) -> str:
     command = cmdfile.CommandFile(prefix="-", dialect=cmdfile.PLAIN_DIALECT)
 
     command.flag("useOpenSTA")
+    command.option("use_gr_rc", int(step.name == SkippableStepEnum.TIMING_OPT.value))
+    if step.name == StepEnum.PREPLACE.value:
+        command.flag("preplace")
     command.option("top", workspace.design.top_module or workspace.design.name)
     command.option(
         "def",
@@ -234,12 +239,6 @@ def _cmd_text(workspace: Workspace, step: EccStep) -> str:
     command.option(
         "sdc",
         workspace.pdk.sdc,
-        value_type=cmdfile.ValueType.PATH,
-        omit_empty=True,
-    )
-    command.option(
-        "spef",
-        workspace.pdk.spef,
         value_type=cmdfile.ValueType.PATH,
         omit_empty=True,
     )
@@ -263,6 +262,7 @@ def _hold_cmd_text(workspace: Workspace, step: EccStep) -> str:
 
     command = cmdfile.CommandFile(prefix="-", dialect=cmdfile.PLAIN_DIALECT)
     command.flag("useOpenSTA")
+    command.option("use_gr_rc", int(step.name == SkippableStepEnum.TIMING_OPT.value))
     command.option("top", workspace.design.top_module or workspace.design.name)
     command.option(
         "def",

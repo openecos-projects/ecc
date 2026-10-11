@@ -24,7 +24,9 @@ _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 # would redirect config_override patches onto bogus keys (e.g. "RT" -> "rt",
 # "-thread_number" -> "thread_number") and rewrite JSON values such as
 # sta.signoff corner names, so their subtrees round-trip untouched.
-_RESERVED_PAYLOAD_KEYS = frozenset({"config_overrides", "workspace_param_overrides"})
+_RESERVED_PAYLOAD_KEYS = frozenset(
+    {"config_overrides", "workspace_param_overrides", "pdk_overrides"}
+)
 
 # Internal workspace controls are canonical identifiers too. They are kept
 # out of the user-facing schema, but must survive params.toml round-trips.
@@ -100,6 +102,7 @@ def _known_top_level_keys() -> frozenset:
         set(ICS55_PARAMETERS_TEMPLATE)
         | set(SG13G2_PARAMETERS_TEMPLATE)
         | set(_GEOMETRY_TO_PARAMETERS)
+        | set(_RESERVED_PAYLOAD_KEYS)
         | {"pdk_root", "pdk_config", "file_list", "die_area_mode"}
     )
 

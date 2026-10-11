@@ -35,6 +35,7 @@ STAGE_CANONICAL_NAMES = {
     "dreamplace": "Place",
     "global_placement": "Place",
     "detailed_placement": "Place",
+    "diff_sizing": "DiffSizing",
     "cts": "CTS",
     "cts_ecc": "CTS",
     "legalization": "Legal",

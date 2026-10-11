@@ -212,7 +212,12 @@ jobs:
         run: git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git pdk
 
       - name: Unpack PDK
-        run: cd pdk && make unzip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd pdk
+          gh release download --repo openecos-projects/icsprout55-pdk --pattern '*.tar.bz2'
+          make unzip
 
       - name: Package PDK
         run: tar -czf icsprout55-pdk.tar.gz -C pdk .
@@ -231,14 +236,16 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          SIZER_REVISION: 57b684526dc3026a50979bffe72a94e7a6a5764f
         run: |
           set -euo pipefail
 
           run_id="$(
             gh api --paginate \
-              "repos/openecos-projects/ecc-sizer/actions/workflows/ci.yml/runs?branch=main&status=completed&per_page=100" |
+              "repos/openecos-projects/ecc-sizer/actions/workflows/ci.yml/runs?head_sha=${SIZER_REVISION}&status=completed&per_page=100" |
               python3 -c '
           import json
+          import os
           import sys
 
           pages = [json.loads(line) for line in sys.stdin if line.strip()]
@@ -247,18 +254,19 @@ jobs:
               for page in pages
               for run in page.get("workflow_runs", [])
               if run.get("status") == "completed" and run.get("conclusion") == "success"
+              and run.get("head_sha") == os.environ["SIZER_REVISION"]
           ]
           print(max(runs, key=lambda run: run["created_at"])["id"] if runs else "")
           '
           )"
           if [ -z "$run_id" ]; then
-            echo "::error::No successful ecc-sizer CI artifact found on main"
+            echo "::error::No successful ecc-sizer CI artifact found for ${SIZER_REVISION}"
             exit 1
           fi
 
           install_root="${RUNNER_TEMP}/ecc-sizer-${run_id}"
           mkdir -p "$install_root"
-          echo "Downloading ecc-sizer-linux-x64 from openecos-projects/ecc-sizer CI run ${run_id}"
+          echo "Downloading ecc-sizer ${SIZER_REVISION} from CI run ${run_id}"
           gh run download "$run_id" \
             --repo openecos-projects/ecc-sizer \
             --name ecc-sizer-linux-x64 \

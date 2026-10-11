@@ -38,3 +38,35 @@ def apply_parameter_overrides(
                 update_parameters(deepcopy(direct_overrides), params)
 
     return params
+
+
+def apply_direct_config_overrides(params: dict, parameter_data: dict) -> dict:
+    """Reapply the direct DreamPlace JSON patch after flow-profile expansion."""
+    result = deepcopy(params)
+    overrides = parameter_data.get("config_overrides")
+    if overrides is None:
+        overrides = parameter_data.get("Config Overrides")
+    if not isinstance(overrides, dict):
+        return result
+
+    patch = next(
+        (
+            value
+            for key, value in overrides.items()
+            if isinstance(key, str)
+            and key.casefold() in {"dreamplace", "dreamplace.json", "dreamplace_ecc.json"}
+        ),
+        None,
+    )
+    if not isinstance(patch, dict):
+        return result
+
+    def merge(target: dict, source: dict) -> None:
+        for key, value in source.items():
+            if isinstance(target.get(key), dict) and isinstance(value, dict):
+                merge(target[key], value)
+            else:
+                target[key] = deepcopy(value)
+
+    merge(result, patch)
+    return result

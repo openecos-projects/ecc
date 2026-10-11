@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from chipcompiler.data import Workspace
 
 _SDC_HEAD_CLOCK = """\
-# Auto-generated SDC file
+# ECC-generated SDC file
 
 set clk_name          {clock}
 set clk_port_name     {clock}
@@ -36,7 +36,7 @@ set_output_delay 0 -clock [get_clocks $clk_name] [all_outputs]
 """
 
 _SDC_HEAD_VIRTUAL_CLOCK = """\
-# Auto-generated SDC file
+# ECC-generated SDC file
 
 set clk_name          __VIRTUAL_CLK__
 set clk_freq_mhz      {freq_mhz}
@@ -119,9 +119,27 @@ def refresh_generated_sdc(workspace: "Workspace") -> None:
 
     try:
         with sdc_path.open(encoding="utf-8") as file:
-            if file.readline().strip() != "# Auto-generated SDC file":
+            marker = file.readline().strip()
+            if marker not in {"# ECC-generated SDC file", "# ECC-generated clock-only SDC"}:
                 return
     except (OSError, UnicodeError):
         return
 
-    create_default_sdc(workspace)
+    if marker == "# ECC-generated clock-only SDC":
+        parameters = workspace.parameters.data
+        content = "\n".join(
+            (
+                marker,
+                "",
+                f"set clk_name {parameters.get('clock', '')}",
+                f"set clk_port_name {parameters.get('clock', '')}",
+                f"set clk_freq_mhz {parameters.get('frequency_max', 100)}",
+                "set clk_period [expr 1000.0 / $clk_freq_mhz]",
+                "set clk_port [get_ports $clk_port_name]",
+                "create_clock -name $clk_name -period $clk_period $clk_port",
+                "",
+            )
+        )
+        sdc_path.write_text(content)
+    else:
+        create_default_sdc(workspace)

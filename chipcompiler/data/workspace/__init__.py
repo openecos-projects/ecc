@@ -212,6 +212,7 @@ _STEP_CONFIG_KEYS: Final[dict[tuple[StepBaseEnum, str], tuple[str, ...]]] = {
     (StepEnum.PRE_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value),
     (StepEnum.MACRO_PLACEMENT, "dreamplace"): ("dreamplace", "macro_location"),
     (StepEnum.POST_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value, "macro_location"),
+    (StepEnum.PREPLACE, "sizer"): ("db",),
     (StepEnum.PLACEMENT, "ecc"): ("db",),
     (StepEnum.CTS, "ecc"): ("db", StepEnum.CTS.value),
     (StepEnum.ROUTING, "ecc"): ("db", StepEnum.ROUTING.value),
@@ -221,6 +222,7 @@ _STEP_CONFIG_KEYS: Final[dict[tuple[StepBaseEnum, str], tuple[str, ...]]] = {
     (StepEnum.RCX, "ecc"): ("db", StepEnum.RCX.value),
     (StepEnum.STA, "ecc"): ("db", StepEnum.RCX.value, StepEnum.STA.value),
     (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
+    (StepEnum.DIFF_SIZING, "dreamplace"): ("dreamplace",),
     (StepEnum.LEGALIZATION, "dreamplace"): ("dreamplace",),
     (SkippableStepEnum.TIMING_OPT, "sizer"): ("db", "dreamplace"),
 }
@@ -1128,6 +1130,14 @@ def create_workspace(
 
     if workspace.pdk.root:
         workspace.parameters.data["pdk_root"] = str(workspace.pdk.root)
+    if isinstance(pdk, str) and pdk_overrides:
+        from copy import deepcopy
+
+        persisted_overrides = deepcopy(pdk_overrides)
+        for key in ("sdc", "spef"):
+            if key in persisted_overrides:
+                persisted_overrides[key] = path_text(getattr(workspace.pdk, key))
+        workspace.parameters.data["pdk_overrides"] = persisted_overrides
     if pdk_json:
         pdk_config_path = home_dir / "pdk.json"
         shutil.copy(pdk_json, pdk_config_path)

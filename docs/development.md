@@ -129,6 +129,12 @@ uv run pytest test/formal/ -v
 z3-based formal verification. See [test/formal/README.md](../test/formal/README.md)
 for details on the approach, test inventory, and known bugs found.
 
+### Placement Regression
+
+For frozen placement experiments with parallel execution and external OpenROAD
+placement RC/GR50 timing evaluation, see
+[the placement regression runner](../scripts/regression/placement/README.md).
+
 ## Add a New EDA Tool
 
 ### 1. Create Structure

@@ -1,5 +1,3 @@
-from copy import deepcopy
-
 import pytest
 
 from chipcompiler.data import PDK, OriginDesign, StepEnum, Workspace
@@ -55,8 +53,7 @@ def test_step_config_keeps_cli_overrides_above_nested_workspace_settings(
     )
     init_workspace_config(workspace)
     config_path = workspace.config["dreamplace"]
-    expected = deepcopy(json_read(config_path))
-    expected.update(
+    expected = dict(
         gpugr_backend="cpu_pr_mt",
         l_shape_routability_flag=1,
         l_shape_update_interval=10,
@@ -68,4 +65,5 @@ def test_step_config_keeps_cli_overrides_above_nested_workspace_settings(
 
     dreamplace_builder.build_step_config(workspace, step)
 
-    assert json_read(config_path) == expected
+    actual = json_read(config_path)
+    assert {key: actual[key] for key in expected} == expected

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import json
 import os
 import shutil
 from pathlib import Path
@@ -53,6 +54,8 @@ class ECCToolsModule:
             ) from exc
 
         self.ecc = ecc
+        self._place_timing_active = False
+        self._place_timing_inputs = None
 
     def get_ecc(self):
         return self.ecc
@@ -63,6 +66,8 @@ class ECCToolsModule:
 
     def close(self):
         """release ECC data without terminating the host process"""
+        if getattr(self, "_place_timing_active", False):
+            self.destroy_place_timing()
         self.reset_data()
 
     def get_dmInst_ptr(self):
@@ -87,6 +92,215 @@ class ECCToolsModule:
             include_m2_pg_rail_blockage,
             include_m2_pg_rail_density,
         )
+
+    def _place_timing_config(
+        self,
+        *,
+        config: str = "",
+        work_dir: PathArg = "",
+        thread_number: int = 2,
+        max_paths: int = 20,
+    ) -> dict[str, str]:
+        if isinstance(thread_number, bool) or int(thread_number) <= 0:
+            raise ValueError("placement timing thread_number must be positive")
+        if isinstance(max_paths, bool) or int(max_paths) <= 0:
+            raise ValueError("placement timing max_paths must be positive")
+        config_dict = {
+            "-output_timing_reports": "0",
+            "-output_timing_features": "0",
+            "-timing_path_limit": str(int(max_paths)),
+            "-max_paths": str(int(max_paths)),
+            "-thread_number": str(int(thread_number)),
+        }
+        if work_dir:
+            config_dict["-temp_directory_path"] = path_text(work_dir)
+        return {"config": path_text(config), **config_dict}
+
+    def _start_place_timing(
+        self,
+        *,
+        lib_paths: list[Path] | list[str],
+        sdc_path: PathArg,
+        spef_path: PathArg = "",
+        rcx_config: PathArg = "",
+        rcx_pdk: str = "",
+        rcx_output_dir: PathArg = "",
+        rcx_spef_path: PathArg = "",
+        config: str = "",
+        work_dir: PathArg = "",
+        thread_number: int = 2,
+        max_paths: int = 20,
+    ) -> dict[str, object]:
+        normalized_libs = [path_text(path) for path in lib_paths if path]
+        normalized_sdc = path_text(sdc_path)
+        normalized_spef = path_text(spef_path)
+        if not normalized_libs:
+            raise ValueError("ECC placement timing requires at least one Liberty")
+        if not normalized_sdc:
+            raise ValueError("ECC placement timing requires an SDC path")
+
+        if self.ecc.lib_init(lib_paths=normalized_libs) is not True:
+            raise RuntimeError("ECC placement timing Liberty initialization failed")
+        if self.ecc.sdc_init(normalized_sdc) is not True:
+            raise RuntimeError("ECC placement timing SDC initialization failed")
+        normalized_rcx = path_text(rcx_config)
+        normalized_rcx_output = path_text(rcx_output_dir)
+        if normalized_rcx:
+            normalized_spef, rcx_summary = self._extract_place_parasitics(
+                normalized_rcx,
+                pdk=rcx_pdk,
+                output_dir=normalized_rcx_output,
+                requested_spef=path_text(rcx_spef_path) or normalized_spef,
+            )
+        else:
+            rcx_summary = {
+                "status": "skipped",
+                "reason": "no_rcx_config",
+            }
+        if normalized_spef and self.ecc.spef_init(normalized_spef) is not True:
+            raise RuntimeError("ECC placement timing SPEF initialization failed")
+        config_dict = self._place_timing_config(
+            config=config,
+            work_dir=work_dir,
+            thread_number=thread_number,
+            max_paths=max_paths,
+        )
+        sta_config = config_dict.pop("config")
+        if self.ecc.init_sta(config=sta_config, config_dict=config_dict) is not True:
+            raise RuntimeError("ECC placement timing STA initialization failed")
+        try:
+            if self.ecc.run_sta() is not True:
+                raise RuntimeError("ECC placement timing STA execution failed")
+        except Exception:
+            self.ecc.destroy_sta()
+            raise
+        self._place_timing_active = True
+        self._place_timing_inputs = {
+            "lib_paths": normalized_libs,
+            "sdc_path": normalized_sdc,
+            "spef_path": normalized_spef,
+            "rcx_config": normalized_rcx,
+            "rcx_pdk": rcx_pdk,
+            "rcx_output_dir": normalized_rcx_output,
+            "rcx_spef_path": normalized_spef if normalized_rcx else "",
+            "config": sta_config,
+            "work_dir": path_text(work_dir),
+            "thread_number": int(thread_number),
+            "max_paths": int(max_paths),
+        }
+        return {
+            "status": "ok",
+            "mode": "full_rebuild",
+            "lib_count": len(normalized_libs),
+            "sdc_path": normalized_sdc,
+            "spef_path": normalized_spef,
+            "parasitics_initialization": (
+                "rcx" if normalized_rcx else ("spef" if normalized_spef else "none")
+            ),
+            "rcx": rcx_summary,
+        }
+
+    def _extract_place_parasitics(
+        self,
+        config: str,
+        *,
+        pdk: str = "",
+        output_dir: PathArg = "",
+        requested_spef: str = "",
+    ) -> tuple[str, dict[str, object]]:
+        """Run the configured native RCX backend and select its fresh SPEF."""
+        if self.init_rcx(config=config, pdk=pdk) is not True:
+            raise RuntimeError("ECC placement timing RCX initialization failed")
+        try:
+            if self.run_rcx() is not True:
+                raise RuntimeError("ECC placement timing RCX execution failed")
+        finally:
+            self.destroy_rcx()
+
+        output_path = Path(output_dir) if output_dir else None
+        if output_path is None:
+            with open(config, encoding="utf-8") as stream:
+                config_payload = json.load(stream)
+            configured_output = config_payload.get("output")
+            if not configured_output:
+                raise ValueError("ECC placement timing RCX config has no output")
+            output_path = Path(configured_output)
+            if not output_path.is_absolute():
+                output_path = Path(config).resolve().parent / output_path
+        spef_dir = output_path / "spef_writer"
+        candidates = sorted(spef_dir.glob("*.spef"))
+        selected = None
+        if requested_spef:
+            requested_name = Path(requested_spef).name
+            matching = [candidate for candidate in candidates if candidate.name == requested_name]
+            if matching:
+                selected = matching[0]
+        elif len(candidates) == 1:
+            selected = candidates[0]
+        elif candidates:
+            raise ValueError(
+                "ECC placement timing RCX produced multiple SPEFs; provide rcx_spef_path"
+            )
+        if selected is None or not selected.is_file() or selected.stat().st_size == 0:
+            raise FileNotFoundError(
+                f"ECC placement timing RCX produced no usable SPEF in {spef_dir}"
+            )
+        return str(selected), {
+            "status": "ok",
+            "backend": "native_rcx",
+            "output_dir": str(output_path),
+            "spef_path": str(selected),
+            "candidate_count": len(candidates),
+        }
+
+    def prepare_place_timing(self, inputs: dict[str, object]) -> dict[str, object]:
+        """Initialize current-main iSTA for an ECC DreamPlace session."""
+        if self._place_timing_active:
+            self.destroy_place_timing()
+        return self._start_place_timing(
+            lib_paths=list(inputs.get("lib_paths") or inputs.get("lib") or []),
+            sdc_path=inputs.get("sdc_path") or inputs.get("sdc") or "",
+            spef_path=inputs.get("spef_path") or inputs.get("spef") or "",
+            rcx_config=inputs.get("rcx_config") or "",
+            rcx_pdk=str(inputs.get("rcx_pdk") or ""),
+            rcx_output_dir=inputs.get("rcx_output_dir") or "",
+            rcx_spef_path=inputs.get("rcx_spef_path") or "",
+            config=inputs.get("config") or inputs.get("sta_config") or "",
+            work_dir=inputs.get("work_dir") or "",
+            thread_number=int(inputs.get("thread_number", 2) or 2),
+            max_paths=int(inputs.get("max_paths", 20) or 20),
+        )
+
+    def refresh_place_timing(self, inputs: dict[str, object] | None = None) -> dict[str, object]:
+        """Destroy and fully rebuild current-main iSTA after a native mutation."""
+        if self._place_timing_active:
+            self.destroy_place_timing()
+        refresh_inputs = dict(inputs or self._place_timing_inputs or {})
+        return self._start_place_timing(
+            lib_paths=list(refresh_inputs.get("lib_paths") or refresh_inputs.get("lib") or []),
+            sdc_path=refresh_inputs.get("sdc_path") or refresh_inputs.get("sdc") or "",
+            spef_path=refresh_inputs.get("spef_path") or refresh_inputs.get("spef") or "",
+            rcx_config=refresh_inputs.get("rcx_config") or "",
+            rcx_pdk=str(refresh_inputs.get("rcx_pdk") or ""),
+            rcx_output_dir=refresh_inputs.get("rcx_output_dir") or "",
+            rcx_spef_path=refresh_inputs.get("rcx_spef_path") or "",
+            config=refresh_inputs.get("config") or refresh_inputs.get("sta_config") or "",
+            work_dir=refresh_inputs.get("work_dir") or "",
+            thread_number=int(refresh_inputs.get("thread_number", 2) or 2),
+            max_paths=int(refresh_inputs.get("max_paths", 20) or 20),
+        )
+
+    def destroy_place_timing(self) -> None:
+        if not self._place_timing_active:
+            return
+        try:
+            self.ecc.destroy_sta()
+        finally:
+            self._place_timing_active = False
+
+    @property
+    def place_timing_active(self) -> bool:
+        return self._place_timing_active
 
     def build_macro_connection_map(self, max_hop: int):
         return self.ecc.build_macro_connection_map(max_hop)

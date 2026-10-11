@@ -14,7 +14,9 @@ def get_step_info(workspace: Workspace, step: EccStep, id: str) -> dict:
     step_info = ecc_get_step_info(workspace=workspace, step=step, id=id)
 
     if id == "config":
-        step_info["config"] = str(workspace.config.get("dreamplace", ""))
+        from .builder import step_config_path
+
+        step_info["config"] = str(step_config_path(workspace, step))
 
     workspace.logger.log_section(f"[ecc dreamplace] get step info, id = {id}")
     workspace.logger.info(f"{dict_to_str(step_info)}")

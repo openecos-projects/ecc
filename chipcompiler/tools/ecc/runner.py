@@ -44,6 +44,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.MACRO_PLACEMENT.value,
         StepEnum.POST_FLOORPLAN.value,
         StepEnum.PLACEMENT.value,
+        StepEnum.DIFF_SIZING.value,
         StepEnum.CTS.value,
         SkippableStepEnum.TIMING_OPT.value,
         StepEnum.LEGALIZATION.value,
@@ -405,11 +406,20 @@ def save_data(
         return False
     ecc_module.def_save(def_path=step.output.def_ or "")
     ecc_module.verilog_save(output_verilog=step.output.verilog or "")
-    ecc_module.gds_save(
-        output_path=step.output.gds or "",
-        layer_map_path=workspace.pdk.mapping_file,
-    )
-    # ecc_module.save_data(path=step.output.db or "")
+    layer_map_path = getattr(workspace.pdk, "mapping_file", None)
+    if layer_map_path:
+        ecc_module.gds_save(
+            output_path=step.output.gds or "",
+            layer_map_path=layer_map_path,
+        )
+    else:
+        workspace.logger.warning(
+            "Skipping GDS export for %s: PDK mapping_file is not configured",
+            step.name,
+        )
+    if step.output.db and not ecc_module.save_data(path=step.output.db):
+        workspace.logger.error("Failed to save ECC native database for %s", step.name)
+        return False
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
         geometry_manifest = step.output.geometry_manifest
@@ -852,9 +862,13 @@ def run_harden(
             spef_path=signoff_item["spef_file"],
             design_name=workspace.design.name,
         )
+        layer_map_path = getattr(workspace.pdk, "mapping_file", None)
+        if not layer_map_path:
+            workspace.logger.error("Cannot harden without a PDK GDS layer map")
+            return False
         ecc_module.gds_save(
             output_path=step.output.gds or "",
-            layer_map_path=workspace.pdk.mapping_file,
+            layer_map_path=layer_map_path,
         )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)

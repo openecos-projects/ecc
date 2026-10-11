@@ -44,7 +44,6 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     assert "-def input.def" in cmd_text
     assert "-v input.v" in cmd_text
     assert "-sdc clock.sdc" in cmd_text
-    assert "-spef route.spef" in cmd_text
     assert "-asap7" not in cmd_text
     assert "-prft_only" not in cmd_text
     assert "-outputPath ." in cmd_text
@@ -76,7 +75,13 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     assert checklist["checklist"] == []
 
 
-def test_sizer_step_config_writes_ff_hold_pass_from_sta_contract(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "step_name, rc_mode",
+    [(SkippableStepEnum.TIMING_OPT.value, "1"), (StepEnum.PREPLACE.value, "0")],
+)
+def test_sizer_step_config_writes_ff_hold_pass_from_sta_contract(
+    tmp_path, monkeypatch, step_name, rc_mode
+):
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
 
     runtime_root = _sizer_runtime(tmp_path)
@@ -98,7 +103,7 @@ def test_sizer_step_config_writes_ff_hold_pass_from_sta_contract(tmp_path, monke
     )
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=SkippableStepEnum.TIMING_OPT.value,
+        step_name=step_name,
         input_def="input.def",
         input_verilog="input.v",
     )
@@ -112,6 +117,13 @@ def test_sizer_step_config_writes_ff_hold_pass_from_sta_contract(tmp_path, monke
     assert hold_cmd is not None and hold_cmd.is_file()
     assert f"-lib {min_lib}" in hold_env.read_text(encoding="utf-8")
     hold_cmd_text = hold_cmd.read_text(encoding="utf-8")
+    setup_cmd_text = step.script.sizer_cmd.read_text(encoding="utf-8")
+    assert {
+        "setup": next(
+            line for line in setup_cmd_text.splitlines() if line.startswith("-use_gr_rc ")
+        ),
+        "hold": next(line for line in hold_cmd_text.splitlines() if line.startswith("-use_gr_rc ")),
+    } == {"setup": f"-use_gr_rc {rc_mode}", "hold": f"-use_gr_rc {rc_mode}"}
     assert "-hold_only" in hold_cmd_text
     assert "-spef " not in hold_cmd_text
     assert f"-def {sizer_builder.sizer_setup_staging_def(step)}" in hold_cmd_text
@@ -236,11 +248,11 @@ def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
     expected_verilog_out = str(sizer_builder.sizer_staging_verilog(step).resolve())
     assert cmd_lines == [
         "-useOpenSTA",
+        "-use_gr_rc 1",
         "-top gcd",
         f"-def {step.input.def_}",
         f"-v {step.input.verilog}",
         f"-sdc {workspace.pdk.sdc}",
-        f"-spef {workspace.pdk.spef}",
         "-outputPath .",
         f"-def_out_path {expected_def_out}",
         f"-verilog_out_path {expected_verilog_out}",

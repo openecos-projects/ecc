@@ -105,7 +105,9 @@ def build_rtl2gds_flow(
     steps.append((StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart))
+    steps.append((StepEnum.PREPLACE, "sizer", StateEnum.Unstart))
     steps.append((StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
+    steps.append((StepEnum.DIFF_SIZING, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.CTS, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart))
     steps.append((SkippableStepEnum.TIMING_OPT, "sizer", StateEnum.Unstart))
@@ -140,8 +142,12 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
         "macroplace": StepEnum.MACRO_PLACEMENT.value,
         "macroplacement": StepEnum.MACRO_PLACEMENT.value,
         "postfloorplan": StepEnum.POST_FLOORPLAN.value,
+        "preplace": StepEnum.PREPLACE.value,
+        "preplaceopt": StepEnum.PREPLACE.value,
+        "preplaceoptimization": StepEnum.PREPLACE.value,
         "place": StepEnum.PLACEMENT.value,
         "placement": StepEnum.PLACEMENT.value,
+        "diffsizing": StepEnum.DIFF_SIZING.value,
         "cts": StepEnum.CTS.value,
         "legal": StepEnum.LEGALIZATION.value,
         "legalization": StepEnum.LEGALIZATION.value,
