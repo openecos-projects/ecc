@@ -2,7 +2,9 @@
 
 import logging
 import os
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from pathlib import Path
 
@@ -120,6 +122,7 @@ class EngineFlow:
         self.workspace = workspace
         self.workspace_steps = []
         self.engine_db = engine_db  # db engine for this flow
+        self._persistence_lock = threading.RLock()
 
         if self.workspace is not None:
             self.load()
@@ -215,10 +218,15 @@ class EngineFlow:
         """
         from chipcompiler.utility import json_write
 
-        data = self.workspace.flow.data
-        if isinstance(data, dict):
-            data[SCHEMA_VERSION_FIELD] = FLOW_JSON_SCHEMA_VERSION
-        return json_write(self.workspace.flow.path, data)
+        persistence_lock = getattr(self, "_persistence_lock", None)
+        if persistence_lock is None:
+            persistence_lock = threading.RLock()
+            self._persistence_lock = persistence_lock
+        with persistence_lock:
+            data = deepcopy(self.workspace.flow.data)
+            if isinstance(data, dict):
+                data[SCHEMA_VERSION_FIELD] = FLOW_JSON_SCHEMA_VERSION
+            return json_write(self.workspace.flow.path, data)
 
     def get_step(self, name: str, tool: str):
         for step in self.workspace.flow.data.get("steps", []):
@@ -621,7 +629,27 @@ class EngineFlow:
 
         from chipcompiler.engine import step_subprocess
 
-        for workspace_step in self.workspace_steps:
+        index = 0
+        while index < len(self.workspace_steps):
+            workspace_step = self.workspace_steps[index]
+            if self._can_parallelize_checker_batch(workspace_step, index, observer):
+                batch_end = index
+                while batch_end < len(self.workspace_steps) and self._is_checker_step(
+                    self.workspace_steps[batch_end]
+                ):
+                    batch_end += 1
+                states = self._run_checker_batch(
+                    self.workspace_steps[index:batch_end], rerun=rerun
+                )
+                for _batch_step, state in zip(
+                    self.workspace_steps[index:batch_end], states, strict=True
+                ):
+                    log_flow(workspace=self.workspace)
+                    if state != StateEnum.Success:
+                        return False
+                index = batch_end
+                continue
+
             _notify_flow_observer(observer, "raise_if_cancelled")
             self.workspace.logger.log_section(
                 f"{workspace_step.tool} - begin step - {workspace_step.name}"
@@ -641,7 +669,7 @@ class EngineFlow:
 
             match state:
                 case StateEnum.Success:
-                    continue
+                    pass
                 case StateEnum.Invalid:
                     return False
                 case StateEnum.Unstart:
@@ -654,6 +682,7 @@ class EngineFlow:
                     return False
                 case StateEnum.Ongoing:
                     return False
+            index += 1
 
         total_steps = len(self.workspace.flow.data.get("steps", []))
         if require_full_ledger and len(self.workspace_steps) < total_steps:
@@ -665,6 +694,50 @@ class EngineFlow:
             return False
 
         return True
+
+    def _is_checker_step(self, workspace_step: WorkspaceStep) -> bool:
+        flow_step = self.get_step(workspace_step.name, workspace_step.tool) or {}
+        return str(flow_step.get("category", "")).upper() == FlowStepCategory.CHECKER.value
+
+    def _can_parallelize_checker_batch(self, workspace_step, index, observer) -> bool:
+        from chipcompiler.engine import step_subprocess
+
+        return (
+            index > 0
+            and self._is_checker_step(workspace_step)
+            and self.workspace_steps[index - 1].name == StepEnum.FILLER.value
+            and observer is None
+            and step_subprocess.is_enabled()
+        )
+
+    def _checker_parallelism(self, steps: list[WorkspaceStep]) -> int:
+        available_mb = _available_memory_mb()
+        if available_mb <= 0:
+            return 1
+        estimates = [self._step_memory_estimate_mb(step) for step in steps]
+        estimate_mb = max(estimates, default=1024.0)
+        reserve_mb = max(1024.0, available_mb * 0.20)
+        capacity = int(max(0.0, available_mb - reserve_mb) // estimate_mb)
+        return max(1, min(len(steps), capacity, 4))
+
+    def _step_memory_estimate_mb(self, workspace_step: WorkspaceStep) -> float:
+        flow_step = self.get_step(workspace_step.name, workspace_step.tool) or {}
+        observed = float(flow_step.get("peak memory (mb)") or 0)
+        return max(4096.0, observed * 1.5)
+
+    def _run_checker_batch(self, steps: list[WorkspaceStep], *, rerun: bool) -> list[StateEnum]:
+        workers = self._checker_parallelism(steps)
+        self.workspace.logger.info(
+            "[FLOW] checker batch size=%d workers=%d available_memory_mb=%.1f",
+            len(steps),
+            workers,
+            _available_memory_mb(),
+        )
+        if workers == 1:
+            return [self.run_step(step, rerun=rerun) for step in steps]
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="checker") as executor:
+            futures = [executor.submit(self.run_step, step, rerun=rerun) for step in steps]
+            return [future.result() for future in futures]
 
     def run_step(
         self,
@@ -734,17 +807,23 @@ class EngineFlow:
         _notify_flow_observer(observer, "on_step_started", workspace_step)
         previous_step = deepcopy(flow_step) if flow_step is not None else None
 
-        execution = execute_tool_step(
-            self.workspace,
-            workspace_step,
-            self.engine_db,
-            observer=observer,
-            started_at=start_time,
-        )
-        step_error = execution.error
-        elapsed = execution.elapsed_seconds
-        peak_memory_mb = execution.peak_memory_mb
-        runtime = execution.runtime
+        try:
+            execution = execute_tool_step(
+                self.workspace,
+                workspace_step,
+                self.engine_db,
+                observer=observer,
+                started_at=start_time,
+            )
+            step_error = execution.error
+            elapsed = execution.elapsed_seconds
+            peak_memory_mb = execution.peak_memory_mb
+            runtime = execution.runtime
+        except (Exception, SystemExit) as exc:
+            step_error = record_tool_failure(self.workspace.logger, step_tag, exc)
+            elapsed = time.time() - start_time
+            peak_memory_mb = 0.0
+            runtime = f"{int(elapsed // 3600)}:{int((elapsed % 3600) // 60)}:{int(elapsed % 60)}"
 
         state = StateEnum.Imcomplete
         terminal_persisted = False
@@ -891,3 +970,14 @@ class EngineFlow:
             return True
 
         return self.engine_db.create_db_engine(step=workspace_step)
+
+
+def _available_memory_mb() -> float:
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as meminfo:
+            for line in meminfo:
+                if line.startswith("MemAvailable:"):
+                    return float(line.split()[1]) / 1024
+    except (OSError, ValueError, IndexError):
+        return 0.0
+    return 0.0

@@ -172,6 +172,28 @@ def test_failed_synthesis_lec_is_persisted_as_incomplete(monkeypatch, tmp_path):
     assert workspace.flow.data["steps"][0]["state"] == StateEnum.Imcomplete.value
 
 
+def test_step_execution_exception_is_persisted_as_incomplete(monkeypatch, tmp_path):
+    workspace = Workspace(directory=tmp_path)
+    workspace.flow.path = tmp_path / "flow.json"
+    workspace.flow.data = {
+        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]
+    }
+    workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
+    workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    monkeypatch.setattr(
+        flow_module,
+        "execute_tool_step",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("worker crashed")),
+    )
+
+    assert engine_flow.run_step(workspace_step) is StateEnum.Imcomplete
+    assert workspace.flow.data["steps"][0]["state"] == StateEnum.Imcomplete.value
+
+
 def test_run_steps_stops_after_synthesis_lec_failure(monkeypatch, tmp_path):
     workspace = Workspace(directory=tmp_path)
     workspace.flow.data = {

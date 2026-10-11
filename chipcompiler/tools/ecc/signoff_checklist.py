@@ -18,6 +18,9 @@ from chipcompiler.data import (
 )
 from chipcompiler.data.step import STEP_DIRECTORIES, all_step_directories, flow_step_directory
 from chipcompiler.tools.ecc.lec_gates import (
+    latest_pnr_output as _latest_pnr_output,
+)
+from chipcompiler.tools.ecc.lec_gates import (
     post_route_lec_netlists as _post_route_lec_netlists,
 )
 from chipcompiler.tools.ecc.lec_gates import (
@@ -266,7 +269,11 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
         artifacts = (
             ("def", "LVS DEF", getattr(step.output, "def_", None)),
             ("verilog", "LVS Verilog", getattr(step.output, "verilog", None)),
-            ("gds", "LVS GDS", getattr(step.output, "gds", None)),
+            (
+                "gds",
+                "LVS source GDS",
+                _latest_pnr_output(workspace, ".gds") or getattr(step.output, "gds", None),
+            ),
             ("report", "LVS report", getattr(step.report, "step", None)),
             ("json", "LVS JSON", getattr(step.feature, "step", None)),
         )

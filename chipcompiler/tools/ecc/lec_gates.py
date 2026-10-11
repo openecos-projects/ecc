@@ -11,6 +11,29 @@ from pathlib import Path
 from chipcompiler.data import SkippableStepEnum, StepEnum, Workspace
 
 
+def latest_pnr_output(workspace: Workspace, suffix: str) -> Path | None:
+    """Return the latest PNR output matching *suffix* before checker steps."""
+    workspace_dir = Path(workspace.directory) if getattr(workspace, "directory", None) else None
+    flow = getattr(workspace, "flow", None)
+    if workspace_dir is None or flow is None:
+        return None
+
+    candidate = None
+    for flow_step in flow.steps():
+        category = str(flow_step.get("category") or "PNR").upper()
+        if category != "PNR":
+            continue
+        tool = flow_step.get("tool")
+        name = flow_step.get("name")
+        if not tool or not name:
+            continue
+        output_dir = workspace_dir / f"{name}_{tool}" / "output"
+        matches = sorted(output_dir.glob(f"*{suffix}"))
+        if matches:
+            candidate = matches[-1]
+    return candidate
+
+
 def post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | None]:
     """(golden, gate) netlists the post-route LEC proof compares."""
     design = getattr(getattr(workspace, "design", None), "name", "") or ""
@@ -22,9 +45,9 @@ def post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | N
     workspace_dir = Path(workspace.directory) if getattr(workspace, "directory", None) else None
     flow = getattr(workspace, "flow", None)
     if workspace_dir is not None:
-        # The canonical chain wires postRouteLec's gate input to the LVS
-        # output netlist (the step immediately before it), not the filler one.
-        gate = workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz"
+        # Checker inputs are sourced from the latest PNR step, which is
+        # normally filler after routing and is not necessarily the LVS step.
+        gate = latest_pnr_output(workspace, ".v.gz")
         if flow is not None and flow.has_step(StepEnum.SYNTHESIS):
             golden = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
         else:
