@@ -285,8 +285,9 @@ class TestSourceAwareResolution:
     def test_int_accepted_for_float_schema(self):
         toml = {"place.target_density": 1}
         resolved, errors = resolve_parameters(toml_overrides=toml)
-        # 1 converts to 1.0 which is out of range for target_density
-        assert len(errors) > 0  # range validation catches it
+        assert errors == []
+        density = next(r for r in resolved if r.param == "place.target_density")
+        assert density.value == 1.0
 
     def test_int_in_range_accepted_for_float_schema(self):
         toml = {"floorplan.core_util": 1}

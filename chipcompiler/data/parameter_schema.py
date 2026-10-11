@@ -82,7 +82,7 @@ _LEGACY_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         "placement",
         "Target placement density",
         {"dreamplace": "target_density"},
-        range=(0.1, 0.95),
+        range=(0.1, 1.0),
         example="0.65",
     ),
     ParamSchema(
