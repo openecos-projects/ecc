@@ -1,3 +1,4 @@
+import json
 import multiprocessing
 import os
 import signal
@@ -8,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent import sta_parallel as sta
+from chipcompiler.tools.ecc import sta_parallel as sta
 
 
 def _guarded_worker(connection, stale_parent):
@@ -125,26 +126,59 @@ def _workspace(tmp_path):
 
 def test_worker_setting_applies_to_every_workspace_sta_step(tmp_path, monkeypatch):
     monkeypatch.setattr(sta.sys, "platform", "linux")
+    monkeypatch.setattr(sta.os, "cpu_count", lambda: 8)
+    workspace = _workspace(tmp_path)
+    config_path = tmp_path / "sta.json"
+    workspace.config["sta"] = config_path
+    config_path.write_text("{}")
     step = SimpleNamespace(tool="ecc", name="sta")
-    assert sta.sta_workers(step) == 2
-    for value in ("1", "2", "4"):
-        monkeypatch.setenv("ECOS_AGENT_STA_WORKERS", value)
-        assert sta.sta_workers(step) == int(value)
-    monkeypatch.setenv("ECOS_AGENT_STA_WORKERS", "13")
-    with pytest.raises(ValueError, match="1, 2, or 4"):
-        sta.sta_workers(step)
+    assert sta.sta_workers(workspace, step) == 1
+    monkeypatch.setenv("ECOS_AGENT_STA_WORKERS", "4")
+    for value in (1, 2, 3, 4):
+        config_path.write_text(json.dumps({"max_parallel_corners": value}))
+        assert sta.sta_workers(workspace, step) == value
+    for value in (0, 5, True, 2.5, "2"):
+        config_path.write_text(json.dumps({"max_parallel_corners": value}))
+        with pytest.raises(ValueError, match="between 1 and 4"):
+            sta.sta_workers(workspace, step)
     step.name = "Harden"
-    assert sta.sta_workers(step) == 1
+    assert sta.sta_workers(workspace, step) == 1
 
 
 def test_non_linux_keeps_serial_default(tmp_path, monkeypatch):
     monkeypatch.setattr(sta.sys, "platform", "darwin")
-    monkeypatch.delenv("ECOS_AGENT_STA_WORKERS", raising=False)
+    workspace = _workspace(tmp_path)
+    config_path = tmp_path / "sta.json"
+    config_path.write_text('{"max_parallel_corners": 4}')
+    workspace.config["sta"] = config_path
     step = SimpleNamespace(tool="ecc", name="sta")
-    assert sta.sta_workers(step) == 1
-    monkeypatch.setenv("ECOS_AGENT_STA_WORKERS", "2")
-    with pytest.raises(ValueError, match="requires Linux"):
-        sta.sta_workers(step)
+    assert sta.sta_workers(workspace, step) == 1
+
+
+@pytest.mark.skipif(not hasattr(os, "sched_getaffinity"), reason="CPU affinity unavailable")
+def test_cpu_affinity_limits_corner_concurrency(tmp_path, monkeypatch):
+    config_path = tmp_path / "sta.json"
+    config_path.write_text('{"max_parallel_corners": 4}')
+    workspace = SimpleNamespace(config={"sta": config_path})
+    monkeypatch.setattr(sta.sys, "platform", "linux")
+    monkeypatch.setattr(sta.os, "sched_getaffinity", lambda _: {0})
+    assert sta.sta_workers(workspace, SimpleNamespace(tool="ecc", name="sta")) == 1
+
+
+@pytest.mark.parametrize("workers", [1, 2, 3, 4])
+def test_cli_tool_dispatch_uses_the_sta_config(tmp_path, monkeypatch, workers):
+    config_path = tmp_path / "sta.json"
+    config_path.write_text(json.dumps({"max_parallel_corners": workers}))
+    workspace = SimpleNamespace(config={"sta": config_path})
+    step = SimpleNamespace(name="sta", tool="ecc")
+    monkeypatch.setattr(sta.sys, "platform", "linux")
+    monkeypatch.setattr(sta.os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(sta.runner, "is_eda_exist", lambda: True)
+    calls = []
+    monkeypatch.setattr(sta.runner, "run_sta", lambda **_: calls.append(1) or True)
+    monkeypatch.setattr(sta, "run_parallel_sta", lambda *args: calls.append(args[-1]) or True)
+    assert sta.runner.run_step(workspace, step) is True
+    assert calls == [workers]
 
 
 @pytest.mark.parametrize("fail", [False, True])
@@ -228,6 +262,50 @@ def _slow_worker(_db, _snapshot, _job, log_path):
     time.sleep(30)
 
 
+def _short_worker(_db, _snapshot, _job, log_path):
+    Path(log_path).write_text("started")
+    time.sleep(0.1)
+
+
+@pytest.mark.parametrize("headroom, expected", [(0, 1), (2048, 2), (100000, 3)])
+def test_memory_headroom_limits_dispatch(tmp_path, monkeypatch, headroom, expected):
+    monkeypatch.setattr(sta, "_run_corner", _short_worker)
+    monkeypatch.setattr(sta, "_memory_headroom_mb", lambda: headroom)
+    monkeypatch.setattr(sta, "get_process_rss_mb", lambda _: 0)
+    maximum = 0
+
+    def check():
+        nonlocal maximum
+        maximum = max(maximum, len(multiprocessing.active_children()))
+
+    tasks = [(None, None, None, tmp_path / f"{index}.log") for index in range(5)]
+    sta._run_processes(tasks, 3, check)
+    assert maximum == expected
+    assert len(list(tmp_path.glob("*.log"))) == 5
+
+
+def test_memory_reserves_host_and_cgroup_headroom(tmp_path, monkeypatch):
+    def mapped_path(value):
+        return tmp_path / value.lstrip("/")
+
+    files = {
+        "/proc/meminfo": "MemTotal: 33554432 kB\nMemAvailable: 16777216 kB\n",
+        "/proc/self/cgroup": "0::/test/child\n",
+        "/sys/fs/cgroup/test/memory.max": str(4096 * 1024**2),
+        "/sys/fs/cgroup/test/memory.current": str(2048 * 1024**2),
+    }
+    for name, content in files.items():
+        path = mapped_path(name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+    monkeypatch.setattr(sta, "Path", mapped_path)
+    assert sta._memory_headroom_mb() == 1024
+    mapped_path("/proc/self/cgroup").write_text("5:memory:/test\n")
+    assert sta._memory_headroom_mb() == 0
+    mapped_path("/proc/meminfo").unlink()
+    assert sta._memory_headroom_mb() == 0
+
+
 def _failed_worker(_db, _snapshot, _job, log_path):
     if Path(log_path).stem == "0":
         raise SystemExit(7)
@@ -244,10 +322,12 @@ def test_worker_crash_reaps_remaining_processes(tmp_path, monkeypatch):
 
 
 def test_runtime_observer_cancellation_is_checked():
-    manager = SimpleNamespace(operation_status=lambda _: {"cancelRequested": True})
-    observer = sta.RuntimeFlowObserver(manager, "operation")
+    def cancel():
+        raise RuntimeError("cancelled")
+
+    observer = SimpleNamespace(raise_if_cancelled=cancel)
     workspace = SimpleNamespace(_runtime_flow_observer=observer)
-    with pytest.raises(sta.RuntimeOperationCancelled):
+    with pytest.raises(RuntimeError, match="cancelled"):
         sta._check_cancelled(workspace)
 
 
@@ -259,10 +339,10 @@ def test_spawn_cancellation_reaps_all_workers(tmp_path, monkeypatch):
 
     def cancel():
         if len(list(tmp_path.glob("*.log"))) == 2:
-            raise sta.RuntimeOperationCancelled("cancelled")
+            raise RuntimeError("cancelled")
         assert time.monotonic() - started < 20
 
-    with pytest.raises(sta.RuntimeOperationCancelled):
+    with pytest.raises(RuntimeError, match="cancelled"):
         sta._run_processes(tasks, 2, cancel)
     assert len(list(tmp_path.glob("*.log"))) == 2
     assert {child.pid for child in multiprocessing.active_children()} == original_children

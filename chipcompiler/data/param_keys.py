@@ -56,6 +56,7 @@ DISPLAY_KEY_MAP: dict[str, str] = {
     "die_height": "floorplan.die_builder.die_size.height_micron",
     "die_area_mode": "floorplan.die_builder.mode",
     "max_fanout": "cts.max_fanout",
+    "sta_max_parallel_corners": "sta.max_parallel_corners",
     "target_density": "place.target_density",
     "target_overflow": "place.target_overflow",
 }

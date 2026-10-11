@@ -83,6 +83,21 @@ def test_is_enabled_env_switch(monkeypatch):
     assert not step_subprocess.is_enabled()
 
 
+def test_sta_step_memory_includes_corner_workers(monkeypatch, tmp_path):
+    from chipcompiler.tools.ecc import sta_parallel
+
+    step = _workspace_step(tmp_path, name="sta")
+    result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
+    result_path.write_text(json.dumps({"done": True, "ok": True, "events": []}))
+    fake = _FakePopen(poll_script=[0])
+    monkeypatch.setattr(step_subprocess.subprocess, "Popen", lambda *_args, **_kwargs: fake)
+    readings = iter([30, 60])
+    monkeypatch.setattr(sta_parallel, "get_sta_process_rss_mb", lambda _pid: next(readings))
+    result = step_subprocess.execute_step_subprocess(_workspace(tmp_path), step)
+    assert result.error is None
+    assert result.peak_memory_mb == 30
+
+
 def test_execute_step_subprocess_reports_worker_crash(monkeypatch, tmp_path):
     monkeypatch.setenv(step_subprocess._ENABLED_ENV, "1")
     fake = _FakePopen(returncode=-11)

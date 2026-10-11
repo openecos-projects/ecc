@@ -7,6 +7,12 @@
 
 ## 0. 配置体系总览
 
+STA 并行调度参数：`sta.max_parallel_corners` 为整数 1–4，默认 1，
+通过 `ecc param set sta.max_parallel_corners 3 --workspace baseline` 设置。
+参数经标准配置刷新写入 STA JSON 的 `max_parallel_corners`。ECC/Studio Linux
+runtime 将其作为最大并行 corner 数，内存余量不足时减少并行度；
+非 Linux 为串行。`ECOS_AGENT_STA_WORKERS` 不再覆盖此配置。
+
 ### 0.1 配置文件放在哪
 
 每次运行（run）的 workspace 下有一个共享 `config/` 目录，所有步骤的 JSON 配置都落在这里，**同名文件会被后运行的步骤原地重写**（每步只更新与自己相关的字段）：

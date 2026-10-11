@@ -72,8 +72,13 @@ def execute_tool_step(
         workspace.logger.info(f"[STEP] {step_tag} pid={pid} started")
         start_memory_mb = get_process_rss_mb(pid)
         peak_memory[0] = start_memory_mb
+        memory_tracker = track_current_process_memory
+        if workspace_step.tool == "ecc" and workspace_step.name == "sta":
+            from chipcompiler.tools.ecc.sta_parallel import track_sta_process_memory
+
+            memory_tracker = track_sta_process_memory
         memory_monitor = Thread(
-            target=track_current_process_memory,
+            target=memory_tracker,
             args=(pid, stop_memory_monitor, peak_memory),
             daemon=True,
         )

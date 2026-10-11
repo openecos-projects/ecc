@@ -7,6 +7,13 @@ This document consolidates **the tool configuration files actually used by each 
 
 ## 0. Configuration System Overview
 
+`sta.max_parallel_corners` is an integer from 1 to 4 (default 1). Set it with
+`ecc param set sta.max_parallel_corners 3 --workspace baseline`. Standard config
+refresh writes the value into the STA JSON's `max_parallel_corners`. ECC/Studio's
+Linux runtime treats it as an upper bound and reduces concurrency when memory
+headroom is insufficient; other platforms remain serial. The environment variable
+`ECOS_AGENT_STA_WORKERS` no longer overrides this configuration.
+
 ### 0.1 Where the configuration files live
 
 Each run's workspace has a shared `config/` directory where the JSON configurations of all steps land; **files with the same name are rewritten in place by whichever step runs later** (each step only updates the fields relevant to it):

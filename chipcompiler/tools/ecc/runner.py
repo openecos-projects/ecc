@@ -8,18 +8,18 @@ from chipcompiler.data import (
     SkippableStepEnum,
     StateEnum,
     StepEnum,
+    StepMetrics,
     Workspace,
     WorkspaceStep,
     workspace_config_path,
-    StepMetrics,
 )
 from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.tools.ecc.drc_artifacts import save_drc_feature
 from chipcompiler.tools.ecc.metrics import (
     build_step_metrics,
-    save_step_metrics,
     save_cts_timing_feature_facts,
     save_rcx_spef_feature_facts,
+    save_step_metrics,
 )
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.power_artifacts import (
@@ -517,7 +517,13 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
         case StepEnum.RCX.value:
             state = run_rcx(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.STA.value:
-            state = run_sta(workspace=workspace, step=step, ecc_module=ecc_module)
+            from .sta_parallel import run_parallel_sta, sta_workers
+
+            workers = sta_workers(workspace, step)
+            if workers > 1:
+                state = run_parallel_sta(workspace, step, ecc_module, workers)
+            else:
+                state = run_sta(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.POWER_ANALYSIS.value:
             state = run_power_analysis(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.EMIR.value:

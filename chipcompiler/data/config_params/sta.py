@@ -2,6 +2,15 @@ from .common import config_param
 
 SCHEMAS = (
     config_param(
+        "sta.max_parallel_corners",
+        "sta",
+        ("max_parallel_corners",),
+        1,
+        applies="sta",
+        description="Maximum simultaneous STA corners, reduced when memory headroom is low.",
+        range=(1, 4),
+    ),
+    config_param(
         "sta.liberty",
         "sta",
         ("liberty",),

@@ -236,16 +236,22 @@ def test_legalization_runner_reapplies_real_dreamplace_overlay(monkeypatch, tmp_
     assert consumed == [16]
 
 
-@pytest.mark.parametrize("workers", [1, 2, 4])
+@pytest.mark.parametrize("workers", [1, 2, 3, 4])
 def test_candidate_sta_routes_only_parallel_mode_to_agent(monkeypatch, tmp_path, workers):
     calls = []
-    workspace = SimpleNamespace(directory=tmp_path / ".agent" / "candidates" / "one", logger=None)
+    config_path = tmp_path / "sta.json"
+    _write_json(config_path, {"max_parallel_corners": workers})
+    workspace = SimpleNamespace(
+        directory=tmp_path / ".agent" / "candidates" / "one",
+        logger=None,
+        config={"sta": config_path},
+    )
     step = SimpleNamespace(name="sta", tool="ecc")
     tool = SimpleNamespace(
         build_step_config=lambda *_: None,
         run_step=lambda **_: calls.append("serial") or True,
     )
-    monkeypatch.setenv("ECOS_AGENT_STA_WORKERS", str(workers))
+    monkeypatch.setattr(os, "cpu_count", lambda: 8)
     monkeypatch.setattr(eda, "load_eda_module", lambda *_args, **_kwargs: tool)
     monkeypatch.setattr(eda, "log_workspace_step", lambda *_: None)
     monkeypatch.setattr(eda, "reapply_materialized_candidate_config", lambda *_: None)

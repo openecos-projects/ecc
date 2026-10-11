@@ -1,4 +1,5 @@
 {
+    "max_parallel_corners": 1,
     "liberty" :[
         {
             "corner": "MAX",

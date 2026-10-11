@@ -99,7 +99,12 @@ def execute_step_subprocess(
     process.stdin.write(json.dumps(payload).encode("utf-8"))
     process.stdin.close()
 
-    start_memory_mb = get_process_rss_mb(process.pid)
+    memory_reader = get_process_rss_mb
+    if workspace_step.tool == "ecc" and workspace_step.name == "sta":
+        from chipcompiler.tools.ecc.sta_parallel import get_sta_process_rss_mb
+
+        memory_reader = get_sta_process_rss_mb
+    start_memory_mb = memory_reader(process.pid)
     peak_memory_mb = start_memory_mb
     step_error = None
     emitted = 0
@@ -109,10 +114,10 @@ def execute_step_subprocess(
             if cancel_error is not None:
                 step_error = f"{step_tag} cancelled: {cancel_error}"
                 break
-            peak_memory_mb = max(peak_memory_mb, get_process_rss_mb(process.pid))
+            peak_memory_mb = max(peak_memory_mb, memory_reader(process.pid))
             emitted = _replay_events(result_path, workspace_step, observer, emitted)
             time.sleep(_POLL_SECONDS)
-        peak_memory_mb = max(peak_memory_mb, get_process_rss_mb(process.pid))
+        peak_memory_mb = max(peak_memory_mb, memory_reader(process.pid))
         emitted = _replay_events(result_path, workspace_step, observer, emitted)
     finally:
         _terminate_worker(process)

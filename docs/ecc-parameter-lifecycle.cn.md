@@ -104,3 +104,26 @@ STA corner 明细的发现不依赖聚合文件 `sta_timing_issues.json` 的投�
 `timing_paths.json`，并记录为可校验 artifact。Studio 通过 artifact ID
 按需读取并校验用户选中的单个 corner；真实文件引用和报告正文不会进入
 renderer 可见的快照投影。
+
+### STA corner 最大并行数
+
+Studio 创建 Workspace 时，Flow Setup 可设置 `sta.max_parallel_corners`，
+范围为整数 1–4，默认 1。它是 STA 直配参数：经过 ECC CLI 参数校验后，
+覆盖记录写入 `home/params.toml`，配置刷新将其重放到 STA JSON 的
+`max_parallel_corners`，不得由 GUI 直接写生成配置。
+
+```bash
+ecc param set sta.max_parallel_corners 3 --project /path/to/project --workspace baseline
+ecc param show sta.max_parallel_corners --project /path/to/project --workspace baseline
+```
+
+ECC 工具层从生成配置读取上限，不再使用 `ECOS_AGENT_STA_WORKERS`。
+GUI 的 CLI flow、独立 ECC CLI 和 Agent flow 共用同一调度实现。
+Linux 实际并行数还受 CPU 数量和内存余量约束，非 Linux 为串行。
+新增 worker 前检查 `MemAvailable` 与 cgroup v2 的 `memory.max/current`，
+保留至少 1 GiB 或有效容量的 10%（取较大值）。单 worker 内存估算至少
+1 GiB、启动时父进程 RSS 的两倍，并随已运行 worker RSS 的 1.5 倍上调。
+余量不足或无法读取时不再增加 worker；无活动任务时仍允许一个 corner
+运行，以避免调度死锁。该估算不是内存保证，单 corner 仍可能耗尽内存。
+所有 corner 成功后才发布结果，失败或取消仍回收 worker 并清理输出。
+STA 峰值内存统计包含同时运行的 corner 子进程。

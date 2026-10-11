@@ -120,3 +120,28 @@ STA corner detail discovery is independent of the aggregate
 verified artifacts. Studio uses the artifact ID to read and validate one
 selected corner on demand; file references and report bodies remain outside
 the renderer-facing Snapshot projection.
+
+### Maximum parallel STA corners
+
+Studio's Workspace Flow Setup exposes `sta.max_parallel_corners`, an integer
+from 1 to 4 with default 1. This direct parameter follows ECC CLI validation,
+workspace persistence in `home/params.toml`, and configuration regeneration into
+the STA JSON's `max_parallel_corners`; GUI code never edits generated JSON.
+
+```bash
+ecc param set sta.max_parallel_corners 3 --project /path/to/project --workspace baseline
+ecc param show sta.max_parallel_corners --project /path/to/project --workspace baseline
+```
+
+The shared ECC tool runtime reads the generated config, not `ECOS_AGENT_STA_WORKERS`.
+GUI CLI flows, standalone ECC CLI runs, and Agent flows use the same scheduler.
+Linux dispatch also respects CPU count and available memory; other platforms
+remain serial. Before adding another worker, the runtime checks `MemAvailable`
+and cgroup v2 memory limits, reserving at least 1 GiB or 10% of effective capacity,
+whichever is larger. Estimated worker memory starts at the larger of 1 GiB and
+twice the parent's RSS, and increases to at least 1.5 times observed worker RSS.
+Insufficient or unknown headroom prevents additional dispatch, but an idle
+scheduler always allows one corner to proceed. This is a heuristic, not an OOM
+guarantee: even one corner can exhaust memory. Existing cancellation, worker
+cleanup, and full-corner publication barriers remain in effect.
+STA peak-memory reporting includes the simultaneously running corner subprocesses.

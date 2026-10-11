@@ -71,6 +71,66 @@ def _write_manifest(project_dir: str) -> None:
     )
 
 
+def test_workspace_sta_parallel_limit_replays_into_config(create_cli_project, monkeypatch):
+    from chipcompiler.data.workspace.config_overrides import apply_config_overrides
+
+    project_dir = create_cli_project()
+    workspace_dir = Path(project_dir) / "baseline"
+    _write_manifest(project_dir)
+    workspace = _workspace(workspace_dir)
+    workspace.flow.data["steps"].append(
+        {"name": "sta", "state": "Success", "runtime": "", "peak memory (mb)": 0}
+    )
+    config_path = workspace_dir / "sta.json"
+    config_path.write_text('{"max_parallel_corners": 1, "signoff": []}')
+    workspace.config["sta"] = config_path
+    monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _: workspace)
+    monkeypatch.setattr(
+        "chipcompiler.data.refresh_workspace_config",
+        lambda current: apply_config_overrides(current.config, current.parameters.data),
+    )
+    monkeypatch.setattr("chipcompiler.engine.EngineFlow", _Flow)
+    assert (
+        cli_main.run(
+            [
+                "param",
+                "set",
+                "sta.max_parallel_corners",
+                "3",
+                "--workspace",
+                "baseline",
+                "--project",
+                project_dir,
+                "--plain",
+            ]
+        )
+        == 0
+    )
+    assert json.loads(config_path.read_text()) == {"max_parallel_corners": 3, "signoff": []}
+    assert workspace.flow.data["steps"][-1]["state"] == "Unstart"
+    assert workspace.parameters.data["config_overrides"] == {"sta": {"max_parallel_corners": 3}}
+    before = workspace.parameters.path.read_bytes()
+    for value in ("0", "5", "2.5", "true"):
+        assert (
+            cli_main.run(
+                [
+                    "param",
+                    "set",
+                    "sta.max_parallel_corners",
+                    value,
+                    "--workspace",
+                    "baseline",
+                    "--project",
+                    project_dir,
+                    "--plain",
+                ]
+            )
+            == 1
+        )
+        assert workspace.parameters.path.read_bytes() == before
+        assert json.loads(config_path.read_text())["max_parallel_corners"] == 3
+
+
 def test_workspace_param_set_persists_and_invalidates_suffix(
     capsys, create_cli_project, monkeypatch, plain_records
 ):
