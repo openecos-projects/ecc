@@ -6,7 +6,7 @@ selection, plus an optional declared skip policy) into the initial
 (reconcile, config validation) slices from. Pure computation: no IO.
 """
 
-from chipcompiler.data.types import StateEnum, StepBaseEnum
+from chipcompiler.data.types import StateEnum, StepBaseEnum, default_flow_step_category
 
 from ..schema_migrations import FLOW_JSON, SCHEMA_VERSION_FIELD, SUPPORTED_SCHEMA_VERSIONS
 
@@ -112,6 +112,7 @@ def _flow_step_template(name: str, tool: str, state: str) -> dict:
     return {
         "name": name,
         "tool": tool,
+        "category": default_flow_step_category(name).value,
         "state": state,
         "runtime": "",
         "peak memory (mb)": 0,

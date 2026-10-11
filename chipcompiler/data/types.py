@@ -8,6 +8,13 @@ from enum import Enum
 from typing import Final
 
 
+class FlowStepCategory(str, Enum):
+    """Input chaining behavior for persisted flow steps."""
+
+    PNR = "PNR"
+    CHECKER = "CHECKER"
+
+
 class StepBaseEnum(Enum):
     """Memberless base of the flow step enums: shared behavior.
 
@@ -60,6 +67,38 @@ class SkippableStepEnum(StepBaseEnum):
 
     def is_skippable(self) -> bool:
         return True
+
+
+FLOW_STEP_CATEGORIES: Final[dict[str, FlowStepCategory]] = {
+    StepEnum.RTL2GDS.value: FlowStepCategory.PNR,
+    StepEnum.INIT.value: FlowStepCategory.PNR,
+    StepEnum.SYNTHESIS.value: FlowStepCategory.PNR,
+    StepEnum.PRE_FLOORPLAN.value: FlowStepCategory.PNR,
+    StepEnum.MACRO_PLACEMENT.value: FlowStepCategory.PNR,
+    StepEnum.POST_FLOORPLAN.value: FlowStepCategory.PNR,
+    StepEnum.PLACEMENT.value: FlowStepCategory.PNR,
+    StepEnum.CTS.value: FlowStepCategory.PNR,
+    StepEnum.LEGALIZATION.value: FlowStepCategory.PNR,
+    StepEnum.ROUTING.value: FlowStepCategory.PNR,
+    StepEnum.FILLER.value: FlowStepCategory.PNR,
+    StepEnum.LVS.value: FlowStepCategory.CHECKER,
+    StepEnum.DRC.value: FlowStepCategory.CHECKER,
+    SkippableStepEnum.POST_ROUTE_LEC.value: FlowStepCategory.CHECKER,
+    StepEnum.RCX.value: FlowStepCategory.CHECKER,
+    StepEnum.STA.value: FlowStepCategory.CHECKER,
+    StepEnum.POWER_ANALYSIS.value: FlowStepCategory.CHECKER,
+    StepEnum.HARDEN.value: FlowStepCategory.PNR,
+    StepEnum.SIGNOFF.value: FlowStepCategory.PNR,
+    StepEnum.GDS.value: FlowStepCategory.PNR,
+    StepEnum.ABSTRACT_LEF.value: FlowStepCategory.PNR,
+    SkippableStepEnum.LEC.value: FlowStepCategory.PNR,
+    SkippableStepEnum.TIMING_OPT.value: FlowStepCategory.PNR,
+}
+
+
+def default_flow_step_category(step: StepBaseEnum | str) -> FlowStepCategory:
+    value = step.value if isinstance(step, StepBaseEnum) else str(step)
+    return FLOW_STEP_CATEGORIES.get(value, FlowStepCategory.PNR)
 
 
 # Projects that declare no skip policy skip the synthesis LEC: the

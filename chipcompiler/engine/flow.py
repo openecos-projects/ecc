@@ -9,12 +9,14 @@ from pathlib import Path
 from chipcompiler.data import (
     LEC_STEP_TOOLS,
     EccOutput,
+    FlowStepCategory,
     SkippableStepEnum,
     StateEnum,
     StepBaseEnum,
     StepEnum,
     Workspace,
     WorkspaceStep,
+    default_flow_step_category,
     is_finished_step_state,
     log_flow,
 )
@@ -150,17 +152,29 @@ class EngineFlow:
         tool: str,
         state: str | StateEnum,
         info: dict | None = None,
+        category: str | FlowStepCategory = FlowStepCategory.PNR,
+        input_step: str | None = None,
     ):
         step_value = step.value if isinstance(step, StepBaseEnum) else step
         state_value = state.value if isinstance(state, StateEnum) else state
-        return {
+        if (
+            category == FlowStepCategory.PNR
+            and default_flow_step_category(step) == FlowStepCategory.CHECKER
+        ):
+            category = FlowStepCategory.CHECKER
+        category_value = category.value if isinstance(category, FlowStepCategory) else str(category)
+        result = {
             "name": step_value,  # step name
             "tool": tool,  # eda tool name
+            "category": category_value,
             "state": state_value,  # step state
             "runtime": "",  # step run time
             "peak memory (mb)": 0,  # step peak memory
             "info": info or {},  # step additional infomation
         }
+        if input_step:
+            result["input_step"] = input_step
+        return result
 
     def add_step(
         self,
@@ -168,9 +182,15 @@ class EngineFlow:
         tool: str,
         state: str | StateEnum,
         info: dict | None = None,
+        category: str | FlowStepCategory = FlowStepCategory.PNR,
+        input_step: str | None = None,
     ):
         steps = self.workspace.flow.data.get("steps", [])
-        steps.append(self.init_flow_step(step, tool, state, info=info))
+        steps.append(
+            self.init_flow_step(
+                step, tool, state, info=info, category=category, input_step=input_step
+            )
+        )
 
         self.workspace.flow.data = {"steps": steps}
 
@@ -370,19 +390,24 @@ class EngineFlow:
         """
         self.workspace_steps = []
         pre_step = None
+        pnr_step = None
+        created_steps = {}
         synthesis_gate_verilog = ""
         synthesis_golden_verilog = ""
         for step in self.workspace.flow.data.get("steps", []):
-            if pre_step is None:
+            input_source = self._input_source_for_step(
+                step, pre_step=pre_step, pnr_step=pnr_step, created_steps=created_steps
+            )
+            if input_source is None:
                 # use the origin def and verilog in workspace for the first step.
                 input_def = self.workspace.design.origin_def
                 input_verilog = self.workspace.design.origin_verilog
                 input_db = None
             else:
                 # use the output def and verilog from last step.
-                input_def = pre_step.output.def_
-                input_verilog = pre_step.output.verilog
-                input_db = pre_step.output.db
+                input_def = input_source.output.def_
+                input_verilog = input_source.output.verilog
+                input_db = input_source.output.db
 
             from chipcompiler.tools import create_step
 
@@ -427,6 +452,12 @@ class EngineFlow:
                 ):
                     eda_step.output.spef = pre_step.output.spef
                 self.workspace_steps.append(eda_step)
+                created_steps[eda_step.name] = eda_step
+                if (
+                    self._step_category(step) == FlowStepCategory.PNR.value
+                    and eda_step.tool not in LEC_STEP_TOOLS
+                ):
+                    pnr_step = eda_step
                 if eda_step.tool not in LEC_STEP_TOOLS:
                     pre_step = eda_step
                 if eda_step.name == StepEnum.SYNTHESIS.value:
@@ -441,6 +472,27 @@ class EngineFlow:
                     step.get("tool", "?"),
                 )
                 break
+
+    @staticmethod
+    def _step_category(step: dict) -> str:
+        return str(
+            step.get("category")
+            or (step.get("info") or {}).get("category")
+            or FlowStepCategory.PNR.value
+        ).upper()
+
+    @classmethod
+    def _input_step_name(cls, step: dict) -> str | None:
+        return step.get("input_step") or (step.get("info") or {}).get("input_step")
+
+    @classmethod
+    def _input_source_for_step(cls, step, *, pre_step, pnr_step, created_steps):
+        input_step_name = cls._input_step_name(step)
+        if input_step_name:
+            return created_steps.get(input_step_name)
+        if cls._step_category(step) == FlowStepCategory.CHECKER.value:
+            return pnr_step or pre_step
+        return pre_step
 
     def init_db_engine(self) -> bool:
         if len(self.workspace_steps) <= 0:
@@ -535,12 +587,15 @@ class EngineFlow:
         to a range narrower than the persisted ledger pass False.
         """
 
+        from chipcompiler.engine import step_subprocess
+
         for workspace_step in self.workspace_steps:
             _notify_flow_observer(observer, "raise_if_cancelled")
             self.workspace.logger.log_section(
                 f"{workspace_step.tool} - begin step - {workspace_step.name}"
             )
-            self.init_db_engine()
+            if not step_subprocess.is_enabled():
+                self.init_db_engine()
             state = (
                 self.run_step(workspace_step, rerun=rerun)
                 if observer is None

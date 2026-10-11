@@ -76,6 +76,25 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
     ]
 
 
+def test_default_flow_data_marks_checker_steps():
+    from chipcompiler.data.workspace import build_dynamic_flow_data
+
+    ledger = build_dynamic_flow_data({"start_step": "Synthesis", "end_step": "Harden"})
+    categories = {
+        step["name"]: step["category"]
+        for step in ledger["steps"]
+    }
+
+    assert {name for name, category in categories.items() if category == "CHECKER"} == {
+        "lvs",
+        "drc",
+        "postRouteLec",
+        "RCX",
+        "sta",
+        "powerAnalysis",
+    }
+
+
 def test_build_rtl2gds_flow_skip_removes_exactly_the_skipped_steps():
     flow = builder_module.build_rtl2gds_flow(skip=("lec", SkippableStepEnum.TIMING_OPT.value))
 

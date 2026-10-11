@@ -369,6 +369,70 @@ def test_create_step_workspaces_can_preserve_existing_configs(monkeypatch, tmp_p
     assert initialize_config_values == [False]
 
 
+def test_checker_step_uses_latest_pnr_input(monkeypatch, tmp_path):
+    import chipcompiler.tools as tools_api
+    from chipcompiler.data import OriginDesign
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    inputs = []
+    outputs = {
+        "route": EccOutput(def_=tmp_path / "route.def", verilog=tmp_path / "route.v"),
+        "filler": EccOutput(def_=tmp_path / "filler.def", verilog=tmp_path / "filler.v"),
+    }
+
+    def fake_create_step(workspace, step, eda, **kwargs):
+        inputs.append((step, kwargs["input_def"], kwargs["input_verilog"]))
+        return EccStep(name=step, tool=eda, output=outputs.get(step, EccOutput()))
+
+    monkeypatch.setattr(tools_api, "create_step", fake_create_step)
+    flow = EngineFlow(workspace)
+    flow.workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc", "category": "PNR"},
+            {"name": "filler", "tool": "ecc", "category": "PNR"},
+            {"name": "drc", "tool": "ecc", "category": "CHECKER"},
+            {"name": "lvs", "tool": "ecc", "category": "CHECKER"},
+        ]
+    }
+
+    flow.create_step_workspaces()
+
+    assert inputs[2:] == [
+        ("drc", outputs["filler"].def_, outputs["filler"].verilog),
+        ("lvs", outputs["filler"].def_, outputs["filler"].verilog),
+    ]
+
+
+def test_checker_step_can_select_explicit_input_step(monkeypatch, tmp_path):
+    import chipcompiler.tools as tools_api
+    from chipcompiler.data import OriginDesign
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    inputs = []
+    outputs = {
+        "route": EccOutput(def_=tmp_path / "route.def", verilog=tmp_path / "route.v"),
+        "filler": EccOutput(def_=tmp_path / "filler.def", verilog=tmp_path / "filler.v"),
+    }
+
+    def fake_create_step(workspace, step, eda, **kwargs):
+        inputs.append((step, kwargs["input_def"]))
+        return EccStep(name=step, tool=eda, output=outputs.get(step, EccOutput()))
+
+    monkeypatch.setattr(tools_api, "create_step", fake_create_step)
+    flow = EngineFlow(workspace)
+    flow.workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc", "category": "PNR"},
+            {"name": "filler", "tool": "ecc", "category": "PNR"},
+            {"name": "drc", "tool": "ecc", "category": "CHECKER", "input_step": "route"},
+        ]
+    }
+
+    flow.create_step_workspaces()
+
+    assert inputs[-1] == ("drc", outputs["route"].def_)
+
+
 # --- Phase 2: Silent failure regression tests ---
 
 

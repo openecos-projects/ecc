@@ -24,30 +24,52 @@ def iter_workspace_steps(workspace):
     if flow is None:
         return
     previous_step = None
+    pnr_step = None
+    created_steps = {}
     for flow_step in flow.steps():
         try:
-            workspace_step = _build_workspace_step_for_info(workspace, flow_step, previous_step)
+            workspace_step = _build_workspace_step_for_info(
+                workspace,
+                flow_step,
+                previous_step,
+                pnr_step=pnr_step,
+                created_steps=created_steps,
+            )
         except (ImportError, AttributeError, TypeError, ValueError):
             workspace_step = None
         yield flow_step, workspace_step
         if workspace_step is not None:
+            created_steps[workspace_step.name] = workspace_step
+            if _step_category(flow_step) == "PNR" and workspace_step.tool not in _lec_step_tools():
+                pnr_step = workspace_step
             previous_step = workspace_step
 
 
-def _build_workspace_step_for_info(workspace, flow_step: dict, previous_step):
+def _build_workspace_step_for_info(
+    workspace, flow_step: dict, previous_step, *, pnr_step=None, created_steps=None
+):
     step_name = flow_step.get("name")
     tool = flow_step.get("tool")
     if not step_name or not tool:
         return None
 
-    if previous_step is None:
+    created_steps = created_steps or {}
+    input_step_name = flow_step.get("input_step") or (flow_step.get("info") or {}).get("input_step")
+    if input_step_name:
+        input_source = created_steps.get(input_step_name)
+    elif _step_category(flow_step) == "CHECKER":
+        input_source = pnr_step or previous_step
+    else:
+        input_source = previous_step
+
+    if input_source is None:
         input_def = workspace.design.origin_def
         input_verilog = workspace.design.origin_verilog
         input_db = None
     else:
-        input_def = previous_step.output.def_ or ""
-        input_verilog = previous_step.output.verilog or ""
-        input_db = previous_step.output.db or ""
+        input_def = input_source.output.def_ or ""
+        input_verilog = input_source.output.verilog or ""
+        input_db = input_source.output.db or ""
 
     builder = _load_tool_builder(tool)
     if builder is None or not hasattr(builder, "build_step"):
@@ -60,6 +82,20 @@ def _build_workspace_step_for_info(workspace, flow_step: dict, previous_step):
         input_verilog=input_verilog,
         input_db=input_db,
     )
+
+
+def _step_category(flow_step: dict) -> str:
+    return str(
+        flow_step.get("category")
+        or (flow_step.get("info") or {}).get("category")
+        or "PNR"
+    ).upper()
+
+
+def _lec_step_tools() -> frozenset[str]:
+    from chipcompiler.data import LEC_STEP_TOOLS
+
+    return LEC_STEP_TOOLS
 
 
 def _load_tool_builder(tool: str):
