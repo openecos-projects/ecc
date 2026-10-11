@@ -70,6 +70,8 @@ def test_public_s50_coefficients_survive_step_resolution_without_changing_placem
     expected_policy = dreamplace_default_config["diff_sizing_coefficients"] | override
     expected = {
         "diff_sizing_coefficients": expected_policy,
+        "gpugr_bottom_routing_layer": "MET2",
+        "gpugr_top_routing_layer": "MET5",
         "timing_wns_coeff": expected_policy["wns"],
         "timing_tns_coeff": expected_policy["tns"],
         "timing_cap_weight": expected_policy["cap"],
@@ -98,12 +100,26 @@ def test_public_s50_coefficients_survive_step_resolution_without_changing_placem
 def test_old_config_uses_s50_defaults_without_inheriting_gp_weights(dreamplace_default_config):
     config = dreamplace_default_config.copy()
     policy = config.pop("diff_sizing_coefficients")
-    config.update(timing_wns_coeff=3.0, timing_tns_coeff=0.03, timing_grad_balance_weight=7.0)
+    config.update(
+        timing_wns_coeff=3.0,
+        timing_tns_coeff=0.03,
+        timing_grad_balance_weight=7.0,
+        gpugr_bottom_routing_layer="",
+        gpugr_top_routing_layer="",
+    )
     actual = builder._apply_diff_sizing_defaults(config)
     assert {
         key: actual[key]
-        for key in ("timing_wns_coeff", "timing_tns_coeff", "timing_grad_balance_weight")
+        for key in (
+            "gpugr_bottom_routing_layer",
+            "gpugr_top_routing_layer",
+            "timing_wns_coeff",
+            "timing_tns_coeff",
+            "timing_grad_balance_weight",
+        )
     } == {
+        "gpugr_bottom_routing_layer": "MET2",
+        "gpugr_top_routing_layer": "MET5",
         "timing_wns_coeff": policy["wns"],
         "timing_tns_coeff": policy["tns"],
         "timing_grad_balance_weight": 1.0,

@@ -214,22 +214,20 @@ SCHEMAS = (
         "place.gpugr_bottom_routing_layer",
         "dreamplace",
         ("gpugr_bottom_routing_layer",),
-        "",
+        "MET2",
         applies="placement",
         description=(
-            "inclusive bottom routing-layer name passed to GPUGR; empty uses the first "
-            "LEF routing layer"
+            "inclusive bottom routing-layer name passed to GPUGR"
         ),
     ),
     config_param(
         "place.gpugr_top_routing_layer",
         "dreamplace",
         ("gpugr_top_routing_layer",),
-        "",
+        "MET5",
         applies="placement",
         description=(
-            "inclusive top routing-layer name passed to GPUGR; empty uses the last LEF "
-            "routing layer"
+            "inclusive top routing-layer name passed to GPUGR"
         ),
     ),
     config_param(

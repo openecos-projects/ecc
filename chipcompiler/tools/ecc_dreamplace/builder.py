@@ -115,6 +115,8 @@ def _apply_diff_sizing_defaults(params: dict) -> dict:
         joint_segment_virtual_density_enabled=0,
         gpu=0,
         gpugr_backend="cpu_pr_maze",
+        gpugr_bottom_routing_layer=result.get("gpugr_bottom_routing_layer") or "MET2",
+        gpugr_top_routing_layer=result.get("gpugr_top_routing_layer") or "MET5",
         gr_sizing_rrr_iters=3,
         enable_fillers=0,
         random_center_init_flag=0,
