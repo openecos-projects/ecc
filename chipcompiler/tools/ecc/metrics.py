@@ -20,6 +20,38 @@ from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 from chipcompiler.utility import dict_to_str, json_read, json_write
 
 QOR_METRIC_MAP = {
+    "Power internal [uW]": {
+        "name": "power_analysis_internal_uw",
+        "display_name": "Power Analysis Internal Power",
+        "unit": "uW",
+        "dimension": "power_integrity",
+        "polarity": "trend_only",
+        "confidence": "medium",
+    },
+    "Power switching [uW]": {
+        "name": "power_analysis_switching_uw",
+        "display_name": "Power Analysis Switching Power",
+        "unit": "uW",
+        "dimension": "power_integrity",
+        "polarity": "trend_only",
+        "confidence": "medium",
+    },
+    "Power dynamic [uW]": {
+        "name": "power_analysis_dynamic_uw",
+        "display_name": "Power Analysis Dynamic Power",
+        "unit": "uW",
+        "dimension": "power_integrity",
+        "polarity": "trend_only",
+        "confidence": "medium",
+    },
+    "Power leakage [uW]": {
+        "name": "power_analysis_leakage_uw",
+        "display_name": "Power Analysis Leakage Power",
+        "unit": "uW",
+        "dimension": "power_integrity",
+        "polarity": "trend_only",
+        "confidence": "medium",
+    },
     "Cell area": {
         "name": "synthesis_cell_area",
         "display_name": "Synthesis Cell Area",
@@ -2040,7 +2072,16 @@ def _metric_feature_source(
     feature_path = None
     selector = ""
 
-    if metric_id.startswith("synthesis_power_"):
+    if metric_id.startswith("power_analysis_"):
+        feature_dir = getattr(step.feature, "dir", None)
+        feature_path = Path(feature_dir) / "powerAnalysis.step.json" if feature_dir else None
+        selector = {
+            "power_analysis_internal_uw": "/power_summary/internal_uw",
+            "power_analysis_switching_uw": "/power_summary/switching_uw",
+            "power_analysis_dynamic_uw": "/power_summary/dynamic_uw",
+            "power_analysis_leakage_uw": "/power_summary/leakage_uw",
+        }.get(metric_id, "")
+    elif metric_id.startswith("synthesis_power_"):
         feature_dir = getattr(step.feature, "dir", None)
         feature_path = (
             Path(feature_dir) / POST_SYNTHESIS_STA_CORNER / STA_POWER_SUMMARY_FILENAME

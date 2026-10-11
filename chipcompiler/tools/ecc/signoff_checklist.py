@@ -34,6 +34,7 @@ from chipcompiler.tools.ecc.sta_qor import (
     read_sta_qor_summary,
     read_sta_timing_paths,
 )
+from chipcompiler.tools.ecc.power_artifacts import power_step_path
 from chipcompiler.utility import json_read
 from chipcompiler.utility.filelist import resolve_initial_rtl
 
@@ -304,6 +305,27 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
                 evidence=[
                     {"kind": "output", "path": _path_text(workspace, path)} for path in files
                 ],
+            )
+        ]
+    elif step.name == StepEnum.POWER_ANALYSIS.value:
+        artifact = power_step_path(step.feature.dir)
+        state, summary = _file_state(artifact)
+        return [
+            _item(
+                item_id="artifact.poweranalysis.step",
+                step=step.name,
+                category="artifact",
+                owner="checklist",
+                policy="block",
+                state=state,
+                title="Power analysis step data",
+                summary=(
+                    "Merged power summary is present and non-empty."
+                    if state == "pass"
+                    else "Merged power summary is missing or empty."
+                ),
+                source={"kind": "feature", "path": _path_text(workspace, artifact)},
+                evidence=[{"kind": "feature", "path": _path_text(workspace, artifact)}],
             )
         ]
     elif step.name == StepEnum.STA.value:

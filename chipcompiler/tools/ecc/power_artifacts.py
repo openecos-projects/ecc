@@ -23,6 +23,11 @@ def power_summary_path(feature_dir: str | Path) -> Path:
     return Path(feature_dir) / STA_POWER_SUMMARY_FILENAME
 
 
+def power_step_path(feature_dir: str | Path) -> Path:
+    """Return the merged machine-readable power step artifact."""
+    return Path(feature_dir) / "powerAnalysis.step.json"
+
+
 def workspace_power_report_path(workspace_dir: str | Path) -> Path:
     """Return the canonical native iPW report path for a workspace."""
     return power_report_path(
@@ -46,6 +51,7 @@ def discard_power_artifacts(data_dir: str | Path, feature_dir: str | Path) -> No
     """Invalidate raw and derived power artifacts before an iPW rerun."""
     power_report_path(data_dir).unlink(missing_ok=True)
     power_summary_path(feature_dir).unlink(missing_ok=True)
+    power_step_path(feature_dir).unlink(missing_ok=True)
 
 
 def publish_power_summary(data_dir: str | Path, feature_dir: str | Path) -> Path:
@@ -60,6 +66,20 @@ def publish_power_summary(data_dir: str | Path, feature_dir: str | Path) -> Path
 
     summary_path = power_summary_path(feature_dir)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
-    if not json_write(summary_path, sta_power_summary_payload(summary)):
+    payload = sta_power_summary_payload(summary)
+    if not json_write(summary_path, payload):
         raise OSError(f"Failed to write iPW power summary: {summary_path}")
+    step_path = power_step_path(feature_dir)
+    step_payload = {
+        "schema_version": 1,
+        "step": StepEnum.POWER_ANALYSIS.value,
+        "power_summary": payload,
+        "metrics": {
+            key: value
+            for key, value in payload.items()
+            if key != "schema_version" and isinstance(value, (int, float))
+        },
+    }
+    if not json_write(step_path, step_payload):
+        raise OSError(f"Failed to write merged power step artifact: {step_path}")
     return summary_path

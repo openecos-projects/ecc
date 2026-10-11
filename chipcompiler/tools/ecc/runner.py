@@ -11,11 +11,13 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
     workspace_config_path,
+    StepMetrics,
 )
 from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.tools.ecc.drc_artifacts import save_drc_feature
 from chipcompiler.tools.ecc.metrics import (
     build_step_metrics,
+    save_step_metrics,
     save_cts_timing_feature_facts,
     save_rcx_spef_feature_facts,
 )
@@ -1052,6 +1054,19 @@ def run_power_analysis(
             step_name=EccSubFlowEnum.run_power_analysis.value,
             state=StateEnum.Imcomplete,
         )
+        return False
+
+    power_payload = json_read(Path(power_feature_dir) / "power_summary.json") or {}
+    power_metrics = StepMetrics(
+        data={
+            "Power internal [uW]": power_payload.get("internal_uw"),
+            "Power switching [uW]": power_payload.get("switching_uw"),
+            "Power dynamic [uW]": power_payload.get("dynamic_uw"),
+            "Power leakage [uW]": power_payload.get("leakage_uw"),
+        }
+    )
+    if not save_step_metrics(workspace, step, power_metrics):
+        workspace.logger.error("Failed to save power QoR metrics")
         return False
 
     sub_flow.update_step(
