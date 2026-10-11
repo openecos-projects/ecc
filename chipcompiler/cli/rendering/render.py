@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -68,7 +69,9 @@ def render_markdown(text: str, file=None, *, color: bool, pager: bool = False) -
 def render_result(
     result: CommandResult, mode: OutputMode, file=None, command=None, *, color=True
 ) -> None:
-    if mode == OutputMode.PLAIN:
+    if mode == OutputMode.JSON:
+        print(json.dumps(list(result.records), ensure_ascii=False, indent=2), file=file or sys.stdout)
+    elif mode == OutputMode.PLAIN:
         render_plain(result.records, file=file)
     elif mode == OutputMode.TEXT:
         _render_pretty(result, file=file, command=command, color=color)

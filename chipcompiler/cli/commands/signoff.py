@@ -12,6 +12,7 @@ from chipcompiler.cli.core.inputs import (
 )
 from chipcompiler.cli.core.invocation import execute_command
 from chipcompiler.cli.core.options import (
+    JsonOption,
     PlainOption,
     ProjectOption,
     WorkspaceOption,
@@ -30,9 +31,10 @@ def inspect_cmd(
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
     plain: PlainOption = False,
+    json_output: JsonOption = False,
 ) -> None:
     command_input = SignoffInspectInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         workspace=workspace,
     )

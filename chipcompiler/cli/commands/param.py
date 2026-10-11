@@ -21,6 +21,7 @@ from chipcompiler.cli.core.inputs import (
 )
 from chipcompiler.cli.core.invocation import CommandHandler, CommandInputT, execute_command
 from chipcompiler.cli.core.options import (
+    JsonOption,
     PlainOption,
     ProjectOption,
     WorkspaceOption,
@@ -73,6 +74,7 @@ def list_cmd(
     all_params: Annotated[bool, typer.Option("--all")] = False,
     workspace: WorkspaceOption = None,
     plain: PlainOption = False,
+    json_output: JsonOption = False,
 ) -> None:
     """List parameter overrides.
 
@@ -89,7 +91,7 @@ def list_cmd(
     See 'ecc doc config' for the full reference.
     """
     command_input = ParamListInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         step=step,
         all=all_params,
@@ -112,6 +114,7 @@ def show_cmd(
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
     plain: PlainOption = False,
+    json_output: JsonOption = False,
 ) -> None:
     """Show one parameter value.
 
@@ -123,7 +126,7 @@ def show_cmd(
     See 'ecc doc config' for the full reference.
     """
     command_input = ParamShowInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         key=key,
         workspace=workspace,
@@ -211,6 +214,7 @@ def diff_cmd(
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
     plain: PlainOption = False,
+    json_output: JsonOption = False,
 ) -> None:
     """Compare parameter overrides with defaults.
 
@@ -221,7 +225,7 @@ def diff_cmd(
     See 'ecc doc config' for the full reference.
     """
     command_input = ParamDiffInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         workspace=workspace,
     )

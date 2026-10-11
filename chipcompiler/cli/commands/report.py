@@ -14,6 +14,7 @@ from chipcompiler.cli.core.inputs import (
 )
 from chipcompiler.cli.core.invocation import execute_command
 from chipcompiler.cli.core.options import (
+    JsonOption,
     PlainOption,
     ProjectOption,
     WorkspaceOption,
@@ -38,9 +39,10 @@ def qor_cmd(
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
     plain: PlainOption = False,
+    json_output: JsonOption = False,
 ) -> None:
     command_input = ReportQorInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         workspace=workspace,
         output_path=output_path,
@@ -55,9 +57,10 @@ def checklist_cmd(
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
     plain: PlainOption = False,
+    json_output: JsonOption = False,
 ) -> None:
     command_input = ReportChecklistInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         workspace=workspace,
         output_path=output_path,
@@ -72,9 +75,10 @@ def summary_cmd(
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
     plain: PlainOption = False,
+    json_output: JsonOption = False,
 ) -> None:
     command_input = ReportSummaryInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         workspace=workspace,
         output_path=output_path,
@@ -106,9 +110,10 @@ def step_cmd(
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
     plain: PlainOption = False,
+    json_output: JsonOption = False,
 ) -> None:
     command_input = ReportStepInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         workspace=workspace,
         step=step,

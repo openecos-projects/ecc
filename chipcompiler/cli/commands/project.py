@@ -18,6 +18,7 @@ from chipcompiler.cli.core.inputs import (
 )
 from chipcompiler.cli.core.invocation import execute_command
 from chipcompiler.cli.core.options import (
+    JsonOption,
     PlainOption,
     ProjectOption,
     WorkspaceOption,
@@ -199,9 +200,10 @@ def status_cmd(
     project: ProjectOption = None,
     plain: PlainOption = False,
     workspace: WorkspaceOption = None,
+    json_output: JsonOption = False,
 ) -> None:
     command_input = StatusInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         workspace=workspace,
     )
@@ -247,6 +249,7 @@ def config_cmd(
     project: ProjectOption = None,
     plain: PlainOption = False,
     workspace: WorkspaceOption = None,
+    json_output: JsonOption = False,
 ) -> None:
     """Show resolved project or step configuration.
 
@@ -258,7 +261,7 @@ def config_cmd(
     See 'ecc doc config' for the full reference.
     """
     command_input = ConfigInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         step=step,
         workspace=workspace,

@@ -2,15 +2,15 @@ from chipcompiler.cli.command_handlers.flow import flow_list
 from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import FlowListInput, output_options
 from chipcompiler.cli.core.invocation import execute_command
-from chipcompiler.cli.core.options import PlainOption
+from chipcompiler.cli.core.options import JsonOption, PlainOption
 
 flow_app = create_app(help="Inspect available ECC flows")
 
 
 @flow_app.command("list")
-def list_cmd(*, plain: PlainOption = False) -> None:
+def list_cmd(*, plain: PlainOption = False, json_output: JsonOption = False) -> None:
     """List registered flows and their ordered steps."""
     command_input = FlowListInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
     )
     execute_command("flow", command_input, flow_list, render_key="flow:list")

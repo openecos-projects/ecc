@@ -1,9 +1,12 @@
 from dataclasses import dataclass
 
+import typer
+
 
 @dataclass(frozen=True)
 class OutputOptions:
     plain: bool = False
+    json: bool = False
 
 
 @dataclass(frozen=True)
@@ -439,8 +442,10 @@ class MacroImportInput:
     no_wait: bool = False
 
 
-def output_options(*, plain: bool) -> OutputOptions:
-    return OutputOptions(plain=plain)
+def output_options(*, plain: bool = False, json_output: bool = False) -> OutputOptions:
+    if plain and json_output:
+        raise typer.BadParameter("--plain and --json cannot be used together")
+    return OutputOptions(plain=plain, json=json_output)
 
 
 def project_options(project: str | None) -> ProjectOptions:

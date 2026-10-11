@@ -390,3 +390,20 @@ class TestEdgeCases:
     def test_no_command_returns_nonzero(self, capsys):
         rc = cli_main.run([])
         assert rc == 1
+
+
+def test_flow_list_supports_json_output(capsys):
+    rc = cli_main.run(["flow", "list", "--json"])
+
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert data
+    assert all(record["record"] == "flow_step" for record in data)
+
+
+def test_flow_list_rejects_plain_and_json_together(capsys):
+    rc = cli_main.run(["flow", "list", "--plain", "--json"])
+
+    captured = capsys.readouterr()
+    assert rc != 0
+    assert "cannot be used together" in captured.err
