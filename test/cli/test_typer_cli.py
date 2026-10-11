@@ -407,3 +407,23 @@ def test_flow_list_rejects_plain_and_json_together(capsys):
     captured = capsys.readouterr()
     assert rc != 0
     assert "cannot be used together" in captured.err
+
+
+def test_flow_show_returns_one_flow_as_json(capsys):
+    rc = cli_main.run(["flow", "show", "rtl2gds", "--json"])
+
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert data
+    assert {record["flow_id"] for record in data} == {"rtl2gds"}
+
+
+def test_flow_validate_returns_validation_records(capsys):
+    rc = cli_main.run(["flow", "validate", "--flow", "rtl2gds", "--json"])
+
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert data[0]["record"] == "flow_validation"
+    assert data[0]["status"] == "valid"
+    assert data[0]["flow_id"] == "rtl2gds"
+    assert data[0]["step_count"] > 0

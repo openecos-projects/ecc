@@ -15,6 +15,20 @@ class ProjectOptions:
 
 
 @dataclass(frozen=True)
+class FlowShowInput:
+    output: OutputOptions
+    flow_id: str
+    project: ProjectOptions = ProjectOptions()
+
+
+@dataclass(frozen=True)
+class FlowValidateInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+    flow_id: str | None = None
+
+
+@dataclass(frozen=True)
 class InitInput:
     name: str
     output: OutputOptions

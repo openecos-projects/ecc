@@ -4,8 +4,48 @@ from chipcompiler.engine.workspace_spec import describe_workspace_spec
 
 
 def flow_list(_args, _ctx: CommandContext) -> CommandResult:
+    return _flow_records(describe_workspace_spec()["flowDefinitions"])
+
+
+def flow_show(args, _ctx: CommandContext) -> CommandResult:
+    flows = describe_workspace_spec()["flowDefinitions"]
+    selected = [flow for flow in flows if flow["flowId"] == args.flow_id]
+    if not selected:
+        return CommandResult.err(
+            [error_record("unknown_flow", flow_id=args.flow_id)],
+            exit_code=2,
+        )
+    return _flow_records(selected)
+
+
+def flow_validate(args, _ctx: CommandContext) -> CommandResult:
+    flows = describe_workspace_spec()["flowDefinitions"]
+    if args.flow_id is not None:
+        flows = [flow for flow in flows if flow["flowId"] == args.flow_id]
+        if not flows:
+            return CommandResult.err(
+                [error_record("unknown_flow", flow_id=args.flow_id)],
+                exit_code=2,
+            )
+    result = _flow_records(flows)
+    if result.exit_code:
+        return result
+    return CommandResult.ok(
+        [
+            {
+                "record": "flow_validation",
+                "status": "valid",
+                "flow_id": flow["flowId"],
+                "step_count": len(flow["stepIds"]),
+            }
+            for flow in flows
+        ]
+    )
+
+
+def _flow_records(flows: list[dict]) -> CommandResult:
     records = []
-    for flow in describe_workspace_spec()["flowDefinitions"]:
+    for flow in flows:
         if not flow["stepIds"]:
             return CommandResult.err(
                 [
