@@ -25,7 +25,9 @@ ECC_DIR = Path(SPECPATH)
 HOOKS_DIR = ECC_DIR / "hooks"
 CODESIGN_IDENTITY = os.environ.get("APPLE_SIGNING_IDENTITY")
 BUNDLE_MODE = os.environ.get("ECOS_PYINSTALLER_MODE", "onedir").strip().lower()
-STRIP_BINARIES = sys.platform.startswith("linux")
+# Do not strip collected third-party ELF libraries. NumPy/OpenBLAS and the
+# bundled EDA extensions can lose valid program-header alignment when stripped.
+STRIP_BINARIES = False
 
 if BUNDLE_MODE not in {"onedir", "onefile"}:
     raise SystemExit(f"Unsupported ECOS_PYINSTALLER_MODE={BUNDLE_MODE!r}; use onedir or onefile.")
