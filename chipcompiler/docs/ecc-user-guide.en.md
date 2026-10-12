@@ -1406,3 +1406,24 @@ python packaging/cli_smoke.py \
 The smoke runner checks `status`, `report step`, `report project`, `signoff check`,
 and `pdk verify`, requires each command to emit a non-empty JSON record array, and
 preserves non-zero quality-gate codes for CI reporting.
+
+### 11.5 Reproducible evidence export and sweep
+
+Export a read-only evidence package for a workspace, then inspect or verify its manifest and SHA-256 checksums:
+
+```bash
+ecc reproducible export --project /path/to/project --workspace ws_0012 --output evidence.tar.gz
+ecc reproducible inspect --package evidence.tar.gz
+ecc reproducible verify --package evidence.tar.gz
+```
+
+Create a deterministic parameter sweep. Repeated `--param` options define the Cartesian product; candidates are recorded under `experiments/<name>/` and do not modify the project manifest or baseline workspace:
+
+```bash
+ecc sweep create --project /path/to/project --name density --param place.target_density=0.60,0.65 --param cts.target_skew=0.10,0.15
+ecc sweep run --project /path/to/project --name density
+ecc explore rank --project /path/to/project --name density
+ecc explore promote --project /path/to/project --name density --candidate candidate_0002
+```
+
+The first implementation is deterministic and evidence-oriented. It does not provide automatic optimization, distributed scheduling, multi-SDC, or automatic replacement of a baseline.

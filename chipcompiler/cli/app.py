@@ -6,6 +6,7 @@ from typing import Annotated
 import typer
 
 from chipcompiler.cli.commands.compare import compare_app
+from chipcompiler.cli.commands.experiments import explore_app, reproducible_app, sweep_app
 from chipcompiler.cli.commands.doc import register_doc_commands
 from chipcompiler.cli.commands.doctor import register_doctor_commands
 from chipcompiler.cli.commands.flow import flow_app
@@ -91,6 +92,9 @@ app.add_typer(workspace_app, name="workspace")
 app.add_typer(signoff_app, name="signoff")
 app.add_typer(report_app, name="report")
 app.add_typer(compare_app, name="compare")
+app.add_typer(reproducible_app, name="reproducible")
+app.add_typer(sweep_app, name="sweep")
+app.add_typer(explore_app, name="explore")
 
 
 def invoke_typer_app(argv: Sequence[str]) -> int:

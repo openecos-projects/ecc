@@ -1632,3 +1632,24 @@ python packaging/cli_smoke.py \
 
 smoke runner 会依次检查 `status`、`report step`、`report project`、`signoff check` 和
 `pdk verify`，要求每个命令输出非空 JSON 记录数组，并保留质量门禁的非零退出码供 CI 汇报。
+
+### 11.5 可复现证据导出与 sweep
+
+可以为 workspace 导出只读证据包，并检查 manifest 与 SHA-256 校验和：
+
+```bash
+ecc reproducible export --project /path/to/project --workspace ws_0012 --output evidence.tar.gz
+ecc reproducible inspect --package evidence.tar.gz
+ecc reproducible verify --package evidence.tar.gz
+```
+
+创建确定性的参数 sweep。重复使用 `--param` 定义笛卡尔积；候选记录保存在 `experiments/<name>/`，不会修改项目 manifest 或 baseline workspace：
+
+```bash
+ecc sweep create --project /path/to/project --name density --param place.target_density=0.60,0.65 --param cts.target_skew=0.10,0.15
+ecc sweep run --project /path/to/project --name density
+ecc explore rank --project /path/to/project --name density
+ecc explore promote --project /path/to/project --name density --candidate candidate_0002
+```
+
+当前版本以确定性和证据留存为主，暂不提供自动优化、分布式调度、多 SDC 或自动替换 baseline workspace。
