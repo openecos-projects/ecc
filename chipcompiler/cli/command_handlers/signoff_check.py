@@ -82,11 +82,32 @@ def check(command_input, ctx: CommandContext) -> CommandResult:
         }
     ]
     records.extend(
-        {"gate": name, "required": name in _REQUIRED_GATES[command_input.profile], **gate}
+        {
+            "gate": name,
+            "required": name in _REQUIRED_GATES[command_input.profile],
+            **_contract_gate(gate),
+        }
         for name in _PROFILES[command_input.profile]
         for gate in [gates[name]]
     )
     return CommandResult.ok(records)
+
+
+def _contract_gate(gate: dict) -> dict:
+    """Return the stable gate contract shared by CLI and GUI consumers."""
+    result = {
+        "status": gate.get("status", "unknown"),
+        "reason": gate.get("reason"),
+        "source": gate.get("source"),
+        "failed_items": gate.get("failed_items", []),
+        "violation_count": gate.get("violation_count"),
+        "stale": bool(gate.get("stale", False)),
+        "provisional": bool(gate.get("provisional", False)),
+    }
+    for key in ("bytes", "sha256"):
+        if key in gate:
+            result[key] = gate[key]
+    return result
 
 
 def _flow_gate(root: Path) -> dict:

@@ -380,20 +380,26 @@ def build_step_overview_records(workspace_dir: str, project=None, run_id=None) -
             blocked = (
                 checklist.get("summary", {}).get("blocked", 0) if isinstance(checklist, dict) else 0
             )
-        records.append(
-            {
-                "step": entry.token,
-                "tool": entry.tool,
-                "status": entry.state(),
-                "runtime": entry.runtime(),
-                "peak_memory_mb": entry.peak_memory_mb(),
-                "metrics": metrics,
-                "quality": quality,
-                "checklist": checklist_status,
-                "blocked": blocked,
-                "inspect": disclosure_cmd(f"ecc report step {entry.token}", project, run_id),
-            }
-        )
+        record = {
+            "step": entry.token,
+            "tool": entry.tool,
+            "status": entry.state(),
+            "runtime": entry.runtime(),
+            "peak_memory_mb": entry.peak_memory_mb(),
+            "metrics": metrics,
+            "quality": quality,
+            "checklist": checklist_status,
+            "blocked": blocked,
+            "inspect": disclosure_cmd(f"ecc report step {entry.token}", project, run_id),
+        }
+        if isinstance(entry.flow, dict) and isinstance(entry.flow.get("checklist_status"), dict):
+            checklist_projection = entry.flow["checklist_status"]
+            record.update(
+                checklist_status=checklist_projection.get("status"),
+                checklist_blocked=bool(checklist_projection.get("blocked")),
+                checklist_failed_items=checklist_projection.get("failed_items", []),
+            )
+        records.append(record)
     return records
 
 

@@ -253,3 +253,37 @@ def test_netlist_gate_rejects_external_path(tmp_path):
     result = _netlist_artifact_gate(tmp_path)
     assert result["status"] == "unknown"
     assert result["reason"] == "artifact_outside_workspace"
+
+
+def test_contract_gate_normalizes_optional_evidence_fields():
+    from chipcompiler.cli.command_handlers.signoff_check import _contract_gate
+
+    result = _contract_gate({"status": "fail", "reason": "drc_violations", "violation_count": 4})
+
+    assert result == {
+        "status": "fail",
+        "reason": "drc_violations",
+        "source": None,
+        "failed_items": [],
+        "violation_count": 4,
+        "stale": False,
+        "provisional": False,
+    }
+
+
+def test_contract_gate_preserves_artifact_identity_fields():
+    from chipcompiler.cli.command_handlers.signoff_check import _contract_gate
+
+    result = _contract_gate(
+        {
+            "status": "pass",
+            "source": "Harden_ecc/output/design.gds",
+            "bytes": 12,
+            "sha256": "abc",
+        }
+    )
+
+    assert result["bytes"] == 12
+    assert result["sha256"] == "abc"
+    assert result["stale"] is False
+    assert result["provisional"] is False

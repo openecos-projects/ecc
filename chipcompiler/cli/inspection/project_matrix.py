@@ -128,6 +128,19 @@ def build_project_matrix(manifest: ProjectManifest) -> dict:
                     "state": state,
                     "category": category,
                     "checker": checker,
+                    "checklist_status": (
+                        step.get("checklist_status", {}).get("status")
+                        if isinstance(step.get("checklist_status"), dict)
+                        else None
+                    ),
+                    "checklist_blocked": bool(step.get("checklist_status", {}).get("blocked"))
+                    if isinstance(step.get("checklist_status"), dict)
+                    else False,
+                    "checklist_failed_items": (
+                        step.get("checklist_status", {}).get("failed_items", [])
+                        if isinstance(step.get("checklist_status"), dict)
+                        else []
+                    ),
                 }
             )
         rows.append(
