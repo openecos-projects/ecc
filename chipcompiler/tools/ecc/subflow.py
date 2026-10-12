@@ -3,8 +3,8 @@ import time
 from enum import Enum
 
 from chipcompiler.data import (
-    StateEnum,
     SkippableStepEnum,
+    StateEnum,
     StepEnum,
     Workspace,
     WorkspaceStep,

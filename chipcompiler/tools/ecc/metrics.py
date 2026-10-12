@@ -6,8 +6,8 @@ from pathlib import Path
 
 from chipcompiler.data import (
     EccStep,
-    StateEnum,
     SkippableStepEnum,
+    StateEnum,
     StepEnum,
     StepMetrics,
     Workspace,

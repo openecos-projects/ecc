@@ -142,7 +142,7 @@ def flow_no_clock(flow: object) -> bool:
     return coerce_bool(flow.get("no_clock", False))
 
 
-def _with_no_clock(section: dict, no_clock: bool) -> dict:
+def _with_no_clock(section: dict, *, no_clock: bool) -> dict:
     result = dict(section)
     if no_clock:
         result["no_clock"] = True
@@ -213,7 +213,7 @@ def validate_flow_config(flow: object) -> dict:
     if preset is None and start is None:
         # A policy-only section (skip_steps / no_clock / lec_engine without a
         # flow target).
-        return _with_no_clock(result, no_clock)
+        return _with_no_clock(result, no_clock=no_clock)
     if preset is not None:
         if not isinstance(preset, str) or not preset.strip():
             raise WorkspaceFlowTargetError(f"[flow] preset must be a non-empty string: {preset!r}")
@@ -227,7 +227,7 @@ def validate_flow_config(flow: object) -> dict:
                     f"or pick another preset"
                 )
         result["preset"] = preset
-        return _with_no_clock(result, no_clock)
+        return _with_no_clock(result, no_clock=no_clock)
 
     from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
 
@@ -254,7 +254,7 @@ def validate_flow_config(flow: object) -> dict:
             f"[flow] start {normalized['start']!r} is after end {normalized['end']!r}"
         )
     result.update(normalized)
-    return _with_no_clock(result, no_clock)
+    return _with_no_clock(result, no_clock=no_clock)
 
 
 def canonical_flow_chain() -> list[str]:
