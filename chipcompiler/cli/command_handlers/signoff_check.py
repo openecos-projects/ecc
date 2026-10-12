@@ -15,7 +15,8 @@ _PROFILES = {
         "checklist_ready",
         "drc_clean",
         "lvs_clean",
-        "sta_clean",
+        "sta_setup_clean",
+        "sta_hold_clean",
     ),
     "physical_signoff": (
         "flow_complete",
@@ -23,7 +24,8 @@ _PROFILES = {
         "checklist_ready",
         "drc_clean",
         "lvs_clean",
-        "sta_clean",
+        "sta_setup_clean",
+        "sta_hold_clean",
         "lec_proven",
         "final_gds_available",
         "final_netlist_available",
@@ -49,7 +51,8 @@ def check(command_input, ctx: CommandContext) -> CommandResult:
         "checklist_ready": _checklist_gate(review),
         "drc_clean": _checker_gate(root, "drc"),
         "lvs_clean": _checker_gate(root, "lvs"),
-        "sta_clean": _checker_gate(root, "sta"),
+        "sta_setup_clean": _sta_gate(root, "setup"),
+        "sta_hold_clean": _sta_gate(root, "hold"),
         "lec_proven": _lec_gate(root),
         "final_gds_available": _artifact_gate(root, "Harden GDS", "Harden_ecc/output", ".gds"),
         "final_netlist_available": _artifact_gate(
@@ -161,6 +164,36 @@ def _checker_gate(root: Path, checker: str) -> dict:
         "source": str(source_path.relative_to(root)),
         "violation_count": None,
         "failed_items": failed_items,
+    }
+
+
+def _sta_gate(root: Path, analysis: str) -> dict:
+    result = _checker_gate(root, "sta")
+    if result["status"] == "unknown":
+        return result
+    data = _read(root / "sta_ecc" / "checklist.json")
+    items = data.get("checklist", []) if isinstance(data, dict) else []
+    matching = [
+        item
+        for item in items
+        if isinstance(item, dict)
+        and analysis in f"{item.get('id', '')} {item.get('title', '')}".lower()
+    ]
+    source = "sta_ecc/checklist.json"
+    if not matching:
+        return {
+            "status": "unknown",
+            "reason": f"sta_{analysis}_evidence_unavailable",
+            "source": source,
+            "failed_items": [],
+        }
+    failed_items = [item.get("title", "") for item in matching if item.get("state") != "pass"]
+    return {
+        "status": "fail" if failed_items else "pass",
+        "reason": f"sta_{analysis}_{'violations' if failed_items else 'clean'}",
+        "source": source,
+        "failed_items": failed_items,
+        "violation_count": None,
     }
 
 

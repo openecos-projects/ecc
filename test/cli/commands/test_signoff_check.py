@@ -7,6 +7,7 @@ from chipcompiler.cli.command_handlers.signoff_check import (
     _lec_gate,
     _overall,
     _qor_gate,
+    _sta_gate,
 )
 
 
@@ -83,3 +84,32 @@ def test_artifact_gate_requires_one_nonempty_file(tmp_path):
 
     result = _artifact_gate(tmp_path, "Harden GDS", "Harden_ecc/output", ".gds")
     assert result["status"] == "pass"
+
+
+def test_sta_gate_separates_setup_and_hold(tmp_path):
+    checklist = tmp_path / "sta_ecc" / "checklist.json"
+    checklist.parent.mkdir()
+    checklist.write_text(
+        json.dumps(
+            {
+                "checklist": [
+                    {
+                        "id": "sta.setup",
+                        "title": "STA setup closure",
+                        "category": "quality_gate",
+                        "state": "pass",
+                    },
+                    {
+                        "id": "sta.hold",
+                        "title": "STA hold closure",
+                        "category": "quality_gate",
+                        "state": "fail",
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert _sta_gate(tmp_path, "setup")["status"] == "pass"
+    assert _sta_gate(tmp_path, "hold")["status"] == "fail"
