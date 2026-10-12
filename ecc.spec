@@ -313,7 +313,7 @@ def patch_ecc_tools_tcl_data(datas, binaries):
         ),
         encoding="utf-8",
     )
-    datas.append((str(patched_path), "ecc_tools_bin/tcl8.6"))
+    datas.append((str(patched_path), "ecc_tools_bin/tcl8.6/init.tcl"))
     return datas, binaries
 
 
