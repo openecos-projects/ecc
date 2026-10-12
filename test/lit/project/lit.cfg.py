@@ -51,11 +51,14 @@ config.environment["PYTHONPATH"] = os.pathsep.join(
     [repo] + ([os.environ["PYTHONPATH"]] if os.environ.get("PYTHONPATH") else [])
 )
 
+scenario = str(scripts / "run_project_scenario.sh")
 config.substitutions.extend(
     [
         ("%repo", repo),
         ("%python", python),
         ("%filecheck", filecheck),
+        ("%scenario", scenario),
+        # Stable aliases (wrappers → run_project_scenario.sh).
         ("%cli_scenario", str(scripts / "run_cli_project_scenario.sh")),
         ("%rpc_scenario", str(scripts / "run_rpc_project_scenario.sh")),
         ("%check_status_success", str(checks / "status_success.check")),

@@ -26,12 +26,12 @@ Two lit cases share one FileCheck contract (`checks/status_success.check`):
 1. **CLI** — `ecc run --project … --from/--to Synthesis` then `ecc status --project`
 2. **RPC** — `ecc rpc serve --stdio` lifecycle via `test/rpc_check.py`, then the same status check
 
-Drivers live under `nix/scripts/`:
+Drivers live under `nix/scripts/` (product scenarios, not PR-body glue):
 
 - `prepare_gcd_project.sh`
-- `run_cli_project_scenario.sh`
-- `run_rpc_project_scenario.sh`
-- `ci_project_lit.sh` (CI entry; installs Nix if needed)
+- `run_project_scenario.sh --mode=cli|rpc` (shared prepare + status contract)
+- `run_cli_project_scenario.sh` / `run_rpc_project_scenario.sh` (thin wrappers)
+- `ci_project_lit.sh` (CI entry; installs Nix if needed; flake build-fail fallback only)
 
 ### Local / CI run
 

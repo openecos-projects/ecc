@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""P0 ECC RPC smoke: drive ``ecc rpc serve``, then check with ``ecc status --project``.
+"""RPC stdio driver for product project scenarios (used by ``test/lit/project``).
+
+Drives ``ecc rpc serve --stdio`` through a real Synthesis lifecycle, then
+asserts the same ground truth as the CLI scenario via:
+
+  ecc status --project <path> --workspace <name> --plain
 
 Methods exercised (in order):
 
@@ -12,11 +17,8 @@ Methods exercised (in order):
   flow.run                  (when --run)
   rpc.shutdown
 
-After the sidecar exits, the same project path is checked the CLI way:
-
-  ecc status --project <path> --workspace <name> --plain
-
-No CLI source changes; this is external glue for CI / local smoke.
+Invoked from ``nix/scripts/run_project_scenario.sh --mode=rpc`` (lit FileCheck
+owns the status contract). Not a PR-body smoke step.
 
 The sidecar redirects process stdout onto stderr so JSON-RPC stays clean on
 stdout. This driver therefore drains stderr on a background thread; leaving
