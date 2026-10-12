@@ -136,6 +136,11 @@ jobs:
       - name: Pytest (agent)
         run: uv run --no-sync pytest agent/test -v --basetemp=pytest-agent-tmp
 
+      - name: Project scenario lit
+        env:
+          CHIPCOMPILER_ICS55_PDK_ROOT: ${{ github.workspace }}/../pdk/icsprout55-pdk
+        run: bash nix/scripts/ci_project_lit.sh
+
       - name: Prune test fixture symlinks before log upload
         if: failure()
         run: find pytest-tmp -type l -delete

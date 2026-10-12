@@ -196,3 +196,6 @@ task_plan.md
 
 # Lit suite exec root (ephemeral)
 ci-artifacts/
+
+# Lit suite execution trees
+test/lit/**/Output/
