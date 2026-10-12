@@ -1,19 +1,19 @@
-# Signoff release kanban
+# Signoff release board (导览)
 
-Human-facing **diagram board** for signoff metrics. CSV / FileCheck gates stay
-under `test/lit/csv_gates` as a util; this tree is what you attach to CI or a
-GitHub Release so every catalog metric is visible as mermaid.
+Human **homepage guide** for signoff metrics: map → readiness swimlanes →
+category tours → per-metric drill-down.
+
+CSV / FileCheck under `test/lit/csv_gates` stays a **util** — this board is the
+navigable artifact you open on GitHub or attach to a Release.
 
 ## Generate
-
-From repo root (needs the signoff catalog on `PYTHONPATH`, i.e. this branch):
 
 ```bash
 PYTHONPATH=. python .github/scripts/generate-signoff-kanban.py \
   --out .github/signoff-board/signoff-kanban.md
 ```
 
-With a live / fixture assessment JSON (places cards into PASS/WARN/MISS/ERROR):
+Live swimlanes (PASS / WARN / MISS / ERROR):
 
 ```bash
 PYTHONPATH=. python .github/scripts/generate-signoff-kanban.py \
@@ -21,7 +21,12 @@ PYTHONPATH=. python .github/scripts/generate-signoff-kanban.py \
   --out .github/signoff-board/signoff-kanban.md
 ```
 
-## CI / release
+## What the homepage contains
 
-Workflow `signoff-kanban.yml` uploads `signoff-kanban.md` as an artifact
-(`signoff-release-kanban`). Open the markdown on GitHub to render mermaid.
+1. **How to read** — tour flowchart  
+2. **Catalog map** — domains (quality / artifact / flow / …)  
+3. **Readiness board** — swimlane kanban  
+4. **Categories** — table + diagram + links into metrics  
+5. **Per-metric index** — one diagram each, with back-links  
+
+Open `signoff-kanban.md` on GitHub to render mermaid.
