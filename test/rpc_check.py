@@ -17,22 +17,28 @@ After the sidecar exits, the same project path is checked the CLI way:
   ecc status --project <path> --workspace <name> --plain
 
 No CLI source changes; this is external glue for CI / local smoke.
+
+The sidecar redirects process stdout onto stderr so JSON-RPC stays clean on
+stdout. This driver therefore drains stderr on a background thread; leaving
+``stderr=PIPE`` unread fills the pipe and deadlocks ``flow.run``.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import shlex
 import subprocess
 import sys
+import threading
 import tomllib
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RTL = REPO_ROOT / "test" / "fixtures" / "gcd" / "gcd.v"
+DEFAULT_RUN_TIMEOUT = 600.0
 
 
 def main() -> int:
@@ -81,7 +87,13 @@ def main() -> int:
         "--timeout",
         type=float,
         default=30.0,
-        help="seconds to wait for one RPC response (flow.run has no limit)",
+        help="seconds to wait for one RPC response (non-flow.run)",
+    )
+    parser.add_argument(
+        "--run-timeout",
+        type=float,
+        default=DEFAULT_RUN_TIMEOUT,
+        help=f"seconds to wait for flow.run (default: {DEFAULT_RUN_TIMEOUT:g}; 0 = no limit)",
     )
     args = parser.parse_args()
 
@@ -90,6 +102,7 @@ def main() -> int:
     workspace_dir = project_dir / workspace_name
     expect = args.expect_status or ("success" if args.run else "")
     ecc_cmd = _ecc_command(args.ecc)
+    run_timeout: float | None = None if args.run_timeout <= 0 else args.run_timeout
 
     client = RpcProcess(ecc_cmd)
     try:
@@ -142,7 +155,7 @@ def main() -> int:
             ran = client.call(
                 "flow.run",
                 {"workspaceId": workspace_id, "rerun": False},
-                timeout=None,
+                timeout=run_timeout,
             )
             require_result(ran, "flow.run")
             print(
@@ -161,7 +174,7 @@ def main() -> int:
 
 
 def _create_project_and_workspace(
-    client: "RpcProcess",
+    client: RpcProcess,
     *,
     project_dir: Path,
     workspace_name: str,
@@ -267,10 +280,7 @@ def cli_status_check(
 
     status = _parse_workspace_status(completed.stdout)
     if expect_status and status != expect_status:
-        fail(
-            f"ecc status --project reported status={status!r}, "
-            f"expected {expect_status!r}"
-        )
+        fail(f"ecc status --project reported status={status!r}, expected {expect_status!r}")
     print(f"ecc status --project ok status={status}", flush=True)
     return 0
 
@@ -327,6 +337,14 @@ class RpcProcess:
         )
         self._next_id = 1
         self._buffer = bytearray()
+        self._stderr_lock = threading.Lock()
+        self._stderr_chunks: list[bytes] = []
+        self._stderr_thread = threading.Thread(
+            target=self._drain_stderr,
+            name="rpc-check-stderr",
+            daemon=True,
+        )
+        self._stderr_thread.start()
 
     def call(self, method: str, params: dict, *, timeout: float | None) -> dict:
         request_id = self._next_id
@@ -349,11 +367,10 @@ class RpcProcess:
 
     def close(self) -> None:
         if self.proc.poll() is not None:
+            self._join_stderr()
             return
-        try:
+        with contextlib.suppress(Exception):
             self.call("rpc.shutdown", {}, timeout=5)
-        except Exception:
-            pass
         if self.proc.stdin is not None:
             self.proc.stdin.close()
         try:
@@ -361,6 +378,24 @@ class RpcProcess:
         except subprocess.TimeoutExpired:
             self.proc.kill()
             self.proc.wait(timeout=5)
+        self._join_stderr()
+
+    def _drain_stderr(self) -> None:
+        assert self.proc.stderr is not None
+        while True:
+            chunk = self.proc.stderr.read(8192)
+            if not chunk:
+                return
+            with self._stderr_lock:
+                self._stderr_chunks.append(chunk)
+
+    def _join_stderr(self) -> None:
+        self._stderr_thread.join(timeout=5)
+
+    def _stderr_tail(self, limit: int = 2000) -> str:
+        with self._stderr_lock:
+            data = b"".join(self._stderr_chunks)
+        return data.decode("utf-8", errors="replace")[-limit:]
 
     def _read_message(self, timeout: float | None) -> dict:
         assert self.proc.stdout is not None
@@ -377,19 +412,13 @@ class RpcProcess:
                     return json.loads(body)
             chunk = _read_chunk(self.proc.stdout, timeout)
             if not chunk:
-                err = b""
-                if self.proc.stderr is not None:
-                    err = self.proc.stderr.read() or b""
-                fail(
-                    "rpc server closed stdout\n"
-                    + err.decode("utf-8", errors="replace")[-2000:]
-                )
+                fail("rpc server closed stdout\n" + self._stderr_tail())
             self._buffer.extend(chunk)
 
 
 def _read_chunk(stream, timeout: float | None) -> bytes:
     if timeout is None:
-        return stream.read(4096)
+        return os.read(stream.fileno(), 4096)
     import select
 
     ready, _, _ = select.select([stream], [], [], timeout)
