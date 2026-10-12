@@ -1036,7 +1036,25 @@ $ ecc signoff inspect --workspace default
               Current-output analysis refresh failed: ...
 ```
 
-### 11.2 export — export the signoff package tar.gz (gated)
+### 11.2 check — read-only quality gates
+
+```bash
+ecc signoff check [--profile rtl2gds] [--project DIR] [--workspace NAME] [--plain]
+ecc signoff check --json
+```
+
+`check` is read-only: it does not refresh analysis, launch EDA, or modify the workspace.
+It evaluates the saved flow, QoR, checklist, and DRC/LVS/STA evidence and reports each
+gate as `pass`, `fail`, or `unknown`. Missing evidence never becomes a pass. The overall
+status is `pass` only when every gate passes, `fail` when any gate fails, and `unknown`
+otherwise. The initial `rtl2gds` profile contains `flow_complete`, `qor_available`,
+`checklist_ready`, `drc_clean`, `lvs_clean`, and `sta_clean`.
+
+With `--json`, the command returns a record array whose gate records contain `gate`,
+`status`, `reason`, and `source`. This is an assessment of saved evidence, not tapeout
+approval. Unknown profiles return `unknown_signoff_profile`; argument errors use exit code 2.
+
+### 11.3 export — export the signoff package tar.gz (gated)
 
 ```bash
 ecc signoff export -o <path>.tar.gz [--include-debug] [--project DIR] [--workspace NAME] [--plain]

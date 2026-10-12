@@ -1044,7 +1044,24 @@ $ ecc signoff inspect --workspace default
               Current-output analysis refresh failed: ...
 ```
 
-### 11.2 export — 导出签核包 tar.gz（有门禁）
+### 11.2 check — 只读质量门禁
+
+```bash
+ecc signoff check [--profile rtl2gds] [--project DIR] [--workspace NAME] [--plain]
+ecc signoff check --json
+```
+
+`check` 不刷新分析、不启动 EDA、不写入 workspace，只读取当前 flow、QoR、checklist
+和 DRC/LVS/STA 证据，返回统一 gate 状态：`pass`、`fail` 或 `unknown`。缺少证据不会
+被当作通过；总体状态只在全部 gate 为 `pass` 时为 `pass`，任一 gate 失败为 `fail`，
+其余情况为 `unknown`。首版 `rtl2gds` profile 包含 `flow_complete`、`qor_available`、
+`checklist_ready`、`drc_clean`、`lvs_clean` 和 `sta_clean`。
+
+`--json` 返回记录数组，每个 gate 包含 `gate`、`status`、`reason` 和 `source`；
+gate 结果是当前已保存证据的判断，不等同于 tapeout 批准。未知 profile 返回
+`unknown_signoff_profile`，参数错误退出码为 2，workspace/读取失败遵循公共 CLI 错误契约。
+
+### 11.3 export — 导出签核包 tar.gz（有门禁）
 
 ```bash
 ecc signoff export -o <path>.tar.gz [--include-debug] [--project DIR] [--workspace NAME] [--plain]

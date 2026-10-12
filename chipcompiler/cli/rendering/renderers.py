@@ -18,6 +18,7 @@ from chipcompiler.cli.rendering.pretty import (
     render_param_set_text,
     render_param_show_text,
     render_run_summary,
+    render_signoff_check_text,
     render_signoff_inspect_text,
     render_status,
 )
@@ -248,6 +249,7 @@ RENDERERS: dict[RendererKey, Renderer] = {
     ("param:unset", OutputMode.TEXT): _plain_text(render_param_set_text),
     ("param:diff", OutputMode.TEXT): _plain_text(render_param_diff_text),
     ("signoff:inspect", OutputMode.TEXT): _plain_text(render_signoff_inspect_text),
+    ("signoff:check", OutputMode.TEXT): _plain_text(render_signoff_check_text),
     ("report:step", OutputMode.TEXT): _render_report_step_text,
     ("log", OutputMode.TEXT): _render_log_text,
     ("log", OutputMode.PLAIN): _render_log_plain,

@@ -3,8 +3,10 @@ from typing import Annotated
 import typer
 
 from chipcompiler.cli.command_handlers import signoff as signoff_handlers
+from chipcompiler.cli.command_handlers import signoff_check
 from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import (
+    SignoffCheckInput,
     SignoffExportInput,
     SignoffInspectInput,
     output_options,
@@ -39,6 +41,24 @@ def inspect_cmd(
         workspace=workspace,
     )
     _finish("inspect", command_input, signoff_handlers.inspect)
+
+
+@signoff_app.command("check", help="Evaluate signoff quality gates")
+def check_cmd(
+    *,
+    profile: Annotated[str, typer.Option("--profile", help="Signoff gate profile")] = "rtl2gds",
+    project: ProjectOption = None,
+    workspace: WorkspaceOption = None,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = SignoffCheckInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(project),
+        workspace=workspace,
+        profile=profile,
+    )
+    _finish("check", command_input, signoff_check.check)
 
 
 @signoff_app.command("export", help="Export the signoff package as a tar.gz archive")

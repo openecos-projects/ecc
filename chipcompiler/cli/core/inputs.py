@@ -194,6 +194,14 @@ class SignoffInspectInput:
 
 
 @dataclass(frozen=True)
+class SignoffCheckInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+    workspace: str | None = None
+    profile: str = "rtl2gds"
+
+
+@dataclass(frozen=True)
 class SignoffExportInput:
     output: OutputOptions
     project: ProjectOptions = ProjectOptions()
