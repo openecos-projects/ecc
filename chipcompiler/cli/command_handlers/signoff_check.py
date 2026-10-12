@@ -17,6 +17,17 @@ _PROFILES = {
         "lvs_clean",
         "sta_clean",
     ),
+    "physical_signoff": (
+        "flow_complete",
+        "qor_available",
+        "checklist_ready",
+        "drc_clean",
+        "lvs_clean",
+        "sta_clean",
+        "lec_proven",
+        "final_gds_available",
+        "final_netlist_available",
+    ),
 }
 
 
@@ -39,6 +50,11 @@ def check(command_input, ctx: CommandContext) -> CommandResult:
         "drc_clean": _checker_gate(root, "drc"),
         "lvs_clean": _checker_gate(root, "lvs"),
         "sta_clean": _checker_gate(root, "sta"),
+        "lec_proven": _lec_gate(root),
+        "final_gds_available": _artifact_gate(root, "Harden GDS", "Harden_ecc/output", ".gds"),
+        "final_netlist_available": _artifact_gate(
+            root, "final netlist", "filler_ecc/output", ".v.gz"
+        ),
     }
     records = [
         {
@@ -146,6 +162,51 @@ def _checker_gate(root: Path, checker: str) -> dict:
         "violation_count": None,
         "failed_items": failed_items,
     }
+
+
+def _lec_gate(root: Path) -> dict:
+    result_path = root / "postRouteLec_kepler_formal" / "output"
+    candidates = list(result_path.glob("*_result.json")) if result_path.is_dir() else []
+    if len(candidates) != 1:
+        return {
+            "status": "unknown",
+            "reason": "lec_evidence_unavailable",
+            "source": str(result_path.relative_to(root)),
+        }
+    data = _read(candidates[0])
+    if data.get("status") == "proven":
+        return {
+            "status": "pass",
+            "reason": "lec_proven",
+            "source": str(candidates[0].relative_to(root)),
+        }
+    if data:
+        return {
+            "status": "fail",
+            "reason": "lec_not_proven",
+            "source": str(candidates[0].relative_to(root)),
+        }
+    return {
+        "status": "unknown",
+        "reason": "lec_evidence_invalid",
+        "source": str(candidates[0].relative_to(root)),
+    }
+
+
+def _artifact_gate(root: Path, label: str, directory: str, suffix: str) -> dict:
+    output_dir = root / directory
+    candidates = (
+        [path for path in output_dir.glob(f"*{suffix}") if path.is_file()]
+        if output_dir.is_dir()
+        else []
+    )
+    if len(candidates) == 1 and candidates[0].stat().st_size > 0:
+        return {
+            "status": "pass",
+            "reason": "artifact_available",
+            "source": str(candidates[0].relative_to(root)),
+        }
+    return {"status": "unknown", "reason": "artifact_unavailable", "source": directory}
 
 
 def _read(path: Path) -> dict:

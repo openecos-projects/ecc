@@ -1,8 +1,10 @@
 import json
 
 from chipcompiler.cli.command_handlers.signoff_check import (
+    _artifact_gate,
     _checker_gate,
     _flow_gate,
+    _lec_gate,
     _overall,
     _qor_gate,
 )
@@ -63,3 +65,21 @@ def test_checker_gate_reads_step_checklist_and_quality_gate(tmp_path):
 def test_overall_preserves_unknown_when_no_gate_fails():
     assert _overall({"a": {"status": "pass"}, "b": {"status": "unknown"}}) == "unknown"
     assert _overall({"a": {"status": "fail"}, "b": {"status": "unknown"}}) == "fail"
+
+
+def test_lec_gate_requires_proven_result(tmp_path):
+    output = tmp_path / "postRouteLec_kepler_formal" / "output"
+    output.mkdir(parents=True)
+    (output / "run_result.json").write_text('{"status": "proven"}', encoding="utf-8")
+
+    assert _lec_gate(tmp_path)["status"] == "pass"
+
+
+def test_artifact_gate_requires_one_nonempty_file(tmp_path):
+    output = tmp_path / "Harden_ecc" / "output"
+    output.mkdir(parents=True)
+    artifact = output / "design.gds"
+    artifact.write_bytes(b"gds")
+
+    result = _artifact_gate(tmp_path, "Harden GDS", "Harden_ecc/output", ".gds")
+    assert result["status"] == "pass"
