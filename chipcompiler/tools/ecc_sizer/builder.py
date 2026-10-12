@@ -287,6 +287,14 @@ def _hold_cmd_text(workspace: Workspace, step: EccStep) -> str:
         value_type=cmdfile.ValueType.PATH,
     )
     _append_route_layer_options(command, workspace)
+    hold_margin = 0.1
+    sizer_config = workspace.config.get("sizer")
+    if sizer_config and Path(sizer_config).is_file():
+        configured = json_read(sizer_config).get("hold_margin", hold_margin)
+        hold_margin = float(configured)
+    if hold_margin < 0:
+        raise ValueError("sizer hold_margin must be non-negative")
+    command.option("hold_margin", hold_margin)
     command.flag("hold_only")
     return command.build()
 

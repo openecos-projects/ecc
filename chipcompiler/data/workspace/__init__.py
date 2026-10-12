@@ -188,6 +188,7 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     StepEnum.FILLER.value: "filler_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",
     StepEnum.STA.value: "sta_ecc.json",
+    "sizer": "sizer_ecc.json",
     "dreamplace": "dreamplace_ecc.json",
 }
 
@@ -201,6 +202,7 @@ _LEGACY_WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     StepEnum.FILLER.value: "pl_default_config.json",
     StepEnum.RCX.value: "rcx.json",
     StepEnum.STA.value: "sta.json",
+    "sizer": "sizer_default_config.json",
     "dreamplace": "dreamplace.json",
 }
 
@@ -222,7 +224,7 @@ _STEP_CONFIG_KEYS: Final[dict[tuple[StepBaseEnum, str], tuple[str, ...]]] = {
     (StepEnum.STA, "ecc"): ("db", StepEnum.RCX.value, StepEnum.STA.value),
     (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
     (StepEnum.LEGALIZATION, "dreamplace"): ("dreamplace",),
-    (SkippableStepEnum.TIMING_OPT, "sizer"): ("db", "dreamplace"),
+    (SkippableStepEnum.TIMING_OPT, "sizer"): ("db", "sizer", "dreamplace"),
 }
 
 

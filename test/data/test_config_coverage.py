@@ -19,6 +19,7 @@ TEMPLATES = {
     "filler": _PACKAGE_ROOT / "tools/ecc/configs/filler_ecc.json",
     "RCX": _PACKAGE_ROOT / "tools/ecc/configs/rcx_ecc.json",
     "sta": _PACKAGE_ROOT / "tools/ecc/configs/sta_ecc.json",
+    "sizer": _PACKAGE_ROOT / "tools/ecc/configs/sizer_ecc.json",
 }
 # drc_ecc.json is empty today; add it here once it grows static fields so the
 # coverage test starts pinning them.
@@ -44,6 +45,7 @@ LEGACY_FIELDS = {
         ("RT", "-bottom_routing_layer"),
         ("RT", "-top_routing_layer"),
     },
+    "sizer": set(),
 }
 
 PROTECTED_FIELDS = {
