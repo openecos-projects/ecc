@@ -216,9 +216,7 @@ SCHEMAS = (
         ("gpugr_bottom_routing_layer",),
         "MET2",
         applies="placement",
-        description=(
-            "inclusive bottom routing-layer name passed to GPUGR"
-        ),
+        description=("inclusive bottom routing-layer name passed to GPUGR"),
     ),
     config_param(
         "place.gpugr_top_routing_layer",
@@ -226,9 +224,7 @@ SCHEMAS = (
         ("gpugr_top_routing_layer",),
         "MET5",
         applies="placement",
-        description=(
-            "inclusive top routing-layer name passed to GPUGR"
-        ),
+        description=("inclusive top routing-layer name passed to GPUGR"),
     ),
     config_param(
         "place.gpugr_area_adjust_congestion_mode",
