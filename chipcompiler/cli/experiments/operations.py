@@ -162,7 +162,54 @@ def sweep_result(project: Path, name: str) -> Path:
 def compare_sweep(project: Path, name: str) -> list[dict[str, Any]]:
     payload = load_json(sweep_result(project, name), {"results": []})
     rows = payload.get("results", [])
-    return sorted(rows, key=lambda row: (row.get("status") not in {"passed", "success"}, -(row.get("qor_score") or float("-inf"))))
+    order = {"passed": 0, "success": 0, "blocked": 1, "failed": 2, "unknown": 3}
+    return sorted(rows, key=lambda row: (order.get(row.get("status", "unknown"), 3), -(row.get("qor_score") if isinstance(row.get("qor_score"), (int, float)) else float("-inf"))))
+
+
+def _json_command(project: Path, workspace: Path, command: str) -> tuple[int, Any]:
+    completed = subprocess.run(
+        [sys.executable, "-m", "chipcompiler.cli.main", *command.split(), "--project", str(project), "--workspace", str(workspace), "--json"],
+        capture_output=True, text=True, check=False,
+    )
+    try:
+        return completed.returncode, json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return completed.returncode, None
+
+
+def _first_number(value: Any, keys: set[str]) -> float | None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in keys and isinstance(child, (int, float)):
+                return float(child)
+            result = _first_number(child, keys)
+            if result is not None:
+                return result
+    elif isinstance(value, list):
+        for child in value:
+            result = _first_number(child, keys)
+            if result is not None:
+                return result
+    return None
+
+
+def collect_candidate_evidence(project: Path, workspace: Path, exit_code: int) -> dict[str, Any]:
+    flow = load_json(workspace / "home" / "flow.json", {}) or {}
+    status_code, status_payload = _json_command(project, workspace, "status")
+    signoff_code, _ = _json_command(project, workspace, "signoff check")
+    steps = flow.get("steps", []) if isinstance(flow, dict) else []
+    if not steps and isinstance(status_payload, dict):
+        steps = status_payload.get("steps", [])
+    step_statuses = [{"name": step.get("name"), "status": step.get("status", "unknown"), "checklist": step.get("checklist_status", "unknown")} for step in steps if isinstance(step, dict)]
+    blocked = any(step["status"] == "blocked" or step["checklist"] == "blocked" for step in step_statuses)
+    failed = exit_code != 0 or signoff_code not in {0, 7}
+    status = "blocked" if blocked else "failed" if failed else "passed" if step_statuses or status_code == 0 else "unknown"
+    qor_score = None
+    for report in workspace.rglob("*.json"):
+        qor_score = _first_number(load_json(report), {"qor_score", "score", "ppa_score"})
+        if qor_score is not None:
+            break
+    return {"status": status, "step_statuses": step_statuses, "qor_score": qor_score, "signoff_exit_code": signoff_code, "workspace_status_exit_code": status_code}
 
 
 def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str, Any]:
@@ -177,7 +224,8 @@ def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str,
         for key, value in candidate["parameters"].items():
             command.extend(["--set", f"{key}={value}"])
         completed = subprocess.run(command, capture_output=True, text=True, check=False)
-        results.append({"id": candidate["id"], "workspace": str(workspace), "parameters": candidate["parameters"], "status": "passed" if completed.returncode == 0 else "failed", "exit_code": completed.returncode})
+        evidence = collect_candidate_evidence(project, workspace, completed.returncode)
+        results.append({"id": candidate["id"], "workspace": str(workspace), "parameters": candidate["parameters"], "exit_code": completed.returncode, **evidence})
     payload = {"schema_version": SCHEMA_VERSION, "results": results}
     dump_json(sweep_result(project, name), payload)
     return payload
