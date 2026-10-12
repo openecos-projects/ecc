@@ -178,6 +178,7 @@ Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 | `ecc workspace` | Import existing workspaces or refresh them from project configuration |
 | `ecc signoff` | Inspect readiness and export the signoff package |
 | `ecc report` | Write design-summary, QoR, checklist, and step reports |
+| `ecc compare run` | Compare two saved Engineering Snapshot JSON files without running EDA |
 | `ecc version` | Show ECC runtime and component versions |
 | `ecc layout-image` | Render a GDS file into a layout image |
 

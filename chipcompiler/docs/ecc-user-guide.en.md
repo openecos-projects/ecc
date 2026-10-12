@@ -1169,6 +1169,36 @@ $ ecc report step drc --section analysis
     [BLOCK] qor.drc.clean — drc_count=336 == 0
 ```
 
+## 12.5. compare run — compare two saved run snapshots
+
+```bash
+ecc compare run --baseline before.json --current after.json
+ecc compare run --baseline before.json --current after.json --json
+ecc compare run --baseline before.json --current after.json --plain
+```
+
+Both arguments are saved copies of `home/engineering-snapshot.json`, not run IDs or workspace
+names. The command does not run EDA tools, load workspaces, generate reports or modify inputs.
+Save a copy before and after a run while the workspace is idle; automatic run history is not provided.
+
+The comparison includes flow records, metric deltas, saved QoR, parameters, checklist/signoff
+and artifact indexes. Missing values are never replaced by zero; incompatible units produce no
+delta. Metric polarity comes from the existing registry. Different constraints, flow definitions,
+PDK metadata, workspaces or unknown polarity produce unknown trends. QoR score comparison requires
+the same scoring engine and profile. Overall summarizes numeric metrics and QoR score only;
+it is not a signoff or tapeout decision.
+
+JSON uses the shared record-array contract with a `run_comparison` record containing
+`baseline/current`, `summary`, `compatibility`, `steps`, `metrics`, `qor`, `parameter_changes`,
+`configuration_changes`, `signoff`, `checklist`, `artifacts` and `warnings`.
+Artifact IDs identify paths, not file contents: `content_comparison` is always unknown.
+Matching indexes do not prove matching contents; saved metadata does not verify RTL/PDK/SDC contents.
+
+A completed comparison returns 0, including regressed or unknown results. Invalid snapshots or
+duplicate comparison keys return 1; argument errors return 2. Compressed JSON is not accepted;
+the existing 16 MiB snapshot limit applies, and older schemas are not migrated.
+Use `--json` for nested automation results; it cannot be combined with `--plain`.
+
 ## 13. layout-image — render a GDS to an image
 
 ```bash

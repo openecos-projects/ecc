@@ -7,6 +7,7 @@ from chipcompiler.cli.core.inputs import LogInput
 from chipcompiler.cli.core.invocation import CommandInput
 from chipcompiler.cli.core.line_records import serialize_line_records
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
+from chipcompiler.cli.rendering.compare import render_compare_run_text
 from chipcompiler.cli.rendering.pretty import (
     render_check,
     render_config,
@@ -229,6 +230,7 @@ def _render_log_plain(
 
 
 RENDERERS: dict[RendererKey, Renderer] = {
+    ("compare:run", OutputMode.TEXT): _pretty(render_compare_run_text),
     ("init", OutputMode.TEXT): _pretty(render_init),
     ("check", OutputMode.TEXT): _pretty(render_check),
     ("run", OutputMode.TEXT): _pretty(render_run_summary),

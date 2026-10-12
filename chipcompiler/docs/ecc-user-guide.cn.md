@@ -1117,6 +1117,33 @@ $ ecc report step drc --section analysis
     [BLOCK] qor.drc.clean — drc_count=336 == 0
 ```
 
+## 12.5. compare run — 比较两份运行快照
+
+```bash
+ecc compare run --baseline before.json --current after.json
+ecc compare run --baseline before.json --current after.json --json
+ecc compare run --baseline before.json --current after.json --plain
+```
+
+两参数是保存的 `home/engineering-snapshot.json` 文件副本，不是 run ID 或 workspace
+名称。命令不运行 EDA、不加载 workspace、不生成报告或修改输入文件。运行前后分别
+保存快照，且保存时应确保 workspace 不在执行；目前不自动维护 run 历史。
+
+比较 flow 状态、metric delta、已保存的 QoR、参数、checklist/signoff 和 artifact 索引。
+数值缺失不补零，单位不一致时不计算 delta。metric 方向复用现有 registry；不同约束、
+flow、PDK、workspace 或未知方向时标 unknown。QoR score 要求相同评分引擎和 profile。
+summary 仅代表 metric/QoR score 的数值趋势，不是签核或 tapeout 结论。
+
+JSON 顶层沿用记录数组，记录为 `run_comparison`；完整字段包括 `baseline/current`、
+`summary`、`compatibility`、`steps`、`metrics`、`qor`、`parameter_changes`、
+`configuration_changes`、`signoff`、`checklist`、`artifacts` 和 `warnings`。
+artifactId 是路径身份而不是内容 hash，`content_comparison` 始终为 unknown。
+相同索引不证明文件内容相同，保存元数据一致也不验证 RTL/PDK/SDC 内容。
+
+完成比较返回 0（包括 regressed/unknown）；非法快照或重复比较键返回 1；参数错误返回 2。
+不接受压缩 JSON，使用现有 16 MiB snapshot 上限，且不会迁移旧 schema。
+自动化读取嵌套结果应使用 `--json`；不能同时指定 `--json` 和 `--plain`。
+
 ## 13. layout-image — GDS 渲染为图片
 
 ```bash

@@ -170,6 +170,7 @@ ecc run --project gcd --workspace recovered --resume
 | `ecc workspace` | 导入已有 workspace，或从项目配置刷新受管 workspace |
 | `ecc signoff` | 检查签核就绪度并导出签核包 |
 | `ecc report` | 生成设计总结、QoR、签核清单和步骤报告 |
+| `ecc compare run` | 只读比较两份保存的 Engineering Snapshot JSON，不启动 EDA |
 | `ecc version` | 显示 ECC 运行时和组件版本 |
 | `ecc layout-image` | 将 GDS 文件渲染为版图图像 |
 

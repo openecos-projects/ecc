@@ -1,4 +1,5 @@
 import hashlib
+import json
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -103,6 +104,52 @@ def read_engineering_snapshot(
 
 def read_engineering_snapshot_from_directory(directory: str | Path) -> dict[str, Any]:
     return _read_snapshot(Path(directory).expanduser().resolve() / "home" / SNAPSHOT_FILENAME)
+
+
+def read_engineering_snapshot_file(path: str | Path) -> dict[str, Any]:
+    """Read a saved Snapshot without migrating it or reading artifact content."""
+    try:
+        path = Path(path).expanduser().resolve()
+    except (OSError, RuntimeError) as exc:
+        raise EngineeringSnapshotError(f"invalid saved Snapshot path: {path}") from exc
+    if path.suffix == ".gz":
+        raise EngineeringSnapshotError("saved Snapshot comparison requires uncompressed JSON")
+    if not path.is_file():
+        raise EngineeringSnapshotError(f"missing Engineering Snapshot: {path}")
+    try:
+        with path.open("rb") as stream:
+            content = stream.read(ENGINEERING_SNAPSHOT_MAX_BYTES + 1)
+    except OSError as exc:
+        raise EngineeringSnapshotError(f"unreadable Engineering Snapshot: {path}") from exc
+    if len(content) > ENGINEERING_SNAPSHOT_MAX_BYTES:
+        raise EngineeringSnapshotError(f"oversized Engineering Snapshot: {path}")
+    try:
+        snapshot = json.loads(content.decode("utf-8"))
+    except (ValueError, UnicodeError, RecursionError) as exc:
+        raise EngineeringSnapshotError(f"invalid Engineering Snapshot: {path}") from exc
+    if not isinstance(snapshot, dict):
+        raise EngineeringSnapshotError(f"invalid Engineering Snapshot: {path}")
+    if type(snapshot.get("schemaVersion")) is not int:
+        raise EngineeringSnapshotError(f"invalid Engineering Snapshot schemaVersion: {path}")
+    for key in ("workspaceSpec", "workspaceBindings"):
+        if key in snapshot and not isinstance(snapshot[key], dict):
+            raise EngineeringSnapshotError(f"invalid Engineering Snapshot section: {key}")
+    try:
+        json.dumps(snapshot, allow_nan=False)
+    except (ValueError, RecursionError) as exc:
+        raise EngineeringSnapshotError(f"non-finite value in Engineering Snapshot: {path}") from exc
+    try:
+        if "qorSnapshotExtension" in snapshot and not validate_qor_snapshot_extension(
+            snapshot["qorSnapshotExtension"]
+        ):
+            raise EngineeringSnapshotError(
+                "invalid Engineering Snapshot section: qorSnapshotExtension"
+            )
+        return _validate_snapshot(snapshot, path, validate_workspace_identity=False)
+    except EngineeringSnapshotError:
+        raise
+    except (TypeError, ValueError, OverflowError, RuntimeError) as exc:
+        raise EngineeringSnapshotError(f"invalid Engineering Snapshot: {path}") from exc
 
 
 def read_stale_engineering_snapshot(workspace: Any) -> dict[str, Any] | None:
@@ -412,6 +459,12 @@ def _read_snapshot(path: Path) -> dict[str, Any]:
         snapshot = json_read_strict(path)
     except (OSError, JsonReadError) as exc:
         raise EngineeringSnapshotError(f"invalid Engineering Snapshot: {path}") from exc
+    return _validate_snapshot(snapshot, path)
+
+
+def _validate_snapshot(
+    snapshot: object, path: Path, *, validate_workspace_identity: bool = True
+) -> dict[str, Any]:
     if not isinstance(snapshot, dict):
         raise EngineeringSnapshotError(f"invalid Engineering Snapshot: {path}")
     schema_version = snapshot.get("schemaVersion")
@@ -433,13 +486,17 @@ def _read_snapshot(path: Path) -> dict[str, Any]:
         )
     ):
         raise EngineeringSnapshotError(f"invalid Engineering Snapshot: {path}")
-    _validate_snapshot_sections(snapshot, path.parent.parent)
+    _validate_snapshot_sections(
+        snapshot, path.parent.parent, validate_workspace_identity=validate_workspace_identity
+    )
     return snapshot
 
 
 def _validate_snapshot_sections(
     snapshot: dict[str, Any],
     workspace_root: Path,
+    *,
+    validate_workspace_identity: bool = True,
 ) -> None:
     required = ["flow", "parameters", "checklist", "signoffAssessment"]
     if snapshot["schemaVersion"] == SNAPSHOT_SCHEMA_VERSION:
@@ -460,7 +517,7 @@ def _validate_snapshot_sections(
     if not isinstance(artifacts, list) or len(artifacts) > SNAPSHOT_ARTIFACT_LIMIT:
         raise EngineeringSnapshotError("invalid Engineering Snapshot section: artifacts")
     workspace_root = workspace_root.resolve()
-    metadata_id = _workspace_metadata_id(workspace_root)
+    metadata_id = _workspace_metadata_id(workspace_root) if validate_workspace_identity else None
     if metadata_id is not None and metadata_id != snapshot["workspaceId"]:
         raise EngineeringSnapshotError(
             "Engineering Snapshot workspace identity mismatch",
