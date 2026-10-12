@@ -197,5 +197,10 @@ task_plan.md
 # Lit suite exec root (ephemeral)
 ci-artifacts/
 
+<<<<<<< HEAD
 # Build identity stamped by CI before packaging (ephemeral)
 chipcompiler/_build_info.py
+=======
+# Lit suite execution trees
+test/lit/**/Output/
+>>>>>>> bde0b6d1 (chore: ignore lit project Output trees)
