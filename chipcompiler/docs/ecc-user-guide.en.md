@@ -1050,9 +1050,10 @@ status is `pass` only when every gate passes, `fail` when any gate fails, and `u
 otherwise. The initial `rtl2gds` profile contains `flow_complete`, `qor_available`,
 `checklist_ready`, `drc_clean`, `lvs_clean`, `sta_setup_clean`, and `sta_hold_clean`.
 
-With `--json`, the command returns a record array whose gate records contain `gate`,
-`status`, `reason`, and `source`; checker gates also preserve `failed_items` and
-`violation_count`. The `physical_signoff` profile additionally checks `lec_proven`,
+With `--json`, the command returns a record array whose gate records use the stable contract
+`gate`, `required`, `status`, `reason`, `source`, `failed_items`, `violation_count`, `stale`,
+and `provisional`. Artifact gates may additionally include `bytes` and `sha256`. The
+`physical_signoff` profile additionally checks `lec_proven`,
 `final_gds_available`, and `final_netlist_available`:
 
 ```bash
