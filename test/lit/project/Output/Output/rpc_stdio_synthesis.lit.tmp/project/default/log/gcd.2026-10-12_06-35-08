@@ -1,0 +1,319 @@
+2026-10-12 06:35:08,740 - gcd - INFO - Rewrote 1 absolute filelist entries to frozen sources
+2026-10-12 06:35:08,740 - gcd - INFO - Copied filelist and sources: 1 files from filelist, 0 files from +incdir, 0 missing, 0 duplicates skipped
+2026-10-12 06:35:08,754 - gcd - INFO - 
+2026-10-12 06:35:08,754 - gcd - INFO - ############################################################
+2026-10-12 06:35:08,754 - gcd - INFO -                        workspace info                       
+2026-10-12 06:35:08,755 - gcd - INFO - ############################################################
+2026-10-12 06:35:08,755 - gcd - INFO - 
+2026-10-12 06:35:08,755 - gcd - INFO - workspace      : /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default
+2026-10-12 06:35:08,755 - gcd - INFO - config         : /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/config
+2026-10-12 06:35:08,755 - gcd - INFO - PDK            : ics55
+2026-10-12 06:35:08,755 - gcd - INFO - design         : gcd
+2026-10-12 06:35:08,755 - gcd - INFO - top module     : gcd
+2026-10-12 06:35:08,755 - gcd - INFO - origin def     : /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/origin/gcd.def
+2026-10-12 06:35:08,755 - gcd - INFO - origin verilog : /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/origin/gcd.v
+2026-10-12 06:35:08,755 - gcd - INFO - golden verilog : None
+2026-10-12 06:35:08,755 - gcd - INFO - input filelist : /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/origin/filelist
+2026-10-12 06:35:08,755 - gcd - INFO - sdc            : /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/origin/gcd.sdc
+2026-10-12 06:35:08,755 - gcd - INFO - spef           : None
+2026-10-12 06:35:08,755 - gcd - INFO - 
+2026-10-12 06:35:08,755 - gcd - INFO - ############################################################
+2026-10-12 06:35:08,755 - gcd - INFO -                       parameters info                      
+2026-10-12 06:35:08,755 - gcd - INFO - ############################################################
+2026-10-12 06:35:08,755 - gcd - INFO - 
+2026-10-12 06:35:08,755 - gcd - INFO - parameters     : /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/home/params.toml
+2026-10-12 06:35:08,755 - gcd - INFO - 
++------------+-------+
+| Key        | Value |
++------------+-------+
+| pdk        | ics55 |
+| design     | gcd   |
+| top_module | gcd   |
++------------+-------+
+
+[die]
++------+-------+
+| Key  | Value |
++------+-------+
+| size | []    |
+| area | 0     |
++------+-------+
+
+[core]
++---------------+--------+
+| Key           | Value  |
++---------------+--------+
+| size          | []     |
+| area          | 0      |
+| bounding_box  |        |
+| utilitization | 0.4    |
+| margin        | [2, 2] |
+| aspect_ratio  | 1      |
++---------------+--------+
+
++----------------------+-----------------+
+| Key                  | Value           |
++----------------------+-----------------+
+| max_fanout           | 32              |
+| target_density       | 0.2             |
+| target_overflow      | 0.1             |
+| global_right_padding | 0               |
+| cell_padding_x       | 200             |
+| routability_opt_flag | 1               |
+| run_analysis         | true            |
+| clock                | clk             |
+| frequency_max        | 100.0           |
+| bottom_layer         | MET2            |
+| top_layer            | MET5            |
+| sta_max_paths        | 1000            |
+| file_list            | origin/filelist |
++----------------------+-----------------+
+
+[_flow]
++-------+-----------+
+| Key   | Value     |
++-------+-----------+
+| start | Synthesis |
+| end   | Synthesis |
++-------+-----------+
+
++----------+-----------------------------+
+| Key      | Value                       |
++----------+-----------------------------+
+| pdk_root | /root/ec/pdk/icsprout55-pdk |
++----------+-----------------------------+
+2026-10-12 06:35:08,788 - gcd - INFO - 
+2026-10-12 06:35:08,788 - gcd - INFO - ############################################################
+2026-10-12 06:35:08,789 - gcd - INFO -                        workspace info                       
+2026-10-12 06:35:08,789 - gcd - INFO - ############################################################
+2026-10-12 06:35:08,789 - gcd - INFO - 
+2026-10-12 06:35:08,789 - gcd - INFO - workspace      : /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default
+2026-10-12 06:35:08,789 - gcd - INFO - config         : /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/config
+2026-10-12 06:35:08,789 - gcd - INFO - PDK            : ics55
+2026-10-12 06:35:08,789 - gcd - INFO - design         : gcd
+2026-10-12 06:35:08,789 - gcd - INFO - top module     : gcd
+2026-10-12 06:35:08,789 - gcd - INFO - origin def     : None
+2026-10-12 06:35:08,789 - gcd - INFO - origin verilog : /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/origin/gcd.v
+2026-10-12 06:35:08,789 - gcd - INFO - golden verilog : None
+2026-10-12 06:35:08,789 - gcd - INFO - input filelist : /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/origin/filelist
+2026-10-12 06:35:08,789 - gcd - INFO - sdc            : /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/origin/gcd.sdc
+2026-10-12 06:35:08,789 - gcd - INFO - spef           : None
+2026-10-12 06:35:08,789 - gcd - INFO - 
+2026-10-12 06:35:08,789 - gcd - INFO - ############################################################
+2026-10-12 06:35:08,789 - gcd - INFO -                       parameters info                      
+2026-10-12 06:35:08,789 - gcd - INFO - ############################################################
+2026-10-12 06:35:08,789 - gcd - INFO - 
+2026-10-12 06:35:08,789 - gcd - INFO - parameters     : /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/home/params.toml
+2026-10-12 06:35:08,789 - gcd - INFO - 
++----------------------+-----------------+
+| Key                  | Value           |
++----------------------+-----------------+
+| max_fanout           | 32              |
+| target_density       | 0.2             |
+| target_overflow      | 0.1             |
+| global_right_padding | 0               |
+| cell_padding_x       | 200             |
+| routability_opt_flag | 1               |
+| run_analysis         | true            |
+| bottom_layer         | MET2            |
+| top_layer            | MET5            |
+| sta_max_paths        | 1000            |
+| file_list            | origin/filelist |
++----------------------+-----------------+
+
+[die]
++------+-------+
+| Key  | Value |
++------+-------+
+| size | []    |
+| area | 0     |
++------+-------+
+
+[core]
++---------------+--------+
+| Key           | Value  |
++---------------+--------+
+| size          | []     |
+| area          | 0      |
+| bounding_box  |        |
+| utilitization | 0.4    |
+| margin        | [2, 2] |
+| aspect_ratio  | 1      |
++---------------+--------+
+
++---------------+-----------------------------+
+| Key           | Value                       |
++---------------+-----------------------------+
+| design        | gcd                         |
+| top_module    | gcd                         |
+| clock         | clk                         |
+| frequency_max | 100.0                       |
+| pdk           | ics55                       |
+| pdk_root      | /root/ec/pdk/icsprout55-pdk |
++---------------+-----------------------------+
+
+[_flow]
++-------+-----------+
+| Key   | Value     |
++-------+-----------+
+| start | Synthesis |
+| end   | Synthesis |
++-------+-----------+
+2026-10-12 06:35:08,806 - gcd - INFO - 
+2026-10-12 06:35:08,806 - gcd - INFO - ############################################################
+2026-10-12 06:35:08,806 - gcd - INFO -                yosys - begin step - Synthesis               
+2026-10-12 06:35:08,806 - gcd - INFO - ############################################################
+2026-10-12 06:35:08,806 - gcd - INFO - 
+2026-10-12 06:35:08,807 - gcd - INFO - [STEP] Synthesis(yosys) pid=106072 started
+2026-10-12 06:35:08,818 - gcd - INFO - 
+2026-10-12 06:35:08,818 - gcd - INFO - ############################################################
+2026-10-12 06:35:08,818 - gcd - INFO -                     step Synthesis info                    
+2026-10-12 06:35:08,818 - gcd - INFO - ############################################################
+2026-10-12 06:35:08,818 - gcd - INFO - 
+2026-10-12 06:35:08,818 - gcd - INFO - step name         : Synthesis
+2026-10-12 06:35:08,819 - gcd - INFO - step eda          : yosys
+2026-10-12 06:35:08,819 - gcd - INFO - step eda version  : 0.1
+2026-10-12 06:35:08,819 - gcd - INFO - step subworkspace : /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys
+2026-10-12 06:35:08,819 - gcd - INFO - 
+input - 
++---------+--------------------------------------------------------------------------------------------------------+
+| Key     | Value                                                                                                  |
++---------+--------------------------------------------------------------------------------------------------------+
+| verilog | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/origin/gcd.v |
++---------+--------------------------------------------------------------------------------------------------------+
+2026-10-12 06:35:08,819 - gcd - INFO - 
+output - 
++----------------+-----------------------------------------------------------------------------------------------------------------------------------------+
+| Key            | Value                                                                                                                                   |
++----------------+-----------------------------------------------------------------------------------------------------------------------------------------+
+| dir            | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/output                        |
+| def            | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/output/gcd_Synthesis.def.gz   |
+| verilog        | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/output/gcd_Synthesis.v.gz     |
+| json           | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/output/gcd_Synthesis.json     |
+| image          | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/output/gcd_Synthesis.png      |
+| sim_verilog    | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/output/gcd_Synthesis_sim.v.gz |
+| report         | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/output/gcd_Synthesis.rpt      |
+| golden_verilog | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/output/gcd_Synthesis_golden.v |
++----------------+-----------------------------------------------------------------------------------------------------------------------------------------+
+2026-10-12 06:35:08,819 - gcd - INFO - 
+data - 
++-----+--------------------------------------------------------------------------------------------------------------------+
+| Key | Value                                                                                                              |
++-----+--------------------------------------------------------------------------------------------------------------------+
+| dir | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/data     |
+| tmp | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/data/tmp |
++-----+--------------------------------------------------------------------------------------------------------------------+
+2026-10-12 06:35:08,819 - gcd - INFO - 
+feature - 
++--------------+-----------------------------------------------------------------------------------------------------------------------------------------------+
+| Key          | Value                                                                                                                                         |
++--------------+-----------------------------------------------------------------------------------------------------------------------------------------------+
+| dir          | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/feature                             |
+| step         | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/feature/Synthesis.step.json         |
+| generic_stat | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/feature/Synthesis_generic_stat.json |
+| stat         | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/feature/Synthesis_stat.json         |
++--------------+-----------------------------------------------------------------------------------------------------------------------------------------------+
+2026-10-12 06:35:08,819 - gcd - INFO - 
+report - 
++-------+--------------------------------------------------------------------------------------------------------------------------------------+
+| Key   | Value                                                                                                                                |
++-------+--------------------------------------------------------------------------------------------------------------------------------------+
+| dir   | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/report                     |
+| stat  | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/report/Synthesis_stat.json |
+| check | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/report/Synthesis_check.rpt |
++-------+--------------------------------------------------------------------------------------------------------------------------------------+
+2026-10-12 06:35:08,819 - gcd - INFO - 
+log - 
++------+-----------------------------------------------------------------------------------------------------------------------------+
+| Key  | Value                                                                                                                       |
++------+-----------------------------------------------------------------------------------------------------------------------------+
+| dir  | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/log               |
+| file | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/log/Synthesis.log |
++------+-----------------------------------------------------------------------------------------------------------------------------+
+2026-10-12 06:35:08,819 - gcd - INFO - 
+script - 
++------+-------------------------------------------------------------------------------------------------------------------------------------+
+| Key  | Value                                                                                                                               |
++------+-------------------------------------------------------------------------------------------------------------------------------------+
+| dir  | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/script                    |
+| main | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/script/Synthesis_main.tcl |
++------+-------------------------------------------------------------------------------------------------------------------------------------+
+2026-10-12 06:35:08,819 - gcd - INFO - 
+analysis - 
++--------------+--------------------------------------------------------------------------------------------------------------------------------------+
+| Key          | Value                                                                                                                                |
++--------------+--------------------------------------------------------------------------------------------------------------------------------------+
+| dir          | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/analysis                   |
+| metrics      | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/analysis/qor_metrics.json  |
+| qor_metrics  | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/analysis/qor_metrics.json  |
+| qor_summary  | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/analysis/qor_summary.json  |
+| qor_hotspots | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/analysis/qor_hotspots.json |
++--------------+--------------------------------------------------------------------------------------------------------------------------------------+
+2026-10-12 06:35:08,819 - gcd - INFO - 
+subflow - 
++------+------------------------------------------------------------------------------------------------------------------------+
+| Key  | Value                                                                                                                  |
++------+------------------------------------------------------------------------------------------------------------------------+
+| path | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/subflow.json |
++------+------------------------------------------------------------------------------------------------------------------------+
+
+[steps]
++---+-----------+---------+---------+------------------+------+
+| # | name      | state   | runtime | peak memory (mb) | info |
++---+-----------+---------+---------+------------------+------+
+| 1 | run yosys | Unstart |         | 0                | {}   |
+| 2 | analysis  | Unstart |         | 0                | {}   |
++---+-----------+---------+---------+------------------+------+
+2026-10-12 06:35:08,819 - gcd - INFO - 
+checklist - 
++------+--------------------------------------------------------------------------------------------------------------------------+
+| Key  | Value                                                                                                                    |
++------+--------------------------------------------------------------------------------------------------------------------------+
+| path | /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/checklist.json |
++------+--------------------------------------------------------------------------------------------------------------------------+
+
+[checklist]
++---+----------------------------+-----------+----------+-----------+--------+--------+---------+--------------------------+---------------------------+-------------------------------------------------------------------------+---------------------------------------------------------------------------+
+| # | id                         | step      | category | owner     | policy | state  | blocked | title                    | summary                   | source                                                                  | evidence                                                                  |
++---+----------------------------+-----------+----------+-----------+--------+--------+---------+--------------------------+---------------------------+-------------------------------------------------------------------------+---------------------------------------------------------------------------+
+| 1 | artifact.synthesis.netlist | Synthesis | artifact | checklist | block  | failed | true    | Mapped synthesis netlist | Required file is missing. | {"kind": "output", "path": "Synthesis_yosys/output/gcd_Synthesis.v.gz"} | [{"kind": "output", "path": "Synthesis_yosys/output/gcd_Synthesis.v.gz"}] |
++---+----------------------------+-----------+----------+-----------+--------+--------+---------+--------------------------+---------------------------+-------------------------------------------------------------------------+---------------------------------------------------------------------------+
+2026-10-12 06:35:08,819 - gcd - INFO - ############################################################
+2026-10-12 06:35:16,267 - gcd - INFO - Post-synthesis STA artifacts saved to report=/tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/report/post_synthesis feature=/tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/Synthesis_yosys/feature/post_synthesis
+2026-10-12 06:35:16,267 - gcd - INFO - 
+metrics - 
++-------------+--------+
+| Key         | Value  |
++-------------+--------+
+| Tool        | yosys  |
+| Cell number | 271    |
+| Cell area   | 663.04 |
+| Wire number | 307    |
+| Port number | 54     |
++-------------+--------+
+2026-10-12 06:35:16,277 - gcd - INFO - [STEP] Synthesis(yosys) finished result=True
+2026-10-12 06:35:16,349 - gcd - INFO - 
+metrics - 
++-------------+--------+
+| Key         | Value  |
++-------------+--------+
+| Tool        | yosys  |
+| Cell number | 271    |
+| Cell area   | 663.04 |
+| Wire number | 307    |
+| Port number | 54     |
++-------------+--------+
+2026-10-12 06:35:16,361 - gcd - INFO - [RESULT] Synthesis(yosys) state=Success runtime=0:0:7 mem=566.703MB
+2026-10-12 06:35:16,361 - gcd - INFO - 
+2026-10-12 06:35:16,361 - gcd - INFO - ############################################################
+2026-10-12 06:35:16,361 - gcd - INFO -                          flow info                         
+2026-10-12 06:35:16,361 - gcd - INFO - ############################################################
+2026-10-12 06:35:16,361 - gcd - INFO - 
+2026-10-12 06:35:16,361 - gcd - INFO - flow           : /tmp/ecc-pr304/test/lit/project/Output/Output/rpc_stdio_synthesis.lit.tmp/project/default/home/flow.json
+2026-10-12 06:35:16,361 - gcd - INFO - name                 | tool                 | state                | runtime             
+2026-10-12 06:35:16,361 - gcd - INFO - Synthesis            | yosys                | Success              | 0:0:7               
+2026-10-12 06:35:16,361 - gcd - INFO - 
+2026-10-12 06:35:16,361 - gcd - INFO - ############################################################
+2026-10-12 06:35:16,361 - gcd - INFO -                 yosys - end step - Synthesis                
+2026-10-12 06:35:16,361 - gcd - INFO - ############################################################
+2026-10-12 06:35:16,361 - gcd - INFO - 

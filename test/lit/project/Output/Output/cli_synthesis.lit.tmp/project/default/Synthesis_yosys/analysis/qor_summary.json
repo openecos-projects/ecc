@@ -1,0 +1,77 @@
+{
+    "schema_version": 4,
+    "analysis_revision": "quality-gates-v4",
+    "tool": "yosys",
+    "step": "Synthesis",
+    "design": "gcd",
+    "analysis_status": "incomplete",
+    "quality_status": "pass",
+    "metric_count": 6,
+    "dimensions": {
+        "runtime": {
+            "metric_count": 2
+        },
+        "area_cost": {
+            "metric_count": 2
+        },
+        "routability_physical": {
+            "metric_count": 2
+        }
+    },
+    "gates": [],
+    "missing_metrics": [
+        {
+            "metric_id": "synthesis_power_internal_uw",
+            "reason": "Required feature file feature/post_synthesis/power_summary.json is missing; cannot read /internal_uw for synthesis_power_internal_uw.",
+            "evidence": {
+                "source": {
+                    "kind": "feature",
+                    "path": "feature/post_synthesis/power_summary.json",
+                    "selector": "/internal_uw"
+                },
+                "diagnosis": "Required feature file feature/post_synthesis/power_summary.json is missing; cannot read /internal_uw for synthesis_power_internal_uw.",
+                "availability": "source_file_missing"
+            }
+        },
+        {
+            "metric_id": "synthesis_power_switching_uw",
+            "reason": "Required feature file feature/post_synthesis/power_summary.json is missing; cannot read /switching_uw for synthesis_power_switching_uw.",
+            "evidence": {
+                "source": {
+                    "kind": "feature",
+                    "path": "feature/post_synthesis/power_summary.json",
+                    "selector": "/switching_uw"
+                },
+                "diagnosis": "Required feature file feature/post_synthesis/power_summary.json is missing; cannot read /switching_uw for synthesis_power_switching_uw.",
+                "availability": "source_file_missing"
+            }
+        },
+        {
+            "metric_id": "synthesis_power_dynamic_uw",
+            "reason": "Required feature file feature/post_synthesis/power_summary.json is missing; cannot read /dynamic_uw for synthesis_power_dynamic_uw.",
+            "evidence": {
+                "source": {
+                    "kind": "feature",
+                    "path": "feature/post_synthesis/power_summary.json",
+                    "selector": "/dynamic_uw"
+                },
+                "diagnosis": "Required feature file feature/post_synthesis/power_summary.json is missing; cannot read /dynamic_uw for synthesis_power_dynamic_uw.",
+                "availability": "source_file_missing"
+            }
+        },
+        {
+            "metric_id": "synthesis_power_leakage_uw",
+            "reason": "Required feature file feature/post_synthesis/power_summary.json is missing; cannot read /leakage_uw for synthesis_power_leakage_uw.",
+            "evidence": {
+                "source": {
+                    "kind": "feature",
+                    "path": "feature/post_synthesis/power_summary.json",
+                    "selector": "/leakage_uw"
+                },
+                "diagnosis": "Required feature file feature/post_synthesis/power_summary.json is missing; cannot read /leakage_uw for synthesis_power_leakage_uw.",
+                "availability": "source_file_missing"
+            }
+        }
+    ],
+    "metrics_file": "qor_metrics.json"
+}

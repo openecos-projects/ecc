@@ -1,0 +1,8 @@
+{
+    "schema_version": 3,
+    "analysis_revision": "quality-gates-v4",
+    "tool": "yosys",
+    "step": "Synthesis",
+    "design": "gcd",
+    "hotspots": []
+}

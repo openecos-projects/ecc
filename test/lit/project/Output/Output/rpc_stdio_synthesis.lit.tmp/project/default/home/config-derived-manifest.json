@@ -1,0 +1,44 @@
+{
+    "files": {
+        "cts_ecc.json": {
+            "sha256": "0bc59cc62a4b6b9f53aba500fd823ae05b058c5fbd0347f3998b5e3b4d58ac95",
+            "size": 319
+        },
+        "db_ecc.json": {
+            "sha256": "c89d2afae0bbe0ef777d399bf3a3bd93179edd7ba85849076c3ed854df235f3e",
+            "size": 1043
+        },
+        "drc_ecc.json": {
+            "sha256": "8eb95bcbc154530931e15fc418c8b1fe991095671409552099ea1aa596999ede",
+            "size": 3
+        },
+        "dreamplace_ecc.json": {
+            "sha256": "5cfb0554ed6530eeded6e540f0c16813eaff7bfd0a77fb4093b1c13150d48fee",
+            "size": 3702
+        },
+        "filler_ecc.json": {
+            "sha256": "e1858d87637a686bcb216b14a475c13a9706af5d0d6bc5f144c61d32fd2b0433",
+            "size": 30
+        },
+        "floorplan_ecc.json": {
+            "sha256": "9047fbd80f2dbf2d149c889313a503553ae92d68088a95f097a240c42f3f78c2",
+            "size": 3326
+        },
+        "macro_location.tcl": {
+            "sha256": "16354dba822ff48987734e982fd502d1aed118d2af38bf375bbd1bdc5367ecdc",
+            "size": 184
+        },
+        "rcx_ecc.json": {
+            "sha256": "314e0a15bbdabb98a461c5ab483fdfa0498e06128dbf51038f92898bef45af39",
+            "size": 58
+        },
+        "route_ecc.json": {
+            "sha256": "15271a1eb1d01c201d6196b3355e495ab6f3f4cdab5a3cc53c14929bcccfed6f",
+            "size": 263
+        },
+        "sta_ecc.json": {
+            "sha256": "d21035dca4513c5d1fa5b72695a8c907ee8044d903cf6daf5098abc88ba99d4c",
+            "size": 2676
+        }
+    }
+}

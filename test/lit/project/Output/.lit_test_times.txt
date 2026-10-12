@@ -1,0 +1,2 @@
+8.929995e+00 cli_synthesis.lit
+8.950980e+00 rpc_stdio_synthesis.lit

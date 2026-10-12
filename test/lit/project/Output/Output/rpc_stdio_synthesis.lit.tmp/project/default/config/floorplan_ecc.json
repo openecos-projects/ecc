@@ -1,0 +1,129 @@
+{
+    "ifp": {
+        "temp_directory_path": "",
+        "thread_number": 16
+    },
+    "macro_placer": {
+        "mode": "auto",
+        "file_path": "",
+        "macro_placement_halo": 3.0,
+        "macro_routing_halo": 3.0
+    },
+    "die_builder": {
+        "mode": "die_util",
+        "site_name": "core7",
+        "margin": {
+            "left_micron": 2,
+            "right_micron": 2,
+            "top_micron": 2,
+            "bottom_micron": 2
+        },
+        "die_util": {
+            "aspect_ratio": 1,
+            "utilization": 0.4
+        },
+        "die_size": {
+            "width_micron": 100.1,
+            "height_micron": 246.6
+        }
+    },
+    "io_placer": {
+        "mode": "auto",
+        "file_path": "",
+        "io_layer_list": [
+            "MET3",
+            "MET4"
+        ]
+    },
+    "phy_placer": {
+        "well_tap": {
+            "cell_name": "FILLTAPH7R",
+            "distance_micron": 58.0
+        },
+        "side_endcap": {
+            "left_cell_name": "FILLTAPH7R",
+            "right_cell_name": "FILLTAPH7R"
+        },
+        "edge_endcap": {
+            "top_cell_name_list": [
+                "FILLCAP4H7R",
+                "FILLCAP8H7R",
+                "FILLCAP16H7R",
+                "FILLCAP32H7R",
+                "FILLER2H7R",
+                "FILLER1H7R"
+            ],
+            "bottom_cell_name_list": [
+                "FILLCAP4H7R",
+                "FILLCAP8H7R",
+                "FILLCAP16H7R",
+                "FILLCAP32H7R",
+                "FILLER2H7R",
+                "FILLER1H7R"
+            ]
+        },
+        "boundary_tap": {
+            "top_cell_name_list": [
+                "FILLCAP4H7R",
+                "FILLCAP8H7R",
+                "FILLCAP16H7R",
+                "FILLCAP32H7R",
+                "FILLER2H7R",
+                "FILLER1H7R"
+            ],
+            "bottom_cell_name_list": [
+                "FILLCAP4H7R",
+                "FILLCAP8H7R",
+                "FILLCAP16H7R",
+                "FILLCAP32H7R",
+                "FILLER2H7R",
+                "FILLER1H7R"
+            ],
+            "rule_micron": 30.0
+        }
+    },
+    "pdn_generator": {
+        "global_connect": [
+            {
+                "net_name": "VDD",
+                "instance_pin_name": "VDD",
+                "is_power": true
+            },
+            {
+                "net_name": "VSS",
+                "instance_pin_name": "VSS",
+                "is_power": false
+            }
+        ],
+        "rail": [
+            {
+                "routing_layer_name": "MET1",
+                "width_micron": 0.16
+            }
+        ],
+        "stripe": [
+            {
+                "routing_layer_name": "MET4",
+                "width_micron": 1.0,
+                "pitch_micron": 16.0,
+                "offset_micron": 0.5
+            },
+            {
+                "routing_layer_name": "MET5",
+                "width_micron": 1.0,
+                "pitch_micron": 16.0,
+                "offset_micron": 0.5
+            }
+        ],
+        "connect_layers": [
+            {
+                "bottom_routing_layer_name": "MET1",
+                "top_routing_layer_name": "MET4"
+            },
+            {
+                "bottom_routing_layer_name": "MET4",
+                "top_routing_layer_name": "MET5"
+            }
+        ]
+    }
+}

@@ -1,0 +1,73 @@
+****************************************
+Design : gcd
+DelayType : min
+StartEndType : in_to_reg
+SlackLesserThan : 0.0000000000
+SlackGreaterThan : -infinity
+Nworst : 1
+MaxPaths : 1000
+SortBy : slack
+Fanout : number of unique load pins driven by the point (blank for non-drivers)
+****************************************
+
+  Startpoint: reset (input port clocked by clk)
+  Endpoint: ctrl.curr_state__0_0__reg_p
+               (rising edge-triggered flip-flop clocked by clk)
+  Path Group: clk
+  Path Type: min
+
+  Point                                           Fanout            Incr            Path
+  ----------------------------------------------------------------------------------------
+  clock clk (rise edge)                                     0.0000000000    0.0000000000
+  clock network delay (ideal)                               0.0000000000    0.0000000000
+  input external delay                                      0.0000000000    0.0000000000 r
+  reset (in)                                           2    0.0000000000    0.0000000000 r
+  reset_OAOI211X0P5H7R_C0/Y (OAOI211X0P5H7R)           1    0.0791293357    0.0791293357 f
+  ctrl.curr_state__0_0__reg_p/D (DFFQX0P5H7R)               0.0000000000    0.0791293357 f
+  data arrival time                                                         0.0791293357
+
+  clock clk (rise edge)                                     0.0000000000    0.0000000000
+  clock network delay (ideal)                               0.0000000000    0.0000000000
+  clock reconvergence pessimism                             0.0000000000    0.0000000000
+  ctrl.curr_state__0_0__reg_p/CK (DFFQX0P5H7R)                              0.0000000000 r
+  clock uncertainty                                         0.0500000000    0.0500000000
+  library hold time                                         0.0427291884    0.0927291884
+  data required time                                                        0.0927291884
+  ----------------------------------------------------------------------------------------
+  data required time                                                        0.0927291884
+  data arrival time                                                        -0.0791293357
+  ----------------------------------------------------------------------------------------
+  slack (VIOLATED)                                                         -0.0135998527
+
+
+  Startpoint: reset (input port clocked by clk)
+  Endpoint: ctrl.curr_state__0_1__reg_p
+               (rising edge-triggered flip-flop clocked by clk)
+  Path Group: clk
+  Path Type: min
+
+  Point                                           Fanout            Incr            Path
+  ----------------------------------------------------------------------------------------
+  clock clk (rise edge)                                     0.0000000000    0.0000000000
+  clock network delay (ideal)                               0.0000000000    0.0000000000
+  input external delay                                      0.0000000000    0.0000000000 r
+  reset (in)                                           2    0.0000000000    0.0000000000 r
+  reset_AOI21X0P5H7R_B0/Y (AOI21X0P5H7R)               1    0.0795676529    0.0795676529 f
+  ctrl.curr_state__0_1__reg_p/D (DFFQX0P5H7R)               0.0000000000    0.0795676529 f
+  data arrival time                                                         0.0795676529
+
+  clock clk (rise edge)                                     0.0000000000    0.0000000000
+  clock network delay (ideal)                               0.0000000000    0.0000000000
+  clock reconvergence pessimism                             0.0000000000    0.0000000000
+  ctrl.curr_state__0_1__reg_p/CK (DFFQX0P5H7R)                              0.0000000000 r
+  clock uncertainty                                         0.0500000000    0.0500000000
+  library hold time                                         0.0377068874    0.0877068874
+  data required time                                                        0.0877068874
+  ----------------------------------------------------------------------------------------
+  data required time                                                        0.0877068874
+  data arrival time                                                        -0.0795676529
+  ----------------------------------------------------------------------------------------
+  slack (VIOLATED)                                                         -0.0081392346
+
+
+1

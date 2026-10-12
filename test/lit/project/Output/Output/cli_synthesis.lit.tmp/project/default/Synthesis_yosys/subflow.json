@@ -1,0 +1,19 @@
+{
+    "path": "/tmp/ecc-pr304/test/lit/project/Output/Output/cli_synthesis.lit.tmp/project/default/Synthesis_yosys/subflow.json",
+    "steps": [
+        {
+            "name": "run yosys",
+            "state": "Success",
+            "runtime": "0:0:3",
+            "peak memory (mb)": 0.004,
+            "info": {}
+        },
+        {
+            "name": "analysis",
+            "state": "Success",
+            "runtime": "0:0:4",
+            "peak memory (mb)": 594.363,
+            "info": {}
+        }
+    ]
+}

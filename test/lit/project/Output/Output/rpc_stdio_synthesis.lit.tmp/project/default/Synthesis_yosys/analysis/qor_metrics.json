@@ -1,0 +1,181 @@
+{
+    "schema_version": 3,
+    "analysis_revision": "quality-gates-v4",
+    "tool": "yosys",
+    "step": "Synthesis",
+    "design": "gcd",
+    "status": "success",
+    "metrics": [
+        {
+            "id": "peak_memory_mb",
+            "display_name": "Peak Memory",
+            "value": 566.703,
+            "unit": "MB",
+            "category": "runtime",
+            "direction": "lower_is_better",
+            "scope": "synthesis_execution",
+            "corner": null,
+            "project_role": "trend",
+            "step_role": "secondary",
+            "analysis_group": "runtime",
+            "rating": {
+                "gate": false,
+                "score": false,
+                "trend": true
+            },
+            "confidence": "high",
+            "source": {
+                "kind": "feature",
+                "path": "feature/Synthesis.step.json",
+                "selector": "/run/peak_memory_mb"
+            }
+        },
+        {
+            "id": "runtime_seconds",
+            "display_name": "Step Runtime",
+            "value": 7.471,
+            "unit": "s",
+            "category": "runtime",
+            "direction": "lower_is_better",
+            "scope": "synthesis_execution",
+            "corner": null,
+            "project_role": "trend",
+            "step_role": "secondary",
+            "analysis_group": "runtime",
+            "rating": {
+                "gate": false,
+                "score": false,
+                "trend": true
+            },
+            "confidence": "high",
+            "source": {
+                "kind": "feature",
+                "path": "feature/Synthesis.step.json",
+                "selector": "/run/runtime_seconds"
+            }
+        },
+        {
+            "id": "synthesis_cell_area",
+            "display_name": "Synthesis Cell Area",
+            "value": 663.04,
+            "unit": "um^2",
+            "category": "area_cost",
+            "direction": "lower_is_better",
+            "scope": "synthesis",
+            "corner": null,
+            "project_role": "trend",
+            "step_role": "primary",
+            "analysis_group": "synthesis_metrics",
+            "rating": {
+                "gate": false,
+                "score": true,
+                "trend": true
+            },
+            "confidence": "high",
+            "source": {
+                "kind": "feature",
+                "path": "feature/Synthesis_stat.json",
+                "selector": "/design/area"
+            }
+        },
+        {
+            "id": "synthesis_cell_count",
+            "display_name": "Synthesis Cell Count",
+            "value": 271,
+            "unit": "count",
+            "category": "area_cost",
+            "direction": "trend_only",
+            "scope": "synthesis",
+            "corner": null,
+            "project_role": "trend",
+            "step_role": "primary",
+            "analysis_group": "synthesis_metrics",
+            "rating": {
+                "gate": false,
+                "score": false,
+                "trend": true
+            },
+            "confidence": "high",
+            "source": {
+                "kind": "feature",
+                "path": "feature/Synthesis_stat.json",
+                "selector": "/design/num_cells"
+            }
+        },
+        {
+            "id": "synthesis_port_count",
+            "display_name": "Synthesis Port Count",
+            "value": 54,
+            "unit": "count",
+            "category": "routability_physical",
+            "direction": "trend_only",
+            "scope": "synthesis",
+            "corner": null,
+            "project_role": "trend",
+            "step_role": "primary",
+            "analysis_group": "synthesis_metrics",
+            "rating": {
+                "gate": false,
+                "score": false,
+                "trend": true
+            },
+            "confidence": "high",
+            "source": {
+                "kind": "feature",
+                "path": "feature/Synthesis_stat.json",
+                "selector": "/design/num_port_bits"
+            }
+        },
+        {
+            "id": "synthesis_wire_count",
+            "display_name": "Synthesis Wire Count",
+            "value": 307,
+            "unit": "count",
+            "category": "routability_physical",
+            "direction": "trend_only",
+            "scope": "synthesis",
+            "corner": null,
+            "project_role": "trend",
+            "step_role": "primary",
+            "analysis_group": "synthesis_metrics",
+            "rating": {
+                "gate": false,
+                "score": false,
+                "trend": true
+            },
+            "confidence": "high",
+            "source": {
+                "kind": "feature",
+                "path": "feature/Synthesis_stat.json",
+                "selector": "/design/num_wires"
+            }
+        }
+    ],
+    "details": [],
+    "sources": [
+        {
+            "kind": "feature",
+            "path": "feature/Synthesis.step.json"
+        },
+        {
+            "kind": "feature",
+            "path": "feature/Synthesis_stat.json"
+        }
+    ],
+    "integrity": {
+        "status": "pass",
+        "invalid_metric_source_ids": [],
+        "invalid_detail_ids": []
+    },
+    "context": {
+        "timing_constraints": {
+            "sdc_sha256": "a8c7aa04e9287d421b13797a55bef723dac45462ea0a37a2c8387bb052fe1c4d",
+            "sdc_size_bytes": 1824,
+            "source": {
+                "kind": "feature",
+                "path": "feature/Synthesis.step.json",
+                "selector": "/constraints/sdc"
+            }
+        }
+    }
+}

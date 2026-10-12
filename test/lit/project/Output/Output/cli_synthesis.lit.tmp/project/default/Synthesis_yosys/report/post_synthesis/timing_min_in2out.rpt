@@ -1,0 +1,15 @@
+****************************************
+Design : gcd
+DelayType : min
+StartEndType : in_to_out
+SlackLesserThan : 0.0000000000
+SlackGreaterThan : -infinity
+Nworst : 1
+MaxPaths : 1000
+SortBy : slack
+Fanout : number of unique load pins driven by the point (blank for non-drivers)
+****************************************
+
+No constrained paths.
+
+1

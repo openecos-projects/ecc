@@ -136,11 +136,10 @@ jobs:
       - name: Pytest (agent)
         run: uv run --no-sync pytest agent/test -v --basetemp=pytest-agent-tmp
 
-      - name: RPC project smoke
+      - name: Project scenario lit
         env:
-          PROJECT: ${{ runner.temp }}/rpc-project-smoke
           CHIPCOMPILER_ICS55_PDK_ROOT: ${{ github.workspace }}/../pdk/icsprout55-pdk
-        run: bash .github/scripts/run_rpc_project_smoke.sh
+        run: bash nix/scripts/ci_project_lit.sh
 
       - name: Prune test fixture symlinks before log upload
         if: failure()

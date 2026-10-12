@@ -1,0 +1,23 @@
+{
+    "INPUT": {
+        "tech_lef_path": "/root/ec/pdk/icsprout55-pdk/prtech/techLEF/N551P6M_ecos.lef",
+        "lef_paths": [
+            "/root/ec/pdk/icsprout55-pdk/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/lef/ics55_LLSC_H7CR_ecos.lef",
+            "/root/ec/pdk/icsprout55-pdk/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CL/lef/ics55_LLSC_H7CL_ecos.lef"
+        ],
+        "def_path": "",
+        "verilog_path": "",
+        "lib_path": [
+            "/root/ec/pdk/icsprout55-pdk/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib",
+            "/root/ec/pdk/icsprout55-pdk/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CL/liberty/ics55_LLSC_H7CL_ss_rcworst_1p08_125_nldm.lib"
+        ],
+        "sdc_path": "/tmp/ecc-pr304/test/lit/project/Output/Output/cli_synthesis.lit.tmp/project/default/origin/gcd.sdc",
+        "spef": ""
+    },
+    "OUTPUT": {
+        "output_dir_path": ""
+    },
+    "LayerSettings": {
+        "routing_layer_1st": "MET2"
+    }
+}
