@@ -12,6 +12,19 @@ SCHEMAS = (
         description="stopping criteria, consider stop when the overflow reaches to a ratio",
     ),
     config_param(
+        "place.overflow_reference_mode",
+        "dreamplace",
+        ("overflow_reference_mode",),
+        "initial",
+        applies="placement",
+        choices=("initial", "ordinary"),
+        description=(
+            "overflow normalization mode, initial freezes GP-entry area; ordinary preserves "
+            "existing area publication behavior, using published native-plus-virtual movable "
+            "area when available, otherwise PlaceDB movable area; excludes fillers"
+        ),
+    ),
+    config_param(
         "place.timing_placement_carrier",
         "dreamplace",
         ("timing_placement_carrier",),
@@ -54,8 +67,8 @@ SCHEMAS = (
         0.2,
         applies="placement",
         description=(
-            "initial target ratio between weighted timing-gradient and wirelength-gradient "
-            "L1 norms in direct-loss placement; 0 disables automatic balancing"
+            "initial target ratio rho between weighted timing-gradient and wirelength-gradient "
+            "L1 norms; 0 disables automatic timing-gradient balancing"
         ),
     ),
     config_param(
@@ -206,8 +219,8 @@ SCHEMAS = (
             "GGR backend selection: auto chooses cuda when available and cpu_pr_mt "
             "otherwise; cuda requires a CUDA-capable gpugr build; cpu_pr is explicit "
             "serial diagnostic pattern routing; cpu_pr_mt is deterministic parallel CPU "
-            "pattern routing and uses num_threads as its requested worker count; all CPU "
-            "pattern backends require rrrIters=0"
+            "pattern routing; cpu_pr_maze is opt-in CPU pattern plus maze RRR; "
+            "CPU pattern backends use num_threads as their requested worker count"
         ),
     ),
     config_param(
@@ -216,7 +229,10 @@ SCHEMAS = (
         ("gpugr_bottom_routing_layer",),
         "MET2",
         applies="placement",
-        description=("inclusive bottom routing-layer name passed to GPUGR"),
+        description=(
+            "inclusive bottom routing-layer name passed to GPUGR; "
+            "empty uses the first LEF routing layer"
+        ),
     ),
     config_param(
         "place.gpugr_top_routing_layer",
@@ -224,7 +240,10 @@ SCHEMAS = (
         ("gpugr_top_routing_layer",),
         "MET5",
         applies="placement",
-        description=("inclusive top routing-layer name passed to GPUGR"),
+        description=(
+            "inclusive top routing-layer name passed to GPUGR; "
+            "empty uses the last LEF routing layer"
+        ),
     ),
     config_param(
         "place.gpugr_area_adjust_congestion_mode",

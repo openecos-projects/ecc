@@ -51,6 +51,8 @@ def test_default_placement_recipe_preserves_tested_optimization_policy(dreamplac
 @pytest.mark.parametrize(
     "public",
     [
+        {"place.overflow_reference_mode": "initial"},
+        {"place.overflow_reference_mode": "ordinary"},
         {"place.timing_opt_enabled": 1},
         {"place.timing_opt_overflow_milestones": []},
         {"place.timing_opt_overflow_milestones": [0.6, 0.5, 0.4, 0.3, 0.2]},

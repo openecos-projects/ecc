@@ -7,6 +7,12 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DREAMPLACE_PARAMETERS = (
     _REPO_ROOT / "chipcompiler/thirdparty/ecc-dreamplace/dreamplace/params.json"
 )
+# These stage controls are translated by ECC's diff-sizing builder, not declared
+# in upstream Params metadata. Keep the set explicit so unknown fields still fail.
+_ECC_OWNED_DREAMPLACE_PARAMETERS = {
+    "diff_sizing_continuous_steps",
+    "diff_sizing_coefficients",
+}
 
 
 def test_canonical_dreamplace_descriptions_match_upstream_metadata():
@@ -20,8 +26,15 @@ def test_canonical_dreamplace_descriptions_match_upstream_metadata():
     ]
 
     assert schemas
+    descriptions = {}
     for schema in schemas:
         target = schema.config_target
         assert target is not None
         (key,) = target.json_path
-        assert schema.description == metadata[key]["description"]
+        descriptions[key] = schema.description
+
+    assert descriptions.keys() - metadata.keys() == _ECC_OWNED_DREAMPLACE_PARAMETERS
+    upstream_keys = descriptions.keys() - _ECC_OWNED_DREAMPLACE_PARAMETERS
+    assert {key: descriptions[key] for key in upstream_keys} == {
+        key: metadata[key]["description"] for key in upstream_keys
+    }
