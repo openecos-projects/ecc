@@ -2,5 +2,5 @@
 ; REQUIRES: ics55-pdk
 ;
 ; RUN: rm -rf %t && mkdir -p %t
-; RUN: bash %rpc_scenario %t
+; RUN: bash %scenario --mode=rpc %t
 ; RUN: %filecheck --input-file=%t/status.plain.txt %check_status_success
