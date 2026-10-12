@@ -32,6 +32,20 @@ _PROFILES = {
     ),
 }
 
+_REQUIRED_GATES = {
+    "rtl2gds": _PROFILES["rtl2gds"],
+    "physical_signoff": (
+        "flow_complete",
+        "drc_clean",
+        "lvs_clean",
+        "sta_setup_clean",
+        "sta_hold_clean",
+        "lec_proven",
+        "final_gds_available",
+        "final_netlist_available",
+    ),
+}
+
 
 def check(command_input, ctx: CommandContext) -> CommandResult:
     if command_input.profile not in _PROFILES:
@@ -62,11 +76,11 @@ def check(command_input, ctx: CommandContext) -> CommandResult:
             "signoff": "check",
             "profile": command_input.profile,
             "workspace": workspace_display(command_input, ctx),
-            "status": _overall(gates),
+            "status": _overall(gates, _REQUIRED_GATES[command_input.profile]),
         }
     ]
     records.extend(
-        {"gate": name, **gate}
+        {"gate": name, "required": name in _REQUIRED_GATES[command_input.profile], **gate}
         for name in _PROFILES[command_input.profile]
         for gate in [gates[name]]
     )
@@ -292,8 +306,9 @@ def _read(path: Path) -> dict:
     return value if isinstance(value, dict) else {}
 
 
-def _overall(gates: dict[str, dict]) -> str:
-    statuses = {gate["status"] for gate in gates.values()}
+def _overall(gates: dict[str, dict], required: tuple[str, ...] | None = None) -> str:
+    selected = [gates[name] for name in required] if required is not None else list(gates.values())
+    statuses = {gate["status"] for gate in selected}
     if "fail" in statuses:
         return "fail"
     if statuses == {"pass"}:

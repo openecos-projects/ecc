@@ -67,6 +67,13 @@ def test_checker_gate_reads_step_checklist_and_quality_gate(tmp_path):
 def test_overall_preserves_unknown_when_no_gate_fails():
     assert _overall({"a": {"status": "pass"}, "b": {"status": "unknown"}}) == "unknown"
     assert _overall({"a": {"status": "fail"}, "b": {"status": "unknown"}}) == "fail"
+    assert (
+        _overall(
+            {"required": {"status": "pass"}, "informational": {"status": "unknown"}},
+            ("required",),
+        )
+        == "pass"
+    )
 
 
 def test_lec_gate_requires_proven_result(tmp_path):
