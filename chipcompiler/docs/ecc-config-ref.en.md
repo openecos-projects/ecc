@@ -17,7 +17,7 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 │   ├── params.toml        # schema_version 2; parameter hub (see §1)
 │   ├── flow.json          # schema_version 1; step status
 │   └── config-derived-manifest.json # hashes from the last config derivation
-├── config/                # ← this document's focus: 9 JSON files + the Tcl macro-location handoff
+├── config/                # ← this document's focus: 10 JSON files + the Tcl macro-location handoff
 │   ├── db_ecc.json        # database build (loads LEF/DEF/netlist/LIB/SDC; shared by every ecc step)
 │   ├── floorplan_ecc.json # floorplanning
 │   ├── cts_ecc.json       # clock tree synthesis
@@ -26,6 +26,7 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 │   ├── filler_ecc.json    # filler cells
 │   ├── rcx_ecc.json       # parasitic extraction
 │   ├── sta_ecc.json       # static timing analysis (multi-corner)
+│   ├── sizer_ecc.json     # ECC Sizer hold-pass options
 │   ├── dreamplace_ecc.json# DreamPlace placement/legalization (shared by placement and legalization)
 │   └── macro_location.tcl # macro-placement Tcl handoff (see §1.5; written by macroPlacement or the macro.placements parameter)
 ├── Synthesis_yosys/
@@ -74,7 +75,7 @@ Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG
 | placement | — | `dreamplace_ecc.json` | shares one file with legalization |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | `def_input`/`result_dir` etc. rewritten per step |
-| timing optimization | ✓ | `dreamplace_ecc.json` | Sizer uses generated scripts, then runs an inner DreamPlace legalization; see §6 |
+| timing optimization | ✓ | `sizer_ecc.json` + `dreamplace_ecc.json` | Sizer uses its ECC config and generated scripts, then runs an inner DreamPlace legalization; see §6 |
 | routing | ✓ | `route_ecc.json` | |
 | filler | ✓ | `filler_ecc.json` | |
 | rcx | ✓ | `rcx_ecc.json` | corner set decided by the PDK (see §12) |
@@ -518,13 +519,20 @@ also be set in that section without adding top-level ECC parameters.
 
 ## 6. timing optimization (Sizer)
 
-Timing optimization is a multi-stage subflow: first run setup Sizer with `workspace.pdk.libs` (normally MAX/`ss_rcworst`); when `sta_ecc.json` declares a `MIN` corner, run a second Sizer invocation in `-hold_only` mode with that corner's FF Liberty; then legalize the resulting DEF/netlist with DreamPlace and publish the ECC artifacts. `ecc config timing optimization` lists `db_ecc.json` and `dreamplace_ecc.json` because the inner legalization uses the normal workspace configuration mapping; **Sizer itself is driven by generated script files, not either JSON file**.
+Timing optimization is a multi-stage subflow: first run setup Sizer with `workspace.pdk.libs` (normally MAX/`ss_rcworst`); when `sta_ecc.json` declares a `MIN` corner, run a second Sizer invocation in `-hold_only` mode with that corner's FF Liberty; then legalize the resulting DEF/netlist with DreamPlace and publish the ECC artifacts. `ecc config timing optimization` lists `db_ecc.json`, `sizer_ecc.json`, and `dreamplace_ecc.json`. The ECC-owned Sizer config supplies hold-pass controls, while the generated scripts carry the complete command line.
+
+`config/sizer_ecc.json` is owned by ECC and is independent of the Sizer repository's command-line defaults:
+
+| Field | Default | Meaning |
+|---|---:|---|
+| `hold_margin` | `0.02` ns | Additional hold slack margin passed to ecc-sizer's `-hold_margin` option during the FF/MIN hold-only pass. It is only used by that pass and is not a final multi-corner signoff margin. |
 
 | Generated file or option | Source | Meaning |
 |---|---|---|
 | `timing_optimization_sizer/script/<design>.env_file` | Sizer `submit/env_base_file` when present, otherwise `-num_vt 1`; plus PDK | Sizer environment: appends tech/cell LEFs (`-lef`), liberty files (`-lib`), and `<sizer-root>/src/sizer_os.tcl` (`-tclFile`) |
 | `timing_optimization_sizer/script/<design>.cmd_file` | workspace step + PDK | Sizer command: `-useOpenSTA`, top module, input `-def`/`-v`, `-sdc`, optional `-spef`, and staging output paths |
 | `timing_optimization_sizer/script/hold.env_file` / `hold.cmd_file` | `MIN` Liberty entries in `sta_ecc.json` | Optional FF/MIN `-hold_only` pass; the hold pass does not reuse setup `-spef` and uses Sizer placement parasitics |
+| `config/sizer_ecc.json` | ECC template, optionally overridden by `timing_opt.hold_margin` | ECC-owned Sizer controls; `hold_margin` is emitted as `-hold_margin <ns>` in `hold.cmd_file` |
 | `data/to/sizer_setup.def.gz` / `sizer_setup.v.gz` | setup Sizer output | Snapshot consumed by the hold pass; legalization proceeds only after the hold pass writes its outputs |
 | `-min_route_layer` / `-max_route_layer` | `route.bottom_layer` / `route.top_layer` when set | Routing-layer limits passed directly to Sizer |
 | `data/to/sizer.def.gz` / `sizer.v.gz` | Sizer output | Staging artifacts consumed by the inner DreamPlace legalization; successful legalization is then saved as the Timing optimization step output |
@@ -680,7 +688,14 @@ ecc param set place.num_threads VALUE
 
 ### 15.5 timing optimization
 
-Sizer has no dedicated `ecc param` schema. Its internal DreamPlace legalization uses the `place.*` parameters in §15.4, and its routing-layer limits use `route.bottom_layer` / `route.top_layer` from §15.6. Sizer inputs, outputs, and scripts are workflow-generated and cannot be configured independently.
+Sizer has an ECC-owned configuration for its FF/MIN hold-only pass. Its internal DreamPlace legalization uses the `place.*` parameters in §15.4, and its routing-layer limits use `route.bottom_layer` / `route.top_layer` from §15.6. Sizer inputs, outputs, and generated scripts remain workflow-managed.
+
+```bash
+ecc param list --step timing_optimization
+ecc param set timing_opt.hold_margin VALUE
+```
+
+`timing_opt.hold_margin` is in ns, defaults to `0.02`, and is emitted as `-hold_margin VALUE` in the generated `hold.cmd_file`.
 
 ### 15.6 cts and routing
 

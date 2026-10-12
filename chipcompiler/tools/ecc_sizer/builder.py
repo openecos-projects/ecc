@@ -262,7 +262,7 @@ def _hold_cmd_text(workspace: Workspace, step: EccStep) -> str:
 
     command = cmdfile.CommandFile(prefix="-", dialect=cmdfile.PLAIN_DIALECT)
     command.flag("useOpenSTA")
-    command.option("use_gr_rc", int(step.name == SkippableStepEnum.TIMING_OPT.value))
+    command.option("use_gr_rc", 0)
     command.option("top", workspace.design.top_module or workspace.design.name)
     command.option(
         "def",
@@ -287,6 +287,14 @@ def _hold_cmd_text(workspace: Workspace, step: EccStep) -> str:
         value_type=cmdfile.ValueType.PATH,
     )
     _append_route_layer_options(command, workspace)
+    hold_margin = 0.02
+    sizer_config = workspace.config.get("sizer")
+    if sizer_config and Path(sizer_config).is_file():
+        configured = json_read(sizer_config).get("hold_margin", hold_margin)
+        hold_margin = float(configured)
+    if hold_margin < 0:
+        raise ValueError("sizer hold_margin must be non-negative")
+    command.option("hold_margin", hold_margin)
     command.flag("hold_only")
     return command.build()
 

@@ -22,6 +22,7 @@ _APPLIES_TO_STEP = {
     "filler": "filler",
     "rcx": "RCX",
     "sta": "sta",
+    "timing_opt": "Timing optimization",
 }
 _MISSING = object()
 

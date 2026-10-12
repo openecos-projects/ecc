@@ -297,7 +297,7 @@ class TestConfigStepResolved:
         ]
         assert records[0]["source"] == "workspace_config"
 
-    def test_config_sizer_timing_opt_uses_db_and_dreamplace_configs(
+    def test_config_sizer_timing_opt_uses_sizer_db_and_dreamplace_configs(
         self,
         tmp_path,
         capsys,
@@ -325,6 +325,7 @@ class TestConfigStepResolved:
             run_dir,
             {
                 "db_ecc.json": "{}",
+                "sizer_ecc.json": "{}",
                 "dreamplace_ecc.json": "{}",
             },
         )
@@ -334,6 +335,7 @@ class TestConfigStepResolved:
         records = plain_records(capsys.readouterr().out)
         assert [item["path"] for item in records] == [
             "default/config/db_ecc.json",
+            "default/config/sizer_ecc.json",
             "default/config/dreamplace_ecc.json",
         ]
         assert all(item["source"] == "workspace_config" for item in records)

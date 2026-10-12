@@ -7,6 +7,7 @@ from .floorplan import SCHEMAS as FLOORPLAN_SCHEMAS
 from .pdk import SCHEMAS as PDK_SCHEMAS
 from .rcx import SCHEMAS as RCX_SCHEMAS
 from .route import SCHEMAS as ROUTE_SCHEMAS
+from .sizer import SCHEMAS as SIZER_SCHEMAS
 from .sta import SCHEMAS as STA_SCHEMAS
 
 CONFIG_PARAM_SCHEMAS = (
@@ -19,6 +20,7 @@ CONFIG_PARAM_SCHEMAS = (
     *FILLER_SCHEMAS,
     *RCX_SCHEMAS,
     *STA_SCHEMAS,
+    *SIZER_SCHEMAS,
     *PDK_SCHEMAS,
 )
 

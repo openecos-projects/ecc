@@ -36,6 +36,7 @@ EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
     StepEnum.FILLER.value: "filler_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",
     StepEnum.STA.value: "sta_ecc.json",
+    "sizer": "sizer_ecc.json",
     "dreamplace": "dreamplace_ecc.json",
 }
 
@@ -865,8 +866,16 @@ def test_step_config_keys_return_workspace_config_keys():
     )
     assert data_api.step_config_keys("place", "dreamplace") == ("dreamplace",)
     assert data_api.step_config_keys("legalization", "dreamplace") == ("dreamplace",)
-    assert data_api.step_config_keys("Timing optimization", "sizer") == ("db", "dreamplace")
-    assert data_api.step_config_keys(SkippableStepEnum.TIMING_OPT, "sizer") == ("db", "dreamplace")
+    assert data_api.step_config_keys("Timing optimization", "sizer") == (
+        "db",
+        "sizer",
+        "dreamplace",
+    )
+    assert data_api.step_config_keys(SkippableStepEnum.TIMING_OPT, "sizer") == (
+        "db",
+        "sizer",
+        "dreamplace",
+    )
     assert data_api.step_config_keys("synthesis", "yosys") == ()
     assert data_api.step_config_keys("place", None) == ()
 
@@ -918,6 +927,7 @@ def test_step_config_paths_return_expected_and_existing_paths(tmp_path):
     )
     assert data_api.step_config_paths(workspace_dir, SkippableStepEnum.TIMING_OPT, "sizer") == (
         config_dir / "db_ecc.json",
+        config_dir / "sizer_ecc.json",
         config_dir / "dreamplace_ecc.json",
     )
     assert data_api.step_config_paths(workspace_dir, "place", "ECC") == ()

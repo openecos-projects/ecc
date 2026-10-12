@@ -17,7 +17,7 @@
 │   ├── params.toml        # schema_version 2；参数中枢（见 §1）
 │   ├── flow.json          # schema_version 1；步骤状态
 │   └── config-derived-manifest.json # 上次配置派生后的文件哈希
-├── config/                # ← 本文档的主角：9 个 JSON + Tcl 宏位置交接文件
+├── config/                # ← 本文档的主角：10 个 JSON + Tcl 宏位置交接文件
 │   ├── db_ecc.json        # 数据库构建（读入 LEF/DEF/网表/LIB/SDC，每个 ecc 步骤共用）
 │   ├── floorplan_ecc.json # 布局规划
 │   ├── cts_ecc.json       # 时钟树综合
@@ -26,6 +26,7 @@
 │   ├── filler_ecc.json    # 填充单元
 │   ├── rcx_ecc.json       # 寄生提取
 │   ├── sta_ecc.json       # 静态时序分析（多 corner）
+│   ├── sizer_ecc.json     # ECC Sizer hold pass 选项
 │   ├── dreamplace_ecc.json# DreamPlace 布局/合法化（placement 与 legalization 共用）
 │   └── macro_location.tcl # 宏摆放 Tcl 交接文件（见 §1.5；由 macroPlacement 或 macro.placements 参数写出）
 ├── Synthesis_yosys/
@@ -74,7 +75,7 @@ graph LR
 | placement | — | `dreamplace_ecc.json` | 与 legalization 共用一个文件 |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | 每步重写 `def_input`/`result_dir` 等 |
-| timing optimization | ✓ | `dreamplace_ecc.json` | Sizer 使用生成的脚本，随后做内部 DreamPlace 合法化；见 §6 |
+| timing optimization | ✓ | `sizer_ecc.json` + `dreamplace_ecc.json` | Sizer 使用 ECC 配置和生成的脚本，随后做内部 DreamPlace 合法化；见 §6 |
 | routing | ✓ | `route_ecc.json` | |
 | filler | ✓ | `filler_ecc.json` | |
 | rcx | ✓ | `rcx_ecc.json` | corner 由 PDK 决定（见 §12） |
@@ -509,13 +510,20 @@ GPUGR 默认继承 workspace 的 `bottom_layer`/`top_layer`。
 
 ## 6. timing optimization（Sizer）
 
-Timing optimization 是多阶段子流程：先用 `workspace.pdk.libs`（通常为 MAX/`ss_rcworst`）运行 setup Sizer；若 `sta_ecc.json` 声明了 `MIN` corner，再用该 corner 的 FF Liberty 执行一次 `-hold_only` 修复；然后用 DreamPlace 对最终暂存 DEF/网表做合法化，最后发布 ECC 产物。`ecc config timing optimization` 会列出 `db_ecc.json` 与 `dreamplace_ecc.json`，因为内部合法化使用常规 workspace 配置映射；**Sizer 本身由生成的脚本文件驱动，不直接使用这两个 JSON**。
+Timing optimization 是多阶段子流程：先用 `workspace.pdk.libs`（通常为 MAX/`ss_rcworst`）运行 setup Sizer；若 `sta_ecc.json` 声明了 `MIN` corner，再用该 corner 的 FF Liberty 执行一次 `-hold_only` 修复；然后用 DreamPlace 对最终暂存 DEF/网表做合法化，最后发布 ECC 产物。`ecc config timing optimization` 会列出 `db_ecc.json`、`sizer_ecc.json` 和 `dreamplace_ecc.json`。ECC 自己的 Sizer 配置提供 hold pass 控制项，完整命令行仍由生成的脚本承载。
+
+`config/sizer_ecc.json` 由 ECC 管理，与 ecc-sizer 仓库的命令行默认值分开：
+
+| 字段 | 默认值 | 含义 |
+|---|---:|---|
+| `hold_margin` | `0.02` ns | FF/MIN hold-only pass 传给 ecc-sizer 的 `-hold_margin` 附加 hold slack margin。只影响该 pass，不是最终多 corner signoff margin。 |
 
 | 生成文件或选项 | 来源 | 含义 |
 |---|---|---|
 | `timing_optimization_sizer/script/<design>.env_file` | 存在时取 Sizer 的 `submit/env_base_file`，否则为 `-num_vt 1`；再追加 PDK | Sizer 环境：追加工艺/单元 LEF（`-lef`）、liberty（`-lib`）及 `<sizer-root>/src/sizer_os.tcl`（`-tclFile`） |
 | `timing_optimization_sizer/script/<design>.cmd_file` | workspace 步骤 + PDK | Sizer 命令：`-useOpenSTA`、顶层模块、输入 `-def`/`-v`、`-sdc`、可选 `-spef` 及暂存输出路径 |
 | `timing_optimization_sizer/script/hold.env_file` / `hold.cmd_file` | `sta_ecc.json` 中的 `MIN` Liberty | 可选 FF/MIN `-hold_only` pass；hold pass 不复用 setup 的 `-spef`，使用 Sizer 的 placement parasitics |
+| `config/sizer_ecc.json` | ECC 模板，也可由 `timing_opt.hold_margin` 覆盖 | ECC 管理的 Sizer 控制项；`hold_margin` 会以 `-hold_margin <ns>` 写入 `hold.cmd_file` |
 | `data/to/sizer_setup.def.gz` / `sizer_setup.v.gz` | setup Sizer 输出 | hold pass 的输入快照；只有在 hold pass 成功写出产物后才继续合法化 |
 | `-min_route_layer` / `-max_route_layer` | 设置后取 `route.bottom_layer` / `route.top_layer` | 直接传给 Sizer 的布线层限制 |
 | `data/to/sizer.def.gz` / `sizer.v.gz` | Sizer 输出 | 被内部 DreamPlace 合法化消费的暂存产物；合法化成功后保存为 Timing optimization 步骤输出 |
@@ -670,7 +678,14 @@ ecc param set place.num_threads VALUE
 
 ### 15.5 timing optimization
 
-Sizer 没有专属 `ecc param` schema。其内部 DreamPlace 合法化使用 §15.4 的 `place.*` 参数，布线层限制使用 §15.6 的 `route.bottom_layer` / `route.top_layer`；Sizer 的输入、输出和脚本由流程生成，不能单独配置。
+Sizer 的 FF/MIN hold-only pass 使用 ECC 自己维护的配置。其内部 DreamPlace 合法化使用 §15.4 的 `place.*` 参数，布线层限制使用 §15.6 的 `route.bottom_layer` / `route.top_layer`；Sizer 的输入、输出和生成脚本仍由流程管理。
+
+```bash
+ecc param list --step timing_optimization
+ecc param set timing_opt.hold_margin VALUE
+```
+
+`timing_opt.hold_margin` 的单位是 ns，默认值为 `0.02`，并会以 `-hold_margin VALUE` 写入生成的 `hold.cmd_file`。
 
 ### 15.6 cts 与 routing
 
