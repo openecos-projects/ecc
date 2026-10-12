@@ -737,9 +737,16 @@ preceding DRC physical outputs, not the LEC proof. This order applies to newly
 created preset flows and canonical ranges; existing workspace ledgers and
 explicit custom flows retain their stored order.
 
-Three optional steps can be excluded from a workspace at creation time:
-the synthesis LEC (`lec`), the post-route LEC (`postRouteLec`), and timing
-optimization (`Timing optimization`). Skipped steps never enter the
+Four optional steps can be excluded from a workspace at creation time:
+the synthesis LEC (`lec`), the post-route LEC (`postRouteLec`), timing
+optimization (`Timing optimization`), and CTS (`CTS`). CTS is skipped for
+clockless RTL2GDS when either `[flow] no_clock = true` is set **or**
+`design.clock_port` / workspace `clock` is empty (inferred no-clock). An
+explicit `no_clock = true` wins even if a clock name string is present; an
+explicit `no_clock = false` does not become no-clock just because materials
+were cleared. The skip resolver rejects a bare `CTS` entry without effective
+no-clock. `ecc config` reports `flow.no_clock` and `flow.no_clock_source`
+(`explicit` / `inferred` / `off`). Skipped steps never enter the
 workspace's execution ledger — their inputs fall through to the previous
 retained step, and no step directory is created for them. State-machine,
 resume/rerun semantics are unchanged, and existing ledgers are never
@@ -770,6 +777,10 @@ skippable set.
 preset = "rtl2gds"
 # LEC is skipped by default; clear the list to enable it.
 skip_steps = ["lec"]
+# Clockless designs: omit CTS when no_clock=true OR design.clock_port is empty
+# (inferred). SDC uses a virtual clock when the port is empty — see
+# create_default_sdc. Explicit no_clock=true still wins if a clock name is set.
+# no_clock = true
 ```
 
 ### Reports

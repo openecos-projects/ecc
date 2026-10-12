@@ -482,7 +482,16 @@ def _migrate_project_impl(command_input, ctx):
             problems.append("design.name is required")
         if not cfg.design_top:
             problems.append("design.top is required")
-        if not cfg.design_clock_port:
+        from chipcompiler.rtl2gds import resolve_no_clock
+
+        no_clock_flow: dict = {}
+        if "flow.no_clock" in getattr(cfg, "_explicit_keys", frozenset()):
+            no_clock_flow["no_clock"] = bool(getattr(cfg, "flow_no_clock", False))
+        no_clock = resolve_no_clock(
+            no_clock_flow,
+            materials={"clock_port": cfg.design_clock_port},
+        )
+        if not no_clock.enabled and not cfg.design_clock_port:
             problems.append("design.clock_port is required")
         if not cfg.design_rtl:
             problems.append("design.rtl must have at least one entry")
