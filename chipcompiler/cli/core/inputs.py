@@ -90,7 +90,7 @@ class RunInput:
 class ProcessInspectInput:
     output: OutputOptions
     project: ProjectOptions
-    workspace: str
+    workspace: str | None
     run_id: str | None = None
 
 
@@ -98,7 +98,7 @@ class ProcessInspectInput:
 class ProcessCancelInput:
     output: OutputOptions
     project: ProjectOptions
-    workspace: str
+    workspace: str | None
     run_id: str
     force: bool = False
 
@@ -107,7 +107,7 @@ class ProcessCancelInput:
 class ProcessReconcileInput:
     output: OutputOptions
     project: ProjectOptions
-    workspace: str
+    workspace: str | None
     run_id: str | None = None
     no_wait: bool = False
 

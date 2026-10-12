@@ -66,6 +66,19 @@ which ecc && ecc --version          # from any directory, should print ecc <vers
 
 > `ecc` resolves the project from the current directory by default (wherever `ecc.toml` lives), so "launch from any folder" is the normal usage; to operate on a project from elsewhere, add `--project <dir>`.
 
+**Directory defaults:** omit `--project` inside a project root. Inside a managed workspace
+root, omit both `--project` and `--workspace`: the CLI discovers the ancestor project and
+uses the manifest's workspace ID, not the directory basename. Explicit selectors take
+precedence. Multiple workspaces still require selection when invoked from the project root.
+For an external workspace, pass `--project` to identify its owner. Standalone workspaces can
+run workspace commands such as `status`, but project reports require a real manifest.
+Discovery applies to roots only, never arbitrary project subdirectories or global searches.
+
+Commands with both project and workspace scopes, such as `param` and `macro`, default to
+workspace scope when invoked inside a workspace. Invoke them from the project root for
+project scope. `process --workspace` can also be omitted there; cancellation still requires
+`--run-id`. Explicit positional lifecycle arguments for create/import/delete/derive remain required.
+
 ### Running from source
 
 ```bash
@@ -1058,6 +1071,8 @@ ecc report summary    [-o PATH] [--project DIR] [--workspace NAME] [--plain]
 ecc report qor        [-o PATH] [--project DIR] [--workspace NAME] [--plain]
 ecc report checklist  [-o PATH] [same selector and output options]
 ecc report step       [STEP] [--section feature|analysis|checklist]... [same selector and output options]
+ecc report snapshot --output PATH [--project DIR] [--workspace NAME] [--plain|--json]
+ecc report project [--project DIR] [--plain|--json]
 ```
 
 ### 12.1 summary — text design summary
@@ -1169,7 +1184,31 @@ $ ecc report step drc --section analysis
     [BLOCK] qor.drc.clean — drc_count=336 == 0
 ```
 
-## 12.5. compare run — compare two saved run snapshots
+### 12.5 snapshot — save a committed run snapshot
+
+```bash
+mkdir -p comparisons
+ecc report snapshot --workspace default -o comparisons/before.json
+ecc run --workspace default --only placement
+ecc report snapshot --workspace default -o comparisons/after.json --json
+ecc compare run --baseline comparisons/before.json --current comparisons/after.json
+```
+
+Saves the committed `home/engineering-snapshot.json` projection without loading or migrating
+the workspace, refreshing its snapshot, running EDA, or copying artifact content.
+`--output/-o` is required. Its parent directory must already exist, the destination must
+be outside the source workspace, and existing files, directories, or symlinks are rejected.
+Relative output paths are resolved against the current directory. Existing schema versions
+2/3/4 and workspace revisions are preserved; the file size limit is 16 MiB.
+
+Text, `--plain`, and `--json` return save metadata, not the snapshot body. JSON uses the
+standard record array with `report=snapshot`, `status=written`, `path`, `source`, `bytes`,
+`schema_version`, `workspace_id`, and `workspace_revision`. Read, destination, or write
+failures return 1; argument errors return 2. Publication is atomic and never overwrites a
+destination, with no non-atomic fallback. Temporary files are removed on failure.
+Prefer saving while the workspace is idle; this command does not wait for EDA completion.
+
+## 12.6. compare run — compare two saved run snapshots
 
 ```bash
 ecc compare run --baseline before.json --current after.json
@@ -1198,6 +1237,39 @@ A completed comparison returns 0, including regressed or unknown results. Invali
 duplicate comparison keys return 1; argument errors return 2. Compressed JSON is not accepted;
 the existing 16 MiB snapshot limit applies, and older schemas are not migrated.
 Use `--json` for nested automation results; it cannot be combined with `--plain`.
+
+### 12.7 project — workspace QoR / step / checker matrix
+
+```bash
+ecc report project --project /path/to/project
+# Inside the project or one of its managed workspace roots:
+ecc report project --json
+ecc report project --plain
+```
+
+Lists all manifest-declared workspaces, including archived entries, in descending saved
+QoR score order, with overall flow, manifest status and per-step/tool state columns.
+Ties retain manifest order. Real zero scores remain valid; missing, invalid, NOT_RATED
+or stale scores come last without fabricated zeros or ranks. Columns form the union of
+flow steps: absent steps show N/A; unreadable flows show unknown. This is a wide table;
+use a wider terminal or JSON for automation.
+
+QoR comes from `home/qor_report.json`, flow state from `home/flow.json`. Workspace identity
+or flow-state mismatches invalidate a score for ranking. Running data is provisional.
+Different profiles emit a comparability warning; numeric ordering is not a signoff decision.
+
+Checker categories follow ECC metadata. DRC/LVS show explicit counts and clean/violated;
+STA keeps setup and hold counts separate without summing across corners. Unfinished
+checkers never reuse stale zero counts. LEC only shows a saved proven verdict, without
+verifying netlist content or inventing a count. RCX/powerAnalysis without a supported
+violation count show N/A. Execution success is separate from checker cleanliness.
+
+No workspace loading/migration, EDA execution, QoR/snapshot refresh or file writing occurs.
+JSON uses the shared record array with `report=project` and `columns/workspaces/warnings`.
+Plain mode emits related project_report, step_column, workspace, workspace_step,
+checker_count and warning records. Workspace-local gaps retain the row and yield partial
+status with exit 0; invalid project metadata returns 1; argument errors return 2.
+`--workspace` is not accepted by this project-wide report.
 
 ## 13. layout-image — render a GDS to an image
 

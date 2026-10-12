@@ -21,6 +21,7 @@ from chipcompiler.cli.rendering.pretty import (
     render_signoff_inspect_text,
     render_status,
 )
+from chipcompiler.cli.rendering.project_matrix import render_project_plain, render_project_text
 from chipcompiler.cli.rendering.render import render_result
 
 
@@ -230,6 +231,8 @@ def _render_log_plain(
 
 
 RENDERERS: dict[RendererKey, Renderer] = {
+    ("report:project", OutputMode.TEXT): render_project_text,
+    ("report:project", OutputMode.PLAIN): render_project_plain,
     ("compare:run", OutputMode.TEXT): _pretty(render_compare_run_text),
     ("init", OutputMode.TEXT): _pretty(render_init),
     ("check", OutputMode.TEXT): _pretty(render_check),

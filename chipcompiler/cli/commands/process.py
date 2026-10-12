@@ -14,7 +14,7 @@ from chipcompiler.cli.core.inputs import (
     project_options,
 )
 from chipcompiler.cli.core.invocation import execute_command
-from chipcompiler.cli.core.options import PlainOption, ProjectOption
+from chipcompiler.cli.core.options import PlainOption, ProjectOption, WorkspaceOption
 
 process_app = create_app(help="Inspect, cancel, or reconcile ECC run processes")
 
@@ -22,7 +22,7 @@ process_app = create_app(help="Inspect, cancel, or reconcile ECC run processes")
 @process_app.command("inspect")
 def inspect_cmd(
     *,
-    workspace: Annotated[str, typer.Option("--workspace")],
+    workspace: WorkspaceOption = None,
     project: ProjectOption = None,
     run_id: Annotated[str | None, typer.Option("--run-id")] = None,
     plain: PlainOption = False,
@@ -42,7 +42,7 @@ def inspect_cmd(
 @process_app.command("cancel")
 def cancel_cmd(
     *,
-    workspace: Annotated[str, typer.Option("--workspace")],
+    workspace: WorkspaceOption = None,
     run_id: Annotated[str, typer.Option("--run-id")],
     project: ProjectOption = None,
     force: Annotated[bool, typer.Option("--force")] = False,
@@ -64,7 +64,7 @@ def cancel_cmd(
 @process_app.command("reconcile")
 def reconcile_cmd(
     *,
-    workspace: Annotated[str, typer.Option("--workspace")],
+    workspace: WorkspaceOption = None,
     project: ProjectOption = None,
     run_id: Annotated[str | None, typer.Option("--run-id")] = None,
     no_wait: Annotated[bool, typer.Option("--no-wait")] = False,

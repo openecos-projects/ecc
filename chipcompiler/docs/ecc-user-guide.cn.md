@@ -66,6 +66,18 @@ which ecc && ecc --version          # 任意目录下应输出 ecc <版本号>
 
 > 注：`ecc` 的项目定位默认取当前目录（`ecc.toml` 所在处），所以「任意文件夹启动」是常态用法；在其他目录操作项目时加 `--project <dir>` 即可。
 
+**目录默认值：** 在项目根目录可省略 `--project`；在受管 workspace 根目录，可省略
+`--project` 和 `--workspace`，CLI 通过父级项目清单选中当前工作区的登记 ID，
+不以目录 basename 替代登记名称。显式参数优先，项目根目录的多工作区选择仍需
+`--workspace`。外部工作区请用 `--project` 指定归属；没有归属项目信息的独立
+工作区可直接运行 `status` 等工作区命令，但项目级报告需要真实项目清单。
+只自动识别根目录，不把任意项目子目录当工作区，也不全局搜索项目。
+
+注意：`param`、`macro` 等同时支持项目和工作区作用域的命令，在工作区根目录默认
+操作当前工作区；要操作项目级设置，请在项目根目录执行。`process` 的
+`--workspace` 也可在工作区内省略，`cancel` 仍要求 `--run-id`。
+创建、导入、删除、派生等生命周期操作的显式位置参数保持不变。
+
 ### 源码运行
 
 ```bash
@@ -87,6 +99,65 @@ uv run ecc --help
   - **持久化名**（`home/flow.json` 中的原始名；已有 workspace 上的 `--from`/`--only`/`--to` 必须用它，如 `place`、`CTS`、`Timing optimization`）：`Synthesis / lec / preFloorplan / macroPlacement / postFloorplan / place / CTS / legalization / Timing optimization / route / filler / lvs / drc / postRouteLec / RCX / sta / powerAnalysis / Harden`；
   - **新建范围时的别名**（首次 `--from A --to B` 建 workspace 会做别名归一化，两种拼法都接受）：如 `cts`↔`CTS`、`route`↔`routing`、`timingopt`↔`Timing optimization`、`postlec`↔`postRouteLec`。
   拼错时返回 `unknown_step` 并列出全部可用步骤名，照抄即可。
+
+### 1.1 当前目录默认选择
+
+#### 基本用法
+
+```bash
+cd /path/to/project
+ecc report project
+ecc status --workspace trial_a
+
+cd /path/to/project/trial_a
+ecc status
+ecc log
+ecc report step drc --section analysis
+ecc report project --json
+ecc report snapshot -o /path/to/comparisons/before.json
+```
+
+项目根目录执行时，所有已有 `--project` 选项仍默认当前目录。工作区根目录执行时，
+具有 `--workspace` 选择器的命令默认选择当前工作区，同时识别其所属父级项目。
+登记 ID 可与实际目录名不同，以 project.json 的路径匹配为准。
+
+#### 优先级与边界
+
+1. 显式 `--project` 与 `--workspace` 保留优先级，绝不替换显式工作区名称或路径。
+2. 项目根目录中，不依据目录名猜工作区；保留一个活动工作区自动选择、多工作区
+   需显式选择的既有行为。process 原来要求显式选择，只有在当前工作区中才默认。
+3. 工作区根目录中，通过最近父级 project.json/ecc.toml 识别项目；受管工作区
+   通过清单的完整路径匹配，未运行、缺少 flow 的已声明工作区同样可定位。
+4. 工作区外部存放时，用 `--project /owner/project` 匹配当前目录与登记工作区。
+   不遍历其他项目或维护全局项目搜索数据库。
+5. 独立工作区存在 home/flow.json、home/params.toml、snapshot 或 legacy 参数标记
+   时，可将当前完整路径用于 workspace-consuming 命令；无归属项目就不声称能
+   生成项目级报告。只读命令不会自动登记工作区或创建项目。
+6. 任意项目子目录不自动当工作区；本版不支持从工作区的 home/output 子目录向上
+   猜测选择。需要显式参数或回到项目/工作区根目录。
+7. 项目 metadata 损坏时明确失败，不通过推导选择绕过 manifest 校验。
+8. 相对显式路径仍以进程当前目录为基准；推导项目不会改变 --output 等路径基准。
+
+#### 作用域与安全
+
+`param set/unset/apply/list/show/diff` 和 macro 等支持项目/工作区作用域的命令，
+在工作区中省略 --workspace 等价于选中该工作区，不再意外操作项目级设置。
+要操作项目级参数或 macro 设置，请在项目根目录执行相应命令。
+
+`process inspect/cancel/reconcile` 的 --workspace 可在工作区中省略；cancel 的
+--run-id 仍是必需的安全参数。显式绝对工作区路径解析为其登记 ID 后交给 process API。
+
+workspace create/import/delete/derive/archive/reset-flow 等的显式位置参数不属于
+可省略的 --workspace 选择器，保持不变；ecc init 的当前目录语义也保持不变。
+
+#### 实现与验证契约
+
+`resolve_current_location(project, workspace, workspace_supported=...)` 只读推导位置。
+共享 invocation 的 `apply_location_defaults(input)` 返回类型相同的不可变 input，
+将项目和工作区默认值同步交给 context 与 handler。param list 在推导后选择 renderer，
+保证 workspace plain 输出仍为严格关联行记录，而不是误用静态 catalog 格式。
+
+默认值重复应用保持幂等，不修改 manifest、workspace 状态、配置或文件。
 
 命令总览：
 
@@ -1008,6 +1079,8 @@ ecc report summary [-o PATH] [--project DIR] [--workspace NAME] [--plain]
 ecc report qor     [-o PATH] [--project DIR] [--workspace NAME] [--plain]
 ecc report checklist [-o PATH] [同样的 selector 与输出选项]
 ecc report step    [STEP] [--section feature|analysis|checklist]... [同样的 selector 与输出选项]
+ecc report snapshot --output PATH [--project DIR] [--workspace NAME] [--plain|--json]
+ecc report project [--project DIR] [--plain|--json]
 ```
 
 ### 12.1 summary — 文本设计总结报告
@@ -1117,32 +1190,316 @@ $ ecc report step drc --section analysis
     [BLOCK] qor.drc.clean — drc_count=336 == 0
 ```
 
-## 12.5. compare run — 比较两份运行快照
+#### 查询单步输出（outputs）
+
+使用已有命令显式查询 Engineering Snapshot 登记的 DEF 和 Verilog 输出：
+
+```bash
+ecc report step place --workspace <workspace> --section outputs
+ecc report step sta --workspace <workspace> --section outputs --json
+```
+
+默认报告仍只显示 feature、analysis、checklist，保持既有行为。
+`outputs` 不执行工具、不迁移 snapshot、不刷新工作区，也不扫描目录。
+索引缺失或损坏时返回 unavailable，不生成新的索引。
+
+- `exists`、`bytes`：查询时检查工作区内部文件，不信任缓存的 exists。
+- `availability`：available、missing 或 outside_workspace。外部引用不访问文件系统。
+- `validity`：未成功的 step 为 not_current；成功也只标记 unknown，文件存在和
+  step 成功不足以证明 hash、corner 或输入一致性。
+- 本版本仅查询 snapshot 已登记的 DEF/Verilog，不承诺完整 GDS、日志或报告清单。
+
+`report qor --json` 当前仍返回报告生成摘要，且会生成报告文件；它不是只读的完整
+metrics API。不要把该输出当作完整 QoR schema。
+
+### 12.5 snapshot — 保存已有运行快照
+
+```bash
+mkdir -p comparisons
+ecc report snapshot --project /path/to/project --workspace default -o comparisons/before.json
+ecc run --project /path/to/project --workspace default --only placement
+ecc report snapshot --project /path/to/project --workspace default -o comparisons/after.json --json
+ecc compare run --baseline comparisons/before.json --current comparisons/after.json --json
+```
+
+#### 范围与选择器
+
+复用 report 的 `--project`、`--workspace` 与共享工作区解析。项目只有一个活动
+工作区时可省略 `--workspace`；多个工作区时必须显式选择。受管的外部工作区沿用
+现有绝对路径选择器。错误 manifest 或未声明的工作区不会回退到其他工作区。
+
+只读取已提交的 `home/engineering-snapshot.json`。不加载 Workspace、不迁移或
+刷新快照、不修改配置和 flow、不执行 EDA、不扫描产物目录、不复制 artifact 内容。
+运行中保存只代表读取时已提交的投影，不是对执行进程的冻结或最终结果保证。
+建议 before 在修改或运行前保存，after 在期望的运行完成后保存。
+
+#### 目标与安全性
+
+- `--output/-o` 必填，相对路径基于进程当前目录，支持 `~`。
+- 目标必须位于源工作区外，父目录必须已存在；父目录符号链接解析后仍检查范围。
+- 拒绝所有已有目标，包括文件、目录、正常或悬空符号链接；首版没有覆盖选项。
+- 不接受 `.gz` 目标，不压缩、不迁移 schema，保留已有字段与 revision。
+- 读取和保存均遵守 16 MiB 上限；非法 JSON、非有限数、schema 或身份错误均失败。
+- 同目录临时文件写完后通过 hard link 原子发布，不覆盖并发创建的目标。
+  不支持 hard link 的文件系统返回写入失败，不使用非原子回退。
+- 失败清理本命令临时文件；已有目标和工作区文件不被修改。
+- 导出内容不保证与源文件字节一致，但 JSON 对象相同；artifact 路径仍是源工作区
+  的引用，不是可迁移交付包，不证明 artifact 内容保持一致。
+
+#### 输出契约
+
+默认文本、`--plain`、`--json` 复用共享输出方式，不可同时使用后两者。
+终端只输出保存元数据，快照正文写入指定文件。JSON 顶层为记录数组：
+
+```json
+[
+  {
+    "report": "snapshot",
+    "path": "/path/to/comparisons/before.json",
+    "source": "/path/to/project/default/home/engineering-snapshot.json",
+    "bytes": 2048,
+    "schema_version": 4,
+    "workspace_id": "workspace-gcd",
+    "workspace_revision": 1,
+    "status": "written"
+  }
+]
+```
+
+`workspace_id` 是快照内部身份，不一定等于项目 manifest 的工作区名称。
+示例路径和字节数仅作说明，实际值取自保存结果。
+
+| 情况 | 错误记录 | 退出码 |
+| --- | --- | --- |
+| 成功保存 | `report=snapshot, status=written` | 0 |
+| 缺失、损坏、超限或身份不一致的快照 | `snapshot_read_failed` | 1 |
+| 工作区内目标、父目录无效、压缩目标 | `report_destination_invalid` | 1 |
+| 已有目标或并发创建目标 | `report_destination_exists` | 1 |
+| 保存文件的 I/O 错误 | `report_write_failed` | 1 |
+| 工作区/项目选择错误 | 共享 manifest/workspace 错误 | 1 |
+| 缺少 output 或互斥输出参数 | 参数校验错误 | 2 |
+
+#### 实现边界
+
+`engine.snapshot` 维护 bounded reader 和身份校验；`engine.snapshot_export` 维护
+目标约束和不覆盖保存；`cli.command_handlers.report_snapshot` 映射结果与错误。
+`report snapshot` 与 `compare run` 使用同一快照 schema，不新增持久化格式。
+
+### 12.6 compare run — 比较两份运行快照
+
+#### 范围与用法
 
 ```bash
 ecc compare run --baseline before.json --current after.json
-ecc compare run --baseline before.json --current after.json --json
 ecc compare run --baseline before.json --current after.json --plain
+ecc compare run --baseline before.json --current after.json --json
 ```
 
-两参数是保存的 `home/engineering-snapshot.json` 文件副本，不是 run ID 或 workspace
-名称。命令不运行 EDA、不加载 workspace、不生成报告或修改输入文件。运行前后分别
-保存快照，且保存时应确保 workspace 不在执行；目前不自动维护 run 历史。
+两参数均为必需的、未压缩的 Engineering Snapshot JSON 文件路径，支持相对路径和
+`~`。不接受 run ID、workspace 名称或目录，不需要 `--project` / `--workspace`。
+现有 `ecc run` 执行入口不变。
 
-比较 flow 状态、metric delta、已保存的 QoR、参数、checklist/signoff 和 artifact 索引。
-数值缺失不补零，单位不一致时不计算 delta。metric 方向复用现有 registry；不同约束、
-flow、PDK、workspace 或未知方向时标 unknown。QoR score 要求相同评分引擎和 profile。
-summary 仅代表 metric/QoR score 的数值趋势，不是签核或 tapeout 结论。
+当前 snapshot 是 workspace 的已提交投影，不是历史运行数据库。运行前后必须分别
+保存一份快照；CLI 不自动记录历史，不重建旧结果，也不读取 artifact 内容。
 
-JSON 顶层沿用记录数组，记录为 `run_comparison`；完整字段包括 `baseline/current`、
-`summary`、`compatibility`、`steps`、`metrics`、`qor`、`parameter_changes`、
-`configuration_changes`、`signoff`、`checklist`、`artifacts` 和 `warnings`。
-artifactId 是路径身份而不是内容 hash，`content_comparison` 始终为 unknown。
-相同索引不证明文件内容相同，保存元数据一致也不验证 RTL/PDK/SDC 内容。
+```bash
+mkdir -p comparisons
+ecc report snapshot --workspace /path/to/workspace --output comparisons/before.json
+ecc param set place.target_density 0.30 --workspace /path/to/workspace
+ecc run --workspace /path/to/workspace --resume
+ecc report snapshot --workspace /path/to/workspace --output comparisons/after.json
+ecc compare run --baseline comparisons/before.json --current comparisons/after.json --json
+```
 
-完成比较返回 0（包括 regressed/unknown）；非法快照或重复比较键返回 1；参数错误返回 2。
-不接受压缩 JSON，使用现有 16 MiB snapshot 上限，且不会迁移旧 schema。
-自动化读取嵌套结果应使用 `--json`；不能同时指定 `--json` 和 `--plain`。
+保存 before 时先确保 workspace 已停止运行；after 建议在流程完成后保存。仅重跑单步
+可能使后续步骤失效，从而缺少最终 QoR；这时返回 unknown/unavailable 是正确结果。
+
+`report snapshot` 只保存已有快照，不刷新结果；目标必须位于源工作区外，父目录必须
+已存在，且目标不能已存在。保存时会校验快照；它不自动等待运行结束，也不复制
+artifact 文件。详见本指南 §12.5。
+
+#### JSON 契约
+
+复用 ECC 公共输出契约，顶层是记录数组，首条记录为：
+
+```json
+[
+  {
+    "record": "run_comparison",
+    "status": "success",
+    "schema_version": 1,
+    "baseline": {
+      "workspace_id": "workspace-gcd",
+      "workspace_revision": 1,
+      "schema_version": 4,
+      "source": "before.json"
+    },
+    "current": {
+      "workspace_id": "workspace-gcd",
+      "workspace_revision": 2,
+      "schema_version": 4,
+      "source": "after.json"
+    },
+    "summary": {
+      "overall": "improved",
+      "scope": "numeric_metrics_and_qor_score_only",
+      "counts": {"improved": 1, "regressed": 0, "unchanged": 0, "unknown": 0}
+    }
+  }
+]
+```
+
+示例省略了以下完整结果字段：
+
+| 字段 | 含义 |
+| --- | --- |
+| `compatibility` | 保存的上下文元数据是否可比，以及不可比原因 |
+| `steps` | 以 name/tool 对齐的前后 flow 记录，包含状态和已保存的 runtime 等字段 |
+| `metrics` | 以 id/scope/corner/analysis_group 对齐，含前后值、单位、delta、trend、reasons |
+| `qor` | 已保存的 score、各维度数值比较，以及 feasibility/evidence/power 等字段变更 |
+| `parameter_changes` | 顶层参数的 added/removed/changed；保留 null 与缺失的区别 |
+| `configuration_changes` | 已保存的 workspaceSpec/workspaceBindings 变更，不代表完整版本锁 |
+| `signoff` / `checklist` | 前后已保存的原始投影与 change，不实时生成签核报告 |
+| `artifacts` | 按相对 reference 对齐的索引变更，忽略路径身份 artifactId 的差异 |
+| `warnings` | 内容未验证、总体数值趋势不等于签核结论等限制 |
+
+文本默认显示摘要和 metric 趋势；`--json` 提供完整结构。`--plain` 使用公共 key=value
+格式，复杂字段遵循既有 plain 表示；自动化解析嵌套字段请用 `--json`。
+
+#### 比较与判定规则
+
+- delta = current - baseline；缺失、非数值或布尔值不补零，delta 为 null。
+- 单位优先读记录的 unit；现有记录未声明 unit 时复用 QoR metric registry 的单位。
+  单位缺失、不一致或偏离规范单位时不计算 delta，不自动换算。
+- 仅 registry 已定义方向的指标可判断 improved/regressed。未知指标、trend_only 和
+  target_range 只提供可用的 delta，trend 为 unknown，不虚构阈值。
+- flow 定义/顺序、design/inputs/PDK 元数据、约束参数或 corner context 等变化会
+  禁用相关趋势判断。不同 workspace 可以展示差异，但首版不做跨 workspace 优劣判断。
+- 优化参数变更会被列出，不会仅因 target_density 改变而禁用所有指标比较。
+- QoR score 只有相同 schema/engine/profile 且两侧 available 才可判断；维度还要求
+  featureIds 一致、不是 UNKNOWN。QoR 没有保存时明确 unavailable。
+- summary 只汇总 metric 与 QoR score 趋势，不包含 flow/checklist/signoff 的质量判断。
+  有未知项或没有可评估项时为 unknown；有改善和退化时为 mixed，否则为
+  improved/regressed/unchanged。各项 counts 仍保留已识别的部分趋势。两侧都没有数值
+  score 时，该项不参与汇总，不可用状态单独保留在 qor；summary 不代表完整 QoR。
+- artifactId 是路径身份，不是内容 hash。所有 artifact 的 content_comparison 都是
+  unknown；索引 unchanged 绝不意味着文件内容相同，也不重新读取当前文件伪造历史 hash。
+- 保存的元数据一致不证明 RTL/PDK/SDC 内容一致；不作为 tapeout 判定或阈值 gate。
+
+#### 校验与错误矩阵
+
+支持当前 runtime 已支持的 snapshot schema，不迁移输入。单文件上限使用现有
+`ENGINEERING_SNAPSHOT_MAX_BYTES`（16 MiB）。保存文件读取复用 snapshot schema 和路径
+校验，但不使用文件旁边的 workspace command metadata 重新绑定历史身份。
+
+| 情况 | 结果 | 退出码 |
+| --- | --- | --- |
+| 完成比较，包括 regressed/mixed/unknown | `run_comparison`，status=success | 0 |
+| 缺少参数或同时使用 --plain/--json | 公共 CLI 参数错误 | 2 |
+| 缺失、不可读、非法 JSON、超限、压缩输入、非有限数或非法 schema | `snapshot_read_failed`，含 role/path/reason | 1 |
+| 非法 metric/step 投影、重复比较键 | `snapshot_compare_failed`，含 reason | 1 |
+
+同文件比较合法。有有效 metric 时得到 unchanged；完全无数据时不能声称质量未变，
+summary 为 unknown。对两侧文件不加锁，不支持可靠比较正在写入的文件。
+
+#### 开发接口与测试点
+
+```python
+read_engineering_snapshot_file(path: str | Path) -> dict[str, Any]
+compare_snapshots(baseline: dict, current: dict) -> dict
+```
+
+文件读取归 engine/snapshot 所有，纯比较归 engine/snapshot_compare 所有。CLI 使用
+独立 typed input、command handler、shared create_app/execute_command 和渲染注册。
+不加载 workspace、不执行 EngineFlow、不生成报告、不创建目录或锁。
+
+测试覆盖：三种输出、输入大小/编码/schema/路径、重复键、正负数/零/缺失/布尔/非有限数、
+单位与分析上下文、QoR profile、同文件、回归退出码、artifact 身份语义和只读性。
+
+错误：以相同 artifactId 推断 GDS 内容相同；把缺失 WNS 当 0。
+正确：内容比较标 unknown；缺失值保留 null 并给出 value_unavailable。
+
+### 12.7 project — 项目工作区 QoR / step / checker 矩阵
+
+```bash
+ecc report project --project /path/to/project
+ecc report project --project /path/to/project --json
+ecc report project --project /path/to/project --plain
+```
+
+在项目根目录或其受管工作区根目录可省略 --project。显式 --workspace 不用于此
+项目级报告。首版无 --output，终端输出可通过 shell 重定向保存。
+
+#### 矩阵与排序
+
+读取清单中全部工作区，包括 archived 和合法外部工作区，不扫描无关项目子目录。
+每行包含 workspace、QoR 分数、flow 总状态、清单状态，以及 step/tool 状态列。
+列集按清单与各 flow 的已有顺序取并集，与 QoR 排序后的行顺序无关；不声称
+不同 flow 存在统一执行拓扑。相同步骤使用不同 tool 时是不同列。
+
+- 有效 QoR 分数降序，真实 0 分保留，相同分数维持清单顺序。
+- 缺失、损坏、NOT_RATED、身份不匹配或陈旧分数为 null，排在末尾，rank=null。
+- QoR 使用既有 home/qor_report.json 与 QoR v3 校验，不创建另一套评分算法。
+- QoR flow_steps 必须匹配当前 flow 状态；运行中的记录带 provisional=true。
+- flow 总状态复用 ecc status，与 manifest_status 分开。局部重跑可能为 partial，
+  checker 运行 success 不意味着无违例。
+- 确定不在该 flow 的步骤显示 N/A；flow 无法读取时，缺失列显示 unknown。
+- 不同评分 profile 会警告不可直接比较；排序不是签核、tapeout 或最佳设计结论。
+
+#### checker 证据
+
+分类复用 flow category 与 canonical FlowStepCategory，不根据工具名称猜测。
+只有当前成功步骤的匹配证据才可读取 count；未启动、运行中、失效或失败步骤，
+即使旧文件还在，也不得显示当前 clean 或零违例。
+
+| Checker | 显示依据 | 数量语义 |
+| --- | --- | --- |
+| DRC | schema-v3 metrics 的 drc_count | 单个明确非负整数 count |
+| LVS | schema-v3 metrics 的 lvs_count | 单个明确非负整数 count |
+| STA | setup/hold violation count | 分项保留，不跨 corner 相加，不给混合总数 |
+| postRouteLec | 已有 result.json 的 proven 状态 | proven_saved；不验证 netlist 内容，数量和当前 has_violations 均为 null |
+| RCX / powerAnalysis / 自定义 checker | 执行状态 | 无通用违例计数则 not_applicable，count=null |
+
+计数必须与 step/tool、success 状态和 count 单位匹配；布尔、负数、分数、非有限数、
+重复/缺失候选或明确无效的 metric selector 不会变成零。STA 缺少一项时，已知非零
+项可证明存在违例；只有全部要求项都为零才能标 clean，不伪造缺失数量。
+
+不把 failed checklist 条目数、WNS/TNS、corner 数量、missing corner 数或执行失败
+解释成物理违例数量。文件为已保存事实，状态匹配不证明内容指纹或全局签核完整性。
+
+#### JSON / plain 契约
+
+JSON 顶层沿用记录数组，首条包含：
+
+```text
+report=project
+schema_version=1
+project, design, status, sort
+columns=[{step, token, tool}, ...]
+workspaces=[{workspace_id, workspace, manifest_status, flow_status, rank, qor, steps}, ...]
+warnings=[...]
+```
+
+qor 包含 score、availability、scalar_status、profile、scoring_engine、source 与
+provisional。每个 step 包含 step、tool、state、category 与 checker（普通步骤为 null）。
+checker 包含 availability、verdict、has_violations、violation_count、counts、source。
+counts 按 canonical metric ID 分项保存。null 与真实 0/false 必须区分。
+
+plain 使用现有严格行记录序列化：project_report、step_column、workspace、
+workspace_step、checker_count、warning。关联以 workspace_id 与 step/tool 为键，
+不把嵌套 Python dict 转成字符串。不允许同时使用 --plain 与 --json。
+
+#### 错误、不变性与限制
+
+合法空项目返回空矩阵、status=available、退出码 0。工作区局部缺失保留原行并
+标注原因，整体 status=partial，退出码仍为 0；不是所有工作区签核通过的保证。
+项目配置错误、坏/缺失 manifest 返回 1；参数错误返回 2。
+
+读取 flow/QoR 使用现有 16 MiB 上限，checker 小报告使用 1 MiB 上限。解析错误、
+过度嵌套和越界 symlink 路径按不可用处理，不读取工作区外的证据内容。
+不加载或迁移 Workspace、不启动 EDA、不刷新评分或快照、不写入任何报告文件。
+项目正在运行时并不锁定所有工作区，不承诺跨文件/工作区原子视图；可在运行结束
+后重新查询。要生成或保存单工作区结果，继续使用已有 run/report/snapshot 命令。
 
 ## 13. layout-image — GDS 渲染为图片
 

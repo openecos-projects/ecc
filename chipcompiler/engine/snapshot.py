@@ -103,7 +103,11 @@ def read_engineering_snapshot(
 
 
 def read_engineering_snapshot_from_directory(directory: str | Path) -> dict[str, Any]:
-    return _read_snapshot(Path(directory).expanduser().resolve() / "home" / SNAPSHOT_FILENAME)
+    try:
+        path = Path(directory).expanduser().resolve() / "home" / SNAPSHOT_FILENAME
+    except (OSError, RuntimeError) as exc:
+        raise EngineeringSnapshotError(f"invalid workspace Snapshot path: {directory}") from exc
+    return _read_snapshot_file(path, validate_workspace_identity=True)
 
 
 def read_engineering_snapshot_file(path: str | Path) -> dict[str, Any]:
@@ -112,6 +116,10 @@ def read_engineering_snapshot_file(path: str | Path) -> dict[str, Any]:
         path = Path(path).expanduser().resolve()
     except (OSError, RuntimeError) as exc:
         raise EngineeringSnapshotError(f"invalid saved Snapshot path: {path}") from exc
+    return _read_snapshot_file(path, validate_workspace_identity=False)
+
+
+def _read_snapshot_file(path: Path, *, validate_workspace_identity: bool) -> dict[str, Any]:
     if path.suffix == ".gz":
         raise EngineeringSnapshotError("saved Snapshot comparison requires uncompressed JSON")
     if not path.is_file():
@@ -145,7 +153,9 @@ def read_engineering_snapshot_file(path: str | Path) -> dict[str, Any]:
             raise EngineeringSnapshotError(
                 "invalid Engineering Snapshot section: qorSnapshotExtension"
             )
-        return _validate_snapshot(snapshot, path, validate_workspace_identity=False)
+        return _validate_snapshot(
+            snapshot, path, validate_workspace_identity=validate_workspace_identity
+        )
     except EngineeringSnapshotError:
         raise
     except (TypeError, ValueError, OverflowError, RuntimeError) as exc:

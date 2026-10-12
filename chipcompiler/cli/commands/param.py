@@ -19,7 +19,12 @@ from chipcompiler.cli.core.inputs import (
     output_options,
     project_options,
 )
-from chipcompiler.cli.core.invocation import CommandHandler, CommandInputT, execute_command
+from chipcompiler.cli.core.invocation import (
+    CommandHandler,
+    CommandInputT,
+    apply_location_defaults,
+    execute_command,
+)
 from chipcompiler.cli.core.options import (
     JsonOption,
     PlainOption,
@@ -97,11 +102,12 @@ def list_cmd(
         all=all_params,
         workspace=workspace,
     )
+    command_input = apply_location_defaults(command_input)
     render_key = (
         "param:catalog"
-        if all_params and plain and workspace is None and step is None
+        if all_params and plain and command_input.workspace is None and step is None
         else "param:workspace:list"
-        if plain and workspace is not None
+        if plain and command_input.workspace is not None
         else "param:list"
     )
     execute_command("param", command_input, param_list_handler, render_key=render_key)

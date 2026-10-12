@@ -1,11 +1,13 @@
 import os
 import sys
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Protocol, TypeVar
 
 import typer
 
 from chipcompiler.cli.core.inputs import (
+    InitInput,
     OutputOptions,
     ProjectOptions,
     RunInput,
@@ -125,6 +127,7 @@ def _resolve_manifest_workspace(
 
 
 def build_context(command_input: CommandInput) -> CommandContext:
+    command_input = apply_location_defaults(command_input)
     project = command_input.project.project
     project_dir = resolve_project_dir(project)
 
@@ -245,6 +248,23 @@ def build_context(command_input: CommandInput) -> CommandContext:
     )
 
 
+def apply_location_defaults(command_input: CommandInputT) -> CommandInputT:
+    if isinstance(command_input, InitInput):
+        return command_input
+    from chipcompiler.cli.project.current_location import resolve_current_location
+
+    workspace_supported = hasattr(command_input, "workspace")
+    workspace = getattr(command_input, "workspace", None)
+    project = command_input.project.project
+    location = resolve_current_location(project, workspace, workspace_supported=workspace_supported)
+    changes = {}
+    if location.project != project:
+        changes["project"] = ProjectOptions(project=location.project)
+    if workspace_supported and location.workspace != workspace:
+        changes["workspace"] = location.workspace
+    return replace(command_input, **changes) if changes else command_input
+
+
 def _should_colorize():
     from chipcompiler.cli.rendering.pretty import supports_color
 
@@ -311,6 +331,7 @@ def execute_command(
     handler: CommandHandler[CommandInputT],
     render_key: str | None = None,
 ) -> None:
+    command_input = apply_location_defaults(command_input)
     ctx = build_context(command_input)
     result = _with_legacy_hint(command, command_input, handler(command_input, ctx), ctx)
     result = _with_config_shadow_hint(command, command_input, result, ctx)
