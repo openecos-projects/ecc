@@ -77,28 +77,37 @@ def qor(command_input, ctx: CommandContext) -> CommandResult:
     except Exception as exc:
         return CommandResult.err([error_record("report_failed", reason=str(exc))])
 
+    extra = {
+        "design": report.design,
+        "overall_score": report.overall_score,
+        "qor_status": report.scalar_summary.status,
+        "gate_status": report.feasibility.status,
+        "dimensions": [
+            {
+                "dimension": dimension.key,
+                "score": dimension.value,
+                "state": dimension.state,
+                "features": len(dimension.features),
+            }
+            for dimension in report.dimension_scores
+        ],
+        "inspect": disclosure_cmd("ecc signoff inspect", ctx.project, ctx.run_id),
+    }
+    if command_input.output.json:
+        to_dict = getattr(report, "to_dict", None)
+        if not callable(to_dict):
+            return CommandResult.err(
+                [error_record("report_failed", reason="QoR report has no JSON serializer")]
+            )
+        extra["qor"] = to_dict()
+
     return _write_report(
         "qor",
         f"{report.design or 'design'}_qor_report.txt",
         content,
         command_input,
         ctx,
-        extra={
-            "design": report.design,
-            "overall_score": report.overall_score,
-            "qor_status": report.scalar_summary.status,
-            "gate_status": report.feasibility.status,
-            "dimensions": [
-                {
-                    "dimension": dimension.key,
-                    "score": dimension.value,
-                    "state": dimension.state,
-                    "features": len(dimension.features),
-                }
-                for dimension in report.dimension_scores
-            ],
-            "inspect": disclosure_cmd("ecc signoff inspect", ctx.project, ctx.run_id),
-        },
+        extra=extra,
     )
 
 
