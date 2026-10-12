@@ -219,12 +219,25 @@ def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str,
     candidates = plan["candidates"][:max_candidates]
     results = []
     for candidate in candidates:
-        workspace = project / "experiments" / name / "workspaces" / candidate["id"]
-        command = [sys.executable, "-m", "chipcompiler.cli.main", "run", "--project", str(project), "--workspace", str(workspace)]
+        candidate_root = project / "experiments" / name / "candidates" / candidate["id"]
+        candidate_project = candidate_root / "project"
+        if not candidate_project.exists():
+            def ignore(source: str, names: list[str]) -> set[str]:
+                return {item for item in names if item in {"experiments", ".git"} or item.endswith(".lock") or item.startswith("ws_")}
+            shutil.copytree(project, candidate_project, ignore=ignore)
+            manifest_path = candidate_project / "project.json"
+            manifest = load_json(manifest_path, {})
+            if isinstance(manifest, dict):
+                manifest["root_path"] = str(candidate_project)
+                manifest["workspaces"] = []
+                manifest["runtime_processes"] = []
+                dump_json(manifest_path, manifest)
+        workspace = candidate_project / candidate["id"]
+        command = [sys.executable, "-m", "chipcompiler.cli.main", "run", "--project", str(candidate_project), "--workspace", str(workspace)]
         for key, value in candidate["parameters"].items():
             command.extend(["--set", f"{key}={value}"])
         completed = subprocess.run(command, capture_output=True, text=True, check=False)
-        evidence = collect_candidate_evidence(project, workspace, completed.returncode)
+        evidence = collect_candidate_evidence(candidate_project, workspace, completed.returncode)
         results.append({"id": candidate["id"], "workspace": str(workspace), "parameters": candidate["parameters"], "exit_code": completed.returncode, **evidence})
     payload = {"schema_version": SCHEMA_VERSION, "results": results}
     dump_json(sweep_result(project, name), payload)
