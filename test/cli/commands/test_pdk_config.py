@@ -207,3 +207,24 @@ class TestPdkUnset:
         record = plain_records(capsys.readouterr().out)[0]
         assert rc == 0
         assert record["source"] == "CHIPCOMPILER_ICS55_PDK_ROOT"
+
+
+def test_pdk_verify_fails_closed_for_incomplete_contents(monkeypatch):
+    from chipcompiler.cli.command_handlers import pdk
+    from chipcompiler.cli.core.types import CommandResult
+
+    monkeypatch.setattr(
+        pdk,
+        "show",
+        lambda command_input, ctx: CommandResult.ok(
+            [
+                {"pdk": "show", "root": "/tmp/pdk"},
+                {"pdk": "contents", "status": "incomplete", "reason": "missing tech"},
+            ]
+        ),
+    )
+
+    result = pdk.verify(None, None)
+
+    assert result.exit_code == 1
+    assert result.records[1]["pdk"] == "verify"
