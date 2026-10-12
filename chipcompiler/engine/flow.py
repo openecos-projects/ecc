@@ -43,6 +43,7 @@ from chipcompiler.engine.flow_completion import (
 from chipcompiler.engine.flow_completion import (
     refresh_signoff_checklist as _refresh_signoff_checklist,
 )
+from chipcompiler.engine.flow_completion import sync_step_checklist as _sync_step_checklist
 from chipcompiler.engine.signoff import (
     SignoffPackageCollector,
     SignoffPackageOptions,
@@ -725,6 +726,35 @@ class EngineFlow:
         observed = float(flow_step.get("peak memory (mb)") or 0)
         return max(4096.0, observed * 1.5)
 
+    def _blocked_checklist_prerequisite(self, workspace_step: WorkspaceStep) -> str | None:
+        steps = self.workspace.flow.data.get("steps", [])
+        current_index = next(
+            (
+                index
+                for index, step in enumerate(steps)
+                if step.get("name") == workspace_step.name
+                and step.get("tool") == workspace_step.tool
+            ),
+            None,
+        )
+        if current_index is None:
+            return None
+        current = steps[current_index]
+        prerequisite_name = current.get("input_step") or (current.get("info") or {}).get(
+            "input_step"
+        )
+        prerequisite = None
+        if prerequisite_name:
+            prerequisite = next(
+                (step for step in steps if step.get("name") == prerequisite_name), None
+            )
+        elif current_index > 0:
+            prerequisite = steps[current_index - 1]
+        checklist = prerequisite.get("checklist") if isinstance(prerequisite, dict) else None
+        if isinstance(checklist, dict) and checklist.get("status") == "blocked":
+            return str(prerequisite.get("name") or "previous step")
+        return None
+
     def _run_checker_batch(self, steps: list[WorkspaceStep], *, rerun: bool) -> list[StateEnum]:
         workers = self._checker_parallelism(steps)
         self.workspace.logger.info(
@@ -755,6 +785,22 @@ class EngineFlow:
             return StateEnum.Invalid
 
         step_tag = f"{workspace_step.name}({workspace_step.tool})"
+
+        blocked_by = self._blocked_checklist_prerequisite(workspace_step)
+        if blocked_by is not None:
+            flow_step = self.get_step(workspace_step.name, workspace_step.tool)
+            if flow_step is not None:
+                flow_step["checklist"] = {
+                    "status": "blocked",
+                    "blocked": True,
+                    "failed_items": [f"prerequisite:{blocked_by}"],
+                    "source": "home/flow.json",
+                }
+                self.save()
+            self.workspace.logger.warning(
+                "[FLOW] %s is blocked by checklist gate from %s", step_tag, blocked_by
+            )
+            return StateEnum.Invalid
 
         if not rerun and self.check_state(
             name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Success
@@ -932,6 +978,7 @@ class EngineFlow:
         finally:
             if terminal_persisted:
                 _refresh_signoff_checklist(self.workspace, workspace_step)
+                _sync_step_checklist(self, workspace_step)
             try:
                 self.clear_db_engine_after_step(workspace_step, state)
             except (Exception, SystemExit):

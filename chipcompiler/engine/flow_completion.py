@@ -2,8 +2,69 @@
 
 import logging
 from copy import deepcopy
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def summarize_step_checklist(workspace_step) -> dict | None:
+    """Return a compact checklist gate projection for flow.json."""
+    path = getattr(getattr(workspace_step, "checklist", None), "path", None)
+    if not path:
+        return None
+    try:
+        from chipcompiler.utility import json_read
+
+        data = json_read(Path(path))
+    except (OSError, TypeError, ValueError):
+        data = None
+    if not isinstance(data, dict) or not isinstance(data.get("checklist"), list):
+        return {
+            "status": "unknown",
+            "blocked": False,
+            "failed_items": [],
+            "source": str(path),
+        }
+    status = {
+        "ready": "passed",
+        "blocked": "blocked",
+        "attention": "attention",
+    }.get(data.get("status"), "unknown")
+    failed_items = [
+        item.get("id") or item.get("title", "")
+        for item in data["checklist"]
+        if isinstance(item, dict) and item.get("blocked") is True
+    ]
+    result = {
+        "status": status,
+        "blocked": status == "blocked",
+        "failed_items": failed_items,
+        "items": [item for item in data["checklist"] if isinstance(item, dict)],
+        "source": str(path),
+    }
+    if isinstance(data.get("summary"), dict):
+        result["summary"] = dict(data["summary"])
+    if isinstance(data.get("generated_at"), str):
+        result["updated_at"] = data["generated_at"]
+    return result
+
+
+def sync_step_checklist(flow, workspace_step) -> dict | None:
+    """Persist checklist projection before publishing step completion."""
+    projection = summarize_step_checklist(workspace_step)
+    if projection is None:
+        return None
+    current = flow.get_step(workspace_step.name, workspace_step.tool)
+    if current is None:
+        return projection
+    current["checklist"] = projection.pop("items", [])
+    current["checklist_status"] = projection
+    if not flow.save():
+        raise RuntimeError(
+            "failed to persist checklist projection for "
+            f"{workspace_step.name}/{workspace_step.tool}"
+        )
+    return projection
 
 
 def normalize_legacy_terminal_state(flow, workspace_step, step_tag) -> None:
