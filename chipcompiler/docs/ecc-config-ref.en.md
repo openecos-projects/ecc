@@ -394,6 +394,31 @@ For an existing workspace, use
 `ecc param set place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`.
 S50 retains RRR=3, zero padding, fixed 512×512 bins and final legalization.
 
+`diff_buffering` is an independent step between placement and `diff_sizing`.
+It reads the preceding DEF/Verilog and runs discrete candidate buffering with
+three positions per segment and the four ICS55 masters BUFX8H7L, BUFX12H7L,
+BUFX16H7L and BUFX20H7L. Each round accepts at most one action per net,
+then selects the configured fraction of nets by global gradient benefit.
+The default is at most ten rounds and a 0.3% fraction per round. This step
+uses placement RC. After native buffer insertion it rebuilds the topology,
+runs geometry-only legalization with zero padding, and saves DEF/Verilog and
+terminal hard STA. It performs no GP or sizing updates. Its default WNS/TNS/cap/slew
+coefficients are 500/5/1/1 with outer timing weight 1. The PDK must contain
+all four masters; missing masters cause an explicit error.
+
+```toml
+[params.place]
+diff_buffering_rounds = 10
+diff_buffering_selection_fraction = 0.003
+diff_buffering_coefficients = { wns = 500.0, tns = 5.0, cap = 1.0, slew = 1.0 }
+```
+
+Run it alone with
+`ecc run --project PROJECT --workspace NAME --from diff_buffering --to diff_buffering`;
+use `--to diff_sizing` to continue through standalone GR S50.
+Existing workspace ledgers retain their stored steps; new workspaces include
+the new step.
+
 The number of continuous sizing steps in standalone S50 is controlled by
 `place.diff_sizing_continuous_steps`, which defaults to 0. It is the number of
 continuous real-size steps before projection to legal cells. Set it to 0 to

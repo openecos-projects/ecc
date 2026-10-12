@@ -391,6 +391,26 @@ slew = 1.0
 `ecc param set place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`。
 S50 继续使用 RRR=3、padding=0、固定 512×512 bins 和最终 legalization。
 
+`diff_buffering` 是 placement 之后、`diff_sizing` 之前的独立步骤。它从上一阶段的
+DEF/Verilog 开始，只执行 discrete candidate buffering：每个 segment 保留三个候选位置，
+使用 ICS55 的 BUFX8H7L、BUFX12H7L、BUFX16H7L、BUFX20H7L 四档 buffer，
+每轮每条 net 最多接受一个动作，再按全局梯度收益排序选取配置比例的 net。
+默认最多十轮、每轮比例 0.3%。该步骤使用 placement RC；buffer 实体化后完整刷新拓扑，
+使用 padding=0 做 geometry-only legalization，并保存新的 DEF/Verilog 和终态 hard STA。
+它不执行 GP 或 sizing，也不复用 placement 的外层 α。默认系数为 500/5/1/1。
+当前 PDK 必须包含上述四个 master；缺少时会明确报错。
+
+```toml
+[params.place]
+diff_buffering_rounds = 10
+diff_buffering_selection_fraction = 0.003
+diff_buffering_coefficients = { wns = 500.0, tns = 5.0, cap = 1.0, slew = 1.0 }
+```
+
+可以用 `ecc run --project PROJECT --workspace NAME --from diff_buffering --to diff_buffering`
+单独执行；结束范围改为 `--to diff_sizing` 则继续做独立 GR S50。
+已有 workspace 继续使用保存的 flow ledger；新建 workspace 会包含这个新 step。
+
 独立 S50 的连续 sizing step 数由 `place.diff_sizing_continuous_steps` 控制，默认值为 0。
 它表示投影到合法 cell 之前执行的 continuous real-size step 数；设为 0 会直接使用
 输入 master 的 logits 进入 `discrete_gradient_topk`，设为 3 则执行 3 个连续 sizing
