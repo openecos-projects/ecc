@@ -16,7 +16,7 @@ config.suffixes = [".lit"]
 config.test_source_root = str(_ROOT / "cases")
 config.test_exec_root = str(_ROOT / "Output")
 
-repo = os.environ.get("ECC_REPO_ROOT") or str(_ROOT.parents[3])
+repo = os.environ.get("ECC_REPO_ROOT") or str(_ROOT.parents[2])
 python = os.environ.get("PYTHON") or "python3"
 filecheck = os.environ.get("FILECHECK") or "FileCheck"
 scripts = Path(repo) / "nix" / "scripts"
