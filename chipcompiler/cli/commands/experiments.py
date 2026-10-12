@@ -119,6 +119,12 @@ def explore_promote(*, project: Annotated[str | None, typer.Option("--project")]
     root = project_path(project) / "experiments" / name
     if not (root / "sweep.json").exists():
         raise typer.BadParameter(f"sweep does not exist: {name}")
+    results = load_json(root / "results.json", {"results": []}).get("results", [])
+    selected = next((row for row in results if row.get("id") == candidate), None)
+    if selected is None:
+        raise typer.BadParameter(f"candidate does not exist or has not run: {candidate}")
+    if selected.get("status") != "passed":
+        raise typer.BadParameter(f"only passed candidates can be promoted: {candidate}")
     payload = {"schema_version": 1, "candidate": candidate, "selected_at": time.time()}
     (root / "winner.json").write_text(json.dumps(payload, indent=2) + "\n")
     typer.echo(json.dumps(payload, sort_keys=True))

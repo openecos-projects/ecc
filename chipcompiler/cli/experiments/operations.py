@@ -167,8 +167,9 @@ def compare_sweep(project: Path, name: str) -> list[dict[str, Any]]:
 
 
 def _json_command(project: Path, workspace: Path, command: str) -> tuple[int, Any]:
+    command_line = [sys.argv[0]] if getattr(sys, "frozen", False) else [sys.executable, "-m", "chipcompiler.cli.main"]
     completed = subprocess.run(
-        [sys.executable, "-m", "chipcompiler.cli.main", *command.split(), "--project", str(project), "--workspace", str(workspace), "--json"],
+        [*command_line, *command.split(), "--project", str(project), "--workspace", str(workspace), "--json"],
         capture_output=True, text=True, check=False,
     )
     try:
@@ -217,6 +218,8 @@ def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str,
     if not plan:
         raise ValueError(f"sweep does not exist: {name}")
     candidates = plan["candidates"][:max_candidates]
+    previous = load_json(sweep_result(project, name), {"results": []}) or {}
+    previous_results = {row.get("id"): row for row in previous.get("results", []) if isinstance(row, dict)}
     results = []
     for candidate in candidates:
         candidate_root = project / "experiments" / name / "candidates" / candidate["id"]
@@ -233,7 +236,12 @@ def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str,
                 manifest["runtime_processes"] = []
                 dump_json(manifest_path, manifest)
         workspace = candidate_project / candidate["id"]
-        command = [sys.executable, "-m", "chipcompiler.cli.main", "run", "--project", str(candidate_project), "--workspace", str(workspace)]
+        existing = previous_results.get(candidate["id"])
+        if existing and existing.get("status") in {"passed", "blocked", "failed", "unknown"} and workspace.exists():
+            results.append(existing)
+            continue
+        command_line = [sys.argv[0]] if getattr(sys, "frozen", False) else [sys.executable, "-m", "chipcompiler.cli.main"]
+        command = [*command_line, "run", "--project", str(candidate_project), "--workspace", str(workspace)]
         for key, value in candidate["parameters"].items():
             command.extend(["--set", f"{key}={value}"])
         completed = subprocess.run(command, capture_output=True, text=True, check=False)
