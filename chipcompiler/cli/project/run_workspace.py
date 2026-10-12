@@ -229,6 +229,17 @@ def _execute_workspace_run(
                 except ValueError as exc:
                     return run_failed("unknown_step", str(exc))
 
+                from chipcompiler.cli.project.run_preflight import build_run_preflight
+
+                preflight = build_run_preflight(
+                    engine_flow,
+                    selected,
+                    only=command_input.only,
+                    force=command_input.force,
+                )
+                if preflight["missing_inputs"]:
+                    return run_failed("step_input_missing", str(preflight["missing_inputs"]))
+
                 from chipcompiler.cli.rendering.progress import preserve_cli_stdio
 
                 try:
@@ -272,6 +283,11 @@ def _execute_workspace_run(
         "executed_steps": list(result.executed),
         "no_op": result.ok and not result.executed,
     }
+    if getattr(command_input.output, "json", False):
+        from chipcompiler.cli.project.run_preflight import output_paths
+
+        record["preflight"] = preflight
+        record["output_paths"] = output_paths(engine_flow, list(result.executed))
     if result.ok:
         return CommandResult.ok([record] + warnings)
     record["failed_step"] = result.failed
