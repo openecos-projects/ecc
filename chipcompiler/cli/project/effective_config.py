@@ -92,11 +92,13 @@ def _attach_lec_engine(flow_config: dict | None, lec_engine: str | None) -> dict
     return _attach_flow_key(flow_config, "lec_engine", lec_engine)
 
 
-def _attach_no_clock(flow_config: dict | None, no_clock: bool) -> dict | None:
+def _attach_no_clock(flow_config: dict | None, *, no_clock: bool) -> dict | None:
     """Carry ``no_clock`` on the flow config so resolve_skip_steps omits CTS."""
     if not no_clock:
         return flow_config
-    return _attach_flow_key(flow_config, "no_clock", True)
+    flow_config = dict(flow_config or {})
+    flow_config["no_clock"] = True
+    return flow_config
 
 
 def _project_no_clock_decision(cfg):
@@ -182,7 +184,7 @@ def resolve_effective_config(
     flow_config = _attach_lec_engine(flow_config, declared_lec_engine(cfg))
     no_clock = _project_no_clock_decision(cfg)
     cfg._no_clock_source = no_clock.source
-    flow_config = _attach_no_clock(flow_config, no_clock.enabled)
+    flow_config = _attach_no_clock(flow_config, no_clock=no_clock.enabled)
     # Provenance for inspection surfaces: the winning layer's name.
     if declared is not None:
         cfg._skip_steps_source = (

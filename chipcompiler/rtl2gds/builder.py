@@ -87,12 +87,12 @@ def resolve_no_clock(
     if isinstance(flow_config, dict) and "no_clock" in flow_config:
         flag = _coerce_no_clock_flag(flow_config["no_clock"])
     if flag is True:
-        return NoClockDecision(True, NO_CLOCK_SOURCE_EXPLICIT)
+        return NoClockDecision(enabled=True, source=NO_CLOCK_SOURCE_EXPLICIT)
     if flag is False:
-        return NoClockDecision(False, NO_CLOCK_SOURCE_OFF)
+        return NoClockDecision(enabled=False, source=NO_CLOCK_SOURCE_OFF)
     if materials is not None and not _clock_name_from_materials(materials):
-        return NoClockDecision(True, NO_CLOCK_SOURCE_INFERRED)
-    return NoClockDecision(False, NO_CLOCK_SOURCE_OFF)
+        return NoClockDecision(enabled=True, source=NO_CLOCK_SOURCE_INFERRED)
+    return NoClockDecision(enabled=False, source=NO_CLOCK_SOURCE_OFF)
 
 
 def resolve_lec_engine(flow_config: dict | None) -> LECEngineEnum:
