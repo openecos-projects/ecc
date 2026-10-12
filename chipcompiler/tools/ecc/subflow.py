@@ -2,7 +2,14 @@
 import time
 from enum import Enum
 
-from chipcompiler.data import StateEnum, SkippableStepEnum, StepEnum, Workspace, WorkspaceStep, step_from_value
+from chipcompiler.data import (
+    StateEnum,
+    SkippableStepEnum,
+    StepEnum,
+    Workspace,
+    WorkspaceStep,
+    step_from_value,
+)
 
 
 class EccSubFlowEnum(Enum):

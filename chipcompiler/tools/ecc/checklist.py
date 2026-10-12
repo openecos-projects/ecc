@@ -10,7 +10,8 @@ from chipcompiler.data import (
     SkippableStepEnum,
     StepEnum,
     Workspace,
-    workspace_checklist_path,)
+    workspace_checklist_path,
+)
 from chipcompiler.tools.ecc.qor_metrics import QorMetrics
 from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
 from chipcompiler.utility import json_read

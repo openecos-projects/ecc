@@ -4,7 +4,15 @@ from csv import reader as csv_reader
 from math import ceil, isfinite
 from pathlib import Path
 
-from chipcompiler.data import EccStep, StateEnum, SkippableStepEnum, StepEnum, StepMetrics, Workspace, WorkspaceStep
+from chipcompiler.data import (
+    EccStep,
+    StateEnum,
+    SkippableStepEnum,
+    StepEnum,
+    StepMetrics,
+    Workspace,
+    WorkspaceStep,
+)
 from chipcompiler.tools.ecc.qor_detail_facts import database_fact_summary, lvs_detail_summary
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
