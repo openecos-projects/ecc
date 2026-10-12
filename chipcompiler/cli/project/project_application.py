@@ -99,7 +99,10 @@ def reconcile_project_summary(project_dir: str | Path, *, blocking: bool) -> boo
         if errors:
             raise ProjectApplicationError("invalid_project_config", errors[0])
         before = load_manifest(str(project)).base_design
-        expected = base_design_from_config(cfg, resolve_pdk_root(cfg))
+        # Project reconciliation must not silently bind a fresh project to a
+        # host PDK environment before the user declares a project root.
+        pdk_root = resolve_pdk_root(cfg) if cfg.pdk_root else ""
+        expected = base_design_from_config(cfg, pdk_root)
         if before == expected:
             return False
         if not _update_summary_locked(project, cfg):
@@ -709,7 +712,8 @@ def _validate_text(project: Path, text: str):
 
 
 def _update_summary_locked(project: Path, cfg) -> bool:
-    base_design = base_design_from_config(cfg, resolve_pdk_root(cfg))
+    pdk_root = resolve_pdk_root(cfg) if cfg.pdk_root else ""
+    base_design = base_design_from_config(cfg, pdk_root)
 
     def mutate(document: dict) -> None:
         document["design_name"] = cfg.design_name

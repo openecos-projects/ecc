@@ -82,7 +82,7 @@ def _execute_workspace_run(
     warnings: list[dict] = []
 
     def error(kind: str, **fields) -> CommandResult:
-        return CommandResult.err(warnings + [{"kind": "error", "error": kind, **fields}])
+        return CommandResult.err([{"kind": "error", "error": kind, **fields}] + warnings)
 
     workspace_path = os.path.abspath(workspace_path)
 
@@ -182,8 +182,7 @@ def _execute_workspace_run(
 
         def run_failed(kind: str, reason: str | None = None) -> CommandResult:
             return CommandResult.err(
-                warnings
-                + [
+                [
                     {
                         "kind": "error",
                         "error": kind,
@@ -191,6 +190,7 @@ def _execute_workspace_run(
                         **({"reason": reason} if reason else {}),
                     }
                 ]
+                + warnings
             )
 
         try:
@@ -273,7 +273,7 @@ def _execute_workspace_run(
         "no_op": result.ok and not result.executed,
     }
     if result.ok:
-        return CommandResult.ok(warnings + [record])
+        return CommandResult.ok([record] + warnings)
     record["failed_step"] = result.failed
     record["resume_cmd"] = f"ecc run --workspace {shlex.quote(workspace_id or 'default')} --resume"
-    return CommandResult.err(warnings + [record])
+    return CommandResult.err([record] + warnings)

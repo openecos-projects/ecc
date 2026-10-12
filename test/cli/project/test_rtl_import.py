@@ -5,7 +5,7 @@ from chipcompiler.cli.project.rtl_import import import_project_rtl
 
 
 def _project(root: Path) -> None:
-    (root / "rtl").mkdir()
+    (root / "rtl").mkdir(parents=True)
     (root / "ecc.toml").write_text(
         '[design]\nname = "demo"\ntop = "demo"\nrtl = ["rtl/demo.v"]\n',
         encoding="utf-8",

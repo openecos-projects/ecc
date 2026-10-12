@@ -4,14 +4,15 @@ import typer
 
 from chipcompiler.cli.command_handlers import inspect as inspect_handlers
 from chipcompiler.cli.command_handlers import project as project_handlers
+from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import (
     CheckInput,
     ConfigInput,
     InitInput,
     LogInput,
     MigrateInput,
-    RunInput,
     RtlImportInput,
+    RunInput,
     StatusInput,
     output_options,
     project_options,
@@ -40,7 +41,7 @@ def register_project_commands(app: typer.Typer) -> None:
     )
 
 
-rtl_app = typer.Typer(help="Import project RTL sources")
+rtl_app = create_app(help="Import project RTL sources")
 
 
 @rtl_app.command("import")
