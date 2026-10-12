@@ -90,7 +90,7 @@ SectionOption = Annotated[
     list[str] | None,
     typer.Option(
         "--section",
-        help="Limit the detail view to section(s): feature, analysis, checklist",
+        help="Limit the detail view to section(s): feature, analysis, checklist, outputs",
     ),
 ]
 

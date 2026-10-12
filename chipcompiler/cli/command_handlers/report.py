@@ -236,7 +236,7 @@ def step(command_input, ctx: CommandContext) -> CommandResult:
     records = build_step_detail_records(
         workspace_dir,
         command_input.step,
-        command_input.sections or SECTIONS,
+        command_input.sections or SECTIONS[:3],
         ctx.project,
         ctx.run_id,
     )

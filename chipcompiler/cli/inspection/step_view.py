@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 from chipcompiler.utility.json import json_read
 
-SECTIONS = ("feature", "analysis", "checklist")
+SECTIONS = ("feature", "analysis", "checklist", "outputs")
 
 _HOME_CHECKLIST_PATH = ("home", "checklist.json")
 _MAX_FLATTEN_DEPTH = 3
@@ -420,7 +420,11 @@ def build_step_detail_records(
         }
     ]
     for section in sections:
-        if section == "feature":
+        if section == "outputs":
+            from chipcompiler.cli.inspection.step_outputs import output_records
+
+            section_records = output_records(workspace_dir, entry.token, entry.state())
+        elif section == "feature":
             section_records = _feature_records(entry, workspace_dir) if entry.directory else []
         elif section == "analysis":
             section_records = _analysis_records(entry, workspace_dir) if entry.directory else []
@@ -484,7 +488,12 @@ def _render_detail_section(records, section: str) -> None:
         return
     for record in section_records:
         kind = record.get("kind")
-        if section == "feature":
+        if section == "outputs":
+            print(
+                f"    {record['role']}: {record['path']}  "
+                f"[{record['availability']}, {record['validity']}]"
+            )
+        elif section == "feature":
             print(f"    {record['key']:44s} {_fmt(record['value'])}")
         elif kind == "summary":
             if section == "analysis":
