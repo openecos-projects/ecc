@@ -38,11 +38,13 @@ if [[ -x "$ECC_REPO_ROOT/.venv/bin/ecc" ]]; then
 fi
 
 # Prefer the flake app (pins lit/FileCheck with the repo).
-if nix run -L .#signoff-lit -- test/lit/project "$@"; then
-  exit 0
+# Only fall back when the *build* fails — lit test failures must not re-run.
+if nix build -L --no-link .#signoff-lit; then
+  nix run -L .#signoff-lit -- test/lit/project "$@"
+  exit $?
 fi
 
-echo "flake signoff-lit failed; falling back to nixpkgs shell" >&2
+echo "flake signoff-lit build failed; falling back to nixpkgs shell" >&2
 # Match flake.nix nixpkgs pin (llvmPackages_21 FileCheck).
 NIXPKGS_REF="${NIXPKGS_REF:-github:NixOS/nixpkgs/f4b140d5b253f5e2a1ff4e5506edbf8267724bde}"
 exec nix shell \
