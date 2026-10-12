@@ -3,10 +3,12 @@ from pathlib import Path
 
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
+from chipcompiler.cli.inspection.artifact_evidence import inspect_artifact
 from chipcompiler.cli.inspection.discovery import (
     resolve_loaded_workspace,
     workspace_display,
 )
+from chipcompiler.cli.inspection.project_checkers import checker_evidence
 
 _PROFILES = {
     "rtl2gds": (
@@ -63,10 +65,10 @@ def check(command_input, ctx: CommandContext) -> CommandResult:
         "flow_complete": _flow_gate(root),
         "qor_available": _qor_gate(root),
         "checklist_ready": _checklist_gate(review),
-        "drc_clean": _checker_gate(root, "drc"),
-        "lvs_clean": _checker_gate(root, "lvs"),
-        "sta_setup_clean": _sta_gate(root, "setup"),
-        "sta_hold_clean": _sta_gate(root, "hold"),
+        "drc_clean": _metric_checker_gate(root, "drc"),
+        "lvs_clean": _metric_checker_gate(root, "lvs"),
+        "sta_setup_clean": _metric_checker_gate(root, "sta", "sta_setup_violation_count"),
+        "sta_hold_clean": _metric_checker_gate(root, "sta", "sta_hold_violation_count"),
         "lec_proven": _lec_gate(root),
         "final_gds_available": _artifact_gate(root, "Harden GDS", "Harden_ecc/checklist.json"),
         "final_netlist_available": _netlist_artifact_gate(root),
@@ -179,6 +181,41 @@ def _checker_gate(root: Path, checker: str) -> dict:
     }
 
 
+def _metric_checker_gate(root: Path, checker: str, metric_id: str | None = None) -> dict:
+    """Build a signoff gate from the canonical checker metric evidence."""
+    flow = _read(root / "home" / "flow.json")
+    steps = flow.get("steps", []) if isinstance(flow, dict) else []
+    step = next(
+        (
+            item
+            for item in steps
+            if isinstance(item, dict) and str(item.get("name", "")).lower() == checker
+        ),
+        {"name": checker, "tool": "ecc", "state": "Success"},
+    )
+    evidence = checker_evidence(root, step, str(flow.get("design", "design")))
+    counts = evidence.get("counts", {})
+    selected = counts.get(metric_id) if metric_id else evidence.get("violation_count")
+    source = evidence.get("source")
+    base = {
+        "source": source,
+        "violation_count": selected,
+        "failed_items": [],
+        "stale": evidence.get("availability") in {"missing", "corrupt", "invalid"},
+        "provisional": evidence.get("availability") != "available",
+    }
+    if evidence.get("availability") in {"available", "partial"} and selected is not None:
+        base.update(
+            status="pass" if selected == 0 else "fail",
+            reason=f"{checker}_clean" if selected == 0 else f"{checker}_violations",
+        )
+        if selected:
+            base["failed_items"] = [f"{metric_id or checker}={selected}"]
+        return base
+    base.update(status="unknown", reason=f"{checker}_evidence_unavailable")
+    return base
+
+
 def _sta_gate(root: Path, analysis: str) -> dict:
     result = _checker_gate(root, "sta")
     if result["status"] == "unknown":
@@ -249,16 +286,18 @@ def _artifact_gate(root: Path, label: str, checklist: str) -> dict:
     relative = source.get("path")
     if not isinstance(relative, str) or Path(relative).is_absolute():
         return {"status": "unknown", "reason": "artifact_path_invalid", "source": checklist}
-    artifact = (root / relative).resolve()
-    if (
-        root.resolve() not in artifact.parents
-        or not artifact.is_file()
-        or artifact.stat().st_size == 0
-    ):
+    evidence = inspect_artifact(root, relative, include_hash=True)
+    if evidence["availability"] != "available" or evidence["bytes"] == 0:
         return {"status": "unknown", "reason": "artifact_unavailable", "source": relative}
     if item.get("state") != "pass" or item.get("blocked") is True:
         return {"status": "fail", "reason": "artifact_checklist_failed", "source": relative}
-    return {"status": "pass", "reason": "artifact_available", "source": relative}
+    return {
+        "status": "pass",
+        "reason": "artifact_available",
+        "source": relative,
+        "bytes": evidence["bytes"],
+        "sha256": evidence["sha256"],
+    }
 
 
 def _netlist_artifact_gate(root: Path) -> dict:
@@ -278,23 +317,20 @@ def _netlist_artifact_gate(root: Path) -> dict:
             "reason": "artifact_path_invalid",
             "source": str(candidates[0].relative_to(root)),
         }
-    artifact = Path(relative)
-    if artifact.is_absolute():
-        try:
-            artifact = artifact.resolve().relative_to(root.resolve())
-        except ValueError:
-            return {
-                "status": "unknown",
-                "reason": "artifact_outside_workspace",
-                "source": str(candidates[0].relative_to(root)),
-            }
-    target = (root / artifact).resolve()
-    if root.resolve() not in target.parents or not target.is_file() or target.stat().st_size == 0:
-        return {"status": "unknown", "reason": "artifact_unavailable", "source": str(artifact)}
+    evidence = inspect_artifact(root, relative, include_hash=True)
+    if evidence["availability"] != "available" or evidence["bytes"] == 0:
+        reason = (
+            "artifact_outside_workspace"
+            if evidence["availability"] == "outside_workspace"
+            else "artifact_unavailable"
+        )
+        return {"status": "unknown", "reason": reason, "source": str(relative)}
     return {
         "status": "pass",
         "reason": "artifact_available",
-        "source": str(target.relative_to(root)),
+        "source": evidence["path"],
+        "bytes": evidence["bytes"],
+        "sha256": evidence["sha256"],
     }
 
 

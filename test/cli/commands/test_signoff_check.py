@@ -5,11 +5,33 @@ from chipcompiler.cli.command_handlers.signoff_check import (
     _checker_gate,
     _flow_gate,
     _lec_gate,
+    _metric_checker_gate,
     _netlist_artifact_gate,
     _overall,
     _qor_gate,
     _sta_gate,
 )
+
+
+def _write_metric(root, step, metrics):
+    path = root / f"{step}_ecc" / "analysis" / "qor_metrics.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "step": step,
+                "tool": "ecc",
+                "status": "success",
+                "metrics": [
+                    {"id": metric, "value": value, "unit": "count"}
+                    for metric, value in metrics.items()
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 def test_flow_gate_requires_all_steps_success(tmp_path):
@@ -29,6 +51,56 @@ def test_qor_gate_does_not_treat_missing_score_as_pass(tmp_path):
     (home / "qor_report.json").write_text("{}", encoding="utf-8")
 
     assert _qor_gate(tmp_path)["status"] == "unknown"
+
+
+def test_metric_checker_gate_uses_zero_as_clean(tmp_path):
+    path = _write_metric(tmp_path, "drc", {"drc_count": 0})
+
+    result = _metric_checker_gate(tmp_path, "drc")
+
+    assert result["status"] == "pass"
+    assert result["violation_count"] == 0
+    assert result["source"] == str(path)
+    assert result["stale"] is False
+    assert result["provisional"] is False
+
+
+def test_metric_checker_gate_reports_real_count_not_checklist_count(tmp_path):
+    path = _write_metric(tmp_path, "drc", {"drc_count": 7})
+
+    result = _metric_checker_gate(tmp_path, "drc")
+
+    assert result["status"] == "fail"
+    assert result["reason"] == "drc_violations"
+    assert result["violation_count"] == 7
+    assert result["failed_items"] == ["drc=7"]
+    assert result["source"] == str(path)
+
+
+def test_metric_checker_gate_separates_sta_setup_and_hold(tmp_path):
+    _write_metric(
+        tmp_path,
+        "sta",
+        {"sta_setup_violation_count": 0, "sta_hold_violation_count": 3},
+    )
+
+    setup = _metric_checker_gate(tmp_path, "sta", "sta_setup_violation_count")
+    hold = _metric_checker_gate(tmp_path, "sta", "sta_hold_violation_count")
+
+    assert setup["status"] == "pass"
+    assert setup["violation_count"] == 0
+    assert hold["status"] == "fail"
+    assert hold["violation_count"] == 3
+
+
+def test_metric_checker_gate_does_not_treat_missing_count_as_clean(tmp_path):
+    _write_metric(tmp_path, "drc", {"route_dr_total_violation_count": 0})
+
+    result = _metric_checker_gate(tmp_path, "drc")
+
+    assert result["status"] == "unknown"
+    assert result["violation_count"] is None
+    assert result["provisional"] is True
 
 
 def test_checker_gate_reports_failed_checklist_evidence(tmp_path):

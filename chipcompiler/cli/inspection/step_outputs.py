@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from chipcompiler.cli.core.output import normalize_step_name
+from chipcompiler.cli.inspection.artifact_evidence import inspect_artifact
 from chipcompiler.engine.snapshot import (
     EngineeringSnapshotError,
     read_engineering_snapshot_from_directory,
@@ -41,54 +42,16 @@ def output_records(workspace_dir: str, step_token: str, state: str) -> list[dict
             artifact = step.get(role)
             if artifact is None:
                 continue
-            path = Path(artifact["path"])
-            try:
-                candidate = (root / path).resolve()
-            except (OSError, RuntimeError) as exc:
-                records.append(
-                    {
-                        "step": step_token,
-                        "section": "outputs",
-                        "kind": "artifact",
-                        "role": role,
-                        "path": artifact["path"],
-                        "availability": "unreadable",
-                        "validity": "unknown",
-                        "reason": str(exc),
-                    }
-                )
-                continue
-            if not candidate.is_relative_to(root):
-                records.append(
-                    {
-                        "step": step_token,
-                        "section": "outputs",
-                        "kind": "artifact",
-                        "role": role,
-                        "path": artifact["path"],
-                        "availability": "outside_workspace",
-                        "validity": "unknown",
-                    }
-                )
-                continue
-            try:
-                exists = candidate.is_file()
-                size = candidate.stat().st_size if exists else None
-                availability = "available" if exists else "missing"
-            except OSError:
-                exists, size, availability = None, None, "unreadable"
-            records.append(
-                {
-                    "step": step_token,
-                    "section": "outputs",
-                    "kind": "artifact",
-                    "role": role,
-                    "path": artifact["path"],
-                    "exists": exists,
-                    "bytes": size,
-                    "availability": availability,
-                    "validity": "unknown" if current else "not_current",
-                    "source": "home/engineering-snapshot.json",
-                }
-            )
+            evidence = inspect_artifact(root, artifact["path"])
+            record = {
+                "step": step_token,
+                "section": "outputs",
+                "kind": "artifact",
+                "role": role,
+                **evidence,
+                "validity": "unknown" if current else "not_current",
+            }
+            if evidence["availability"] != "outside_workspace":
+                record["source"] = "home/engineering-snapshot.json"
+            records.append(record)
     return records
