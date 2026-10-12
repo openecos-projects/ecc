@@ -107,6 +107,7 @@ def build_rtl2gds_flow(
     steps.append((StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.PREPLACE, "sizer", StateEnum.Unstart))
     steps.append((StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
+    steps.append((StepEnum.DIFF_BUFFERING, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.DIFF_SIZING, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.CTS, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart))
@@ -149,6 +150,7 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
         "preplaceoptimization": StepEnum.PREPLACE.value,
         "place": StepEnum.PLACEMENT.value,
         "placement": StepEnum.PLACEMENT.value,
+        "diffbuffering": StepEnum.DIFF_BUFFERING.value,
         "diffsizing": StepEnum.DIFF_SIZING.value,
         "cts": StepEnum.CTS.value,
         "legal": StepEnum.LEGALIZATION.value,

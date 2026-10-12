@@ -33,6 +33,7 @@ class StepEnum(StepBaseEnum):
     POST_FLOORPLAN = "postFloorplan"
     PREPLACE = "preplace"
     PLACEMENT = "place"
+    DIFF_BUFFERING = "diff_buffering"
     DIFF_SIZING = "diff_sizing"
     CTS = "CTS"
     LEGALIZATION = "legalization"

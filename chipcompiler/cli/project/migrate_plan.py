@@ -37,6 +37,7 @@ CANONICAL_TO_DISPLAY = {
     "preplace": "Preplace",
     "fixFanout": "Fanout",
     "place": "Place",
+    "diff_buffering": "DiffBuffering",
     "diff_sizing": "DiffSizing",
     "CTS": "CTS",
     "legalization": "Legal",

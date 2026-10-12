@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import math
 import os
 from copy import deepcopy
 from pathlib import Path
@@ -12,7 +11,6 @@ from chipcompiler.data import (
     WorkspaceStep,
     build_workspace_config_paths,
 )
-from chipcompiler.data.config_params.dreamplace_sizing import DEFAULT_DIFF_SIZING_COEFFICIENTS
 from chipcompiler.tools.ecc import builder as ecc_builder
 from chipcompiler.tools.ecc_dreamplace.parameter_overrides import (
     apply_direct_config_overrides,
@@ -21,6 +19,9 @@ from chipcompiler.tools.ecc_dreamplace.parameter_overrides import (
     apply_parameter_overrides as _apply_parameter_overrides,
 )
 from chipcompiler.utility import json_read, json_write
+
+from .diff_buffering import apply_diff_buffering_defaults, prepare_drive_table
+from .timing_coefficients import resolve_timing_coefficients
 
 
 def apply_parameter_overrides(
@@ -54,6 +55,8 @@ def _set_step_fields(params: dict, step: WorkspaceStep) -> dict:
 
 
 def step_config_path(workspace: Workspace, step: WorkspaceStep) -> Path:
+    if step.name == StepEnum.DIFF_BUFFERING.value:
+        return Path(step.data.workdir_for(step.name)) / "dreamplace_diff_buffering.json"
     if step.name == StepEnum.DIFF_SIZING.value:
         return Path(step.data.workdir_for(step.name)) / "dreamplace_diff_sizing.json"
     return Path(workspace.config["dreamplace"])
@@ -69,18 +72,7 @@ def _apply_diff_sizing_defaults(params: dict) -> dict:
         or not 0 <= continuous_steps <= 1000
     ):
         raise ValueError("diff_sizing_continuous_steps must be an integer in [0, 1000]")
-    policy = result.get("diff_sizing_coefficients", {})
-    if not isinstance(policy, dict) or set(policy) - DEFAULT_DIFF_SIZING_COEFFICIENTS.keys():
-        raise ValueError("diff_sizing_coefficients must be an object with wns, tns, cap, slew")
-    coefficients = DEFAULT_DIFF_SIZING_COEFFICIENTS | policy
-    for name, value in coefficients.items():
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or not math.isfinite(value)
-            or value < 0
-        ):
-            raise ValueError(f"diff_sizing_coefficients.{name} must be finite and nonnegative")
+    coefficients = resolve_timing_coefficients(result, "diff_sizing_coefficients")
     result["diff_sizing_coefficients"] = coefficients
     result.update(
         flow_kind="sizing",
@@ -191,6 +183,8 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
     params = apply_direct_config_overrides(params, parameter_data)
     if step.name == StepEnum.DIFF_SIZING.value:
         params = _apply_diff_sizing_defaults(params)
+    elif step.name == StepEnum.DIFF_BUFFERING.value:
+        params = prepare_drive_table(workspace, step, apply_diff_buffering_defaults(params))
 
     from dreamplace.flows.flow_config import resolve_flow_config
 
@@ -206,6 +200,8 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
         # Workspace-level placement values (density, padding and routability)
         # are intentionally not shared with the standalone sizing lane.
         params = _apply_diff_sizing_defaults(params)
+    elif step.name == StepEnum.DIFF_BUFFERING.value:
+        params = prepare_drive_table(workspace, step, apply_diff_buffering_defaults(params))
     params = _set_step_fields(params, step)
 
     config_path = step_config_path(workspace, step)

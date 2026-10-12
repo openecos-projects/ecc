@@ -57,6 +57,8 @@ def run_step(
             state = run_placement(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.DIFF_SIZING.value:
             state = run_diff_sizing(workspace=workspace, step=step, ecc_module=ecc_module)
+        case StepEnum.DIFF_BUFFERING.value:
+            state = run_diff_buffering(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.LEGALIZATION.value:
             state = run_legalization(workspace=workspace, step=step, ecc_module=ecc_module)
 
@@ -146,6 +148,13 @@ def run_diff_sizing(
     )
 
 
+def run_diff_buffering(
+    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
+) -> bool:
+    """Run standalone candidate buffering between placement and diff sizing."""
+    return _run_placement_mode(workspace, step, ecc_module, DreamplaceRunMode.DIFF_BUFFERING)
+
+
 def _run_placement_mode(
     workspace: Workspace,
     step: EccStep,
@@ -156,13 +165,13 @@ def _run_placement_mode(
 
     sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
 
-    run_stage = (
-        EccSubFlowEnum.run_diff_sizing.value
-        if mode is DreamplaceRunMode.DIFF_SIZING
-        else EccSubFlowEnum.run_placement.value
-    )
+    run_stage = {
+        DreamplaceRunMode.PLACEMENT: EccSubFlowEnum.run_placement.value,
+        DreamplaceRunMode.DIFF_SIZING: EccSubFlowEnum.run_diff_sizing.value,
+        DreamplaceRunMode.DIFF_BUFFERING: EccSubFlowEnum.run_diff_buffering.value,
+    }[mode]
     backend = _placement_backend(workspace)
-    if mode is DreamplaceRunMode.DIFF_SIZING:
+    if mode in (DreamplaceRunMode.DIFF_SIZING, DreamplaceRunMode.DIFF_BUFFERING):
         backend = "ecc"
     openroad_backend = mode is DreamplaceRunMode.PLACEMENT and backend == "openroad"
     if not openroad_backend:
@@ -185,6 +194,8 @@ def _run_placement_mode(
     )
     if mode is DreamplaceRunMode.DIFF_SIZING:
         reslut = dreamplace_module.run_diff_sizing()
+    elif mode is DreamplaceRunMode.DIFF_BUFFERING:
+        reslut = dreamplace_module.run_diff_buffering()
     else:
         reslut = dreamplace_module.run_placement()
     if not reslut:

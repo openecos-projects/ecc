@@ -117,6 +117,15 @@ uv run prek install --config .pre-commit-config.yaml --hook-type pre-commit --ho
 
 ## Testing
 
+The timing optimization flow after placement is
+`place → diff_buffering → diff_sizing → CTS → legalization → Timing optimization → route`.
+`diff_buffering` runs the standalone discrete candidate buffer optimizer,
+commits physical buffers, and legalizes with zero padding. Its independent
+round count, selection fraction and objective coefficients are documented in
+[the configuration reference](../chipcompiler/docs/ecc-config-ref.en.md).
+`diff_sizing` remains the DreamPlace standalone GR S50 lane; `Timing optimization`
+is the separate ECC-Sizer step after CTS and legalization.
+
 ```bash
 uv run pytest test/
 uv run pytest test/tools/yosys/test_utility.py -v
