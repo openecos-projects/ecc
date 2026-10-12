@@ -82,7 +82,22 @@ def test_artifact_gate_requires_one_nonempty_file(tmp_path):
     artifact = output / "design.gds"
     artifact.write_bytes(b"gds")
 
-    result = _artifact_gate(tmp_path, "Harden GDS", "Harden_ecc/output", ".gds")
+    checklist = output.parent / "checklist.json"
+    checklist.write_text(
+        json.dumps(
+            {
+                "checklist": [
+                    {
+                        "title": "Harden GDS",
+                        "state": "pass",
+                        "source": {"path": "Harden_ecc/output/design.gds"},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = _artifact_gate(tmp_path, "Harden GDS", "Harden_ecc/checklist.json")
     assert result["status"] == "pass"
 
 

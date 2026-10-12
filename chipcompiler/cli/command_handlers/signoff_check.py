@@ -54,10 +54,8 @@ def check(command_input, ctx: CommandContext) -> CommandResult:
         "sta_setup_clean": _sta_gate(root, "setup"),
         "sta_hold_clean": _sta_gate(root, "hold"),
         "lec_proven": _lec_gate(root),
-        "final_gds_available": _artifact_gate(root, "Harden GDS", "Harden_ecc/output", ".gds"),
-        "final_netlist_available": _artifact_gate(
-            root, "final netlist", "filler_ecc/output", ".v.gz"
-        ),
+        "final_gds_available": _artifact_gate(root, "Harden GDS", "Harden_ecc/checklist.json"),
+        "final_netlist_available": _netlist_artifact_gate(root),
     }
     records = [
         {
@@ -226,20 +224,64 @@ def _lec_gate(root: Path) -> dict:
     }
 
 
-def _artifact_gate(root: Path, label: str, directory: str, suffix: str) -> dict:
-    output_dir = root / directory
-    candidates = (
-        [path for path in output_dir.glob(f"*{suffix}") if path.is_file()]
-        if output_dir.is_dir()
-        else []
-    )
-    if len(candidates) == 1 and candidates[0].stat().st_size > 0:
+def _artifact_gate(root: Path, label: str, checklist: str) -> dict:
+    checklist_path = root / checklist
+    data = _read(checklist_path)
+    items = data.get("checklist", []) if isinstance(data, dict) else []
+    item = next((item for item in items if item.get("title") == label), None)
+    if not isinstance(item, dict):
+        return {"status": "unknown", "reason": "artifact_evidence_unavailable", "source": checklist}
+    source = item.get("source") if isinstance(item.get("source"), dict) else {}
+    relative = source.get("path")
+    if not isinstance(relative, str) or Path(relative).is_absolute():
+        return {"status": "unknown", "reason": "artifact_path_invalid", "source": checklist}
+    artifact = (root / relative).resolve()
+    if (
+        root.resolve() not in artifact.parents
+        or not artifact.is_file()
+        or artifact.stat().st_size == 0
+    ):
+        return {"status": "unknown", "reason": "artifact_unavailable", "source": relative}
+    if item.get("state") != "pass" or item.get("blocked") is True:
+        return {"status": "fail", "reason": "artifact_checklist_failed", "source": relative}
+    return {"status": "pass", "reason": "artifact_available", "source": relative}
+
+
+def _netlist_artifact_gate(root: Path) -> dict:
+    result_path = root / "postRouteLec_kepler_formal" / "output"
+    candidates = list(result_path.glob("*_result.json")) if result_path.is_dir() else []
+    if len(candidates) != 1:
         return {
-            "status": "pass",
-            "reason": "artifact_available",
+            "status": "unknown",
+            "reason": "artifact_evidence_unavailable",
+            "source": "postRouteLec_kepler_formal/output",
+        }
+    result = _read(candidates[0])
+    relative = result.get("gate_verilog")
+    if not isinstance(relative, str):
+        return {
+            "status": "unknown",
+            "reason": "artifact_path_invalid",
             "source": str(candidates[0].relative_to(root)),
         }
-    return {"status": "unknown", "reason": "artifact_unavailable", "source": directory}
+    artifact = Path(relative)
+    if artifact.is_absolute():
+        try:
+            artifact = artifact.resolve().relative_to(root.resolve())
+        except ValueError:
+            return {
+                "status": "unknown",
+                "reason": "artifact_outside_workspace",
+                "source": str(candidates[0].relative_to(root)),
+            }
+    target = (root / artifact).resolve()
+    if root.resolve() not in target.parents or not target.is_file() or target.stat().st_size == 0:
+        return {"status": "unknown", "reason": "artifact_unavailable", "source": str(artifact)}
+    return {
+        "status": "pass",
+        "reason": "artifact_available",
+        "source": str(target.relative_to(root)),
+    }
 
 
 def _read(path: Path) -> dict:
