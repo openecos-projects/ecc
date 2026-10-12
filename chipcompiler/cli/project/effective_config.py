@@ -99,6 +99,19 @@ def _attach_no_clock(flow_config: dict | None, no_clock: bool) -> dict | None:
     return _attach_flow_key(flow_config, "no_clock", True)
 
 
+def _project_no_clock_decision(cfg):
+    """Effective no-clock for a project config (flag + clock_port materials)."""
+    from chipcompiler.rtl2gds import resolve_no_clock
+
+    flow: dict = {}
+    if "flow.no_clock" in getattr(cfg, "_explicit_keys", frozenset()):
+        flow["no_clock"] = bool(getattr(cfg, "flow_no_clock", False))
+    return resolve_no_clock(
+        flow,
+        materials={"clock_port": getattr(cfg, "design_clock_port", "") or ""},
+    )
+
+
 def _attach_flow_key(flow_config: dict | None, key: str, value) -> dict | None:
     if value is None:
         return flow_config
@@ -167,7 +180,9 @@ def resolve_effective_config(
     declared = declared_skip_steps(entry, cfg)
     flow_config = _attach_skip_steps(flow_config, declared)
     flow_config = _attach_lec_engine(flow_config, declared_lec_engine(cfg))
-    flow_config = _attach_no_clock(flow_config, bool(getattr(cfg, "flow_no_clock", False)))
+    no_clock = _project_no_clock_decision(cfg)
+    cfg._no_clock_source = no_clock.source
+    flow_config = _attach_no_clock(flow_config, no_clock.enabled)
     # Provenance for inspection surfaces: the winning layer's name.
     if declared is not None:
         cfg._skip_steps_source = (

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Mapping
+from dataclasses import dataclass
 
 from chipcompiler.data import (
     DEFAULT_LEC_ENGINE,
@@ -15,12 +16,20 @@ from chipcompiler.data import (
 # Step values a project is allowed to exclude from its ledger.
 SKIPPABLE_STEP_VALUES = frozenset(member.value for member in SkippableStepEnum)
 
+NO_CLOCK_SOURCE_EXPLICIT = "explicit"
+NO_CLOCK_SOURCE_INFERRED = "inferred"
+NO_CLOCK_SOURCE_OFF = "off"
 
-def flow_no_clock(flow_config: object) -> bool:
-    """Whether a flow config requests the no-clock (omit CTS) mode."""
-    if not isinstance(flow_config, dict):
-        return False
-    value = flow_config.get("no_clock", False)
+
+@dataclass(frozen=True)
+class NoClockDecision:
+    """Effective no-clock policy and how it was decided."""
+
+    enabled: bool
+    source: str  # explicit | inferred | off
+
+
+def _coerce_no_clock_flag(value: object) -> bool:
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
@@ -28,6 +37,62 @@ def flow_no_clock(flow_config: object) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "on"}
     return bool(value)
+
+
+def flow_no_clock(flow_config: object) -> bool:
+    """Whether a flow config requests the no-clock (omit CTS) mode.
+
+    Flag-only: ignores design materials. Prefer :func:`resolve_no_clock` when
+    clock port / parameters are available.
+    """
+    if not isinstance(flow_config, dict):
+        return False
+    return _coerce_no_clock_flag(flow_config.get("no_clock", False))
+
+
+def _clock_name_from_materials(materials: Mapping[str, object]) -> str:
+    """Stripped clock name from materials; empty means no clock declared."""
+    if "clock_port" in materials:
+        raw = materials["clock_port"]
+    elif "clock" in materials:
+        raw = materials["clock"]
+    else:
+        raw = ""
+    if raw is None:
+        return ""
+    if isinstance(raw, str):
+        return raw.strip()
+    return str(raw).strip()
+
+
+def resolve_no_clock(
+    flow_config: object = None,
+    *,
+    materials: Mapping[str, object] | None = None,
+) -> NoClockDecision:
+    """Decide effective no-clock from the flow flag and optional clock materials.
+
+    Precedence:
+    1. Explicit ``flow.no_clock=true`` → enabled, source ``explicit`` (wins even
+       when a clock name string is present).
+    2. Explicit ``flow.no_clock=false`` → disabled, source ``off`` (empty
+       materials alone cannot override).
+    3. Materials supplied with empty/missing clock name → enabled, source
+       ``inferred``.
+    4. Otherwise → disabled, source ``off``.
+
+    When ``materials`` is ``None``, inference is skipped (flag-only).
+    """
+    flag: bool | None = None
+    if isinstance(flow_config, dict) and "no_clock" in flow_config:
+        flag = _coerce_no_clock_flag(flow_config["no_clock"])
+    if flag is True:
+        return NoClockDecision(True, NO_CLOCK_SOURCE_EXPLICIT)
+    if flag is False:
+        return NoClockDecision(False, NO_CLOCK_SOURCE_OFF)
+    if materials is not None and not _clock_name_from_materials(materials):
+        return NoClockDecision(True, NO_CLOCK_SOURCE_INFERRED)
+    return NoClockDecision(False, NO_CLOCK_SOURCE_OFF)
 
 
 def resolve_lec_engine(flow_config: dict | None) -> LECEngineEnum:
@@ -42,7 +107,11 @@ def resolve_lec_engine(flow_config: dict | None) -> LECEngineEnum:
     return LECEngineEnum.from_value(flow_config["lec_engine"])
 
 
-def resolve_skip_steps(flow_config: dict | None) -> tuple[str, ...]:
+def resolve_skip_steps(
+    flow_config: dict | None,
+    *,
+    materials: Mapping[str, object] | None = None,
+) -> tuple[str, ...]:
     """The effective skip policy carried by a flow config.
 
     Presence-keyed: an absent ``skip_steps`` key yields the code default;
@@ -51,11 +120,12 @@ def resolve_skip_steps(flow_config: dict | None) -> tuple[str, ...]:
     ranges, must name skippable steps only, and normalize to canonical
     step values in canonical chain order (idempotently).
 
-    ``flow.no_clock`` always adds CTS to the effective skip set. Listing
-    CTS in ``skip_steps`` without ``no_clock`` is rejected — CTS is only
-    omitted for clockless designs.
+    Effective no-clock (explicit ``flow.no_clock`` or empty clock materials
+    when ``materials`` is supplied) always adds CTS to the skip set. Listing
+    CTS in ``skip_steps`` without effective no-clock is rejected — CTS is
+    only omitted for clockless designs.
     """
-    no_clock = flow_no_clock(flow_config)
+    no_clock = resolve_no_clock(flow_config, materials=materials).enabled
     if not isinstance(flow_config, dict) or "skip_steps" not in flow_config:
         # Absent key → code default. Early-return when no_clock is off so the
         # default tuple is not re-filtered through build_rtl2gds_flow (tests
@@ -80,7 +150,10 @@ def resolve_skip_steps(flow_config: dict | None) -> tuple[str, ...]:
                 f"skippable steps: {legal}"
             )
         if SkippableStepEnum.CTS.value in requested and not no_clock:
-            raise ValueError("skip_steps cannot include CTS unless flow.no_clock is true")
+            raise ValueError(
+                "skip_steps cannot include CTS unless flow.no_clock is true "
+                "(or clock materials are empty)"
+            )
     if no_clock:
         requested.add(SkippableStepEnum.CTS.value)
     chain_names = [
