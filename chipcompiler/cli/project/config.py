@@ -61,6 +61,8 @@ class ProjectConfig:
     # Winning skip_steps layer recorded by effective-config resolution
     # ("project.json" / "ecc.toml"); None when never resolved.
     _skip_steps_source: str | None = field(default=None, init=False, repr=False)
+    # How effective no-clock was decided (explicit / inferred / off).
+    _no_clock_source: str | None = field(default=None, init=False, repr=False)
     _toml_error: str | None = field(default=None, init=False, repr=False)
     _param_errors: list[str] = field(default_factory=list, init=False, repr=False)
     _pdk_config_errors: list[str] = field(default_factory=list, init=False, repr=False)
@@ -231,9 +233,21 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         errors.append("design.name is required")
     if not cfg.design_top:
         errors.append("design.top is required")
-    if not cfg.flow_no_clock and not cfg.design_clock_port:
+
+    from chipcompiler.rtl2gds import resolve_no_clock, resolve_skip_steps
+
+    no_clock_flow: dict = {}
+    if "flow.no_clock" in cfg._explicit_keys:
+        no_clock_flow["no_clock"] = cfg.flow_no_clock
+    no_clock = resolve_no_clock(
+        no_clock_flow,
+        materials={"clock_port": cfg.design_clock_port},
+    )
+    cfg._no_clock_source = no_clock.source
+
+    if not no_clock.enabled and not cfg.design_clock_port:
         errors.append("design.clock_port is required")
-    if not cfg.flow_no_clock and cfg.design_frequency_mhz <= 0:
+    if not no_clock.enabled and cfg.design_frequency_mhz <= 0:
         errors.append("design.frequency_mhz must be greater than 0")
     if not cfg.pdk_name:
         errors.append("pdk.name is required")
@@ -256,16 +270,17 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
     elif cfg.flow_preset not in _supported_flow_presets():
         errors.append(f"unsupported flow.preset: {cfg.flow_preset}")
 
-    if "flow.skip_steps" in cfg._explicit_keys or cfg.flow_no_clock:
-        from chipcompiler.rtl2gds import resolve_skip_steps
-
+    if "flow.skip_steps" in cfg._explicit_keys or no_clock.enabled:
         probe: dict = {}
-        if cfg.flow_no_clock:
-            probe["no_clock"] = True
+        if "flow.no_clock" in cfg._explicit_keys:
+            probe["no_clock"] = cfg.flow_no_clock
         if "flow.skip_steps" in cfg._explicit_keys:
             probe["skip_steps"] = cfg.flow_skip_steps
         try:
-            resolve_skip_steps(probe)
+            resolve_skip_steps(
+                probe or None,
+                materials={"clock_port": cfg.design_clock_port},
+            )
         except ValueError as exc:
             errors.append(str(exc))
 

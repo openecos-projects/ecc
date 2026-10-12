@@ -511,6 +511,7 @@ def _run_project(
             _attach_lec_engine,
             _attach_no_clock,
             _attach_skip_steps,
+            _project_no_clock_decision,
         )
 
         skip_steps = (
@@ -525,7 +526,9 @@ def _run_project(
             else None
         )
         flow_config = _attach_lec_engine(flow_config, lec_engine)
-        flow_config = _attach_no_clock(flow_config, bool(cfg.flow_no_clock))
+        no_clock_decision = _project_no_clock_decision(cfg)
+        cfg._no_clock_source = no_clock_decision.source
+        flow_config = _attach_no_clock(flow_config, no_clock_decision.enabled)
 
     assert cfg is not None
 
@@ -546,9 +549,8 @@ def _run_project(
     # below (they come from configuration, never from the target spelling).
     skip_policy = flow_config.get("skip_steps") if isinstance(flow_config, dict) else None
     lec_engine_policy = flow_config.get("lec_engine") if isinstance(flow_config, dict) else None
-    no_clock = bool(isinstance(flow_config, dict) and flow_config.get("no_clock")) or bool(
-        getattr(cfg, "flow_no_clock", False)
-    )
+    # effective_config / virgin path already attach inferred or explicit no_clock.
+    no_clock = bool(isinstance(flow_config, dict) and flow_config.get("no_clock"))
     if command_input.preset is not None:
         # The explicit CLI selection takes precedence over a manifest range
         # for this invocation without changing either project config file.

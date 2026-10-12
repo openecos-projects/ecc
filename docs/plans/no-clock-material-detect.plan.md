@@ -104,4 +104,3 @@ M1 before M2. M3 can follow M2. M4 with M2.
 - Do not weaken CTS skip guard without effective no-clock.
 - Prefer small pure helpers over scattering emptiness checks.
 - Leave local tool shims stashed; do not commit them in this loop.
-- Codex review may be blocked until `codex login`; still implement and summarize each round.

@@ -268,6 +268,19 @@ def test_resolve_skip_steps_no_clock_always_omits_cts():
     ) == ("lec", SkippableStepEnum.CTS.value)
 
 
+def test_resolve_no_clock_and_materials_for_cts_skip():
+    decision = builder_module.resolve_no_clock({}, materials={"clock_port": ""})
+    assert decision.enabled and decision.source == "inferred"
+    assert builder_module.resolve_skip_steps(
+        {"skip_steps": []}, materials={"clock": ""}
+    ) == (SkippableStepEnum.CTS.value,)
+    # Named clock without flag: CTS listing still rejected.
+    with pytest.raises(ValueError, match="CTS"):
+        builder_module.resolve_skip_steps(
+            {"skip_steps": ["CTS"]}, materials={"clock_port": "clk"}
+        )
+
+
 def test_build_rtl2gds_flow_no_clock_skips_cts_via_policy():
     skip = builder_module.resolve_skip_steps({"no_clock": True, "skip_steps": ["lec"]})
     names = [step.value for step, _tool, _state in builder_module.build_rtl2gds_flow(skip=skip)]
