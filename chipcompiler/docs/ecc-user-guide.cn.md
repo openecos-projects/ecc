@@ -1055,7 +1055,7 @@ ecc signoff check --json
 和 DRC/LVS/STA 证据，返回统一 gate 状态：`pass`、`fail` 或 `unknown`。缺少证据不会
 被当作通过；总体状态只在全部 gate 为 `pass` 时为 `pass`，任一 gate 失败为 `fail`，
 其余情况为 `unknown`。首版 `rtl2gds` profile 包含 `flow_complete`、`qor_available`、
-`checklist_ready`、`drc_clean`、`lvs_clean` 和 `sta_clean`。
+`checklist_ready`、`drc_clean`、`lvs_clean`、`sta_setup_clean` 和 `sta_hold_clean`。
 
 `--json` 返回记录数组，每个 gate 包含 `gate`、`status`、`reason` 和 `source`；checker
 gate 还包含 `failed_items` 与保留的 `violation_count` 字段。`physical_signoff` profile
@@ -1066,7 +1066,9 @@ ecc signoff check --profile physical_signoff --json
 ```
 
 该 profile 读取 postRouteLec 的 proven result 和 Harden/filler 的最终输出，不验证文件
-内容 hash；缺少或无法唯一定位的 artifact 返回 `unknown`。
+内容 hash；缺少或无法唯一定位的 artifact 返回 `unknown`。`physical_signoff` 的总体
+结果只由物理签核必需 gate 决定；QoR 和 checklist 作为信息 gate 输出，字段
+`required=false`，不会因缺少 QoR 单独阻断物理签核判断。
 
 gate 结果是当前已保存证据的判断，不等同于 tapeout 批准。未知 profile 返回
 `unknown_signoff_profile`，参数错误退出码为 2，workspace/读取失败遵循公共 CLI 错误契约。

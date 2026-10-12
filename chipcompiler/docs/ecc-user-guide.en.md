@@ -1048,7 +1048,7 @@ It evaluates the saved flow, QoR, checklist, and DRC/LVS/STA evidence and report
 gate as `pass`, `fail`, or `unknown`. Missing evidence never becomes a pass. The overall
 status is `pass` only when every gate passes, `fail` when any gate fails, and `unknown`
 otherwise. The initial `rtl2gds` profile contains `flow_complete`, `qor_available`,
-`checklist_ready`, `drc_clean`, `lvs_clean`, and `sta_clean`.
+`checklist_ready`, `drc_clean`, `lvs_clean`, `sta_setup_clean`, and `sta_hold_clean`.
 
 With `--json`, the command returns a record array whose gate records contain `gate`,
 `status`, `reason`, and `source`; checker gates also preserve `failed_items` and
@@ -1061,8 +1061,9 @@ ecc signoff check --profile physical_signoff --json
 
 It reads the postRouteLec proven result and Harden/filler final outputs, but does not hash
 file contents. Missing or ambiguous artifacts return `unknown`. This is an assessment of
-saved evidence, not tapeout approval. Unknown profiles return `unknown_signoff_profile`;
-argument errors use exit code 2.
+saved evidence, not tapeout approval. The physical profile marks QoR and checklist as
+informational (`required=false`); missing QoR alone does not block its physical gate result.
+Unknown profiles return `unknown_signoff_profile`; argument errors use exit code 2.
 
 ### 11.3 export — export the signoff package tar.gz (gated)
 
