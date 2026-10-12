@@ -24,6 +24,7 @@ set clk_period        [expr 1000.0 / $clk_freq_mhz]
 # -------------------------------------------------
 set clk_port [get_ports $clk_port_name]
 create_clock -name $clk_name -period $clk_period $clk_port
+set_propagated_clock [get_clocks $clk_name]
 
 # -------------------------------------------------
 # IO Delay
