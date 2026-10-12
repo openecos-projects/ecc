@@ -1068,7 +1068,17 @@ ecc signoff check --profile physical_signoff --json
 该 profile 读取 postRouteLec 的 proven result 和 Harden/filler 的最终输出，不验证文件
 内容 hash；缺少或无法唯一定位的 artifact 返回 `unknown`。
 
-`--json` 返回记录数组，每个 gate 包含 `gate`、`status`、`reason` 和 `source`；
+`physical_signoff` profile 还检查 `lec_proven`、`final_gds_available` 和
+`final_netlist_available`：
+
+```bash
+ecc signoff check --profile physical_signoff --json
+```
+
+它读取 postRouteLec 的 proven result 和 Harden/filler 最终输出，不验证文件内容 hash；
+缺少或无法唯一定位的 artifact 返回 `unknown`。`--json` 返回记录数组，每个 gate 包含
+`gate`、`status`、`reason` 和 `source`；checker gate 还包含 `failed_items` 与保留的
+`violation_count` 字段。
 gate 结果是当前已保存证据的判断，不等同于 tapeout 批准。未知 profile 返回
 `unknown_signoff_profile`，参数错误退出码为 2，workspace/读取失败遵循公共 CLI 错误契约。
 
