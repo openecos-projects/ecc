@@ -1614,3 +1614,21 @@ ecc macro show --workspace default
 ### 16.2 实验、恢复与诊断
 
 默认串行执行，同一个 workspace 不要并发地运行、调参、刷新或导出。每个新候选都用新 workspace，并记录输入、PDK/库、工具版本、参数覆盖（override）、seed、线程数、设备、资源预算和原始报告。恢复运行前先查看 `status`、`log` 和 ledger，优先用 `--resume` 或按精确范围重跑；不要未经确认就 `--overwrite`、删目录或杀掉无关进程。失败时保留第一个错误及其上下文，然后按顺序排查：版本、项目声明、workspace 注册、`doctor`、PDK/库文件、入口输入、失败步骤的日志。不要靠放宽约束、降低频率、删除 corner 或跳过验证来"制造成功"。
+### 16.3 自动化契约：退出码与打包 smoke
+
+`ecc signoff check` 即使门禁不通过也会输出完整 JSON 记录。自动化脚本应同时检查
+汇总记录和进程退出码：`0` 表示通过，`6` 表示必需门禁失败，`7` 表示由于证据缺失、
+过期或不明确而无法评级。参数错误仍为 `2`；已有 workspace/process 退出码（`20`–`23`）
+保持不变。
+
+可以使用真实项目验证打包后的可执行文件，不需要导入源码树：
+
+```bash
+python packaging/cli_smoke.py \
+  --binary dist/ecc \
+  --project /path/to/gcd \
+  --workspace default
+```
+
+smoke runner 会依次检查 `status`、`report step`、`report project`、`signoff check` 和
+`pdk verify`，要求每个命令输出非空 JSON 记录数组，并保留质量门禁的非零退出码供 CI 汇报。

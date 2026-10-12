@@ -1385,3 +1385,24 @@ This section adds operating rules for automation, agents, and batch experiments;
 ### 16.2 Experiments, recovery, and diagnosis
 
 Run serially by default — never run, tune, refresh, or export the same workspace concurrently. Give every new candidate its own workspace, and record its inputs, PDK/library, tool versions, parameter overrides, seed, thread count, device, resource budget, and raw reports. Before recovering a run, look at `status`, `log`, and the ledger; prefer `--resume` or an exact range rerun, and never `--overwrite`, delete directories, or kill unrelated processes without confirmation. On failure, keep the first error and its context, then check in order: versions, project declaration, workspace registration, `doctor`, PDK/library files, entry inputs, and the failed step's log. Do not manufacture success by relaxing constraints, lowering frequency, dropping corners, or skipping verification.
+### 16.3 Automation contract: exit codes and packaged smoke
+
+`ecc signoff check` always prints its JSON records, including when a gate is not
+clean. Automation should inspect both the summary record and the process exit code:
+`0` means pass, `6` means a required gate failed, and `7` means the required gates
+could not be rated because evidence is missing, stale, or ambiguous. Usage errors
+remain `2`; the existing workspace/process codes (`20`–`23`) are unchanged.
+
+A packaged executable can be checked against a real project without importing the
+source tree:
+
+```bash
+python packaging/cli_smoke.py \
+  --binary dist/ecc \
+  --project /path/to/gcd \
+  --workspace default
+```
+
+The smoke runner checks `status`, `report step`, `report project`, `signoff check`,
+and `pdk verify`, requires each command to emit a non-empty JSON record array, and
+preserves non-zero quality-gate codes for CI reporting.

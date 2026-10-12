@@ -10,3 +10,7 @@ EXIT_PROCESS_NOT_RUNNING = 22
 # schema, or cli_contract is unsupported, and the value stays reserved for
 # ECC future use.
 EXIT_CONTRACT_INCOMPATIBLE = 23
+# Read-only quality-gate commands keep their structured report on stdout while
+# using dedicated non-zero codes for automation.
+EXIT_GATE_FAILED = 6
+EXIT_GATE_UNKNOWN = 7

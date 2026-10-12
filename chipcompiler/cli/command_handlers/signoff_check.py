@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from chipcompiler.cli.core.exit_codes import EXIT_GATE_FAILED, EXIT_GATE_UNKNOWN
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.inspection.artifact_evidence import inspect_artifact
@@ -73,12 +74,13 @@ def check(command_input, ctx: CommandContext) -> CommandResult:
         "final_gds_available": _artifact_gate(root, "Harden GDS", "Harden_ecc/checklist.json"),
         "final_netlist_available": _netlist_artifact_gate(root),
     }
+    status = _overall(gates, _REQUIRED_GATES[command_input.profile])
     records = [
         {
             "signoff": "check",
             "profile": command_input.profile,
             "workspace": workspace_display(command_input, ctx),
-            "status": _overall(gates, _REQUIRED_GATES[command_input.profile]),
+            "status": status,
         }
     ]
     records.extend(
@@ -90,7 +92,12 @@ def check(command_input, ctx: CommandContext) -> CommandResult:
         for name in _PROFILES[command_input.profile]
         for gate in [gates[name]]
     )
-    return CommandResult.ok(records)
+    exit_code = {
+        "pass": 0,
+        "fail": EXIT_GATE_FAILED,
+        "unknown": EXIT_GATE_UNKNOWN,
+    }[status]
+    return CommandResult(records=tuple(records), exit_code=exit_code)
 
 
 def _contract_gate(gate: dict) -> dict:

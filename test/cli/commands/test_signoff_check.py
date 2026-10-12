@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from chipcompiler.cli.command_handlers.signoff_check import (
     _artifact_gate,
     _checker_gate,
@@ -287,3 +289,40 @@ def test_contract_gate_preserves_artifact_identity_fields():
     assert result["sha256"] == "abc"
     assert result["stale"] is False
     assert result["provisional"] is False
+
+@pytest.mark.parametrize(
+    ("status", "expected_code"),
+    [("pass", 0), ("fail", 6), ("unknown", 7)],
+)
+def test_signoff_contract_exit_code_matrix(monkeypatch, tmp_path, status, expected_code):
+    from types import SimpleNamespace
+
+    import chipcompiler.cli.command_handlers.signoff_check as module
+    from chipcompiler.cli.core.types import CommandContext
+
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "flow.json").write_text(
+        json.dumps({"steps": [{"state": "Success"}]}), encoding="utf-8"
+    )
+    (home / "qor_report.json").write_text(json.dumps({"score": 90}), encoding="utf-8")
+    monkeypatch.setattr(module, "resolve_loaded_workspace", lambda command_input, ctx: (
+        SimpleNamespace(directory=str(tmp_path)), None
+    ))
+    monkeypatch.setattr(module, "workspace_display", lambda command_input, ctx: "default")
+    monkeypatch.setattr(
+        "chipcompiler.engine.signoff_export.inspect_signoff_package",
+        lambda workspace: {"status": "ready"},
+    )
+    gates = {name: {"status": status} for name in module._PROFILES["rtl2gds"]}
+    monkeypatch.setattr(module, "_flow_gate", lambda root: gates["flow_complete"])
+    monkeypatch.setattr(module, "_qor_gate", lambda root: gates["qor_available"])
+    monkeypatch.setattr(module, "_checklist_gate", lambda review: gates["checklist_ready"])
+    monkeypatch.setattr(module, "_metric_checker_gate", lambda root, *args: {"status": status})
+    result = module.check(
+        SimpleNamespace(profile="rtl2gds"),
+        CommandContext("", None, "", None, SimpleNamespace(value="json")),
+    )
+    assert result.exit_code == expected_code
+    assert result.records[0]["status"] == status
+    assert all("status" in record for record in result.records[1:])
