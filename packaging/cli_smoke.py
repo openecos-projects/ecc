@@ -8,11 +8,11 @@ import subprocess
 from pathlib import Path
 
 COMMANDS = (
-    ("status", "status"),
-    ("step report", "report step"),
-    ("project report", "report project"),
-    ("signoff check", "signoff check"),
-    ("pdk verify", "pdk verify"),
+    ("status", "status", True),
+    ("step report", "report step", True),
+    ("project report", "report project", False),
+    ("signoff check", "signoff check", True),
+    ("pdk verify", "pdk verify", False),
 )
 
 
@@ -39,8 +39,11 @@ def run_smoke(binary: Path, project: Path, workspace: str | None) -> list[dict]:
     if workspace:
         common.extend(["--workspace", workspace])
     reports = []
-    for name, command in COMMANDS:
-        code, payload = _run(binary, command.split() + common)
+    for name, command, uses_workspace in COMMANDS:
+        command_args = command.split() + common
+        if not uses_workspace and workspace:
+            command_args = command.split() + ["--project", str(project)]
+        code, payload = _run(binary, command_args)
         if not isinstance(payload, list) or not payload:
             raise RuntimeError(f"{name} returned an empty/non-list JSON payload")
         reports.append({"command": name, "exit_code": code, "records": len(payload)})

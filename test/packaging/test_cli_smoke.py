@@ -44,7 +44,10 @@ def test_smoke_invokes_json_commands_in_contract_order(monkeypatch, tmp_path):
         "pdk verify",
     ]
     assert calls[0][-1] == "--json"
-    assert all("--project" in call and "--workspace" in call for call in calls)
+    assert all("--project" in call for call in calls)
+    assert "--workspace" in calls[0]
+    assert "--workspace" not in calls[2]
+    assert "--workspace" not in calls[4]
 
 
 def test_smoke_preserves_nonzero_quality_gate_code(monkeypatch, tmp_path):

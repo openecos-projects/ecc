@@ -9,6 +9,7 @@ Build:
 import os
 import sys
 import sysconfig
+import tempfile
 import warnings
 from importlib.util import find_spec
 from pathlib import Path
@@ -284,8 +285,44 @@ def rich_unicode_data_hiddenimports():
     return names
 
 
+def patch_ecc_tools_tcl_data(datas, binaries):
+    def keep(entry):
+        source = str(entry[0])
+        return "/tcl8.6/" not in source and "/libtcl" not in Path(source).name
+
+    datas = [entry for entry in datas if keep(entry)]
+    binaries = [entry for entry in binaries if keep(entry)]
+    module_spec = find_spec("ecc_tools_bin")
+    if module_spec is None:
+        return datas, binaries
+    init_path = next(
+        (
+            Path(location) / "tcl8.6" / "init.tcl"
+            for location in module_spec.submodule_search_locations or ()
+            if (Path(location) / "tcl8.6" / "init.tcl").is_file()
+        ),
+        None,
+    )
+    if init_path is None:
+        return datas, binaries
+    patched_path = Path(tempfile.gettempdir()) / "ecc-pyinstaller-tcl-init.tcl"
+    patched_path.write_text(
+        init_path.read_text(encoding="utf-8").replace(
+            "package require -exact Tcl 8.6.14",
+            "package require -exact Tcl 8.6.12",
+        ),
+        encoding="utf-8",
+    )
+    datas.append((str(patched_path), "ecc_tools_bin/tcl8.6"))
+    return datas, binaries
+
+
+
 ecc_datas, ecc_binaries, ecc_hiddenimports = collect_all("chipcompiler")
 ecc_tools_datas, ecc_tools_binaries, ecc_tools_hiddenimports = collect_all("ecc_tools_bin")
+ecc_tools_datas, ecc_tools_binaries = patch_ecc_tools_tcl_data(
+    ecc_tools_datas, ecc_tools_binaries
+)
 klayout_datas, klayout_binaries, klayout_hiddenimports = collect_all("klayout")
 dreamplace_datas, dreamplace_binaries, dreamplace_hiddenimports = collect_all("dreamplace")
 torch_datas, torch_binaries, torch_hiddenimports = collect_all("torch")
