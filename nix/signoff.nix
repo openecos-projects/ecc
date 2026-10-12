@@ -40,7 +40,7 @@ let
       signoff-lit
       jq
     ];
-    meta.description = "lit + FileCheck (llvmPackages_21); run via signoff-lit";
+    meta.description = "lit + FileCheck (llvmPackages_21); run via signoff-lit (signoff CSV or test/lit/project)";
   };
 in
 {

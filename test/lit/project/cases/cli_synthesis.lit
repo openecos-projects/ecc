@@ -1,0 +1,6 @@
+; CLI --project scenario: ecc run Synthesis then status.
+; REQUIRES: ics55-pdk
+;
+; RUN: rm -rf %t && mkdir -p %t
+; RUN: bash %cli_scenario %t
+; RUN: %filecheck --input-file=%t/status.plain.txt %check_status_success
