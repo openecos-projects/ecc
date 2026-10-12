@@ -114,12 +114,21 @@ def _checker_gate(root: Path, checker: str) -> dict:
             "status": "unknown",
             "reason": f"{checker}_evidence_unavailable",
             "source": str(source_path.relative_to(root)),
+            "violation_count": None,
+            "failed_items": [],
         }
+    failed_items = [
+        item.get("title", "")
+        for item in matching
+        if item.get("state") == "fail" or item.get("blocked") is True
+    ]
     if any(item.get("state") == "fail" or item.get("blocked") is True for item in matching):
         return {
             "status": "fail",
             "reason": f"{checker}_violations",
             "source": str(source_path.relative_to(root)),
+            "violation_count": None,
+            "failed_items": failed_items,
         }
     quality_gates = [item for item in matching if item.get("category") == "quality_gate"]
     if quality_gates and all(item.get("state") == "pass" for item in quality_gates):
@@ -127,11 +136,15 @@ def _checker_gate(root: Path, checker: str) -> dict:
             "status": "pass",
             "reason": f"{checker}_clean",
             "source": str(source_path.relative_to(root)),
+            "violation_count": None,
+            "failed_items": [],
         }
     return {
         "status": "unknown",
         "reason": f"{checker}_incomplete",
         "source": str(source_path.relative_to(root)),
+        "violation_count": None,
+        "failed_items": failed_items,
     }
 
 

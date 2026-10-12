@@ -35,7 +35,9 @@ def test_checker_gate_reports_failed_checklist_evidence(tmp_path):
         encoding="utf-8",
     )
 
-    assert _checker_gate(tmp_path, "drc")["status"] == "fail"
+    result = _checker_gate(tmp_path, "drc")
+    assert result["status"] == "fail"
+    assert result["failed_items"] == [""]
 
 
 def test_checker_gate_reads_step_checklist_and_quality_gate(tmp_path):
