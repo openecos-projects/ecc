@@ -1691,3 +1691,7 @@ ecc reproducible inspect --package evidence.tar.gz --files --type checklist --js
 
 离线摘要字段现在包含证据 `sources` 和 `reasons`（`ok`、`missing`、`invalid`）；无法评级时，
 摘要值仍显示为 `unknown`。
+
+CI design matrix 的每个 design leg 会在产品 flow 后执行轻量打包 CLI smoke。smoke 使用隔离的
+临时证据 workspace，检查 reproducible export、verify、report 和 sweep 计划生成，不会重复执行
+第二次完整 EDA flow。

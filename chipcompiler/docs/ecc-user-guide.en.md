@@ -1467,3 +1467,7 @@ count from evidence files. Missing or legacy evidence is reported as `unknown`.
 
 Offline summary fields include evidence `sources` and `reasons` (`ok`, `missing`, or `invalid`),
 while the value remains `unknown` when the evidence cannot be rated.
+
+CI design-matrix legs run a lightweight packaged CLI smoke after the product flow. The smoke
+uses an isolated temporary evidence workspace and checks reproducible export, verify, report,
+and sweep-plan creation without running a second full EDA flow.
