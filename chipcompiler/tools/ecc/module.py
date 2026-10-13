@@ -526,6 +526,9 @@ class ECCToolsModule:
     def run_filler(self, config: PathArg) -> bool:
         return self.ecc.insert_filler(config=path_text(config))
 
+    def check_antenna(self) -> bool:
+        return self.ecc.check_antenna()
+
     def destroy_mj(self) -> bool:
         return self.ecc.destroy_mj()
 

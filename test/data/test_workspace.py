@@ -500,6 +500,7 @@ def test_create_workspace_derives_dynamic_flow_from_boundaries(
         "filler",
         "lvs",
         "drc",
+        "antennaCheck",
         "postRouteLec",
         "RCX",
         "sta",
@@ -547,6 +548,7 @@ def test_create_workspace_normalizes_post_route_lec_step_aliases(
     assert [(step["name"], step["tool"]) for step in flow_data["steps"]] == [
         ("lvs", "ecc"),
         ("drc", "ecc"),
+        ("antennaCheck", "ecc"),
         ("postRouteLec", "kepler_formal"),
     ]
 

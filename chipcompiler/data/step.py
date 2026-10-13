@@ -32,6 +32,7 @@ STEP_DIRECTORIES = {
     StepEnum.LVS.value: "lvs_ecc",
     SkippableStepEnum.POST_ROUTE_LEC.value: "postRouteLec_kepler_formal",
     StepEnum.DRC.value: "drc_ecc",
+    StepEnum.ANTENNA_CHECK.value: "antennaCheck_ecc",
     StepEnum.HARDEN.value: "Harden_ecc",
 }
 

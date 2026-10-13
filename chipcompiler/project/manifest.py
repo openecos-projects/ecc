@@ -41,6 +41,7 @@ MANIFEST_FLOW_STEPS = (
     "LVS",
     "PostRouteLEC",
     "DRC",
+    "AntennaCheck",
     "EMIR",
     "Harden",
 )
@@ -89,6 +90,7 @@ _CANONICAL_TO_MANIFEST_STEP = {
     "lvs": "LVS",
     "postRouteLec": "PostRouteLEC",
     "drc": "DRC",
+    "antennaCheck": "AntennaCheck",
     "Harden": "Harden",
 }
 

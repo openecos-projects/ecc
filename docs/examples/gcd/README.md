@@ -140,8 +140,10 @@ graph LR
 Then the flow engine will execute the steps sequentially, and you can check the logs and outputs in each step workspace.
 
 This example defines a custom flow ending at filler. The full default `rtl2gds`
-preset continues with `lvs → drc → postRouteLec → RCX → sta → powerAnalysis →
-emir → Harden`. EMIR requires the technology file in `config/emir_ecc.json`.
+preset continues with `lvs → drc → antennaCheck → postRouteLec → RCX → sta →
+powerAnalysis → emir → Harden`. Antenna checking is report-only; inspect
+`antennaCheck_ecc/report/antennaCheck.rpt` and the native log for rule coverage.
+EMIR requires the technology file in `config/emir_ecc.json`.
 Existing custom flows keep their explicitly selected order.
 
 ## Using Filelist

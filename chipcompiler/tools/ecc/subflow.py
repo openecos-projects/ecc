@@ -22,6 +22,7 @@ class EccSubFlowEnum(Enum):
     run_routing = "run routing"
     run_filler = "run filler"
     run_DRC = "run DRC"
+    check_antenna = "check antenna"
     run_LVS = "run LVS"
     run_harden = "run harden"
     run_rcx = "run rcx"
@@ -121,6 +122,11 @@ class EccSubFlow:
                 steps.append(subflow_template(EccSubFlowEnum.run_LVS.value))
                 steps.append(subflow_template(EccSubFlowEnum.save_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.analysis.value))
+
+            case StepEnum.ANTENNA_CHECK:
+                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
+                steps.append(subflow_template(EccSubFlowEnum.check_antenna.value))
+                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
 
             case StepEnum.HARDEN:
                 steps.append(subflow_template(EccSubFlowEnum.load_data.value))

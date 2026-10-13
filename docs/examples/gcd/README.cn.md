@@ -139,7 +139,9 @@ graph LR
 随后流程引擎会按顺序执行各步骤，你可以在每个步骤工作空间中查看日志和输出结果。
 
 此示例显式定义了到 filler 为止的自定义流程。完整默认 `rtl2gds` 预设会继续
-执行 `lvs → drc → postRouteLec → RCX → sta → powerAnalysis → emir → Harden`。
+执行 `lvs → drc → antennaCheck → postRouteLec → RCX → sta → powerAnalysis → emir → Harden`。
+天线步骤只检查和报告，请结合 `antennaCheck_ecc/report/antennaCheck.rpt` 与原生日志
+确认规则覆盖情况。
 运行 EMIR 前需填写 `config/emir_ecc.json` 中的工艺文件路径。
 已有自定义流程仍保留显式指定的顺序。
 

@@ -97,6 +97,7 @@ def build_step(
                 StepEnum.POWER_ANALYSIS.value: data_dir / "pw",
                 StepEnum.EMIR.value: data_dir / "emir",
                 StepEnum.DRC.value: data_dir / "drc",
+                StepEnum.ANTENNA_CHECK.value: data_dir / "mj",
                 StepEnum.LVS.value: data_dir / "lvs",
                 StepEnum.RCX.value: data_dir / "rcx",
             },

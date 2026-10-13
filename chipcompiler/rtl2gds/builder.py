@@ -113,6 +113,7 @@ def build_rtl2gds_flow(
     steps.append((StepEnum.FILLER, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.LVS, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.DRC, "ecc", StateEnum.Unstart))
+    steps.append((StepEnum.ANTENNA_CHECK, "ecc", StateEnum.Unstart))
     steps.append((SkippableStepEnum.POST_ROUTE_LEC, lec_tool, StateEnum.Unstart))
     steps.append((StepEnum.RCX, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.STA, "ecc", StateEnum.Unstart))
@@ -151,6 +152,8 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
         "route": StepEnum.ROUTING.value,
         "routing": StepEnum.ROUTING.value,
         "drc": StepEnum.DRC.value,
+        "antenna": StepEnum.ANTENNA_CHECK.value,
+        "antennacheck": StepEnum.ANTENNA_CHECK.value,
         "lvs": StepEnum.LVS.value,
         "filler": StepEnum.FILLER.value,
         "lec": SkippableStepEnum.LEC.value,

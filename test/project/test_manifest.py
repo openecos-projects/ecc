@@ -178,6 +178,31 @@ def test_register_workspace_resolves_emir_range_from_flow(tmp_path):
     assert (entry["start_step"], entry["end_step"]) == ("PowerAnalysis", "EMIR")
 
 
+def test_register_workspace_resolves_antenna_range_from_flow(tmp_path):
+    workspace = tmp_path / "ws_antenna"
+    _write_workspace_facts(
+        workspace,
+        steps=[
+            {"name": "drc", "state": "Unstart"},
+            {"name": "antennaCheck", "state": "Unstart"},
+        ],
+        parameters={},
+    )
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+    updated = mutate_project_manifest(
+        tmp_path,
+        {
+            "type": "register_workspace",
+            "workspace_id": "ws_antenna",
+            "workspace_path": str(workspace),
+        },
+    )
+
+    assert updated == load_project_manifest(tmp_path)
+    entry = updated["workspaces"][0]
+    assert (entry["start_step"], entry["end_step"]) == ("DRC", "AntennaCheck")
+
+
 def test_power_analysis_bounds_the_flow_range_between_sta_and_lvs(tmp_path):
     create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
     manifest_path = tmp_path / "project.json"

@@ -63,6 +63,7 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
         "filler",
         "lvs",
         "drc",
+        "antennaCheck",
         "RCX",
         "sta",
         "powerAnalysis",
@@ -81,7 +82,7 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
     if not skip:
         lec = steps["postRouteLec"]
         assert (lec.input.gate_verilog, lec.input.golden_verilog) == (
-            steps["drc"].output.verilog,
+            steps["antennaCheck"].output.verilog,
             workspace.design.origin_verilog,
         )
 

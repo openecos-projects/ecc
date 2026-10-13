@@ -68,6 +68,7 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
         (StepEnum.FILLER, "ecc", StateEnum.Unstart),
         (StepEnum.LVS, "ecc", StateEnum.Unstart),
         (StepEnum.DRC, "ecc", StateEnum.Unstart),
+        (StepEnum.ANTENNA_CHECK, "ecc", StateEnum.Unstart),
         (SkippableStepEnum.POST_ROUTE_LEC, "kepler_formal", StateEnum.Unstart),
         (StepEnum.RCX, "ecc", StateEnum.Unstart),
         (StepEnum.STA, "ecc", StateEnum.Unstart),
@@ -102,6 +103,14 @@ def test_build_flow_range_accepts_emir_after_power_analysis():
     assert builder_module.build_flow_range("power_analysis", "EMIR") == [
         (StepEnum.POWER_ANALYSIS, "ecc", StateEnum.Unstart),
         (StepEnum.EMIR, "ecc", StateEnum.Unstart),
+    ]
+
+
+@pytest.mark.parametrize("spelling", ["antennaCheck", "antenna_check", "antenna"])
+def test_build_flow_range_accepts_antenna_after_drc(spelling):
+    assert builder_module.build_flow_range("DRC", spelling) == [
+        (StepEnum.DRC, "ecc", StateEnum.Unstart),
+        (StepEnum.ANTENNA_CHECK, "ecc", StateEnum.Unstart),
     ]
 
 

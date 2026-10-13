@@ -219,6 +219,7 @@ _STEP_CONFIG_KEYS: Final[dict[tuple[StepBaseEnum, str], tuple[str, ...]]] = {
     (StepEnum.CTS, "ecc"): ("db", StepEnum.CTS.value),
     (StepEnum.ROUTING, "ecc"): ("db", StepEnum.ROUTING.value),
     (StepEnum.DRC, "ecc"): ("db", StepEnum.DRC.value),
+    (StepEnum.ANTENNA_CHECK, "ecc"): ("db",),
     (StepEnum.LEGALIZATION, "ecc"): ("db",),
     (StepEnum.FILLER, "ecc"): ("db", StepEnum.FILLER.value),
     (StepEnum.RCX, "ecc"): ("db", StepEnum.RCX.value),

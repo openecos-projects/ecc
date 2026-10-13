@@ -40,6 +40,7 @@ class StepEnum(StepBaseEnum):
     SIGNOFF = "Signoff"
     STA = "sta"
     DRC = "drc"
+    ANTENNA_CHECK = "antennaCheck"
     LVS = "lvs"
     RCX = "RCX"
     POWER_ANALYSIS = "powerAnalysis"

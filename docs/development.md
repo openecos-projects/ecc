@@ -718,7 +718,7 @@ uv run ecc pdk show
 `ecc run --preset <name>` overrides `[flow] preset` for a single run without
 editing `ecc.toml`. Valid names are auto-discovered from
 `chipcompiler/rtl2gds/builder.py` (`rtl2gds | syn_sta | synthesis_lec`); the
-`rtl2gds` preset is the full synthesis-to-harden chain (18 canonical steps,
+`rtl2gds` preset is the full synthesis-to-harden chain (20 canonical steps,
 including a synthesis-level LEC immediately after Synthesis that the default
 skip policy excludes — see [Skippable Flow Steps](#skippable-flow-steps);
 Harden emits GDS + abstract LEF + timing LIB):
@@ -729,13 +729,23 @@ uv run ecc run --project gcd --preset rtl2gds
 
 ### Skippable Flow Steps
 
-The default post-route sequence is `route → filler → lvs → drc → postRouteLec
-→ RCX → sta → powerAnalysis → emir → Harden`. LVS and DRC check the filled layout
-before post-route equivalence checking; RCX then provides the parasitics for
+The default post-route sequence is `route → filler → lvs → drc → antennaCheck
+→ postRouteLec → RCX → sta → powerAnalysis → emir → Harden`. LVS, DRC and the
+antenna checker check the filled layout before post-route equivalence checking;
+RCX then provides the parasitics for
 timing and power analysis. LEC is a verification-only step: RCX consumes the
-preceding DRC physical outputs, not the LEC proof. This order applies to newly
-created preset flows and canonical ranges; existing workspace ledgers and
+preceding antennaCheck physical outputs, not the LEC proof. This order applies to
+newly created preset flows and canonical ranges; existing workspace ledgers and
 explicit custom flows retain their stored order.
+
+The report-only `antennaCheck` step calls iMJ's `init_mj → check_antenna →
+destroy_mj`; it does not insert diodes or repair violations. The native report is
+`antennaCheck_ecc/data/mj/antenna_checker/antenna_check.rpt`, copied unchanged to
+`antennaCheck_ecc/report/antennaCheck.rpt`. Violations do not stop the flow;
+native failure or a missing new report does. Step `Success` means the check
+invocation and report publication completed, not a clean-design verdict: absent
+LEF antenna rules or gate-area annotations can leave the check without coverage.
+Inspect the native log and report together. No separate antenna JSON is needed.
 
 The EMIR stage consumes `powerAnalysis_ecc/data/pw/power_reporter/instance_power.tsv`
 and the preceding physical database. Set `technology_file_path` in the workspace's
