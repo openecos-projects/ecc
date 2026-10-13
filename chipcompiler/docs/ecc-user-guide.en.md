@@ -1440,3 +1440,6 @@ unsafe archive paths. Manifest or evidence tampering returns exit code `6`.
 The reproducible manifest also records ECC, ECC-Tools, DreamPlace, Yosys, Sizer,
 KLayout, and PDK identity/presence metadata so an evidence package can be compared
 across environments.
+
+A reproducible package can be copied to another directory and verified there; `inspect` and
+`verify` use the package manifest and do not require the original project path to be present.
