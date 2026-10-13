@@ -14,6 +14,7 @@ from chipcompiler.cli.experiments.operations import (
     load_json,
     parse_parameters,
     project_path,
+    package_report,
     read_package,
     run_sweep,
     sweep_matrix,
@@ -44,11 +45,12 @@ def reproducible_export(
 
 
 @reproducible_app.command("inspect")
-def reproducible_inspect(*, package: Annotated[str, typer.Option("--package")], json_output: Annotated[bool, typer.Option("--json")] = False) -> None:
+def reproducible_inspect(*, package: Annotated[str, typer.Option("--package")], json_output: Annotated[bool, typer.Option("--json")] = False, files: Annotated[bool, typer.Option("--files")] = False) -> None:
     try:
         archive, manifest = read_package(Path(package))
         archive.close()
-        typer.echo(json.dumps(manifest, indent=2, sort_keys=True))
+        payload = [entry.get("path") for entry in manifest.get("files", [])] if files else manifest
+        typer.echo(json.dumps(payload, indent=2, sort_keys=True))
     except (OSError, ValueError, tarfile.TarError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
@@ -63,6 +65,18 @@ def reproducible_verify(*, package: Annotated[str, typer.Option("--package")], j
         raise typer.Exit(2) from exc
     typer.echo(json.dumps(result, sort_keys=True))
     if result["status"] != "pass":
+        raise typer.Exit(6)
+
+
+@reproducible_app.command("report")
+def reproducible_report(*, package: Annotated[str, typer.Option("--package")], json_output: Annotated[bool, typer.Option("--json")] = False) -> None:
+    try:
+        result = package_report(Path(package))
+    except (OSError, ValueError, tarfile.TarError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(json.dumps(result, indent=2, sort_keys=True))
+    if result["verification"]["status"] != "pass":
         raise typer.Exit(6)
 
 

@@ -1443,3 +1443,12 @@ across environments.
 
 A reproducible package can be copied to another directory and verified there; `inspect` and
 `verify` use the package manifest and do not require the original project path to be present.
+
+Offline package inspection is available without the original workspace:
+
+```bash
+ecc reproducible inspect --package evidence.tar.gz --files --json
+ecc reproducible report --package evidence.tar.gz --json
+```
+
+The report summarizes package files, fingerprints, inputs, runtime metadata, and verification status.

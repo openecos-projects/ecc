@@ -198,6 +198,26 @@ def verify_package(package: Path) -> dict[str, Any]:
     return {"status": "pass" if not errors else "fail", "package": str(package), "errors": errors}
 
 
+def package_report(package: Path) -> dict[str, Any]:
+    archive, manifest = read_package(package)
+    try:
+        files = manifest.get("files", [])
+        return {
+            "kind": manifest.get("kind"),
+            "schema_version": manifest.get("schema_version"),
+            "workspace": manifest.get("workspace"),
+            "created_at": manifest.get("created_at"),
+            "file_count": len(files),
+            "total_bytes": sum(entry.get("size", 0) for entry in files if isinstance(entry, dict)),
+            "file_fingerprint": manifest.get("file_fingerprint"),
+            "runtime": manifest.get("runtime", {}),
+            "inputs": manifest.get("inputs", {}),
+            "verification": verify_package(package),
+        }
+    finally:
+        archive.close()
+
+
 def parse_parameters(values: list[str]) -> dict[str, list[str]]:
     result: dict[str, list[str]] = {}
     for value in values:

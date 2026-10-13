@@ -1667,3 +1667,12 @@ SHA-256、整体文件 fingerprint、输入 fingerprint 以及不安全归档路
 
 可复现证据包可以复制到其他目录后独立校验；`inspect` 和 `verify` 使用包内 manifest，
 不要求导出时的原始项目路径仍然存在。
+
+无需原始 workspace 也可以离线查看证据包：
+
+```bash
+ecc reproducible inspect --package evidence.tar.gz --files --json
+ecc reproducible report --package evidence.tar.gz --json
+```
+
+报告会汇总文件、fingerprint、输入、runtime 元数据和校验状态。
