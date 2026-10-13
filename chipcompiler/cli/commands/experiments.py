@@ -111,11 +111,11 @@ def sweep_compare(*, project: Annotated[str | None, typer.Option("--project")] =
     if json_output:
         typer.echo(json.dumps(sweep_matrix(rows), indent=2, sort_keys=True))
         return
-    typer.echo("candidate | flow | violations | qor | exit | parameters")
-    typer.echo("----------|------|-------------|-----|------|-----------")
+    typer.echo("candidate | flow | steps | checklist | violations | qor | exit | parameters")
+    typer.echo("----------|------|-------|-----------|-------------|-----|------|-----------")
     for row in sweep_matrix(rows):
         parameters = ",".join(f"{key}={value}" for key, value in row["parameters"].items())
-        typer.echo(f"{row['candidate']} | {row['flow']} | {row['violations']} | {row['qor']} | {row['exit_code']} | {parameters}")
+        typer.echo(f"{row['candidate']} | {row['flow']} | {row['steps'] or '-'} | {row['checklist'] or '-'} | {row['violations']} | {row['qor']} | {row['exit_code']} | {parameters}")
 
 
 @explore_app.command("rank")
