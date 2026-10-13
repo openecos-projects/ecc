@@ -25,6 +25,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--design", type=Path, required=True)
+    parser.add_argument("--e2e-out", type=Path)
     args = parser.parse_args()
     if not args.binary.is_file() or not (args.design / "ecc.toml").is_file():
         raise FileNotFoundError("packaged ECC binary or design ecc.toml is missing")
@@ -50,6 +51,22 @@ def main() -> int:
         code, plan = run(args.binary, ["sweep", "create", "--project", str(project), "--name", "smoke", "--param", "place.target_density=0.60,0.65"], json_option=False)
         if code != 0 or not plan.get("plan_fingerprint"):
             raise RuntimeError(f"sweep plan failed: {plan}")
+    if args.e2e_out and args.e2e_out.is_dir():
+        workspaces = sorted(args.e2e_out.rglob("home/flow.json"))
+        if workspaces:
+            workspace = workspaces[0].parent.parent
+            project = workspace.parent.parent
+            package = args.e2e_out / "reproducible-e2e.tar.gz"
+            code, _ = run(args.binary, ["status", "--project", str(project), "--workspace", str(workspace)])
+            if code != 0:
+                raise RuntimeError(f"real E2E status failed for {workspace}")
+            code, exported = run(args.binary, ["reproducible", "export", "--project", str(project), "--workspace", str(workspace), "--output", str(package)], json_option=False)
+            if code != 0 or exported.get("status") != "success":
+                raise RuntimeError(f"real E2E export failed: {exported}")
+            code, verified = run(args.binary, ["reproducible", "verify", "--package", str(package)])
+            if code != 0 or verified.get("status") != "pass":
+                raise RuntimeError(f"real E2E verify failed: {verified}")
+            print(json.dumps({"status": "pass", "real_workspace": str(workspace)}))
     print(json.dumps({"status": "pass", "design": args.design.name}))
     return 0
 
