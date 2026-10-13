@@ -11,6 +11,7 @@ from chipcompiler.cli.experiments.operations import (
     compare_sweep,
     create_sweep,
     export_package,
+    export_sweep,
     load_json,
     parse_parameters,
     project_path,
@@ -158,6 +159,19 @@ def sweep_verify(*, project: Annotated[str | None, typer.Option("--project")] = 
 @explore_app.command("rank")
 def explore_rank(*, project: Annotated[str | None, typer.Option("--project")] = None, name: Annotated[str, typer.Option("--name")]) -> None:
     typer.echo(json.dumps(compare_sweep(project_path(project), name), indent=2, sort_keys=True))
+
+
+@explore_app.command("export")
+def explore_export(*, project: Annotated[str | None, typer.Option("--project")] = None, name: Annotated[str, typer.Option("--name")], format_name: Annotated[str, typer.Option("--format", help="json, csv, or markdown")] = "json", output: Annotated[str | None, typer.Option("--output")] = None) -> None:
+    try:
+        content = export_sweep(compare_sweep(project_path(project), name), format_name)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if output:
+        Path(output).write_text(content)
+        typer.echo(json.dumps({"status": "success", "format": format_name, "output": str(Path(output).resolve())}))
+    else:
+        typer.echo(content, nl=False)
 
 
 @explore_app.command("promote")

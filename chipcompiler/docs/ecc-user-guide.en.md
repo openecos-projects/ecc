@@ -1547,7 +1547,7 @@ ecc reproducible inspect --package evidence.tar.gz
 ecc reproducible verify --package evidence.tar.gz
 ```
 
-Create a deterministic parameter sweep. Repeated `--param` options define the Cartesian product; candidates are recorded under `experiments/<name>/` and do not modify the project manifest or baseline workspace:
+Create a deterministic parameter sweep. Repeated `--param` options define the Cartesian product; candidates are recorded under `experiments/<name>/` and do not modify the project manifest or baseline workspace. The full sweep/explore reference — plan and results schemas, execution isolation, and ranking rules — is documented in the [Sweep Reference](ecc-sweep-ref.en.md):
 
 ```bash
 ecc sweep create --project /path/to/project --name density --param place.target_density=0.60,0.65 --param cts.target_skew=0.10,0.15
@@ -1624,3 +1624,12 @@ ecc sweep verify --project /path/to/project --name density_test
 
 The command checks the plan fingerprint, candidate/result membership, parameter consistency,
 workspace existence, and missing or duplicate results. It returns exit code `6` on integrity errors.
+
+Export ranked sweep results for CI artifacts, GUI, or spreadsheets:
+
+```bash
+ecc explore export --project /path/to/project --name density_test --format csv --output density.csv
+ecc explore export --project /path/to/project --name density_test --format markdown
+```
+
+Supported formats are `json`, `csv`, and `markdown`.

@@ -1754,7 +1754,7 @@ ecc reproducible inspect --package evidence.tar.gz
 ecc reproducible verify --package evidence.tar.gz
 ```
 
-创建确定性的参数 sweep。重复使用 `--param` 定义笛卡尔积；候选记录保存在 `experiments/<name>/`，不会修改项目 manifest 或 baseline workspace：
+创建确定性的参数 sweep。重复使用 `--param` 定义笛卡尔积；候选记录保存在 `experiments/<name>/`，不会修改项目 manifest 或 baseline workspace。sweep/explore 的完整参考——计划与结果 schema、执行隔离、排序规则——见 [Sweep 参考手册](ecc-sweep-ref.cn.md)：
 
 ```bash
 ecc sweep create --project /path/to/project --name density --param place.target_density=0.60,0.65 --param cts.target_skew=0.10,0.15
@@ -1828,3 +1828,12 @@ ecc sweep verify --project /path/to/project --name density_test
 
 命令会检查 plan fingerprint、candidate/result 对应关系、参数一致性、workspace 是否存在以及
 结果缺失/重复。完整性错误返回退出码 `6`。
+
+可以将排序后的 sweep 结果导出为 CI artifact、GUI 或表格使用：
+
+```bash
+ecc explore export --project /path/to/project --name density_test --format csv --output density.csv
+ecc explore export --project /path/to/project --name density_test --format markdown
+```
+
+支持 `json`、`csv` 和 `markdown` 三种格式。

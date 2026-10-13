@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import csv
+import io
 import os
 import shutil
 import subprocess
@@ -342,6 +344,27 @@ def sweep_matrix(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "exit_code": row.get("exit_code", "unknown"),
         })
     return matrix
+
+
+def export_sweep(rows: list[dict[str, Any]], fmt: str) -> str:
+    matrix = sweep_matrix(rows)
+    if fmt == "json":
+        return json.dumps(matrix, indent=2, sort_keys=True)
+    columns = ("candidate", "flow", "steps", "checklist", "violations", "qor", "exit_code", "parameters")
+    if fmt == "csv":
+        stream = io.StringIO()
+        writer = csv.DictWriter(stream, fieldnames=columns)
+        writer.writeheader()
+        for row in matrix:
+            writer.writerow({**row, "parameters": ",".join(f"{key}={value}" for key, value in row["parameters"].items())})
+        return stream.getvalue()
+    if fmt == "markdown":
+        lines = ["| " + " | ".join(columns) + " |", "| " + " | ".join("---" for _ in columns) + " |"]
+        for row in matrix:
+            values = {**row, "parameters": ", ".join(f"{key}={value}" for key, value in row["parameters"].items())}
+            lines.append("| " + " | ".join(str(values[column]) for column in columns) + " |")
+        return "\n".join(lines) + "\n"
+    raise ValueError(f"unsupported export format: {fmt}")
 
 
 def _json_command(project: Path, workspace: Path, command: str) -> tuple[int, Any]:
