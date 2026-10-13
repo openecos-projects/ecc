@@ -166,6 +166,23 @@ def compare_sweep(project: Path, name: str) -> list[dict[str, Any]]:
     return sorted(rows, key=lambda row: (order.get(row.get("status", "unknown"), 3), -(row.get("qor_score") if isinstance(row.get("qor_score"), (int, float)) else float("-inf"))))
 
 
+def sweep_matrix(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    matrix = []
+    for row in rows:
+        steps = row.get("step_statuses", [])
+        matrix.append({
+            "candidate": row.get("id", "unknown"),
+            "parameters": row.get("parameters", {}),
+            "flow": row.get("status", "unknown"),
+            "steps": ";".join(f"{step.get('name')}={step.get('status', 'unknown')}" for step in steps),
+            "checklist": ";".join(f"{step.get('name')}={step.get('checklist', 'unknown')}" for step in steps),
+            "violations": row.get("violation_count", "unknown"),
+            "qor": row.get("qor_score", "unknown"),
+            "exit_code": row.get("exit_code", "unknown"),
+        })
+    return matrix
+
+
 def _json_command(project: Path, workspace: Path, command: str) -> tuple[int, Any]:
     command_line = [sys.argv[0]] if getattr(sys, "frozen", False) else [sys.executable, "-m", "chipcompiler.cli.main"]
     completed = subprocess.run(
@@ -197,7 +214,7 @@ def _first_number(value: Any, keys: set[str]) -> float | None:
 def collect_candidate_evidence(project: Path, workspace: Path, exit_code: int) -> dict[str, Any]:
     flow = load_json(workspace / "home" / "flow.json", {}) or {}
     status_code, status_payload = _json_command(project, workspace, "status")
-    signoff_code, _ = _json_command(project, workspace, "signoff check")
+    signoff_code, signoff_payload = _json_command(project, workspace, "signoff check")
     steps = flow.get("steps", []) if isinstance(flow, dict) else []
     if not steps and isinstance(status_payload, dict):
         steps = status_payload.get("steps", [])
@@ -210,7 +227,8 @@ def collect_candidate_evidence(project: Path, workspace: Path, exit_code: int) -
         qor_score = _first_number(load_json(report), {"qor_score", "score", "ppa_score"})
         if qor_score is not None:
             break
-    return {"status": status, "step_statuses": step_statuses, "qor_score": qor_score, "signoff_exit_code": signoff_code, "workspace_status_exit_code": status_code}
+    violation_count = _first_number(signoff_payload, {"violation_count", "violations", "error_count"})
+    return {"status": status, "step_statuses": step_statuses, "qor_score": qor_score, "violation_count": int(violation_count) if violation_count is not None else "unknown", "signoff_exit_code": signoff_code, "workspace_status_exit_code": status_code}
 
 
 def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str, Any]:

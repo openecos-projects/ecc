@@ -16,6 +16,7 @@ from chipcompiler.cli.experiments.operations import (
     project_path,
     read_package,
     run_sweep,
+    sweep_matrix,
     verify_package,
 )
 
@@ -105,8 +106,16 @@ def sweep_run(*, project: Annotated[str | None, typer.Option("--project")] = Non
 
 
 @sweep_app.command("compare")
-def sweep_compare(*, project: Annotated[str | None, typer.Option("--project")] = None, name: Annotated[str, typer.Option("--name")]) -> None:
-    typer.echo(json.dumps(compare_sweep(project_path(project), name), indent=2, sort_keys=True))
+def sweep_compare(*, project: Annotated[str | None, typer.Option("--project")] = None, name: Annotated[str, typer.Option("--name")], json_output: Annotated[bool, typer.Option("--json")] = False) -> None:
+    rows = compare_sweep(project_path(project), name)
+    if json_output:
+        typer.echo(json.dumps(sweep_matrix(rows), indent=2, sort_keys=True))
+        return
+    typer.echo("candidate | flow | violations | qor | exit | parameters")
+    typer.echo("----------|------|-------------|-----|------|-----------")
+    for row in sweep_matrix(rows):
+        parameters = ",".join(f"{key}={value}" for key, value in row["parameters"].items())
+        typer.echo(f"{row['candidate']} | {row['flow']} | {row['violations']} | {row['qor']} | {row['exit_code']} | {parameters}")
 
 
 @explore_app.command("rank")
