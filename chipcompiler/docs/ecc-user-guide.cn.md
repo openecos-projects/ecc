@@ -1840,3 +1840,12 @@ ecc explore export --project /path/to/project --name density_test --format markd
 
 打包 CI smoke 还会校验 sweep 结果完整性，并将排序结果导出为 JSON、CSV 和 Markdown，文件会
 上传到对应 design 的 `cli-contract` 证据目录。
+
+可以使用一个命令诊断 workspace：
+
+```bash
+ecc diagnose run --project /path/to/project --workspace ws_0012 --json
+```
+
+结果会汇总 flow 状态、失败 step、blocked checklist、QoR 可用性、缺失 artifact 和恢复建议。
+诊断为 failed 或 blocked 时返回退出码 `6`。

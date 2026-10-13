@@ -1636,3 +1636,12 @@ Supported formats are `json`, `csv`, and `markdown`.
 
 Packaged CI smoke also verifies sweep result integrity and exports ranked results as JSON, CSV,
 and Markdown. The files are uploaded under the design's `cli-contract` evidence directory.
+
+Diagnose a workspace in one command:
+
+```bash
+ecc diagnose run --project /path/to/project --workspace ws_0012 --json
+```
+
+The result combines flow state, failed steps, blocked checklist items, QoR availability,
+missing artifacts, and suggested recovery commands. Failed or blocked diagnostics return exit code `6`.

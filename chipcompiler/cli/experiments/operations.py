@@ -70,6 +70,23 @@ def project_path(value: str | None) -> Path:
     return path
 
 
+def diagnose_workspace(project: Path, workspace_name: str) -> dict[str, Any]:
+    workspace = workspace_path(project, workspace_name)
+    flow = load_json(workspace / "home" / "flow.json", {}) or {}
+    checklist = load_json(workspace / "home" / "checklist.json", {}) or {}
+    qor = load_json(workspace / "home" / "qor_report.json", {}) or {}
+    steps = flow.get("steps", []) if isinstance(flow, dict) else []
+    failed_steps = [step.get("name", step.get("id", "unknown")) for step in steps if isinstance(step, dict) and step.get("status", step.get("state")) in {"failed", "blocked", "error"}]
+    items = checklist.get("items", checklist.get("checklist", [])) if isinstance(checklist, dict) else []
+    blocked_items = [item.get("id", "unknown") for item in items if isinstance(item, dict) and (item.get("status") in {"blocked", "failed"} or item.get("blocked") is True or item.get("state") in {"blocked", "fail"})]
+    missing = [str(path.relative_to(workspace)) for path in (workspace / "home" / "flow.json", workspace / "home" / "checklist.json") if not path.is_file()]
+    status = "failed" if failed_steps else "blocked" if blocked_items else "attention" if missing or not qor else "passed"
+    actions = []
+    if failed_steps or blocked_items:
+        actions.extend([f"ecc report checklist --project {project} --workspace {workspace_name}", f"ecc run --project {project} --workspace {workspace_name} --resume"])
+    return {"status": status, "project": str(project), "workspace": str(workspace), "flow": {"status": flow.get("status", flow.get("state", "unknown")), "failed_steps": failed_steps}, "checklist": {"status": "blocked" if blocked_items else "passed" if items else "unknown", "blocked_count": len(blocked_items), "blocked_items": blocked_items}, "qor": {"available": bool(qor), "score": qor.get("qor_score", qor.get("score", "unknown"))}, "missing_artifacts": missing, "next_actions": actions}
+
+
 def workspace_path(project: Path, value: str) -> Path:
     path = Path(value).expanduser()
     return path.resolve() if path.is_absolute() else (project / value).resolve()

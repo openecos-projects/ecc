@@ -48,6 +48,9 @@ def main() -> int:
         code, report = run(args.binary, ["reproducible", "report", "--package", str(package)])
         if code != 0 or report.get("verification", {}).get("status") != "pass":
             raise RuntimeError(f"report failed: {report}")
+        code, diagnosis = run(args.binary, ["diagnose", "run", "--project", str(project), "--workspace", "smoke"])
+        if code != 0 or diagnosis.get("status") not in {"passed", "attention"}:
+            raise RuntimeError(f"diagnose failed: {diagnosis}")
         code, plan = run(args.binary, ["sweep", "create", "--project", str(project), "--name", "smoke", "--param", "place.target_density=0.60,0.65"], json_option=False)
         if code != 0 or not plan.get("plan_fingerprint"):
             raise RuntimeError(f"sweep plan failed: {plan}")

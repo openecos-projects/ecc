@@ -9,6 +9,7 @@ import typer
 from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.experiments.operations import (
     compare_sweep,
+    diagnose_workspace,
     create_sweep,
     export_package,
     export_sweep,
@@ -27,6 +28,23 @@ from chipcompiler.cli.experiments.operations import (
 reproducible_app = create_app(help="Export and verify reproducible ECC evidence packages")
 sweep_app = create_app(help="Run deterministic parameter sweeps")
 explore_app = create_app(help="Rank and select sweep candidates")
+diagnose_app = create_app(help="Diagnose workspace flow, checklist, QoR, and recovery actions")
+
+
+@diagnose_app.command("run")
+def diagnose_run(*, project: Annotated[str | None, typer.Option("--project")] = None, workspace: Annotated[str, typer.Option("--workspace")] = "default", json_output: Annotated[bool, typer.Option("--json")] = False) -> None:
+    result = diagnose_workspace(project_path(project), workspace)
+    if json_output:
+        typer.echo(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        typer.echo(f"status: {result['status']}")
+        typer.echo(f"workspace: {result['workspace']}")
+        typer.echo(f"flow: {result['flow']['status']} failed_steps={','.join(result['flow']['failed_steps']) or '-'}")
+        typer.echo(f"checklist: {result['checklist']['status']} blocked={result['checklist']['blocked_count']}")
+        typer.echo(f"qor: {result['qor']['score']} available={result['qor']['available']}")
+        typer.echo(f"next_actions: {'; '.join(result['next_actions']) or '-'}")
+    if result["status"] in {"failed", "blocked"}:
+        raise typer.Exit(6)
 
 
 @reproducible_app.command("export")

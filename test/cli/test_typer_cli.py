@@ -32,8 +32,8 @@ def test_root_help_returns_zero_and_lists_commands(capsys):
         "report",
     ):
         assert command in out
-    for removed_command in ("metrics", "artifacts", "diagnose"):
-        assert removed_command not in out
+        for removed_command in ("metrics", "artifacts"):
+            assert removed_command not in out
 
 
 def test_root_help_lists_doc_right_after_version(capsys):
@@ -157,7 +157,7 @@ def test_unknown_command_returns_nonzero_without_system_exit(capsys):
     assert "No such command" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("command", ("metrics", "artifacts", "diagnose"))
+@pytest.mark.parametrize("command", ("metrics", "artifacts"))
 def test_removed_commands_return_unknown_command(command, capsys):
     rc = cli_main.run([command])
 
