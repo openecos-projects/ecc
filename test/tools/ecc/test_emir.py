@@ -1,0 +1,169 @@
+from pathlib import Path
+from unittest.mock import Mock, call
+
+import pytest
+
+from chipcompiler.data import OriginDesign, StepEnum, Workspace, build_workspace_config_paths
+from chipcompiler.tools.ecc import builder, runner
+from chipcompiler.tools.ecc.module import ECCToolsModule
+from chipcompiler.utility import json_read, json_write
+
+
+@pytest.fixture
+def emir_case(tmp_path, monkeypatch):
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    workspace.config = build_workspace_config_paths(workspace)
+    workspace.config["dir"].mkdir()
+    template = Path(builder.__file__).parent / "configs" / "emir_ecc.json"
+    config = json_read(template)
+    config["technology_file_path"] = str(tmp_path / "process.tech")
+    assert json_write(workspace.config[StepEnum.EMIR.value], config)
+    step = builder.build_step(
+        workspace,
+        StepEnum.EMIR.value,
+        input_def=tmp_path / "powerAnalysis_ecc" / "output" / "gcd_powerAnalysis.def.gz",
+        input_verilog=tmp_path / "powerAnalysis_ecc" / "output" / "gcd_powerAnalysis.v.gz",
+    )
+    builder.build_step_space(step)
+    module = Mock(spec=ECCToolsModule)
+    module.init_emir.return_value = True
+    module.run_emir.return_value = True
+    save_data = Mock(return_value=True)
+    monkeypatch.setattr(runner, "is_eda_exist", lambda: True)
+    monkeypatch.setattr(runner, "save_data", save_data)
+    return workspace, step, module, save_data
+
+
+def test_emir_dispatch_loads_ipw_power_and_preserves_downstream_outputs(emir_case):
+    workspace, step, module, save_data = emir_case
+
+    assert runner.run_step(workspace, step, module) is True
+
+    assert module.method_calls == [
+        call.update_step_paths(output_dir=step.data.dir, feature_dir=step.feature.dir),
+        call.init_emir(
+            output_dir=workspace.directory / "emir_ecc" / "data" / "emir",
+            instance_power_file_path=(
+                workspace.directory
+                / "powerAnalysis_ecc"
+                / "data"
+                / "pw"
+                / "power_reporter"
+                / "instance_power.tsv"
+            ),
+            technology_file_path=str(workspace.directory / "process.tech"),
+            ploc_file_path=(
+                workspace.directory
+                / "postFloorplan_ecc"
+                / "data"
+                / "fp"
+                / "pdn_generator"
+                / "power.ploc"
+            ),
+        ),
+        call.run_emir(),
+        call.destroy_emir(),
+    ]
+    save_data.assert_called_once_with(
+        workspace=workspace, step=step, ecc_module=module, feature_step=False
+    )
+    persisted = json_read(step.subflow.path)
+    assert [(item["name"], item["state"]) for item in persisted["steps"]] == [
+        ("load data", "Success"),
+        ("run EMIR", "Success"),
+        ("save data", "Success"),
+    ]
+
+
+def test_emir_placeholder_does_not_run_native_analysis(emir_case):
+    workspace, step, module, save_data = emir_case
+    template = Path(builder.__file__).parent / "configs" / "emir_ecc.json"
+    assert json_write(workspace.config[StepEnum.EMIR.value], json_read(template))
+
+    assert runner.run_step(workspace, step, module) is False
+
+    assert module.method_calls == []
+    save_data.assert_not_called()
+    assert [(item["name"], item["state"]) for item in step.subflow.steps] == [
+        ("load data", "Unstart"),
+        ("run EMIR", "Incomplete"),
+        ("save data", "Unstart"),
+    ]
+
+
+@pytest.mark.parametrize("failed_method", ["init_emir", "run_emir"])
+def test_emir_native_failure_releases_resources_without_saving(emir_case, failed_method):
+    workspace, step, module, save_data = emir_case
+    getattr(module, failed_method).return_value = False
+
+    assert runner.run_step(workspace, step, module) is False
+
+    assert module.destroy_emir.call_count == (failed_method == "run_emir")
+    assert module.run_emir.call_count == (failed_method == "run_emir")
+    save_data.assert_not_called()
+    assert [(item["name"], item["state"]) for item in step.subflow.steps] == [
+        ("load data", "Success"),
+        ("run EMIR", "Incomplete"),
+        ("save data", "Unstart"),
+    ]
+
+
+@pytest.mark.parametrize("failed_method", ["init_emir", "run_emir"])
+def test_emir_exception_releases_resources_and_marks_failure(emir_case, failed_method):
+    workspace, step, module, save_data = emir_case
+    getattr(module, failed_method).side_effect = RuntimeError("native failure")
+
+    with pytest.raises(RuntimeError, match="native failure"):
+        runner.run_step(workspace, step, module)
+
+    assert module.destroy_emir.call_count == (failed_method == "run_emir")
+    save_data.assert_not_called()
+    assert [(item["name"], item["state"]) for item in step.subflow.steps] == [
+        ("load data", "Success"),
+        ("run EMIR", "Incomplete"),
+        ("save data", "Unstart"),
+    ]
+
+
+def test_emir_save_failure_is_not_success(emir_case):
+    workspace, step, module, save_data = emir_case
+    save_data.return_value = False
+
+    assert runner.run_step(workspace, step, module) is False
+
+    assert [(item["name"], item["state"]) for item in step.subflow.steps] == [
+        ("load data", "Success"),
+        ("run EMIR", "Success"),
+        ("save data", "Incomplete"),
+    ]
+
+
+def test_emir_wrapper_normalizes_paths_and_uses_ifp_supply_file(tmp_path):
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = Mock()
+    module.ecc.init_emir.return_value = True
+    module.ecc.run_emir.return_value = True
+    module.ecc.destroy_emir.return_value = True
+
+    assert (
+        module.init_emir(
+            tmp_path / "emir",
+            tmp_path / "instance_power.tsv",
+            tmp_path / "process.tech",
+            tmp_path / "power.ploc",
+        )
+        is True
+    )
+    assert module.run_emir() is True
+    assert module.destroy_emir() is True
+
+    assert module.ecc.method_calls == [
+        call.init_emir(
+            temp_directory_path=str(tmp_path / "emir"),
+            instance_power_file_path=str(tmp_path / "instance_power.tsv"),
+            technology_file_path=str(tmp_path / "process.tech"),
+            ploc_file_path=str(tmp_path / "power.ploc"),
+        ),
+        call.run_emir(),
+        call.destroy_emir(),
+    ]

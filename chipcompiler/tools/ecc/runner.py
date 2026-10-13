@@ -513,6 +513,10 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
             state = run_sta(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.POWER_ANALYSIS.value:
             state = run_power_analysis(workspace=workspace, step=step, ecc_module=ecc_module)
+        case StepEnum.EMIR.value:
+            from chipcompiler.tools.ecc.emir import run_emir
+
+            state = run_emir(workspace=workspace, step=step, ecc_module=ecc_module)
 
     return state
 

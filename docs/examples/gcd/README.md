@@ -141,7 +141,8 @@ Then the flow engine will execute the steps sequentially, and you can check the 
 
 This example defines a custom flow ending at filler. The full default `rtl2gds`
 preset continues with `lvs → drc → postRouteLec → RCX → sta → powerAnalysis →
-Harden`. Existing custom flows keep their explicitly selected order.
+emir → Harden`. EMIR requires the technology file in `config/emir_ecc.json`.
+Existing custom flows keep their explicitly selected order.
 
 ## Using Filelist
 

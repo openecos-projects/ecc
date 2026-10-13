@@ -28,6 +28,7 @@ STEP_DIRECTORIES = {
     StepEnum.RCX.value: "RCX_ecc",
     StepEnum.STA.value: "sta_ecc",
     StepEnum.POWER_ANALYSIS.value: "powerAnalysis_ecc",
+    StepEnum.EMIR.value: "emir_ecc",
     StepEnum.LVS.value: "lvs_ecc",
     SkippableStepEnum.POST_ROUTE_LEC.value: "postRouteLec_kepler_formal",
     StepEnum.DRC.value: "drc_ecc",

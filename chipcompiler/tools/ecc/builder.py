@@ -95,6 +95,7 @@ def build_step(
                 StepEnum.ROUTING.value: data_dir / "rt",
                 StepEnum.STA.value: sta_dir,
                 StepEnum.POWER_ANALYSIS.value: data_dir / "pw",
+                StepEnum.EMIR.value: data_dir / "emir",
                 StepEnum.DRC.value: data_dir / "drc",
                 StepEnum.LVS.value: data_dir / "lvs",
                 StepEnum.RCX.value: data_dir / "rcx",

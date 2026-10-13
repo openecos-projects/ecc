@@ -58,7 +58,17 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
     flow.create_step_workspaces()
     steps = {step.name: step for step in flow.workspace_steps}
 
-    physical_names = ["route", "filler", "lvs", "drc", "RCX", "sta", "powerAnalysis", "Harden"]
+    physical_names = [
+        "route",
+        "filler",
+        "lvs",
+        "drc",
+        "RCX",
+        "sta",
+        "powerAnalysis",
+        "emir",
+        "Harden",
+    ]
     for previous_name, current_name in zip(physical_names[:-1], physical_names[1:], strict=True):
         previous = steps[previous_name]
         current = steps[current_name]

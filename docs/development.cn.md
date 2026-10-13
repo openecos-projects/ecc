@@ -513,11 +513,18 @@ uv run ecc run --project gcd --preset rtl2gds
 ### 可跳过的 Flow Step
 
 默认布线后流程为 `route → filler → lvs → drc → postRouteLec → RCX → sta
-→ powerAnalysis → Harden`。LVS、DRC 先检查填充后的版图，随后执行布线后
+→ powerAnalysis → emir → Harden`。LVS、DRC 先检查填充后的版图，随后执行布线后
 等价性检查，再由 RCX 为时序和功耗分析提供寄生参数。LEC 只做验证，不参与
 物理产物传递：RCX 使用前一步 DRC 的物理输出，而不是 LEC 的证明文件。
 新顺序适用于新建的预设流程及规范步骤范围；已有工作区的执行记录和显式
 自定义流程仍保留原顺序。
+
+EMIR 使用 `powerAnalysis_ecc/data/pw/power_reporter/instance_power.tsv` 和前一步的
+物理数据库。运行前，在工作区 `config/emir_ecc.json` 中将 `technology_file_path`
+设为实际的 `process.tech` 路径；默认空值只是占位，未填写时该步骤会停止。
+电源激励使用 iFP 输出的 `postFloorplan_ecc/data/fp/pdn_generator/power.ploc`，
+通过 `ploc_file_path` 传入，不同时启用 `add_ploc_from_top_def`。这些是电源条带
+交点上的理想电源假设，不代表实际封装或 pad。原生结果输出到 `emir_ecc/data/emir/`。
 
 三个可选 step 可在创建 workspace 时按配置排除：综合级 LEC（`lec`）、布线后 LEC（`postRouteLec`）、时序优化（`Timing optimization`）。被跳过的 step 不会进入 workspace 的执行 ledger——其输入自然落到前一个保留 step，也不会为其创建 step 目录。状态机与 resume/rerun 语义零改动；已创建的 ledger 永远不会按新配置重过滤——事后修改策略不会向已有 workspace 插入或删除 step。
 

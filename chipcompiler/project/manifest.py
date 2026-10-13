@@ -41,6 +41,7 @@ MANIFEST_FLOW_STEPS = (
     "LVS",
     "PostRouteLEC",
     "DRC",
+    "EMIR",
     "Harden",
 )
 
@@ -84,6 +85,7 @@ _CANONICAL_TO_MANIFEST_STEP = {
     "RCX": "RCX",
     "sta": "STA",
     "powerAnalysis": "PowerAnalysis",
+    "emir": "EMIR",
     "lvs": "LVS",
     "postRouteLec": "PostRouteLEC",
     "drc": "DRC",

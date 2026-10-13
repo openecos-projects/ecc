@@ -117,6 +117,7 @@ def build_rtl2gds_flow(
     steps.append((StepEnum.RCX, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.STA, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.POWER_ANALYSIS, "ecc", StateEnum.Unstart))
+    steps.append((StepEnum.EMIR, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.HARDEN, "ecc", StateEnum.Unstart))
 
     return filter_flow_steps(steps, skip)
@@ -158,6 +159,7 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
         "rcx": StepEnum.RCX.value,
         "sta": StepEnum.STA.value,
         "poweranalysis": StepEnum.POWER_ANALYSIS.value,
+        "emir": StepEnum.EMIR.value,
         "harden": StepEnum.HARDEN.value,
     }
     return aliases.get(alias_key, token)

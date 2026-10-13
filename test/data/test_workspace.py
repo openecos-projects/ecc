@@ -37,6 +37,7 @@ EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
     StepEnum.RCX.value: "rcx_ecc.json",
     StepEnum.STA.value: "sta_ecc.json",
     "sizer": "sizer_ecc.json",
+    StepEnum.EMIR.value: "emir_ecc.json",
     "dreamplace": "dreamplace_ecc.json",
 }
 
@@ -503,6 +504,7 @@ def test_create_workspace_derives_dynamic_flow_from_boundaries(
         "RCX",
         "sta",
         "powerAnalysis",
+        "emir",
         "Harden",
     ]
 

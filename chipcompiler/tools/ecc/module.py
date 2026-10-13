@@ -595,6 +595,29 @@ class ECCToolsModule:
         return self.ecc.destroy_pw()
 
     ########################################################################
+    # EMIR api
+    ########################################################################
+    def init_emir(
+        self,
+        output_dir: PathArg,
+        instance_power_file_path: PathArg,
+        technology_file_path: PathArg,
+        ploc_file_path: PathArg,
+    ):
+        return self.ecc.init_emir(
+            temp_directory_path=path_text(output_dir),
+            instance_power_file_path=path_text(instance_power_file_path),
+            technology_file_path=path_text(technology_file_path),
+            ploc_file_path=path_text(ploc_file_path),
+        )
+
+    def run_emir(self):
+        return self.ecc.run_emir()
+
+    def destroy_emir(self):
+        return self.ecc.destroy_emir()
+
+    ########################################################################
     # STA api
     ########################################################################
     def run_timing(

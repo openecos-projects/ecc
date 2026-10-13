@@ -730,12 +730,20 @@ uv run ecc run --project gcd --preset rtl2gds
 ### Skippable Flow Steps
 
 The default post-route sequence is `route → filler → lvs → drc → postRouteLec
-→ RCX → sta → powerAnalysis → Harden`. LVS and DRC check the filled layout
+→ RCX → sta → powerAnalysis → emir → Harden`. LVS and DRC check the filled layout
 before post-route equivalence checking; RCX then provides the parasitics for
 timing and power analysis. LEC is a verification-only step: RCX consumes the
 preceding DRC physical outputs, not the LEC proof. This order applies to newly
 created preset flows and canonical ranges; existing workspace ledgers and
 explicit custom flows retain their stored order.
+
+The EMIR stage consumes `powerAnalysis_ecc/data/pw/power_reporter/instance_power.tsv`
+and the preceding physical database. Set `technology_file_path` in the workspace's
+`config/emir_ecc.json` to a real `process.tech` before running it; the default is
+an empty placeholder and will stop the step. Supply sources come from iFP's
+`postFloorplan_ecc/data/fp/pdn_generator/power.ploc`, passed as `ploc_file_path`
+without enabling `add_ploc_from_top_def`. These are ideal sources at PDN stripe
+intersections, not a package/pad model. Native outputs go to `emir_ecc/data/emir/`.
 
 Three optional steps can be excluded from a workspace at creation time:
 the synthesis LEC (`lec`), the post-route LEC (`postRouteLec`), and timing

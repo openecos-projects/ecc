@@ -189,6 +189,7 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     StepEnum.RCX.value: "rcx_ecc.json",
     StepEnum.STA.value: "sta_ecc.json",
     "sizer": "sizer_ecc.json",
+    StepEnum.EMIR.value: "emir_ecc.json",
     "dreamplace": "dreamplace_ecc.json",
 }
 
@@ -222,6 +223,7 @@ _STEP_CONFIG_KEYS: Final[dict[tuple[StepBaseEnum, str], tuple[str, ...]]] = {
     (StepEnum.FILLER, "ecc"): ("db", StepEnum.FILLER.value),
     (StepEnum.RCX, "ecc"): ("db", StepEnum.RCX.value),
     (StepEnum.STA, "ecc"): ("db", StepEnum.RCX.value, StepEnum.STA.value),
+    (StepEnum.EMIR, "ecc"): ("db", StepEnum.EMIR.value),
     (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
     (StepEnum.LEGALIZATION, "dreamplace"): ("dreamplace",),
     (SkippableStepEnum.TIMING_OPT, "sizer"): ("db", "sizer", "dreamplace"),
