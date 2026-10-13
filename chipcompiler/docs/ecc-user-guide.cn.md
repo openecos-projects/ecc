@@ -1653,3 +1653,7 @@ ecc explore promote --project /path/to/project --name density --candidate candid
 ```
 
 当前版本以确定性和证据留存为主，暂不提供自动优化、分布式调度、多 SDC 或自动替换 baseline workspace。
+
+可复现导出包现在包含 ECC runtime 版本、文件集合 fingerprint，以及项目配置和 RTL 输入
+fingerprint。sweep 计划包含稳定的 `plan_fingerprint`，因此可以排除创建时间后比较两个
+参数计划是否一致。

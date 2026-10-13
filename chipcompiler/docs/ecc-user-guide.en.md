@@ -1427,3 +1427,8 @@ ecc explore promote --project /path/to/project --name density --candidate candid
 ```
 
 The first implementation is deterministic and evidence-oriented. It does not provide automatic optimization, distributed scheduling, multi-SDC, or automatic replacement of a baseline.
+
+Reproducible exports include the ECC runtime version, an aggregate file fingerprint,
+and fingerprints for project configuration and RTL inputs. Sweep plans include a
+stable `plan_fingerprint` so two parameter plans can be compared independently of
+creation time.

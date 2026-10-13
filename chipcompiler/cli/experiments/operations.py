@@ -15,6 +15,31 @@ from typing import Any
 SCHEMA_VERSION = 1
 
 
+def payload_fingerprint(payload: Any) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def file_fingerprint(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def runtime_versions() -> dict[str, str]:
+    versions: dict[str, str] = {}
+    command_line = [sys.argv[0], "version", "--json"] if getattr(sys, "frozen", False) else [sys.executable, "-m", "chipcompiler.cli.main", "version", "--json"]
+    try:
+        completed = subprocess.run(command_line, capture_output=True, text=True, check=False)
+        payload = json.loads(completed.stdout)
+        versions["ecc"] = str(payload.get("version", payload.get("ecc", "unknown")))
+    except (OSError, json.JSONDecodeError):
+        versions["ecc"] = "unknown"
+    return versions
+
+
 def project_path(value: str | None) -> Path:
     path = Path(value or os.getcwd()).expanduser().resolve()
     if path.is_file():
@@ -83,6 +108,13 @@ def export_package(project: Path, workspace: Path, output: Path) -> dict[str, An
             "workspace": str(workspace),
             "created_at": int(time.time()),
             "files": entries,
+            "file_fingerprint": payload_fingerprint(entries),
+            "runtime": runtime_versions(),
+            "inputs": {
+                entry["path"]: entry["sha256"]
+                for entry in entries
+                if entry["path"] in {"ecc.toml", "project.json"} or "/rtl/" in f"/{entry['path']}"
+            },
         }
         dump_json(staging / "manifest.json", manifest)
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -150,7 +182,8 @@ def create_sweep(project: Path, name: str, parameters: dict[str, list[str]]) -> 
         {"id": f"candidate_{index:04d}", "parameters": dict(zip(keys, values))}
         for index, values in enumerate(itertools.product(*(parameters[key] for key in keys)), 1)
     ]
-    payload = {"schema_version": SCHEMA_VERSION, "name": name, "parameters": parameters, "candidates": candidates}
+    payload = {"schema_version": SCHEMA_VERSION, "name": name, "parameters": parameters, "candidates": candidates, "created_at": int(time.time())}
+    payload["plan_fingerprint"] = payload_fingerprint({key: value for key, value in payload.items() if key != "created_at"})
     dump_json(root / "sweep.json", payload)
     return payload
 
