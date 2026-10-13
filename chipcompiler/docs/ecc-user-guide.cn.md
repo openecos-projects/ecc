@@ -1676,3 +1676,12 @@ ecc reproducible report --package evidence.tar.gz --json
 ```
 
 报告会汇总文件、fingerprint、输入、runtime 元数据和校验状态。
+
+离线报告支持可读文本输出和文件类型筛选：
+
+```bash
+ecc reproducible report --package evidence.tar.gz
+ecc reproducible inspect --package evidence.tar.gz --files --type checklist --json
+```
+
+支持的类型包括 `all`、`rtl`、`config`、`flow`、`checklist` 和 `signoff`。

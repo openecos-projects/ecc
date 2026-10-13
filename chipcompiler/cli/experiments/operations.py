@@ -218,6 +218,22 @@ def package_report(package: Path) -> dict[str, Any]:
         archive.close()
 
 
+def package_file_matches(path: str, kind: str) -> bool:
+    if kind == "all":
+        return True
+    if kind == "rtl":
+        return path.endswith(('.v', '.sv', '.vh', '.svh')) or "/rtl/" in f"/{path}"
+    if kind == "config":
+        return path.endswith(('.toml', '.tcl', '.yaml', '.yml')) or "/config/" in f"/{path}"
+    if kind == "flow":
+        return path.endswith("flow.json") or "/flow" in path
+    if kind == "checklist":
+        return "checklist" in path
+    if kind == "signoff":
+        return "signoff" in path or "/reports/" in path
+    raise ValueError(f"unknown package file type: {kind}")
+
+
 def parse_parameters(values: list[str]) -> dict[str, list[str]]:
     result: dict[str, list[str]] = {}
     for value in values:

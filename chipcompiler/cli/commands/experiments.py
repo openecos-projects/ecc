@@ -15,6 +15,7 @@ from chipcompiler.cli.experiments.operations import (
     parse_parameters,
     project_path,
     package_report,
+    package_file_matches,
     read_package,
     run_sweep,
     sweep_matrix,
@@ -45,11 +46,14 @@ def reproducible_export(
 
 
 @reproducible_app.command("inspect")
-def reproducible_inspect(*, package: Annotated[str, typer.Option("--package")], json_output: Annotated[bool, typer.Option("--json")] = False, files: Annotated[bool, typer.Option("--files")] = False) -> None:
+def reproducible_inspect(*, package: Annotated[str, typer.Option("--package")], json_output: Annotated[bool, typer.Option("--json")] = False, files: Annotated[bool, typer.Option("--files")] = False, file_type: Annotated[str, typer.Option("--type", help="all, rtl, config, flow, checklist, or signoff")] = "all") -> None:
     try:
         archive, manifest = read_package(Path(package))
         archive.close()
-        payload = [entry.get("path") for entry in manifest.get("files", [])] if files else manifest
+        if files:
+            payload = [entry.get("path") for entry in manifest.get("files", []) if package_file_matches(entry.get("path", ""), file_type)]
+        else:
+            payload = manifest
         typer.echo(json.dumps(payload, indent=2, sort_keys=True))
     except (OSError, ValueError, tarfile.TarError) as exc:
         typer.echo(str(exc), err=True)
@@ -75,7 +79,15 @@ def reproducible_report(*, package: Annotated[str, typer.Option("--package")], j
     except (OSError, ValueError, tarfile.TarError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
-    typer.echo(json.dumps(result, indent=2, sort_keys=True))
+    if json_output:
+        typer.echo(json.dumps(result, indent=2, sort_keys=True))
+    else:
+        typer.echo(f"package: {result['kind']} schema={result['schema_version']}")
+        typer.echo(f"files: {result['file_count']} total_bytes={result['total_bytes']}")
+        typer.echo(f"fingerprint: {result['file_fingerprint']}")
+        typer.echo(f"verification: {result['verification']['status']}")
+        runtime = result.get("runtime", {})
+        typer.echo(f"ecc: {runtime.get('ecc', 'unknown')} pdk: {runtime.get('pdk', {}).get('name', 'unknown')}")
     if result["verification"]["status"] != "pass":
         raise typer.Exit(6)
 

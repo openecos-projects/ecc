@@ -1452,3 +1452,12 @@ ecc reproducible report --package evidence.tar.gz --json
 ```
 
 The report summarizes package files, fingerprints, inputs, runtime metadata, and verification status.
+
+Offline reports also support readable text output and file filtering:
+
+```bash
+ecc reproducible report --package evidence.tar.gz
+ecc reproducible inspect --package evidence.tar.gz --files --type checklist --json
+```
+
+Supported file types are `all`, `rtl`, `config`, `flow`, `checklist`, and `signoff`.
