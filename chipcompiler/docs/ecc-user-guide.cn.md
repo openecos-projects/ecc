@@ -1657,3 +1657,7 @@ ecc explore promote --project /path/to/project --name density --candidate candid
 可复现导出包现在包含 ECC runtime 版本、文件集合 fingerprint，以及项目配置和 RTL 输入
 fingerprint。sweep 计划包含稳定的 `plan_fingerprint`，因此可以排除创建时间后比较两个
 参数计划是否一致。
+
+`ecc reproducible verify` 会审计包 schema、manifest 条目类型和重复路径、归档文件大小、
+SHA-256、整体文件 fingerprint、输入 fingerprint 以及不安全归档路径。manifest 或证据被
+篡改时返回退出码 `6`。

@@ -1432,3 +1432,7 @@ Reproducible exports include the ECC runtime version, an aggregate file fingerpr
 and fingerprints for project configuration and RTL inputs. Sweep plans include a
 stable `plan_fingerprint` so two parameter plans can be compared independently of
 creation time.
+
+`ecc reproducible verify` audits the package schema, manifest entry types and duplicate paths,
+archive file sizes, SHA-256 checksums, aggregate file fingerprint, input fingerprints, and
+unsafe archive paths. Manifest or evidence tampering returns exit code `6`.

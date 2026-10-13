@@ -140,16 +140,38 @@ def verify_package(package: Path) -> dict[str, Any]:
     archive, manifest = read_package(package)
     errors: list[str] = []
     try:
+        if manifest.get("kind") != "ecc-reproducible-export":
+            errors.append("manifest: invalid kind")
+        if manifest.get("schema_version") != SCHEMA_VERSION:
+            errors.append("manifest: unsupported schema_version")
+        entries = manifest.get("files")
+        if not isinstance(entries, list):
+            errors.append("manifest: files must be a list")
+            entries = []
+        paths = [entry.get("path") for entry in entries if isinstance(entry, dict)]
+        if len(paths) != len(set(paths)):
+            errors.append("manifest: duplicate file path")
+        if manifest.get("file_fingerprint") != payload_fingerprint(entries):
+            errors.append("manifest: file_fingerprint mismatch")
         names = {member.name for member in archive.getmembers()}
-        for entry in manifest.get("files", []):
+        for entry in entries:
+            if not isinstance(entry, dict) or not isinstance(entry.get("path"), str) or not isinstance(entry.get("sha256"), str) or not isinstance(entry.get("size"), int):
+                errors.append("manifest: invalid file entry")
+                continue
             name = f"./{entry['path']}"
             if name not in names:
                 errors.append(f"missing: {entry['path']}")
                 continue
             member = archive.getmember(name)
-            digest = hashlib.sha256(archive.extractfile(member).read()).hexdigest()
+            content = archive.extractfile(member).read()
+            digest = hashlib.sha256(content).hexdigest()
+            if len(content) != entry["size"]:
+                errors.append(f"size: {entry['path']}")
             if digest != entry.get("sha256"):
                 errors.append(f"checksum: {entry['path']}")
+        expected_inputs = {entry["path"]: entry["sha256"] for entry in entries if isinstance(entry, dict) and entry.get("path") in {"ecc.toml", "project.json"} or isinstance(entry, dict) and "/rtl/" in f"/{entry.get('path', '')}"}
+        if manifest.get("inputs") != expected_inputs:
+            errors.append("manifest: inputs fingerprint mismatch")
         for member in archive.getmembers():
             if Path(member.name).is_absolute() or ".." in Path(member.name).parts:
                 errors.append(f"unsafe path: {member.name}")
