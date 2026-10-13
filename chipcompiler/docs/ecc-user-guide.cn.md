@@ -1661,3 +1661,6 @@ fingerprint。sweep 计划包含稳定的 `plan_fingerprint`，因此可以排�
 `ecc reproducible verify` 会审计包 schema、manifest 条目类型和重复路径、归档文件大小、
 SHA-256、整体文件 fingerprint、输入 fingerprint 以及不安全归档路径。manifest 或证据被
 篡改时返回退出码 `6`。
+
+可复现 manifest 还会记录 ECC、ECC-Tools、DreamPlace、Yosys、Sizer、KLayout 以及 PDK 的
+标识和存在性信息，便于比较不同环境生成的证据包。

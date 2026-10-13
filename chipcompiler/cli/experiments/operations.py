@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tarfile
 import time
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -28,8 +29,8 @@ def file_fingerprint(path: Path) -> str:
     return digest.hexdigest()
 
 
-def runtime_versions() -> dict[str, str]:
-    versions: dict[str, str] = {}
+def runtime_versions(project: Path) -> dict[str, Any]:
+    versions: dict[str, Any] = {}
     command_line = [sys.argv[0], "version", "--json"] if getattr(sys, "frozen", False) else [sys.executable, "-m", "chipcompiler.cli.main", "version", "--json"]
     try:
         completed = subprocess.run(command_line, capture_output=True, text=True, check=False)
@@ -37,6 +38,23 @@ def runtime_versions() -> dict[str, str]:
         versions["ecc"] = str(payload.get("version", payload.get("ecc", "unknown")))
     except (OSError, json.JSONDecodeError):
         versions["ecc"] = "unknown"
+    try:
+        from chipcompiler.cli.core.version_info import version_payload
+        from chipcompiler.cli.inspection.tool_versions import tool_versions
+
+        versions.update({key: str(value) for key, value in version_payload().items() if key in {"ecc", "dreamplace", "ecc_tools"}})
+        versions["tools"] = tool_versions()
+    except (ImportError, OSError):
+        versions["tools"] = {}
+    config_path = project / "ecc.toml"
+    try:
+        config = tomllib.loads(config_path.read_text())
+        pdk = config.get("pdk", {})
+        versions["pdk"] = {"name": pdk.get("name", "unknown"), "root": pdk.get("root", "unknown")}
+        if pdk.get("root"):
+            versions["pdk"]["root_exists"] = Path(pdk["root"]).is_dir()
+    except (OSError, tomllib.TOMLDecodeError):
+        versions["pdk"] = {"name": "unknown", "root": "unknown", "root_exists": False}
     return versions
 
 
@@ -109,7 +127,7 @@ def export_package(project: Path, workspace: Path, output: Path) -> dict[str, An
             "created_at": int(time.time()),
             "files": entries,
             "file_fingerprint": payload_fingerprint(entries),
-            "runtime": runtime_versions(),
+            "runtime": runtime_versions(project),
             "inputs": {
                 entry["path"]: entry["sha256"]
                 for entry in entries

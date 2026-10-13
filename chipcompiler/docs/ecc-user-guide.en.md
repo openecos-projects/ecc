@@ -1436,3 +1436,7 @@ creation time.
 `ecc reproducible verify` audits the package schema, manifest entry types and duplicate paths,
 archive file sizes, SHA-256 checksums, aggregate file fingerprint, input fingerprints, and
 unsafe archive paths. Manifest or evidence tampering returns exit code `6`.
+
+The reproducible manifest also records ECC, ECC-Tools, DreamPlace, Yosys, Sizer,
+KLayout, and PDK identity/presence metadata so an evidence package can be compared
+across environments.
