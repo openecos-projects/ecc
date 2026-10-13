@@ -270,7 +270,7 @@ In an interactive terminal the CLI renders live per-step progress and log tails;
 | # | Step | Tool | What it does |
 |---|------|------|--------------|
 | 1 | synthesis | yosys | RTL synthesis and technology mapping (slang frontend reads SystemVerilog) |
-| 2 | lec | yosys_lec | Logic equivalence check: synthesis netlist vs its golden netlist |
+| 2 | lec | kepler_formal | Logic equivalence check: synthesis netlist vs its golden netlist |
 | 3 | pre_floorplan | ecc | Build the simple floorplan with automatic macro placement |
 | 4 | macro_placement | dreamplace | Run macro-only placement (positions can also be set manually with `ecc macro`, see §6.5); this is the handoff checkpoint before the macro-location file is consumed |
 | 5 | post_floorplan | ecc | Read the macro-location file; create tracks, IO pins, tap cells, PDN, and clock-net setup |
@@ -290,7 +290,7 @@ In an interactive terminal the CLI renders live per-step progress and log tails;
 
 ```mermaid
 graph LR
-    A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> D[Placement<br/>dreamplace]
+    A[Synthesis<br/>yosys] --> Q[LEC<br/>kepler_formal] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> D[Placement<br/>dreamplace]
     D --> E[CTS] --> F[Legalization<br/>dreamplace] --> T[Timing Opt<br/>sizer] --> G[Routing]
     G --> J[Filler] --> I[LVS] --> H[DRC] --> N[Post-route LEC<br/>kepler_formal] --> K[RCX] --> L[STA] --> W[Power Analysis] --> M[Harden<br/>GDS/LEF/LIB]
 ```
@@ -317,7 +317,7 @@ $ ecc status
   steps:
     synthesis (yosys) success 0:0:17
       log: ecc log synthesis --workspace default
-    lec (yosys_lec) success 0:0:1
+    lec (kepler_formal) success 0:0:1
       log: ecc log lec --workspace default
     pre_floorplan (ecc) success 0:0:1
       log: ecc log pre_floorplan --workspace default
@@ -348,7 +348,7 @@ $ ecc status
   steps:
     synthesis (yosys) success 0:0:17
       log: ecc log synthesis --workspace default
-    lec (yosys_lec) success 0:0:1
+    lec (kepler_formal) success 0:0:1
     pre_floorplan (ecc) success 0:0:1
     macro_placement (dreamplace) success 0:0:5
     post_floorplan (ecc) success 0:0:1
@@ -361,7 +361,7 @@ $ ecc status
     rcx (ecc) success 0:0:0
     sta (ecc) success 0:2:35
     lvs (ecc) success 0:0:1
-    postroutelec (yosys_lec) success 0:0:1
+    postroutelec (kepler_formal) success 0:0:1
     drc (ecc) success 0:0:2
     harden (ecc) success 0:0:11
 rc=0
@@ -391,12 +391,12 @@ default/
 ├── origin/             # frozen inputs: gcd.v + the auto-generated gcd.sdc
 ├── config/             # configs actually in effect per step (view: ecc config <step>)
 ├── Synthesis_yosys/    # each step dir is organized into log/ script/ output/ report/ ...
-├── lec_yosys_lec/       # synthesis-level LEC equivalence check
+├── lec_kepler_formal/   # synthesis-level LEC equivalence check
 ├── preFloorplan_ecc/
 ├── macroPlacement_dreamplace/
 ├── postFloorplan_ecc/
 ├── ...
-├── postRouteLec_yosys_lec/   # LEC equivalence check (output/<design>_postRouteLec_result.json)
+├── postRouteLec_kepler_formal/   # LEC equivalence check (output/<design>_postRouteLec_result.json)
 ├── Harden_ecc/
 │   └── output/
 │       ├── gcd_Harden.gds     # final layout

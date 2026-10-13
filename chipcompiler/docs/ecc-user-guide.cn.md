@@ -873,9 +873,10 @@ ecc workspace reconcile-deletes     # 崩溃后收尾未完成的 workspace 删�
 fresh-run 语义相同）。`derive` 把源 workspace 已完成的步骤复制到
 `<project>/<TARGET>`——可以只从指定步骤开始——并在 `project.json` 中登记分叉关系，
 使实验可以从中间结果继续而不影响源。`archive` 是让 workspace 退出自动选择的推荐方式
-（不必手改 `project.json`）；`delete` 取消登记并可选删除目录。所有生命周期变更都接受
-自动化选项（`--expected-revision`、`--command-id`、`--no-wait`；见 §5.1），workspace
-被占用时报 `workspace_busy`（退出码 20）。
+（不必手改 `project.json`）；`delete` 取消登记并可选删除目录。自动化选项按需适用
+（archive/delete/reset-flow 带 `--expected-revision`；创建/分叉类子命令带
+`--command-id` 与 `--no-wait`；见 §5.1），对占用中的 workspace 执行变更会报
+`workspace_busy`（退出码 20）。
 
 ## 8.6. flow — 查看已注册的 flow 目录
 

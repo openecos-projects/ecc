@@ -269,7 +269,7 @@ ecc run --preset rtl2gds
 | # | 步骤 | 工具 | 作用 |
 |---|------|------|------|
 | 1 | synthesis | yosys | RTL 综合、工艺映射（slang 前端读入 SystemVerilog） |
-| 2 | lec | yosys_lec | 逻辑等价性检查：综合网表与 golden 网表 |
+| 2 | lec | kepler_formal | 逻辑等价性检查：综合网表与 golden 网表 |
 | 3 | pre_floorplan | ecc | 执行 simple floorplan，并使用自动 macro placement |
 | 4 | macro_placement | dreamplace | 执行仅宏单元摆放（可用 `ecc macro` 手工指定位置，见 §6.5）；这是宏位置文件被读取前的交接检查点 |
 | 5 | post_floorplan | ecc | 读取宏位置文件，完成 tracks、IO pin、tap cell、PDN 和时钟网设置 |
@@ -289,7 +289,7 @@ ecc run --preset rtl2gds
 
 ```mermaid
 graph LR
-    A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> D[Placement<br/>dreamplace]
+    A[Synthesis<br/>yosys] --> Q[LEC<br/>kepler_formal] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> D[Placement<br/>dreamplace]
     D --> E[CTS] --> F[Legalization<br/>dreamplace] --> T[Timing Opt<br/>sizer] --> G[Routing]
     G --> J[Filler] --> I[LVS] --> H[DRC] --> N[Post-route LEC<br/>kepler_formal] --> K[RCX] --> L[STA] --> W[Power Analysis] --> M[Harden<br/>GDS/LEF/LIB]
 ```
@@ -316,7 +316,7 @@ $ ecc status
   steps:
     synthesis (yosys) success 0:0:17
       log: ecc log synthesis --workspace default
-    lec (yosys_lec) success 0:0:1
+    lec (kepler_formal) success 0:0:1
       log: ecc log lec --workspace default
     pre_floorplan (ecc) success 0:0:1
       log: ecc log pre_floorplan --workspace default
@@ -347,7 +347,7 @@ $ ecc status
   steps:
     synthesis (yosys) success 0:0:17
       log: ecc log synthesis --workspace default
-    lec (yosys_lec) success 0:0:1
+    lec (kepler_formal) success 0:0:1
     pre_floorplan (ecc) success 0:0:1
     macro_placement (dreamplace) success 0:0:5
     post_floorplan (ecc) success 0:0:1
@@ -360,7 +360,7 @@ $ ecc status
     rcx (ecc) success 0:0:0
     sta (ecc) success 0:2:35
     lvs (ecc) success 0:0:1
-    postroutelec (yosys_lec) success 0:0:1
+    postroutelec (kepler_formal) success 0:0:1
     drc (ecc) success 0:0:2
     harden (ecc) success 0:0:11
 rc=0
@@ -390,12 +390,12 @@ default/
 ├── origin/             # 冻结的输入：gcd.v + 自动生成的 gcd.sdc
 ├── config/             # 各步骤实际生效的配置（ecc config <step> 查看）
 ├── Synthesis_yosys/    # 每步子目录内含 log/ script/ output/ report/ 等分类
-├── lec_yosys_lec/       # 综合级 LEC 等价性检查
+├── lec_kepler_formal/   # 综合级 LEC 等价性检查
 ├── preFloorplan_ecc/
 ├── macroPlacement_dreamplace/
 ├── postFloorplan_ecc/
 ├── ...
-├── postRouteLec_yosys_lec/   # LEC 等价性检查（output/<design>_postRouteLec_result.json）
+├── postRouteLec_kepler_formal/   # LEC 等价性检查（output/<design>_postRouteLec_result.json）
 ├── Harden_ecc/
 │   └── output/
 │       ├── gcd_Harden.gds     # 最终版图

@@ -855,9 +855,10 @@ source workspace's completed steps into `<project>/<TARGET>` — optionally only
 step — and registers the branch relationship in `project.json`, so an experiment can continue
 from an intermediate result without touching the source. `archive` is the preferred way to
 retire a workspace from auto-selection (instead of editing `project.json` by hand); `delete`
-unregisters it and optionally removes the directory. All lifecycle mutations accept the
-automation flags (`--expected-revision`, `--command-id`, `--no-wait`; §5.1) and fail with
-`workspace_busy` (exit 20) when the workspace is in use.
+unregisters it and optionally removes the directory. The automation flags apply where
+relevant (`--expected-revision` on archive/delete/reset-flow; `--command-id` and `--no-wait`
+on the creating/branching subcommands; §5.1), and a mutation on an in-use workspace fails
+with `workspace_busy` (exit 20).
 
 ## 8.6. flow — inspect the registered flow catalog
 

@@ -38,10 +38,10 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 │   └── macro_location.tcl # macro-placement Tcl handoff (see §1.5; written by macroPlacement or the macro.placements parameter)
 ├── Synthesis_yosys/
 │   └── data/global_var.tcl  # the synthesis step's "config" (Tcl variables, not JSON)
-├── lec_yosys_lec/            # synthesis-level LEC (Tcl-script driven)
+├── lec_kepler_formal/         # synthesis-level LEC (Tcl-script driven)
 ├── timing_optimization_sizer/
 │   └── script/<design>.{env_file,cmd_file}  # generated Sizer configuration
-└── postRouteLec_yosys_lec/  # post-route LEC step (Tcl-script driven)
+└── postRouteLec_kepler_formal/  # post-route LEC step (Tcl-script driven)
 ```
 
 > History: the old `flow_ecc.json` (configuration-path aggregator) and `fixfanout_ecc.json` (high-fanout fixing, a standalone step) were removed along with an ecc-tools update. `cts.max_fanout` now feeds both the auto-generated SDC `set_max_fanout` constraint and CTS's `max_fanout` field.
@@ -121,7 +121,8 @@ Source: `_LEGACY_PARAM_REGISTRY` in [chipcompiler/data/parameter_schema.py](http
 ```bash
 ecc param list --step cts
 ecc param list --step floorplan
-ecc param list --all
+ecc param list --all              # full reviewed schema (pdk.* needs --all --plain in preset projects)
+ecc param list --all --plain      # complete catalog, including the pdk.* path parameters
 ecc param set cts.skew_bound 0.05
 ecc param set floorplan.phy_placer.well_tap.distance_micron 30.0
 ecc param set cts.routing_layer '[4, 5]'
@@ -167,10 +168,11 @@ Parameter inspection and modification go through the `ecc param` subcommands (su
 
 | Command | What it does |
 |---|---|
-| `ecc param list [--step STEP] [--all]` | List parameters. By default only the §1.1 legacy-semantic parameters plus explicitly overridden direct-config parameters are shown; `--step STEP` filters by group/applies to show the full reviewed schema of that step; `--all` shows the entire reviewed schema |
+| `ecc param list [--step STEP] [--all]` | List parameters. By default only the §1.1 legacy-semantic parameters plus explicitly overridden direct-config parameters are shown; `--step STEP` filters by group/applies to show the full reviewed schema of that step; `--all` shows the entire reviewed schema (`pdk.*` parameters only appear with `--all --plain` while a flow preset is configured) |
 | `ecc param show KEY` | Single-parameter detail: current value / default / source / type / range / write target (`maps_to`, `config_target`, `pdk_target`) and description |
 | `ecc param set KEY VALUE` | Validate and write the parameter override (two scopes in the table below); invalid values (out of range, not in choices, wrong type) fail with `invalid_value` and nothing is written |
 | `ecc param unset KEY` | Remove the override and fall back to the default (workspace scope restores the pre-edit `baseline`) |
+| `ecc param apply [--set KEY=VALUE...] [--unset KEY...]` | Atomically apply a batch of set/unset edits (project scope, or one workspace with `--workspace NAME`; in workspace scope `--step STEP` restricts the batch to that step's parameters). A mid-batch validation failure writes nothing |
 | `ecc param diff` | List only parameters that differ from their defaults (workspace scope: local overrides with their `baseline`) |
 
 Options shared by every subcommand:
@@ -180,6 +182,7 @@ Options shared by every subcommand:
 | `--project DIR` | Select the project directory (defaults to the current directory) |
 | `--workspace NAME` | Switch to workspace scope: operate on the named workspace declared in the project.json manifest instead of the project `ecc.toml` |
 | `--plain` | Machine-readable `key=value` output (script-friendly); the default is human-readable text |
+| `--json` | Record-array output — accepted by `list`, `show`, and `diff` only |
 
 Behavior differences between the two scopes:
 
@@ -526,7 +529,7 @@ also be set in that section without adding top-level ECC parameters.
 
 ## 6. timing optimization (Sizer)
 
-Timing optimization is a multi-stage subflow: first run setup Sizer with `workspace.pdk.libs` (normally MAX/`ss_rcworst`); when `sta_ecc.json` declares a `MIN` corner, run a second Sizer invocation in `-hold_only` mode with that corner's FF Liberty; then legalize the resulting DEF/netlist with DreamPlace and publish the ECC artifacts. `ecc config timing optimization` lists `db_ecc.json`, `sizer_ecc.json`, and `dreamplace_ecc.json`. The ECC-owned Sizer config supplies hold-pass controls, while the generated scripts carry the complete command line.
+Timing optimization is a multi-stage subflow: first run setup Sizer with `workspace.pdk.libs` (normally MAX/`ss_rcworst`); when `sta_ecc.json` declares a `MIN` corner, run a second Sizer invocation in `-hold_only` mode with that corner's FF Liberty; then legalize the resulting DEF/netlist with DreamPlace and publish the ECC artifacts. `ecc config timing_optimization` lists `db_ecc.json`, `sizer_ecc.json`, and `dreamplace_ecc.json`. The ECC-owned Sizer config supplies hold-pass controls, while the generated scripts carry the complete command line.
 
 The final inner DreamPlace legalization uses `legalize_flag=1` and `detailed_place_flag=0` to protect the repaired hold timing.
 
@@ -665,7 +668,8 @@ Every field is set the same way — `ecc param set KEY VALUE` — so each step b
 The DEF, netlist, and output paths in `db_ecc.json` are generated by step scheduling and cannot be set with the CLI. The following PDK/design resource paths populate their corresponding db fields:
 
 ```bash
-ecc param list --step pdk
+ecc param list --all --plain   # pdk is a config owner, not a flow step: --step pdk lists nothing
+ecc param show pdk.tech
 ecc param set pdk.tech VALUE   # likewise pdk.lefs, pdk.libs, pdk.mapping_file, pdk.sdc, pdk.spef
 ```
 
@@ -759,7 +763,9 @@ ecc param set rcx.thread_num VALUE
 
 ### 15.10 sta
 
-`liberty` is refreshed from the PDK and cannot be overridden locally through STA parameters. The STA JSON signoff corners and runtime maximum path count are configurable:
+`liberty` defaults to the PDK-provided corner list and is rarely changed; when it must be,
+`sta.liberty` accepts a JSON literal (corner/temperature/path entries) via `ecc param set`.
+The STA JSON signoff corners and runtime maximum path count are configurable:
 
 ```bash
 ecc param list --step sta
@@ -774,10 +780,11 @@ harden has no dedicated `ecc param` schema; it only reuses workflow-generated `d
 ## 16. Configuration inspection and modification cheat sheet
 
 ```bash
-ecc config floorplan          # list the config files floorplan actually uses
+ecc config pre_floorplan     # list the config files the floorplan stages actually use
 ecc config --plain            # project-level config (ecc.toml after resolution)
 ecc param list --step cts                 # list all tunable CTS fields
-ecc param list --all                      # show the full reviewed schema
+ecc param list --all                      # show the full reviewed schema (--all --plain also lists pdk.*)
+ecc param apply --set k=v --unset k2      # atomically apply a batch of parameter edits
 ecc param show KEY / diff                 # single parameter / diff against defaults
 ecc param set place.target_density 0.55  # change a parameter (written to ecc.toml; applies when a workspace is next created)
 ecc param set cts.skew_bound 0.05         # set a CTS JSON field directly
