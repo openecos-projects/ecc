@@ -1819,3 +1819,12 @@ CI design matrix 的每个 design leg 会在产品 flow 后执行轻量打包 CL
 
 CI 打包 smoke 可以接收 E2E 输出目录。发现真实 `home/flow.json` 时，会额外针对真实 workspace
 验证 `status`、reproducible export 和 verify；未发现时继续执行隔离的契约 smoke，不会误阻断 CI。
+
+在比较或 promote candidate 前可以先校验 sweep 完整性：
+
+```bash
+ecc sweep verify --project /path/to/project --name density_test
+```
+
+命令会检查 plan fingerprint、candidate/result 对应关系、参数一致性、workspace 是否存在以及
+结果缺失/重复。完整性错误返回退出码 `6`。

@@ -286,6 +286,40 @@ def sweep_result(project: Path, name: str) -> Path:
     return project / "experiments" / name / "results.json"
 
 
+def verify_sweep(project: Path, name: str) -> dict[str, Any]:
+    root = project / "experiments" / name
+    plan = load_json(root / "sweep.json")
+    errors: list[str] = []
+    if not isinstance(plan, dict):
+        return {"status": "fail", "sweep": name, "errors": ["missing or invalid sweep.json"]}
+    expected_fingerprint = payload_fingerprint({key: value for key, value in plan.items() if key not in {"created_at", "plan_fingerprint"}})
+    if plan.get("plan_fingerprint") != expected_fingerprint:
+        errors.append("plan_fingerprint mismatch")
+    candidates = {item.get("id"): item for item in plan.get("candidates", []) if isinstance(item, dict) and item.get("id")}
+    results_payload = load_json(root / "results.json")
+    results = results_payload.get("results", []) if isinstance(results_payload, dict) else []
+    result_ids: set[str] = set()
+    for result in results:
+        candidate_id = result.get("id") if isinstance(result, dict) else None
+        if not candidate_id or candidate_id in result_ids:
+            errors.append(f"invalid or duplicate result: {candidate_id or 'unknown'}")
+            continue
+        result_ids.add(candidate_id)
+        candidate = candidates.get(candidate_id)
+        if candidate is None:
+            errors.append(f"result not in plan: {candidate_id}")
+            continue
+        if result.get("parameters") != candidate.get("parameters"):
+            errors.append(f"parameters mismatch: {candidate_id}")
+        workspace = Path(result.get("workspace", ""))
+        if not workspace.is_dir():
+            errors.append(f"workspace missing: {candidate_id}")
+    for candidate_id in candidates:
+        if candidate_id not in result_ids:
+            errors.append(f"result missing: {candidate_id}")
+    return {"status": "pass" if not errors else "fail", "sweep": name, "candidate_count": len(candidates), "result_count": len(results), "errors": errors}
+
+
 def compare_sweep(project: Path, name: str) -> list[dict[str, Any]]:
     payload = load_json(sweep_result(project, name), {"results": []})
     rows = payload.get("results", [])

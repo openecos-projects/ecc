@@ -1615,3 +1615,12 @@ and sweep-plan creation without running a second full EDA flow.
 The CI packaged smoke can optionally consume the E2E output directory. When a real
 `home/flow.json` is found, it additionally validates `status`, reproducible export,
 and verification against that real workspace; otherwise it keeps the isolated contract smoke.
+
+Verify sweep integrity before comparing or promoting candidates:
+
+```bash
+ecc sweep verify --project /path/to/project --name density_test
+```
+
+The command checks the plan fingerprint, candidate/result membership, parameter consistency,
+workspace existence, and missing or duplicate results. It returns exit code `6` on integrity errors.

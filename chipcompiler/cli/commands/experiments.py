@@ -19,6 +19,7 @@ from chipcompiler.cli.experiments.operations import (
     read_package,
     run_sweep,
     sweep_matrix,
+    verify_sweep,
     verify_package,
 )
 
@@ -144,6 +145,14 @@ def sweep_compare(*, project: Annotated[str | None, typer.Option("--project")] =
     for row in sweep_matrix(rows):
         parameters = ",".join(f"{key}={value}" for key, value in row["parameters"].items())
         typer.echo(f"{row['candidate']} | {row['flow']} | {row['steps'] or '-'} | {row['checklist'] or '-'} | {row['violations']} | {row['qor']} | {row['exit_code']} | {parameters}")
+
+
+@sweep_app.command("verify")
+def sweep_verify(*, project: Annotated[str | None, typer.Option("--project")] = None, name: Annotated[str, typer.Option("--name")]) -> None:
+    result = verify_sweep(project_path(project), name)
+    typer.echo(json.dumps(result, indent=2, sort_keys=True))
+    if result["status"] != "pass":
+        raise typer.Exit(6)
 
 
 @explore_app.command("rank")
