@@ -88,6 +88,8 @@ def reproducible_report(*, package: Annotated[str, typer.Option("--package")], j
         typer.echo(f"verification: {result['verification']['status']}")
         runtime = result.get("runtime", {})
         typer.echo(f"ecc: {runtime.get('ecc', 'unknown')} pdk: {runtime.get('pdk', {}).get('name', 'unknown')}")
+        summary = result.get("summary", {})
+        typer.echo(f"flow: {summary.get('flow_status', 'unknown')} checklist: {summary.get('checklist_status', 'unknown')} qor: {summary.get('qor', 'unknown')} violations: {summary.get('violation_count', 'unknown')}")
     if result["verification"]["status"] != "pass":
         raise typer.Exit(6)
 

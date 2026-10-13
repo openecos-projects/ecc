@@ -202,6 +202,18 @@ def package_report(package: Path) -> dict[str, Any]:
     archive, manifest = read_package(package)
     try:
         files = manifest.get("files", [])
+        payloads: dict[str, Any] = {}
+        for member in archive.getmembers():
+            if member.isfile() and member.name.endswith(".json"):
+                try:
+                    payloads[member.name] = json.load(archive.extractfile(member))
+                except (json.JSONDecodeError, OSError):
+                    continue
+        flow = next((value for name, value in payloads.items() if name.endswith("flow.json") and isinstance(value, dict)), {})
+        checklist = next((value for name, value in payloads.items() if "checklist" in name and isinstance(value, dict)), {})
+        qor = next((value for name, value in payloads.items() if "qor" in name and isinstance(value, dict)), {})
+        status_values = [item.get("status") for item in checklist.get("items", []) if isinstance(item, dict)]
+        violation_count = _first_number(payloads, {"violation_count", "violations", "error_count"})
         return {
             "kind": manifest.get("kind"),
             "schema_version": manifest.get("schema_version"),
@@ -212,6 +224,12 @@ def package_report(package: Path) -> dict[str, Any]:
             "file_fingerprint": manifest.get("file_fingerprint"),
             "runtime": manifest.get("runtime", {}),
             "inputs": manifest.get("inputs", {}),
+            "summary": {
+                "flow_status": flow.get("status", "unknown"),
+                "checklist_status": "blocked" if "blocked" in status_values else "attention" if "warning" in status_values else "passed" if status_values and all(value == "passed" for value in status_values) else "unknown",
+                "qor": qor.get("qor_score", qor.get("score", "unknown")),
+                "violation_count": int(violation_count) if violation_count is not None else "unknown",
+            },
             "verification": verify_package(package),
         }
     finally:

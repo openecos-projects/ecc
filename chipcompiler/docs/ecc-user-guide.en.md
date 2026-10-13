@@ -1461,3 +1461,6 @@ ecc reproducible inspect --package evidence.tar.gz --files --type checklist --js
 ```
 
 Supported file types are `all`, `rtl`, `config`, `flow`, `checklist`, and `signoff`.
+
+The offline report also summarizes flow status, checklist status, QoR, and checker violation
+count from evidence files. Missing or legacy evidence is reported as `unknown`.
