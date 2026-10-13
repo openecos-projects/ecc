@@ -1837,3 +1837,6 @@ ecc explore export --project /path/to/project --name density_test --format markd
 ```
 
 支持 `json`、`csv` 和 `markdown` 三种格式。
+
+打包 CI smoke 还会校验 sweep 结果完整性，并将排序结果导出为 JSON、CSV 和 Markdown，文件会
+上传到对应 design 的 `cli-contract` 证据目录。

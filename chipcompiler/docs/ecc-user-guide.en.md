@@ -1633,3 +1633,6 @@ ecc explore export --project /path/to/project --name density_test --format markd
 ```
 
 Supported formats are `json`, `csv`, and `markdown`.
+
+Packaged CI smoke also verifies sweep result integrity and exports ranked results as JSON, CSV,
+and Markdown. The files are uploaded under the design's `cli-contract` evidence directory.
