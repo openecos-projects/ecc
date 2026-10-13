@@ -23,7 +23,7 @@ from .test_module import FakeParams
     ("owner", "detailed_place_flag"),
     [
         (StepEnum.LEGALIZATION.value, 0),
-        (SkippableStepEnum.TIMING_OPT.value, 1),
+        (SkippableStepEnum.TIMING_OPT.value, 0),
     ],
 )
 def test_legalization_params_follow_owner(tmp_path, owner, detailed_place_flag):
@@ -63,11 +63,15 @@ def test_legalization_params_follow_owner(tmp_path, owner, detailed_place_flag):
 
     assert {
         "macro_only": params.macro_only,
+        "global_place_flag": params.global_place_flag,
+        "legalize_flag": params.legalize_flag,
         "detailed_place_flag": params.detailed_place_flag,
         "cell_padding_x": params.cell_padding_x,
         "post_legalization_adaptive_padding_flag": params.post_legalization_adaptive_padding_flag,
     } == {
         "macro_only": 0,
+        "global_place_flag": 0,
+        "legalize_flag": 1,
         "detailed_place_flag": detailed_place_flag,
         "cell_padding_x": 0,
         "post_legalization_adaptive_padding_flag": 0,
@@ -117,7 +121,7 @@ def test_geometry_legalization_clears_inherited_padding(
     monkeypatch.setattr(placer_module, "PlacementEngine", FakeEngine)
 
     assert module.run_legalization() is True
-    assert seen == [(int(owner != StepEnum.LEGALIZATION.value), expected_padding)]
+    assert seen == [(0, expected_padding)]
 
 
 def test_dreamplace_step_info_stringifies_path_config(tmp_path):
@@ -168,7 +172,7 @@ def _module_for_owner(tmp_path, step_name: str) -> DreamplaceModule:
         (DreamplaceRunMode.PLACEMENT, StepEnum.PLACEMENT.value, 1),
         (DreamplaceRunMode.MACRO_PLACEMENT, StepEnum.MACRO_PLACEMENT.value, 0),
         (DreamplaceRunMode.LEGALIZATION, StepEnum.LEGALIZATION.value, 0),
-        (DreamplaceRunMode.LEGALIZATION, SkippableStepEnum.TIMING_OPT.value, 1),
+        (DreamplaceRunMode.LEGALIZATION, SkippableStepEnum.TIMING_OPT.value, 0),
     ],
 )
 def test_detailed_place_default_respects_run_mode(

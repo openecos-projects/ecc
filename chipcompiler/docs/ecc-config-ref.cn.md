@@ -512,6 +512,8 @@ GPUGR 默认继承 workspace 的 `bottom_layer`/`top_layer`。
 
 Timing optimization 是多阶段子流程：先用 `workspace.pdk.libs`（通常为 MAX/`ss_rcworst`）运行 setup Sizer；若 `sta_ecc.json` 声明了 `MIN` corner，再用该 corner 的 FF Liberty 执行一次 `-hold_only` 修复；然后用 DreamPlace 对最终暂存 DEF/网表做合法化，最后发布 ECC 产物。`ecc config timing optimization` 会列出 `db_ecc.json`、`sizer_ecc.json` 和 `dreamplace_ecc.json`。ECC 自己的 Sizer 配置提供 hold pass 控制项，完整命令行仍由生成的脚本承载。
 
+最后的内部 DreamPlace 合法化使用 `legalize_flag=1`、`detailed_place_flag=0`，以保护已修复的 hold 时序。
+
 `config/sizer_ecc.json` 由 ECC 管理，与 ecc-sizer 仓库的命令行默认值分开：
 
 | 字段 | 默认值 | 含义 |

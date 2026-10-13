@@ -126,7 +126,8 @@ class DreamplaceModule:
         elif mode is DreamplaceRunMode.LEGALIZATION:
             params.global_place_flag = 0
             params.legalize_flag = 1
-            params.detailed_place_flag = int(self.step.name != StepEnum.LEGALIZATION.value)
+            # Geometry-only legalization preserves the repaired hold timing.
+            params.detailed_place_flag = 0
             params.enable_fillers = 0
             params.random_center_init_flag = 0
             params.auto_adjust_bins = 1
