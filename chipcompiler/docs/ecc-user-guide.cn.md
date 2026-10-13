@@ -1688,3 +1688,6 @@ ecc reproducible inspect --package evidence.tar.gz --files --type checklist --js
 
 离线报告还会从证据文件汇总 flow 状态、checklist 状态、QoR 和 checker 违例数。缺失或旧
 格式证据统一显示为 `unknown`，不会误判为通过。
+
+离线摘要字段现在包含证据 `sources` 和 `reasons`（`ok`、`missing`、`invalid`）；无法评级时，
+摘要值仍显示为 `unknown`。

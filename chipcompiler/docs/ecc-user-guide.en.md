@@ -1464,3 +1464,6 @@ Supported file types are `all`, `rtl`, `config`, `flow`, `checklist`, and `signo
 
 The offline report also summarizes flow status, checklist status, QoR, and checker violation
 count from evidence files. Missing or legacy evidence is reported as `unknown`.
+
+Offline summary fields include evidence `sources` and `reasons` (`ok`, `missing`, or `invalid`),
+while the value remains `unknown` when the evidence cannot be rated.

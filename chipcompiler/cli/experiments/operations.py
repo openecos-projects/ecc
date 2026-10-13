@@ -203,15 +203,17 @@ def package_report(package: Path) -> dict[str, Any]:
     try:
         files = manifest.get("files", [])
         payloads: dict[str, Any] = {}
+        invalid_json: list[str] = []
         for member in archive.getmembers():
             if member.isfile() and member.name.endswith(".json"):
                 try:
                     payloads[member.name] = json.load(archive.extractfile(member))
                 except (json.JSONDecodeError, OSError):
+                    invalid_json.append(member.name)
                     continue
-        flow = next((value for name, value in payloads.items() if name.endswith("flow.json") and isinstance(value, dict)), {})
-        checklist = next((value for name, value in payloads.items() if "checklist" in name and isinstance(value, dict)), {})
-        qor = next((value for name, value in payloads.items() if "qor" in name and isinstance(value, dict)), {})
+        flow_name, flow = next(((name, value) for name, value in payloads.items() if name.endswith("flow.json") and isinstance(value, dict)), (None, {}))
+        checklist_name, checklist = next(((name, value) for name, value in payloads.items() if "checklist" in name and isinstance(value, dict)), (None, {}))
+        qor_name, qor = next(((name, value) for name, value in payloads.items() if "qor" in name and isinstance(value, dict)), (None, {}))
         status_values = [item.get("status") for item in checklist.get("items", []) if isinstance(item, dict)]
         violation_count = _first_number(payloads, {"violation_count", "violations", "error_count"})
         return {
@@ -229,6 +231,8 @@ def package_report(package: Path) -> dict[str, Any]:
                 "checklist_status": "blocked" if "blocked" in status_values else "attention" if "warning" in status_values else "passed" if status_values and all(value == "passed" for value in status_values) else "unknown",
                 "qor": qor.get("qor_score", qor.get("score", "unknown")),
                 "violation_count": int(violation_count) if violation_count is not None else "unknown",
+                "sources": {"flow": flow_name, "checklist": checklist_name, "qor": qor_name, "violations": "embedded-json" if violation_count is not None else None},
+                "reasons": {"flow": "ok" if flow_name else "missing", "checklist": "invalid" if any("checklist" in name for name in invalid_json) else "ok" if checklist_name else "missing", "qor": "ok" if qor_name else "missing", "violations": "ok" if violation_count is not None else "missing"},
             },
             "verification": verify_package(package),
         }
