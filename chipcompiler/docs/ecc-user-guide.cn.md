@@ -22,6 +22,14 @@ curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | 
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --with-toolchain
 ```
 
+如需最新的 nightly 构建（含 ecc、ecc-sizer、kepler-formal 和 ICS55 PDK），替代固定的 stable 版本：
+
+```bash
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --nightly
+```
+
+在同一命令中加 `--with-toolchain` 可一并安装 Yosys（OSS CAD Suite）。不带 `--nightly` 重跑安装脚本即可切回 stable 版本；用 `--nightly-tag vX.Y.Z-nightly.YYYYMMDD` 可指定具体的 nightly。
+
 wrapper 默认安装到 `~/.local/bin`。该目录不在 `PATH` 中时加入：
 
 ```bash

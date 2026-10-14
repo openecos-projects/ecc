@@ -44,6 +44,18 @@ To also install Yosys (OSS CAD Suite) and the ICS55 PDK:
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --with-toolchain
 ```
 
+To install the latest nightly build (ecc, ecc-sizer, kepler-formal, and the
+ICS55 PDK) instead of the pinned stable release:
+
+```sh
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --nightly
+```
+
+Add `--with-toolchain` to the same command to install Yosys (OSS CAD Suite)
+as well. Re-running the installer without `--nightly` switches back to the
+stable release; `--nightly-tag vX.Y.Z-nightly.YYYYMMDD` pins a specific
+nightly.
+
 The wrapper is installed to `~/.local/bin` by default. If that directory is not
 on `PATH`, add it:
 
