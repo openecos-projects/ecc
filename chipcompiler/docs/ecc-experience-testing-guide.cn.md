@@ -310,7 +310,7 @@ ecc experience campaign validate --manifest campaign.json --json
 外部 campaign ledger。校验不会运行 EDA、创建 workspace 或创建 output/store 目录。
 manifest 使用相对路径，设计清单与标签转换由用户环境负责；ECC 不扫描私有数据集。
 
-### 10.1 串行 baseline 批次
+### 串行 baseline 批次
 
 已准备好的 project 可直接执行：
 
@@ -364,7 +364,7 @@ campaign；本版不自动恢复运行中的 attempt。并发调度、阶段 DSE
 声明输入摘要不覆盖完整 include/PDK 内容闭包；工具版本也不等于所有可执行文件
 内容摘要。本命令建立基线、保留经验，不声明 PPA 已改善或经验已跨设计泛化。
 
-### 10.2 外部执行与 ledger
+### 外部执行与 ledger
 
 校验通过后，可以让 ECC 创建一个可恢复的 campaign ledger。初始化只创建
 `output_root/campaign-ledger.json`，保存 manifest fingerprint、设计清单和空的试验

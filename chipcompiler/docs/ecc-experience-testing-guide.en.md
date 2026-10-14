@@ -346,7 +346,7 @@ ledger. Validation does not run EDA, create workspaces, or create output/store
 directories. Manifest paths are relative; design discovery and label conversion remain
 in the user environment. ECC does not scan private datasets.
 
-### 10.1 Serial baseline campaigns
+### Serial baseline campaigns
 
 Execute prepared ECC projects directly:
 
@@ -414,7 +414,7 @@ Declared input digests do not verify the complete include/PDK closure; observed 
 do not hash every executable. Baseline collection does not demonstrate PPA improvement
 or cross-design generalization.
 
-### 10.2 External execution and ledgers
+### External execution and ledgers
 
 After validation, initialize a resumable campaign ledger. Initialization creates only
 `output_root/campaign-ledger.json`, containing the manifest fingerprint, design list, and
