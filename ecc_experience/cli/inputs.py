@@ -67,3 +67,13 @@ class EvaluationInput:
     store: str
     baseline: str
     candidate: str
+
+
+@dataclass(frozen=True)
+class ReleaseInput:
+    output: OutputOptions
+    project: ProjectOptions
+    store: str
+    case_ids: list[str] | None = None
+    output_path: str | None = None
+    release_path: str | None = None

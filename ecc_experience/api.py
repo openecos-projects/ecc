@@ -9,6 +9,7 @@ from ecc_experience.benchmark.summary import summarize as summarize_campaign
 from ecc_experience.collection.collect import CollectionResult, collect_committed_case
 from ecc_experience.collection.drain import drain as drain_recording
 from ecc_experience.knowledge.recommend import recommend as recommend_cases
+from ecc_experience.knowledge.release import create_release, verify_release
 from ecc_experience.knowledge.store import ExperienceStore
 from ecc_experience.knowledge.verify import verify_case
 from ecc_experience.models import ExperienceCase, Verification
@@ -101,3 +102,11 @@ def plan(workspace: str | Path, store: str | Path, output: str | Path, *, limit:
 
 def evaluate(baseline: str, candidate: str, store: str | Path) -> dict:
     return evaluate_cases(baseline, candidate, store)
+
+
+def release_create(case_ids: list[str], store: str | Path, output: str | Path) -> dict:
+    return create_release(case_ids, store, output)
+
+
+def release_verify(release: str | Path, store: str | Path) -> dict:
+    return verify_release(release, store)

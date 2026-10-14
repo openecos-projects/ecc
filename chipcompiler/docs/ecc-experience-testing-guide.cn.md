@@ -405,6 +405,29 @@ ecc experience evaluate \
 优化结论。只有在同一设计、同一工艺和相同约束下，AI 才能把 `improved` 作为候选
 结果，并继续检查 checklist、signoff 和原始报告。
 
+确认一组案例可以作为可审计知识版本时，先创建 release：
+
+```bash
+ecc experience release create \
+  --store "$EXPERIENCE_STORE" \
+  --case-id "$CASE_ID_1" \
+  --case-id "$CASE_ID_2" \
+  --output "$OUTPUT_ROOT/experience-release.json" \
+  --json
+
+ecc experience release verify \
+  --store "$EXPERIENCE_STORE" \
+  --release "$OUTPUT_ROOT/experience-release.json" \
+  --json
+```
+
+release 只接受证据校验为 `pass`、完整输入指纹存在的案例，记录案例 ID、输入/工艺
+指纹、workspace revision 和 QoR 摘要，不复制私有 workspace 路径和大型产物，也不
+自动修改参数或启用经验。输出文件是原子写入且内容地址可核验；同一内容重复创建
+幂等，覆盖不同内容会失败。`release verify` 会重新读取 store 并核对案例摘要，
+适合在 CI、备份恢复或交给 AI 前执行。没有稳定 attempt、QoR 不可用、证据损坏或
+旧 workspace 来源不完整的案例不能进入 release。
+
 从 collect/list 的 JSON 取得实际 case_id 后执行：
 
 ```bash

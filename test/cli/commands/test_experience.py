@@ -248,6 +248,70 @@ def test_experience_evaluate_returns_structured_comparison(
     assert json.loads(result.stdout)[0]["comparison"] == "improved"
 
 
+def test_experience_release_create_and_verify(experience_workspace_factory, tmp_path):
+    input_file = tmp_path / "design.v"
+    input_file.write_text("module sample; endmodule")
+    workspace = experience_workspace_factory("release")
+    snapshot_path = workspace / "home/engineering-snapshot.json"
+    snapshot = json.loads(snapshot_path.read_text())
+    snapshot["workspaceSpec"] = {
+        "design": {"topModule": "sample"},
+        "inputs": [{"inputId": "rtl", "role": "rtl"}],
+    }
+    snapshot["workspaceBindings"] = {"inputs": {"rtl": str(input_file)}}
+    qor = unavailable_qor_snapshot_extension("test fixture")
+    qor["status"] = "available"
+    qor.pop("reason")
+    qor["score"] = 95.0
+    qor["scalarStatus"] = "GREEN"
+    snapshot["qorSnapshotExtension"] = qor
+    snapshot_path.write_text(json.dumps(snapshot))
+    from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
+    from ecc_experience.collection.collect import collect_committed_case
+    from ecc_experience.knowledge.store import ExperienceStore
+
+    store = tmp_path / "store"
+    case = collect_committed_case(
+        workspace,
+        ExperienceStore(store),
+        read_workspace_observation,
+        attempt_id="attempt-test-release",
+    ).case
+    release = tmp_path / "release.json"
+    created = runner.invoke(
+        app,
+        [
+            "experience",
+            "release",
+            "create",
+            "--store",
+            str(store),
+            "--case-id",
+            case.case_id,
+            "--output",
+            str(release),
+            "--json",
+        ],
+    )
+    verified = runner.invoke(
+        app,
+        [
+            "experience",
+            "release",
+            "verify",
+            "--store",
+            str(store),
+            "--release",
+            str(release),
+            "--json",
+        ],
+    )
+
+    assert created.exit_code == 0, created.output
+    assert verified.exit_code == 0, verified.output
+    assert json.loads(verified.stdout)[0]["status"] == "pass"
+
+
 def test_experience_recording_rejects_store_inside_project(create_cli_project, tmp_path):
     project = create_cli_project()
     nested_store = Path(project) / "nested-store"

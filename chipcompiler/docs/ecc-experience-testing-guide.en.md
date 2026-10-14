@@ -449,6 +449,32 @@ or accepts an optimization result automatically. Only for the same design, proce
 constraints may an AI treat `improved` as a candidate result, then continue checking the
 checklist, signoff, and original reports.
 
+Freeze a set of cases into an auditable knowledge release only after they are verified:
+
+```bash
+ecc experience release create \
+  --store "$EXPERIENCE_STORE" \
+  --case-id "$CASE_ID_1" \
+  --case-id "$CASE_ID_2" \
+  --output "$OUTPUT_ROOT/experience-release.json" \
+  --json
+
+ecc experience release verify \
+  --store "$EXPERIENCE_STORE" \
+  --release "$OUTPUT_ROOT/experience-release.json" \
+  --json
+```
+
+A release accepts only cases whose evidence verification is `pass` and whose complete
+input-content fingerprint is present. It records case IDs, input/process fingerprints,
+workspace revisions, and QoR summaries. It does not copy private workspace paths or large
+artifacts, edit parameters, or enable experience automatically. The output is written
+atomically and can be verified by content identity; repeating the same release is
+idempotent, while overwriting it with different content fails. Run `release verify` in CI,
+after backup restoration, or before giving the release to an AI. Cases without a stable
+attempt, unavailable QoR, damaged evidence, or incomplete legacy provenance cannot enter a
+release.
+
 Read the actual case_id from collect/list JSON, then run:
 
 ```bash

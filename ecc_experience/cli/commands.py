@@ -15,6 +15,7 @@ from ecc_experience.cli.inputs import (
     PlanInput,
     RecommendInput,
     RecordingInput,
+    ReleaseInput,
     StoreInput,
 )
 
@@ -23,7 +24,9 @@ CaseArgument = Annotated[str, typer.Argument(help="Experience case ID")]
 
 experience_app = create_app(help="Collect, query and verify design experience evidence")
 campaign_app = create_app(help="Validate generic experience campaign manifests")
+release_app = create_app(help="Freeze and verify evidence-backed experience releases")
 experience_app.add_typer(campaign_app, name="campaign")
+experience_app.add_typer(release_app, name="release")
 
 
 @experience_app.command("collect", help="Collect a read-only observation from a workspace")
@@ -208,6 +211,42 @@ def evaluate_cmd(
         candidate=candidate,
     )
     execute_command("experience", command_input, handlers.evaluate)
+
+
+@release_app.command("create", help="Create a release from verified case IDs")
+def release_create_cmd(
+    *,
+    store: StoreOption,
+    output: Annotated[str, typer.Option("--output", help="Release JSON")],
+    case_ids: Annotated[list[str] | None, typer.Option("--case-id", help="Verified case ID")],
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = ReleaseInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(None),
+        store=store,
+        case_ids=case_ids,
+        output_path=output,
+    )
+    execute_command("experience", command_input, handlers.release_create)
+
+
+@release_app.command("verify", help="Verify a release against an experience store")
+def release_verify_cmd(
+    *,
+    store: StoreOption,
+    release: Annotated[str, typer.Option("--release", help="Release JSON")],
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = ReleaseInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(None),
+        store=store,
+        release_path=release,
+    )
+    execute_command("experience", command_input, handlers.release_verify)
 
 
 @campaign_app.command("validate", help="Validate a campaign manifest without running EDA")

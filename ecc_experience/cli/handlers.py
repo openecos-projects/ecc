@@ -16,6 +16,7 @@ from ecc_experience.cli.inputs import (
     PlanInput,
     RecommendInput,
     RecordingInput,
+    ReleaseInput,
     StoreInput,
 )
 from ecc_experience.models import ExperienceError
@@ -43,6 +44,9 @@ def _guard(operation: Callable[[], CommandResult]) -> CommandResult:
             "experience_campaign_manifest_changed": EXIT_REVISION_CONFLICT,
             "experience_campaign_trial_conflict": EXIT_REVISION_CONFLICT,
             "experience_plan_invalid": EXIT_USAGE_ERROR,
+            "experience_release_invalid": EXIT_USAGE_ERROR,
+            "experience_release_unverified": EXIT_GATE_FAILED,
+            "experience_release_conflict": EXIT_REVISION_CONFLICT,
         }
         return CommandResult.err([error_record(exc.code, reason=str(exc))], codes.get(exc.code, 1))
     except OSError as exc:
@@ -110,6 +114,34 @@ def evaluate(command_input: EvaluationInput, _ctx: CommandContext) -> CommandRes
             command_input.baseline, command_input.candidate, command_input.store
         )
         return CommandResult.ok([{"experience": "evaluate", **result}])
+
+    return _guard(operation)
+
+
+def release_create(command_input: ReleaseInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import release_create as create
+
+        if not command_input.case_ids:
+            raise ExperienceError(
+                "At least one --case-id is required", code="experience_release_invalid"
+            )
+        result = create(
+            command_input.case_ids, command_input.store, command_input.output_path or ""
+        )
+        return CommandResult.ok([{"experience": "release_create", **result}])
+
+    return _guard(operation)
+
+
+def release_verify(command_input: ReleaseInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import release_verify as verify
+
+        if command_input.release_path is None:
+            raise ExperienceError("Release path is required", code="experience_release_invalid")
+        result = verify(command_input.release_path, command_input.store)
+        return CommandResult.ok([{"experience": "release_verify", **result}])
 
     return _guard(operation)
 
