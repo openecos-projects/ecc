@@ -95,7 +95,7 @@ runs:
         "$SMOKE_DIR/ecc" --help
         "$SMOKE_DIR/ecc" --version
         "$SMOKE_DIR/ecc" version --json
-        if "$SMOKE_DIR/ecc" version --json | grep -q '"build_commit": "null"'; then
+        if "$SMOKE_DIR/ecc" version --json | grep -q '"build_commit": null'; then
           echo "::error::PyInstaller bundle is missing the build identity stamp"
           exit 1
         fi
