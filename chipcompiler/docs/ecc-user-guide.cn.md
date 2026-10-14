@@ -92,8 +92,22 @@ uv run ecc --help
 
 - 全局：`ecc --version`（单行版本号）、`ecc --help`。
 - 项目定位：项目级命令接受 `--project <dir>`（缺少参数指定即为当前目录）。`--workspace <路径指定>` 可以是受工具管理的非空简单文件夹路径，也可以是完整绝对路径。名称继续使用项目内的 `<project>/<workspace-id>` 布局；绝对路径创建或选择项目外 workspace，新路径默认以目录 basename 作为 workspace ID，已登记路径沿用清单中的 ID。新项目裸执行 `ecc run` 创建 `default`；只有一个活跃 workspace 时自动选择，多个活跃 workspace 时必须指定 `--workspace`。命名 workspace 会在创建文件前登记到 `project.json`。遗留的 `runs/` 项目必须先执行 `ecc migrate`。每个项目只有一个 `ecc.toml`；创建时会把声明的输入复制到各 workspace 的 `origin/`。
-- 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`rtl`、`param`、`macro`、`pdk`、`project`、`workspace`、`process`、`flow`、`signoff`、`report`、`compare` 在相应命令中支持 `--plain`，缺省为人类可读 TEXT。`reproducible`、`sweep`、`explore` 直接输出 JSON（`reproducible report` 与 `sweep compare` 另有人类可读模式）。`layout-image` 直接生成文件。
-- 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。
+- 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`rtl`、`param`、`macro`、`pdk`、`project`、`workspace`、`process`、`flow`、`signoff`、`report`、`compare` 在相应命令中支持 `--plain`，缺省为人类可读 TEXT。`reproducible`、`sweep`、`explore`、`diagnose` 也支持 `--plain`；面向机器的实验命令默认仍输出 JSON。`layout-image` 直接生成文件。
+- 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。完整注册表：
+
+| 退出码 | 含义 | 触发者 |
+|---|---|---|
+| 0 | 成功（含建议性检查返回 blocked/attention、`no_op` 的 run、空结果的只读查询） | 全部命令 |
+| 1 | 业务失败：校验、状态或执行错误，stdout/stderr 带机器可读 error 记录 | 全部命令 |
+| 2 | 用法错误：参数缺失/非法取值、`--plain` 与 `--json` 同时使用、未知 topic/profile/flow 名 | 全部命令 |
+| 6 | 只读质量门禁的必需项失败 | `signoff check`、`sweep verify`、`diagnose run`、`reproducible verify` |
+| 7 | 必需门禁因证据缺失/过期/不明确而无法评级 | `signoff check` |
+| 20 | `workspace_busy`：目标 workspace 被占用且未传 `--no-wait` | 变更类命令 |
+| 21 | `revision_conflict`：`--expected-revision` 与 manifest revision 不一致 | 带 `--expected-revision` 的命令 |
+| 22 | `process_not_found`：登记的运行进程已失效且无存活进程持有 workspace 锁 | `ecc process` 组 |
+| 23 | 契约不兼容（保留值：CLI 自身不发射，由 GUI 侧契约门禁在 runtime/CLI 契约不受支持时使用） | — |
+| 124 | 超时：记录在 sweep 候选的 `exit_code` 中；有界经验优化超时时也作为命令退出码 | `sweep run` 结果、`experience optimize` |
+| 130 | 有界经验优化被取消 | `experience optimize` |
 - 步骤名（step token）有三套写法，按场景区分：
   - **展示名**（`ecc status` / `ecc log` / `ecc report step` 的输出与入参，统一小写/下划线）：`synthesis / lec / pre_floorplan / macro_placement / post_floorplan / placement / cts / legalization / timing_optimization / routing / filler / lvs / drc / postroutelec / rcx / sta / poweranalysis / harden`；
   - **持久化名**（`home/flow.json` 中的原始名；已有 workspace 上的 `--from`/`--only`/`--to` 必须用它，如 `place`、`CTS`、`Timing optimization`）：`Synthesis / lec / preFloorplan / macroPlacement / postFloorplan / place / CTS / legalization / Timing optimization / route / filler / lvs / drc / postRouteLec / RCX / sta / powerAnalysis / Harden`；
@@ -217,6 +231,39 @@ eval "$(ecc --show-completion)"     # 自动探测当前 shell
 - 把该行写入 `~/.zshrc` / `~/.bashrc`（或 home-manager 的 `initExtra`）即可永久启用。zsh 需要先初始化 `compinit`。
 - 在 NixOS 等声明式管理的环境中，请用上面的 `eval` 方式而不是 `--install-completion`：后者会原地改写 `~/.zshrc` / `~/.bashrc`，对只读 rc 符号链接会失败，且与 home-manager 冲突。
 
+## 1.7. 命令总索引
+
+全部命令与子命令一览（语义、选项与样例见对应章节；`--project`/`--workspace`/`--plain`/`--json` 等公共选择器约定见 §1 与 §1.1）：
+
+| 命令 | 用途 | 章节 |
+|---|---|---|
+| `ecc version` | 查看运行时、组件与工具版本（`--json` 输出机器可读契约） | §2 |
+| `ecc doc TOPIC` | 终端阅读内置指南（`config` / `ug` / `tutorial`） | §1.5 |
+| `ecc layout-image` | 把 GDS 渲染为图片 | §13 |
+| `ecc init NAME` | 创建项目骨架 | §3 |
+| `ecc check` | 校验项目配置、RTL 源与 PDK 内容 | §4 |
+| `ecc run` | 执行 flow（新建/续跑/范围/单步，项目与 workspace 模式） | §5 |
+| `ecc status` | run 与步骤进度速查 | §6 |
+| `ecc log [STEP]` | 列出或查看日志 | §7 |
+| `ecc config [STEP]` | 查看解析后的项目/步骤配置 | §8 |
+| `ecc migrate` | legacy `runs/` 布局迁移 | §5.4 |
+| `ecc doctor` | 环境体检（9 项组件） | §4 |
+| `ecc rtl import` | 把 RTL/filelist 导入项目 `rtl/` | §8.5 |
+| `ecc param apply / list / show / set / unset / diff` | 参数管理（项目/工作区双作用域） | §9 |
+| `ecc flow list / show / validate` | 查看与校验已注册 flow | §8.6 |
+| `ecc macro set / remove / import / show` | 手工宏单元摆放 | §9.5 |
+| `ecc pdk set-root / show / verify / unset` | PDK 路径配置与内容校验 | §10 |
+| `ecc project apply / baseline / reconcile / set / unset / add / remove / show / doctor` | 编辑 `ecc.toml` 声明、选 QoR 基线、清单健康检查 | §8.5 |
+| `ecc process inspect / cancel / reconcile` | 运行进程的查看/取消/恢复 | §6.5 |
+| `ecc workspace create / import / derive / archive / delete / reset-flow / refresh / reconcile-deletes` | workspace 生命周期管理 | §8.5 |
+| `ecc signoff inspect / check / export` | 签核就绪度、质量门禁、导出签核包 | §11 |
+| `ecc report summary / qor / checklist / step / snapshot / project` | 设计总结、QoR 计分、清单、单步证据、快照、项目矩阵 | §12 |
+| `ecc compare run` | 比较两份 Engineering Snapshot | §12.6 |
+| `ecc reproducible export / inspect / verify / report` | 可复现证据包的导出/查看/校验/汇总 | §11.5 |
+| `ecc sweep create / show / list / run / compare / verify` | 确定性参数扫描 | §11.5 |
+| `ecc explore rank / export / promote` | 候选排序、导出与提升 | §11.5 |
+| `ecc diagnose run` | 工作区诊断与恢复建议 | §11.5 |
+
 ## 2. version — 查看版本
 
 ```bash
@@ -238,6 +285,13 @@ runtime ECC CLI
 yosys 0.69+24
 sizer 0.1.0-alpha
 klayout 0.30.2
+```
+
+`--json` 输出机器可读契约：`schema_version` 是该 JSON 的版本，`cli_contract` 是 CLI 命令面/退出码契约的版本号（ECOS Studio 用它与 `runtime` 字段判定 runtime 兼容性），`tools` 是按 flow 运行时相同方式从当前环境解析的工具版本：
+
+```console
+$ ecc version --json
+{"schema_version": 2, "runtime": "ECC CLI", "ecc": "0.1.0a12", "dreamplace": "0.1.0a7", "ecc_tools": "0.1.0a13", "cli_contract": 1, "tools": {"yosys": "0.69+24", "sizer": "0.1.0-alpha", "klayout": "0.30.2"}}
 ```
 
 ## 3. init — 创建项目
@@ -317,7 +371,7 @@ rc=0
 
 ### 环境自检：ecc doctor
 
-`ecc doctor` 一条命令体检全部依赖（PDK、yosys 含 slang 前端、随包捆绑的 ecc-tools/dreamplace、必需的 Sizer，以及可选的 KLayout），每项给出 pass/fail/skip 与修复建议；只有**必需项**失败才返回非零：
+`ecc doctor` 一条命令体检全部依赖，共 9 项组件（PDK、yosys、yosys-slang、随包捆绑的 ecc-tools/dreamplace、必需的 Sizer、LEC 等价性检查所需的 kepler-formal 与 lec-dual 双引擎预检，以及可选的 KLayout），每项给出 pass/fail 与修复建议；只有**必需项**失败才返回非零：
 
 ```bash
 ecc doctor [--project DIR] [--plain|--json]
@@ -328,7 +382,7 @@ $ ecc doctor          # 在项目目录内执行（PDK 探测需要 ecc.toml 或
 [status]
   doctor: environment
   status: attention          # ok=全过 / attention=仅可选项失败(rc=0) / failed=必需项失败(rc=1)
-  checked: 7
+  checked: 9
   failed: 0                  # failed 只统计必需项失败；可选项失败计入 attention
   attention: 1
   run: ecc run
@@ -338,11 +392,39 @@ $ ecc doctor          # 在项目目录内执行（PDK 探测需要 ecc.toml 或
   component: yosys-slang
   status: pass
   detail: read_slang frontend available
-  component: ecc-tools       # 其余组件同理：dreamplace / klayout / sizer / pdk
+  component: ecc-tools       # 其余组件同理：dreamplace / sizer / kepler-formal /
+                             # lec-dual / pdk（必需）；klayout（可选）
   ...
 ```
 
-此外，对新建或 `--overwrite` 的目标，`ecc run` 会预检捆绑 ecc-tools、含综合的 preset 所需 Yosys、含布局/合法化的 preset 所需 DreamPlace，以及含 Timing optimization 的 preset 所需 Sizer（包括 `rtl2gds`）；这些组件缺失时会以 `env_not_ready` fail-fast：
+- `kepler-formal`（必需）：LEC/postRouteLec 等价性检查工具。先按 `CHIPCOMPILER_KEPLER_FORMAL_ROOT` 解析（根级 `kepler-formal` wrapper 或 `bin/kepler-formal`），再回退 PATH。
+- `lec-dual`（必需）：双引擎 LEC 预检，分别探测两个物理引擎。允许降级运行——缺一个引擎仍为 pass（detail 注明 `degraded`，该步骤只跑可用引擎、结果保持非 proven）；两个都缺才 fail。
+- `klayout`（可选）：仅 `layout-image` 需要。
+
+`--json` 输出记录数组：首条为汇总，其后每组件一条，字段含 `component`、`status`、`required`、`detail`：
+
+```console
+$ ecc doctor --json
+[
+  {
+    "doctor": "environment",
+    "status": "ok",
+    "checked": 9,
+    "failed": 0,
+    "attention": 0,
+    "run": "ecc run"
+  },
+  {
+    "component": "yosys",
+    "status": "pass",
+    "required": true,
+    "detail": "~/.local/oss-cad-suite/bin/yosys"
+  },
+  ...
+]
+```
+
+此外，对新建或 `--overwrite` 的目标，`ecc run` 会按目标 flow 实际步骤的工具映射预检组件（被 `skip_steps` 跳过的步骤不探测其工具）：所有 flow 预检捆绑 ecc-tools；含综合预检 Yosys；含布局/合法化预检 DreamPlace；含 Timing optimization 预检 Sizer（包括 `rtl2gds`）；未跳过 LEC 的目标还会预检 kepler-formal 与 lec-dual。这些组件缺失时会以 `env_not_ready` fail-fast：
 
 ```console
 $ ecc run
@@ -372,6 +454,7 @@ rc=1
 | Yosys slang 前端 | `yosys -Q -T -p "help read_slang"` | 输出**不含** `No such command`（yosys ≥ v0.67 内置；旧版需可加载的 slang 插件） |
 | KLayout（仅 `layout-image` 需要） | `python3 -c "from klayout import lay"` | 无 ImportError |
 | Sizer（`ecc doctor` 的必需组件；完整 rtl2gds 链的 Timing optimization 步骤需要） | `which Sizer`；可选 `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | 可执行文件和含 `src/sizer_os.tcl` 的 root 均须可解析；root 可显式设置，或由二进制位置自动发现。新建或 `--overwrite` 的 `rtl2gds` 会在预检检查 Sizer；已有 workspace 或 `--workspace` 重跑不预检，缺失时仍可能在流中段失败 |
+| kepler-formal（`ecc doctor` 的必需组件；LEC/postRouteLec 等价性检查需要，默认 `skip_steps = ["lec"]` 时不预检） | `echo $CHIPCOMPILER_KEPLER_FORMAL_ROOT`；`which kepler-formal` | 二者其一可解析出可执行文件（root 下根级 wrapper 或 `bin/kepler-formal`） |
 
 可整体复制的一段自检脚本：
 
@@ -683,6 +766,13 @@ ecc process reconcile [--run-id ID] [--no-wait] [--project DIR] [--workspace NAM
 三个子命令都接受标准 `--project`/`--workspace` 选择器；reconcile 的 `--no-wait` 在 manifest
 锁被占时不等待（直接报 `workspace_busy`）。
 
+```console
+$ ecc process inspect --workspace trial     # 没有登记的运行进程时
+[error]
+  process_not_found No runtime process is registered
+rc=22
+```
+
 ## 7. log — 查看日志
 
 ```bash
@@ -878,6 +968,33 @@ fresh-run 语义相同）。`derive` 把源 workspace 已完成的步骤复制�
 `--command-id` 与 `--no-wait`；见 §5.1），对占用中的 workspace 执行变更会报
 `workspace_busy`（退出码 20）。
 
+```console
+$ ecc workspace create trial
+[status]
+  workspace id: trial
+  status: refreshed
+  workspace: /tmp/gcd/trial
+  run: ecc run --workspace trial
+
+$ ecc workspace create trial    # 入口输入缺失时（create 与 run 一样校验入口输入）
+[error]
+  step_input_missing step_input_missing: design.rtl does not exist: /tmp/gcd/rtl/gcd.v
+rc=1
+
+$ ecc project baseline trial --reason "first experiment"
+[status]
+  project: baseline
+  status: selected
+  workspace: trial
+
+$ ecc workspace derive trial branch_a
+[status]
+  workspace id: branch_a
+  status: derived
+  workspace: /tmp/gcd/branch_a
+  workspace revision: 1
+```
+
 ## 8.6. flow — 查看已注册的 flow 目录
 
 ```bash
@@ -892,6 +1009,39 @@ ecc flow validate [--flow FLOW_ID] [--project DIR] [--plain|--json]
 FLOW_ID` 只显示一个 preset（未注册的名字报 `unknown_flow`，退出码 2）。`flow
 validate` 校验 flow 定义与步骤元数据，并对每个 flow 输出一条 `flow_validation`
 记录；三者均为只读，不需要运行中的 workspace。
+
+```console
+$ ecc flow show rtl2gds
+[result]
+  record: flow_step
+  flow id: rtl2gds
+  step id: Synthesis
+  ordinal: 0
+  skippable: False
+  default skipped: False
+  ...                            # 依次列出 18 个步骤；lec 为 skippable=True 且默认跳过
+
+$ ecc flow validate
+[status]
+  record: flow_validation
+  status: valid
+  flow id: rtl2gds
+  step count: 18
+  ...                            # 其余 flow 各一条记录
+
+$ ecc flow list --json
+[
+  {
+    "record": "flow_step",
+    "flow_id": "rtl2gds",
+    "step_id": "Synthesis",
+    "ordinal": 0,
+    "skippable": false,
+    "default_skipped": false
+  },
+  ...
+]
+```
 
 ## 9. param — 参数管理
 
@@ -1212,6 +1362,171 @@ $ ecc signoff export -o gcd.tar.gz --project gcd     # 就绪后
   status: exported
   path: /abs/path/gcd.tar.gz
 ```
+
+### 11.5 可复现证据导出、sweep 与诊断
+
+`reproducible` 与 `diagnose` 的命令契约：
+
+| 命令 | 必需参数 | 可选参数 | 用途 |
+|---|---|---|---|
+| `ecc reproducible export` | `--output PATH` | `--project DIR`、`--workspace NAME`、`--plain` | 为 workspace 导出只读证据包 tar.gz |
+| `ecc reproducible inspect` | `--package PATH` | `--files`、`--type all\|rtl\|config\|flow\|checklist\|signoff`、`--plain`、`--json` | 离线查看包内容，可按文件类型筛选 |
+| `ecc reproducible verify` | `--package PATH` | `--plain`、`--json` | 校验包 schema、SHA-256 与 fingerprint |
+| `ecc reproducible report` | `--package PATH` | `--plain`、`--json` | 汇总文件、fingerprint、输入、runtime 与校验状态 |
+| `ecc diagnose run` | — | `--project DIR`、`--workspace NAME`、`--plain`、`--json` | 一条命令汇总 flow、checklist、QoR、缺失 artifact 与恢复建议 |
+
+实验命令组（`reproducible`/`sweep`/`explore`/`diagnose`）默认输出 JSON（机器可读），`--plain` 输出稳定的 key=value 记录。真实输出示例：
+
+```console
+$ ecc reproducible export --workspace trial --output evidence.tar.gz
+{
+  "file_count": 19,
+  "package": "/path/to/evidence.tar.gz",
+  "status": "success"
+}
+
+$ ecc reproducible verify --package evidence.tar.gz
+[status]
+  status: pass
+  package: /path/to/evidence.tar.gz
+  errors: []
+
+$ ecc diagnose run --workspace trial --json
+{
+  "checklist": {"blocked_count": 27, "blocked_items": ["artifact.synthesis.netlist", "..."], "status": "blocked"},
+  "errors": [],
+  "flow": {"failed_steps": [], "status": "unstart"},
+  "missing_artifacts": [],
+  "next_actions": [
+    "ecc report checklist --project /path/to/project --workspace trial",
+    "ecc run --project /path/to/project --workspace trial --resume"
+  ],
+  "project": "/path/to/project",
+  "qor": {"available": false, "score": "unknown"},
+  "status": "blocked",
+  "workspace": "/path/to/project/trial"
+}
+rc=6                        # 诊断为 failed 或 blocked 时退出码 6（见 §1 退出码表）
+```
+
+创建确定性的参数 sweep。重复使用 `--param` 定义笛卡尔积；候选记录保存在 `experiments/<name>/`，不会修改项目 manifest 或 baseline workspace。sweep/explore 的完整参考——计划与结果 schema、执行隔离、排序规则——见 [Sweep 参考手册](ecc-sweep-ref.cn.md)：
+
+```bash
+ecc sweep create --project /path/to/project --name density --param place.target_density=0.60,0.65 --param cts.target_skew=0.10,0.15
+ecc sweep list --project /path/to/project                  # 已有 sweep 名称的 JSON 数组
+ecc sweep show --project /path/to/project --name density    # sweep 计划（sweep.json）
+ecc sweep run --project /path/to/project --name density [--max-candidates N]
+ecc sweep compare --project /path/to/project --name density # candidate | flow | steps | checklist | violations | qor | exit | parameters
+ecc explore rank --project /path/to/project --name density
+ecc explore promote --project /path/to/project --name density --candidate candidate_0002
+```
+
+`--max-candidates N` 把 `sweep run` 限制为计划的前 N 个候选（适合对大笛卡尔积先做
+一轮冒烟）。`sweep run` 可续跑：已有结果且 workspace 存在的候选不会重跑。
+续跑会重新采集已有结果，修正旧缓存中的状态、step checklist 和总体 QoR。
+只从 `home/qor_report.json` 读取总体分数；signoff 返回 `7` 不会成为 passed。
+`sweep compare`（人类可读表格）与 `sweep show`/`explore rank`（`--json`）是
+`results.json` 的只读视图；排序为 passed 优先、QoR 分数降序。`explore promote`
+把获胜候选记录到 `experiments/<name>/winner.json`——只有状态为 `passed` 的候选
+可以被提升。
+
+当前版本以确定性和证据留存为主，暂不提供自动优化、分布式调度、多 SDC 或自动替换 baseline workspace。
+
+可复现导出包现在包含 ECC runtime 版本、文件集合 fingerprint，以及项目配置和 RTL 输入
+fingerprint。sweep 计划包含稳定的 `plan_fingerprint`，因此可以排除创建时间后比较两个
+参数计划是否一致。
+
+`ecc reproducible verify` 会审计包 schema、manifest 条目类型和重复路径、归档文件大小、
+SHA-256、整体文件 fingerprint、输入 fingerprint 以及不安全归档路径。manifest 或证据被
+篡改时返回退出码 `6`。
+
+可复现 manifest 还会记录 ECC、ECC-Tools、DreamPlace、Yosys、Sizer、KLayout 以及 PDK 的
+标识和存在性信息，便于比较不同环境生成的证据包。
+
+可复现证据包可以复制到其他目录后独立校验；`inspect` 和 `verify` 使用包内 manifest，
+不要求导出时的原始项目路径仍然存在。
+
+无需原始 workspace 也可以离线查看证据包：
+
+```bash
+ecc reproducible inspect --package evidence.tar.gz --files --json
+ecc reproducible report --package evidence.tar.gz --json
+```
+
+报告会汇总文件、fingerprint、输入、runtime 元数据和校验状态。
+
+离线报告支持可读文本输出和文件类型筛选：
+
+```bash
+ecc reproducible report --package evidence.tar.gz
+ecc reproducible inspect --package evidence.tar.gz --files --type checklist --json
+```
+
+支持的类型包括 `all`、`rtl`、`config`、`flow`、`checklist` 和 `signoff`。
+
+离线报告还会从证据文件汇总 flow 状态、checklist 状态、QoR 和 checker 违例数。缺失或旧
+格式证据统一显示为 `unknown`，不会误判为通过。
+
+离线摘要字段现在包含证据 `sources` 和 `reasons`（`ok`、`missing`、`invalid`）；无法评级时，
+摘要值仍显示为 `unknown`。
+
+CI design matrix 的每个 design leg 会在产品 flow 后执行轻量打包 CLI smoke。smoke 使用隔离的
+临时证据 workspace，检查 reproducible export、verify、report 和 sweep 计划生成，不会重复执行
+第二次完整 EDA flow。
+
+CI 打包 smoke 可以接收 E2E 输出目录。发现真实 `home/flow.json` 时，会额外针对真实 workspace
+验证 `status`、reproducible export 和 verify；未发现时继续执行隔离的契约 smoke，不会误阻断 CI。
+
+在比较或 promote candidate 前可以先校验 sweep 完整性：
+
+```bash
+ecc sweep verify --project /path/to/project --name density_test
+```
+
+命令会检查 plan fingerprint、candidate/result 对应关系、参数一致性、workspace 是否存在以及
+结果缺失/重复。完整性错误返回退出码 `6`。
+还会审计 schema、结果字段类型、步骤状态、有限数值 QoR、整数退出码与 flow 文件。
+passed 记录不能包含非零退出码、缺失 QoR、未完成步骤或未完成 flow。
+workspace 已有 checklist 文件时必须有效且通过，避免旧 passed 缓存绕过当前阻塞项。
+旧结果可省略 schema 和探测退出码字段；`explore promote` 也校验候选证据。
+
+可以将排序后的 sweep 结果导出为 CI artifact、GUI 或表格使用：
+
+```bash
+ecc explore export --project /path/to/project --name density_test --format csv --output density.csv
+ecc explore export --project /path/to/project --name density_test --format markdown
+```
+
+支持 `json`、`csv` 和 `markdown` 三种格式。
+
+打包 CI smoke 还会校验 sweep 结果完整性，并将排序结果导出为 JSON、CSV 和 Markdown，文件会
+上传到对应 design 的 `cli-contract` 证据目录。
+
+可以使用一个命令诊断 workspace：
+
+```bash
+ecc diagnose run --project /path/to/project --workspace ws_0012 --json
+```
+
+结果会汇总 flow 状态、失败 step、blocked checklist、QoR 可用性、缺失 artifact 和恢复建议。
+诊断为 failed 或 blocked 时返回退出码 `6`。
+
+打包 CLI smoke 接收到 E2E 输出目录并发现真实 workspace 后，还会执行 `diagnose run`、
+`report step`、`report project` 和 `signoff check`。对应 JSON 证据会写入该 design 的
+`cli-contract` artifact 目录：`diagnose.json`、`report-step.json`、`report-project.json` 和
+`signoff.json`。signoff 的质量失败允许返回 `6` 或 `7` 并保留证据；CLI 参数或运行错误仍会
+使 smoke 失败。
+隔离的打包 smoke 还会创建确定性的 candidate 结果证据，实际执行 `sweep verify`，并验证
+`explore export` 的 JSON、CSV 和 Markdown 格式，不会再次启动 EDA flow。
+该检查比较完整导出内容与 compare 矩阵，覆盖非法字段拒绝以及 blocked/failed/unknown
+不可 promote。真实 E2E workspace 会通过隔离的缓存候选执行 `sweep run` 采集，
+校验 step state、总体 QoR、signoff 退出码，并生成 `real-sweep-verify.json` 和
+`real-sweep-results.json`；原 workspace 保持只读。
+
+诊断和离线证据摘要支持从 `flow.json` 的 step `state` 推导 flow 状态，读取真实 checklist 的
+`checklist/state/blocked/policy` 字段，以及 QoR 的 `scalar_summary.score`；旧简化格式仍可读取。
+signoff 的 QoR gate 使用同样的分数读取规则。缺失、未评级或无效分数不会被视为可用 QoR，
+损坏 checklist 不会被诊断为 passed；执行完成与 checklist blocked 会分别报告。
 
 ## 12. report — 设计总结、QoR 总分、checklist 与单步证据
 
@@ -1610,7 +1925,27 @@ ecc report project --project /path/to/project --plain
 
 #### JSON / plain 契约
 
-JSON 顶层沿用记录数组，首条包含：
+JSON 顶层沿用记录数组。真实首条记录示例（节选，`columns`/`workspaces` 数组按 flow 顺序展开）：
+
+```json
+[
+  {
+    "report": "project",
+    "schema_version": 1,
+    "project": "/path/to/project",
+    "design": "gcd",
+    "status": "partial",
+    "sort": "qor_score_descending_missing_last_manifest_order_ties",
+    "columns": [
+      {"step": "Synthesis", "token": "synthesis", "tool": "yosys"},
+      {"step": "preFloorplan", "token": "pre_floorplan", "tool": "ecc"}
+    ],
+    "warnings": []
+  }
+]
+```
+
+字段说明：
 
 ```text
 report=project
@@ -1743,109 +2078,3 @@ python packaging/cli_smoke.py \
 
 smoke runner 会依次检查 `status`、`report step`、`report project`、`signoff check` 和
 `pdk verify`，要求每个命令输出非空 JSON 记录数组，并保留质量门禁的非零退出码供 CI 汇报。
-
-### 11.5 可复现证据导出与 sweep
-
-可以为 workspace 导出只读证据包，并检查 manifest 与 SHA-256 校验和：
-
-```bash
-ecc reproducible export --project /path/to/project --workspace ws_0012 --output evidence.tar.gz
-ecc reproducible inspect --package evidence.tar.gz
-ecc reproducible verify --package evidence.tar.gz
-```
-
-创建确定性的参数 sweep。重复使用 `--param` 定义笛卡尔积；候选记录保存在 `experiments/<name>/`，不会修改项目 manifest 或 baseline workspace。sweep/explore 的完整参考——计划与结果 schema、执行隔离、排序规则——见 [Sweep 参考手册](ecc-sweep-ref.cn.md)：
-
-```bash
-ecc sweep create --project /path/to/project --name density --param place.target_density=0.60,0.65 --param cts.target_skew=0.10,0.15
-ecc sweep list --project /path/to/project                  # 已有 sweep 名称的 JSON 数组
-ecc sweep show --project /path/to/project --name density    # sweep 计划（sweep.json）
-ecc sweep run --project /path/to/project --name density [--max-candidates N]
-ecc sweep compare --project /path/to/project --name density # candidate | flow | steps | checklist | violations | qor | exit | parameters
-ecc explore rank --project /path/to/project --name density
-ecc explore promote --project /path/to/project --name density --candidate candidate_0002
-```
-
-`--max-candidates N` 把 `sweep run` 限制为计划的前 N 个候选（适合对大笛卡尔积先做
-一轮冒烟）。`sweep run` 可续跑：已有结果且 workspace 存在的候选不会重跑。
-`sweep compare`（人类可读表格）与 `sweep show`/`explore rank`（`--json`）是
-`results.json` 的只读视图；排序为 passed 优先、QoR 分数降序。`explore promote`
-把获胜候选记录到 `experiments/<name>/winner.json`——只有状态为 `passed` 的候选
-可以被提升。
-
-当前版本以确定性和证据留存为主，暂不提供自动优化、分布式调度、多 SDC 或自动替换 baseline workspace。
-
-可复现导出包现在包含 ECC runtime 版本、文件集合 fingerprint，以及项目配置和 RTL 输入
-fingerprint。sweep 计划包含稳定的 `plan_fingerprint`，因此可以排除创建时间后比较两个
-参数计划是否一致。
-
-`ecc reproducible verify` 会审计包 schema、manifest 条目类型和重复路径、归档文件大小、
-SHA-256、整体文件 fingerprint、输入 fingerprint 以及不安全归档路径。manifest 或证据被
-篡改时返回退出码 `6`。
-
-可复现 manifest 还会记录 ECC、ECC-Tools、DreamPlace、Yosys、Sizer、KLayout 以及 PDK 的
-标识和存在性信息，便于比较不同环境生成的证据包。
-
-可复现证据包可以复制到其他目录后独立校验；`inspect` 和 `verify` 使用包内 manifest，
-不要求导出时的原始项目路径仍然存在。
-
-无需原始 workspace 也可以离线查看证据包：
-
-```bash
-ecc reproducible inspect --package evidence.tar.gz --files --json
-ecc reproducible report --package evidence.tar.gz --json
-```
-
-报告会汇总文件、fingerprint、输入、runtime 元数据和校验状态。
-
-离线报告支持可读文本输出和文件类型筛选：
-
-```bash
-ecc reproducible report --package evidence.tar.gz
-ecc reproducible inspect --package evidence.tar.gz --files --type checklist --json
-```
-
-支持的类型包括 `all`、`rtl`、`config`、`flow`、`checklist` 和 `signoff`。
-
-离线报告还会从证据文件汇总 flow 状态、checklist 状态、QoR 和 checker 违例数。缺失或旧
-格式证据统一显示为 `unknown`，不会误判为通过。
-
-离线摘要字段现在包含证据 `sources` 和 `reasons`（`ok`、`missing`、`invalid`）；无法评级时，
-摘要值仍显示为 `unknown`。
-
-CI design matrix 的每个 design leg 会在产品 flow 后执行轻量打包 CLI smoke。smoke 使用隔离的
-临时证据 workspace，检查 reproducible export、verify、report 和 sweep 计划生成，不会重复执行
-第二次完整 EDA flow。
-
-CI 打包 smoke 可以接收 E2E 输出目录。发现真实 `home/flow.json` 时，会额外针对真实 workspace
-验证 `status`、reproducible export 和 verify；未发现时继续执行隔离的契约 smoke，不会误阻断 CI。
-
-在比较或 promote candidate 前可以先校验 sweep 完整性：
-
-```bash
-ecc sweep verify --project /path/to/project --name density_test
-```
-
-命令会检查 plan fingerprint、candidate/result 对应关系、参数一致性、workspace 是否存在以及
-结果缺失/重复。完整性错误返回退出码 `6`。
-
-可以将排序后的 sweep 结果导出为 CI artifact、GUI 或表格使用：
-
-```bash
-ecc explore export --project /path/to/project --name density_test --format csv --output density.csv
-ecc explore export --project /path/to/project --name density_test --format markdown
-```
-
-支持 `json`、`csv` 和 `markdown` 三种格式。
-
-打包 CI smoke 还会校验 sweep 结果完整性，并将排序结果导出为 JSON、CSV 和 Markdown，文件会
-上传到对应 design 的 `cli-contract` 证据目录。
-
-可以使用一个命令诊断 workspace：
-
-```bash
-ecc diagnose run --project /path/to/project --workspace ws_0012 --json
-```
-
-结果会汇总 flow 状态、失败 step、blocked checklist、QoR 可用性、缺失 artifact 和恢复建议。
-诊断为 failed 或 blocked 时返回退出码 `6`。
