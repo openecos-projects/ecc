@@ -9,6 +9,7 @@ from chipcompiler.cli.inspection.discovery import (
     resolve_loaded_workspace,
     workspace_display,
 )
+from chipcompiler.cli.inspection.evidence_summary import qor_score
 from chipcompiler.cli.inspection.project_checkers import checker_evidence
 
 _PROFILES = {
@@ -134,8 +135,8 @@ def _flow_gate(root: Path) -> dict:
 
 def _qor_gate(root: Path) -> dict:
     data = _read(root / "home" / "qor_report.json")
-    score = data.get("score") if isinstance(data, dict) else None
-    if isinstance(score, (int, float)) and not isinstance(score, bool):
+    score = qor_score(data) if isinstance(data, dict) else None
+    if score is not None:
         return {"status": "pass", "reason": "qor_available", "source": "home/qor_report.json"}
     return {"status": "unknown", "reason": "qor_unavailable", "source": "home/qor_report.json"}
 

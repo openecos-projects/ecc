@@ -288,9 +288,12 @@ def test_baseline_unknown_does_not_block_execution(
     assert result["baseline_evidence"]["status"] == "blocked"
 
 
+@pytest.mark.parametrize("observed_density", [0.6, None])
 def test_optimize_applies_only_allowed_observed_changes(
-    optimization_project, workspace_factory, tmp_path, fake_execution
+    optimization_project, workspace_factory, tmp_path, fake_execution, observed_density
 ):
+    from chipcompiler.data.parameter_schema import lookup_schema
+
     workspace, store, plan_path = optimization_project
     observed = workspace_factory("observed")
     source = json.loads((workspace / "home/engineering-snapshot.json").read_text())
@@ -298,7 +301,12 @@ def test_optimize_applies_only_allowed_observed_changes(
     snapshot = json.loads(snapshot_path.read_text())
     snapshot["workspaceSpec"] = source["workspaceSpec"]
     snapshot["workspaceBindings"] = source["workspaceBindings"]
-    snapshot["workspaceSpec"]["parameters"]["place.target_density"] = 0.6
+    if observed_density is None:
+        snapshot["workspaceSpec"]["parameters"].pop("place.target_density")
+        expected_density = lookup_schema("place.target_density").default
+    else:
+        snapshot["workspaceSpec"]["parameters"]["place.target_density"] = observed_density
+        expected_density = observed_density
     snapshot["qorSnapshotExtension"].update(status="available", score=95.0, scalarStatus="GREEN")
     snapshot["qorSnapshotExtension"].pop("reason", None)
     snapshot_path.write_text(json.dumps(snapshot))
@@ -314,10 +322,10 @@ def test_optimize_applies_only_allowed_observed_changes(
     result = optimize(tmp_path, plan_path, store, tmp_path / "output")
 
     assert result["exit_code"] == 0
-    assert result["trials"][0]["parameters"] == {"place.target_density": 0.6}
+    assert result["trials"][0]["parameters"] == {"place.target_density": expected_density}
     applied = [command for command in fake_execution if command[:2] == ["param", "apply"]]
     assert len(applied) == 2
-    assert all("place.target_density=0.6" in command for command in applied)
+    assert all(f"place.target_density={expected_density}" in command for command in applied)
     assert result["stop_reason"] == "trial_budget"
 
 

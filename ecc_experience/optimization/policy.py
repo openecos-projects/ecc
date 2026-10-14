@@ -163,11 +163,15 @@ def eligible_candidates(
         if reason is not None:
             skipped.append({"case_id": case.case_id, "reason": reason})
             continue
-        changes = {
-            key: parameters[key]
-            for key in limits.allow_parameters
-            if key in parameters and parameters[key] != baseline_parameters.get(key)
-        }
+        differences = configuration_differences(baseline_parameters, parameters)
+        changes = {}
+        for key in limits.allow_parameters:
+            if key not in differences:
+                continue
+            schema = lookup_schema(key)
+            if schema is None:
+                raise invalid_plan("Allowed parameter is absent from the current ECC catalog")
+            changes[key] = parameters.get(key, schema.default)
         pairs = [f"{key}={_literal(value)}" for key, value in changes.items()]
         _parsed, errors = parse_cli_overrides(pairs)
         if errors:
