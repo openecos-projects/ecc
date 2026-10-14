@@ -268,6 +268,7 @@ def test_check_update_command_reports_available_update(monkeypatch, capsys):
         "Current version : 0.1.0-alpha.13 (nightly 2026-10-10, g1111111)\n"
         "Latest nightly  : 0.1.0-alpha.13-nightly.20261012.g27084f4 (2026-10-13)\n"
         "Status          : update available\n"
+        "  inspect: ecc version\n"
         "\n"
         "Get the latest nightly build:\n"
         "  https://github.com/openecos-projects/ecos-installer/releases\n"
@@ -295,6 +296,7 @@ def test_check_update_command_reports_up_to_date_without_links(monkeypatch, caps
         "Current version : 0.1.0-alpha.13 (nightly 2026-10-12, g27084f4)\n"
         "Latest nightly  : 0.1.0-alpha.13-nightly.20261012.g27084f4 (2026-10-13)\n"
         "Status          : up to date\n"
+        "  inspect: ecc version\n"
     )
 
 
@@ -325,4 +327,5 @@ def test_check_update_command_json_payload_whole_object(monkeypatch, capsys):
             "https://github.com/openecos-projects/ecos-installer/releases",
             "https://cnb.cool/ecoslab/ecos-installer/-/releases",
         ],
+        "inspect_cmd": "ecc version",
     }

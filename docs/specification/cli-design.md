@@ -198,6 +198,7 @@ ecc version
 ecc init
 ecc check
 ecc doctor
+ecc check-update
 ecc run
 ecc status
 ecc log
@@ -223,6 +224,7 @@ Responsibilities:
 | `ecc init` | Create a project skeleton and `ecc.toml` |
 | `ecc check` | Validate RTL, constraints, PDK, tools, and config |
 | `ecc doctor` | Probe host environment (PDK, yosys+slang, bundled tools); optional failures do not exit non-zero |
+| `ecc check-update` | Compare the installed build against the latest nightly release and point to the ecos-installer pages; every status exits 0 (`--plain` supported) |
 | `ecc run` | Execute the configured flow (`--preset` overrides `[flow] preset` for one run) |
 | `ecc status` | Summarize run and step state |
 | `ecc log` | Show available logs or complete step log content |
