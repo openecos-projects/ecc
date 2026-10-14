@@ -97,7 +97,7 @@ runs:
         version_json="$("$SMOKE_DIR/ecc" version --json)"
         printf '%s\n' "$version_json"
         grep -q '"cli_contract": 1' <<<"$version_json"
-        if "$SMOKE_DIR/ecc" version --json | grep -q '"build_commit": "null"'; then
+        if "$SMOKE_DIR/ecc" version --json | grep -q '"build_commit": null'; then
           echo "::error::PyInstaller bundle is missing the build identity stamp"
           exit 1
         fi

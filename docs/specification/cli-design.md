@@ -475,10 +475,11 @@ ecc version --json
 
 `ecc --version` prints one line for package-manager and script probes. `ecc
 version` prints fixed-order text lines for `ecc`, `dreamplace`, `ecc_tools`, and
-`runtime`. `ecc version --json` returns schema version `1` with `runtime`,
-`ecc`, `dreamplace`, and `ecc_tools` fields. Missing distribution metadata is
-reported as `unknown`, except the `ecc` field may fall back to the source
-package `__version__`.
+`runtime`. `ecc version --json` returns schema version `2` with `runtime`,
+`ecc`, `dreamplace`, `ecc_tools`, and nullable `build_commit`/`build_date`
+fields (populated only in CI-stamped bundles; `null` in source installs).
+Missing distribution metadata is reported as `unknown`, except the `ecc` field
+may fall back to the source package `__version__`.
 
 ### Desktop CLI Contract
 

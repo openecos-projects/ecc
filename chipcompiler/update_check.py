@@ -75,13 +75,16 @@ def _body_fields(body: str) -> dict[str, str]:
 
 
 def _parse_nightly(release: dict) -> NightlyRelease | None:
+    if not isinstance(release, dict):
+        return None
     if not release.get("prerelease") or release.get("draft"):
         return None
     tag = release.get("tag_name", "")
     match = _NIGHTLY_TAG_RE.match(tag)
     if match is None:
         return None
-    fields = _body_fields(release.get("body") or "")
+    body = release.get("body")
+    fields = _body_fields(body if isinstance(body, str) else "")
     return NightlyRelease(
         tag=tag,
         date=int(match.group(1)),

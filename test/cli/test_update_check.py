@@ -2,6 +2,7 @@ import json
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.update_check import (
+    REQUEST_TIMEOUT_SECONDS,
     STATUS_UNKNOWN,
     STATUS_UP_TO_DATE,
     STATUS_UPDATE_AVAILABLE,
@@ -9,6 +10,7 @@ from chipcompiler.update_check import (
     UpdateCheckResult,
     check_for_update,
     decide,
+    fetch_releases,
     latest_nightly,
 )
 
@@ -91,6 +93,23 @@ def test_latest_nightly_returns_none_without_matches():
     assert latest_nightly([release("v0.1.0")]) is None
 
 
+def test_latest_nightly_skips_malformed_release_entries():
+    releases = [
+        "not-a-dict",
+        {
+            "tag_name": "v0.1.0-nightly.20261013",
+            "prerelease": True,
+            "body": {"unexpected": "dict"},
+        },
+    ]
+
+    # The non-dict entry is skipped; the non-string body degrades to no fields.
+    assert latest_nightly(releases) == latest(
+        tag="v0.1.0-nightly.20261013", rerun=1, ecc_version=None, ecc_commit=None
+    )
+    assert latest_nightly(["not-a-dict"]) is None
+
+
 def test_body_field_parsing_takes_first_match_and_skips_empty_values():
     body = (
         f"ecc-version: 0.1.0-alpha.13-nightly.20261012.g27084f4\n"
@@ -143,6 +162,39 @@ def test_check_for_update_returns_unknown_on_fetch_failure(monkeypatch):
         current_build_date="20261013",
         latest=None,
     )
+
+
+def test_check_for_update_returns_unknown_on_timeout(monkeypatch):
+    def timing_out(request, timeout=None):
+        raise TimeoutError("read timed out")
+
+    monkeypatch.setattr("chipcompiler.update_check.urllib.request.urlopen", timing_out)
+
+    assert check_for_update("0.1.0-alpha.12", None, None).status == STATUS_UNKNOWN
+
+
+def test_fetch_releases_applies_the_request_timeout(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return None
+
+        def read(self):
+            return b"[]"
+
+    def fake_urlopen(request, timeout=None):
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr("chipcompiler.update_check.urllib.request.urlopen", fake_urlopen)
+
+    fetch_releases()
+
+    assert captured["timeout"] == REQUEST_TIMEOUT_SECONDS
 
 
 def test_check_for_update_reads_releases_url_override(monkeypatch, capsys):
