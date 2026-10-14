@@ -1,4 +1,4 @@
-from importlib import metadata
+from importlib import import_module, metadata
 
 UNKNOWN_VERSION = "unknown"
 RUNTIME_LABEL = "ECC CLI"
@@ -16,12 +16,13 @@ def build_identity() -> tuple[str | None, str | None]:
     """Return the (commit, yyyymmdd) pair CI stamps into packaged bundles.
 
     Source and editable installs have no stamp, so both values are None there.
+    The module is generated at packaging time, hence the dynamic import.
     """
     try:
-        from chipcompiler import _build_info
+        build_info = import_module("chipcompiler._build_info")
     except ImportError:
         return None, None
-    return _build_info.BUILD_COMMIT, _build_info.BUILD_DATE
+    return build_info.BUILD_COMMIT, build_info.BUILD_DATE
 
 
 def ecc_version() -> str:
