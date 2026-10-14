@@ -54,7 +54,8 @@ curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | 
 Add `--with-toolchain` to the same command to install Yosys (OSS CAD Suite)
 as well. Re-running the installer without `--nightly` switches back to the
 stable release; `--nightly-tag vX.Y.Z-nightly.YYYYMMDD` pins a specific
-nightly.
+nightly — browse the available tags on the [ecos-installer releases
+page](https://github.com/openecos-projects/ecos-installer/releases).
 
 The wrapper is installed to `~/.local/bin` by default. If that directory is not
 on `PATH`, add it:

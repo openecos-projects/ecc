@@ -28,7 +28,7 @@ To install the latest nightly build (ecc, ecc-sizer, kepler-formal, and the ICS5
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --nightly
 ```
 
-Add `--with-toolchain` to the same command to install Yosys (OSS CAD Suite) as well. Re-running the installer without `--nightly` switches back to the stable release; `--nightly-tag vX.Y.Z-nightly.YYYYMMDD` pins a specific nightly.
+Add `--with-toolchain` to the same command to install Yosys (OSS CAD Suite) as well. Re-running the installer without `--nightly` switches back to the stable release; `--nightly-tag vX.Y.Z-nightly.YYYYMMDD` pins a specific nightly — browse the available tags on the [ecos-installer releases page](https://github.com/openecos-projects/ecos-installer/releases).
 
 The wrapper installs to `~/.local/bin`. If that directory is not on your `PATH`, add it:
 
