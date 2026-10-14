@@ -79,7 +79,9 @@ def _parse_nightly(release: dict) -> NightlyRelease | None:
         return None
     if not release.get("prerelease") or release.get("draft"):
         return None
-    tag = release.get("tag_name", "")
+    tag = release.get("tag_name")
+    if not isinstance(tag, str):
+        return None
     match = _NIGHTLY_TAG_RE.match(tag)
     if match is None:
         return None

@@ -110,6 +110,15 @@ def test_latest_nightly_skips_malformed_release_entries():
     assert latest_nightly(["not-a-dict"]) is None
 
 
+def test_latest_nightly_skips_non_string_tag_names():
+    releases = [
+        {"tag_name": None, "prerelease": True},
+        {"tag_name": 20261013, "prerelease": True},
+    ]
+
+    assert latest_nightly(releases) is None
+
+
 def test_body_field_parsing_takes_first_match_and_skips_empty_values():
     body = (
         f"ecc-version: 0.1.0-alpha.13-nightly.20261012.g27084f4\n"
