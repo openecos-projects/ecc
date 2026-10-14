@@ -527,7 +527,7 @@ The final inner DreamPlace legalization uses `legalize_flag=1` and `detailed_pla
 
 | Field | Default | Meaning |
 |---|---:|---|
-| `hold_margin` | `0.02` ns | Additional hold slack margin passed to ecc-sizer's `-hold_margin` option during the FF/MIN hold-only pass. It is only used by that pass and is not a final multi-corner signoff margin. |
+| `hold_margin` | `0.04` ns | Additional hold slack margin passed to ecc-sizer's `-hold_margin` option during the FF/MIN hold-only pass. It is only used by that pass and is not a final multi-corner signoff margin. |
 
 | Generated file or option | Source | Meaning |
 |---|---|---|
@@ -697,7 +697,7 @@ ecc param list --step timing_optimization
 ecc param set timing_opt.hold_margin VALUE
 ```
 
-`timing_opt.hold_margin` is in ns, defaults to `0.02`, and is emitted as `-hold_margin VALUE` in the generated `hold.cmd_file`.
+`timing_opt.hold_margin` is in ns, defaults to `0.04`, and is emitted as `-hold_margin VALUE` in the generated `hold.cmd_file`.
 
 ### 15.6 cts and routing
 

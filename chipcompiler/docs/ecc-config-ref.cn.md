@@ -518,7 +518,7 @@ Timing optimization 是多阶段子流程：先用 `workspace.pdk.libs`（通常
 
 | 字段 | 默认值 | 含义 |
 |---|---:|---|
-| `hold_margin` | `0.02` ns | FF/MIN hold-only pass 传给 ecc-sizer 的 `-hold_margin` 附加 hold slack margin。只影响该 pass，不是最终多 corner signoff margin。 |
+| `hold_margin` | `0.04` ns | FF/MIN hold-only pass 传给 ecc-sizer 的 `-hold_margin` 附加 hold slack margin。只影响该 pass，不是最终多 corner signoff margin。 |
 
 | 生成文件或选项 | 来源 | 含义 |
 |---|---|---|
@@ -687,7 +687,7 @@ ecc param list --step timing_optimization
 ecc param set timing_opt.hold_margin VALUE
 ```
 
-`timing_opt.hold_margin` 的单位是 ns，默认值为 `0.02`，并会以 `-hold_margin VALUE` 写入生成的 `hold.cmd_file`。
+`timing_opt.hold_margin` 的单位是 ns，默认值为 `0.04`，并会以 `-hold_margin VALUE` 写入生成的 `hold.cmd_file`。
 
 ### 15.6 cts 与 routing
 

@@ -125,7 +125,7 @@ def test_sizer_step_config_writes_ff_hold_pass_from_sta_contract(
         "hold": next(line for line in hold_cmd_text.splitlines() if line.startswith("-use_gr_rc ")),
     } == {"setup": f"-use_gr_rc {rc_mode}", "hold": "-use_gr_rc 0"}
     assert "-hold_only" in hold_cmd_text
-    assert "-hold_margin 0.02" in hold_cmd_text
+    assert "-hold_margin 0.04" in hold_cmd_text
     assert "-spef " not in hold_cmd_text
     assert f"-def {sizer_builder.sizer_setup_staging_def(step)}" in hold_cmd_text
     assert f"-def_out_path {sizer_builder.sizer_staging_def(step).resolve()}" in hold_cmd_text

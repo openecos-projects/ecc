@@ -7,7 +7,7 @@ SCHEMAS = (
         "timing_opt.hold_margin",
         "sizer",
         ("hold_margin",),
-        0.02,
+        0.04,
         applies="timing_opt",
         description="Additional hold slack margin in ns for the Sizer hold-only pass.",
     ),
