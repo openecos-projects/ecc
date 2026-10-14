@@ -9,7 +9,13 @@ from chipcompiler.cli.core.exit_codes import (
 )
 from chipcompiler.cli.core.records import error_record, manifest_error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
-from ecc_experience.cli.inputs import CampaignInput, CollectInput, RecordingInput, StoreInput
+from ecc_experience.cli.inputs import (
+    CampaignInput,
+    CollectInput,
+    RecommendInput,
+    RecordingInput,
+    StoreInput,
+)
 from ecc_experience.models import ExperienceError
 
 
@@ -61,6 +67,19 @@ def collect(command_input: CollectInput, ctx: CommandContext) -> CommandResult:
                 }
             ]
         )
+
+    return _guard(operation)
+
+
+def recommend(command_input: RecommendInput, ctx: CommandContext) -> CommandResult:
+    if ctx.manifest_error:
+        return CommandResult.err([manifest_error_record(ctx.manifest_error)])
+
+    def operation() -> CommandResult:
+        from ecc_experience.api import recommend as recommend_cases
+
+        result = recommend_cases(ctx.run_dir, command_input.store, limit=command_input.limit)
+        return CommandResult.ok([{"experience": "recommend", **result}])
 
     return _guard(operation)
 

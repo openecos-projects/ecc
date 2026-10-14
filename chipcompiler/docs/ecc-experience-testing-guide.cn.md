@@ -343,6 +343,23 @@ ledger 是调度和恢复记录，不等于 ECC 的 QoR 结论。QoR、step 报�
 仍必须通过 workspace 证据与 experience case 保存；只有完成验证的案例才可用于经验
 总结或后续推荐。
 
+对已有经验做初步检索时使用只读推荐命令：
+
+```bash
+ecc experience recommend \
+  --project "$PROJECT" \
+  --workspace "$WORKSPACE" \
+  --store "$EXPERIENCE_STORE" \
+  --limit 10 \
+  --json
+```
+
+当前推荐只匹配完整的输入内容指纹，返回历史案例中的已观察参数，并将
+`safe_to_apply` 固定为 `false`。这不是自动调参，也不证明参数对 QoR 有因果作用；
+AI 必须检查 verification、QoR、参数回执和适用工艺后，另建 workspace 验证。没有
+完整输入指纹、经验库不存在或没有可验证案例时，命令返回
+`status=insufficient_evidence` 和空 recommendations，不猜测参数。
+
 从 collect/list 的 JSON 取得实际 case_id 后执行：
 
 ```bash

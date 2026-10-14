@@ -8,7 +8,13 @@ from chipcompiler.cli.core.inputs import output_options, project_options
 from chipcompiler.cli.core.invocation import execute_command
 from chipcompiler.cli.core.options import JsonOption, PlainOption, ProjectOption, WorkspaceOption
 from ecc_experience.cli import handlers
-from ecc_experience.cli.inputs import CampaignInput, CollectInput, RecordingInput, StoreInput
+from ecc_experience.cli.inputs import (
+    CampaignInput,
+    CollectInput,
+    RecommendInput,
+    RecordingInput,
+    StoreInput,
+)
 
 StoreOption = Annotated[str, typer.Option("--store", help="External experience store directory")]
 CaseArgument = Annotated[str, typer.Argument(help="Experience case ID")]
@@ -139,6 +145,26 @@ def drain_cmd(
         limit=limit,
     )
     execute_command("experience", command_input, handlers.drain)
+
+
+@experience_app.command("recommend", help="Show conservative observed configurations")
+def recommend_cmd(
+    *,
+    store: StoreOption,
+    project: ProjectOption = None,
+    workspace: WorkspaceOption = None,
+    limit: Annotated[int, typer.Option("--limit", min=1, max=100)] = 10,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = RecommendInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(project),
+        workspace=workspace,
+        store=store,
+        limit=limit,
+    )
+    execute_command("experience", command_input, handlers.recommend)
 
 
 @campaign_app.command("validate", help="Validate a campaign manifest without running EDA")

@@ -39,3 +39,12 @@ class CampaignInput:
     trial_id: str | None = None
     case_id: str | None = None
     reason: str | None = None
+
+
+@dataclass(frozen=True)
+class RecommendInput:
+    output: OutputOptions
+    project: ProjectOptions
+    store: str
+    workspace: str | None = None
+    limit: int = 10

@@ -153,6 +153,29 @@ def test_experience_recording_enable_status_disable(create_cli_project, tmp_path
     assert json.loads(disabled.stdout)[0]["enabled"] is False
 
 
+def test_experience_recommend_is_read_only(legacy_project, tmp_path):
+    project, workspace = legacy_project
+    result = runner.invoke(
+        app,
+        [
+            "experience",
+            "recommend",
+            "--project",
+            str(project),
+            "--workspace",
+            workspace.name,
+            "--store",
+            str(tmp_path / "store"),
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    record = json.loads(result.stdout)[0]
+    assert record["status"] == "insufficient_evidence"
+    assert not (tmp_path / "store").exists()
+
+
 def test_experience_recording_rejects_store_inside_project(create_cli_project, tmp_path):
     project = create_cli_project()
     nested_store = Path(project) / "nested-store"

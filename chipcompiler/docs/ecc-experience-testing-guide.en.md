@@ -379,6 +379,25 @@ changed. The ledger is a scheduling and recovery record, not a QoR verdict. QoR,
 reports, tool versions, and parameters still belong in workspace evidence and experience
 cases; only verified cases should feed experience summaries or later recommendations.
 
+Use the read-only recommendation command to retrieve observed configurations:
+
+```bash
+ecc experience recommend \
+  --project "$PROJECT" \
+  --workspace "$WORKSPACE" \
+  --store "$EXPERIENCE_STORE" \
+  --limit 10 \
+  --json
+```
+
+The current implementation matches only complete input-content fingerprints and returns
+parameters observed in historical cases with `safe_to_apply` fixed to `false`. This is not
+automatic tuning and does not establish a causal QoR effect. The AI must inspect
+verification, QoR, parameter receipts, and process applicability before validating in a
+new workspace. If the query has no complete fingerprint, the store is absent, or no
+verifiable case exists, the command returns `status=insufficient_evidence` with an empty
+`recommendations` list instead of guessing parameters.
+
 Read the actual case_id from collect/list JSON, then run:
 
 ```bash
