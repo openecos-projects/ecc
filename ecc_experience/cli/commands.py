@@ -12,6 +12,7 @@ from ecc_experience.cli.inputs import (
     CampaignInput,
     CollectInput,
     EvaluationInput,
+    MatchInput,
     OptimizeInput,
     PlanInput,
     RecommendInput,
@@ -112,6 +113,34 @@ def features_cmd(
         through_step=through_step,
     )
     execute_command("experience", command_input, handlers.features)
+
+
+@experience_app.command("match", help="Explain compatible stage matches from a frozen release")
+def match_cmd(
+    case_id: CaseArgument,
+    *,
+    store: StoreOption,
+    release: Annotated[str, typer.Option("--release", help="Frozen release JSON")],
+    through_step: Annotated[str, typer.Option("--through-step", help="Last visible stage")],
+    limit: Annotated[int, typer.Option("--limit", min=1, max=100)] = 10,
+    experimental_cross_design: Annotated[bool, typer.Option("--experimental-cross-design")] = False,
+    groups: Annotated[
+        str | None, typer.Option("--groups", help="Explicit case-to-family groups JSON")
+    ] = None,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = MatchInput(
+        output=output_options(plain=plain, json_output=json_output),
+        store=store,
+        case_id=case_id,
+        release=release,
+        through_step=through_step,
+        limit=limit,
+        experimental_cross_design=experimental_cross_design,
+        groups=groups,
+    )
+    execute_command("experience", command_input, handlers.match)
 
 
 @experience_app.command(

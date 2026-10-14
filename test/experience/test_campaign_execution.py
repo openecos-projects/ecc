@@ -73,6 +73,7 @@ def campaign(workspace_factory, tmp_path, monkeypatch):
         )
     )
     monkeypatch.setattr(execute, "runtime_identity", lambda: {"version": "test"})
+    monkeypatch.setattr(trial, "runtime_identity", lambda: {"version": "test"})
     return manifest, workspace
 
 

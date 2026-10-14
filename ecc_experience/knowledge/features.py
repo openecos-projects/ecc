@@ -67,6 +67,7 @@ def extract_features(
             "resource_observation": step.get("resource_observation"),
             "analysis_context": None,
             "tool_identity": None,
+            "analysis_revision": None,
         }
         reports = [
             item
@@ -91,9 +92,16 @@ def extract_features(
                 entry["reason"] = "Unsupported or inconsistent stage report"
                 continue
             entry["analysis_context"] = payload.get("context")
+            entry["analysis_revision"] = payload.get("analysis_revision")
+            entry["tool_identity"] = _tool_identity(case, str(step.get("tool", "")))
             for metric in payload.get("metrics", []):
                 value = metric.get("value")
                 if not isinstance(metric.get("id"), str) or not isinstance(metric.get("unit"), str):
+                    continue
+                if any(
+                    metric.get(key) is not None and not isinstance(metric[key], str)
+                    for key in ("scope", "corner", "category", "direction")
+                ):
                     continue
                 available = type(value) in {int, float} and math.isfinite(value)
                 entry["metrics"].append(
@@ -105,6 +113,7 @@ def extract_features(
                         "scope": metric.get("scope"),
                         "corner": metric.get("corner"),
                         "direction": metric.get("direction"),
+                        "category": metric.get("category"),
                         "provenance": {
                             "reference": captured.reference,
                             "sha256": captured.sha256,
@@ -144,3 +153,32 @@ def _sections(facts: dict) -> tuple[list[dict], dict, list[dict]]:
 
 def _invalid(reason: str) -> ExperienceError:
     return ExperienceError(reason, code="experience_features_invalid")
+
+
+def _tool_identity(case: ExperienceCase, tool: str) -> dict | None:
+    context = case.facts.get("experienceExecutionContext")
+    if (
+        not isinstance(context, dict)
+        or context.get("schema") != "ecc-experience-execution-context/1"
+        or context.get("attempt_id") != case.source.attempt_id
+        or not isinstance(context.get("runtime"), dict)
+    ):
+        return None
+    runtime = context["runtime"]
+    if not isinstance(runtime, dict):
+        return None
+    sources = runtime.get("sources")
+    versions = runtime.get("tools")
+    native = runtime.get("native_packages")
+    if (
+        not isinstance(sources, dict)
+        or not sources
+        or not isinstance(versions, dict)
+        or not isinstance(native, dict)
+    ):
+        return None
+    distribution = {"ecc": "ecc-tools-bin", "dreamplace": "ecc-dreamplace"}.get(tool)
+    version = native.get(distribution) if distribution else versions.get(tool)
+    if not isinstance(version, str) or version in {"", "unknown", "not installed"}:
+        return None
+    return {"tool": tool, "version": version, "ecc_sources": sources, "ecc": runtime.get("ecc")}

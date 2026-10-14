@@ -846,3 +846,26 @@ reference/SHA256 和原 selector；有效的零值与缺失值分别保留。较
 旧案例可查询，缺失字段不补零。配置单独标 configured，不代表工具已实际消费，
 也不是该历史阶段当时的配置快照。资源观测保留原 scope/attempt，复用阶段不另
 计运行成本。存储证据损坏返回 6；这些采集摘要不证明原始执行或完整 PDK 闭包。
+
+### 冻结知识集中的阶段匹配
+
+```bash
+ecc experience match QUERY_CASE_ID --store ./experience-store --release ./release-K.json --through-step postFloorplan --json
+```
+
+只有冻结 release 内的案例参与。先核验案例，再按阶段工艺 profile、所选 tech/
+LEF/Liberty/mapping 内容摘要、工具观测版本和 ECC 源身份、报告分析版本、SDC
+分析上下文过滤；缺失或不一致逐项列在 excluded。通过后按共同结构指标的
+log1p 距离排序，保留共同值/单位，最多 `--limit` 条。检索是只读查询，0 只表示
+查询成功；没有匹配时返回 insufficient_evidence，不会应用参数。
+
+新 campaign 在执行前后核对运行时及所选 PDK 内容，将 attempt 绑定的上下文
+存入不可变案例。手动 collect 和旧 case 不会事后推断工具版本或冒充执行身份；
+缺少上下文时匹配保守回退。这仍不覆盖完整 include/PDK/工具二进制依赖闭包。
+
+默认只匹配相同输入。显式 `--experimental-cross-design` 可查看跨输入候选，
+confidence=experimental，没有校准过的收益置信度。可用 `--groups groups.json`
+排除同一家族；文件格式为 `{"schema_version":1,"cases":{"CASE_ID":"FAMILY"}}`。
+指定 groups 后，未知组也排除；没有分组时明确 not_checked，不能宣称家族留出。
+配置仍为 configured；相似度不证明参数生效、因果关系或新设计收益，必须新建
+workspace 实测并完成完整验收。

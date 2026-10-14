@@ -81,6 +81,8 @@ def validate_trial(
     baseline: WorkspaceObservation,
     parameters: dict,
     run_id: str,
+    *,
+    execution_context: dict | None = None,
 ) -> dict:
     observation = check_trial_configuration(workspace, baseline, parameters)
     baseline_qor = baseline.facts.get("qorSnapshotExtension", {})
@@ -96,6 +98,7 @@ def validate_trial(
         read_workspace_observation,
         attempt_id=run_id,
         expected_snapshot_digest=observation.source.snapshot_digest,
+        execution_context=execution_context,
     )
     verification = verify_case(collected.case, repository.case_directory(collected.case.case_id))
     return {

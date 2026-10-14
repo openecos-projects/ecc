@@ -13,6 +13,7 @@ from ecc_experience.cli.inputs import (
     CampaignInput,
     CollectInput,
     EvaluationInput,
+    MatchInput,
     OptimizeInput,
     PlanInput,
     RecommendInput,
@@ -98,6 +99,24 @@ def features(command_input: StoreInput, _ctx: CommandContext) -> CommandResult:
             records=({"experience": "features", **result},),
             exit_code=6 if result["status"] == "fail" else 0,
         )
+
+    return _guard(operation)
+
+
+def match(command_input: MatchInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import match as match_cases
+
+        result = match_cases(
+            command_input.case_id,
+            command_input.store,
+            release=command_input.release,
+            through_step=command_input.through_step,
+            limit=command_input.limit,
+            experimental_cross_design=command_input.experimental_cross_design,
+            groups=command_input.groups,
+        )
+        return CommandResult.ok([{"experience": "match", **result}])
 
     return _guard(operation)
 

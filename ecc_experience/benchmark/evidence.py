@@ -6,8 +6,9 @@ from typing import TypeGuard
 
 from chipcompiler.cli.inspection.step_view import build_step_detail_records
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
+from ecc_experience.adapters.process_context import process_context
 from ecc_experience.files import file_digest, read_json, safe_child
-from ecc_experience.models import WorkspaceObservation
+from ecc_experience.models import ExperienceError, WorkspaceObservation
 from ecc_experience.optimization.evidence import validate_trial
 from ecc_experience.optimization.policy import configuration_differences
 
@@ -17,8 +18,17 @@ def collect_trial(
     store: str,
     baseline: WorkspaceObservation,
     run_id: str,
+    *,
+    execution_context: dict | None = None,
 ) -> dict:
     observation = read_workspace_observation(workspace)
+    if (
+        execution_context is not None
+        and process_context(observation.facts) != execution_context["process"]
+    ):
+        raise ExperienceError(
+            "Trial PDK binding differs from the frozen context", code="experience_source_changed"
+        )
     requested = baseline.facts["workspaceSpec"]["parameters"]
     observed = observation.facts["workspaceSpec"]["parameters"]
     changed = configuration_differences(requested, observed)
@@ -51,7 +61,9 @@ def collect_trial(
                             "source": reference,
                             "source_sha256": file_digest(safe_child(workspace, reference))[0],
                         }
-    result = validate_trial(workspace, store, baseline, updates, run_id)
+    result = validate_trial(
+        workspace, store, baseline, updates, run_id, execution_context=execution_context
+    )
     return {**result, "runtime_parameter_updates": evidence}
 
 

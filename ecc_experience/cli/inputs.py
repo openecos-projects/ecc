@@ -21,6 +21,19 @@ class StoreInput:
 
 
 @dataclass(frozen=True)
+class MatchInput:
+    output: OutputOptions
+    store: str
+    case_id: str
+    release: str
+    through_step: str
+    limit: int = 10
+    experimental_cross_design: bool = False
+    groups: str | None = None
+    project: ProjectOptions = ProjectOptions()
+
+
+@dataclass(frozen=True)
 class RecordingInput:
     output: OutputOptions
     project: ProjectOptions

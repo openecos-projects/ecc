@@ -963,3 +963,31 @@ remain readable. Configured values neither prove tool consumption nor describe
 historical stage configuration. Resource scope and attempt identity are retained;
 reused stages must not be counted as new execution cost. Corrupt stored evidence
 returns 6. Capture hashes do not prove original execution or complete PDK closure.
+
+### Match stages against frozen knowledge
+
+```bash
+ecc experience match QUERY_CASE_ID --store ./experience-store --release ./release-K.json --through-step postFloorplan --json
+```
+
+Only cases in the verified frozen release participate. Matching first checks the
+stage process profile, selected tech/LEF/Liberty/mapping content hashes, observed
+tool version and ECC source identity, analysis revision and SDC analysis context.
+Unknown or incompatible identities are explained in excluded. Compatible cases
+are ranked by mean log1p distance over common structural metrics, preserving the
+values and units, up to --limit. This read-only query returns 0 when processed;
+insufficient_evidence means no match, not successful optimization.
+
+New campaigns check runtime and selected PDK content before and after execution
+and retain attempt-bound context in immutable cases. Manual collection and older
+cases do not retrospectively invent tool versions or execution identity. Unknown
+context conservatively prevents matching. This does not cover complete include,
+PDK or tool binary dependency closure.
+
+Matching defaults to identical input content. --experimental-cross-design enables
+experimental candidates without calibrated benefit confidence. --groups accepts
+explicit family mappings: {"schema_version":1,"cases":{"CASE_ID":"FAMILY"}}.
+When provided, missing groups and same-family candidates are excluded. Otherwise
+family isolation is not_checked. Parameters remain configured; similarity proves
+neither consumption, causal effects nor benefits for a new design. Run candidates
+in new workspaces and complete full acceptance before adopting them.

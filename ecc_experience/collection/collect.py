@@ -26,6 +26,7 @@ def collect_committed_case(
     *,
     attempt_id: str | None = None,
     expected_snapshot_digest: str | None = None,
+    execution_context: dict | None = None,
 ) -> CollectionResult:
     workspace = Path(directory).expanduser().resolve()
     if store.root.is_relative_to(workspace) or workspace.is_relative_to(store.root):
@@ -52,6 +53,19 @@ def collect_committed_case(
     fingerprint = None
     if inputs and all(item["sha256"] is not None for item in inputs):
         fingerprint = digest({"top": spec.get("design", {}).get("topModule"), "inputs": inputs})
+    facts = observation.facts
+    process_fingerprint = None
+    if execution_context is not None:
+        if (
+            execution_context.get("schema") != "ecc-experience-execution-context/1"
+            or attempt_id is None
+            or execution_context.get("attempt_id") != attempt_id
+        ):
+            raise ExperienceError("Execution context is not bound to this attempt")
+        facts = {**facts, "experienceExecutionContext": execution_context}
+        process = execution_context.get("process", {})
+        if process.get("status") == "available":
+            process_fingerprint = process.get("fingerprint")
     case = ExperienceCase(
         case_id="",
         collector_version=__version__,
@@ -59,7 +73,8 @@ def collect_committed_case(
         source=observation.source,
         input_content_fingerprint=fingerprint,
         inputs=observation.inputs,
-        facts=observation.facts,
+        facts=facts,
+        process_fingerprint=process_fingerprint,
         evidence=observation.evidence,
         limitations=observation.limitations,
         parameter_evidence="configured" if spec.get("parameters") else "unknown",

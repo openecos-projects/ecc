@@ -9,6 +9,7 @@ from chipcompiler.cli.core.version_info import distribution_version
 from chipcompiler.cli.inspection.tool_versions import tool_versions
 from chipcompiler.project.manifest import ManifestError, load_manifest
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
+from ecc_experience.adapters.process_context import process_context
 from ecc_experience.benchmark.manifest import CampaignManifest
 from ecc_experience.files import digest, file_digest
 from ecc_experience.models import ExperienceError, WorkspaceObservation
@@ -22,6 +23,7 @@ class PreparedDesign:
     design_name: str
     observation: WorkspaceObservation
     fingerprint: str
+    process_context: dict
 
 
 def prepare(
@@ -86,6 +88,7 @@ def prepare(
             name: file_digest(project / name)[0] if (project / name).exists() else None
             for name in ("project.json", "ecc.toml")
         }
+        process = process_context(observation.facts)
         prepared.append(
             PreparedDesign(
                 design.id,
@@ -100,8 +103,10 @@ def prepare(
                         "files": files,
                         "snapshot": observation.source.snapshot_digest,
                         "inputs": [item.model_dump() for item in observation.inputs],
+                        "process": process,
                     }
                 ),
+                process,
             )
         )
     return prepared

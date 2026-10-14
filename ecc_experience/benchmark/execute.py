@@ -146,6 +146,7 @@ def _run(
                 "directory": str(directory),
                 "case_id": None,
                 "reason": None,
+                "execution_runtime": runtime,
             }
             result["trials"].append(trial)
             save()

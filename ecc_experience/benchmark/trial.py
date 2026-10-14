@@ -4,8 +4,9 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from ecc_experience.adapters.process_context import process_context
 from ecc_experience.benchmark.evidence import collect_trial
-from ecc_experience.benchmark.preparation import PreparedDesign
+from ecc_experience.benchmark.preparation import PreparedDesign, runtime_identity
 from ecc_experience.models import ExperienceError
 from ecc_experience.optimization.evidence import (
     check_trial_configuration,
@@ -157,7 +158,25 @@ def complete_trial(
         record.update(exit_code=124, execution_status="timeout", reason="trial_timeout")
         return
     record["collection_status"] = "pending"
-    collected = collect_trial(workspace, store, source.observation, record["run_id"])
+    context = None
+    if record.get("execution_runtime") is not None:
+        if (
+            runtime_identity() != record["execution_runtime"]
+            or process_context(source.observation.facts) != source.process_context
+        ):
+            raise ExperienceError(
+                "Execution runtime or PDK changed", code="experience_source_changed"
+            )
+        context = {
+            "schema": "ecc-experience-execution-context/1",
+            "attempt_id": record["run_id"],
+            "runtime": record["execution_runtime"],
+            "process": source.process_context,
+            "scope": "campaign_runtime_and_selected_pdk_content_checked_before_and_after",
+        }
+    collected = collect_trial(
+        workspace, store, source.observation, record["run_id"], execution_context=context
+    )
     verification = collected["verification"]
     verification_path = directory / "case-verification.json"
     write_plan(verification_path, verification)

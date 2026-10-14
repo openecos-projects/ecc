@@ -12,6 +12,7 @@ from ecc_experience.benchmark.summary import summarize as summarize_campaign
 from ecc_experience.collection.collect import CollectionResult, collect_committed_case
 from ecc_experience.collection.drain import drain as drain_recording
 from ecc_experience.knowledge.features import case_features
+from ecc_experience.knowledge.matching import match_cases
 from ecc_experience.knowledge.recommend import recommend as recommend_cases
 from ecc_experience.knowledge.release import create_release, verify_release
 from ecc_experience.knowledge.store import ExperienceStore
@@ -42,6 +43,27 @@ def show(case_id: str, store: str | Path) -> ExperienceCase:
 
 def features(case_id: str, store: str | Path, *, through_step: str | None = None) -> dict:
     return case_features(case_id, store, through_step=through_step)
+
+
+def match(
+    case_id: str,
+    store: str | Path,
+    *,
+    release: str | Path,
+    through_step: str,
+    limit: int = 10,
+    experimental_cross_design: bool = False,
+    groups: str | Path | None = None,
+) -> dict:
+    return match_cases(
+        case_id,
+        store,
+        release=release,
+        through_step=through_step,
+        limit=limit,
+        experimental_cross_design=experimental_cross_design,
+        groups=groups,
+    )
 
 
 def verify(case_id: str, store: str | Path) -> Verification:
