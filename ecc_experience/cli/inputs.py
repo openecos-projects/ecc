@@ -89,3 +89,14 @@ class ReleaseInput:
     case_ids: list[str] | None = None
     output_path: str | None = None
     release_path: str | None = None
+
+
+@dataclass(frozen=True)
+class TransferInput:
+    output: OutputOptions
+    store: str
+    output_path: str | None = None
+    package_path: str | None = None
+    case_ids: list[str] | None = None
+    release_path: str | None = None
+    project: ProjectOptions = ProjectOptions()

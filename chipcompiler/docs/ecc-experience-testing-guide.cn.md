@@ -10,7 +10,7 @@
 运行与证据采集。ecc_experience 已提供 P0 的 collect/list/show/verify，以及 P1 的
 enable/status/disable、提交后 attempt outbox 和 drain 恢复，以及 campaign 台账、
 recommend、plan、evaluate、release 和受预算约束的 optimize。跨设计相似推荐、资源
-预测和经验包 export/import 仍待开发。**执行前必须以安装版本的
+预测仍待开发；经验包 export/import 已提供显式选择、离线完整性检查和幂等导入。**执行前必须以安装版本的
 帮助和输出契约确认能力，不能照猜测调用。
 
 本手册不是测试完成记录。示例路径、名称和预算仅演示操作，不能视为已验证配置。
@@ -552,6 +552,62 @@ JSON 始终保留。P0 的显式 collect 没有 attempt 身份；P1 通过 drain
 
 知识库为空是正常冷启动场景。收集可以工作，推荐需要说明不足；不能返回
 “已学习的最佳配置”。AI 自己的文字总结不能升级为 validated rule。
+
+### 10.3 备份和交换经验案例
+
+选择需要分享的案例，不会默认导出整个 store：
+
+```bash
+ecc experience export \
+  --store "$EXPERIENCE_STORE" \
+  --case-id "$CASE_ID_1" \
+  --case-id "$CASE_ID_2" \
+  --output "$OUTPUT_ROOT/experience.tar.gz" --json
+
+ecc experience import \
+  --package "$OUTPUT_ROOT/experience.tar.gz" \
+  --store "$OUTPUT_ROOT/imported-store" --json
+```
+
+也可以用 `--release "$OUTPUT_ROOT/experience-release.json"` 替代全部 `--case-id`；
+两种选择不能同时使用。包包含该 release、其中所有案例，以及案例已复制到 store 的
+小型证据。导入结果的 `release.path` 是目标 store 内可供 `release verify`、
+`recommend --release`、`plan --release` 使用的实际路径。
+
+这两条命令只需要显式 store，可以在项目外运行；输出包必须位于源 store 外，输入包
+必须位于目标 store 外。同一内容重复导出/导入返回 `already_present`；不同内容不能
+覆盖已有包、案例或 release。混合导入会分别报告 `created_count` 和
+`already_present_count`。完整校验先于目标 store 创建，发布前检查既有内容；本次
+发布途中发生可捕获的写入错误会回滚本次新增内容。写锁仍遵循单 collector 规则，
+不保证进程被强制杀死或掉电时多个目录能作为一个原子事务同时可见。
+
+包 manifest 记录 schema、案例集合、每个文件的 SHA-256/大小和内容地址 package ID。
+拒绝路径越界、符号/硬链接、重复或未声明文件、损坏摘要、无效案例身份和 release
+元数据不匹配。第一版限制压缩包 128 MiB、完整解压归档 256 MiB、单文件 32 MiB、
+20000 个数据文件和 10000 个案例；超限时拆分案例选择，不能通过关闭校验继续。
+相同输入产生字节一致的 gzip tar 包。内容摘要用于完整性检查，不是发布者身份签名。
+
+导入的 `integrity=pass` 和 `source_verification=not_performed` 只说明包内证据完整。
+原案例身份、source、失败和未知事实保持不变。包不会沿来源路径复制 RTL、PDK、大型
+产物或工具，也不重跑 EDA、自动启用经验或修改参数；案例与小型报告中仍可能包含
+设计名、路径和设计数据，分享前应审查实际内容。
+
+源 workspace 不在当前机器时，原 `experience verify`/`release verify` 仍可返回
+`unknown`；源文件变化时仍可失败。release 绑定推荐仍要求原验证条件通过，导入不会
+豁免新鲜度检查。无 release 的 observed-only 查询保留现有不自动应用的行为。
+需要完整设计交付时继续使用 `ecc reproducible export`。
+
+| 情况 | 退出码 |
+| --- | --- |
+| 成功、重复同内容 | 0 |
+| 选择缺失/冲突、非法命令参数 | 2 |
+| 包损坏、schema/成员/案例/release 不一致、超限 | 6 |
+| store 正在写入 | 20 |
+| 既有内容冲突 | 21 |
+| 文件系统 I/O 错误 | 1 |
+
+已有 PyInstaller 与 design matrix 的经验 smoke 同时执行导出、导入、重复导入、
+案例内容一致性检查与损坏包拒绝，不为此再跑一次 EDA flow。
 
 ## 11. 如何从测试生成下一知识版本
 

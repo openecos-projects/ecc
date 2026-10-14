@@ -205,6 +205,7 @@ Every command and subcommand at a glance (semantics, options, and examples in th
 | `ecc sweep create / show / list / run / compare / verify` | deterministic parameter sweeps | §11.5 |
 | `ecc explore rank / export / promote` | rank, export, and promote candidates | §11.5 |
 | `ecc diagnose run` | workspace diagnosis and recovery suggestions | §11.5 |
+| `ecc experience` | collect/record cases, bounded recommendations/optimization, releases, and package export/import | [Experience testing manual](ecc-experience-testing-guide.en.md#103-back-up-and-exchange-experience-cases) |
 
 ## 2. version — show versions
 

@@ -263,6 +263,7 @@ eval "$(ecc --show-completion)"     # 自动探测当前 shell
 | `ecc sweep create / show / list / run / compare / verify` | 确定性参数扫描 | §11.5 |
 | `ecc explore rank / export / promote` | 候选排序、导出与提升 | §11.5 |
 | `ecc diagnose run` | 工作区诊断与恢复建议 | §11.5 |
+| `ecc experience` | 案例采集、记录、受限推荐/优化、release 与经验包 export/import | [经验测试手册](ecc-experience-testing-guide.cn.md#103-备份和交换经验案例) |
 
 ## 2. version — 查看版本
 

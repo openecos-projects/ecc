@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from ecc_experience.files import canonical_bytes, case_identity, read_json, safe_child
 from ecc_experience.knowledge.verify import verify_integrity
-from ecc_experience.models import ExperienceCase, ExperienceError
+from ecc_experience.models import CaseContents, ExperienceCase, ExperienceError
 
 CASE_ID_PATTERN = re.compile(r"case-[0-9a-f]{64}\Z")
 
@@ -72,31 +72,86 @@ class ExperienceStore:
             lock.rmdir()
 
     def put(self, case: ExperienceCase, copies: dict[str, bytes]) -> str:
-        payload = case.model_dump()
-        if case_identity(payload) != case.case_id:
-            raise ExperienceError("Invalid case identity")
+        return self.put_many([CaseContents(case, copies)])[case.case_id]
+
+    def put_many(
+        self, entries: list[CaseContents], *, release: dict | None = None
+    ) -> dict[str, str]:
+        identifiers = [entry.case.case_id for entry in entries]
+        if len(set(identifiers)) != len(identifiers):
+            raise ExperienceError("Duplicate cases in store transaction")
         with self._writer():
-            destination = self.case_directory(case.case_id)
-            if destination.exists():
-                existing = self.read(case.case_id)
-                if any(item.status == "fail" for item in verify_integrity(existing, destination)):
-                    raise ExperienceError("Existing case evidence is corrupt")
-                return "already_present"
-            destination.parent.mkdir(parents=True, exist_ok=True)
+            safe_child(self.root, "cases").mkdir(parents=True, exist_ok=True)
             temporary = Path(tempfile.mkdtemp(prefix=".collect-", dir=self.root))
+            statuses: dict[str, str] = {}
+            pending: list[tuple[Path, Path]] = []
+            published: list[Path] = []
             try:
-                for reference, content in copies.items():
-                    target = safe_child(temporary, reference)
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    self._write(target, content)
-                self._write(temporary / "case.json", canonical_bytes(payload))
-                if any(item.status == "fail" for item in verify_integrity(case, temporary)):
-                    raise ExperienceError("Incomplete staged evidence")
-                os.rename(temporary, destination)
+                for entry in entries:
+                    case = entry.case
+                    if case_identity(case.model_dump()) != case.case_id:
+                        raise ExperienceError("Invalid case identity")
+                    destination = self.case_directory(case.case_id)
+                    if destination.exists():
+                        existing = self.read(case.case_id)
+                        if any(
+                            item.status == "fail"
+                            for item in verify_integrity(existing, destination)
+                        ):
+                            raise ExperienceError(
+                                "Existing case evidence is corrupt",
+                                code="experience_case_conflict",
+                            )
+                        statuses[case.case_id] = "already_present"
+                        continue
+                    staged = temporary / case.case_id
+                    staged.mkdir()
+                    for reference, content in entry.copies.items():
+                        target = safe_child(staged, reference)
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        self._write(target, content)
+                    self._write(staged / "case.json", canonical_bytes(case.model_dump()))
+                    if any(item.status == "fail" for item in verify_integrity(case, staged)):
+                        raise ExperienceError("Incomplete staged evidence")
+                    pending.append((staged, destination))
+                    statuses[case.case_id] = "created"
+                if release is not None:
+                    release_id = release["release_id"]
+                    if not re.fullmatch(r"release-[0-9a-f]{64}", release_id):
+                        raise ExperienceError("Invalid release ID")
+                    destination = safe_child(self.root, f"releases/{release_id}.json")
+                    if destination.exists():
+                        existing_release = read_json(destination)
+                        if {
+                            key: value
+                            for key, value in existing_release.items()
+                            if key != "created_at"
+                        } != {key: value for key, value in release.items() if key != "created_at"}:
+                            raise ExperienceError(
+                                "Existing release contains different data",
+                                code="experience_release_conflict",
+                            )
+                        statuses[release_id] = "already_present"
+                    else:
+                        staged = temporary / "release.json"
+                        self._write(staged, canonical_bytes(release))
+                        pending.append((staged, destination))
+                        statuses[release_id] = "created"
+                for staged, destination in pending:
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    os.rename(staged, destination)
+                    published.append(destination)
+            except BaseException:
+                for destination in reversed(published):
+                    if destination.is_dir():
+                        shutil.rmtree(destination)
+                    else:
+                        destination.unlink()
+                raise
             finally:
                 if temporary.exists():
                     shutil.rmtree(temporary)
-        return "created"
+        return statuses
 
     @staticmethod
     def _write(path: Path, content: bytes) -> None:

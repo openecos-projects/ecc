@@ -11,6 +11,7 @@ from ecc_experience.collection.drain import drain as drain_recording
 from ecc_experience.knowledge.recommend import recommend as recommend_cases
 from ecc_experience.knowledge.release import create_release, verify_release
 from ecc_experience.knowledge.store import ExperienceStore
+from ecc_experience.knowledge.transfer import export_package, import_package
 from ecc_experience.knowledge.verify import verify_case
 from ecc_experience.models import ExperienceCase, Verification
 from ecc_experience.optimization.evaluate import evaluate as evaluate_cases
@@ -135,3 +136,17 @@ def release_create(case_ids: list[str], store: str | Path, output: str | Path) -
 
 def release_verify(release: str | Path, store: str | Path) -> dict:
     return verify_release(release, store)
+
+
+def package_export(
+    store: str | Path,
+    output: str | Path,
+    *,
+    case_ids: list[str] | None = None,
+    release: str | Path | None = None,
+) -> dict:
+    return export_package(store, output, case_ids=case_ids, release=release)
+
+
+def package_import(package: str | Path, store: str | Path) -> dict:
+    return import_package(package, store)

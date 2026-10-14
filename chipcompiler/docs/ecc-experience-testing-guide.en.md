@@ -12,7 +12,8 @@ reproducible for execution and evidence collection. ecc_experience now provides 
 collect/list/show/verify and P1 enable/status/disable, post-commit attempt outbox
 recording, and drain recovery, plus campaign ledgers, recommend, plan, evaluate,
 release, and budgeted optimize. Cross-design similarity retrieval, resource
-prediction, and experience export/import remain planned.**
+prediction remain planned; experience export/import now supports explicit selection,
+offline integrity checks, and idempotent merging.**
 Check the installed runtime's help and output contracts before using any capability.
 
 This manual is not a completed test record. Example paths, names, and budgets explain
@@ -614,6 +615,73 @@ a pass.
 An empty store is a normal cold start. Collection can work while recommendation
 reports insufficient evidence. It cannot claim a learned optimum. AI-written
 summaries do not become validated rules without evidence and evaluation.
+
+### 10.3 Back up and exchange experience cases
+
+Select the cases to share explicitly; ECC never exports the entire store by default:
+
+```bash
+ecc experience export \
+  --store "$EXPERIENCE_STORE" \
+  --case-id "$CASE_ID_1" \
+  --case-id "$CASE_ID_2" \
+  --output "$OUTPUT_ROOT/experience.tar.gz" --json
+
+ecc experience import \
+  --package "$OUTPUT_ROOT/experience.tar.gz" \
+  --store "$OUTPUT_ROOT/imported-store" --json
+```
+
+Alternatively, replace all `--case-id` options with
+`--release "$OUTPUT_ROOT/experience-release.json"`; the two selection methods are
+mutually exclusive. The package includes that release, all its cases, and the small
+evidence files already copied into the store. The import result's `release.path`
+identifies the destination release for `release verify`, `recommend --release`,
+and `plan --release`.
+
+Both commands work outside projects and require an explicit store. Export outside
+the source store and import from outside the destination store. Identical repeated
+exports/imports return `already_present`; different content cannot overwrite an
+existing package, case, or release. Mixed imports report `created_count` and
+`already_present_count`. Full validation precedes destination creation; existing
+content is checked before publishing. Catchable write failures roll back entries
+created by this transaction. The single-collector write lock still applies. Multiple
+directory publications are not a crash-atomic transaction under forced termination
+or power loss.
+
+The manifest records its schema, case membership, each file's SHA-256 and size,
+and a content-addressed package ID. Unsafe paths, symbolic/hard links, duplicate or
+undeclared members, corrupt checksums, invalid case identities, and inconsistent
+release metadata are rejected. Initial limits are 128 MiB compressed, 256 MiB for
+the complete expanded archive, 32 MiB per file, 20000 data files, and 10000 cases.
+Split the selected cases when limits are exceeded. Identical inputs produce
+byte-identical gzip tar archives. Checksums establish integrity, not publisher identity.
+
+An imported `integrity=pass` with `source_verification=not_performed` establishes
+package integrity only. Original case identity, source, failures, and unknown facts
+are preserved. Packaging does not follow source references to copy RTL, PDK files,
+large outputs, or tools. It does not rerun EDA, enable recording, or change parameters.
+Cases and small reports can still contain design names, paths, and design data;
+review actual contents before sharing.
+
+When a source workspace is unavailable, the existing `experience verify` and
+`release verify` can still return `unknown`; changed source files can still fail.
+Release-bound recommendations retain their original verification requirements.
+Unbound observed-only queries retain their existing behavior and never auto-apply
+parameters. Use `ecc reproducible export` for complete design deliverables.
+
+| Outcome | Exit code |
+| --- | --- |
+| Success or identical repeated content | 0 |
+| Missing/conflicting selection or invalid command arguments | 2 |
+| Corrupt package, invalid schema/membership/cases/release, or exceeded limits | 6 |
+| Store writer busy | 20 |
+| Existing content conflicts | 21 |
+| Filesystem I/O error | 1 |
+
+The existing PyInstaller and design-matrix experience smoke now checks export,
+import, repeated import, exact case preservation, and corrupt-package rejection
+without launching another EDA flow.
 
 ## 11. Creating the next knowledge release
 

@@ -18,6 +18,7 @@ from ecc_experience.cli.inputs import (
     RecordingInput,
     ReleaseInput,
     StoreInput,
+    TransferInput,
 )
 
 StoreOption = Annotated[str, typer.Option("--store", help="External experience store directory")]
@@ -91,6 +92,48 @@ def verify_cmd(
         case_id=case_id,
     )
     execute_command("experience", command_input, handlers.verify)
+
+
+@experience_app.command(
+    "export", help="Export explicitly selected cases or a release with evidence"
+)
+def export_cmd(
+    *,
+    store: StoreOption,
+    output: Annotated[str, typer.Option("--output", help="Experience package tar.gz")],
+    case_ids: Annotated[list[str] | None, typer.Option("--case-id", help="Case to include")] = None,
+    release: Annotated[
+        str | None, typer.Option("--release", help="Release JSON to include")
+    ] = None,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = TransferInput(
+        output=output_options(plain=plain, json_output=json_output),
+        store=store,
+        output_path=output,
+        case_ids=case_ids,
+        release_path=release,
+    )
+    execute_command("experience", command_input, handlers.package_export)
+
+
+@experience_app.command(
+    "import", help="Validate and merge an experience package without overwriting"
+)
+def import_cmd(
+    *,
+    store: StoreOption,
+    package: Annotated[str, typer.Option("--package", help="Experience package tar.gz")],
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = TransferInput(
+        output=output_options(plain=plain, json_output=json_output),
+        store=store,
+        package_path=package,
+    )
+    execute_command("experience", command_input, handlers.package_import)
 
 
 @experience_app.command("enable", help="Enable non-invasive execution fact recording")

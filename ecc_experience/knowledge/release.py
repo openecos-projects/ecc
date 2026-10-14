@@ -23,9 +23,7 @@ def create_release(case_ids: list[str], store: str | Path, output: str | Path) -
             code="experience_release_invalid",
         )
     if len(selected) != len(case_ids):
-        raise ExperienceError(
-            "Release case IDs must be unique", code="experience_release_invalid"
-        )
+        raise ExperienceError("Release case IDs must be unique", code="experience_release_invalid")
 
     repository = ExperienceStore(store)
     cases = []
@@ -41,7 +39,7 @@ def create_release(case_ids: list[str], store: str | Path, output: str | Path) -
                 f"Case has no complete input fingerprint: {case_id}",
                 code="experience_release_invalid",
             )
-        cases.append(_case_record(case, verification.model_dump()))
+        cases.append(case_record(case, verification.model_dump()))
 
     identity = {"schema": RELEASE_SCHEMA, "cases": cases}
     release = {
@@ -65,7 +63,7 @@ def create_release(case_ids: list[str], store: str | Path, output: str | Path) -
 
 def verify_release(release_path: str | Path, store: str | Path) -> dict[str, Any]:
     payload = read_json(Path(release_path).expanduser())
-    cases = _validate_release(payload)
+    cases = validate_release(payload)
     repository = ExperienceStore(store)
     records = []
     for record in cases:
@@ -106,7 +104,7 @@ def verify_release(release_path: str | Path, store: str | Path) -> dict[str, Any
     }
 
 
-def _case_record(case: Any, verification: dict[str, Any]) -> dict[str, Any]:
+def case_record(case: Any, verification: dict[str, Any]) -> dict[str, Any]:
     qor = case.facts.get("qorSnapshotExtension")
     score = qor.get("score") if isinstance(qor, dict) else None
     return {
@@ -124,7 +122,7 @@ def _case_record(case: Any, verification: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _validate_release(payload: dict[str, Any]) -> list[dict[str, Any]]:
+def validate_release(payload: dict[str, Any]) -> list[dict[str, Any]]:
     required = {"schema", "cases", "release_id", "created_at", "policy"}
     if set(payload) != required or payload.get("schema") != RELEASE_SCHEMA:
         raise ExperienceError("Invalid experience release", code="experience_release_invalid")

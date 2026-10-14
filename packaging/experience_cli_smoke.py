@@ -55,6 +55,40 @@ def run_smoke(binary: Path, project: Path, workspace: str, output: Path) -> dict
     verified = _invoke(binary, ["verify", case_id, "--store", str(store)], output, "verify", {0, 7})
     if verified[0]["integrity"] != "pass":
         raise RuntimeError("Stored evidence integrity failed")
+    package = output / "experience.tar.gz"
+    exported = _invoke(
+        binary,
+        ["export", "--store", str(store), "--case-id", case_id, "--output", str(package)],
+        output,
+        "export",
+        {0},
+    )
+    imported_store = output / "imported-store"
+    import_arguments = ["import", "--store", str(imported_store), "--package", str(package)]
+    imported = _invoke(binary, import_arguments, output, "import", {0})
+    imported_again = _invoke(binary, import_arguments, output, "import-again", {0})
+    if (
+        imported[0]["package_id"] != exported[0]["package_id"]
+        or imported[0]["created_count"] != 1
+        or imported_again[0]["status"] != "already_present"
+    ):
+        raise RuntimeError("Experience package round trip is not idempotent")
+    imported_case = _invoke(
+        binary, ["show", case_id, "--store", str(imported_store)], output, "import-show", {0}
+    )
+    if imported_case != shown:
+        raise RuntimeError("Experience package round trip changed the case")
+    damaged_package = output / "damaged-experience.tar.gz"
+    damaged_package.write_bytes(b"invalid experience package")
+    _invoke(
+        binary,
+        ["import", "--store", str(output / "rejected-store"), "--package", str(damaged_package)],
+        output,
+        "import-corrupt",
+        {6},
+    )
+    if (output / "rejected-store").exists():
+        raise RuntimeError("Invalid package created a destination store")
     corrupt_store = output / "corrupt-store"
     shutil.copytree(store, corrupt_store)
     evidence = next(item for item in shown[0]["evidence"] if item["stored_path"])

@@ -80,3 +80,9 @@ class WorkspaceObservation:
     evidence: list[Evidence]
     copies: dict[str, bytes]
     limitations: list[str]
+
+
+@dataclass(frozen=True)
+class CaseContents:
+    case: ExperienceCase
+    copies: dict[str, bytes]

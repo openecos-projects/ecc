@@ -19,6 +19,7 @@ from ecc_experience.cli.inputs import (
     RecordingInput,
     ReleaseInput,
     StoreInput,
+    TransferInput,
 )
 from ecc_experience.models import ExperienceError
 
@@ -48,6 +49,9 @@ def _guard(operation: Callable[[], CommandResult]) -> CommandResult:
             "experience_release_invalid": EXIT_USAGE_ERROR,
             "experience_release_unverified": EXIT_GATE_FAILED,
             "experience_release_conflict": EXIT_REVISION_CONFLICT,
+            "experience_package_selection_invalid": EXIT_USAGE_ERROR,
+            "experience_package_invalid": EXIT_GATE_FAILED,
+            "experience_package_conflict": EXIT_REVISION_CONFLICT,
         }
         return CommandResult.err([error_record(exc.code, reason=str(exc))], codes.get(exc.code, 1))
     except OSError as exc:
@@ -173,6 +177,31 @@ def release_verify(command_input: ReleaseInput, _ctx: CommandContext) -> Command
             raise ExperienceError("Release path is required", code="experience_release_invalid")
         result = verify(command_input.release_path, command_input.store)
         return CommandResult.ok([{"experience": "release_verify", **result}])
+
+    return _guard(operation)
+
+
+def package_export(command_input: TransferInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import package_export as export
+
+        result = export(
+            command_input.store,
+            command_input.output_path or "",
+            case_ids=command_input.case_ids,
+            release=command_input.release_path,
+        )
+        return CommandResult.ok([{"experience": "export", **result}])
+
+    return _guard(operation)
+
+
+def package_import(command_input: TransferInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import package_import as import_evidence
+
+        result = import_evidence(command_input.package_path or "", command_input.store)
+        return CommandResult.ok([{"experience": "import", **result}])
 
     return _guard(operation)
 
