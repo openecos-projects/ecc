@@ -139,6 +139,7 @@ Current implementation status:
 | `ecc version` | hidden `--json` only (desktop app contract) |
 | `ecc gdsview` | `--plain` and `--json` (opens KLayout) |
 | `ecc chipview` | `--plain` and `--json` (launches a native viewer) |
+| `ecc check-update` | `--plain`, plus hidden `--json` (desktop app contract) |
 
 When `--plain` is given, the implementation renders plain records; otherwise it
 renders pretty text.
