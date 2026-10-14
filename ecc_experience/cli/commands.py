@@ -11,6 +11,7 @@ from ecc_experience.cli import handlers
 from ecc_experience.cli.inputs import (
     CampaignInput,
     CollectInput,
+    PlanInput,
     RecommendInput,
     RecordingInput,
     StoreInput,
@@ -165,6 +166,28 @@ def recommend_cmd(
         limit=limit,
     )
     execute_command("experience", command_input, handlers.recommend)
+
+
+@experience_app.command("plan", help="Write a reviewable optimization plan")
+def plan_cmd(
+    *,
+    store: StoreOption,
+    output: Annotated[str, typer.Option("--output", help="Optimization plan JSON")],
+    project: ProjectOption = None,
+    workspace: WorkspaceOption = None,
+    limit: Annotated[int, typer.Option("--limit", min=1, max=100)] = 10,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = PlanInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(project),
+        workspace=workspace,
+        store=store,
+        output_path=output,
+        limit=limit,
+    )
+    execute_command("experience", command_input, handlers.plan)
 
 
 @campaign_app.command("validate", help="Validate a campaign manifest without running EDA")

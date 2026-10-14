@@ -370,6 +370,22 @@ AI 必须检查 verification、QoR、参数回执和适用工艺后，另建 wor
 完整输入指纹、经验库不存在或没有可验证案例时，命令返回
 `status=insufficient_evidence` 和空 recommendations，不猜测参数。
 
+需要把推荐结果交给后续人工或 AI 审阅时，可生成 plan 文件：
+
+```bash
+ecc experience plan \
+  --project "$PROJECT" \
+  --workspace "$WORKSPACE" \
+  --store "$EXPERIENCE_STORE" \
+  --output "$OUTPUT_ROOT/optimization-plan.json" \
+  --json
+```
+
+plan 绑定查询 workspace、输入指纹、案例和 fingerprint，并固定声明
+`manual_review`、`requires_new_workspace=true`、`auto_apply=false`。它是可审阅的
+执行建议，不会修改参数、复制 workspace 或启动 flow；执行者必须自行用现有
+`ecc param apply`/`ecc run` 命令完成变更和验证，再通过 collect/drain 采集新案例。
+
 从 collect/list 的 JSON 取得实际 case_id 后执行：
 
 ```bash

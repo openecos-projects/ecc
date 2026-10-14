@@ -12,6 +12,7 @@ from chipcompiler.cli.core.types import CommandContext, CommandResult
 from ecc_experience.cli.inputs import (
     CampaignInput,
     CollectInput,
+    PlanInput,
     RecommendInput,
     RecordingInput,
     StoreInput,
@@ -40,6 +41,7 @@ def _guard(operation: Callable[[], CommandResult]) -> CommandResult:
             "experience_campaign_ledger_missing": EXIT_USAGE_ERROR,
             "experience_campaign_manifest_changed": EXIT_REVISION_CONFLICT,
             "experience_campaign_trial_conflict": EXIT_REVISION_CONFLICT,
+            "experience_plan_invalid": EXIT_USAGE_ERROR,
         }
         return CommandResult.err([error_record(exc.code, reason=str(exc))], codes.get(exc.code, 1))
     except OSError as exc:
@@ -80,6 +82,21 @@ def recommend(command_input: RecommendInput, ctx: CommandContext) -> CommandResu
 
         result = recommend_cases(ctx.run_dir, command_input.store, limit=command_input.limit)
         return CommandResult.ok([{"experience": "recommend", **result}])
+
+    return _guard(operation)
+
+
+def plan(command_input: PlanInput, ctx: CommandContext) -> CommandResult:
+    if ctx.manifest_error:
+        return CommandResult.err([manifest_error_record(ctx.manifest_error)])
+
+    def operation() -> CommandResult:
+        from ecc_experience.api import plan as build_optimization_plan
+
+        result = build_optimization_plan(
+            ctx.run_dir, command_input.store, command_input.output_path, limit=command_input.limit
+        )
+        return CommandResult.ok([{"experience": "plan", **result}])
 
     return _guard(operation)
 

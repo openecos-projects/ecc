@@ -12,6 +12,7 @@ from ecc_experience.knowledge.recommend import recommend as recommend_cases
 from ecc_experience.knowledge.store import ExperienceStore
 from ecc_experience.knowledge.verify import verify_case
 from ecc_experience.models import ExperienceCase, Verification
+from ecc_experience.optimization.plan import build_plan, write_plan
 from ecc_experience.recording import disable as disable_recording
 from ecc_experience.recording import set_enabled
 from ecc_experience.recording import status as recording_status
@@ -91,3 +92,7 @@ def recommend(workspace: str | Path, store: str | Path, *, limit: int = 10) -> d
 
 def campaign_summary(manifest: str | Path, ledger: str | Path | None = None) -> dict:
     return summarize_campaign(manifest, ledger)
+
+
+def plan(workspace: str | Path, store: str | Path, output: str | Path, *, limit: int = 10) -> dict:
+    return write_plan(output, build_plan(workspace, store, limit=limit))

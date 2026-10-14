@@ -409,6 +409,23 @@ new workspace. If the query has no complete fingerprint, the store is absent, or
 verifiable case exists, the command returns `status=insufficient_evidence` with an empty
 `recommendations` list instead of guessing parameters.
 
+When the recommendation needs to be handed to a human or AI reviewer, write a plan file:
+
+```bash
+ecc experience plan \
+  --project "$PROJECT" \
+  --workspace "$WORKSPACE" \
+  --store "$EXPERIENCE_STORE" \
+  --output "$OUTPUT_ROOT/optimization-plan.json" \
+  --json
+```
+
+The plan binds the query workspace, input fingerprint, cases, and a plan fingerprint. It
+always declares `manual_review`, `requires_new_workspace=true`, and `auto_apply=false`. It
+is a reviewable execution suggestion: it does not edit parameters, copy workspaces, or
+start a flow. The executor must use the existing `ecc param apply` and `ecc run` commands
+for changes and validation, then collect or drain the new case.
+
 Read the actual case_id from collect/list JSON, then run:
 
 ```bash

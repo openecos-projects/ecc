@@ -176,6 +176,31 @@ def test_experience_recommend_is_read_only(legacy_project, tmp_path):
     assert not (tmp_path / "store").exists()
 
 
+def test_experience_plan_writes_insufficient_evidence_plan(legacy_project, tmp_path):
+    project, workspace = legacy_project
+    output = tmp_path / "plan.json"
+    result = runner.invoke(
+        app,
+        [
+            "experience",
+            "plan",
+            "--project",
+            str(project),
+            "--workspace",
+            workspace.name,
+            "--store",
+            str(tmp_path / "store"),
+            "--output",
+            str(output),
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)[0]["status"] == "insufficient_evidence"
+    assert json.loads(output.read_text())["execution_policy"]["auto_apply"] is False
+
+
 def test_experience_recording_rejects_store_inside_project(create_cli_project, tmp_path):
     project = create_cli_project()
     nested_store = Path(project) / "nested-store"
