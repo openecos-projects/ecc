@@ -158,6 +158,7 @@ def _spawn_worker(log_handle) -> subprocess.Popen:
         stdin=subprocess.PIPE,
         stdout=log_handle,
         stderr=subprocess.STDOUT,
+        start_new_session=(os.name == "posix"),
     )
 
 
@@ -187,11 +188,23 @@ def _terminate_worker(process: subprocess.Popen) -> None:
     """Reap a worker left running by cancellation or an observer failure."""
     if process.poll() is not None:
         return
-    process.terminate()
+    if os.name == "posix" and process.pid:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            process.terminate()
+    else:
+        process.terminate()
     try:
         process.wait(timeout=_TERMINATE_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
-        process.kill()
+        if os.name == "posix" and process.pid:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                process.kill()
+        else:
+            process.kill()
         process.wait()
 
 

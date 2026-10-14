@@ -14,3 +14,4 @@ EXIT_CONTRACT_INCOMPATIBLE = 23
 # using dedicated non-zero codes for automation.
 EXIT_GATE_FAILED = 6
 EXIT_GATE_UNKNOWN = 7
+EXIT_TIMEOUT = 124
