@@ -58,3 +58,12 @@ class PlanInput:
     output_path: str
     workspace: str | None = None
     limit: int = 10
+
+
+@dataclass(frozen=True)
+class EvaluationInput:
+    output: OutputOptions
+    project: ProjectOptions
+    store: str
+    baseline: str
+    candidate: str

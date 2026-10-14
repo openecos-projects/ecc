@@ -428,6 +428,27 @@ is a reviewable execution suggestion: it does not edit parameters, copy workspac
 start a flow. The executor must use the existing `ecc param apply` and `ecc run` commands
 for changes and validation, then collect or drain the new case.
 
+Compare the QoR of two collected cases with the read-only command:
+
+```bash
+ecc experience evaluate \
+  --store "$EXPERIENCE_STORE" \
+  --baseline "$BASELINE_CASE_ID" \
+  --candidate "$CANDIDATE_CASE_ID" \
+  --json
+```
+
+The command requires matching, complete input-content fingerprints, evidence verification
+without failures, and finite numeric QoR scores. A case without a stable attempt identity
+may still have verification status `unknown`; the command preserves those findings
+instead of hiding them. The result includes both verification records, the two scores,
+their delta, and percentage delta. ECC currently treats a higher QoR score as better.
+Mismatched input fingerprints return `status=incompatible`; missing evidence or scores
+return `status=insufficient_evidence`. The command never starts EDA, changes a workspace,
+or accepts an optimization result automatically. Only for the same design, process, and
+constraints may an AI treat `improved` as a candidate result, then continue checking the
+checklist, signoff, and original reports.
+
 Read the actual case_id from collect/list JSON, then run:
 
 ```bash

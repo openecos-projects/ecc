@@ -12,6 +12,7 @@ from chipcompiler.cli.core.types import CommandContext, CommandResult
 from ecc_experience.cli.inputs import (
     CampaignInput,
     CollectInput,
+    EvaluationInput,
     PlanInput,
     RecommendInput,
     RecordingInput,
@@ -97,6 +98,18 @@ def plan(command_input: PlanInput, ctx: CommandContext) -> CommandResult:
             ctx.run_dir, command_input.store, command_input.output_path, limit=command_input.limit
         )
         return CommandResult.ok([{"experience": "plan", **result}])
+
+    return _guard(operation)
+
+
+def evaluate(command_input: EvaluationInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import evaluate as evaluate_cases
+
+        result = evaluate_cases(
+            command_input.baseline, command_input.candidate, command_input.store
+        )
+        return CommandResult.ok([{"experience": "evaluate", **result}])
 
     return _guard(operation)
 

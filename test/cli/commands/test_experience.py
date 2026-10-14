@@ -5,6 +5,7 @@ import pytest
 from typer.testing import CliRunner
 
 from chipcompiler.cli.app import app
+from chipcompiler.engine.snapshot_qor import unavailable_qor_snapshot_extension
 
 runner = CliRunner()
 
@@ -199,6 +200,52 @@ def test_experience_plan_writes_insufficient_evidence_plan(legacy_project, tmp_p
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)[0]["status"] == "insufficient_evidence"
     assert json.loads(output.read_text())["execution_policy"]["auto_apply"] is False
+
+
+def test_experience_evaluate_returns_structured_comparison(
+    experience_workspace_factory, tmp_path
+):
+    input_file = tmp_path / "design.v"
+    input_file.write_text("module sample; endmodule")
+    baseline_workspace = experience_workspace_factory("baseline")
+    candidate_workspace = experience_workspace_factory("candidate")
+    for root, score in ((baseline_workspace, 90.0), (candidate_workspace, 100.0)):
+        snapshot_path = root / "home/engineering-snapshot.json"
+        snapshot = json.loads(snapshot_path.read_text())
+        snapshot["workspaceSpec"] = {
+            "design": {"topModule": "sample"},
+            "inputs": [{"inputId": "rtl", "role": "rtl"}],
+        }
+        snapshot["workspaceBindings"] = {"inputs": {"rtl": str(input_file)}}
+        qor = unavailable_qor_snapshot_extension("test fixture")
+        qor["status"] = "available"
+        qor.pop("reason")
+        qor["score"] = score
+        qor["scalarStatus"] = "GREEN"
+        snapshot["qorSnapshotExtension"] = qor
+        snapshot_path.write_text(json.dumps(snapshot))
+    from ecc_experience.api import collect
+
+    store = tmp_path / "store"
+    baseline = collect(baseline_workspace, store).case
+    candidate = collect(candidate_workspace, store).case
+    result = runner.invoke(
+        app,
+        [
+            "experience",
+            "evaluate",
+            "--store",
+            str(store),
+            "--baseline",
+            baseline.case_id,
+            "--candidate",
+            candidate.case_id,
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)[0]["comparison"] == "improved"
 
 
 def test_experience_recording_rejects_store_inside_project(create_cli_project, tmp_path):

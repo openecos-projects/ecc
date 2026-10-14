@@ -11,6 +11,7 @@ from ecc_experience.cli import handlers
 from ecc_experience.cli.inputs import (
     CampaignInput,
     CollectInput,
+    EvaluationInput,
     PlanInput,
     RecommendInput,
     RecordingInput,
@@ -188,6 +189,25 @@ def plan_cmd(
         limit=limit,
     )
     execute_command("experience", command_input, handlers.plan)
+
+
+@experience_app.command("evaluate", help="Compare two verified experience cases")
+def evaluate_cmd(
+    *,
+    store: StoreOption,
+    baseline: Annotated[str, typer.Option("--baseline", help="Baseline case ID")],
+    candidate: Annotated[str, typer.Option("--candidate", help="Candidate case ID")],
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = EvaluationInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(None),
+        store=store,
+        baseline=baseline,
+        candidate=candidate,
+    )
+    execute_command("experience", command_input, handlers.evaluate)
 
 
 @campaign_app.command("validate", help="Validate a campaign manifest without running EDA")

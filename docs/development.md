@@ -1137,7 +1137,9 @@ fingerprint in an output-local ledger, `campaign record` appends idempotent tria
 `campaign status` verifies the fingerprint before reporting resumable progress. `campaign
 summary` joins the latest trial state with linked case verification without treating a trial
 pass as QoR or signoff success. `experience plan` writes a fingerprinted, manual-review
-optimization plan and never applies parameters or starts EDA. The user procedures are documented in the
+optimization plan and never applies parameters or starts EDA. `experience evaluate` compares
+two evidence-backed cases read-only when their input fingerprints match and their evidence
+has no failures. The user procedures are documented in the
 [experience testing manual](../chipcompiler/docs/ecc-experience-testing-guide.en.md).
 
 Contributor conventions are not repeated here; they live in

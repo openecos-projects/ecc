@@ -387,6 +387,24 @@ plan 绑定查询 workspace、输入指纹、案例和 fingerprint，并固定�
 执行建议，不会修改参数、复制 workspace 或启动 flow；执行者必须自行用现有
 `ecc param apply`/`ecc run` 命令完成变更和验证，再通过 collect/drain 采集新案例。
 
+比较两个已采集案例的 QoR 时使用只读命令：
+
+```bash
+ecc experience evaluate \
+  --store "$EXPERIENCE_STORE" \
+  --baseline "$BASELINE_CASE_ID" \
+  --candidate "$CANDIDATE_CASE_ID" \
+  --json
+```
+
+该命令要求两个案例具有相同且完整的输入内容指纹，并且证据校验没有失败、QoR
+分数是有限数值。案例缺少稳定 attempt 身份时，验证状态可以是 `unknown`，但不会
+隐藏任何 unknown finding。输出包含两侧验证结果、分数、差值和差值百分比，当前
+约定 QoR 分数越高越好。输入指纹不一致返回 `status=incompatible`，证据或分数
+不足返回 `status=insufficient_evidence`，不会启动 EDA、修改 workspace 或自动接受
+优化结论。只有在同一设计、同一工艺和相同约束下，AI 才能把 `improved` 作为候选
+结果，并继续检查 checklist、signoff 和原始报告。
+
 从 collect/list 的 JSON 取得实际 case_id 后执行：
 
 ```bash
