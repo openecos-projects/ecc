@@ -523,23 +523,29 @@ Timing optimization is a multi-stage subflow: first run setup Sizer with `worksp
 
 The final inner DreamPlace legalization uses `legalize_flag=1` and `detailed_place_flag=0` to protect the repaired hold timing.
 
-`config/sizer_ecc.json` is owned by ECC and is independent of the Sizer repository's command-line defaults:
+`config/sizer_ecc.json` is owned by ECC and is independent of the Sizer repository's command-line defaults. Hold-pass controls are grouped under `hold_stage` so future hold-stage controls can be added without widening the config root:
 
 | Field | Default | Meaning |
 |---|---:|---|
-| `hold_margin` | `0.04` ns | Additional hold slack margin passed to ecc-sizer's `-hold_margin` option during the FF/MIN hold-only pass. It is only used by that pass and is not a final multi-corner signoff margin. |
+| `hold_stage.hold_margin` | `0.04` ns | Additional hold slack margin passed to ecc-sizer's `-hold_margin` option during the FF/MIN hold-only pass. It is only used by that pass and is not a final multi-corner signoff margin. |
+| `hold_stage.rc_mode` | `global_routing` | Hold parasitic model: `global_routing` emits a complete per-layer/via `setRCFile`; `placement` is an explicit scalar-RC comparison mode. |
+| `hold_stage.global_routing_rc.corner` | `MIN_m40/Cbest` | Source corner label for the per-layer RC map. |
+| `hold_stage.global_routing_rc.layers` | CX55 MET1–MET5 map | Per-routing-layer resistance in ohm/um and capacitance in pF/um. M6/M7 from the StarRC table are omitted because they are absent from the ECC CX55 LEF. |
+| `hold_stage.global_routing_rc.vias` | CX55 CT/VIA1–VIA4 map | Per-via/cut resistance in ohm for the active MET1–MET5 stack. CT uses the conservative 30 ohm value for the CT_NP/CT_PP pair. |
+| `hold_stage.placement_wire_rc` | CX55 `MIN_m40/Cbest` scalar values | Explicit placement-RC comparison mode, with resistance in ohm/um and capacitance in pF/um. |
 
 | Generated file or option | Source | Meaning |
 |---|---|---|
 | `timing_optimization_sizer/script/<design>.env_file` | Sizer `submit/env_base_file` when present, otherwise `-num_vt 1`; plus PDK | Sizer environment: appends tech/cell LEFs (`-lef`), liberty files (`-lib`), and `<sizer-root>/src/sizer_os.tcl` (`-tclFile`) |
 | `timing_optimization_sizer/script/<design>.cmd_file` | workspace step + PDK | Sizer command: `-useOpenSTA`, top module, input `-def`/`-v`, `-sdc`, optional `-spef`, and staging output paths |
-| `timing_optimization_sizer/script/hold.env_file` / `hold.cmd_file` | `MIN` Liberty entries in `sta_ecc.json` | Optional FF/MIN `-hold_only` pass; the hold pass does not reuse setup `-spef` and uses Sizer placement parasitics |
-| `config/sizer_ecc.json` | ECC template, optionally overridden by `timing_opt.hold_margin` | ECC-owned Sizer controls; `hold_margin` is emitted as `-hold_margin <ns>` in `hold.cmd_file` |
+| `timing_optimization_sizer/script/hold.env_file` / `hold.cmd_file` | `MIN` Liberty entries in `sta_ecc.json` | Optional FF/MIN `-hold_only` pass; default hold mode uses propagated clocks and GR RC |
+| `timing_optimization_sizer/script/hold.rc_file` | `hold_stage.global_routing_rc` | Generated `set_layer_rc`/`set_layer_rc -via` file consumed through `-setRCFile` before GR RC initialization |
+| `config/sizer_ecc.json` | ECC template, optionally overridden by `timing_opt.*` | ECC-owned Sizer controls grouped under `hold_stage`; the selected RC mode and source are emitted in the hold scripts |
 | `data/to/sizer_setup.def.gz` / `sizer_setup.v.gz` | setup Sizer output | Snapshot consumed by the hold pass; legalization proceeds only after the hold pass writes its outputs |
 | `-min_route_layer` / `-max_route_layer` | `route.bottom_layer` / `route.top_layer` when set | Routing-layer limits passed directly to Sizer |
 | `data/to/sizer.def.gz` / `sizer.v.gz` | Sizer output | Staging artifacts consumed by the inner DreamPlace legalization; successful legalization is then saved as the Timing optimization step output |
 
-The FF hold pass uses only the `MIN` Liberty group from `sta_ecc.json` to repair hold after setup sizing. It is not final multi-corner signoff and is not equivalent to a `MIN/RCbest` SPEF evaluation. Final signoff still runs STA over the complete corner/SPEF combinations declared by `sta_ecc.json`.
+The FF hold pass uses only the `MIN` Liberty group from `sta_ecc.json` to repair hold after setup sizing. The default `global_routing` mode loads the complete per-layer/via RC map through `-setRCFile` before running GR in the configured routing-layer range; `placement` remains an explicit scalar-RC comparison mode. It is not final multi-corner signoff and is not equivalent to a `MIN/RCbest` SPEF evaluation. Final signoff still runs STA over the complete corner/SPEF combinations declared by `sta_ecc.json`.
 
 The runtime root must contain `src/sizer_os.tcl`; ECC discovers it from `CHIPCOMPILER_ECC_SIZER_ROOT` or by walking upward from the `Sizer` binary on `PATH`. `ecc doctor` requires both this runtime root and the Sizer executable. Sizer is required by the complete `rtl2gds` chain; for a fresh or `--overwrite` `rtl2gds` target, `ecc run` also checks it during environment preflight and returns `env_not_ready` before creating the workspace if it is missing. Existing workspaces and `--workspace` reruns skip this preflight and can still fail while executing Timing optimization.
 
@@ -695,9 +701,10 @@ Sizer has an ECC-owned configuration for its FF/MIN hold-only pass. Its internal
 ```bash
 ecc param list --step timing_optimization
 ecc param set timing_opt.hold_margin VALUE
+ecc param set timing_opt.hold_rc_mode global_routing
 ```
 
-`timing_opt.hold_margin` is in ns, defaults to `0.04`, and is emitted as `-hold_margin VALUE` in the generated `hold.cmd_file`.
+`timing_opt.hold_margin` maps to `sizer_ecc.json`'s `hold_stage.hold_margin`, is in ns, defaults to `0.04`, and is emitted as `-hold_margin VALUE` in the generated `hold.cmd_file`. `timing_opt.hold_rc_mode` selects the `hold_stage` RC mode; `global_routing` also generates `hold.rc_file` and emits `-setRCFile`.
 
 ### 15.6 cts and routing
 

@@ -514,23 +514,29 @@ Timing optimization 是多阶段子流程：先用 `workspace.pdk.libs`（通常
 
 最后的内部 DreamPlace 合法化使用 `legalize_flag=1`、`detailed_place_flag=0`，以保护已修复的 hold 时序。
 
-`config/sizer_ecc.json` 由 ECC 管理，与 ecc-sizer 仓库的命令行默认值分开：
+`config/sizer_ecc.json` 由 ECC 管理，与 ecc-sizer 仓库的命令行默认值分开。hold 阶段配置统一放在 `hold_stage` 对象中，便于后续扩展其他 hold-stage 控制项：
 
 | 字段 | 默认值 | 含义 |
 |---|---:|---|
-| `hold_margin` | `0.04` ns | FF/MIN hold-only pass 传给 ecc-sizer 的 `-hold_margin` 附加 hold slack margin。只影响该 pass，不是最终多 corner signoff margin。 |
+| `hold_stage.hold_margin` | `0.04` ns | FF/MIN hold-only pass 传给 ecc-sizer 的 `-hold_margin` 附加 hold slack margin。只影响该 pass，不是最终多 corner signoff margin。 |
+| `hold_stage.rc_mode` | `global_routing` | Hold 寄生模型：`global_routing` 生成完整的分层/via `setRCFile`；`placement` 是显式的 scalar-RC 对照模式。 |
+| `hold_stage.global_routing_rc.corner` | `MIN_m40/Cbest` | 分层 RC 映射的来源 corner 标签。 |
+| `hold_stage.global_routing_rc.layers` | CX55 MET1–MET5 映射 | 各布线层的单位线电阻（ohm/um）和电容（pF/um）。StarRC 表中的 M6/M7 不在 ECC 使用的 CX55 LEF 中，因此不写入默认 RC 文件。 |
+| `hold_stage.global_routing_rc.vias` | CX55 CT/VIA1–VIA4 映射 | 当前 MET1–MET5 叠层的各 via/cut 电阻（ohm）。CT_NP/CT_PP 使用保守的 30 ohm。 |
+| `hold_stage.placement_wire_rc` | CX55 `MIN_m40/Cbest` scalar 值 | 显式 placement-RC 对照模式，电阻单位为 ohm/um，电容单位为 pF/um。 |
 
 | 生成文件或选项 | 来源 | 含义 |
 |---|---|---|
 | `timing_optimization_sizer/script/<design>.env_file` | 存在时取 Sizer 的 `submit/env_base_file`，否则为 `-num_vt 1`；再追加 PDK | Sizer 环境：追加工艺/单元 LEF（`-lef`）、liberty（`-lib`）及 `<sizer-root>/src/sizer_os.tcl`（`-tclFile`） |
 | `timing_optimization_sizer/script/<design>.cmd_file` | workspace 步骤 + PDK | Sizer 命令：`-useOpenSTA`、顶层模块、输入 `-def`/`-v`、`-sdc`、可选 `-spef` 及暂存输出路径 |
-| `timing_optimization_sizer/script/hold.env_file` / `hold.cmd_file` | `sta_ecc.json` 中的 `MIN` Liberty | 可选 FF/MIN `-hold_only` pass；hold pass 不复用 setup 的 `-spef`，使用 Sizer 的 placement parasitics |
-| `config/sizer_ecc.json` | ECC 模板，也可由 `timing_opt.hold_margin` 覆盖 | ECC 管理的 Sizer 控制项；`hold_margin` 会以 `-hold_margin <ns>` 写入 `hold.cmd_file` |
+| `timing_optimization_sizer/script/hold.env_file` / `hold.cmd_file` | `sta_ecc.json` 中的 `MIN` Liberty | 可选 FF/MIN `-hold_only` pass；默认 hold 模式使用 propagated clock 和 GR RC |
+| `timing_optimization_sizer/script/hold.rc_file` | `hold_stage.global_routing_rc` | 生成 `set_layer_rc`/`set_layer_rc -via` 文件，并通过 `-setRCFile` 在 GR RC 初始化前加载 |
+| `config/sizer_ecc.json` | ECC 模板，也可由 `timing_opt.*` 覆盖 | ECC 管理的 Sizer 控制项，统一放在 `hold_stage` 下；所选 RC 模式及其来源会写入 hold 脚本 |
 | `data/to/sizer_setup.def.gz` / `sizer_setup.v.gz` | setup Sizer 输出 | hold pass 的输入快照；只有在 hold pass 成功写出产物后才继续合法化 |
 | `-min_route_layer` / `-max_route_layer` | 设置后取 `route.bottom_layer` / `route.top_layer` | 直接传给 Sizer 的布线层限制 |
 | `data/to/sizer.def.gz` / `sizer.v.gz` | Sizer 输出 | 被内部 DreamPlace 合法化消费的暂存产物；合法化成功后保存为 Timing optimization 步骤输出 |
 
-FF hold pass 只使用 `sta_ecc.json` 的 `MIN` Liberty 组，用于在 setup sizing 后提前修复 hold；它不是最终 STA 的多 corner signoff，也不等价于 `MIN/RCbest` SPEF 评估。最终签核仍由 STA 按完整 `sta_ecc.json` 的 corner/SPEF 组合执行。
+FF hold pass 只使用 `sta_ecc.json` 的 `MIN` Liberty 组，用于在 setup sizing 后提前修复 hold。默认 `global_routing` 模式通过 `-setRCFile` 加载完整的分层/via RC 映射，再在配置的布线层范围内执行 GR；`placement` 保留为显式 scalar-RC 对照模式。它不是最终 STA 的多 corner signoff，也不等价于 `MIN/RCbest` SPEF 评估。最终签核仍由 STA 按完整 `sta_ecc.json` 的 corner/SPEF 组合执行。
 
 运行时根目录必须含 `src/sizer_os.tcl`；ECC 从 `CHIPCOMPILER_ECC_SIZER_ROOT`，或从 `PATH` 上的 `Sizer` 二进制逐级向上查找。`ecc doctor` 同时要求此 runtime root 与 Sizer 可执行文件。完整 `rtl2gds` 链需要 Sizer；对新建或 `--overwrite` 的 `rtl2gds` 目标，`ecc run` 环境预检也会检查它，缺失时会在创建 workspace 前以 `env_not_ready` 失败。已有 workspace 或 `--workspace` 重跑不执行该预检，仍可能在 Timing optimization 执行时失败。
 
@@ -685,9 +691,10 @@ Sizer 的 FF/MIN hold-only pass 使用 ECC 自己维护的配置。其内部 Dre
 ```bash
 ecc param list --step timing_optimization
 ecc param set timing_opt.hold_margin VALUE
+ecc param set timing_opt.hold_rc_mode global_routing
 ```
 
-`timing_opt.hold_margin` 的单位是 ns，默认值为 `0.04`，并会以 `-hold_margin VALUE` 写入生成的 `hold.cmd_file`。
+`timing_opt.hold_margin` 映射到 `sizer_ecc.json` 的 `hold_stage.hold_margin`，单位是 ns，默认值为 `0.04`，并会以 `-hold_margin VALUE` 写入生成的 `hold.cmd_file`。`timing_opt.hold_rc_mode` 选择 `hold_stage` RC 模式；`global_routing` 还会生成 `hold.rc_file` 并写入 `-setRCFile`。
 
 ### 15.6 cts 与 routing
 
