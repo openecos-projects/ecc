@@ -330,6 +330,19 @@ to an old attempt. Successful events move into the project processed directory a
 case source receives the attempt ID. Use `status` to monitor pending events; do not
 delete pending events manually.
 
+Validate a generic campaign manifest before batch testing:
+
+```bash
+ecc experience campaign validate --manifest campaign.json --json
+```
+
+The validator checks the schema, ICS55 profile field, baseline mode, budget bounds,
+unique design IDs, existing input directories, and that store/output paths do not
+overlap inputs or each other. Its fingerprint can be recorded in an external campaign
+ledger. Validation does not run EDA, create workspaces, or create output/store
+directories. Manifest paths are relative; private design discovery, label conversion,
+and batch scheduling remain in the user environment.
+
 Read the actual case_id from collect/list JSON, then run:
 
 ```bash

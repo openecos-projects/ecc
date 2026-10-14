@@ -1110,7 +1110,7 @@ For Python-level debugging, invoke the same CLI module directly:
 `ecc_experience/` is a sibling of `chipcompiler/` and `agent/`, shipped in the same
 ECC distribution. Its API is `collect(workspace, store)`, `list_cases(store)`,
 `show(case_id, store)`, `verify(case_id, store)`, and project recording operations
-`enable/status/disable/drain`. CLI composition is registered
+`enable/status/disable/drain`, and generic campaign manifest validation. CLI composition is registered
 only in `chipcompiler/cli/app.py`; core engine/data/tools do not import experience.
 Domain collection accepts an observation-reader Protocol. The chipcompiler adapter
 uses read-only snapshot APIs and the existing nonblocking workspace lock.
@@ -1131,7 +1131,8 @@ idempotence, queries and corruption rejection against a supplied project/workspa
 The packaged design matrix runs this after the existing flow artifact checks. Keep
 stores, benchmarks and build output outside source trees; do not package private cases.
 
-The user procedures are documented in the
+Campaign manifests are validated by `ecc_experience.benchmark` without importing
+private benchmark layouts or starting EDA. The user procedures are documented in the
 [experience testing manual](../chipcompiler/docs/ecc-experience-testing-guide.en.md).
 
 Contributor conventions are not repeated here; they live in

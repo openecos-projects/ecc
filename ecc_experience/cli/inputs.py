@@ -25,3 +25,10 @@ class RecordingInput:
     project: ProjectOptions
     store: str | None = None
     limit: int = 32
+
+
+@dataclass(frozen=True)
+class CampaignInput:
+    output: OutputOptions
+    project: ProjectOptions
+    manifest: str

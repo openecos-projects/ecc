@@ -9,7 +9,7 @@ from chipcompiler.cli.core.exit_codes import (
 )
 from chipcompiler.cli.core.records import error_record, manifest_error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
-from ecc_experience.cli.inputs import CollectInput, RecordingInput, StoreInput
+from ecc_experience.cli.inputs import CampaignInput, CollectInput, RecordingInput, StoreInput
 from ecc_experience.models import ExperienceError
 
 
@@ -26,6 +26,8 @@ def _guard(operation: Callable[[], CommandResult]) -> CommandResult:
             "experience_store_required": EXIT_USAGE_ERROR,
             "experience_project_invalid": EXIT_USAGE_ERROR,
             "experience_not_configured": EXIT_USAGE_ERROR,
+            "experience_manifest_invalid": EXIT_USAGE_ERROR,
+            "experience_manifest_input_missing": EXIT_USAGE_ERROR,
         }
         return CommandResult.err([error_record(exc.code, reason=str(exc))], codes.get(exc.code, 1))
     except OSError as exc:
@@ -198,6 +200,17 @@ def drain(command_input: RecordingInput, ctx: CommandContext) -> CommandResult:
                     "attempts": drain_recording(ctx.project_dir, limit=command_input.limit),
                 }
             ]
+        )
+
+    return _guard(operation)
+
+
+def validate_campaign(command_input: CampaignInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import validate_campaign as validate
+
+        return CommandResult.ok(
+            [{"experience": "campaign_validate", **validate(command_input.manifest)}]
         )
 
     return _guard(operation)

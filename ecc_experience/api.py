@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
+from ecc_experience.benchmark.manifest import load_manifest
 from ecc_experience.collection.collect import CollectionResult, collect_committed_case
 from ecc_experience.collection.drain import drain as drain_recording
 from ecc_experience.knowledge.store import ExperienceStore
@@ -43,3 +44,8 @@ def status(project: str | Path) -> dict:
 
 def drain(project: str | Path, *, limit: int = 32) -> list[dict]:
     return drain_recording(project, limit=limit)
+
+
+def validate_campaign(manifest: str | Path) -> dict:
+    _validated, summary = load_manifest(manifest)
+    return summary

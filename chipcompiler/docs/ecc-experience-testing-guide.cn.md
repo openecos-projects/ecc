@@ -297,6 +297,17 @@ runtime/peak-memory 的来源 scope。记录器异常只报告到运行日志，
 attempt。成功后事件移动到项目 outbox 外的 processed 目录，并以 attempt_id 写入
 案例 source。`status` 的 pending 数量可用于恢复检查；不要手动删除 pending 事件。
 
+批量测试先用通用 campaign manifest 做只读校验：
+
+```bash
+ecc experience campaign validate --manifest campaign.json --json
+```
+
+当前校验确认 schema、ICS55 profile 字段、baseline 模式、预算边界、设计 ID 唯一、
+输入目录存在，以及 store/output 不覆盖输入或互相覆盖；返回的 fingerprint 可写入
+外部 campaign ledger。校验不会运行 EDA、创建 workspace 或创建 output/store 目录。
+manifest 使用相对路径，内部设计清单、标签转换和批次调度仍由用户环境负责。
+
 从 collect/list 的 JSON 取得实际 case_id 后执行：
 
 ```bash

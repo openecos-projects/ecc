@@ -172,6 +172,45 @@ def test_experience_recording_rejects_store_inside_project(create_cli_project, t
     assert json.loads(result.stdout)[0]["error"] == "experience_project_invalid"
 
 
+def test_campaign_validate_is_read_only(tmp_path):
+    (tmp_path / "design-1").mkdir()
+    manifest = tmp_path / "campaign.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "campaign_id": "campaign-1",
+                "process_profile": "ics55",
+                "store": "store",
+                "output_root": "outputs",
+                "knowledge_release_id": None,
+                "mode": "baseline",
+                "budget": {
+                    "max_concurrent_flows": 1,
+                    "max_trials_per_design": 1,
+                    "timeout_seconds_per_trial": 60,
+                },
+                "designs": [
+                    {
+                        "id": "design-1",
+                        "input": {"kind": "ecc-project", "path": "design-1"},
+                        "workspace": "baseline",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app, ["experience", "campaign", "validate", "--manifest", str(manifest), "--json"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)[0]["design_count"] == 1
+    assert not (tmp_path / "outputs").exists()
+
+
 @pytest.mark.parametrize("command", ["show", "verify"])
 def test_experience_rejects_invalid_case_id_as_usage_error(tmp_path, command):
     result = runner.invoke(

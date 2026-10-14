@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -7,12 +8,14 @@ from chipcompiler.cli.core.inputs import output_options, project_options
 from chipcompiler.cli.core.invocation import execute_command
 from chipcompiler.cli.core.options import JsonOption, PlainOption, ProjectOption, WorkspaceOption
 from ecc_experience.cli import handlers
-from ecc_experience.cli.inputs import CollectInput, RecordingInput, StoreInput
+from ecc_experience.cli.inputs import CampaignInput, CollectInput, RecordingInput, StoreInput
 
 StoreOption = Annotated[str, typer.Option("--store", help="External experience store directory")]
 CaseArgument = Annotated[str, typer.Argument(help="Experience case ID")]
 
 experience_app = create_app(help="Collect, query and verify design experience evidence")
+campaign_app = create_app(help="Validate generic experience campaign manifests")
+experience_app.add_typer(campaign_app, name="campaign")
 
 
 @experience_app.command("collect", help="Collect a read-only observation from a workspace")
@@ -136,3 +139,19 @@ def drain_cmd(
         limit=limit,
     )
     execute_command("experience", command_input, handlers.drain)
+
+
+@campaign_app.command("validate", help="Validate a campaign manifest without running EDA")
+def campaign_validate_cmd(
+    *,
+    manifest: Annotated[str, typer.Option("--manifest", help="Campaign manifest JSON")],
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    manifest_path = Path(manifest).expanduser().resolve()
+    command_input = CampaignInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(str(manifest_path.parent)),
+        manifest=str(manifest_path),
+    )
+    execute_command("experience", command_input, handlers.validate_campaign)
