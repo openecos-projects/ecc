@@ -107,7 +107,7 @@ def build_rtl2gds_flow(
     steps.append((StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.PREPLACE, "sizer", StateEnum.Unstart))
     steps.append((StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
-    steps.append((StepEnum.DIFF_BUFFERING, "dreamplace", StateEnum.Unstart))
+    steps.append((StepEnum.DIFF_OPT, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.DIFF_SIZING, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.CTS, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart))
@@ -151,6 +151,8 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
         "place": StepEnum.PLACEMENT.value,
         "placement": StepEnum.PLACEMENT.value,
         "diffbuffering": StepEnum.DIFF_BUFFERING.value,
+        "diffopt": StepEnum.DIFF_OPT.value,
+        "diffoptimization": StepEnum.DIFF_OPT.value,
         "diffsizing": StepEnum.DIFF_SIZING.value,
         "cts": StepEnum.CTS.value,
         "legal": StepEnum.LEGALIZATION.value,
@@ -196,6 +198,10 @@ def build_flow_range(
     ]
     first = normalize_flow_step(from_step)
     last = normalize_flow_step(to_step)
+    # The old standalone buffering spelling remains a runnable alias for
+    # existing workspaces, while new canonical ranges use diff_opt.
+    first = StepEnum.DIFF_OPT.value if first == StepEnum.DIFF_BUFFERING.value else first
+    last = StepEnum.DIFF_OPT.value if last == StepEnum.DIFF_BUFFERING.value else last
     if first not in names or last not in names:
         available = ", ".join(names)
         raise ValueError(

@@ -5,6 +5,26 @@ from .dreamplace_sizing import DEFAULT_DIFF_SIZING_COEFFICIENTS
 
 SCHEMAS = (
     config_param(
+        "place.diff_optimization_mode",
+        "dreamplace",
+        ("diff_optimization_mode",),
+        "buffering",
+        applies="diff_opt",
+        choices=("sizing", "buffering", "joint"),
+        description=("diff_opt discrete phase mode; diff_sizing remains a separate ECC step"),
+    ),
+    config_param(
+        "place.diff_optimization_flows",
+        "dreamplace",
+        ("diff_optimization_flows",),
+        None,
+        applies="diff_opt",
+        description=(
+            "ordered diff_opt tuples [action, steps, [wns, tns, slew, cap]]; "
+            "uses placement parasitics only"
+        ),
+    ),
+    config_param(
         "place.diff_buffering_rounds",
         "dreamplace",
         ("diff_buffering_rounds",),
@@ -55,5 +75,62 @@ SCHEMAS = (
         "",
         applies="placement",
         description="external four-strength candidate buffer table",
+    ),
+    config_param(
+        "place.joint_alternating_outer_rounds",
+        "dreamplace",
+        ("joint_alternating_outer_rounds",),
+        5,
+        range=(1, 100),
+        applies="placement",
+        description=(
+            "maximum sizing/buffering windows in the alternating joint profile; "
+            "timing_opt_overflow_milestones selects overflow or inflation triggers"
+        ),
+    ),
+    config_param(
+        "place.joint_alternating_sizing_rounds",
+        "dreamplace",
+        ("joint_alternating_sizing_rounds",),
+        5,
+        range=(1, 100),
+        applies="placement",
+        description="discrete sizing attempts per alternating outer round",
+    ),
+    config_param(
+        "place.joint_alternating_sizing_shared_budget_percent",
+        "dreamplace",
+        ("joint_alternating_sizing_shared_budget_percent",),
+        1.0,
+        range=(0, 100),
+        applies="placement",
+        description="shared sizeable-cell action budget for each alternating sizing round",
+    ),
+    config_param(
+        "place.joint_alternating_buffering_rounds",
+        "dreamplace",
+        ("joint_alternating_buffering_rounds",),
+        1,
+        range=(1, 100),
+        applies="placement",
+        description="candidate buffering attempts per alternating outer round",
+    ),
+    config_param(
+        "place.joint_alternating_buffering_selection_fraction",
+        "dreamplace",
+        ("joint_alternating_buffering_selection_fraction",),
+        0.001,
+        range=(0, 1),
+        applies="placement",
+        description="fraction of net actions selected by each alternating buffering attempt",
+    ),
+    config_param(
+        "place.joint_alternating_buffer_commit_policy",
+        "dreamplace",
+        ("joint_alternating_buffer_commit_policy",),
+        "final_only",
+        applies="placement",
+        choices=("final_only",),
+        description="physical buffer commit boundary for the alternating joint profile",
     ),
 )

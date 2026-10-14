@@ -391,25 +391,38 @@ slew = 1.0
 `ecc param set place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`。
 S50 继续使用 RRR=3、padding=0、固定 512×512 bins 和最终 legalization。
 
-`diff_buffering` 是 placement 之后、`diff_sizing` 之前的独立步骤。它从上一阶段的
-DEF/Verilog 开始，只执行 discrete candidate buffering：每个 segment 保留三个候选位置，
+`diff_opt` 是 placement 之后、`diff_sizing` 之前的独立步骤，用来替换新 workspace
+中的 `diff_buffering`。它从上一阶段的 DEF/Verilog 开始，只支持 placement parasitic，
+并可以执行 discrete sizing、candidate buffering 或二者交错：每个 segment 保留三个候选位置，
 使用 ICS55 的 BUFX8H7L、BUFX12H7L、BUFX16H7L、BUFX20H7L 四档 buffer，
 每轮每条 net 最多接受一个动作，再按全局梯度收益排序选取配置比例的 net。
-默认最多十轮、每轮比例 0.3%。该步骤使用 placement RC；buffer 实体化后完整刷新拓扑，
+默认最多十轮、每轮比例 0.3%。buffer 实体化后完整刷新拓扑，
 使用 padding=0 做 geometry-only legalization，并保存新的 DEF/Verilog 和终态 hard STA。
-它不执行 GP 或 sizing，也不复用 placement 的外层 α。默认系数为 500/5/1/1。
+该步骤不执行 GP；默认 buffering 模式只执行插 buffer，sizing/joint 模式按三元组执行
+离散 sizing。每个子阶段使用自己的组合目标恢复最佳状态，不复用 placement 的外层 α。
+默认系数为 500/5/1/1。
 当前 PDK 必须包含上述四个 master；缺少时会明确报错。
+
+流程通过有序三元组配置。第一个字段是 `sz` 或 `bf`，第二个字段是离散 round 数，
+第三个字段按 `wns, tns, slew, cap` 排列：
 
 ```toml
 [params.place]
-diff_buffering_rounds = 10
-diff_buffering_selection_fraction = 0.003
-diff_buffering_coefficients = { wns = 500.0, tns = 5.0, cap = 1.0, slew = 1.0 }
+diff_optimization_mode = "joint"
+diff_optimization_flows = [
+  ["sz", 5, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+]
 ```
 
-可以用 `ecc run --project PROJECT --workspace NAME --from diff_buffering --to diff_buffering`
+`diff_opt` 固定使用 placement 寄生参数，输入 GGR/RRR、route grid、
+route-extracted SPEF 或 post-route RC 会直接报错。旧的 `diff_buffering_*` 参数仍作为
+buffering-only `diff_opt` 的兼容别名。
+
+可以用 `ecc run --project PROJECT --workspace NAME --from diff_opt --to diff_opt`
 单独执行；结束范围改为 `--to diff_sizing` 则继续做独立 GR S50。
-已有 workspace 继续使用保存的 flow ledger；新建 workspace 会包含这个新 step。
+已有 workspace 继续使用保存的 `diff_buffering` alias；新建 workspace 使用
+`diff_opt → diff_sizing` 两个独立步骤。
 
 独立 S50 的连续 sizing step 数由 `place.diff_sizing_continuous_steps` 控制，默认值为 0。
 它表示投影到合法 cell 之前执行的 continuous real-size step 数；设为 0 会直接使用

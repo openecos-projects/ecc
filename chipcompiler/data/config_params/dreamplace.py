@@ -164,6 +164,9 @@ DREAMPLACE_PARAMETER_DESCRIPTIONS = {
     "sizing_parameterization": "continuous sizing coordinate, logits | real_size",
     "start_iter": "iteration to start pin-to-pin timing weighting",
     "timing_eval_flag": "enable timing evaluation reporting",
+    "timing_propagation_device": (
+        "TimingPropagation device: inherit the placement device, or explicitly use cpu/cuda"
+    ),
     "timing_surrogate_mode": (
         "cell timing evaluation mode, auto | mixed | lut_only | surrogate_only"
     ),
@@ -285,6 +288,7 @@ SCHEMAS = (
             "proximal_alternating_v1",
             "staged_smoke_v1",
             "segment_count_direct_joint_v1",
+            "discrete_alternating_sizing_buffering_v1",
         ),
     ),
     _place("legalize_flag", 1),
@@ -338,6 +342,12 @@ SCHEMAS = (
     _place("sort_nets_by_degree", 0),
     _place("start_iter", 0),
     _place("timing_eval_flag", 1),
+    _place(
+        "timing_propagation_device",
+        "inherit",
+        type="str",
+        choices=("inherit", "cpu", "cuda"),
+    ),
     _place(
         "timing_surrogate_mode",
         "auto",

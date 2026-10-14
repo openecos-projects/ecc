@@ -55,6 +55,8 @@ def run_step(
             state = run_macro_placement(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.PLACEMENT.value:
             state = run_placement(workspace=workspace, step=step, ecc_module=ecc_module)
+        case StepEnum.DIFF_OPT.value:
+            state = run_diff_opt(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.DIFF_SIZING.value:
             state = run_diff_sizing(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.DIFF_BUFFERING.value:
@@ -148,6 +150,13 @@ def run_diff_sizing(
     )
 
 
+def run_diff_opt(
+    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
+) -> bool:
+    """Run placement-parasitic sizing/buffering/joint optimization."""
+    return _run_placement_mode(workspace, step, ecc_module, DreamplaceRunMode.DIFF_OPT)
+
+
 def run_diff_buffering(
     workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
 ) -> bool:
@@ -167,11 +176,16 @@ def _run_placement_mode(
 
     run_stage = {
         DreamplaceRunMode.PLACEMENT: EccSubFlowEnum.run_placement.value,
+        DreamplaceRunMode.DIFF_OPT: EccSubFlowEnum.run_diff_opt.value,
         DreamplaceRunMode.DIFF_SIZING: EccSubFlowEnum.run_diff_sizing.value,
         DreamplaceRunMode.DIFF_BUFFERING: EccSubFlowEnum.run_diff_buffering.value,
     }[mode]
     backend = _placement_backend(workspace)
-    if mode in (DreamplaceRunMode.DIFF_SIZING, DreamplaceRunMode.DIFF_BUFFERING):
+    if mode in (
+        DreamplaceRunMode.DIFF_OPT,
+        DreamplaceRunMode.DIFF_SIZING,
+        DreamplaceRunMode.DIFF_BUFFERING,
+    ):
         backend = "ecc"
     openroad_backend = mode is DreamplaceRunMode.PLACEMENT and backend == "openroad"
     if not openroad_backend:
@@ -192,7 +206,9 @@ def _run_placement_mode(
         output_def=step.output.def_,
         output_verilog=step.output.verilog,
     )
-    if mode is DreamplaceRunMode.DIFF_SIZING:
+    if mode is DreamplaceRunMode.DIFF_OPT:
+        reslut = dreamplace_module.run_diff_opt()
+    elif mode is DreamplaceRunMode.DIFF_SIZING:
         reslut = dreamplace_module.run_diff_sizing()
     elif mode is DreamplaceRunMode.DIFF_BUFFERING:
         reslut = dreamplace_module.run_diff_buffering()

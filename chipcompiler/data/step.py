@@ -22,6 +22,7 @@ STEP_DIRECTORIES = {
     StepEnum.POST_FLOORPLAN.value: "postFloorplan_ecc",
     StepEnum.PREPLACE.value: "preplace_sizer",
     StepEnum.PLACEMENT.value: "place_dreamplace",
+    StepEnum.DIFF_OPT.value: "diff_opt_dreamplace",
     StepEnum.DIFF_BUFFERING.value: "diff_buffering_dreamplace",
     StepEnum.DIFF_SIZING.value: "diff_sizing_dreamplace",
     StepEnum.CTS.value: "CTS_ecc",

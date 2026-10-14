@@ -91,11 +91,46 @@ def test_buffering_step_resolves_independently_of_placement(
     assert tuple(row["master_name"] for row in table["buffers"]) == EXPECTED_DRIVE_TYPE_MASTERS
 
 
-def test_placement_range_connects_buffering_to_sizing():
+def test_placement_candidate_mode_expands_internal_lane_settings(monkeypatch):
+    workspace = SimpleNamespace()
+    step = SimpleNamespace(name=StepEnum.PLACEMENT.value)
+    monkeypatch.setattr(
+        builder,
+        "prepare_diff_opt_drive_table",
+        lambda _workspace, _step, params: params
+        | {"buffering_candidate_drive_strength_table": "generated.json"},
+    )
+
+    config, internal_keys = builder._apply_placement_buffering_profile(
+        workspace, step, {"buffering_mode": "candidate"}
+    )
+
+    assert config == {
+        "buffering_mode": "candidate",
+        "buffering_segment_strategy": "continuous",
+        "buffering_candidate_strategy": "discrete_net_gradient",
+        "buffering_candidate_drive_type_mode": "four_strength_table",
+        "buffering_candidate_drive_strength_table": "generated.json",
+        "buffering_continuous_steps": 1,
+        "buffering_fixed_buffer_master": "",
+        "buffering_fixed_bsu_index": None,
+    }
+    assert internal_keys == {
+        "buffering_segment_strategy",
+        "buffering_candidate_strategy",
+        "buffering_candidate_drive_type_mode",
+        "buffering_candidate_drive_strength_table",
+        "buffering_continuous_steps",
+        "buffering_fixed_buffer_master",
+        "buffering_fixed_bsu_index",
+    }
+
+
+def test_placement_range_connects_diff_opt_to_sizing():
     chain = build_flow_range("place", "diff_sizing")
     assert [(step.value, tool) for step, tool, _state in chain] == [
         (StepEnum.PLACEMENT.value, "dreamplace"),
-        (StepEnum.DIFF_BUFFERING.value, "dreamplace"),
+        (StepEnum.DIFF_OPT.value, "dreamplace"),
         (StepEnum.DIFF_SIZING.value, "dreamplace"),
     ]
 

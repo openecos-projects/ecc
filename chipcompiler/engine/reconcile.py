@@ -77,7 +77,11 @@ def _target_step_states(flow_data: dict, target: list[tuple[str, str]]) -> set[s
     shifting which states fall inside the evaluated target range.
     """
     states_by_name = {
-        str(step.get("name", "")): str(step.get("state", ""))
+        (
+            "diff_opt"
+            if str(step.get("name", "")) == "diff_buffering"
+            else str(step.get("name", ""))
+        ): str(step.get("state", ""))
         for step in flow_data.get("steps", [])
         if isinstance(step, dict)
     }
@@ -107,7 +111,10 @@ def _normalized_entries(entries: list[tuple[str, str]]) -> list[tuple[str, str]]
 
     lec_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
     return [
-        (name, "yosys_lec") if name in lec_names and tool in LEC_STEP_TOOLS else (name, tool)
+        (
+            "diff_opt" if name == "diff_buffering" else name,
+            "yosys_lec" if name in lec_names and tool in LEC_STEP_TOOLS else tool,
+        )
         for name, tool in entries
     ]
 

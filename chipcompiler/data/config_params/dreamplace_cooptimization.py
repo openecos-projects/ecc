@@ -4,6 +4,18 @@ from .common import config_param
 
 SCHEMAS = (
     config_param(
+        "place.overflow_reference_mode",
+        "dreamplace",
+        ("overflow_reference_mode",),
+        "initial",
+        applies="placement",
+        choices=("ordinary", "initial"),
+        description=(
+            "overflow normalization: initial keeps the GP input movable area; "
+            "ordinary preserves the placement flow's area-update behavior"
+        ),
+    ),
+    config_param(
         "place.stop_overflow",
         "dreamplace",
         ("stop_overflow",),
@@ -229,10 +241,14 @@ SCHEMAS = (
         ("gpugr_bottom_routing_layer",),
         "MET2",
         applies="placement",
+<<<<<<< HEAD
         description=(
             "inclusive bottom routing-layer name passed to GPUGR; "
             "empty uses the first LEF routing layer"
         ),
+=======
+        description=("inclusive bottom routing-layer name passed to GPUGR"),
+>>>>>>> a6766742 (feat(place): integrate native timing and discrete diff optimization)
     ),
     config_param(
         "place.gpugr_top_routing_layer",
@@ -240,10 +256,14 @@ SCHEMAS = (
         ("gpugr_top_routing_layer",),
         "MET5",
         applies="placement",
+<<<<<<< HEAD
         description=(
             "inclusive top routing-layer name passed to GPUGR; "
             "empty uses the last LEF routing layer"
         ),
+=======
+        description=("inclusive top routing-layer name passed to GPUGR"),
+>>>>>>> a6766742 (feat(place): integrate native timing and discrete diff optimization)
     ),
     config_param(
         "place.gpugr_area_adjust_congestion_mode",
@@ -290,7 +310,7 @@ SCHEMAS = (
         ("timing_opt_buffering_enabled",),
         0,
         applies="placement",
-        description="enable segment buffering in electrical timing-optimization windows",
+        description="enable buffering in electrical timing-optimization windows",
     ),
     config_param(
         "place.timing_opt_max_windows",
@@ -309,7 +329,7 @@ SCHEMAS = (
         applies="placement",
         description=(
             "descending one-shot overflow thresholds for timing-optimization windows; "
-            "empty uses inflation-triggered windows"
+            "also schedules discrete sizing/candidate windows; empty uses inflation triggers"
         ),
     ),
     config_param(

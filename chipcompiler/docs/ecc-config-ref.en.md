@@ -394,30 +394,43 @@ For an existing workspace, use
 `ecc param set place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`.
 S50 retains RRR=3, zero padding, fixed 512×512 bins and final legalization.
 
-`diff_buffering` is an independent step between placement and `diff_sizing`.
-It reads the preceding DEF/Verilog and runs discrete candidate buffering with
-three positions per segment and the four ICS55 masters BUFX8H7L, BUFX12H7L,
+`diff_opt` is the independent step between placement and `diff_sizing`.
+It replaces the new-workspace `diff_buffering` entry and reads the preceding
+DEF/Verilog using placement parasitics only. It runs discrete candidate buffering
+with three positions per segment and the four ICS55 masters BUFX8H7L, BUFX12H7L,
 BUFX16H7L and BUFX20H7L. Each round accepts at most one action per net,
 then selects the configured fraction of nets by global gradient benefit.
-The default is at most ten rounds and a 0.3% fraction per round. This step
-uses placement RC. After native buffer insertion it rebuilds the topology,
+The default is at most ten rounds and a 0.3% fraction per round. After native
+buffer insertion it rebuilds the topology,
 runs geometry-only legalization with zero padding, and saves DEF/Verilog and
-terminal hard STA. It performs no GP or sizing updates. Its default WNS/TNS/cap/slew
-coefficients are 500/5/1/1 with outer timing weight 1. The PDK must contain
+terminal hard STA. It performs no GP updates. The default buffering mode inserts
+buffers only; sizing and joint modes execute the configured discrete sizing phases.
+Each phase restores its own best combined objective, with outer timing weight 1.
+The default WNS/TNS/cap/slew coefficients are 500/5/1/1. The PDK must contain
 all four masters; missing masters cause an explicit error.
+
+The flow can be selected with an ordered tuple list. The tuple action is `sz`
+for discrete sizing or `bf` for typed candidate buffering; `steps` is the
+number of discrete rounds and the four coefficients are WNS/TNS/slew/cap.
 
 ```toml
 [params.place]
-diff_buffering_rounds = 10
-diff_buffering_selection_fraction = 0.003
-diff_buffering_coefficients = { wns = 500.0, tns = 5.0, cap = 1.0, slew = 1.0 }
+diff_optimization_mode = "joint"
+diff_optimization_flows = [
+  ["sz", 5, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+]
 ```
 
+`diff_opt` uses placement parasitics exclusively; GGR/RRR, route
+grid, route-extracted SPEF and post-route RC are rejected as inputs. The old
+`diff_buffering_*` fields remain legacy aliases for buffering-only `diff_opt`.
+
 Run it alone with
-`ecc run --project PROJECT --workspace NAME --from diff_buffering --to diff_buffering`;
-use `--to diff_sizing` to continue through standalone GR S50.
-Existing workspace ledgers retain their stored steps; new workspaces include
-the new step.
+`ecc run --project PROJECT --workspace NAME --from diff_opt --to diff_opt`;
+use `--to diff_sizing` to continue through the separate standalone GR S50 step.
+Existing workspace ledgers retain the stored `diff_buffering` alias; new
+workspaces use `diff_opt` followed by `diff_sizing`.
 
 The number of continuous sizing steps in standalone S50 is controlled by
 `place.diff_sizing_continuous_steps`, which defaults to 0. It is the number of
