@@ -14,7 +14,10 @@ def test_recommend_returns_same_input_configuration_as_observed_only(
     snapshot["workspaceSpec"] = {
         "design": {"topModule": "sample"},
         "inputs": [{"inputId": "rtl", "role": "rtl"}],
-        "parameters": {"place.density": 0.7},
+        "parameters": {
+            "place.density": 0.7,
+            "sta.liberty": [{"path": "/private/pdk/lib.lib"}],
+        },
     }
     snapshot["workspaceBindings"] = {"inputs": {"rtl": str(input_file)}}
     snapshot_path.write_text(json.dumps(snapshot))
@@ -28,7 +31,10 @@ def test_recommend_returns_same_input_configuration_as_observed_only(
     recommendation = result["recommendations"][0]
     assert recommendation["safe_to_apply"] is False
     assert recommendation["confidence"] == "observed_only"
-    assert recommendation["parameters"] == {"place.density": 0.7}
+    assert recommendation["parameters"] == {
+        "place.density": 0.7,
+        "sta.liberty": [{"path": "<path-redacted>"}],
+    }
 
 
 def test_recommend_does_not_guess_without_input_fingerprint(workspace_factory, tmp_path):

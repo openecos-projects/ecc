@@ -403,7 +403,9 @@ ecc experience recommend \
 
 The current implementation matches only complete input-content fingerprints and returns
 parameters observed in historical cases with `safe_to_apply` fixed to `false`. This is not
-automatic tuning and does not establish a causal QoR effect. The AI must inspect
+automatic tuning; absolute environment paths are replaced with `<path-redacted>` so a
+local PDK path is not treated as portable. It also does not establish a causal QoR effect.
+The AI must inspect
 verification, QoR, parameter receipts, and process applicability before validating in a
 new workspace. If the query has no complete fingerprint, the store is absent, or no
 verifiable case exists, the command returns `status=insufficient_evidence` with an empty

@@ -1,6 +1,8 @@
 """Conservative, read-only retrieval of observed configurations."""
 
+import re
 from pathlib import Path
+from typing import Any
 
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
 from ecc_experience.files import digest
@@ -91,7 +93,10 @@ def _configured_parameters(facts: dict) -> dict | None:
     if not isinstance(specification, dict):
         return None
     parameters = specification.get("parameters")
-    return parameters if isinstance(parameters, dict) and parameters else None
+    if not isinstance(parameters, dict) or not parameters:
+        return None
+    sanitized = _sanitize(parameters)
+    return sanitized if isinstance(sanitized, dict) else None
 
 
 def _qor_summary(facts: dict) -> dict:
@@ -99,3 +104,17 @@ def _qor_summary(facts: dict) -> dict:
     if not isinstance(qor, dict):
         return {}
     return {key: qor[key] for key in ("score", "status", "reason", "source") if key in qor}
+
+
+def _sanitize(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _sanitize(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_sanitize(item) for item in value]
+    if isinstance(value, str) and _is_absolute_path(value):
+        return "<path-redacted>"
+    return value
+
+
+def _is_absolute_path(value: str) -> bool:
+    return value.startswith("/") or bool(re.match(r"^[A-Za-z]:[\\/]", value))

@@ -365,7 +365,8 @@ ecc experience recommend \
 ```
 
 当前推荐只匹配完整的输入内容指纹，返回历史案例中的已观察参数，并将
-`safe_to_apply` 固定为 `false`。这不是自动调参，也不证明参数对 QoR 有因果作用；
+`safe_to_apply` 固定为 `false`。输出中的绝对环境路径会替换为
+`<path-redacted>`，不会把本机 PDK 路径当作可迁移参数。这不是自动调参，也不证明参数对 QoR 有因果作用；
 AI 必须检查 verification、QoR、参数回执和适用工艺后，另建 workspace 验证。没有
 完整输入指纹、经验库不存在或没有可验证案例时，命令返回
 `status=insufficient_evidence` 和空 recommendations，不猜测参数。
