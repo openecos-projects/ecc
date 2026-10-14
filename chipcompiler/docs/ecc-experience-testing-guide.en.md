@@ -991,3 +991,39 @@ When provided, missing groups and same-family candidates are excluded. Otherwise
 family isolation is not_checked. Parameters remain configured; similarity proves
 neither consumption, causal effects nor benefits for a new design. Run candidates
 in new workspaces and complete full acceptance before adopting them.
+
+### Budgeted stage DSE
+
+Find an available baseline stage metric and its unit with features, then choose a
+grid and direction. Example values and budgets must be adapted to each design:
+
+```bash
+ecc experience dse plan --project ./project --workspace baseline --store ./experience-store \
+  --param floorplan.core_util=0.30,0.35 --through-step postFloorplan \
+  --metric core_area --unit 'um^2' --direction minimize \
+  --max-trials 4 --max-seconds 3600 --trial-timeout 1200 --output ./dse-plan.json --json
+ecc experience dse run --plan ./dse-plan.json --output ./dse-output --json
+```
+
+The plan freezes source revision, declared inputs, project/ecc.toml configuration,
+selected PDK content and runtime. Optional --release binds knowledge K. Only
+reviewed floorplan/place/CTS parameters already active at the boundary are
+accepted, with sweep's scalar --param KEY=A,B syntax. Duplicate keys, invalid or
+later-stage parameters and missing or unit-incompatible objectives are rejected.
+max-trials covers all new flows, requires at least three and reserves two full
+validation slots; the screening grid must fit the remaining slots.
+
+Every candidate derives independently, applies parameters and runs from the first
+step through the boundary; prefix caching is not used. stage_passed covers only
+prefix execution/checklist/metrics, with full_signoff=not_evaluated. Comparison
+matches metric/unit/scope/corner. The stage winner runs a complete flow in another
+workspace, then a fresh complete flow in a further workspace. Both must pass
+actual checklist/signoff/QoR/case verification. A better proxy does not guarantee
+better final QoR.
+
+result.json preserves attempted trials, logs, collection status, stage winner,
+full/fresh validation and candidates not run. patience stops stagnant screening.
+Exit 0 means full/fresh acceptance passed; inspect improved/score_delta for benefit.
+Failure=6, unknown=7, timeout=124, cancel=130 and changed inputs=21. Output must be
+new; interrupted outputs are not automatically rerun. Diagnose preserved trials
+and logs before starting another plan/output. Existing optimizer is unchanged.

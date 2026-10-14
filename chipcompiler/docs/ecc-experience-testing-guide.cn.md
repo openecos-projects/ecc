@@ -869,3 +869,33 @@ confidence=experimental，没有校准过的收益置信度。可用 `--groups g
 指定 groups 后，未知组也排除；没有分组时明确 not_checked，不能宣称家族留出。
 配置仍为 configured；相似度不证明参数生效、因果关系或新设计收益，必须新建
 workspace 实测并完成完整验收。
+
+### 有预算的阶段 DSE
+
+先用 features 找到基线边界处真实存在的指标及单位，再配置网格和方向：
+
+```bash
+ecc experience dse plan --project ./project --workspace baseline --store ./experience-store \
+  --param floorplan.core_util=0.30,0.35 --through-step postFloorplan \
+  --metric core_area --unit 'um^2' --direction minimize \
+  --max-trials 4 --max-seconds 3600 --trial-timeout 1200 --output ./dse-plan.json --json
+ecc experience dse run --plan ./dse-plan.json --output ./dse-output --json
+```
+
+以上值和预算只是通用命令示例，需要按设计要求设置。计划冻结 source revision、
+声明输入、project/ecc.toml 配置、所选 PDK 内容及运行时；可选 --release 绑定知识K。
+只接受已审核 floorplan/place/CTS 参数及其已包含的阶段边界，沿用 sweep 的标量
+--param KEY=A,B 语法。重复键、超范围、后续参数、缺失或单位不符的目标会被拒绝。
+max-trials 至少3，包含所有新 flow，并预留两次完整验证；网格必须放进剩余名额。
+
+每个筛选候选从源独立 derive，应用参数，从 flow 首步运行至边界，当前不复用
+前序产物加速。stage_passed 只证明前缀执行/checklist/指标通过，full_signoff 为
+not_evaluated。按相同 metric/unit/scope/corner 比较阶段值。阶段胜者再新建
+workspace 跑完整 flow，之后在另一个新 workspace 完整 fresh 复跑；两次都须
+通过实际 checklist/signoff/QoR/case 验证。proxy 更好不保证最终 QoR 更好。
+
+result.json 保留所有已尝试 trial、日志、collection 状态、阶段胜者、full/fresh
+结果和未运行候选。patience 控制筛选停滞。0 表示 full/fresh 均验收成功，仍需看
+improved/score_delta 才能判断收益。失败6、未知7、超时124、取消130、输入变化21。
+输出必须新建；中断不会自动重跑，先看保留的 trial/log，再用新计划/输出执行。
+原 optimizer 行为不变。

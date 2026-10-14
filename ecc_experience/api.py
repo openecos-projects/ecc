@@ -11,6 +11,8 @@ from ecc_experience.benchmark.recovery import recover_campaign as recover_campai
 from ecc_experience.benchmark.summary import summarize as summarize_campaign
 from ecc_experience.collection.collect import CollectionResult, collect_committed_case
 from ecc_experience.collection.drain import drain as drain_recording
+from ecc_experience.dse.execute import run_dse
+from ecc_experience.dse.plan import plan_dse
 from ecc_experience.knowledge.features import case_features
 from ecc_experience.knowledge.matching import match_cases
 from ecc_experience.knowledge.recommend import recommend as recommend_cases
@@ -145,6 +147,39 @@ def campaign_quality(manifest: str | Path, ledger: str | Path | None = None) -> 
 
 def recover_campaign(manifest: str | Path, *, trial_id: str) -> dict:
     return recover_campaign_attempt(manifest, trial_id=trial_id)
+
+
+def dse_plan(
+    project: str | Path,
+    workspace: str | Path,
+    store: str | Path,
+    output: str | Path,
+    *,
+    parameters: list[str],
+    through_step: str,
+    metric: str,
+    unit: str,
+    direction: str,
+    limits: dict,
+    release: str | Path | None = None,
+) -> dict:
+    return plan_dse(
+        project,
+        workspace,
+        store,
+        output,
+        parameters=parameters,
+        through_step=through_step,
+        metric=metric,
+        unit=unit,
+        direction=direction,
+        limits=limits,
+        release=release,
+    )
+
+
+def dse_run(plan: str | Path, output: str | Path) -> dict:
+    return run_dse(plan, output)
 
 
 def plan(
