@@ -24,6 +24,7 @@ import time
 from pathlib import Path
 
 from chipcompiler.data import EccOutput, StepEnum, Workspace, WorkspaceStep
+from chipcompiler.engine.resource_observation import start_observation
 from chipcompiler.engine.step_execution import (
     StepExecutionResult,
     _prepare_log_file,
@@ -106,6 +107,9 @@ def execute_step_subprocess(
     peak_memory_mb = start_memory_mb
     step_error = None
     emitted = 0
+    resources = start_observation(
+        process.pid, isolated=True, step=workspace_step.name, tool=workspace_step.tool
+    )
     try:
         while process.poll() is None:
             cancel_error = _cancel_error(observer)
@@ -118,6 +122,7 @@ def execute_step_subprocess(
         peak_memory_mb = max(peak_memory_mb, memory_reader(process.pid))
         emitted = _replay_events(result_path, workspace_step, observer, emitted)
     finally:
+        resource_observation = resources.finish()
         _terminate_worker(process)
 
     result = _read_result(result_path)
@@ -128,7 +133,12 @@ def execute_step_subprocess(
             step_error = f"{step_tag} worker reported failure: {result.get('error')}"
         elif workspace_step.name == StepEnum.RCX.value:
             step_error = _restore_rcx_outputs(workspace_step, result)
-    return _result(start_time, peak_memory_mb - start_memory_mb, error=step_error)
+    return _result(
+        start_time,
+        peak_memory_mb - start_memory_mb,
+        error=step_error,
+        resource_observation=resource_observation,
+    )
 
 
 def _restore_rcx_outputs(step: WorkspaceStep, result: dict) -> str | None:
@@ -160,7 +170,13 @@ def _spawn_worker(log_handle) -> subprocess.Popen:
     )
 
 
-def _result(start_time: float, peak_memory_mb: float, *, error: str | None) -> StepExecutionResult:
+def _result(
+    start_time: float,
+    peak_memory_mb: float,
+    *,
+    error: str | None,
+    resource_observation: dict | None = None,
+) -> StepExecutionResult:
     peak_memory_mb = 0 if peak_memory_mb < 0 else round(peak_memory_mb, 3)
     elapsed = time.time() - start_time
     return StepExecutionResult(
@@ -168,6 +184,7 @@ def _result(start_time: float, peak_memory_mb: float, *, error: str | None) -> S
         elapsed_seconds=elapsed,
         peak_memory_mb=peak_memory_mb,
         runtime=f"{int(elapsed // 3600)}:{int((elapsed % 3600) // 60)}:{int(elapsed % 60)}",
+        resource_observation=resource_observation,
     )
 
 

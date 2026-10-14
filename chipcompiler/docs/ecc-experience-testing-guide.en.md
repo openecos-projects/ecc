@@ -453,6 +453,24 @@ the unknown and corrupt-case exits without inventing independent attempt IDs.
 
 ### External execution and ledgers
 
+Newly executed flow steps optionally carry `resource_observation`, frozen with
+their Engineering Snapshot and experience case. Its attempt ID is created only
+for actual tool execution; skipping retains the original identity, while rerun,
+invalidation and reset remove old references. Legacy workspaces remain readable
+without fabricated historical measurements.
+
+`peak_rss_bytes` is the sampled absolute Linux `/proc` RSS sum of the observed
+process tree. The original `peak memory (mb)` keeps its historical meaning.
+`isolated_worker_process_tree` observes a worker and its descendants;
+`shared_process_tree` covers in-process/frozen execution and may include other
+work, so its status is partial. Status is available/partial/unavailable; absent
+samples produce null rather than zero. Facts include UTC timestamps, monotonic
+elapsed time, sample interval/count, PID/start ID, host/boot identity and reasons.
+RSS can double-count shared pages and miss short peaks; it is not cgroup/PSS or
+exclusive tool memory and does not establish a calibrated resource predictor.
+Each step in `campaign quality` exposes this optional field without tightening
+the gate for legacy cases.
+
 After validation, initialize a resumable campaign ledger. Initialization creates only
 `output_root/campaign-ledger.json`, containing the manifest fingerprint, design list, and
 empty trial records; it does not start EDA:

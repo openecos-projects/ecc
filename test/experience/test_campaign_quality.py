@@ -149,6 +149,7 @@ def test_complete_observation_is_read_only_and_exposes_resource_scope(campaign, 
             "runtime": "0:0:3",
             "peak_memory_mb": 12.5,
             "resource_scope": "legacy_flow_step_ledger",
+            "resource_observation": None,
         }
     ]
     assert _digests(campaign.parent) == before

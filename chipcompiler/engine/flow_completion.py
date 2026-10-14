@@ -82,6 +82,7 @@ def normalize_legacy_terminal_state(flow, workspace_step, step_tag) -> None:
         old_step["state"] = "Unstart"
         old_step["runtime"] = ""
         old_step["peak memory (mb)"] = 0
+        old_step.pop("resource_observation", None)
 
 
 def finalize_interrupted_subflow(observer, workspace_step, runtime, peak_memory_mb) -> None:

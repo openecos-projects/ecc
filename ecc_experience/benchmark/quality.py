@@ -244,6 +244,7 @@ def _steps(case: ExperienceCase) -> list[dict]:
                 if isinstance(memory, (int, float)) and _finite_number(memory) and memory > 0
                 else None,
                 "resource_scope": "legacy_flow_step_ledger",
+                "resource_observation": step.get("resource_observation"),
             }
         )
     return result

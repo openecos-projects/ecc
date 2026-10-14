@@ -397,6 +397,19 @@ coverage 的分母是 trial 引用数，不是独立样本数。重复采集同�
 
 ### 外部执行与 ledger
 
+新执行的 flow step 可选保存 `resource_observation`，并随 Engineering Snapshot 和
+经验案例冻结。其 `attempt_id` 只在真正执行工具时生成，skip 保留原身份；重跑/
+失效/reset 清除旧引用。旧 workspace 无此字段仍可正常读取，不补造历史测量。
+
+`peak_rss_bytes` 是 Linux `/proc` 对当时进程树的绝对 RSS 采样峰值；原
+`peak memory (mb)` 保持旧口径。`isolated_worker_process_tree` 测量独立 worker
+及其后代；`shared_process_tree` 用于 in-process/frozen，共享进程中其他工作也可能
+计入，因此标 partial。`status` 为 available/partial/unavailable；读取失败/没有
+样本时峰值为 null，不用零替代。记录包含 UTC 时间、monotonic 耗时、采样周期、
+次数、PID/start ID、host/boot 身份和原因。RSS 可能重复共享页并漏掉短峰，不等同
+cgroup/PSS 或工具独占内存，也不能据此直接产生经过校准的资源预测。
+`campaign quality` 的每个 step 同时展示该新字段，缺省不改变旧案例的质量门槛。
+
 校验通过后，可以让 ECC 创建一个可恢复的 campaign ledger。初始化只创建
 `output_root/campaign-ledger.json`，保存 manifest fingerprint、设计清单和空的试验
 记录，不启动 EDA：

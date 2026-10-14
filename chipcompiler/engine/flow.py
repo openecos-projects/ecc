@@ -268,6 +268,8 @@ class EngineFlow:
                 _validate_transition(old_state, state_value, name, tool)
                 previous_step = deepcopy(step)
                 step["state"] = state_value
+                if state_value in {StateEnum.Ongoing.value, StateEnum.Unstart.value}:
+                    step.pop("resource_observation", None)
                 if runtime is not None:
                     step["runtime"] = runtime
                 if peak_memory is not None:
@@ -300,6 +302,7 @@ class EngineFlow:
             step["state"] = StateEnum.Unstart.value
             step["runtime"] = ""
             step["peak memory (mb)"] = 0
+            step.pop("resource_observation", None)
 
         self.save()
 
@@ -831,6 +834,7 @@ class EngineFlow:
             )
             previous_info = dict(flow_step.get("info", {}))
             info = flow_step.setdefault("info", {})
+            previous_resources = flow_step.pop("resource_observation", None)
             if execution_marker:
                 info["execution"] = {**execution_marker, "started_at": start_time}
             else:
@@ -842,6 +846,8 @@ class EngineFlow:
             if not self.save():
                 flow_step["state"] = previous_state
                 flow_step["info"] = previous_info
+                if previous_resources is not None:
+                    flow_step["resource_observation"] = previous_resources
                 raise RuntimeError(f"failed to persist runtime operation marker for {step_tag}")
         else:
             if flow_step is not None and not self.set_state(
@@ -865,6 +871,9 @@ class EngineFlow:
             elapsed = execution.elapsed_seconds
             peak_memory_mb = execution.peak_memory_mb
             runtime = execution.runtime
+            resources = getattr(execution, "resource_observation", None)
+            if flow_step is not None and resources is not None:
+                flow_step["resource_observation"] = resources
         except (Exception, SystemExit) as exc:
             step_error = record_tool_failure(self.workspace.logger, step_tag, exc)
             elapsed = time.time() - start_time
