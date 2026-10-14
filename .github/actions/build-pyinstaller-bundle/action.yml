@@ -91,4 +91,15 @@ runs:
         grep -q '"cli_contract": 1' <<<"$version_json"
         "$SMOKE_DIR/ecc" doc config --plain > /dev/null
         "$SMOKE_DIR/ecc" doc ug --lang cn --plain > /dev/null
+        "$SMOKE_DIR/ecc" experience --help
+        experience_smoke_root="$(mktemp -d "${RUNNER_TEMP:-/tmp}/ecc-experience-smoke.XXXXXX")"
+        mkdir -p "$experience_smoke_root/project/default/home"
+        printf '%s\n' '' > "$experience_smoke_root/project/ecc.toml"
+        printf '%s\n' '{"steps":[{"name":"Synthesis","tool":"yosys","state":"Success"}]}' \
+          > "$experience_smoke_root/project/default/home/flow.json"
+        python3 packaging/experience_cli_smoke.py \
+          --binary "$SMOKE_DIR/ecc" \
+          --project "$experience_smoke_root/project" \
+          --workspace default \
+          --output "$experience_smoke_root/output"
         test -x "$SMOKE_DIR/_internal/torch/bin/torch_shm_manager"

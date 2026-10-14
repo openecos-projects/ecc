@@ -83,8 +83,8 @@ environment.
 
 ```bash
 # Format and lint
-uv run ruff format chipcompiler/ test/
-uv run ruff check chipcompiler/ test/
+uv run ruff format chipcompiler/ test/ ecc_experience/
+uv run ruff check chipcompiler/ test/ ecc_experience/
 
 # Type check
 uv run ty check
@@ -1104,6 +1104,31 @@ For Python-level debugging, invoke the same CLI module directly:
 4. Use `clear_states()` to re-run.
 
 ## Conventions
+
+### Experience collection ownership
+
+`ecc_experience/` is a sibling of `chipcompiler/` and `agent/`, shipped in the same
+ECC distribution. Its P0 API is `collect(workspace, store)`, `list_cases(store)`,
+`show(case_id, store)` and `verify(case_id, store)`. CLI composition is registered
+only in `chipcompiler/cli/app.py`; core engine/data/tools do not import experience.
+Domain collection accepts an observation-reader Protocol. The chipcompiler adapter
+uses read-only snapshot APIs and the existing nonblocking workspace lock.
+
+Cases are immutable, content-addressed observations. Store writes have one collector,
+staged digest verification and atomic directory publication. Source revision is not
+an execution attempt ID; parameter evidence is configured/unknown and input closure
+and process fingerprints remain unverified. Verification separates archive integrity
+from unknown provenance or unavailable metrics. Stable attempt identity, post-commit
+automatic recording and recommendations belong to later delivery stages.
+
+Run `uv run pytest test/experience test/cli/commands/test_experience.py` for the narrow
+contract suite. `packaging/experience_cli_smoke.py` exercises public CLI collection,
+idempotence, queries and corruption rejection against a supplied project/workspace.
+The packaged design matrix runs this after the existing flow artifact checks. Keep
+stores, benchmarks and build output outside source trees; do not package private cases.
+
+The user procedures are documented in the
+[experience testing manual](../chipcompiler/docs/ecc-experience-testing-guide.en.md).
 
 Contributor conventions are not repeated here; they live in
 [../CLAUDE.md](../CLAUDE.md) (behavioral guidelines, test placement, module

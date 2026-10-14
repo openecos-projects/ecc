@@ -22,6 +22,7 @@ from chipcompiler.cli.commands.workspace import workspace_app
 from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.version_info import root_version_line, version_payload, version_text
 from chipcompiler.cli.inspection.tool_versions import tool_versions
+from ecc_experience.cli.commands import experience_app
 
 app = create_app(help="ECC - EDA toolchain for RTL-to-GDS flows", add_completion=True)
 
@@ -96,6 +97,7 @@ app.add_typer(reproducible_app, name="reproducible")
 app.add_typer(sweep_app, name="sweep")
 app.add_typer(explore_app, name="explore")
 app.add_typer(diagnose_app, name="diagnose")
+app.add_typer(experience_app, name="experience")
 
 
 def invoke_typer_app(argv: Sequence[str]) -> int:

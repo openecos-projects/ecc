@@ -317,18 +317,17 @@ def patch_ecc_tools_tcl_data(datas, binaries):
     return datas, binaries
 
 
-
 ecc_datas, ecc_binaries, ecc_hiddenimports = collect_all("chipcompiler")
+experience_datas, experience_binaries, experience_hiddenimports = collect_all("ecc_experience")
 ecc_tools_datas, ecc_tools_binaries, ecc_tools_hiddenimports = collect_all("ecc_tools_bin")
-ecc_tools_datas, ecc_tools_binaries = patch_ecc_tools_tcl_data(
-    ecc_tools_datas, ecc_tools_binaries
-)
+ecc_tools_datas, ecc_tools_binaries = patch_ecc_tools_tcl_data(ecc_tools_datas, ecc_tools_binaries)
 klayout_datas, klayout_binaries, klayout_hiddenimports = collect_all("klayout")
 dreamplace_datas, dreamplace_binaries, dreamplace_hiddenimports = collect_all("dreamplace")
 torch_datas, torch_binaries, torch_hiddenimports = collect_all("torch")
 
 datas = []
 datas.extend(ecc_datas)
+datas.extend(experience_datas)
 datas.extend(ecc_tools_datas)
 datas.extend(klayout_datas)
 datas.extend(dreamplace_datas)
@@ -342,6 +341,7 @@ datas.extend(collect_doc_guides())
 
 binaries = []
 binaries.extend(ecc_binaries)
+binaries.extend(experience_binaries)
 binaries.extend(ecc_tools_binaries)
 binaries.extend(collect_ecc_tools_extension_binaries())
 binaries.extend(klayout_binaries)
@@ -355,6 +355,7 @@ hiddenimports = []
 hiddenimports.extend(HIDDENIMPORTS)
 hiddenimports.extend(rich_unicode_data_hiddenimports())
 hiddenimports.extend(ecc_hiddenimports)
+hiddenimports.extend(experience_hiddenimports)
 hiddenimports.extend(ecc_tools_hiddenimports)
 hiddenimports.extend(klayout_hiddenimports)
 hiddenimports.extend(dreamplace_hiddenimports)

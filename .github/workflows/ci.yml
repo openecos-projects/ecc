@@ -16,6 +16,7 @@ on:
     paths:
       - 'chipcompiler/**'
       - 'agent/**'
+      - 'ecc_experience/**'
       - 'test/**'
       - 'ecc.spec'
       - 'packaging/**'
@@ -131,7 +132,7 @@ jobs:
           "${CHIPCOMPILER_KEPLER_FORMAL_ROOT}/bin/kepler-formal" --version
 
       - name: Pytest
-        run: uv run --no-sync pytest test/ -v --basetemp=pytest-tmp --cov=chipcompiler --cov-report=
+        run: uv run --no-sync pytest test/ -v --basetemp=pytest-tmp --cov=chipcompiler --cov=ecc_experience --cov-report=
 
       - name: Pytest (agent)
         run: uv run --no-sync pytest agent/test -v --basetemp=pytest-agent-tmp
@@ -442,6 +443,14 @@ jobs:
           ECC_FLOW_WORKSPACES="$RUNNER_TEMP/e2e" \
             nix run -L .#signoff-lit -- designs --filter "${{ matrix.design }}"
 
+      - name: Verify packaged experience collection
+        run: |
+          python3 packaging/experience_cli_smoke.py \
+            --binary "$PWD/dist/ecc-bundle/ecc" \
+            --project "$RUNNER_TEMP/e2e/${{ matrix.design }}" \
+            --workspace default \
+            --output "$RUNNER_TEMP/experience/${{ matrix.design }}"
+
       - name: Upload e2e workspaces on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -450,6 +459,7 @@ jobs:
           if-no-files-found: ignore
           path: |
             ${{ runner.temp }}/e2e
+            ${{ runner.temp }}/experience
 
   lint:
     needs: check-version
@@ -465,10 +475,10 @@ jobs:
         uses: ./.github/actions/setup-python-deps
 
       - name: Ruff format check
-        run: uv run --no-sync ruff format --check chipcompiler test agent
+        run: uv run --no-sync ruff format --check chipcompiler test agent ecc_experience
 
       - name: Ruff lint
-        run: uv run --no-sync ruff check --output-format=github chipcompiler test agent
+        run: uv run --no-sync ruff check --output-format=github chipcompiler test agent ecc_experience
 
       # - name: Pyright
       #   run: uv run pyright chipcompiler
