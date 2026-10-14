@@ -458,10 +458,17 @@ existing workspace, use
 gradients more evenly. Endpoint WNS still uses hard min, and TNS still sums
 negative slacks. For example, set the following in `ecc.toml`:
 
+`place.timing_metric_scope` controls which max timing checks enter the
+placement WNS/TNS metric. The default `setup_plus_recovery` includes ordinary
+setup and asynchronous recovery checks; `setup_only` is an explicit ablation
+that excludes recovery-only endpoints. Recovery checks remain exported by the
+STA backend in either mode.
+
 ```toml
 [params.place]
 timing_aggregation_mode = "smooth"
 timing_aggregation_tau_ps = 2.0
+timing_metric_scope = "setup_plus_recovery"
 ```
 
 | Parameter | Default | Meaning |
@@ -474,6 +481,7 @@ timing_aggregation_tau_ps = 2.0
 | `timing_grad_balance_target_ratio` | 0.2 `*place.timing_grad_balance_target_ratio` | Initial timing / wirelength gradient L1 norm ratio in direct-loss placement; 0.0 disables balancing |
 | `timing_aggregation_mode` | `smooth` `*place.timing_aggregation_mode` | AAT/RAT propagation aggregation: `hard` or `smooth` (LSE) |
 | `timing_aggregation_tau_ps` | 2.0 `*place.timing_aggregation_tau_ps` | Positive temperature in ps for `smooth` mode |
+| `timing_metric_scope` | `setup_plus_recovery` `*place.timing_metric_scope` | Max timing checks in placement WNS/TNS: `setup_only` or `setup_plus_recovery` |
 | `num_bins_x/y` | 32/32 | Number of density grid bins |
 | `global_place_stages[]` | see below | Multi-stage global placement table (multiple entries allowed) |
 | `global_place_stages[].iteration` | 3000 | Iteration limit in this stage; convergence can stop earlier |

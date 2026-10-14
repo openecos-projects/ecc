@@ -161,6 +161,7 @@
     "timing_objective_lane": "timing_only",
     "timing_aggregation_mode": "smooth",
     "timing_aggregation_tau_ps": 2.0,
+    "timing_metric_scope": "setup_plus_recovery",
     "timing_propagation_device": "inherit",
     "timing_grad_balance_target_ratio": 0.2,
     "diff_optimization_mode": "buffering",

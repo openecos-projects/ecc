@@ -164,6 +164,9 @@ DREAMPLACE_PARAMETER_DESCRIPTIONS = {
     "sizing_parameterization": "continuous sizing coordinate, logits | real_size",
     "start_iter": "iteration to start pin-to-pin timing weighting",
     "timing_eval_flag": "enable timing evaluation reporting",
+    "timing_metric_scope": (
+        "max timing checks used by placement WNS/TNS: setup_only or setup_plus_recovery"
+    ),
     "timing_propagation_device": (
         "TimingPropagation device: inherit the placement device, or explicitly use cpu/cuda"
     ),

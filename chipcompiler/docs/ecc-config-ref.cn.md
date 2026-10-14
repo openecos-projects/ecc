@@ -442,12 +442,17 @@ step 后再投影到合法 cell 并切换到离散 sizing。
 使用 LSE，`hard` 使用 max/min。`place.timing_aggregation_tau_ps` 是正的
 平滑温度，默认 2.0 ps；越小越接近硬 max/min，越大梯度分配越平滑。
 这两个参数不改变最终 endpoint WNS 的硬 min 和 TNS 的负 slack 求和。
+`place.timing_metric_scope` 控制哪些 max timing check 进入 placement 的
+WNS/TNS。默认 `setup_plus_recovery` 同时包含普通 setup 和异步 recovery；
+`setup_only` 用于显式对照并排除只有 recovery 的端点。两种模式下 STA
+backend 都会导出 recovery check。
 例如，在 `ecc.toml` 中设置：
 
 ```toml
 [params.place]
 timing_aggregation_mode = "smooth"
 timing_aggregation_tau_ps = 2.0
+timing_metric_scope = "setup_plus_recovery"
 ```
 
 | 参数 | 默认 | 含义 |
@@ -460,6 +465,7 @@ timing_aggregation_tau_ps = 2.0
 | `timing_grad_balance_target_ratio` | 0.2 `*place.timing_grad_balance_target_ratio` | direct-loss placement 初始 timing / wirelength 梯度 L1 范数比例目标；0.0 关闭 |
 | `timing_aggregation_mode` | `smooth` `*place.timing_aggregation_mode` | AAT/RAT 传播聚合方式：`hard` 或 `smooth`（LSE） |
 | `timing_aggregation_tau_ps` | 2.0 `*place.timing_aggregation_tau_ps` | `smooth` 模式的正平滑温度，单位 ps |
+| `timing_metric_scope` | `setup_plus_recovery` `*place.timing_metric_scope` | placement WNS/TNS 的 max timing check：`setup_only` 或 `setup_plus_recovery` |
 | `num_bins_x/y` | 32/32 | 密度网格划分数 |
 | `global_place_stages[]` | 见下 | 多阶段全局布局表（可多段） |
 | `global_place_stages[].iteration` | 3000 | 本阶段迭代上限，收敛时可提前停止 |
