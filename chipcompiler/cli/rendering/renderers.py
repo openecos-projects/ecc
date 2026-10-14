@@ -10,6 +10,7 @@ from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMod
 from chipcompiler.cli.rendering.compare import render_compare_run_text
 from chipcompiler.cli.rendering.pretty import (
     render_check,
+    render_check_update_text,
     render_config,
     render_error,
     render_init,
@@ -239,6 +240,7 @@ RENDERERS: dict[RendererKey, Renderer] = {
     ("check", OutputMode.TEXT): _pretty(render_check),
     ("run", OutputMode.TEXT): _pretty(render_run_summary),
     ("status", OutputMode.TEXT): _pretty(render_status),
+    ("check-update", OutputMode.TEXT): _plain_text(render_check_update_text),
     ("config", OutputMode.TEXT): _pretty(render_config),
     ("param:list", OutputMode.TEXT): _plain_text(render_param_list_text),
     ("param:catalog", OutputMode.PLAIN): _render_line_records,

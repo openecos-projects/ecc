@@ -114,6 +114,21 @@ def decide(
     if latest is None:
         return STATUS_UNKNOWN
 
+    # Semantic ordering first: a lower base version is outdated no matter how
+    # fresh its build date is, and a higher one never needs a "downgrade".
+    if latest.ecc_version:
+        try:
+            current = Version(current_version)
+            base = Version(_nightly_base(latest.ecc_version))
+        except InvalidVersion:
+            pass
+        else:
+            if current < base:
+                return STATUS_UPDATE_AVAILABLE
+            if current > base:
+                return STATUS_UP_TO_DATE
+
+    # Same base (or unparseable versions): the build identity decides.
     if current_build_date and current_build_date.isdigit():
         if current_commit and latest.ecc_commit and current_commit == latest.ecc_commit:
             return STATUS_UP_TO_DATE
@@ -124,20 +139,7 @@ def decide(
             return STATUS_UP_TO_DATE
         if current_commit and latest.ecc_commit:
             return STATUS_UPDATE_AVAILABLE  # same day, different commits
-        return STATUS_UNKNOWN
-
-    if not latest.ecc_version:
-        return STATUS_UNKNOWN
-    try:
-        current = Version(current_version)
-        base = Version(_nightly_base(latest.ecc_version))
-    except InvalidVersion:
-        return STATUS_UNKNOWN
-    if current < base:
-        return STATUS_UPDATE_AVAILABLE
-    if current > base:
-        return STATUS_UP_TO_DATE
-    return STATUS_UNKNOWN  # unstamped install on the same base: cannot tell
+    return STATUS_UNKNOWN
 
 
 def check_for_update(

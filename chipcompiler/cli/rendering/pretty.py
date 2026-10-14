@@ -443,3 +443,33 @@ def render_signoff_check_text(records, file=None):
     print(f"  workspace : {summary['workspace']}", file=target)
     for record in records[1:]:
         print(f"    {record['gate']:18s} {record['status']:7s} {record['reason']}", file=target)
+
+
+def _format_nightly_date(yyyymmdd):
+    return f"{yyyymmdd[:4]}-{yyyymmdd[4:6]}-{yyyymmdd[6:8]}"
+
+
+def render_check_update_text(records, file=None, *, color=True):
+    from chipcompiler.update_check import STATUS_UP_TO_DATE
+
+    target = file or sys.stdout
+    record = records[0]
+
+    current = record.get("current_version", "")
+    build_date = record.get("current_build_date")
+    commit = record.get("current_commit")
+    if build_date and commit:
+        current = f"{current} (nightly {_format_nightly_date(build_date)}, g{commit[:7]})"
+
+    lines = [f"Current version : {current}"]
+    latest = record.get("latest") or {}
+    if latest:
+        label = latest.get("ecc_version") or latest.get("tag") or ""
+        lines.append(f"Latest nightly  : {label} ({_format_nightly_date(latest.get('date', ''))})")
+    status = str(record.get("status", "")).replace("_", " ")
+    lines.append(f"Status          : {status_style(status, color=color)}")
+    if record.get("status") != STATUS_UP_TO_DATE:
+        lines.append("")
+        lines.append("Get the latest nightly build:")
+        lines.extend(f"  {url}" for url in record.get("installer_urls", ()))
+    print("\n".join(lines), file=target)
