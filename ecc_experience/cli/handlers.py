@@ -46,6 +46,7 @@ def _guard(operation: Callable[[], CommandResult]) -> CommandResult:
             "experience_campaign_manifest_changed": EXIT_REVISION_CONFLICT,
             "experience_campaign_trial_conflict": EXIT_REVISION_CONFLICT,
             "experience_command_receipt_invalid": EXIT_USAGE_ERROR,
+            "experience_features_invalid": EXIT_USAGE_ERROR,
             "experience_plan_invalid": EXIT_USAGE_ERROR,
             "experience_release_invalid": EXIT_USAGE_ERROR,
             "experience_release_unverified": EXIT_GATE_FAILED,
@@ -79,6 +80,23 @@ def collect(command_input: CollectInput, ctx: CommandContext) -> CommandResult:
                     "limitations": result.case.limitations,
                 }
             ]
+        )
+
+    return _guard(operation)
+
+
+def features(command_input: StoreInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import features as read_features
+
+        result = read_features(
+            command_input.case_id or "",
+            command_input.store,
+            through_step=command_input.through_step,
+        )
+        return CommandResult(
+            records=({"experience": "features", **result},),
+            exit_code=6 if result["status"] == "fail" else 0,
         )
 
     return _guard(operation)

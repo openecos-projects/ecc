@@ -946,3 +946,20 @@ explicit retry creates a new attempt within the original budget. Exit 0 means
 recovery was registered: inspect trial.status for acceptance. Repeating recovery
 of a terminal attempt does not execute it again. Receipts are local operational
 records, not signed execution proofs for untrusted files.
+
+### Read experience features through a stage
+
+```bash
+ecc experience features CASE_ID --store ./experience-store --through-step postFloorplan --json
+```
+
+This query uses only stored, digest-checked small JSON evidence, with no fallback
+to a mutable workspace. The boundary follows actual flow order; omit it for a
+complete observation. Step names must match exactly. Metrics retain value, unit,
+scope, corner, source reference/SHA256 and original selector. Zero and missing
+values remain distinct. Earlier-stage features exclude later routing metrics and
+final QoR. Missing stage reports produce partial/unknown results; legacy cases
+remain readable. Configured values neither prove tool consumption nor describe
+historical stage configuration. Resource scope and attempt identity are retained;
+reused stages must not be counted as new execution cost. Corrupt stored evidence
+returns 6. Capture hashes do not prove original execution or complete PDK closure.

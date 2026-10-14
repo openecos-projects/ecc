@@ -831,3 +831,18 @@ workspace 锁繁忙时返回 20，不提供强制接管。输入、运行时或�
 若只完成准备命令，则保留旧 attempt 为 interrupted/blocked。随后显式 retry 在
 原预算内新建 attempt。恢复成功返回 0 仅表示登记完成，实际通过与否看 trial.status；
 重复恢复已终结的 attempt 不会重跑。记录不是签名执行证明，不用于信任不明文件。
+
+### 按阶段读取经验特征
+
+```bash
+ecc experience features CASE_ID --store ./experience-store --through-step postFloorplan --json
+```
+
+命令仅使用案例中已保存且摘要校验通过的小 JSON，不读取可变 workspace 补指标。
+`--through-step` 按实际 flow 顺序截断；不指定时读取完整观察。阶段名称必须精确
+匹配案例，未知名称报输入错误。输出每步指标的 value/unit/scope/corner、源文件
+reference/SHA256 和原 selector；有效的零值与缺失值分别保留。较早阶段不会带上
+后续 route 或最终 QoR；部分 step 尚无报告时明确为 partial/unknown。
+旧案例可查询，缺失字段不补零。配置单独标 configured，不代表工具已实际消费，
+也不是该历史阶段当时的配置快照。资源观测保留原 scope/attempt，复用阶段不另
+计运行成本。存储证据损坏返回 6；这些采集摘要不证明原始执行或完整 PDK 闭包。

@@ -17,6 +17,7 @@ class StoreInput:
     store: str
     case_id: str | None = None
     project: ProjectOptions = ProjectOptions()
+    through_step: str | None = None
 
 
 @dataclass(frozen=True)

@@ -94,6 +94,26 @@ def verify_cmd(
     execute_command("experience", command_input, handlers.verify)
 
 
+@experience_app.command("features", help="Read digest-checked features through a flow step")
+def features_cmd(
+    case_id: CaseArgument,
+    *,
+    store: StoreOption,
+    through_step: Annotated[
+        str | None, typer.Option("--through-step", help="Last visible flow step")
+    ] = None,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = StoreInput(
+        output=output_options(plain=plain, json_output=json_output),
+        store=store,
+        case_id=case_id,
+        through_step=through_step,
+    )
+    execute_command("experience", command_input, handlers.features)
+
+
 @experience_app.command(
     "export", help="Export explicitly selected cases or a release with evidence"
 )
