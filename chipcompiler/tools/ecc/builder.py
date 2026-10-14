@@ -89,6 +89,7 @@ def build_step(
                 StepEnum.POST_FLOORPLAN.value: data_dir / "fp",
                 StepEnum.PREPLACE.value: data_dir / "preplace",
                 StepEnum.PLACEMENT.value: data_dir / "pl",
+                StepEnum.DIFF_OPT.value: data_dir / "diff_opt",
                 StepEnum.DIFF_BUFFERING.value: data_dir / "diff_buffering",
                 StepEnum.DIFF_SIZING.value: data_dir / "diff_sizing",
                 StepEnum.LEGALIZATION.value: data_dir / "pl",
