@@ -364,3 +364,25 @@ def test_failed_flow_is_recorded_and_collected_without_promoting(
     assert result["trials"][0]["case_id"] == "failed-case"
     assert len(collected) == 1
     assert result["winner"] is None
+
+
+def test_changed_trial_inputs_stop_before_fresh_validation(
+    optimization_project, tmp_path, fake_execution, monkeypatch
+):
+    from ecc_experience.optimization import execute
+
+    _workspace, store, plan_path = optimization_project
+
+    def changed_inputs(*_args):
+        raise ExperienceError("Trial inputs changed", code="experience_source_changed")
+
+    monkeypatch.setattr(execute, "validate_trial", changed_inputs)
+
+    result = optimize(tmp_path, plan_path, store, tmp_path / "output")
+
+    assert result["exit_code"] == 21
+    assert result["status"] == "stopped"
+    assert result["stop_reason"] == "experience_source_changed"
+    assert len(result["trials"]) == 1
+    assert result["fresh_validation"] is None
+    assert result["winner"] is None

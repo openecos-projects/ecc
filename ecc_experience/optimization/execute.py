@@ -115,6 +115,8 @@ def _trial(
     except (ExperienceError, OSError) as exc:
         record["status"] = "failed"
         record["reason"] = str(exc)
+        if isinstance(exc, ExperienceError) and exc.code == "experience_source_changed":
+            raise
     if record["exit_code"] == EXIT_TIMEOUT or time.monotonic() >= deadline:
         record["exit_code"] = EXIT_TIMEOUT
         record["status"] = "timeout"
