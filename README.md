@@ -197,6 +197,7 @@ Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 | `ecc version` | Show ECC runtime and component versions |
 | `ecc gdsview` | Open a workspace step's GDS in the KLayout viewer |
 | `ecc chipview` | Open a workspace step's geometry snapshot in Chip Viewer |
+| `ecc check-update` | Check whether a newer nightly build is available |
 
 Project commands accept `--project <dir>` (defaults to the current directory).
 Most commands support `--plain` output for scripting.
