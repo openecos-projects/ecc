@@ -137,6 +137,7 @@ Current implementation status:
 | `ecc doc` | `--plain` |
 | `ecc macro set/remove/import/show` | `--plain` |
 | `ecc version` | hidden `--json` only (desktop app contract) |
+| `ecc check-update` | `--plain`, plus hidden `--json` (desktop app contract) |
 | `ecc rpc serve` | none (machine protocol) |
 | `ecc layout-image` | none (tool invocation; produces a file) |
 
