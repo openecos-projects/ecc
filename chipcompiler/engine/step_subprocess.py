@@ -93,9 +93,7 @@ def execute_step_subprocess(
     except OSError as exc:
         return _result(start_time, 0.0, error=f"{step_tag} worker failed to start: {exc}")
 
-    workspace.logger.info(
-        "[STEP] %s pid=%s worker started", step_tag, process.pid
-    )
+    workspace.logger.info("[STEP] %s pid=%s worker started", step_tag, process.pid)
     process.stdin.write(json.dumps(payload).encode("utf-8"))
     process.stdin.close()
 
@@ -238,9 +236,7 @@ class _ResultFileObserver:
         self._flush = flush
 
     def on_subflow_stage(self, _step, subflow_step) -> None:
-        self._result["events"].append(
-            {"type": "subflow_stage", "subflow_step": dict(subflow_step)}
-        )
+        self._result["events"].append({"type": "subflow_stage", "subflow_step": dict(subflow_step)})
         self._flush()
 
 
@@ -288,9 +284,7 @@ def main() -> int:
         flow.create_step_workspaces(initialize_config=False)
         step = flow.get_workspace_step(payload["step_name"])
         if step is None or step.tool != payload["tool"]:
-            raise RuntimeError(
-                f"step {payload['step_name']}({payload['tool']}) missing in worker"
-            )
+            raise RuntimeError(f"step {payload['step_name']}({payload['tool']}) missing in worker")
         workspace._runtime_flow_observer = _ResultFileObserver(result, flush)
 
         flow.init_db_engine_for_step(step)
