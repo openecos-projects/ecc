@@ -28,6 +28,12 @@ def _guard(operation: Callable[[], CommandResult]) -> CommandResult:
             "experience_not_configured": EXIT_USAGE_ERROR,
             "experience_manifest_invalid": EXIT_USAGE_ERROR,
             "experience_manifest_input_missing": EXIT_USAGE_ERROR,
+            "experience_campaign_design_invalid": EXIT_USAGE_ERROR,
+            "experience_campaign_trial_invalid": EXIT_USAGE_ERROR,
+            "experience_campaign_ledger_invalid": EXIT_USAGE_ERROR,
+            "experience_campaign_ledger_missing": EXIT_USAGE_ERROR,
+            "experience_campaign_manifest_changed": EXIT_REVISION_CONFLICT,
+            "experience_campaign_trial_conflict": EXIT_REVISION_CONFLICT,
         }
         return CommandResult.err([error_record(exc.code, reason=str(exc))], codes.get(exc.code, 1))
     except OSError as exc:
@@ -211,6 +217,57 @@ def validate_campaign(command_input: CampaignInput, _ctx: CommandContext) -> Com
 
         return CommandResult.ok(
             [{"experience": "campaign_validate", **validate(command_input.manifest)}]
+        )
+
+    return _guard(operation)
+
+
+def init_campaign(command_input: CampaignInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import init_campaign as initialize
+
+        result = initialize(command_input.manifest, command_input.ledger)
+        return CommandResult.ok([{"experience": "campaign_init", **result}])
+
+    return _guard(operation)
+
+
+def record_campaign_trial(command_input: CampaignInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import record_trial
+
+        if not command_input.ledger or not command_input.design_id or not command_input.workspace:
+            raise ExperienceError(
+                "--ledger, --design and --workspace are required",
+                code="experience_campaign_trial_invalid",
+            )
+        if not command_input.status:
+            raise ExperienceError("--status is required", code="experience_campaign_trial_invalid")
+        result = record_trial(
+            command_input.ledger,
+            design_id=command_input.design_id,
+            workspace=command_input.workspace,
+            status=command_input.status,
+            trial_id=command_input.trial_id,
+            case_id=command_input.case_id,
+            reason=command_input.reason,
+        )
+        return CommandResult.ok([{"experience": "campaign_record", **result}])
+
+    return _guard(operation)
+
+
+def campaign_status(command_input: CampaignInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import campaign_status as read_status
+
+        return CommandResult.ok(
+            [
+                {
+                    "experience": "campaign_status",
+                    **read_status(command_input.manifest, command_input.ledger),
+                }
+            ]
         )
 
     return _guard(operation)

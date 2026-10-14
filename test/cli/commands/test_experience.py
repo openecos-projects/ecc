@@ -211,6 +211,74 @@ def test_campaign_validate_is_read_only(tmp_path):
     assert not (tmp_path / "outputs").exists()
 
 
+def test_campaign_ledger_commands_initialize_record_and_status(tmp_path):
+    (tmp_path / "design-1").mkdir()
+    manifest = tmp_path / "campaign.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "campaign_id": "campaign-1",
+                "process_profile": "ics55",
+                "store": "store",
+                "output_root": "outputs",
+                "mode": "baseline",
+                "budget": {
+                    "max_concurrent_flows": 1,
+                    "max_trials_per_design": 1,
+                    "timeout_seconds_per_trial": 60,
+                },
+                "designs": [
+                    {
+                        "id": "design-1",
+                        "input": {"kind": "ecc-project", "path": "design-1"},
+                        "workspace": "baseline",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    initialized = runner.invoke(
+        app, ["experience", "campaign", "init", "--manifest", str(manifest), "--json"]
+    )
+    assert initialized.exit_code == 0, initialized.output
+    ledger = tmp_path / "outputs/campaign-ledger.json"
+    recorded = runner.invoke(
+        app,
+        [
+            "experience",
+            "campaign",
+            "record",
+            "--ledger",
+            str(ledger),
+            "--design",
+            "design-1",
+            "--workspace",
+            "baseline-001",
+            "--status",
+            "pass",
+            "--trial-id",
+            "trial-1",
+            "--json",
+        ],
+    )
+    current = runner.invoke(
+        app,
+        [
+            "experience",
+            "campaign",
+            "status",
+            "--manifest",
+            str(manifest),
+            "--json",
+        ],
+    )
+    assert recorded.exit_code == 0, recorded.output
+    assert current.exit_code == 0, current.output
+    assert json.loads(current.stdout)[0]["counts"]["pass"] == 1
+
+
 @pytest.mark.parametrize("command", ["show", "verify"])
 def test_experience_rejects_invalid_case_id_as_usage_error(tmp_path, command):
     result = runner.invoke(

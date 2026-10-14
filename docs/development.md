@@ -1131,8 +1131,11 @@ idempotence, queries and corruption rejection against a supplied project/workspa
 The packaged design matrix runs this after the existing flow artifact checks. Keep
 stores, benchmarks and build output outside source trees; do not package private cases.
 
-Campaign manifests are validated by `ecc_experience.benchmark` without importing
-private benchmark layouts or starting EDA. The user procedures are documented in the
+Campaign manifests are validated and tracked by `ecc_experience.benchmark` without
+importing private benchmark layouts or starting EDA. `campaign init` freezes the manifest
+fingerprint in an output-local ledger, `campaign record` appends idempotent trial facts, and
+`campaign status` verifies the fingerprint before reporting resumable progress. The user
+procedures are documented in the
 [experience testing manual](../chipcompiler/docs/ecc-experience-testing-guide.en.md).
 
 Contributor conventions are not repeated here; they live in

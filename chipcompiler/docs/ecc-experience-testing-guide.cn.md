@@ -308,6 +308,41 @@ ecc experience campaign validate --manifest campaign.json --json
 外部 campaign ledger。校验不会运行 EDA、创建 workspace 或创建 output/store 目录。
 manifest 使用相对路径，内部设计清单、标签转换和批次调度仍由用户环境负责。
 
+校验通过后，可以让 ECC 创建一个可恢复的 campaign ledger。初始化只创建
+`output_root/campaign-ledger.json`，保存 manifest fingerprint、设计清单和空的试验
+记录，不启动 EDA：
+
+```bash
+ecc experience campaign init --manifest campaign.json --json
+```
+
+每完成一个外部试验后登记一次结果。`--trial-id` 应由调度器稳定生成，重复提交同一
+内容会返回 `already_present`；同一个 ID 提交不同内容会返回 revision conflict：
+
+```bash
+ecc experience campaign record \
+  --ledger output/campaign-ledger.json \
+  --design design-001 \
+  --workspace baseline-001 \
+  --status pass \
+  --trial-id trial-001 \
+  --case-id "$CASE_ID" \
+  --json
+```
+
+允许的试验状态为 `running`、`pass`、`fail`、`blocked`、`cancelled`。`case_id` 可选，
+但推荐先用 `experience collect` 或 `drain` 生成案例，再写入台账以保留证据关联。
+用下面的命令恢复批次进度；它会重新校验 manifest fingerprint，发现 manifest 被
+修改时拒绝继续：
+
+```bash
+ecc experience campaign status --manifest campaign.json --json
+```
+
+ledger 是调度和恢复记录，不等于 ECC 的 QoR 结论。QoR、step 报告、工具版本和参数
+仍必须通过 workspace 证据与 experience case 保存；只有完成验证的案例才可用于经验
+总结或后续推荐。
+
 从 collect/list 的 JSON 取得实际 case_id 后执行：
 
 ```bash

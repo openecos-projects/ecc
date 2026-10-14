@@ -155,3 +155,78 @@ def campaign_validate_cmd(
         manifest=str(manifest_path),
     )
     execute_command("experience", command_input, handlers.validate_campaign)
+
+
+@campaign_app.command("init", help="Initialize a resumable campaign ledger")
+def campaign_init_cmd(
+    *,
+    manifest: Annotated[str, typer.Option("--manifest", help="Campaign manifest JSON")],
+    ledger: Annotated[
+        str | None, typer.Option("--ledger", help="Ledger path below output_root")
+    ] = None,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    manifest_path = Path(manifest).expanduser().resolve()
+    command_input = CampaignInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(str(manifest_path.parent)),
+        manifest=str(manifest_path),
+        ledger=ledger,
+    )
+    execute_command("experience", command_input, handlers.init_campaign)
+
+
+@campaign_app.command("record", help="Record one externally executed campaign trial")
+def campaign_record_cmd(
+    *,
+    ledger: Annotated[str, typer.Option("--ledger", help="Campaign ledger JSON")],
+    design_id: Annotated[str, typer.Option("--design", help="Campaign design ID")],
+    workspace: Annotated[str, typer.Option("--workspace", help="Trial workspace name")],
+    status: Annotated[
+        str, typer.Option("--status", help="running, pass, fail, blocked or cancelled")
+    ],
+    trial_id: Annotated[str | None, typer.Option("--trial-id", help="Stable trial ID")] = None,
+    case_id: Annotated[
+        str | None, typer.Option("--case-id", help="Collected experience case ID")
+    ] = None,
+    reason: Annotated[
+        str | None, typer.Option("--reason", help="Failure or blocking reason")
+    ] = None,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    ledger_path = Path(ledger).expanduser().resolve()
+    command_input = CampaignInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(str(ledger_path.parent)),
+        manifest=str(ledger_path),
+        ledger=str(ledger_path),
+        design_id=design_id,
+        workspace=workspace,
+        status=status,
+        trial_id=trial_id,
+        case_id=case_id,
+        reason=reason,
+    )
+    execute_command("experience", command_input, handlers.record_campaign_trial)
+
+
+@campaign_app.command("status", help="Show resumable campaign progress")
+def campaign_status_cmd(
+    *,
+    manifest: Annotated[str, typer.Option("--manifest", help="Campaign manifest JSON")],
+    ledger: Annotated[
+        str | None, typer.Option("--ledger", help="Ledger path below output_root")
+    ] = None,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    manifest_path = Path(manifest).expanduser().resolve()
+    command_input = CampaignInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(str(manifest_path.parent)),
+        manifest=str(manifest_path),
+        ledger=ledger,
+    )
+    execute_command("experience", command_input, handlers.campaign_status)

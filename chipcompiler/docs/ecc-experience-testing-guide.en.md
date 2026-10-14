@@ -343,6 +343,42 @@ ledger. Validation does not run EDA, create workspaces, or create output/store
 directories. Manifest paths are relative; private design discovery, label conversion,
 and batch scheduling remain in the user environment.
 
+After validation, initialize a resumable campaign ledger. Initialization creates only
+`output_root/campaign-ledger.json`, containing the manifest fingerprint, design list, and
+empty trial records; it does not start EDA:
+
+```bash
+ecc experience campaign init --manifest campaign.json --json
+```
+
+Record one result after each externally executed trial. The scheduler should provide a
+stable `--trial-id`: repeating the same payload returns `already_present`, while reusing
+the ID with different data returns a revision conflict:
+
+```bash
+ecc experience campaign record \
+  --ledger output/campaign-ledger.json \
+  --design design-001 \
+  --workspace baseline-001 \
+  --status pass \
+  --trial-id trial-001 \
+  --case-id "$CASE_ID" \
+  --json
+```
+
+Allowed trial states are `running`, `pass`, `fail`, `blocked`, and `cancelled`. `case_id`
+is optional, but collect or drain the experience case before recording it when possible so
+the trial retains an evidence link. Recover campaign progress with:
+
+```bash
+ecc experience campaign status --manifest campaign.json --json
+```
+
+Status revalidates the manifest fingerprint and refuses to continue after the manifest has
+changed. The ledger is a scheduling and recovery record, not a QoR verdict. QoR, step
+reports, tool versions, and parameters still belong in workspace evidence and experience
+cases; only verified cases should feed experience summaries or later recommendations.
+
 Read the actual case_id from collect/list JSON, then run:
 
 ```bash

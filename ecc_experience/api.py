@@ -1,6 +1,9 @@
 from pathlib import Path
 
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
+from ecc_experience.benchmark.ledger import initialize as initialize_campaign
+from ecc_experience.benchmark.ledger import record_trial as record_campaign_trial
+from ecc_experience.benchmark.ledger import status as read_campaign_status
 from ecc_experience.benchmark.manifest import load_manifest
 from ecc_experience.collection.collect import CollectionResult, collect_committed_case
 from ecc_experience.collection.drain import drain as drain_recording
@@ -49,3 +52,32 @@ def drain(project: str | Path, *, limit: int = 32) -> list[dict]:
 def validate_campaign(manifest: str | Path) -> dict:
     _validated, summary = load_manifest(manifest)
     return summary
+
+
+def init_campaign(manifest: str | Path, ledger: str | Path | None = None) -> dict:
+    return initialize_campaign(manifest, ledger)
+
+
+def record_trial(
+    ledger: str | Path,
+    *,
+    design_id: str,
+    workspace: str,
+    status: str,
+    trial_id: str | None = None,
+    case_id: str | None = None,
+    reason: str | None = None,
+) -> dict:
+    return record_campaign_trial(
+        ledger,
+        design_id=design_id,
+        workspace=workspace,
+        status=status,
+        trial_id=trial_id,
+        case_id=case_id,
+        reason=reason,
+    )
+
+
+def campaign_status(manifest: str | Path, ledger: str | Path | None = None) -> dict:
+    return read_campaign_status(manifest, ledger)

@@ -32,3 +32,10 @@ class CampaignInput:
     output: OutputOptions
     project: ProjectOptions
     manifest: str
+    ledger: str | None = None
+    design_id: str | None = None
+    workspace: str | None = None
+    status: str | None = None
+    trial_id: str | None = None
+    case_id: str | None = None
+    reason: str | None = None
