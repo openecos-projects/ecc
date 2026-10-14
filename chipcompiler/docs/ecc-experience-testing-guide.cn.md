@@ -813,3 +813,21 @@ baseline、winner、fresh 和关键失败优先保留完整证据；其他候选
 对 winner 做 fresh 验证，输出 trial 矩阵、summary.json、summary.md 和证据清单。
 预算内自主继续；必需信息缺失或能力不足时说明具体缺口，不编造命令或通过结果。
 ```
+### Campaign 中断后的显式恢复
+
+新启动的串行 campaign 会为每个公开 CLI 命令保留独立的请求和完成记录。
+协调进程意外退出时，当前命令可能仍在执行；不要再次运行同一 attempt。
+
+```bash
+ecc experience campaign status --manifest campaign.json --json
+ecc experience campaign recover --manifest campaign.json --trial-id TRIAL_ID --json
+ecc experience campaign run --manifest campaign.json --retry-failed --json
+```
+
+`recover` 不启动或取消 EDA。Linux command worker 等待 CLI 及被收养的后代
+全部退出后才提交完成记录；仍在运行、缺失记录、旧版命令、不同 host/boot、
+workspace 锁繁忙时返回 20，不提供强制接管。输入、运行时或请求变化返回 21。
+若完整 run 已结束，则重新查询和验证 committed checklist、signoff、QoR 和案例；
+若只完成准备命令，则保留旧 attempt 为 interrupted/blocked。随后显式 retry 在
+原预算内新建 attempt。恢复成功返回 0 仅表示登记完成，实际通过与否看 trial.status；
+重复恢复已终结的 attempt 不会重跑。记录不是签名执行证明，不用于信任不明文件。

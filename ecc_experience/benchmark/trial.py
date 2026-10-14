@@ -26,7 +26,7 @@ def execute_trial(
 ) -> None:
     started = time.monotonic()
     deadline = started + timeout
-    runner = CliRunner(directory, deadline)
+    runner = CliRunner(directory, deadline, durable_receipts=True)
     project = directory / "project"
     workspace = project / record["workspace"]
     run_log = workspace / "log" / f"{record['run_id']}.log"
@@ -37,7 +37,12 @@ def execute_trial(
         command = {"arguments": arguments, "status": "running"}
         record["commands"].append(command)
         save()
-        result = runner.invoke(arguments, deadline=deadline)
+
+        def prepared(metadata: dict) -> None:
+            command.update(metadata)
+            save()
+
+        result = runner.invoke(arguments, deadline=deadline, on_prepared=prepared)
         command.update(
             status="complete",
             exit_code=result.exit_code,
@@ -101,48 +106,7 @@ def execute_trial(
             return
         check_inputs()
         if run_invoked:
-            marker = f"ECC run {record['run_id']} started\n".encode()
-            executed = False
-            if run_log.is_file():
-                with run_log.open("rb") as stream:
-                    executed = stream.read(len(marker)) == marker
-            if not executed:
-                record["reason"] = "run_not_started"
-                return
-            evidence = inspect_workspace(
-                project, workspace, runner, deadline, exit_code=record["exit_code"]
-            )
-            record["acceptance"] = evidence
-            if 124 in (evidence["signoff_exit_code"], evidence["workspace_status_exit_code"]):
-                record.update(exit_code=124, execution_status="timeout", reason="trial_timeout")
-                return
-            record["collection_status"] = "pending"
-            collected = collect_trial(workspace, store, source.observation, record["run_id"])
-            verification = collected["verification"]
-            verification_path = directory / "case-verification.json"
-            write_plan(verification_path, verification)
-            record.update(
-                {
-                    **collected,
-                    "verification": {
-                        key: verification[key] for key in ("case_id", "status", "integrity")
-                    },
-                    "verification_file": str(verification_path),
-                }
-            )
-            record["collection_status"] = "collected"
-            record["status"] = {
-                "passed": "pass",
-                "failed": "fail",
-                "blocked": "blocked",
-                "unknown": "blocked",
-            }[evidence["status"]]
-            if (
-                record["status"] == "pass"
-                and record.get("verification", {}).get("status") != "pass"
-            ):
-                record["status"] = "blocked"
-            record["reason"] = None if record["status"] == "pass" else "acceptance_not_passed"
+            complete_trial(source, directory, store, record, runner, deadline)
     except KeyboardInterrupt:
         record.update(
             status="cancelled", execution_status="cancelled", exit_code=130, reason="user_interrupt"
@@ -164,3 +128,53 @@ def execute_trial(
             if command["status"] == "running":
                 command.update(status="interrupted", exit_code=record["exit_code"])
         save()
+
+
+def complete_trial(
+    source: PreparedDesign,
+    directory: Path,
+    store: str,
+    record: dict,
+    runner: CliRunner,
+    deadline: float,
+) -> None:
+    project = Path(record["project"])
+    workspace = Path(record["workspace_path"])
+    run_log = Path(record["flow_log"])
+    marker = f"ECC run {record['run_id']} started\n".encode()
+    executed = False
+    if run_log.is_file():
+        with run_log.open("rb") as stream:
+            executed = stream.read(len(marker)) == marker
+    if not executed:
+        record["reason"] = "run_not_started"
+        return
+    evidence = inspect_workspace(
+        project, workspace, runner, deadline, exit_code=record["exit_code"]
+    )
+    record["acceptance"] = evidence
+    if 124 in (evidence["signoff_exit_code"], evidence["workspace_status_exit_code"]):
+        record.update(exit_code=124, execution_status="timeout", reason="trial_timeout")
+        return
+    record["collection_status"] = "pending"
+    collected = collect_trial(workspace, store, source.observation, record["run_id"])
+    verification = collected["verification"]
+    verification_path = directory / "case-verification.json"
+    write_plan(verification_path, verification)
+    record.update(
+        {
+            **collected,
+            "verification": {key: verification[key] for key in ("case_id", "status", "integrity")},
+            "verification_file": str(verification_path),
+        }
+    )
+    record["collection_status"] = "collected"
+    record["status"] = {
+        "passed": "pass",
+        "failed": "fail",
+        "blocked": "blocked",
+        "unknown": "blocked",
+    }[evidence["status"]]
+    if record["status"] == "pass" and record.get("verification", {}).get("status") != "pass":
+        record["status"] = "blocked"
+    record["reason"] = None if record["status"] == "pass" else "acceptance_not_passed"

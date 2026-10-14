@@ -74,3 +74,30 @@ def test_campaign_quality_preserves_report_and_gate_exit(tmp_path, monkeypatch, 
             "exit_code": exit_code,
         }
     ]
+
+
+def test_campaign_recover_passes_trial_id_and_preserves_result(tmp_path, monkeypatch):
+    manifest = tmp_path / "campaign.json"
+    calls = []
+
+    def recover(path, *, trial_id):
+        calls.append((Path(path), trial_id))
+        return {"status": "recovered", "exit_code": 0, "trial": {"status": "blocked"}}
+
+    monkeypatch.setattr("ecc_experience.api.recover_campaign", recover)
+    result = CliRunner().invoke(
+        app,
+        [
+            "experience",
+            "campaign",
+            "recover",
+            "--manifest",
+            str(manifest),
+            "--trial-id",
+            "example-baseline-1",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert calls == [(manifest, "example-baseline-1")]
+    assert json.loads(result.stdout)[0]["trial"]["status"] == "blocked"

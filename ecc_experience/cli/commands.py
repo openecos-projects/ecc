@@ -391,6 +391,24 @@ def campaign_run_cmd(
     execute_command("experience", command_input, handlers.run_campaign)
 
 
+@campaign_app.command("recover", help="Recover a stopped attempt with quiescent command receipts")
+def campaign_recover_cmd(
+    *,
+    manifest: Annotated[str, typer.Option("--manifest", help="Campaign manifest JSON")],
+    trial_id: Annotated[str, typer.Option("--trial-id", help="Interrupted campaign attempt ID")],
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    manifest_path = Path(manifest).expanduser().absolute()
+    command_input = CampaignInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(str(manifest_path.parent)),
+        manifest=str(manifest_path),
+        trial_id=trial_id,
+    )
+    execute_command("experience", command_input, handlers.recover_campaign)
+
+
 @campaign_app.command("init", help="Initialize a resumable campaign ledger")
 def campaign_init_cmd(
     *,

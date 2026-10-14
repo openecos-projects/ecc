@@ -7,6 +7,7 @@ from ecc_experience.benchmark.ledger import record_trial as record_campaign_tria
 from ecc_experience.benchmark.ledger import status as read_campaign_status
 from ecc_experience.benchmark.manifest import load_manifest
 from ecc_experience.benchmark.quality import campaign_quality as read_campaign_quality
+from ecc_experience.benchmark.recovery import recover_campaign as recover_campaign_attempt
 from ecc_experience.benchmark.summary import summarize as summarize_campaign
 from ecc_experience.collection.collect import CollectionResult, collect_committed_case
 from ecc_experience.collection.drain import drain as drain_recording
@@ -113,6 +114,10 @@ def campaign_summary(manifest: str | Path, ledger: str | Path | None = None) -> 
 
 def campaign_quality(manifest: str | Path, ledger: str | Path | None = None) -> dict:
     return read_campaign_quality(manifest, ledger)
+
+
+def recover_campaign(manifest: str | Path, *, trial_id: str) -> dict:
+    return recover_campaign_attempt(manifest, trial_id=trial_id)
 
 
 def plan(

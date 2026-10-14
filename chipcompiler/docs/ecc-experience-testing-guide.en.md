@@ -924,3 +924,25 @@ If native releases are available, freeze K and link recommendations to feedback;
 Freshly validate the winner and deliver a trial matrix, summary.json, summary.md, and evidence inventory.
 Continue autonomously within budget. Explain required missing information or unavailable capabilities; do not invent commands or passing results.
 ```
+### Explicit recovery after a campaign interruption
+
+New serial campaigns retain a separate request and completion receipt for each
+public CLI command. A command can outlive its coordinator; do not launch the same
+attempt again while its completion is uncertain.
+
+```bash
+ecc experience campaign status --manifest campaign.json --json
+ecc experience campaign recover --manifest campaign.json --trial-id TRIAL_ID --json
+ecc experience campaign run --manifest campaign.json --retry-failed --json
+```
+
+Recovery neither launches nor cancels EDA. The Linux command worker waits for the
+CLI and adopted descendants before committing a completion receipt. Active or
+missing receipts, legacy commands, a different host/boot, or a busy workspace
+return 20; there is no force takeover. Changed inputs, runtime, or requests return
+21. A completed run is checked again against committed checklist, signoff, QoR,
+and case evidence. An interrupted preparation remains interrupted/blocked; an
+explicit retry creates a new attempt within the original budget. Exit 0 means
+recovery was registered: inspect trial.status for acceptance. Repeating recovery
+of a terminal attempt does not execute it again. Receipts are local operational
+records, not signed execution proofs for untrusted files.

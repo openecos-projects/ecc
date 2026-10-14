@@ -23,6 +23,28 @@ from ecc_experience.optimization.process import cancellation_signals
 _KIND = "ecc-experience-campaign-run"
 
 
+def campaign_identity(summary: dict, inputs: dict, runtime: dict) -> dict:
+    return {
+        "schema_version": 1,
+        "kind": _KIND,
+        "manifest_fingerprint": summary["fingerprint"],
+        "inputs": inputs,
+        "runtime": runtime,
+        "store": summary["store"],
+        "output_root": summary["output_root"],
+    }
+
+
+def read_run_state(path: Path, identity: dict, prepared: list[PreparedDesign]) -> dict:
+    result = read_json(path)
+    if any(result.get(key) != value for key, value in identity.items()):
+        raise ExperienceError(
+            "Campaign frozen inputs or runtime changed", code="experience_source_changed"
+        )
+    _validate_trials(result, prepared)
+    return result
+
+
 def run_campaign(manifest_path: str | Path, *, retry_failed: bool = False) -> dict:
     manifest, summary = load_manifest(manifest_path)
     try:
@@ -59,22 +81,9 @@ def _run(
     output = Path(summary["output_root"])
     result_path = safe_child(output, "campaign-run.json")
     fingerprints = {item.design_id: item.fingerprint for item in prepared}
-    identity = {
-        "schema_version": 1,
-        "kind": _KIND,
-        "manifest_fingerprint": summary["fingerprint"],
-        "inputs": fingerprints,
-        "runtime": runtime,
-        "store": summary["store"],
-        "output_root": str(output),
-    }
+    identity = campaign_identity(summary, fingerprints, runtime)
     if result_path.exists():
-        result = read_json(result_path)
-        if any(result.get(key) != value for key, value in identity.items()):
-            raise ExperienceError(
-                "Campaign frozen inputs or runtime changed", code="experience_source_changed"
-            )
-        _validate_trials(result, prepared)
+        result = read_run_state(result_path, identity, prepared)
         if any(trial["status"] == "running" for trial in result["trials"]):
             raise ExperienceError(
                 "Unfinished attempt exists; inspect campaign-run.json and its process/logs "

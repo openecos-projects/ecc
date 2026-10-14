@@ -45,6 +45,7 @@ def _guard(operation: Callable[[], CommandResult]) -> CommandResult:
             "experience_campaign_ledger_missing": EXIT_USAGE_ERROR,
             "experience_campaign_manifest_changed": EXIT_REVISION_CONFLICT,
             "experience_campaign_trial_conflict": EXIT_REVISION_CONFLICT,
+            "experience_command_receipt_invalid": EXIT_USAGE_ERROR,
             "experience_plan_invalid": EXIT_USAGE_ERROR,
             "experience_release_invalid": EXIT_USAGE_ERROR,
             "experience_release_unverified": EXIT_GATE_FAILED,
@@ -370,6 +371,22 @@ def run_campaign(command_input: CampaignInput, _ctx: CommandContext) -> CommandR
         result = execute(command_input.manifest, retry_failed=command_input.retry_failed)
         return CommandResult(
             records=({"experience": "campaign_run", **result},), exit_code=result["exit_code"]
+        )
+
+    return _guard(operation)
+
+
+def recover_campaign(command_input: CampaignInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import recover_campaign as recover
+
+        if command_input.trial_id is None:
+            raise ExperienceError(
+                "--trial-id is required", code="experience_campaign_trial_invalid"
+            )
+        result = recover(command_input.manifest, trial_id=command_input.trial_id)
+        return CommandResult(
+            records=({"experience": "campaign_recover", **result},), exit_code=result["exit_code"]
         )
 
     return _guard(operation)

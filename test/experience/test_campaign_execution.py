@@ -1,15 +1,18 @@
 import json
 import shutil
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
 
+from chipcompiler.project.runtime_processes import current_process_identity
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
 from ecc_experience.api import run_campaign
-from ecc_experience.benchmark import execute, trial
+from ecc_experience.benchmark import execute, recovery, trial
 from ecc_experience.benchmark.evidence import collect_trial
 from ecc_experience.benchmark.ledger import record_trial, status
+from ecc_experience.command_receipts import prepare_request
 from ecc_experience.models import ExperienceError
 from ecc_experience.optimization.process import Invocation
 
@@ -77,7 +80,7 @@ def campaign(workspace_factory, tmp_path, monkeypatch):
 def public_commands(monkeypatch):
     commands = []
 
-    def invoke(self, arguments, *, deadline):
+    def invoke(self, arguments, *, deadline, on_prepared=None):
         commands.append(arguments)
         stdout = self.output / f"stdout-{len(commands)}.log"
         stderr = self.output / f"stderr-{len(commands)}.log"
@@ -211,7 +214,7 @@ def test_command_failures_timeout_and_cancel_preserve_trial(
     manifest, _source = campaign
     original = trial.CliRunner.invoke
 
-    def invoke(self, arguments, *, deadline):
+    def invoke(self, arguments, *, deadline, on_prepared=None):
         if arguments[0] == "run":
             if failure == "cancel":
                 raise KeyboardInterrupt
@@ -230,7 +233,7 @@ def test_source_change_during_execution_stops_campaign(campaign, public_commands
     manifest, source = campaign
     original = trial.CliRunner.invoke
 
-    def invoke(self, arguments, *, deadline):
+    def invoke(self, arguments, *, deadline, on_prepared=None):
         result = original(self, arguments, deadline=deadline)
         if arguments[0] == "run":
             (source.parent / "design.v").write_text("module changed; endmodule")
@@ -286,7 +289,7 @@ def test_campaign_lock_blocks_another_runner_and_manual_record(
                 operation()
             assert caught.value.code == "experience_workspace_busy"
 
-    def invoke(self, arguments, *, deadline):
+    def invoke(self, arguments, *, deadline, on_prepared=None):
         if arguments[0] == "run":
             execution = status(manifest)["execution"]
             assert execution["status"] == "running"
@@ -323,7 +326,7 @@ def test_source_query_lock_contention_is_busy_not_changed(campaign, public_comma
     def busy(*_args, **_kwargs):
         raise ExperienceError("A source query holds the lock", code="experience_workspace_busy")
 
-    def invoke(self, arguments, *, deadline):
+    def invoke(self, arguments, *, deadline, on_prepared=None):
         result = original(self, arguments, deadline=deadline)
         if arguments[0] == "init":
             monkeypatch.setattr(preparation, "read_workspace_observation", busy)
@@ -377,7 +380,7 @@ def test_failed_design_does_not_prevent_other_designs(campaign, public_commands,
     original = trial.CliRunner.invoke
     run_count = 0
 
-    def invoke(self, arguments, *, deadline):
+    def invoke(self, arguments, *, deadline, on_prepared=None):
         nonlocal run_count
         if arguments[0] == "run":
             run_count += 1
@@ -429,3 +432,137 @@ def test_runtime_geometry_requires_matching_tool_report(
         result = collect_trial(workspace, str(tmp_path / "store"), baseline, "actual-run")
         assert result["verification"]["status"] == "pass"
         assert result["runtime_parameter_updates"]["floorplan.aspect_ratio"]["observed"] == 0.8
+
+
+@pytest.fixture
+def interrupted_campaign(campaign, public_commands, monkeypatch):
+    manifest, _source = campaign
+    monkeypatch.setattr(recovery, "runtime_identity", lambda: {"version": "test"})
+    result = run_campaign(manifest)
+    state_path = Path(result["result"])
+    state = json.loads(state_path.read_text())
+    record = state["trials"][0]
+    record.update(status="running", execution_status="running", case_id=None)
+    directory = Path(record["directory"])
+    for index, command in enumerate(record["commands"], 1):
+        request = prepare_request(directory / f"command-{index:04d}", command["arguments"])
+        command.update(request.metadata())
+        request.receipt.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "ecc-experience-command-receipt",
+                    "request_fingerprint": request.fingerprint,
+                    "status": "complete",
+                    "exit_code": 0,
+                    "process_tree_quiescent": True,
+                    "worker": asdict(current_process_identity()),
+                }
+            )
+        )
+    state_path.write_text(json.dumps(state))
+    ledger_path = manifest.parent / "output/campaign-ledger.json"
+    ledger = json.loads(ledger_path.read_text())
+    ledger["designs"][0]["trials"] = []
+    ledger_path.write_text(json.dumps(ledger))
+    return manifest, state_path, state, record
+
+
+def test_recover_completed_run_collects_once_without_running_eda(
+    interrupted_campaign, public_commands
+):
+    manifest, _path, _state, record = interrupted_campaign
+    result = recovery.recover_campaign(manifest, trial_id=record["trial_id"])
+    repeated = recovery.recover_campaign(manifest, trial_id=record["trial_id"])
+    resumed = run_campaign(manifest, retry_failed=True)
+
+    assert result["status"] == "recovered"
+    assert result["trial"]["status"] == "pass"
+    assert result["trial"]["verification"]["status"] == "pass"
+    assert repeated["status"] == "already_terminal"
+    assert resumed["exit_code"] == 0
+    assert len(public_commands) == 4
+    assert status(manifest)["designs"][0]["trial_count"] == 1
+
+
+def test_recover_preparation_preserves_attempt_and_retry_budget(
+    interrupted_campaign, public_commands
+):
+    manifest, path, state, record = interrupted_campaign
+    record["commands"] = record["commands"][:1]
+    path.write_text(json.dumps(state))
+
+    result = recovery.recover_campaign(manifest, trial_id=record["trial_id"])
+    retried = run_campaign(manifest, retry_failed=True)
+    exhausted = run_campaign(manifest, retry_failed=True)
+
+    assert result["trial"]["status"] == "blocked"
+    assert result["trial"]["execution_status"] == "interrupted"
+    assert retried["exit_code"] == exhausted["exit_code"] == 0
+    assert len(exhausted["trials"]) == 2
+    assert exhausted["trials"][0]["trial_id"] == record["trial_id"]
+    assert len(public_commands) == 8
+
+
+@pytest.mark.parametrize("failure", ["missing", "running", "nonquiescent", "host", "legacy"])
+def test_recover_requires_quiescent_identity_bound_receipts(interrupted_campaign, failure):
+    manifest, state_path, _state, record = interrupted_campaign
+    command = record["commands"][-1]
+    receipt_path = Path(command["receipt"])
+    receipt = json.loads(receipt_path.read_text())
+    if failure == "missing":
+        receipt_path.unlink()
+    elif failure == "legacy":
+        state = json.loads(state_path.read_text())
+        state["trials"][0]["commands"][-1].pop("request")
+        state_path.write_text(json.dumps(state))
+    else:
+        if failure == "running":
+            receipt["status"] = "running"
+        elif failure == "nonquiescent":
+            receipt["process_tree_quiescent"] = False
+        else:
+            receipt["worker"]["host_id"] = "another-host"
+        receipt_path.write_text(json.dumps(receipt))
+    before = state_path.read_bytes()
+
+    with pytest.raises(ExperienceError) as caught:
+        recovery.recover_campaign(manifest, trial_id=record["trial_id"])
+
+    assert caught.value.code == "experience_workspace_busy"
+    assert state_path.read_bytes() == before
+    assert status(manifest)["designs"][0]["trial_count"] == 0
+
+
+@pytest.mark.parametrize("failure", ["request", "path", "runtime", "source"])
+def test_recovery_rejects_changed_identity(interrupted_campaign, monkeypatch, failure):
+    manifest, state_path, state, record = interrupted_campaign
+    if failure == "runtime":
+        monkeypatch.setattr(recovery, "runtime_identity", lambda: {"version": "different"})
+    elif failure == "source":
+        (manifest.parent / "input/design.v").write_text("changed")
+    elif failure == "path":
+        record["workspace_path"] = str(manifest.parent)
+        state_path.write_text(json.dumps(state))
+    else:
+        request_path = Path(record["commands"][-1]["request"])
+        payload = json.loads(request_path.read_text())
+        payload["token"] = "0" * 32
+        request_path.write_text(json.dumps(payload))
+    with pytest.raises(ExperienceError) as caught:
+        recovery.recover_campaign(manifest, trial_id=record["trial_id"])
+    assert caught.value.code == "experience_source_changed"
+
+
+def test_recovery_respects_workspace_lock(interrupted_campaign):
+    from chipcompiler.utility.workspace_lock import workspace_lock
+
+    manifest, _path, _state, record = interrupted_campaign
+    with (
+        workspace_lock(record["workspace_path"], blocking=False),
+        ThreadPoolExecutor(max_workers=1) as pool,
+    ):
+        future = pool.submit(recovery.recover_campaign, manifest, trial_id=record["trial_id"])
+        with pytest.raises(ExperienceError) as caught:
+            future.result(timeout=10)
+    assert caught.value.code == "experience_workspace_busy"
