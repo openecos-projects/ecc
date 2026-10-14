@@ -28,6 +28,16 @@ from ecc_experience.optimization.policy import OptimizationLimits
 from ecc_experience.recording import disable as disable_recording
 from ecc_experience.recording import set_enabled
 from ecc_experience.recording import status as recording_status
+from ecc_experience.study.evaluate import evaluate_study
+from ecc_experience.study.publish import publish_study
+
+
+def study_evaluate(spec: str | Path, store: str | Path, output: str | Path) -> dict:
+    return evaluate_study(spec, store, output)
+
+
+def study_publish(evaluation: str | Path, store: str | Path, output: str | Path) -> dict:
+    return publish_study(evaluation, store, output)
 
 
 def collect(workspace: str | Path, store: str | Path) -> CollectionResult:

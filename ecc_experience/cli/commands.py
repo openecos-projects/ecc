@@ -22,6 +22,7 @@ from ecc_experience.cli.inputs import (
     StoreInput,
     TransferInput,
 )
+from ecc_experience.cli.study import study_app
 
 StoreOption = Annotated[str, typer.Option("--store", help="External experience store directory")]
 CaseArgument = Annotated[str, typer.Argument(help="Experience case ID")]
@@ -32,6 +33,7 @@ release_app = create_app(help="Freeze and verify evidence-backed experience rele
 experience_app.add_typer(campaign_app, name="campaign")
 experience_app.add_typer(release_app, name="release")
 experience_app.add_typer(dse_app, name="dse")
+experience_app.add_typer(study_app, name="study")
 
 
 @experience_app.command("collect", help="Collect a read-only observation from a workspace")

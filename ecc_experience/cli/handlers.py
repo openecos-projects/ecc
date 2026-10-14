@@ -48,6 +48,7 @@ def _guard(operation: Callable[[], CommandResult]) -> CommandResult:
             "experience_campaign_trial_conflict": EXIT_REVISION_CONFLICT,
             "experience_command_receipt_invalid": EXIT_USAGE_ERROR,
             "experience_features_invalid": EXIT_USAGE_ERROR,
+            "experience_study_invalid": EXIT_USAGE_ERROR,
             "experience_plan_invalid": EXIT_USAGE_ERROR,
             "experience_release_invalid": EXIT_USAGE_ERROR,
             "experience_release_unverified": EXIT_GATE_FAILED,

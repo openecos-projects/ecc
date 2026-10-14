@@ -899,3 +899,52 @@ result.json 保留所有已尝试 trial、日志、collection 状态、阶段胜
 improved/score_delta 才能判断收益。失败6、未知7、超时124、取消130、输入变化21。
 输出必须新建；中断不会自动重跑，先看保留的 trial/log，再用新计划/输出执行。
 原 optimizer 行为不变。
+
+## 留出评价与 K+1 经验发布
+
+先冻结已验证训练案例为 release K，再执行留出设计的 baseline 与 candidate。
+留出案例采集时间必须晚于 K 创建时间；这只是采集顺序证据，不能证明模型训练过程。
+显式配置家族分组，不从目录、名称或设计类型推断。相同输入的别名和相同家族均
+不能同时进入 K 与留出集合。重复 trial 不增加独立设计数量。
+
+```json
+{
+  "schema_version": 1,
+  "release": "./K.json",
+  "groups": {
+    "<training-case-id>": "training-family",
+    "<baseline-case-id>": "heldout-family",
+    "<candidate-case-id>": "heldout-family",
+    "<feedback-case-id>": "training-family"
+  },
+  "pairs": [{
+    "pair_id": "heldout-comparison",
+    "baseline_case_id": "<baseline-case-id>",
+    "candidate_case_id": "<candidate-case-id>",
+    "baseline_result": "./baseline/result.json",
+    "candidate_result": "./candidate/result.json"
+  }],
+  "feedback_case_ids": ["<feedback-case-id>"]
+}
+```
+
+用实际 case ID 替换占位符。result 路径可省略；提供时必须来自实际 optimizer/DSE，
+绑定 fresh case、run ID 和 workspace。只有完整实验预算相同才报告成本对照；总耗时
+包含搜索失败与独立复跑，不把单 step 耗时或 RSS 相加当作实验成本。
+
+```bash
+ecc experience study evaluate --spec ./study.json --store ./experience-store \
+  --output ./evaluation.json --json
+ecc experience study publish --evaluation ./evaluation.json --store ./experience-store \
+  --output ./K-plus-1.json --json
+```
+
+评价要求同输入、所选工艺、运行时、分析/SDC 及评分配置可比，且为不同执行 attempt；
+完整 flow、checklist、当前 ECC 支持的 signoff、QoR、案例验证均通过才计为有效通过。
+失败和未知保留在分母；按设计和家族汇总，正 score_delta 表示 QoR 更好。
+0 为评价通过、6 为失败、7 为证据不足；输出重用/无效 spec 为2，发布时证据变化为21。
+
+publish 重新检查 spec、K、案例、源证据和实验收据，只把明确 feedback 列表中通过验证且
+与留出输入/家族隔离的案例加入 K+1；不会扫描整个 store，也不修改 K。反馈为空或评价
+未通过时拒绝发布。新 release 仍然是 verified observations，不是学习到的规则或模型。
+generalization_status 保持 unproven；单个 GCD 只能验证机制，不能证明多设计泛化。

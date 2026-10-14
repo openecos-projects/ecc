@@ -1027,3 +1027,59 @@ Exit 0 means full/fresh acceptance passed; inspect improved/score_delta for bene
 Failure=6, unknown=7, timeout=124, cancel=130 and changed inputs=21. Output must be
 new; interrupted outputs are not automatically rerun. Diagnose preserved trials
 and logs before starting another plan/output. Existing optimizer is unchanged.
+
+## Held-out evaluation and K+1 experience releases
+
+Freeze verified training cases as release K before collecting held-out baseline
+and candidate cases. Collection timestamps establish observation order, not a
+model-training history. Supply explicit family labels; ECC does not infer them
+from directory layout, names or design types. Identical inputs and families must
+not overlap training and held-out sets. Repeated trials add no independent designs.
+
+Replace the placeholders below with actual case IDs. Optional result paths refer
+to actual optimizer/DSE result.json files, resolved relative to the spec.
+
+```json
+{
+  "schema_version": 1,
+  "release": "./K.json",
+  "groups": {
+    "<training-case-id>": "training-family",
+    "<baseline-case-id>": "heldout-family",
+    "<candidate-case-id>": "heldout-family",
+    "<feedback-case-id>": "training-family"
+  },
+  "pairs": [{
+    "pair_id": "heldout-comparison",
+    "baseline_case_id": "<baseline-case-id>",
+    "candidate_case_id": "<candidate-case-id>",
+    "baseline_result": "./baseline/result.json",
+    "candidate_result": "./candidate/result.json"
+  }],
+  "feedback_case_ids": ["<feedback-case-id>"]
+}
+```
+
+```bash
+ecc experience study evaluate --spec ./study.json --store ./experience-store \
+  --output ./evaluation.json --json
+ecc experience study publish --evaluation ./evaluation.json --store ./experience-store \
+  --output ./K-plus-1.json --json
+```
+
+Pairs require matching inputs, selected process, runtime, analysis/SDC and scoring
+context, with distinct execution attempts. Passing requires full-flow, checklist,
+currently supported ECC signoff, QoR and case verification. Failures and unknowns
+remain in the denominator. Results aggregate by design and family; positive
+score_delta means higher QoR. Optional cost receipts bind the fresh case, run ID
+and workspace; only equal recorded budgets support cost comparisons. Whole-search
+elapsed time includes failed trials and fresh validation. Stage RSS/time totals
+are not a substitute for experiment cost.
+
+Evaluation exits: pass=0, fail=6, unknown=7, invalid spec/reused output=2. Publication
+rejects changed evidence with 21. publish rechecks the spec, K, cases, source
+evidence and receipts, adding only verified explicit feedback isolated from all
+held-out inputs and families. It never scans the store for extra cases or changes
+K. Empty feedback or an unsuccessful evaluation prevents publication. K+1 still
+contains verified observations, not learned rules or models. generalization_status
+remains unproven: GCD validates mechanisms, not multi-design generalization.
