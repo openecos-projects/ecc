@@ -1,3 +1,4 @@
+from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.core.version_info import build_identity, ecc_version
 from chipcompiler.update_check import INSTALLER_URLS, check_for_update
@@ -22,5 +23,6 @@ def check_update(command_input, ctx: CommandContext) -> CommandResult:
         "current_build_date": result.current_build_date,
         "latest": latest,
         "installer_urls": list(INSTALLER_URLS),
+        "inspect_cmd": disclosure_cmd("ecc version"),
     }
     return CommandResult.ok([record])

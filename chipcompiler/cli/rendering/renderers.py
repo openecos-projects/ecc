@@ -240,7 +240,7 @@ RENDERERS: dict[RendererKey, Renderer] = {
     ("check", OutputMode.TEXT): _pretty(render_check),
     ("run", OutputMode.TEXT): _pretty(render_run_summary),
     ("status", OutputMode.TEXT): _pretty(render_status),
-    ("check-update", OutputMode.TEXT): _plain_text(render_check_update_text),
+    ("check-update", OutputMode.TEXT): _pretty(render_check_update_text),
     ("config", OutputMode.TEXT): _pretty(render_config),
     ("param:list", OutputMode.TEXT): _plain_text(render_param_list_text),
     ("param:catalog", OutputMode.PLAIN): _render_line_records,

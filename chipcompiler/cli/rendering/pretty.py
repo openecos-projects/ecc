@@ -468,8 +468,10 @@ def render_check_update_text(records, file=None, *, color=True):
         lines.append(f"Latest nightly  : {label} ({_format_nightly_date(latest.get('date', ''))})")
     status = str(record.get("status", "")).replace("_", " ")
     lines.append(f"Status          : {status_style(status, color=color)}")
-    if record.get("status") != STATUS_UP_TO_DATE:
-        lines.append("")
-        lines.append("Get the latest nightly build:")
-        lines.extend(f"  {url}" for url in record.get("installer_urls", ()))
     print("\n".join(lines), file=target)
+    _render_disclosure_fields(target, record, color)
+    if record.get("status") != STATUS_UP_TO_DATE:
+        print(file=target)
+        print("Get the latest nightly build:", file=target)
+        for url in record.get("installer_urls", ()):
+            print(f"  {url}", file=target)
