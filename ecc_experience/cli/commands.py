@@ -159,6 +159,9 @@ def recommend_cmd(
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
     limit: Annotated[int, typer.Option("--limit", min=1, max=100)] = 10,
+    release: Annotated[
+        str | None, typer.Option("--release", help="Verified experience release JSON")
+    ] = None,
     plain: PlainOption = False,
     json_output: JsonOption = False,
 ) -> None:
@@ -168,6 +171,7 @@ def recommend_cmd(
         workspace=workspace,
         store=store,
         limit=limit,
+        release=release,
     )
     execute_command("experience", command_input, handlers.recommend)
 
@@ -180,6 +184,9 @@ def plan_cmd(
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
     limit: Annotated[int, typer.Option("--limit", min=1, max=100)] = 10,
+    release: Annotated[
+        str | None, typer.Option("--release", help="Verified experience release JSON")
+    ] = None,
     plain: PlainOption = False,
     json_output: JsonOption = False,
 ) -> None:
@@ -190,6 +197,7 @@ def plan_cmd(
         store=store,
         output_path=output,
         limit=limit,
+        release=release,
     )
     execute_command("experience", command_input, handlers.plan)
 

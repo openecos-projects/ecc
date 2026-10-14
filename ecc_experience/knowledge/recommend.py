@@ -6,12 +6,19 @@ from typing import Any
 
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
 from ecc_experience.files import digest
+from ecc_experience.knowledge.release import verify_release
 from ecc_experience.knowledge.store import ExperienceStore
 from ecc_experience.knowledge.verify import verify_case
 from ecc_experience.models import ExperienceError, InputDigest
 
 
-def recommend(workspace: str | Path, store: str | Path, *, limit: int = 10) -> dict:
+def recommend(
+    workspace: str | Path,
+    store: str | Path,
+    *,
+    limit: int = 10,
+    release: str | Path | None = None,
+) -> dict:
     if limit < 1 or limit > 100:
         raise ExperienceError("Recommendation limit must be between 1 and 100")
     observation = read_workspace_observation(workspace)
@@ -22,6 +29,7 @@ def recommend(workspace: str | Path, store: str | Path, *, limit: int = 10) -> d
             "workspace": str(Path(workspace).expanduser().resolve()),
             "input_content_fingerprint": fingerprint,
             "match_policy": "same_input_content_only",
+            "release": str(Path(release).expanduser().resolve()) if release else None,
         },
         "candidates": [],
         "recommendations": [],
@@ -30,11 +38,24 @@ def recommend(workspace: str | Path, store: str | Path, *, limit: int = 10) -> d
         result["reason"] = "Query workspace has no complete input content fingerprint"
         return result
 
+    allowed_case_ids = None
+    if release is not None:
+        release_result = verify_release(release, store)
+        result["release_verification"] = release_result
+        if release_result["status"] != "pass":
+            result["reason"] = "Experience release verification did not pass"
+            return result
+        allowed_case_ids = {
+            item["case_id"] for item in release_result["cases"] if item["status"] == "pass"
+        }
+
     repository = ExperienceStore(store)
     if not repository.root.is_dir():
         result["reason"] = "Experience store does not exist"
         return result
     for case_id in reversed(repository.list_ids()):
+        if allowed_case_ids is not None and case_id not in allowed_case_ids:
+            continue
         case = repository.read(case_id)
         if case.input_content_fingerprint != fingerprint:
             continue
@@ -47,6 +68,7 @@ def recommend(workspace: str | Path, store: str | Path, *, limit: int = 10) -> d
             "parameter_evidence": case.parameter_evidence,
             "limitations": case.limitations,
             "qor": _qor_summary(case.facts),
+            "release": str(Path(release).expanduser().resolve()) if release else None,
         }
         result["candidates"].append(candidate)
         parameters = _configured_parameters(case.facts)

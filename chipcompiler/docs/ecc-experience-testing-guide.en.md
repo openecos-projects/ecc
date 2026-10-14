@@ -401,6 +401,23 @@ ecc experience recommend \
   --json
 ```
 
+Once a release has been created and verified, bind recommendations to it explicitly:
+
+```bash
+ecc experience recommend \
+  --project "$PROJECT" \
+  --workspace "$WORKSPACE" \
+  --store "$EXPERIENCE_STORE" \
+  --release "$OUTPUT_ROOT/experience-release.json" \
+  --json
+```
+
+With `--release`, ECC verifies the release first and retrieves candidates only from the
+listed cases. If the release is absent, tampered with, missing a case, or no longer
+verifies, the command returns an empty `recommendations` list and preserves the
+`release_verification` result. Omitting `--release` keeps the compatible local-exploration
+behavior and searches the current store without a frozen knowledge boundary.
+
 The current implementation matches only complete input-content fingerprints and returns
 parameters observed in historical cases with `safe_to_apply` fixed to `false`. This is not
 automatic tuning; absolute environment paths are replaced with `<path-redacted>` so a
@@ -418,11 +435,12 @@ ecc experience plan \
   --project "$PROJECT" \
   --workspace "$WORKSPACE" \
   --store "$EXPERIENCE_STORE" \
+  --release "$OUTPUT_ROOT/experience-release.json" \
   --output "$OUTPUT_ROOT/optimization-plan.json" \
   --json
 ```
 
-The plan binds the query workspace, input fingerprint, cases, and a plan fingerprint. It
+The plan binds the query workspace, input fingerprint, optional release, cases, and a plan fingerprint. It
 always declares `manual_review`, `requires_new_workspace=true`, and `auto_apply=false`. It
 is a reviewable execution suggestion: it does not edit parameters, copy workspaces, or
 start a flow. The executor must use the existing `ecc param apply` and `ecc run` commands

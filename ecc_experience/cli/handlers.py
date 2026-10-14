@@ -85,7 +85,12 @@ def recommend(command_input: RecommendInput, ctx: CommandContext) -> CommandResu
     def operation() -> CommandResult:
         from ecc_experience.api import recommend as recommend_cases
 
-        result = recommend_cases(ctx.run_dir, command_input.store, limit=command_input.limit)
+        result = recommend_cases(
+            ctx.run_dir,
+            command_input.store,
+            limit=command_input.limit,
+            release=command_input.release,
+        )
         return CommandResult.ok([{"experience": "recommend", **result}])
 
     return _guard(operation)
@@ -99,7 +104,11 @@ def plan(command_input: PlanInput, ctx: CommandContext) -> CommandResult:
         from ecc_experience.api import plan as build_optimization_plan
 
         result = build_optimization_plan(
-            ctx.run_dir, command_input.store, command_input.output_path, limit=command_input.limit
+            ctx.run_dir,
+            command_input.store,
+            command_input.output_path,
+            limit=command_input.limit,
+            release=command_input.release,
         )
         return CommandResult.ok([{"experience": "plan", **result}])
 

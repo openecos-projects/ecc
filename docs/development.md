@@ -1140,7 +1140,8 @@ pass as QoR or signoff success. `experience plan` writes a fingerprinted, manual
 optimization plan and never applies parameters or starts EDA. `experience evaluate` compares
 two evidence-backed cases read-only when their input fingerprints match and their evidence
 has no failures. `experience release create/verify` freezes and rechecks only fully verified
-cases, without copying private paths or enabling automatic application. The user procedures are documented in the
+cases, without copying private paths or enabling automatic application. `recommend` and
+`plan` can bind retrieval to a verified release. The user procedures are documented in the
 [experience testing manual](../chipcompiler/docs/ecc-experience-testing-guide.en.md).
 
 Contributor conventions are not repeated here; they live in

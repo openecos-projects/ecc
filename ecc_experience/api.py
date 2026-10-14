@@ -88,16 +88,29 @@ def campaign_status(manifest: str | Path, ledger: str | Path | None = None) -> d
     return read_campaign_status(manifest, ledger)
 
 
-def recommend(workspace: str | Path, store: str | Path, *, limit: int = 10) -> dict:
-    return recommend_cases(workspace, store, limit=limit)
+def recommend(
+    workspace: str | Path,
+    store: str | Path,
+    *,
+    limit: int = 10,
+    release: str | Path | None = None,
+) -> dict:
+    return recommend_cases(workspace, store, limit=limit, release=release)
 
 
 def campaign_summary(manifest: str | Path, ledger: str | Path | None = None) -> dict:
     return summarize_campaign(manifest, ledger)
 
 
-def plan(workspace: str | Path, store: str | Path, output: str | Path, *, limit: int = 10) -> dict:
-    return write_plan(output, build_plan(workspace, store, limit=limit))
+def plan(
+    workspace: str | Path,
+    store: str | Path,
+    output: str | Path,
+    *,
+    limit: int = 10,
+    release: str | Path | None = None,
+) -> dict:
+    return write_plan(output, build_plan(workspace, store, limit=limit, release=release))
 
 
 def evaluate(baseline: str, candidate: str, store: str | Path) -> dict:

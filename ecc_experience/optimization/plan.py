@@ -10,8 +10,14 @@ from ecc_experience.knowledge.recommend import recommend
 from ecc_experience.models import ExperienceError
 
 
-def build_plan(workspace: str | Path, store: str | Path, *, limit: int = 10) -> dict:
-    recommendation = recommend(workspace, store, limit=limit)
+def build_plan(
+    workspace: str | Path,
+    store: str | Path,
+    *,
+    limit: int = 10,
+    release: str | Path | None = None,
+) -> dict:
+    recommendation = recommend(workspace, store, limit=limit, release=release)
     query = recommendation["query"]
     candidates = recommendation["recommendations"]
     plan = {

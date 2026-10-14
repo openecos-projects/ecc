@@ -364,6 +364,22 @@ ecc experience recommend \
   --json
 ```
 
+如果已经形成并校验了 release，推荐必须显式绑定它：
+
+```bash
+ecc experience recommend \
+  --project "$PROJECT" \
+  --workspace "$WORKSPACE" \
+  --store "$EXPERIENCE_STORE" \
+  --release "$OUTPUT_ROOT/experience-release.json" \
+  --json
+```
+
+带 `--release` 时，ECC 先执行 release 校验，只从其中列出的案例检索；release
+缺失、被篡改、案例缺失或重新校验失败时，返回空 recommendations，并保留
+`release_verification` 结果。省略 `--release` 仍保持现有兼容行为，只从当前 store
+检索，适合尚未发布知识版本的本地探索。
+
 当前推荐只匹配完整的输入内容指纹，返回历史案例中的已观察参数，并将
 `safe_to_apply` 固定为 `false`。输出中的绝对环境路径会替换为
 `<path-redacted>`，不会把本机 PDK 路径当作可迁移参数。这不是自动调参，也不证明参数对 QoR 有因果作用；
@@ -378,12 +394,13 @@ ecc experience plan \
   --project "$PROJECT" \
   --workspace "$WORKSPACE" \
   --store "$EXPERIENCE_STORE" \
+  --release "$OUTPUT_ROOT/experience-release.json" \
   --output "$OUTPUT_ROOT/optimization-plan.json" \
   --json
 ```
 
 plan 绑定查询 workspace、输入指纹、案例和 fingerprint，并固定声明
-`manual_review`、`requires_new_workspace=true`、`auto_apply=false`。它是可审阅的
+release（如果提供）、`manual_review`、`requires_new_workspace=true`、`auto_apply=false`。它是可审阅的
 执行建议，不会修改参数、复制 workspace 或启动 flow；执行者必须自行用现有
 `ecc param apply`/`ecc run` 命令完成变更和验证，再通过 collect/drain 采集新案例。
 

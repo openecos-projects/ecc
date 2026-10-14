@@ -48,6 +48,7 @@ class RecommendInput:
     store: str
     workspace: str | None = None
     limit: int = 10
+    release: str | None = None
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,7 @@ class PlanInput:
     output_path: str
     workspace: str | None = None
     limit: int = 10
+    release: str | None = None
 
 
 @dataclass(frozen=True)
