@@ -32,3 +32,5 @@ def test_smoke_checks_the_real_cli_contract_and_preserves_source(tmp_path, monke
     assert flow.read_bytes() == original
     assert not (home / "engineering-snapshot.json").exists()
     assert (tmp_path / "output/verify-corrupt.exit").read_text() == "6"
+    assert (tmp_path / "output/quality.exit").read_text() == "7"
+    assert (tmp_path / "output/quality-corrupt.exit").read_text() == "6"

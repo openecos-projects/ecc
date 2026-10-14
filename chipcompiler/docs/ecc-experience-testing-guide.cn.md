@@ -364,6 +364,37 @@ campaign；本版不自动恢复运行中的 attempt。并发调度、阶段 DSE
 声明输入摘要不覆盖完整 include/PDK 内容闭包；工具版本也不等于所有可执行文件
 内容摘要。本命令建立基线、保留经验，不声明 PPA 已改善或经验已跨设计泛化。
 
+### 批次数据质量审计
+
+批次结束后，在生成知识 release 前审计全部试验历史：
+
+```bash
+ecc experience campaign quality --manifest campaign.json --json
+```
+
+可选 `--ledger PATH` 与 status/summary 保持一致。quality 是只读查询，不运行 EDA，
+不改写源 workspace、store 或 ledger。summary 只看每个设计的最新试验；quality
+保留所有失败、重试、取消记录，分别报告 `execution_status` 和 `quality_status`。
+执行失败的完整案例仍可作为反例，不能因为被重试就消失。
+
+报告的 `coverage` 展示提交身份、attempt、声明输入指纹、参数、工艺和有限 QoR
+的完整性；`trials` 关联案例、当前 verification、异常 findings、QoR 和 step 状态。
+核心证据缺失、旧 workspace、无 attempt 或无 QoR 返回 unknown；损坏/陈旧证据、
+非数字/非有限 QoR、PDK family 与 manifest 不符返回 fail。可选报告未生成只计入
+`artifact_counts`，不会当作必需文件丢失。零/缺失内存显示 null，step 的 runtime/
+memory 明确标为 `legacy_flow_step_ledger`，不表示独立进程树测量或资源预测。
+
+`diversity` 对存储完整的案例统计唯一 case、执行身份和声明输入指纹，标出重复引用；
+coverage 的分母是 trial 引用数，不是独立样本数。重复采集同一次执行不会增加
+`unique_execution_identities`。不同输入指纹不能证明设计家族独立，
+`evaluation_groups_provided` 仅采用用户显式提供的分组，不根据设计名推断。
+
+退出码：0 采集检查通过，6 至少一项失败，7 存在未知/缺失或 pending/running，
+2 输入错误，21 manifest 改变。quality pass 不等于 flow/signoff 通过，也不证明
+参数生效、跨设计收益或完整 include/PDK 闭包；生成 release 前仍需相应验收。
+已有 wheel/PyInstaller 和 design matrix 经验 smoke 会检查本命令的 unknown 与
+损坏案例退出码，不伪造独立执行身份来获得 pass。
+
 ### 外部执行与 ledger
 
 校验通过后，可以让 ECC 创建一个可恢复的 campaign ledger。初始化只创建

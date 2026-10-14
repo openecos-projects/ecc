@@ -3,6 +3,7 @@
 import os
 import re
 import tempfile
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -18,6 +19,13 @@ TRIAL_ID_PATTERN = re.compile(r"[A-Za-z0-9._-]+\Z")
 CASE_ID_PATTERN = re.compile(r"case-[0-9a-f]{64}\Z")
 _MAX_LEDGER_BYTES = 4 * 1024 * 1024
 _STATUSES = {"running", "pass", "fail", "blocked", "cancelled"}
+
+
+@dataclass(frozen=True)
+class CampaignLedger:
+    path: Path
+    data: dict
+    manifest_summary: dict
 
 
 def initialize(manifest_path: str | Path, ledger_path: str | Path | None = None) -> dict:
@@ -154,7 +162,9 @@ def _record_trial(
     return {"status": "recorded", "trial": trial, "ledger": str(destination)}
 
 
-def status(manifest_path: str | Path, ledger_path: str | Path | None = None) -> dict:
+def read_campaign_ledger(
+    manifest_path: str | Path, ledger_path: str | Path | None = None
+) -> CampaignLedger:
     _manifest, summary = load_manifest(manifest_path)
     destination = _ledger_path(manifest_path, _manifest, ledger_path)
     if not destination.exists():
@@ -164,6 +174,12 @@ def status(manifest_path: str | Path, ledger_path: str | Path | None = None) -> 
         )
     ledger = _read_ledger(destination)
     _assert_identity(ledger, summary)
+    return CampaignLedger(destination, ledger, summary)
+
+
+def status(manifest_path: str | Path, ledger_path: str | Path | None = None) -> dict:
+    view = read_campaign_ledger(manifest_path, ledger_path)
+    ledger, destination, summary = view.data, view.path, view.manifest_summary
     result = _status(ledger, destination, summary, created=False)
     execution = safe_child(Path(summary["output_root"]), "campaign-run.json")
     if execution.is_file():

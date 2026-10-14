@@ -6,6 +6,7 @@ from ecc_experience.benchmark.ledger import initialize as initialize_campaign
 from ecc_experience.benchmark.ledger import record_trial as record_campaign_trial
 from ecc_experience.benchmark.ledger import status as read_campaign_status
 from ecc_experience.benchmark.manifest import load_manifest
+from ecc_experience.benchmark.quality import campaign_quality as read_campaign_quality
 from ecc_experience.benchmark.summary import summarize as summarize_campaign
 from ecc_experience.collection.collect import CollectionResult, collect_committed_case
 from ecc_experience.collection.drain import drain as drain_recording
@@ -108,6 +109,10 @@ def recommend(
 
 def campaign_summary(manifest: str | Path, ledger: str | Path | None = None) -> dict:
     return summarize_campaign(manifest, ledger)
+
+
+def campaign_quality(manifest: str | Path, ledger: str | Path | None = None) -> dict:
+    return read_campaign_quality(manifest, ledger)
 
 
 def plan(

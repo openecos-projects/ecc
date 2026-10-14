@@ -440,3 +440,15 @@ def campaign_summary(command_input: CampaignInput, _ctx: CommandContext) -> Comm
         )
 
     return _guard(operation)
+
+
+def campaign_quality(command_input: CampaignInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import campaign_quality as read_quality
+
+        result = read_quality(command_input.manifest, command_input.ledger)
+        return CommandResult(
+            records=({"experience": "campaign_quality", **result},), exit_code=result["exit_code"]
+        )
+
+    return _guard(operation)

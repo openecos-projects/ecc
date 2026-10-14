@@ -414,6 +414,43 @@ Declared input digests do not verify the complete include/PDK closure; observed 
 do not hash every executable. Baseline collection does not demonstrate PPA improvement
 or cross-design generalization.
 
+### Campaign data quality audit
+
+Audit all trial history before creating a knowledge release:
+
+```bash
+ecc experience campaign quality --manifest campaign.json --json
+```
+
+The optional `--ledger PATH` follows status/summary conventions. This read-only
+query runs no EDA and changes no source workspace, store or ledger. Summary shows
+the latest trial per design; quality retains failures, retries and cancellations,
+with separate `execution_status` and `quality_status`. Retrying a failed execution
+does not remove its evidence as a potential counterexample.
+
+`coverage` reports committed identity, attempt, declared-input fingerprint,
+parameter, process and finite QoR availability. Each trial links its case, current
+verification, exceptional findings, QoR and step states. Missing core evidence,
+legacy workspaces, missing attempt IDs and missing QoR are unknown. Corrupt/stale
+evidence, invalid/non-finite QoR and a PDK family differing from the manifest fail.
+Optional absent reports only contribute to `artifact_counts`. Zero/missing memory
+is null; step runtime/memory carry `legacy_flow_step_ledger` scope and are not
+independent process-tree measurements or resource predictions.
+
+`diversity` counts distinct cases, execution identities and declared-input
+fingerprints with intact stored evidence, and identifies repeated references.
+Coverage counts trial references rather than independent samples. Recollecting
+one execution does not increase `unique_execution_identities`. Different input
+fingerprints do not prove independent design families. Evaluation groups use only
+user-provided labels; names never imply a family.
+
+Exit codes: 0 means collection checks passed; 6 means at least one failed check;
+7 means unknown/missing facts or pending/running work; 2 means invalid input;
+21 means a changed manifest. Quality pass does not replace flow/signoff/release
+acceptance or prove effective parameters, cross-design benefit, or full include/PDK
+closure. Existing wheel/PyInstaller and design-matrix experience smoke paths check
+the unknown and corrupt-case exits without inventing independent attempt IDs.
+
 ### External execution and ledgers
 
 After validation, initialize a resumable campaign ledger. Initialization creates only

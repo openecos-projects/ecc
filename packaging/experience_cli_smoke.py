@@ -105,7 +105,72 @@ def run_smoke(binary: Path, project: Path, workspace: str, output: Path) -> dict
     )
     if rejected[0]["status"] != "fail" or rejected[0]["integrity"] != "fail":
         raise RuntimeError("Corrupt evidence was not rejected")
+    _campaign_quality(binary, output, store, case_id, "quality", {7})
+    _campaign_quality(binary, output, corrupt_store, case_id, "quality-corrupt", {6})
     return {"status": "pass", "case_id": case_id, "verification": verified[0]["status"]}
+
+
+def _campaign_quality(
+    binary: Path, output: Path, store: Path, case_id: str, label: str, expected: set[int]
+) -> None:
+    source = output / "campaign-input"
+    source.mkdir(exist_ok=True)
+    manifest = output / f"{label}-manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "campaign_id": label,
+                "process_profile": "ics55",
+                "store": store.name,
+                "output_root": f"{label}-output",
+                "mode": "baseline",
+                "budget": {
+                    "max_concurrent_flows": 1,
+                    "max_trials_per_design": 1,
+                    "timeout_seconds_per_trial": 60,
+                },
+                "designs": [
+                    {
+                        "id": "smoke",
+                        "input": {"kind": "ecc-project", "path": source.name},
+                        "workspace": "baseline",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    initialized = _invoke(
+        binary, ["campaign", "init", "--manifest", str(manifest)], output, f"{label}-init", {0}
+    )
+    _invoke(
+        binary,
+        [
+            "campaign",
+            "record",
+            "--ledger",
+            initialized[0]["ledger"],
+            "--design",
+            "smoke",
+            "--workspace",
+            "baseline",
+            "--status",
+            "pass",
+            "--trial-id",
+            "smoke-trial",
+            "--case-id",
+            case_id,
+        ],
+        output,
+        f"{label}-record",
+        {0},
+    )
+    report = _invoke(
+        binary, ["campaign", "quality", "--manifest", str(manifest)], output, label, expected
+    )
+    if report[0]["counts"]["trials"] != 1:
+        raise RuntimeError("Campaign quality did not report the recorded observation")
 
 
 def main() -> int:
