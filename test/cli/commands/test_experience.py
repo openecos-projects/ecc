@@ -297,9 +297,22 @@ def test_campaign_ledger_commands_initialize_record_and_status(tmp_path):
             "--json",
         ],
     )
+    summary = runner.invoke(
+        app,
+        [
+            "experience",
+            "campaign",
+            "summary",
+            "--manifest",
+            str(manifest),
+            "--json",
+        ],
+    )
     assert recorded.exit_code == 0, recorded.output
     assert current.exit_code == 0, current.output
+    assert summary.exit_code == 0, summary.output
     assert json.loads(current.stdout)[0]["counts"]["pass"] == 1
+    assert json.loads(summary.stdout)[0]["evidence_counts"]["missing"] == 1
 
 
 @pytest.mark.parametrize("command", ["show", "verify"])

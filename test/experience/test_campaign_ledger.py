@@ -3,6 +3,7 @@ import json
 import pytest
 
 from ecc_experience.benchmark.ledger import initialize, record_trial, status
+from ecc_experience.benchmark.summary import summarize
 from ecc_experience.models import ExperienceError
 
 
@@ -90,3 +91,22 @@ def test_status_rejects_changed_manifest(tmp_path):
 
     with pytest.raises(ExperienceError, match="manifest changed"):
         status(manifest)
+
+
+def test_summary_reports_missing_case_evidence(tmp_path):
+    manifest = _manifest(tmp_path)
+    initialize(manifest)
+    ledger = tmp_path / "outputs/campaign-ledger.json"
+    record_trial(
+        ledger,
+        design_id="design-1",
+        workspace="baseline",
+        status="pass",
+        trial_id="trial-1",
+    )
+
+    result = summarize(manifest)
+
+    assert result["campaign_status"] == "complete"
+    assert result["evidence_counts"]["missing"] == 1
+    assert result["trials"][0]["evidence_status"] == "missing"

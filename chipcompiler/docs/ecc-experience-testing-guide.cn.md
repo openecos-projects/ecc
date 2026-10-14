@@ -339,6 +339,16 @@ ecc experience campaign record \
 ecc experience campaign status --manifest campaign.json --json
 ```
 
+批次结束或中断恢复前，用 summary 同时查看最新试验、关联案例校验状态和 QoR 摘要：
+
+```bash
+ecc experience campaign summary --manifest campaign.json --json
+```
+
+`campaign_status` 只表示调度状态；`campaign_summary` 额外报告
+`evidence_status`、`integrity` 和 `evidence_counts`。没有 `case_id` 或案例缺失时会
+明确报告 evidence missing，不会把 trial 的 `pass` 误认为 QoR 或 signoff 通过。
+
 ledger 是调度和恢复记录，不等于 ECC 的 QoR 结论。QoR、step 报告、工具版本和参数
 仍必须通过 workspace 证据与 experience case 保存；只有完成验证的案例才可用于经验
 总结或后续推荐。

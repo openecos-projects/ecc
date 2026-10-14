@@ -290,3 +290,19 @@ def campaign_status(command_input: CampaignInput, _ctx: CommandContext) -> Comma
         )
 
     return _guard(operation)
+
+
+def campaign_summary(command_input: CampaignInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import campaign_summary as summarize
+
+        return CommandResult.ok(
+            [
+                {
+                    "experience": "campaign_summary",
+                    **summarize(command_input.manifest, command_input.ledger),
+                }
+            ]
+        )
+
+    return _guard(operation)

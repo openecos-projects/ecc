@@ -5,6 +5,7 @@ from ecc_experience.benchmark.ledger import initialize as initialize_campaign
 from ecc_experience.benchmark.ledger import record_trial as record_campaign_trial
 from ecc_experience.benchmark.ledger import status as read_campaign_status
 from ecc_experience.benchmark.manifest import load_manifest
+from ecc_experience.benchmark.summary import summarize as summarize_campaign
 from ecc_experience.collection.collect import CollectionResult, collect_committed_case
 from ecc_experience.collection.drain import drain as drain_recording
 from ecc_experience.knowledge.recommend import recommend as recommend_cases
@@ -86,3 +87,7 @@ def campaign_status(manifest: str | Path, ledger: str | Path | None = None) -> d
 
 def recommend(workspace: str | Path, store: str | Path, *, limit: int = 10) -> dict:
     return recommend_cases(workspace, store, limit=limit)
+
+
+def campaign_summary(manifest: str | Path, ledger: str | Path | None = None) -> dict:
+    return summarize_campaign(manifest, ledger)

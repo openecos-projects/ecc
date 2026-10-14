@@ -1134,8 +1134,9 @@ stores, benchmarks and build output outside source trees; do not package private
 Campaign manifests are validated and tracked by `ecc_experience.benchmark` without
 importing private benchmark layouts or starting EDA. `campaign init` freezes the manifest
 fingerprint in an output-local ledger, `campaign record` appends idempotent trial facts, and
-`campaign status` verifies the fingerprint before reporting resumable progress. The user
-procedures are documented in the
+`campaign status` verifies the fingerprint before reporting resumable progress. `campaign
+summary` joins the latest trial state with linked case verification without treating a trial
+pass as QoR or signoff success. The user procedures are documented in the
 [experience testing manual](../chipcompiler/docs/ecc-experience-testing-guide.en.md).
 
 Contributor conventions are not repeated here; they live in

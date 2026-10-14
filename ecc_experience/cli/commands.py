@@ -256,3 +256,23 @@ def campaign_status_cmd(
         ledger=ledger,
     )
     execute_command("experience", command_input, handlers.campaign_status)
+
+
+@campaign_app.command("summary", help="Summarize trial states and linked evidence")
+def campaign_summary_cmd(
+    *,
+    manifest: Annotated[str, typer.Option("--manifest", help="Campaign manifest JSON")],
+    ledger: Annotated[
+        str | None, typer.Option("--ledger", help="Ledger path below output_root")
+    ] = None,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    manifest_path = Path(manifest).expanduser().resolve()
+    command_input = CampaignInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(str(manifest_path.parent)),
+        manifest=str(manifest_path),
+        ledger=ledger,
+    )
+    execute_command("experience", command_input, handlers.campaign_summary)

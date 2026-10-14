@@ -374,6 +374,17 @@ the trial retains an evidence link. Recover campaign progress with:
 ecc experience campaign status --manifest campaign.json --json
 ```
 
+At the end of a batch, or before resuming an interrupted one, combine the latest trial
+state with linked case verification and QoR facts:
+
+```bash
+ecc experience campaign summary --manifest campaign.json --json
+```
+
+`campaign_status` reports scheduling state only. `campaign_summary` also reports
+`evidence_status`, `integrity`, and `evidence_counts`. A missing `case_id` or missing case
+is reported as missing evidence; a trial `pass` is never promoted to a QoR or signoff pass.
+
 Status revalidates the manifest fingerprint and refuses to continue after the manifest has
 changed. The ledger is a scheduling and recovery record, not a QoR verdict. QoR, step
 reports, tool versions, and parameters still belong in workspace evidence and experience
