@@ -134,6 +134,9 @@ def test_body_field_parsing_takes_first_match_and_skips_empty_values():
 
 
 def test_decide_with_build_identity():
+    # Semantic base ordering wins over build dates.
+    assert decide("0.1.0-alpha.12", OTHER_COMMIT, "20261014", latest()) == (STATUS_UPDATE_AVAILABLE)
+    assert decide("0.1.0-alpha.14", OTHER_COMMIT, "20261012", latest()) == STATUS_UP_TO_DATE
     # A carried-forward nightly re-publishes the same ecc commit: content-equal wins over dates.
     assert decide("0.1.0-alpha.13", LATEST_COMMIT, "20261012", latest()) == STATUS_UP_TO_DATE
     assert decide("0.1.0-alpha.13", OTHER_COMMIT, "20261012", latest()) == STATUS_UPDATE_AVAILABLE
@@ -240,7 +243,7 @@ def test_check_for_update_reads_releases_url_override(monkeypatch, capsys):
 
 def patched_result(monkeypatch, result):
     monkeypatch.setattr(
-        "chipcompiler.cli.commands.check_update.check_for_update",
+        "chipcompiler.cli.command_handlers.check_update.check_for_update",
         lambda *a, **k: result,
     )
 
@@ -314,11 +317,9 @@ def test_check_update_command_json_payload_whole_object(monkeypatch, capsys):
     assert data == {
         "schema_version": 1,
         "status": "unknown",
-        "current": {
-            "version": "0.1.0-alpha.12",
-            "build_commit": None,
-            "build_date": None,
-        },
+        "current_version": "0.1.0-alpha.12",
+        "current_commit": None,
+        "current_build_date": None,
         "latest": None,
         "installer_urls": [
             "https://github.com/openecos-projects/ecos-installer/releases",

@@ -2,7 +2,7 @@ from importlib import import_module, metadata
 
 UNKNOWN_VERSION = "unknown"
 RUNTIME_LABEL = "ECC CLI"
-VERSION_SCHEMA = 2
+VERSION_SCHEMA = 1
 
 
 def distribution_version(distribution: str, fallback: str | None = None) -> str:

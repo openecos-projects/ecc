@@ -304,10 +304,11 @@ The command graph follows these rules; new commands must follow them too:
   registry keyed by full command path (top-level name, or `group:sub`).
 - **Frozen surfaces.** The GUI invokes `ecc rpc serve --stdio
   [--persistent-db]`, `ecc version --json` (schema: `schema_version`, `runtime`,
-  `ecc`, `dreamplace`, `ecc_tools`, `build_commit`, `build_date`, `tools`), the
-  `ecc --version` single line, and `ecc layout-image --gds <gds> --image <png>`
-  as subprocess contracts. Additive optional flags are allowed; these names,
-  flags, and output schemas must not change.
+  `ecc`, `dreamplace`, `ecc_tools`, `tools`, plus additive nullable keys such
+  as `build_commit` and `build_date`), the `ecc --version` single line, and
+  `ecc layout-image --gds <gds> --image <png>` as subprocess contracts.
+  Additive optional flags and additive nullable keys are allowed; the existing
+  names, flags, and key semantics must not change.
 
 ### Project-Oriented Entry
 
@@ -472,11 +473,13 @@ ecc version --json
 
 `ecc --version` prints one line for package-manager and script probes. `ecc
 version` prints fixed-order text lines for `ecc`, `dreamplace`, `ecc_tools`, and
-`runtime`. `ecc version --json` returns schema version `2` with `runtime`,
-`ecc`, `dreamplace`, `ecc_tools`, and nullable `build_commit`/`build_date`
-fields (populated only in CI-stamped bundles; `null` in source installs).
-Missing distribution metadata is reported as `unknown`, except the `ecc` field
-may fall back to the source package `__version__`.
+`runtime`. `ecc version --json` returns schema version `1` with `runtime`,
+`ecc`, `dreamplace`, and `ecc_tools` fields, plus the additive nullable keys
+`build_commit`/`build_date` (populated only in CI-stamped bundles; `null` in
+source installs; the schema version stays `1` because additive nullable keys
+do not alter the frozen contract). Missing distribution metadata is reported
+as `unknown`, except the `ecc` field may fall back to the source package
+`__version__`.
 
 ### Runtime Sidecar RPC
 

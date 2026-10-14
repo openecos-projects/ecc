@@ -103,7 +103,7 @@ def test_version_command_returns_json_payload(monkeypatch, capsys):
         "build_date",
         "tools",
     }
-    assert data["schema_version"] == 2
+    assert data["schema_version"] == 1
     assert data["runtime"] == "ECC CLI"
     assert data["tools"] == {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"}
 
@@ -144,7 +144,7 @@ def test_version_metadata_missing_uses_unknown(monkeypatch, capsys):
     data = json.loads(capsys.readouterr().out)
     assert rc == 0
     assert data == {
-        "schema_version": 2,
+        "schema_version": 1,
         "runtime": "ECC CLI",
         "ecc": "source-fallback",
         "dreamplace": "unknown",
