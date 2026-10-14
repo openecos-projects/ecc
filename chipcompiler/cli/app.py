@@ -5,6 +5,7 @@ from typing import Annotated
 
 import typer
 
+from chipcompiler.cli.commands.check_update import register_check_update_command
 from chipcompiler.cli.commands.chipview import register_chipview_commands
 from chipcompiler.cli.commands.compare import compare_app
 from chipcompiler.cli.commands.doc import register_doc_commands
@@ -78,6 +79,7 @@ register_gds_view_commands(app)
 
 register_project_commands(app)
 register_doctor_commands(app)
+register_check_update_command(app)
 app.add_typer(param_app, name="param")
 app.add_typer(flow_app, name="flow")
 app.add_typer(macro_app, name="macro")
