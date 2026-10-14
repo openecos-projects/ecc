@@ -5,9 +5,11 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
+from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
 from ecc_experience.files import canonical_bytes, digest
 from ecc_experience.knowledge.recommend import recommend
 from ecc_experience.models import ExperienceError
+from ecc_experience.optimization.policy import OptimizationLimits
 
 
 def build_plan(
@@ -16,6 +18,7 @@ def build_plan(
     *,
     limit: int = 10,
     release: str | Path | None = None,
+    optimization: OptimizationLimits | None = None,
 ) -> dict:
     recommendation = recommend(workspace, store, limit=limit, release=release)
     query = recommendation["query"]
@@ -29,6 +32,7 @@ def build_plan(
         "baseline": {
             "workspace": query["workspace"],
             "case_id": None,
+            "snapshot_digest": read_workspace_observation(workspace).source.snapshot_digest,
         },
         "candidates": [
             {
@@ -54,10 +58,14 @@ def build_plan(
             ],
         },
     }
-    identity = {key: value for key, value in plan.items() if key != "created_at"}
-    plan["plan_fingerprint"] = digest(identity)
     if not candidates:
         plan["reason"] = recommendation.get("reason", "No verified recommendation")
+    if release is not None:
+        plan["release_id"] = recommendation.get("release_verification", {}).get("release_id")
+    if optimization is not None:
+        plan["optimization"] = optimization.checked().model_dump()
+    identity = {key: value for key, value in plan.items() if key != "created_at"}
+    plan["plan_fingerprint"] = digest(identity)
     return plan
 
 

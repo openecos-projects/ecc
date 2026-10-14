@@ -14,7 +14,9 @@ from ecc_experience.knowledge.store import ExperienceStore
 from ecc_experience.knowledge.verify import verify_case
 from ecc_experience.models import ExperienceCase, Verification
 from ecc_experience.optimization.evaluate import evaluate as evaluate_cases
+from ecc_experience.optimization.execute import optimize as execute_optimization
 from ecc_experience.optimization.plan import build_plan, write_plan
+from ecc_experience.optimization.policy import OptimizationLimits
 from ecc_experience.recording import disable as disable_recording
 from ecc_experience.recording import set_enabled
 from ecc_experience.recording import status as recording_status
@@ -109,8 +111,18 @@ def plan(
     *,
     limit: int = 10,
     release: str | Path | None = None,
+    optimization: OptimizationLimits | None = None,
 ) -> dict:
-    return write_plan(output, build_plan(workspace, store, limit=limit, release=release))
+    return write_plan(
+        output,
+        build_plan(workspace, store, limit=limit, release=release, optimization=optimization),
+    )
+
+
+def optimize(
+    project: str | Path, plan_path: str | Path, store: str | Path, output: str | Path
+) -> dict:
+    return execute_optimization(project, plan_path, store, output)
 
 
 def evaluate(baseline: str, candidate: str, store: str | Path) -> dict:

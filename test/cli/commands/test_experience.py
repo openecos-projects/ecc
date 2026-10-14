@@ -10,6 +10,86 @@ from chipcompiler.engine.snapshot_qor import unavailable_qor_snapshot_extension
 runner = CliRunner()
 
 
+def test_optimize_uses_current_project_and_preserves_structured_failure(tmp_path, monkeypatch):
+    (tmp_path / "project.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "design_name": "sample",
+                "root_path": str(tmp_path),
+                "workspaces": [
+                    {"workspace_id": name, "workspace_path": str(tmp_path / name)}
+                    for name in ("baseline", "other")
+                ],
+            }
+        )
+    )
+    monkeypatch.chdir(tmp_path)
+    calls = []
+
+    def optimize(project, plan_path, store, output):
+        calls.append((project, plan_path, store, output))
+        return {"status": "timeout", "exit_code": 124}
+
+    monkeypatch.setattr("ecc_experience.api.optimize", optimize)
+    result = runner.invoke(
+        app,
+        [
+            "experience",
+            "optimize",
+            "--store",
+            str(tmp_path / "store"),
+            "--plan",
+            str(tmp_path / "plan.json"),
+            "--output",
+            str(tmp_path / "results"),
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 124, result.output
+    assert json.loads(result.stdout)[0]["status"] == "timeout"
+    assert Path(calls[0][0]) == tmp_path
+
+
+def test_plan_passes_explicit_execution_limits(legacy_project, tmp_path, monkeypatch):
+    project, workspace = legacy_project
+
+    def plan(_workspace, _store, _output, *, limit, release, optimization):
+        return {"optimization": optimization.model_dump()}
+
+    monkeypatch.setattr("ecc_experience.api.plan", plan)
+    result = runner.invoke(
+        app,
+        [
+            "experience",
+            "plan",
+            "--project",
+            str(project),
+            "--workspace",
+            workspace.name,
+            "--store",
+            str(tmp_path / "store"),
+            "--output",
+            str(tmp_path / "plan.json"),
+            "--allow-param",
+            "place.target_density",
+            "--max-trials",
+            "2",
+            "--max-seconds",
+            "60",
+            "--trial-timeout",
+            "30",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    limits = json.loads(result.stdout)[0]["optimization"]
+    assert limits["allow_parameters"] == ["place.target_density"]
+    assert limits["max_trials"] == 2
+
+
 @pytest.fixture
 def legacy_project(create_cli_project, create_flow_json):
     from pathlib import Path
@@ -202,9 +282,7 @@ def test_experience_plan_writes_insufficient_evidence_plan(legacy_project, tmp_p
     assert json.loads(output.read_text())["execution_policy"]["auto_apply"] is False
 
 
-def test_experience_evaluate_returns_structured_comparison(
-    experience_workspace_factory, tmp_path
-):
+def test_experience_evaluate_returns_structured_comparison(experience_workspace_factory, tmp_path):
     input_file = tmp_path / "design.v"
     input_file.write_text("module sample; endmodule")
     baseline_workspace = experience_workspace_factory("baseline")

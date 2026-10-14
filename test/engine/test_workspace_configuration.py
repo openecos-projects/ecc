@@ -105,6 +105,9 @@ def test_workspace_parameter_batch_commits_once_and_invalidates_from_earliest_st
     first = names.index("place")
 
     assert committed["workspaceRevision"] == 2
+    assert committed["flow"] == json.loads(
+        (Path(updated.directory) / "home" / "flow.json").read_text(encoding="utf-8")
+    )
     assert states[:first] == ["Success"] * first
     assert all(state == "Unstart" for state in states[first:])
     assert updated.parameters.data["dreamplace"]["target_density"] == 0.65
@@ -344,9 +347,7 @@ def test_step_configuration_update_invalidates_only_target_suffix(
     assert read_engineering_snapshot(updated)["workspaceRevision"] == 2
 
 
-def test_macro_placements_apply_prunes_stale_tcl_when_emptied(
-    tmp_path, minimal_ics55_pdk_factory
-):
+def test_macro_placements_apply_prunes_stale_tcl_when_emptied(tmp_path, minimal_ics55_pdk_factory):
     """§20.5.4: the macro-import commit path keeps params.toml and
     macro_location.tcl consistent — an empty import after a non-empty one
     leaves no stale placeInstance lines."""

@@ -83,6 +83,46 @@ def test_is_enabled_env_switch(monkeypatch):
     assert not step_subprocess.is_enabled()
 
 
+def test_rcx_worker_restores_outputs_and_preserves_shared_sta_list(monkeypatch, tmp_path):
+    from chipcompiler.data import EccOutput
+
+    step = _workspace_step(tmp_path, name="RCX")
+    step.output = EccOutput(dir=tmp_path / "output")
+    shared_sta_inputs = step.output.spef
+    result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
+    result_path.write_text(
+        json.dumps(
+            {
+                "done": True,
+                "ok": True,
+                "events": [],
+                "rcx_spef": ["sample_TYPICAL_25C.spef"],
+            }
+        )
+    )
+    monkeypatch.setattr(
+        step_subprocess.subprocess, "Popen", lambda *_args, **_kwargs: _FakePopen(poll_script=[0])
+    )
+
+    result = step_subprocess.execute_step_subprocess(_workspace(tmp_path), step)
+
+    assert result.error is None
+    assert shared_sta_inputs == [tmp_path / "output/sample_TYPICAL_25C.spef"]
+    assert step.output.spef is shared_sta_inputs
+
+
+@pytest.mark.parametrize(
+    "names", [[], ["../escape.spef"], ["/tmp/escape.spef"], ["dup.spef", "dup.spef"], [False]]
+)
+def test_rcx_worker_rejects_invalid_output_references(tmp_path, names):
+    from chipcompiler.data import EccOutput
+
+    step = _workspace_step(tmp_path, name="RCX")
+    step.output = EccOutput(dir=tmp_path / "output")
+    assert step_subprocess._restore_rcx_outputs(step, {"rcx_spef": names})
+    assert step.output.spef == []
+
+
 def test_sta_step_memory_includes_corner_workers(monkeypatch, tmp_path):
     from chipcompiler.tools.ecc import sta_parallel
 
@@ -229,7 +269,11 @@ class _FakeFlow:
 
 
 def _patch_worker_dependencies(monkeypatch, tmp_path, step, flow, run_step):
-    monkeypatch.setattr("chipcompiler.data.load_workspace", lambda directory: _workspace(tmp_path))
+    def load_workspace(directory, *, read_only=False):
+        assert read_only is True
+        return _workspace(tmp_path)
+
+    monkeypatch.setattr("chipcompiler.data.load_workspace", load_workspace)
     monkeypatch.setattr("chipcompiler.engine.flow.EngineFlow", lambda workspace: flow)
     monkeypatch.setattr("chipcompiler.tools.run_step", run_step)
 
@@ -310,7 +354,7 @@ def test_worker_main_records_exceptions(monkeypatch, tmp_path):
     step = _workspace_step(tmp_path)
     result_path = tmp_path / "out" / "result.json"
 
-    def broken_loader(directory):
+    def broken_loader(directory, *, read_only=False):
         raise OSError("no workspace")
 
     monkeypatch.setattr("chipcompiler.data.load_workspace", broken_loader)

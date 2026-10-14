@@ -12,6 +12,7 @@ from ecc_experience.cli.inputs import (
     CampaignInput,
     CollectInput,
     EvaluationInput,
+    OptimizeInput,
     PlanInput,
     RecommendInput,
     RecordingInput,
@@ -187,6 +188,23 @@ def plan_cmd(
     release: Annotated[
         str | None, typer.Option("--release", help="Verified experience release JSON")
     ] = None,
+    allow_parameters: Annotated[
+        list[str] | None,
+        typer.Option("--allow-param", help="Authorize a reviewed PNR parameter; repeatable"),
+    ] = None,
+    max_trials: Annotated[
+        int,
+        typer.Option(
+            "--max-trials",
+            min=2,
+            max=100,
+            help="Workspace budget including the independent winner rerun",
+        ),
+    ] = 4,
+    max_seconds: Annotated[int, typer.Option("--max-seconds", min=1)] = 3600,
+    trial_timeout: Annotated[int, typer.Option("--trial-timeout", min=1)] = 900,
+    patience: Annotated[int, typer.Option("--patience", min=1)] = 3,
+    target_score: Annotated[float | None, typer.Option("--target-score")] = None,
     plain: PlainOption = False,
     json_output: JsonOption = False,
 ) -> None:
@@ -198,8 +216,40 @@ def plan_cmd(
         output_path=output,
         limit=limit,
         release=release,
+        optimization={
+            "allow_parameters": allow_parameters,
+            "max_trials": max_trials,
+            "max_seconds": max_seconds,
+            "trial_timeout_seconds": trial_timeout,
+            "patience": patience,
+            "target_score": target_score,
+        }
+        if allow_parameters
+        else None,
     )
     execute_command("experience", command_input, handlers.plan)
+
+
+@experience_app.command("optimize", help="Execute an explicitly bounded plan in new workspaces")
+def optimize_cmd(
+    *,
+    store: StoreOption,
+    plan: Annotated[str, typer.Option("--plan", help="Reviewed optimization plan JSON")],
+    output: Annotated[
+        str, typer.Option("--output", help="New directory for results and command logs")
+    ],
+    project: ProjectOption = None,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = OptimizeInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(project),
+        store=store,
+        plan_path=plan,
+        output_path=output,
+    )
+    execute_command("experience", command_input, handlers.optimize)
 
 
 @experience_app.command("evaluate", help="Compare two verified experience cases")

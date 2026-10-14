@@ -115,11 +115,11 @@ def derive_workspace(
                     workspace, engine_flow, preserve_user_inputs=True
                 )
 
+            snapshot = create_engineering_snapshot(workspace, cause=cause)
             _rewrite_staged_paths(
                 staging,
                 ((str(source), str(target)), (str(staging), str(target))),
             )
-            snapshot = create_engineering_snapshot(workspace, cause=cause)
             if command_id:
                 command_spec = {
                     "directory": str(source),

@@ -8,8 +8,9 @@
 
 **当前版本可用 run、param、report、sweep、explore、signoff 和 reproducible 完成
 运行与证据采集。ecc_experience 已提供 P0 的 collect/list/show/verify，以及 P1 的
-enable/status/disable、提交后 attempt outbox 和 drain 恢复。推荐、受控优化和知识
-版本管理仍待开发。**执行前必须以安装版本的
+enable/status/disable、提交后 attempt outbox 和 drain 恢复，以及 campaign 台账、
+recommend、plan、evaluate、release 和受预算约束的 optimize。跨设计相似推荐、资源
+预测和经验包 export/import 仍待开发。**执行前必须以安装版本的
 帮助和输出契约确认能力，不能照猜测调用。
 
 本手册不是测试完成记录。示例路径、名称和预算仅演示操作，不能视为已验证配置。
@@ -267,8 +268,9 @@ stdout 仍可能是有效 JSON。20/21 表示忙/冲突，应处理实际原因�
 ## 10. 原生经验模块可用后的测试
 
 P0 显式采集、查询和校验已经实现。P1 的自动记录只保存提交后的小型事实到项目
-outbox；它不修改参数、不阻塞工程提交，也不把经验写进源码或 wheel。其余阶段是
-后续验收流程，逐项按安装版本帮助确认能力。
+outbox；它不修改参数、不阻塞工程提交，也不把经验写进源码或 wheel。只读推荐、
+计划、比较、release 与有预算的完整流程优化也已实现；跨设计迁移和 campaign
+执行调度仍待开发。逐项按安装版本帮助确认能力。
 
 ```bash
 EXPERIENCE_STORE=/absolute/path/to/experience-store
@@ -401,8 +403,73 @@ ecc experience plan \
 
 plan 绑定查询 workspace、输入指纹、案例和 fingerprint，并固定声明
 release（如果提供）、`manual_review`、`requires_new_workspace=true`、`auto_apply=false`。它是可审阅的
-执行建议，不会修改参数、复制 workspace 或启动 flow；执行者必须自行用现有
-`ecc param apply`/`ecc run` 命令完成变更和验证，再通过 collect/drain 采集新案例。
+执行建议，不会修改参数、复制 workspace 或启动 flow。没有显式优化预算和参数
+白名单的旧计划继续只用于人工审阅，不能直接交给 optimize 执行。
+
+### 10.1 受控执行经验计划
+
+仅在希望启动真实流程时，生成带执行范围的计划，审阅后显式调用 optimize：
+
+```bash
+ecc experience plan \
+  --project "$PROJECT" --workspace "$WORKSPACE" \
+  --store "$EXPERIENCE_STORE" \
+  --allow-param floorplan.core_util \
+  --allow-param place.target_density \
+  --max-trials 4 --max-seconds 3600 --trial-timeout 900 \
+  --patience 2 --target-score 95 \
+  --output "$OUTPUT_ROOT/bounded-plan.json" --json
+
+ecc experience optimize \
+  --project "$PROJECT" --store "$EXPERIENCE_STORE" \
+  --plan "$OUTPUT_ROOT/bounded-plan.json" \
+  --output "$OUTPUT_ROOT/optimization-001" --json
+```
+
+`--release` 可继续用于生成计划；执行前重新验证 release ID 与案例。默认 plan
+仍然只读；`--allow-param` 使计划包含明确的执行限制，生成计划本身不会启动 EDA。
+optimize 的 `--project` 可在 project 或 workspace 目录内省略，基线由计划指定。
+输出目录必须全新，经验 store 与基线 workspace 不得重叠。
+
+| 限制 | 当前行为 |
+| --- | --- |
+| 候选来源 | 同输入内容指纹的真实已观察配置；证据失败或非白名单参数不同的候选不执行，重复配置去重；不自行发明搜索空间 |
+| 参数范围 | 仅显式允许的 core_util/core_margin/aspect_ratio、placement density/overflow/padding/routability 和 CTS fanout/skew/transition/cap 参数；名称、类型和范围由现有 ECC catalog 校验 |
+| 固定条件 | 校验基线快照及直接绑定输入内容；保持 design、工艺声明、flow 和其他配置；只允许旧快照缺失字段补齐为当前 catalog 默认值 |
+| 次数预算 | `max_trials` 为新 workspace 总上限，包含最佳候选的独立复跑，至少 2；串行执行，不修改基线 |
+| 时间预算 | 校验后开始计算总时间；每次 trial 的派生、参数应用、flow 与报告检查共享单次限时；到时停止子进程，不只停止等待；清理可额外使用短暂宽限时间 |
+| 提前停止 | 候选耗尽、次数上限、目标分数、连续无改进/失败次数、超时或用户取消；达到搜索停止条件后仍须独立复跑最佳候选 |
+| 验证范围 | 当前执行基线定义的完整 flow；阶段 DSE 继续使用 sweep/explore，不能冒充完整流程验证 |
+
+底层复用 `workspace derive`、`param apply`、`run`、`status` 与 `signoff check`，使用
+系统中已安装的工具。基线已 blocked 不会阻止调优，基线状态原样进入结果；新候选
+及复跑必须满足现有 flow/checklist/signoff 判据、有限 QoR 和案例证据校验，才会被
+接受。此处 signoff 仍限 ECC 已支持的检查，不包含 GDS DRC/foundry 签核。
+
+`result.json` 在执行过程中原子更新，记录每个 workspace、run ID、配置变化、命令
+日志路径、退出码、case ID、验证状态、分数、失败与停止原因。运行完成的新快照
+会关联实际 run ID 采集进 store；运行或采集失败也保留试验结果与日志，不伪造通过。
+只有独立复跑通过才能返回 `status=complete`。`improved=false` 允许表示完整验证
+成功但没有 QoR 收益；基线缺少分数时 `improved=null`，比较证据不足。
+
+| 退出码 | 含义 |
+| --- | --- |
+| 0 | 有候选且独立复跑完成验收；不保证分数提高 |
+| 2 | 计划、指纹、预算、参数或输出目录无效 |
+| 6 | 无合格候选或独立复跑验收失败 |
+| 7 | 没有可执行的观察配置 |
+| 21 | 基线输入/快照发生变化 |
+| 124 / 130 | 超时 / 用户取消 |
+| 1 | I/O 或其他执行故障 |
+
+当前控制器要求 Linux，支持 Ctrl-C/SIGTERM 取消并清理独立会话中的 step 子进程。
+它不会自动恢复中断运行、自动删除失败 workspace、发布 release、放宽 SDC/频率/
+corner 或执行 RTL 修改。再次运行使用新输出目录和新预算。参数证据仍标为
+`configured`，不宣称每个参数都被工具消费；输入闭包、PDK 文件内容和外部工具升级
+的完整冻结尚未实现。当前不强制 RAM/CPU 配额，也不新增资源预测模型。实际总结
+必须同时给出基线验收状态、最佳候选及复跑分数、收益或无收益、成本和这些限制。
+
+### 10.2 比较与发布案例
 
 比较两个已采集案例的 QoR 时使用只读命令：
 

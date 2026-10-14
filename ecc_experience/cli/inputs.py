@@ -60,6 +60,16 @@ class PlanInput:
     workspace: str | None = None
     limit: int = 10
     release: str | None = None
+    optimization: dict | None = None
+
+
+@dataclass(frozen=True)
+class OptimizeInput:
+    output: OutputOptions
+    project: ProjectOptions
+    store: str
+    plan_path: str
+    output_path: str
 
 
 @dataclass(frozen=True)

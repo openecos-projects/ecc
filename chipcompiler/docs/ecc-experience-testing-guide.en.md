@@ -10,8 +10,9 @@ names, types, and size distributions do not define product behavior.
 **The current CLI provides run, param, report, sweep, explore, signoff, and
 reproducible for execution and evidence collection. ecc_experience now provides P0
 collect/list/show/verify and P1 enable/status/disable, post-commit attempt outbox
-recording, and drain recovery. Recommendation, bounded optimization, and knowledge
-release management remain planned.**
+recording, and drain recovery, plus campaign ledgers, recommend, plan, evaluate,
+release, and budgeted optimize. Cross-design similarity retrieval, resource
+prediction, and experience export/import remain planned.**
 Check the installed runtime's help and output contracts before using any capability.
 
 This manual is not a completed test record. Example paths, names, and budgets explain
@@ -297,8 +298,9 @@ states rather than assuming all commands use the same timeout encoding.
 P0 explicit collection, queries, and verification are implemented. P1 automatic
 recording writes only small committed facts to a project outbox; it does not change
 parameters, block engineering commits, or write experience data into source or the
-wheel. Other stages are future acceptance procedures. Discover each capability through
-installed help.
+wheel. Read-only recommendation, reviewable plans, comparison, releases, and bounded
+full-flow optimization are also implemented. Cross-design transfer and campaign
+scheduling remain future work. Discover each capability through installed help.
 
 ```bash
 EXPERIENCE_STORE=/absolute/path/to/experience-store
@@ -443,8 +445,80 @@ ecc experience plan \
 The plan binds the query workspace, input fingerprint, optional release, cases, and a plan fingerprint. It
 always declares `manual_review`, `requires_new_workspace=true`, and `auto_apply=false`. It
 is a reviewable execution suggestion: it does not edit parameters, copy workspaces, or
-start a flow. The executor must use the existing `ecc param apply` and `ecc run` commands
-for changes and validation, then collect or drain the new case.
+start a flow. Old plans without explicit optimization limits and an allowed parameter
+list remain review-only and cannot be executed by optimize.
+
+### 10.1 Execute a bounded experience plan
+
+When real flow execution is intended, create a bounded plan, review it, then explicitly
+invoke optimize:
+
+```bash
+ecc experience plan \
+  --project "$PROJECT" --workspace "$WORKSPACE" \
+  --store "$EXPERIENCE_STORE" \
+  --allow-param floorplan.core_util \
+  --allow-param place.target_density \
+  --max-trials 4 --max-seconds 3600 --trial-timeout 900 \
+  --patience 2 --target-score 95 \
+  --output "$OUTPUT_ROOT/bounded-plan.json" --json
+
+ecc experience optimize \
+  --project "$PROJECT" --store "$EXPERIENCE_STORE" \
+  --plan "$OUTPUT_ROOT/bounded-plan.json" \
+  --output "$OUTPUT_ROOT/optimization-001" --json
+```
+
+The plan command also accepts `--release`; execution re-verifies the release ID and
+cases. Creating a plan remains read-only. `--allow-param` includes execution limits in
+the plan but starts no EDA. Omit `--project` from a project or workspace directory;
+the plan selects its baseline. The output directory must be new, and the experience
+store must not overlap the baseline workspace.
+
+| Limit | Current behavior |
+| --- | --- |
+| Candidates | Observed configurations with matching input content; failed evidence and changes outside the allowlist are excluded; duplicate configurations are removed; no invented search grid |
+| Parameters | Explicitly authorized core utilization/margin/aspect ratio, placement density/overflow/padding/routability, and CTS fanout/skew/transition/capacitance knobs; the existing ECC catalog validates names, types, and ranges |
+| Fixed conditions | Baseline snapshot and directly bound input content are checked; design, process declaration, flow, and other configuration stay fixed; fields absent in old snapshots may be filled with current catalog defaults |
+| Trial budget | `max_trials` caps all new workspaces, including an independent winner rerun, and must be at least 2; execution is serial and preserves the baseline |
+| Time budget | Starts after validation; workspace derivation, parameter application, flow, and report checks share each trial deadline; expiration stops subprocesses; cleanup may take a short additional grace period |
+| Early stop | Candidate exhaustion, trial limit, target score, consecutive failures/non-improvements, timeout, or cancellation; a search stop still requires an independent winner rerun |
+| Scope | The complete flow defined by the baseline; use sweep/explore for stage DSE and keep its claims separate from full-flow validation |
+
+Execution reuses `workspace derive`, `param apply`, `run`, `status`, and `signoff check`
+with installed tools. A blocked baseline can still be optimized; its status is preserved.
+New candidates and the fresh rerun must satisfy existing flow/checklist/signoff checks,
+finite QoR, and case evidence verification to be accepted. Signoff covers only ECC's
+available checks, without GDS DRC or foundry signoff claims.
+
+The controller atomically updates `result.json` with workspaces, run IDs, parameter
+changes, command log paths, exit codes, case IDs, verification, scores, and failure/stop
+reasons. Completed snapshots are collected into the store with the actual run ID;
+execution or collection failures retain their trial records and logs. Only a passing
+independent rerun can return `status=complete`. `improved=false` means validation passed
+without QoR gain; a missing baseline score produces `improved=null` and an insufficient
+comparison, rather than an invented delta.
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | A candidate and its independent rerun passed; score gain is not guaranteed |
+| 2 | Invalid plan, fingerprint, limits, parameters, or output directory |
+| 6 | No accepted candidate or failed independent validation |
+| 7 | No eligible observed configuration |
+| 21 | Baseline inputs or snapshot changed |
+| 124 / 130 | Timeout / cancellation |
+| 1 | I/O or another execution failure |
+
+The controller currently requires Linux and handles Ctrl-C/SIGTERM with cleanup of
+step processes in separate sessions. It does not resume interrupted runs, remove failed
+workspaces, publish releases, relax SDC/frequency/corners, or modify RTL. A new invocation
+uses a new output directory and budget. Parameter evidence remains `configured`, without
+claiming tool consumption. Full input closure, PDK content freezing, and external tool
+version freezing are not implemented. RAM/CPU quotas and resource prediction are not
+enforced. Final summaries must include baseline acceptance, best and fresh scores, gain
+or no gain, cost, and these limits.
+
+### 10.2 Compare and release cases
 
 Compare the QoR of two collected cases with the read-only command:
 

@@ -280,8 +280,8 @@ def invalidate_engineering_snapshot(
     for step in steps[invalidated_index:]:
         if isinstance(step, dict):
             step["state"] = "Unstart"
-            step.pop("runtime", None)
-            step.pop("peak memory (mb)", None)
+            step["runtime"] = ""
+            step["peak memory (mb)"] = 0
     stale_path = _stale_snapshot_path(workspace)
     if not stale_path.is_file():
         _write_snapshot(stale_path, current)

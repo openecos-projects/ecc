@@ -23,7 +23,7 @@ import sys
 import time
 from pathlib import Path
 
-from chipcompiler.data import Workspace, WorkspaceStep
+from chipcompiler.data import EccOutput, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.engine.step_execution import (
     StepExecutionResult,
     _prepare_log_file,
@@ -128,7 +128,28 @@ def execute_step_subprocess(
             step_error = f"{step_tag} worker exited with code {process.returncode}."
         elif result.get("ok") is not True:
             step_error = f"{step_tag} worker reported failure: {result.get('error')}"
+        elif workspace_step.name == StepEnum.RCX.value:
+            step_error = _restore_rcx_outputs(workspace_step, result)
     return _result(start_time, peak_memory_mb - start_memory_mb, error=step_error)
+
+
+def _restore_rcx_outputs(step: WorkspaceStep, result: dict) -> str | None:
+    output = step.output
+    names = result.get("rcx_spef")
+    if (
+        not isinstance(output, EccOutput)
+        or output.dir is None
+        or not isinstance(names, list)
+        or not names
+        or any(
+            not isinstance(name, str) or Path(name).name != name or not name.endswith(".spef")
+            for name in names
+        )
+        or len(set(names)) != len(names)
+    ):
+        return "RCX worker did not return a valid published SPEF set"
+    output.spef[:] = [Path(output.dir) / name for name in names]
+    return None
 
 
 def _spawn_worker(log_handle) -> subprocess.Popen:
@@ -243,7 +264,9 @@ def main() -> int:
         import chipcompiler.data as data_api
         from chipcompiler.engine.flow import EngineFlow
 
-        workspace = data_api.load_workspace(directory=payload["workspace_directory"])
+        workspace = data_api.load_workspace(
+            directory=payload["workspace_directory"], read_only=True
+        )
         if workspace is None:
             raise RuntimeError("load workspace failed")
         flow = EngineFlow(workspace)
@@ -269,6 +292,8 @@ def main() -> int:
 
             ok = run_step(workspace=workspace, step=step, ecc_module=flow.engine_db.engine)
         result["ok"] = bool(ok)
+        if ok and step.name == StepEnum.RCX.value and isinstance(step.output, EccOutput):
+            result["rcx_spef"] = [Path(path).name for path in step.output.spef]
         if not ok:
             result["error"] = f"step {payload['step_name']} reported failure"
     except (Exception, SystemExit) as exc:

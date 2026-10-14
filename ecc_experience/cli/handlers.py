@@ -13,6 +13,7 @@ from ecc_experience.cli.inputs import (
     CampaignInput,
     CollectInput,
     EvaluationInput,
+    OptimizeInput,
     PlanInput,
     RecommendInput,
     RecordingInput,
@@ -102,6 +103,7 @@ def plan(command_input: PlanInput, ctx: CommandContext) -> CommandResult:
 
     def operation() -> CommandResult:
         from ecc_experience.api import plan as build_optimization_plan
+        from ecc_experience.optimization.policy import parse_limits
 
         result = build_optimization_plan(
             ctx.run_dir,
@@ -109,8 +111,28 @@ def plan(command_input: PlanInput, ctx: CommandContext) -> CommandResult:
             command_input.output_path,
             limit=command_input.limit,
             release=command_input.release,
+            optimization=parse_limits(command_input.optimization)
+            if command_input.optimization is not None
+            else None,
         )
         return CommandResult.ok([{"experience": "plan", **result}])
+
+    return _guard(operation)
+
+
+def optimize(command_input: OptimizeInput, ctx: CommandContext) -> CommandResult:
+    if ctx.manifest_error and not ctx.manifest_error.startswith("workspace_required:"):
+        return CommandResult.err([manifest_error_record(ctx.manifest_error)])
+
+    def operation() -> CommandResult:
+        from ecc_experience.api import optimize as execute_optimization
+
+        result = execute_optimization(
+            ctx.project_dir, command_input.plan_path, command_input.store, command_input.output_path
+        )
+        return CommandResult(
+            records=({"experience": "optimize", **result},), exit_code=result["exit_code"]
+        )
 
     return _guard(operation)
 

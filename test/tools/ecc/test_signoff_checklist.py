@@ -640,6 +640,7 @@ def test_home_checklist_uses_origin_golden_when_flow_has_no_synthesis(tmp_path):
         ]
     }
     workspace.flow.data["steps"][5]["tool"] = "yosys_lec"
+    workspace.flow.data["steps"][5]["input_step"] = "lvs"
 
     items = {item["id"]: item for item in _flow_items(workspace)}
     assert "flow.postroutelec.completed" in items
