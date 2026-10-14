@@ -220,6 +220,15 @@
           zlib
           expat
           cairo
+          fontconfig
+          freetype
+          libpng
+          pixman
+          libxcb
+          xorg.libX11
+          xorg.libXext
+          xorg.libXrender
+          glib
         ])}";
         CHIPCOMPILER_OSS_CAD_DIR = "${infra.packages.${system}.yosysWithSlang}";
         CHIPCOMPILER_KEPLER_FORMAL_ROOT = "${self'.packages.keplerFormal}";
