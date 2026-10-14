@@ -9,8 +9,11 @@
 **当前版本可用 run、param、report、sweep、explore、signoff 和 reproducible 完成
 运行与证据采集。ecc_experience 已提供 P0 的 collect/list/show/verify，以及 P1 的
 enable/status/disable、提交后 attempt outbox 和 drain 恢复，以及 campaign 台账、
-recommend、plan、evaluate、release 和受预算约束的 optimize。跨设计相似推荐、资源
-预测仍待开发；经验包 export/import 已提供显式选择、离线完整性检查和幂等导入。**执行前必须以安装版本的
+recommend、plan、evaluate、release 和受预算约束的 optimize。campaign quality/recover、
+独立 step 资源观测、阶段 features、冻结 release 匹配 match、有界阶段 dse 以及
+study evaluate/publish 留出评价闭环已实现。跨设计匹配仅 experimental；预测模型、
+复杂搜索、并发调度和共享服务不在当前交付范围。经验包 export/import 提供显式选择、
+离线完整性检查和幂等导入。**执行前必须以安装版本的
 帮助和输出契约确认能力，不能照猜测调用。
 
 本手册不是测试完成记录。示例路径、名称和预算仅演示操作，不能视为已验证配置。
@@ -270,7 +273,8 @@ stdout 仍可能是有效 JSON。20/21 表示忙/冲突，应处理实际原因�
 P0 显式采集、查询和校验已经实现。P1 的自动记录只保存提交后的小型事实到项目
 outbox；它不修改参数、不阻塞工程提交，也不把经验写进源码或 wheel。只读推荐、
 计划、比较、release、有预算的完整流程优化及串行 baseline campaign 已实现；
-跨设计迁移和并发/阶段调度仍待开发。逐项按安装版本帮助确认能力。
+阶段特征、严格匹配、有界阶段 DSE、留出评价和隔离反馈发布也已实现，详见本手册末尾。
+跨设计迁移未证明，默认检索仍保守；并发调度和资源预测未实现。逐项按安装版本帮助确认能力。
 
 ```bash
 EXPERIENCE_STORE=/absolute/path/to/experience-store
@@ -356,10 +360,11 @@ ledger 中的 pass。退出码：0 全部通过，2 输入错误/不支持模式
 124 超时，130 取消。某个设计失败后仍继续其他设计；取消或条件变化则停止调度。
 
 正常取消和超时会清理受管理的进程树。若强制杀死调度器，留下 running intent，
-执行器返回 20，拒绝自动接管：先结合 `campaign-run.json` 中的项目路径，使用
-`ecc process list --project <attempt-project> --json` 检查并按现有 process 命令
-取消残留进程。保留原输出做审计，确认进程退出后用新的 output_root/store 建立新
-campaign；本版不自动恢复运行中的 attempt。并发调度、阶段 DSE 和资源预测尚未实现。
+执行器返回20，拒绝盲目接管。新运行的持久化命令 worker 会等待实际子进程退出并
+生成完成收据；使用 `ecc experience campaign recover --manifest <manifest> --trial-id <trial>`
+核验收据、冻结输入和工具条件后收尾，再 run 继续批次。worker 仍活跃、收据缺失、
+旧版本或无法证明退出时保持20。不要删除锁或伪造终态；结合 campaign-run.json 的
+项目路径和 `ecc process list` 诊断残留。阶段 DSE 使用单独 dse 接口；并发和资源预测未实现。
 
 声明输入摘要不覆盖完整 include/PDK 内容闭包；工具版本也不等于所有可执行文件
 内容摘要。本命令建立基线、保留经验，不声明 PPA 已改善或经验已跨设计泛化。
@@ -539,7 +544,7 @@ optimize 的 `--project` 可在 project 或 workspace 目录内省略，基线�
 | 次数预算 | `max_trials` 为新 workspace 总上限，包含最佳候选的独立复跑，至少 2；串行执行，不修改基线 |
 | 时间预算 | 校验后开始计算总时间；每次 trial 的派生、参数应用、flow 与报告检查共享单次限时；到时停止子进程，不只停止等待；清理可额外使用短暂宽限时间 |
 | 提前停止 | 候选耗尽、次数上限、目标分数、连续无改进/失败次数、超时或用户取消；达到搜索停止条件后仍须独立复跑最佳候选 |
-| 验证范围 | 当前执行基线定义的完整 flow；阶段 DSE 继续使用 sweep/explore，不能冒充完整流程验证 |
+| 验证范围 | optimize 验证基线定义的完整 flow；阶段筛选可用 experience dse，必须另行完整及 fresh 验证 |
 
 底层复用 `workspace derive`、`param apply`、`run`、`status` 与 `signoff check`，使用
 系统中已安装的工具。基线已 blocked 不会阻止调优，基线状态原样进入结果；新候选
@@ -948,3 +953,24 @@ publish 重新检查 spec、K、案例、源证据和实验收据，只把明确
 与留出输入/家族隔离的案例加入 K+1；不会扫描整个 store，也不修改 K。反馈为空或评价
 未通过时拒绝发布。新 release 仍然是 verified observations，不是学习到的规则或模型。
 generalization_status 保持 unproven；单个 GCD 只能验证机制，不能证明多设计泛化。
+
+## 打包版本与 CI 验证范围
+
+现有 design matrix 在每个真实 flow 完成后调用 packaging/experience_cli_smoke.py。
+该检查包含采集幂等、列表/详情、经验包往返、损坏检测、campaign quality、阶段前缀
+features，以及 match/DSE/study 对无效 release/计划/spec/评价报告的退出码。它不会
+额外启动 DSE 搜索，也不会伪造 attempt 或独立家族来让未知证据通过。
+
+```bash
+python3 packaging/experience_cli_smoke.py --binary ./dist/ecc/ecc \
+  --project ./project --workspace baseline --output ./evidence/packaged-smoke
+```
+
+输出必须是新目录；测试产物放在源码、输入 workspace 和知识 store 外。需要验证
+真实 DSE 时，另用本手册的 dse plan/run 完成筛选、完整 flow 和独立 fresh；针对
+source/wheel/frozen 各自创建计划，因为它们的执行身份可能不同。并行查询同一个
+workspace 可能返回20，保持现有锁语义，不删除其他运行的锁。
+
+当前已实现经验采集、资源观测、恢复、解释性检索、阶段 DSE、留出评价和观察案例
+发布。仍无经过独立设计验证的收益预测/内存时长预测模型，亦未提供并发调度或
+团队共享服务；多 SDC 和 lint 功能继续暂缓。现有 DRC 判据也不代表 GDS DRC 能力。

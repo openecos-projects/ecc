@@ -1,4 +1,4 @@
-"""Check experience CLI collection, idempotence and corruption detection."""
+"""Check packaged experience evidence, feature queries and controlled entry points."""
 
 import argparse
 import json
@@ -55,6 +55,7 @@ def run_smoke(binary: Path, project: Path, workspace: str, output: Path) -> dict
     verified = _invoke(binary, ["verify", case_id, "--store", str(store)], output, "verify", {0, 7})
     if verified[0]["integrity"] != "pass":
         raise RuntimeError("Stored evidence integrity failed")
+    _extensions(binary, output, store, case_id, shown[0])
     package = output / "experience.tar.gz"
     exported = _invoke(
         binary,
@@ -105,9 +106,104 @@ def run_smoke(binary: Path, project: Path, workspace: str, output: Path) -> dict
     )
     if rejected[0]["status"] != "fail" or rejected[0]["integrity"] != "fail":
         raise RuntimeError("Corrupt evidence was not rejected")
+    _invoke(
+        binary,
+        ["features", case_id, "--store", str(corrupt_store)],
+        output,
+        "features-corrupt",
+        {6},
+    )
     _campaign_quality(binary, output, store, case_id, "quality", {7})
     _campaign_quality(binary, output, corrupt_store, case_id, "quality-corrupt", {6})
     return {"status": "pass", "case_id": case_id, "verification": verified[0]["status"]}
+
+
+def _extensions(binary: Path, output: Path, store: Path, case_id: str, shown: dict) -> None:
+    features = _invoke(
+        binary, ["features", case_id, "--store", str(store)], output, "features", {0}
+    )[0]
+    if features["case_id"] != case_id or features["visibility"] != "complete_observation":
+        raise RuntimeError("Feature query lost its case identity or visibility")
+    steps = shown["facts"]["flow"]["steps"]
+    if steps:
+        boundary = steps[0]["name"]
+        prefix = _invoke(
+            binary,
+            ["features", case_id, "--store", str(store), "--through-step", boundary],
+            output,
+            "features-prefix",
+            {0},
+        )[0]
+        if prefix["visibility"] != "flow_prefix" or [item["step"] for item in prefix["steps"]] != [
+            boundary
+        ]:
+            raise RuntimeError("Feature prefix exposed later flow steps")
+        invalid_release = output / "invalid-release.json"
+        invalid_release.write_text("{}", encoding="utf-8")
+        _invoke(
+            binary,
+            [
+                "match",
+                case_id,
+                "--store",
+                str(store),
+                "--release",
+                str(invalid_release),
+                "--through-step",
+                boundary,
+            ],
+            output,
+            "match-invalid-release",
+            {2},
+        )
+    invalid_plan = output / "invalid-dse-plan.json"
+    invalid_plan.write_text("{}", encoding="utf-8")
+    _invoke(
+        binary,
+        ["dse", "run", "--plan", str(invalid_plan), "--output", str(output / "rejected-dse")],
+        output,
+        "dse-invalid-plan",
+        {2},
+    )
+    invalid_spec = output / "invalid-study.json"
+    invalid_spec.write_text("{}", encoding="utf-8")
+    _invoke(
+        binary,
+        [
+            "study",
+            "evaluate",
+            "--spec",
+            str(invalid_spec),
+            "--store",
+            str(store),
+            "--output",
+            str(output / "rejected-study.json"),
+        ],
+        output,
+        "study-invalid-spec",
+        {2},
+    )
+    _invoke(
+        binary,
+        [
+            "study",
+            "publish",
+            "--evaluation",
+            str(invalid_spec),
+            "--store",
+            str(store),
+            "--output",
+            str(output / "rejected-release.json"),
+        ],
+        output,
+        "study-invalid-report",
+        {2},
+    )
+    if any(
+        (output / name).exists()
+        for name in ("rejected-dse", "rejected-study.json", "rejected-release.json")
+    ):
+        raise RuntimeError("Rejected experience input created execution or publication output")
 
 
 def _campaign_quality(

@@ -11,8 +11,11 @@ names, types, and size distributions do not define product behavior.
 reproducible for execution and evidence collection. ecc_experience now provides P0
 collect/list/show/verify and P1 enable/status/disable, post-commit attempt outbox
 recording, and drain recovery, plus campaign ledgers, recommend, plan, evaluate,
-release, and budgeted optimize. Cross-design similarity retrieval, resource
-prediction remain planned; experience export/import now supports explicit selection,
+release, and budgeted optimize. campaign quality/recover, neutral step resource
+observations, stage features, frozen-release match, bounded stage dse and isolated
+study evaluate/publish are implemented. Cross-design matching is experimental.
+Prediction models, complex search, parallel scheduling and shared services are
+outside this delivery. Experience export/import supports explicit selection,
 offline integrity checks, and idempotent merging.**
 Check the installed runtime's help and output contracts before using any capability.
 
@@ -300,8 +303,11 @@ P0 explicit collection, queries, and verification are implemented. P1 automatic
 recording writes only small committed facts to a project outbox; it does not change
 parameters, block engineering commits, or write experience data into source or the
 wheel. Read-only recommendation, reviewable plans, comparison, releases, and bounded
-full-flow optimization and serial baseline campaigns are also implemented. Cross-design
-transfer and parallel/stage scheduling remain future work. Check installed help.
+full-flow optimization and serial baseline campaigns are also implemented. Stage
+features, strict matching, bounded stage DSE, held-out evaluation and isolated
+feedback publication are available in the final sections of this manual.
+Cross-design transfer is unproven; parallel scheduling and resource prediction
+remain unavailable. Check installed help.
 
 ```bash
 EXPERIENCE_STORE=/absolute/path/to/experience-store
@@ -403,12 +409,14 @@ frozen conditions, 124 timeout, 130 cancellation. A failed design does not stop 
 designs; cancellation or changed conditions stop scheduling.
 
 Normal cancellation and timeout clean up managed process trees. A forcibly killed
-runner may leave a running intent; execution then returns 20 and refuses takeover.
-Inspect the attempt project recorded in `campaign-run.json` with
-`ecc process list --project <attempt-project> --json` and cancel remaining processes
-using existing process commands. Preserve the old output for audit. After confirming
-process exit, start a new campaign with new output_root/store paths. In-flight attempt
-recovery, parallel scheduling, stage DSE, and resource prediction are not implemented.
+coordinator may leave a running intent; execution returns 20 instead of taking it
+over blindly. New durable workers wait for actual descendants to exit and write
+completion receipts. Use `ecc experience campaign recover --manifest <manifest>
+--trial-id <trial>` to verify receipts and frozen conditions, finalize the attempt,
+then resume the campaign. Active workers, missing/old receipts or unproven quiescence
+retain 20. Do not delete locks or manufacture terminal records. Diagnose attempt
+projects through campaign-run.json and ecc process list. Stage DSE has its own dse
+interface; parallel scheduling and resource prediction remain unavailable.
 
 Declared input digests do not verify the complete include/PDK closure; observed versions
 do not hash every executable. Baseline collection does not demonstrate PPA improvement
@@ -609,7 +617,7 @@ store must not overlap the baseline workspace.
 | Trial budget | `max_trials` caps all new workspaces, including an independent winner rerun, and must be at least 2; execution is serial and preserves the baseline |
 | Time budget | Starts after validation; workspace derivation, parameter application, flow, and report checks share each trial deadline; expiration stops subprocesses; cleanup may take a short additional grace period |
 | Early stop | Candidate exhaustion, trial limit, target score, consecutive failures/non-improvements, timeout, or cancellation; a search stop still requires an independent winner rerun |
-| Scope | The complete flow defined by the baseline; use sweep/explore for stage DSE and keep its claims separate from full-flow validation |
+| Scope | optimize validates the complete baseline-defined flow; experience dse screens stages and separately requires full and fresh validation |
 
 Execution reuses `workspace derive`, `param apply`, `run`, `status`, and `signoff check`
 with installed tools. A blocked baseline can still be optimized; its status is preserved.
@@ -1083,3 +1091,28 @@ held-out inputs and families. It never scans the store for extra cases or change
 K. Empty feedback or an unsuccessful evaluation prevents publication. K+1 still
 contains verified observations, not learned rules or models. generalization_status
 remains unproven: GCD validates mechanisms, not multi-design generalization.
+
+## Packaged runtime and CI validation scope
+
+The existing design matrix invokes packaging/experience_cli_smoke.py after each
+real flow. It checks collection idempotence, list/show, experience package round
+trips, corruption detection, campaign quality, prefix features, and invalid-input
+exit codes for match/DSE/study. It does not launch another DSE search or invent
+attempt identities or independent families to make unknown evidence pass.
+
+```bash
+python3 packaging/experience_cli_smoke.py --binary ./dist/ecc/ecc \
+  --project ./project --workspace baseline --output ./evidence/packaged-smoke
+```
+
+Use a new output directory outside source, input workspaces and the knowledge
+store. Validate real DSE separately with dse plan/run, including screening, full
+flow and independent fresh validation. Create separate plans for source/wheel/
+frozen runtimes because their execution identities can differ. Concurrent queries
+against one workspace may return 20; preserve locks owned by other operations.
+
+Collection, resource observations, recovery, explainable matching, stage DSE,
+held-out evaluation and observed-case publication are implemented. No benefit or
+memory/runtime prediction model has independent-design validation. Parallel
+scheduling and team sharing services remain unavailable; multi-SDC and the lint
+feature are deferred. Existing DRC checks do not imply GDS DRC capability.

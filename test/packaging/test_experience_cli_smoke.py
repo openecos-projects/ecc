@@ -18,7 +18,11 @@ def test_smoke_checks_the_real_cli_contract_and_preserves_source(tmp_path, monke
     home.mkdir(parents=True)
     (project / "ecc.toml").write_text("")
     flow = home / "flow.json"
-    flow.write_text(json.dumps({"steps": [{"name": "STA", "state": "Success"}]}))
+    flow.write_text(
+        json.dumps(
+            {"steps": [{"name": "STA", "state": "Success"}, {"name": "Finish", "state": "Success"}]}
+        )
+    )
     original = flow.read_bytes()
     runner = CliRunner()
 
@@ -34,3 +38,13 @@ def test_smoke_checks_the_real_cli_contract_and_preserves_source(tmp_path, monke
     assert (tmp_path / "output/verify-corrupt.exit").read_text() == "6"
     assert (tmp_path / "output/quality.exit").read_text() == "7"
     assert (tmp_path / "output/quality-corrupt.exit").read_text() == "6"
+    prefix = json.loads((tmp_path / "output/features-prefix.stdout.json").read_text())[0]
+    assert [item["step"] for item in prefix["steps"]] == ["STA"]
+    assert (tmp_path / "output/features-corrupt.exit").read_text() == "6"
+    for label in (
+        "match-invalid-release",
+        "dse-invalid-plan",
+        "study-invalid-spec",
+        "study-invalid-report",
+    ):
+        assert (tmp_path / f"output/{label}.exit").read_text() == "2"
