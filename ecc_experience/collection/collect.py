@@ -20,12 +20,33 @@ class CollectionResult:
 
 
 def collect_committed_case(
-    directory: str | Path, store: ExperienceStore, reader: ObservationReader
+    directory: str | Path,
+    store: ExperienceStore,
+    reader: ObservationReader,
+    *,
+    attempt_id: str | None = None,
+    expected_snapshot_digest: str | None = None,
 ) -> CollectionResult:
     workspace = Path(directory).expanduser().resolve()
     if store.root.is_relative_to(workspace) or workspace.is_relative_to(store.root):
         raise ExperienceError("Store and source workspace must not overlap")
     observation = reader(workspace)
+    if expected_snapshot_digest is not None:
+        actual_digest = observation.source.snapshot_digest
+        if actual_digest != expected_snapshot_digest:
+            raise ExperienceError(
+                "Workspace revision changed before experience drain",
+                code="experience_source_changed",
+            )
+    if attempt_id is not None:
+        observation = WorkspaceObservation(
+            source=observation.source.model_copy(update={"attempt_id": attempt_id}),
+            facts=observation.facts,
+            inputs=observation.inputs,
+            evidence=observation.evidence,
+            copies=observation.copies,
+            limitations=observation.limitations,
+        )
     inputs = [item.model_dump() for item in observation.inputs]
     spec = observation.facts.get("workspaceSpec", {})
     fingerprint = None

@@ -469,6 +469,7 @@ def execute_fresh_run(
                     spef=inputs.spef,
                     golden_verilog=inputs.golden_netlist,
                 )
+                workspace.__dict__["_ecc_project_dir"] = project_dir
             except Exception as exc:
                 return failed_workspace(str(exc))
             finally:

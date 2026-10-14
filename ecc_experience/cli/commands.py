@@ -7,7 +7,7 @@ from chipcompiler.cli.core.inputs import output_options, project_options
 from chipcompiler.cli.core.invocation import execute_command
 from chipcompiler.cli.core.options import JsonOption, PlainOption, ProjectOption, WorkspaceOption
 from ecc_experience.cli import handlers
-from ecc_experience.cli.inputs import CollectInput, StoreInput
+from ecc_experience.cli.inputs import CollectInput, RecordingInput, StoreInput
 
 StoreOption = Annotated[str, typer.Option("--store", help="External experience store directory")]
 CaseArgument = Annotated[str, typer.Argument(help="Experience case ID")]
@@ -76,3 +76,63 @@ def verify_cmd(
         case_id=case_id,
     )
     execute_command("experience", command_input, handlers.verify)
+
+
+@experience_app.command("enable", help="Enable non-invasive execution fact recording")
+def enable_cmd(
+    *,
+    store: StoreOption,
+    project: ProjectOption = None,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = RecordingInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(project),
+        store=store,
+    )
+    execute_command("experience", command_input, handlers.enable)
+
+
+@experience_app.command("status", help="Show project experience recording status")
+def status_cmd(
+    *,
+    project: ProjectOption = None,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = RecordingInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(project),
+    )
+    execute_command("experience", command_input, handlers.status)
+
+
+@experience_app.command("disable", help="Disable execution fact recording")
+def disable_cmd(
+    *,
+    project: ProjectOption = None,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = RecordingInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(project),
+    )
+    execute_command("experience", command_input, handlers.disable)
+
+
+@experience_app.command("drain", help="Recover completed recorded attempts into the store")
+def drain_cmd(
+    *,
+    project: ProjectOption = None,
+    limit: Annotated[int, typer.Option("--limit", min=1, max=1000)] = 32,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = RecordingInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(project),
+        limit=limit,
+    )
+    execute_command("experience", command_input, handlers.drain)

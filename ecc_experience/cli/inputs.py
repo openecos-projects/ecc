@@ -17,3 +17,11 @@ class StoreInput:
     store: str
     case_id: str | None = None
     project: ProjectOptions = ProjectOptions()
+
+
+@dataclass(frozen=True)
+class RecordingInput:
+    output: OutputOptions
+    project: ProjectOptions
+    store: str | None = None
+    limit: int = 32

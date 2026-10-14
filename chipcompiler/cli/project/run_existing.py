@@ -310,6 +310,7 @@ def _execute_existing_run(
 
         try:
             workspace = load_workspace(run_dir)
+            workspace.__dict__["_ecc_project_dir"] = project_dir
         except UnsupportedSchemaVersionError as exc:
             return CommandResult.err(
                 [

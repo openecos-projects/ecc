@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -119,6 +120,56 @@ def test_experience_json_plain_conflict_returns_usage_error(tmp_path):
         ],
     )
     assert result.exit_code == 2
+
+
+def test_experience_recording_enable_status_disable(create_cli_project, tmp_path):
+    project = create_cli_project()
+    store = tmp_path / "experience-store"
+
+    enabled = runner.invoke(
+        app,
+        [
+            "experience",
+            "enable",
+            "--project",
+            project,
+            "--store",
+            str(store),
+            "--json",
+        ],
+    )
+    assert enabled.exit_code == 0, enabled.output
+    assert json.loads(enabled.stdout)[0]["enabled"] is True
+
+    current = runner.invoke(app, ["experience", "status", "--project", project, "--json"])
+    assert current.exit_code == 0, current.output
+    payload = json.loads(current.stdout)[0]
+    assert payload["configured"] is True
+    assert payload["store"] == str(store.resolve())
+    assert payload["outbox"]["pending"] == 0
+
+    disabled = runner.invoke(app, ["experience", "disable", "--project", project, "--json"])
+    assert disabled.exit_code == 0, disabled.output
+    assert json.loads(disabled.stdout)[0]["enabled"] is False
+
+
+def test_experience_recording_rejects_store_inside_project(create_cli_project, tmp_path):
+    project = create_cli_project()
+    nested_store = Path(project) / "nested-store"
+    result = runner.invoke(
+        app,
+        [
+            "experience",
+            "enable",
+            "--project",
+            project,
+            "--store",
+            str(nested_store),
+            "--json",
+        ],
+    )
+    assert result.exit_code == 2
+    assert json.loads(result.stdout)[0]["error"] == "experience_project_invalid"
 
 
 @pytest.mark.parametrize("command", ["show", "verify"])

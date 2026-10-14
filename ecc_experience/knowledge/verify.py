@@ -73,13 +73,22 @@ def verify_case(case: ExperienceCase, directory: Path) -> Verification:
     qor = case.facts.get("qorSnapshotExtension")
     if not isinstance(qor, dict) or qor.get("score") is None:
         findings.append(Finding(status="unknown", check="qor", reason="QoR score unavailable"))
-    findings.append(
-        Finding(
-            status="unknown",
-            check="execution_identity",
-            reason="Source has no stable attempt identity",
+    if case.source.attempt_id:
+        findings.append(
+            Finding(
+                status="pass",
+                check="execution_identity",
+                reference=case.source.attempt_id,
+            )
         )
-    )
+    else:
+        findings.append(
+            Finding(
+                status="unknown",
+                check="execution_identity",
+                reason="Source has no stable attempt identity",
+            )
+        )
     statuses = {item.status for item in findings}
     status = "fail" if "fail" in statuses else "unknown" if "unknown" in statuses else "pass"
     return Verification(case_id=case.case_id, status=status, integrity=integrity, findings=findings)

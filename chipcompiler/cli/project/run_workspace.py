@@ -150,6 +150,7 @@ def _execute_workspace_run(
             return error("invalid_workspace", workspace=workspace_path, reason=str(exc))
         if workspace is None:
             return error("invalid_workspace", workspace=workspace_path)
+        workspace.__dict__["_ecc_project_dir"] = project_dir
 
         # Extend/resume against the workspace's own persisted flow target
         # before building the engine flow, so appended steps are visible.

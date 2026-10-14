@@ -7,8 +7,9 @@
 只作为外部输入，不定义产品的目录、设计名称、类型或规模标准。
 
 **当前版本可用 run、param、report、sweep、explore、signoff 和 reproducible 完成
-运行与证据采集。ecc_experience 已提供 P0 的 experience collect/list/show/verify；
-自动记录、推荐、受控优化和知识版本管理仍待开发。**执行前必须以安装版本的
+运行与证据采集。ecc_experience 已提供 P0 的 collect/list/show/verify，以及 P1 的
+enable/status/disable、提交后 attempt outbox 和 drain 恢复。推荐、受控优化和知识
+版本管理仍待开发。**执行前必须以安装版本的
 帮助和输出契约确认能力，不能照猜测调用。
 
 本手册不是测试完成记录。示例路径、名称和预算仅演示操作，不能视为已验证配置。
@@ -265,8 +266,9 @@ stdout 仍可能是有效 JSON。20/21 表示忙/冲突，应处理实际原因�
 
 ## 10. 原生经验模块可用后的测试
 
-P0 显式采集、查询和校验已经实现。其余阶段是后续验收流程，不能直接调用规划
-接口。逐项按安装版本帮助确认能力，不将 collect 视作自动记录已经启用。
+P0 显式采集、查询和校验已经实现。P1 的自动记录只保存提交后的小型事实到项目
+outbox；它不修改参数、不阻塞工程提交，也不把经验写进源码或 wheel。其余阶段是
+后续验收流程，逐项按安装版本帮助确认能力。
 
 ```bash
 EXPERIENCE_STORE=/absolute/path/to/experience-store
@@ -275,6 +277,25 @@ ecc experience collect --project "$PROJECT" --workspace baseline-001 \
   --store "$EXPERIENCE_STORE" --json
 ecc experience list --store "$EXPERIENCE_STORE" --json
 ```
+
+对需要持续积累的项目，先显式指定项目外的 store：
+
+```bash
+ecc experience enable --project "$PROJECT" --store "$EXPERIENCE_STORE" --json
+ecc experience status --project "$PROJECT" --json
+ecc run --project "$PROJECT" --workspace baseline-001 --json
+ecc experience drain --project "$PROJECT" --json
+ecc experience disable --project "$PROJECT" --json
+```
+
+`enable` 只保存项目级记录配置；普通 `run`、单 step、rerun 和失败流程仍使用
+原有执行规则。每次实际执行得到独立 attempt ID；每个已完成 step 在 Engineering
+Snapshot 提交成功后产生一个事件，包含 workspace revision、step 终态以及已有
+runtime/peak-memory 的来源 scope。记录器异常只报告到运行日志，不改变 EDA 退出码。
+`drain` 只处理同时存在开始、step 提交和终态事件的 attempt，并核对最终 snapshot
+摘要；源 workspace 在此期间变化时保留 outbox，返回失败原因，避免把新报告装进旧
+attempt。成功后事件移动到项目 outbox 外的 processed 目录，并以 attempt_id 写入
+案例 source。`status` 的 pending 数量可用于恢复检查；不要手动删除 pending 事件。
 
 从 collect/list 的 JSON 取得实际 case_id 后执行：
 
@@ -297,8 +318,9 @@ store 中每个 cases/case_id/case.json 保存版本、源 revision、原始快�
 
 verify 的 integrity 表示已复制证据的完整性；status 同时考虑源文件是否变化、
 遗失或损坏，以及缺失 QoR、旧版来源等限制。退出 6 表示明确失败，7 表示未知，
-JSON 始终保留。P0 尚无稳定 attempt 身份，因此即使 integrity=pass，也会报告
-execution_identity=unknown，不能作为已验证参数规律。EDA 违例和证据损坏分开。
+JSON 始终保留。P0 的显式 collect 没有 attempt 身份；P1 通过 drain 生成的案例有
+稳定 attempt_id，但仍只代表已提交观察，不能单独证明参数有效。EDA 违例和证据
+损坏分开。
 
 正常写入采用单 collector 与临时目录原子发布，不覆盖既有案例。store 内的
 .write-lock 表示写入占用；崩溃遗留时先确认原 collector 已停止，再移除这个空
@@ -307,7 +329,7 @@ execution_identity=unknown，不能作为已验证参数规律。EDA 违例和�
 | 阶段 | 测试 | 必须证明 |
 | --- | --- | --- |
 | 显式采集 | collect、show、verify | 案例可追溯、源 workspace 不变、重复收集幂等 |
-| 持续记录 | 启用 record 后正常 run/step/rerun/sweep | 成功和失败都采集，参数不被暗改，无漏采/重复 |
+| 持续记录 | enable 后执行 run/step/rerun，再 drain | attempt、提交 revision、资源 scope 可追溯；源变化不混入旧案例 |
 | 推荐 | 无类型、新设计、无案例、版本不兼容 | 可解释匹配或 insufficient_evidence，无虚构配置 |
 | 受控优化 | 明确 plan 的目标、参数和预算后执行 | 不扩大范围，真实反馈、停止原因和 fresh 复验 |
 | 知识评价 | 固定 K、留出设计、默认策略对照 | 同预算收益和反例可追溯，无评价泄漏 |

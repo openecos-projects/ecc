@@ -1108,20 +1108,24 @@ For Python-level debugging, invoke the same CLI module directly:
 ### Experience collection ownership
 
 `ecc_experience/` is a sibling of `chipcompiler/` and `agent/`, shipped in the same
-ECC distribution. Its P0 API is `collect(workspace, store)`, `list_cases(store)`,
-`show(case_id, store)` and `verify(case_id, store)`. CLI composition is registered
+ECC distribution. Its API is `collect(workspace, store)`, `list_cases(store)`,
+`show(case_id, store)`, `verify(case_id, store)`, and project recording operations
+`enable/status/disable/drain`. CLI composition is registered
 only in `chipcompiler/cli/app.py`; core engine/data/tools do not import experience.
 Domain collection accepts an observation-reader Protocol. The chipcompiler adapter
 uses read-only snapshot APIs and the existing nonblocking workspace lock.
 
 Cases are immutable, content-addressed observations. Store writes have one collector,
-staged digest verification and atomic directory publication. Source revision is not
-an execution attempt ID; parameter evidence is configured/unknown and input closure
-and process fingerprints remain unverified. Verification separates archive integrity
-from unknown provenance or unavailable metrics. Stable attempt identity, post-commit
-automatic recording and recommendations belong to later delivery stages.
+staged digest verification and atomic directory publication. Explicit collection keeps
+attempt identity unknown; P1 recording allocates attempt IDs and writes non-fatal
+post-commit events to a project outbox. `drain` verifies the final snapshot before
+materializing a case. Parameter evidence is configured/unknown and input closure and
+process fingerprints remain unverified. Verification separates archive integrity from
+unknown provenance or unavailable metrics. Recommendations remain a later delivery
+stage.
 
-Run `uv run pytest test/experience test/cli/commands/test_experience.py` for the narrow
+Run `uv run pytest test/experience test/cli/commands/test_experience.py test/engine/test_execution.py`
+for the narrow
 contract suite. `packaging/experience_cli_smoke.py` exercises public CLI collection,
 idempotence, queries and corruption rejection against a supplied project/workspace.
 The packaged design matrix runs this after the existing flow artifact checks. Keep

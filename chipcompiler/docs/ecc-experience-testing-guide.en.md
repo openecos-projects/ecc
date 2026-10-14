@@ -9,8 +9,9 @@ names, types, and size distributions do not define product behavior.
 
 **The current CLI provides run, param, report, sweep, explore, signoff, and
 reproducible for execution and evidence collection. ecc_experience now provides P0
-experience collect/list/show/verify. Automatic recording, recommendation, bounded
-optimization, and knowledge release management remain planned.**
+collect/list/show/verify and P1 enable/status/disable, post-commit attempt outbox
+recording, and drain recovery. Recommendation, bounded optimization, and knowledge
+release management remain planned.**
 Check the installed runtime's help and output contracts before using any capability.
 
 This manual is not a completed test record. Example paths, names, and budgets explain
@@ -293,9 +294,11 @@ states rather than assuming all commands use the same timeout encoding.
 
 ## 10. Native experience acceptance when available
 
-P0 explicit collection, queries, and verification are implemented. Other stages are
-future acceptance procedures. Discover each capability through installed help;
-collect does not enable automatic recording.
+P0 explicit collection, queries, and verification are implemented. P1 automatic
+recording writes only small committed facts to a project outbox; it does not change
+parameters, block engineering commits, or write experience data into source or the
+wheel. Other stages are future acceptance procedures. Discover each capability through
+installed help.
 
 ```bash
 EXPERIENCE_STORE=/absolute/path/to/experience-store
@@ -304,6 +307,28 @@ ecc experience collect --project "$PROJECT" --workspace baseline-001 \
   --store "$EXPERIENCE_STORE" --json
 ecc experience list --store "$EXPERIENCE_STORE" --json
 ```
+
+For continuous accumulation, explicitly configure a store outside the project:
+
+```bash
+ecc experience enable --project "$PROJECT" --store "$EXPERIENCE_STORE" --json
+ecc experience status --project "$PROJECT" --json
+ecc run --project "$PROJECT" --workspace baseline-001 --json
+ecc experience drain --project "$PROJECT" --json
+ecc experience disable --project "$PROJECT" --json
+```
+
+`enable` stores project-level recording configuration; ordinary `run`, single-step
+runs, reruns, and failures keep the existing execution rules. Each real execution gets
+an independent attempt ID. After each Engineering Snapshot commit, the recorder writes
+one event with workspace revision, step terminal state, and the existing runtime/peak
+memory facts with their source scope. Recorder errors are logged and do not change the
+EDA exit code. `drain` processes only attempts with start, committed-step, and terminal
+events, and checks the final snapshot digest. If the source workspace changed, events
+remain pending and the reason is reported, preventing new reports from being attached
+to an old attempt. Successful events move into the project processed directory and the
+case source receives the attempt ID. Use `status` to monitor pending events; do not
+delete pending events manually.
 
 Read the actual case_id from collect/list JSON, then run:
 
@@ -329,9 +354,10 @@ is opaque evidence even with a .json suffix. Use reproducible export for full ar
 
 verify integrity describes copied evidence integrity. status additionally considers
 changed, absent, or corrupt source files, missing QoR, and legacy provenance. Exit 6
-means explicit failure; 7 means unknown; JSON remains available. P0 has no stable
-attempt identity, so even integrity=pass includes execution_identity=unknown and
-cannot prove a parameter rule. EDA violations and evidence damage remain distinct.
+means explicit failure; 7 means unknown; JSON remains available. Explicit P0 collect has
+no attempt identity. Cases materialized by P1 drain have a stable attempt_id, but still
+represent committed observations and do not prove parameter effectiveness by themselves.
+EDA violations and evidence damage remain distinct.
 
 Writes use a single collector and atomic publication from a temporary directory,
 preserving existing cases. The store's .write-lock directory signals an active writer.
@@ -342,7 +368,7 @@ a pass.
 | Stage | Test | Required evidence |
 | --- | --- | --- |
 | Explicit collection | Collect, show, verify | Traceable case, unchanged source workspace, idempotence |
-| Continuous recording | Record mode followed by normal run/step/rerun/sweep | Success and failure collection, unchanged parameters, no missing/duplicate records |
+| Continuous recording | Enable, run/step/rerun, then drain | Traceable attempt/revision/resource scope; source changes never mix into an old case |
 | Recommendation | Unknown type, new design, empty store, incompatible version | Explained matches or insufficient_evidence, no invented configuration |
 | Controlled optimization | Execute a plan with declared goals, parameters, and budget | Bounds enforced, feedback, stop reasons, fresh validation |
 | Knowledge evaluation | Frozen K, held-out designs, default-policy comparison | Traceable same-budget gains/counterexamples, no evaluation leakage |

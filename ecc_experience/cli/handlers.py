@@ -9,7 +9,7 @@ from chipcompiler.cli.core.exit_codes import (
 )
 from chipcompiler.cli.core.records import error_record, manifest_error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
-from ecc_experience.cli.inputs import CollectInput, StoreInput
+from ecc_experience.cli.inputs import CollectInput, RecordingInput, StoreInput
 from ecc_experience.models import ExperienceError
 
 
@@ -23,6 +23,9 @@ def _guard(operation: Callable[[], CommandResult]) -> CommandResult:
             "experience_source_changed": EXIT_REVISION_CONFLICT,
             "experience_case_conflict": EXIT_REVISION_CONFLICT,
             "experience_case_id_invalid": EXIT_USAGE_ERROR,
+            "experience_store_required": EXIT_USAGE_ERROR,
+            "experience_project_invalid": EXIT_USAGE_ERROR,
+            "experience_not_configured": EXIT_USAGE_ERROR,
         }
         return CommandResult.err([error_record(exc.code, reason=str(exc))], codes.get(exc.code, 1))
     except OSError as exc:
@@ -130,5 +133,71 @@ def verify(command_input: StoreInput, _ctx: CommandContext) -> CommandResult:
             else 0
         )
         return CommandResult(records=tuple(records), exit_code=exit_code)
+
+    return _guard(operation)
+
+
+def enable(command_input: RecordingInput, ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import enable as enable_recording
+
+        if not command_input.store:
+            raise ExperienceError("--store is required", code="experience_store_required")
+        config = enable_recording(ctx.project_dir, command_input.store)
+        return CommandResult.ok(
+            [
+                {
+                    "experience": "enable",
+                    "enabled": config.enabled,
+                    "mode": config.mode,
+                    "store": config.store,
+                }
+            ]
+        )
+
+    return _guard(operation)
+
+
+def status(command_input: RecordingInput, ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import status as recording_status
+
+        return CommandResult.ok([{"experience": "status", **recording_status(ctx.project_dir)}])
+
+    return _guard(operation)
+
+
+def disable(command_input: RecordingInput, ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import disable as disable_recording
+
+        config = disable_recording(ctx.project_dir)
+        return CommandResult.ok(
+            [
+                {
+                    "experience": "disable",
+                    "enabled": config.enabled,
+                    "mode": config.mode,
+                    "store": config.store,
+                }
+            ]
+        )
+
+    return _guard(operation)
+
+
+def drain(command_input: RecordingInput, ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import drain as drain_recording
+
+        return CommandResult.ok(
+            [
+                {
+                    "experience": "drain",
+                    "project": ctx.project_dir,
+                    "attempts": drain_recording(ctx.project_dir, limit=command_input.limit),
+                }
+            ]
+        )
 
     return _guard(operation)
