@@ -1,5 +1,6 @@
 import json
 import re
+import sys
 from importlib import metadata
 
 import pytest
@@ -100,12 +101,34 @@ def test_version_command_returns_json_payload(monkeypatch, capsys):
         "dreamplace",
         "ecc_tools",
         "cli_contract",
+        "build_commit",
+        "build_date",
         "tools",
     }
     assert data["schema_version"] == 2
     assert data["cli_contract"] == 1
     assert data["runtime"] == "ECC CLI"
     assert data["tools"] == {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"}
+
+
+def test_version_payload_reports_stamped_build_identity(monkeypatch, capsys):
+    monkeypatch.setattr(
+        "chipcompiler.cli.app.tool_versions",
+        lambda: {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"},
+    )
+    import types
+
+    stamp = types.ModuleType("chipcompiler._build_info")
+    stamp.BUILD_COMMIT = "27084f4779d7e8ddb69ea9c25f9c116aaaab29c7"
+    stamp.BUILD_DATE = "20261012"
+    monkeypatch.setitem(sys.modules, "chipcompiler._build_info", stamp)
+
+    rc = cli_main.run(["version", "--json"])
+
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert data["build_commit"] == "27084f4779d7e8ddb69ea9c25f9c116aaaab29c7"
+    assert data["build_date"] == "20261012"
 
 
 def test_version_metadata_missing_uses_unknown(monkeypatch, capsys):
@@ -130,6 +153,8 @@ def test_version_metadata_missing_uses_unknown(monkeypatch, capsys):
         "dreamplace": "unknown",
         "ecc_tools": "unknown",
         "cli_contract": 1,
+        "build_commit": None,
+        "build_date": None,
         "tools": {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"},
     }
 

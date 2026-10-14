@@ -42,6 +42,14 @@ runs:
         /tmp/micromamba/bin/micromamba create -y -p /opt/bf -c conda-forge binutils=2.44
         echo "/opt/bf/bin" >> "$GITHUB_PATH"
 
+    - name: Stamp build identity
+      shell: bash
+      env:
+        BUILD_COMMIT: ${{ github.sha }}
+      run: |
+        printf 'BUILD_COMMIT = "%s"\nBUILD_DATE = "%s"\n' \
+          "$BUILD_COMMIT" "$(date -u +%Y%m%d)" > chipcompiler/_build_info.py
+
     - name: Build PyInstaller bundle
       shell: bash
       run: |
@@ -89,6 +97,15 @@ runs:
         version_json="$("$SMOKE_DIR/ecc" version --json)"
         printf '%s\n' "$version_json"
         grep -q '"cli_contract": 1' <<<"$version_json"
+        if "$SMOKE_DIR/ecc" version --json | grep -q '"build_commit": "null"'; then
+          echo "::error::PyInstaller bundle is missing the build identity stamp"
+          exit 1
+        fi
+        test -x "$SMOKE_DIR/ecc-agent-rpc"
+        test "$SMOKE_DIR/ecc" -ef "$SMOKE_DIR/ecc-agent-rpc"
+        payload='{"jsonrpc":"2.0","method":"rpc.hello","id":1,"params":{"version":1}}'
+        response="$(printf 'Content-Length: %s\r\n\r\n%s' "${#payload}" "$payload" | "$SMOKE_DIR/ecc-agent-rpc")"
+        grep -q 'candidate.rerun' <<<"$response"
         "$SMOKE_DIR/ecc" doc config --plain > /dev/null
         "$SMOKE_DIR/ecc" doc ug --lang cn --plain > /dev/null
         "$SMOKE_DIR/ecc" experience --help
