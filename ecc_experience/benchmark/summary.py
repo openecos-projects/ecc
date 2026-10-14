@@ -38,7 +38,9 @@ def summarize(manifest: str | Path, ledger: str | Path | None = None) -> dict:
                 record["evidence_status"] = verification.status
                 record["integrity"] = verification.integrity
                 record["qor"] = _qor_summary(case.facts)
-                evidence_counts[verification.status] += 1
+                evidence_counts[
+                    "available" if verification.status == "pass" else verification.status
+                ] += 1
             except (OSError, ValueError):
                 record["evidence_status"] = "missing"
                 evidence_counts["missing"] += 1

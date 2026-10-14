@@ -25,7 +25,7 @@ StoreOption = Annotated[str, typer.Option("--store", help="External experience s
 CaseArgument = Annotated[str, typer.Argument(help="Experience case ID")]
 
 experience_app = create_app(help="Collect, query and verify design experience evidence")
-campaign_app = create_app(help="Validate generic experience campaign manifests")
+campaign_app = create_app(help="Run and inspect generic experience campaigns")
 release_app = create_app(help="Freeze and verify evidence-backed experience releases")
 experience_app.add_typer(campaign_app, name="campaign")
 experience_app.add_typer(release_app, name="release")
@@ -364,6 +364,31 @@ def campaign_validate_cmd(
         manifest=str(manifest_path),
     )
     execute_command("experience", command_input, handlers.validate_campaign)
+
+
+@campaign_app.command(
+    "run", help="Run isolated serial baselines or resume completed campaign progress"
+)
+def campaign_run_cmd(
+    *,
+    manifest: Annotated[str, typer.Option("--manifest", help="Campaign manifest JSON")],
+    retry_failed: Annotated[
+        bool,
+        typer.Option(
+            "--retry-failed", help="Create a new bounded attempt for unsuccessful designs"
+        ),
+    ] = False,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    manifest_path = Path(manifest).expanduser().absolute()
+    command_input = CampaignInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(str(manifest_path.parent)),
+        manifest=str(manifest_path),
+        retry_failed=retry_failed,
+    )
+    execute_command("experience", command_input, handlers.run_campaign)
 
 
 @campaign_app.command("init", help="Initialize a resumable campaign ledger")

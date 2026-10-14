@@ -106,8 +106,8 @@ uv run ecc --help
 | 21 | `revision_conflict`：`--expected-revision` 与 manifest revision 不一致 | 带 `--expected-revision` 的命令 |
 | 22 | `process_not_found`：登记的运行进程已失效且无存活进程持有 workspace 锁 | `ecc process` 组 |
 | 23 | 契约不兼容（保留值：CLI 自身不发射，由 GUI 侧契约门禁在 runtime/CLI 契约不受支持时使用） | — |
-| 124 | 超时：记录在 sweep 候选的 `exit_code` 中；有界经验优化超时时也作为命令退出码 | `sweep run` 结果、`experience optimize` |
-| 130 | 有界经验优化被取消 | `experience optimize` |
+| 124 | 超时：记录在 sweep 候选的 `exit_code` 中；有界经验优化或 campaign 超时时也作为命令退出码 | `sweep run` 结果、`experience optimize`、`experience campaign run` |
+| 130 | 有界经验优化或 campaign 被取消 | `experience optimize`、`experience campaign run` |
 - 步骤名（step token）有三套写法，按场景区分：
   - **展示名**（`ecc status` / `ecc log` / `ecc report step` 的输出与入参，统一小写/下划线）：`synthesis / lec / pre_floorplan / macro_placement / post_floorplan / placement / cts / legalization / timing_optimization / routing / filler / lvs / drc / postroutelec / rcx / sta / poweranalysis / harden`；
   - **持久化名**（`home/flow.json` 中的原始名；已有 workspace 上的 `--from`/`--only`/`--to` 必须用它，如 `place`、`CTS`、`Timing optimization`）：`Synthesis / lec / preFloorplan / macroPlacement / postFloorplan / place / CTS / legalization / Timing optimization / route / filler / lvs / drc / postRouteLec / RCX / sta / powerAnalysis / Harden`；
@@ -263,7 +263,7 @@ eval "$(ecc --show-completion)"     # 自动探测当前 shell
 | `ecc sweep create / show / list / run / compare / verify` | 确定性参数扫描 | §11.5 |
 | `ecc explore rank / export / promote` | 候选排序、导出与提升 | §11.5 |
 | `ecc diagnose run` | 工作区诊断与恢复建议 | §11.5 |
-| `ecc experience` | 案例采集、记录、受限推荐/优化、release 与经验包 export/import | [经验测试手册](ecc-experience-testing-guide.cn.md#103-备份和交换经验案例) |
+| `ecc experience` | 案例采集、串行 campaign、受限推荐/优化、release 与经验包交换 | [经验测试手册](ecc-experience-testing-guide.cn.md#101-串行-baseline-批次) |
 
 ## 2. version — 查看版本
 

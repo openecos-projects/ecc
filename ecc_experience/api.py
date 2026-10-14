@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
+from ecc_experience.benchmark.execute import run_campaign as execute_campaign
 from ecc_experience.benchmark.ledger import initialize as initialize_campaign
 from ecc_experience.benchmark.ledger import record_trial as record_campaign_trial
 from ecc_experience.benchmark.ledger import status as read_campaign_status
@@ -60,6 +61,10 @@ def drain(project: str | Path, *, limit: int = 32) -> list[dict]:
 def validate_campaign(manifest: str | Path) -> dict:
     _validated, summary = load_manifest(manifest)
     return summary
+
+
+def run_campaign(manifest: str | Path, *, retry_failed: bool = False) -> dict:
+    return execute_campaign(manifest, retry_failed=retry_failed)
 
 
 def init_campaign(manifest: str | Path, ledger: str | Path | None = None) -> dict:

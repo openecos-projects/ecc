@@ -7,8 +7,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from chipcompiler.utility.workspace_lock import workspace_lock
 from ecc_experience.benchmark.manifest import CampaignManifest, load_manifest
-from ecc_experience.files import canonical_bytes, read_json
+from ecc_experience.files import canonical_bytes, read_json, safe_child
 from ecc_experience.models import ExperienceError
 
 LEDGER_SCHEMA_VERSION = 1
@@ -20,6 +21,16 @@ _STATUSES = {"running", "pass", "fail", "blocked", "cancelled"}
 
 
 def initialize(manifest_path: str | Path, ledger_path: str | Path | None = None) -> dict:
+    manifest, _summary = load_manifest(manifest_path)
+    destination = _ledger_path(manifest_path, manifest, ledger_path)
+    try:
+        with workspace_lock(destination, blocking=False):
+            return _initialize(manifest_path, ledger_path)
+    except BlockingIOError as exc:
+        raise ExperienceError("Campaign is busy", code="experience_workspace_busy") from exc
+
+
+def _initialize(manifest_path: str | Path, ledger_path: str | Path | None = None) -> dict:
     manifest, summary = load_manifest(manifest_path)
     destination = _ledger_path(manifest_path, manifest, ledger_path)
     if destination.exists():
@@ -64,6 +75,32 @@ def record_trial(
     reason: str | None = None,
 ) -> dict:
     destination = _validated_ledger_path(ledger_path)
+    try:
+        with workspace_lock(destination, blocking=False):
+            return _record_trial(
+                destination,
+                design_id=design_id,
+                workspace=workspace,
+                status=status,
+                trial_id=trial_id,
+                case_id=case_id,
+                reason=reason,
+            )
+    except BlockingIOError as exc:
+        raise ExperienceError("Campaign is busy", code="experience_workspace_busy") from exc
+
+
+def _record_trial(
+    ledger_path: str | Path,
+    *,
+    design_id: str,
+    workspace: str,
+    status: str,
+    trial_id: str | None,
+    case_id: str | None,
+    reason: str | None,
+) -> dict:
+    destination = _validated_ledger_path(ledger_path)
     ledger = _read_ledger(destination)
     design = next((item for item in ledger["designs"] if item["id"] == design_id), None)
     if design is None:
@@ -93,9 +130,7 @@ def record_trial(
             "Campaign case ID is invalid",
             code="experience_case_id_invalid",
         )
-    existing = next(
-        (item for item in design["trials"] if item["trial_id"] == trial_id), None
-    )
+    existing = next((item for item in design["trials"] if item["trial_id"] == trial_id), None)
     trial = {
         "trial_id": trial_id,
         "workspace": workspace,
@@ -129,7 +164,32 @@ def status(manifest_path: str | Path, ledger_path: str | Path | None = None) -> 
         )
     ledger = _read_ledger(destination)
     _assert_identity(ledger, summary)
-    return _status(ledger, destination, summary, created=False)
+    result = _status(ledger, destination, summary, created=False)
+    execution = safe_child(Path(summary["output_root"]), "campaign-run.json")
+    if execution.is_file():
+        state = read_json(execution)
+        if (
+            state.get("kind") == "ecc-experience-campaign-run"
+            and state.get("manifest_fingerprint") == summary["fingerprint"]
+        ):
+            try:
+                result["execution"] = {
+                    "result": str(execution),
+                    "status": state["status"],
+                    "active_trials": [
+                        {
+                            key: item[key]
+                            for key in ("design_id", "trial_id", "workspace", "directory")
+                        }
+                        for item in state["trials"]
+                        if item["status"] == "running"
+                    ],
+                }
+            except (KeyError, TypeError) as exc:
+                raise ExperienceError(
+                    "Invalid campaign execution state", code="experience_campaign_ledger_invalid"
+                ) from exc
+    return result
 
 
 def _status(ledger: dict, destination: Path, summary: dict, *, created: bool) -> dict:
@@ -225,9 +285,10 @@ def _validate_ledger_shape(ledger: dict) -> None:
         ledger["campaign_id"]
     ):
         raise ValueError("invalid campaign ID")
-    if not isinstance(ledger["manifest_fingerprint"], str) or len(
-        ledger["manifest_fingerprint"]
-    ) != 64:
+    if (
+        not isinstance(ledger["manifest_fingerprint"], str)
+        or len(ledger["manifest_fingerprint"]) != 64
+    ):
         raise ValueError("invalid manifest fingerprint")
     ids = set()
     for design in ledger["designs"]:
@@ -252,9 +313,10 @@ def _validate_ledger_shape(ledger: dict) -> None:
 
 
 def _assert_identity(ledger: dict, summary: dict) -> None:
-    if ledger.get("campaign_id") != summary["campaign_id"] or ledger.get(
-        "manifest_fingerprint"
-    ) != summary["fingerprint"]:
+    if (
+        ledger.get("campaign_id") != summary["campaign_id"]
+        or ledger.get("manifest_fingerprint") != summary["fingerprint"]
+    ):
         raise ExperienceError(
             "Campaign manifest changed after ledger initialization",
             code="experience_campaign_manifest_changed",

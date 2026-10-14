@@ -363,6 +363,18 @@ def validate_campaign(command_input: CampaignInput, _ctx: CommandContext) -> Com
     return _guard(operation)
 
 
+def run_campaign(command_input: CampaignInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import run_campaign as execute
+
+        result = execute(command_input.manifest, retry_failed=command_input.retry_failed)
+        return CommandResult(
+            records=({"experience": "campaign_run", **result},), exit_code=result["exit_code"]
+        )
+
+    return _guard(operation)
+
+
 def init_campaign(command_input: CampaignInput, _ctx: CommandContext) -> CommandResult:
     def operation() -> CommandResult:
         from ecc_experience.api import init_campaign as initialize

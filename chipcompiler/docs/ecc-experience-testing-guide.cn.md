@@ -269,8 +269,8 @@ stdout 仍可能是有效 JSON。20/21 表示忙/冲突，应处理实际原因�
 
 P0 显式采集、查询和校验已经实现。P1 的自动记录只保存提交后的小型事实到项目
 outbox；它不修改参数、不阻塞工程提交，也不把经验写进源码或 wheel。只读推荐、
-计划、比较、release 与有预算的完整流程优化也已实现；跨设计迁移和 campaign
-执行调度仍待开发。逐项按安装版本帮助确认能力。
+计划、比较、release、有预算的完整流程优化及串行 baseline campaign 已实现；
+跨设计迁移和并发/阶段调度仍待开发。逐项按安装版本帮助确认能力。
 
 ```bash
 EXPERIENCE_STORE=/absolute/path/to/experience-store
@@ -308,7 +308,63 @@ ecc experience campaign validate --manifest campaign.json --json
 当前校验确认 schema、ICS55 profile 字段、baseline 模式、预算边界、设计 ID 唯一、
 输入目录存在，以及 store/output 不覆盖输入或互相覆盖；返回的 fingerprint 可写入
 外部 campaign ledger。校验不会运行 EDA、创建 workspace 或创建 output/store 目录。
-manifest 使用相对路径，内部设计清单、标签转换和批次调度仍由用户环境负责。
+manifest 使用相对路径，设计清单与标签转换由用户环境负责；ECC 不扫描私有数据集。
+
+### 10.1 串行 baseline 批次
+
+已准备好的 project 可直接执行：
+
+```bash
+ecc experience campaign run --manifest campaign.json --json
+ecc experience campaign run --manifest campaign.json --retry-failed --json
+```
+
+第一版要求 `mode=baseline`、`max_concurrent_flows=1`，且不设置
+`knowledge_release_id`。每项 `designs[].workspace` 是输入项目中已注册、有
+Engineering Snapshot、声明输入可读且 PDK 与 `process_profile` 一致的源 workspace。
+`validate` 做通用清单校验；`run` 进一步核对这些可执行条件。
+
+执行器通过公开 `init → workspace import → workspace derive → run` 命令，在
+`output_root/attempts/trial-<id>/project/baseline` 创建独立项目与全流程重跑的
+workspace。派生复用源配置、约束、skip 策略和输入；不修改源项目的注册信息、
+源配置和报告。派生过程可能复制源 workspace 的已有文件，请预留磁盘空间。
+
+请求参数在执行前校验；执行后只允许与 ECC-Tools 几何报告一致的实际 die 长宽比/
+尺寸回写，并在 `runtime_parameter_updates` 保存请求值、观测值和报告摘要。
+其他参数变化仍返回 21。案例保存执行后真实参数，不将几何回写当作新的调优策略。
+
+`output_root/campaign-run.json` 保存冻结输入、可观测工具版本、attempt/run ID、
+命令 argv、日志路径、原始退出码、`execution_status`、`acceptance`、
+`collection_status` 和案例 verification；EDA 输出在每个 attempt 的命令 stdout/
+stderr 中，运行标记日志遵循 workspace 内 `log/<run-id>.log` 规范。
+完整校验明细单独保存在 attempt 的 `case-verification.json`，结果索引只保存摘要。
+冻结版 CLI 额外保存自身可执行文件摘要，避免同版本号的不同构建被视为同一运行时。
+`campaign status` 额外通过 `execution` 报告执行器状态、结果路径与 active trials；
+原有 ledger 的 counts 仍统计不可变 trial 记录，执行器只在 attempt 终态后登记一次。
+
+再次运行默认跳过已登记的终态设计；`--retry-failed` 对失败、blocked 或取消的设计
+创建新 attempt，每次调用每个设计至多尝试一次，累计不超过
+`max_trials_per_design`。成功设计不会重复运行。终态结果已落盘但尚未登记时，
+续跑幂等补写 ledger，不重跑 EDA。每次续跑均核对 manifest、源配置/声明输入摘要
+以及 ECC/可观测工具版本；变化返回 21。不要修改冻结条件后沿用原 output_root。
+
+只有实际进入 run 的 attempt 才会以真实 run ID 采集证据；执行成功、验收通过与
+采集成功是独立事实。全部 flow/checklist/signoff/QoR 和案例验证通过才记为 pass；
+未知证据记为 blocked；保留失败与取消记录。续跑也会重新验证已有案例，不能只相信
+ledger 中的 pass。退出码：0 全部通过，2 输入错误/不支持模式，6 失败或 blocked，
+7 已登记案例证据缺失/未知，20 执行锁忙或存在未完成 intent，21 冻结条件变化，
+124 超时，130 取消。某个设计失败后仍继续其他设计；取消或条件变化则停止调度。
+
+正常取消和超时会清理受管理的进程树。若强制杀死调度器，留下 running intent，
+执行器返回 20，拒绝自动接管：先结合 `campaign-run.json` 中的项目路径，使用
+`ecc process list --project <attempt-project> --json` 检查并按现有 process 命令
+取消残留进程。保留原输出做审计，确认进程退出后用新的 output_root/store 建立新
+campaign；本版不自动恢复运行中的 attempt。并发调度、阶段 DSE 和资源预测尚未实现。
+
+声明输入摘要不覆盖完整 include/PDK 内容闭包；工具版本也不等于所有可执行文件
+内容摘要。本命令建立基线、保留经验，不声明 PPA 已改善或经验已跨设计泛化。
+
+### 10.2 外部执行与 ledger
 
 校验通过后，可以让 ECC 创建一个可恢复的 campaign ledger。初始化只创建
 `output_root/campaign-ledger.json`，保存 manifest fingerprint、设计清单和空的试验

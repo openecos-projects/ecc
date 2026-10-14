@@ -36,11 +36,18 @@ class CampaignInput(_Model):
 
 
 class CampaignDesign(_Model):
-    id: str = Field(min_length=1, max_length=128, pattern=r"[A-Za-z0-9._-]+")
+    id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._-]+$")
     input: CampaignInput
-    workspace: str = Field(min_length=1, max_length=128, pattern=r"[A-Za-z0-9._-]+")
+    workspace: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9._-]+$")
     labels: list[str] = Field(default_factory=list, max_length=64)
     evaluation_group: str | None = Field(default=None, max_length=128)
+
+    @field_validator("id", "workspace")
+    @classmethod
+    def single_segment(cls, value: str) -> str:
+        if value in {".", ".."}:
+            raise ValueError("design and workspace IDs must name a single path segment")
+        return value
 
 
 class CampaignManifest(_Model):

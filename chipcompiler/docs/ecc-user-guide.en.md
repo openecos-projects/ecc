@@ -107,8 +107,8 @@ uv run ecc --help
 | 21 | `revision_conflict`: `--expected-revision` disagrees with the manifest revision | commands taking `--expected-revision` |
 | 22 | `process_not_found`: the registered run process is stale and no live process holds the workspace lock | `ecc process` group |
 | 23 | contract incompatible (reserved: the CLI itself never emits it; the GUI-side contract gate uses it when the runtime/CLI contract is unsupported) | — |
-| 124 | timeout: recorded as the candidate's `exit_code` in sweep results; also a command exit code when bounded experience optimization times out | `sweep run` results, `experience optimize` |
-| 130 | bounded experience optimization was cancelled | `experience optimize` |
+| 124 | timeout: recorded in sweep candidate results; also a command exit code for bounded experience optimization or campaigns | `sweep run` results, `experience optimize`, `experience campaign run` |
+| 130 | bounded experience optimization or campaign was cancelled | `experience optimize`, `experience campaign run` |
 - Step tokens come in three vocabularies, distinguished by context:
   - **display names** (output and input of `ecc status` / `ecc log` / `ecc report step`, uniformly lowercase/underscore): `synthesis / lec / pre_floorplan / macro_placement / post_floorplan / placement / cts / legalization / timing_optimization / routing / filler / lvs / drc / postroutelec / rcx / sta / poweranalysis / harden`;
   - **persisted names** (the original names in `home/flow.json`; required by `--from`/`--only`/`--to` on existing workspaces, e.g. `place`, `CTS`, `Timing optimization`): `Synthesis / lec / preFloorplan / macroPlacement / postFloorplan / place / CTS / legalization / Timing optimization / route / filler / lvs / drc / postRouteLec / RCX / sta / powerAnalysis / Harden`;
@@ -205,7 +205,7 @@ Every command and subcommand at a glance (semantics, options, and examples in th
 | `ecc sweep create / show / list / run / compare / verify` | deterministic parameter sweeps | §11.5 |
 | `ecc explore rank / export / promote` | rank, export, and promote candidates | §11.5 |
 | `ecc diagnose run` | workspace diagnosis and recovery suggestions | §11.5 |
-| `ecc experience` | collect/record cases, bounded recommendations/optimization, releases, and package export/import | [Experience testing manual](ecc-experience-testing-guide.en.md#103-back-up-and-exchange-experience-cases) |
+| `ecc experience` | collect cases, serial campaigns, bounded recommendations/optimization, releases, and package exchange | [Experience testing manual](ecc-experience-testing-guide.en.md#101-serial-baseline-campaigns) |
 
 ## 2. version — show versions
 

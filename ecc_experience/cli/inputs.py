@@ -39,6 +39,7 @@ class CampaignInput:
     trial_id: str | None = None
     case_id: str | None = None
     reason: str | None = None
+    retry_failed: bool = False
 
 
 @dataclass(frozen=True)

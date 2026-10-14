@@ -300,8 +300,8 @@ P0 explicit collection, queries, and verification are implemented. P1 automatic
 recording writes only small committed facts to a project outbox; it does not change
 parameters, block engineering commits, or write experience data into source or the
 wheel. Read-only recommendation, reviewable plans, comparison, releases, and bounded
-full-flow optimization are also implemented. Cross-design transfer and campaign
-scheduling remain future work. Discover each capability through installed help.
+full-flow optimization and serial baseline campaigns are also implemented. Cross-design
+transfer and parallel/stage scheduling remain future work. Check installed help.
 
 ```bash
 EXPERIENCE_STORE=/absolute/path/to/experience-store
@@ -343,8 +343,78 @@ The validator checks the schema, ICS55 profile field, baseline mode, budget boun
 unique design IDs, existing input directories, and that store/output paths do not
 overlap inputs or each other. Its fingerprint can be recorded in an external campaign
 ledger. Validation does not run EDA, create workspaces, or create output/store
-directories. Manifest paths are relative; private design discovery, label conversion,
-and batch scheduling remain in the user environment.
+directories. Manifest paths are relative; design discovery and label conversion remain
+in the user environment. ECC does not scan private datasets.
+
+### 10.1 Serial baseline campaigns
+
+Execute prepared ECC projects directly:
+
+```bash
+ecc experience campaign run --manifest campaign.json --json
+ecc experience campaign run --manifest campaign.json --retry-failed --json
+```
+
+The first version requires `mode=baseline`, `max_concurrent_flows=1`, and no
+`knowledge_release_id`. Each `designs[].workspace` identifies a registered source
+workspace with a committed Engineering Snapshot, readable declared inputs, and a PDK
+matching `process_profile`. `validate` checks the generic manifest; `run` additionally
+checks these execution requirements.
+
+The runner invokes public `init → workspace import → workspace derive → run` commands
+to create an isolated project and a workspace for a full rerun at
+`output_root/attempts/trial-<id>/project/baseline`. Derivation preserves source
+configuration, constraints, skip policy, and inputs. Source project registration,
+configuration, and reports remain unchanged. Derivation may copy existing workspace
+files, so reserve enough disk space.
+
+Requested parameters are checked before execution. Afterwards, only realized die
+aspect ratio/dimension updates matching ECC-Tools geometry reports are accepted;
+`runtime_parameter_updates` records requested/observed values and report digests.
+Other parameter changes still return 21. Cases retain actual post-run parameters;
+geometry write-back is not treated as a new optimization strategy.
+
+`output_root/campaign-run.json` stores frozen inputs, observed runtime versions,
+attempt/run IDs, command argv, log paths, raw exit codes, `execution_status`,
+`acceptance`, `collection_status`, and case verification. Command stdout/stderr files
+contain EDA output; execution markers use the standard workspace `log/<run-id>.log`.
+Full verification findings live in the attempt's `case-verification.json`; the result
+index retains a compact summary. Frozen CLI builds also record their executable digest,
+so different builds sharing a version string are not treated as the same runtime.
+`campaign status` also exposes runner status, result path, and active trials through
+`execution`. Existing ledger counts still describe immutable trial records; the runner
+records each attempt once, after it reaches a terminal state.
+
+Repeated execution skips designs with terminal ledger records by default.
+`--retry-failed` creates new attempts for unsuccessful, blocked, or cancelled designs,
+at most once per design per invocation, bounded by `max_trials_per_design` across
+invocations. Successful designs are skipped. A terminal result saved before its ledger
+record is replayed idempotently without running EDA again. Resume checks the manifest,
+source configuration/declared input digests, and ECC/observed tool versions; changes
+return 21. Start a new output_root after changing frozen conditions.
+
+Only an attempt that actually entered run is collected with its real run ID. Execution,
+acceptance, and collection are separate facts. Pass requires flow/checklist/signoff/QoR
+and case verification to pass; unknown evidence is blocked. Failures and cancellations
+remain recorded. Resume rechecks linked cases instead of trusting a ledger pass.
+Exit codes: 0 all pass, 2 invalid input/unsupported mode, 6 failure or blocked, 7 missing
+or unknown evidence on recorded cases, 20 busy lock or unfinished intent, 21 changed
+frozen conditions, 124 timeout, 130 cancellation. A failed design does not stop other
+designs; cancellation or changed conditions stop scheduling.
+
+Normal cancellation and timeout clean up managed process trees. A forcibly killed
+runner may leave a running intent; execution then returns 20 and refuses takeover.
+Inspect the attempt project recorded in `campaign-run.json` with
+`ecc process list --project <attempt-project> --json` and cancel remaining processes
+using existing process commands. Preserve the old output for audit. After confirming
+process exit, start a new campaign with new output_root/store paths. In-flight attempt
+recovery, parallel scheduling, stage DSE, and resource prediction are not implemented.
+
+Declared input digests do not verify the complete include/PDK closure; observed versions
+do not hash every executable. Baseline collection does not demonstrate PPA improvement
+or cross-design generalization.
+
+### 10.2 External execution and ledgers
 
 After validation, initialize a resumable campaign ledger. Initialization creates only
 `output_root/campaign-ledger.json`, containing the manifest fingerprint, design list, and
