@@ -530,9 +530,9 @@ The final inner DreamPlace legalization uses `legalize_flag=1` and `detailed_pla
 | `hold_stage.hold_margin` | `0.04` ns | Additional hold slack margin passed to ecc-sizer's `-hold_margin` option during the FF/MIN hold-only pass. It is only used by that pass and is not a final multi-corner signoff margin. |
 | `hold_stage.rc_mode` | `global_routing` | Hold parasitic model: `global_routing` emits a complete per-layer/via `setRCFile`; `placement` is an explicit scalar-RC comparison mode. |
 | `hold_stage.global_routing_rc.corner` | `MIN_m40/Cbest` | Source corner label for the per-layer RC map. |
-| `hold_stage.global_routing_rc.layers` | CX55 MET1–MET5 map | Per-routing-layer resistance in ohm/um and capacitance in pF/um. M6/M7 from the StarRC table are omitted because they are absent from the ECC CX55 LEF. |
+| `hold_stage.global_routing_rc.layers` | CX55 MET1–MET5 map | Per-routing-layer resistance in ohm/um and capacitance in pF/um. Default capacitances are 0.5 times the CX55 Cbest source-table values. M6/M7 from the StarRC table are omitted because they are absent from the ECC CX55 LEF. |
 | `hold_stage.global_routing_rc.vias` | CX55 CT/VIA1–VIA4 map | Per-via/cut resistance in ohm for the active MET1–MET5 stack. CT uses the conservative 30 ohm value for the CT_NP/CT_PP pair. |
-| `hold_stage.placement_wire_rc` | CX55 `MIN_m40/Cbest` scalar values | Explicit placement-RC comparison mode, with resistance in ohm/um and capacitance in pF/um. |
+| `hold_stage.placement_wire_rc` | CX55 `MIN_m40/Cbest` scalar values | Explicit placement-RC comparison mode, with resistance in ohm/um and capacitance in pF/um. Default capacitance is also 0.5 times the Cbest source-table value. |
 
 | Generated file or option | Source | Meaning |
 |---|---|---|

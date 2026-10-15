@@ -521,9 +521,9 @@ Timing optimization 是多阶段子流程：先用 `workspace.pdk.libs`（通常
 | `hold_stage.hold_margin` | `0.04` ns | FF/MIN hold-only pass 传给 ecc-sizer 的 `-hold_margin` 附加 hold slack margin。只影响该 pass，不是最终多 corner signoff margin。 |
 | `hold_stage.rc_mode` | `global_routing` | Hold 寄生模型：`global_routing` 生成完整的分层/via `setRCFile`；`placement` 是显式的 scalar-RC 对照模式。 |
 | `hold_stage.global_routing_rc.corner` | `MIN_m40/Cbest` | 分层 RC 映射的来源 corner 标签。 |
-| `hold_stage.global_routing_rc.layers` | CX55 MET1–MET5 映射 | 各布线层的单位线电阻（ohm/um）和电容（pF/um）。StarRC 表中的 M6/M7 不在 ECC 使用的 CX55 LEF 中，因此不写入默认 RC 文件。 |
+| `hold_stage.global_routing_rc.layers` | CX55 MET1–MET5 映射 | 各布线层的单位线电阻（ohm/um）和电容（pF/um）。默认电容为 CX55 Cbest 原表值的 0.5 倍。StarRC 表中的 M6/M7 不在 ECC 使用的 CX55 LEF 中，因此不写入默认 RC 文件。 |
 | `hold_stage.global_routing_rc.vias` | CX55 CT/VIA1–VIA4 映射 | 当前 MET1–MET5 叠层的各 via/cut 电阻（ohm）。CT_NP/CT_PP 使用保守的 30 ohm。 |
-| `hold_stage.placement_wire_rc` | CX55 `MIN_m40/Cbest` scalar 值 | 显式 placement-RC 对照模式，电阻单位为 ohm/um，电容单位为 pF/um。 |
+| `hold_stage.placement_wire_rc` | CX55 `MIN_m40/Cbest` scalar 值 | 显式 placement-RC 对照模式，电阻单位为 ohm/um，电容单位为 pF/um。默认电容同样为 Cbest 原表值的 0.5 倍。 |
 
 | 生成文件或选项 | 来源 | 含义 |
 |---|---|---|

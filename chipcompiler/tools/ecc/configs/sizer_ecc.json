@@ -7,23 +7,23 @@
             "layers": {
                 "MET1": {
                     "resistance_ohm_per_um": 1.43092115,
-                    "capacitance_pf_per_um": 0.0002441
+                    "capacitance_pf_per_um": 0.00012205
                 },
                 "MET2": {
                     "resistance_ohm_per_um": 1.053236741,
-                    "capacitance_pf_per_um": 0.0002207
+                    "capacitance_pf_per_um": 0.00011035
                 },
                 "MET3": {
                     "resistance_ohm_per_um": 1.053236741,
-                    "capacitance_pf_per_um": 0.0002207
+                    "capacitance_pf_per_um": 0.00011035
                 },
                 "MET4": {
                     "resistance_ohm_per_um": 1.053236741,
-                    "capacitance_pf_per_um": 0.0002207
+                    "capacitance_pf_per_um": 0.00011035
                 },
                 "MET5": {
                     "resistance_ohm_per_um": 1.053236741,
-                    "capacitance_pf_per_um": 0.000226
+                    "capacitance_pf_per_um": 0.000113
                 }
             },
             "vias": {
@@ -37,7 +37,7 @@
         "placement_wire_rc": {
             "corner": "MIN_m40/Cbest",
             "resistance_ohm_per_um": 1.053236741,
-            "capacitance_pf_per_um": 0.0002207
+            "capacitance_pf_per_um": 0.00011035
         }
     }
 }

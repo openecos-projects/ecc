@@ -29,23 +29,23 @@ SCHEMAS = (
             "layers": {
                 "MET1": {
                     "resistance_ohm_per_um": 1.430921150,
-                    "capacitance_pf_per_um": 0.0002441,
+                    "capacitance_pf_per_um": 0.00012205,
                 },
                 "MET2": {
                     "resistance_ohm_per_um": 1.053236741,
-                    "capacitance_pf_per_um": 0.0002207,
+                    "capacitance_pf_per_um": 0.00011035,
                 },
                 "MET3": {
                     "resistance_ohm_per_um": 1.053236741,
-                    "capacitance_pf_per_um": 0.0002207,
+                    "capacitance_pf_per_um": 0.00011035,
                 },
                 "MET4": {
                     "resistance_ohm_per_um": 1.053236741,
-                    "capacitance_pf_per_um": 0.0002207,
+                    "capacitance_pf_per_um": 0.00011035,
                 },
                 "MET5": {
                     "resistance_ohm_per_um": 1.053236741,
-                    "capacitance_pf_per_um": 0.0002260,
+                    "capacitance_pf_per_um": 0.0001130,
                 },
             },
             "vias": {
@@ -59,7 +59,8 @@ SCHEMAS = (
         applies="timing_opt",
         description=(
             "Per-layer and via RC written to the hold-stage setRCFile. Values "
-            "use ohm/um, pF/um and ohm, and are sourced from CX55 MIN_m40/Cbest."
+            "use ohm/um, pF/um and ohm. Default wire capacitances are scaled "
+            "by 0.5 from the CX55 MIN_m40/Cbest source table."
         ),
         type="json",
     ),
@@ -89,11 +90,11 @@ SCHEMAS = (
         "timing_opt.placement_wire_capacitance_pf_per_um",
         "sizer",
         ("hold_stage", "placement_wire_rc", "capacitance_pf_per_um"),
-        0.0002207,
+        0.00011035,
         applies="timing_opt",
         description=(
             "Placement wire capacitance in pF/um for the CX55 MIN_m40/Cbest "
-            "hold-pass parasitic model."
+            "hold-pass parasitic model, scaled by 0.5 from the source table."
         ),
     ),
 )
