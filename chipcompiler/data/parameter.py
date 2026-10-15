@@ -18,7 +18,7 @@ ICS55_PARAMETERS_TEMPLATE = {
         "aspect_ratio": 1,
     },
     "max_fanout": 32,
-    "target_density": 0.2,
+    "target_density": 0.4,
     "target_overflow": 0.1,
     "global_right_padding": 0,
     "cell_padding_x": 200,

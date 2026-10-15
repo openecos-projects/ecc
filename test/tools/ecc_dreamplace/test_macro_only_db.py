@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 from dreamplace.macroPlaceDB import MacroPlaceDB
+from dreamplace.ops.placeio_ecc.place_io import ECCPlaceIOBackend
 from dreamplace.Placer import PlacementEngine
 
 
@@ -82,6 +83,7 @@ def test_macro_only_apply_delegates_unscaled_physical_coordinates_to_native_writ
     place_db.node_x = np.zeros(4, dtype=np.float32)
     place_db.node_y = np.zeros(4, dtype=np.float32)
     params = SimpleNamespace(macro_only=1, scale_factor=2.0, shift_factor=[10.0, 20.0])
+    place_db.params = params
 
     place_db.apply(
         params,
@@ -111,12 +113,18 @@ def test_normal_apply_keeps_dense_writeback():
     place_db = MacroPlaceDB(ecc_module=ecc_module)
     place_db.pydb = FakeNativePlaceDB()
     place_db.ecc_db = object()
+    place_db.rawdb = ECCPlaceIOBackend(
+        module=ecc_module, workspace="", dm_inst=place_db.ecc_db, pydb=place_db.pydb
+    )
     place_db.num_physical_nodes = 2
     place_db.num_terminals = 0
     place_db.num_terminal_NIs = 0
     place_db.node_x = np.zeros(2, dtype=np.float32)
     place_db.node_y = np.zeros(2, dtype=np.float32)
-    params = SimpleNamespace(macro_only=0, scale_factor=2.0, shift_factor=[10.0, 20.0])
+    params = SimpleNamespace(
+        macro_only=0, scale_factor=2.0, shift_factor=[10.0, 20.0], place_io_engine="ecc"
+    )
+    place_db.params = params
 
     place_db.apply(
         params,
