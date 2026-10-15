@@ -37,7 +37,9 @@ def test_resealed_plan_still_obeys_runtime_boundaries(dse_project, version2_spec
         read_dse_plan(path)
 
 
-@pytest.mark.parametrize("corruption", ["missing_fresh", "validation_mode", "delta", "front"])
+@pytest.mark.parametrize(
+    "corruption", ["missing_fresh", "validation_mode", "delta", "front", "shape"]
+)
 def test_completed_result_cannot_hide_missing_or_changed_evidence(
     dse_project, version2_spec, simulated_cli, corruption
 ):
@@ -52,8 +54,10 @@ def test_completed_result_cannot_hide_missing_or_changed_evidence(
         result["full_validation"]["mode"] = "screen"
     elif corruption == "delta":
         result["score_delta"] = 1000
-    else:
+    elif corruption == "front":
         result["pareto_front"] = []
+    else:
+        result["trials"] = [None]
     (output / "result.json").write_text(json.dumps(result))
     calls = len(simulated_cli)
     with pytest.raises(ExperienceError):

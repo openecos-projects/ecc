@@ -7,6 +7,7 @@ from ecc_experience.dse.evidence import stage_acceptance
 from ecc_experience.dse.multiobjective import measure_objectives, rank_trials
 from ecc_experience.dse.optimizer import propose
 from ecc_experience.dse.plan import invalid
+from ecc_experience.dse.result_contract import validate_result
 from ecc_experience.knowledge.store import ExperienceStore
 from ecc_experience.knowledge.verify import verify_case
 from ecc_experience.study.evidence import acceptance
@@ -99,6 +100,7 @@ def audit_trial(plan: dict, trial: dict, rung: dict | None) -> dict:
 
 
 def audit_history(plan: dict, result: dict) -> dict:
+    validate_result(result)
     if (
         result.get("schema") != "ecc-experience-stage-dse-result/2"
         or result.get("plan_fingerprint") != plan["plan_fingerprint"]

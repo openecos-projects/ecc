@@ -243,7 +243,9 @@ def _run(plan, limits, destination, *, resume, select):
                 raise invalid("Selected candidate must belong to the final measured Pareto front")
             result["selection"] = {
                 "candidate": chosen,
-                "rule": "explicit" if select else "single_objective",
+                "rule": "explicit"
+                if select
+                else (result.get("selection") or {}).get("rule", "single_objective"),
             }
             result["stage_winner"] = next(
                 trial for trial in final_trials if trial["candidate_id"] == chosen
