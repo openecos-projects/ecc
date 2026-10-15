@@ -105,9 +105,7 @@ def _resolve_step_geometry(workspace_dir: Path, requested: str):
         }, None
 
     available = [
-        f"{step.get('name')} ({step.get('tool')})"
-        for step in steps or []
-        if step.get("name")
+        f"{step.get('name')} ({step.get('tool')})" for step in steps or [] if step.get("name")
     ]
     return None, error_record(
         "chipview_step_not_found",
@@ -205,9 +203,7 @@ def _resolve_viewer(env: dict[str, str]):
         if path.is_file() and os.access(path, os.X_OK):
             return path, source
     expected = (
-        str(candidates[0][0])
-        if candidates
-        else "<AppImage resources>/binaries/chip-viewer-native"
+        str(candidates[0][0]) if candidates else "<AppImage resources>/binaries/chip-viewer-native"
     )
     appimage = env.get("APPIMAGE", "").strip()
     appimage_detail = f" detected AppImage: {appimage}" if appimage else ""

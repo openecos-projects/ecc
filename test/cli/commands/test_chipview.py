@@ -99,9 +99,7 @@ def test_chipview_rejects_incomplete_geometry_manifest(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     manifest = workspace / "route_ecc/output/geometry/geometry.manifest"
     manifest.write_text(
-        manifest.read_text(encoding="utf-8").replace(
-            "geometry.view.bin", "missing.view.bin"
-        ),
+        manifest.read_text(encoding="utf-8").replace("geometry.view.bin", "missing.view.bin"),
         encoding="utf-8",
     )
     monkeypatch.setenv("DISPLAY", ":99")
