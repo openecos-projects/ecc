@@ -107,7 +107,7 @@ def test_cancelled_command_stops_separate_session_descendant(tmp_path, monkeypat
         pid = int(child_pid.read_text())
         CliRunner._stop(process, cooperative=False)
         stat = Path(f"/proc/{pid}/stat")
-        with suppress(FileNotFoundError):
+        with suppress(FileNotFoundError, ProcessLookupError):
             assert stat.read_text().split()[2] == "Z"
         assert process.poll() is not None
     finally:

@@ -104,9 +104,10 @@ def summarize_version2(plan: dict, payload: dict) -> dict:
 
 def report_version2(plan: dict, result, output) -> dict:
     path = Path(result).expanduser().resolve()
+    original_sha256 = file_digest(path)[0]
     payload = read_json(path)
     summary = summarize_version2(plan, payload)
-    summary["result_sha256"] = file_digest(path)[0]
+    summary["result_sha256"] = original_sha256
     destination = Path(output).expanduser().absolute()
     if (
         destination.exists()

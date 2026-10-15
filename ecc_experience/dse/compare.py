@@ -31,6 +31,7 @@ def compare_runs(plan, result, other_plan, other_result, output) -> dict:
     paths = [Path(path).expanduser().resolve() for path in (result, other_result)]
     if paths[0] == paths[1]:
         raise invalid("Paired comparison requires two different executions")
+    fingerprints = [file_digest(path)[0] for path in paths]
     summaries = [
         summarize_version2(frozen, read_json(path))
         for frozen, path in zip(plans, paths, strict=True)
@@ -64,6 +65,8 @@ def compare_runs(plan, result, other_plan, other_result, output) -> dict:
         ],
     }
     destination = Path(output).expanduser().absolute()
+    if fingerprints != [file_digest(path)[0] for path in paths]:
+        raise invalid("DSE results changed while comparing")
     if (
         destination.exists()
         or destination.is_symlink()
