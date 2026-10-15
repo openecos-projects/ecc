@@ -75,6 +75,7 @@ def test_readiness_passes_only_with_declared_independent_families_and_trials(tmp
             "integrity": "pass",
             "qor_score": 80 + index,
             "runtime_recorded": True,
+            "runtime_fingerprint": "runtime",
             "process_fingerprint": "process",
             "input_content_fingerprint": f"input-{index}",
             "parameters": {"density": 0.4 + index / 10},
@@ -98,6 +99,44 @@ def test_readiness_passes_only_with_declared_independent_families_and_trials(tmp
     result = check(matrix, tmp_path / "readiness")
     assert result["status"] == "pass"
     assert result["exit_code"] == 0
+
+
+def test_readiness_rejects_mixed_runtime_fingerprints(tmp_path):
+    matrix = tmp_path / "matrix.json"
+    matrix.write_text(
+        json.dumps(
+            {
+                "schema": "ecc-experience-ci-design-matrix/1",
+                "status": "unknown",
+                "observed_design_count": 2,
+                "independent_input_count": 2,
+                "family_count": 2,
+                "candidate_variation": {"configurations_by_input": {"same": 2}},
+                "observations": [
+                    {
+                        "verification": "pass",
+                        "integrity": "pass",
+                        "qor_score": 1,
+                        "runtime_recorded": True,
+                        "runtime_fingerprint": "runtime-a",
+                        "process_fingerprint": "process",
+                    },
+                    {
+                        "verification": "pass",
+                        "integrity": "pass",
+                        "qor_score": 2,
+                        "runtime_recorded": True,
+                        "runtime_fingerprint": "runtime-b",
+                        "process_fingerprint": "process",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = check(matrix, tmp_path / "readiness")
+    assert result["status"] == "unknown"
+    assert result["checks"]["runtime"]["status"] == "unknown"
 
 
 def test_campaign_archive_is_deterministic_and_redacts_paths(tmp_path):

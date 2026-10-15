@@ -46,7 +46,7 @@ def check(
             observations, lambda row: isinstance(row.get("qor_score"), (int, float))
         ),
         "process": _uniform_check(observations, "process_fingerprint"),
-        "runtime": _count_check(observations, lambda row: row.get("runtime_recorded") is True),
+        "runtime": _uniform_check(observations, "runtime_fingerprint"),
     }
     failures = [name for name, item in checks.items() if item["status"] == "fail"]
     unknown = [name for name, item in checks.items() if item["status"] == "unknown"]

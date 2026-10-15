@@ -1333,10 +1333,11 @@ python3 packaging/experience_matrix_report.py \
 
 Family labels are never inferred from names or directory layout. The JSON report retains the
 three-source observation digest, input duplicate status, measured QoR, candidate-configuration
-variation, and per-step resource observations with their original scope. A single baseline per
-input keeps candidate variation unknown; resource values from different scopes are not averaged
-or combined. Missing or malformed observations return 6, while valid but insufficient evidence
-returns 7 and still writes the audit report.
+variation, runtime fingerprints, and per-step resource observations with their original scope. A
+single baseline per input keeps candidate variation unknown; resource values from different scopes
+are not averaged or combined. Mixed runtime fingerprints remain unknown. Missing or malformed
+observations return 6, while valid but insufficient evidence returns 7 and still writes the audit
+report.
 
 The same benchmark preparation functions are available through the ECC CLI. Use them before
 large benchmark campaigns so aggregation, readiness, comparison, and archival follow one

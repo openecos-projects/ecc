@@ -1319,9 +1319,10 @@ python3 packaging/experience_matrix_report.py \
 ```
 
 family 不会从名称或目录结构推断。JSON 报告保留三份观测文件的摘要、输入重复状态、实测
-QoR、候选配置变化，以及带原始 scope 的每 step 资源观测。每个输入只有一个 baseline 时，
-候选变化保持 unknown；不同 scope 的资源不会求平均或合并。缺失或格式损坏返回 6 并拒绝
-聚合；格式有效但证据不足返回 7，同时保留审计报告。
+QoR、候选配置变化、runtime 指纹，以及带原始 scope 的每 step 资源观测。每个输入只有一个
+baseline 时，候选变化保持 unknown；不同 scope 的资源不会求平均或合并。runtime 指纹混用
+时保持 unknown。缺失或格式损坏返回 6 并拒绝聚合；格式有效但证据不足返回 7，同时保留
+审计报告。
 
 相同的基准准备能力也可以通过 ECC CLI 使用。大规模 benchmark 开始前，建议先使用这些
 命令生成矩阵、检查证据是否足够、比较候选效果并归档结果，使整个过程遵循统一且可审计的

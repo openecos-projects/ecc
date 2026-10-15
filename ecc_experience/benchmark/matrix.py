@@ -5,6 +5,8 @@ import json
 import math
 from pathlib import Path
 
+from ecc_experience.files import digest
+
 
 def aggregate(
     inputs: str | Path,
@@ -62,6 +64,7 @@ def aggregate(
         parameters = (
             feature_parameters.get("values") if isinstance(feature_parameters, dict) else None
         )
+        runtime = context.get("runtime")
         rows.append(
             {
                 "design": design,
@@ -71,7 +74,10 @@ def aggregate(
                 "verification": verification.get("status", "unknown"),
                 "integrity": verification.get("integrity", "unknown"),
                 "process_fingerprint": case.get("process_fingerprint"),
-                "runtime_recorded": bool(context.get("runtime")),
+                "runtime_recorded": isinstance(runtime, dict) and bool(runtime),
+                "runtime_fingerprint": (
+                    digest(runtime) if isinstance(runtime, dict) and runtime else None
+                ),
                 "qor_score": qor.get("score") if qor.get("status") == "available" else None,
                 "parameters": parameters if isinstance(parameters, dict) else None,
                 "steps": steps,
@@ -92,6 +98,9 @@ def aggregate(
         "observed_design_count": len(rows),
         "independent_input_count": len(seen),
         "family_count": len({row["family"] for row in rows if row["family"] is not None}),
+        "runtime_fingerprints": sorted(
+            {row["runtime_fingerprint"] for row in rows if row["runtime_fingerprint"]}
+        ),
         "missing_family_designs": missing_families,
         "candidate_variation": candidate_variation,
         "resource_summary": resources,
