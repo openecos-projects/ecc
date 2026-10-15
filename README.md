@@ -182,7 +182,7 @@ Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 | `ecc report project` | Rank all declared workspaces by saved QoR and display flow/step/checker states |
 | `ecc compare run` | Compare two saved Engineering Snapshot JSON files without running EDA |
 | `ecc version` | Show ECC runtime and component versions |
-| `ecc layout-image` | Render a GDS file into a layout image |
+| `ecc gdsview` | Open a workspace step's GDS in the KLayout viewer |
 | `ecc chipview` | Open a workspace step's geometry snapshot in Chip Viewer |
 
 Project commands accept `--project <dir>` (defaults to the current directory).

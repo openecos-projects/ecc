@@ -579,14 +579,19 @@ $ ecc report checklist
 
 Of the 36 items, 33 PASS (mapped netlist, DRC clean, LVS clean, **LEC equivalence proven**, SPEF integrity, setup/hold closure, Harden GDS/LEF/LIB, ...); the 3 ATTENTION items are all missing optional files (`config.macro_locations` and the LEC debug dumps `lec.failed_rtlil`/`lec.failed_verilog`, which only exist when LEC fails).
 
-### 5.6 Render a layout image (optional): ecc layout-image
+### 5.6 Open a step GDS in KLayout (optional): ecc gdsview
 
-With KLayout available in the environment, any GDS can be rendered to a snapshot (the Harden step already auto-generates `gcd_Harden.png`; use this command for other GDS files or custom sizes):
+Some flow steps publish a GDS file under their `output` directory. Open the
+single GDS produced by a selected step in KLayout's interactive viewer:
 
 ```bash
-ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds \
-                 --image gcd_layout.png --width 2560 --height 1600
+ecc gdsview --workspace default --step Harden
 ```
+
+The command opens the GDS and keeps the KLayout window open until it is closed;
+it does not save a PNG. A step without a GDS is reported clearly, and the
+diagnostic lists other workspace steps that do publish GDS files. If a step
+contains more than one GDS candidate, remove the ambiguity before retrying.
 
 ### 5.7 Open the native layout viewer (optional): ecc chipview
 
@@ -605,7 +610,7 @@ AppImage terminal supplies `ECOS_CHIP_VIEWER_BIN`, pointing to the packaged
 `chip-viewer-native`; when using a development checkout, set that variable to
 an executable Viewer path explicitly. A missing step snapshot, Viewer, or Linux
 display produces an actionable error instead of silently switching to
-`layout-image`. Viewer logs are written to
+the GDS viewer command. Viewer logs are written to
 `default/.chip-viewer/logs/`.
 
 ## 6. Tuning Parameters and Rerunning

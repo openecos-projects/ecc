@@ -244,7 +244,7 @@ Sizer 目前被视为外部原生工具，而不是 ECC 的 Python 工作区包�
 ```
 pyproject.toml                    # scripts.ecc = "chipcompiler.cli.main:main"
 chipcompiler/cli/main.py          # run(argv) / main()，仅做薄封装
-chipcompiler/cli/app.py           # 根 typer app；invoke_typer_app() 统一执行与退出码；version / layout-image 两命令直接注册于此
+chipcompiler/cli/app.py           # 根 typer app；invoke_typer_app() 统一执行与退出码；version / gdsview / chipview 直接注册于此
 chipcompiler/cli/commands/        # typer 命令定义层（薄）
   ├── project.py                  # init/check/run/status/log/config/migrate 的注册与参数声明
   ├── doctor.py                   # doctor 顶层命令（环境体检）
@@ -255,7 +255,9 @@ chipcompiler/cli/commands/        # typer 命令定义层（薄）
   ├── project_config.py           # project 子应用（set/unset/add/remove/show）
   ├── workspace.py                # workspace 子应用（import/refresh）
   ├── signoff.py                  # signoff 子应用（inspect/export）
-  └── report.py                   # report 子应用（summary/qor/checklist/step）
+  ├── report.py                   # report 子应用（summary/qor/checklist/step）
+  ├── chipview.py                 # 打开 geometry snapshot 的原生 Chip Viewer
+  └── gds_view.py                 # 在 KLayout 中打开 step 的 GDS
 chipcompiler/cli/command_handlers/  # 业务处理层（唯一的处理器包，有状态/重逻辑）
   ├── project.py                  # init / check / run / migrate / workspace refresh（含 preset 解析与环境预检）
   ├── inspect.py                  # status / log / config
@@ -266,7 +268,9 @@ chipcompiler/cli/command_handlers/  # 业务处理层（唯一的处理器包，
   ├── workspace_params.py         # workspace 局部 param set/unset/list/diff（改 home/params.toml + 失效后缀步骤）
   ├── macro.py                    # macro set/remove/show/import（渲染 macro_location.tcl + 写 params.toml）
   ├── signoff.py                  # signoff inspect/export
-  └── report.py                   # report 四子命令（文件写出 + 记录汇总）
+  ├── report.py                   # report 四子命令（文件写出 + 记录汇总）
+  ├── chipview.py                 # geometry manifest 校验与原生 Viewer 启动
+  └── gds_view.py                 # GDS 探测与 KLayout Viewer 启动
 chipcompiler/cli/core/            # 框架层
   ├── apps.py                     # 共享 typer app 工厂（create_app()：no_args_is_help、补全）
   ├── docs.py                     # 定位并加载 `ecc doc` 的内置指南文档
@@ -321,7 +325,7 @@ chipcompiler/engine/qor_report.py # CLI QoR facade，委托 analysis.qor
 - 错误记录用 `core/records.py::error_record(...)`，产出 `{"kind": "error", "error": "<机器可读错误码>", ...}`；TEXT 模式下由 `render_error` 打成 `[error]` 块。错误码是稳定契约（如 `missing_config`、`run_exists`、`unknown_parameter`、`invalid_value`），测试会对它们断言。
 - 给用户的「下一步」提示统一用 `core/output.py::disclosure_cmd("ecc status", project, run_id)` 生成可复制的完整命令，记录里放在 `inspect` / `log_cmd` / `run` 等字段。
 
-`ecc version` 直接格式化版本元数据；`--json` 输出带版本的桌面 CLI 契约。`ecc layout-image` 有意不使用 records 渲染器输出模式。
+`ecc version` 直接格式化版本元数据；`--json` 输出带版本的桌面 CLI 契约。`ecc gdsview` 和 `ecc chipview` 使用通用 records 渲染器，并支持 `--plain`/`--json`。
 
 ### 新增一个命令
 

@@ -92,7 +92,7 @@ uv run ecc --help
 
 - 全局：`ecc --version`（单行版本号）、`ecc --help`。
 - 项目定位：项目级命令接受 `--project <dir>`（缺少参数指定即为当前目录）。`--workspace <路径指定>` 可以是受工具管理的非空简单文件夹路径，也可以是完整绝对路径。名称继续使用项目内的 `<project>/<workspace-id>` 布局；绝对路径创建或选择项目外 workspace，新路径默认以目录 basename 作为 workspace ID，已登记路径沿用清单中的 ID。新项目裸执行 `ecc run` 创建 `default`；只有一个活跃 workspace 时自动选择，多个活跃 workspace 时必须指定 `--workspace`。命名 workspace 会在创建文件前登记到 `project.json`。遗留的 `runs/` 项目必须先执行 `ecc migrate`。每个项目只有一个 `ecc.toml`；创建时会把声明的输入复制到各 workspace 的 `origin/`。
-- 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`rtl`、`param`、`macro`、`pdk`、`project`、`workspace`、`process`、`flow`、`signoff`、`report`、`compare`、`chipview` 在相应命令中支持 `--plain`，缺省为人类可读 TEXT。`reproducible`、`sweep`、`explore`、`diagnose` 也支持 `--plain`；面向机器的实验命令默认仍输出 JSON。`layout-image` 直接生成文件。
+- 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`rtl`、`param`、`macro`、`pdk`、`project`、`workspace`、`process`、`flow`、`signoff`、`report`、`compare`、`chipview`、`gdsview` 在相应命令中支持 `--plain`，缺省为人类可读 TEXT。`reproducible`、`sweep`、`explore`、`diagnose` 也支持 `--plain`；面向机器的实验命令默认仍输出 JSON。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。完整注册表：
 
 | 退出码 | 含义 | 触发者 |
@@ -180,7 +180,7 @@ $ ecc --help
 Commands:
   version       Show ECC runtime, component, and installed tool versions
   doc           Show a bundled guide (config = config reference, ug = user guide, tutorial)
-  layout-image  Render a GDS file into a layout image
+  gdsview       Open a workspace step's GDS in the KLayout viewer
   chipview       打开 workspace 指定 step 的 geometry 版图数据
   init          Create a new ECC project
   check         Validate the current project setup
@@ -240,7 +240,7 @@ eval "$(ecc --show-completion)"     # 自动探测当前 shell
 |---|---|---|
 | `ecc version` | 查看运行时、组件与工具版本（`--json` 输出机器可读契约） | §2 |
 | `ecc doc TOPIC` | 终端阅读内置指南（`config` / `ug` / `tutorial`） | §1.5 |
-| `ecc layout-image` | 把 GDS 渲染为图片 | §13 |
+| `ecc gdsview` | 在 KLayout 中打开 workspace step 的 GDS | §13 |
 | `ecc chipview` | 打开 workspace step 的 geometry snapshot | §14 |
 | `ecc init NAME` | 创建项目骨架 | §3 |
 | `ecc check` | 校验项目配置、RTL 源与 PDK 内容 | §4 |
@@ -402,7 +402,8 @@ $ ecc doctor          # 在项目目录内执行（PDK 探测需要 ecc.toml 或
 
 - `kepler-formal`（必需）：LEC/postRouteLec 等价性检查工具。先按 `CHIPCOMPILER_KEPLER_FORMAL_ROOT` 解析（根级 `kepler-formal` wrapper 或 `bin/kepler-formal`），再回退 PATH。
 - `lec-dual`（必需）：双引擎 LEC 预检，分别探测两个物理引擎。允许降级运行——缺一个引擎仍为 pass（detail 注明 `degraded`，该步骤只跑可用引擎、结果保持非 proven）；两个都缺才 fail。
-- `klayout`（可选）：仅 `layout-image` 需要。
+- `klayout`（可选）：其 Python 模块用于兼容旧版 flow 缩略图，GUI 可执行文件
+  由 `gdsview` 使用；可通过 `KLAYOUT_BIN` 显式指定，否则从 `PATH` 查找。
 
 `--json` 输出记录数组：首条为汇总，其后每组件一条，字段含 `component`、`status`、`required`、`detail`：
 
@@ -455,7 +456,7 @@ rc=1
 | PDK（ics55） | `ecc check` | `status: checked`；liberty 缺失时按 README 执行 `make unzip` |
 | Yosys（综合） | `which yosys && yosys -V`，或 `echo $CHIPCOMPILER_OSS_CAD_DIR` | 二者其一可用（优先 `CHIPCOMPILER_OSS_CAD_DIR` 指向 OSS CAD Suite） |
 | Yosys slang 前端 | `yosys -Q -T -p "help read_slang"` | 输出**不含** `No such command`（yosys ≥ v0.67 内置；旧版需可加载的 slang 插件） |
-| KLayout（仅 `layout-image` 需要） | `python3 -c "from klayout import lay"` | 无 ImportError |
+| KLayout GUI（仅 `gdsview` 需要） | `KLAYOUT_BIN=/path/to/klayout ecc gdsview --help` 或 `command -v klayout` | 可执行文件可解析；需在桌面会话中运行 |
 | Sizer（`ecc doctor` 的必需组件；完整 rtl2gds 链的 Timing optimization 步骤需要） | `which Sizer`；可选 `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | 可执行文件和含 `src/sizer_os.tcl` 的 root 均须可解析；root 可显式设置，或由二进制位置自动发现。新建或 `--overwrite` 的 `rtl2gds` 会在预检检查 Sizer；已有 workspace 或 `--workspace` 重跑不预检，缺失时仍可能在流中段失败 |
 | kepler-formal（`ecc doctor` 的必需组件；LEC/postRouteLec 等价性检查需要，默认 `skip_steps = ["lec"]` 时不预检） | `echo $CHIPCOMPILER_KEPLER_FORMAL_ROOT`；`which kepler-formal` | 二者其一可解析出可执行文件（root 下根级 wrapper 或 `bin/kepler-formal`） |
 
@@ -1980,16 +1981,27 @@ workspace_step、checker_count、warning。关联以 workspace_id 与 step/tool 
 项目正在运行时并不锁定所有工作区，不承诺跨文件/工作区原子视图；可在运行结束
 后重新查询。要生成或保存单工作区结果，继续使用已有 run/report/snapshot 命令。
 
-## 13. layout-image — GDS 渲染为图片
+## 13. gdsview — 在 KLayout 中打开 GDS
 
 ```bash
-ecc layout-image --gds <in.gds> --image <out.png> [--width N] [--height N]
+ecc gdsview --project <project> --workspace <workspace> --step <step>
 ```
 
-基于 KLayout 把 GDS 版图渲染为快照图片（默认 1920×1920；需要环境中有 KLayout）：
+命令会在指定 step 的 `output` 目录中查找唯一的 `*.gds` 或 `*.gds.gz` 文件，
+使用 KLayout 的交互式 `LayoutView` 打开，自动展开层次并保持窗口直到用户关闭。
+命令不会生成 PNG。
+
+命令启动 KLayout GUI 可执行文件并传入选中的 GDS，不会为 ECC CLI 额外引入
+PyQt/PySide，也不会改变 ECOS Studio AppImage 的打包内容。Qt 运行时由
+KLayout 自己提供；可执行文件只在执行 `gdsview` 时查找。
+
+并不是每个 flow step 都会生成 GDS。若指定 step 没有 GDS，命令返回
+`gds_view_unavailable` 并列出当前 workspace 中有 GDS 的步骤；若存在多个 GDS，
+返回 `gds_view_ambiguous` 并列出候选路径。缺少 KLayout GUI 可执行文件或
+Linux 图形环境时，也会返回独立的诊断，不会静默切换到其他步骤。
 
 ```bash
-ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image layout.png --width 2560 --height 1600
+ecc gdsview --workspace default --step Harden
 ```
 
 ## 14. chipview — 打开保存的 geometry 版图
@@ -2022,7 +2034,7 @@ AppImage 不作为 GDS 输入解析。命令只要求 AppImage 内的
 `ECOS_CHIP_VIEWER_BIN`，也可以使用
 `ECOS_ELECTRON_RESOURCES_PATH/binaries/chip-viewer-native` 或 PATH。若找不到
 可执行 Viewer，请从 AppImage 内置终端运行，或显式设置
-`ECOS_CHIP_VIEWER_BIN`；命令不会回退到 `layout-image`。
+`ECOS_CHIP_VIEWER_BIN`；命令不会回退到 `gdsview`。
 
 ## 15. 端到端典型工作流
 
@@ -2052,7 +2064,7 @@ ecc report summary                 # 生成文本设计总结（signoff/<design>
 ecc report qor                     # QoR 总分报告（signoff/<design>_qor_report.txt）
 ecc report checklist               # 签核清单报告（signoff/checklist_report.txt）
 ecc report step drc                # 终端预览单步骤 feature/analysis/checklist（只读）
-ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image gcd.png
+ecc gdsview --workspace default --step Harden
 ecc chipview --workspace default --step Harden
 ```
 

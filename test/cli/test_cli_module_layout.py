@@ -55,6 +55,7 @@ def test_command_registration_modules_live_under_commands_package():
         "project",
         "doctor",
         "chipview",
+        "gds_view",
         "param",
         "macro",
         "pdk",

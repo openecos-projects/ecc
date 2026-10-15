@@ -93,7 +93,7 @@ uv run ecc --help
 
 - Global: `ecc --version` (single version line), `ecc --help`.
 - Project location: project-scoped commands accept `--project <dir>` (when the option is not given, the current directory is used). `--workspace <path>` accepts either a tool-managed, non-empty simple folder name or a complete absolute filesystem path. A name keeps the project-local `<project>/<workspace-id>` layout; an absolute path creates or selects an external workspace and uses its basename as the new ID unless the path is already registered. A fresh project creates `default` on bare `ecc run`; a project with one active workspace auto-selects it, while one with multiple active workspaces requires `--workspace`. A named workspace is created and registered in `project.json` before its files are created. Legacy `runs/` projects must be upgraded with `ecc migrate` before running a flow. Each project has one `ecc.toml`; workspace inputs are copied to its own `origin/` directory at creation time.
-- Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `rtl`, `param`, `macro`, `pdk`, `project`, `workspace`, `process`, `flow`, `signoff`, `report`, `compare`, and `chipview` accept `--plain` where documented, with human-readable TEXT by default. `reproducible`, `sweep`, `explore`, and `diagnose` also accept `--plain`; JSON remains the default for machine-oriented experiment commands. `layout-image` produces a file instead.
+- Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `rtl`, `param`, `macro`, `pdk`, `project`, `workspace`, `process`, `flow`, `signoff`, `report`, `compare`, `chipview`, and `gdsview` accept `--plain` where documented, with human-readable TEXT by default. `reproducible`, `sweep`, `explore`, and `diagnose` also accept `--plain`; JSON remains the default for machine-oriented experiment commands.
 - Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`). Complete registry:
 
 | Exit code | Meaning | Emitted by |
@@ -122,7 +122,7 @@ $ ecc --help
 Commands:
   version       Show ECC runtime, component, and installed tool versions
   doc           Show a bundled guide (config = config reference, ug = user guide, tutorial)
-  layout-image  Render a GDS file into a layout image
+  gdsview  Open a workspace step's GDS in the KLayout viewer
   chipview       Open a workspace step's saved geometry snapshot in Chip Viewer
   init          Create a new ECC project
   check         Validate the current project setup
@@ -182,7 +182,7 @@ Every command and subcommand at a glance (semantics, options, and examples in th
 |---|---|---|
 | `ecc version` | show runtime, component, and tool versions (`--json` emits the machine-readable contract) | §2 |
 | `ecc doc TOPIC` | read the bundled guides in the terminal (`config` / `ug` / `tutorial`) | §1.5 |
-| `ecc layout-image` | render a GDS into an image | §13 |
+| `ecc gdsview` | open a workspace step's GDS in KLayout | §13 |
 | `ecc chipview` | open a workspace step's geometry snapshot in Chip Viewer | §14 |
 | `ecc init NAME` | create a project skeleton | §3 |
 | `ecc check` | validate project config, RTL sources, and PDK contents | §4 |
@@ -345,7 +345,9 @@ $ ecc doctor          # run inside the project (the PDK probe needs ecc.toml or 
 
 - `kepler-formal` (required): the LEC/postRouteLec equivalence checker. Resolved from `CHIPCOMPILER_KEPLER_FORMAL_ROOT` first (the root-level `kepler-formal` wrapper or `bin/kepler-formal`), then from PATH.
 - `lec-dual` (required): dual-engine LEC preflight probing both physical engines. Degraded mode is allowed — one missing engine still passes (the detail names the `degradation`; the step runs the available engine and the aggregate stays non-proven); only both missing fails.
-- `klayout` (optional): needed by `layout-image` only.
+- `klayout` (optional): its Python module supports legacy flow thumbnails, and
+  its GUI executable is used by `gdsview`. The command accepts an explicit GUI
+  executable through `KLAYOUT_BIN` and otherwise searches `PATH`.
 
 `--json` emits a record array: a summary record first, then one record per component with `component`, `status`, `required`, and `detail`:
 
@@ -398,7 +400,7 @@ Notes:
 | PDK (ics55) | `ecc check` | `status: checked`; if liberty is missing run `make unzip` per the README |
 | Yosys (synthesis) | `which yosys && yosys -V`, or `echo $CHIPCOMPILER_OSS_CAD_DIR` | either works (`CHIPCOMPILER_OSS_CAD_DIR` pointing at OSS CAD Suite takes priority) |
 | Yosys slang frontend | `yosys -Q -T -p "help read_slang"` | output does **not** contain `No such command` (builtin since yosys ≥ v0.67; older builds need a loadable slang plugin) |
-| KLayout (only needed by `layout-image`) | `python3 -c "from klayout import lay"` | no ImportError |
+| KLayout GUI (only needed by `gdsview`) | `KLAYOUT_BIN=/path/to/klayout ecc gdsview --help` or `command -v klayout` | executable resolves; run from a desktop session |
 | Sizer (required by `ecc doctor`; needed by the Timing optimization step in the complete rtl2gds chain) | `which Sizer`; optionally `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | both the executable and a root containing `src/sizer_os.tcl` must resolve; the root may be configured or discovered from the binary. Fresh or `--overwrite` `rtl2gds` targets preflight Sizer; existing workspaces and `--workspace` reruns skip preflight, so a missing binary can still fail mid-flow |
 | kepler-formal (required by `ecc doctor`; needed by the LEC/postRouteLec equivalence checks; not probed when the default `skip_steps = ["lec"]` applies) | `echo $CHIPCOMPILER_KEPLER_FORMAL_ROOT`; `which kepler-formal` | either resolves the executable (the root-level wrapper or `bin/kepler-formal` under the root) |
 
@@ -1778,16 +1780,31 @@ checker_count and warning records. Workspace-local gaps retain the row and yield
 status with exit 0; invalid project metadata returns 1; argument errors return 2.
 `--workspace` is not accepted by this project-wide report.
 
-## 13. layout-image — render a GDS to an image
+## 13. gdsview — open a step GDS in KLayout
 
 ```bash
-ecc layout-image --gds <in.gds> --image <out.png> [--width N] [--height N]
+ecc gdsview --project <project> --workspace <workspace> --step <step>
 ```
 
-Renders a GDS layout snapshot via KLayout (default 1920×1920; KLayout must be available):
+Opens the GDS published by the selected workspace step in KLayout's interactive
+`LayoutView`. The command searches that step's `output` directory for exactly one
+`*.gds` or `*.gds.gz` file, loads it, fits the hierarchy, and keeps the KLayout
+window open until it is closed. It does not create a PNG.
+
+The command launches the KLayout GUI executable and passes it the selected GDS;
+it does not add a separate PyQt/PySide dependency to the ECC CLI or change the
+ECOS Studio AppImage. KLayout supplies its own Qt runtime. The executable is
+looked up only when `gdsview` runs.
+
+Not every flow step publishes GDS. If the selected step has no GDS, the command
+returns `gds_view_unavailable` and lists the steps in the workspace that do have
+GDS outputs. If more than one GDS is present, it returns
+`gds_view_ambiguous` with the candidate paths. A missing KLayout GUI executable
+or Linux display returns a separate diagnostic instead of silently selecting
+another step.
 
 ```bash
-ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image layout.png --width 2560 --height 1600
+ecc gdsview --workspace default --step Harden
 ```
 
 ## 14. chipview — open a saved geometry snapshot
@@ -1824,7 +1841,7 @@ by the ECOS Studio built-in terminal),
 `ECOS_ELECTRON_RESOURCES_PATH/binaries/chip-viewer-native`, or `PATH`. If none
 is executable, run the command from the AppImage's built-in terminal or set
 `ECOS_CHIP_VIEWER_BIN` explicitly. The command never falls back to
-`layout-image`.
+`gdsview`.
 
 ## 15. Typical end-to-end workflow
 
@@ -1854,7 +1871,7 @@ ecc report summary                 # text design summary (signoff/<design>_desig
 ecc report qor                     # QoR overall score report (signoff/<design>_qor_report.txt)
 ecc report checklist               # signoff checklist report (signoff/checklist_report.txt)
 ecc report step drc                # preview one step's feature/analysis/checklist (read-only)
-ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image gcd.png
+ecc gdsview --workspace default --step Harden
 ecc chipview --workspace default --step Harden
 ```
 

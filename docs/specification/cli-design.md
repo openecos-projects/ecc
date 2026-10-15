@@ -137,7 +137,7 @@ Current implementation status:
 | `ecc doc` | `--plain` |
 | `ecc macro set/remove/import/show` | `--plain` |
 | `ecc version` | hidden `--json` only (desktop app contract) |
-| `ecc layout-image` | none (tool invocation; produces a file) |
+| `ecc gdsview` | `--plain` and `--json` (opens KLayout) |
 | `ecc chipview` | `--plain` and `--json` (launches a native viewer) |
 
 When `--plain` is given, the implementation renders plain records; otherwise it
@@ -211,7 +211,7 @@ ecc workspace
 ecc signoff
 ecc report
 ecc doc
-ecc layout-image
+ecc gdsview
   ecc chipview
 ```
 
@@ -237,7 +237,7 @@ Responsibilities:
 | `ecc signoff` | Inspect package readiness and export the tar.gz package |
 | `ecc report` | Write design-summary, QoR, and checklist reports; show step evidence |
 | `ecc doc` | Render a bundled guide (config reference, user guide, tutorial) in the terminal |
-| `ecc layout-image` | Render a GDS file into an image |
+| `ecc gdsview` | Open a workspace step's GDS in the KLayout viewer |
 | `ecc chipview` | Open a workspace step's saved geometry snapshot in Chip Viewer |
 
 `ecc run` preflights the tools its preset needs (yosys for synthesis and
@@ -283,7 +283,7 @@ The command graph follows these rules; new commands must follow them too:
 
 - **Architecture.** Top-level commands are workflow-scale verbs (`init`,
   `check`, `run`, `status`, `log`, `config`, `doctor`, `migrate`, `version`)
-  plus the frozen tool invocations (`layout-image`, `chipview`). Resource management and
+  plus the frozen tool invocations (`gdsview`, `chipview`). Resource management and
   reporting live in noun groups (`param`, `pdk`, `project`, `workspace`,
   `signoff`, `report`).
 - **Subcommand verbs.** Mutable resources use the CRUD set
@@ -291,7 +291,7 @@ The command graph follows these rules; new commands must follow them too:
   group names its artifacts instead (`summary`, `qor`, `checklist`, `step`)
   because `report <artifact>` reads as one action.
 - **Naming.** Lowercase single words; multi-word names use kebab-case
-  (`set-root`, `layout-image`). Help strings start with an imperative verb.
+  (`set-root`, `gdsview`). Help strings start with an imperative verb.
 - **Selectors.** `--workspace SELECTOR` accepts either a declared or
   newly-created managed name, or a complete absolute path. A name may be
   combined with `--project` and keeps the project-local default; an absolute
@@ -305,10 +305,10 @@ The command graph follows these rules; new commands must follow them too:
   in `cli/inspection/`, all rendering in `cli/rendering/` behind a single
   registry keyed by full command path (top-level name, or `group:sub`).
 - **Frozen surfaces.** The GUI invokes the public domain CLI plus `ecc version
-  --json` for capability negotiation and `ecc layout-image --gds <gds>
-  --image <png>` for file rendering. `ecc chipview --workspace <workspace>
-  --step <step>` opens the saved geometry snapshot through the packaged native
-  Viewer. Parameter and flow discovery use their
+  --json` for capability negotiation. `ecc gdsview --workspace <workspace>
+  --step <step>` opens a step GDS through KLayout. `ecc chipview --workspace
+  <workspace> --step <step>` opens the saved geometry snapshot through the
+  packaged native Viewer. Parameter and flow discovery use their
   explicitly versioned line-record contracts; mutation commands use exit codes
   followed by reads of authoritative Project/Workspace files.
 

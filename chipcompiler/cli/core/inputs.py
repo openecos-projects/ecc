@@ -67,6 +67,14 @@ class ChipviewInput:
 
 
 @dataclass(frozen=True)
+class GdsViewInput:
+    output: OutputOptions
+    project: ProjectOptions
+    step: str
+    workspace: str | None = None
+
+
+@dataclass(frozen=True)
 class DoctorInput:
     output: OutputOptions
     project: ProjectOptions

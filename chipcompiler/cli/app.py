@@ -6,6 +6,7 @@ from typing import Annotated
 import typer
 
 from chipcompiler.cli.commands.chipview import register_chipview_commands
+from chipcompiler.cli.commands.gds_view import register_gds_view_commands
 from chipcompiler.cli.commands.compare import compare_app
 from chipcompiler.cli.commands.doc import register_doc_commands
 from chipcompiler.cli.commands.doctor import register_doctor_commands
@@ -72,20 +73,7 @@ def version_cmd(
 
 register_doc_commands(app)
 register_chipview_commands(app)
-
-
-@app.command("layout-image", help="Render a GDS file into a layout image")
-def layout_image_cmd(
-    gds: Annotated[str, typer.Option("--gds", help="Input GDS path")],
-    image: Annotated[str, typer.Option("--image", help="Output image path")],
-    width: Annotated[int, typer.Option("--width", min=1)] = 1920,
-    height: Annotated[int, typer.Option("--height", min=1)] = 1920,
-) -> None:
-    from chipcompiler.tools.klayout_tool.image import save_snapshot_image
-
-    if not save_snapshot_image(gds_file=gds, img_file=image, width=width, height=height):
-        typer.echo(f"Error: Failed to render layout image from {gds} to {image}", err=True)
-        raise typer.Exit(1)
+register_gds_view_commands(app)
 
 
 register_project_commands(app)

@@ -578,14 +578,18 @@ $ ecc report checklist
 
 本次 36 项中 33 项 PASS（映射网表、DRC clean、LVS clean、**LEC 等价性 proven**、SPEF 完整性、setup/hold 收敛、Harden GDS/LEF/LIB……），3 项 ATTENTION 均为可选文件缺失（`config.macro_locations` 与 LEC 调试转储 `lec.failed_rtlil`/`lec.failed_verilog`，后者仅 LEC 失败时才存在）。
 
-### 5.6 渲染版图图片（可选）：ecc layout-image
+### 5.6 在 KLayout 中打开 step 的 GDS（可选）：ecc gdsview
 
-环境里有 KLayout 时，可把任意 GDS 渲染成快照（Harden 步骤其实已自动生成 `gcd_Harden.png`，此命令用于渲染其他 GDS 或自定义尺寸）：
+部分 flow step 会在自己的 `output` 目录中发布 GDS。使用下面的命令在
+KLayout 交互式查看器中打开指定 step 生成的唯一 GDS：
 
 ```bash
-ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds \
-                 --image gcd_layout.png --width 2560 --height 1600
+ecc gdsview --workspace default --step Harden
 ```
+
+命令会打开 GDS 并保持 KLayout 窗口直到用户关闭，不会保存 PNG。指定 step
+没有 GDS 时会给出明确提示，并列出当前 workspace 中有 GDS 的其他 step；若
+该 step 存在多个 GDS 候选文件，需要先消除歧义再重试。
 
 ### 5.7 打开原生版图查看器（可选）：ecc chipview
 
@@ -601,8 +605,8 @@ ecc chipview --workspace default --step Harden
 不会读取 Harden GDS，也不会生成 PNG。AppImage 内置终端会设置
 `ECOS_CHIP_VIEWER_BIN`，指向 AppImage 内的 `chip-viewer-native`；开发环境
 可以显式把该变量设置为可执行 Viewer 路径。若步骤快照、Viewer 或 Linux
-图形环境缺失，命令会给出可执行的错误提示，不会静默回退到
-`layout-image`。Viewer 日志保存在 `default/.chip-viewer/logs/`。
+图形环境缺失，命令会给出可执行的错误提示，不会切换到 GDS 查看命令。
+Viewer 日志保存在 `default/.chip-viewer/logs/`。
 
 ## 6. 调参与重跑
 

@@ -174,7 +174,7 @@ ecc run --project gcd --workspace recovered --resume
 | `ecc report project` | 按已有 QoR 分数降序列出全部工作区及 flow、step、checker 状态矩阵 |
 | `ecc compare run` | 只读比较两份保存的 Engineering Snapshot JSON，不启动 EDA |
 | `ecc version` | 显示 ECC 运行时和组件版本 |
-| `ecc layout-image` | 将 GDS 文件渲染为版图图像 |
+| `ecc gdsview` | 打开 workspace 指定 step 的 GDS 版图查看器 |
 | `ecc chipview` | 打开 workspace 指定 step 的 geometry 版图数据 |
 
 项目命令均接受 `--project <dir>`（默认为当前目录）。大多数命令支持
