@@ -1308,6 +1308,21 @@ unknown，退出 7 并上传报告。CI 允许此证据不足状态，但不会�
 本地 GCD 用于验证执行闭环；跨设计统计效果、加速收敛和 PPA 收益需要后续独立 campaign
 的实测数据，不能由 synthetic smoke 或单个 GCD design 得出。
 
+矩阵聚合器可以接收人工维护的 family 映射：
+
+```bash
+python3 packaging/experience_matrix_report.py \
+  --inputs observations \
+  --expected-designs-json '["design-a","design-b"]' \
+  --families-json family-labels.json \
+  --output matrix-report
+```
+
+family 不会从名称或目录结构推断。JSON 报告保留三份观测文件的摘要、输入重复状态、实测
+QoR、候选配置变化，以及带原始 scope 的每 step 资源观测。每个输入只有一个 baseline 时，
+候选变化保持 unknown；不同 scope 的资源不会求平均或合并。缺失或格式损坏返回 6 并拒绝
+聚合；格式有效但证据不足返回 7，同时保留审计报告。
+
 ## 18. 扩大测试前先建立可比基线
 
 完整 flow 只有在 `signoff check` 通过、QoR 可用且已提交 snapshot 与持久化配置一致时，

@@ -1321,6 +1321,23 @@ train/evaluate/publish/advise lifecycle, and invalid-input exit codes for match/
 It does not launch another DSE search or invent
 attempt identities or independent families to make unknown evidence pass.
 
+The matrix aggregator accepts an optional manually maintained family map:
+
+```bash
+python3 packaging/experience_matrix_report.py \
+  --inputs observations \
+  --expected-designs-json '["design-a","design-b"]' \
+  --families-json family-labels.json \
+  --output matrix-report
+```
+
+Family labels are never inferred from names or directory layout. The JSON report retains the
+three-source observation digest, input duplicate status, measured QoR, candidate-configuration
+variation, and per-step resource observations with their original scope. A single baseline per
+input keeps candidate variation unknown; resource values from different scopes are not averaged
+or combined. Missing or malformed observations return 6, while valid but insufficient evidence
+returns 7 and still writes the audit report.
+
 ```bash
 python3 packaging/experience_cli_smoke.py --binary ./dist/ecc/ecc \
   --project ./project --workspace baseline --output ./evidence/packaged-smoke

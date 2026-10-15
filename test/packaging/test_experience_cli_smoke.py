@@ -3,6 +3,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 from typer.testing import CliRunner
 
@@ -68,9 +69,27 @@ def test_real_matrix_reports_independence_without_inventing_generalization(tmp_p
         directory = tmp_path / "inputs" / name
         directory.mkdir(parents=True)
         records = {
-            "show": {"case_id": name, "input_content_fingerprint": "same-rtl", "facts": {}},
+            "show": {
+                "case_id": name,
+                "input_content_fingerprint": "same-rtl",
+                "facts": {"qorSnapshotExtension": {"status": "available", "score": 10}},
+            },
             "verify": {"case_id": name, "status": "pass", "integrity": "pass"},
-            "features": {"case_id": name, "steps": []},
+            "features": {
+                "case_id": name,
+                "parameters": {"values": {"place.target_density": 0.5}},
+                "steps": [
+                    {
+                        "step": "place",
+                        "resource_observation": {
+                            "status": "available",
+                            "scope": "isolated_worker_process_tree",
+                            "elapsed_seconds": 3.5,
+                            "peak_rss_bytes": 123,
+                        },
+                    }
+                ],
+            },
         }
         for label, record in records.items():
             (directory / f"{label}.stdout.json").write_text(json.dumps([record]))
@@ -79,8 +98,51 @@ def test_real_matrix_reports_independence_without_inventing_generalization(tmp_p
     assert report["independent_input_count"] == 1
     assert report["observations"][1]["duplicate_input"] is True
     assert all(item["family"] is None for item in report["observations"])
+    assert report["candidate_variation"]["status"] == "unknown"
+    assert report["resource_summary"]["place"]["available_count"] == 2
+    assert report["resource_summary"]["place"]["scopes"] == ["isolated_worker_process_tree"]
+    labeled = module.aggregate(
+        tmp_path / "inputs",
+        ["first", "second"],
+        tmp_path / "labeled-report",
+        {"first": "small", "second": "small"},
+    )
+    assert labeled["family_count"] == 1
+    assert labeled["missing_family_designs"] == []
     missing = module.aggregate(tmp_path / "inputs", ["missing"], tmp_path / "missing-report")
     assert missing["exit_code"] == 6
+
+
+def test_real_matrix_reports_candidate_variation_and_rejects_corrupt_records(tmp_path):
+    path = Path(__file__).parents[2] / "packaging/experience_matrix_report.py"
+    specification = importlib.util.spec_from_file_location("experience_matrix_report", path)
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+    for name, density in (("first", 0.45), ("second", 0.55)):
+        directory = tmp_path / "inputs" / name
+        directory.mkdir(parents=True)
+        records = {
+            "show": {"case_id": name, "input_content_fingerprint": "same-rtl", "facts": {}},
+            "verify": {"case_id": name, "status": "pass", "integrity": "pass"},
+            "features": {
+                "case_id": name,
+                "parameters": {"values": {"place.target_density": density}},
+                "steps": [],
+            },
+        }
+        for label, record in records.items():
+            (directory / f"{label}.stdout.json").write_text(json.dumps([record]))
+    report = module.aggregate(tmp_path / "inputs", ["first", "second"], tmp_path / "report")
+    assert report["candidate_variation"] == {
+        "status": "available",
+        "input_groups": 1,
+        "varied_input_groups": 1,
+        "configurations_by_input": {"same-rtl": 2},
+    }
+
+    (tmp_path / "inputs/second/verify.stdout.json").write_text("not-json")
+    with pytest.raises(ValueError, match="Invalid CLI observation"):
+        module.aggregate(tmp_path / "inputs", ["first", "second"], tmp_path / "corrupt")
 
 
 def test_packaged_dse_smoke_spec_uses_a_supported_stage_metric():
@@ -95,9 +157,7 @@ def test_packaged_dse_smoke_spec_uses_a_supported_stage_metric():
                 {"step": "Synthesis", "metrics": []},
                 {
                     "step": "postFloorplan",
-                    "metrics": [
-                        {"id": "core_area", "unit": "um^2", "status": "available"}
-                    ],
+                    "metrics": [{"id": "core_area", "unit": "um^2", "status": "available"}],
                 },
             ]
         }
@@ -146,9 +206,7 @@ def test_packaged_dse_patience_contract_checks_the_frozen_plan(tmp_path, monkeyp
             "steps": [
                 {
                     "step": "postFloorplan",
-                    "metrics": [
-                        {"id": "core_area", "unit": "um^2", "status": "available"}
-                    ],
+                    "metrics": [{"id": "core_area", "unit": "um^2", "status": "available"}],
                 }
             ]
         },
