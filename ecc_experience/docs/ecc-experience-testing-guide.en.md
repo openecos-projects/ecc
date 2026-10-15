@@ -1310,8 +1310,12 @@ DRC reports into foundry DRC signoff.
 
 ## Packaged runtime and CI validation scope
 
-The existing design matrix invokes packaging/experience_cli_smoke.py after each
-real flow. It checks collection idempotence, list/show, experience package round
+The main push, pull-request and nightly design matrix does not run experience
+smoke by default. This keeps benchmark-oriented experience collection from
+adding time or becoming a gate for the product flow. A manual CI run may enable
+the `run-experience` workflow input to invoke `packaging/experience_cli_smoke.py`
+after each real flow and aggregate the observations. The smoke checks collection
+idempotence, list/show, experience package round
 trips, corruption detection, campaign quality, prefix features, the P4 model
 train/evaluate/publish/advise lifecycle, and invalid-input exit codes for match/DSE/study.
 It does not launch another DSE search or invent
@@ -1321,6 +1325,9 @@ attempt identities or independent families to make unknown evidence pass.
 python3 packaging/experience_cli_smoke.py --binary ./dist/ecc/ecc \
   --project ./project --workspace baseline --output ./evidence/packaged-smoke
 ```
+
+The optional DSE contract check is further disabled unless the script is given
+`--include-dse-contract`; it creates a plan only and never runs an EDA trial.
 
 Use a new output directory outside source, input workspaces and the knowledge
 store. Validate real DSE separately with dse plan/run, including screening, full

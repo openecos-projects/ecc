@@ -3,6 +3,7 @@ import json
 import subprocess
 from pathlib import Path
 
+import yaml
 from typer.testing import CliRunner
 
 from chipcompiler.cli.app import app
@@ -153,3 +154,22 @@ def test_packaged_dse_patience_contract_checks_the_frozen_plan(tmp_path, monkeyp
         },
     )
     assert (output / "dse-auto-patience-plan.json").is_file()
+
+
+def test_ci_keeps_experience_checks_manual_and_non_blocking():
+    workflow = yaml.safe_load(
+        (Path(__file__).parents[2] / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )
+    trigger = workflow.get(True, workflow.get("on", {}))
+    assert trigger["workflow_dispatch"]["inputs"]["run-experience"]["default"] is False
+    packaged_steps = workflow["jobs"]["e2e-packaged-flow"]["steps"]
+    experience_step = next(
+        step
+        for step in packaged_steps
+        if step.get("name") == "Verify packaged experience collection"
+    )
+    assert experience_step["continue-on-error"] is True
+    assert "inputs.run-experience" in experience_step["if"]
+    matrix_job = workflow["jobs"]["experience-design-matrix"]
+    assert "inputs.run-experience" in matrix_job["if"]
+    assert matrix_job["continue-on-error"] is True

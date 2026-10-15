@@ -1155,8 +1155,10 @@ project 配置或启动 flow。模型建议的正确后续流程是：
 
 ## 打包版本与 CI 验证范围
 
-现有 design matrix 在每个真实 flow 完成后调用 packaging/experience_cli_smoke.py。
-该检查包含采集幂等、列表/详情、经验包往返、损坏检测、campaign quality、阶段前缀
+普通 push、pull request 和 nightly design matrix 默认不运行 experience smoke，避免
+面向 benchmark 的经验采集增加产品 CI 时间或成为 flow 门禁。手动运行 CI 时可将
+`run-experience` workflow 输入设为 true，才会在每个真实 flow 后调用
+`packaging/experience_cli_smoke.py` 并汇总观测。该检查包含采集幂等、列表/详情、经验包往返、损坏检测、campaign quality、阶段前缀
 features、P4 model train/evaluate/publish/advise，以及 match/DSE/study 对无效
 release/计划/spec/评价报告的退出码。它不会
 额外启动 DSE 搜索，也不会伪造 attempt 或独立家族来让未知证据通过。
@@ -1165,6 +1167,9 @@ release/计划/spec/评价报告的退出码。它不会
 python3 packaging/experience_cli_smoke.py --binary ./dist/ecc/ecc \
   --project ./project --workspace baseline --output ./evidence/packaged-smoke
 ```
+
+可选的 DSE contract 检查还必须显式传入 `--include-dse-contract`；它只生成 plan，不执行
+任何 EDA trial。
 
 输出必须是新目录；测试产物放在源码、输入 workspace 和知识 store 外。需要验证
 真实 DSE 时，另用本手册的 dse plan/run 完成筛选、完整 flow 和独立 fresh；针对
