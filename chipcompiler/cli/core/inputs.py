@@ -59,6 +59,14 @@ class CheckInput:
 
 
 @dataclass(frozen=True)
+class ChipviewInput:
+    output: OutputOptions
+    project: ProjectOptions
+    step: str
+    workspace: str | None = None
+
+
+@dataclass(frozen=True)
 class DoctorInput:
     output: OutputOptions
     project: ProjectOptions

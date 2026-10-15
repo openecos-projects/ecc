@@ -588,6 +588,26 @@ ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds \
                  --image gcd_layout.png --width 2560 --height 1600
 ```
 
+### 5.7 Open the native layout viewer (optional): ecc chipview
+
+ECOS Studio stores the interactive layout snapshot under each completed step's
+`output/geometry` directory. To open that snapshot in the same native Chip
+Viewer used by the ECOS Studio layout thumbnail, run the command from the
+ECOS Studio AppImage's built-in terminal:
+
+```bash
+ecc chipview --workspace default --step Harden
+```
+
+The command reads `Harden_ecc/output/geometry/geometry.manifest` and its
+sidecar files. It does not read the Harden GDS and does not create a PNG. The
+AppImage terminal supplies `ECOS_CHIP_VIEWER_BIN`, pointing to the packaged
+`chip-viewer-native`; when using a development checkout, set that variable to
+an executable Viewer path explicitly. A missing step snapshot, Viewer, or Linux
+display produces an actionable error instead of silently switching to
+`layout-image`. Viewer logs are written to
+`default/.chip-viewer/logs/`.
+
 ## 6. Tuning Parameters and Rerunning
 
 Getting through once is only the start — the daily backend loop is "tweak → rerun → compare".

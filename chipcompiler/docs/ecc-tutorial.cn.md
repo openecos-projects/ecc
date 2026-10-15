@@ -587,6 +587,23 @@ ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds \
                  --image gcd_layout.png --width 2560 --height 1600
 ```
 
+### 5.7 打开原生版图查看器（可选）：ecc chipview
+
+ECOS Studio 会把每个已完成步骤的交互式版图快照保存到该步骤的
+`output/geometry` 目录。要使用与 ECOS Studio 点击版图缩略图相同的原生
+Chip Viewer，请从 ECOS Studio AppImage 的内置终端运行：
+
+```bash
+ecc chipview --workspace default --step Harden
+```
+
+命令读取 `Harden_ecc/output/geometry/geometry.manifest` 及其 sidecar 文件，
+不会读取 Harden GDS，也不会生成 PNG。AppImage 内置终端会设置
+`ECOS_CHIP_VIEWER_BIN`，指向 AppImage 内的 `chip-viewer-native`；开发环境
+可以显式把该变量设置为可执行 Viewer 路径。若步骤快照、Viewer 或 Linux
+图形环境缺失，命令会给出可执行的错误提示，不会静默回退到
+`layout-image`。Viewer 日志保存在 `default/.chip-viewer/logs/`。
+
 ## 6. 调参与重跑
 
 跑通只是起点，后端迭代的日常是「改参数 → 重跑 → 对比」。

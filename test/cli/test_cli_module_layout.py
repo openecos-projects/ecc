@@ -51,7 +51,16 @@ def test_core_modules_live_under_core_package():
 
 
 def test_command_registration_modules_live_under_commands_package():
-    for module_name in ("project", "doctor", "param", "macro", "pdk", "signoff", "report"):
+    for module_name in (
+        "project",
+        "doctor",
+        "chipview",
+        "param",
+        "macro",
+        "pdk",
+        "signoff",
+        "report",
+    ):
         module = importlib.import_module(f"chipcompiler.cli.commands.{module_name}")
         assert module.__name__ == f"chipcompiler.cli.commands.{module_name}"
 

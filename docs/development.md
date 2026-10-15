@@ -279,7 +279,7 @@ This section is for developers who add or modify commands in the `ecc` CLI.
 ```
 pyproject.toml                    # scripts.ecc = "chipcompiler.cli.main:main"
 chipcompiler/cli/main.py          # run(argv) / main(), a thin wrapper
-chipcompiler/cli/app.py           # root typer app; invoke_typer_app() owns execution and exit codes; the version / layout-image commands are registered here directly
+chipcompiler/cli/app.py           # root typer app; invoke_typer_app() owns execution and exit codes; version / layout-image / chipview are registered here
 chipcompiler/cli/commands/        # typer command definition layer (thin)
   ├── project.py                  # registration and option declarations for init/check/run/status/log/config/migrate
   ├── doctor.py                   # doctor top-level command (environment check)
@@ -291,7 +291,8 @@ chipcompiler/cli/commands/        # typer command definition layer (thin)
   ├── workspace.py                # workspace sub-app (import/refresh)
   ├── signoff.py                  # signoff sub-app (inspect/export)
   ├── report.py                   # report sub-app (summary/qor/checklist/step)
-  └── process.py                  # process sub-app (inspect/cancel/reconcile)
+  ├── process.py                  # process sub-app (inspect/cancel/reconcile)
+  └── chipview.py                 # open a saved geometry snapshot in Chip Viewer
 chipcompiler/cli/command_handlers/  # business logic layer (stateful / heavy)
   ├── project.py                  # init / check / run / migrate / workspace refresh (preset resolution and environment preflight)
   ├── inspect.py                  # status / log / config
@@ -302,7 +303,8 @@ chipcompiler/cli/command_handlers/  # business logic layer (stateful / heavy)
   ├── workspace_params.py         # workspace-scoped param set/unset/list/diff (home/params.toml mutation + step invalidation)
   ├── macro.py                    # macro set/remove/show/import (macro_location.tcl render + params.toml writes)
   ├── signoff.py                  # signoff inspect/export
-  └── report.py                   # the four report subcommands (file writing + record summary)
+  ├── report.py                   # the four report subcommands (file writing + record summary)
+  └── chipview.py                 # geometry manifest validation and native Viewer launch
 chipcompiler/cli/core/            # framework layer
   ├── apps.py                     # shared typer app factory (create_app(): no_args_is_help, completion)
   ├── docs.py                     # locate and load the bundled guide documents for ecc doc
@@ -373,7 +375,8 @@ Commands dispatched through `execute_command()` use a "list of records":
 
 `ecc version` formats version metadata directly; `--json` emits the versioned
 desktop CLI contract. `ecc layout-image` intentionally does not use the
-record-renderer output modes.
+record-renderer output modes; `ecc chipview` uses the normal result renderer and
+supports `--plain`/`--json`.
 
 ### Adding A New Command
 

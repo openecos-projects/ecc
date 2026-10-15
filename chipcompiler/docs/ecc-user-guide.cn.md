@@ -92,7 +92,7 @@ uv run ecc --help
 
 - 全局：`ecc --version`（单行版本号）、`ecc --help`。
 - 项目定位：项目级命令接受 `--project <dir>`（缺少参数指定即为当前目录）。`--workspace <路径指定>` 可以是受工具管理的非空简单文件夹路径，也可以是完整绝对路径。名称继续使用项目内的 `<project>/<workspace-id>` 布局；绝对路径创建或选择项目外 workspace，新路径默认以目录 basename 作为 workspace ID，已登记路径沿用清单中的 ID。新项目裸执行 `ecc run` 创建 `default`；只有一个活跃 workspace 时自动选择，多个活跃 workspace 时必须指定 `--workspace`。命名 workspace 会在创建文件前登记到 `project.json`。遗留的 `runs/` 项目必须先执行 `ecc migrate`。每个项目只有一个 `ecc.toml`；创建时会把声明的输入复制到各 workspace 的 `origin/`。
-- 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`rtl`、`param`、`macro`、`pdk`、`project`、`workspace`、`process`、`flow`、`signoff`、`report`、`compare` 在相应命令中支持 `--plain`，缺省为人类可读 TEXT。`reproducible`、`sweep`、`explore`、`diagnose` 也支持 `--plain`；面向机器的实验命令默认仍输出 JSON。`layout-image` 直接生成文件。
+- 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`rtl`、`param`、`macro`、`pdk`、`project`、`workspace`、`process`、`flow`、`signoff`、`report`、`compare`、`chipview` 在相应命令中支持 `--plain`，缺省为人类可读 TEXT。`reproducible`、`sweep`、`explore`、`diagnose` 也支持 `--plain`；面向机器的实验命令默认仍输出 JSON。`layout-image` 直接生成文件。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。完整注册表：
 
 | 退出码 | 含义 | 触发者 |
@@ -181,6 +181,7 @@ Commands:
   version       Show ECC runtime, component, and installed tool versions
   doc           Show a bundled guide (config = config reference, ug = user guide, tutorial)
   layout-image  Render a GDS file into a layout image
+  chipview       打开 workspace 指定 step 的 geometry 版图数据
   init          Create a new ECC project
   check         Validate the current project setup
   run           Run the configured RTL-to-GDS flow
@@ -240,6 +241,7 @@ eval "$(ecc --show-completion)"     # 自动探测当前 shell
 | `ecc version` | 查看运行时、组件与工具版本（`--json` 输出机器可读契约） | §2 |
 | `ecc doc TOPIC` | 终端阅读内置指南（`config` / `ug` / `tutorial`） | §1.5 |
 | `ecc layout-image` | 把 GDS 渲染为图片 | §13 |
+| `ecc chipview` | 打开 workspace step 的 geometry snapshot | §14 |
 | `ecc init NAME` | 创建项目骨架 | §3 |
 | `ecc check` | 校验项目配置、RTL 源与 PDK 内容 | §4 |
 | `ecc run` | 执行 flow（新建/续跑/范围/单步，项目与 workspace 模式） | §5 |
@@ -1990,7 +1992,39 @@ ecc layout-image --gds <in.gds> --image <out.png> [--width N] [--height N]
 ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image layout.png --width 2560 --height 1600
 ```
 
-## 14. 端到端典型工作流
+## 14. chipview — 打开保存的 geometry 版图
+
+```bash
+ecc chipview --project <project> --workspace <workspace> --step <step>
+```
+
+该命令打开与 ECOS Studio 点击版图缩略图相同的原生 Chip Viewer。命令读取
+`<step>/output/geometry/geometry.manifest` 及其 sidecar 文件，不读取 GDS，
+也不生成 PNG。请从 ECOS Studio AppImage 的内置终端运行，以便
+`ECOS_CHIP_VIEWER_BIN` 指向 AppImage 内的 `chip-viewer-native`；开发环境也
+可以通过该变量显式指定可执行文件。
+
+命令启动前会检查项目、workspace、flow step、geometry manifest、Viewer
+可执行文件和 Linux 图形环境。缺少任一条件时会返回明确的错误原因、期望路径
+和修复建议。Viewer 的 stdout/stderr 保存在
+`<workspace>/.chip-viewer/logs/`。
+
+命令支持 `--plain`（输出稳定的 `key=value` 记录）和 `--json`（输出 JSON
+记录数组）。成功记录包含 `status=started`、step、manifest 路径、Viewer
+路径、Viewer PID 以及日志路径。workspace/geometry、Viewer、显示环境或
+Viewer 启动失败时返回退出码 `1`，常见错误码包括
+`chipview_step_not_found`、`chipview_geometry_invalid`、
+`chipview_viewer_unavailable`、`chipview_display_unavailable` 和
+`chipview_launch_failed`。
+
+AppImage 不作为 GDS 输入解析。命令只要求 AppImage 内的
+`chip-viewer-native` 可被发现：ECOS Studio 内置终端会注入
+`ECOS_CHIP_VIEWER_BIN`，也可以使用
+`ECOS_ELECTRON_RESOURCES_PATH/binaries/chip-viewer-native` 或 PATH。若找不到
+可执行 Viewer，请从 AppImage 内置终端运行，或显式设置
+`ECOS_CHIP_VIEWER_BIN`；命令不会回退到 `layout-image`。
+
+## 15. 端到端典型工作流
 
 ```bash
 ecc init gcd && cd gcd
@@ -2019,6 +2053,7 @@ ecc report qor                     # QoR 总分报告（signoff/<design>_qor_rep
 ecc report checklist               # 签核清单报告（signoff/checklist_report.txt）
 ecc report step drc                # 终端预览单步骤 feature/analysis/checklist（只读）
 ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image gcd.png
+ecc chipview --workspace default --step Harden
 ```
 
 创建多个受管 workspace 做对比实验（每个独立目录、互不干扰）：

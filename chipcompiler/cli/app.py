@@ -5,6 +5,7 @@ from typing import Annotated
 
 import typer
 
+from chipcompiler.cli.commands.chipview import register_chipview_commands
 from chipcompiler.cli.commands.compare import compare_app
 from chipcompiler.cli.commands.doc import register_doc_commands
 from chipcompiler.cli.commands.doctor import register_doctor_commands
@@ -70,6 +71,7 @@ def version_cmd(
 
 
 register_doc_commands(app)
+register_chipview_commands(app)
 
 
 @app.command("layout-image", help="Render a GDS file into a layout image")

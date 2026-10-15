@@ -138,6 +138,7 @@ Current implementation status:
 | `ecc macro set/remove/import/show` | `--plain` |
 | `ecc version` | hidden `--json` only (desktop app contract) |
 | `ecc layout-image` | none (tool invocation; produces a file) |
+| `ecc chipview` | `--plain` and `--json` (launches a native viewer) |
 
 When `--plain` is given, the implementation renders plain records; otherwise it
 renders pretty text.
@@ -211,6 +212,7 @@ ecc signoff
 ecc report
 ecc doc
 ecc layout-image
+  ecc chipview
 ```
 
 Responsibilities:
@@ -236,6 +238,7 @@ Responsibilities:
 | `ecc report` | Write design-summary, QoR, and checklist reports; show step evidence |
 | `ecc doc` | Render a bundled guide (config reference, user guide, tutorial) in the terminal |
 | `ecc layout-image` | Render a GDS file into an image |
+| `ecc chipview` | Open a workspace step's saved geometry snapshot in Chip Viewer |
 
 `ecc run` preflights the tools its preset needs (yosys for synthesis and
 LEC, dreamplace for macro placement/placement/legalization, sizer for timing
@@ -280,7 +283,7 @@ The command graph follows these rules; new commands must follow them too:
 
 - **Architecture.** Top-level commands are workflow-scale verbs (`init`,
   `check`, `run`, `status`, `log`, `config`, `doctor`, `migrate`, `version`)
-  plus the frozen tool invocations (`layout-image`). Resource management and
+  plus the frozen tool invocations (`layout-image`, `chipview`). Resource management and
   reporting live in noun groups (`param`, `pdk`, `project`, `workspace`,
   `signoff`, `report`).
 - **Subcommand verbs.** Mutable resources use the CRUD set
@@ -303,7 +306,9 @@ The command graph follows these rules; new commands must follow them too:
   registry keyed by full command path (top-level name, or `group:sub`).
 - **Frozen surfaces.** The GUI invokes the public domain CLI plus `ecc version
   --json` for capability negotiation and `ecc layout-image --gds <gds>
-  --image <png>` for rendering. Parameter and flow discovery use their
+  --image <png>` for file rendering. `ecc chipview --workspace <workspace>
+  --step <step>` opens the saved geometry snapshot through the packaged native
+  Viewer. Parameter and flow discovery use their
   explicitly versioned line-record contracts; mutation commands use exit codes
   followed by reads of authoritative Project/Workspace files.
 

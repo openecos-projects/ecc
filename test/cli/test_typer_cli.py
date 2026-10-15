@@ -23,6 +23,7 @@ def test_root_help_returns_zero_and_lists_commands(capsys):
         "log",
         "config",
         "doctor",
+        "chipview",
         "param",
         "macro",
         "pdk",
@@ -48,7 +49,7 @@ def test_root_help_lists_doc_right_after_version(capsys):
         for line in out.splitlines()
         if (match := re.match(r"^│ (\w[\w-]*)  +\S", line))
     ]
-    assert order[:3] == ["version", "doc", "layout-image"]
+    assert order[:4] == ["version", "doc", "chipview", "layout-image"]
 
 
 def test_root_version_returns_single_line(capsys):

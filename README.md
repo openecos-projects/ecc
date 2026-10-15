@@ -183,6 +183,7 @@ Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 | `ecc compare run` | Compare two saved Engineering Snapshot JSON files without running EDA |
 | `ecc version` | Show ECC runtime and component versions |
 | `ecc layout-image` | Render a GDS file into a layout image |
+| `ecc chipview` | Open a workspace step's geometry snapshot in Chip Viewer |
 
 Project commands accept `--project <dir>` (defaults to the current directory).
 Most commands support `--plain` output for scripting.

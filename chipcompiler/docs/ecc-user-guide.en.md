@@ -93,7 +93,7 @@ uv run ecc --help
 
 - Global: `ecc --version` (single version line), `ecc --help`.
 - Project location: project-scoped commands accept `--project <dir>` (when the option is not given, the current directory is used). `--workspace <path>` accepts either a tool-managed, non-empty simple folder name or a complete absolute filesystem path. A name keeps the project-local `<project>/<workspace-id>` layout; an absolute path creates or selects an external workspace and uses its basename as the new ID unless the path is already registered. A fresh project creates `default` on bare `ecc run`; a project with one active workspace auto-selects it, while one with multiple active workspaces requires `--workspace`. A named workspace is created and registered in `project.json` before its files are created. Legacy `runs/` projects must be upgraded with `ecc migrate` before running a flow. Each project has one `ecc.toml`; workspace inputs are copied to its own `origin/` directory at creation time.
-- Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `rtl`, `param`, `macro`, `pdk`, `project`, `workspace`, `process`, `flow`, `signoff`, `report`, and `compare` accept `--plain` where documented, with human-readable TEXT by default. `reproducible`, `sweep`, `explore`, and `diagnose` also accept `--plain`; JSON remains the default for machine-oriented experiment commands. `layout-image` produces a file instead.
+- Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `rtl`, `param`, `macro`, `pdk`, `project`, `workspace`, `process`, `flow`, `signoff`, `report`, `compare`, and `chipview` accept `--plain` where documented, with human-readable TEXT by default. `reproducible`, `sweep`, `explore`, and `diagnose` also accept `--plain`; JSON remains the default for machine-oriented experiment commands. `layout-image` produces a file instead.
 - Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`). Complete registry:
 
 | Exit code | Meaning | Emitted by |
@@ -123,6 +123,7 @@ Commands:
   version       Show ECC runtime, component, and installed tool versions
   doc           Show a bundled guide (config = config reference, ug = user guide, tutorial)
   layout-image  Render a GDS file into a layout image
+  chipview       Open a workspace step's saved geometry snapshot in Chip Viewer
   init          Create a new ECC project
   check         Validate the current project setup
   run           Run the configured RTL-to-GDS flow
@@ -182,6 +183,7 @@ Every command and subcommand at a glance (semantics, options, and examples in th
 | `ecc version` | show runtime, component, and tool versions (`--json` emits the machine-readable contract) | §2 |
 | `ecc doc TOPIC` | read the bundled guides in the terminal (`config` / `ug` / `tutorial`) | §1.5 |
 | `ecc layout-image` | render a GDS into an image | §13 |
+| `ecc chipview` | open a workspace step's geometry snapshot in Chip Viewer | §14 |
 | `ecc init NAME` | create a project skeleton | §3 |
 | `ecc check` | validate project config, RTL sources, and PDK contents | §4 |
 | `ecc run` | execute a flow (fresh/resume/range/single-step; project and workspace modes) | §5 |
@@ -1788,7 +1790,43 @@ Renders a GDS layout snapshot via KLayout (default 1920×1920; KLayout must be a
 ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image layout.png --width 2560 --height 1600
 ```
 
-## 14. Typical end-to-end workflow
+## 14. chipview — open a saved geometry snapshot
+
+```bash
+ecc chipview --project <project> --workspace <workspace> --step <step>
+```
+
+This opens the same native Chip Viewer used by ECOS Studio's layout thumbnail.
+The command reads `<step>/output/geometry/geometry.manifest` and its sidecar
+files; it does not read GDS or generate a PNG. Run it from ECOS Studio's
+AppImage terminal so `ECOS_CHIP_VIEWER_BIN` points at the packaged
+`chip-viewer-native`. An explicit executable path can be supplied with that
+variable when using a development checkout.
+
+The command checks the project, workspace, flow step, geometry manifest, Viewer
+binary, and Linux display environment before spawning the detached Viewer. If
+any prerequisite is missing, it returns a diagnostic with the expected path and
+the remediation. Viewer stdout and stderr are saved under
+`<workspace>/.chip-viewer/logs/`.
+
+The command accepts `--plain` for one stable key-value result and `--json` for a
+JSON record array. A successful result includes `status=started`, the selected
+step, the manifest path, the resolved Viewer path, the Viewer PID, and the two
+log paths. It returns exit code `1` for a missing or invalid workspace/geometry,
+an unavailable Viewer or display, or a Viewer that exits during startup. The
+most useful error codes are `chipview_step_not_found`,
+`chipview_geometry_invalid`, `chipview_viewer_unavailable`,
+`chipview_display_unavailable`, and `chipview_launch_failed`.
+
+The AppImage itself is not parsed as a GDS input. The command only needs the
+packaged executable to be discoverable through `ECOS_CHIP_VIEWER_BIN` (injected
+by the ECOS Studio built-in terminal),
+`ECOS_ELECTRON_RESOURCES_PATH/binaries/chip-viewer-native`, or `PATH`. If none
+is executable, run the command from the AppImage's built-in terminal or set
+`ECOS_CHIP_VIEWER_BIN` explicitly. The command never falls back to
+`layout-image`.
+
+## 15. Typical end-to-end workflow
 
 ```bash
 ecc init gcd && cd gcd
@@ -1817,6 +1855,7 @@ ecc report qor                     # QoR overall score report (signoff/<design>_
 ecc report checklist               # signoff checklist report (signoff/checklist_report.txt)
 ecc report step drc                # preview one step's feature/analysis/checklist (read-only)
 ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image gcd.png
+ecc chipview --workspace default --step Harden
 ```
 
 Creating multiple managed workspaces for comparison experiments (each an independent directory, no interference):
