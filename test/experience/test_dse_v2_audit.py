@@ -106,7 +106,9 @@ def test_resume_does_not_replenish_per_trial_time(dse_project, version2_spec, mo
     assert record["elapsed_seconds"] >= limits.trial_timeout_seconds
 
 
-def test_durable_parameter_apply_executes_public_cli(tmp_path):
+def test_durable_parameter_apply_executes_public_cli(tmp_path, minimal_ics55_pdk_factory):
+    from chipcompiler.cli.project.toml_edit import set_pdk_root
+
     deadline = time.monotonic() + 30
     project = tmp_path / "project"
     runner = CliRunner(tmp_path, deadline, durable_receipts=True)
@@ -114,6 +116,9 @@ def test_durable_parameter_apply_executes_public_cli(tmp_path):
         ["init", str(project), "--design-name", "sample", "--plain"], deadline=deadline
     )
     assert initialized.exit_code == 0, initialized.stdout.read_text()
+    pdk = minimal_ics55_pdk_factory(tmp_path / "pdk")
+    config_path = project / "ecc.toml"
+    config_path.write_text(set_pdk_root(config_path.read_text(), str(pdk)))
     arguments = [
         "param",
         "apply",
