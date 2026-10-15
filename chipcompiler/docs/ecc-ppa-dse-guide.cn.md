@@ -1252,6 +1252,26 @@ baseline：<已有 workspace 或允许生成一次>
 
 ## 20. 相关用户文档
 
+### Sweep 的 Pareto 选择
+
+完成 sweep 后先导出经验证的前沿，不自动选 winner：
+
+```bash
+ecc explore promote --project ./project --name ppa-grid --pareto \
+  --objective core_area:um^2:minimize \
+  --objective sta_frequency_mhz:MHz:maximize
+```
+
+写出 `experiments/ppa-grid/pareto.json`。候选必须重新核验当前已提交参数、完整 flow、
+checklist、完整 signoff 和零 checker 计数；缺失或不唯一的指标保留排除原因。报告记录当前
+指标文件和 snapshot 的哈希，不代表完整不可变交付或独立 fresh 验证。指标 ID、单位、方向
+必须匹配 ECC registry；总体 QoR 使用 `qor_score:score:maximize`。无有效前沿返回 7。
+
+添加 `--candidate candidate_0001` 明确选择前沿成员，或按目标顺序提供
+`--weights 0.6,0.4`。权重先在当前前沿内做 min/max 归一化，同分按 candidate ID 确定顺序。
+只有显式选择才写 `winner.json`；不应用参数、不执行 flow。仍须遵守本文的 full/fresh
+复验与结果总结要求。
+
 - [ECC CLI 用户指南](ecc-user-guide.cn.md)：命令、运行选择器、当前目录默认选择、JSON 与退出码。
 - [入门教程](ecc-tutorial.cn.md)：安装、RTL 建项、完整流程与 GCD 入门。
 - [参数配置参考](ecc-config-ref.cn.md)：参数类型、映射、SDC/corner、物理配置与单位。

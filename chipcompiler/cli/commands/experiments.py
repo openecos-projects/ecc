@@ -278,8 +278,43 @@ def explore_promote(
     *,
     project: Annotated[str | None, typer.Option("--project")] = None,
     name: Annotated[str, typer.Option("--name")],
-    candidate: Annotated[str, typer.Option("--candidate")],
+    candidate: Annotated[str | None, typer.Option("--candidate")] = None,
+    pareto: Annotated[bool, typer.Option("--pareto")] = False,
+    objectives: Annotated[list[str] | None, typer.Option("--objective")] = None,
+    weights: Annotated[str | None, typer.Option("--weights")] = None,
 ) -> None:
+    if pareto:
+        from chipcompiler.cli.experiments.pareto import select_front, sweep_pareto
+
+        try:
+            project_root = project_path(project)
+            report = sweep_pareto(project_root, name, objectives or [])
+            selected = select_front(report, candidate, weights)
+            report["selection"] = {"candidate": selected, "weights": weights}
+            root = project_root / "experiments" / name
+            (root / "pareto.json").write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
+            if selected:
+                (root / "winner.json").write_text(
+                    json.dumps(
+                        {
+                            "schema_version": 1,
+                            "candidate": selected,
+                            "selected_at": time.time(),
+                            "selection": "pareto",
+                            "weights": weights,
+                        },
+                        indent=2,
+                    )
+                    + "\n"
+                )
+            typer.echo(json.dumps(report, sort_keys=True))
+            if not report["front"]:
+                raise typer.Exit(7)
+        except (OSError, ValueError) as exc:
+            raise typer.BadParameter(str(exc)) from exc
+        return
+    if not candidate or objectives or weights:
+        raise typer.BadParameter("Use --candidate, or --pareto with --objective")
     root = project_path(project) / "experiments" / name
     if not (root / "sweep.json").exists():
         raise typer.BadParameter(f"sweep does not exist: {name}")

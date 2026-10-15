@@ -1478,6 +1478,30 @@ current results rather than claiming success.
 
 ## 20. Related user documentation
 
+### Sweep Pareto selection
+
+After a sweep, export the verified front without selecting a winner:
+
+```bash
+ecc explore promote --project ./project --name ppa-grid --pareto \
+  --objective core_area:um^2:minimize \
+  --objective sta_frequency_mhz:MHz:maximize
+```
+
+This writes `experiments/ppa-grid/pareto.json`. Every admitted candidate is
+rechecked against its current committed parameters, complete flow, checklist,
+full signoff and zero checker counts. Missing or ambiguous metrics remain
+excluded, with reasons. Current metric file and snapshot hashes are recorded;
+this report does not claim immutable delivery or independent fresh validation.
+Metric IDs, units and directions must match the ECC registry; overall QoR uses
+`qor_score:score:maximize`. No front returns exit 7.
+
+Select a front member explicitly by adding `--candidate candidate_0001`, or use
+`--weights 0.6,0.4` in objective order. Weights use min/max normalization within
+the current front and deterministic candidate-ID tie breaking. Only explicit
+selection writes `winner.json`; it does not apply parameters or run a flow.
+Retain the full/fresh validation and result-summary requirements in this manual.
+
 - [CLI User Guide](ecc-user-guide.en.md): commands, selectors, current-directory
   defaults, JSON, and exit codes.
 - [Tutorial](ecc-tutorial.en.md): installation, RTL project creation, complete flow,
