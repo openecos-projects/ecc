@@ -224,9 +224,9 @@ class EngineFlow:
             persistence_lock = threading.RLock()
             self._persistence_lock = persistence_lock
         with persistence_lock:
+            if isinstance(self.workspace.flow.data, dict):
+                self.workspace.flow.data[SCHEMA_VERSION_FIELD] = FLOW_JSON_SCHEMA_VERSION
             data = deepcopy(self.workspace.flow.data)
-            if isinstance(data, dict):
-                data[SCHEMA_VERSION_FIELD] = FLOW_JSON_SCHEMA_VERSION
             return json_write(self.workspace.flow.path, data)
 
     def get_step(self, name: str, tool: str):

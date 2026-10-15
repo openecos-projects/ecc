@@ -1443,6 +1443,11 @@ actual input bindings. It does not declare a nonexistent DEF as a required
 physical input; it can therefore serve as an unexecuted campaign seed. Explicit
 physical-entry inputs remain part of their declared configuration.
 
+Flow persistence also keeps the in-memory schema metadata aligned with the
+written ledger, so a newly derived, unexecuted workspace has a snapshot that
+matches `home/flow.json`. A disagreement still returns revision conflict 21;
+do not bypass this check when preparing campaign seeds.
+
 Software regression, packaged smoke and the real design matrix are separate
 checks. Record each remote job's actual status and artifact; a locally passing
 suite does not establish remote CI success. Keep evidence-insufficient matrix

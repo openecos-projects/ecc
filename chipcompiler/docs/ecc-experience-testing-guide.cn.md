@@ -1270,6 +1270,9 @@ flow 与独立 fresh 验证。总结 baseline、全部候选、完整及 fresh �
 声明为物理入口必需输入，因此可以作为尚未执行的 campaign seed。明确提供的物理入口
 输入仍按其配置保留。
 
+flow 持久化时同步内存中的 schema 元数据，使新派生且尚未执行的 workspace 的 snapshot
+与 `home/flow.json` 一致。不一致仍返回版本冲突 21；准备 campaign seed 时不要绕过校验。
+
 软件回归、packaged smoke 和真实 design matrix 分别验收。逐项记录远端 job 状态和 artifact，
 本地通过不等于远端 CI 通过；矩阵证据不足仍为 unknown。只有独立质量与效果门槛通过后
 才晋级模型，否则保留原 active release。
