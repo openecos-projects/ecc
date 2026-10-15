@@ -81,9 +81,7 @@ def _project(tmp_path: Path, *, registered: bool = True) -> tuple[Path, Path, st
 def test_registered_reconcile_recovers_flow_then_removes_matching_entry(tmp_path):
     project, workspace, run_id = _project(tmp_path)
 
-    recovered = reconcile_process(
-        project, "baseline", run_id, blocking=False
-    )
+    recovered = reconcile_process(project, "baseline", run_id, blocking=False)
 
     assert recovered == ("Synthesis",)
     manifest = json.loads((project / "project.json").read_text())

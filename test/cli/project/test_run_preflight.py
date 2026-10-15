@@ -1,4 +1,3 @@
-from pathlib import Path
 from types import SimpleNamespace
 
 from chipcompiler.cli.project.run_preflight import build_run_preflight, output_paths
@@ -24,9 +23,7 @@ def test_build_run_preflight_reports_missing_inputs(tmp_path):
 
     assert result["ready"] is False
     assert result["selected_steps"][0]["tool"] == "ecc"
-    assert result["missing_inputs"] == [
-        {"step": "place", "input": "def", "path": str(missing)}
-    ]
+    assert result["missing_inputs"] == [{"step": "place", "input": "def", "path": str(missing)}]
 
 
 def test_output_paths_serializes_declared_paths(tmp_path):

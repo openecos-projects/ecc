@@ -133,6 +133,19 @@ def execute_step_subprocess(
             step_error = f"{step_tag} worker reported failure: {result.get('error')}"
         elif workspace_step.name == StepEnum.RCX.value:
             step_error = _restore_rcx_outputs(workspace_step, result)
+    if isinstance(result, dict) and result.get("done") is True:
+        try:
+            from chipcompiler.data.parameter import load_parameter, parameters_have_chip_identity
+
+            parameter_path = workspace.parameters.path
+            if parameter_path is None:
+                raise ValueError("worker parameter path is missing")
+            parameters = load_parameter(parameter_path)
+            if not parameters_have_chip_identity(parameters.data):
+                raise ValueError("worker parameters are missing the chip identity")
+            workspace.parameters = parameters
+        except (OSError, ValueError) as exc:
+            step_error = step_error or f"{step_tag} worker parameters could not be reloaded: {exc}"
     return _result(
         start_time,
         peak_memory_mb - start_memory_mb,

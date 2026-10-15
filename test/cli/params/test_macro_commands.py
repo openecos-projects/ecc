@@ -345,9 +345,7 @@ def test_macro_import_project_replaces_placements_wholesale(
     ]
 
 
-def test_macro_import_reads_tcl_from_stdin(
-    capsys, create_cli_project, monkeypatch, plain_records
-):
+def test_macro_import_reads_tcl_from_stdin(capsys, create_cli_project, monkeypatch, plain_records):
     project_dir = create_cli_project()
     monkeypatch.setattr(sys, "stdin", io.StringIO("placeInstance u_stdin 4 5 R90\n"))
 

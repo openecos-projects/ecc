@@ -6,9 +6,14 @@ from typing import Annotated
 import typer
 
 from chipcompiler.cli.commands.compare import compare_app
-from chipcompiler.cli.commands.experiments import diagnose_app, explore_app, reproducible_app, sweep_app
 from chipcompiler.cli.commands.doc import register_doc_commands
 from chipcompiler.cli.commands.doctor import register_doctor_commands
+from chipcompiler.cli.commands.experiments import (
+    diagnose_app,
+    explore_app,
+    reproducible_app,
+    sweep_app,
+)
 from chipcompiler.cli.commands.flow import flow_app
 from chipcompiler.cli.commands.macro import macro_app
 from chipcompiler.cli.commands.param import param_app

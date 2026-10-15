@@ -1399,3 +1399,52 @@ or corrupt observations fail aggregation. Missing families, historical runtime o
 variation preserves unknown (exit 7), with a report artifact. CI accepts that evidence-insufficient
 state without declaring model generalization. Local GCD tests validate the execution loop;
 cross-design quality, convergence speed and PPA gains require independent measured campaigns.
+
+## 18. Establish a Comparable Baseline Before Scaling Up
+
+A completed flow is a usable baseline only when `signoff check` passes, QoR is
+available, and the committed snapshot agrees with the persisted configuration.
+Do not calculate improvement against a blocked baseline. Retain its failures as
+evidence, with unknown comparison fields.
+
+Step workers can persist realized geometry in `home/params.toml`. The parent
+reloads those parameters before analysis and snapshot publication, including
+completed workers that report failure. Missing or corrupt worker parameters
+prevent a successful step result. This keeps later derivations and strict DSE
+configuration checks consistent; the checks still reject unauthorized changes.
+
+For an older workspace whose snapshot predates this synchronization, retain the
+original and run a fresh baseline with the current runtime. Do not hand-edit the
+snapshot or parameter files to manufacture a comparable result:
+
+```bash
+ecc workspace derive completed baseline_current --project ./project --plain
+ecc run --project ./project --workspace baseline_current --plain
+ecc signoff check --project ./project --workspace baseline_current --json
+```
+
+Freeze the runtime after code, tool and process setup. Then use the passed
+baseline in the stage DSE procedure above, keeping full-flow and independent
+fresh validation. Report the baseline, every candidate, final and fresh scores,
+signoff exits, actual costs, failures and evidence digests. A measured zero delta
+is a non-improvement result and must remain zero.
+
+For a small multi-design campaign, choose explicit external projects and keep its
+manifest, source copies, store and outputs outside the ECC source tree. Record
+source provenance, constraint coverage, measured scale, per-step parameters,
+resource observation scope and failure classifications. Use declared family
+labels; preserve missing labels as unknown rather than guessing from directory
+names. Establish passing baselines before equal-budget default, ordinary DSE
+and model-assisted DSE comparisons. Freeze train/validation/test membership
+before tuning, and preserve failed or unexecuted candidates in the denominator.
+
+An RTL workspace created without a DEF input declares RTL mode and only its
+actual input bindings. It does not declare a nonexistent DEF as a required
+physical input; it can therefore serve as an unexecuted campaign seed. Explicit
+physical-entry inputs remain part of their declared configuration.
+
+Software regression, packaged smoke and the real design matrix are separate
+checks. Record each remote job's actual status and artifact; a locally passing
+suite does not establish remote CI success. Keep evidence-insufficient matrix
+reports as unknown. Promote a model only after its independent quality and
+effectiveness gates pass; otherwise retain the existing active release.

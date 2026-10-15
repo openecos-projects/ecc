@@ -465,9 +465,7 @@ def build_migration_preview(project_dir: str, cfg) -> MigrationPreview:
         if plan.resume:
             resume_document = plan.resume_manifest or {}
             name = str(
-                resume_document.get("design_name")
-                or resume_document.get("name")
-                or "project"
+                resume_document.get("design_name") or resume_document.get("name") or "project"
             )
             appends = _workspace_entries(plan.entries, name=name, now=datetime.now(UTC).isoformat())
         else:

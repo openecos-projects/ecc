@@ -175,9 +175,7 @@ def test_failed_synthesis_lec_is_persisted_as_incomplete(monkeypatch, tmp_path):
 def test_step_execution_exception_is_persisted_as_incomplete(monkeypatch, tmp_path):
     workspace = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
-    workspace.flow.data = {
-        "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]
-    }
+    workspace.flow.data = {"steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]}
     workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
     workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
     engine_flow = EngineFlow(workspace)

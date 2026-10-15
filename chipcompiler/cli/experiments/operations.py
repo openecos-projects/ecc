@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 import itertools
 import json
-import csv
-import io
 import os
 import shutil
 import subprocess
@@ -12,6 +12,8 @@ import sys
 import tarfile
 import time
 import tomllib
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +35,11 @@ def file_fingerprint(path: Path) -> str:
 
 def runtime_versions(project: Path) -> dict[str, Any]:
     versions: dict[str, Any] = {}
-    command_line = [sys.argv[0], "version", "--json"] if getattr(sys, "frozen", False) else [sys.executable, "-m", "chipcompiler.cli.main", "version", "--json"]
+    command_line = (
+        [sys.argv[0], "version", "--json"]
+        if getattr(sys, "frozen", False)
+        else [sys.executable, "-m", "chipcompiler.cli.main", "version", "--json"]
+    )
     try:
         completed = subprocess.run(command_line, capture_output=True, text=True, check=False)
         payload = json.loads(completed.stdout)
@@ -44,7 +50,13 @@ def runtime_versions(project: Path) -> dict[str, Any]:
         from chipcompiler.cli.core.version_info import version_payload
         from chipcompiler.cli.inspection.tool_versions import tool_versions
 
-        versions.update({key: str(value) for key, value in version_payload().items() if key in {"ecc", "dreamplace", "ecc_tools"}})
+        versions.update(
+            {
+                key: str(value)
+                for key, value in version_payload().items()
+                if key in {"ecc", "dreamplace", "ecc_tools"}
+            }
+        )
         versions["tools"] = tool_versions()
     except (ImportError, OSError):
         versions["tools"] = {}
@@ -76,15 +88,66 @@ def diagnose_workspace(project: Path, workspace_name: str) -> dict[str, Any]:
     checklist = load_json(workspace / "home" / "checklist.json", {}) or {}
     qor = load_json(workspace / "home" / "qor_report.json", {}) or {}
     steps = flow.get("steps", []) if isinstance(flow, dict) else []
-    failed_steps = [step.get("name", step.get("id", "unknown")) for step in steps if isinstance(step, dict) and step.get("status", step.get("state")) in {"failed", "blocked", "error"}]
-    items = checklist.get("items", checklist.get("checklist", [])) if isinstance(checklist, dict) else []
-    blocked_items = [item.get("id", "unknown") for item in items if isinstance(item, dict) and (item.get("status") in {"blocked", "failed"} or item.get("blocked") is True or item.get("state") in {"blocked", "fail"})]
-    missing = [str(path.relative_to(workspace)) for path in (workspace / "home" / "flow.json", workspace / "home" / "checklist.json") if not path.is_file()]
-    status = "failed" if failed_steps else "blocked" if blocked_items else "attention" if missing or not qor else "passed"
+    failed_steps = [
+        step.get("name", step.get("id", "unknown"))
+        for step in steps
+        if isinstance(step, dict)
+        and step.get("status", step.get("state")) in {"failed", "blocked", "error"}
+    ]
+    items = (
+        checklist.get("items", checklist.get("checklist", []))
+        if isinstance(checklist, dict)
+        else []
+    )
+    blocked_items = [
+        item.get("id", "unknown")
+        for item in items
+        if isinstance(item, dict)
+        and (
+            item.get("status") in {"blocked", "failed"}
+            or item.get("blocked") is True
+            or item.get("state") in {"blocked", "fail"}
+        )
+    ]
+    missing = [
+        str(path.relative_to(workspace))
+        for path in (workspace / "home" / "flow.json", workspace / "home" / "checklist.json")
+        if not path.is_file()
+    ]
+    status = (
+        "failed"
+        if failed_steps
+        else "blocked"
+        if blocked_items
+        else "attention"
+        if missing or not qor
+        else "passed"
+    )
     actions = []
     if failed_steps or blocked_items:
-        actions.extend([f"ecc report checklist --project {project} --workspace {workspace_name}", f"ecc run --project {project} --workspace {workspace_name} --resume"])
-    return {"status": status, "project": str(project), "workspace": str(workspace), "flow": {"status": flow.get("status", flow.get("state", "unknown")), "failed_steps": failed_steps}, "checklist": {"status": "blocked" if blocked_items else "passed" if items else "unknown", "blocked_count": len(blocked_items), "blocked_items": blocked_items}, "qor": {"available": bool(qor), "score": qor.get("qor_score", qor.get("score", "unknown"))}, "missing_artifacts": missing, "next_actions": actions}
+        actions.extend(
+            [
+                f"ecc report checklist --project {project} --workspace {workspace_name}",
+                f"ecc run --project {project} --workspace {workspace_name} --resume",
+            ]
+        )
+    return {
+        "status": status,
+        "project": str(project),
+        "workspace": str(workspace),
+        "flow": {
+            "status": flow.get("status", flow.get("state", "unknown")),
+            "failed_steps": failed_steps,
+        },
+        "checklist": {
+            "status": "blocked" if blocked_items else "passed" if items else "unknown",
+            "blocked_count": len(blocked_items),
+            "blocked_items": blocked_items,
+        },
+        "qor": {"available": bool(qor), "score": qor.get("qor_score", qor.get("score", "unknown"))},
+        "missing_artifacts": missing,
+        "next_actions": actions,
+    }
 
 
 def workspace_path(project: Path, value: str) -> Path:
@@ -118,13 +181,14 @@ def export_package(project: Path, workspace: Path, output: Path) -> dict[str, An
         if candidate.exists():
             roots.append(candidate)
     roots.extend(workspace.glob("*.json"))
-    seen: set[Path] = set()
     for root in roots:
         if root.is_file():
             files.append(root)
         elif root.is_dir():
             files.extend(item for item in root.rglob("*") if item.is_file())
-    files = sorted(path for path in files if not any(part in {".git", "__pycache__"} for part in path.parts))
+    files = sorted(
+        path for path in files if not any(part in {".git", "__pycache__"} for part in path.parts)
+    )
     staging = output.parent / f".{output.stem}.staging-{os.getpid()}"
     if staging.exists():
         shutil.rmtree(staging)
@@ -162,21 +226,21 @@ def export_package(project: Path, workspace: Path, output: Path) -> dict[str, An
     return {"status": "success", "package": str(output), "file_count": len(entries)}
 
 
-def read_package(package: Path) -> tuple[tarfile.TarFile, dict[str, Any]]:
-    archive = tarfile.open(package, "r:gz")
-    try:
-        member = archive.getmember("./manifest.json")
-    except KeyError:
-        archive.close()
-        raise ValueError("package does not contain manifest.json") from None
-    manifest = json.load(archive.extractfile(member))
-    return archive, manifest
+@contextmanager
+def read_package(package: Path) -> Iterator[tuple[tarfile.TarFile, dict[str, Any]]]:
+    with tarfile.open(package, "r:gz") as archive:
+        try:
+            member = archive.getmember("./manifest.json")
+        except KeyError:
+            raise ValueError("package does not contain manifest.json") from None
+        with archive.extractfile(member) as stream:
+            manifest = json.load(stream)
+        yield archive, manifest
 
 
 def verify_package(package: Path) -> dict[str, Any]:
-    archive, manifest = read_package(package)
     errors: list[str] = []
-    try:
+    with read_package(package) as (archive, manifest):
         if manifest.get("kind") != "ecc-reproducible-export":
             errors.append("manifest: invalid kind")
         if manifest.get("schema_version") != SCHEMA_VERSION:
@@ -192,7 +256,12 @@ def verify_package(package: Path) -> dict[str, Any]:
             errors.append("manifest: file_fingerprint mismatch")
         names = {member.name for member in archive.getmembers()}
         for entry in entries:
-            if not isinstance(entry, dict) or not isinstance(entry.get("path"), str) or not isinstance(entry.get("sha256"), str) or not isinstance(entry.get("size"), int):
+            if (
+                not isinstance(entry, dict)
+                or not isinstance(entry.get("path"), str)
+                or not isinstance(entry.get("sha256"), str)
+                or not isinstance(entry.get("size"), int)
+            ):
                 errors.append("manifest: invalid file entry")
                 continue
             name = f"./{entry['path']}"
@@ -206,20 +275,24 @@ def verify_package(package: Path) -> dict[str, Any]:
                 errors.append(f"size: {entry['path']}")
             if digest != entry.get("sha256"):
                 errors.append(f"checksum: {entry['path']}")
-        expected_inputs = {entry["path"]: entry["sha256"] for entry in entries if isinstance(entry, dict) and entry.get("path") in {"ecc.toml", "project.json"} or isinstance(entry, dict) and "/rtl/" in f"/{entry.get('path', '')}"}
+        expected_inputs = {
+            entry["path"]: entry["sha256"]
+            for entry in entries
+            if isinstance(entry, dict)
+            and entry.get("path") in {"ecc.toml", "project.json"}
+            or isinstance(entry, dict)
+            and "/rtl/" in f"/{entry.get('path', '')}"
+        }
         if manifest.get("inputs") != expected_inputs:
             errors.append("manifest: inputs fingerprint mismatch")
         for member in archive.getmembers():
             if Path(member.name).is_absolute() or ".." in Path(member.name).parts:
                 errors.append(f"unsafe path: {member.name}")
-    finally:
-        archive.close()
     return {"status": "pass" if not errors else "fail", "package": str(package), "errors": errors}
 
 
 def package_report(package: Path) -> dict[str, Any]:
-    archive, manifest = read_package(package)
-    try:
+    with read_package(package) as (archive, manifest):
         files = manifest.get("files", [])
         payloads: dict[str, Any] = {}
         invalid_json: list[str] = []
@@ -230,9 +303,30 @@ def package_report(package: Path) -> dict[str, Any]:
                 except (json.JSONDecodeError, OSError):
                     invalid_json.append(member.name)
                     continue
-        flow_name, flow = next(((name, value) for name, value in payloads.items() if name.endswith("flow.json") and isinstance(value, dict)), (None, {}))
-        checklist_name, checklist = next(((name, value) for name, value in payloads.items() if "checklist" in name and isinstance(value, dict)), (None, {}))
-        qor_name, qor = next(((name, value) for name, value in payloads.items() if "qor" in name and isinstance(value, dict)), (None, {}))
+        flow_name, flow = next(
+            (
+                (name, value)
+                for name, value in payloads.items()
+                if name.endswith("flow.json") and isinstance(value, dict)
+            ),
+            (None, {}),
+        )
+        checklist_name, checklist = next(
+            (
+                (name, value)
+                for name, value in payloads.items()
+                if "checklist" in name and isinstance(value, dict)
+            ),
+            (None, {}),
+        )
+        qor_name, qor = next(
+            (
+                (name, value)
+                for name, value in payloads.items()
+                if "qor" in name and isinstance(value, dict)
+            ),
+            (None, {}),
+        )
         summary = summarize_evidence(flow, checklist, qor, payloads)
         return {
             "kind": manifest.get("kind"),
@@ -246,22 +340,36 @@ def package_report(package: Path) -> dict[str, Any]:
             "inputs": manifest.get("inputs", {}),
             "summary": {
                 **summary,
-                "sources": {"flow": flow_name, "checklist": checklist_name, "qor": qor_name, "violations": "embedded-json" if summary["violation_count"] != "unknown" else None},
-                "reasons": {"flow": "ok" if flow_name else "missing", "checklist": "invalid" if any("checklist" in name for name in invalid_json) else "ok" if checklist_name else "missing", "qor": "ok" if qor_name else "missing", "violations": "ok" if summary["violation_count"] != "unknown" else "missing"},
+                "sources": {
+                    "flow": flow_name,
+                    "checklist": checklist_name,
+                    "qor": qor_name,
+                    "violations": "embedded-json"
+                    if summary["violation_count"] != "unknown"
+                    else None,
+                },
+                "reasons": {
+                    "flow": "ok" if flow_name else "missing",
+                    "checklist": "invalid"
+                    if any("checklist" in name for name in invalid_json)
+                    else "ok"
+                    if checklist_name
+                    else "missing",
+                    "qor": "ok" if qor_name else "missing",
+                    "violations": "ok" if summary["violation_count"] != "unknown" else "missing",
+                },
             },
             "verification": verify_package(package),
         }
-    finally:
-        archive.close()
 
 
 def package_file_matches(path: str, kind: str) -> bool:
     if kind == "all":
         return True
     if kind == "rtl":
-        return path.endswith(('.v', '.sv', '.vh', '.svh')) or "/rtl/" in f"/{path}"
+        return path.endswith((".v", ".sv", ".vh", ".svh")) or "/rtl/" in f"/{path}"
     if kind == "config":
-        return path.endswith(('.toml', '.tcl', '.yaml', '.yml')) or "/config/" in f"/{path}"
+        return path.endswith((".toml", ".tcl", ".yaml", ".yml")) or "/config/" in f"/{path}"
     if kind == "flow":
         return path.endswith("flow.json") or "/flow" in path
     if kind == "checklist":
@@ -292,11 +400,19 @@ def create_sweep(project: Path, name: str, parameters: dict[str, list[str]]) -> 
         raise ValueError(f"sweep already exists: {name}")
     keys = sorted(parameters)
     candidates = [
-        {"id": f"candidate_{index:04d}", "parameters": dict(zip(keys, values))}
+        {"id": f"candidate_{index:04d}", "parameters": dict(zip(keys, values, strict=True))}
         for index, values in enumerate(itertools.product(*(parameters[key] for key in keys)), 1)
     ]
-    payload = {"schema_version": SCHEMA_VERSION, "name": name, "parameters": parameters, "candidates": candidates, "created_at": int(time.time())}
-    payload["plan_fingerprint"] = payload_fingerprint({key: value for key, value in payload.items() if key != "created_at"})
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "name": name,
+        "parameters": parameters,
+        "candidates": candidates,
+        "created_at": int(time.time()),
+    }
+    payload["plan_fingerprint"] = payload_fingerprint(
+        {key: value for key, value in payload.items() if key != "created_at"}
+    )
     dump_json(root / "sweep.json", payload)
     return payload
 
@@ -311,10 +427,16 @@ def verify_sweep(project: Path, name: str) -> dict[str, Any]:
     errors: list[str] = []
     if not isinstance(plan, dict):
         return {"status": "fail", "sweep": name, "errors": ["missing or invalid sweep.json"]}
-    expected_fingerprint = payload_fingerprint({key: value for key, value in plan.items() if key not in {"created_at", "plan_fingerprint"}})
+    expected_fingerprint = payload_fingerprint(
+        {key: value for key, value in plan.items() if key not in {"created_at", "plan_fingerprint"}}
+    )
     if plan.get("plan_fingerprint") != expected_fingerprint:
         errors.append("plan_fingerprint mismatch")
-    candidates = {item.get("id"): item for item in plan.get("candidates", []) if isinstance(item, dict) and item.get("id")}
+    candidates = {
+        item.get("id"): item
+        for item in plan.get("candidates", [])
+        if isinstance(item, dict) and item.get("id")
+    }
     results_payload = load_json(root / "results.json")
     results = results_payload.get("results", []) if isinstance(results_payload, dict) else []
     result_ids: set[str] = set()
@@ -336,30 +458,52 @@ def verify_sweep(project: Path, name: str) -> dict[str, Any]:
     for candidate_id in candidates:
         if candidate_id not in result_ids:
             errors.append(f"result missing: {candidate_id}")
-    return {"status": "pass" if not errors else "fail", "sweep": name, "candidate_count": len(candidates), "result_count": len(results), "errors": errors}
+    return {
+        "status": "pass" if not errors else "fail",
+        "sweep": name,
+        "candidate_count": len(candidates),
+        "result_count": len(results),
+        "errors": errors,
+    }
 
 
 def compare_sweep(project: Path, name: str) -> list[dict[str, Any]]:
     payload = load_json(sweep_result(project, name), {"results": []})
     rows = payload.get("results", [])
     order = {"passed": 0, "success": 0, "blocked": 1, "failed": 2, "unknown": 3}
-    return sorted(rows, key=lambda row: (order.get(row.get("status", "unknown"), 3), -(row.get("qor_score") if isinstance(row.get("qor_score"), (int, float)) else float("-inf"))))
+    return sorted(
+        rows,
+        key=lambda row: (
+            order.get(row.get("status", "unknown"), 3),
+            -(
+                row.get("qor_score")
+                if isinstance(row.get("qor_score"), (int, float))
+                else float("-inf")
+            ),
+        ),
+    )
 
 
 def sweep_matrix(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     matrix = []
     for row in rows:
         steps = row.get("step_statuses", [])
-        matrix.append({
-            "candidate": row.get("id", "unknown"),
-            "parameters": row.get("parameters", {}),
-            "flow": row.get("status", "unknown"),
-            "steps": ";".join(f"{step.get('name')}={step.get('status', 'unknown')}" for step in steps),
-            "checklist": ";".join(f"{step.get('name')}={step.get('checklist', 'unknown')}" for step in steps),
-            "violations": row.get("violation_count", "unknown"),
-            "qor": row.get("qor_score", "unknown"),
-            "exit_code": row.get("exit_code", "unknown"),
-        })
+        matrix.append(
+            {
+                "candidate": row.get("id", "unknown"),
+                "parameters": row.get("parameters", {}),
+                "flow": row.get("status", "unknown"),
+                "steps": ";".join(
+                    f"{step.get('name')}={step.get('status', 'unknown')}" for step in steps
+                ),
+                "checklist": ";".join(
+                    f"{step.get('name')}={step.get('checklist', 'unknown')}" for step in steps
+                ),
+                "violations": row.get("violation_count", "unknown"),
+                "qor": row.get("qor_score", "unknown"),
+                "exit_code": row.get("exit_code", "unknown"),
+            }
+        )
     return matrix
 
 
@@ -367,28 +511,66 @@ def export_sweep(rows: list[dict[str, Any]], fmt: str) -> str:
     matrix = sweep_matrix(rows)
     if fmt == "json":
         return json.dumps(matrix, indent=2, sort_keys=True)
-    columns = ("candidate", "flow", "steps", "checklist", "violations", "qor", "exit_code", "parameters")
+    columns = (
+        "candidate",
+        "flow",
+        "steps",
+        "checklist",
+        "violations",
+        "qor",
+        "exit_code",
+        "parameters",
+    )
     if fmt == "csv":
         stream = io.StringIO()
         writer = csv.DictWriter(stream, fieldnames=columns)
         writer.writeheader()
         for row in matrix:
-            writer.writerow({**row, "parameters": ",".join(f"{key}={value}" for key, value in row["parameters"].items())})
+            writer.writerow(
+                {
+                    **row,
+                    "parameters": ",".join(
+                        f"{key}={value}" for key, value in row["parameters"].items()
+                    ),
+                }
+            )
         return stream.getvalue()
     if fmt == "markdown":
-        lines = ["| " + " | ".join(columns) + " |", "| " + " | ".join("---" for _ in columns) + " |"]
+        lines = [
+            "| " + " | ".join(columns) + " |",
+            "| " + " | ".join("---" for _ in columns) + " |",
+        ]
         for row in matrix:
-            values = {**row, "parameters": ", ".join(f"{key}={value}" for key, value in row["parameters"].items())}
+            values = {
+                **row,
+                "parameters": ", ".join(
+                    f"{key}={value}" for key, value in row["parameters"].items()
+                ),
+            }
             lines.append("| " + " | ".join(str(values[column]) for column in columns) + " |")
         return "\n".join(lines) + "\n"
     raise ValueError(f"unsupported export format: {fmt}")
 
 
 def _json_command(project: Path, workspace: Path, command: str) -> tuple[int, Any]:
-    command_line = [sys.argv[0]] if getattr(sys, "frozen", False) else [sys.executable, "-m", "chipcompiler.cli.main"]
+    command_line = (
+        [sys.argv[0]]
+        if getattr(sys, "frozen", False)
+        else [sys.executable, "-m", "chipcompiler.cli.main"]
+    )
     completed = subprocess.run(
-        [*command_line, *command.split(), "--project", str(project), "--workspace", str(workspace), "--json"],
-        capture_output=True, text=True, check=False,
+        [
+            *command_line,
+            *command.split(),
+            "--project",
+            str(project),
+            "--workspace",
+            str(workspace),
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
     )
     try:
         return completed.returncode, json.loads(completed.stdout)
@@ -412,12 +594,22 @@ def _first_number(value: Any, keys: set[str]) -> float | None:
     return None
 
 
-def summarize_evidence(flow: dict[str, Any], checklist: dict[str, Any], qor: dict[str, Any], payloads: Any) -> dict[str, Any]:
-    status_values = [item.get("status") for item in checklist.get("items", []) if isinstance(item, dict)]
+def summarize_evidence(
+    flow: dict[str, Any], checklist: dict[str, Any], qor: dict[str, Any], payloads: Any
+) -> dict[str, Any]:
+    status_values = [
+        item.get("status") for item in checklist.get("items", []) if isinstance(item, dict)
+    ]
     violation_count = _first_number(payloads, {"violation_count", "violations", "error_count"})
     return {
         "flow_status": flow.get("status", "unknown"),
-        "checklist_status": "blocked" if "blocked" in status_values else "attention" if "warning" in status_values else "passed" if status_values and all(value == "passed" for value in status_values) else "unknown",
+        "checklist_status": "blocked"
+        if "blocked" in status_values
+        else "attention"
+        if "warning" in status_values
+        else "passed"
+        if status_values and all(value == "passed" for value in status_values)
+        else "unknown",
         "qor": qor.get("qor_score", qor.get("score", "unknown")),
         "violation_count": int(violation_count) if violation_count is not None else "unknown",
     }
@@ -430,17 +622,44 @@ def collect_candidate_evidence(project: Path, workspace: Path, exit_code: int) -
     steps = flow.get("steps", []) if isinstance(flow, dict) else []
     if not steps and isinstance(status_payload, dict):
         steps = status_payload.get("steps", [])
-    step_statuses = [{"name": step.get("name"), "status": step.get("status", "unknown"), "checklist": step.get("checklist_status", "unknown")} for step in steps if isinstance(step, dict)]
-    blocked = any(step["status"] == "blocked" or step["checklist"] == "blocked" for step in step_statuses)
+    step_statuses = [
+        {
+            "name": step.get("name"),
+            "status": step.get("status", "unknown"),
+            "checklist": step.get("checklist_status", "unknown"),
+        }
+        for step in steps
+        if isinstance(step, dict)
+    ]
+    blocked = any(
+        step["status"] == "blocked" or step["checklist"] == "blocked" for step in step_statuses
+    )
     failed = exit_code != 0 or signoff_code not in {0, 7}
-    status = "blocked" if blocked else "failed" if failed else "passed" if step_statuses or status_code == 0 else "unknown"
+    status = (
+        "blocked"
+        if blocked
+        else "failed"
+        if failed
+        else "passed"
+        if step_statuses or status_code == 0
+        else "unknown"
+    )
     qor_score = None
     for report in workspace.rglob("*.json"):
         qor_score = _first_number(load_json(report), {"qor_score", "score", "ppa_score"})
         if qor_score is not None:
             break
-    violation_count = _first_number(signoff_payload, {"violation_count", "violations", "error_count"})
-    return {"status": status, "step_statuses": step_statuses, "qor_score": qor_score, "violation_count": int(violation_count) if violation_count is not None else "unknown", "signoff_exit_code": signoff_code, "workspace_status_exit_code": status_code}
+    violation_count = _first_number(
+        signoff_payload, {"violation_count", "violations", "error_count"}
+    )
+    return {
+        "status": status,
+        "step_statuses": step_statuses,
+        "qor_score": qor_score,
+        "violation_count": int(violation_count) if violation_count is not None else "unknown",
+        "signoff_exit_code": signoff_code,
+        "workspace_status_exit_code": status_code,
+    }
 
 
 def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str, Any]:
@@ -449,14 +668,24 @@ def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str,
         raise ValueError(f"sweep does not exist: {name}")
     candidates = plan["candidates"][:max_candidates]
     previous = load_json(sweep_result(project, name), {"results": []}) or {}
-    previous_results = {row.get("id"): row for row in previous.get("results", []) if isinstance(row, dict)}
+    previous_results = {
+        row.get("id"): row for row in previous.get("results", []) if isinstance(row, dict)
+    }
     results = []
     for candidate in candidates:
         candidate_root = project / "experiments" / name / "candidates" / candidate["id"]
         candidate_project = candidate_root / "project"
         if not candidate_project.exists():
+
             def ignore(source: str, names: list[str]) -> set[str]:
-                return {item for item in names if item in {"experiments", ".git"} or item.endswith(".lock") or item.startswith("ws_")}
+                return {
+                    item
+                    for item in names
+                    if item in {"experiments", ".git"}
+                    or item.endswith(".lock")
+                    or item.startswith("ws_")
+                }
+
             shutil.copytree(project, candidate_project, ignore=ignore)
             manifest_path = candidate_project / "project.json"
             manifest = load_json(manifest_path, {})
@@ -467,16 +696,39 @@ def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str,
                 dump_json(manifest_path, manifest)
         workspace = candidate_project / candidate["id"]
         existing = previous_results.get(candidate["id"])
-        if existing and existing.get("status") in {"passed", "blocked", "failed", "unknown"} and workspace.exists():
+        if (
+            existing
+            and existing.get("status") in {"passed", "blocked", "failed", "unknown"}
+            and workspace.exists()
+        ):
             results.append(existing)
             continue
-        command_line = [sys.argv[0]] if getattr(sys, "frozen", False) else [sys.executable, "-m", "chipcompiler.cli.main"]
-        command = [*command_line, "run", "--project", str(candidate_project), "--workspace", str(workspace)]
+        command_line = (
+            [sys.argv[0]]
+            if getattr(sys, "frozen", False)
+            else [sys.executable, "-m", "chipcompiler.cli.main"]
+        )
+        command = [
+            *command_line,
+            "run",
+            "--project",
+            str(candidate_project),
+            "--workspace",
+            str(workspace),
+        ]
         for key, value in candidate["parameters"].items():
             command.extend(["--set", f"{key}={value}"])
         completed = subprocess.run(command, capture_output=True, text=True, check=False)
         evidence = collect_candidate_evidence(candidate_project, workspace, completed.returncode)
-        results.append({"id": candidate["id"], "workspace": str(workspace), "parameters": candidate["parameters"], "exit_code": completed.returncode, **evidence})
+        results.append(
+            {
+                "id": candidate["id"],
+                "workspace": str(workspace),
+                "parameters": candidate["parameters"],
+                "exit_code": completed.returncode,
+                **evidence,
+            }
+        )
     payload = {"schema_version": SCHEMA_VERSION, "results": results}
     dump_json(sweep_result(project, name), payload)
     return payload

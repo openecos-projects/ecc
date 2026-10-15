@@ -36,9 +36,7 @@ def _prepare_verified_workspace(root, input_file, parameter):
     snapshot_path.write_text(json.dumps(snapshot))
 
 
-def test_recommend_returns_same_input_configuration_as_observed_only(
-    workspace_factory, tmp_path
-):
+def test_recommend_returns_same_input_configuration_as_observed_only(workspace_factory, tmp_path):
     workspace = workspace_factory()
     input_file = tmp_path / "design.v"
     input_file.write_text("module sample; endmodule")

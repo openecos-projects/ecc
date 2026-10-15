@@ -98,8 +98,10 @@ def recommend(
 
 def _input_fingerprint(facts: dict, inputs: list[InputDigest]) -> str | None:
     specification = facts.get("workspaceSpec", {})
-    if not isinstance(specification, dict) or not inputs or not all(
-        item.sha256 is not None for item in inputs
+    if (
+        not isinstance(specification, dict)
+        or not inputs
+        or not all(item.sha256 is not None for item in inputs)
     ):
         return None
     return digest(

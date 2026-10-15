@@ -3,9 +3,7 @@ import json
 from ecc_experience.api import plan
 
 
-def test_plan_writes_manual_review_policy_without_modifying_workspace(
-    workspace_factory, tmp_path
-):
+def test_plan_writes_manual_review_policy_without_modifying_workspace(workspace_factory, tmp_path):
     workspace = workspace_factory()
     input_file = tmp_path / "design.v"
     input_file.write_text("module sample; endmodule")

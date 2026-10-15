@@ -63,9 +63,7 @@ def export(command_input, ctx: CommandContext) -> CommandResult:
     try:
         additional_files = _read_additional_files(command_input.additional_files)
     except (OSError, tarfile.TarError, UnicodeDecodeError, ValueError) as exc:
-        return CommandResult.err(
-            [error_record("invalid_additional_files", reason=str(exc))]
-        )
+        return CommandResult.err([error_record("invalid_additional_files", reason=str(exc))])
 
     try:
         from chipcompiler.engine.reconcile import _workspace_lock

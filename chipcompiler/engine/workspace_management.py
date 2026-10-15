@@ -135,9 +135,7 @@ def delete_managed_workspace(
     return workspace
 
 
-def reconcile_workspace_deletes(
-    project_dir: str | Path, *, blocking: bool
-) -> tuple[str, ...]:
+def reconcile_workspace_deletes(project_dir: str | Path, *, blocking: bool) -> tuple[str, ...]:
     """Recover proven interrupted destructive deletes in the Project root."""
     project = Path(project_dir).expanduser().resolve()
     manifest = load_manifest(str(project))

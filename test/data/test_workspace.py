@@ -132,7 +132,7 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
     assert workspace.directory == workspace_dir.resolve()
     assert isinstance(workspace.directory, Path)
     assert isinstance(workspace.design.origin_verilog, Path)
-    assert isinstance(workspace.design.origin_def, Path)
+    assert workspace.design.origin_def is None
     assert isinstance(workspace.flow.path, Path)
     assert isinstance(workspace.parameters.path, Path)
     assert all(isinstance(path, Path) for path in workspace.config.values())
@@ -143,6 +143,18 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
     cts = json_read(workspace.config[StepEnum.CTS.value])
     assert cts["max_fanout"] == 37
     assert cts["buffer_type"] == workspace.pdk.buffers
+
+    from chipcompiler.engine.workspace_configuration import (
+        build_workspace_configuration_projection,
+    )
+
+    projection = build_workspace_configuration_projection(workspace)
+    assert projection["workspaceSpec"]["inputMode"] == "rtl"
+    assert projection["workspaceSpec"]["inputs"] == [
+        {"inputId": "rtl", "role": "rtl"},
+        {"inputId": "sdc", "role": "sdc"},
+    ]
+    assert projection == build_workspace_configuration_projection(load_workspace(workspace_dir))
 
 
 def test_create_workspace_rejects_existing_non_empty_directory(tmp_path):

@@ -70,9 +70,7 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
     # persisted steps are hydrated before validating the requested step.
     steps_accessor = getattr(workspace.flow, "steps", None)
     flow_steps = (
-        steps_accessor()
-        if callable(steps_accessor)
-        else workspace.flow.data.get("steps", [])
+        steps_accessor() if callable(steps_accessor) else workspace.flow.data.get("steps", [])
     )
     flow_step_names = {
         normalize_flow_step(step.get("name", "")).casefold()

@@ -46,13 +46,17 @@ def import_project_rtl(
         except (OSError, ValueError) as exc:
             raise RtlImportError("filelist_invalid", str(exc), str(source_list)) from exc
         if not entries:
-            raise RtlImportError("filelist_empty", "filelist contains no source files", str(source_list))
+            raise RtlImportError(
+                "filelist_empty", "filelist contains no source files", str(source_list)
+            )
         list_target = _target_for(source_list, source_list.parent, rtl_root)
         copied.append((source_list, list_target))
         for entry in entries:
             source = (source_list.parent / entry).resolve()
             if not source.is_file():
-                raise RtlImportError("rtl_source_not_found", "filelist source was not found", str(source))
+                raise RtlImportError(
+                    "rtl_source_not_found", "filelist source was not found", str(source)
+                )
             copied.append((source, _target_for(source, source_list.parent, rtl_root)))
         rtl_entries = [str(path.relative_to(root)) for _, path in copied[1:]]
         rtl_config = [str(list_target.relative_to(root))]
@@ -62,12 +66,14 @@ def import_project_rtl(
         for item in verilog:
             source = Path(item).expanduser().resolve()
             if not source.is_file():
-                raise RtlImportError("rtl_source_not_found", "Verilog source was not found", str(source))
+                raise RtlImportError(
+                    "rtl_source_not_found", "Verilog source was not found", str(source)
+                )
             copied.append((source, _target_for(source, source.parent, rtl_root)))
         rtl_entries = [str(path.relative_to(root)) for _, path in copied]
         rtl_config = rtl_entries
 
-    _ensure_targets_available(copied, force)
+    _ensure_targets_available(copied, force=force)
     for source, target in copied:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
@@ -102,25 +108,30 @@ def _target_for(source: Path, base: Path, rtl_root: Path) -> Path:
         relative = Path(source.name)
     target = (rtl_root / relative).resolve()
     if target != rtl_root and rtl_root not in target.parents:
-        raise RtlImportError("rtl_path_escape", "RTL target escapes project rtl directory", str(source))
+        raise RtlImportError(
+            "rtl_path_escape", "RTL target escapes project rtl directory", str(source)
+        )
     return target
 
 
-def _ensure_targets_available(copied: list[tuple[Path, Path]], force: bool) -> None:
+def _ensure_targets_available(copied: list[tuple[Path, Path]], *, force: bool) -> None:
     targets = set()
-    for source, target in copied:
+    for _source, target in copied:
         if target in targets:
-            raise RtlImportError("rtl_target_collision", "multiple inputs map to the same target", str(target))
+            raise RtlImportError(
+                "rtl_target_collision", "multiple inputs map to the same target", str(target)
+            )
         targets.add(target)
         if target.exists() and not force:
-            raise RtlImportError("rtl_target_exists", "target exists; use --force to replace it", str(target))
+            raise RtlImportError(
+                "rtl_target_exists", "target exists; use --force to replace it", str(target)
+            )
 
 
 def _write_filelist(target: Path, source_list: Path, sources: list[tuple[Path, Path]]) -> None:
     original = source_list.read_text(encoding="utf-8")
     replacements = {
-        str(source): os.path.relpath(target_path, target.parent)
-        for source, target_path in sources
+        str(source): os.path.relpath(target_path, target.parent) for source, target_path in sources
     }
     lines = []
     for line in original.splitlines():

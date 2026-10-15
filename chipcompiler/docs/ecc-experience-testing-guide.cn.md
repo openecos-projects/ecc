@@ -1237,3 +1237,39 @@ packaged smoke 覆盖 split、模型评价/泄漏拒绝、矩阵发布、注册�
 unknown，退出 7 并上传报告。CI 允许此证据不足状态，但不会把它标记成模型泛化通过。
 本地 GCD 用于验证执行闭环；跨设计统计效果、加速收敛和 PPA 收益需要后续独立 campaign
 的实测数据，不能由 synthetic smoke 或单个 GCD design 得出。
+
+## 18. 扩大测试前先建立可比基线
+
+完整 flow 只有在 `signoff check` 通过、QoR 可用且已提交 snapshot 与持久化配置一致时，
+才可作为调优基线。blocked 基线保留为失败证据，比较字段保持 unknown，不能据此计算收益。
+
+step worker 可能将实际几何写回 `home/params.toml`；父进程在分析和发布 snapshot 前重新
+读取这些参数，已结束但报告失败的 worker 也执行同步。参数文件缺失或损坏会阻止该 step
+被报告为成功，使后续派生和 DSE 的严格配置检查使用一致的数据；未授权参数变化仍被拒绝。
+
+旧 workspace 的 snapshot 如果生成于这项同步之前，应保留原件，在当前 runtime 下重新
+跑出基线。不要手工修改 snapshot 或参数文件来制造可比结果：
+
+```bash
+ecc workspace derive completed baseline_current --project ./project --plain
+ecc run --project ./project --workspace baseline_current --plain
+ecc signoff check --project ./project --workspace baseline_current --json
+```
+
+代码、工具和工艺配置准备完成后冻结 runtime，再以上述通过的基线执行阶段 DSE，保留完整
+flow 与独立 fresh 验证。总结 baseline、全部候选、完整及 fresh 的分数、signoff 退出码、实际
+成本、失败和证据指纹。实测 delta 为零就报告零，不将非回归验证描述为调优收益。
+
+小批量多设计 campaign 显式选择外部项目，清单、输入副本、store 和输出均位于 ECC 源码外。
+记录输入来源、约束覆盖、实测规模、各 step 参数、资源观测口径和失败分类。family 使用明确
+提供的标签；缺失时保持 unknown，不从目录名猜测。在默认、普通 DSE、模型辅助 DSE 的
+等预算对照前先建立通过的基线，调参前冻结 train/validation/test 归属，失败和未执行候选
+也保留在统计分母中。
+
+未提供 DEF 的 RTL workspace 创建后声明 RTL 模式，仅绑定实际输入，不把不存在的 DEF
+声明为物理入口必需输入，因此可以作为尚未执行的 campaign seed。明确提供的物理入口
+输入仍按其配置保留。
+
+软件回归、packaged smoke 和真实 design matrix 分别验收。逐项记录远端 job 状态和 artifact，
+本地通过不等于远端 CI 通过；矩阵证据不足仍为 unknown。只有独立质量与效果门槛通过后
+才晋级模型，否则保留原 active release。

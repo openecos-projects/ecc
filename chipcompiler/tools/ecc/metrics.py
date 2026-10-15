@@ -20,38 +20,6 @@ from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 from chipcompiler.utility import dict_to_str, json_read, json_write
 
 QOR_METRIC_MAP = {
-    "Power internal [uW]": {
-        "name": "power_analysis_internal_uw",
-        "display_name": "Power Analysis Internal Power",
-        "unit": "uW",
-        "dimension": "power_integrity",
-        "polarity": "trend_only",
-        "confidence": "medium",
-    },
-    "Power switching [uW]": {
-        "name": "power_analysis_switching_uw",
-        "display_name": "Power Analysis Switching Power",
-        "unit": "uW",
-        "dimension": "power_integrity",
-        "polarity": "trend_only",
-        "confidence": "medium",
-    },
-    "Power dynamic [uW]": {
-        "name": "power_analysis_dynamic_uw",
-        "display_name": "Power Analysis Dynamic Power",
-        "unit": "uW",
-        "dimension": "power_integrity",
-        "polarity": "trend_only",
-        "confidence": "medium",
-    },
-    "Power leakage [uW]": {
-        "name": "power_analysis_leakage_uw",
-        "display_name": "Power Analysis Leakage Power",
-        "unit": "uW",
-        "dimension": "power_integrity",
-        "polarity": "trend_only",
-        "confidence": "medium",
-    },
     "Cell area": {
         "name": "synthesis_cell_area",
         "display_name": "Synthesis Cell Area",

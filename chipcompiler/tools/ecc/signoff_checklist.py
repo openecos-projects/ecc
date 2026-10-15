@@ -26,6 +26,7 @@ from chipcompiler.tools.ecc.lec_gates import (
 from chipcompiler.tools.ecc.lec_gates import (
     requires_post_route_lec as _requires_post_route_lec,
 )
+from chipcompiler.tools.ecc.power_artifacts import power_step_path
 from chipcompiler.tools.ecc.sta_qor import (
     STA_QOR_SUMMARY_FILENAME,
     STA_REPORT_FILENAMES,
@@ -34,7 +35,6 @@ from chipcompiler.tools.ecc.sta_qor import (
     read_sta_qor_summary,
     read_sta_timing_paths,
 )
-from chipcompiler.tools.ecc.power_artifacts import power_step_path
 from chipcompiler.utility import json_read
 from chipcompiler.utility.filelist import resolve_initial_rtl
 

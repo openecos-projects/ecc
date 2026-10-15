@@ -35,9 +35,7 @@ def inspect_process(project_dir: str | Path, workspace_id: str, run_id: str | No
     raise RuntimeProcessError("process_not_found", "Runtime process identity is stale")
 
 
-def cancel_process(
-    project_dir: str | Path, workspace_id: str, run_id: str, *, force: bool
-) -> dict:
+def cancel_process(project_dir: str | Path, workspace_id: str, run_id: str, *, force: bool) -> dict:
     entry = read_runtime_process(project_dir, workspace_id, run_id)
     signal_runtime_process(entry, force=force)
     return entry
@@ -82,9 +80,7 @@ def reconcile_process(
             raise RuntimeProcessError("process_not_found", "Registered run ID does not match")
         if _entry_is_local(entry) and identity_is_live(entry):
             raise RuntimeProcessError("workspace_busy", "Runtime process is still alive")
-        recovered = recover_interrupted_run(
-            workspace, run_id=run_id, allow_markerless=False
-        )
+        recovered = recover_interrupted_run(workspace, run_id=run_id, allow_markerless=False)
 
         def mutate(document: dict) -> None:
             current = document.get("runtime_processes", {})
@@ -96,9 +92,7 @@ def reconcile_process(
             del current[workspace_id]
 
         if not update_manifest_locked(project, mutate):
-            raise RuntimeProcessError(
-                "runtime_reconcile_failed", "Project Manifest update failed"
-            )
+            raise RuntimeProcessError("runtime_reconcile_failed", "Project Manifest update failed")
         return recovered
 
 

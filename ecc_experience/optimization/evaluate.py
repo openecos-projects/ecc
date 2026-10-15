@@ -11,12 +11,8 @@ def evaluate(baseline_id: str, candidate_id: str, store: str | Path) -> dict:
     repository = ExperienceStore(store)
     baseline = repository.read(baseline_id)
     candidate = repository.read(candidate_id)
-    baseline_verification = verify_case(
-        baseline, repository.case_directory(baseline.case_id)
-    )
-    candidate_verification = verify_case(
-        candidate, repository.case_directory(candidate.case_id)
-    )
+    baseline_verification = verify_case(baseline, repository.case_directory(baseline.case_id))
+    candidate_verification = verify_case(candidate, repository.case_directory(candidate.case_id))
     result = {
         "baseline_case_id": baseline.case_id,
         "candidate_case_id": candidate.case_id,
@@ -48,16 +44,12 @@ def evaluate(baseline_id: str, candidate_id: str, store: str | Path) -> dict:
     result.update(
         {
             "status": "complete",
-            "comparison": (
-                "improved" if delta > 0 else "regressed" if delta < 0 else "unchanged"
-            ),
+            "comparison": ("improved" if delta > 0 else "regressed" if delta < 0 else "unchanged"),
             "direction": "higher_is_better",
             "baseline_score": baseline_score,
             "candidate_score": candidate_score,
             "score_delta": delta,
-            "score_delta_percent": (delta / baseline_score * 100)
-            if baseline_score != 0
-            else None,
+            "score_delta_percent": (delta / baseline_score * 100) if baseline_score != 0 else None,
         }
     )
     return result

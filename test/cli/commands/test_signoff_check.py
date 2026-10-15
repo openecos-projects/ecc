@@ -290,6 +290,7 @@ def test_contract_gate_preserves_artifact_identity_fields():
     assert result["stale"] is False
     assert result["provisional"] is False
 
+
 @pytest.mark.parametrize(
     ("status", "expected_code"),
     [("pass", 0), ("fail", 6), ("unknown", 7)],
@@ -302,13 +303,13 @@ def test_signoff_contract_exit_code_matrix(monkeypatch, tmp_path, status, expect
 
     home = tmp_path / "home"
     home.mkdir()
-    (home / "flow.json").write_text(
-        json.dumps({"steps": [{"state": "Success"}]}), encoding="utf-8"
-    )
+    (home / "flow.json").write_text(json.dumps({"steps": [{"state": "Success"}]}), encoding="utf-8")
     (home / "qor_report.json").write_text(json.dumps({"score": 90}), encoding="utf-8")
-    monkeypatch.setattr(module, "resolve_loaded_workspace", lambda command_input, ctx: (
-        SimpleNamespace(directory=str(tmp_path)), None
-    ))
+    monkeypatch.setattr(
+        module,
+        "resolve_loaded_workspace",
+        lambda command_input, ctx: (SimpleNamespace(directory=str(tmp_path)), None),
+    )
     monkeypatch.setattr(module, "workspace_display", lambda command_input, ctx: "default")
     monkeypatch.setattr(
         "chipcompiler.engine.signoff_export.inspect_signoff_package",

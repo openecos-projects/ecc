@@ -436,9 +436,7 @@ def _execute_existing_run(
             if isinstance(exc, RuntimeProcessError):
                 from chipcompiler.cli.project.run_process import runtime_process_error_result
 
-                return runtime_process_error_result(
-                    exc, workspace_id=run_name, workspace=run_dir
-                )
+                return runtime_process_error_result(exc, workspace_id=run_name, workspace=run_dir)
             return CommandResult.err(
                 warnings
                 + [

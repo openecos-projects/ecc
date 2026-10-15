@@ -222,6 +222,7 @@ class TestManifestRunCommand:
         assert manifest["workspaces"][0]["status"] == "running"
         assert manifest["runtime_processes"] == {}
 
+
 class TestOriginDefResolution:
     """base_design.origin_def reaches workspace creation on both layering
     paths; relative spellings resolve against the project root (never the

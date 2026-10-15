@@ -86,9 +86,7 @@ def _build_workspace_step_for_info(
 
 def _step_category(flow_step: dict) -> str:
     return str(
-        flow_step.get("category")
-        or (flow_step.get("info") or {}).get("category")
-        or "PNR"
+        flow_step.get("category") or (flow_step.get("info") or {}).get("category") or "PNR"
     ).upper()
 
 

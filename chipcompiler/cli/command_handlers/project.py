@@ -7,8 +7,8 @@ from chipcompiler.cli.core.inputs import (
     CheckInput,
     InitInput,
     MigrateInput,
-    RunInput,
     RtlImportInput,
+    RunInput,
     WorkspaceImportInput,
 )
 from chipcompiler.cli.core.output import disclosure_cmd

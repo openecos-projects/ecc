@@ -92,6 +92,7 @@
           ./README.md
           ./agent
           ./chipcompiler
+          ./ecc_experience
           ./pyproject.toml
           ./uv.lock
         ];
@@ -124,12 +125,10 @@
       nativeBuildInputs = [ makeWrapper ];
 
       postFixup = ''
-        for bin in ecc ecc-agent-rpc; do
-          wrapProgram "$out/bin/$bin" \
-            --set CHIPCOMPILER_OSS_CAD_DIR "${yosysWithSlang}" \
-            --set CHIPCOMPILER_KEPLER_FORMAL_ROOT "${keplerFormal}" \
-            --prefix PATH : "${yosysWithSlang}/bin"
-        done
+        wrapProgram "$out/bin/ecc" \
+          --set CHIPCOMPILER_OSS_CAD_DIR "${yosysWithSlang}" \
+          --set CHIPCOMPILER_KEPLER_FORMAL_ROOT "${keplerFormal}" \
+          --prefix PATH : "${yosysWithSlang}/bin"
       '';
 
       pythonImportsCheck = [
@@ -138,6 +137,7 @@
         "chipcompiler.engine"
         "chipcompiler.tools"
         "chipcompiler.cli"
+        "ecc_experience"
       ];
 
       meta.mainProgram = "ecc";

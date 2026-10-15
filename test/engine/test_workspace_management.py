@@ -181,9 +181,7 @@ def test_reconcile_delete_removes_staging_after_manifest_commit(
 ):
     project, workspace = _managed_workspace(tmp_path, minimal_ics55_pdk_factory)
     staging = _stage_delete(project, workspace, "baseline", "delete-crash-2")
-    mutate_project_manifest(
-        project, {"type": "delete_workspace", "workspace_id": "baseline"}
-    )
+    mutate_project_manifest(project, {"type": "delete_workspace", "workspace_id": "baseline"})
 
     recovered = reconcile_workspace_deletes(project, blocking=False)
 
@@ -192,9 +190,7 @@ def test_reconcile_delete_removes_staging_after_manifest_commit(
     assert not staging.exists()
 
 
-def test_reconcile_delete_preserves_unproven_staging(
-    tmp_path, minimal_ics55_pdk_factory
-):
+def test_reconcile_delete_preserves_unproven_staging(tmp_path, minimal_ics55_pdk_factory):
     project, workspace = _managed_workspace(tmp_path, minimal_ics55_pdk_factory)
     staging = project / ".ecc-delete-baseline-unknown"
     workspace.rename(staging)

@@ -642,9 +642,7 @@ class EngineFlow:
                     self.workspace_steps[batch_end]
                 ):
                     batch_end += 1
-                states = self._run_checker_batch(
-                    self.workspace_steps[index:batch_end], rerun=rerun
-                )
+                states = self._run_checker_batch(self.workspace_steps[index:batch_end], rerun=rerun)
                 for _batch_step, state in zip(
                     self.workspace_steps[index:batch_end], states, strict=True
                 ):

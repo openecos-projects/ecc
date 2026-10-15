@@ -31,7 +31,16 @@ def _workspace_step(tmp_path, name="place", tool="ecc"):
 
 
 def _workspace(tmp_path):
-    return SimpleNamespace(directory=str(tmp_path), logger=logging.getLogger("ecc-test"))
+    from chipcompiler.data.parameter import Parameters, save_parameter
+
+    parameters = Parameters(
+        path=tmp_path / "home/params.toml",
+        data={"design": "example", "top_module": "example", "pdk": "ics55", "clock": "clk"},
+    )
+    assert save_parameter(parameters)
+    return SimpleNamespace(
+        directory=str(tmp_path), logger=logging.getLogger("ecc-test"), parameters=parameters
+    )
 
 
 class _FakeStdin(io.BytesIO):
@@ -136,6 +145,46 @@ def test_sta_step_memory_includes_corner_workers(monkeypatch, tmp_path):
     result = step_subprocess.execute_step_subprocess(_workspace(tmp_path), step)
     assert result.error is None
     assert result.peak_memory_mb == 30
+
+
+@pytest.mark.parametrize("worker_ok", [True, False])
+def test_worker_parameter_updates_are_visible_before_terminal_snapshot(
+    monkeypatch, tmp_path, worker_ok
+):
+    from chipcompiler.data.parameter import load_parameter, save_parameter
+
+    workspace = _workspace(tmp_path)
+    step = _workspace_step(tmp_path)
+    result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
+
+    def spawn(*_args, **_kwargs):
+        parameters = load_parameter(workspace.parameters.path)
+        parameters.data["core"] = {"aspect_ratio": 0.8, "size": [8.0, 10.0]}
+        assert save_parameter(parameters)
+        result_path.write_text(json.dumps({"done": True, "ok": worker_ok, "error": "boom"}))
+        return _FakePopen(poll_script=[0])
+
+    monkeypatch.setattr(step_subprocess.subprocess, "Popen", spawn)
+    result = step_subprocess.execute_step_subprocess(workspace, step)
+
+    assert (result.error is None) is worker_ok
+    assert workspace.parameters.data == load_parameter(workspace.parameters.path).data
+    assert workspace.parameters.data["core"] == {"aspect_ratio": 0.8, "size": [8.0, 10.0]}
+
+
+def test_worker_corrupt_parameters_prevent_success(monkeypatch, tmp_path):
+    workspace = _workspace(tmp_path)
+    step = _workspace_step(tmp_path)
+    result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
+
+    def spawn(*_args, **_kwargs):
+        workspace.parameters.path.write_text("{broken")
+        result_path.write_text(json.dumps({"done": True, "ok": True}))
+        return _FakePopen(poll_script=[0])
+
+    monkeypatch.setattr(step_subprocess.subprocess, "Popen", spawn)
+    result = step_subprocess.execute_step_subprocess(workspace, step)
+    assert "parameters could not be reloaded" in result.error
 
 
 def test_execute_step_subprocess_reports_worker_crash(monkeypatch, tmp_path):
