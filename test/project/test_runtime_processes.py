@@ -132,3 +132,51 @@ def test_current_process_identity_is_live():
     }
     entry["log_path"] = default_log_path(entry["run_id"])
     assert identity_is_live(entry)
+
+
+def test_container_identity_without_machine_id_is_shared_by_child(monkeypatch):
+    import subprocess
+    import sys
+
+    from chipcompiler.project.runtime_processes import _host_id
+
+    original = Path.read_bytes
+
+    def without_machine_id(path):
+        if str(path) in {"/etc/machine-id", "/var/lib/dbus/machine-id"}:
+            return b""
+        return original(path)
+
+    monkeypatch.setattr(Path, "read_bytes", without_machine_id)
+    parent = _host_id()
+    child = subprocess.check_output(
+        [
+            sys.executable,
+            "-c",
+            "from pathlib import Path; "
+            "from chipcompiler.project.runtime_processes import _host_id; "
+            "Path.read_bytes=lambda self: b''; print(_host_id())",
+        ],
+        text=True,
+    ).strip()
+    assert parent == child
+
+
+def test_container_identity_changes_with_namespace_and_rejects_missing_boot(monkeypatch):
+    from types import SimpleNamespace
+
+    from chipcompiler.project import runtime_processes
+
+    monkeypatch.setattr(Path, "read_bytes", lambda _path: b"")
+    monkeypatch.setattr(runtime_processes, "_boot_id", lambda: "boot-a")
+    monkeypatch.setattr(Path, "stat", lambda _path: SimpleNamespace(st_dev=1, st_ino=2))
+    first = runtime_processes._host_id()
+    monkeypatch.setattr(Path, "stat", lambda _path: SimpleNamespace(st_dev=1, st_ino=3))
+    assert runtime_processes._host_id() != first
+
+    def unavailable():
+        raise RuntimeProcessError("host_identity_unavailable", "boot ID unavailable")
+
+    monkeypatch.setattr(runtime_processes, "_boot_id", unavailable)
+    with pytest.raises(RuntimeProcessError, match="boot ID unavailable"):
+        runtime_processes._host_id()

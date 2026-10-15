@@ -423,6 +423,7 @@ jobs:
         uses: DeterminateSystems/magic-nix-cache-action@v15
 
       - name: Run design flows
+        id: design-flow
         run: |
           emir_params="$(dist/ecc-bundle/ecc param list --step emir --plain \
             --project "designs/${{ matrix.design }}")"
@@ -444,6 +445,7 @@ jobs:
             nix run -L .#signoff-lit -- designs --filter "${{ matrix.design }}"
 
       - name: Verify packaged experience collection
+        if: ${{ !cancelled() && steps.design-flow.outcome == 'success' }}
         run: |
           python3 packaging/experience_cli_smoke.py \
             --binary "$PWD/dist/ecc-bundle/ecc" \

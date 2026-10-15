@@ -379,4 +379,9 @@ def _host_id() -> str:
             continue
         if value:
             return hashlib.sha256(value).hexdigest()
-    raise RuntimeProcessError("host_identity_unavailable", "machine identity is unavailable")
+    try:
+        namespace = Path("/proc/self/ns/pid").stat()
+        identity = f"linux-boot:{_boot_id()}:pidns:{namespace.st_dev}:{namespace.st_ino}"
+    except OSError as exc:
+        raise RuntimeProcessError("host_identity_unavailable", str(exc)) from exc
+    return hashlib.sha256(identity.encode("ascii")).hexdigest()
