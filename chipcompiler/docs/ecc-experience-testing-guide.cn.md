@@ -1111,3 +1111,129 @@ workspace 可能返回20，保持现有锁语义，不删除其他运行的锁�
 有效，并且默认 `auto_apply=false`；它不能替代真实 DSE 或 fresh full-flow 验证。
 复杂搜索、并发调度和团队共享服务仍未提供；多 SDC 和 lint 功能继续暂缓。现有 DRC
 判据也不代表 GDS DRC 能力。
+
+## 17. P5：多设计验证、模型晋级与 sweep 闭环
+
+P5 将 P4 扩展为可审计的多设计验证和可回退发布。推荐顺序是：收集不同 design、family
+和独立运行的 verified case；创建 held-out 验证矩阵；运行 `model validate`；通过后运行
+`model publish`；再用 `model promote`、`model registry` 和 `model rollback` 管理发布；最后
+用 `model advise` 和 `model seed-sweep` 接入原生 `sweep`/`explore`。
+
+先通过 `dataset build` 生成包含显式 family 映射的完整数据集，再划分数据：
+
+```bash
+ecc experience dataset split --dataset all-designs.json --output split \
+  --by family --seed campaign-v1 --validation-fraction 0.2 --test-fraction 0.2 --json
+ecc experience model train --dataset split/training.json --output model.json --json
+ecc experience model validate --model model.json \
+  --matrix split/validation-matrix.json --output validation.json --family-holdout --json
+```
+
+`--by design` 按输入内容指纹划分，`--by family` 按人工确认的家族划分。同一个输入的重复
+workspace、attempt、参数扫描记录始终在同一分区；不能用改名制造独立 design。family
+必须显式配置，不能从文件名推断。少于三个独立划分组返回 7，不创建输出。输出包括
+training/validation/test.json、两个验证矩阵及 split.json；矩阵的指纹自动生成，无需手算。
+仅使用 validation 选择模型和阈值，冻结选择后用 test-matrix.json 做一次最终评价，再发布。
+测试失败时不能反复修改模型并继续把同一个 test 集声称为独立最终评价。
+
+验证矩阵格式如下，路径可以相对矩阵文件所在目录：
+
+```json
+{
+  "schema": "ecc-experience-model-validation-matrix/1",
+  "datasets": [
+    {"path": "heldout-design-a.json", "design": "design-a", "family": "family-a"},
+    {"path": "heldout-design-b.json", "design": "design-b", "family": "family-b"}
+  ],
+  "matrix_id": "matrix-<sha256(schema+datasets)>"
+}
+```
+
+每个 dataset 必须与模型使用相同的 feature schema、target、through-step、process 和
+runtime；input fingerprint 不能与训练集或其他矩阵 dataset 重复，design 必须唯一。独立
+design 或 family 数量不足时返回 `unknown`（退出码 7），不能宣称泛化：
+
+```bash
+ecc experience model validate --model model.json \
+  --matrix validation-matrix.json --output matrix-evaluation.json \
+  --min-independent-designs 3 --min-families 2 --json
+ecc experience model publish --model model.json \
+  --evaluation matrix-evaluation.json --output model-release.json --json
+```
+
+每个矩阵条目只允许一个独立输入，可包含该输入的多次参数实验；条目的 family 必须与
+dataset 中的 group 一致。`--family-holdout` 还拒绝训练家族与留出家族交叉。报告包含整体和
+逐设计 MAE、RMSE、区间覆盖率，以及同一 design 内候选两两排序正确率和有效比较对数。
+默认排序正确率门槛为 0.5，可通过 `--min-rank-accuracy` 设置；没有可比较候选时默认为
+unknown。显式设为 0 可关闭排序门槛，但这不能说明候选排序有效。门槛未达标返回 6；
+输入泄漏返回 6，process/runtime 不兼容返回 7，格式或参数错误返回 2。
+
+publish 会重新读取矩阵和模型并比较 evaluation fingerprint；文件变化时拒绝发布。矩阵
+通过只说明声明范围内的统计验证，仍要用真实 ECC DSE、新 workspace 和 fresh full-flow
+验证确认候选。
+
+registry 保存不可覆盖的 release 副本和 active 指针，不修改 project、workspace 或默认参数：
+
+```bash
+ecc experience model promote --model-release model-release.json \
+  --registry experience-registry --json
+ecc experience model registry --registry experience-registry --json
+ecc experience model rollback --registry experience-registry --json
+```
+
+`rollback` 默认回到上一个 active release，也可以用 `--release-id` 指定已有 release；激活
+前仍会校验 release 指纹，策略保持 `auto_apply=false`。
+
+`model advise` 只生成排序，不应用参数。审核候选后，可以生成原生 sweep：
+
+```bash
+ecc experience model advise --model-release model-release.json \
+  --dataset candidate-dataset.json --output advice.json --limit 8 --json
+ecc experience model seed-sweep --project /path/to/project \
+  --advice advice.json --model-release model-release.json --name model-seeded-001 --json
+ecc sweep run --project /path/to/project --name model-seeded-001
+ecc sweep verify --project /path/to/project --name model-seeded-001
+ecc explore rank --project /path/to/project --name model-seeded-001
+ecc explore export --project /path/to/project --name model-seeded-001 \
+  --format markdown --output model-seeded-001.md
+```
+
+seed-sweep 只创建计划并保留 advice、model release 和候选参数来源；实际运行由原生 sweep
+完成。advice 指纹、绑定的模型 release 和参数值会重新校验；只保留当前已审核支持的
+floorplan/place/CTS 参数，排除项记录在 provenance 中，相同参数配置去重。不会自动运行
+或修改原 workspace。原生 sweep 运行完整 flow；阶段式筛选使用下面的 DSE 命令。
+
+### 17.1 模型辅助 DSE 与经验反馈
+
+```bash
+ecc experience dse run --plan dse-plan.json --model-release model-release.json \
+  --output dse-run --json
+ecc experience dse report --plan dse-plan.json --result dse-run/result.json \
+  --output dse-summary --json
+ecc experience dataset build --release dse-summary/feedback-release.json \
+  --store experience-store --target final_qor --through-step postFloorplan \
+  --groups groups.json --output next-dataset.json --json
+```
+
+先按前文创建 bounded DSE plan。`--model-release` 可选，当前仅支持 final_qor 模型，必须
+精确匹配 plan 的 stage、process 和 runtime；不会自动跟随注册表 active 指针。模型在每个
+候选完成阶段检查后读取实际前缀特征，预测最终 QoR，并选择预测最高者晋级，保留全部
+阶段结果与预测。未传模型时保持原来的实测阶段目标排序；两种模式都必须通过独立的
+完整 flow 和 fresh 验证。预测更高不代表实际 QoR 改善，最终改善只看实测对比。
+
+report 写 summary.json、summary.md 和有可用证据时的 feedback-release.json，包含参数、
+阶段结果、预测与实际 QoR/误差、资源观测及其口径、失败原因、筛选数量、验证用时和停止
+原因。报告生成成功退出 0，原 DSE 运行的退出码保留在报告中；生成报告不会重跑 flow。
+它重新核对 case 的输入、attempt、process/runtime、参数、QoR 和证据完整性。只有验证通过
+的 case 才进入反馈 release；缺失或 unknown 不自动变成训练样本。生成新数据集后应汇入
+版本化总语料并保持原来的 design/family 隔离；单个 design 的反馈不能形成泛化模型。
+
+### 17.2 CI 与验证边界
+
+packaged smoke 覆盖 split、模型评价/泄漏拒绝、矩阵发布、注册表晋级/回滚及 advice-to-sweep。
+这部分使用明确标识的合成数据，只证明命令契约。现有公开 design matrix 每个真实 flow
+完成后上传实际 case/verify/features，独立 job 汇总真实输入数量、重复输入、QoR 和各 step
+资源。缺失或损坏的观测使汇总失败；家族、历史运行身份或候选变化不足时汇总保留
+unknown，退出 7 并上传报告。CI 允许此证据不足状态，但不会把它标记成模型泛化通过。
+本地 GCD 用于验证执行闭环；跨设计统计效果、加速收敛和 PPA 收益需要后续独立 campaign
+的实测数据，不能由 synthetic smoke 或单个 GCD design 得出。

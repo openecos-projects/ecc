@@ -4,15 +4,19 @@ from pathlib import Path
 from ecc_experience.dse.plan import invalid, read_dse_plan
 from ecc_experience.dse.trial import check_source, execute_trial
 from ecc_experience.knowledge.release import verify_release
+from ecc_experience.modeling.dse import check_model, predict_trial
 from ecc_experience.models import ExperienceError
 from ecc_experience.optimization.evidence import inspect_workspace
 from ecc_experience.optimization.plan import write_plan
 from ecc_experience.optimization.process import CliRunner, cancellation_signals
 
 
-def run_dse(plan_path: str | Path, output: str | Path) -> dict:
+def run_dse(
+    plan_path: str | Path, output: str | Path, *, model_release: str | Path | None = None
+) -> dict:
     plan, limits = read_dse_plan(plan_path)
     check_source(plan)
+    model = check_model(plan, model_release) if model_release is not None else None
     if not Path("/proc/self/task").is_dir():
         raise invalid("Controlled stage DSE requires Linux process-tree cancellation support")
     if plan["release"]:
@@ -47,6 +51,9 @@ def run_dse(plan_path: str | Path, output: str | Path) -> dict:
         "fresh_validation": None,
         "validation_scope": "stage_screen_then_full_and_fresh",
         "stop_reason": None,
+        "model_release_id": model["release_id"] if model else None,
+        "selection_policy": "predicted_final_qor" if model else "measured_stage_objective",
+        "safe_to_apply": False,
     }
 
     def save():
@@ -54,8 +61,10 @@ def run_dse(plan_path: str | Path, output: str | Path) -> dict:
         write_plan(destination / "result.json", result)
 
     save()
+    if model:
+        write_plan(destination / "model-release.json", model)
     best_candidate = None
-    best_value = plan["baseline_stage_value"]
+    best_rank = None
     stagnant = 0
     try:
         with cancellation_signals():
@@ -70,20 +79,27 @@ def run_dse(plan_path: str | Path, output: str | Path) -> dict:
                     result.update(status="timeout", exit_code=124, stop_reason="time_budget")
                     break
                 value = record.get("stage_value")
-                better = (
-                    record["status"] == "stage_passed"
-                    and value is not None
-                    and (
-                        best_candidate is None
-                        or (
-                            value < best_value
-                            if plan["direction"] == "minimize"
-                            else value > best_value
-                        )
+                predicted = None
+                if model and model_release is not None and record["status"] == "stage_passed":
+                    record["model_prediction"] = predict_trial(
+                        plan, record, model_release, model["release_id"]
+                    )
+                    predicted = record["model_prediction"]["prediction"]["prediction"]
+                rank = (
+                    predicted
+                    if model
+                    else (
+                        -value if value is not None and plan["direction"] == "minimize" else value
                     )
                 )
+                better = (
+                    record["status"] == "stage_passed"
+                    and rank is not None
+                    and (best_rank is None or rank > best_rank)
+                )
                 if better:
-                    best_candidate, best_value = candidate, value
+                    best_candidate = candidate
+                    best_rank = rank
                     result["stage_winner"] = record
                     result["stage_improved"] = (
                         value < plan["baseline_stage_value"]

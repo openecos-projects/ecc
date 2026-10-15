@@ -13,6 +13,7 @@ from ecc_experience.collection.collect import CollectionResult, collect_committe
 from ecc_experience.collection.drain import drain as drain_recording
 from ecc_experience.dse.execute import run_dse
 from ecc_experience.dse.plan import plan_dse
+from ecc_experience.dse.report import report_dse
 from ecc_experience.knowledge.features import case_features
 from ecc_experience.knowledge.matching import match_cases
 from ecc_experience.knowledge.recommend import recommend as recommend_cases
@@ -23,6 +24,12 @@ from ecc_experience.knowledge.verify import verify_case
 from ecc_experience.modeling.dataset import build_dataset
 from ecc_experience.modeling.model import evaluate_model, publish_model, train_model
 from ecc_experience.modeling.predict import advise_dataset, predict_case
+from ecc_experience.modeling.registry import promote as promote_model_release
+from ecc_experience.modeling.registry import rollback as rollback_model_release
+from ecc_experience.modeling.registry import status as model_registry_status
+from ecc_experience.modeling.split import split_dataset
+from ecc_experience.modeling.sweep import seed_sweep
+from ecc_experience.modeling.validation import validate_matrix
 from ecc_experience.models import ExperienceCase, Verification
 from ecc_experience.optimization.evaluate import evaluate as evaluate_cases
 from ecc_experience.optimization.execute import optimize as execute_optimization
@@ -109,6 +116,72 @@ def model_advise(
     limit: int = 10,
 ) -> dict:
     return advise_dataset(model_release, dataset, output, limit=limit)
+
+
+def model_validate(
+    model: str | Path,
+    matrix: str | Path,
+    output: str | Path,
+    *,
+    min_independent_designs: int = 3,
+    min_families: int = 2,
+    max_mae: float = 10.0,
+    min_interval_coverage: float = 0.5,
+    min_rank_accuracy: float = 0.5,
+    family_holdout: bool = False,
+) -> dict:
+    return validate_matrix(
+        model,
+        matrix,
+        output,
+        min_independent_designs=min_independent_designs,
+        min_families=min_families,
+        max_mae=max_mae,
+        min_interval_coverage=min_interval_coverage,
+        min_rank_accuracy=min_rank_accuracy,
+        family_holdout=family_holdout,
+    )
+
+
+def model_promote(model_release: str | Path, registry: str | Path) -> dict:
+    return promote_model_release(model_release, registry)
+
+
+def model_rollback(registry: str | Path, release_id: str | None = None) -> dict:
+    return rollback_model_release(registry, release_id)
+
+
+def model_registry(registry: str | Path) -> dict:
+    return model_registry_status(registry)
+
+
+def model_seed_sweep(
+    project: str | Path, advice: str | Path, model_release: str | Path, name: str
+) -> dict:
+    return seed_sweep(project, advice, model_release, name)
+
+
+def dataset_split(
+    dataset: str | Path,
+    output: str | Path,
+    *,
+    by: str = "design",
+    seed: str = "0",
+    validation_fraction: float = 0.2,
+    test_fraction: float = 0.2,
+) -> dict:
+    return split_dataset(
+        dataset,
+        output,
+        by=by,
+        seed=seed,
+        validation_fraction=validation_fraction,
+        test_fraction=test_fraction,
+    )
+
+
+def dse_report(plan: str | Path, result: str | Path, output: str | Path) -> dict:
+    return report_dse(plan, result, output)
 
 
 def collect(workspace: str | Path, store: str | Path) -> CollectionResult:
@@ -259,8 +332,10 @@ def dse_plan(
     )
 
 
-def dse_run(plan: str | Path, output: str | Path) -> dict:
-    return run_dse(plan, output)
+def dse_run(
+    plan: str | Path, output: str | Path, *, model_release: str | Path | None = None
+) -> dict:
+    return run_dse(plan, output, model_release=model_release)
 
 
 def plan(

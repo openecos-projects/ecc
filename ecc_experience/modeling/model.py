@@ -241,9 +241,13 @@ def publish_model(model: str | Path, evaluation: str | Path, output: str | Path)
         for key, value in report.items()
         if key not in {"evaluated_at", "evaluation_fingerprint"}
     }
-    if report.get("schema") != EVALUATION_SCHEMA or report.get("evaluation_fingerprint") != digest(
-        identity
-    ):
+    supported_schemas = {EVALUATION_SCHEMA}
+    from ecc_experience.modeling.validation import MATRIX_EVALUATION_SCHEMA
+
+    supported_schemas.add(MATRIX_EVALUATION_SCHEMA)
+    if report.get("schema") not in supported_schemas or report.get(
+        "evaluation_fingerprint"
+    ) != digest(identity):
         raise invalid("Model evaluation report is invalid or changed")
     if report.get("status") != "pass":
         raise ExperienceError(
@@ -256,14 +260,28 @@ def publish_model(model: str | Path, evaluation: str | Path, output: str | Path)
         raise ExperienceError(
             "Model artifact changed after evaluation", code="experience_source_changed"
         )
-    current = evaluate_model(
-        model_path,
-        report["dataset"],
-        min_independent_designs=report["thresholds"]["min_independent_designs"],
-        min_families=report["thresholds"]["min_families"],
-        max_mae=report["thresholds"]["max_mae"],
-        min_interval_coverage=report["thresholds"]["min_interval_coverage"],
-    )
+    if report["schema"] == EVALUATION_SCHEMA:
+        current = evaluate_model(
+            model_path,
+            report["dataset"],
+            min_independent_designs=report["thresholds"]["min_independent_designs"],
+            min_families=report["thresholds"]["min_families"],
+            max_mae=report["thresholds"]["max_mae"],
+            min_interval_coverage=report["thresholds"]["min_interval_coverage"],
+        )
+    else:
+        from ecc_experience.modeling.validation import validate_matrix
+
+        current = validate_matrix(
+            model_path,
+            report["matrix"],
+            min_independent_designs=report["thresholds"]["min_independent_designs"],
+            min_families=report["thresholds"]["min_families"],
+            max_mae=report["thresholds"]["max_mae"],
+            min_interval_coverage=report["thresholds"]["min_interval_coverage"],
+            min_rank_accuracy=report["thresholds"]["min_rank_accuracy"],
+            family_holdout=report["thresholds"]["family_holdout"],
+        )
     if current["evaluation_fingerprint"] != report["evaluation_fingerprint"]:
         raise ExperienceError("Model evaluation evidence changed", code="experience_source_changed")
     destination = Path(output).expanduser().absolute()

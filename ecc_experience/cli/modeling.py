@@ -14,7 +14,7 @@ from chipcompiler.cli.core.inputs import (
     project_options,
 )
 from chipcompiler.cli.core.invocation import execute_command
-from chipcompiler.cli.core.options import JsonOption, PlainOption
+from chipcompiler.cli.core.options import JsonOption, PlainOption, ProjectOption
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from ecc_experience.cli.handlers import _guard
 
@@ -53,6 +53,13 @@ class ModelInput:
     max_mae: float = 10.0
     min_interval_coverage: float = 0.5
     limit: int = 10
+    matrix: str | None = None
+    registry: str | None = None
+    release_id: str | None = None
+    advice: str | None = None
+    name: str | None = None
+    min_rank_accuracy: float = 0.5
+    family_holdout: bool = False
 
 
 def _dataset_build(command: DatasetInput, _context: CommandContext) -> CommandResult:
@@ -82,14 +89,19 @@ def _dataset_build(command: DatasetInput, _context: CommandContext) -> CommandRe
     return _guard(operation)
 
 
-def _model_command(command: ModelInput, _context: CommandContext) -> CommandResult:
+def _model_command(command: ModelInput, context: CommandContext) -> CommandResult:
     def operation() -> CommandResult:
         from ecc_experience.api import (
             model_advise,
             model_evaluate,
             model_predict,
+            model_promote,
             model_publish,
+            model_registry,
+            model_rollback,
+            model_seed_sweep,
             model_train,
+            model_validate,
         )
 
         if command.action == "train":
@@ -159,6 +171,48 @@ def _model_command(command: ModelInput, _context: CommandContext) -> CommandResu
                     }
                 ]
             )
+        if command.action == "validate":
+            result = model_validate(
+                command.model or "",
+                command.matrix or "",
+                command.output_path or "",
+                min_independent_designs=command.min_independent_designs,
+                min_families=command.min_families,
+                max_mae=command.max_mae,
+                min_interval_coverage=command.min_interval_coverage,
+                min_rank_accuracy=command.min_rank_accuracy,
+                family_holdout=command.family_holdout,
+            )
+            return CommandResult(
+                records=(
+                    {
+                        "experience": "model_validate",
+                        "status": result["status"],
+                        "output": str(Path(command.output_path or "").expanduser().absolute()),
+                        "metrics": result["metrics"],
+                        "summary": result["summary"],
+                        "generalization_status": result["generalization_status"],
+                    },
+                ),
+                exit_code={"pass": 0, "fail": 6, "unknown": 7}[result["status"]],
+            )
+        if command.action == "promote":
+            result = model_promote(command.model_release or "", command.registry or "")
+            return CommandResult.ok([{"experience": "model_promote", **result}])
+        if command.action == "rollback":
+            result = model_rollback(command.registry or "", command.release_id)
+            return CommandResult.ok([{"experience": "model_rollback", **result}])
+        if command.action == "registry":
+            result = model_registry(command.registry or "")
+            return CommandResult.ok([{"experience": "model_registry", **result}])
+        if command.action == "seed-sweep":
+            result = model_seed_sweep(
+                context.project_dir,
+                command.advice or "",
+                command.model_release or "",
+                command.name or "",
+            )
+            return CommandResult.ok([{"experience": "model_seed_sweep", **result}])
         raise ValueError(f"Unsupported model action: {command.action}")
 
     return _guard(operation)
@@ -323,4 +377,169 @@ def model_advise_cmd(
             limit=limit,
         ),
         _model_command,
+    )
+
+
+@model_app.command("validate", help="Validate a model across independent design datasets")
+def model_validate_cmd(
+    *,
+    model: Annotated[str, typer.Option("--model")],
+    matrix: Annotated[str, typer.Option("--matrix", help="Validation matrix JSON")],
+    output: Annotated[str, typer.Option("--output")],
+    min_independent_designs: Annotated[int, typer.Option("--min-independent-designs", min=1)] = 3,
+    min_families: Annotated[int, typer.Option("--min-families", min=1)] = 2,
+    max_mae: Annotated[float, typer.Option("--max-mae", min=0)] = 10.0,
+    min_interval_coverage: Annotated[
+        float, typer.Option("--min-interval-coverage", min=0, max=1)
+    ] = 0.5,
+    min_rank_accuracy: Annotated[float, typer.Option("--min-rank-accuracy", min=0, max=1)] = 0.5,
+    family_holdout: Annotated[bool, typer.Option("--family-holdout")] = False,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    execute_command(
+        "experience",
+        ModelInput(
+            output_options(plain=plain, json_output=json_output),
+            project_options(None),
+            "validate",
+            output,
+            model=model,
+            matrix=matrix,
+            min_independent_designs=min_independent_designs,
+            min_families=min_families,
+            max_mae=max_mae,
+            min_interval_coverage=min_interval_coverage,
+            min_rank_accuracy=min_rank_accuracy,
+            family_holdout=family_holdout,
+        ),
+        _model_command,
+    )
+
+
+@model_app.command("promote", help="Promote a validated model release into a registry")
+def model_promote_cmd(
+    *,
+    model_release: Annotated[str, typer.Option("--model-release")],
+    registry: Annotated[str, typer.Option("--registry")],
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    execute_command(
+        "experience",
+        ModelInput(
+            output_options(plain=plain, json_output=json_output),
+            project_options(None),
+            "promote",
+            model_release=model_release,
+            registry=registry,
+        ),
+        _model_command,
+    )
+
+
+@model_app.command("rollback", help="Roll a model registry back to a previous release")
+def model_rollback_cmd(
+    *,
+    registry: Annotated[str, typer.Option("--registry")],
+    release_id: Annotated[str | None, typer.Option("--release-id")] = None,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    execute_command(
+        "experience",
+        ModelInput(
+            output_options(plain=plain, json_output=json_output),
+            project_options(None),
+            "rollback",
+            registry=registry,
+            release_id=release_id,
+        ),
+        _model_command,
+    )
+
+
+@model_app.command("registry", help="Show the active model registry release")
+def model_registry_cmd(
+    *,
+    registry: Annotated[str, typer.Option("--registry")],
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    execute_command(
+        "experience",
+        ModelInput(
+            output_options(plain=plain, json_output=json_output),
+            project_options(None),
+            "registry",
+            registry=registry,
+        ),
+        _model_command,
+    )
+
+
+@model_app.command("seed-sweep", help="Create a native sweep from read-only model advice")
+def model_seed_sweep_cmd(
+    *,
+    project: ProjectOption = None,
+    advice: Annotated[str, typer.Option("--advice")],
+    model_release: Annotated[str, typer.Option("--model-release")],
+    name: Annotated[str, typer.Option("--name")],
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    execute_command(
+        "experience",
+        ModelInput(
+            output_options(plain=plain, json_output=json_output),
+            project_options(project),
+            "seed-sweep",
+            advice=advice,
+            model_release=model_release,
+            name=name,
+        ),
+        _model_command,
+    )
+
+
+@dataset_app.command(
+    "split", help="Split input or family groups into train, validation and test data"
+)
+def dataset_split_cmd(
+    *,
+    dataset: Annotated[str, typer.Option("--dataset")],
+    output: Annotated[str, typer.Option("--output")],
+    by: Annotated[str, typer.Option("--by", help="design or family")] = "design",
+    seed: Annotated[str, typer.Option("--seed")] = "0",
+    validation_fraction: Annotated[
+        float, typer.Option("--validation-fraction", min=0, max=1)
+    ] = 0.2,
+    test_fraction: Annotated[float, typer.Option("--test-fraction", min=0, max=1)] = 0.2,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    def handle(_command: ModelInput, _context: CommandContext) -> CommandResult:
+        def operation() -> CommandResult:
+            from ecc_experience.api import dataset_split
+
+            result = dataset_split(
+                dataset,
+                output,
+                by=by,
+                seed=seed,
+                validation_fraction=validation_fraction,
+                test_fraction=test_fraction,
+            )
+            return CommandResult(
+                records=({"experience": "dataset_split", **result},), exit_code=result["exit_code"]
+            )
+
+        return _guard(operation)
+
+    execute_command(
+        "experience",
+        ModelInput(
+            output_options(plain=plain, json_output=json_output), project_options(None), "split"
+        ),
+        handle,
     )

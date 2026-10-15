@@ -1,1 +1,1 @@
-"""Evidence-bound P4 dataset, model and prediction interfaces."""
+"""Evidence-bound experience datasets, models, validation and registry interfaces."""

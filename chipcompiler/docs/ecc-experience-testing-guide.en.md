@@ -1263,3 +1263,139 @@ target scope and default to `auto_apply=false`; they do not replace real DSE or
 fresh full-flow validation. Complex search, parallel scheduling and team sharing
 services remain unavailable; multi-SDC and the lint feature are deferred. Existing
 DRC checks do not imply GDS DRC capability.
+
+## 17. P5: Multi-Design Validation, Model Promotion, and Sweep Closure
+
+P5 adds auditable multi-design validation and reversible publication. Collect verified cases from
+different designs, families, and independent runs; build a held-out matrix; run `model validate`;
+publish only a passing report; manage the release with `model promote`, `model registry`, and
+`model rollback`; then connect reviewed `model advise` output to native `sweep`/`explore` through
+`model seed-sweep`.
+
+Build a complete dataset with explicit family labels before partitioning it:
+
+```bash
+ecc experience dataset split --dataset all-designs.json --output split \
+  --by family --seed campaign-v1 --validation-fraction 0.2 --test-fraction 0.2 --json
+ecc experience model train --dataset split/training.json --output model.json --json
+ecc experience model validate --model model.json \
+  --matrix split/validation-matrix.json --output validation.json --family-holdout --json
+```
+
+`--by design` groups by input content fingerprint; `--by family` groups by explicit family.
+Repeated workspaces, attempts and parameter trials for an input stay together. Renaming an input
+does not create independence. Labels must be supplied rather than inferred from filenames.
+Fewer than three independent groups returns 7 without creating output. The output contains
+training/validation/test.json, two digest-checked matrices and split.json. Matrix fingerprints are
+generated automatically. Select models and thresholds using validation only, freeze the choice,
+evaluate test-matrix.json once, and publish that report. Repeated tuning against the same test
+partition invalidates its role as an independent final evaluation.
+
+The validation matrix is JSON, with paths relative to the matrix file when needed:
+
+```json
+{
+  "schema": "ecc-experience-model-validation-matrix/1",
+  "datasets": [
+    {"path": "heldout-design-a.json", "design": "design-a", "family": "family-a"},
+    {"path": "heldout-design-b.json", "design": "design-b", "family": "family-b"}
+  ],
+  "matrix_id": "matrix-<sha256(schema+datasets)>"
+}
+```
+
+Each dataset must match the model feature schema, target, through-step, process, and runtime
+scope. Input fingerprints cannot overlap training data or another matrix dataset, and design IDs
+must be unique. Too few independent designs or families returns `unknown` (exit code 7):
+
+```bash
+ecc experience model validate --model model.json \
+  --matrix validation-matrix.json --output matrix-evaluation.json \
+  --min-independent-designs 3 --min-families 2 --json
+ecc experience model publish --model model.json \
+  --evaluation matrix-evaluation.json --output model-release.json --json
+```
+
+Publication rereads the matrix and model and compares the evaluation fingerprint. A passing matrix
+only validates statistics within its declared scope; real ECC DSE, a new workspace, and fresh
+full-flow validation are still required.
+
+Each matrix entry contains one independent input and may include multiple parameter trials.
+Its family must agree with every dataset row's group. `--family-holdout` additionally rejects
+families seen in training. Reports include aggregate and per-design MAE, RMSE, interval coverage,
+within-design pairwise ranking accuracy and comparable pair counts. The default ranking gate
+is 0.5 (`--min-rank-accuracy`); absent comparable pairs returns unknown. Setting it explicitly to
+0 disables that gate without establishing ranking quality. Failed thresholds or input leakage
+return 6; process/runtime incompatibility returns 7; invalid formats or arguments return 2.
+
+The registry stores immutable release copies and an active pointer without changing projects,
+workspaces, or default parameters:
+
+```bash
+ecc experience model promote --model-release model-release.json \
+  --registry experience-registry --json
+ecc experience model registry --registry experience-registry --json
+ecc experience model rollback --registry experience-registry --json
+```
+
+`rollback` returns to the previous active release by default, or to an existing `--release-id`.
+Release fingerprints are checked before activation and the policy remains `auto_apply=false`.
+
+`model advise` ranks candidates without applying parameters. After review, materialize the ranking
+as a native sweep:
+
+```bash
+ecc experience model advise --model-release model-release.json \
+  --dataset candidate-dataset.json --output advice.json --limit 8 --json
+ecc experience model seed-sweep --project /path/to/project \
+  --advice advice.json --model-release model-release.json --name model-seeded-001 --json
+ecc sweep run --project /path/to/project --name model-seeded-001
+ecc sweep verify --project /path/to/project --name model-seeded-001
+ecc explore rank --project /path/to/project --name model-seeded-001
+ecc explore export --project /path/to/project --name model-seeded-001 \
+  --format markdown --output model-seeded-001.md
+```
+
+seed-sweep only creates a plan. It rechecks the advice fingerprint, model binding and parameter
+values, retains reviewed floorplan/place/CTS parameters, records excluded keys and deduplicates
+configurations. It preserves provenance and changes no source workspace. Native sweep runs full
+flows; use DSE for stage screening.
+
+### 17.1 Model-assisted DSE and Feedback
+
+```bash
+ecc experience dse run --plan dse-plan.json --model-release model-release.json \
+  --output dse-run --json
+ecc experience dse report --plan dse-plan.json --result dse-run/result.json \
+  --output dse-summary --json
+ecc experience dataset build --release dse-summary/feedback-release.json \
+  --store experience-store --target final_qor --through-step postFloorplan \
+  --groups groups.json --output next-dataset.json --json
+```
+
+Create a bounded plan as described earlier. The optional model must target final_qor and exactly
+match the plan stage, process and runtime. Execution pins a release rather than following an
+active registry pointer. After a candidate passes stage checks, measured prefix features predict
+final QoR. The highest predicted candidate advances, with all screen results and predictions
+retained. Without a model, measured stage-objective selection remains unchanged. Both modes
+require independent full-flow and fresh validation. Improvement uses measured QoR only.
+
+report writes summary.json, summary.md, and feedback-release.json when verified cases exist.
+It records parameters, stage values, predicted/measured QoR and errors, resource observations
+with measurement scope, failures, screen counts, validation time and stop reasons. Successful
+report generation returns 0 while preserving the original DSE exit code inside the report;
+reporting never reruns a flow. It checks case input, attempt, process/runtime, parameters, QoR
+and evidence integrity. Only verified cases enter feedback releases. Merge the next dataset into
+a versioned corpus while preserving design/family isolation; one design cannot establish model
+generalization.
+
+### 17.2 CI and Validation Limits
+
+Packaged smoke covers splitting, evaluation/leakage rejection, matrix publication, registry
+promotion/rollback and advice-to-sweep conversion using explicitly synthetic contract fixtures.
+Existing public design-matrix jobs upload actual case/verify/features records after real flows.
+A separate job aggregates independent inputs, duplicates, QoR and per-step resources. Missing
+or corrupt observations fail aggregation. Missing families, historical runtime or candidate
+variation preserves unknown (exit 7), with a report artifact. CI accepts that evidence-insufficient
+state without declaring model generalization. Local GCD tests validate the execution loop;
+cross-design quality, convergence speed and PPA gains require independent measured campaigns.

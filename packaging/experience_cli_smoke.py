@@ -57,7 +57,7 @@ def run_smoke(binary: Path, project: Path, workspace: str, output: Path) -> dict
     if verified[0]["integrity"] != "pass":
         raise RuntimeError("Stored evidence integrity failed")
     _extensions(binary, output, store, case_id, shown[0])
-    _model_lifecycle(binary, output)
+    _model_lifecycle(binary, project, output)
     package = output / "experience.tar.gz"
     exported = _invoke(
         binary,
@@ -271,14 +271,20 @@ def _campaign_quality(
         raise RuntimeError("Campaign quality did not report the recorded observation")
 
 
-def _model_lifecycle(binary: Path, output: Path) -> None:
-    """Exercise the packaged P4 commands with a generic, non-design fixture."""
+def _model_lifecycle(binary: Path, project: Path, output: Path) -> None:
+    """Exercise the packaged P5 model, registry, and sweep lifecycle."""
     training = output / "model-training.json"
     heldout = output / "model-heldout.json"
     model = output / "model.json"
     evaluation = output / "model-evaluation.json"
     release = output / "model-release.json"
     advice = output / "model-advice.json"
+    matrix_a = output / "model-matrix-a.json"
+    matrix_b = output / "model-matrix-b.json"
+    matrix = output / "model-matrix.json"
+    matrix_evaluation = output / "model-matrix-evaluation.json"
+    matrix_release = output / "model-matrix-release.json"
+    registry = output / "model-registry"
 
     def make_rows(start: int, count: int) -> list[dict]:
         return [
@@ -292,9 +298,7 @@ def _model_lifecycle(binary: Path, output: Path) -> None:
                     "spec.utilization": float(index - start + 1 + (0.5 if start else 0)),
                 },
                 "target": 100.0 + 2.0 * (index - start + 1 + (0.5 if start else 0)),
-                "parameters": {
-                    "floorplan.core_util": float(index - start + 1 + (0.5 if start else 0))
-                },
+                "parameters": {"floorplan.core_util": 0.25 + (index - start) * 0.05},
                 "process_fingerprint": "smoke-process",
                 "runtime": {"ecc": "smoke", "openroad": "installed"},
             }
@@ -326,6 +330,49 @@ def _model_lifecycle(binary: Path, output: Path) -> None:
 
     write_dataset(training, "smoke-training", make_rows(0, 6))
     write_dataset(heldout, "smoke-heldout", make_rows(10, 4))
+    heldout_rows = make_rows(10, 4)
+    for index, item in enumerate(heldout_rows):
+        item["input_content_fingerprint"] = f"matrix-input-{index // 2}"
+        item["group"] = "family-a" if index < 2 else "family-b"
+    write_dataset(matrix_a, "smoke-matrix-a", heldout_rows[:2])
+    write_dataset(matrix_b, "smoke-matrix-b", heldout_rows[2:])
+    matrix_identity = {
+        "schema": "ecc-experience-model-validation-matrix/1",
+        "datasets": [
+            {"path": matrix_a.name, "design": "design-a", "family": "family-a"},
+            {"path": matrix_b.name, "design": "design-b", "family": "family-b"},
+        ],
+    }
+    matrix_identity["matrix_id"] = (
+        "matrix-"
+        + hashlib.sha256(
+            json.dumps(matrix_identity, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+    )
+    matrix.write_text(json.dumps(matrix_identity), encoding="utf-8")
+    _invoke(
+        binary,
+        ["dataset", "split", "--dataset", str(training), "--output", str(output / "model-split")],
+        output,
+        "model-split",
+        {0},
+    )
+    _invoke(
+        binary,
+        [
+            "dataset",
+            "split",
+            "--dataset",
+            str(heldout),
+            "--by",
+            "family",
+            "--output",
+            str(output / "model-insufficient-split"),
+        ],
+        output,
+        "model-insufficient-split",
+        {7},
+    )
     _invoke(
         binary,
         ["model", "train", "--dataset", str(training), "--output", str(model)],
@@ -355,6 +402,22 @@ def _model_lifecycle(binary: Path, output: Path) -> None:
         binary,
         [
             "model",
+            "evaluate",
+            "--model",
+            str(model),
+            "--dataset",
+            str(training),
+            "--output",
+            str(output / "model-leakage.json"),
+        ],
+        output,
+        "model-leakage",
+        {6},
+    )
+    _invoke(
+        binary,
+        [
+            "model",
             "publish",
             "--model",
             str(model),
@@ -367,13 +430,49 @@ def _model_lifecycle(binary: Path, output: Path) -> None:
         "model-publish",
         {0},
     )
+    validated = _invoke(
+        binary,
+        [
+            "model",
+            "validate",
+            "--model",
+            str(model),
+            "--matrix",
+            str(matrix),
+            "--output",
+            str(matrix_evaluation),
+            "--min-independent-designs",
+            "2",
+        ],
+        output,
+        "model-matrix-validate",
+        {0},
+    )
+    if validated[0]["status"] != "pass":
+        raise RuntimeError("Packaged multi-design model validation did not pass")
+    _invoke(
+        binary,
+        [
+            "model",
+            "publish",
+            "--model",
+            str(model),
+            "--evaluation",
+            str(matrix_evaluation),
+            "--output",
+            str(matrix_release),
+        ],
+        output,
+        "model-matrix-publish",
+        {0},
+    )
     advised = _invoke(
         binary,
         [
             "model",
             "advise",
             "--model-release",
-            str(release),
+            str(matrix_release),
             "--dataset",
             str(heldout),
             "--output",
@@ -387,6 +486,94 @@ def _model_lifecycle(binary: Path, output: Path) -> None:
     )
     if advised[0]["safe_to_apply"] is not False or not advice.is_file():
         raise RuntimeError("Packaged model advice was not read-only")
+    _invoke(
+        binary,
+        ["model", "promote", "--model-release", str(release), "--registry", str(registry)],
+        output,
+        "model-promote-initial",
+        {0},
+    )
+    _invoke(
+        binary,
+        [
+            "model",
+            "promote",
+            "--model-release",
+            str(matrix_release),
+            "--registry",
+            str(registry),
+        ],
+        output,
+        "model-promote",
+        {0},
+    )
+    registry_status = _invoke(
+        binary,
+        ["model", "registry", "--registry", str(registry)],
+        output,
+        "model-registry",
+        {0},
+    )
+    if registry_status[0]["status"] != "active":
+        raise RuntimeError("Packaged model registry is not active")
+    rolled_back = _invoke(
+        binary, ["model", "rollback", "--registry", str(registry)], output, "model-rollback", {0}
+    )
+    if rolled_back[0]["release_id"] != json.loads(release.read_text())["release_id"]:
+        raise RuntimeError("Packaged model rollback selected the wrong release")
+    sweep_project = output / "model-sweep-project"
+    sweep_project.mkdir()
+    (sweep_project / "ecc.toml").write_text("", encoding="utf-8")
+    seeded = _invoke(
+        binary,
+        [
+            "model",
+            "seed-sweep",
+            "--project",
+            str(sweep_project),
+            "--advice",
+            str(advice),
+            "--model-release",
+            str(matrix_release),
+            "--name",
+            f"model-seeded-{output.name}",
+        ],
+        output,
+        "model-seed-sweep",
+        {0},
+    )
+    if seeded[0]["candidate_count"] != 2:
+        raise RuntimeError("Model advice did not seed the expected sweep")
+    _native_sweep(binary, sweep_project, seeded[0]["name"], output)
+
+
+def _native_sweep(binary: Path, project: Path, name: str, output: Path) -> None:
+    exported = output / "model-sweep.md"
+    commands = [
+        (["sweep", "verify"], "model-sweep-verify", 6),
+        (["explore", "rank"], "model-sweep-rank", 0),
+        (
+            ["explore", "export", "--format", "markdown", "--output", str(exported)],
+            "model-sweep-export",
+            0,
+        ),
+    ]
+    for arguments, label, expected in commands:
+        result = subprocess.run(
+            [str(binary), *arguments, "--project", str(project), "--name", name],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        (output / f"{label}.stdout.json").write_text(result.stdout, encoding="utf-8")
+        (output / f"{label}.stderr").write_text(result.stderr, encoding="utf-8")
+        (output / f"{label}.exit").write_text(str(result.returncode), encoding="utf-8")
+        if result.returncode != expected or not isinstance(json.loads(result.stdout), (dict, list)):
+            raise RuntimeError(f"Native sweep smoke failed: {label}: {result.stderr}")
+        if label == "model-sweep-rank" and json.loads(result.stdout) != []:
+            raise RuntimeError("Unexecuted advice sweep unexpectedly has measured results")
+    if not exported.is_file() or "candidate" not in exported.read_text(encoding="utf-8"):
+        raise RuntimeError("Native explore export omitted the seeded sweep")
 
 
 def main() -> int:

@@ -12,6 +12,8 @@ from ecc_experience.knowledge.store import ExperienceStore
 from ecc_experience.modeling.dataset import build_dataset
 from ecc_experience.modeling.model import evaluate_model, train_model
 from ecc_experience.modeling.predict import advise_dataset, read_model_release
+from ecc_experience.modeling.registry import promote, rollback, status
+from ecc_experience.modeling.validation import validate_matrix
 from ecc_experience.models import ExperienceError
 
 
@@ -127,6 +129,70 @@ def test_model_evaluation_reports_unknown_without_independent_scope(modeling_fil
     report = evaluate_model(model_path, heldout, min_independent_designs=10)
     assert report["status"] == "unknown"
     assert report["exit_code"] == 7
+
+
+def test_model_validation_matrix_aggregates_designs_and_families(modeling_files):
+    training, heldout, root = modeling_files
+    model_path = root / "matrix-model.json"
+    train_model(training, model_path)
+    heldout_payload = json.loads(heldout.read_text())
+    first = root / "design-a.json"
+    second = root / "design-b.json"
+    for index, item in enumerate(heldout_payload["rows"]):
+        item["input_content_fingerprint"] = f"heldout-design-{index // 2}"
+        item["group"] = "family-a" if index < 2 else "family-b"
+    make_dataset(first, heldout_payload["rows"][:2], release_id="release-design-a")
+    make_dataset(second, heldout_payload["rows"][2:], release_id="release-design-b")
+    matrix_identity = {
+        "schema": "ecc-experience-model-validation-matrix/1",
+        "datasets": [
+            {"path": first.name, "design": "design-a", "family": "family-a"},
+            {"path": second.name, "design": "design-b", "family": "family-b"},
+        ],
+    }
+    matrix_identity["matrix_id"] = f"matrix-{digest(matrix_identity)}"
+    matrix = root / "matrix.json"
+    matrix.write_bytes(canonical_bytes(matrix_identity))
+    report = validate_matrix(
+        model_path, matrix, root / "matrix-report.json", min_independent_designs=2
+    )
+    assert report["status"] == "pass"
+    assert report["summary"] == {
+        "row_count": 4,
+        "independent_input_count": 2,
+        "design_count": 2,
+        "family_count": 2,
+    }
+    assert {item["design"] for item in report["designs"]} == {"design-a", "design-b"}
+    from ecc_experience.modeling.model import publish_model
+
+    published = publish_model(model_path, root / "matrix-report.json", root / "matrix-release.json")
+    assert published["generalization_status"] == "validated_for_declared_scope"
+
+
+def test_model_registry_promote_status_and_rollback(modeling_files):
+    training, heldout, root = modeling_files
+    model_one = root / "model-one.json"
+    evaluation_one = root / "evaluation-one.json"
+    release_one = root / "release-one.json"
+    model_two = root / "model-two.json"
+    evaluation_two = root / "evaluation-two.json"
+    release_two = root / "release-two.json"
+    train_model(training, model_one, ridge=1.0)
+    evaluate_model(model_one, heldout, evaluation_one)
+    from ecc_experience.modeling.model import publish_model
+
+    publish_model(model_one, evaluation_one, release_one)
+    train_model(training, model_two, ridge=2.0)
+    evaluate_model(model_two, heldout, evaluation_two)
+    publish_model(model_two, evaluation_two, release_two)
+    registry = root / "registry"
+    assert promote(release_one, registry)["status"] == "promoted"
+    assert promote(release_two, registry)["status"] == "promoted"
+    assert status(registry)["active_release_id"] == read_model_release(release_two)["release_id"]
+    rolled_back = rollback(registry)
+    assert rolled_back["release_id"] == read_model_release(release_one)["release_id"]
+    assert status(registry)["active_release_id"] == rolled_back["release_id"]
 
 
 def test_model_evaluation_rejects_runtime_scope_change(modeling_files):

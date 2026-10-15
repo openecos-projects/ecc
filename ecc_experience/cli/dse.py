@@ -34,6 +34,8 @@ class DseInput:
     direction: str = "minimize"
     limits: dict | None = None
     release: str | None = None
+    model_release: str | None = None
+    result_path: str | None = None
 
 
 def _plan(command: DseInput, context: CommandContext) -> CommandResult:
@@ -65,7 +67,9 @@ def _run(command: DseInput, _context: CommandContext) -> CommandResult:
     def operation():
         from ecc_experience.api import dse_run
 
-        result = dse_run(command.plan_path or "", command.output_path)
+        result = dse_run(
+            command.plan_path or "", command.output_path, model_release=command.model_release
+        )
         return CommandResult(
             records=({"experience": "dse_run", **result},), exit_code=result["exit_code"]
         )
@@ -120,6 +124,7 @@ def run_cmd(
     *,
     plan: Annotated[str, typer.Option("--plan")],
     output: Annotated[str, typer.Option("--output")],
+    model_release: Annotated[str | None, typer.Option("--model-release")] = None,
     plain: PlainOption = False,
     json_output: JsonOption = False,
 ) -> None:
@@ -128,5 +133,39 @@ def run_cmd(
         project=project_options(None),
         output_path=output,
         plan_path=plan,
+        model_release=model_release,
     )
     execute_command("experience", command, _run)
+
+
+@dse_app.command("report", help="Summarize measured DSE outcomes and freeze verified feedback")
+def report_cmd(
+    *,
+    plan: Annotated[str, typer.Option("--plan")],
+    result: Annotated[str, typer.Option("--result")],
+    output: Annotated[str, typer.Option("--output")],
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    def handle(command: DseInput, _context: CommandContext) -> CommandResult:
+        def operation():
+            from ecc_experience.api import dse_report
+
+            report = dse_report(
+                command.plan_path or "", command.result_path or "", command.output_path
+            )
+            return CommandResult.ok([{"experience": "dse_report", **report}])
+
+        return _guard(operation)
+
+    execute_command(
+        "experience",
+        DseInput(
+            output=output_options(plain=plain, json_output=json_output),
+            project=project_options(None),
+            output_path=output,
+            plan_path=plan,
+            result_path=result,
+        ),
+        handle,
+    )

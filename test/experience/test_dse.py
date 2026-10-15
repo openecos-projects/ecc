@@ -213,6 +213,53 @@ def test_dse_keeps_stage_acceptance_separate_and_reserves_full_and_fresh(
     } == before
 
 
+def test_dse_summary_exports_only_verified_feedback(dse_project, simulated_cli):
+    from ecc_experience.dse.report import report_dse
+    from ecc_experience.knowledge.release import verify_release
+
+    _workspace, store, path = dse_project
+    make_plan(dse_project)
+    output = path.parent / "output"
+    result = dse_run(path, output)
+    summary = report_dse(path, output / "result.json", path.parent / "summary")
+    assert summary["status"] == "complete"
+    assert summary["convergence"]["screened_candidates"] == 1
+    assert summary["convergence"]["fresh_passed"] is True
+    assert len(summary["feedback_case_ids"]) == 2
+    assert result["stage_winner"]["case_id"] not in summary["feedback_case_ids"]
+    assert verify_release(path.parent / "summary/feedback-release.json", store)["status"] == "pass"
+    result["fresh_validation"]["qor_score"] = 9999.0
+    (output / "result.json").write_text(json.dumps(result))
+    with pytest.raises(ExperienceError, match="QoR does not match"):
+        report_dse(path, output / "result.json", path.parent / "rejected-summary")
+    assert not (path.parent / "rejected-summary").exists()
+
+
+def test_model_selection_still_requires_full_and_fresh(dse_project, simulated_cli, monkeypatch):
+    _workspace, _store, path = dse_project
+    make_plan(
+        dse_project,
+        parameters=["floorplan.core_util=0.35,0.4"],
+        limits={"max_trials": 4, "max_seconds": 60, "trial_timeout_seconds": 30},
+    )
+    monkeypatch.setattr(execute, "check_model", lambda *_args: {"release_id": "model-test"})
+    monkeypatch.setattr(
+        execute,
+        "predict_trial",
+        lambda _plan, record, *_args: {
+            "prediction": {
+                "prediction": 100.0 if record["parameters"]["floorplan.core_util"] == 0.4 else 90.0
+            }
+        },
+    )
+    result = dse_run(path, path.parent / "model-output", model_release=path.parent / "model.json")
+    assert result["status"] == "complete"
+    assert result["selection_policy"] == "predicted_final_qor"
+    assert result["stage_winner"]["parameters"] == {"floorplan.core_util": 0.4}
+    assert result["full_validation"]["status"] == result["fresh_validation"]["status"] == "passed"
+    assert result["safe_to_apply"] is False
+
+
 @pytest.mark.parametrize(
     "parameters,overrides",
     [
