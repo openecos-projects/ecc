@@ -10,7 +10,8 @@ from ecc_experience.optimization.policy import configuration_differences
 def freeze_warm_start(plan: dict, limit: int) -> dict:
     if plan["release"] is None:
         return {"release": None, "limit": limit, "seeds": [], "status": "not_requested"}
-    baseline = ExperienceStore(plan["store"]).read(plan["baseline_case_id"])
+    repository = ExperienceStore(plan["store"])
+    baseline = repository.read(plan["baseline_case_id"])
     context = baseline.facts.get("experienceExecutionContext")
     if not isinstance(context, dict) or context.get("runtime") != plan["runtime"]:
         return {
@@ -33,7 +34,13 @@ def freeze_warm_start(plan: dict, limit: int) -> dict:
     configured = specification["parameters"]
     seeds, used = [], []
     for item in matched["matches"]:
-        observed = item["parameters"]["values"]
+        candidate = repository.read(item["case_id"])
+        candidate_specification = candidate.facts.get("workspaceSpec")
+        if not isinstance(candidate_specification, dict) or not isinstance(
+            candidate_specification.get("parameters"), dict
+        ):
+            continue
+        observed = candidate_specification["parameters"]
         if configuration_differences(configured, observed) - set(plan["space"]):
             continue
         parameters = {}

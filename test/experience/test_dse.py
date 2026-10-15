@@ -423,6 +423,29 @@ def test_version2_equal_budget_receipt_and_warm_seed_filters(
     assert receipt["benefit_status"] == "not_established"
     frozen["release"] = "explicit-release.json"
     frozen["baseline_case_id"] = adaptive["fresh_validation"]["case_id"]
+    repository = warm_start.ExperienceStore(store)
+    read_case = warm_start.ExperienceStore.read
+    baseline = repository.read(frozen["baseline_case_id"])
+    configurations = {
+        "compatible": {"floorplan.core_util": 0.35},
+        "outside": {"floorplan.core_util": 0.9},
+        "other_knob": {"floorplan.core_util": 0.35, "place.target_density": 0.4},
+        "other_library": {"floorplan.core_util": 0.35},
+    }
+    for parameters in configurations.values():
+        parameters["sta.liberty"] = ["/technology/timing.lib"]
+    configurations["other_library"]["sta.liberty"] = ["/other-technology/timing.lib"]
+    baseline.facts["workspaceSpec"]["parameters"]["sta.liberty"] = ["/technology/timing.lib"]
+
+    def observed_case(repository, case_id):
+        if case_id == frozen["baseline_case_id"]:
+            return baseline
+        if case_id not in configurations:
+            return read_case(repository, case_id)
+        facts = {**baseline.facts, "workspaceSpec": {"parameters": configurations[case_id]}}
+        return baseline.model_copy(update={"facts": facts})
+
+    monkeypatch.setattr(warm_start.ExperienceStore, "read", observed_case)
     monkeypatch.setattr(
         warm_start,
         "match_cases",
@@ -447,6 +470,12 @@ def test_version2_equal_budget_receipt_and_warm_seed_filters(
                     "parameters": {
                         "values": {"floorplan.core_util": 0.35, "place.target_density": 0.4}
                     },
+                },
+                {
+                    "case_id": "other_library",
+                    "distance": 0.0,
+                    "compatibility": "selected_process_tool_analysis_match",
+                    "parameters": {"values": {"floorplan.core_util": 0.35}},
                 },
             ]
         },
