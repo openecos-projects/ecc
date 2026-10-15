@@ -1484,5 +1484,18 @@ ecc experience dse compare --plan ./grid-plan.json --result ./grid/result.json \
 收据包含失败分母、实际执行数、时间、前沿和实测分数，不把相同预算上限当作相同实际成本，
 不重复使用同一执行证据，也不从单个设计推断泛化收益。D4 的多家族留出与效果门槛保留。
 当前运行仍串行；并行 trial、连续空间、跨设计自动种子和 v2 模型预筛未纳入本次能力。
+项目的动态 runtime_processes 不参与静态配置指纹，基线输入和实际项目配置仍受冻结源校验
+保护。grid/adaptive 对照建议顺序运行，减少共享主机负载干扰；两个结果仍使用独立
+workspace 和 run_id，不在两个进程中同时恢复同一个 DSE 输出目录。
+
+v2 spec 可显式设置 `baseline_case_id`，绑定 store 中已验证的受控执行案例。该 case 必须
+对应 `--workspace` 的同一目录、当前 snapshot、参数和输入指纹；不能用另一个 workspace 的
+成功案例替代。可以从已完成 campaign/DSE 的 full 或 fresh 报告获取 case_id 与 workspace，
+以该 workspace 作为下一轮基线，并在 spec 中填写其 case_id。
+
+普通导入或直接 collect 的旧基线没有稳定 attempt 身份时，仍可进行阶段搜索，但不会宣称
+QoR 改进，也不会生成经验种子。可信 baseline case 的运行时身份必须与当前冻结运行时一致，
+才参与改进比较和 warm_start；更新 ECC、工具或 PDK 后应重新执行基线并验证，再引用其
+case_id。历史 release 只提供有来源的候选，不能替代本轮的阶段、full 与 fresh 验证。
 已审核的 place.density_weight 可用于阶段 DSE；route.bottom_layer/top_layer 仅用于现有
 完整流程优化，限 ics55 公开层目录且 bottom≤top，不能用于尚未包含 route 的前段 DSE。

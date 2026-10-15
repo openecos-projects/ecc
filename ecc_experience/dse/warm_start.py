@@ -10,6 +10,15 @@ from ecc_experience.optimization.policy import configuration_differences
 def freeze_warm_start(plan: dict, limit: int) -> dict:
     if plan["release"] is None:
         return {"release": None, "limit": limit, "seeds": [], "status": "not_requested"}
+    baseline = ExperienceStore(plan["store"]).read(plan["baseline_case_id"])
+    context = baseline.facts.get("experienceExecutionContext")
+    if not isinstance(context, dict) or context.get("runtime") != plan["runtime"]:
+        return {
+            "release": plan["release"],
+            "limit": limit,
+            "seeds": [],
+            "status": "insufficient_evidence",
+        }
     matched = match_cases(
         plan["baseline_case_id"],
         plan["store"],
@@ -17,7 +26,6 @@ def freeze_warm_start(plan: dict, limit: int) -> dict:
         through_step=plan["rungs"][0]["through_step"],
         limit=limit,
     )
-    baseline = ExperienceStore(plan["store"]).read(plan["baseline_case_id"])
     facts: dict = baseline.facts
     specification = facts.get("workspaceSpec")
     if not isinstance(specification, dict) or not isinstance(specification.get("parameters"), dict):

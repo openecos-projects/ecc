@@ -1699,6 +1699,24 @@ evidence is rejected. Single-design receipts do not establish generalization or
 benefit; D4 family-held-out and effectiveness gates remain required.
 Execution remains serial. Parallel trials, continuous spaces, automatic
 cross-design seeds and v2 model prescreening remain outside this implementation.
+Dynamic project runtime_processes are excluded from the static configuration
+fingerprint; baseline inputs and actual project configuration remain protected.
+Run grid/adaptive comparisons sequentially to reduce shared-host load effects.
+Each still requires independent workspaces and run IDs. Never resume the same
+DSE output directory in two coordinators concurrently.
+
+A v2 spec can set `baseline_case_id` to bind a verified controlled-execution case
+in the store. It must describe the exact `--workspace` directory, current
+snapshot, parameters and input fingerprint. A successful case from another
+workspace cannot substitute for it. Use the workspace and case ID from a completed
+campaign/DSE full or fresh report as the next baseline and set that ID in the spec.
+
+An imported or directly collected legacy baseline without a stable attempt
+identity can still support stage search, but cannot establish QoR improvement or
+provide warm-start seeds. A trusted baseline case must match the frozen current
+runtime before contributing comparisons or warm_start. After changing ECC, tools
+or PDK, rerun and verify the baseline before referencing its case ID. Historical
+release candidates still require current stage, full and fresh validation.
 Reviewed place.density_weight is available to stage DSE. Routing layer knobs are
 available to existing complete-flow optimization only, with the ics55 catalog and
 bottom≤top checks; they cannot enter an early prefix before route.

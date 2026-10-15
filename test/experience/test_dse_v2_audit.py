@@ -123,3 +123,40 @@ def test_durable_parameter_apply_executes_public_cli(tmp_path):
     assert result.exit_code == 0, result.stdout.read_text()
     configuration = tomllib.loads((project / "ecc.toml").read_text())
     assert configuration["params"]["floorplan"]["core_util"] == 0.35
+
+
+def test_explicit_baseline_binds_verified_execution_of_the_same_workspace(
+    dse_project, version2_spec, simulated_cli
+):
+    from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
+    from ecc_experience.collection.collect import collect_committed_case
+    from ecc_experience.dse.baseline import bind_baseline
+    from ecc_experience.knowledge.store import ExperienceStore
+
+    workspace, store, path = dse_project
+    frozen = dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
+    result = dse_run(path, path.parent / "output")
+    final = result["fresh_validation"]
+    observed = collect_committed_case(
+        final["workspace"], ExperienceStore(store), read_workspace_observation
+    ).case
+    bound = bind_baseline(observed, final["case_id"], store)
+    assert bound.case_id == final["case_id"]
+    assert bound.source.attempt_id == final["run_id"]
+    with pytest.raises(ExperienceError, match="exact committed workspace"):
+        bind_baseline(observed, frozen["baseline_case_id"], store)
+
+
+def test_project_configuration_excludes_runtime_records_but_protects_objectives(dse_project):
+    from ecc_experience.dse.plan import project_configuration
+
+    workspace, _store, _plan = dse_project
+    path = workspace.parent / "project.json"
+    frozen = project_configuration(workspace.parent)
+    document = json.loads(path.read_text())
+    document["runtime_processes"] = {"another_workspace": {"run_id": "active"}}
+    path.write_text(json.dumps(document))
+    assert project_configuration(workspace.parent) == frozen
+    document["objectives"] = {"primary": "area"}
+    path.write_text(json.dumps(document))
+    assert project_configuration(workspace.parent) != frozen

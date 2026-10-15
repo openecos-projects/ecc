@@ -50,6 +50,7 @@ class DseSpec(BaseModel):
     limits: dict
     warm_start: str | None = None
     warm_start_limit: int = Field(default=3, ge=1, le=20)
+    baseline_case_id: str | None = None
 
 
 class FrozenObjective(BaseModel):
@@ -108,6 +109,7 @@ def plan_version2(project, workspace, store, output, *, spec) -> dict:
             release=(Path(spec).expanduser().resolve().parent / settings.warm_start).resolve()
             if settings.warm_start
             else None,
+            baseline_case_id=settings.baseline_case_id,
         )
     base.pop("plan", None)
     if any(

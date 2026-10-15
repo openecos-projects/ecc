@@ -90,6 +90,7 @@ def plan_dse(
     direction: str,
     limits: dict,
     release: str | Path | None = None,
+    baseline_case_id: str | None = None,
 ) -> dict:
     root = Path(project).expanduser().resolve()
     source = Path(workspace).expanduser().resolve()
@@ -122,7 +123,9 @@ def plan_dse(
     if count > bounded.max_trials - 2:
         raise invalid("Grid exceeds screening budget; reserve two full-flow validation trials")
     captured = collect_committed_case(source, ExperienceStore(store), read_workspace_observation)
-    baseline = captured.case
+    from ecc_experience.dse.baseline import bind_baseline
+
+    baseline = bind_baseline(captured.case, baseline_case_id, store)
     features = case_features(baseline.case_id, store, through_step=through_step)
     names = [item["step"] for item in features["steps"]]
     if through_step.casefold() not in {
@@ -246,7 +249,7 @@ def project_configuration(root: Path) -> str:
             "project": {
                 key: value
                 for key, value in manifest.items()
-                if key not in {"workspaces", "updated_at"}
+                if key not in {"workspaces", "updated_at", "runtime_processes"}
             },
             "ecc_toml": file_digest(settings)[0] if settings.is_file() else None,
         }

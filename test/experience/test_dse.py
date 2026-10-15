@@ -404,7 +404,7 @@ def test_version2_equal_budget_receipt_and_warm_seed_filters(
 
     workspace, store, path = dse_project
     frozen = dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
-    dse_run(path, path.parent / "adaptive")
+    adaptive = dse_run(path, path.parent / "adaptive")
     settings = json.loads(version2_spec.read_text())
     settings["strategy"] = "grid"
     version2_spec.write_text(json.dumps(settings))
@@ -422,6 +422,7 @@ def test_version2_equal_budget_receipt_and_warm_seed_filters(
     assert [row["budget"]["executed_trials"] for row in receipt["pairs"]] == [5, 5]
     assert receipt["benefit_status"] == "not_established"
     frozen["release"] = "explicit-release.json"
+    frozen["baseline_case_id"] = adaptive["fresh_validation"]["case_id"]
     monkeypatch.setattr(
         warm_start,
         "match_cases",

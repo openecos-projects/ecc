@@ -15,6 +15,9 @@ from ecc_experience.study.evidence import acceptance
 def baseline_score(plan: dict, observed: dict) -> float | None:
     store = ExperienceStore(plan["store"])
     case = store.read(plan["baseline_case_id"])
+    context = case.facts.get("experienceExecutionContext")
+    if not isinstance(context, dict) or context.get("runtime") != plan["runtime"]:
+        return None
     accepted = acceptance(case, store.case_directory(case.case_id))
     if observed["status"] != "passed" or accepted["status"] != "pass":
         return None
