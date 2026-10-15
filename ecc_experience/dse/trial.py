@@ -205,7 +205,7 @@ def execute_trial(
         if isinstance(exc, ExperienceError) and exc.code == "experience_workspace_busy":
             record.update(status="running", reason=str(exc))
             raise
-        record.update(status="failed", reason=str(exc))
+        record.update(status="failed", reason=str(exc), exit_code=record["exit_code"] or 1)
         if record["collection_status"] == "pending":
             record["collection_status"] = "failed"
         if isinstance(exc, ExperienceError) and exc.code == "experience_source_changed":

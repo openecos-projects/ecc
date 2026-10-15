@@ -1,5 +1,6 @@
 import json
 import time
+import tomllib
 
 import pytest
 
@@ -99,3 +100,26 @@ def test_resume_does_not_replenish_per_trial_time(dse_project, version2_spec, mo
     )
     assert record["status"] == "timeout"
     assert record["elapsed_seconds"] >= limits.trial_timeout_seconds
+
+
+def test_durable_parameter_apply_executes_public_cli(tmp_path):
+    deadline = time.monotonic() + 30
+    project = tmp_path / "project"
+    runner = CliRunner(tmp_path, deadline, durable_receipts=True)
+    initialized = runner.invoke(
+        ["init", str(project), "--design-name", "sample", "--plain"], deadline=deadline
+    )
+    assert initialized.exit_code == 0, initialized.stdout.read_text()
+    arguments = [
+        "param",
+        "apply",
+        "--project",
+        str(project),
+        "--set",
+        "floorplan.core_util=0.35",
+        "--plain",
+    ]
+    result = runner.invoke(arguments, deadline=deadline)
+    assert result.exit_code == 0, result.stdout.read_text()
+    configuration = tomllib.loads((project / "ecc.toml").read_text())
+    assert configuration["params"]["floorplan"]["core_util"] == 0.35

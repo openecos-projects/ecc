@@ -14,6 +14,7 @@ _COMMANDS = {
     ("status",),
     ("workspace", "import"),
     ("workspace", "derive"),
+    ("param", "apply"),
     ("signoff", "check"),
 }
 
