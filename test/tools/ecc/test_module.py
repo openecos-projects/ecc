@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from ecc_tools_bin import ecc_py
 
 from chipcompiler.data import OriginDesign, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.tools.ecc import metrics as ecc_metrics
@@ -100,6 +101,9 @@ class FakeEcc:
         return True
 
     def __getattr__(self, name):
+        if not hasattr(ecc_py, name):
+            raise AttributeError(f"ecc_tools_bin.ecc_py has no attribute {name!r}")
+
         def record_call(*args, **kwargs):
             self.calls.append((name, args, kwargs))
             return True
@@ -368,7 +372,6 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.json_save(Path("/ws/output/gcd.json"))
     module.save_data(Path("/ws/output/db"))
     module.load_data(Path("/ws/input/db"))
-    module.write_soc_json(Path("/ws/output/soc.json"))
     module.feature_sammry(Path("/ws/feature/db.json"))
     module.feature_step("placement", Path("/ws/feature/step.json"))
     module.feature_eval_map(Path("/ws/feature/eval.json"), 4, 4)
@@ -389,7 +392,6 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.init_drc(Path("/ws/data/drc"))
     module.run_drc()
     module.destroy_drc()
-    module.pnp(Path("/ws/config/pnp.json"))
     module.feature_placement_map(Path("/ws/feature/place_map.json"))
     module.init_mj(Path("/ws/data/mj"))
     module.run_filler(Path("/ws/config/filler.json"))
@@ -410,17 +412,6 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.init_lvs(Path("/ws/data/lvs"))
     module.run_lvs()
     module.destroy_lvs()
-    module.cell_density(save_path=Path("/ws/eval/cell.csv"))
-    module.pin_density(save_path=Path("/ws/eval/pin.csv"))
-    module.net_density(save_path=Path("/ws/eval/net.csv"))
-    module.rudy_congestion(save_path=Path("/ws/eval/rudy.csv"))
-    module.lut_rudy_congestion(save_path=Path("/ws/eval/lutrudy.csv"))
-    module.egr_congestion(save_path=Path("/ws/eval/egr.csv"))
-    module.eval_cell_hierarchy(Path("/ws/eval/cell.png"), 1, 1)
-    module.eval_macro_hierarchy(Path("/ws/eval/macro.png"), 1, 1)
-    module.eval_macro_connection(Path("/ws/eval/macro_conn.png"), 1, 1)
-    module.eval_macro_pin_connection(Path("/ws/eval/macro_pin.png"), 1, 1)
-    module.eval_macro_io_pin_connection(Path("/ws/eval/macro_io.png"), 1, 1)
 
     _assert_no_path_values(module.ecc.calls)
     assert (
