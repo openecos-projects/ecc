@@ -110,7 +110,7 @@ def simulated_cli(dse_project, monkeypatch):
     workspace, _store, _output = dse_project
     calls = []
 
-    def invoke(self, arguments, *, deadline):
+    def invoke(self, arguments, *, deadline, on_prepared=None):
         calls.append(arguments)
         stdout = self.output / f"stdout-{len(calls)}"
         stderr = self.output / f"stderr-{len(calls)}"
@@ -211,6 +211,247 @@ def test_dse_keeps_stage_acceptance_separate_and_reserves_full_and_fresh(
         for item in workspace.rglob("*")
         if item.is_file()
     } == before
+
+
+@pytest.fixture
+def version2_spec(dse_project, monkeypatch):
+    from ecc_experience.dse import execute2
+
+    workspace, _store, path = dse_project
+    snapshot_path = workspace / "home/engineering-snapshot.json"
+    snapshot = json.loads(snapshot_path.read_text())
+    snapshot["signoffAssessment"] = {"status": "ready"}
+    snapshot["checklist"] = {"items": [{"state": "pass", "blocked": False}]}
+    snapshot["qorSnapshotExtension"]["feasibility"]["status"] = "PASS"
+    snapshot_path.write_text(json.dumps(snapshot))
+    spec = path.parent / "spec.json"
+    spec.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "strategy": "adaptive",
+                "seed": 42,
+                "space": {"floorplan.core_util": {"range": [0.3, 0.4], "step": 0.05}},
+                "objectives": [{"metric": "core_area", "unit": "um^2", "direction": "minimize"}],
+                "rungs": [{"through_step": "postFloorplan", "promote_count": 1}],
+                "limits": {"max_trials": 5, "max_seconds": 60, "trial_timeout_seconds": 30},
+            }
+        )
+    )
+    monkeypatch.setattr(
+        execute2,
+        "inspect_workspace",
+        lambda *_args, **_kwargs: {"status": "passed", "qor_score": 90.0},
+    )
+    return spec
+
+
+def test_version2_adaptive_full_fresh_report_and_idempotent_resume(
+    dse_project, simulated_cli, version2_spec
+):
+    from ecc_experience.dse.report import report_dse
+
+    workspace, store, path = dse_project
+    frozen = dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
+    assert frozen["schema"] == "ecc-experience-stage-dse-plan/2"
+    output = path.parent / "output"
+    result = dse_run(path, output)
+    assert (result["status"], result["exit_code"]) == ("complete", 0), result
+    assert len(result["trials"]) == 3
+    assert result["trials"][0]["decision"]["reason"] == "space_center"
+    before = len(simulated_cli)
+    assert dse_run(path, output, resume=True) == result
+    assert len(simulated_cli) == before
+    report = report_dse(path, output / "result.json", path.parent / "report")
+    assert len(report["feedback_case_ids"]) == 2
+    assert report["budget"]["executed_trials"] == 5
+    assert len(report["pareto_front"]) == 3
+    assert report["safe_to_apply"] is False
+
+
+@pytest.mark.parametrize("change", ["budget", "order", "polarity", "axis"])
+def test_version2_rejects_invalid_spec_before_execution(dse_project, version2_spec, change):
+    workspace, store, path = dse_project
+    payload = json.loads(version2_spec.read_text())
+    if change == "budget":
+        payload["strategy"] = "grid"
+        payload["limits"]["max_trials"] = 3
+    elif change == "order":
+        payload["rungs"] *= 2
+    elif change == "polarity":
+        payload["objectives"][0]["direction"] = "maximize"
+    else:
+        payload["space"]["floorplan.core_util"]["step"] = 0
+    version2_spec.write_text(json.dumps(payload))
+    with pytest.raises(ExperienceError):
+        dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
+    assert not path.exists()
+
+
+def test_version2_rungs_pareto_manual_selection_and_replay(
+    dse_project, simulated_cli, version2_spec
+):
+    from ecc_experience.dse.report import report_dse
+
+    workspace, store, path = dse_project
+    snapshot_path = workspace / "home/engineering-snapshot.json"
+    snapshot = json.loads(snapshot_path.read_text())
+    snapshot["flow"]["steps"].insert(
+        2,
+        {
+            "name": "place",
+            "tool": "dreamplace",
+            "state": "Success",
+            "checklist_status": {"status": "passed", "blocked": False},
+        },
+    )
+    reference = "place_dreamplace/analysis/qor_metrics.json"
+    report_path = workspace / reference
+    report_path.parent.mkdir(parents=True)
+    report_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "step": "place",
+                "tool": "dreamplace",
+                "status": "success",
+                "integrity": {"status": "pass"},
+                "metrics": [{"id": "place_hpwl", "value": 100, "unit": "um"}],
+            }
+        )
+    )
+    snapshot["artifacts"].append(
+        {
+            "artifactId": "artifact-"
+            + hashlib.sha256(f"{snapshot['workspaceId']}\0{reference}".encode()).hexdigest()[:32],
+            "reference": reference,
+            "kind": "qor_metrics",
+            "stepId": "place",
+            "availability": "available",
+        }
+    )
+    snapshot_path.write_text(json.dumps(snapshot))
+    (workspace / "home/flow.json").write_text(json.dumps(snapshot["flow"]))
+    settings = json.loads(version2_spec.read_text())
+    area = settings["objectives"][0]
+    settings["objectives"] = [
+        {"metric": "place_hpwl", "unit": "um", "direction": "minimize"},
+        {**area, "step": "postFloorplan"},
+    ]
+    settings["rungs"] = [
+        {"through_step": "postFloorplan", "promote_count": 2, "objectives": [area]},
+        {"through_step": "place", "promote_count": 1},
+    ]
+    settings["limits"]["max_trials"] = 7
+    version2_spec.write_text(json.dumps(settings))
+    dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
+    output = path.parent / "output"
+    result = dse_run(path, output)
+    assert (result["status"], result["exit_code"]) == ("selection_required", 7), result
+    assert len(result["trials"]) == 5
+    assert len([command for command in simulated_cli if command[0] == "run"]) == 5
+    chosen = result["pareto_front"][0]
+    result = dse_run(path, output, resume=True, select=chosen)
+    assert (result["status"], result["exit_code"]) == ("complete", 0), result
+    assert len([command for command in simulated_cli if command[0] == "run"]) == 7
+    summary = report_dse(path, output / "result.json", path.parent / "summary")
+    assert len(summary["pareto_front"]) == 2
+    assert summary["selection"]["candidate"] == chosen
+    assert len(summary["promotions"]) == 1
+    payload = json.loads((output / "result.json").read_text())
+    payload["trials"][0]["objective_values"] = [0]
+    (output / "result.json").write_text(json.dumps(payload))
+    with pytest.raises(ExperienceError, match="immutable"):
+        dse_run(path, output, resume=True)
+
+
+def test_version2_resume_replays_completed_history_without_rerunning(
+    dse_project, simulated_cli, version2_spec, monkeypatch
+):
+    from ecc_experience.dse import execute2
+
+    workspace, store, path = dse_project
+    dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
+    original = execute2.propose
+
+    def interrupt_after_first(plan, history):
+        if len(history) == 1:
+            raise KeyboardInterrupt
+        return original(plan, history)
+
+    monkeypatch.setattr(execute2, "propose", interrupt_after_first)
+    interrupted = dse_run(path, path.parent / "resumed")
+    assert (interrupted["status"], interrupted["exit_code"], len(interrupted["trials"])) == (
+        "cancelled",
+        130,
+        1,
+    )
+    monkeypatch.setattr(execute2, "propose", original)
+    resumed = dse_run(path, path.parent / "resumed", resume=True)
+    uninterrupted = dse_run(path, path.parent / "uninterrupted")
+    assert resumed["status"] == uninterrupted["status"] == "complete"
+    assert [row["decision"] for row in resumed["trials"]] == [
+        row["decision"] for row in uninterrupted["trials"]
+    ]
+    assert len([command for command in simulated_cli if command[0] == "run"]) == 10
+
+
+def test_version2_equal_budget_receipt_and_warm_seed_filters(
+    dse_project, simulated_cli, version2_spec, monkeypatch
+):
+    from ecc_experience.api import dse_compare
+    from ecc_experience.dse import warm_start
+
+    workspace, store, path = dse_project
+    frozen = dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
+    dse_run(path, path.parent / "adaptive")
+    settings = json.loads(version2_spec.read_text())
+    settings["strategy"] = "grid"
+    version2_spec.write_text(json.dumps(settings))
+    grid_plan = path.parent / "grid-plan.json"
+    dse_plan(workspace.parent, workspace, store, grid_plan, spec=version2_spec)
+    dse_run(grid_plan, path.parent / "grid")
+    receipt = dse_compare(
+        path,
+        path.parent / "adaptive/result.json",
+        grid_plan,
+        path.parent / "grid/result.json",
+        path.parent / "comparison.json",
+    )
+    assert receipt["status"] == "observed_only"
+    assert [row["budget"]["executed_trials"] for row in receipt["pairs"]] == [5, 5]
+    assert receipt["benefit_status"] == "not_established"
+    frozen["release"] = "explicit-release.json"
+    monkeypatch.setattr(
+        warm_start,
+        "match_cases",
+        lambda *_args, **_kwargs: {
+            "matches": [
+                {
+                    "case_id": "compatible",
+                    "distance": 0.0,
+                    "compatibility": "selected_process_tool_analysis_match",
+                    "parameters": {"values": {"floorplan.core_util": 0.35}},
+                },
+                {
+                    "case_id": "outside",
+                    "distance": 0.1,
+                    "compatibility": "selected_process_tool_analysis_match",
+                    "parameters": {"values": {"floorplan.core_util": 0.9}},
+                },
+                {
+                    "case_id": "other_knob",
+                    "distance": 0.2,
+                    "compatibility": "selected_process_tool_analysis_match",
+                    "parameters": {
+                        "values": {"floorplan.core_util": 0.35, "place.target_density": 0.4}
+                    },
+                },
+            ]
+        },
+    )
+    seeds = warm_start.freeze_warm_start(frozen, 3)
+    assert [seed["case_id"] for seed in seeds["seeds"]] == ["compatible"]
 
 
 def test_dse_summary_exports_only_verified_feedback(dse_project, simulated_cli):

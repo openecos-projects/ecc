@@ -15,6 +15,10 @@ from ecc_experience.optimization.plan import write_plan
 
 def report_dse(plan: str | Path, result: str | Path, output: str | Path) -> dict:
     frozen, _limits = read_dse_plan(plan)
+    if frozen["schema"] == "ecc-experience-stage-dse-plan/2":
+        from ecc_experience.dse.report2 import report_version2
+
+        return report_version2(frozen, result, output)
     result_path = Path(result).expanduser().absolute()
     payload = read_json(result_path)
     if (

@@ -34,8 +34,8 @@ propose experiments, create isolated candidates, run EDA, screen results, record
 winner, validate it in a fresh workspace, and export deliverables. Existing commands
 provide this operation chain without requiring a new `ecc optimize` command.
 
-The AI supplies decisions and orchestration. ECC supplies deterministic execution,
-states, parameters, analyses, gates, and evidence. Neither guarantees a global optimum.
+The AI defines the spec, search space and tradeoffs. ECC can own bounded,
+deterministic proposals, staged screening, execution and evidence. Neither guarantees a global optimum.
 Coverage depends on constraints, process resources, installed EDA tools, and reports.
 
 | Task | Current support | Usage |
@@ -44,14 +44,14 @@ Coverage depends on constraints, process resources, installed EDA tools, and rep
 | Set candidate parameters in a fresh workspace | Supported | `ecc run --set KEY=VALUE` |
 | Make small local changes to an existing candidate | Supported | Workspace-scoped param set/apply; rerun the invalidated suffix |
 | Run full RTL-to-GDS, individual steps, or ranges | Supported | run/preset/resume/from/to/only/force |
-| Explore early rtl2gds PNR stages | Supported with AI orchestration | Ranges, workspace derive, stage metrics, and external Pareto analysis; see §17 |
+| Explore early rtl2gds PNR stages | Supported through experience dse v2 | Declarative specs, measured objectives, Pareto, rungs and full/fresh validation; see §17 |
 | Read stage metrics, timing/violations, and overall QoR | Supported | report step, report qor, report project, signoff check |
 | Run a small deterministic parameter grid | Supported | sweep create/run/verify/compare |
 | Rank, export matrices, and record a selected candidate | Supported | explore rank/export/promote |
 | Compare before/after evidence within one workspace | Supported | report snapshot + compare run |
 | Compare independent PPA candidates across workspaces | AI responsibility | Align comparable raw metrics from public reports in an external ledger |
 | Export reproducible evidence and ECC signoff deliverables | Supported | reproducible and signoff export |
-| Adaptive search, Pareto selection, and user budgets | AI responsibility | Small rounds and an external ledger; no built-in multi-objective optimizer |
+| Adaptive search, Pareto and execution budgets | ECC mechanisms with user/AI policy | experience dse v2; explicit multi-objective selection without automatic parameter application |
 | Automatically rewrite arbitrary RTL architectures and prove equivalence | Outside default parameter tuning | Separate RTL optimization task with functional validation and required LEC |
 | GDS-level DRC and complete foundry signoff | Not guaranteed by current ECC | Current DRC conclusions cover the available checker evidence only |
 
@@ -914,7 +914,7 @@ budget,” not global optimum. Without a valid gain, retain the baseline and sti
 | Current limit | User/AI action |
 | --- | --- |
 | Cross-workspace compare does not automatically establish comparability | Check input content, stage, corner, source, and units externally |
-| Sweep has fixed status/QoR ranking and no early ranges or staged advancement | Select raw PPA/Pareto externally; orchestrate derive/ranges for early stages |
+| Sweep remains a fixed grid; stage DSE has its own entry point | Explore verifies Pareto evidence; experience dse v2 owns adaptive proposals and staged screening |
 | No public QoR profile/power-budget parameter | Retain the profile; apply user budgets externally without faking native scores |
 | Scalar comma sweep syntax and limited cached recovery | Use public run/param for arrays; diagnose and create fresh candidates when needed |
 | Evidence package is not a complete execution environment image | Supplement input digests, PDK/tool versions, constraints, and environment |
@@ -931,9 +931,11 @@ Input functional verification and real constraint review remain required.
 
 ### 17.1 Current support
 
-**ECC already provides the execution primitives for early PNR DSE. An AI can choose
-experiments, screen stage results, and advance candidates. Current sweep/explore
-does not provide complete staged DSE orchestration.**
+**The AI defines the spec, objectives, space and budget. `experience dse` v2 owns
+deterministic proposals, multiple objectives and rung screening; public derive/range
+commands remain available for manual control.**
+See the [experience testing guide, §20](../../ecc_experience/docs/ecc-experience-testing-guide.en.md#20-dse-v2-adaptive-proposals-objectives-and-staged-screening)
+for specs, recovery, historical seeds and full/fresh contracts.
 
 Here, DSE explores floorplan, placement, and CTS parameter combinations under a fixed
 design spec, compares area/interconnect/congestion/clock-tree quality, and narrows
@@ -949,7 +951,7 @@ not automatic RTL architecture rewrites.
 | report step feature/analysis/checklist/outputs | Available | Read metrics, execution evidence, intermediate DEF/Verilog |
 | report snapshot and same-workspace compare run | Available | Save checkpoints and inspect before/after iteration |
 | Sweep range options, early stopping, staged advancement | Unavailable | Orchestrate public CLI calls through an AI |
-| Built-in early-stage score and cross-candidate Pareto | Unavailable | Maintain an external stage ledger, separate from overall ECC QoR |
+| Measured stage objectives and Pareto | Available through experience dse v2 | Compare matching measured metrics, separate from overall ECC QoR |
 
 `derive --from place` means rerun place and subsequent steps. It does not mean
 copy only files starting at place. Current implementation copies the source workspace,
@@ -1484,8 +1486,8 @@ After a sweep, export the verified front without selecting a winner:
 
 ```bash
 ecc explore promote --project ./project --name ppa-grid --pareto \
-  --objective core_area:um^2:minimize \
-  --objective sta_frequency_mhz:MHz:maximize
+  --objective postFloorplan/core_area:um^2:minimize \
+  --objective sta/sta_frequency_mhz:MHz:maximize
 ```
 
 This writes `experiments/ppa-grid/pareto.json`. Every admitted candidate is
@@ -1495,6 +1497,7 @@ excluded, with reasons. Current metric file and snapshot hashes are recorded;
 this report does not claim immutable delivery or independent fresh validation.
 Metric IDs, units and directions must match the ECC registry; overall QoR uses
 `qor_score:score:maximize`. No front returns exit 7.
+Use `STEP/METRIC` to disambiguate metrics reported by several steps.
 
 Select a front member explicitly by adding `--candidate candidate_0001`, or use
 `--weights 0.6,0.4` in objective order. Weights use min/max normalization within

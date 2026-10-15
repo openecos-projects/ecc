@@ -1,5 +1,6 @@
 """Validated limits and provenance for explicitly authorized optimization runs."""
 
+import math
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -24,6 +25,9 @@ SUPPORTED_PARAMETERS = frozenset(
         "place.global_right_padding",
         "place.cell_padding_x",
         "place.routability_opt",
+        "place.density_weight",
+        "route.bottom_layer",
+        "route.top_layer",
         "cts.max_fanout",
         "cts.skew_bound",
         "cts.max_buf_tran",
@@ -48,7 +52,7 @@ class OptimizationLimits(BaseModel):
             raise invalid_plan("Allowed parameters must be unique")
         if not set(self.allow_parameters) <= SUPPORTED_PARAMETERS:
             raise invalid_plan(
-                "Only reviewed floorplan, placement and CTS parameters are supported"
+                "Only reviewed floorplan, placement, CTS and routing parameters are supported"
             )
         if any(lookup_schema(key) is None for key in self.allow_parameters):
             raise invalid_plan("Allowed parameter is absent from the current ECC catalog")
@@ -59,6 +63,34 @@ class OptimizationLimits(BaseModel):
 
 def invalid_plan(reason: str) -> ExperienceError:
     return ExperienceError(reason, code="experience_plan_invalid")
+
+
+def validate_reviewed_values(parameters: dict, baseline: dict) -> None:
+    weight = parameters.get("place.density_weight")
+    if weight is not None and (
+        isinstance(weight, bool)
+        or not isinstance(weight, (int, float))
+        or not math.isfinite(weight)
+        or weight < 0
+    ):
+        raise invalid_plan("Placement density weight must be finite and non-negative")
+    if not {"route.bottom_layer", "route.top_layer"}.intersection(parameters):
+        return
+    specification = baseline.get("workspaceSpec", {})
+    if specification.get("pdk", {}).get("familyId") != "ics55":
+        raise invalid_plan("Reviewed routing exploration currently requires the ics55 profile")
+    current = specification.get("parameters", {})
+    selected = {}
+    for key in ("route.bottom_layer", "route.top_layer"):
+        schema = lookup_schema(key)
+        if schema is None:
+            raise invalid_plan("Routing parameter is absent from the ECC catalog")
+        value = parameters.get(key, current.get(key, schema.default))
+        if value not in (schema.choices or ()):
+            raise invalid_plan("Routing layer is outside the reviewed ics55 catalog")
+        selected[key] = int(str(value).removeprefix("MET"))
+    if selected["route.bottom_layer"] > selected["route.top_layer"]:
+        raise invalid_plan("Bottom routing layer must not exceed the top layer")
 
 
 def parse_limits(value: object) -> OptimizationLimits:
@@ -176,6 +208,7 @@ def eligible_candidates(
         _parsed, errors = parse_cli_overrides(pairs)
         if errors:
             raise invalid_plan("; ".join(errors))
+        validate_reviewed_values(changes, baseline.facts)
         identity = digest(changes)
         if identity in identities:
             skipped.append({"case_id": case.case_id, "reason": "duplicate_configuration"})

@@ -12,9 +12,24 @@ from ecc_experience.optimization.process import CliRunner, cancellation_signals
 
 
 def run_dse(
-    plan_path: str | Path, output: str | Path, *, model_release: str | Path | None = None
+    plan_path: str | Path,
+    output: str | Path,
+    *,
+    model_release: str | Path | None = None,
+    resume: bool = False,
+    select: str | None = None,
 ) -> dict:
     plan, limits = read_dse_plan(plan_path)
+    if plan["schema"] == "ecc-experience-stage-dse-plan/2":
+        from ecc_experience.dse.execute2 import run_version2
+
+        if model_release is not None:
+            raise invalid(
+                "Version 2 uses measured objectives; model-assisted plans remain version 1"
+            )
+        return run_version2(plan, limits, output, resume=resume, select=select)
+    if resume or select:
+        raise invalid("Resume and explicit Pareto selection require a version 2 plan")
     check_source(plan)
     model = check_model(plan, model_release) if model_release is not None else None
     if not Path("/proc/self/task").is_dir():
@@ -34,7 +49,7 @@ def run_dse(
     destination.mkdir(parents=True, exist_ok=False)
     started = time.monotonic()
     runner = CliRunner(destination, started + limits.max_seconds)
-    result = {
+    result: dict = {
         "schema": "ecc-experience-stage-dse-result/1",
         "plan_fingerprint": plan["plan_fingerprint"],
         "release_id": plan["release_id"],

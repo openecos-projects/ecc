@@ -1581,3 +1581,124 @@ Use a new report directory outside inputs, runs and store. Prepared projects may
 still reference external RTL/PDK files; this directory is not a self-contained
 input archive. Use the existing reproducible export commands for delivery, and
 do not move active campaigns or manually edit managed paths.
+
+## 20. DSE v2: adaptive proposals, objectives and staged screening
+
+Legacy `dse plan --param ...` continues to produce schema v1, preserving its
+single-objective grid and model-assisted behavior. Use an explicit JSON spec for
+v2; do not mix `--spec` with legacy grid options. Establish a baseline passing the
+complete flow, checklist, signoff and QoR first, then inspect its frozen stage
+features. Parameters and metrics come from public ECC catalogs, without design
+name or private benchmark assumptions. Example `dse-spec.json`:
+
+```json
+{
+  "schema_version": 2,
+  "strategy": "adaptive",
+  "seed": 42,
+  "space": {
+    "floorplan.core_util": {"range": [0.30, 0.40], "step": 0.05},
+    "place.target_density": {"values": [0.20, 0.25, 0.30]}
+  },
+  "objectives": [
+    {"metric": "place_hpwl", "unit": "um", "direction": "minimize"},
+    {"metric": "core_area", "unit": "um^2", "direction": "minimize", "step": "postFloorplan"}
+  ],
+  "rungs": [
+    {"through_step": "postFloorplan", "promote_count": 2,
+     "objectives": [{"metric": "core_area", "unit": "um^2", "direction": "minimize"}]},
+    {"through_step": "place", "promote_count": 1}
+  ],
+  "limits": {"max_trials": 13, "max_seconds": 7200,
+             "trial_timeout_seconds": 1800, "patience": 4},
+  "warm_start": null,
+  "warm_start_limit": 3
+}
+```
+
+Choose actual ranges and budgets from the design spec, baseline capacity and tool
+support. Each axis uses `values` or a closed `range` with a positive `step`; an
+off-grid upper bound is not added. Array parameters use complete arrays in values.
+The discrete space is bounded at 100000 configurations. Provide one to three
+distinct objective IDs with registry units/polarity and use step/scope/corner to
+remove ambiguity. Each rung's first objective must measure its final step; other
+objectives may reference its prefix. The final rung uses the plan objectives.
+
+```bash
+ecc experience dse plan --project ./project --workspace baseline_current \
+  --store ./batch-001/store --spec ./dse-spec.json --output ./dse-plan-v2.json --json
+ecc experience dse run --plan ./dse-plan-v2.json --output ./dse-v2 --json
+ecc experience dse report --plan ./dse-plan-v2.json --result ./dse-v2/result.json \
+  --output ./dse-v2-report --json
+```
+
+`grid` enumerates parameter names and configurations deterministically. `adaptive`
+uses versioned discrete categorical TPE: a center point and uniform startup precede
+good/bad configuration frequency proposals. Failed, blocked and unknown trials
+remain in history and cannot advance. Equal algorithm/seed/observed history gives
+identical proposals and history_sha256, independent of random workspace IDs,
+timestamps and duration. This implementation targets discrete spaces.
+
+Every trial derives independently from the baseline and reruns from the first
+step through its rung boundary. Later-stage parameters are only configured in
+early rungs, without claiming tool consumption. Prefix checklist, evidence and
+all objectives must pass before non-dominated sorting and crowding distance select
+the next rung. Use actual ordered postFloorplan, place and CTS names from the
+source flow. Later-rung executions and two independent full/fresh validations
+consume trial slots. Total time, per-trial timeout and patience also apply.
+Planning conservatively reserves all later promotions and both final validations.
+
+Single-objective runs select the measured best point. Multi-objective runs stop
+with `selection_required` and exit 7. Read the Pareto report, then explicitly choose
+a front member:
+
+```bash
+ecc experience dse run --plan ./dse-plan-v2.json --output ./dse-v2 \
+  --resume --select candidate-0001 --json
+```
+
+Two new independent workspaces then execute complete and fresh validation. Exit 0
+means full acceptance; score_delta/improved separately describe measured benefit.
+Source parameters are never automatically applied. Once final validation starts,
+the same budget cannot switch selections or rerun failed final validations.
+
+`--resume` replays recorded decisions and immutable cases without rerunning
+completed trials. Interrupted commands require matching durable receipts on the
+same host/boot and proof that the process tree finished. Unresolved receipts return
+busy (20); ECC does not infer success or start a duplicate EDA process. Cancelled,
+timed-out and failed trials remain in the budget, and resume does not replenish
+spent time or slots. Resuming a complete result performs read-only verification.
+
+Set `warm_start` explicitly to a frozen knowledge-release JSON path, relative to
+the spec. Seeds retain existing process/tool/analysis/SDC checks and default
+same-input matching. Only in-space configurations with unchanged other parameters
+are accepted. Plans freeze release/case/distance/configuration provenance. Seeds
+consume normal trial slots. No matches retain insufficient_evidence and fall back
+to the center point. Cross-design filters are not automatically relaxed, and v2
+does not replace measurements with model predictions; model-assisted runs remain
+available through v1 `--model-release`.
+
+Reports export summary.json/summary.md and pareto.json with all trials, decisions,
+promotions, parameters, objectives, measured QoR, failures and per-step resource
+scope. Only accepted full/fresh cases enter feedback-release.json. Prefix cases
+do not enter complete-flow training feedback. Reporting and resume check the
+configuration/input/runtime/attempt bindings and objective evidence.
+
+Run grid/adaptive or cold/warm with identical source, environment, space, rungs
+and caps, then compare independently executed results:
+
+```bash
+ecc experience dse compare --plan ./grid-plan.json --result ./grid/result.json \
+  --other-plan ./adaptive-plan.json --other-result ./adaptive/result.json \
+  --output ./paired-receipt.json --json
+```
+
+Receipts retain failure denominators, actual executions, duration, fronts and
+measured scores. Equal caps do not imply equal actual cost; reused execution
+evidence is rejected. Single-design receipts do not establish generalization or
+benefit; D4 family-held-out and effectiveness gates remain required.
+Execution remains serial. Parallel trials, continuous spaces, automatic
+cross-design seeds and v2 model prescreening remain outside this implementation.
+Reviewed place.density_weight is available to stage DSE. Routing layer knobs are
+available to existing complete-flow optimization only, with the ics55 catalog and
+bottom≤top checks; they cannot enter an early prefix before route.

@@ -1,0 +1,101 @@
+import json
+import time
+
+import pytest
+
+from ecc_experience.api import dse_plan, dse_run
+from ecc_experience.dse.plan import read_dse_plan
+from ecc_experience.dse.trial import execute_trial
+from ecc_experience.files import digest
+from ecc_experience.models import ExperienceError
+from ecc_experience.optimization.process import CliRunner, Invocation
+from test.experience import test_dse as fixtures
+
+dse_project = fixtures.dse_project
+simulated_cli = fixtures.simulated_cli
+version2_spec = fixtures.version2_spec
+
+
+@pytest.mark.parametrize("corruption", ["seed", "future_objective", "late_parameter"])
+def test_resealed_plan_still_obeys_runtime_boundaries(dse_project, version2_spec, corruption):
+    workspace, store, path = dse_project
+    frozen = dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
+    if corruption == "seed":
+        frozen["algorithm"]["seed"] = -1
+    elif corruption == "future_objective":
+        frozen["objectives"][0]["step"] = "route"
+        frozen["rungs"][0]["objectives"] = frozen["objectives"]
+    else:
+        frozen["space"] = {"cts.max_fanout": [16]}
+        frozen["screening_trials"] = 1
+    frozen["plan_fingerprint"] = digest(
+        {key: value for key, value in frozen.items() if key != "plan_fingerprint"}
+    )
+    path.write_text(json.dumps(frozen))
+    with pytest.raises(ExperienceError):
+        read_dse_plan(path)
+
+
+@pytest.mark.parametrize("corruption", ["missing_fresh", "validation_mode", "delta", "front"])
+def test_completed_result_cannot_hide_missing_or_changed_evidence(
+    dse_project, version2_spec, simulated_cli, corruption
+):
+    workspace, store, path = dse_project
+    dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
+    output = path.parent / "output"
+    result = dse_run(path, output)
+    assert result["status"] == "complete", result
+    if corruption == "missing_fresh":
+        result["fresh_validation"] = None
+    elif corruption == "validation_mode":
+        result["full_validation"]["mode"] = "screen"
+    elif corruption == "delta":
+        result["score_delta"] = 1000
+    else:
+        result["pareto_front"] = []
+    (output / "result.json").write_text(json.dumps(result))
+    calls = len(simulated_cli)
+    with pytest.raises(ExperienceError):
+        dse_run(path, output, resume=True)
+    assert len(simulated_cli) == calls
+
+
+def test_resume_does_not_replenish_per_trial_time(dse_project, version2_spec, monkeypatch):
+    workspace, store, path = dse_project
+    dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
+    frozen, limits = read_dse_plan(path)
+    candidate = {
+        "candidate_id": "candidate-0001",
+        "parameters": {"floorplan.core_util": 0.3},
+        "sets": ["floorplan.core_util=0.3"],
+    }
+    identity = "dse_0123456789abcdef"
+    record = {
+        **candidate,
+        "workspace_id": identity,
+        "workspace": str(workspace.parent / identity),
+        "run_id": "frozen-attempt",
+        "mode": "screen",
+        "status": "running",
+        "commands": [],
+        "collection_status": "not_attempted",
+        "elapsed_seconds": limits.trial_timeout_seconds,
+    }
+
+    def exhausted(self, _arguments, *, deadline, **_kwargs):
+        assert deadline <= time.monotonic()
+        return Invocation(124, self.output / "stdout", self.output / "stderr")
+
+    monkeypatch.setattr(CliRunner, "invoke", exhausted)
+    execute_trial(
+        frozen,
+        candidate,
+        limits,
+        CliRunner(path.parent, time.monotonic() + 60),
+        record,
+        lambda: None,
+        mode="screen",
+        resume=True,
+    )
+    assert record["status"] == "timeout"
+    assert record["elapsed_seconds"] >= limits.trial_timeout_seconds

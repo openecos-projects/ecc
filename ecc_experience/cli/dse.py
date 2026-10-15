@@ -36,6 +36,11 @@ class DseInput:
     release: str | None = None
     model_release: str | None = None
     result_path: str | None = None
+    spec: str | None = None
+    resume: bool = False
+    select: str | None = None
+    other_plan: str | None = None
+    other_result: str | None = None
 
 
 def _plan(command: DseInput, context: CommandContext) -> CommandResult:
@@ -55,8 +60,9 @@ def _plan(command: DseInput, context: CommandContext) -> CommandResult:
             metric=command.metric or "",
             unit=command.unit or "",
             direction=command.direction,
-            limits=command.limits or {},
+            limits=None if command.spec else command.limits or {},
             release=command.release,
+            spec=command.spec,
         )
         return CommandResult.ok([{"experience": "dse_plan", **result}])
 
@@ -68,7 +74,11 @@ def _run(command: DseInput, _context: CommandContext) -> CommandResult:
         from ecc_experience.api import dse_run
 
         result = dse_run(
-            command.plan_path or "", command.output_path, model_release=command.model_release
+            command.plan_path or "",
+            command.output_path,
+            model_release=command.model_release,
+            resume=command.resume,
+            select=command.select,
         )
         return CommandResult(
             records=({"experience": "dse_run", **result},), exit_code=result["exit_code"]
@@ -82,13 +92,18 @@ def plan_cmd(
     *,
     store: Annotated[str, typer.Option("--store")],
     output: Annotated[str, typer.Option("--output")],
-    parameters: Annotated[list[str], typer.Option("--param", help="KEY=A,B (repeatable)")],
-    through_step: Annotated[str, typer.Option("--through-step")],
-    metric: Annotated[str, typer.Option("--metric")],
-    unit: Annotated[str, typer.Option("--unit")],
-    max_trials: Annotated[int, typer.Option("--max-trials", min=3, max=100)],
-    max_seconds: Annotated[int, typer.Option("--max-seconds", min=1)],
-    trial_timeout: Annotated[int, typer.Option("--trial-timeout", min=1)],
+    parameters: Annotated[
+        list[str] | None, typer.Option("--param", help="KEY=A,B (repeatable)")
+    ] = None,
+    through_step: Annotated[str | None, typer.Option("--through-step")] = None,
+    metric: Annotated[str | None, typer.Option("--metric")] = None,
+    unit: Annotated[str | None, typer.Option("--unit")] = None,
+    max_trials: Annotated[int | None, typer.Option("--max-trials", min=3, max=100)] = None,
+    max_seconds: Annotated[int | None, typer.Option("--max-seconds", min=1)] = None,
+    trial_timeout: Annotated[int | None, typer.Option("--trial-timeout", min=1)] = None,
+    spec: Annotated[
+        str | None, typer.Option("--spec", help="Version 2 DSE JSON specification")
+    ] = None,
     direction: Annotated[str, typer.Option("--direction")] = "minimize",
     patience: Annotated[int, typer.Option("--patience", min=1)] = 3,
     release: Annotated[str | None, typer.Option("--release")] = None,
@@ -97,6 +112,24 @@ def plan_cmd(
     plain: PlainOption = False,
     json_output: JsonOption = False,
 ) -> None:
+    if spec and (
+        direction != "minimize"
+        or patience != 3
+        or any(
+            value is not None
+            for value in (
+                parameters,
+                through_step,
+                metric,
+                unit,
+                max_trials,
+                max_seconds,
+                trial_timeout,
+                release,
+            )
+        )
+    ):
+        raise typer.BadParameter("Use either --spec or legacy grid options")
     command = DseInput(
         output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
@@ -109,6 +142,7 @@ def plan_cmd(
         unit=unit,
         direction=direction,
         release=release,
+        spec=spec,
         limits={
             "max_trials": max_trials,
             "max_seconds": max_seconds,
@@ -125,6 +159,8 @@ def run_cmd(
     plan: Annotated[str, typer.Option("--plan")],
     output: Annotated[str, typer.Option("--output")],
     model_release: Annotated[str | None, typer.Option("--model-release")] = None,
+    resume: Annotated[bool, typer.Option("--resume")] = False,
+    select: Annotated[str | None, typer.Option("--select")] = None,
     plain: PlainOption = False,
     json_output: JsonOption = False,
 ) -> None:
@@ -134,6 +170,8 @@ def run_cmd(
         output_path=output,
         plan_path=plan,
         model_release=model_release,
+        resume=resume,
+        select=select,
     )
     execute_command("experience", command, _run)
 
@@ -166,6 +204,54 @@ def report_cmd(
             output_path=output,
             plan_path=plan,
             result_path=result,
+        ),
+        handle,
+    )
+
+
+@dse_app.command("compare", help="Export a verified equal-budget receipt for two DSE runs")
+def compare_cmd(
+    *,
+    plan: Annotated[str, typer.Option("--plan")],
+    result: Annotated[str, typer.Option("--result")],
+    other_plan: Annotated[str, typer.Option("--other-plan")],
+    other_result: Annotated[str, typer.Option("--other-result")],
+    output: Annotated[str, typer.Option("--output")],
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    def handle(command: DseInput, _context: CommandContext) -> CommandResult:
+        def operation():
+            from ecc_experience.api import dse_compare
+
+            if (
+                command.plan_path is None
+                or command.result_path is None
+                or command.other_plan is None
+                or command.other_result is None
+            ):
+                raise typer.BadParameter("Comparison requires two plan/result pairs")
+            report = dse_compare(
+                command.plan_path,
+                command.result_path,
+                command.other_plan,
+                command.other_result,
+                command.output_path,
+            )
+            return CommandResult.ok([{"experience": "dse_compare", **report}])
+
+        return _guard(operation)
+
+    execute_command(
+        "experience",
+        DseInput(
+            output=output_options(plain=plain, json_output=json_output),
+            project=project_options(None),
+            output_path=output,
+            plan_path=plan,
+            result_path=result,
+            other_plan=other_plan,
+            other_result=other_result,
         ),
         handle,
     )

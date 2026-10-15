@@ -19,7 +19,9 @@ from ecc_experience.knowledge.release import verify_release
 from ecc_experience.knowledge.store import ExperienceStore
 from ecc_experience.models import ExperienceError
 from ecc_experience.optimization.plan import write_plan
-from ecc_experience.optimization.policy import SUPPORTED_PARAMETERS
+from ecc_experience.optimization.policy import SUPPORTED_PARAMETERS, validate_reviewed_values
+
+STAGE_PARAMETERS = frozenset(key for key in SUPPORTED_PARAMETERS if not key.startswith("route."))
 
 
 class DseLimits(BaseModel):
@@ -110,7 +112,7 @@ def plan_dse(
     if direction not in {"minimize", "maximize"}:
         raise invalid("Direction must be minimize or maximize")
     keys = [item.split("=", 1)[0] for item in parameters]
-    if len(set(keys)) != len(keys) or not set(keys) <= SUPPORTED_PARAMETERS:
+    if len(set(keys)) != len(keys) or not set(keys) <= STAGE_PARAMETERS:
         raise invalid("Parameters must be unique reviewed floorplan, placement or CTS keys")
     try:
         grid = parse_parameters(parameters)
@@ -148,6 +150,7 @@ def plan_dse(
         parsed, errors = parse_cli_overrides(pairs)
         if errors:
             raise invalid("; ".join(errors))
+        validate_reviewed_values(parsed, baseline.facts)
         candidates.append(
             {"candidate_id": f"candidate-{index:04d}", "parameters": parsed, "sets": pairs}
         )
@@ -193,6 +196,14 @@ def parse_limits(value: dict) -> DseLimits:
 
 def read_dse_plan(path: str | Path) -> tuple[dict, DseLimits]:
     payload = read_json(Path(path).expanduser())
+    if payload.get("schema") == "ecc-experience-stage-dse-plan/2":
+        from ecc_experience.dse.version2 import validate_version2
+
+        if payload.get("plan_fingerprint") != digest(
+            {key: value for key, value in payload.items() if key != "plan_fingerprint"}
+        ):
+            raise invalid("Invalid version 2 DSE plan fingerprint")
+        return payload, validate_version2(payload)
     try:
         _Plan.model_validate(payload)
     except ValidationError as exc:
@@ -214,11 +225,12 @@ def read_dse_plan(path: str | Path) -> tuple[dict, DseLimits]:
             or not isinstance(candidate.get("sets"), list)
         ):
             raise invalid("Invalid DSE candidate")
-        if not set(candidate["parameters"]) <= SUPPORTED_PARAMETERS or not candidate["parameters"]:
+        if not set(candidate["parameters"]) <= STAGE_PARAMETERS or not candidate["parameters"]:
             raise invalid("DSE candidate has unsupported parameters")
         parsed, errors = parse_cli_overrides(candidate["sets"])
         if errors or parsed != candidate["parameters"]:
             raise invalid("DSE candidate values do not match validated parameter arguments")
+        validate_reviewed_values(parsed, {})
     if payload.get("direction") not in {"minimize", "maximize"}:
         raise invalid("Invalid DSE objective direction")
     return payload, limits

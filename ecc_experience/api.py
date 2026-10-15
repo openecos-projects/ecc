@@ -184,6 +184,18 @@ def dse_report(plan: str | Path, result: str | Path, output: str | Path) -> dict
     return report_dse(plan, result, output)
 
 
+def dse_compare(
+    plan: str | Path,
+    result: str | Path,
+    other_plan: str | Path,
+    other_result: str | Path,
+    output: str | Path,
+) -> dict:
+    from ecc_experience.dse.compare import compare_runs
+
+    return compare_runs(plan, result, other_plan, other_result, output)
+
+
 def collect(workspace: str | Path, store: str | Path) -> CollectionResult:
     return collect_committed_case(workspace, ExperienceStore(store), read_workspace_observation)
 
@@ -323,33 +335,54 @@ def dse_plan(
     store: str | Path,
     output: str | Path,
     *,
-    parameters: list[str],
-    through_step: str,
-    metric: str,
-    unit: str,
-    direction: str,
-    limits: dict,
+    parameters: list[str] | None = None,
+    through_step: str = "",
+    metric: str = "",
+    unit: str = "",
+    direction: str = "minimize",
+    limits: dict | None = None,
     release: str | Path | None = None,
+    spec: str | Path | None = None,
 ) -> dict:
+    if spec is not None:
+        from ecc_experience.dse.plan import invalid
+        from ecc_experience.dse.version2 import plan_version2
+
+        if (
+            parameters
+            or through_step
+            or metric
+            or unit
+            or limits
+            or release
+            or direction != "minimize"
+        ):
+            raise invalid("Use either a version 2 spec or legacy grid arguments")
+        return plan_version2(project, workspace, store, output, spec=spec)
     return plan_dse(
         project,
         workspace,
         store,
         output,
-        parameters=parameters,
+        parameters=parameters or [],
         through_step=through_step,
         metric=metric,
         unit=unit,
         direction=direction,
-        limits=limits,
+        limits=limits or {},
         release=release,
     )
 
 
 def dse_run(
-    plan: str | Path, output: str | Path, *, model_release: str | Path | None = None
+    plan: str | Path,
+    output: str | Path,
+    *,
+    model_release: str | Path | None = None,
+    resume: bool = False,
+    select: str | None = None,
 ) -> dict:
-    return run_dse(plan, output, model_release=model_release)
+    return run_dse(plan, output, model_release=model_release, resume=resume, select=select)
 
 
 def plan(

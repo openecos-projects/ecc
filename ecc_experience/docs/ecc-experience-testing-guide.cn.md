@@ -1387,3 +1387,102 @@ DRC 指当前工具已有的 checker 指标，不代表新增 GDS DRC 能力。�
 report 只读取台账和冻结案例，不刷新源 workspace；输入、runs、store 内禁止写报告。
 每次导出使用新目录。准备后的工程仍可能引用外部 RTL/PDK，批次目录不是完整输入归档；
 可复现交付请另用现有 export 功能。活动批次不要移动目录或手工修改受管路径。
+
+## 20. DSE v2：自适应、多目标与逐级筛选
+
+旧版 `dse plan --param ...` 继续生成 schema v1，既有单目标、网格、模型辅助行为保留。
+新能力使用显式 JSON spec；不要将 `--spec` 和旧网格选项混用。先建立通过完整 flow、
+checklist、signoff、QoR 的基线，再从冻结案例检查阶段指标。参数与指标来自 ECC 公开目录，
+不是按设计名称或内部测试集选择。示例 `dse-spec.json`：
+
+```json
+{
+  "schema_version": 2,
+  "strategy": "adaptive",
+  "seed": 42,
+  "space": {
+    "floorplan.core_util": {"range": [0.30, 0.40], "step": 0.05},
+    "place.target_density": {"values": [0.20, 0.25, 0.30]}
+  },
+  "objectives": [
+    {"metric": "place_hpwl", "unit": "um", "direction": "minimize"},
+    {"metric": "core_area", "unit": "um^2", "direction": "minimize", "step": "postFloorplan"}
+  ],
+  "rungs": [
+    {"through_step": "postFloorplan", "promote_count": 2,
+     "objectives": [{"metric": "core_area", "unit": "um^2", "direction": "minimize"}]},
+    {"through_step": "place", "promote_count": 1}
+  ],
+  "limits": {"max_trials": 13, "max_seconds": 7200,
+             "trial_timeout_seconds": 1800, "patience": 4},
+  "warm_start": null,
+  "warm_start_limit": 3
+}
+```
+
+这些范围和预算仅演示语法，必须按设计 spec、基线容量和工具能力选择。每个参数轴采用
+`values` 或含正 `step` 的闭区间 `range`；上界不在格点时不额外补点。数组参数可在
+values 中逐项给完整数组。总空间不超过 100000 个离散配置。目标为 1–3 个不同 ID，必须
+匹配 metric registry 的单位和方向；用 step/scope/corner 消除歧义。每个 rung 的第一目标
+来自该 rung 的最后一步；其余目标可来自其前缀。末级目标等于计划 objectives。
+
+```bash
+ecc experience dse plan --project ./project --workspace baseline_current \
+  --store ./batch-001/store --spec ./dse-spec.json --output ./dse-plan-v2.json --json
+ecc experience dse run --plan ./dse-plan-v2.json --output ./dse-v2 --json
+ecc experience dse report --plan ./dse-plan-v2.json --result ./dse-v2/result.json \
+  --output ./dse-v2-report --json
+```
+
+`strategy=grid` 按参数名和配置顺序枚举；`adaptive` 使用版本化的离散 categorical TPE：
+先中心点和均匀探索，再以可行候选的好/坏配置频率提出新点。失败、blocked、未知配置也
+保留在历史中，不能晋级。相同算法/seed/观测历史产生相同候选与 history_sha256，不依赖
+随机 workspace ID、时间戳或耗时。算法适用于离散空间，不是连续 GP 或深度 RL。
+
+每个 trial 从基线独立派生，按首步至 rung 边界重跑，不复用旧前缀。较晚生效的参数在早期
+rung 只是 configured，不声称已被工具消费。前缀 checklist、证据及全部目标有效后，才按
+非支配排序与拥挤距离进入下一 rung。支持 postFloorplan、place、CTS，按实际 flow 名称
+与顺序配置。每个后续 rung 的执行和独立 full/fresh 均占 trial 名额；总上限还受时间、
+单次超时和 patience 约束。预算保守预留后续晋级数和两次最终验证，不能用复验槽继续探索。
+
+单目标会选实测最优点；多目标默认停在 `selection_required`，退出 7，先阅读报告中的
+Pareto 前沿，再显式选择一个点：
+
+```bash
+ecc experience dse run --plan ./dse-plan-v2.json --output ./dse-v2 \
+  --resume --select candidate-0001 --json
+```
+
+仅能选最终前沿成员。随后在两个独立 workspace 运行完整 flow 和 fresh 复验；0 才表示
+完整验收成功，score_delta/improved 另行表示实测收益。参数始终不会自动应用到源工程。
+最终选择一旦开始验证，同一预算内不能切换点或重跑已失败的验证。
+
+v2 的 `--resume` 重放已保存的决策与案例；已完成的 trial 不重跑。若进程意外中断，只有
+命令收据证明同主机/boot、命令一致且进程树已结束时才能继续；未完成或无法确认的收据
+返回 busy（20），不能推测已成功，也不重复启动可能仍在运行的 EDA。取消、超时和失败
+记录仍计入预算；恢复不补回已用时间或名额。已完成结果的 resume 为只读验证。
+
+历史种子须显式给 `warm_start` 为冻结知识 release JSON 的路径（相对 spec 文件），沿用
+match 的工艺、工具、analysis/SDC 兼容检查和默认同输入过滤，只采用空间内且其他参数
+不变的配置。计划保存 release/case/distance/configuration 来源，种子同样占名额；没有匹配
+时保留 insufficient_evidence，并回退中心点。此版本不自动放宽到跨设计，也不加载模型
+预测替代实测；模型辅助入口仍使用 v1 的 `--model-release`。
+
+`dse report` 导出 summary.json/summary.md、pareto.json，包含全部尝试、决策、rung 晋级、
+参数、目标、实测 QoR、失败原因和每步资源口径。只有完整且验收通过的 full/fresh 案例进入
+feedback-release.json，前缀案例不进入完整训练反馈。报告和 resume 都核验配置/输入/
+runtime/attempt 绑定与目标证据，修改结果文件不能制造有效前沿。
+
+使用完全相同的 source、环境、空间、rung 和预算，分别运行 grid/adaptive 或 cold/warm 后：
+
+```bash
+ecc experience dse compare --plan ./grid-plan.json --result ./grid/result.json \
+  --other-plan ./adaptive-plan.json --other-result ./adaptive/result.json \
+  --output ./paired-receipt.json --json
+```
+
+收据包含失败分母、实际执行数、时间、前沿和实测分数，不把相同预算上限当作相同实际成本，
+不重复使用同一执行证据，也不从单个设计推断泛化收益。D4 的多家族留出与效果门槛保留。
+当前运行仍串行；并行 trial、连续空间、跨设计自动种子和 v2 模型预筛未纳入本次能力。
+已审核的 place.density_weight 可用于阶段 DSE；route.bottom_layer/top_layer 仅用于现有
+完整流程优化，限 ics55 公开层目录且 bottom≤top，不能用于尚未包含 route 的前段 DSE。

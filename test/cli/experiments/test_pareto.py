@@ -3,6 +3,7 @@ import json
 import pytest
 from typer.testing import CliRunner
 
+from chipcompiler.analysis.pareto import Objective
 from chipcompiler.cli.app import app
 from chipcompiler.cli.experiments import pareto
 
@@ -116,3 +117,41 @@ def test_pareto_cli_exports_without_implicitly_selecting(sweep):
 def test_objective_contract_rejects_unknown_units_and_polarity(sweep, objective):
     with pytest.raises(ValueError):
         pareto.sweep_pareto(sweep[0], "example", [objective])
+
+
+def test_step_selector_resolves_metrics_without_silently_taking_first(tmp_path):
+    artifacts = []
+    for step, value in (("postFloorplan", 100), ("place", 110)):
+        reference = f"{step}_ecc/analysis/qor_metrics.json"
+        path = tmp_path / reference
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 3,
+                    "step": step,
+                    "tool": "ecc",
+                    "status": "success",
+                    "integrity": {"status": "pass"},
+                    "metrics": [{"id": "core_area", "unit": "um^2", "value": value}],
+                }
+            )
+        )
+        artifacts.append(
+            {
+                "reference": reference,
+                "kind": "qor_metrics",
+                "availability": "available",
+                "stepId": step,
+            }
+        )
+    facts = {
+        "artifacts": artifacts,
+        "flow": {"steps": [{"name": step, "tool": "ecc"} for step in ("postFloorplan", "place")]},
+    }
+    with pytest.raises(ValueError, match="ambiguous"):
+        pareto._measurement(tmp_path, facts, Objective("core_area", "um^2", "minimize"))
+    result = pareto._measurement(
+        tmp_path, facts, Objective("postFloorplan/core_area", "um^2", "minimize")
+    )
+    assert result["value"] == 100

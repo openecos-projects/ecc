@@ -30,9 +30,10 @@ def check_source(plan: dict) -> WorkspaceObservation:
     names = [step["name"] for step in observation.facts["flow"]["steps"]]
     if not names or plan["first_step"] != names[0] or plan["through_step"] not in names:
         raise invalid("DSE plan has an invalid execution boundary")
+    boundary = plan.get("parameter_boundary", plan["through_step"])
     for candidate in plan["candidates"]:
         validate_parameter_boundary(
-            list(candidate["parameters"]), names[: names.index(plan["through_step"]) + 1]
+            list(candidate["parameters"]), names[: names.index(boundary) + 1]
         )
     if (
         observation.source.snapshot_digest != plan["snapshot_digest"]
@@ -62,26 +63,41 @@ def execute_trial(
     save,
     *,
     mode: str,
+    resume: bool = False,
 ) -> None:
     started = time.monotonic()
-    deadline = min(runner.deadline, started + limits.trial_timeout_seconds)
-    workspace_id = f"dse_{uuid4().hex[:16]}"
+    elapsed = record.get("elapsed_seconds", 0.0) if resume else 0.0
+    if resume and record.get("budget_started_at") is not None:
+        elapsed = max(elapsed, time.time() - record["budget_started_at"])
+    deadline = min(runner.deadline, started + max(0, limits.trial_timeout_seconds - elapsed))
+    workspace_id = record["workspace_id"] if resume else f"dse_{uuid4().hex[:16]}"
     root = Path(plan["project"])
     workspace = root / workspace_id
-    run_id = str(uuid4())
-    record.update(
-        trial_id=workspace_id,
-        candidate_id=candidate["candidate_id"],
-        mode=mode,
-        workspace=str(workspace),
-        workspace_id=workspace_id,
-        run_id=run_id,
-        parameters=candidate["parameters"],
-        status="running",
-        exit_code=1,
-        commands=[],
-        collection_status="not_attempted",
-    )
+    run_id = record["run_id"] if resume else str(uuid4())
+    if resume and (
+        record.get("workspace") != str(workspace)
+        or record.get("parameters") != candidate["parameters"]
+        or record.get("candidate_id") != candidate["candidate_id"]
+        or record.get("mode") != mode
+        or not workspace_id.startswith("dse_")
+        or Path(workspace_id).name != workspace_id
+    ):
+        raise invalid("DSE recovery record does not match its frozen candidate")
+    if not resume:
+        record.update(
+            trial_id=workspace_id,
+            candidate_id=candidate["candidate_id"],
+            mode=mode,
+            workspace=str(workspace),
+            workspace_id=workspace_id,
+            run_id=run_id,
+            parameters=candidate["parameters"],
+            status="running",
+            exit_code=1,
+            commands=[],
+            collection_status="not_attempted",
+            budget_started_at=time.time(),
+        )
     save()
     commands = [["workspace", "derive", plan["source_workspace_id"], workspace_id, "--no-wait"]]
     commands.append(
@@ -100,15 +116,35 @@ def execute_trial(
     commands.append(run)
     try:
         baseline = check_source(plan)
-        for arguments in commands:
+        for index, arguments in enumerate(commands):
             if arguments[0] == "run":
                 check_trial_configuration(workspace, baseline, candidate["parameters"])
+            expected = [*arguments, "--project", str(root), "--plain"]
+            if index < len(record["commands"]):
+                command = record["commands"][index]
+                if command["arguments"] != arguments:
+                    raise invalid("DSE command sequence changed")
+                if command["status"] != "complete":
+                    from ecc_experience.dse.receipts import recover_command
+
+                    recover_command(command, expected, runner.output)
+                record["exit_code"] = command["exit_code"]
+                save()
+                if command["exit_code"] != 0:
+                    break
+                continue
             command = {"arguments": arguments, "status": "running"}
             record["commands"].append(command)
             save()
-            result = runner.invoke(
-                [*arguments, "--project", str(root), "--plain"], deadline=deadline
-            )
+            if runner.durable_receipts:
+
+                def prepared(metadata, target=command):
+                    target.update(metadata)
+                    save()
+
+                result = runner.invoke(expected, deadline=deadline, on_prepared=prepared)
+            else:
+                result = runner.invoke(expected, deadline=deadline)
             command.update(
                 status="complete",
                 exit_code=result.exit_code,
@@ -166,6 +202,9 @@ def execute_trial(
         record.update(status="cancelled", exit_code=130, reason="user_interrupt")
         raise
     except (ExperienceError, OSError) as exc:
+        if isinstance(exc, ExperienceError) and exc.code == "experience_workspace_busy":
+            record.update(status="running", reason=str(exc))
+            raise
         record.update(status="failed", reason=str(exc))
         if record["collection_status"] == "pending":
             record["collection_status"] = "failed"
@@ -173,7 +212,7 @@ def execute_trial(
             record["exit_code"] = 21
             raise
     finally:
-        record["elapsed_seconds"] = round(time.monotonic() - started, 3)
+        record["elapsed_seconds"] = round(elapsed + time.monotonic() - started, 3)
         for command in record["commands"]:
             if command["status"] == "running":
                 command.update(status="interrupted", exit_code=record["exit_code"])

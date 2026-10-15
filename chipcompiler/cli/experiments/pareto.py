@@ -1,6 +1,7 @@
 """Read current sweep evidence before exporting or selecting a Pareto front."""
 
 import hashlib
+import json
 import math
 import re
 from pathlib import Path
@@ -27,7 +28,7 @@ def sweep_pareto(project: Path, name: str, objective_arguments: list[str]) -> di
         if direction not in ("minimize", "maximize"):
             raise ValueError("Direction must be minimize or maximize")
         objective = Objective(parts[0], parts[1], direction)
-        registered = METRIC_REGISTRY.get(objective.id)
+        registered = METRIC_REGISTRY.get(objective.id.rsplit("/", 1)[-1])
         if objective.id == "qor_score":
             registered = ("score", "higher_is_better")
         polarity = "lower_is_better" if objective.direction == "minimize" else "higher_is_better"
@@ -120,8 +121,12 @@ def _measurement(workspace: Path, facts: dict, objective: Objective) -> dict:
             "source": "engineering-snapshot",
         }
     matching = []
+    selected_step, separator, metric_id = objective.id.rpartition("/")
+    metric_id = metric_id if separator else objective.id
     for artifact in facts["artifacts"]:
         if artifact.get("kind") != "qor_metrics" or artifact.get("availability") != "available":
+            continue
+        if separator and artifact.get("stepId") != selected_step:
             continue
         path = workspace / artifact["reference"]
         result = read_workspace_artifact(workspace, path, CHECKLIST_READ_MAX_BYTES)
@@ -131,19 +136,32 @@ def _measurement(workspace: Path, facts: dict, objective: Objective) -> dict:
         if not isinstance(payload, dict):
             continue
         integrity = payload.get("integrity", {})
+        flow_steps = [
+            step for step in facts["flow"]["steps"] if step["name"] == artifact.get("stepId")
+        ]
         if (
             not isinstance(integrity, dict)
             or payload.get("schema_version") != 3
             or payload.get("status") != "success"
             or not isinstance(integrity.get("invalid_metric_source_ids", []), list)
             or integrity.get("status") != "pass"
-            or objective.id in integrity.get("invalid_metric_source_ids", [])
+            or metric_id in integrity.get("invalid_metric_source_ids", [])
+            or len(flow_steps) != 1
+            or payload.get("step") != flow_steps[0]["name"]
+            or payload.get("tool") != flow_steps[0]["tool"]
+            or not isinstance(payload.get("metrics"), list)
         ):
             continue
+        with path.open("rb") as stream:
+            content = stream.read(CHECKLIST_READ_MAX_BYTES + 1)
+        if len(content) > CHECKLIST_READ_MAX_BYTES or json.loads(content) != payload:
+            raise ValueError("Metric evidence changed while inspecting")
         for metric in payload.get("metrics", []):
+            if not isinstance(metric, dict):
+                raise ValueError("Malformed metric evidence")
             value = metric.get("value")
             if (
-                metric.get("id") == objective.id
+                metric.get("id") == metric_id
                 and metric.get("unit") == objective.unit
                 and type(value) in (int, float)
                 and math.isfinite(value)
@@ -154,7 +172,7 @@ def _measurement(workspace: Path, facts: dict, objective: Objective) -> dict:
                         "unit": objective.unit,
                         "value": value,
                         "source": artifact["reference"],
-                        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                        "sha256": hashlib.sha256(content).hexdigest(),
                         "scope": metric.get("scope"),
                         "corner": metric.get("corner"),
                     }
