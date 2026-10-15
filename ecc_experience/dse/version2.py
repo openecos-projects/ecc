@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ecc_experience.dse.multiobjective import resolve_objectives
+from ecc_experience.dse.patience import resolve_patience
 from ecc_experience.dse.plan import (
     _Plan,
     invalid,
@@ -79,8 +80,12 @@ def plan_version2(project, workspace, store, output, *, spec) -> dict:
     except ValidationError as exc:
         raise invalid(str(exc)) from exc
     space = expand_space(settings.space)
-    limits = parse_limits(settings.limits)
     grid_size = math.prod(len(values) for values in space.values())
+    requested_patience = settings.limits.get("patience", 3)
+    planning_limits = {**settings.limits, "patience": requested_patience}
+    if requested_patience == "auto":
+        planning_limits["patience"] = 1
+    limits = parse_limits(planning_limits)
     later_trials = sum(rung.promote_count for rung in settings.rungs[:-1])
     screens = min(grid_size, limits.max_trials - 2 - later_trials)
     if screens < 1 or (settings.strategy == "grid" and screens != grid_size):
@@ -92,6 +97,13 @@ def plan_version2(project, workspace, store, output, *, spec) -> dict:
         raise invalid("Rung promotion counts must not increase")
     if settings.rungs[0].promote_count > screens:
         raise invalid("Rung promotion count exceeds first-rung candidates")
+    resolved_patience, patience_resolution = resolve_patience(
+        requested_patience,
+        strategy=settings.strategy,
+        domain_size=grid_size,
+        screening_trials=screens,
+    )
+    limits = parse_limits({**planning_limits, "patience": resolved_patience})
     first = candidate({key: values[0] for key, values in space.items()}, "candidate-0001")
     main = settings.objectives[0]
     with tempfile.TemporaryDirectory(prefix="ecc-dse-plan-") as temporary:
@@ -105,7 +117,7 @@ def plan_version2(project, workspace, store, output, *, spec) -> dict:
             metric=main.metric,
             unit=main.unit,
             direction=main.direction,
-            limits=settings.limits,
+            limits=limits.model_dump(),
             release=(Path(spec).expanduser().resolve().parent / settings.warm_start).resolve()
             if settings.warm_start
             else None,
@@ -164,6 +176,7 @@ def plan_version2(project, workspace, store, output, *, spec) -> dict:
         "objectives": objectives,
         "rungs": rungs,
         "screening_trials": screens,
+        "patience_resolution": patience_resolution,
         "candidates": grid_candidates(space) if settings.strategy == "grid" else [],
         "warm_start": {
             "release": base["release"],
@@ -189,6 +202,7 @@ def validate_version2(payload: dict):
         "objectives",
         "rungs",
         "screening_trials",
+        "patience_resolution",
         "warm_start",
         "parameter_boundary",
     }
@@ -211,6 +225,18 @@ def validate_version2(payload: dict):
             raise invalid("Unsupported DSE strategy or algorithm")
         limits = parse_limits(payload["limits"])
         count = payload["screening_trials"]
+        resolution = payload.get("patience_resolution")
+        if resolution is not None:
+            if not isinstance(resolution, dict):
+                raise invalid("Frozen DSE patience resolution is invalid")
+            resolved, expected_resolution = resolve_patience(
+                resolution.get("requested"),
+                strategy=payload["strategy"],
+                domain_size=math.prod(len(values) for values in space.values()),
+                screening_trials=count,
+            )
+            if resolved != limits.patience or resolution != expected_resolution:
+                raise invalid("Frozen DSE patience resolution is inconsistent")
         rungs = [FrozenRung.model_validate(item).model_dump() for item in payload["rungs"]]
         if not isinstance(rungs, list) or not 1 <= len(rungs) <= 3:
             raise invalid("Invalid DSE rungs")

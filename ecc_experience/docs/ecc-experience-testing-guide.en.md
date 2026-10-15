@@ -1610,14 +1610,20 @@ name or private benchmark assumptions. Example `dse-spec.json`:
     {"through_step": "place", "promote_count": 1}
   ],
   "limits": {"max_trials": 13, "max_seconds": 7200,
-             "trial_timeout_seconds": 1800, "patience": 4},
+             "trial_timeout_seconds": 1800, "patience": "auto"},
   "warm_start": null,
   "warm_start_limit": 3
 }
 ```
 
 Choose actual ranges and budgets from the design spec, baseline capacity and tool
-support. Each axis uses `values` or a closed `range` with a positive `step`; an
+support. `patience` may be a positive integer or `"auto"`. An automatic policy
+uses the frozen discrete candidate domain: grid resolves to the complete
+screening count, while adaptive resolves to the greater of its six-trial startup
+floor and half the screening count, capped by the screening count. The resolved
+value and rule inputs are stored in `patience_resolution`; an explicit integer
+always overrides the policy. This is based on candidate configurations, not the
+number of designs in a benchmark batch. Each axis uses `values` or a closed `range` with a positive `step`; an
 off-grid upper bound is not added. Array parameters use complete arrays in values.
 The discrete space is bounded at 100000 configurations. Provide one to three
 distinct objective IDs with registry units/polarity and use step/scope/corner to
@@ -1751,8 +1757,9 @@ groups' newly measured outcomes.
 
 Current grid execution reserves the entire discrete domain, all later rungs and
 one full plus one fresh validation. For example, a seven-point, single-rung
-domain requires max_trials=9 per group. Set patience to cover the intended
-screening count when comparing full enumeration. Categorical TPE uses startup
+domain requires max_trials=9 per group. With `patience: "auto"`, grid resolves
+to all seven screening points; set an explicit integer only when a deliberate
+early stop is part of the experiment. Categorical TPE uses startup
 proposals for its first six trials; trial seven may use a density ratio. In a
 seven-point enumeration only one point remains at that trial, so executing this
 branch does not establish a learned selection advantage. Assessing selection

@@ -1414,14 +1414,17 @@ checklist、signoff、QoR 的基线，再从冻结案例检查阶段指标。参
     {"through_step": "place", "promote_count": 1}
   ],
   "limits": {"max_trials": 13, "max_seconds": 7200,
-             "trial_timeout_seconds": 1800, "patience": 4},
+             "trial_timeout_seconds": 1800, "patience": "auto"},
   "warm_start": null,
   "warm_start_limit": 3
 }
 ```
 
-这些范围和预算仅演示语法，必须按设计 spec、基线容量和工具能力选择。每个参数轴采用
-`values` 或含正 `step` 的闭区间 `range`；上界不在格点时不额外补点。数组参数可在
+这些范围和预算仅演示语法，必须按设计 spec、基线容量和工具能力选择。`patience` 可以是正整数或
+`"auto"`。自动策略基于冻结的离散候选域：grid 解析为完整筛选次数，adaptive 解析为不小于
+六次启动样本和筛选次数一半的较大值，并且不超过筛选次数。解析后的值、规则和输入会写入
+`patience_resolution`；显式整数始终覆盖自动策略。该规则按候选配置数量计算，不按 benchmark
+批次中的 design 数量计算。每个参数轴采用 `values` 或含正 `step` 的闭区间 `range`；上界不在格点时不额外补点。数组参数可在
 values 中逐项给完整数组。总空间不超过 100000 个离散配置。目标为 1–3 个不同 ID，必须
 匹配 metric registry 的单位和方向；用 step/scope/corner 消除歧义。每个 rung 的第一目标
 来自该 rung 的最后一步；其余目标可来自其前缀。末级目标等于计划 objectives。
@@ -1524,7 +1527,8 @@ logs、artifacts/releases。知识包使用公开 `experience export/import` 迁
 本轮新案例不加入 frozen release，避免将先执行组的结果泄漏给后执行组。
 
 当前 grid 需要为整个离散搜索域预留名额，还必须预留后续 rung 以及 full/fresh 各一次。
-例如单 rung 的 7 点搜索域，每组 max_trials=9；patience 至少覆盖计划的阶段次数，避免
+例如单 rung 的 7 点搜索域，每组 max_trials=9；使用 `patience: "auto"` 时 grid 会解析为
+7 次筛选。只有在实验明确需要提前停止时才设置显式整数，避免
 把提前停止与完整枚举混为一谈。categorical TPE 前 6 次属于启动阶段，第 7 次才可能使用
 density ratio；7 点全枚举时该次也只剩一个可选点，不能据此证明学习提议的选择优势。
 要评估选择质量，需要更丰富的搜索域、重复试验及预先规定的评估协议。

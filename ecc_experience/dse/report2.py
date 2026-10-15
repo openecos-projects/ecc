@@ -79,6 +79,15 @@ def summarize_version2(plan: dict, payload: dict) -> dict:
         "exit_code": payload["exit_code"],
         "strategy": plan["strategy"],
         "algorithm": plan["algorithm"],
+        "screening_trials": plan["screening_trials"],
+        "patience_resolution": plan.get(
+            "patience_resolution",
+            {
+                "mode": "fixed",
+                "requested": plan["limits"]["patience"],
+                "resolved": plan["limits"]["patience"],
+            },
+        ),
         "objectives": plan["objectives"],
         "warm_start": plan["warm_start"],
         "promotions": payload["promotions"],
@@ -97,6 +106,7 @@ def summarize_version2(plan: dict, payload: dict) -> dict:
         "baseline": payload.get("baseline_evidence"),
         "score_delta": payload.get("score_delta"),
         "improved": payload.get("improved"),
+        "stop_reason": payload.get("stop_reason"),
         "safe_to_apply": False,
         "generalization_status": "unproven",
     }
@@ -140,6 +150,7 @@ def report_version2(plan: dict, result, output) -> dict:
             "",
             f"Status: {summary['status']}; exit: {summary['exit_code']}",
             f"Strategy: {summary['strategy']}; selection: {summary['selection']}",
+            f"Patience: {summary['patience_resolution']}",
             f"Measured QoR delta: {summary['score_delta']}; improved: {summary['improved']}",
             "",
             "| Candidate | Rung / mode | Status | Objectives | Seconds | Verified |",

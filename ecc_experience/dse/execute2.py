@@ -71,6 +71,7 @@ def _run(plan, limits, destination, *, resume, select):
             "full_validation": None,
             "fresh_validation": None,
             "elapsed_seconds": 0.0,
+            "stop_reason": None,
             "safe_to_apply": False,
             "generalization_status": "unproven",
             "selection": None,
