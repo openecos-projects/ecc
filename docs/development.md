@@ -754,12 +754,19 @@ LEF antenna rules or gate-area annotations can leave the check without coverage.
 Inspect the native log and report together. No separate antenna JSON is needed.
 
 The EMIR stage consumes `powerAnalysis_ecc/data/pw/power_reporter/instance_power.tsv`
-and the preceding physical database. Set `technology_file_path` in the workspace's
-`config/emir_ecc.json` to a real `process.tech` before running it; the default is
+and the preceding physical database. Set `emir.technology_file_path` to the absolute
+path of a real `process.tech`, using `ecc param set` or `[emir]` in `ecc.toml`.
+The value is replayed into `config/emir_ecc.json` when creating or refreshing the
+workspace; editing only that generated JSON is not persistent. The default is
 an empty placeholder and will stop the step. Supply sources come from iFP's
 `postFloorplan_ecc/data/fp/pdn_generator/power.ploc`, passed as `ploc_file_path`
 without enabling `add_ploc_from_top_def`. These are ideal sources at PDN stripe
 intersections, not a package/pad model. Native outputs go to `emir_ecc/data/emir/`.
+
+CI explicitly selects `test/fixtures/emir/ics55_synthetic.tech`. Its resistance
+and EM limits are invented test data, **not foundry data**. A successful CI run
+with this fixture verifies execution and data handoff only; its IR/EM numbers
+must not be used for signoff. Normal projects do not select it automatically.
 
 Three optional steps can be excluded from a workspace at creation time:
 the synthesis LEC (`lec`), the post-route LEC (`postRouteLec`), and timing

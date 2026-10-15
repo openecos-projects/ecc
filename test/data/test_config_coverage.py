@@ -19,6 +19,7 @@ TEMPLATES = {
     "filler": _PACKAGE_ROOT / "tools/ecc/configs/filler_ecc.json",
     "RCX": _PACKAGE_ROOT / "tools/ecc/configs/rcx_ecc.json",
     "sta": _PACKAGE_ROOT / "tools/ecc/configs/sta_ecc.json",
+    "emir": _PACKAGE_ROOT / "tools/ecc/configs/emir_ecc.json",
     "sizer": _PACKAGE_ROOT / "tools/ecc/configs/sizer_ecc.json",
 }
 # drc_ecc.json is empty today; add it here once it grows static fields so the

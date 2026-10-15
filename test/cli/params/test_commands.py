@@ -365,13 +365,18 @@ class TestRunSet:
                 "--set",
                 "cts.skew_bound=0.05",
                 "--set",
+                f"emir.technology_file_path={tmp_path / 'process.tech'}",
+                "--set",
                 "pdk.tech=prtech/custom.lef",
             ]
         )
         assert rc == 0
 
         params = capture["kwargs"]["parameters"]
-        assert params["config_overrides"] == {"CTS": {"skew_bound": "0.05"}}
+        assert params["config_overrides"] == {
+            "CTS": {"skew_bound": "0.05"},
+            "emir": {"technology_file_path": str(tmp_path / "process.tech")},
+        }
         assert capture["kwargs"]["pdk_overrides"]["tech"].endswith("prtech/custom.lef")
 
     def test_run_set_rejects_unknown_key(self, tmp_path, capsys, create_cli_project):

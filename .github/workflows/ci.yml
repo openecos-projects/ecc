@@ -423,6 +423,10 @@ jobs:
 
       - name: Run design flows
         run: |
+          echo "::warning::EMIR uses synthetic process data for flow testing, not signoff."
+          dist/ecc-bundle/ecc param set emir.technology_file_path \
+            "$PWD/test/fixtures/emir/ics55_synthetic.tech" \
+            --project "designs/${{ matrix.design }}"
           bash nix/scripts/run-designs.sh \
             --ecc "$PWD/dist/ecc-bundle/ecc" \
             --designs-dir designs \

@@ -528,11 +528,17 @@ uv run ecc run --project gcd --preset rtl2gds
 请结合原生日志查看报告。不需要单独的天线检查 JSON 配置。
 
 EMIR 使用 `powerAnalysis_ecc/data/pw/power_reporter/instance_power.tsv` 和前一步的
-物理数据库。运行前，在工作区 `config/emir_ecc.json` 中将 `technology_file_path`
-设为实际的 `process.tech` 路径；默认空值只是占位，未填写时该步骤会停止。
+物理数据库。运行前，通过 `ecc param set emir.technology_file_path /绝对路径/process.tech`
+或 `ecc.toml` 的 `[emir]` 配置真实工艺文件。此值会在创建或刷新工作区时写入
+`config/emir_ecc.json`；仅修改生成的 JSON 不会持久保留。
+默认空值只是占位，未填写时该步骤会停止。
 电源激励使用 iFP 输出的 `postFloorplan_ecc/data/fp/pdn_generator/power.ploc`，
 通过 `ploc_file_path` 传入，不同时启用 `add_ploc_from_top_def`。这些是电源条带
 交点上的理想电源假设，不代表实际封装或 pad。原生结果输出到 `emir_ecc/data/emir/`。
+
+CI 显式使用 `test/fixtures/emir/ics55_synthetic.tech`；其中电阻和 EM 限值均为
+模拟测试数据，不是工艺厂数据。运行成功只验证流程与数据交接，IR/EM 数值不能
+用于签核。普通项目不会自动使用这个文件。
 
 三个可选 step 可在创建 workspace 时按配置排除：综合级 LEC（`lec`）、布线后 LEC（`postRouteLec`）、时序优化（`Timing optimization`）。被跳过的 step 不会进入 workspace 的执行 ledger——其输入自然落到前一个保留 step，也不会为其创建 step 目录。状态机与 resume/rerun 语义零改动；已创建的 ledger 永远不会按新配置重过滤——事后修改策略不会向已有 workspace 插入或删除 step。
 

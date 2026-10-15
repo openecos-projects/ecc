@@ -3,10 +3,38 @@ from unittest.mock import Mock, call
 
 import pytest
 
-from chipcompiler.data import OriginDesign, StepEnum, Workspace, build_workspace_config_paths
+from chipcompiler.data import (
+    OriginDesign,
+    StepEnum,
+    Workspace,
+    build_workspace_config_paths,
+    create_workspace,
+)
+from chipcompiler.data.workspace import refresh_workspace_config
 from chipcompiler.tools.ecc import builder, runner
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.utility import json_read, json_write
+
+
+def test_emir_technology_override_survives_workspace_refresh(tmp_path, minimal_ics55_pdk_factory):
+    fixtures = Path(__file__).resolve().parents[2] / "fixtures"
+    technology_path = fixtures / "emir/ics55_synthetic.tech"
+    override = {"technology_file_path": str(technology_path)}
+    workspace = create_workspace(
+        directory=tmp_path / "workspace",
+        origin_def="",
+        origin_verilog=fixtures / "gcd/gcd.v",
+        pdk="ics55",
+        pdk_root=str(minimal_ics55_pdk_factory(tmp_path / "pdk")),
+        parameters={"config_overrides": {"emir": override}},
+    )
+    config_path = workspace.config[StepEnum.EMIR.value]
+    assert json_read(config_path) == override
+
+    assert json_write(config_path, {"technology_file_path": "stale-path.tech"})
+    refresh_workspace_config(workspace)
+
+    assert json_read(config_path) == override
 
 
 @pytest.fixture
