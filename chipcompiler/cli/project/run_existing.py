@@ -121,11 +121,7 @@ def run_existing_workspace(
                 )
             ]
         )
-    if (
-        command_input.resume
-        or command_input.from_step is not None
-        or command_input.only is not None
-    ):
+    if command_input.from_step is not None or command_input.only is not None:
         from chipcompiler.cli.project.run_workspace import execute_workspace_run
 
         return execute_workspace_run(

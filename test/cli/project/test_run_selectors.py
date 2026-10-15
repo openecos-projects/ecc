@@ -13,7 +13,6 @@ from chipcompiler.cli.project.run_existing import run_existing_workspace
         {"from_step": "Synthesis", "to_step": "postFloorplan"},
         {"from_step": "place"},
         {"only": "place", "force": True},
-        {"resume": True},
     ],
 )
 def test_manifest_workspace_honors_explicit_run_selectors(tmp_path, monkeypatch, selectors):
