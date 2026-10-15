@@ -38,7 +38,8 @@ def test_worker_cancellation_stops_native_descendants(tmp_path, monkeypatch):
 
             assert worker.poll() is not None
             stat = Path(f"/proc/{child_pid}/stat")
-            assert not stat.exists() or stat.read_text().split(")", 1)[1].split()[0] == "Z"
+            with suppress(FileNotFoundError):
+                assert stat.read_text().split(")", 1)[1].split()[0] == "Z"
         finally:
             if worker.poll() is None:
                 worker.kill()
