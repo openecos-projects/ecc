@@ -1820,3 +1820,73 @@ Effectiveness assessment requires repeated seeds, balanced order and held-out
 designs/families, reporting success rates, target-cost distributions and
 uncertainty. Until those gates pass, retain generalization_status=unproven and
 do not automatically publish stronger recommendation policies.
+
+### 21.4 Patience and early stopping
+
+In v2 DSE, `limits.patience` counts consecutive screening observations without
+improvement in the first rung of one design. It defaults to 3 and must be a
+positive integer. It is neither the design count nor a candidate execution cap;
+each design has its own history. `max_trials` caps executions across stages,
+full and fresh validation. These limits have different purposes.
+
+For one objective, a new feasible best value resets stagnation to zero. For
+multiple objectives, the current implementation requires the new observation
+to enter the first Pareto front with a previously unseen objective vector.
+Otherwise stagnation increases, including failed or unknown observations,
+duplicate vectors and results without improvement. Resume replays screening
+history rather than granting a fresh patience allowance. For example, minimizing
+values 100, 95, 96, 97, 98 with patience=3 stops screening after trial five.
+
+Reaching patience ends initial screening, not signoff verification. Feasible
+candidates still follow planned promotion and selection, and the final candidate
+requires independent full and fresh validations. No feasible candidate or a
+failed validation cannot count as success. Retain stop_reason from result.json
+and actual counts, failures and unknowns from the report. List unexecuted
+combinations by subtracting measured candidates from the frozen domain. Current
+grid plan validation still reserves the whole domain plus subsequent validations
+even when execution may stop early.
+
+Use equal patience and budgets across groups when measuring early stopping.
+Report this experiment separately from full enumeration, including screening
+and total execution savings, total duration and final QoR/signoff. First good
+results alone are insufficient. Patience=3 may stop adaptive screening before
+its six startup observations finish; such results cannot establish a benefit
+from TPE density-ratio proposals. Earlier stopping may miss later improvements,
+and one GCD instance cannot determine a generally suitable value.
+
+Current ECC does not automatically derive patience from the number of designs.
+An AI should choose it per design using domain size, budget, strategy startup
+needs and trial cost, then freeze it in the spec/plan before execution. To
+evaluate full enumeration, cover the entire planned screening count. Any future
+automatic policy should record its inputs, rule and resolved integer, permit
+explicit overrides and preserve existing integer configuration and resume
+compatibility. Do not change defaults automatically from this single-design
+experiment before repeated-seed and multi-design validation.
+
+### 21.5 GCD early-stopping example
+
+One frozen-runtime GCD comparison used seven floorplan.core_util candidates,
+one postFloorplan rung and a core_area minimization objective. All groups used
+seed=20261015, max_trials=9, max_seconds=3600, trial_timeout_seconds=900 and
+patience=3. Warm-start consumed only same-design history frozen before execution.
+
+| Strategy | Screens | Full + fresh | Total executions | Executions saved vs grid | Total seconds |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| grid | 7 | 2 | 9 | 0 | 682.478 |
+| adaptive | 6 | 2 | 8 | 1 (11.1%) | 647.203 |
+| adaptive + warm-start | 4 | 2 | 6 | 3 (33.3%) | 581.278 |
+
+Grid improved at every trial and did not stop early. Adaptive stagnation was
+[0,1,0,1,2,3]; warm stagnation was [0,1,2,3]. Both recorded
+stop_reason=patience and completed their own independent full/fresh validations.
+All six complete validations had 17 successful steps, zero violations and
+QoR=94.12176470588234, equal to the trusted baseline with score_delta=0.
+The audit checked 391 step states across 23 independent runs and 973 unchanged
+baseline file hashes. Only the six fully accepted cases entered feedback.
+
+This establishes fewer actual executions in this experiment, not PPA improvement
+or cross-design benefit. Neither adaptive group reached a density-ratio proposal,
+so the experiment does not validate learned TPE selection. Shared-host load,
+concurrent software tests, fixed order and one seed limit timing conclusions.
+GCD candidates, caps and outcomes are examples rather than defaults for other
+designs and are insufficient to enable automatic patience.
