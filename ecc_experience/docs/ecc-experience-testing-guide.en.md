@@ -1854,14 +1854,14 @@ its six startup observations finish; such results cannot establish a benefit
 from TPE density-ratio proposals. Earlier stopping may miss later improvements,
 and one GCD instance cannot determine a generally suitable value.
 
-Current ECC does not automatically derive patience from the number of designs.
-An AI should choose it per design using domain size, budget, strategy startup
-needs and trial cost, then freeze it in the spec/plan before execution. To
-evaluate full enumeration, cover the entire planned screening count. Any future
-automatic policy should record its inputs, rule and resolved integer, permit
-explicit overrides and preserve existing integer configuration and resume
-compatibility. Do not change defaults automatically from this single-design
-experiment before repeated-seed and multi-design validation.
+ECC does not derive patience from the number of designs. A v2 spec may use
+`patience: "auto"`; it resolves grid to the complete screening count and
+adaptive to the greater of its six-trial startup floor and half the screening
+count, capped by that count. The frozen plan records the inputs, rule and
+resolved integer in `patience_resolution`. An explicit integer overrides the
+policy, and the default remains 3 for specs that omit the field. This policy
+does not establish cross-design benefit; report real benchmark evidence before
+changing defaults or publishing a stronger recommendation.
 
 ### 21.5 GCD early-stopping example
 
@@ -1889,4 +1889,5 @@ or cross-design benefit. Neither adaptive group reached a density-ratio proposal
 so the experiment does not validate learned TPE selection. Shared-host load,
 concurrent software tests, fixed order and one seed limit timing conclusions.
 GCD candidates, caps and outcomes are examples rather than defaults for other
-designs and are insufficient to enable automatic patience.
+designs. The experiment validates the stopping mechanism, not cross-design
+benefit or the statistical quality of the automatic policy.

@@ -80,3 +80,76 @@ def test_real_matrix_reports_independence_without_inventing_generalization(tmp_p
     assert all(item["family"] is None for item in report["observations"])
     missing = module.aggregate(tmp_path / "inputs", ["missing"], tmp_path / "missing-report")
     assert missing["exit_code"] == 6
+
+
+def test_packaged_dse_smoke_spec_uses_a_supported_stage_metric():
+    path = Path(__file__).parents[2] / "packaging/experience_cli_smoke.py"
+    specification = importlib.util.spec_from_file_location("experience_cli_smoke", path)
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+
+    spec = module._dse_spec(
+        {
+            "steps": [
+                {"step": "Synthesis", "metrics": []},
+                {
+                    "step": "postFloorplan",
+                    "metrics": [
+                        {"id": "core_area", "unit": "um^2", "status": "available"}
+                    ],
+                },
+            ]
+        }
+    )
+
+    assert spec is not None
+    assert spec["limits"]["patience"] == "auto"
+    assert spec["rungs"] == [{"through_step": "postFloorplan", "promote_count": 1}]
+    assert spec["objectives"][0]["direction"] == "minimize"
+    assert module._dse_spec({"steps": [{"step": "postFloorplan", "metrics": []}]}) is None
+
+
+def test_packaged_dse_patience_contract_checks_the_frozen_plan(tmp_path, monkeypatch):
+    path = Path(__file__).parents[2] / "packaging/experience_cli_smoke.py"
+    specification = importlib.util.spec_from_file_location("experience_cli_smoke", path)
+    module = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(module)
+    output = tmp_path / "output"
+    output.mkdir()
+
+    def invoke(_binary, arguments, _output, label, _expected):
+        assert label == "dse-auto-patience"
+        plan = Path(arguments[arguments.index("--output") + 1])
+        plan.write_text(
+            json.dumps(
+                {
+                    "limits": {"patience": 6},
+                    "patience_resolution": {
+                        "mode": "auto",
+                        "resolved": 6,
+                        "screening_trials": 7,
+                    },
+                }
+            )
+        )
+        return [{"plan": str(plan.resolve())}]
+
+    monkeypatch.setattr(module, "_invoke", invoke)
+    module._dse_patience_contract(
+        Path("ecc"),
+        output,
+        tmp_path / "store",
+        tmp_path / "project",
+        "default",
+        {
+            "steps": [
+                {
+                    "step": "postFloorplan",
+                    "metrics": [
+                        {"id": "core_area", "unit": "um^2", "status": "available"}
+                    ],
+                }
+            ]
+        },
+    )
+    assert (output / "dse-auto-patience-plan.json").is_file()

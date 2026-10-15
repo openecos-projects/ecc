@@ -28,7 +28,14 @@ def _invoke(binary: Path, args: list[str], output: Path, label: str, expected: s
     return payload
 
 
-def run_smoke(binary: Path, project: Path, workspace: str, output: Path) -> dict:
+def run_smoke(
+    binary: Path,
+    project: Path,
+    workspace: str,
+    output: Path,
+    *,
+    include_dse_contract: bool = False,
+) -> dict:
     if output.exists():
         raise FileExistsError("Smoke output must be a new directory")
     output.mkdir(parents=True)
@@ -56,7 +63,16 @@ def run_smoke(binary: Path, project: Path, workspace: str, output: Path) -> dict
     verified = _invoke(binary, ["verify", case_id, "--store", str(store)], output, "verify", {0, 7})
     if verified[0]["integrity"] != "pass":
         raise RuntimeError("Stored evidence integrity failed")
-    _extensions(binary, output, store, case_id, shown[0])
+    _extensions(
+        binary,
+        output,
+        store,
+        project,
+        workspace,
+        case_id,
+        shown[0],
+        include_dse_contract=include_dse_contract,
+    )
     _model_lifecycle(binary, project, output)
     package = output / "experience.tar.gz"
     exported = _invoke(
@@ -120,7 +136,17 @@ def run_smoke(binary: Path, project: Path, workspace: str, output: Path) -> dict
     return {"status": "pass", "case_id": case_id, "verification": verified[0]["status"]}
 
 
-def _extensions(binary: Path, output: Path, store: Path, case_id: str, shown: dict) -> None:
+def _extensions(
+    binary: Path,
+    output: Path,
+    store: Path,
+    project: Path,
+    workspace: str,
+    case_id: str,
+    shown: dict,
+    *,
+    include_dse_contract: bool,
+) -> None:
     features = _invoke(
         binary, ["features", case_id, "--store", str(store)], output, "features", {0}
     )[0]
@@ -158,6 +184,8 @@ def _extensions(binary: Path, output: Path, store: Path, case_id: str, shown: di
             "match-invalid-release",
             {2},
         )
+    if include_dse_contract:
+        _dse_patience_contract(binary, output, store, project, workspace, features)
     invalid_plan = output / "invalid-dse-plan.json"
     invalid_plan.write_text("{}", encoding="utf-8")
     _invoke(
@@ -206,6 +234,122 @@ def _extensions(binary: Path, output: Path, store: Path, case_id: str, shown: di
         for name in ("rejected-dse", "rejected-study.json", "rejected-release.json")
     ):
         raise RuntimeError("Rejected experience input created execution or publication output")
+
+
+def _dse_spec(features: dict) -> dict | None:
+    supported = {"postfloorplan", "place", "cts"}
+    direction_by_metric = {
+        "sta_setup_wns": "maximize",
+        "sta_setup_tns": "maximize",
+        "sta_hold_wns": "maximize",
+        "sta_hold_tns": "maximize",
+        "sta_frequency_mhz": "maximize",
+    }
+    lower_is_better = {
+        "core_area",
+        "die_area",
+        "place_hpwl",
+        "place_grwl",
+        "place_flute_wirelength",
+        "cts_buffer_count",
+        "clock_wirelength",
+    }
+    for step in features.get("steps", []):
+        if step.get("step", "").casefold() not in supported:
+            continue
+        metric = next(
+            (
+                item
+                for item in step.get("metrics", [])
+                if item.get("status") == "available"
+                and isinstance(item.get("id"), str)
+                and isinstance(item.get("unit"), str)
+                and (
+                    item["id"] in lower_is_better
+                    or item["id"] in direction_by_metric
+                )
+            ),
+            None,
+        )
+        if metric is not None:
+            return {
+                "schema_version": 2,
+                "strategy": "adaptive",
+                "seed": 7,
+                "space": {
+                    "floorplan.core_util": {
+                        "range": [0.25, 0.55],
+                        "step": 0.05,
+                    }
+                },
+                "objectives": [
+                    {
+                        "metric": metric["id"],
+                        "unit": metric["unit"],
+                        "direction": direction_by_metric.get(metric["id"], "minimize"),
+                    }
+                ],
+                "rungs": [{"through_step": step["step"], "promote_count": 1}],
+                "limits": {
+                    "max_trials": 9,
+                    "max_seconds": 60,
+                    "trial_timeout_seconds": 30,
+                    "patience": "auto",
+                },
+            }
+    return None
+
+
+def _dse_patience_contract(
+    binary: Path,
+    output: Path,
+    store: Path,
+    project: Path,
+    workspace: str,
+    features: dict,
+) -> None:
+    spec = _dse_spec(features)
+    if spec is None:
+        (output / "dse-auto-patience.json").write_text(
+            json.dumps({"status": "skipped", "reason": "no_supported_stage_metric"}),
+            encoding="utf-8",
+        )
+        return
+    spec_path = output / "dse-auto-patience-spec.json"
+    plan_path = output / "dse-auto-patience-plan.json"
+    spec_path.write_text(json.dumps(spec), encoding="utf-8")
+    planned = _invoke(
+        binary,
+        [
+            "dse",
+            "plan",
+            "--project",
+            str(project),
+            "--workspace",
+            workspace,
+            "--store",
+            str(store),
+            "--spec",
+            str(spec_path),
+            "--output",
+            str(plan_path),
+        ],
+        output,
+        "dse-auto-patience",
+        {0},
+    )
+    frozen = json.loads(plan_path.read_text(encoding="utf-8"))
+    resolution = frozen.get("patience_resolution")
+    if (
+        frozen.get("limits", {}).get("patience") != 6
+        or resolution is None
+        or resolution.get("mode") != "auto"
+        or resolution.get("resolved") != 6
+        or resolution.get("screening_trials") != 7
+    ):
+        raise RuntimeError("Packaged DSE plan did not freeze automatic patience")
+    if planned[0].get("plan") != str(plan_path.resolve()):
+        raise RuntimeError("Packaged DSE plan returned the wrong output path")
 
 
 def _campaign_quality(
@@ -582,10 +726,21 @@ def main() -> int:
     parser.add_argument("--project", type=Path, required=True)
     parser.add_argument("--workspace", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--include-dse-contract",
+        action="store_true",
+        help="Run the optional no-flow DSE patience contract smoke",
+    )
     args = parser.parse_args()
     print(
         json.dumps(
-            run_smoke(args.binary.resolve(), args.project.resolve(), args.workspace, args.output)
+            run_smoke(
+                args.binary.resolve(),
+                args.project.resolve(),
+                args.workspace,
+                args.output,
+                include_dse_contract=args.include_dse_contract,
+            )
         )
     )
     return 0
