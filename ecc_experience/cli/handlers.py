@@ -56,6 +56,11 @@ def _guard(operation: Callable[[], CommandResult]) -> CommandResult:
             "experience_package_selection_invalid": EXIT_USAGE_ERROR,
             "experience_package_invalid": EXIT_GATE_FAILED,
             "experience_package_conflict": EXIT_REVISION_CONFLICT,
+            "experience_dataset_invalid": EXIT_USAGE_ERROR,
+            "experience_model_invalid": EXIT_USAGE_ERROR,
+            "experience_model_leakage": EXIT_GATE_FAILED,
+            "experience_model_unverified": EXIT_GATE_FAILED,
+            "experience_model_incompatible": EXIT_GATE_UNKNOWN,
         }
         return CommandResult.err([error_record(exc.code, reason=str(exc))], codes.get(exc.code, 1))
     except OSError as exc:

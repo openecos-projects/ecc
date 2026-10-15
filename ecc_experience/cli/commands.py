@@ -22,6 +22,7 @@ from ecc_experience.cli.inputs import (
     StoreInput,
     TransferInput,
 )
+from ecc_experience.cli.modeling import dataset_app, model_app
 from ecc_experience.cli.study import study_app
 
 StoreOption = Annotated[str, typer.Option("--store", help="External experience store directory")]
@@ -34,6 +35,8 @@ experience_app.add_typer(campaign_app, name="campaign")
 experience_app.add_typer(release_app, name="release")
 experience_app.add_typer(dse_app, name="dse")
 experience_app.add_typer(study_app, name="study")
+experience_app.add_typer(dataset_app, name="dataset")
+experience_app.add_typer(model_app, name="model")
 
 
 @experience_app.command("collect", help="Collect a read-only observation from a workspace")

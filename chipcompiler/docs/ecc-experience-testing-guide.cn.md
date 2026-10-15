@@ -11,8 +11,9 @@
 enable/status/disable、提交后 attempt outbox 和 drain 恢复，以及 campaign 台账、
 recommend、plan、evaluate、release 和受预算约束的 optimize。campaign quality/recover、
 独立 step 资源观测、阶段 features、冻结 release 匹配 match、有界阶段 dse 以及
-study evaluate/publish 留出评价闭环已实现。跨设计匹配仅 experimental；预测模型、
-复杂搜索、并发调度和共享服务不在当前交付范围。经验包 export/import 提供显式选择、
+study evaluate/publish 留出评价闭环已实现。P4 的 dataset build、可解释 ridge 基线模型、
+留出泄漏检查、evaluate/publish、predict 和 advise 已实现；复杂搜索、并发调度和共享服务
+不在当前交付范围。经验包 export/import 提供显式选择、
 离线完整性检查和幂等导入。**执行前必须以安装版本的
 帮助和输出契约确认能力，不能照猜测调用。
 
@@ -274,7 +275,8 @@ P0 显式采集、查询和校验已经实现。P1 的自动记录只保存提�
 outbox；它不修改参数、不阻塞工程提交，也不把经验写进源码或 wheel。只读推荐、
 计划、比较、release、有预算的完整流程优化及串行 baseline campaign 已实现；
 阶段特征、严格匹配、有界阶段 DSE、留出评价和隔离反馈发布也已实现，详见本手册末尾。
-跨设计迁移未证明，默认检索仍保守；并发调度和资源预测未实现。逐项按安装版本帮助确认能力。
+跨设计迁移未证明，默认检索仍保守；并发调度未实现。P4 模型可对明确记录的资源字段
+建模，但不等于独立进程树测量或已校准的 RAM/CPU 预测。逐项按安装版本帮助确认能力。
 
 ```bash
 EXPERIENCE_STORE=/absolute/path/to/experience-store
@@ -364,7 +366,8 @@ ledger 中的 pass。退出码：0 全部通过，2 输入错误/不支持模式
 生成完成收据；使用 `ecc experience campaign recover --manifest <manifest> --trial-id <trial>`
 核验收据、冻结输入和工具条件后收尾，再 run 继续批次。worker 仍活跃、收据缺失、
 旧版本或无法证明退出时保持20。不要删除锁或伪造终态；结合 campaign-run.json 的
-项目路径和 `ecc process list` 诊断残留。阶段 DSE 使用单独 dse 接口；并发和资源预测未实现。
+项目路径和 `ecc process list` 诊断残留。阶段 DSE 使用单独 dse 接口；并发调度未实现，
+P4 资源 target 仅使用明确记录且 scope 一致的观测值。
 
 声明输入摘要不覆盖完整 include/PDK 内容闭包；工具版本也不等于所有可执行文件
 内容摘要。本命令建立基线、保留经验，不声明 PPA 已改善或经验已跨设计泛化。
@@ -571,7 +574,8 @@ optimize 的 `--project` 可在 project 或 workspace 目录内省略，基线�
 它不会自动恢复中断运行、自动删除失败 workspace、发布 release、放宽 SDC/频率/
 corner 或执行 RTL 修改。再次运行使用新输出目录和新预算。参数证据仍标为
 `configured`，不宣称每个参数都被工具消费；输入闭包、PDK 文件内容和外部工具升级
-的完整冻结尚未实现。当前不强制 RAM/CPU 配额，也不新增资源预测模型。实际总结
+的完整冻结尚未实现。当前不强制 RAM/CPU 配额；P4 可选地建模已记录资源字段，但不
+提供独立进程树测量或校准后的资源预测。实际总结
 必须同时给出基线验收状态、最佳候选及复跑分数、收益或无收益、成本和这些限制。
 
 ### 10.2 比较与发布案例
@@ -954,11 +958,142 @@ publish 重新检查 spec、K、案例、源证据和实验收据，只把明确
 未通过时拒绝发布。新 release 仍然是 verified observations，不是学习到的规则或模型。
 generalization_status 保持 unproven；单个 GCD 只能验证机制，不能证明多设计泛化。
 
+## 16. P4：数据集、可解释模型与建议闭环
+
+P4 将已验证的 experience case 转换为不可变 dataset，再训练一个确定性的 ridge
+基线模型，使用独立留出 dataset 检查泛化范围，只有通过检查才发布 model release。
+模型提供系数和方向作为解释信息，并可对 case 或 dataset 候选给出预测/排序。它只
+产生报告，`safe_to_apply` 永远为 `false`；AI 必须把建议转换为新的有界 DSE 计划，
+运行真实 flow，并用完整 flow、checklist、QoR 和现有 signoff 重新验证。
+
+### 16.1 构建 dataset
+
+先创建并验证训练 release K。dataset 只能来自 `release verify` 可通过的案例，且
+`--through-step` 必须早于 `final_qor` 所依据的最后 step；这样 target 不会泄漏到
+特征前缀。`--groups` 是显式的 case 到设计族映射，不从目录名或 design 名推断：
+
+```bash
+ecc experience release verify --release ./release-K.json --store ./experience-store --json
+ecc experience dataset build \
+  --release ./release-K.json --store ./experience-store \
+  --target final_qor --through-step postFloorplan \
+  --groups ./training-groups.json --output ./training-dataset.json --json
+```
+
+支持的 target 是 `final_qor`、`feasibility`、`metric:<id>` 和
+`resource:<step>:<field>`。resource/metric 必须在 prefix 边界后仍有可核验的目标
+证据。dataset 保存 release digest、feature schema、每个 case 的 input fingerprint、
+attempt、family、process/runtime fingerprint、参数和数值特征；构建时不能覆盖旧文件。
+被排除的案例保存在 `excluded` 中，不能把排除项当成失败样本或零分样本。
+
+为独立设计准备留出 release，使用同样的 target、prefix、process 和 runtime：
+
+```bash
+ecc experience dataset build \
+  --release ./release-heldout.json --store ./experience-store \
+  --target final_qor --through-step postFloorplan \
+  --groups ./heldout-groups.json --output ./heldout-dataset.json --json
+```
+
+训练与留出 dataset 的 input fingerprint 不能重叠。family 也应按设计族隔离；重复
+attempt 不增加独立设计数量。ICS55 可以作为 process scope，但仍须把实际 PDK、工具和
+分析上下文写入 case 的证据，不能用 `ics55` 字符串替代真实 fingerprint。
+
+### 16.2 训练和检查模型
+
+训练模型只使用 dataset 中已声明的 prefix 特征：
+
+```bash
+ecc experience model train \
+  --dataset ./training-dataset.json --ridge 1.0 \
+  --output ./model.json --json
+
+ecc experience model evaluate \
+  --model ./model.json --dataset ./heldout-dataset.json \
+  --min-independent-designs 3 --min-families 2 \
+  --max-mae 10 --min-interval-coverage 0.5 \
+  --output ./model-evaluation.json --json
+```
+
+模型文件保存 feature columns、标准化均值/尺度、ridge 系数、每个特征的方向、训练
+dataset/release、输入 fingerprint、family、process/runtime scope 和训练误差。评价
+文件保存 MAE、RMSE、排序准确度、区间覆盖率、独立设计数、family 数和退出码：
+
+| 状态 | 含义 | CLI 退出码 |
+| --- | --- | ---: |
+| `pass` | 达到独立设计/family 数量和误差、区间覆盖阈值 | 0 |
+| `fail` | 样本范围足够，但误差或区间覆盖未达标 | 6 |
+| `unknown` | 样本或 family 证据不足，不能宣称泛化 | 7 |
+| leakage/error | input 重叠、scope 不兼容、文件损坏或 schema 错误 | 6/7/2，按错误类型 |
+
+`evaluate` 会拒绝训练/留出 input fingerprint 重叠，并拒绝 process/runtime scope 不兼容。
+`unknown` 不能发布。`--min-independent-designs` 和 `--min-families` 是泛化门槛，不是
+模型训练所需的最小行数；单个 GCD 只能验证命令和证据链，不能证明模型适用于其他设计。
+
+### 16.3 发布、预测和候选建议
+
+只有独立留出评价为 `pass` 时才能发布。publish 会重新读取 model、dataset 和 evaluation，
+重新计算 fingerprint，并拒绝任何证据变化：
+
+```bash
+ecc experience model publish \
+  --model ./model.json --evaluation ./model-evaluation.json \
+  --output ./model-release.json --json
+```
+
+对已采集并验证的 case 预测：
+
+```bash
+ecc experience model predict \
+  --model-release ./model-release.json \
+  --case-id '<case-id>' --store ./experience-store --json
+```
+
+对候选 dataset 排序：
+
+```bash
+ecc experience model advise \
+  --model-release ./model-release.json --dataset ./heldout-dataset.json \
+  --limit 10 --output ./model-advice.json --json
+```
+
+`predict` 输出目标、prefix、预测值、上下界和 confidence；`advise` 输出 case、参数、
+预测值和排名。QoR/feasibility 默认从高到低，resource target 从低到高。两个命令都
+保留 process/runtime scope 检查，输出 `safe_to_apply=false`，不会写 workspace、修改
+project 配置或启动 flow。模型建议的正确后续流程是：
+
+1. 读取 `feature_effects`、评价限制和候选参数，检查是否仍满足用户 spec。
+2. 只选择允许的一个或少数参数，创建新的 workspace 或冻结新的 `dse plan`。
+3. 按既有 DSE 流程运行 prefix；候选通过后跑完整 flow 和独立 fresh full-flow。
+4. 采集新的 case，验证报告和 checklist，并在确认独立性后加入下一轮 dataset/release。
+5. 总结 baseline、候选、模型预测、真实 QoR、资源、失败/unknown、scope 和结论；不把
+   预测值当成真实测量值。
+
+### 16.4 P4 验证矩阵
+
+开发或升级 P4 时至少验证以下情形：
+
+| 场景 | 预期 |
+| --- | --- |
+| 合成 dataset → train → evaluate → publish → advise | 成功，发布物可独立校验 |
+| 训练/留出 input fingerprint 重叠 | 拒绝为 leakage，不能 publish |
+| process/runtime 不一致 | 返回 unknown/incompatible，不能 publish |
+| 独立 design 或 family 数不足 | evaluation 为 `unknown`，不能 publish |
+| QoR 缺失、特征/目标非有限 | dataset 排除或拒绝，并保留原因 |
+| 损坏 dataset/model/evaluation/release | 拒绝，不产生覆盖性输出 |
+| predict/advise | 只读，`safe_to_apply=false`，不写 workspace |
+| 旧 experience case/workspace | 仍走已有兼容读取路径；缺失新证据时保守返回 unknown |
+
+真实 GCD 可用于验证构建、CLI、退出码和与既有 store 的兼容性；要声明模型泛化，
+必须另有独立 design/family 的留出证据。P4 不增加 GDS DRC 能力，也不把当前 DRC
+报告扩展为 foundry DRC signoff。
+
 ## 打包版本与 CI 验证范围
 
 现有 design matrix 在每个真实 flow 完成后调用 packaging/experience_cli_smoke.py。
 该检查包含采集幂等、列表/详情、经验包往返、损坏检测、campaign quality、阶段前缀
-features，以及 match/DSE/study 对无效 release/计划/spec/评价报告的退出码。它不会
+features、P4 model train/evaluate/publish/advise，以及 match/DSE/study 对无效
+release/计划/spec/评价报告的退出码。它不会
 额外启动 DSE 搜索，也不会伪造 attempt 或独立家族来让未知证据通过。
 
 ```bash
@@ -971,6 +1106,8 @@ python3 packaging/experience_cli_smoke.py --binary ./dist/ecc/ecc \
 source/wheel/frozen 各自创建计划，因为它们的执行身份可能不同。并行查询同一个
 workspace 可能返回20，保持现有锁语义，不删除其他运行的锁。
 
-当前已实现经验采集、资源观测、恢复、解释性检索、阶段 DSE、留出评价和观察案例
-发布。仍无经过独立设计验证的收益预测/内存时长预测模型，亦未提供并发调度或
-团队共享服务；多 SDC 和 lint 功能继续暂缓。现有 DRC 判据也不代表 GDS DRC 能力。
+当前已实现经验采集、资源观测、恢复、解释性检索、阶段 DSE、留出评价、观察案例
+发布以及 P4 预测模型闭环。模型只在显式声明的 process/runtime/feature/target 范围内
+有效，并且默认 `auto_apply=false`；它不能替代真实 DSE 或 fresh full-flow 验证。
+复杂搜索、并发调度和团队共享服务仍未提供；多 SDC 和 lint 功能继续暂缓。现有 DRC
+判据也不代表 GDS DRC 能力。

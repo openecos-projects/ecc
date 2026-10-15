@@ -13,8 +13,9 @@ collect/list/show/verify and P1 enable/status/disable, post-commit attempt outbo
 recording, and drain recovery, plus campaign ledgers, recommend, plan, evaluate,
 release, and budgeted optimize. campaign quality/recover, neutral step resource
 observations, stage features, frozen-release match, bounded stage dse and isolated
-study evaluate/publish are implemented. Cross-design matching is experimental.
-Prediction models, complex search, parallel scheduling and shared services are
+study evaluate/publish are implemented. P4 dataset build, an explainable ridge
+baseline, held-out leakage checks, evaluate/publish, predict and advise are
+implemented. Complex search, parallel scheduling and shared services remain
 outside this delivery. Experience export/import supports explicit selection,
 offline integrity checks, and idempotent merging.**
 Check the installed runtime's help and output contracts before using any capability.
@@ -306,8 +307,9 @@ wheel. Read-only recommendation, reviewable plans, comparison, releases, and bou
 full-flow optimization and serial baseline campaigns are also implemented. Stage
 features, strict matching, bounded stage DSE, held-out evaluation and isolated
 feedback publication are available in the final sections of this manual.
-Cross-design transfer is unproven; parallel scheduling and resource prediction
-remain unavailable. Check installed help.
+Cross-design transfer is unproven and parallel scheduling remains unavailable. P4 can
+model explicitly recorded resource fields, but that is not an independent process-tree
+measurement or a calibrated RAM/CPU prediction. Check installed help.
 
 ```bash
 EXPERIENCE_STORE=/absolute/path/to/experience-store
@@ -416,7 +418,8 @@ completion receipts. Use `ecc experience campaign recover --manifest <manifest>
 then resume the campaign. Active workers, missing/old receipts or unproven quiescence
 retain 20. Do not delete locks or manufacture terminal records. Diagnose attempt
 projects through campaign-run.json and ecc process list. Stage DSE has its own dse
-interface; parallel scheduling and resource prediction remain unavailable.
+interface; parallel scheduling remains unavailable. P4 resource targets use only
+explicitly recorded observations within a matching scope.
 
 Declared input digests do not verify the complete include/PDK closure; observed versions
 do not hash every executable. Baseline collection does not demonstrate PPA improvement
@@ -648,9 +651,10 @@ step processes in separate sessions. It does not resume interrupted runs, remove
 workspaces, publish releases, relax SDC/frequency/corners, or modify RTL. A new invocation
 uses a new output directory and budget. Parameter evidence remains `configured`, without
 claiming tool consumption. Full input closure, PDK content freezing, and external tool
-version freezing are not implemented. RAM/CPU quotas and resource prediction are not
-enforced. Final summaries must include baseline acceptance, best and fresh scores, gain
-or no gain, cost, and these limits.
+version freezing are not implemented. RAM/CPU quotas are not enforced; P4 may model
+recorded resource fields but does not add independent process-tree measurement or a
+calibrated resource predictor. Final summaries must include baseline acceptance, best and
+fresh scores, gain or no gain, cost, and these limits.
 
 ### 10.2 Compare and release cases
 
@@ -1092,12 +1096,153 @@ K. Empty feedback or an unsuccessful evaluation prevents publication. K+1 still
 contains verified observations, not learned rules or models. generalization_status
 remains unproven: GCD validates mechanisms, not multi-design generalization.
 
+## 16. P4: Dataset, explainable model, and advisory loop
+
+P4 converts verified experience cases into immutable datasets, trains a deterministic
+ridge baseline, checks generalization on an independent held-out dataset, and publishes
+a model release only after that check passes. The model stores coefficients and feature
+directions for explanation and can predict a case or rank dataset candidates. It only
+produces reports: `safe_to_apply` is always `false`. An AI must turn advice into a new
+bounded DSE plan, run the real flow, and recheck full flow, checklist, QoR, and the
+currently supported signoff evidence.
+
+### 16.1 Build datasets
+
+First create and verify training release K. A dataset accepts only cases that pass
+release verification. For `final_qor`, `--through-step` must be earlier than the last
+step used by the target, so the target does not leak into the feature prefix. Supply
+explicit case-to-family labels with `--groups`; ECC never infers them from names or
+directory layout:
+
+```bash
+ecc experience release verify --release ./release-K.json --store ./experience-store --json
+ecc experience dataset build \
+  --release ./release-K.json --store ./experience-store \
+  --target final_qor --through-step postFloorplan \
+  --groups ./training-groups.json --output ./training-dataset.json --json
+```
+
+Targets are `final_qor`, `feasibility`, `metric:<id>`, and
+`resource:<step>:<field>`. Metric/resource targets require verifiable target evidence
+after the prefix boundary. A dataset records the release digest, feature schema, input
+fingerprint, attempt, family, process/runtime fingerprints, parameters, and numeric
+prefix features for every included case. Outputs are new files; excluded cases remain
+in `excluded` with reasons and must not be converted into zero-valued samples.
+
+Build the held-out dataset with the same target, prefix, process, and runtime scope:
+
+```bash
+ecc experience dataset build \
+  --release ./release-heldout.json --store ./experience-store \
+  --target final_qor --through-step postFloorplan \
+  --groups ./heldout-groups.json --output ./heldout-dataset.json --json
+```
+
+Training and held-out input fingerprints must not overlap. Families should also be
+isolated; repeated attempts do not increase the independent-design count. ICS55 may be
+the declared process scope, but the case must still carry real PDK, tool, and analysis
+evidence. The literal string `ics55` is not a substitute for those fingerprints.
+
+### 16.2 Train and evaluate
+
+Train only from the declared prefix features:
+
+```bash
+ecc experience model train \
+  --dataset ./training-dataset.json --ridge 1.0 \
+  --output ./model.json --json
+
+ecc experience model evaluate \
+  --model ./model.json --dataset ./heldout-dataset.json \
+  --min-independent-designs 3 --min-families 2 \
+  --max-mae 10 --min-interval-coverage 0.5 \
+  --output ./model-evaluation.json --json
+```
+
+The model stores feature columns, normalization means/scales, ridge coefficients,
+per-feature directions, training dataset/release IDs, input fingerprints, families,
+process/runtime scope, and training error. The evaluation stores MAE, RMSE, ranking
+accuracy, interval coverage, independent-design/family counts, thresholds, and an exit
+code:
+
+| Status | Meaning | CLI exit |
+| --- | --- | ---: |
+| `pass` | Independent-design/family and metric thresholds are met | 0 |
+| `fail` | Scope is sufficient but error or coverage misses the threshold | 6 |
+| `unknown` | Evidence has too few independent designs or families | 7 |
+| leakage/error | Overlap, incompatible scope, corruption, or invalid schema | 6/7/2 by error |
+
+`evaluate` rejects training/held-out input overlap and incompatible process/runtime
+scope. `unknown` cannot be published. The independent-design and family thresholds are
+generalization gates, not training row requirements. One GCD design can validate the
+mechanism and evidence chain; it cannot prove multi-design generalization.
+
+### 16.3 Publish, predict, and advise
+
+Publish only a passing held-out evaluation. Publication rereads model, dataset, and
+evaluation files, recomputes their fingerprints, and rejects changed evidence:
+
+```bash
+ecc experience model publish \
+  --model ./model.json --evaluation ./model-evaluation.json \
+  --output ./model-release.json --json
+```
+
+Predict a verified case:
+
+```bash
+ecc experience model predict \
+  --model-release ./model-release.json \
+  --case-id '<case-id>' --store ./experience-store --json
+```
+
+Rank candidates in a dataset:
+
+```bash
+ecc experience model advise \
+  --model-release ./model-release.json --dataset ./heldout-dataset.json \
+  --limit 10 --output ./model-advice.json --json
+```
+
+`predict` reports target, prefix, estimate, interval, and confidence. `advise` reports
+case, parameters, estimate, and rank. QoR/feasibility targets sort high-to-low;
+resource targets sort low-to-high. Both commands enforce process/runtime scope and
+emit `safe_to_apply=false`; they do not write a workspace, change project settings, or
+start a flow. The correct next loop is:
+
+1. Read `feature_effects`, evaluation limitations, and candidate parameters against the user spec.
+2. Select only allowed parameters and create a new workspace or frozen `dse plan`.
+3. Run the prefix, then complete full-flow and independent fresh validation for a winner.
+4. Collect the new case, verify reports/checklists, and add it to a later dataset/release only when independent.
+5. Summarize baseline, candidate, predicted and measured QoR, resources, failures/unknowns, scope, and conclusion; never present a prediction as a measurement.
+
+### 16.4 P4 validation matrix
+
+At minimum, validate these cases when developing or upgrading P4:
+
+| Scenario | Expected result |
+| --- | --- |
+| Dataset → train → evaluate → publish → advise | Succeeds and produces independently checkable artifacts |
+| Training/held-out input fingerprint overlap | Rejected as leakage; cannot publish |
+| Process/runtime mismatch | Incompatible/unknown; cannot publish |
+| Too few independent designs or families | Evaluation is `unknown`; cannot publish |
+| Missing QoR or non-finite feature/target | Excluded or rejected with a reason |
+| Corrupt dataset/model/evaluation/release | Rejected without overwriting output |
+| Predict/advise | Read-only with `safe_to_apply=false` |
+| Legacy experience case/workspace | Existing compatibility reader is used; missing evidence stays conservative/unknown |
+
+GCD is suitable for validating dataset construction, CLI behavior, exit codes, and
+compatibility with the existing store. A generalization claim requires independent
+design/family holdout evidence. P4 does not add GDS DRC capability or turn existing
+DRC reports into foundry DRC signoff.
+
 ## Packaged runtime and CI validation scope
 
 The existing design matrix invokes packaging/experience_cli_smoke.py after each
 real flow. It checks collection idempotence, list/show, experience package round
-trips, corruption detection, campaign quality, prefix features, and invalid-input
-exit codes for match/DSE/study. It does not launch another DSE search or invent
+trips, corruption detection, campaign quality, prefix features, the P4 model
+train/evaluate/publish/advise lifecycle, and invalid-input exit codes for match/DSE/study.
+It does not launch another DSE search or invent
 attempt identities or independent families to make unknown evidence pass.
 
 ```bash
@@ -1112,7 +1257,9 @@ frozen runtimes because their execution identities can differ. Concurrent querie
 against one workspace may return 20; preserve locks owned by other operations.
 
 Collection, resource observations, recovery, explainable matching, stage DSE,
-held-out evaluation and observed-case publication are implemented. No benefit or
-memory/runtime prediction model has independent-design validation. Parallel
-scheduling and team sharing services remain unavailable; multi-SDC and the lint
-feature are deferred. Existing DRC checks do not imply GDS DRC capability.
+held-out evaluation, observed-case publication and the P4 prediction lifecycle are
+implemented. Models are valid only within their explicit process/runtime/feature/
+target scope and default to `auto_apply=false`; they do not replace real DSE or
+fresh full-flow validation. Complex search, parallel scheduling and team sharing
+services remain unavailable; multi-SDC and the lint feature are deferred. Existing
+DRC checks do not imply GDS DRC capability.

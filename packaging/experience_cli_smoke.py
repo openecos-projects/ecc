@@ -1,6 +1,7 @@
 """Check packaged experience evidence, feature queries and controlled entry points."""
 
 import argparse
+import hashlib
 import json
 import shutil
 import subprocess
@@ -56,6 +57,7 @@ def run_smoke(binary: Path, project: Path, workspace: str, output: Path) -> dict
     if verified[0]["integrity"] != "pass":
         raise RuntimeError("Stored evidence integrity failed")
     _extensions(binary, output, store, case_id, shown[0])
+    _model_lifecycle(binary, output)
     package = output / "experience.tar.gz"
     exported = _invoke(
         binary,
@@ -267,6 +269,124 @@ def _campaign_quality(
     )
     if report[0]["counts"]["trials"] != 1:
         raise RuntimeError("Campaign quality did not report the recorded observation")
+
+
+def _model_lifecycle(binary: Path, output: Path) -> None:
+    """Exercise the packaged P4 commands with a generic, non-design fixture."""
+    training = output / "model-training.json"
+    heldout = output / "model-heldout.json"
+    model = output / "model.json"
+    evaluation = output / "model-evaluation.json"
+    release = output / "model-release.json"
+    advice = output / "model-advice.json"
+
+    def make_rows(start: int, count: int) -> list[dict]:
+        return [
+            {
+                "case_id": f"model-case-{index}",
+                "input_content_fingerprint": f"model-input-{index}",
+                "group": "family-a" if index % 2 else "family-b",
+                "attempt_id": f"model-attempt-{index}",
+                "features": {
+                    "constant": 1.0,
+                    "spec.utilization": float(index - start + 1 + (0.5 if start else 0)),
+                },
+                "target": 100.0 + 2.0 * (index - start + 1 + (0.5 if start else 0)),
+                "parameters": {
+                    "floorplan.core_util": float(index - start + 1 + (0.5 if start else 0))
+                },
+                "process_fingerprint": "smoke-process",
+                "runtime": {"ecc": "smoke", "openroad": "installed"},
+            }
+            for index in range(start, start + count)
+        ]
+
+    def write_dataset(path: Path, release_id: str, rows: list[dict]) -> None:
+        identity = {
+            "schema": "ecc-experience-model-dataset/1",
+            "feature_schema": "ecc-experience-model-features/1",
+            "release_id": release_id,
+            "release_sha256": f"sha-{release_id}",
+            "target": "final_qor",
+            "through_step": "Synthesis",
+            "groups": {row["case_id"]: row["group"] for row in rows},
+            "rows": rows,
+        }
+        identity_bytes = json.dumps(
+            identity, ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        payload = {
+            **identity,
+            "dataset_id": "dataset-" + hashlib.sha256(identity_bytes).hexdigest(),
+            "summary": {"row_count": len(rows)},
+            "excluded": [],
+            "limitations": [],
+        }
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    write_dataset(training, "smoke-training", make_rows(0, 6))
+    write_dataset(heldout, "smoke-heldout", make_rows(10, 4))
+    _invoke(
+        binary,
+        ["model", "train", "--dataset", str(training), "--output", str(model)],
+        output,
+        "model-train",
+        {0},
+    )
+    evaluated = _invoke(
+        binary,
+        [
+            "model",
+            "evaluate",
+            "--model",
+            str(model),
+            "--dataset",
+            str(heldout),
+            "--output",
+            str(evaluation),
+        ],
+        output,
+        "model-evaluate",
+        {0},
+    )
+    if evaluated[0]["status"] != "pass":
+        raise RuntimeError("Packaged model evaluation did not pass")
+    _invoke(
+        binary,
+        [
+            "model",
+            "publish",
+            "--model",
+            str(model),
+            "--evaluation",
+            str(evaluation),
+            "--output",
+            str(release),
+        ],
+        output,
+        "model-publish",
+        {0},
+    )
+    advised = _invoke(
+        binary,
+        [
+            "model",
+            "advise",
+            "--model-release",
+            str(release),
+            "--dataset",
+            str(heldout),
+            "--output",
+            str(advice),
+            "--limit",
+            "2",
+        ],
+        output,
+        "model-advise",
+        {0},
+    )
+    if advised[0]["safe_to_apply"] is not False or not advice.is_file():
+        raise RuntimeError("Packaged model advice was not read-only")
 
 
 def main() -> int:

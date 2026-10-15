@@ -20,6 +20,9 @@ from ecc_experience.knowledge.release import create_release, verify_release
 from ecc_experience.knowledge.store import ExperienceStore
 from ecc_experience.knowledge.transfer import export_package, import_package
 from ecc_experience.knowledge.verify import verify_case
+from ecc_experience.modeling.dataset import build_dataset
+from ecc_experience.modeling.model import evaluate_model, publish_model, train_model
+from ecc_experience.modeling.predict import advise_dataset, predict_case
 from ecc_experience.models import ExperienceCase, Verification
 from ecc_experience.optimization.evaluate import evaluate as evaluate_cases
 from ecc_experience.optimization.execute import optimize as execute_optimization
@@ -38,6 +41,74 @@ def study_evaluate(spec: str | Path, store: str | Path, output: str | Path) -> d
 
 def study_publish(evaluation: str | Path, store: str | Path, output: str | Path) -> dict:
     return publish_study(evaluation, store, output)
+
+
+def dataset_build(
+    release: str | Path,
+    store: str | Path,
+    output: str | Path,
+    *,
+    target: str,
+    through_step: str,
+    groups: str | Path | None = None,
+) -> dict:
+    return build_dataset(
+        release,
+        store,
+        output,
+        target=target,
+        through_step=through_step,
+        groups=groups,
+    )
+
+
+def model_train(dataset: str | Path, output: str | Path, *, ridge: float = 1.0) -> dict:
+    return train_model(dataset, output, ridge=ridge)
+
+
+def model_evaluate(
+    model: str | Path,
+    dataset: str | Path,
+    output: str | Path,
+    *,
+    min_independent_designs: int = 3,
+    min_families: int = 2,
+    max_mae: float = 10.0,
+    min_interval_coverage: float = 0.5,
+) -> dict:
+    return evaluate_model(
+        model,
+        dataset,
+        output,
+        min_independent_designs=min_independent_designs,
+        min_families=min_families,
+        max_mae=max_mae,
+        min_interval_coverage=min_interval_coverage,
+    )
+
+
+def model_publish(model: str | Path, evaluation: str | Path, output: str | Path) -> dict:
+    return publish_model(model, evaluation, output)
+
+
+def model_predict(
+    model_release: str | Path,
+    case_id: str,
+    store: str | Path,
+    *,
+    through_step: str | None = None,
+) -> dict:
+    return predict_case(model_release, case_id, store, through_step=through_step)
+
+
+def model_advise(
+    model_release: str | Path,
+    dataset: str | Path,
+    output: str | Path,
+    *,
+    limit: int = 10,
+) -> dict:
+    return advise_dataset(model_release, dataset, output, limit=limit)
 
 
 def collect(workspace: str | Path, store: str | Path) -> CollectionResult:
