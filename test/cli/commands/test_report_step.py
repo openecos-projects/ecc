@@ -286,10 +286,12 @@ class TestStepOverview:
             "filler",
             "lvs",
             "drc",
+            "antennacheck",
             "postroutelec",
             "rcx",
             "sta",
             "poweranalysis",
+            "emir",
             "harden",
         ]
 

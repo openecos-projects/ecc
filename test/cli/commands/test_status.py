@@ -41,10 +41,12 @@ class TestStatus:
             "filler",
             "lvs",
             "drc",
+            "antennacheck",
             "postroutelec",
             "rcx",
             "sta",
             "poweranalysis",
+            "emir",
             "harden",
         ]
 
