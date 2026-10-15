@@ -1499,3 +1499,75 @@ QoR 改进，也不会生成经验种子。可信 baseline case 的运行时身�
 case_id。历史 release 只提供有来源的候选，不能替代本轮的阶段、full 与 fresh 验证。
 已审核的 place.density_weight 可用于阶段 DSE；route.bottom_layer/top_layer 仅用于现有
 完整流程优化，限 ics55 公开层目录且 bottom≤top，不能用于尚未包含 route 的前段 DSE。
+
+## 21. grid、adaptive 与 warm-start 的实测对照
+
+本节指导用户和 AI 使用现有命令完成策略对照。先验证机制、证据与成本口径，再进行
+多设计效果评估。一个设计的一次成功运行不能证明策略更优。
+
+### 21.1 冻结对照条件
+
+先完成一份当前版本的可信完整基线，保留 workspace、case_id、QoR、签核结果及资源。
+三个计划必须引用同一基线；只有观察记录、没有可验证 attempt 的旧案例不能作为收益基线。
+固定 ECC、工具、PDK、RTL/SDC、参数默认值、目标单位、搜索域、rung、预算和随机种子。
+在启动任何一组试验之前生成全部 plan，并冻结 warm 组的知识 release。
+
+| 组 | spec 的 strategy | spec 的 warm_start |
+| --- | --- | --- |
+| grid | grid | 不设置 |
+| adaptive | adaptive | 不设置 |
+| warm | adaptive | 显式冻结的 release JSON 路径 |
+
+三组共用 space/objectives/rungs/limits/seed/baseline_case_id；每组使用不同的 plan 文件和
+run 输出目录。目录组织沿用第 19 节：inputs/specs、inputs/plans、store、runs、reports、
+logs、artifacts/releases。知识包使用公开 `experience export/import` 迁移，不手改案例。
+本轮新案例不加入 frozen release，避免将先执行组的结果泄漏给后执行组。
+
+当前 grid 需要为整个离散搜索域预留名额，还必须预留后续 rung 以及 full/fresh 各一次。
+例如单 rung 的 7 点搜索域，每组 max_trials=9；patience 至少覆盖计划的阶段次数，避免
+把提前停止与完整枚举混为一谈。categorical TPE 前 6 次属于启动阶段，第 7 次才可能使用
+density ratio；7 点全枚举时该次也只剩一个可选点，不能据此证明学习提议的选择优势。
+要评估选择质量，需要更丰富的搜索域、重复试验及预先规定的评估协议。
+
+目标与搜索域来自设计 spec，不将 GCD 的利用率或面积阈值作为其他设计默认值。单目标可
+复用 CLI 的确定性最优点规则。多目标必须在看到结果前规定前沿选点策略，再显式
+`--resume --select`，且三组采用相同策略，不能事后挑选有利点。
+
+### 21.2 每组执行到相同验收阶段
+
+先分别运行第 20 节的 `experience dse plan --spec`，再顺序执行三组 `dse run`，等待每组
+full 和 fresh 结束；最后分别执行 `dse report`。阶段成功与 selection_required 都不能计作
+全流程成功。三组必须使用独立派生 workspace 与 run_id，不能共用一次 full/fresh 来节省
+对照成本。失败、超时和未知也进入分母，不删除失败组后重新计算成功率。
+
+对完整结果执行三组两两比较，示例：
+
+```bash
+ecc experience dse compare --plan ./inputs/plans/grid.json \
+  --result ./runs/grid/result.json --other-plan ./inputs/plans/adaptive.json \
+  --other-result ./runs/adaptive/result.json --output ./reports/grid-vs-adaptive.json --json
+```
+
+同样生成 grid-vs-warm 与 adaptive-vs-warm 收据。比较命令只验证和输出观测结果，不能将
+observed_only / benefit_not_established 改写为已证明收益。
+
+### 21.3 必须汇总的结果
+
+每组汇总实际 screen/full/fresh 次数、有效候选比例、选点参数、阶段目标、full/fresh 的
+QoR 与签核、失败原因、预算和总耗时。另设预先冻结且含单位的目标阈值，报告首次达到
+阈值的阶段 trial 序号与累计耗时；它与首次通过完整签核的时间分开统计。
+未达标、未签核、缺少指标分别保留状态和 null，不能填零。
+
+内存列保留每 step 的测量 scope，跨 step 的峰值取最大观测值，不能相加。不同资源 scope
+不直接比较；未测到的短峰与共享页重复计数仍是采样限制。总 elapsed_seconds 与各 step
+耗时是不同口径，不能把各 step 耗时之和称为协调器 wall time。
+
+warm 结果需披露 release 来源、种子实际命中、首条提议来源及种子是否仍需本轮复验。
+分别报告使用既有经验的在线成本和历史案例的生成、验证成本。同设计历史种子只验证
+同设计复用；若已知基线恰好位于搜索域最优端，只能分析恢复已知目标的顺序与成本，不能
+据此声称发现了未知最优配置。相同最终 QoR、score_delta=0 时，不应声称 PPA 提升。
+
+最后记录共享主机负载、运行顺序、缓存及随机种子的影响。单设计、单次、固定顺序的
+耗时差异仅是观测；正式效果评估需要多 seed 重复、平衡运行顺序、设计/家族留出，分别
+报告成功率、达到目标的成本分布及不确定性。完成这些验收前，保留 generalization_status
+为 unproven，不自动发布更强的推荐策略。

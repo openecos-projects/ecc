@@ -1720,3 +1720,96 @@ release candidates still require current stage, full and fresh validation.
 Reviewed place.density_weight is available to stage DSE. Routing layer knobs are
 available to existing complete-flow optimization only, with the ics55 catalog and
 bottom≤top checks; they cannot enter an early prefix before route.
+
+## 21. Measured grid, adaptive and warm-start comparisons
+
+Use the existing commands to compare strategies with auditable evidence and cost
+definitions before evaluating effectiveness across designs. One successful run
+on one design does not establish a better strategy.
+
+### 21.1 Freeze the comparison conditions
+
+First obtain a trusted complete baseline from the current runtime, retaining its
+workspace, case_id, QoR, signoff and resources. All three plans must reference the
+same baseline. An observation without a verifiable attempt cannot establish an
+improvement baseline. Freeze ECC, tools, PDK, RTL/SDC, parameter defaults,
+objective units, domain, rungs, caps and seed. Generate every plan and freeze the
+warm release before starting any group.
+
+| Group | Spec strategy | Spec warm_start |
+| --- | --- | --- |
+| grid | grid | Omitted |
+| adaptive | adaptive | Omitted |
+| warm | adaptive | Explicit frozen release JSON path |
+
+Share space/objectives/rungs/limits/seed/baseline_case_id, with separate plan and
+run output paths. Follow section 19: inputs/specs, inputs/plans, store, runs,
+reports, logs and artifacts/releases. Transfer knowledge through the public
+`experience export/import` commands rather than editing cases. Do not add new
+comparison results to the frozen release: later groups must not consume earlier
+groups' newly measured outcomes.
+
+Current grid execution reserves the entire discrete domain, all later rungs and
+one full plus one fresh validation. For example, a seven-point, single-rung
+domain requires max_trials=9 per group. Set patience to cover the intended
+screening count when comparing full enumeration. Categorical TPE uses startup
+proposals for its first six trials; trial seven may use a density ratio. In a
+seven-point enumeration only one point remains at that trial, so executing this
+branch does not establish a learned selection advantage. Assessing selection
+quality requires a richer domain, repeats and a predefined evaluation protocol.
+
+Choose objectives and domains from the design spec. GCD utilization values or
+area thresholds are examples, never defaults for other designs. A single
+objective can use the CLI's deterministic best-point rule. For multiple
+objectives, define the front-selection policy before inspecting results, then
+use explicit `--resume --select`. Apply the same policy to every group.
+
+### 21.2 Reach the same acceptance stage in every group
+
+Create all plans using section 20's `experience dse plan --spec`, run the groups
+sequentially and wait for each group's full and fresh validations. Then execute
+`dse report` for each. Stage success or selection_required is not complete-flow
+success. Use independent derived workspaces and run IDs; sharing a full/fresh
+execution between strategies invalidates the comparison. Keep failures,
+timeouts and unknown outcomes in the denominator.
+
+Generate all three pairwise receipts; for example:
+
+```bash
+ecc experience dse compare --plan ./inputs/plans/grid.json \
+  --result ./runs/grid/result.json --other-plan ./inputs/plans/adaptive.json \
+  --other-result ./runs/adaptive/result.json --output ./reports/grid-vs-adaptive.json --json
+```
+
+Also generate grid-vs-warm and adaptive-vs-warm. This command validates and
+reports observations. Do not relabel observed_only / benefit_not_established
+as proven benefit.
+
+### 21.3 Required outcome summary
+
+Report actual screen/full/fresh counts, feasible-candidate rate, selected
+parameters, stage objectives, full/fresh QoR and signoff, failures, caps and total
+duration. Predefine a target threshold and unit; report the first stage trial
+reaching it and cumulative duration separately from first complete signoff.
+Preserve unmet, unverified and missing-metric states with null values.
+
+Keep each step's memory-measurement scope. Across steps, take the largest
+observed peak rather than adding peaks. Do not directly compare different
+scopes. Sampling may miss short peaks and count shared pages more than once.
+Coordinator elapsed_seconds and per-step durations have different scopes; a sum
+of step durations is not coordinator wall time.
+
+For warm-start, disclose release provenance, actual matches, first-proposal
+source and current validation. Report online consumption cost separately from
+historical case generation and verification cost. Same-design history tests
+same-design reuse. If the known baseline already occupies the domain's optimum
+boundary, the experiment measures order and cost of recovering a known target,
+not discovery of an unknown optimum. Equal final QoR and score_delta=0 do not
+establish a PPA improvement.
+
+Record shared-host load, execution order, caching and seed limitations. Timing
+differences from a single design, repeat and fixed order remain observations.
+Effectiveness assessment requires repeated seeds, balanced order and held-out
+designs/families, reporting success rates, target-cost distributions and
+uncertainty. Until those gates pass, retain generalization_status=unproven and
+do not automatically publish stronger recommendation policies.
