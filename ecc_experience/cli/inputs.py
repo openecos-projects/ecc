@@ -57,6 +57,26 @@ class CampaignInput:
 
 
 @dataclass(frozen=True)
+class CampaignAnalysisInput:
+    output: OutputOptions
+    source: str
+    output_path: str
+    secondary: str | None = None
+    auxiliary: str | None = None
+    min_independent_designs: int = 3
+    min_families: int = 2
+    min_candidate_configurations: int = 2
+    project: ProjectOptions = ProjectOptions()
+
+
+@dataclass(frozen=True)
+class BenchmarkSpecInput:
+    output: OutputOptions
+    spec: str
+    project: ProjectOptions = ProjectOptions()
+
+
+@dataclass(frozen=True)
 class RecommendInput:
     output: OutputOptions
     project: ProjectOptions

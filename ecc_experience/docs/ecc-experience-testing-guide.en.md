@@ -1338,6 +1338,51 @@ input keeps candidate variation unknown; resource values from different scopes a
 or combined. Missing or malformed observations return 6, while valid but insufficient evidence
 returns 7 and still writes the audit report.
 
+The same benchmark preparation functions are available through the ECC CLI. Use them before
+large benchmark campaigns so aggregation, readiness, comparison, and archival follow one
+auditable contract:
+
+```bash
+ecc experience campaign matrix \
+  --inputs ./observations \
+  --expected-designs ./expected-designs.json \
+  --families ./family-labels.json \
+  --output ./matrix-report \
+  --json
+
+ecc experience campaign readiness \
+  --matrix ./matrix-report \
+  --output ./readiness \
+  --min-independent-designs 3 \
+  --min-families 2 \
+  --min-candidate-configurations 2 \
+  --json
+
+ecc experience campaign effect \
+  --report ./campaign-report \
+  --output ./effect-report \
+  --json
+
+ecc experience campaign archive \
+  --manifest ./campaign/campaign.json \
+  --report ./campaign-report \
+  --output ./campaign-evidence.tar.gz \
+  --json
+
+ecc experience campaign benchmark validate \
+  --spec ./benchmark.json \
+  --json
+```
+
+`campaign matrix` is read-only and writes JSON and Markdown reports. It returns 6 for missing or
+corrupt evidence and 7 when the evidence is valid but insufficient. `campaign readiness` applies
+the declared design, family, candidate, QoR, runtime, and process checks; it never starts EDA and
+never enables model auto-application. `campaign effect` compares trials for the same design and
+reports measured QoR deltas, changed parameters, signoff, and resource deltas only when their
+scopes match. `campaign archive` creates a deterministic gzip tarball, redacts absolute paths in
+JSON values, and refuses to overwrite an existing archive. `campaign benchmark validate` validates
+an execution-neutral serial benchmark plan; it only checks the plan contract and never runs EDA.
+
 ```bash
 python3 packaging/experience_cli_smoke.py --binary ./dist/ecc/ecc \
   --project ./project --workspace baseline --output ./evidence/packaged-smoke

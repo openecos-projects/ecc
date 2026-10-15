@@ -3,6 +3,7 @@ from typing import Annotated
 
 import typer
 
+from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import (
     OutputOptions,
     ProjectOptions,
@@ -12,7 +13,9 @@ from chipcompiler.cli.core.inputs import (
 from chipcompiler.cli.core.invocation import execute_command
 from chipcompiler.cli.core.options import JsonOption, PlainOption
 from chipcompiler.cli.core.types import CommandContext, CommandResult
+from ecc_experience.cli import handlers
 from ecc_experience.cli.handlers import _guard
+from ecc_experience.cli.inputs import BenchmarkSpecInput, CampaignAnalysisInput
 
 
 @dataclass(frozen=True)
@@ -59,6 +62,111 @@ def register_commands(app: typer.Typer) -> None:
             ),
             _report,
         )
+
+    @app.command("matrix", help="Aggregate real design observations into a matrix")
+    def matrix_cmd(
+        *,
+        inputs: Annotated[str, typer.Option("--inputs")],
+        expected_designs: Annotated[str, typer.Option("--expected-designs")],
+        output: Annotated[str, typer.Option("--output")],
+        families: Annotated[str | None, typer.Option("--families")] = None,
+        plain: PlainOption = False,
+        json_output: JsonOption = False,
+    ) -> None:
+        execute_command(
+            "experience",
+            CampaignAnalysisInput(
+                output_options(plain=plain, json_output=json_output),
+                inputs,
+                output,
+                secondary=expected_designs,
+                auxiliary=families,
+            ),
+            handlers.campaign_matrix,
+        )
+
+    @app.command("readiness", help="Check whether a matrix is ready for evaluation")
+    def readiness_cmd(
+        *,
+        matrix: Annotated[str, typer.Option("--matrix")],
+        output: Annotated[str, typer.Option("--output")],
+        min_independent_designs: Annotated[int, typer.Option("--min-independent-designs")] = 3,
+        min_families: Annotated[int, typer.Option("--min-families")] = 2,
+        min_candidate_configurations: Annotated[
+            int, typer.Option("--min-candidate-configurations")
+        ] = 2,
+        plain: PlainOption = False,
+        json_output: JsonOption = False,
+    ) -> None:
+        execute_command(
+            "experience",
+            CampaignAnalysisInput(
+                output_options(plain=plain, json_output=json_output),
+                matrix,
+                output,
+                min_independent_designs=min_independent_designs,
+                min_families=min_families,
+                min_candidate_configurations=min_candidate_configurations,
+            ),
+            handlers.campaign_readiness,
+        )
+
+    @app.command("archive", help="Create a path-redacted campaign evidence archive")
+    def archive_cmd(
+        *,
+        manifest: Annotated[str, typer.Option("--manifest")],
+        report: Annotated[str, typer.Option("--report")],
+        output: Annotated[str, typer.Option("--output")],
+        plain: PlainOption = False,
+        json_output: JsonOption = False,
+    ) -> None:
+        execute_command(
+            "experience",
+            CampaignAnalysisInput(
+                output_options(plain=plain, json_output=json_output),
+                manifest,
+                output,
+                secondary=report,
+            ),
+            handlers.campaign_archive,
+        )
+
+    @app.command("effect", help="Compare candidate trials with their baselines")
+    def effect_cmd(
+        *,
+        report: Annotated[str, typer.Option("--report")],
+        output: Annotated[str, typer.Option("--output")],
+        baselines: Annotated[str | None, typer.Option("--baselines")] = None,
+        plain: PlainOption = False,
+        json_output: JsonOption = False,
+    ) -> None:
+        execute_command(
+            "experience",
+            CampaignAnalysisInput(
+                output_options(plain=plain, json_output=json_output),
+                report,
+                output,
+                auxiliary=baselines,
+            ),
+            handlers.campaign_effect,
+        )
+
+    benchmark_app = create_app(help="Validate execution-neutral benchmark specifications")
+
+    @benchmark_app.command("validate", help="Validate a benchmark spec without running EDA")
+    def benchmark_validate_cmd(
+        *,
+        spec: Annotated[str, typer.Option("--spec")],
+        plain: PlainOption = False,
+        json_output: JsonOption = False,
+    ) -> None:
+        execute_command(
+            "experience",
+            BenchmarkSpecInput(output_options(plain=plain, json_output=json_output), spec),
+            handlers.validate_benchmark_spec,
+        )
+
+    app.add_typer(benchmark_app, name="benchmark")
 
 
 def _create(command: CampaignUtilityInput, _context: CommandContext) -> CommandResult:

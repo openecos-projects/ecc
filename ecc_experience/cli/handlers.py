@@ -10,6 +10,8 @@ from chipcompiler.cli.core.exit_codes import (
 from chipcompiler.cli.core.records import error_record, manifest_error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from ecc_experience.cli.inputs import (
+    BenchmarkSpecInput,
+    CampaignAnalysisInput,
     CampaignInput,
     CollectInput,
     EvaluationInput,
@@ -63,6 +65,7 @@ def _guard(operation: Callable[[], CommandResult]) -> CommandResult:
             "experience_model_incompatible": EXIT_GATE_UNKNOWN,
             "experience_model_registry_invalid": EXIT_USAGE_ERROR,
             "experience_model_registry_empty": EXIT_GATE_UNKNOWN,
+            "experience_benchmark_invalid": EXIT_USAGE_ERROR,
         }
         return CommandResult.err([error_record(exc.code, reason=str(exc))], codes.get(exc.code, 1))
     except OSError as exc:
@@ -514,3 +517,115 @@ def campaign_quality(command_input: CampaignInput, _ctx: CommandContext) -> Comm
         )
 
     return _guard(operation)
+
+
+def campaign_matrix(command_input: CampaignAnalysisInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import benchmark_matrix
+
+        expected = _read_json(command_input.secondary, "--expected-designs", list)
+        families = (
+            _read_json(command_input.auxiliary, "--families", dict)
+            if command_input.auxiliary is not None
+            else None
+        )
+        try:
+            result = benchmark_matrix(
+                command_input.source, expected, command_input.output_path, families
+            )
+        except ValueError as exc:
+            raise ExperienceError(str(exc), code="experience_benchmark_invalid") from exc
+        return CommandResult(
+            records=({"experience": "campaign_matrix", **result},), exit_code=result["exit_code"]
+        )
+
+    return _guard(operation)
+
+
+def campaign_readiness(command_input: CampaignAnalysisInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import benchmark_readiness
+
+        try:
+            result = benchmark_readiness(
+                command_input.source,
+                command_input.output_path,
+                min_independent_designs=command_input.min_independent_designs,
+                min_families=command_input.min_families,
+                min_candidate_configurations=command_input.min_candidate_configurations,
+            )
+        except ValueError as exc:
+            raise ExperienceError(str(exc), code="experience_benchmark_invalid") from exc
+        return CommandResult(
+            records=({"experience": "campaign_readiness", **result},), exit_code=result["exit_code"]
+        )
+
+    return _guard(operation)
+
+
+def campaign_archive(command_input: CampaignAnalysisInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import campaign_archive as archive_campaign
+
+        if not command_input.secondary:
+            raise ExperienceError("--report is required", code="experience_benchmark_invalid")
+        try:
+            result = archive_campaign(
+                command_input.source, command_input.secondary, command_input.output_path
+            )
+        except ValueError as exc:
+            raise ExperienceError(str(exc), code="experience_benchmark_invalid") from exc
+        return CommandResult.ok([{"experience": "campaign_archive", **result}])
+
+    return _guard(operation)
+
+
+def campaign_effect(command_input: CampaignAnalysisInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import campaign_effect as compare_effect
+
+        baselines = (
+            _read_json(command_input.auxiliary, "--baselines", dict)
+            if command_input.auxiliary is not None
+            else None
+        )
+        try:
+            result = compare_effect(command_input.source, command_input.output_path, baselines)
+        except ValueError as exc:
+            raise ExperienceError(str(exc), code="experience_benchmark_invalid") from exc
+        return CommandResult(
+            records=({"experience": "campaign_effect", **result},), exit_code=result["exit_code"]
+        )
+
+    return _guard(operation)
+
+
+def validate_benchmark_spec(
+    command_input: BenchmarkSpecInput, _ctx: CommandContext
+) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import validate_benchmark_spec as validate_spec
+
+        result = validate_spec(command_input.spec)
+        return CommandResult.ok([{"experience": "benchmark_spec_validate", **result}])
+
+    return _guard(operation)
+
+
+def _read_json(path: str | None, option: str, expected: type) -> object:
+    import json
+    from pathlib import Path
+
+    if path is None:
+        raise ExperienceError(f"{option} is required", code="experience_benchmark_invalid")
+    try:
+        value = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ExperienceError(
+            f"Invalid {option} JSON", code="experience_benchmark_invalid"
+        ) from exc
+    if not isinstance(value, expected):
+        raise ExperienceError(
+            f"{option} has an invalid JSON type", code="experience_benchmark_invalid"
+        )
+    return value

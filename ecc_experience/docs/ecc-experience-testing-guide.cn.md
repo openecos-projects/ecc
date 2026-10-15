@@ -1323,6 +1323,50 @@ QoR、候选配置变化，以及带原始 scope 的每 step 资源观测。每�
 候选变化保持 unknown；不同 scope 的资源不会求平均或合并。缺失或格式损坏返回 6 并拒绝
 聚合；格式有效但证据不足返回 7，同时保留审计报告。
 
+相同的基准准备能力也可以通过 ECC CLI 使用。大规模 benchmark 开始前，建议先使用这些
+命令生成矩阵、检查证据是否足够、比较候选效果并归档结果，使整个过程遵循统一且可审计的
+契约：
+
+```bash
+ecc experience campaign matrix \
+  --inputs ./observations \
+  --expected-designs ./expected-designs.json \
+  --families ./family-labels.json \
+  --output ./matrix-report \
+  --json
+
+ecc experience campaign readiness \
+  --matrix ./matrix-report \
+  --output ./readiness \
+  --min-independent-designs 3 \
+  --min-families 2 \
+  --min-candidate-configurations 2 \
+  --json
+
+ecc experience campaign effect \
+  --report ./campaign-report \
+  --output ./effect-report \
+  --json
+
+ecc experience campaign archive \
+  --manifest ./campaign/campaign.json \
+  --report ./campaign-report \
+  --output ./campaign-evidence.tar.gz \
+  --json
+
+ecc experience campaign benchmark validate \
+  --spec ./benchmark.json \
+  --json
+```
+
+`campaign matrix` 是只读操作，写出 JSON 和 Markdown 报告；观测缺失或损坏返回 6，证据格式
+有效但数量不足返回 7。`campaign readiness` 检查声明的 design、family、候选配置、QoR、
+runtime 和工艺范围；它不会启动 EDA，也不会启用模型自动应用。`campaign effect` 只比较同一
+design 的 trial，报告实测 QoR 差值、参数变化、signoff，以及 scope 一致时的资源差值。
+`campaign archive` 生成确定性的 gzip tar 包，将 JSON 值中的绝对路径替换为
+`<path-redacted>`，并拒绝覆盖已有归档。`campaign benchmark validate` 只校验串行、与执行
+无关的 benchmark 计划契约，不会运行 EDA。
+
 ## 18. 扩大测试前先建立可比基线
 
 完整 flow 只有在 `signoff check` 通过、QoR 可用且已提交 snapshot 与持久化配置一致时，

@@ -274,6 +274,58 @@ def campaign_report(
     return report_campaign(manifest, output, ledger)
 
 
+def benchmark_matrix(
+    inputs: str | Path,
+    expected: list[str],
+    output: str | Path,
+    families: dict[str, str] | None = None,
+) -> dict:
+    from ecc_experience.benchmark.matrix import aggregate
+
+    return aggregate(inputs, expected, output, families)
+
+
+def benchmark_readiness(
+    matrix: str | Path,
+    output: str | Path,
+    *,
+    min_independent_designs: int = 3,
+    min_families: int = 2,
+    min_candidate_configurations: int = 2,
+) -> dict:
+    from ecc_experience.benchmark.readiness import check
+
+    return check(
+        matrix,
+        output,
+        min_independent_designs=min_independent_designs,
+        min_families=min_families,
+        min_candidate_configurations=min_candidate_configurations,
+    )
+
+
+def campaign_archive(manifest: str | Path, report: str | Path, output: str | Path) -> dict:
+    from ecc_experience.benchmark.archive import create
+
+    return create(manifest, report, output)
+
+
+def campaign_effect(
+    report: str | Path,
+    output: str | Path,
+    baselines: dict[str, str] | None = None,
+) -> dict:
+    from ecc_experience.benchmark.effect import compare
+
+    return compare(report, output, baselines)
+
+
+def validate_benchmark_spec(spec: str | Path) -> dict:
+    from ecc_experience.benchmark.spec import validate
+
+    return validate(spec)
+
+
 def run_campaign(manifest: str | Path, *, retry_failed: bool = False) -> dict:
     return execute_campaign(manifest, retry_failed=retry_failed)
 
