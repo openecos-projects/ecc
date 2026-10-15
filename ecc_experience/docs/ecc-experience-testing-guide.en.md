@@ -1525,3 +1525,59 @@ checks. Record each remote job's actual status and artifact; a locally passing
 suite does not establish remote CI success. Keep evidence-insufficient matrix
 reports as unknown. Promote a model only after its independent quality and
 effectiveness gates pass; otherwise retain the existing active release.
+
+## 19. Create a campaign directory and export a matrix
+
+`campaign create` prepares projects without running EDA. Explicitly select each
+source project and workspace. Project paths resolve relative to the spec file;
+ECC does not scan private design directories, infer families, or move sources.
+For example, save the following as `sources.json`:
+
+```json
+{
+  "schema_version": 1,
+  "campaign_id": "batch-001",
+  "process_profile": "ics55",
+  "budget": {
+    "max_concurrent_flows": 1,
+    "max_trials_per_design": 2,
+    "timeout_seconds_per_trial": 1800
+  },
+  "designs": [
+    {"id": "example", "project": "./project", "workspace": "completed",
+     "labels": [], "evaluation_group": "explicit-family-label"}
+  ]
+}
+```
+
+```bash
+ecc experience campaign create --spec sources.json --output ./batch-001 --json
+ecc experience campaign validate --manifest ./batch-001/campaign.json --json
+ecc experience campaign run --manifest ./batch-001/campaign.json --json
+ecc experience campaign report --manifest ./batch-001/campaign.json \
+  --output ./batch-001/reports/matrix-001 --json
+```
+
+The root contains `campaign.json` and a README. `inputs/` holds derived input
+projects; `runs/` holds execution state, trials and command evidence; `store/`
+holds immutable cases. `reports/`, `logs/` and
+`artifacts/{releases,datasets,models,packages}/` keep other outputs separate.
+Creation requires a new directory. Failed preparation retains `logs/create.json`
+and command stdout/stderr without publishing a manifest. Retry in a new output
+directory after correcting the problem. Existing handwritten manifests and
+`campaign init` ledger initialization retain their previous semantics.
+
+The report exports `matrix.json`, `matrix.csv` and `matrix.md`, with one row per
+attempt, including failures, retries and pending designs. Rows preserve parameters,
+QoR, step/checklist states, checker counts and resource measurements with their
+scope. Missing, damaged or ambiguous counts remain unknown; STA setup and hold
+remain separate. DRC refers to existing tool checker metrics, without adding
+GDS DRC support. QoR is not ranked across different designs. Exit codes follow
+quality: 0 complete evidence, 6 failed evidence verification, 7 insufficient
+evidence. Files are still exported for 6/7.
+
+Reporting reads the ledger and frozen cases without refreshing source workspaces.
+Use a new report directory outside inputs, runs and store. Prepared projects may
+still reference external RTL/PDK files; this directory is not a self-contained
+input archive. Use the existing reproducible export commands for delivery, and
+do not move active campaigns or manually edit managed paths.

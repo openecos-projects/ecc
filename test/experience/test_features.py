@@ -75,6 +75,22 @@ def test_prefix_has_provenance_zero_and_missing_but_no_later_metrics(stage_case)
     assert result["steps"][0]["tool_identity"] is None
 
 
+def test_invalid_metric_sources_are_not_used_as_zero_counts(stage_case):
+    workspace, store, _case = stage_case
+    path = workspace / "Synthesis_yosys/analysis/qor_metrics.json"
+    report = json.loads(path.read_text())
+    report["integrity"] = {"status": "pass", "invalid_metric_source_ids": ["cell_count"]}
+    path.write_text(json.dumps(report))
+    case = collect_committed_case(workspace, store, read_workspace_observation).case
+
+    result = features(case.case_id, store.root, through_step="Synthesis")
+
+    assert [(item["value"], item["status"]) for item in result["steps"][0]["metrics"]] == [
+        (None, "unavailable"),
+        (None, "unavailable"),
+    ]
+
+
 def test_stored_features_survive_source_removal_and_detect_corruption(stage_case):
     workspace, store, case = stage_case
     import shutil

@@ -248,6 +248,20 @@ def validate_campaign(manifest: str | Path) -> dict:
     return summary
 
 
+def campaign_create(spec: str | Path, output: str | Path) -> dict:
+    from ecc_experience.benchmark.create import create_campaign
+
+    return create_campaign(spec, output)
+
+
+def campaign_report(
+    manifest: str | Path, output: str | Path, *, ledger: str | Path | None = None
+) -> dict:
+    from ecc_experience.benchmark.report import report_campaign
+
+    return report_campaign(manifest, output, ledger)
+
+
 def run_campaign(manifest: str | Path, *, retry_failed: bool = False) -> dict:
     return execute_campaign(manifest, retry_failed=retry_failed)
 

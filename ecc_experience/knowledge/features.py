@@ -94,6 +94,10 @@ def extract_features(
             entry["analysis_context"] = payload.get("context")
             entry["analysis_revision"] = payload.get("analysis_revision")
             entry["tool_identity"] = _tool_identity(case, str(step.get("tool", "")))
+            integrity = payload.get("integrity", {})
+            if not isinstance(integrity.get("invalid_metric_source_ids", []), list):
+                entry["reason"] = "Invalid metric integrity metadata"
+                continue
             for metric in payload.get("metrics", []):
                 value = metric.get("value")
                 if not isinstance(metric.get("id"), str) or not isinstance(metric.get("unit"), str):
@@ -103,7 +107,11 @@ def extract_features(
                     for key in ("scope", "corner", "category", "direction")
                 ):
                     continue
-                available = type(value) in {int, float} and math.isfinite(value)
+                available = (
+                    type(value) in {int, float}
+                    and math.isfinite(value)
+                    and metric.get("id") not in integrity.get("invalid_metric_source_ids", [])
+                )
                 entry["metrics"].append(
                     {
                         "id": metric["id"],

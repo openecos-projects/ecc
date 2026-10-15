@@ -10,6 +10,36 @@ from chipcompiler.engine.snapshot_qor import unavailable_qor_snapshot_extension
 runner = CliRunner()
 
 
+@pytest.mark.parametrize("subcommand,status", [("create", 0), ("report", 7)])
+def test_campaign_utilities_preserve_json_and_exit_code(tmp_path, monkeypatch, subcommand, status):
+    monkeypatch.chdir(tmp_path)
+    calls = []
+
+    def operation(source, output, **options):
+        calls.append((source, output, options))
+        return {"status": "created" if status == 0 else "unknown", "exit_code": status}
+
+    monkeypatch.setattr(f"ecc_experience.api.campaign_{subcommand}", operation)
+    selector = "--spec" if subcommand == "create" else "--manifest"
+    result = runner.invoke(
+        app,
+        [
+            "experience",
+            "campaign",
+            subcommand,
+            selector,
+            "input.json",
+            "--output",
+            "batch",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == status, result.output
+    assert json.loads(result.stdout)[0]["exit_code"] == status
+    assert calls == [("input.json", "batch", {} if subcommand == "create" else {"ledger": None})]
+
+
 def test_optimize_uses_current_project_and_preserves_structured_failure(tmp_path, monkeypatch):
     (tmp_path / "project.json").write_text(
         json.dumps(

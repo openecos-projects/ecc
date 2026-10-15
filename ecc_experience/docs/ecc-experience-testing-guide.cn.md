@@ -1341,3 +1341,49 @@ flow 持久化时同步内存中的 schema 元数据，使新派生且尚未执�
 软件回归、packaged smoke 和真实 design matrix 分别验收。逐项记录远端 job 状态和 artifact，
 本地通过不等于远端 CI 通过；矩阵证据不足仍为 unknown。只有独立质量与效果门槛通过后
 才晋级模型，否则保留原 active release。
+
+## 19. 创建批次目录与导出矩阵
+
+`campaign create` 只准备项目，不运行 EDA。显式提供源项目和 workspace，路径相对
+spec 文件解析；不会扫描设计目录、猜测 design 类型或移动源工程。示例 `sources.json`：
+
+```json
+{
+  "schema_version": 1,
+  "campaign_id": "batch-001",
+  "process_profile": "ics55",
+  "budget": {
+    "max_concurrent_flows": 1,
+    "max_trials_per_design": 2,
+    "timeout_seconds_per_trial": 1800
+  },
+  "designs": [
+    {"id": "example", "project": "./project", "workspace": "completed",
+     "labels": [], "evaluation_group": "explicit-family-label"}
+  ]
+}
+```
+
+```bash
+ecc experience campaign create --spec sources.json --output ./batch-001 --json
+ecc experience campaign validate --manifest ./batch-001/campaign.json --json
+ecc experience campaign run --manifest ./batch-001/campaign.json --json
+ecc experience campaign report --manifest ./batch-001/campaign.json \
+  --output ./batch-001/reports/matrix-001 --json
+```
+
+目录固定分为 `inputs/`（派生输入项目）、`runs/`（台账、试验和命令证据）、`store/`
+（不可变案例）、`reports/`、`logs/` 及 `artifacts/{releases,datasets,models,packages}/`。
+根目录保存 `campaign.json` 和 README。使用新目录；失败准备保留 `logs/create.json`
+及已完成命令的 stdout/stderr，但不发布 manifest。修正问题后选择新的输出目录重试。
+已有手写 manifest 及 `campaign init` 的台账初始化语义不变。
+
+矩阵导出 `matrix.json`、`matrix.csv`、`matrix.md`，每次尝试单独一行，保留失败、重试和
+尚未执行的设计，包含参数、QoR、step/checklist、checker 计数和资源观测及其 scope。
+缺失、损坏或不唯一的指标保持 unknown，不补零；STA setup/hold 分开显示，不相加。
+DRC 指当前工具已有的 checker 指标，不代表新增 GDS DRC 能力。不同设计的 QoR 不作全局
+排名。退出码沿用 quality：0 证据完整、6 证据校验失败、7 证据不足；报告仍在 6/7 时写出。
+
+report 只读取台账和冻结案例，不刷新源 workspace；输入、runs、store 内禁止写报告。
+每次导出使用新目录。准备后的工程仍可能引用外部 RTL/PDK，批次目录不是完整输入归档；
+可复现交付请另用现有 export 功能。活动批次不要移动目录或手工修改受管路径。

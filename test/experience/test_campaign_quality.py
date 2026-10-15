@@ -7,6 +7,7 @@ import pytest
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
 from ecc_experience.api import campaign_quality
 from ecc_experience.benchmark.ledger import initialize, record_trial
+from ecc_experience.benchmark.report import report_campaign
 from ecc_experience.collection.collect import collect_committed_case
 from ecc_experience.files import case_identity
 from ecc_experience.knowledge.store import ExperienceStore
@@ -112,6 +113,54 @@ def _digests(root):
         for path in root.rglob("*")
         if path.is_file()
     }
+
+
+def test_matrix_preserves_every_attempt_and_missing_evidence(campaign, make_case, tmp_path):
+    case = make_case()
+    _record(campaign, trial_id="failed", status="fail")
+    _record(campaign, case.case_id, trial_id="retry")
+    before = _digests(campaign.parent)
+
+    report = report_campaign(campaign, tmp_path / "reports/matrix")
+
+    assert [(row["trial_id"], row["status"], row["qor_score"]) for row in report["rows"]] == [
+        ("failed", "fail", None),
+        ("retry", "pass", 85.0),
+    ]
+    assert report["exit_code"] == 7
+    assert report["safe_to_apply"] is False
+    assert report["rows"][1]["parameters"] == {"place.density": 0.7}
+    assert "scope=legacy_flow_step_ledger" in (tmp_path / "reports/matrix/matrix.csv").read_text()
+    assert json.loads((tmp_path / "reports/matrix/matrix.json").read_text()) == json.loads(
+        json.dumps({key: value for key, value in report.items() if key != "output"})
+    )
+    assert {
+        key: value
+        for key, value in _digests(campaign.parent).items()
+        if not key.startswith("reports/")
+    } == before
+
+
+def test_matrix_pending_and_corruption_are_not_success(campaign, make_case, tmp_path):
+    pending = report_campaign(campaign, tmp_path / "reports/pending")
+    assert (pending["exit_code"], pending["rows"][0]["status"]) == (7, "pending")
+    case = make_case()
+    _record(campaign, case.case_id)
+    repository = ExperienceStore(tmp_path / "store")
+    captured = next(item for item in case.evidence if item.stored_path)
+    (repository.case_directory(case.case_id) / captured.stored_path).write_text("corrupted")
+
+    report = report_campaign(campaign, tmp_path / "reports/corrupt")
+
+    assert report["exit_code"] == 6
+    assert report["rows"][0]["qor_score"] is None
+    assert report["rows"][0]["integrity"] == "fail"
+
+
+@pytest.mark.parametrize("relative", ["input/report", "store/report", "output/report"])
+def test_matrix_rejects_managed_directories(campaign, tmp_path, relative):
+    with pytest.raises(ExperienceError, match="outside"):
+        report_campaign(campaign, tmp_path / relative)
 
 
 def test_complete_observation_is_read_only_and_exposes_resource_scope(campaign, make_case):

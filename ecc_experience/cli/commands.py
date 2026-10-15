@@ -8,6 +8,7 @@ from chipcompiler.cli.core.inputs import output_options, project_options
 from chipcompiler.cli.core.invocation import execute_command
 from chipcompiler.cli.core.options import JsonOption, PlainOption, ProjectOption, WorkspaceOption
 from ecc_experience.cli import handlers
+from ecc_experience.cli.campaign_utilities import register_commands
 from ecc_experience.cli.dse import dse_app
 from ecc_experience.cli.inputs import (
     CampaignInput,
@@ -30,6 +31,7 @@ CaseArgument = Annotated[str, typer.Argument(help="Experience case ID")]
 
 experience_app = create_app(help="Collect, query and verify design experience evidence")
 campaign_app = create_app(help="Run and inspect generic experience campaigns")
+register_commands(campaign_app)
 release_app = create_app(help="Freeze and verify evidence-backed experience releases")
 experience_app.add_typer(campaign_app, name="campaign")
 experience_app.add_typer(release_app, name="release")
