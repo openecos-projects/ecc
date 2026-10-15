@@ -332,6 +332,18 @@ def prepare_benchmark(spec: str | Path, output: str | Path) -> dict:
     return materialize(spec, output)
 
 
+def summarize_benchmark(
+    plan: str | Path,
+    matrix: str | Path,
+    readiness: str | Path,
+    output: str | Path,
+    effect: str | Path | None = None,
+) -> dict:
+    from ecc_experience.benchmark.round_summary import summarize
+
+    return summarize(plan, matrix, readiness, output, effect)
+
+
 def run_campaign(manifest: str | Path, *, retry_failed: bool = False) -> dict:
     return execute_campaign(manifest, retry_failed=retry_failed)
 

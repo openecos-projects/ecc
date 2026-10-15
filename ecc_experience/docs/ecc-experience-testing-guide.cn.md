@@ -1363,6 +1363,14 @@ ecc experience campaign benchmark plan \
 ecc experience campaign benchmark validate \
   --spec ./benchmark.json \
   --json
+
+ecc experience campaign benchmark summary \
+  --plan ./prepared-benchmark \
+  --matrix ./matrix-report \
+  --readiness ./readiness \
+  --effect ./effect-report \
+  --output ./benchmark-summary \
+  --json
 ```
 
 `campaign matrix` 是只读操作，写出 JSON 和 Markdown 报告；观测缺失或损坏返回 6，证据格式
@@ -1375,7 +1383,9 @@ design 的 trial，报告实测 QoR 差值、参数变化、signoff，以及 sco
 物化到一个新的目录，生成 `benchmark-plan.json`、声明 baseline 时生成
 `baseline-sources.json`，以及 `expected-designs.json`、family 映射和可审查的命令模板。
 非 baseline 策略缺少计划文件时，输出保留 `pending` 状态并返回 7。该命令不会复制 design
-数据、创建 workspace 或启动 EDA。
+数据、创建 workspace 或启动 EDA。`campaign benchmark summary` 会校验计划指纹，按 SHA-256
+关联 plan/matrix/readiness/effect 报告，保留聚合后的 6/7 状态并生成确定性的下一步动作。
+它始终保持 `safe_to_apply=false`，不会发布模型或启动 EDA。
 
 ## 18. 扩大测试前先建立可比基线
 

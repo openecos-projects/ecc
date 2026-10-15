@@ -1378,6 +1378,14 @@ ecc experience campaign benchmark plan \
 ecc experience campaign benchmark validate \
   --spec ./benchmark.json \
   --json
+
+ecc experience campaign benchmark summary \
+  --plan ./prepared-benchmark \
+  --matrix ./matrix-report \
+  --readiness ./readiness \
+  --effect ./effect-report \
+  --output ./benchmark-summary \
+  --json
 ```
 
 `campaign matrix` is read-only and writes JSON and Markdown reports. It returns 6 for missing or
@@ -1392,7 +1400,9 @@ an execution-neutral serial benchmark plan; it only checks the plan contract and
 `benchmark-plan.json`, `baseline-sources.json` when baseline is declared, `expected-designs.json`,
 family labels, and reviewable command templates. Missing non-baseline plan files leave the output
 with status `pending` and exit code 7. This command does not copy design data, create workspaces,
-or start EDA.
+or start EDA. `campaign benchmark summary` verifies the plan fingerprint, links the plan/matrix/
+readiness/effect artifacts by SHA-256, preserves the aggregate 6/7 state, and writes deterministic
+next actions. It remains `safe_to_apply=false` and does not publish a model or start EDA.
 
 ```bash
 python3 packaging/experience_cli_smoke.py --binary ./dist/ecc/ecc \

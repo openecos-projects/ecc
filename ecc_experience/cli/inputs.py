@@ -85,6 +85,17 @@ class BenchmarkPlanInput:
 
 
 @dataclass(frozen=True)
+class BenchmarkSummaryInput:
+    output: OutputOptions
+    plan: str
+    matrix: str
+    readiness: str
+    output_path: str
+    effect: str | None = None
+    project: ProjectOptions = ProjectOptions()
+
+
+@dataclass(frozen=True)
 class RecommendInput:
     output: OutputOptions
     project: ProjectOptions

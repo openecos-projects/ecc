@@ -15,7 +15,12 @@ from chipcompiler.cli.core.options import JsonOption, PlainOption
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from ecc_experience.cli import handlers
 from ecc_experience.cli.handlers import _guard
-from ecc_experience.cli.inputs import BenchmarkPlanInput, BenchmarkSpecInput, CampaignAnalysisInput
+from ecc_experience.cli.inputs import (
+    BenchmarkPlanInput,
+    BenchmarkSpecInput,
+    BenchmarkSummaryInput,
+    CampaignAnalysisInput,
+)
 
 
 @dataclass(frozen=True)
@@ -178,6 +183,30 @@ def register_commands(app: typer.Typer) -> None:
             "experience",
             BenchmarkPlanInput(output_options(plain=plain, json_output=json_output), spec, output),
             handlers.prepare_benchmark,
+        )
+
+    @benchmark_app.command("summary", help="Summarize benchmark evidence without running EDA")
+    def benchmark_summary_cmd(
+        *,
+        plan: Annotated[str, typer.Option("--plan")],
+        matrix: Annotated[str, typer.Option("--matrix")],
+        readiness: Annotated[str, typer.Option("--readiness")],
+        output: Annotated[str, typer.Option("--output")],
+        effect: Annotated[str | None, typer.Option("--effect")] = None,
+        plain: PlainOption = False,
+        json_output: JsonOption = False,
+    ) -> None:
+        execute_command(
+            "experience",
+            BenchmarkSummaryInput(
+                output_options(plain=plain, json_output=json_output),
+                plan,
+                matrix,
+                readiness,
+                output,
+                effect,
+            ),
+            handlers.summarize_benchmark,
         )
 
     app.add_typer(benchmark_app, name="benchmark")

@@ -11,6 +11,7 @@ from ecc_experience.benchmark.effect import compare
 from ecc_experience.benchmark.matrix import aggregate
 from ecc_experience.benchmark.plan import materialize
 from ecc_experience.benchmark.readiness import check
+from ecc_experience.benchmark.round_summary import summarize
 from ecc_experience.benchmark.spec import validate
 from ecc_experience.models import ExperienceError
 
@@ -399,3 +400,89 @@ def test_benchmark_plan_cli_preserves_pending_exit_code(tmp_path):
     )
     assert result.exit_code == 7, result.output
     assert json.loads(result.stdout)[0]["status"] == "pending"
+
+
+def test_benchmark_summary_links_artifacts_and_keeps_safe_to_apply_false(tmp_path):
+    project = tmp_path / "design-a"
+    project.mkdir()
+    spec = tmp_path / "benchmark.json"
+    spec.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "benchmark_id": "summary-test",
+                "process_profile": "ics55",
+                "strategies": ["baseline"],
+                "designs": [
+                    {
+                        "id": "design-a",
+                        "project": "./design-a",
+                        "workspace": "baseline",
+                        "family": "logic",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    prepared = tmp_path / "prepared"
+    materialize(spec, prepared)
+    matrix = tmp_path / "matrix"
+    matrix.mkdir()
+    (matrix / "matrix-report.json").write_text(
+        json.dumps(
+            {
+                "schema": "ecc-experience-ci-design-matrix/1",
+                "status": "unknown",
+                "observed_design_count": 1,
+                "independent_input_count": 1,
+                "family_count": 1,
+                "runtime_fingerprints": ["runtime"],
+                "candidate_variation": {"configurations_by_input": {}},
+                "observations": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    readiness = tmp_path / "readiness"
+    readiness.mkdir()
+    (readiness / "readiness.json").write_text(
+        json.dumps(
+            {
+                "schema": "ecc-experience-benchmark-readiness/1",
+                "status": "pass",
+                "exit_code": 0,
+                "matrix": str(matrix.resolve()),
+                "blocking_checks": [],
+                "generalization_status": "ready_for_review",
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = summarize(prepared, matrix, readiness, tmp_path / "summary")
+    assert result["status"] == "pass"
+    assert result["exit_code"] == 0
+    assert result["safe_to_apply"] is False
+    assert len(result["artifacts"]) == 3
+    assert (tmp_path / "summary/benchmark-summary.md").is_file()
+
+
+def test_benchmark_summary_rejects_tampered_plan(tmp_path):
+    plan = tmp_path / "plan.json"
+    payload = {
+        "schema": "ecc-experience-benchmark-plan/1",
+        "plan_sha256": "bad",
+        "benchmark_id": "tampered",
+    }
+    plan.write_text(json.dumps(payload), encoding="utf-8")
+    for name, schema in (
+        ("matrix", "ecc-experience-ci-design-matrix/1"),
+        ("readiness", "ecc-experience-benchmark-readiness/1"),
+    ):
+        directory = tmp_path / name
+        directory.mkdir()
+        (directory / ("matrix-report.json" if name == "matrix" else "readiness.json")).write_text(
+            json.dumps({"schema": schema}), encoding="utf-8"
+        )
+    with pytest.raises(ExperienceError, match="fingerprint"):
+        summarize(plan, tmp_path / "matrix", tmp_path / "readiness", tmp_path / "summary")

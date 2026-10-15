@@ -12,6 +12,7 @@ from chipcompiler.cli.core.types import CommandContext, CommandResult
 from ecc_experience.cli.inputs import (
     BenchmarkPlanInput,
     BenchmarkSpecInput,
+    BenchmarkSummaryInput,
     CampaignAnalysisInput,
     CampaignInput,
     CollectInput,
@@ -620,6 +621,27 @@ def prepare_benchmark(command_input: BenchmarkPlanInput, _ctx: CommandContext) -
         result = materialize_benchmark(command_input.spec, command_input.output_path)
         return CommandResult(
             records=({"experience": "benchmark_plan", **result},), exit_code=result["exit_code"]
+        )
+
+    return _guard(operation)
+
+
+def summarize_benchmark(
+    command_input: BenchmarkSummaryInput, _ctx: CommandContext
+) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import summarize_benchmark as summarize
+
+        result = summarize(
+            command_input.plan,
+            command_input.matrix,
+            command_input.readiness,
+            command_input.output_path,
+            command_input.effect,
+        )
+        return CommandResult(
+            records=({"experience": "benchmark_summary", **result},),
+            exit_code=result["exit_code"],
         )
 
     return _guard(operation)
