@@ -22,7 +22,7 @@ Check the installed runtime's help and output contracts before using any capabil
 
 This manual is not a completed test record. Example paths, names, and budgets explain
 the procedure; they are not validated configurations. For design preparation and
-candidate creation, use the [PPA/DSE manual](ecc-ppa-dse-guide.en.md).
+candidate creation, use the [PPA/DSE manual](../../chipcompiler/docs/ecc-ppa-dse-guide.en.md).
 
 ## 1. Two operating modes
 
@@ -227,7 +227,7 @@ time is not parallel campaign wall time.
 
 ## 7. Bounded candidates and stage DSE
 
-Use the [PPA/DSE manual](ecc-ppa-dse-guide.en.md) to create isolated candidates or a
+Use the [PPA/DSE manual](../../chipcompiler/docs/ecc-ppa-dse-guide.en.md) to create isolated candidates or a
 small sweep. Preserve full configurations; a sweep does not automatically inherit
 historical workspace overrides.
 
@@ -353,6 +353,78 @@ overlap inputs or each other. Its fingerprint can be recorded in an external cam
 ledger. Validation does not run EDA, create workspaces, or create output/store
 directories. Manifest paths are relative; design discovery and label conversion remain
 in the user environment. ECC does not scan private datasets.
+
+### Organizing batch workspaces
+
+Give each batch a separate directory and separate large execution data, user reports,
+command audit files, and reusable knowledge artifacts. This is a caller convention for
+general designs, not a required benchmark taxonomy or a fixed input layout:
+
+```text
+experience-root/
+  README.md
+  campaigns/
+    batch-001/
+      campaign.json
+      inputs/                 # Explicitly prepared ECC projects
+      store/                  # This batch's cases; ECC owns the internal layout
+      runs/                   # Native ledgers, results, attempt projects and receipts
+      reports/                # summary.md, matrices, quality and split results
+      logs/                   # Outer CLI stdout/stderr/exit codes
+      artifacts/
+        releases/
+        datasets/
+        models/
+        packages/
+  library/                    # Explicitly selected and verified cross-batch knowledge
+    store/
+    releases/
+    datasets/
+    models/
+  archives/                   # Static delivery archives
+```
+
+**Keep campaign.json at the batch root.** The current validator requires input
+projects, store, and output_root to remain under the manifest directory. For example,
+use `inputs/design-001` for an input, `store` for store, and `runs` for output_root.
+Do not move the manifest into config/ and use `../store`, or escape the root through
+symlinks. Use existing `experience export/import` commands to add selected cases to
+`library/store` across batches. Prepare inputs through public project/workspace
+commands; moving a registered workspace and editing a manifest path is insufficient.
+
+Native commands manage the internal runs/ and store/ layout. The caller creates
+reports/, logs/, and artifacts/ using redirection and existing `--output` options;
+`campaign init` initializes a ledger, not a directory scaffold. With prepared inputs
+and a complete manifest:
+
+```bash
+BATCH=/path/to/experience-root/campaigns/batch-001
+mkdir -p "$BATCH/reports" "$BATCH/logs"
+ecc experience campaign validate --manifest "$BATCH/campaign.json" --json
+ecc experience campaign run --manifest "$BATCH/campaign.json" --json \
+  > "$BATCH/logs/campaign-run.stdout.json" 2> "$BATCH/logs/campaign-run.stderr.log"
+run_exit=$?
+printf '%s\n' "$run_exit" > "$BATCH/logs/campaign-run.exit"
+ecc experience campaign quality --manifest "$BATCH/campaign.json" --json \
+  > "$BATCH/reports/quality.json" 2> "$BATCH/logs/quality.stderr.log"
+ecc experience campaign summary --manifest "$BATCH/campaign.json" --json \
+  > "$BATCH/reports/summary.json" 2> "$BATCH/logs/summary.stderr.log"
+```
+
+This snippet assumes the caller has not enabled `set -e`. An AI or script must record
+and check every command's exit code separately; a successful final summary must not
+hide a run or quality failure. Also write summary.md with parameters, flow/checklist/
+signoff, QoR, resource scope, failures, unexecuted work, and next actions per design.
+
+Running paths are frozen evidence. Do not reorganize runs/, store/, inputs, or receipt
+paths for presentation; create a new batch when paths must change. Static delivery
+archives can use README.md, summary.md, config/, reports/, artifacts/, audit/, and
+docs/, but must state whether they include a resumable workspace. Logs, a release,
+a dataset, and an experience package alone do not form a complete campaign; label the
+original manifest as an audit copy. Preserve content hashes and a path map when
+moving archived files. Do not rewrite fingerprinted releases, datasets, or cases;
+import and verify the package from its new location before delivery. Keep failed and
+unknown results, rather than archiving successful samples alone.
 
 ### Serial baseline campaigns
 

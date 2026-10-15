@@ -22,7 +22,7 @@ parameter searches are in §9–§11, early PNR DSE in §17, mandatory result su
 §18, and the autonomous AI execution contract in §19.
 
 For repeated tests, negative scenarios, and experience accumulation, use the
-[ICS55 experience testing manual](ecc-experience-testing-guide.en.md) to preserve
+[ICS55 experience testing manual](../../ecc_experience/docs/ecc-experience-testing-guide.en.md) to preserve
 evidence, evaluate recommendations, and manage knowledge versions. Unimplemented
 interfaces are explicitly identified there.
 

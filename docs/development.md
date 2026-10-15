@@ -1142,7 +1142,7 @@ two evidence-backed cases read-only when their input fingerprints match and thei
 has no failures. `experience release create/verify` freezes and rechecks only fully verified
 cases, without copying private paths or enabling automatic application. `recommend` and
 `plan` can bind retrieval to a verified release. The user procedures are documented in the
-[experience testing manual](../chipcompiler/docs/ecc-experience-testing-guide.en.md).
+[experience testing manual](../ecc_experience/docs/ecc-experience-testing-guide.en.md).
 
 Contributor conventions are not repeated here; they live in
 [../CLAUDE.md](../CLAUDE.md) (behavioral guidelines, test placement, module

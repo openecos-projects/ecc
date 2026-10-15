@@ -18,7 +18,7 @@ study evaluate/publish 留出评价闭环已实现。P4 的 dataset build、可�
 帮助和输出契约确认能力，不能照猜测调用。
 
 本手册不是测试完成记录。示例路径、名称和预算仅演示操作，不能视为已验证配置。
-具体设计配置与候选创建方法参见 [PPA/DSE 用户手册](ecc-ppa-dse-guide.cn.md)。
+具体设计配置与候选创建方法参见 [PPA/DSE 用户手册](../../chipcompiler/docs/ecc-ppa-dse-guide.cn.md)。
 
 ## 1. 两种使用模式
 
@@ -205,7 +205,7 @@ flow/checklist/checker 状态、资源 scope、失败原因、命令退出码和
 
 ## 7. 小预算候选与阶段 DSE
 
-先按 [PPA/DSE 手册](ecc-ppa-dse-guide.cn.md) 创建独立候选或小 sweep。每个候选
+先按 [PPA/DSE 手册](../../chipcompiler/docs/ecc-ppa-dse-guide.cn.md) 创建独立候选或小 sweep。每个候选
 都保存完整参数，不能假定 sweep 自动继承历史 workspace 的 override。
 
 参数改变先验证 schema、工具映射和实际生效。没有回执时只能声明 configured 或
@@ -315,6 +315,71 @@ ecc experience campaign validate --manifest campaign.json --json
 输入目录存在，以及 store/output 不覆盖输入或互相覆盖；返回的 fingerprint 可写入
 外部 campaign ledger。校验不会运行 EDA、创建 workspace 或创建 output/store 目录。
 manifest 使用相对路径，设计清单与标签转换由用户环境负责；ECC 不扫描私有数据集。
+
+### 批量测试目录组织
+
+每批测试使用独立目录，将大体积运行数据、用户报告、命令审计和可复用知识产物分开。
+以下是调用方的组织约定，适用于任意设计；不是 benchmark 类型或输入布局的硬编码要求：
+
+```text
+experience-root/
+  README.md
+  campaigns/
+    batch-001/
+      campaign.json
+      inputs/                 # 显式准备的 ECC 项目
+      store/                  # 本批案例，由 ECC 管理内部结构
+      runs/                   # 原生台账、结果、attempt 项目和命令收据
+      reports/                # summary.md、矩阵、质量审计、划分结果
+      logs/                   # 外层 CLI stdout/stderr/退出码
+      artifacts/
+        releases/
+        datasets/
+        models/
+        packages/
+  library/                    # 显式选择、验证后跨批次积累
+    store/
+    releases/
+    datasets/
+    models/
+  archives/                   # 静态交付归档
+```
+
+**campaign.json 放在 batch 根目录。** 当前校验器要求输入项目、store、output_root
+均位于 manifest 所在目录内；例如输入路径使用 `inputs/design-001`，`store` 使用
+`store`，`output_root` 使用 `runs`。不要将 manifest 移到 config/ 后使用 `../store`，
+也不能通过逃逸根目录的软链访问共享库。跨批次通过现有 `experience export/import`
+显式汇入 `library/store`，不修改路径校验。用公开项目/workspace 命令准备输入项目，
+不能移动已注册 workspace 后只修改 manifest 路径。
+
+原生命令负责 runs/、store/ 的内部结构。reports/、logs/、artifacts/ 需要调用方通过
+重定向和已有 `--output` 参数组织；`campaign init` 仅初始化台账，不是目录生成命令。
+例如，在已准备好输入和完整 manifest 后：
+
+```bash
+BATCH=/path/to/experience-root/campaigns/batch-001
+mkdir -p "$BATCH/reports" "$BATCH/logs"
+ecc experience campaign validate --manifest "$BATCH/campaign.json" --json
+ecc experience campaign run --manifest "$BATCH/campaign.json" --json \
+  > "$BATCH/logs/campaign-run.stdout.json" 2> "$BATCH/logs/campaign-run.stderr.log"
+run_exit=$?
+printf '%s\n' "$run_exit" > "$BATCH/logs/campaign-run.exit"
+ecc experience campaign quality --manifest "$BATCH/campaign.json" --json \
+  > "$BATCH/reports/quality.json" 2> "$BATCH/logs/quality.stderr.log"
+ecc experience campaign summary --manifest "$BATCH/campaign.json" --json \
+  > "$BATCH/reports/summary.json" 2> "$BATCH/logs/summary.stderr.log"
+```
+
+这段示例假设调用 shell 未启用 `set -e`；AI 或脚本必须分别记录并检查每条命令的退出码，
+不能以最后一个 summary 命令的成功覆盖 run 或 quality 的失败。`summary.md` 应另外总结
+每个设计的参数、flow/checklist/signoff、QoR、资源口径、失败、未执行项及下一步。
+
+运行中的路径属于冻结证据，不要为了美观搬动 runs/、store/、输入项目或改写收据。
+需要新路径时创建新批次。静态交付归档可以采用 README.md、summary.md、config/、
+reports/、artifacts/、audit/、docs/ 分层，但必须说明是否包含可续跑工作区。仅含日志、
+release、dataset 和经验包的归档不能当成完整 campaign；原 manifest 应标为审计副本。
+归档移动文件时保留内容哈希与路径映射；有指纹的 release、dataset 和案例不重写，
+经验包在新位置 import/verify 后再交付。保留失败与 unknown 结果，避免只归档成功样本。
 
 ### 串行 baseline 批次
 
