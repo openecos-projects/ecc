@@ -9,6 +9,7 @@ from chipcompiler.cli.app import app
 from ecc_experience.benchmark.archive import create as archive_campaign
 from ecc_experience.benchmark.effect import compare
 from ecc_experience.benchmark.matrix import aggregate
+from ecc_experience.benchmark.plan import materialize
 from ecc_experience.benchmark.readiness import check
 from ecc_experience.benchmark.spec import validate
 from ecc_experience.models import ExperienceError
@@ -247,3 +248,115 @@ def test_benchmark_spec_cli_returns_json_without_starting_eda(tmp_path):
     )
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)[0]["execution"]["eda_started"] is False
+
+
+def test_benchmark_plan_materializes_commands_and_matrix_inputs(tmp_path):
+    project = tmp_path / "design-a"
+    project.mkdir()
+    plan = tmp_path / "plans" / "design-a.json"
+    plan.parent.mkdir()
+    plan.write_text("{}", encoding="utf-8")
+    spec = tmp_path / "benchmark.json"
+    spec.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "benchmark_id": "plan-test",
+                "process_profile": "ics55",
+                "strategies": ["baseline", "adaptive"],
+                "designs": [
+                    {
+                        "id": "design-a",
+                        "project": "./design-a",
+                        "workspace": "baseline",
+                        "family": "logic",
+                        "plans": {"adaptive": "plans/design-a.json"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = materialize(spec, tmp_path / "prepared")
+    assert result["status"] == "ready"
+    assert result["exit_code"] == 0
+    assert json.loads((tmp_path / "prepared/expected-designs.json").read_text()) == [
+        "design-a--baseline",
+        "design-a--adaptive",
+    ]
+    assert json.loads((tmp_path / "prepared/families.json").read_text()) == {
+        "design-a--baseline": "logic",
+        "design-a--adaptive": "logic",
+    }
+    assert (
+        json.loads((tmp_path / "prepared/baseline-sources.json").read_text())["designs"][0][
+            "project"
+        ]
+        == "./design-a"
+    )
+    plan_payload = json.loads((tmp_path / "prepared/benchmark-plan.json").read_text())
+    assert plan_payload["execution"] == {"mode": "serial", "eda_started": False, "plans_only": True}
+
+
+def test_benchmark_plan_keeps_missing_strategy_plans_pending(tmp_path):
+    spec = tmp_path / "benchmark.json"
+    spec.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "benchmark_id": "pending-test",
+                "process_profile": "ics55",
+                "strategies": ["adaptive"],
+                "designs": [
+                    {
+                        "id": "design-a",
+                        "project": "./design-a",
+                        "workspace": "baseline",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = materialize(spec, tmp_path / "prepared")
+    assert result["status"] == "pending"
+    assert result["exit_code"] == 7
+    assert result["missing_plans"] == ["design-a/adaptive"]
+
+
+def test_benchmark_plan_cli_preserves_pending_exit_code(tmp_path):
+    spec = tmp_path / "benchmark.json"
+    spec.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "benchmark_id": "cli-plan-test",
+                "process_profile": "ics55",
+                "strategies": ["adaptive"],
+                "designs": [
+                    {
+                        "id": "design-a",
+                        "project": "./design-a",
+                        "workspace": "baseline",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = CliRunner().invoke(
+        app,
+        [
+            "experience",
+            "campaign",
+            "benchmark",
+            "plan",
+            "--spec",
+            str(spec),
+            "--output",
+            str(tmp_path / "prepared"),
+            "--json",
+        ],
+    )
+    assert result.exit_code == 7, result.output
+    assert json.loads(result.stdout)[0]["status"] == "pending"

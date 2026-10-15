@@ -77,6 +77,14 @@ class BenchmarkSpecInput:
 
 
 @dataclass(frozen=True)
+class BenchmarkPlanInput:
+    output: OutputOptions
+    spec: str
+    output_path: str
+    project: ProjectOptions = ProjectOptions()
+
+
+@dataclass(frozen=True)
 class RecommendInput:
     output: OutputOptions
     project: ProjectOptions

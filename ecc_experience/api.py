@@ -326,6 +326,12 @@ def validate_benchmark_spec(spec: str | Path) -> dict:
     return validate(spec)
 
 
+def prepare_benchmark(spec: str | Path, output: str | Path) -> dict:
+    from ecc_experience.benchmark.plan import materialize
+
+    return materialize(spec, output)
+
+
 def run_campaign(manifest: str | Path, *, retry_failed: bool = False) -> dict:
     return execute_campaign(manifest, retry_failed=retry_failed)
 

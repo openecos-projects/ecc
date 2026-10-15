@@ -1354,6 +1354,11 @@ ecc experience campaign archive \
   --output ./campaign-evidence.tar.gz \
   --json
 
+ecc experience campaign benchmark plan \
+  --spec ./benchmark.json \
+  --output ./prepared-benchmark \
+  --json
+
 ecc experience campaign benchmark validate \
   --spec ./benchmark.json \
   --json
@@ -1365,7 +1370,11 @@ runtime 和工艺范围；它不会启动 EDA，也不会启用模型自动应�
 design 的 trial，报告实测 QoR 差值、参数变化、signoff，以及 scope 一致时的资源差值。
 `campaign archive` 生成确定性的 gzip tar 包，将 JSON 值中的绝对路径替换为
 `<path-redacted>`，并拒绝覆盖已有归档。`campaign benchmark validate` 只校验串行、与执行
-无关的 benchmark 计划契约，不会运行 EDA。
+无关的 benchmark 计划契约，不会运行 EDA。`campaign benchmark plan` 会将已校验的 spec
+物化到一个新的目录，生成 `benchmark-plan.json`、声明 baseline 时生成
+`baseline-sources.json`，以及 `expected-designs.json`、family 映射和可审查的命令模板。
+非 baseline 策略缺少计划文件时，输出保留 `pending` 状态并返回 7。该命令不会复制 design
+数据、创建 workspace 或启动 EDA。
 
 ## 18. 扩大测试前先建立可比基线
 

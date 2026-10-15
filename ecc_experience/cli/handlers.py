@@ -10,6 +10,7 @@ from chipcompiler.cli.core.exit_codes import (
 from chipcompiler.cli.core.records import error_record, manifest_error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from ecc_experience.cli.inputs import (
+    BenchmarkPlanInput,
     BenchmarkSpecInput,
     CampaignAnalysisInput,
     CampaignInput,
@@ -608,6 +609,18 @@ def validate_benchmark_spec(
 
         result = validate_spec(command_input.spec)
         return CommandResult.ok([{"experience": "benchmark_spec_validate", **result}])
+
+    return _guard(operation)
+
+
+def prepare_benchmark(command_input: BenchmarkPlanInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import prepare_benchmark as materialize_benchmark
+
+        result = materialize_benchmark(command_input.spec, command_input.output_path)
+        return CommandResult(
+            records=({"experience": "benchmark_plan", **result},), exit_code=result["exit_code"]
+        )
 
     return _guard(operation)
 

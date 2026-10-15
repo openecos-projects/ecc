@@ -15,7 +15,7 @@ from chipcompiler.cli.core.options import JsonOption, PlainOption
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from ecc_experience.cli import handlers
 from ecc_experience.cli.handlers import _guard
-from ecc_experience.cli.inputs import BenchmarkSpecInput, CampaignAnalysisInput
+from ecc_experience.cli.inputs import BenchmarkPlanInput, BenchmarkSpecInput, CampaignAnalysisInput
 
 
 @dataclass(frozen=True)
@@ -164,6 +164,20 @@ def register_commands(app: typer.Typer) -> None:
             "experience",
             BenchmarkSpecInput(output_options(plain=plain, json_output=json_output), spec),
             handlers.validate_benchmark_spec,
+        )
+
+    @benchmark_app.command("plan", help="Materialize a benchmark plan without running EDA")
+    def benchmark_plan_cmd(
+        *,
+        spec: Annotated[str, typer.Option("--spec")],
+        output: Annotated[str, typer.Option("--output")],
+        plain: PlainOption = False,
+        json_output: JsonOption = False,
+    ) -> None:
+        execute_command(
+            "experience",
+            BenchmarkPlanInput(output_options(plain=plain, json_output=json_output), spec, output),
+            handlers.prepare_benchmark,
         )
 
     app.add_typer(benchmark_app, name="benchmark")

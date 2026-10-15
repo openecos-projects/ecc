@@ -1369,6 +1369,11 @@ ecc experience campaign archive \
   --output ./campaign-evidence.tar.gz \
   --json
 
+ecc experience campaign benchmark plan \
+  --spec ./benchmark.json \
+  --output ./prepared-benchmark \
+  --json
+
 ecc experience campaign benchmark validate \
   --spec ./benchmark.json \
   --json
@@ -1382,6 +1387,11 @@ reports measured QoR deltas, changed parameters, signoff, and resource deltas on
 scopes match. `campaign archive` creates a deterministic gzip tarball, redacts absolute paths in
 JSON values, and refuses to overwrite an existing archive. `campaign benchmark validate` validates
 an execution-neutral serial benchmark plan; it only checks the plan contract and never runs EDA.
+`campaign benchmark plan` materializes the validated spec into a new directory containing
+`benchmark-plan.json`, `baseline-sources.json` when baseline is declared, `expected-designs.json`,
+family labels, and reviewable command templates. Missing non-baseline plan files leave the output
+with status `pending` and exit code 7. This command does not copy design data, create workspaces,
+or start EDA.
 
 ```bash
 python3 packaging/experience_cli_smoke.py --binary ./dist/ecc/ecc \
