@@ -27,6 +27,8 @@ _PHYSICAL_STEPS = frozenset(
         "postFloorplan",
         "preplace",
         "place",
+        "diff_opt",
+        "diff_buffering",
         "diff_sizing",
         "CTS",
         "legalization",

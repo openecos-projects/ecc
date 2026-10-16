@@ -15,6 +15,7 @@ class Evaluation:
     script: str
     prefix: str
     rc: str
+    clock: str
     marker: str
 
 
@@ -23,13 +24,15 @@ EVALUATIONS = {
         "evaluate_placement_rc.tcl",
         "PLACEMENT",
         "placement_MET2",
+        "ideal",
         "OPENROAD_PLACEMENT_AUDIT_END design_unchanged=1 clock=ideal rc=placement",
     ),
     "external-gr50": Evaluation(
         "evaluate_openroad_gr.tcl",
         "GR",
         "GR50_MET2_MET5",
-        "OPENROAD_GR_AUDIT_END design_unchanged=1 clock=ideal rc=global_routing",
+        "propagated",
+        "OPENROAD_GR_AUDIT_END design_unchanged=1 clock=propagated rc=global_routing",
     ),
 }
 
@@ -96,7 +99,7 @@ def evaluate(batch: Path, case: dict, stage: str, definition: Path, netlist: Pat
         "case": case["name"],
         "timing_ns": timing,
         "electrical_checks": metrics,
-        "clock": "ideal",
+        "clock": specification.clock,
         "corner": "TT",
         "rc": specification.rc,
         "design_unchanged": True,

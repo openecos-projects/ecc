@@ -119,7 +119,11 @@ def run_only(flow: "EngineFlow", name: str, *, force: bool = False) -> StepRunRe
     if not force and is_finished_step_state(steps[index].get("state")):
         return StepRunResult(ok=True, executed=())
     _require_steps_available(flow, index)
-    workspace_step = flow.get_workspace_step(name)
+    # ``diff_opt`` is the canonical selector for an older persisted
+    # ``diff_buffering`` ledger.  Resolve the index first, then use the raw
+    # persisted name to obtain its workspace step and output directory.
+    persisted_name = steps[index]["name"]
+    workspace_step = flow.get_workspace_step(persisted_name)
     (output_dir,) = _validated_output_dirs(flow.workspace, [workspace_step])
     _invalidate_suffix(flow, index)
     return _run_selected(flow, [(workspace_step, output_dir)])
@@ -138,6 +142,12 @@ def _require_step_index(flow: "EngineFlow", name: str) -> int:
     canonical = normalize_flow_step(name)
     for index, step in enumerate(steps):
         if step.get("name") == canonical:
+            return index
+        # A pre-migration ledger records the old step name, while the
+        # canonical selector and flow target now use diff_opt.  Keep the raw
+        # ledger entry executable so migration does not require rewriting its
+        # artifact directory before the first rerun.
+        if canonical == "diff_opt" and step.get("name") == "diff_buffering":
             return index
     folded = str(name or "").casefold()
     for index, step in enumerate(steps):

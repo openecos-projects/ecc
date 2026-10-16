@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import math
 import os
 from copy import deepcopy
 from pathlib import Path
@@ -12,7 +11,6 @@ from chipcompiler.data import (
     WorkspaceStep,
     build_workspace_config_paths,
 )
-from chipcompiler.data.config_params.dreamplace_sizing import DEFAULT_DIFF_SIZING_COEFFICIENTS
 from chipcompiler.tools.ecc import builder as ecc_builder
 from chipcompiler.tools.ecc_dreamplace.parameter_overrides import (
     apply_direct_config_overrides,
@@ -21,6 +19,10 @@ from chipcompiler.tools.ecc_dreamplace.parameter_overrides import (
     apply_parameter_overrides as _apply_parameter_overrides,
 )
 from chipcompiler.utility import json_read, json_write
+
+from .diff_opt import apply_diff_opt_defaults
+from .diff_opt import prepare_drive_table as prepare_diff_opt_drive_table
+from .timing_coefficients import resolve_timing_coefficients
 
 
 def apply_parameter_overrides(
@@ -53,7 +55,41 @@ def _set_step_fields(params: dict, step: WorkspaceStep) -> dict:
     return params
 
 
+def _apply_placement_buffering_profile(
+    workspace: Workspace, step: EccStep, params: dict
+) -> tuple[dict, set[str]]:
+    """Expand the small placement buffering mode into internal lane settings."""
+
+    if step.name != StepEnum.PLACEMENT.value or params.get("buffering_mode") != "candidate":
+        return params, set()
+    params = params | {
+        "buffering_segment_strategy": "continuous",
+        "buffering_candidate_strategy": "discrete_net_gradient",
+        "buffering_candidate_drive_type_mode": "four_strength_table",
+        # Placement S5B1 owns one Route-B scheduler round per window.  The
+        # general buffering default is intentionally larger for standalone
+        # buffering flows, so make the placement profile explicit here.
+        "buffering_continuous_steps": 1,
+        "buffering_fixed_buffer_master": "",
+        "buffering_fixed_bsu_index": None,
+    }
+    params = prepare_diff_opt_drive_table(workspace, step, params)
+    return params, {
+        "buffering_segment_strategy",
+        "buffering_candidate_strategy",
+        "buffering_candidate_drive_type_mode",
+        "buffering_candidate_drive_strength_table",
+        "buffering_continuous_steps",
+        "buffering_fixed_buffer_master",
+        "buffering_fixed_bsu_index",
+    }
+
+
 def step_config_path(workspace: Workspace, step: WorkspaceStep) -> Path:
+    if step.name == StepEnum.DIFF_OPT.value:
+        return Path(step.data.workdir_for(step.name)) / "dreamplace_diff_opt.json"
+    if step.name == StepEnum.DIFF_BUFFERING.value:
+        return Path(step.data.workdir_for(step.name)) / "dreamplace_diff_buffering.json"
     if step.name == StepEnum.DIFF_SIZING.value:
         return Path(step.data.workdir_for(step.name)) / "dreamplace_diff_sizing.json"
     return Path(workspace.config["dreamplace"])
@@ -69,18 +105,7 @@ def _apply_diff_sizing_defaults(params: dict) -> dict:
         or not 0 <= continuous_steps <= 1000
     ):
         raise ValueError("diff_sizing_continuous_steps must be an integer in [0, 1000]")
-    policy = result.get("diff_sizing_coefficients", {})
-    if not isinstance(policy, dict) or set(policy) - DEFAULT_DIFF_SIZING_COEFFICIENTS.keys():
-        raise ValueError("diff_sizing_coefficients must be an object with wns, tns, cap, slew")
-    coefficients = DEFAULT_DIFF_SIZING_COEFFICIENTS | policy
-    for name, value in coefficients.items():
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or not math.isfinite(value)
-            or value < 0
-        ):
-            raise ValueError(f"diff_sizing_coefficients.{name} must be finite and nonnegative")
+    coefficients = resolve_timing_coefficients(result, "diff_sizing_coefficients")
     result["diff_sizing_coefficients"] = coefficients
     result.update(
         flow_kind="sizing",
@@ -189,23 +214,36 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
     parameter_data = _current_parameter_data(workspace)
     params = apply_parameter_overrides(params, parameter_data)
     params = apply_direct_config_overrides(params, parameter_data)
-    if step.name == StepEnum.DIFF_SIZING.value:
+    params, internal_buffering_keys = _apply_placement_buffering_profile(workspace, step, params)
+    if step.name == StepEnum.DIFF_OPT.value:
+        params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
+    elif step.name == StepEnum.DIFF_SIZING.value:
         params = _apply_diff_sizing_defaults(params)
+    elif step.name == StepEnum.DIFF_BUFFERING.value:
+        # Legacy workspaces retain the old step name, but execute the
+        # placement-parasitic diff_opt controller and its canonical tuple
+        # configuration.  Keep the old fields as aliases for migration.
+        params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
 
     from dreamplace.flows.flow_config import resolve_flow_config
 
     dreamplace_overrides = parameter_data.get("dreamplace")
     explicit_keys = set(dreamplace_overrides) if isinstance(dreamplace_overrides, dict) else set()
     explicit_keys.update(apply_direct_config_overrides({}, parameter_data))
+    explicit_keys.update(internal_buffering_keys)
     params = resolve_flow_config(params, explicit_keys=explicit_keys)
     # Canonical profiles own defaults; explicit workspace values own the final
     # effective config and therefore must be replayed after profile expansion.
     params = apply_parameter_overrides(params, parameter_data)
     params = apply_direct_config_overrides(params, parameter_data)
-    if step.name == StepEnum.DIFF_SIZING.value:
+    if step.name == StepEnum.DIFF_OPT.value:
+        params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
+    elif step.name == StepEnum.DIFF_SIZING.value:
         # Workspace-level placement values (density, padding and routability)
         # are intentionally not shared with the standalone sizing lane.
         params = _apply_diff_sizing_defaults(params)
+    elif step.name == StepEnum.DIFF_BUFFERING.value:
+        params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
     params = _set_step_fields(params, step)
 
     config_path = step_config_path(workspace, step)

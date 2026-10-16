@@ -37,6 +37,8 @@ CANONICAL_TO_DISPLAY = {
     "preplace": "Preplace",
     "fixFanout": "Fanout",
     "place": "Place",
+    "diff_buffering": "DiffBuffering",
+    "diff_opt": "DiffOpt",
     "diff_sizing": "DiffSizing",
     "CTS": "CTS",
     "legalization": "Legal",
@@ -176,6 +178,11 @@ def _is_contiguous_flow(names: list[str], skip: tuple[str, ...] | None) -> bool:
     from chipcompiler.data.workspace_config import canonical_flow_chain
 
     chain = canonical_flow_chain()
+    # ``diff_buffering`` was the persisted name before the canonical
+    # placement-parasitic step was renamed to ``diff_opt``.  Compare legacy
+    # ledgers against the new chain without rewriting their stored endpoint
+    # names; execution can still preserve the old alias metadata.
+    names = ["diff_opt" if name == "diff_buffering" else name for name in names]
     candidates = [chain]
     if skip is None:
         # Undeclared: the default skips the synthesis LEC, and ledgers from

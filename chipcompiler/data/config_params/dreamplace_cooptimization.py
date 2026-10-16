@@ -95,6 +95,17 @@ SCHEMAS = (
         ),
     ),
     config_param(
+        "place.timing_metric_scope",
+        "dreamplace",
+        ("timing_metric_scope",),
+        "setup_plus_recovery",
+        applies="placement",
+        choices=("setup_only", "setup_plus_recovery"),
+        description=(
+            "max timing checks used by placement WNS/TNS: setup_only or setup_plus_recovery"
+        ),
+    ),
+    config_param(
         "place.placement_sizing_mode",
         "dreamplace",
         ("placement_sizing_mode",),

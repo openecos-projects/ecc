@@ -62,6 +62,7 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
         (StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart),
         (StepEnum.PREPLACE, "sizer", StateEnum.Unstart),
         (StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart),
+        (StepEnum.DIFF_OPT, "dreamplace", StateEnum.Unstart),
         (StepEnum.DIFF_SIZING, "dreamplace", StateEnum.Unstart),
         (StepEnum.CTS, "ecc", StateEnum.Unstart),
         (StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart),
@@ -120,6 +121,7 @@ def test_build_flow_range_accepts_antenna_after_drc(spelling):
 def test_build_flow_range_normalizes_aliases_and_rejects_reverse_ranges():
     assert [step for step, _tool, _state in builder_module.build_flow_range("place", "cts")] == [
         StepEnum.PLACEMENT,
+        StepEnum.DIFF_OPT,
         StepEnum.DIFF_SIZING,
         StepEnum.CTS,
     ]

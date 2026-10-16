@@ -74,10 +74,13 @@ runtime、profile、DEF/netlist/SDC 和 LEF/Liberty 都保存到新 batch。
   启动前校验冻结文件，全部成功后自动执行 `verify`。流程或最终校验失败，
   `batch.exit` 都会非零。
 
-外部 evaluator 使用本套 ICS55 TT Liberty、ideal clocks、4 个线程。
-Placement RC 固定 MET2；GR 使用 MET2–MET5、容量调整 0.5、50 次拥塞迭代，
-跳过时钟 net 和超过 100 个终端的 net。两个 evaluator 都不执行 repair，
+外部 evaluator 使用本套 ICS55 TT Liberty、4 个线程。
+Placement RC 使用 ideal clocks，固定 MET2；GR50 使用 propagated clocks，
+MET2–MET5、容量调整 0.5、50 次拥塞迭代，并显式设置
+`-skip_large_fanout_nets 100`。其余网络选择沿用 OpenROAD；clock net 若达到
+该阈值也会被跳过。两个 evaluator 都不执行 repair，
 并检查实例、坐标和连接关系没有被改变。它们的 Tcl 文件也会被冻结并核对哈希。
+此前冻结批次保留原脚本和时钟口径；重评测应使用新目录，不能把旧数值改标为新口径。
 
 主要代码入口：`prepare.py` 管输入/runtime/项目准备，`run_case.py` 管单 case
 流程，`runner.py` 管并发，`external.py` 和两份 Tcl 管外部评测，
