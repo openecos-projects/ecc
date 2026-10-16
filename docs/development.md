@@ -738,16 +738,19 @@ The default post-route sequence is `route → filler → lvs → drc → antenna
 → postRouteLec → RCX → sta → powerAnalysis → emir → Harden`. LVS, DRC and the
 antenna checker check the filled layout before post-route equivalence checking;
 RCX then provides the parasitics for
-timing and power analysis. LEC is a verification-only step: RCX consumes the
-preceding antennaCheck physical outputs, not the LEC proof. This order applies to
+timing and power analysis. LEC, antennaCheck and emir do not supply physical artifacts to later steps.
+RCX bypasses antennaCheck and the LEC proof; Harden bypasses emir, so an
+advisory failure cannot leave downstream stages without physical inputs. This order applies to
 newly created preset flows and canonical ranges; existing workspace ledgers and
 explicit custom flows retain their stored order.
 
 The report-only `antennaCheck` step calls iMJ's `init_mj → check_antenna →
 destroy_mj`; it does not insert diodes or repair violations. The native report is
 `antennaCheck_ecc/data/mj/antenna_checker/antenna_check.rpt`, copied unchanged to
-`antennaCheck_ecc/report/antennaCheck.rpt`. Violations do not stop the flow;
-native failure or a missing new report does. Step `Success` means the check
+`antennaCheck_ecc/report/antennaCheck.rpt`. Violations, native failure and missing reports do not stop the surrounding flow.
+A failed invocation keeps its `Incomplete` execution state. Both antennaCheck and
+emir appear as nonblocking attention items in home and step checklists, including
+after successful execution, since their reports and coverage need manual review. Step `Success` means the check
 invocation and report publication completed, not a clean-design verdict: absent
 LEF antenna rules or gate-area annotations can leave the check without coverage.
 Inspect the native log and report together. No separate antenna JSON is needed.

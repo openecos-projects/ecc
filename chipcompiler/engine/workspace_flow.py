@@ -1,5 +1,7 @@
 from typing import Any
 
+from chipcompiler.data import ADVISORY_FLOW_STEPS
+
 
 def build_flow_for_workspace(workspace, *, create_step_workspaces: bool = True):
     import chipcompiler.engine as engine_api
@@ -40,6 +42,11 @@ def iter_workspace_steps(workspace):
         yield flow_step, workspace_step
         if workspace_step is not None:
             created_steps[workspace_step.name] = workspace_step
+            if (
+                workspace_step.name in ADVISORY_FLOW_STEPS
+                or workspace_step.tool in _lec_step_tools()
+            ):
+                continue
             if _step_category(flow_step) == "PNR" and workspace_step.tool not in _lec_step_tools():
                 pnr_step = workspace_step
             previous_step = workspace_step

@@ -98,6 +98,19 @@ def test_execution_failure_keeps_main_blocking_semantics():
     assert result.state == StateEnum.Imcomplete.value
 
 
+def test_successful_flow_with_advisory_failure_has_no_blocking_failed_step():
+    class Flow:
+        def run_steps(self, *, rerun=False, observer=None):
+            observer.on_step_completed(SimpleNamespace(name="emir"), StateEnum.Imcomplete)
+            observer.on_step_completed(SimpleNamespace(name="Harden"), StateEnum.Success)
+            return True
+
+    result = execute(Flow(), ExecutionPlan(intent="run"), event_sink=object())
+    assert result.succeeded
+    assert result.failed_step is None
+    assert result.executed_steps == ("Harden",)
+
+
 def test_default_execution_observer_commits_completed_steps(monkeypatch, tmp_path):
     from chipcompiler.engine import execution
 

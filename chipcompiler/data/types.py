@@ -73,6 +73,11 @@ class SkippableStepEnum(StepBaseEnum):
         return True
 
 
+# Advisory analyses retain their execution state but neither gate the flow nor
+# become the source of physical design artifacts for downstream steps.
+ADVISORY_FLOW_STEPS: Final = frozenset({StepEnum.ANTENNA_CHECK.value, StepEnum.EMIR.value})
+
+
 FLOW_STEP_CATEGORIES: Final[dict[str, FlowStepCategory]] = {
     StepEnum.RTL2GDS.value: FlowStepCategory.PNR,
     StepEnum.INIT.value: FlowStepCategory.PNR,

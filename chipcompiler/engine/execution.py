@@ -64,7 +64,7 @@ def execute(flow: Any, plan: ExecutionPlan, *, event_sink: Any = None) -> Execut
         _notify_execution(event_sink, "on_execution_finished", "interrupted", str(exc))
         raise
     executed_steps = tuple(getattr(observer, "executed_steps", ()))
-    failed_step = getattr(observer, "failed_step", None)
+    failed_step = None if succeeded else getattr(observer, "failed_step", None)
     state = StateEnum.Success.value if succeeded else StateEnum.Imcomplete.value
     result = ExecutionResult(
         succeeded=succeeded,

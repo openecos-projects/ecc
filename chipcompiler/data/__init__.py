@@ -20,6 +20,7 @@ from .step import (
     step_storage_name,
 )
 from .types import (
+    ADVISORY_FLOW_STEPS,
     DEFAULT_LEC_ENGINE,
     DEFAULT_SKIP_STEPS,
     FINISHED_STEP_STATES,
@@ -98,6 +99,7 @@ from .workspace_transaction import (
 )
 
 __all__ = [
+    "ADVISORY_FLOW_STEPS",
     "FlowStepCategory",
     "FLOW_STEP_CATEGORIES",
     "default_flow_step_category",

@@ -515,16 +515,17 @@ uv run ecc run --project gcd --preset rtl2gds
 
 默认布线后流程为 `route → filler → lvs → drc → antennaCheck → postRouteLec
 → RCX → sta → powerAnalysis → emir → Harden`。LVS、DRC 和天线检查先检查填充后的版图，随后执行布线后
-等价性检查，再由 RCX 为时序和功耗分析提供寄生参数。LEC 只做验证，不参与
-物理产物传递：RCX 使用前一步 antennaCheck 的物理输出，而不是 LEC 的证明文件。
+等价性检查，再由 RCX 为时序和功耗分析提供寄生参数。LEC、antennaCheck 和 emir 不向后续步骤传递物理产物：RCX 绕过天线检查和 LEC，
+Harden 绕过 emir，因此 advisory 步骤失败不会导致后续步骤缺少物理输入。
 新顺序适用于新建的预设流程及规范步骤范围；已有工作区的执行记录和显式
 自定义流程仍保留原顺序。
 
 `antennaCheck` 调用 iMJ 的 `init_mj → check_antenna → destroy_mj`，只检查，
 不插入二极管、不自动修复。原生报告为
 `antennaCheck_ecc/data/mj/antenna_checker/antenna_check.rpt`，原样复制到
-`antennaCheck_ecc/report/antennaCheck.rpt`。发现违例仍继续流程；原生调用失败
-或未生成本次报告则失败。步骤 `Success` 只表示执行和报告输出完成，不表示
+`antennaCheck_ecc/report/antennaCheck.rpt`。发现违例、原生调用失败或未生成本次报告均不阻断后续 flow；
+调用失败仍保留 `Incomplete` 执行状态。antennaCheck 和 emir 在首页及步骤 checklist 中
+均作为非阻断的 attention 项，执行成功后仍提示人工审阅报告和检查覆盖。步骤 `Success` 只表示执行和报告输出完成，不表示
 天线检查通过：LEF 缺少天线规则或引脚 gate-area 信息时可能没有实际检查覆盖。
 请结合原生日志查看报告。不需要单独的天线检查 JSON 配置。
 

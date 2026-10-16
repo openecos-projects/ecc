@@ -63,11 +63,9 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
         "filler",
         "lvs",
         "drc",
-        "antennaCheck",
         "RCX",
         "sta",
         "powerAnalysis",
-        "emir",
         "Harden",
     ]
     for previous_name, current_name in zip(physical_names[:-1], physical_names[1:], strict=True):
@@ -78,11 +76,20 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
             previous.output.verilog,
             previous.output.db,
         )
+    assert steps["antennaCheck"].input.def_ == steps["drc"].output.def_
+    assert steps["emir"].input.def_ == steps["powerAnalysis"].output.def_
+
+    # Read-only workspace projections must use the same bypass as execution.
+    from chipcompiler.engine.workspace_flow import iter_workspace_steps
+
+    projected = {entry["name"]: step for entry, step in iter_workspace_steps(workspace)}
+    for name in ("RCX", "Harden"):
+        assert projected[name].input.def_ == steps[name].input.def_
     assert steps["sta"].output.spef == steps["RCX"].output.spef
     if not skip:
         lec = steps["postRouteLec"]
         assert (lec.input.gate_verilog, lec.input.golden_verilog) == (
-            steps["antennaCheck"].output.verilog,
+            steps["drc"].output.verilog,
             workspace.design.origin_verilog,
         )
 

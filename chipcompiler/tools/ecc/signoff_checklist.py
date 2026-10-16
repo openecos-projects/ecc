@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 
 from chipcompiler.data import (
+    ADVISORY_FLOW_STEPS,
     Checklist,
     SkippableStepEnum,
     StateEnum,
@@ -64,14 +65,6 @@ _REQUIRED_FLOW_STEPS = (
     StepEnum.RCX.value,
     StepEnum.STA.value,
     StepEnum.HARDEN.value,
-)
-
-# These analyses are part of the RTL2GDS ledger, but they are advisory checks.
-# Their execution/result state is visible in the checklist without becoming a
-# prerequisite gate for later flow stages.
-_ADVISORY_FLOW_STEPS = (
-    StepEnum.ANTENNA_CHECK.value,
-    StepEnum.EMIR.value,
 )
 
 _CONFIG_FILENAMES = {
@@ -538,6 +531,8 @@ def refresh_step_checklist(workspace: Workspace, step: WorkspaceStep) -> bool:
     checklist_path.parent.mkdir(parents=True, exist_ok=True)
     checklist = Checklist(checklist_path)
     items = [*_quality_gate_items(workspace, step), *_step_artifact_items(workspace, step)]
+    if step.name in ADVISORY_FLOW_STEPS:
+        items.extend(item for item in _flow_items(workspace) if item["step"] == step.name)
     step.checklist.checklist = checklist.replace(items)
     if getattr(workspace, "directory", None):
         rebuild_home_checklist(workspace)
@@ -552,13 +547,15 @@ def _flow_items(workspace: Workspace) -> list[dict]:
         if isinstance(item.get("name"), str)
     }
     items = []
-    for step in (*_REQUIRED_FLOW_STEPS, *_ADVISORY_FLOW_STEPS):
+    for step in (*_REQUIRED_FLOW_STEPS, *sorted(ADVISORY_FLOW_STEPS)):
+        if step in ADVISORY_FLOW_STEPS and step not in states:
+            continue
         if step == SkippableStepEnum.POST_ROUTE_LEC.value and not _requires_post_route_lec(
             workspace
         ):
             continue
         state = "pass" if states.get(step) == StateEnum.Success.value else "failed"
-        advisory = step in _ADVISORY_FLOW_STEPS
+        advisory = step in ADVISORY_FLOW_STEPS
         items.append(
             _item(
                 item_id=f"flow.{step.lower()}.completed",
@@ -566,11 +563,12 @@ def _flow_items(workspace: Workspace) -> list[dict]:
                 category="flow",
                 owner="checklist",
                 policy="warn" if advisory else "block",
-                state="warning" if advisory and state != "pass" else state,
+                state="warning" if advisory else state,
                 title=f"{step} flow completed",
                 summary=(
                     (
-                        "Advisory analysis completed successfully."
+                        "Advisory analysis completed; review its report and coverage. "
+                        "Execution success is not a signoff verdict."
                         if advisory
                         else "Required flow stage completed successfully."
                     )

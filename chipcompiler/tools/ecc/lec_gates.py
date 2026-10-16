@@ -8,7 +8,13 @@ requires it), then the golden/gate artifacts on disk.
 
 from pathlib import Path
 
-from chipcompiler.data import LEC_STEP_TOOLS, SkippableStepEnum, StepEnum, Workspace
+from chipcompiler.data import (
+    ADVISORY_FLOW_STEPS,
+    LEC_STEP_TOOLS,
+    SkippableStepEnum,
+    StepEnum,
+    Workspace,
+)
 
 
 def latest_pnr_output(workspace: Workspace, suffix: str) -> Path | None:
@@ -25,7 +31,7 @@ def latest_pnr_output(workspace: Workspace, suffix: str) -> Path | None:
             continue
         tool = flow_step.get("tool")
         name = flow_step.get("name")
-        if not tool or not name:
+        if not tool or not name or name in ADVISORY_FLOW_STEPS:
             continue
         output_dir = workspace_dir / f"{name}_{tool}" / "output"
         matches = sorted(output_dir.glob(f"*{suffix}"))
@@ -68,6 +74,8 @@ def _post_route_gate(workspace: Workspace) -> Path | None:
         if record.get("name") == SkippableStepEnum.POST_ROUTE_LEC.value:
             return getattr(step.input, "gate_verilog", None)
         created[step.name] = step
+        if step.name in ADVISORY_FLOW_STEPS:
+            continue
         if step_category(record) == "PNR" and step.tool not in LEC_STEP_TOOLS:
             pnr = step
         if step.tool not in LEC_STEP_TOOLS:

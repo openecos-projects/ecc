@@ -9,6 +9,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from chipcompiler.data import (
+    ADVISORY_FLOW_STEPS,
     LEC_STEP_TOOLS,
     EccOutput,
     FlowStepCategory,
@@ -114,16 +115,6 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.DRC.value,
         StepEnum.LVS.value,
         StepEnum.FILLER.value,
-    }
-)
-
-# These checks publish advisory evidence. A failed check is retained as an
-# incomplete step and an attention checklist item, while the rest of the flow
-# may continue to its delivery step.
-_ADVISORY_FLOW_STEPS = frozenset(
-    {
-        StepEnum.ANTENNA_CHECK.value,
-        StepEnum.EMIR.value,
     }
 )
 
@@ -498,9 +489,10 @@ class EngineFlow:
                 if (
                     self._step_category(step) == FlowStepCategory.PNR.value
                     and eda_step.tool not in LEC_STEP_TOOLS
+                    and eda_step.name not in ADVISORY_FLOW_STEPS
                 ):
                     pnr_step = eda_step
-                if eda_step.tool not in LEC_STEP_TOOLS:
+                if eda_step.tool not in LEC_STEP_TOOLS and eda_step.name not in ADVISORY_FLOW_STEPS:
                     pre_step = eda_step
                 if eda_step.name == StepEnum.SYNTHESIS.value:
                     synthesis_gate_verilog = eda_step.output.verilog
@@ -653,11 +645,13 @@ class EngineFlow:
                 ):
                     batch_end += 1
                 states = self._run_checker_batch(self.workspace_steps[index:batch_end], rerun=rerun)
-                for _batch_step, state in zip(
+                for batch_step, state in zip(
                     self.workspace_steps[index:batch_end], states, strict=True
                 ):
                     log_flow(workspace=self.workspace)
-                    if state != StateEnum.Success:
+                    if state != StateEnum.Success and not (
+                        batch_step.name in ADVISORY_FLOW_STEPS and state == StateEnum.Imcomplete
+                    ):
                         return False
                 index = batch_end
                 continue
@@ -687,7 +681,7 @@ class EngineFlow:
                 case StateEnum.Unstart:
                     return False
                 case StateEnum.Imcomplete:
-                    if workspace_step.name in _ADVISORY_FLOW_STEPS:
+                    if workspace_step.name in ADVISORY_FLOW_STEPS:
                         self.workspace.logger.warning(
                             "[FLOW] advisory step %s is incomplete; continuing flow",
                             workspace_step.name,
