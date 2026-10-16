@@ -95,7 +95,6 @@ SCHEMAS = (
         ),
     ),
     config_param(
-    config_param(
         "place.timing_metric_scope",
         "dreamplace",
         ("timing_metric_scope",),
