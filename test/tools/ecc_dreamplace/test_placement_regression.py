@@ -39,12 +39,17 @@ def test_frozen_launcher_sets_hash_seed_before_interpreter_start(tmp_path):
         f"export PYTHONHASHSEED=13\nexec '{sys.executable}' \"$@\"\n"
     )
     freeze_runtime(target, qualified, repo)
-    command = ["bash", str(target / "run_python.sh"), "-c",
-               "import os; assert os.environ['PYTHONHASHSEED']=='730'; print(hash('candidate-order'))"]
+    command = [
+        "bash",
+        str(target / "run_python.sh"),
+        "-c",
+        "import os; assert os.environ['PYTHONHASHSEED']=='730'; print(hash('candidate-order'))",
+    ]
     hashes = [subprocess.check_output(command, text=True).strip() for _ in range(2)]
     expected = subprocess.check_output(
         [sys.executable, "-c", "print(hash('candidate-order'))"],
-        env=os.environ | {"PYTHONHASHSEED": "730"}, text=True,
+        env=os.environ | {"PYTHONHASHSEED": "730"},
+        text=True,
     ).strip()
     assert hashes == [expected, expected]
 
