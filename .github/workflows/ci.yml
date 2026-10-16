@@ -84,6 +84,7 @@ jobs:
       - name: Setup OSS CAD Suite
         uses: YosysHQ/setup-oss-cad-suite@v4
         with:
+          version: "2026-10-14"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify Yosys
@@ -377,6 +378,7 @@ jobs:
       - name: Setup OSS CAD Suite
         uses: YosysHQ/setup-oss-cad-suite@v4
         with:
+          version: "2026-10-14"
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Sizer
