@@ -85,6 +85,7 @@ jobs:
         uses: YosysHQ/setup-oss-cad-suite@v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          version: "2026-10-14"
 
       - name: Verify Yosys
         run: |
@@ -378,6 +379,7 @@ jobs:
         uses: YosysHQ/setup-oss-cad-suite@v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          version: "2026-10-14"
 
       - name: Setup Sizer
         uses: actions/download-artifact@v4
