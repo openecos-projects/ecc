@@ -1,6 +1,7 @@
 """Placement regression evidence and parallel orchestration boundaries."""
 
 import gzip
+import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -11,9 +12,41 @@ import pytest
 from scripts.regression.placement.artifacts import validate_windows
 from scripts.regression.placement.common import content_digest, digest, read, write
 from scripts.regression.placement.external import parse_metrics
+from scripts.regression.placement.prepare import freeze_runtime
 from scripts.regression.placement.reports import collect
 from scripts.regression.placement.runner import launch
 from scripts.regression.placement.verify import verify_environment
+
+
+def test_frozen_launcher_sets_hash_seed_before_interpreter_start(tmp_path):
+    qualified = tmp_path / "qualified"
+    repo = tmp_path / "repo"
+    target = tmp_path / "batch"
+    for path, contents in {
+        qualified / "runtime/python-nix": "native-runtime-fixture",
+        qualified / "runtime/chipcompiler/__init__.py": "",
+        qualified / "runtime/dreamplace/configure.py": "",
+        repo / "chipcompiler/__init__.py": "",
+        repo / "chipcompiler/thirdparty/ecc-dreamplace/dreamplace/__init__.py": "",
+        repo / "chipcompiler/thirdparty/ecc-dreamplace/dreamplace/params.json": "{}",
+    }.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(contents)
+    target.mkdir()
+    write(target / "profile.json", {"random_seed": 730})
+    (qualified / "run_python.sh").write_text(
+        f"#!/bin/bash\nexport PYTHONPATH='{qualified}/runtime'\n"
+        f"export PYTHONHASHSEED=13\nexec '{sys.executable}' \"$@\"\n"
+    )
+    freeze_runtime(target, qualified, repo)
+    command = ["bash", str(target / "run_python.sh"), "-c",
+               "import os; assert os.environ['PYTHONHASHSEED']=='730'; print(hash('candidate-order'))"]
+    hashes = [subprocess.check_output(command, text=True).strip() for _ in range(2)]
+    expected = subprocess.check_output(
+        [sys.executable, "-c", "print(hash('candidate-order'))"],
+        env=os.environ | {"PYTHONHASHSEED": "730"}, text=True,
+    ).strip()
+    assert hashes == [expected, expected]
 
 
 @pytest.fixture
@@ -109,6 +142,24 @@ def test_failed_external_gr_preserves_completed_placement_measurement(batch):
         "exit 3",
     )
     assert read(batch / "cases/example/placement-report.json") == report
+
+
+def test_collect_preserves_recorded_clock_modes(batch):
+    report = {
+        "external_placement": {"clock": "ideal"},
+        "external_gr50": {"clock": "propagated"},
+    }
+    write(batch / "cases/example/placement-report.json", report)
+    row = collect(batch)["rows"][0]
+    assert {key: row[key] for key in ("external_placement_clock", "external_gr50_clock")} == {
+        "external_placement_clock": "ideal",
+        "external_gr50_clock": "propagated",
+    }
+    assert "placement=ideal; GR50=propagated" in (batch / "results.md").read_text()
+    report["external_gr50"]["clock"] = "ideal"
+    write(batch / "cases/example/placement-report.json", report)
+    collect(batch)
+    assert "placement=ideal; GR50=ideal" in (batch / "results.md").read_text()
 
 
 def test_native_process_exit_changes_stale_running_status_to_failed(batch, monkeypatch):

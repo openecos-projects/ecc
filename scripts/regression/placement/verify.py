@@ -99,6 +99,7 @@ def verify(batch: Path):
             )
             require(
                 report["status"] == "completed"
+                and report["clock"] == specification.clock
                 and report["design_unchanged"]
                 and report["source_def_sha256"] == saved["def_sha256"],
                 f"External result uses a different design: {name}/{stage}",

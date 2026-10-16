@@ -2,6 +2,7 @@
 
 import copy
 import json
+import re
 import shlex
 import shutil
 import subprocess
@@ -46,10 +47,29 @@ def freeze_runtime(batch: Path, qualified: Path, repo: Path):
         batch / "runner/scripts/regression/placement",
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
     )
-    launcher = (qualified / "run_python.sh").read_text().replace(str(qualified), str(batch))
+    launcher = (qualified / "run_python.sh").read_text()
+    # A qualified runtime may itself have been copied from an older batch.  Its
+    # launcher can therefore contain that batch's absolute root rather than the
+    # `qualified` argument passed here.  Discover every root that owns a
+    # `/runtime` path and relocate it together with the frozen runtime; otherwise
+    # Python silently imports the old DreamPlace/ECC sources despite the copied
+    # files and provenance claiming this batch is self-contained.
+    launcher_roots = {
+        match.group("root")
+        for match in re.finditer(r"(?P<root>/[^'\"\s:]+?)/runtime(?:[/:'\"])", launcher)
+    }
+    launcher_roots.add(str(qualified))
+    for root in sorted(launcher_roots, key=len, reverse=True):
+        launcher = launcher.replace(root, str(batch))
     runner = shlex.quote(str(batch / "runner") + ":")
     require("export PYTHONPATH=" in launcher, "Qualified launcher must define PYTHONPATH")
     launcher = launcher.replace("export PYTHONPATH=", "export PYTHONPATH=" + runner)
+    policy = read(batch / "profile.json")
+    if "random_seed" in policy:
+        # Python fixes its hash seed at startup; setting it inside Placer is late.
+        seed = int(policy["random_seed"])
+        require("\nexec " in launcher, "Qualified launcher must exec its Python runtime")
+        launcher = launcher.replace("\nexec ", f"\nexport PYTHONHASHSEED={seed}\nexec ", 1)
     (batch / "run_python.sh").write_text(launcher)
     shutil.copymode(qualified / "run_python.sh", batch / "run_python.sh")
     return {
