@@ -85,7 +85,9 @@ SCHEMAS = (
         ("buffering_candidate_drive_strength_table",),
         "",
         applies="placement",
-        description="external four-buffer drive-strength table used by typed discrete candidate buffering",
+        description=(
+            "external four-buffer drive-strength table used by typed discrete candidate buffering"
+        ),
     ),
     config_param(
         "place.joint_alternating_outer_rounds",
