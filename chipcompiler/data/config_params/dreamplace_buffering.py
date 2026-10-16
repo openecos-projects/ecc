@@ -1,4 +1,4 @@
-"""Controls for the standalone discrete candidate buffering step."""
+"""Controls for standalone discrete sizing and candidate buffering."""
 
 from .common import config_param
 from .dreamplace_sizing import DEFAULT_DIFF_SIZING_COEFFICIENTS
@@ -8,7 +8,7 @@ SCHEMAS = (
         "place.diff_optimization_mode",
         "dreamplace",
         ("diff_optimization_mode",),
-        "buffering",
+        "joint",
         applies="diff_opt",
         choices=("sizing", "buffering", "joint"),
         description=("diff_opt discrete phase mode; diff_sizing remains a separate ECC step"),
@@ -17,11 +17,22 @@ SCHEMAS = (
         "place.diff_optimization_flows",
         "dreamplace",
         ("diff_optimization_flows",),
-        None,
+        [
+            ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+        ],
         applies="diff_opt",
         description=(
             "ordered diff_opt tuples [action, steps, [wns, tns, slew, cap]]; "
-            "uses placement parasitics only"
+            "uses placement parasitics only; defaults to five S1+B1 cycles"
         ),
     ),
     config_param(
@@ -37,7 +48,7 @@ SCHEMAS = (
         "place.diff_buffering_selection_fraction",
         "dreamplace",
         ("diff_buffering_selection_fraction",),
-        0.003,
+        0.001,
         range=(0, 1),
         applies="diff_buffering",
         description="candidate-bearing net fraction selected per buffering round; must be positive",

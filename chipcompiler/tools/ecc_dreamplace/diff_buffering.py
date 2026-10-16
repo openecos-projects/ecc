@@ -33,7 +33,7 @@ def _json_safe(value):
 
 def resolve_diff_buffering_settings(params):
     rounds = params.get("diff_buffering_rounds", 10)
-    fraction = params.get("diff_buffering_selection_fraction", 0.003)
+    fraction = params.get("diff_buffering_selection_fraction", 0.001)
     if isinstance(rounds, bool) or not isinstance(rounds, int) or not 1 <= rounds <= 1000:
         raise ValueError("diff_buffering_rounds must be an integer in [1, 1000]")
     if (

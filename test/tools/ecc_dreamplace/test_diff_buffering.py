@@ -29,7 +29,14 @@ def test_buffering_step_resolves_independently_of_placement(
     from dreamplace.Params import Params
 
     cli, errors = parse_cli_overrides(
-        [f"place.diff_buffering_{key}={json.dumps(value)}" for key, value in overrides.items()]
+        [
+            "place.diff_optimization_mode=buffering",
+            "place.diff_optimization_flows=null",
+            *[
+                f"place.diff_buffering_{key}={json.dumps(value)}"
+                for key, value in overrides.items()
+            ],
+        ]
     )
     assert errors == []
     resolved, errors = resolve_parameters(cli_overrides=cli)

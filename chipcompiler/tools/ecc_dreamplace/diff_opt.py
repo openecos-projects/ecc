@@ -88,7 +88,7 @@ def _apply_common_diff_opt_defaults(result, *, mode, flows):
         continuous_size_dynamics_mode="none",
         joint_quality_profile="",
         buffering_continuous_steps=flows[0].steps,
-        buffering_route_b_selection_fraction=result.get("diff_buffering_selection_fraction", 0.003),
+        buffering_route_b_selection_fraction=result.get("diff_buffering_selection_fraction", 0.001),
     )
     if mode == "buffering":
         result.update(flow_kind="buffering", placement_sizing_mode="place_only")

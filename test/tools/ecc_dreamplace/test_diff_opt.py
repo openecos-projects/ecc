@@ -12,24 +12,24 @@ from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, Dreamplac
 from chipcompiler.utility import json_write
 
 
-def test_diff_opt_parser_defaults_to_buffering_and_uses_placement_parasitics(
+def test_diff_opt_parser_preserves_configured_flows_and_uses_placement_parasitics(
     dreamplace_default_config,
 ):
+    from dreamplace.flows.diff_opt_spec import canonical_diff_opt_flows
+
+    mode, flows = canonical_diff_opt_flows(
+        dreamplace_default_config["diff_optimization_mode"],
+        dreamplace_default_config["diff_optimization_flows"],
+    )
     config = apply_diff_opt_defaults(dreamplace_default_config)
 
     assert config["diff_opt_enabled"] == 1
-    assert config["diff_opt_mode"] == "buffering"
+    assert config["diff_opt_mode"] == mode
     assert config["diff_opt_parasitic_source"] == "placement"
-    assert config["flow_kind"] == "buffering"
+    assert config["flow_kind"] == "placement"
     assert config["timing_rc_mode"] == "placement"
     assert config["timing_objective_lane"] == "timing_slew_cap"
-    assert config["diff_optimization_flows"] == [
-        [
-            "bf",
-            10,
-            {"wns": 500.0, "tns": 5.0, "slew": 1.0, "cap": 1.0},
-        ]
-    ]
+    assert config["diff_optimization_flows"] == flows
 
 
 def test_diff_opt_joint_expands_to_zero_gp_and_rejects_route_parasitics(
@@ -58,7 +58,8 @@ def test_diff_opt_joint_expands_to_zero_gp_and_rejects_route_parasitics(
         apply_diff_opt_defaults(config | {"diff_opt_parasitic_source": "rrr"})
 
     defaults = apply_diff_opt_defaults(
-        dreamplace_default_config | {"diff_optimization_mode": "joint"}
+        dreamplace_default_config
+        | {"diff_optimization_mode": "joint", "diff_optimization_flows": None}
     )
     assert defaults["diff_optimization_flows"] == [
         ["sz", 5, {"wns": 500.0, "tns": 5.0, "slew": 1.0, "cap": 1.0}],
@@ -126,8 +127,15 @@ def test_diff_opt_replaces_diff_buffering_but_keeps_diff_sizing():
     ]
 
 
+@pytest.mark.parametrize(
+    ("overrides", "flow_kind"),
+    [
+        ({}, "placement"),
+        ({"diff_optimization_mode": "buffering", "diff_optimization_flows": None}, "buffering"),
+    ],
+)
 def test_diff_opt_module_uses_placement_rc_and_own_result_directory(
-    tmp_path, dreamplace_default_config
+    tmp_path, dreamplace_default_config, overrides, flow_kind
 ):
     config_path = tmp_path / "dreamplace_ecc.json"
     table_path = tmp_path / "buffer_drive_strength.json"
@@ -135,11 +143,8 @@ def test_diff_opt_module_uses_placement_rc_and_own_result_directory(
     json_write(
         config_path,
         dreamplace_default_config
-        | {
-            "diff_optimization_mode": "buffering",
-            "diff_optimization_flows": None,
-            "buffering_candidate_drive_strength_table": str(table_path),
-        },
+        | overrides
+        | {"buffering_candidate_drive_strength_table": str(table_path)},
     )
     result_dir = tmp_path / "data" / "diff_opt"
     step = EccStep(
@@ -166,7 +171,7 @@ def test_diff_opt_module_uses_placement_rc_and_own_result_directory(
             self.__dict__.update(data)
 
     params = module._build_params(FakeParams, mode=DreamplaceRunMode.DIFF_OPT)
-    assert params.flow_kind == "buffering"
+    assert params.flow_kind == flow_kind
     assert params.timing_rc_mode == "placement"
     assert params.diff_opt_parasitic_source == "placement"
     assert params.result_dir == str(result_dir)
@@ -185,6 +190,7 @@ def test_diff_opt_accepts_equivalent_legacy_and_canonical_buffering_config(
 ):
     policy = {"wns": 100.0, "tns": 1.0, "slew": 2.0, "cap": 3.0}
     config = dreamplace_default_config | {
+        "diff_optimization_mode": "buffering",
         "diff_buffering_rounds": 3,
         "diff_buffering_coefficients": policy,
         "diff_optimization_flows": [["bf", 3, coefficients]],

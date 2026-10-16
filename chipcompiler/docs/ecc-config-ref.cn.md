@@ -345,7 +345,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 全局布局核心（★ 主要调优区）
 
-`place.timing_grad_balance_target_ratio` 默认 0.2，在 direct-loss placement
+`place.timing_grad_balance_target_ratio` 默认 0.2，在 legacy direct-loss placement
 首次启用 timing 梯度时，根据 timing 与 wirelength 梯度的 L1 范数初始化
 外层 timing 权重，之后沿用该权重。设为 0.0 可关闭平衡，保留外层权重 1.0。
 它是初始梯度比例目标，不是直接将 WNS/TNS 系数乘以 0.2。
@@ -396,11 +396,12 @@ S50 继续使用 RRR=3、padding=0、固定 512×512 bins 和最终 legalization
 并可以执行 discrete sizing、candidate buffering 或二者交错：每个 segment 保留三个候选位置，
 使用 ICS55 的 BUFX8H7L、BUFX12H7L、BUFX16H7L、BUFX20H7L 四档 buffer，
 每轮每条 net 最多接受一个动作，再按全局梯度收益排序选取配置比例的 net。
-默认最多十轮、每轮比例 0.3%。buffer 实体化后完整刷新拓扑，
+默认使用 joint 模式：执行五组 S1+B1，权重均为 500/5/1/1；合计 5 轮
+sizing、5 轮 buffering。
+每轮 buffering 的选择比例为 0.1%。buffer 实体化后完整刷新拓扑，
 使用 padding=0 做 geometry-only legalization，并保存新的 DEF/Verilog 和终态 hard STA。
-该步骤不执行 GP；默认 buffering 模式只执行插 buffer，sizing/joint 模式按三元组执行
-离散 sizing。每个子阶段使用自己的组合目标恢复最佳状态，不复用 placement 的外层 α。
-默认系数为 500/5/1/1。
+该步骤不执行 GP，按三元组顺序执行离散 sizing 或 buffering。
+每个子阶段使用自己的目标恢复最佳状态，不复用 placement 的外层 α。
 当前 PDK 必须包含上述四个 master；缺少时会明确报错。
 
 流程通过有序三元组配置。第一个字段是 `sz` 或 `bf`，第二个字段是离散 round 数，
@@ -410,10 +411,23 @@ S50 继续使用 RRR=3、padding=0、固定 512×512 bins 和最终 legalization
 [params.place]
 diff_optimization_mode = "joint"
 diff_optimization_flows = [
-  ["sz", 5, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
   ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
 ]
 ```
+
+上例也是新 workspace 的默认配置。列表只执行一次，S1+B1 的重复由列表显式表示；
+每个 S phase 执行一次离散 sizing，每个 B phase 执行一次 buffering。
+切换为 sizing-only 或 buffering-only 时，应同时将 flow 列表改为对应动作；
+JSON 中也可设为 `null`，分别使用该模式的 S50 或 B10 简写。
 
 `diff_opt` 固定使用 placement 寄生参数，输入 GGR/RRR、route grid、
 route-extracted SPEF 或 post-route RC 会直接报错。旧的 `diff_buffering_*` 参数仍作为
@@ -553,6 +567,7 @@ Timing optimization 是多阶段子流程：先用 `workspace.pdk.libs`（通常
 
 最后的内部 DreamPlace 合法化使用 `legalize_flag=1`、`detailed_place_flag=0`，以保护已修复的 hold 时序。
 
+
 `config/sizer_ecc.json` 由 ECC 管理，与 ecc-sizer 仓库的命令行默认值分开。hold 阶段配置统一放在 `hold_stage` 对象中，便于后续扩展其他 hold-stage 控制项：
 
 | 字段 | 默认值 | 含义 |
@@ -561,6 +576,7 @@ Timing optimization 是多阶段子流程：先用 `workspace.pdk.libs`（通常
 | `hold_stage.rc_mode` | `global_routing` | Hold 寄生模型：`global_routing` 生成完整的分层/via `setRCFile`；`placement` 是显式的 scalar-RC 对照模式。 |
 | `hold_stage.global_routing_rc.corner` | `MIN_m40/Cbest` | 分层 RC 映射的来源 corner 标签。 |
 | `hold_stage.global_routing_rc.layers` | CX55 MET1–MET5 映射 | 各布线层的单位线电阻（ohm/um）和电容（pF/um）。默认电容为 CX55 Cbest 原表值的 0.5 倍。StarRC 表中的 M6/M7 不在 ECC 使用的 CX55 LEF 中，因此不写入默认 RC 文件。 |
+
 | `hold_stage.global_routing_rc.vias` | CX55 CT/VIA1–VIA4 映射 | 当前 MET1–MET5 叠层的各 via/cut 电阻（ohm）。CT_NP/CT_PP 使用保守的 30 ohm。 |
 | `hold_stage.placement_wire_rc` | CX55 `MIN_m40/Cbest` scalar 值 | 显式 placement-RC 对照模式，电阻单位为 ohm/um，电容单位为 pF/um。默认电容同样为 Cbest 原表值的 0.5 倍。 |
 
@@ -734,6 +750,7 @@ ecc param set timing_opt.hold_rc_mode global_routing
 ```
 
 `timing_opt.hold_margin` 映射到 `sizer_ecc.json` 的 `hold_stage.hold_margin`，单位是 ns，默认值为 `0.04`，并会以 `-hold_margin VALUE` 写入生成的 `hold.cmd_file`。`timing_opt.hold_rc_mode` 选择 `hold_stage` RC 模式；`global_routing` 还会生成 `hold.rc_file` 并写入 `-setRCFile`。
+
 
 ### 15.6 cts 与 routing
 
