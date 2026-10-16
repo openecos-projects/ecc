@@ -77,7 +77,7 @@ SCHEMAS = (
         "single_fixed",
         applies="placement",
         choices=("single_fixed", "four_strength_table"),
-        description="candidate buffering drive type representation",
+        description="candidate discrete buffer type selection, single_fixed | four_strength_table",
     ),
     config_param(
         "place.buffering_candidate_drive_strength_table",
@@ -85,7 +85,7 @@ SCHEMAS = (
         ("buffering_candidate_drive_strength_table",),
         "",
         applies="placement",
-        description="external four-strength candidate buffer table",
+        description="external four-buffer drive-strength table used by typed discrete candidate buffering",
     ),
     config_param(
         "place.joint_alternating_outer_rounds",
@@ -94,10 +94,7 @@ SCHEMAS = (
         5,
         range=(1, 100),
         applies="placement",
-        description=(
-            "maximum sizing/buffering windows in the alternating joint profile; "
-            "timing_opt_overflow_milestones selects overflow or inflation triggers"
-        ),
+        description="outer rounds for the discrete alternating sizing/buffering profile",
     ),
     config_param(
         "place.joint_alternating_sizing_rounds",
@@ -106,7 +103,7 @@ SCHEMAS = (
         5,
         range=(1, 100),
         applies="placement",
-        description="discrete sizing attempts per alternating outer round",
+        description="discrete sizing rounds before each candidate buffering round",
     ),
     config_param(
         "place.joint_alternating_sizing_shared_budget_percent",
@@ -115,7 +112,7 @@ SCHEMAS = (
         1.0,
         range=(0, 100),
         applies="placement",
-        description="shared sizeable-cell action budget for each alternating sizing round",
+        description="shared sizing budget percentage for the alternating profile",
     ),
     config_param(
         "place.joint_alternating_buffering_rounds",
@@ -124,7 +121,7 @@ SCHEMAS = (
         1,
         range=(1, 100),
         applies="placement",
-        description="candidate buffering attempts per alternating outer round",
+        description="candidate buffering rounds after each sizing block",
     ),
     config_param(
         "place.joint_alternating_buffering_selection_fraction",
@@ -133,7 +130,7 @@ SCHEMAS = (
         0.001,
         range=(0, 1),
         applies="placement",
-        description="fraction of net actions selected by each alternating buffering attempt",
+        description="fraction of eligible nets selected by each candidate buffering round",
     ),
     config_param(
         "place.joint_alternating_buffer_commit_policy",
@@ -142,6 +139,6 @@ SCHEMAS = (
         "final_only",
         applies="placement",
         choices=("final_only",),
-        description="physical buffer commit boundary for the alternating joint profile",
+        description="physical buffer commit policy for the alternating profile",
     ),
 )
