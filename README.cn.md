@@ -32,7 +32,7 @@ GUI（ECOS Studio）已迁移至 [ecos-studio](https://github.com/0xharry/ecos-s
 
 ### 安装脚本（推荐）
 
-安装 `ecc` CLI（Linux x86_64，glibc 2.34+，fontconfig）：
+安装 `ecc` CLI（Linux x86_64，glibc 2.34+，fontconfig，libxcb）：
 
 ```sh
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
@@ -43,6 +43,18 @@ curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | 
 ```sh
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --with-toolchain
 ```
+
+如需最新的 nightly 构建（含 ecc、ecc-sizer、kepler-formal 和 ICS55
+PDK），替代固定的 stable 版本：
+
+```sh
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --nightly
+```
+
+在同一命令中加 `--with-toolchain` 可一并安装 Yosys（OSS CAD Suite）。
+不带 `--nightly` 重跑安装脚本即可切回 stable 版本；用
+`--nightly-tag vX.Y.Z-nightly.YYYYMMDD` 可指定具体的 nightly；可用版本见
+[ecos-installer releases 页面](https://github.com/openecos-projects/ecos-installer/releases)。
 
 wrapper 默认安装到 `~/.local/bin`。如果该目录不在 `PATH` 中，请加入：
 

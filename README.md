@@ -32,7 +32,7 @@ The GUI (ECOS Studio) has been moved to the [ecos-studio](https://github.com/0xh
 
 ### Installer (recommended)
 
-Install the `ecc` CLI (Linux x86_64, glibc 2.34+, fontconfig):
+Install the `ecc` CLI (Linux x86_64, glibc 2.34+, fontconfig, libxcb):
 
 ```sh
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
@@ -43,6 +43,19 @@ To also install Yosys (OSS CAD Suite) and the ICS55 PDK:
 ```sh
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --with-toolchain
 ```
+
+To install the latest nightly build (ecc, ecc-sizer, kepler-formal, and the
+ICS55 PDK) instead of the pinned stable release:
+
+```sh
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --nightly
+```
+
+Add `--with-toolchain` to the same command to install Yosys (OSS CAD Suite)
+as well. Re-running the installer without `--nightly` switches back to the
+stable release; `--nightly-tag vX.Y.Z-nightly.YYYYMMDD` pins a specific
+nightly — browse the available tags on the [ecos-installer releases
+page](https://github.com/openecos-projects/ecos-installer/releases).
 
 The wrapper is installed to `~/.local/bin` by default. If that directory is not
 on `PATH`, add it:

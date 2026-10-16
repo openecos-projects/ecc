@@ -37,7 +37,7 @@ graph LR
 
 ### 2.1 One-shot installer (recommended)
 
-Install the `ecc` CLI (Linux x86_64, glibc 2.34+, fontconfig) with the official installer:
+Install the `ecc` CLI (Linux x86_64, glibc 2.34+, fontconfig, libxcb) with the official installer:
 
 > This tutorial targets v0.1.0-alpha.12. Earlier releases do not provide every command used here (`ecc doctor`, `ecc doc`, the `signoff`/`report` groups, and all `run` workspace/range selectors). Check with `ecc --version`; for source-tree development, follow [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli).
 
@@ -50,6 +50,14 @@ Install Yosys (OSS CAD Suite with the slang frontend built in) and the ICS55 PDK
 ```bash
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --with-toolchain
 ```
+
+To install the latest nightly build (ecc, ecc-sizer, kepler-formal, and the ICS55 PDK) instead of the pinned stable release:
+
+```bash
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --nightly
+```
+
+Add `--with-toolchain` to the same command to install Yosys (OSS CAD Suite) as well. Re-running the installer without `--nightly` switches back to the stable release; `--nightly-tag vX.Y.Z-nightly.YYYYMMDD` pins a specific nightly — browse the available tags on the [ecos-installer releases page](https://github.com/openecos-projects/ecos-installer/releases).
 
 The wrapper installs to `~/.local/bin`. If that directory is not on your `PATH`, add it (effective in the current terminal immediately; new terminals pick it up automatically):
 
@@ -753,6 +761,7 @@ The list must cover **every** hard macro in the design and use real instance nam
 | doctor shows `sizer: fail` | required Sizer component not installed | `ecc doctor` exits non-zero. The complete `rtl2gds` chain contains Timing optimization, so install Sizer before running it. Build ecc-sizer per the remediation hint |
 | synthesis log says `yosys slang frontend check failed` | yosys lacks the slang frontend | use an OSS CAD Suite yosys ≥ v0.67; debug with `ecc log synthesis` |
 | synthesis aborts at DFFLIBMAP with `uncaught exception during Yosys command invoked from TCL` | the current shell never loaded the ecc env (e.g. a non-interactive terminal), so ecc fell back to an old yosys on system PATH, which crashes parsing the ics55 liberty (the TCL wrapper swallows the exception detail) | verify `which yosys` points at the OSS CAD Suite; open a new terminal (or re-run the installer with `--with-toolchain`) and rerun |
+| placement fails with `ImportError: libxcb.so.1` | the X11 client library required by DreamPlace's draw_place module is missing (common on minimal systems) | install libxcb (Debian/Ubuntu: `apt install libxcb1`) and rerun — the flow resumes from the failed step |
 
 ## 8. Next Steps
 

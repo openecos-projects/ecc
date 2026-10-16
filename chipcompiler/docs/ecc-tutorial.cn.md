@@ -37,7 +37,7 @@ graph LR
 
 ### 2.1 一键安装（推荐）
 
-使用官方安装脚本安装 `ecc` CLI（Linux x86_64，glibc 2.34+，fontconfig）：
+使用官方安装脚本安装 `ecc` CLI（Linux x86_64，glibc 2.34+，fontconfig，libxcb）：
 
 > 本教程面向 v0.1.0-alpha.12。更早版本不具备本文用到的全部命令（`ecc doctor`、`ecc doc`、`signoff`/`report` 命令组和完整的 `run` workspace/范围选择器）。先用 `ecc --version` 确认版本；从当前源码树开发时，按 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli) 配置。
 
@@ -50,6 +50,14 @@ curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | 
 ```bash
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --with-toolchain
 ```
+
+如需最新的 nightly 构建（含 ecc、ecc-sizer、kepler-formal 和 ICS55 PDK），替代固定的 stable 版本：
+
+```bash
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --nightly
+```
+
+在同一命令中加 `--with-toolchain` 可一并安装 Yosys（OSS CAD Suite）。不带 `--nightly` 重跑安装脚本即可切回 stable 版本；用 `--nightly-tag vX.Y.Z-nightly.YYYYMMDD` 可指定具体的 nightly；可用版本见 [ecos-installer releases 页面](https://github.com/openecos-projects/ecos-installer/releases)。
 
 wrapper 默认安装到 `~/.local/bin`。该目录不在 `PATH` 中时加入（当前终端立即生效，新终端自动生效）：
 
@@ -752,6 +760,7 @@ ecc run --workspace default
 | doctor 显示 `sizer: fail` | 必需的 Sizer 组件未安装 | `ecc doctor` 返回非零。完整 `rtl2gds` 链含 Timing optimization 步骤，运行前应安装 Sizer。按 remediation 提示源码构建 |
 | synthesis 日志报 `yosys slang frontend check failed` | yosys 无 slang 前端 | 换 OSS CAD Suite ≥ v0.67 的 yosys，`ecc log synthesis` 排查 |
 | synthesis 在 DFFLIBMAP 报 `uncaught exception during Yosys command invoked from TCL` 后退出 | 当前 shell 未加载 ecc 环境（如非交互终端），ecc 回落到系统 PATH 里的旧版 yosys（解析 ics55 liberty 会直接崩溃，异常详情被 TCL 吞掉） | `which yosys` 确认指向 OSS CAD Suite；重开终端（或重跑安装脚本 `--with-toolchain`）后重跑 |
+| placement 报 `ImportError: libxcb.so.1` | 极简系统缺少 DreamPlace draw_place 模块依赖的 X11 客户端库 | 安装 libxcb（Debian/Ubuntu：`apt install libxcb1`）后重跑，flow 会从失败步骤断点续跑 |
 
 ## 8. 下一步
 
