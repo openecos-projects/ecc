@@ -137,6 +137,7 @@ Current implementation status:
 | `ecc doc` | `--plain` |
 | `ecc macro set/remove/import/show` | `--plain` |
 | `ecc version` | hidden `--json` only (desktop app contract) |
+| `ecc check-update` | `--plain`, plus hidden `--json` (desktop app contract) |
 | `ecc rpc serve` | none (machine protocol) |
 | `ecc layout-image` | none (tool invocation; produces a file) |
 
@@ -198,6 +199,7 @@ ecc version
 ecc init
 ecc check
 ecc doctor
+ecc check-update
 ecc run
 ecc status
 ecc log
@@ -223,6 +225,7 @@ Responsibilities:
 | `ecc init` | Create a project skeleton and `ecc.toml` |
 | `ecc check` | Validate RTL, constraints, PDK, tools, and config |
 | `ecc doctor` | Probe host environment (PDK, yosys+slang, bundled tools); optional failures do not exit non-zero |
+| `ecc check-update` | Compare the installed build against the latest nightly release and point to the ecos-installer pages; every status exits 0 (`--plain` supported) |
 | `ecc run` | Execute the configured flow (`--preset` overrides `[flow] preset` for one run) |
 | `ecc status` | Summarize run and step state |
 | `ecc log` | Show available logs or complete step log content |
@@ -304,10 +307,11 @@ The command graph follows these rules; new commands must follow them too:
   registry keyed by full command path (top-level name, or `group:sub`).
 - **Frozen surfaces.** The GUI invokes `ecc rpc serve --stdio
   [--persistent-db]`, `ecc version --json` (schema: `schema_version`, `runtime`,
-  `ecc`, `dreamplace`, `ecc_tools`, `tools`), the `ecc --version` single line,
-  and `ecc layout-image --gds <gds> --image <png>` as subprocess contracts.
-  Additive optional flags are allowed; these names, flags, and output schemas
-  must not change.
+  `ecc`, `dreamplace`, `ecc_tools`, `tools`, plus additive nullable keys such
+  as `build_commit` and `build_date`), the `ecc --version` single line, and
+  `ecc layout-image --gds <gds> --image <png>` as subprocess contracts.
+  Additive optional flags and additive nullable keys are allowed; the existing
+  names, flags, and key semantics must not change.
 
 ### Project-Oriented Entry
 
@@ -473,9 +477,12 @@ ecc version --json
 `ecc --version` prints one line for package-manager and script probes. `ecc
 version` prints fixed-order text lines for `ecc`, `dreamplace`, `ecc_tools`, and
 `runtime`. `ecc version --json` returns schema version `1` with `runtime`,
-`ecc`, `dreamplace`, and `ecc_tools` fields. Missing distribution metadata is
-reported as `unknown`, except the `ecc` field may fall back to the source
-package `__version__`.
+`ecc`, `dreamplace`, and `ecc_tools` fields, plus the additive nullable keys
+`build_commit`/`build_date` (populated only in CI-stamped bundles; `null` in
+source installs; the schema version stays `1` because additive nullable keys
+do not alter the frozen contract). Missing distribution metadata is reported
+as `unknown`, except the `ecc` field may fall back to the source package
+`__version__`.
 
 ### Runtime Sidecar RPC
 

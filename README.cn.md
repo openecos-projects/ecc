@@ -171,6 +171,7 @@ ecc run --project gcd --workspace recovered --resume
 | `ecc signoff` | 检查签核就绪度并导出签核包 |
 | `ecc report` | 生成设计总结、QoR、签核清单和步骤报告 |
 | `ecc version` | 显示 ECC 运行时和组件版本 |
+| `ecc check-update` | 检查是否有更新的 nightly 构建 |
 | `ecc layout-image` | 将 GDS 文件渲染为版图图像 |
 
 项目命令均接受 `--project <dir>`（默认为当前目录）。大多数命令支持

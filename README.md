@@ -179,6 +179,7 @@ Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 | `ecc signoff` | Inspect readiness and export the signoff package |
 | `ecc report` | Write design-summary, QoR, checklist, and step reports |
 | `ecc version` | Show ECC runtime and component versions |
+| `ecc check-update` | Check whether a newer nightly build is available |
 | `ecc layout-image` | Render a GDS file into a layout image |
 
 Project commands accept `--project <dir>` (defaults to the current directory).

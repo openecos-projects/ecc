@@ -32,6 +32,12 @@ class DoctorInput:
 
 
 @dataclass(frozen=True)
+class CheckUpdateInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+
+
+@dataclass(frozen=True)
 class RunInput:
     output: OutputOptions
     project: ProjectOptions

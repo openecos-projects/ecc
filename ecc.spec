@@ -88,6 +88,7 @@ HIDDENIMPORTS = [
     "click",
     "typer",
     "chipcompiler",
+    "chipcompiler._build_info",
     "chipcompiler.cli",
     "chipcompiler.data",
     "chipcompiler.engine",
