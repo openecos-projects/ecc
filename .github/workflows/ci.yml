@@ -17,6 +17,7 @@ on:
     branches:
       - main
       - 'release/v*'
+      - 'emin/add-agent-ctrl'
   pull_request:
     paths:
       - 'chipcompiler/**'
