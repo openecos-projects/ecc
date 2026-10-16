@@ -105,6 +105,7 @@ SCHEMAS = (
             "max timing checks used by placement WNS/TNS: setup_only or setup_plus_recovery"
         ),
     ),
+    config_param(
         "place.placement_sizing_mode",
         "dreamplace",
         ("placement_sizing_mode",),
