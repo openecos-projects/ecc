@@ -344,6 +344,42 @@ def test_design_read_failure_stops_flow_despite_stale_outputs(tmp_path, monkeypa
     assert flow.get_step(second_name, "ecc")["state"] == StateEnum.Unstart.value
 
 
+def test_advisory_step_failure_does_not_stop_flow(tmp_path, monkeypatch):
+    ws = _make_workspace(tmp_path, num_steps=2)
+    ws.flow.data = {
+        "steps": [
+            {
+                "name": StepEnum.ANTENNA_CHECK.value,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+            },
+            {
+                "name": StepEnum.HARDEN.value,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+            },
+        ]
+    }
+    flow = EngineFlow(ws)
+    flow.workspace_steps = [
+        SimpleNamespace(name=StepEnum.ANTENNA_CHECK.value, tool="ecc"),
+        SimpleNamespace(name=StepEnum.HARDEN.value, tool="ecc"),
+    ]
+    monkeypatch.setattr(flow, "init_db_engine", lambda: True)
+    monkeypatch.setattr(
+        flow,
+        "run_step",
+        lambda step, **_kwargs: (
+            StateEnum.Imcomplete
+            if step.name == StepEnum.ANTENNA_CHECK.value
+            else StateEnum.Success
+        ),
+    )
+    monkeypatch.setattr("chipcompiler.engine.flow.log_flow", lambda workspace: None)
+
+    assert flow.run_steps() is True
+
+
 # ---------------------------------------------------------------------------
 # Legacy state normalization tests (Phase 3a)
 # ---------------------------------------------------------------------------

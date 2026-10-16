@@ -66,6 +66,14 @@ _REQUIRED_FLOW_STEPS = (
     StepEnum.HARDEN.value,
 )
 
+# These analyses are part of the RTL2GDS ledger, but they are advisory checks.
+# Their execution/result state is visible in the checklist without becoming a
+# prerequisite gate for later flow stages.
+_ADVISORY_FLOW_STEPS = (
+    StepEnum.ANTENNA_CHECK.value,
+    StepEnum.EMIR.value,
+)
+
 _CONFIG_FILENAMES = {
     "db": "db_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",
@@ -544,25 +552,34 @@ def _flow_items(workspace: Workspace) -> list[dict]:
         if isinstance(item.get("name"), str)
     }
     items = []
-    for step in _REQUIRED_FLOW_STEPS:
+    for step in (*_REQUIRED_FLOW_STEPS, *_ADVISORY_FLOW_STEPS):
         if step == SkippableStepEnum.POST_ROUTE_LEC.value and not _requires_post_route_lec(
             workspace
         ):
             continue
         state = "pass" if states.get(step) == StateEnum.Success.value else "failed"
+        advisory = step in _ADVISORY_FLOW_STEPS
         items.append(
             _item(
                 item_id=f"flow.{step.lower()}.completed",
                 step=step,
                 category="flow",
                 owner="checklist",
-                policy="block",
-                state=state,
+                policy="warn" if advisory else "block",
+                state="warning" if advisory and state != "pass" else state,
                 title=f"{step} flow completed",
                 summary=(
-                    "Required flow stage completed successfully."
+                    (
+                        "Advisory analysis completed successfully."
+                        if advisory
+                        else "Required flow stage completed successfully."
+                    )
                     if state == "pass"
-                    else f"Current flow state is {states.get(step) or 'missing'}."
+                    else (
+                        f"Advisory analysis state is {states.get(step) or 'missing'}."
+                        if advisory
+                        else f"Current flow state is {states.get(step) or 'missing'}."
+                    )
                 ),
                 source={"kind": "flow", "path": "home/flow.json", "step": step},
                 evidence=[{"kind": "flow", "path": "home/flow.json", "selector": f"/steps/{step}"}],

@@ -117,6 +117,16 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
     }
 )
 
+# These checks publish advisory evidence. A failed check is retained as an
+# incomplete step and an attention checklist item, while the rest of the flow
+# may continue to its delivery step.
+_ADVISORY_FLOW_STEPS = frozenset(
+    {
+        StepEnum.ANTENNA_CHECK.value,
+        StepEnum.EMIR.value,
+    }
+)
+
 
 class EngineFlow:
     def __init__(self, workspace: Workspace, engine_db: EngineDB = None):
@@ -677,9 +687,15 @@ class EngineFlow:
                 case StateEnum.Unstart:
                     return False
                 case StateEnum.Imcomplete:
-                    # An Incomplete step is an infrastructure or check
-                    # failure: it blocks the flow.
-                    return False
+                    if workspace_step.name in _ADVISORY_FLOW_STEPS:
+                        self.workspace.logger.warning(
+                            "[FLOW] advisory step %s is incomplete; continuing flow",
+                            workspace_step.name,
+                        )
+                    else:
+                        # An Incomplete step is an infrastructure or check
+                        # failure: it blocks the flow.
+                        return False
                 case StateEnum.Pending:
                     return False
                 case StateEnum.Ongoing:
