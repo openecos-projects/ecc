@@ -178,11 +178,21 @@ Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 | `ecc workspace` | Import existing workspaces or refresh them from project configuration |
 | `ecc signoff` | Inspect readiness and export the signoff package |
 | `ecc report` | Write design-summary, QoR, checklist, and step reports |
+| `ecc report snapshot` | Save the committed Engineering Snapshot to a new external JSON file |
+| `ecc report project` | Rank all declared workspaces by saved QoR and display flow/step/checker states |
+| `ecc compare run` | Compare two saved Engineering Snapshot JSON files without running EDA |
 | `ecc version` | Show ECC runtime and component versions |
-| `ecc layout-image` | Render a GDS file into a layout image |
+| `ecc gdsview` | Open a workspace step's GDS in the KLayout viewer |
+| `ecc chipview` | Open a workspace step's geometry snapshot in Chip Viewer |
 
 Project commands accept `--project <dir>` (defaults to the current directory).
 Most commands support `--plain` output for scripting.
+
+Inside a project root, `--project` defaults to the current directory. Inside a managed
+workspace root, commands infer the owning ancestor project and current workspace;
+explicit selectors take precedence. For external workspaces, pass `--project` if its
+owner cannot be discovered. Workspace-scoped parameter commands now default to that
+workspace when invoked there; invoke them from the project root for project scope.
 
 The full guides ship with the CLI and work offline: `ecc doc ug` (user guide,
 `--lang cn` for 中文), `ecc doc config` (configuration reference), and

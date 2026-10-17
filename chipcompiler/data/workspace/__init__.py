@@ -888,7 +888,16 @@ def prepare_workspace_for_rerun(
     if hasattr(engine_flow, "workspace_steps"):
         engine_flow.workspace_steps.clear()
     if hasattr(engine_flow, "create_step_workspaces"):
-        engine_flow.create_step_workspaces()
+        # Reset/derive preparation must not require optional execution tools;
+        # dependency checks belong to the subsequent flow run.
+        try:
+            engine_flow.create_step_workspaces(executable_steps=set())
+        except TypeError as exc:
+            # Keep compatibility with lightweight EngineFlow test doubles and
+            # older embedders that predate the executable_steps keyword.
+            if "executable_steps" not in str(exc):
+                raise
+            engine_flow.create_step_workspaces()
 
 
 def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
@@ -953,6 +962,12 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
                     for temperature in temperatures
                 ]
         json_write(workspace.config[f"{StepEnum.RCX.value}"], rcx)
+
+    # Step-dependent paths are written after the common parameter/PDK refresh.
+    # Record the final managed JSON state so refresh detects only later edits.
+    from .config_manifest import record_derived_config
+
+    record_derived_config(workspace)
 
 
 def _workspace_directory_has_existing_data(workspace_dir: Path) -> bool:

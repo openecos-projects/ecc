@@ -148,6 +148,56 @@ class TestMigrate:
         assert not os.path.exists(remaining)
         assert not os.path.exists(os.path.join(project_dir, "runs"))
 
+    def test_migrates_legacy_manifest_workspace_paths(
+        self,
+        tmp_path,
+        capsys,
+        create_cli_project,
+        minimal_ics55_pdk_factory,
+        create_legacy_workspace,
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = create_legacy_workspace(project_dir, pdk_root, "exp1", ["Success", "Success"])
+        with open(os.path.join(project_dir, "project.json"), "w") as f:
+            json.dump(
+                {
+                    "schema_version": 1,
+                    "project_id": "proj_gcd",
+                    "name": "gcd",
+                    "design_name": "gcd",
+                    "root_path": "/old/location/gcd",
+                    "base_design": {"parameters": {"design": "gcd"}},
+                    "objectives": {},
+                    "workspaces": [
+                        {
+                            "workspace_id": "stable-baseline",
+                            "workspace_path": "runs/exp1",
+                            "status": "success",
+                            "start_step": "Synth",
+                            "end_step": "PostFloorplan",
+                        }
+                    ],
+                },
+                f,
+            )
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
+
+        assert rc == 0
+        assert not os.path.exists(run_dir)
+        assert os.path.isdir(os.path.join(project_dir, "exp1"))
+        manifest = _manifest(project_dir)
+        assert manifest["root_path"] == os.path.realpath(project_dir)
+        assert manifest["workspaces"][0]["workspace_id"] == "stable-baseline"
+        assert manifest["workspaces"][0]["workspace_path"] == os.path.join(project_dir, "exp1")
+        # The resulting document must pass the strict loader used by normal
+        # CLI commands, not only the tolerant migration parser.
+        rc = cli_main.run(
+            ["status", "--project", project_dir, "--workspace", "stable-baseline", "--plain"]
+        )
+        assert rc == 0
+
     def test_already_migrated_noop(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
         document = {
@@ -164,6 +214,135 @@ class TestMigrate:
         assert rc == 0
         (record,) = _records(capsys)
         assert record["status"] == "already_migrated"
+
+    def test_repairs_missing_config_for_manifest_project(self, tmp_path, capsys):
+        project_dir = str(tmp_path / "legacy-project")
+        os.makedirs(project_dir)
+        with open(os.path.join(project_dir, "project.json"), "w") as f:
+            json.dump(
+                {
+                    "schema_version": 1,
+                    "design_name": "gcd",
+                    "root_path": project_dir,
+                    "base_design": {
+                        "pdk": "ics55",
+                        "top_module": "gcd_top",
+                        "clock": "clock",
+                        "rtl_list": ["rtl/gcd.v"],
+                        "parameters": {"frequency_max": 125.0},
+                    },
+                    "workspaces": [],
+                },
+                f,
+            )
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
+
+        assert rc == 0
+        records = _records(capsys)
+        assert records[0]["status"] == "config_repaired"
+        import tomllib
+
+        with open(os.path.join(project_dir, "ecc.toml"), "rb") as f:
+            config = tomllib.load(f)
+        assert config["design"] == {
+            "name": "gcd",
+            "top": "gcd_top",
+            "rtl": ["rtl/gcd.v"],
+            "clock_port": "clock",
+            "frequency_mhz": 125.0,
+        }
+        assert config["pdk"] == {"name": "ics55"}
+        assert config["flow"] == {"preset": "rtl2gds"}
+
+        # Project Management immediately follows migration with reconcile.
+        # An unbound PDK is valid until the Workspace wizard selects one.
+        assert (
+            cli_main.run(["project", "reconcile", "--project", project_dir, "--no-wait", "--plain"])
+            == 0
+        )
+        _records(capsys)
+
+    def test_repairs_only_missing_config_fields(self, tmp_path, capsys):
+        project_dir = str(tmp_path / "legacy-project")
+        os.makedirs(project_dir)
+        with open(os.path.join(project_dir, "project.json"), "w") as f:
+            json.dump(
+                {
+                    "schema_version": 1,
+                    "design_name": "manifest-name",
+                    "root_path": project_dir,
+                    "base_design": {"parameters": {}},
+                    "workspaces": [],
+                },
+                f,
+            )
+        config_path = os.path.join(project_dir, "ecc.toml")
+        Path(config_path).write_text(
+            '[design]\ntop = "custom_top"\n\n[pdk]\nname = "ics55"\nroot = "/custom/pdk"\n'
+        )
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
+
+        assert rc == 0
+        _records(capsys)
+        import tomllib
+
+        with open(config_path, "rb") as f:
+            config = tomllib.load(f)
+        assert config["design"]["name"] == "manifest-name"
+        assert config["design"]["top"] == "custom_top"
+        assert config["pdk"]["root"] == "/custom/pdk"
+        assert config["flow"]["preset"] == "rtl2gds"
+
+    def test_refuses_to_overwrite_malformed_config(self, tmp_path, capsys):
+        project_dir = str(tmp_path / "legacy-project")
+        os.makedirs(project_dir)
+        with open(os.path.join(project_dir, "project.json"), "w") as f:
+            json.dump(
+                {
+                    "schema_version": 1,
+                    "design_name": "gcd",
+                    "root_path": project_dir,
+                    "workspaces": [],
+                },
+                f,
+            )
+        config_path = Path(project_dir, "ecc.toml")
+        original = '[design\nname = "broken"\n'
+        config_path.write_text(original)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
+
+        assert rc == 1
+        (record,) = _records(capsys)
+        assert record["error"] == "config_migration_failed"
+        assert config_path.read_text() == original
+
+    def test_refuses_to_replace_invalid_existing_config_value(self, tmp_path, capsys):
+        project_dir = str(tmp_path / "legacy-project")
+        os.makedirs(project_dir)
+        with open(os.path.join(project_dir, "project.json"), "w") as f:
+            json.dump(
+                {
+                    "schema_version": 1,
+                    "design_name": "gcd",
+                    "root_path": project_dir,
+                    "workspaces": [],
+                },
+                f,
+            )
+        config_path = Path(project_dir, "ecc.toml")
+        original = '[design]\nname = ["not", "a", "string"]\n'
+        config_path.write_text(original)
+
+        rc = cli_main.run(["migrate", "--project", project_dir, "--yes", "--plain"])
+
+        assert rc == 1
+        (record,) = _records(capsys)
+        assert record["error"] == "config_migration_failed"
+        assert "design.name must be a string" in record["reason"]
+        assert config_path.read_text() == original
 
     def test_malformed_manifest_fails_instead_of_reporting_already_migrated(
         self, tmp_path, capsys, create_cli_project

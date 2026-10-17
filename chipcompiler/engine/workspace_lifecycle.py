@@ -271,14 +271,15 @@ def update_workspace_from_spec(
     bindings: object,
     command_id: str = "",
     *,
+    blocking: bool = True,
     retain_backup: bool = False,
-) -> WorkspaceUpdateResult:
+):
     target = Path(target_directory).expanduser().resolve()
     if not target.is_dir():
         raise WorkspaceLifecycleError("workspace_missing", f"Workspace not found: {target}")
     from chipcompiler.engine.reconcile import _workspace_lock
 
-    with _workspace_lock(target):
+    with _workspace_lock(target, blocking=blocking):
         return _update_workspace_from_spec(
             target,
             expected_workspace_revision,
@@ -349,7 +350,6 @@ def _update_workspace_from_spec(
     )
     staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=target.parent))
     staging.rmdir()
-    staging_consumed = False
     backup_directory: Path | None = None
     try:
         staged = _create_workspace_from_spec(
@@ -373,6 +373,14 @@ def _update_workspace_from_spec(
             fingerprint,
             snapshot["workspaceId"],
             snapshot["workspaceRevision"] + 1,
+            metadata={
+                "operation": "update",
+                "expectedRevision": expected_workspace_revision,
+                "request": {
+                    "workspaceSpec": deepcopy(spec),
+                    "workspaceBindings": deepcopy(bindings),
+                },
+            },
         )
         _rewrite_workspace_paths(staging, target)
         _exchange_directories(target, staging)
@@ -388,23 +396,13 @@ def _update_workspace_from_spec(
             # leaves the tree at the staging path rather than deleting a
             # tree the caller asked to retain.
             backup_directory = retain_replaced_tree(staging, target)
-            staging_consumed = True
         return WorkspaceUpdateResult(workspace=workspace, backup_directory=backup_directory)
     finally:
-        if not staging_consumed:
-            shutil.rmtree(staging, ignore_errors=True)
-
-
-def _sweep_staging_siblings(target: Path) -> None:
-    """Best-effort removal of staging trees stranded by a killed update."""
-    prefix = f".{target.name}.staging-"
-    try:
-        siblings = list(target.parent.iterdir())
-    except OSError:
-        return
-    for sibling in siblings:
-        if sibling.is_dir() and not sibling.is_symlink() and sibling.name.startswith(prefix):
-            shutil.rmtree(sibling, ignore_errors=True)
+        # A failed portable exchange can leave both trees as recovery proof.
+        # Reconcile owns that state; deleting staging here would strand the
+        # previous committed Workspace under the exchange backup name.
+        if not _exchange_backup_path(staging).exists():
+            _remove_refresh_staging(staging)
 
 
 def _merge_workspace_update_parameters(
@@ -619,10 +617,36 @@ def _string_keyed_dict(value: object) -> dict[str, Any]:
 
 
 def _load_committed_workspace(path: Path):
-    workspace = load_workspace(path)
+    # Lifecycle inspection must not attach a file logger to the source tree.
+    # After a directory exchange that open file would move under staging and
+    # prevent its removal on NFS.
+    workspace = load_workspace(path, read_only=True)
     if workspace is None:
         raise WorkspaceLifecycleError("workspace_invalid", f"Workspace cannot be opened: {path}")
     return workspace
+
+
+def _sweep_staging_siblings(target: Path) -> None:
+    prefix = f".{target.name}.staging-"
+    try:
+        siblings = list(target.parent.iterdir())
+    except OSError:
+        return
+    for sibling in siblings:
+        if sibling.is_dir() and not sibling.is_symlink() and sibling.name.startswith(prefix):
+            # A sibling with a committed snapshot may be an exchange-recovery
+            # candidate. Leave it for project reconciliation to validate and
+            # either roll forward or remove atomically.
+            if (sibling / "home" / "engineering-snapshot.json").is_file():
+                continue
+            shutil.rmtree(sibling, ignore_errors=True)
+
+
+def _remove_refresh_staging(staging: Path) -> None:
+    if staging.exists() or staging.is_symlink():
+        shutil.rmtree(staging)
+    if not staging.exists() and not staging.is_symlink():
+        Path(f"{staging}.lock").unlink(missing_ok=True)
 
 
 def _workspace_command_fingerprint(
@@ -672,19 +696,23 @@ def _write_workspace_command(
     fingerprint: str,
     workspace_id: str,
     workspace_revision: int,
+    metadata: dict[str, Any] | None = None,
 ) -> None:
     if not command_id:
         return
     from chipcompiler.utility import json_write
 
     payload = _workspace_commands(path)
-    payload["commands"][command_id] = {
+    record = {
         "fingerprint": fingerprint,
         "result": {
             "workspaceId": workspace_id,
             "workspaceRevision": workspace_revision,
         },
     }
+    if metadata is not None:
+        record["metadata"] = deepcopy(metadata)
+    payload["commands"][command_id] = record
     if not json_write(path / "home" / "workspace-commands.json", payload):
         raise OSError("Failed to persist Workspace command ledger")
 
@@ -723,9 +751,41 @@ def _replace_string_prefix(value: Any, source: str, target: str) -> Any:
 def _exchange_directories(left: Path, right: Path) -> None:
     libc = ctypes.CDLL(None, use_errno=True)
     renameat2 = getattr(libc, "renameat2", None)
-    if os.name != "posix" or renameat2 is None:
-        raise OSError(errno.ENOTSUP, "atomic Workspace Update is unavailable")
-    if renameat2(-100, os.fsencode(left), -100, os.fsencode(right), 2) == 0:
-        return
-    error = ctypes.get_errno()
-    raise OSError(error, os.strerror(error))
+    if os.name == "posix" and renameat2 is not None:
+        if renameat2(-100, os.fsencode(left), -100, os.fsencode(right), 2) == 0:
+            return
+        error = ctypes.get_errno()
+        unsupported = {errno.EINVAL, errno.ENOSYS, errno.ENOTSUP}
+        if hasattr(errno, "EOPNOTSUPP"):
+            unsupported.add(errno.EOPNOTSUPP)
+        if error not in unsupported:
+            raise OSError(error, os.strerror(error))
+    _exchange_directories_portable(left, right)
+
+
+def _exchange_backup_path(staging: Path) -> Path:
+    return staging.with_name(f"{staging.name}.exchange-old")
+
+
+def _exchange_directories_portable(left: Path, right: Path) -> None:
+    """Swap sibling directories with crash-recoverable plain renames.
+
+    Some NFS servers reject ``RENAME_EXCHANGE`` with ``EINVAL``. The caller
+    holds the Workspace lock, and Project reconcile recognizes either
+    intermediate state using the two Workspace snapshots and command ledger.
+    """
+    if left.parent != right.parent:
+        raise OSError(errno.EXDEV, "Workspace exchange requires sibling directories")
+    if left.is_symlink() or right.is_symlink() or not left.is_dir() or not right.is_dir():
+        raise OSError(errno.EINVAL, "Workspace exchange requires real directories")
+    backup = _exchange_backup_path(right)
+    if backup.exists() or backup.is_symlink():
+        raise FileExistsError(errno.EEXIST, "Workspace exchange backup exists", backup)
+
+    os.rename(left, backup)
+    try:
+        os.rename(right, left)
+    except Exception:
+        os.rename(backup, left)
+        raise
+    os.rename(backup, right)

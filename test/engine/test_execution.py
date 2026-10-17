@@ -98,6 +98,74 @@ def test_execution_failure_keeps_main_blocking_semantics():
     assert result.state == StateEnum.Imcomplete.value
 
 
+def test_successful_flow_with_advisory_failure_has_no_blocking_failed_step():
+    class Flow:
+        def run_steps(self, *, rerun=False, observer=None):
+            observer.on_step_completed(SimpleNamespace(name="emir"), StateEnum.Imcomplete)
+            observer.on_step_completed(SimpleNamespace(name="Harden"), StateEnum.Success)
+            return True
+
+    result = execute(Flow(), ExecutionPlan(intent="run"), event_sink=object())
+    assert result.succeeded
+    assert result.failed_step is None
+    assert result.executed_steps == ("Harden",)
+
+
+@pytest.mark.parametrize("advisory_step", ["antennaCheck", "emir"])
+@pytest.mark.parametrize("raw_state", [False, True])
+def test_selected_flow_continues_after_incomplete_advisory(advisory_step, raw_state):
+    calls = []
+
+    class Flow:
+        def get_workspace_step(self, step_id):
+            return SimpleNamespace(name=step_id)
+
+        def run_step(self, step, *, rerun=False, observer=None):
+            calls.append(step.name)
+            state = StateEnum.Imcomplete if step.name == advisory_step else StateEnum.Success
+            observer.on_step_completed(step, state)
+            return state.value if raw_state else state
+
+    result = execute(
+        Flow(),
+        ExecutionPlan(intent="rerun", step_ids=(advisory_step, "Harden")),
+        event_sink=object(),
+    )
+
+    assert calls == [advisory_step, "Harden"]
+    assert result.succeeded
+    assert result.failed_step is None
+    assert result.executed_steps == ("Harden",)
+
+
+@pytest.mark.parametrize(
+    ("step_name", "state"),
+    [("drc", StateEnum.Imcomplete), ("emir", StateEnum.Invalid)],
+)
+def test_selected_flow_still_stops_on_blocking_failure(step_name, state):
+    calls = []
+
+    class Flow:
+        def get_workspace_step(self, step_id):
+            return SimpleNamespace(name=step_id)
+
+        def run_step(self, step, *, rerun=False, observer=None):
+            calls.append(step.name)
+            step_state = StateEnum.Imcomplete if step.name == "antennaCheck" else state
+            observer.on_step_completed(step, step_state)
+            return step_state
+
+    result = execute(
+        Flow(),
+        ExecutionPlan(intent="rerun", step_ids=("antennaCheck", step_name, "Harden")),
+        event_sink=object(),
+    )
+
+    assert calls == ["antennaCheck", step_name]
+    assert not result.succeeded
+    assert result.failed_step == step_name
+
+
 def test_default_execution_observer_commits_completed_steps(monkeypatch, tmp_path):
     from chipcompiler.engine import execution
 

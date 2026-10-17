@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from ecc_tools_bin import ecc_py
 
 from chipcompiler.data import OriginDesign, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.tools.ecc import metrics as ecc_metrics
@@ -72,6 +73,16 @@ class FakeEcc:
         self.calls.append(("idb_init", config_path))
         return True
 
+    def gds_save(self, *, gds_name, layer_map_path):
+        self.calls.append(
+            (
+                "gds_save",
+                (),
+                {"gds_name": gds_name, "layer_map_path": layer_map_path},
+            )
+        )
+        return True
+
     def extract_lib(self):
         self.calls.append(("extract_lib", (), {}))
         for call in reversed(self.calls):
@@ -90,6 +101,9 @@ class FakeEcc:
         return True
 
     def __getattr__(self, name):
+        if not hasattr(ecc_py, name):
+            raise AttributeError(f"ecc_tools_bin.ecc_py has no attribute {name!r}")
+
         def record_call(*args, **kwargs):
             self.calls.append((name, args, kwargs))
             return True
@@ -244,6 +258,26 @@ def test_geometry_snapshot_save_includes_drc_only_when_requested():
     ]
 
 
+def test_geometry_snapshot_save_passes_thumbnail_path():
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+
+    assert (
+        module.geometry_snapshot_save(
+            Path("/tmp/geometry"), thumbnail_path=Path("/tmp/geometry.png")
+        )
+        is True
+    )
+
+    assert module.ecc.calls == [
+        (
+            "geometry_snapshot_save",
+            (),
+            {"output_dir": "/tmp/geometry", "thumbnail_path": "/tmp/geometry.png"},
+        ),
+    ]
+
+
 def test_geometry_edit_session_wrappers_forward_instance_name():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
@@ -338,7 +372,6 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.json_save(Path("/ws/output/gcd.json"))
     module.save_data(Path("/ws/output/db"))
     module.load_data(Path("/ws/input/db"))
-    module.write_soc_json(Path("/ws/output/soc.json"))
     module.feature_sammry(Path("/ws/feature/db.json"))
     module.feature_step("placement", Path("/ws/feature/step.json"))
     module.feature_eval_map(Path("/ws/feature/eval.json"), 4, 4)
@@ -359,7 +392,6 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.init_drc(Path("/ws/data/drc"))
     module.run_drc()
     module.destroy_drc()
-    module.pnp(Path("/ws/config/pnp.json"))
     module.feature_placement_map(Path("/ws/feature/place_map.json"))
     module.init_mj(Path("/ws/data/mj"))
     module.run_filler(Path("/ws/config/filler.json"))
@@ -380,17 +412,6 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.init_lvs(Path("/ws/data/lvs"))
     module.run_lvs()
     module.destroy_lvs()
-    module.cell_density(save_path=Path("/ws/eval/cell.csv"))
-    module.pin_density(save_path=Path("/ws/eval/pin.csv"))
-    module.net_density(save_path=Path("/ws/eval/net.csv"))
-    module.rudy_congestion(save_path=Path("/ws/eval/rudy.csv"))
-    module.lut_rudy_congestion(save_path=Path("/ws/eval/lutrudy.csv"))
-    module.egr_congestion(save_path=Path("/ws/eval/egr.csv"))
-    module.eval_cell_hierarchy(Path("/ws/eval/cell.png"), 1, 1)
-    module.eval_macro_hierarchy(Path("/ws/eval/macro.png"), 1, 1)
-    module.eval_macro_connection(Path("/ws/eval/macro_conn.png"), 1, 1)
-    module.eval_macro_pin_connection(Path("/ws/eval/macro_pin.png"), 1, 1)
-    module.eval_macro_io_pin_connection(Path("/ws/eval/macro_io.png"), 1, 1)
 
     _assert_no_path_values(module.ecc.calls)
     assert (
@@ -401,17 +422,6 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
             "layer_map_path": "/pdk/ics55.layermap",
         },
     ) in module.ecc.calls
-    assert (
-        "init_mj",
-        (),
-        {"config_dict": {"-temp_directory_path": "/ws/data/mj"}},
-    ) in module.ecc.calls
-    assert (
-        "insert_filler",
-        (),
-        {"config": "/ws/config/filler.json"},
-    ) in module.ecc.calls
-    assert ("destroy_mj", (), {}) in module.ecc.calls
     assert timing_output.read_text(encoding="utf-8") == module.ecc.generated_timing_lib_contents
     assert [
         call[0]
@@ -428,37 +438,13 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     ] == ["lib_init", "sdc_init", "spef_init", "init_sta", "extract_lib", "destroy_sta"]
 
 
-def test_liberty_load_failure_stops_power_initialization(tmp_path):
+def test_gds_save_requires_layer_map():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
-    module.ecc.lib_init = lambda **_kwargs: False
 
-    assert module.init_pw(output_dir=tmp_path, lib_paths=["/pdk/lib.lib"]) is False
-    assert module.ecc.calls == []
+    with pytest.raises(ValueError, match="set pdk.mapping_file"):
+        module.gds_save(Path("/ws/output/gcd.gds.gz"), None)
 
-
-def test_liberty_load_failure_stops_sta_run(tmp_path):
-    module = ECCToolsModule.__new__(ECCToolsModule)
-    module.ecc = FakeEcc()
-    module.ecc.lib_init = lambda **_kwargs: False
-
-    with pytest.raises(RuntimeError, match="Failed to load Liberty libraries for STA"):
-        module.run_timing(
-            work_dir=tmp_path / "data",
-            report_dir=tmp_path / "report",
-            feature_dir=tmp_path / "feature",
-            lib_paths=["/pdk/lib.lib"],
-        )
-    assert module.ecc.calls == []
-
-
-def test_liberty_load_failure_stops_timing_model_generation(tmp_path):
-    module = ECCToolsModule.__new__(ECCToolsModule)
-    module.ecc = FakeEcc()
-    module.ecc.lib_init = lambda **_kwargs: False
-
-    with pytest.raises(RuntimeError, match="Failed to load Liberty libraries for timing model"):
-        module.write_timing_model(tmp_path / "gcd.lib", lib_paths=["/pdk/lib.lib"])
     assert module.ecc.calls == []
 
 

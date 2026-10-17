@@ -2,7 +2,7 @@ import inspect
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from chipcompiler.data import StateEnum, is_finished_step_state
+from chipcompiler.data import ADVISORY_FLOW_STEPS, StateEnum, is_finished_step_state
 
 
 @dataclass(frozen=True)
@@ -42,32 +42,39 @@ def execute(flow: Any, plan: ExecutionPlan, *, event_sink: Any = None) -> Execut
         event_sink = event_sink_for_workspace(workspace)
     rerun = plan.intent == "rerun"
     observer = execution_observer(event_sink)
-    if not selected_ids:
-        succeeded = bool(_invoke(flow.run_steps, rerun=rerun, observer=observer))
-    else:
-        succeeded = True
-        for step_id in selected_ids:
-            observer.raise_if_cancelled()
-            step = _find_step(flow, step_id)
-            if step is None:
-                raise ValueError(f"step not found: {step_id}")
-            state = _invoke(flow.run_step, step, rerun=rerun, observer=observer)
-            if (
-                state is not StateEnum.Success
-                and getattr(state, "value", state) != StateEnum.Success.value
-            ):
-                succeeded = False
-                break
+    _notify_execution(event_sink, "on_execution_started", plan.intent, selected_ids)
+    try:
+        if not selected_ids:
+            succeeded = bool(_invoke(flow.run_steps, rerun=rerun, observer=observer))
+        else:
+            succeeded = True
+            for step_id in selected_ids:
+                observer.raise_if_cancelled()
+                step = _find_step(flow, step_id)
+                if step is None:
+                    raise ValueError(f"step not found: {step_id}")
+                state = _invoke(flow.run_step, step, rerun=rerun, observer=observer)
+                state_value = getattr(state, "value", state)
+                if state_value != StateEnum.Success.value and not (
+                    step.name in ADVISORY_FLOW_STEPS and state_value == StateEnum.Imcomplete.value
+                ):
+                    succeeded = False
+                    break
+    except BaseException as exc:
+        _notify_execution(event_sink, "on_execution_finished", "interrupted", str(exc))
+        raise
     executed_steps = tuple(getattr(observer, "executed_steps", ()))
-    failed_step = getattr(observer, "failed_step", None)
+    failed_step = None if succeeded else getattr(observer, "failed_step", None)
     state = StateEnum.Success.value if succeeded else StateEnum.Imcomplete.value
-    return ExecutionResult(
+    result = ExecutionResult(
         succeeded=succeeded,
         state=state,
         step_id=selected_ids[0] if len(selected_ids) == 1 else None,
         executed_steps=executed_steps,
         failed_step=failed_step,
     )
+    _notify_execution(event_sink, "on_execution_finished", result.state, None)
+    return result
 
 
 def _find_step(flow: Any, step_id: str) -> Any | None:
@@ -82,6 +89,17 @@ def _find_step(flow: Any, step_id: str) -> Any | None:
         ),
         None,
     )
+
+
+def _notify_execution(event_sink: Any, method: str, *args) -> None:
+    callback = getattr(event_sink, method, None)
+    if not callable(callback):
+        return
+    try:
+        callback(*args)
+    except (Exception, SystemExit):
+        if getattr(event_sink, "fatal_observer", False):
+            raise
 
 
 def _is_completed(flow: Any) -> bool:
@@ -104,13 +122,20 @@ class ExecutionObserver:
         if isinstance(name, str) and name:
             if getattr(state, "value", state) == StateEnum.Success.value:
                 self.executed_steps.append(name)
-            elif self.failed_step is None:
+            elif self.failed_step is None and not (
+                name in ADVISORY_FLOW_STEPS
+                and getattr(state, "value", state) == StateEnum.Imcomplete.value
+            ):
                 self.failed_step = name
         self._delegate_call("on_step_completed", step, state, error)
 
     @property
     def runtime_operation(self):
         return getattr(self.delegate, "runtime_operation", None)
+
+    @property
+    def execution(self):
+        return getattr(self.delegate, "execution", None)
 
     def raise_if_cancelled(self) -> None:
         self._delegate_call("raise_if_cancelled")
@@ -149,6 +174,22 @@ class _EngineeringCommitSink:
 
         self.workspace = workspace
         self.snapshot = ensure_engineering_snapshot(workspace)
+        self.recorder = None
+        project = getattr(workspace, "_ecc_project_dir", None)
+        if project:
+            try:
+                from ecc_experience.recording import recorder_for
+
+                self.recorder = recorder_for(project, workspace.directory)
+            except Exception:
+                logger = getattr(workspace, "logger", None)
+                if logger is not None:
+                    logger.exception("experience recorder initialization failed")
+
+    def on_execution_started(self, intent: str, step_ids: tuple[str, ...]) -> None:
+        recorder = self.recorder
+        if recorder is not None:
+            self._record(lambda: recorder.start(intent=intent, requested_steps=step_ids))
 
     def on_step_completed(self, _step: Any, state: Any, _error: str | None = None) -> None:
         from chipcompiler.engine.snapshot import commit_engineering_snapshot
@@ -158,6 +199,37 @@ class _EngineeringCommitSink:
             workspace_id=self.snapshot["workspaceId"],
             cause=f"flow_step.{getattr(state, 'value', str(state)).lower()}",
         )
+        recorder = self.recorder
+        if recorder is not None:
+            self._record(lambda: recorder.committed_step(self.snapshot, _step, state, _error))
+
+    def on_execution_finished(self, state: str, error: str | None) -> None:
+        status = "success" if state == StateEnum.Success.value else state
+        recorder = self.recorder
+        if recorder is not None:
+            self._record(lambda: recorder.finish(status=status, error=error))
+
+    def _record(self, callback) -> None:
+        if self.recorder is None:
+            return
+        try:
+            callback()
+        except (Exception, SystemExit):
+            logger = getattr(self.workspace, "logger", None)
+            if logger is not None:
+                logger.exception("experience recorder event failed")
+
+    @property
+    def execution(self) -> dict[str, Any] | None:
+        run_id = getattr(self.workspace, "_ecc_run_id", None)
+        if isinstance(run_id, str) and run_id:
+            return {"schema_version": 1, "run_id": run_id}
+        return None
+
+    def raise_if_cancelled(self) -> None:
+        event = getattr(self.workspace, "_ecc_cancel_event", None)
+        if event is not None and event.is_set():
+            raise RuntimeError("run cancelled at a step boundary")
 
 
 def event_sink_for_workspace(workspace: Any) -> _EngineeringCommitSink | None:

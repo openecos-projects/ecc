@@ -102,8 +102,8 @@ def probe_klayout() -> ProbeResult:
         "klayout",
         FAIL,
         required=False,
-        detail="optional; used only by layout-image rendering",
-        remediation="pip install klayout",
+        detail="optional; Python module for flow thumbnails; gdsview also needs the GUI executable",
+        remediation="pip install klayout and install the KLayout GUI executable",
     )
 
 

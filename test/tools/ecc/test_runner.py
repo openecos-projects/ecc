@@ -277,7 +277,7 @@ class SnapshotSaveEccModule:
         self.write_snapshot = write_snapshot
         self.geometry_output = None
         self.geometry_includes_drc = None
-        self.gds_save_kwargs = None
+        self.geometry_thumbnail = None
 
     def def_save(self, **_kwargs):
         return True
@@ -285,16 +285,13 @@ class SnapshotSaveEccModule:
     def verilog_save(self, **_kwargs):
         return True
 
-    def gds_save(self, **kwargs):
-        self.gds_save_kwargs = kwargs
-        return True
-
     def save_data(self, **_kwargs):
         return True
 
-    def geometry_snapshot_save(self, output_dir, *, include_drc=False):
+    def geometry_snapshot_save(self, output_dir, *, include_drc=False, thumbnail_path=None):
         self.geometry_output = output_dir
         self.geometry_includes_drc = include_drc
+        self.geometry_thumbnail = thumbnail_path
         if not self.write_snapshot:
             return False
         Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -1050,6 +1047,9 @@ def test_run_filler_uses_mj_lifecycle(tmp_path, monkeypatch):
         def destroy_mj(self):
             self.calls.append(("destroy_mj",))
 
+        def gds_save(self, **kwargs):
+            self.calls.append(("gds_save", kwargs))
+
     filler_config = tmp_path / "config" / "filler_ecc.json"
     filler_data_dir = tmp_path / "filler_ecc" / "data" / "mj"
     workspace = Workspace(config={StepEnum.FILLER.value: filler_config})
@@ -1069,6 +1069,13 @@ def test_run_filler_uses_mj_lifecycle(tmp_path, monkeypatch):
         ("init_mj", filler_data_dir),
         ("run_filler", filler_config),
         ("destroy_mj",),
+        (
+            "gds_save",
+            {
+                "output_path": step.output.gds or "",
+                "layer_map_path": workspace.pdk.mapping_file,
+            },
+        ),
     ]
 
 
@@ -1098,23 +1105,17 @@ def test_rcx_checklist_uses_top_module_for_spef_design_token(tmp_path):
     "step_name", (StepEnum.ROUTING.value, StepEnum.LVS.value, StepEnum.DRC.value)
 )
 def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path, step_name):
-    layer_map = tmp_path / "ics55.layermap"
-    layer_map.write_text("MET1 drawing 81 1\n", encoding="utf-8")
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
-        pdk=PDK(mapping_file=layer_map),
     )
     step = build_step(workspace, step_name, None, None)
     module = SnapshotSaveEccModule(write_snapshot=True)
 
     assert ecc_runner.save_data(workspace, step, module, feature_step=False) is True
-    assert module.gds_save_kwargs == {
-        "output_path": step.output.gds or "",
-        "layer_map_path": layer_map,
-    }
     assert module.geometry_output == step.output.geometry
     assert module.geometry_includes_drc is (step_name == StepEnum.DRC.value)
+    assert module.geometry_thumbnail == step.output.image
     assert step.output.geometry_manifest is not None
     assert step.output.geometry_manifest.is_file()
 

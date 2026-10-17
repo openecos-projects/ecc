@@ -208,10 +208,10 @@ def _persisted_flow_data(workspace_dir: Path, json_read) -> dict:
 
 
 @contextmanager
-def _workspace_lock(workspace_dir: Path):
+def _workspace_lock(workspace_dir: Path, *, blocking: bool = True):
     from chipcompiler.utility.workspace_lock import workspace_lock
 
-    with workspace_lock(workspace_dir):
+    with workspace_lock(workspace_dir, blocking=blocking):
         yield
 
 

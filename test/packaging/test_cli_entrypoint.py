@@ -10,18 +10,7 @@ class TestPackaging:
         with open(pyproject, "rb") as f:
             data = tomllib.load(f)
         assert data["project"]["scripts"]["ecc"] == "chipcompiler.cli.main:main"
-        assert (
-            data["project"]["scripts"]["ecc-agent-rpc"] == "chipcompiler.runtime.stdio_server:main"
-        )
-
-    def test_pyinstaller_spec_collects_jsonrpcserver_data_files(self):
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        spec_path = os.path.join(project_root, "ecc.spec")
-
-        with open(spec_path, encoding="utf-8") as f:
-            source = f.read()
-
-        assert 'collect_data_files("jsonrpcserver")' in source
+        assert "ecc-agent-rpc" not in data["project"]["scripts"]
 
     def test_pyinstaller_spec_filters_payloads_before_analysis(self):
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -37,7 +26,7 @@ class TestPackaging:
         assert datas_filter_index < analysis_index
         assert binaries_filter_index < analysis_index
 
-    def test_pyinstaller_spec_reuses_ecc_executable_for_agent_rpc(self):
+    def test_pyinstaller_spec_has_one_cli_executable(self):
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
         spec_path = os.path.join(project_root, "ecc.spec")
 
@@ -45,7 +34,7 @@ class TestPackaging:
             source = f.read()
 
         assert source.count(" = Analysis(") == 1
-        assert "os.link(ecc_exe_path, agent_exe_path)" in source
+        assert "ecc-agent-rpc" not in source
 
     def test_pyinstaller_spec_collects_doc_guides(self):
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))

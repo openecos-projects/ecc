@@ -1,5 +1,6 @@
 from typing import Any, TypedDict
 
+from chipcompiler.data import ADVISORY_FLOW_STEPS
 from chipcompiler.data.checklist import workspace_checklist_path
 from chipcompiler.engine.snapshot_limits import (
     CHECKLIST_READ_MAX_BYTES,
@@ -38,7 +39,11 @@ def build_signoff_assessment(
     else:
         flow_data = getattr(flow, "data", None)
         steps = flow_data.get("steps", []) if isinstance(flow_data, dict) else []
-    if steps and any(str(step.get("state", "")) not in {"Success", "Skipped"} for step in steps):
+    if steps and any(
+        step.get("name") not in ADVISORY_FLOW_STEPS
+        and str(step.get("state", "")) not in {"Success", "Skipped"}
+        for step in steps
+    ):
         return _unavailable_assessment()
     if checklist is None:
         checklist_result = read_bounded_json_object(

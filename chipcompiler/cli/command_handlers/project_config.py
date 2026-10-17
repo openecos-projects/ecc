@@ -29,6 +29,68 @@ def project_set(args, ctx: CommandContext) -> CommandResult:
     return CommandResult.ok([_record(field.key, value, "set")])
 
 
+def project_apply(args, ctx: CommandContext) -> CommandResult:
+    from chipcompiler.cli.project.project_application import ProjectApplicationError, apply_project
+
+    try:
+        changed = apply_project(
+            ctx.project_dir,
+            sets=args.sets,
+            unsets=args.unsets,
+            add_rtl=args.add_rtl,
+            remove_rtl=args.remove_rtl,
+            blocking=not args.no_wait,
+        )
+    except BlockingIOError:
+        return CommandResult.err([error_record("project_busy")], exit_code=20)
+    except ProjectApplicationError as exc:
+        return CommandResult.err([error_record(exc.code, key=exc.key, reason=str(exc))])
+    return CommandResult.ok([{"project": "apply", "status": "applied", "changed": changed}])
+
+
+def project_baseline(args, ctx: CommandContext) -> CommandResult:
+    from chipcompiler.cli.project.project_application import (
+        ProjectApplicationError,
+        select_qor_baseline,
+    )
+    from chipcompiler.project.manifest import ManifestError
+
+    try:
+        select_qor_baseline(ctx.project_dir, args.workspace_id, args.reason)
+    except (ProjectApplicationError, ManifestError) as exc:
+        return CommandResult.err([error_record("project_baseline_failed", reason=str(exc))])
+    return CommandResult.ok(
+        [{"project": "baseline", "status": "selected", "workspace": args.workspace_id}]
+    )
+
+
+def project_reconcile(args, ctx: CommandContext) -> CommandResult:
+    from chipcompiler.cli.project.project_application import (
+        ProjectApplicationError,
+        reconcile_project_state,
+    )
+    from chipcompiler.project.manifest import ManifestError
+
+    try:
+        report = reconcile_project_state(ctx.project_dir, blocking=not args.no_wait)
+    except BlockingIOError:
+        return CommandResult.err([error_record("workspace_busy")], exit_code=20)
+    except (ProjectApplicationError, ManifestError, OSError) as exc:
+        return CommandResult.err([error_record("project_reconcile_failed", reason=str(exc))])
+    record = {
+        "project": "reconcile",
+        "status": "repaired" if report.repairs else "consistent",
+        "repairs": list(report.repairs),
+        "busy": list(report.busy),
+        "errors": list(report.errors),
+    }
+    if report.errors:
+        return CommandResult.err([record])
+    if report.busy:
+        return CommandResult.err([record], exit_code=20)
+    return CommandResult.ok([record])
+
+
 def project_unset(args, ctx: CommandContext) -> CommandResult:
     field, error = _field_or_error(args.key)
     if error is not None:

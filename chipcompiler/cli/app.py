@@ -5,20 +5,31 @@ from typing import Annotated
 
 import typer
 
+from chipcompiler.cli.commands.chipview import register_chipview_commands
+from chipcompiler.cli.commands.compare import compare_app
 from chipcompiler.cli.commands.doc import register_doc_commands
 from chipcompiler.cli.commands.doctor import register_doctor_commands
+from chipcompiler.cli.commands.experiments import (
+    diagnose_app,
+    explore_app,
+    reproducible_app,
+    sweep_app,
+)
+from chipcompiler.cli.commands.flow import flow_app
+from chipcompiler.cli.commands.gds_view import register_gds_view_commands
 from chipcompiler.cli.commands.macro import macro_app
 from chipcompiler.cli.commands.param import param_app
 from chipcompiler.cli.commands.pdk import pdk_app
+from chipcompiler.cli.commands.process import process_app
 from chipcompiler.cli.commands.project import register_project_commands
 from chipcompiler.cli.commands.project_config import project_app
 from chipcompiler.cli.commands.report import report_app
-from chipcompiler.cli.commands.rpc import rpc_app
 from chipcompiler.cli.commands.signoff import signoff_app
 from chipcompiler.cli.commands.workspace import workspace_app
 from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.version_info import root_version_line, version_payload, version_text
 from chipcompiler.cli.inspection.tool_versions import tool_versions
+from ecc_experience.cli.commands import experience_app
 
 app = create_app(help="ECC - EDA toolchain for RTL-to-GDS flows", add_completion=True)
 
@@ -47,8 +58,10 @@ def root_callback(
 @app.command("version", help="Show ECC runtime, component, and installed tool versions")
 def version_cmd(
     *,
-    # Machine-readable output for the desktop app; not part of the documented CLI surface.
-    json_output: Annotated[bool, typer.Option("--json", hidden=True)] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Emit the version and CLI contract as JSON."),
+    ] = False,
 ) -> None:
     payload = version_payload()
     tools = tool_versions()
@@ -59,32 +72,27 @@ def version_cmd(
 
 
 register_doc_commands(app)
-
-
-@app.command("layout-image", help="Render a GDS file into a layout image")
-def layout_image_cmd(
-    gds: Annotated[str, typer.Option("--gds", help="Input GDS path")],
-    image: Annotated[str, typer.Option("--image", help="Output image path")],
-    width: Annotated[int, typer.Option("--width", min=1)] = 1920,
-    height: Annotated[int, typer.Option("--height", min=1)] = 1920,
-) -> None:
-    from chipcompiler.tools.klayout_tool.image import save_snapshot_image
-
-    if not save_snapshot_image(gds_file=gds, img_file=image, width=width, height=height):
-        typer.echo(f"Error: Failed to render layout image from {gds} to {image}", err=True)
-        raise typer.Exit(1)
+register_chipview_commands(app)
+register_gds_view_commands(app)
 
 
 register_project_commands(app)
 register_doctor_commands(app)
 app.add_typer(param_app, name="param")
+app.add_typer(flow_app, name="flow")
 app.add_typer(macro_app, name="macro")
 app.add_typer(pdk_app, name="pdk")
 app.add_typer(project_app, name="project")
+app.add_typer(process_app, name="process")
 app.add_typer(workspace_app, name="workspace")
 app.add_typer(signoff_app, name="signoff")
 app.add_typer(report_app, name="report")
-app.add_typer(rpc_app, name="rpc")
+app.add_typer(compare_app, name="compare")
+app.add_typer(reproducible_app, name="reproducible")
+app.add_typer(sweep_app, name="sweep")
+app.add_typer(explore_app, name="explore")
+app.add_typer(diagnose_app, name="diagnose")
+app.add_typer(experience_app, name="experience")
 
 
 def invoke_typer_app(argv: Sequence[str]) -> int:

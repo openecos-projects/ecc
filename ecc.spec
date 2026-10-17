@@ -25,7 +25,9 @@ ECC_DIR = Path(SPECPATH)
 HOOKS_DIR = ECC_DIR / "hooks"
 CODESIGN_IDENTITY = os.environ.get("APPLE_SIGNING_IDENTITY")
 BUNDLE_MODE = os.environ.get("ECOS_PYINSTALLER_MODE", "onedir").strip().lower()
-STRIP_BINARIES = sys.platform.startswith("linux")
+# Do not strip collected third-party ELF libraries. NumPy/OpenBLAS and the
+# bundled EDA extensions can lose valid program-header alignment when stripped.
+STRIP_BINARIES = False
 
 if BUNDLE_MODE not in {"onedir", "onefile"}:
     raise SystemExit(f"Unsupported ECOS_PYINSTALLER_MODE={BUNDLE_MODE!r}; use onedir or onefile.")
@@ -166,10 +168,6 @@ def collect_ecc_resources():
     return datas
 
 
-def collect_jsonrpcserver_resources():
-    return collect_data_files("jsonrpcserver")
-
-
 def collect_dreamplace_thirdparty_files():
     datas = []
     thirdparty_root = ECC_DIR / "chipcompiler" / "thirdparty" / "ecc-dreamplace"
@@ -287,6 +285,7 @@ def rich_unicode_data_hiddenimports():
 
 
 ecc_datas, ecc_binaries, ecc_hiddenimports = collect_all("chipcompiler")
+experience_datas, experience_binaries, experience_hiddenimports = collect_all("ecc_experience")
 ecc_tools_datas, ecc_tools_binaries, ecc_tools_hiddenimports = collect_all("ecc_tools_bin")
 klayout_datas, klayout_binaries, klayout_hiddenimports = collect_all("klayout")
 dreamplace_datas, dreamplace_binaries, dreamplace_hiddenimports = collect_all("dreamplace")
@@ -294,13 +293,13 @@ torch_datas, torch_binaries, torch_hiddenimports = collect_all("torch")
 
 datas = []
 datas.extend(ecc_datas)
+datas.extend(experience_datas)
 datas.extend(ecc_tools_datas)
 datas.extend(klayout_datas)
 datas.extend(dreamplace_datas)
 datas.extend(torch_datas)
 datas.extend(collect_required_metadata())
 datas.extend(collect_ecc_resources())
-datas.extend(collect_jsonrpcserver_resources())
 datas.extend(collect_dreamplace_thirdparty_files())
 xplace_datas, xplace_binaries = collect_xplace_runtime()
 datas.extend(xplace_datas)
@@ -308,6 +307,7 @@ datas.extend(collect_doc_guides())
 
 binaries = []
 binaries.extend(ecc_binaries)
+binaries.extend(experience_binaries)
 binaries.extend(ecc_tools_binaries)
 binaries.extend(collect_ecc_tools_extension_binaries())
 binaries.extend(klayout_binaries)
@@ -321,6 +321,7 @@ hiddenimports = []
 hiddenimports.extend(HIDDENIMPORTS)
 hiddenimports.extend(rich_unicode_data_hiddenimports())
 hiddenimports.extend(ecc_hiddenimports)
+hiddenimports.extend(experience_hiddenimports)
 hiddenimports.extend(ecc_tools_hiddenimports)
 hiddenimports.extend(klayout_hiddenimports)
 hiddenimports.extend(dreamplace_hiddenimports)
@@ -366,7 +367,6 @@ if BUNDLE_MODE == "onedir":
         upx=False,
         name="ecc",
     )
-    ecc_exe_path = Path(coll.name) / "ecc"
 else:
     exe = EXE(
         pyz,
@@ -381,8 +381,3 @@ else:
         console=True,
         codesign_identity=CODESIGN_IDENTITY,
     )
-    ecc_exe_path = Path(exe.name)
-
-agent_exe_path = ecc_exe_path.with_name(f"ecc-agent-rpc{ecc_exe_path.suffix}")
-agent_exe_path.unlink(missing_ok=True)
-os.link(ecc_exe_path, agent_exe_path)

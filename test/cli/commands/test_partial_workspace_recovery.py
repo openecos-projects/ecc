@@ -37,11 +37,12 @@ class TestPartialWorkspaceRecovery:
             },
         ]
         assert not os.path.lexists(run_dir)
-        # The pre-registered entry records the failure.
+        # Fresh creation publishes the Workspace before registering it.  A
+        # failed create therefore leaves no stale Project registration; the
+        # reconciliation command can still inspect the orphan evidence.
         with open(os.path.join(project_dir, "project.json")) as f:
             manifest = json.load(f)
-        assert manifest["workspaces"][0]["workspace_id"] == "exp1"
-        assert manifest["workspaces"][0]["status"] == "failed"
+        assert manifest["workspaces"] == []
 
     def test_existing_dir_without_overwrite_preserves_content(
         self,

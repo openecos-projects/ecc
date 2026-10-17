@@ -6,6 +6,7 @@ from threading import Event, Thread
 
 from chipcompiler.data import Workspace, WorkspaceStep
 from chipcompiler.engine.db import EngineDB
+from chipcompiler.engine.resource_observation import start_observation
 from chipcompiler.utility.log import capture_stdio_to_file, flush_cstdio
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,7 @@ class StepExecutionResult:
     elapsed_seconds: float
     peak_memory_mb: float
     runtime: str
+    resource_observation: dict | None = None
 
 
 def get_process_rss_mb(pid: int) -> float:
@@ -48,10 +50,22 @@ def execute_tool_step(
     started_at: float | None = None,
 ) -> StepExecutionResult:
     """Run one tool while containing its stdio, memory monitor, and failures."""
+    from chipcompiler.engine import step_subprocess
+
+    if step_subprocess.is_enabled():
+        return step_subprocess.execute_step_subprocess(
+            workspace,
+            workspace_step,
+            observer=observer,
+            started_at=started_at,
+        )
     start_time = time.time() if started_at is None else started_at
     step_tag = f"{workspace_step.name}({workspace_step.tool})"
     log_file = _prepare_log_file(workspace_step)
     pid = os.getpid()
+    resources = start_observation(
+        pid, isolated=False, step=workspace_step.name, tool=workspace_step.tool
+    )
     start_memory_mb = 0.0
     peak_memory = [0.0]
     stop_memory_monitor = Event()
@@ -63,8 +77,13 @@ def execute_tool_step(
         workspace.logger.info(f"[STEP] {step_tag} pid={pid} started")
         start_memory_mb = get_process_rss_mb(pid)
         peak_memory[0] = start_memory_mb
+        memory_tracker = track_current_process_memory
+        if workspace_step.tool == "ecc" and workspace_step.name == "sta":
+            from chipcompiler.tools.ecc.sta_parallel import track_sta_process_memory
+
+            memory_tracker = track_sta_process_memory
         memory_monitor = Thread(
-            target=track_current_process_memory,
+            target=memory_tracker,
             args=(pid, stop_memory_monitor, peak_memory),
             daemon=True,
         )
@@ -95,6 +114,7 @@ def execute_tool_step(
         failure_message = record_tool_failure(workspace.logger, step_tag, exc)
         step_error = step_error or failure_message
     finally:
+        resource_observation = resources.finish()
         stop_memory_monitor.set()
         if memory_monitor is not None:
             try:
@@ -124,6 +144,7 @@ def execute_tool_step(
         elapsed_seconds=elapsed,
         peak_memory_mb=peak_memory_mb,
         runtime=f"{int(elapsed // 3600)}:{int((elapsed % 3600) // 60)}:{int(elapsed % 60)}",
+        resource_observation=resource_observation,
     )
 
 

@@ -48,6 +48,7 @@ setInstancePlacementStatus -status fixed -name <instance>
 ```bash
 ecc macro set u_ram0 --x 10 --y 20.5 --orient R0
 ecc macro remove u_ram0
+ecc macro import /path/to/macro_location.tcl   # 采纳外部提供的交接文件
 ecc macro show
 ```
 

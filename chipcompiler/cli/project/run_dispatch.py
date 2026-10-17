@@ -128,12 +128,31 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
         # re-acquires it on the recreated tree, so two runs never execute
         # against the same paths. The lock stays entered in *ws_locks* until
         # the replacement is built.
-        ws_locks.enter_context(_workspace_lock(Path(run_dir)))
+        ws_locks.enter_context(_workspace_lock(Path(run_dir), blocking=not command_input.no_wait))
+        from chipcompiler.cli.project.revision import expected_revision_error
+
+        conflict = expected_revision_error(
+            run_dir,
+            command_input.expected_revision,
+            workspace_id=run_name,
+        )
+        if conflict is not None:
+            return conflict
         backup_path = f"{run_dir}.overwritten-{os.getpid()}"
         # An atomic rename, not a delete: until the replacement is fully
         # constructed the old tree stays on disk and recoverable.
         os.replace(run_dir, backup_path)
 
+    if command_input.expected_revision is not None and not os.path.lexists(run_dir):
+        from chipcompiler.cli.project.revision import expected_revision_error
+
+        conflict = expected_revision_error(
+            run_dir,
+            command_input.expected_revision,
+            workspace_id=run_name,
+        )
+        if conflict is not None:
+            return conflict
     try:
         os.makedirs(run_dir)
         return True, backup_path
@@ -367,7 +386,14 @@ def dispatch_project_run(
                 if isinstance(prepared, CommandResult):
                     return prepared
                 owns_target, backup_path = prepared
-                if not workspace_registered:
+                # A legacy virgin `ecc run` still has to create the initial
+                # Project manifest before it can execute. Explicit GUI
+                # Workspace creation always runs after `ecc init`, so it
+                # publishes the directory first and registers it in the
+                # fresh-run commit path.
+                if not workspace_registered and not os.path.lexists(
+                    os.path.join(project_dir, "project.json")
+                ):
                     from chipcompiler.cli.core.records import error_record
                     from chipcompiler.cli.project.config import resolve_pdk_root
                     from chipcompiler.project.manifest_write import pre_register_workspace

@@ -432,3 +432,14 @@ def render_signoff_inspect_text(records, file=None):
             print(f"    [{risk['risk']:7s}] {risk['title']}", file=target)
             if risk.get("reason"):
                 print(f"              {risk['reason']}", file=target)
+
+
+def render_signoff_check_text(records, file=None):
+    target = file or sys.stdout
+    summary = records[0]
+    print("[signoff check]", file=target)
+    print(f"  status    : {summary['status']}", file=target)
+    print(f"  profile   : {summary['profile']}", file=target)
+    print(f"  workspace : {summary['workspace']}", file=target)
+    for record in records[1:]:
+        print(f"    {record['gate']:18s} {record['status']:7s} {record['reason']}", file=target)

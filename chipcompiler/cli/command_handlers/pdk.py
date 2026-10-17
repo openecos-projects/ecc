@@ -179,6 +179,22 @@ def show(command_input, ctx: CommandContext) -> CommandResult:
     return CommandResult.ok(records)
 
 
+def verify(command_input, ctx: CommandContext) -> CommandResult:
+    result = show(command_input, ctx)
+    if result.exit_code != 0:
+        return result
+    records = list(result.records)
+    contents = next((record for record in records if record.get("pdk") == "contents"), None)
+    if contents is None:
+        return CommandResult.err(
+            [error_record("pdk_contents_unavailable", reason="resolved PDK root is unavailable")]
+        )
+    contents["pdk"] = "verify"
+    if contents.get("status") != "pass":
+        return CommandResult.err(records, exit_code=1)
+    return CommandResult.ok(records)
+
+
 def unset(command_input, ctx: CommandContext) -> CommandResult:
     from chipcompiler.cli.project.config import find_config_path
 

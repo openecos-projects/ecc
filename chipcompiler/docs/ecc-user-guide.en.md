@@ -4,7 +4,6 @@
 
 - Source code: [chipcompiler/cli/](https://github.com/openecos-projects/ecc/tree/main/chipcompiler/cli/)
 - For how to extend the CLI with new commands, see [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli)
-- RPC sidecar protocol: [rpc-guide.md](https://github.com/openecos-projects/ecc/blob/main/docs/rpc-guide.md)
 
 ## 0. Invocation
 
@@ -67,6 +66,19 @@ which ecc && ecc --version          # from any directory, should print ecc <vers
 
 > `ecc` resolves the project from the current directory by default (wherever `ecc.toml` lives), so "launch from any folder" is the normal usage; to operate on a project from elsewhere, add `--project <dir>`.
 
+**Directory defaults:** omit `--project` inside a project root. Inside a managed workspace
+root, omit both `--project` and `--workspace`: the CLI discovers the ancestor project and
+uses the manifest's workspace ID, not the directory basename. Explicit selectors take
+precedence. Multiple workspaces still require selection when invoked from the project root.
+For an external workspace, pass `--project` to identify its owner. Standalone workspaces can
+run workspace commands such as `status`, but project reports require a real manifest.
+Discovery applies to roots only, never arbitrary project subdirectories or global searches.
+
+Commands with both project and workspace scopes, such as `param` and `macro`, default to
+workspace scope when invoked inside a workspace. Invoke them from the project root for
+project scope. `process --workspace` can also be omitted there; cancellation still requires
+`--run-id`. Explicit positional lifecycle arguments for create/import/delete/derive remain required.
+
 ### Running from source
 
 ```bash
@@ -81,8 +93,22 @@ uv run ecc --help
 
 - Global: `ecc --version` (single version line), `ecc --help`.
 - Project location: project-scoped commands accept `--project <dir>` (when the option is not given, the current directory is used). `--workspace <path>` accepts either a tool-managed, non-empty simple folder name or a complete absolute filesystem path. A name keeps the project-local `<project>/<workspace-id>` layout; an absolute path creates or selects an external workspace and uses its basename as the new ID unless the path is already registered. A fresh project creates `default` on bare `ecc run`; a project with one active workspace auto-selects it, while one with multiple active workspaces requires `--workspace`. A named workspace is created and registered in `project.json` before its files are created. Legacy `runs/` projects must be upgraded with `ecc migrate` before running a flow. Each project has one `ecc.toml`; workspace inputs are copied to its own `origin/` directory at creation time.
-- Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `param`, `macro`, `pdk`, `project`, `workspace`, `signoff`, and `report` accept `--plain` (`key=value`, for scripting), with human-readable TEXT by default. `rpc serve` and `layout-image` use their own protocols instead.
-- Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`).
+- Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `rtl`, `param`, `macro`, `pdk`, `project`, `workspace`, `process`, `flow`, `signoff`, `report`, `compare`, `chipview`, and `gdsview` accept `--plain` where documented, with human-readable TEXT by default. `reproducible`, `sweep`, `explore`, and `diagnose` also accept `--plain`; JSON remains the default for machine-oriented experiment commands.
+- Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`). Complete registry:
+
+| Exit code | Meaning | Emitted by |
+|---|---|---|
+| 0 | success (including advisory checks returning blocked/attention, a `no_op` run, and empty read-only queries) | all commands |
+| 1 | business failure: validation, state, or execution error with a machine-readable error record on stdout/stderr | all commands |
+| 2 | usage error: missing/invalid arguments, `--plain` combined with `--json`, unknown topic/profile/flow names | all commands |
+| 6 | a required gate of a read-only quality check failed | `signoff check`, `sweep verify`, `diagnose run`, `reproducible verify` |
+| 7 | required gates could not be rated (missing, stale, or ambiguous evidence) | `signoff check` |
+| 20 | `workspace_busy`: the target workspace is in use without `--no-wait` | mutating commands |
+| 21 | `revision_conflict`: `--expected-revision` disagrees with the manifest revision | commands taking `--expected-revision` |
+| 22 | `process_not_found`: the registered run process is stale and no live process holds the workspace lock | `ecc process` group |
+| 23 | contract incompatible (reserved: the CLI itself never emits it; the GUI-side contract gate uses it when the runtime/CLI contract is unsupported) | — |
+| 124 | timeout: recorded in sweep candidate results; also a command exit code for bounded experience optimization or campaigns | `sweep run` results, `experience optimize`, `experience campaign run` |
+| 130 | bounded experience optimization or campaign was cancelled | `experience optimize`, `experience campaign run` |
 - Step tokens come in three vocabularies, distinguished by context:
   - **display names** (output and input of `ecc status` / `ecc log` / `ecc report step`, uniformly lowercase/underscore): `synthesis / lec / pre_floorplan / macro_placement / post_floorplan / placement / cts / legalization / timing_optimization / routing / filler / lvs / drc / postroutelec / rcx / sta / poweranalysis / harden`;
   - **persisted names** (the original names in `home/flow.json`; required by `--from`/`--only`/`--to` on existing workspaces, e.g. `place`, `CTS`, `Timing optimization`): `Synthesis / lec / preFloorplan / macroPlacement / postFloorplan / place / CTS / legalization / Timing optimization / route / filler / lvs / drc / postRouteLec / RCX / sta / powerAnalysis / Harden`;
@@ -96,23 +122,30 @@ $ ecc --help
 Commands:
   version       Show ECC runtime, component, and installed tool versions
   doc           Show a bundled guide (config = config reference, ug = user guide, tutorial)
-  layout-image  Render a GDS file into a layout image
+  gdsview  Open a workspace step's GDS in the KLayout viewer
+  chipview       Open a workspace step's saved geometry snapshot in Chip Viewer
   init          Create a new ECC project
   check         Validate the current project setup
   run           Run the configured RTL-to-GDS flow
-  status        Show a quick run/step progress summary (full evidence:...)
+  status        Show a quick run/step progress summary (full evidence: 'ecc report step')
   log           Show available logs or step log content
   config        Show resolved project or step configuration
   migrate       Migrate a legacy runs/ project to the manifest layout
   doctor        Check host environment: PDK, tools, and components
+  rtl           Import project RTL sources
   param         Manage EDA parameters
+  flow          Inspect available ECC flows
   macro         Manage manual macro placement (macro_location.tcl)
   pdk           Show and configure the PDK path used by this project
   project       Edit project declarations in ecc.toml
+  process       Inspect, cancel, or reconcile ECC run processes
   workspace     Import or refresh managed workspaces
   signoff       Inspect and export signoff packages
-  report        Generate design-summary, QoR score, checklist, and step reports
-  rpc           Run the private ECC JSON-RPC runtime
+  report        Generate design-summary, QoR score, checklist, step reports, and saved snapshots
+  compare       Compare saved Engineering Snapshots without running EDA tools
+  reproducible  Export and verify reproducible ECC evidence packages
+  sweep         Run deterministic parameter sweeps
+  explore       Rank and select sweep candidates
 ```
 
 ## 1.5. doc — read the bundled guides in the terminal
@@ -141,10 +174,46 @@ eval "$(ecc --show-completion)"     # auto-detects the current shell
 - Add that line to `~/.zshrc` / `~/.bashrc` (or home-manager `initExtra`) to enable completion permanently. zsh requires `compinit` to be initialized first.
 - On NixOS or other declaratively managed setups, prefer the `eval` line over `--install-completion`: the latter rewrites `~/.zshrc` / `~/.bashrc` in place, which fails on read-only rc symlinks and conflicts with home-manager.
 
+## 1.7. Command index
+
+Every command and subcommand at a glance (semantics, options, and examples in the linked section; the shared `--project`/`--workspace`/`--plain`/`--json` selector conventions in §1 and §1.1):
+
+| Command | Purpose | Section |
+|---|---|---|
+| `ecc version` | show runtime, component, and tool versions (`--json` emits the machine-readable contract) | §2 |
+| `ecc doc TOPIC` | read the bundled guides in the terminal (`config` / `ug` / `tutorial`) | §1.5 |
+| `ecc gdsview` | open a workspace step's GDS in KLayout | §13 |
+| `ecc chipview` | open a workspace step's geometry snapshot in Chip Viewer | §14 |
+| `ecc init NAME` | create a project skeleton | §3 |
+| `ecc check` | validate project config, RTL sources, and PDK contents | §4 |
+| `ecc run` | execute a flow (fresh/resume/range/single-step; project and workspace modes) | §5 |
+| `ecc status` | quick run/step progress summary | §6 |
+| `ecc log [STEP]` | list or view logs | §7 |
+| `ecc config [STEP]` | view resolved project/step configuration | §8 |
+| `ecc migrate` | migrate a legacy `runs/` layout | §5.4 |
+| `ecc doctor` | environment self-check (9 components) | §4 |
+| `ecc rtl import` | import RTL/filelist into the project's `rtl/` | §8.5 |
+| `ecc param apply / list / show / set / unset / diff` | parameter management (project/workspace scopes) | §9 |
+| `ecc flow list / show / validate` | inspect and validate registered flows | §8.6 |
+| `ecc macro set / remove / import / show` | manual macro placement | §9.5 |
+| `ecc pdk set-root / show / verify / unset` | PDK path configuration and content verification | §10 |
+| `ecc project apply / baseline / reconcile / set / unset / add / remove / show / doctor` | edit `ecc.toml` declarations, select the QoR baseline, manifest health check | §8.5 |
+| `ecc process inspect / cancel / reconcile` | inspect, cancel, or reconcile run processes | §6.5 |
+| `ecc workspace create / import / derive / archive / delete / reset-flow / refresh / reconcile-deletes` | workspace lifecycle management | §8.5 |
+| `ecc signoff inspect / check / export` | signoff readiness, quality gates, package export | §11 |
+| `ecc report summary / qor / checklist / step / snapshot / project` | design summary, QoR score, checklist, per-step evidence, snapshots, project matrix | §12 |
+| `ecc compare run` | compare two Engineering Snapshots | §12.6 |
+| `ecc reproducible export / inspect / verify / report` | export/inspect/verify/summarize reproducible evidence packages | §11.5 |
+| `ecc sweep create / show / list / run / compare / verify` | deterministic parameter sweeps | §11.5 |
+| `ecc explore rank / export / promote` | rank, export, and promote candidates | §11.5 |
+| `ecc diagnose run` | workspace diagnosis and recovery suggestions | §11.5 |
+| `ecc experience` | collect cases, serial campaigns, bounded recommendations/optimization, releases, and package exchange | [Experience testing manual](../../ecc_experience/docs/ecc-experience-testing-guide.en.md#serial-baseline-campaigns) |
+
 ## 2. version — show versions
 
 ```bash
 ecc version           # text
+ecc version --json    # version and CLI contract as JSON
 ecc --version         # single ecc version line
 ```
 
@@ -164,10 +233,19 @@ sizer 0.1.0-alpha
 klayout 0.30.2
 ```
 
+`--json` emits the machine-readable contract: `schema_version` versions this JSON payload, `cli_contract` versions the CLI command-surface/exit-code contract (ECOS Studio checks both, plus `runtime`, to decide runtime compatibility), and `tools` lists tool versions resolved from the environment the same way a flow run resolves them:
+
+```console
+$ ecc version --json
+{"schema_version": 2, "runtime": "ECC CLI", "ecc": "0.1.0a12", "dreamplace": "0.1.0a7", "ecc_tools": "0.1.0a13", "cli_contract": 1, "tools": {"yosys": "0.69+24", "sizer": "0.1.0-alpha", "klayout": "0.30.2"}}
+```
+
 ## 3. init — create a project
 
 ```bash
-ecc init <NAME> [--plain]
+ecc init <NAME> [--project-name TEXT] [--design-name TEXT] [--plain]
+# ECOS Studio resource registration (optional, recorded into the generated manifest):
+#   --mpc-resource-id / --mpc-display-name / --mpc-version / --mpc-root / --mpc-design-index
 ```
 
 Creates an `ecc.toml`, `rtl/`, and `constraints/` skeleton under `NAME/` (the workspace is created by the first `ecc run`):
@@ -212,10 +290,10 @@ skip_steps = ["lec"]
 ## 4. check — validate the project configuration
 
 ```bash
-ecc check [--project DIR] [--plain]
+ecc check [--project DIR] [--workspace NAME] [--plain]
 ```
 
-Validates required `ecc.toml` fields (design/pdk/flow), the PDK name and contents (tech LEF/LEF/liberty), and every declared RTL source file (missing sources fail the check):
+Validates required `ecc.toml` fields (design/pdk/flow), the PDK name and contents (tech LEF/LEF/liberty), and every declared RTL source file (missing sources fail the check). With `--workspace NAME` the check runs against the effective configuration resolved for that declared workspace (manifest fallback and entry-layer range applied) instead of the bare project:
 
 ```console
 $ ecc check        # PDK not ready
@@ -239,10 +317,10 @@ rc=0
 
 ### Environment self-check: ecc doctor
 
-`ecc doctor` checks every dependency in one command (PDK, yosys including the slang frontend, bundled ecc-tools/dreamplace, required Sizer, and optional KLayout), reporting pass/fail/skip per component with remediation hints; only **required** failures produce a non-zero exit:
+`ecc doctor` checks every dependency in one command — 9 components total (PDK, yosys, yosys-slang, bundled ecc-tools/dreamplace, required Sizer, the kepler-formal and lec-dual LEC-equivalence probes, and optional KLayout) — reporting pass/fail per component with remediation hints; only **required** failures produce a non-zero exit:
 
 ```bash
-ecc doctor [--project DIR] [--plain]
+ecc doctor [--project DIR] [--plain|--json]
 ```
 
 ```console
@@ -250,7 +328,7 @@ $ ecc doctor          # run inside the project (the PDK probe needs ecc.toml or 
 [status]
   doctor: environment
   status: attention          # ok = all pass / attention = only optional failures (rc=0) / failed = required failure (rc=1)
-  checked: 7
+  checked: 9
   failed: 0                  # `failed` counts required failures only; optional ones go to `attention`
   attention: 1
   run: ecc run
@@ -260,11 +338,41 @@ $ ecc doctor          # run inside the project (the PDK probe needs ecc.toml or 
   component: yosys-slang
   status: pass
   detail: read_slang frontend available
-  component: ecc-tools       # remaining components: dreamplace / klayout / sizer / pdk
+  component: ecc-tools       # remaining components: dreamplace / sizer / kepler-formal /
+                             # lec-dual / pdk (required); klayout (optional)
   ...
 ```
 
-For a fresh or `--overwrite` target, `ecc run` preflights bundled ecc-tools plus Yosys for presets containing synthesis, DreamPlace for presets containing placement/legalization, and Sizer for presets containing Timing optimization (including `rtl2gds`). A missing component fails fast with `env_not_ready`:
+- `kepler-formal` (required): the LEC/postRouteLec equivalence checker. Resolved from `CHIPCOMPILER_KEPLER_FORMAL_ROOT` first (the root-level `kepler-formal` wrapper or `bin/kepler-formal`), then from PATH.
+- `lec-dual` (required): dual-engine LEC preflight probing both physical engines. Degraded mode is allowed — one missing engine still passes (the detail names the `degradation`; the step runs the available engine and the aggregate stays non-proven); only both missing fails.
+- `klayout` (optional): its Python module supports legacy flow thumbnails, and
+  its GUI executable is used by `gdsview`. The command accepts an explicit GUI
+  executable through `KLAYOUT_BIN` and otherwise searches `PATH`.
+
+`--json` emits a record array: a summary record first, then one record per component with `component`, `status`, `required`, and `detail`:
+
+```console
+$ ecc doctor --json
+[
+  {
+    "doctor": "environment",
+    "status": "ok",
+    "checked": 9,
+    "failed": 0,
+    "attention": 0,
+    "run": "ecc run"
+  },
+  {
+    "component": "yosys",
+    "status": "pass",
+    "required": true,
+    "detail": "~/.local/oss-cad-suite/bin/yosys"
+  },
+  ...
+]
+```
+
+For a fresh or `--overwrite` target, `ecc run` preflights components derived from the target flow's actual step-tool mapping (steps skipped via `skip_steps` never have their tools probed): every flow preflights bundled ecc-tools; synthesis adds Yosys; placement/legalization adds DreamPlace; Timing optimization adds Sizer (including `rtl2gds`); targets that do not skip LEC additionally probe kepler-formal and lec-dual. A missing component fails fast with `env_not_ready`:
 
 ```console
 $ ecc run
@@ -292,8 +400,9 @@ Notes:
 | PDK (ics55) | `ecc check` | `status: checked`; if liberty is missing run `make unzip` per the README |
 | Yosys (synthesis) | `which yosys && yosys -V`, or `echo $CHIPCOMPILER_OSS_CAD_DIR` | either works (`CHIPCOMPILER_OSS_CAD_DIR` pointing at OSS CAD Suite takes priority) |
 | Yosys slang frontend | `yosys -Q -T -p "help read_slang"` | output does **not** contain `No such command` (builtin since yosys ≥ v0.67; older builds need a loadable slang plugin) |
-| KLayout (only needed by `layout-image`) | `python3 -c "from klayout import lay"` | no ImportError |
+| KLayout GUI (only needed by `gdsview`) | `KLAYOUT_BIN=/path/to/klayout ecc gdsview --help` or `command -v klayout` | executable resolves; run from a desktop session |
 | Sizer (required by `ecc doctor`; needed by the Timing optimization step in the complete rtl2gds chain) | `which Sizer`; optionally `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | both the executable and a root containing `src/sizer_os.tcl` must resolve; the root may be configured or discovered from the binary. Fresh or `--overwrite` `rtl2gds` targets preflight Sizer; existing workspaces and `--workspace` reruns skip preflight, so a missing binary can still fail mid-flow |
+| kepler-formal (required by `ecc doctor`; needed by the LEC/postRouteLec equivalence checks; not probed when the default `skip_steps = ["lec"]` applies) | `echo $CHIPCOMPILER_KEPLER_FORMAL_ROOT`; `which kepler-formal` | either resolves the executable (the root-level wrapper or `bin/kepler-formal` under the root) |
 
 A copy-paste self-check snippet:
 
@@ -331,7 +440,9 @@ ecc run [OPTIONS]
   --plain            key=value output for scripting
 ```
 
-For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` when the selector is a name, or at the exact absolute path when the selector is a path → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. An absolute workspace selector must be a complete external directory whose parent already exists; its basename becomes the new workspace ID unless the path is already registered. An existing valid workspace at an external path can be registered and resumed with the same command. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full 18-step chain (Synthesis→LEC (Yosys equivalence check; skipped by default — `[flow] skip_steps` defaults to `["lec"]`, set `[]` to enable)→preFloorplan→macroPlacement→postFloorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→LVS→DRC→postRouteLec (kepler-formal equivalence check)→RCX→sta→powerAnalysis→Harden; Harden emits GDS + Abstract LEF + timing LIB).
+Automation options (used by ECOS Studio and CI drivers; optional for interactive use): `--expected-revision N` fails with `revision_conflict` (exit 21) when the workspace revision moved, `--command-id TEXT` stamps the mutation for idempotency/audit, `--no-wait` never blocks on a busy workspace (other mutation errors instead of waiting), `--run-id`/`--runtime-id` name the registered run process, and `--log-file PATH` redirects the whole run's stdout/stderr into a restricted-mode run log owned before preflight. The same flags recur on other mutating commands (`param apply`, `macro import`, `workspace …`, `signoff export`). Runs registered this way are controlled with `ecc process` (§6.5).
+
+For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` when the selector is a name, or at the exact absolute path when the selector is a path → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. An absolute workspace selector must be a complete external directory whose parent already exists; its basename becomes the new workspace ID unless the path is already registered. An existing valid workspace at an external path can be registered and resumed with the same command. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full 18-step chain (Synthesis→LEC (kepler-formal equivalence check; skipped by default — `[flow] skip_steps` defaults to `["lec"]`, set `[]` to enable)→preFloorplan→macroPlacement→postFloorplan→place→CTS→legalization→Timing optimization (sizer)→route→filler→LVS→DRC→postRouteLec (kepler-formal equivalence check)→RCX→sta→powerAnalysis→Harden; Harden emits GDS + Abstract LEF + timing LIB).
 
 #### External workspace paths
 
@@ -534,12 +645,13 @@ Migrates a legacy `runs/`-layout project to the manifest layout: each safe `runs
 ## 6. status — show run and step status
 
 ```bash
-ecc status [--project DIR] [--workspace NAME] [--plain]
+ecc status [--project DIR] [--workspace NAME] [--plain|--json]
 ```
 
 `status` is the lightweight progress check; for the full per-step evidence
 report use `ecc report step` (§12.4). `--workspace` is the name of an existing
-managed workspace and may be combined with `--project`.
+managed workspace and may be combined with `--project`. `--json` emits the
+step records as a JSON record array.
 
 ```console
 $ ecc status
@@ -553,7 +665,7 @@ $ ecc status
   steps:
     synthesis (yosys) success 0:0:17
       log: ecc log synthesis --workspace default
-    lec (yosys_lec) success 0:0:1
+    lec (kepler_formal) success 0:0:1
       log: ecc log lec --workspace default
     pre_floorplan (ecc) success 0:0:1
       log: ecc log pre_floorplan --workspace default
@@ -570,11 +682,35 @@ $ ecc status
 $ ecc status --plain
 workspace_id=default status=failed workspace=/tmp/gcd/default inspect_cmd="ecc status --workspace default" log_cmd="ecc log --workspace default"
 step=synthesis tool=yosys status=success runtime=0:0:17 log_cmd="ecc log synthesis --workspace default"
-step=lec tool=yosys_lec status=success runtime=0:0:1 log_cmd="ecc log lec --workspace default"
+step=lec tool=kepler_formal status=success runtime=0:0:1 log_cmd="ecc log lec --workspace default"
 ...
 ```
 
 The run-level status aggregates all steps: `success / partial / failed / ongoing / unstart` (`missing / corrupt` when flow.json is absent or damaged; `partial` when a bounded rerun leaves a mix of successful and unstarted steps); the step-level states are `success / incomplete / unstart / ongoing / pending / invalid`. An unproven synthesis-level LEC fails the step and stops the flow.
+
+## 6.5. process — inspect, cancel, or reconcile run processes
+
+Runs launched with the automation options (`--run-id`, `--no-wait`, `--log-file`; §5.1) register
+themselves in the project manifest so a detached or crashed run stays observable:
+
+```bash
+ecc process inspect [--run-id ID] [--project DIR] [--workspace NAME] [--plain]
+ecc process cancel --run-id ID [--force] [--project DIR] [--workspace NAME] [--plain]
+ecc process reconcile [--run-id ID] [--no-wait] [--project DIR] [--workspace NAME] [--plain]
+```
+
+- `inspect` reports the live runtime-process entry for the selected workspace (or one `--run-id`): run id, runtime id, pid, and log path — or `process_not_found` when the registered identity is stale and nothing live holds the workspace lock.
+- `cancel` requests cancellation of the registered run: by default it sends a graceful, pid-verified cancel signal that takes effect at the next step boundary; `--force` sends SIGTERM to the run's whole process group (the run must still own its independent process group, otherwise `process_identity_changed`).
+- `reconcile` repairs the persisted flow after a crashed or killed run: steps whose subprocess died without a terminal state are recovered to a consistent state and the stale registered entry is cleared; the record lists `recovered_steps`. Use it when a `workspace_busy` or stale-process error no longer reflects reality.
+
+All three accept the standard `--project`/`--workspace` selectors; `--no-wait` on reconcile skips blocking on the manifest lock (returning `workspace_busy` instead of waiting).
+
+```console
+$ ecc process inspect --workspace trial     # no registered run process
+[error]
+  process_not_found No runtime process is registered
+rc=22
+```
 
 ## 7. log — view logs
 
@@ -616,11 +752,12 @@ rc=1
 ## 8. config — view the resolved configuration
 
 ```bash
-ecc config [STEP] [--project DIR] [--workspace NAME] [--plain]
+ecc config [STEP] [--project DIR] [--workspace NAME] [--plain|--json]
 ```
 
 `--workspace` scopes the step view to an existing managed workspace; the project-level view remains
-project-scoped and reads `ecc.toml` from the project directory.
+project-scoped and reads `ecc.toml` from the project directory. `lec`, `lvs`, `postroutelec`, and
+`harden` have no step-specific configuration (Tcl-driven, tool-default, or reusing `db_ecc.json`).
 
 Without STEP it prints the project-level configuration (`ecc.toml` keys + resolved absolute paths); with STEP it lists the configuration files actually in effect for that step under the workspace's `config/`.
 
@@ -652,7 +789,67 @@ ecc project unset <KEY>               # remove one declaration
 ecc project add design.rtl <FILES...>     # append RTL sources (design.rtl only)
 ecc project remove design.rtl <FILES...>  # remove RTL sources (design.rtl only)
 ecc project show [KEY]                # show declarations stored in ecc.toml
+ecc project apply [--set KEY=VALUE...] [--unset KEY...] [--add-rtl FILE...] [--remove-rtl FILE...]
+                                      # atomically apply several edits in one manifest revision
+ecc project baseline <WORKSPACE_ID> [--reason TEXT]   # select the workspace whose saved QoR is the project baseline
+ecc project reconcile                 # repair provable project intermediate states (e.g. half-finished deletes)
+ecc project doctor [--fix]            # cross-check project.json against workspace directories; --fix repairs
 ```
+
+`project apply` batches the same edits as `set`/`unset`/`add`/`remove` so multi-field changes
+land in a single atomic manifest update (no half-applied combination on failure). `project
+baseline` records which declared workspace's saved QoR later runs compare against. `project
+doctor` (not to be confused with the environment `ecc doctor`, §4) reports missing
+directories, unreadable workspaces, and unregistered workspace directories. Execution
+state, flow ranges, and parameters are owned by workspace files; cached manifest fields
+are not compared or rewritten. It exits 1 while inconsistencies remain. `--fix` removes
+missing-directory entries and registers unregistered directories; unreadable workspace
+files require manual restoration and their registrations are preserved.
+
+### Importing RTL into a project
+
+`ecc rtl import` copies design inputs into the project-owned `rtl/`
+directory and updates both `ecc.toml` and `project.json`. This is the preferred
+setup before opening the project in ECOS Studio, because a later Workspace can
+use project-local inputs without depending on the original source directory:
+
+```bash
+ecc rtl import \
+  --filelist /designs/gcd/sources/sources.f \
+  --project /projects/gcd
+
+ecc rtl import \
+  --verilog /designs/gcd/top/gcd.v \
+  --verilog /designs/gcd/common/defs.vh \
+  --project /projects/gcd
+```
+
+For a filelist, paths are resolved relative to the filelist's directory. The
+filelist and referenced files are copied below `<project>/rtl/` while retaining
+their relative layout. The copied filelist is rewritten to reference only
+project-local paths. Existing targets are rejected unless `--force` is passed.
+Unsupported recursive/library filelist options (`-f`, `-v`, and `-y`) must be
+expanded before import.
+
+The command writes `design.rtl` in `ecc.toml` and updates
+`project.json.base_design.rtl_list` plus the origin input metadata. Verify the
+project before creating a Workspace:
+
+```bash
+ecc check --project /projects/gcd
+ecc workspace create default --project /projects/gcd
+```
+
+If a Workspace already exists, importing new RTL does not mutate that
+Workspace. Rebuild it explicitly from the updated project inputs:
+
+```bash
+ecc workspace refresh default --project /projects/gcd
+```
+
+ECOS Studio can then open `/projects/gcd/project.json`; its Workspace creation
+flow consumes the project-local RTL declarations. Do not delete or move the
+`rtl/` directory after import without updating `ecc.toml`.
 
 All subcommands accept `--project DIR` and `--plain`. Real outputs:
 
@@ -727,9 +924,113 @@ $ ecc workspace refresh nosuch
 rc=1
 
 $ ecc workspace refresh default --force   # intentionally discard detected config edits
+$ ecc workspace refresh default --keep-backup   # keep the replaced tree as an archived .replace-backup-* sibling
 ```
 
 Changes to entry inputs, PDK paths, and `flow.preset` must go through refresh, because they alter the workspace's input snapshot or flow structure. For parameter-only tweaks on an existing workspace there is also `ecc param set KEY VALUE --workspace NAME` (§9), which does not touch `ecc.toml`.
+
+### Workspace lifecycle: create, derive, archive, delete, reset
+
+The remaining `ecc workspace` subcommands manage the declared lifecycle without running the flow:
+
+```bash
+ecc workspace create <NAME> [--path DIR] [--from STEP] [--to STEP] [--set KEY=VALUE...]
+                                    # create and register an empty managed workspace (no run)
+ecc workspace derive <SOURCE> <TARGET> [--from STEP]
+                                    # branch a new workspace from an existing one's completed state
+ecc workspace archive <NAME>        # mark the workspace archived: kept on disk, out of auto-selection
+ecc workspace delete <NAME> [--delete-directory]
+                                    # remove the manifest entry; --delete-directory also removes the files
+ecc workspace reset-flow <NAME>     # clear persisted flow state so the next run starts from scratch
+ecc workspace reconcile-deletes     # finish half-completed workspace deletions after a crash
+```
+
+`create` is what `ecc run` does before executing, split out for GUI/automation flows that
+register the ID first; `--from/--to` declare a bounded range and `--set` records parameter
+overrides at creation (the same fresh-run semantics as `ecc run --set`). `derive` copies the
+source workspace's completed steps into `<project>/<TARGET>` — optionally only from a given
+step — and registers the branch relationship in `project.json`, so an experiment can continue
+from an intermediate result without touching the source. `archive` is the preferred way to
+retire a workspace from auto-selection (instead of editing `project.json` by hand); `delete`
+unregisters it and optionally removes the directory. The automation flags apply where
+relevant (`--expected-revision` on archive/delete/reset-flow; `--command-id` and `--no-wait`
+on the creating/branching subcommands; §5.1), and a mutation on an in-use workspace fails
+with `workspace_busy` (exit 20).
+
+```console
+$ ecc workspace create trial
+[status]
+  workspace id: trial
+  status: refreshed
+  workspace: /tmp/gcd/trial
+  run: ecc run --workspace trial
+
+$ ecc workspace create trial    # entry inputs missing (create validates them like run)
+[error]
+  step_input_missing step_input_missing: design.rtl does not exist: /tmp/gcd/rtl/gcd.v
+rc=1
+
+$ ecc project baseline trial --reason "first experiment"
+[status]
+  project: baseline
+  status: selected
+  workspace: trial
+
+$ ecc workspace derive trial branch_a
+[status]
+  workspace id: branch_a
+  status: derived
+  workspace: /tmp/gcd/branch_a
+  workspace revision: 1
+```
+
+## 8.6. flow — inspect the registered flow catalog
+
+```bash
+ecc flow list [--plain|--json]
+ecc flow show <FLOW_ID> [--project DIR] [--plain|--json]
+ecc flow validate [--flow FLOW_ID] [--project DIR] [--plain|--json]
+```
+
+`flow list` prints every registered flow preset and its ordered steps (`rtl2gds`, `syn_sta`,
+`synthesis_lec`) as `flow_step` records with `ordinal`, `skippable`, and `default skipped`
+flags — the same catalog `ecc run --preset` selects from. `flow show FLOW_ID` filters to one
+preset (`unknown_flow`, exit 2, for an unregistered name). `flow validate` checks the flow
+definitions and step metadata and emits one `flow_validation` record per flow; all three are
+read-only and need no running workspace.
+
+```console
+$ ecc flow show rtl2gds
+[result]
+  record: flow_step
+  flow id: rtl2gds
+  step id: Synthesis
+  ordinal: 0
+  skippable: False
+  default skipped: False
+  ...                            # all 18 steps in order; lec is skippable=True and skipped by default
+
+$ ecc flow validate
+[status]
+  record: flow_validation
+  status: valid
+  flow id: rtl2gds
+  step count: 18
+  ...                            # one record per remaining flow
+
+$ ecc flow list --json
+[
+  {
+    "record": "flow_step",
+    "flow_id": "rtl2gds",
+    "step_id": "Synthesis",
+    "ordinal": 0,
+    "skippable": false,
+    "default_skipped": false
+  },
+  ...
+]
+```
 
 ## 9. param — parameter management
 
@@ -741,8 +1042,16 @@ ecc param show KEY                  # show one parameter (value/default/source/t
 ecc param set KEY VALUE             # write into ecc.toml (comments and formatting preserved)
 ecc param unset KEY                 # remove the override, restoring the default
 ecc param diff                      # show only parameters that differ from their defaults
+ecc param apply [--set KEY=VALUE...] [--unset KEY...]   # atomic batch of set/unset edits
 ecc param set KEY VALUE --workspace NAME   # workspace-local override; ecc.toml is not touched
 ```
+
+`list`, `show`, and `diff` also accept `--json` for a record-array view. `param apply` batches
+several `set`/`unset` edits — project scope by default, or one workspace with `--workspace NAME` —
+so the whole batch lands in one atomic update and one invalidation; a mid-batch validation
+failure writes nothing. In the workspace scope `--step STEP` additionally restricts the batch to
+parameters configurable at that step (`parameter_not_applicable` otherwise), and
+`--expected-revision`/`--command-id`/`--no-wait` carry the automation contract (§5.1).
 
 Common options: `--project DIR`, `--plain`. `list`, `show`, `set`, `unset`, and `diff` also accept `--workspace NAME`. With the selector, the value is written to that workspace's `home/params.toml` (not `ecc.toml`), its generated step configuration is refreshed, and the owning step plus its suffix are marked for re-run; a later `ecc run --workspace NAME` continues from that step. Workspace-local values are recorded in `workspace_param_overrides` with the pre-edit `baseline` — `param diff --workspace NAME` compares against that baseline and `param unset KEY --workspace NAME` restores it. Only reviewed parameters from `ecc param list --all` can be set locally, the parameter's owning step must exist in the workspace's persisted flow (otherwise `workspace_param_refresh_failed` — e.g. `place.*` on a synthesis-only workspace), and `pdk.*` path fields still require changing `ecc.toml` plus `ecc workspace refresh`:
 
@@ -858,7 +1167,7 @@ Priority: CLI `--set` > `ecc.toml` `[params.*]` > template defaults. `pdk.*` pat
 ```bash
 ecc macro set INSTANCE --x X --y Y --orient ORIENT [--project DIR] [--workspace NAME] [--plain]
 ecc macro remove INSTANCE [--project DIR] [--workspace NAME] [--plain]
-ecc macro import PATH [ --project DIR] [--workspace NAME] [--plain]
+ecc macro import PATH [--project DIR] [--workspace NAME] [--expected-revision N] [--command-id TEXT] [--no-wait] [--plain]
 ecc macro show [--project DIR] [--workspace NAME] [--plain]
 ```
 
@@ -930,9 +1239,16 @@ All `pdk` subcommands accept `--project DIR` and `--plain`.
 ```bash
 ecc pdk set-root ~/pdk/icsprout55-pdk   # wire in a ready PDK checkout
 ecc pdk show                             # effective root, its source (ecc.toml / env / repo default), contents check
+ecc pdk show --json                      # same, as a JSON record array
+ecc pdk verify                           # verify the resolved PDK contents without changing configuration
 ecc pdk unset                            # clear root; falls back to env vars / repo default
 ecc pdk set-root /bad/path               # -> [error] invalid_pdk_path (not a directory)
 ```
+
+`pdk verify` re-runs the resolved-PDK contents check read-only (the same probe `pdk show`
+reports) but enforces the outcome: a contents check that does not pass exits 1
+(`pdk_contents_unavailable` when the resolved root is unavailable) — this is the form the
+packaged smoke test uses. `show` and `verify` both accept `--json`.
 
 ```console
 $ ecc pdk set-root ~/pdk/icsprout55-pdk
@@ -953,7 +1269,7 @@ The resolution priority is unchanged: `ecc.toml [pdk] root` > `CHIPCOMPILER_ICS5
 ### 11.1 inspect — readiness review
 
 ```bash
-ecc signoff inspect [--project DIR] [--workspace NAME] [--plain]
+ecc signoff inspect [--project DIR] [--workspace NAME] [--plain|--json]
 ```
 
 Refreshes completed-step analysis and `home/checklist.json`, then prints the signoff package readiness status (`ready / attention / blocked`), the seven groups (initial/config/harden/final_design/sta/spef/reports), and the risk list. **blocked still exits with rc=0** (inspection is advisory; the gate lives in export):
@@ -978,11 +1294,47 @@ $ ecc signoff inspect --workspace default
               Current-output analysis refresh failed: ...
 ```
 
-### 11.2 export — export the signoff package tar.gz (gated)
+### 11.2 check — read-only quality gates
 
 ```bash
-ecc signoff export -o <path>.tar.gz [--include-debug] [--project DIR] [--workspace NAME] [--plain]
+ecc signoff check [--profile rtl2gds] [--project DIR] [--workspace NAME] [--plain]
+ecc signoff check --json
 ```
+
+`check` is read-only: it does not refresh analysis, launch EDA, or modify the workspace.
+It evaluates the saved flow, QoR, checklist, and DRC/LVS/STA evidence and reports each
+gate as `pass`, `fail`, or `unknown`. Missing evidence never becomes a pass. The overall
+status is `pass` only when every gate passes, `fail` when any gate fails, and `unknown`
+otherwise. The initial `rtl2gds` profile contains `flow_complete`, `qor_available`,
+`checklist_ready`, `drc_clean`, `lvs_clean`, `sta_setup_clean`, and `sta_hold_clean`.
+
+With `--json`, the command returns a record array whose gate records use the stable contract
+`gate`, `required`, `status`, `reason`, `source`, `failed_items`, `violation_count`, `stale`,
+and `provisional`. Artifact gates may additionally include `bytes` and `sha256`. The
+`physical_signoff` profile additionally checks `lec_proven`,
+`final_gds_available`, and `final_netlist_available`:
+
+```bash
+ecc signoff check --profile physical_signoff --json
+```
+
+It reads the postRouteLec proven result and Harden/filler final outputs, but does not hash
+file contents. Missing or ambiguous artifacts return `unknown`. This is an assessment of
+saved evidence, not tapeout approval. The physical profile marks QoR and checklist as
+informational (`required=false`); missing QoR alone does not block its physical gate result.
+Unknown profiles return `unknown_signoff_profile`; argument errors use exit code 2.
+
+### 11.3 export — export the signoff package tar.gz (gated)
+
+```bash
+ecc signoff export -o <path>.tar.gz [--include-debug] [--additional-files -] [--project DIR] [--workspace NAME] [--plain]
+```
+
+`--additional-files -` reads a tar stream from stdin and embeds its regular files into the
+archive next to the collected deliverables (relative POSIX paths only; at most 256 entries,
+16 MiB per file, 64 MiB total — this is the channel ECOS Studio uses for user-selected extra
+files). The command also accepts the automation flags `--expected-revision` and `--no-wait`
+(§5.1).
 
 For an existing workspace, for example:
 
@@ -1006,13 +1358,189 @@ $ ecc signoff export -o gcd.tar.gz --project gcd     # once ready
   path: /abs/path/gcd.tar.gz
 ```
 
+### 11.5 Reproducible evidence export, sweeps, and diagnosis
+
+Command contracts for `reproducible` and `diagnose`:
+
+| Command | Required | Optional | Purpose |
+|---|---|---|---|
+| `ecc reproducible export` | `--output PATH` | `--project DIR`, `--workspace NAME`, `--plain` | export a read-only evidence tar.gz for a workspace |
+| `ecc reproducible inspect` | `--package PATH` | `--files`, `--type all\|rtl\|config\|flow\|checklist\|signoff`, `--plain`, `--json` | offline package inspection with file-type filtering |
+| `ecc reproducible verify` | `--package PATH` | `--plain`, `--json` | verify package schema, SHA-256 checksums, and fingerprints |
+| `ecc reproducible report` | `--package PATH` | `--plain`, `--json` | summarize files, fingerprints, inputs, runtime, and verification status |
+| `ecc diagnose run` | — | `--project DIR`, `--workspace NAME`, `--plain`, `--json` | one command combining flow, checklist, QoR, missing artifacts, and recovery suggestions |
+
+The experiment groups (`reproducible`/`sweep`/`explore`/`diagnose`) print JSON by default (machine-readable); `--plain` emits stable key=value records. Real output examples:
+
+```console
+$ ecc reproducible export --workspace trial --output evidence.tar.gz
+{
+  "file_count": 19,
+  "package": "/path/to/evidence.tar.gz",
+  "status": "success"
+}
+
+$ ecc reproducible verify --package evidence.tar.gz
+[status]
+  status: pass
+  package: /path/to/evidence.tar.gz
+  errors: []
+
+$ ecc diagnose run --workspace trial --json
+{
+  "checklist": {"blocked_count": 27, "blocked_items": ["artifact.synthesis.netlist", "..."], "status": "blocked"},
+  "errors": [],
+  "flow": {"failed_steps": [], "status": "unstart"},
+  "missing_artifacts": [],
+  "next_actions": [
+    "ecc report checklist --project /path/to/project --workspace trial",
+    "ecc run --project /path/to/project --workspace trial --resume"
+  ],
+  "project": "/path/to/project",
+  "qor": {"available": false, "score": "unknown"},
+  "status": "blocked",
+  "workspace": "/path/to/project/trial"
+}
+rc=6                        # failed or blocked diagnostics exit 6 (see the §1 exit-code table)
+```
+
+Create a deterministic parameter sweep. Repeated `--param` options define the Cartesian product; candidates are recorded under `experiments/<name>/` and do not modify the project manifest or baseline workspace. The full sweep/explore reference — plan and results schemas, execution isolation, and ranking rules — is documented in the [Sweep Reference](ecc-sweep-ref.en.md):
+
+```bash
+ecc sweep create --project /path/to/project --name density --param place.target_density=0.60,0.65 --param cts.target_skew=0.10,0.15
+ecc sweep list --project /path/to/project                  # JSON array of existing sweep names
+ecc sweep show --project /path/to/project --name density    # the sweep plan (sweep.json)
+ecc sweep run --project /path/to/project --name density [--max-candidates N]
+ecc sweep compare --project /path/to/project --name density # candidate | flow | steps | checklist | violations | qor | exit | parameters
+ecc explore rank --project /path/to/project --name density
+ecc explore promote --project /path/to/project --name density --candidate candidate_0002
+```
+
+`--max-candidates N` bounds `sweep run` to the first N candidates of the plan (useful for a
+smoke pass over a large product). `sweep run` is resumable: candidates whose results are
+already recorded with an existing workspace are not re-run. `sweep compare` (human table) and
+`sweep show`/`explore rank` (`--json`) are the read-only views over `results.json`; rows sort
+passed-first and by descending QoR score. `explore promote` records the winning candidate in
+`experiments/<name>/winner.json` — only a candidate whose status is `passed` can be promoted.
+
+The first implementation is deterministic and evidence-oriented. It does not provide automatic optimization, distributed scheduling, multi-SDC, or automatic replacement of a baseline.
+
+Reproducible exports include the ECC runtime version, an aggregate file fingerprint,
+and fingerprints for project configuration and RTL inputs. Sweep plans include a
+stable `plan_fingerprint` so two parameter plans can be compared independently of
+creation time.
+
+`ecc reproducible verify` audits the package schema, manifest entry types and duplicate paths,
+archive file sizes, SHA-256 checksums, aggregate file fingerprint, input fingerprints, and
+unsafe archive paths. Manifest or evidence tampering returns exit code `6`.
+
+The reproducible manifest also records ECC, ECC-Tools, DreamPlace, Yosys, Sizer,
+KLayout, and PDK identity/presence metadata so an evidence package can be compared
+across environments.
+
+A reproducible package can be copied to another directory and verified there; `inspect` and
+`verify` use the package manifest and do not require the original project path to be present.
+
+Offline package inspection is available without the original workspace:
+
+```bash
+ecc reproducible inspect --package evidence.tar.gz --files --json
+ecc reproducible report --package evidence.tar.gz --json
+```
+
+The report summarizes package files, fingerprints, inputs, runtime metadata, and verification status.
+
+Offline reports also support readable text output and file filtering:
+
+```bash
+ecc reproducible report --package evidence.tar.gz
+ecc reproducible inspect --package evidence.tar.gz --files --type checklist --json
+```
+
+Supported file types are `all`, `rtl`, `config`, `flow`, `checklist`, and `signoff`.
+
+The offline report also summarizes flow status, checklist status, QoR, and checker violation
+count from evidence files. Missing or legacy evidence is reported as `unknown`.
+
+Offline summary fields include evidence `sources` and `reasons` (`ok`, `missing`, or `invalid`),
+while the value remains `unknown` when the evidence cannot be rated.
+
+CI design-matrix legs run a lightweight packaged CLI smoke after the product flow. The smoke
+uses an isolated temporary evidence workspace and checks reproducible export, verify, report,
+and sweep-plan creation without running a second full EDA flow.
+
+The CI packaged smoke can optionally consume the E2E output directory. When a real
+`home/flow.json` is found, it additionally validates `status`, reproducible export,
+and verification against that real workspace; otherwise it keeps the isolated contract smoke.
+
+Verify sweep integrity before comparing or promoting candidates:
+
+```bash
+ecc sweep verify --project /path/to/project --name density_test
+```
+
+The command checks the plan fingerprint, candidate/result membership, parameter consistency,
+workspace existence, and missing or duplicate results. It returns exit code `6` on integrity errors.
+It also audits schemas, result field types, step states, finite numeric QoR, integer exit codes
+and flow files. Passed records cannot contain nonzero exit codes, missing QoR, incomplete
+steps or incomplete flows. Legacy results may omit the schema and probe exit-code fields.
+Existing workspace checklist files must be valid and passing, preventing stale passed
+records from bypassing current blocked items.
+`explore promote` also validates the selected candidate's evidence.
+
+Export ranked sweep results for CI artifacts, GUI, or spreadsheets:
+
+```bash
+ecc explore export --project /path/to/project --name density_test --format csv --output density.csv
+ecc explore export --project /path/to/project --name density_test --format markdown
+```
+
+Supported formats are `json`, `csv`, and `markdown`.
+
+Packaged CI smoke also verifies sweep result integrity and exports ranked results as JSON, CSV,
+and Markdown. The files are uploaded under the design's `cli-contract` evidence directory.
+
+Diagnose a workspace in one command:
+
+```bash
+ecc diagnose run --project /path/to/project --workspace ws_0012 --json
+```
+
+The result combines flow state, failed steps, blocked checklist items, QoR availability,
+missing artifacts, and suggested recovery commands. Failed or blocked diagnostics return exit code `6`.
+
+When the packaged CLI smoke receives an E2E output directory and finds a real workspace, it also
+runs `diagnose run`, `report step`, `report project`, and `signoff check`. Their JSON evidence is
+written under the design's `cli-contract` artifact directory as `diagnose.json`,
+`report-step.json`, `report-project.json`, and `signoff.json`. Signoff quality failures may return
+`6` or `7` and are preserved as evidence; invalid CLI usage still fails the smoke.
+The isolated packaged smoke also creates deterministic candidate evidence and exercises
+`sweep verify` plus `explore export` in JSON, CSV, and Markdown formats without launching a second
+EDA flow.
+
+Resuming `sweep run` refreshes cached candidate states, step checklists and overall QoR.
+Scores come only from `home/qor_report.json`; signoff exit `7` never becomes passed.
+Packaged smoke compares complete exports against the compare matrix and rejects malformed
+fields and promotion of blocked/failed/unknown candidates. A real E2E workspace is also
+collected through an isolated cached `sweep run` candidate, checking step states, overall QoR
+and signoff exit codes. It writes `real-sweep-verify.json` and `real-sweep-results.json`
+while keeping the original workspace read-only.
+
+Diagnostics and offline evidence summaries derive flow status from step `state`, read checklist
+`checklist/state/blocked/policy` fields, and use QoR `scalar_summary.score`. Legacy simplified
+formats remain supported. The signoff QoR gate uses the same score reader. Missing, unrated,
+or invalid scores are unavailable; corrupt checklists are never diagnosed as passed. Flow
+completion and blocked checklist results are reported separately.
+
 ## 12. report — design summary, QoR score, checklist, and step evidence
 
 ```bash
 ecc report summary    [-o PATH] [--project DIR] [--workspace NAME] [--plain]
 ecc report qor        [-o PATH] [--project DIR] [--workspace NAME] [--plain]
 ecc report checklist  [-o PATH] [same selector and output options]
-ecc report step       [STEP] [--section feature|analysis|checklist]... [same selector and output options]
+ecc report step       [STEP] [--section feature|analysis|checklist|outputs]... [same selector and output options]
+ecc report snapshot --output PATH [--project DIR] [--workspace NAME] [--plain|--json]
+ecc report project [--project DIR] [--plain|--json]
 ```
 
 ### 12.1 summary — text design summary
@@ -1096,7 +1624,7 @@ $ ecc report step --workspace default
 
   step                   tool         status    runtime  peak MB  metrics quality  checklist
   synthesis              yosys        success   0:0:17   1165.89  10      pass     ready
-  lec                    yosys_lec    success   0:0:1    0.164    -       -        ready
+  lec                    kepler_formal success   0:0:1    0.164    -       -        ready
   pre_floorplan          ecc          success   0:0:1    97.516   -       -        ready
   macro_placement        dreamplace   success   0:0:5    97.516   -       -        ready
   post_floorplan         ecc          success   0:0:1    97.516   11      pass     ready
@@ -1124,33 +1652,198 @@ $ ecc report step drc --section analysis
     [BLOCK] qor.drc.clean — drc_count=336 == 0
 ```
 
-## 13. rpc — JSON-RPC runtime sidecar (private)
+#### Querying one step's outputs (`outputs`)
+
+The DEF and Verilog outputs registered in the Engineering Snapshot can be queried explicitly:
 
 ```bash
-ecc rpc serve --stdio [--persistent-db]
+ecc report step place --workspace <workspace> --section outputs
+ecc report step sta --workspace <workspace> --section outputs --json
 ```
 
-A JSON-RPC 2.0 service for front ends such as the GUI, framed with `Content-Length` over stdio. `--persistent-db` additionally exposes `db.ensure` / `db.release` plus the `layout.edit.*` / `floorplan.edit.*` method families. The handshake capability list is generated from the registered runtime methods; clients must inspect it instead of assuming a fixed list. `workspace.refresh_config` applies the same generated-config protection as the CLI and accepts `force: true` when overwriting detected edits is intentional. The current base-mode handshake and a ping are shown below; full method parameters are in [rpc-guide.md](https://github.com/openecos-projects/ecc/blob/main/docs/rpc-guide.md):
+The default report still shows only feature, analysis, and checklist, preserving the existing
+behavior. `outputs` runs no tools, does not migrate the snapshot or refresh the workspace, and
+does not scan directories; a missing or damaged index returns `unavailable` without generating
+a new one.
 
-```console
-→ {"jsonrpc":"2.0","method":"rpc.hello","params":{"version":1},"id":"hello-1"}
-← {"jsonrpc":"2.0","result":{"version":1,"protocolVersion":1,"eccVersion":"0.1.0-alpha.12","capabilities":["rpc.hello","rpc.ping","rpc.shutdown","runtime.v2","operation.events","workspace_spec.describe","workspace_spec.validate","project.discover","project.manifest.load","project.manifest.mutate","workspace.create","workspace.open","workspace.derive","workspace.binding_requirement","workspace.update","workspace.configuration.update","workspace.configuration.read","workspace.step_configuration.update","workspace.step_configuration.read","workspace.step_outputs","workspace.close","workspace.info","workspace.refresh_config","workspace.sync_config","workspace.reset_flow","workspace.export_signoff","workspace.inspect_signoff","flow.run","flow.run_step","operation.start_flow","operation.start_step","operation.status","operation.cancel","operation.ack_step_rendered","workspace.snapshot","workspace.engineering_snapshot","workspace.recover_interrupted"]},"id":"hello-1"}
+- `exists` and `bytes` check the in-workspace file at query time; a cached `exists` is not trusted.
+- `availability` is `available`, `missing`, or `outside_workspace`; external references are not touched on the filesystem.
+- `validity` is `not_current` for a step that did not succeed; even a successful step is only `unknown` — file existence plus step success do not prove hash, corner, or input consistency.
+- This release only queries DEF/Verilog outputs registered in the snapshot; it does not promise a complete GDS, log, or report listing.
 
-→ {"jsonrpc":"2.0","method":"rpc.ping","params":{},"id":"ping-1"}
-← {"jsonrpc":"2.0","result":{"ok":true},"id":"ping-1"}
-```
+`report qor --json` currently still returns a report-generation summary and writes the report
+file; it is not a read-only complete metrics API. Do not treat that output as the full QoR
+schema.
 
-## 14. layout-image — render a GDS to an image
+### 12.5 snapshot — save a committed run snapshot
 
 ```bash
-ecc layout-image --gds <in.gds> --image <out.png> [--width N] [--height N]
+mkdir -p comparisons
+ecc report snapshot --workspace default -o comparisons/before.json
+ecc run --workspace default --only placement
+ecc report snapshot --workspace default -o comparisons/after.json --json
+ecc compare run --baseline comparisons/before.json --current comparisons/after.json
 ```
 
-Renders a GDS layout snapshot via KLayout (default 1920×1920; KLayout must be available):
+Saves the committed `home/engineering-snapshot.json` projection without loading or migrating
+the workspace, refreshing its snapshot, running EDA, or copying artifact content.
+`--output/-o` is required. Its parent directory must already exist, the destination must
+be outside the source workspace, and existing files, directories, or symlinks are rejected.
+Relative output paths are resolved against the current directory. Existing schema versions
+2/3/4 and workspace revisions are preserved; the file size limit is 16 MiB.
+
+Text, `--plain`, and `--json` return save metadata, not the snapshot body. JSON uses the
+standard record array with `report=snapshot`, `status=written`, `path`, `source`, `bytes`,
+`schema_version`, `workspace_id`, and `workspace_revision`. Read, destination, or write
+failures return 1; argument errors return 2. Publication is atomic and never overwrites a
+destination, with no non-atomic fallback. Temporary files are removed on failure.
+Prefer saving while the workspace is idle; this command does not wait for EDA completion.
+
+## 12.6. compare run — compare two saved run snapshots
 
 ```bash
-ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image layout.png --width 2560 --height 1600
+ecc compare run --baseline before.json --current after.json
+ecc compare run --baseline before.json --current after.json --json
+ecc compare run --baseline before.json --current after.json --plain
 ```
+
+Both arguments are saved copies of `home/engineering-snapshot.json`, not run IDs or workspace
+names. The command does not run EDA tools, load workspaces, generate reports or modify inputs.
+Save a copy before and after a run while the workspace is idle; automatic run history is not provided.
+
+The comparison includes flow records, metric deltas, saved QoR, parameters, checklist/signoff
+and artifact indexes. Missing values are never replaced by zero; incompatible units produce no
+delta. Metric polarity comes from the existing registry. Different constraints, flow definitions,
+PDK metadata, workspaces or unknown polarity produce unknown trends. QoR score comparison requires
+the same scoring engine and profile. Overall summarizes numeric metrics and QoR score only;
+it is not a signoff or tapeout decision.
+
+JSON uses the shared record-array contract with a `run_comparison` record containing
+`baseline/current`, `summary`, `compatibility`, `steps`, `metrics`, `qor`, `parameter_changes`,
+`configuration_changes`, `signoff`, `checklist`, `artifacts` and `warnings`.
+Artifact IDs identify paths, not file contents: `content_comparison` is always unknown.
+Matching indexes do not prove matching contents; saved metadata does not verify RTL/PDK/SDC contents.
+
+A completed comparison returns 0, including regressed or unknown results. Invalid snapshots or
+duplicate comparison keys return 1; argument errors return 2. Compressed JSON is not accepted;
+the existing 16 MiB snapshot limit applies, and older schemas are not migrated.
+Use `--json` for nested automation results; it cannot be combined with `--plain`.
+
+### 12.7 project — workspace QoR / step / checker matrix
+
+```bash
+ecc report project --project /path/to/project
+# Inside the project or one of its managed workspace roots:
+ecc report project --json
+ecc report project --plain
+```
+
+Lists all manifest-declared workspaces, including archived entries, in descending saved
+QoR score order, with overall flow, manifest status and per-step/tool state columns.
+Ties retain manifest order. Real zero scores remain valid; missing, invalid, NOT_RATED
+or stale scores come last without fabricated zeros or ranks. Columns form the union of
+flow steps: absent steps show N/A; unreadable flows show unknown. This is a wide table;
+use a wider terminal or JSON for automation.
+
+QoR comes from `home/qor_report.json`, flow state from `home/flow.json`. Workspace identity
+or flow-state mismatches invalidate a score for ranking. Running data is provisional.
+Different profiles emit a comparability warning; numeric ordering is not a signoff decision.
+
+A real first JSON record (excerpt; the `columns`/`workspaces` arrays expand in flow order):
+
+```json
+[
+  {
+    "report": "project",
+    "schema_version": 1,
+    "project": "/path/to/project",
+    "design": "gcd",
+    "status": "partial",
+    "sort": "qor_score_descending_missing_last_manifest_order_ties",
+    "columns": [
+      {"step": "Synthesis", "token": "synthesis", "tool": "yosys"},
+      {"step": "preFloorplan", "token": "pre_floorplan", "tool": "ecc"}
+    ],
+    "warnings": []
+  }
+]
+```
+
+Checker categories follow ECC metadata. DRC/LVS show explicit counts and clean/violated;
+STA keeps setup and hold counts separate without summing across corners. Unfinished
+checkers never reuse stale zero counts. LEC only shows a saved proven verdict, without
+verifying netlist content or inventing a count. RCX/powerAnalysis without a supported
+violation count show N/A. Execution success is separate from checker cleanliness.
+
+No workspace loading/migration, EDA execution, QoR/snapshot refresh or file writing occurs.
+JSON uses the shared record array with `report=project` and `columns/workspaces/warnings`.
+Plain mode emits related project_report, step_column, workspace, workspace_step,
+checker_count and warning records. Workspace-local gaps retain the row and yield partial
+status with exit 0; invalid project metadata returns 1; argument errors return 2.
+`--workspace` is not accepted by this project-wide report.
+
+## 13. gdsview — open a step GDS in KLayout
+
+```bash
+ecc gdsview --project <project> --workspace <workspace> --step <step>
+```
+
+Opens the GDS published by the selected workspace step in KLayout's interactive
+`LayoutView`. The command searches that step's `output` directory for exactly one
+`*.gds` or `*.gds.gz` file, loads it, fits the hierarchy, and keeps the KLayout
+window open until it is closed. It does not create a PNG.
+
+The command launches the KLayout GUI executable and passes it the selected GDS;
+it does not add a separate PyQt/PySide dependency to the ECC CLI or change the
+ECOS Studio AppImage. KLayout supplies its own Qt runtime. The executable is
+looked up only when `gdsview` runs.
+
+Not every flow step publishes GDS. If the selected step has no GDS, the command
+returns `gds_view_unavailable` and lists the steps in the workspace that do have
+GDS outputs. If more than one GDS is present, it returns
+`gds_view_ambiguous` with the candidate paths. A missing KLayout GUI executable
+or Linux display returns a separate diagnostic instead of silently selecting
+another step.
+
+```bash
+ecc gdsview --workspace default --step Harden
+```
+
+## 14. chipview — open a saved geometry snapshot
+
+```bash
+ecc chipview --project <project> --workspace <workspace> --step <step>
+```
+
+This opens the same native Chip Viewer used by ECOS Studio's layout thumbnail.
+The command reads `<step>/output/geometry/geometry.manifest` and its sidecar
+files; it does not read GDS or generate a PNG. Run it from ECOS Studio's
+AppImage terminal so `ECOS_CHIP_VIEWER_BIN` points at the packaged
+`chip-viewer-native`. An explicit executable path can be supplied with that
+variable when using a development checkout.
+
+The command checks the project, workspace, flow step, geometry manifest, Viewer
+binary, and Linux display environment before spawning the detached Viewer. If
+any prerequisite is missing, it returns a diagnostic with the expected path and
+the remediation. Viewer stdout and stderr are saved under
+`<workspace>/.chip-viewer/logs/`.
+
+The command accepts `--plain` for one stable key-value result and `--json` for a
+JSON record array. A successful result includes `status=started`, the selected
+step, the manifest path, the resolved Viewer path, the Viewer PID, and the two
+log paths. It returns exit code `1` for a missing or invalid workspace/geometry,
+an unavailable Viewer or display, or a Viewer that exits during startup. The
+most useful error codes are `chipview_step_not_found`,
+`chipview_geometry_invalid`, `chipview_viewer_unavailable`,
+`chipview_display_unavailable`, and `chipview_launch_failed`.
+
+The AppImage itself is not parsed as a GDS input. The command only needs the
+packaged executable to be discoverable through `ECOS_CHIP_VIEWER_BIN` (injected
+by the ECOS Studio built-in terminal),
+`ECOS_ELECTRON_RESOURCES_PATH/binaries/chip-viewer-native`, or `PATH`. If none
+is executable, run the command from the AppImage's built-in terminal or set
+`ECOS_CHIP_VIEWER_BIN` explicitly. The command never falls back to
+`gdsview`.
 
 ## 15. Typical end-to-end workflow
 
@@ -1180,7 +1873,8 @@ ecc report summary                 # text design summary (signoff/<design>_desig
 ecc report qor                     # QoR overall score report (signoff/<design>_qor_report.txt)
 ecc report checklist               # signoff checklist report (signoff/checklist_report.txt)
 ecc report step drc                # preview one step's feature/analysis/checklist (read-only)
-ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds --image gcd.png
+ecc gdsview --workspace default --step Harden
+ecc chipview --workspace default --step Harden
 ```
 
 Creating multiple managed workspaces for comparison experiments (each an independent directory, no interference):
@@ -1224,3 +1918,24 @@ This section adds operating rules for automation, agents, and batch experiments;
 ### 16.2 Experiments, recovery, and diagnosis
 
 Run serially by default — never run, tune, refresh, or export the same workspace concurrently. Give every new candidate its own workspace, and record its inputs, PDK/library, tool versions, parameter overrides, seed, thread count, device, resource budget, and raw reports. Before recovering a run, look at `status`, `log`, and the ledger; prefer `--resume` or an exact range rerun, and never `--overwrite`, delete directories, or kill unrelated processes without confirmation. On failure, keep the first error and its context, then check in order: versions, project declaration, workspace registration, `doctor`, PDK/library files, entry inputs, and the failed step's log. Do not manufacture success by relaxing constraints, lowering frequency, dropping corners, or skipping verification.
+### 16.3 Automation contract: exit codes and packaged smoke
+
+`ecc signoff check` always prints its JSON records, including when a gate is not
+clean. Automation should inspect both the summary record and the process exit code:
+`0` means pass, `6` means a required gate failed, and `7` means the required gates
+could not be rated because evidence is missing, stale, or ambiguous. Usage errors
+remain `2`; the existing workspace/process codes (`20`–`23`) are unchanged.
+
+A packaged executable can be checked against a real project without importing the
+source tree:
+
+```bash
+python packaging/cli_smoke.py \
+  --binary dist/ecc \
+  --project /path/to/gcd \
+  --workspace default
+```
+
+The smoke runner checks `status`, `report step`, `report project`, `signoff check`,
+and `pdk verify`, requires each command to emit a non-empty JSON record array, and
+preserves non-zero quality-gate codes for CI reporting.

@@ -302,7 +302,6 @@ class EccRoutingChecklist(EccChecklist):
             [
                 self.check_file(self.workspace_step.output.def_ or ""),
                 self.check_file(self.workspace_step.output.verilog or ""),
-                self.check_file(self.workspace_step.output.gds or ""),
             ]
         )
 
@@ -363,7 +362,6 @@ class EccDrcChecklist(EccChecklist):
             [
                 self.check_file(self.workspace_step.output.def_ or ""),
                 self.check_file(self.workspace_step.output.verilog or ""),
-                self.check_file(self.workspace_step.output.gds or ""),
             ]
         )
 

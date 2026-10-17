@@ -10,7 +10,7 @@ materialization stay in collector.py and discovery.py; shared helpers
 import importlib
 from pathlib import Path
 
-from chipcompiler.data import LEC_STEP_TOOLS, EccOutput, StateEnum, StepEnum
+from chipcompiler.data import ADVISORY_FLOW_STEPS, LEC_STEP_TOOLS, EccOutput, StateEnum, StepEnum
 from chipcompiler.engine.signoff.models import SIGNOFF_REQUIRED_QOR_STEPS, SignoffPackageIssue
 
 
@@ -50,7 +50,7 @@ class CollectorAnalysisMixin:
             ):
                 workspace_step.output.spef = previous_step.output.spef
 
-            if tool not in LEC_STEP_TOOLS:
+            if tool not in LEC_STEP_TOOLS and step_name not in ADVISORY_FLOW_STEPS:
                 previous_step = workspace_step
             if flow_step.get("state") != StateEnum.Success.value:
                 continue

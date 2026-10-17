@@ -82,6 +82,25 @@ def report_mocks(monkeypatch):
 
 
 class TestReportQor:
+    def test_qor_json_includes_complete_analysis(
+        self, tmp_path, capsys, create_cli_project, report_mocks
+    ):
+        import json
+
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "default")
+        os.makedirs(run_dir)
+        report_mocks.workspace.directory = run_dir
+        payload = {"schema_version": 3, "feasibility": {"status": "PASS"}}
+        report_mocks.qor.to_dict = lambda: payload
+
+        rc = cli_main.run(["report", "qor", "--project", project_dir, "--json"])
+
+        records = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        assert records[0]["qor"] == payload
+        assert records[0]["report"] == "qor"
+
     def test_qor_writes_default_destination(
         self, tmp_path, capsys, monkeypatch, create_cli_project, report_mocks, plain_records
     ):

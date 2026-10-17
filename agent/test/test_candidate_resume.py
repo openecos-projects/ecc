@@ -11,10 +11,10 @@ from agent.candidate_resume import (
 )
 from agent.data.candidate_artifacts import sha256_path
 from agent.data.candidate_materialization import materialize_candidate_config
+from agent.operations import RuntimeOperationManager
 from agent.requests import CandidateResumeRequest
+from agent.runtime_support import AgentApplicationError as RuntimeApiError
 from agent.workspace_api import FlowAgentRuntimeApi, _workspace_state_sha256
-from chipcompiler.runtime.operations import RuntimeOperationManager
-from chipcompiler.runtime.workspace_api import RuntimeApiError
 
 CONTEXT_SHA256 = "sha256:" + "a" * 64
 

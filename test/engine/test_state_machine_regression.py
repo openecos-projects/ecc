@@ -344,6 +344,52 @@ def test_design_read_failure_stops_flow_despite_stale_outputs(tmp_path, monkeypa
     assert flow.get_step(second_name, "ecc")["state"] == StateEnum.Unstart.value
 
 
+@pytest.mark.parametrize("advisory", [StepEnum.ANTENNA_CHECK.value, StepEnum.EMIR.value])
+@pytest.mark.parametrize("parallel", [False, True])
+def test_advisory_step_failure_does_not_stop_flow(tmp_path, monkeypatch, advisory, parallel):
+    ws = _make_workspace(tmp_path, num_steps=2)
+    ws.flow.data = {
+        "steps": [
+            {
+                "name": advisory,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+            },
+            {
+                "name": StepEnum.HARDEN.value,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+            },
+        ]
+    }
+    flow = EngineFlow(ws)
+    flow.workspace_steps = [
+        SimpleNamespace(name=advisory, tool="ecc"),
+        SimpleNamespace(name=StepEnum.HARDEN.value, tool="ecc"),
+    ]
+    monkeypatch.setattr(flow, "init_db_engine", lambda: True)
+    monkeypatch.setattr("chipcompiler.engine.flow.log_flow", lambda workspace: None)
+
+    executed = []
+
+    def run_step(step, **_kwargs):
+        executed.append(step.name)
+        return StateEnum.Imcomplete if step.name == advisory else StateEnum.Success
+
+    monkeypatch.setattr(flow, "run_step", run_step)
+    if parallel:
+        # Isolate batch dispatch from the subprocess/native-tool implementation.
+        monkeypatch.setattr(
+            flow, "_can_parallelize_checker_batch", lambda step, *_: step.name == advisory
+        )
+        monkeypatch.setattr(flow, "_is_checker_step", lambda step: step.name == advisory)
+        monkeypatch.setattr(
+            flow, "_run_checker_batch", lambda steps, **kw: [run_step(step) for step in steps]
+        )
+    assert flow.run_steps() is True
+    assert executed == [advisory, StepEnum.HARDEN.value]
+
+
 # ---------------------------------------------------------------------------
 # Legacy state normalization tests (Phase 3a)
 # ---------------------------------------------------------------------------

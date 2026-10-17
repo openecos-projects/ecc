@@ -52,6 +52,7 @@ and the `ecc macro` commands:
 ```bash
 ecc macro set u_ram0 --x 10 --y 20.5 --orient R0
 ecc macro remove u_ram0
+ecc macro import /path/to/macro_location.tcl   # adopt an externally supplied handoff
 ecc macro show
 ```
 

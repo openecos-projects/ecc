@@ -7,6 +7,12 @@
 
 ## 0. 配置体系总览
 
+STA 并行调度参数：`sta.max_parallel_corners` 为整数 1–4，默认 1，
+通过 `ecc param set sta.max_parallel_corners 3 --workspace baseline` 设置。
+参数经标准配置刷新写入 STA JSON 的 `max_parallel_corners`。ECC/Studio Linux
+runtime 将其作为最大并行 corner 数，内存余量不足时减少并行度；
+非 Linux 为串行。`ECOS_AGENT_STA_WORKERS` 不再覆盖此配置。
+
 ### 0.1 配置文件放在哪
 
 每次运行（run）的 workspace 下有一个共享 `config/` 目录，所有步骤的 JSON 配置都落在这里，**同名文件会被后运行的步骤原地重写**（每步只更新与自己相关的字段）：
@@ -31,10 +37,10 @@
 │   └── macro_location.tcl # 宏摆放 Tcl 交接文件（见 §1.5；由 macroPlacement 或 macro.placements 参数写出）
 ├── Synthesis_yosys/
 │   └── data/global_var.tcl  # 综合步骤的"配置"（Tcl 变量，非 JSON）
-├── lec_yosys_lec/            # 综合级 LEC（Tcl 脚本驱动）
+├── lec_kepler_formal/         # 综合级 LEC（Tcl 脚本驱动）
 ├── timing_optimization_sizer/
 │   └── script/<design>.{env_file,cmd_file}  # 自动生成的 Sizer 配置
-└── postRouteLec_yosys_lec/  # 布线后 LEC 步骤（Tcl 脚本驱动）
+└── postRouteLec_kepler_formal/  # 布线后 LEC 步骤（Tcl 脚本驱动）
 ```
 
 > 历史变化：旧版本的 `flow_ecc.json`（配置路径聚合器）与 `fixfanout_ecc.json`（高扇出修复，独立步骤）已随 ecc-tools 更新移除。`cts.max_fanout` 现在同时写入自动生成 SDC 的 `set_max_fanout` 约束和 CTS 的 `max_fanout` 字段。
@@ -114,7 +120,8 @@ graph LR
 ```bash
 ecc param list --step cts
 ecc param list --step floorplan
-ecc param list --all
+ecc param list --all              # 完整审核 schema（配置了 preset 的项目里 pdk.* 需要 --all --plain）
+ecc param list --all --plain      # 完整目录，含 pdk.* 路径参数
 ecc param set cts.skew_bound 0.05
 ecc param set floorplan.phy_placer.well_tap.distance_micron 30.0
 ecc param set cts.routing_layer '[4, 5]'
@@ -162,10 +169,11 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 | 命令 | 作用 |
 |---|---|
-| `ecc param list [--step STEP] [--all]` | 列出参数。缺省只显示 §1.1 的旧语义参数和已显式覆盖的直配参数；`--step STEP` 按 group/applies 过滤出该步骤的完整已审核 schema；`--all` 显示全部审核 schema |
+| `ecc param list [--step STEP] [--all]` | 列出参数。缺省只显示 §1.1 的旧语义参数和已显式覆盖的直配参数；`--step STEP` 按 group/applies 过滤出该步骤的完整已审核 schema；`--all` 显示全部审核 schema（配置了 flow preset 时，`pdk.*` 参数仅出现在 `--all --plain`） |
 | `ecc param show KEY` | 单参数详情：当前值 / 默认值 / 来源 / 类型 / 取值范围 / 写入目标（`maps_to`、`config_target`、`pdk_target`）及描述 |
 | `ecc param set KEY VALUE` | 校验后写入参数覆盖（两种作用域见下表）；取值非法（超范围、不在 choices、类型不符）直接报 `invalid_value`，不落盘 |
 | `ecc param unset KEY` | 移除该参数的覆盖，恢复默认值（workspace 作用域恢复到首次修改前的 `baseline`） |
+| `ecc param apply [--set KEY=VALUE...] [--unset KEY...]` | 原子批量应用多个 set/unset 修改（默认项目作用域；`--workspace NAME` 指定单个 workspace，workspace 作用域下 `--step STEP` 把批次限制为该步骤可配置的参数）。批内任一校验失败则什么都不写 |
 | `ecc param diff` | 只列出与默认值不同的参数（workspace 作用域：局部覆盖及其 `baseline`） |
 
 所有子命令共享的通用选项：
@@ -175,6 +183,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `--project DIR` | 指定项目目录（缺省为当前目录） |
 | `--workspace NAME` | 切换到 workspace 作用域：操作 project.json 清单中声明的指定 workspace，而不是项目 `ecc.toml` |
 | `--plain` | 机器可读的 `key=value` 输出（便于脚本解析）；缺省为人类可读文本 |
+| `--json` | 记录数组输出——仅 `list`、`show`、`diff` 支持 |
 
 两种作用域的行为差异：
 
@@ -510,7 +519,7 @@ GPUGR 默认继承 workspace 的 `bottom_layer`/`top_layer`。
 
 ## 6. timing optimization（Sizer）
 
-Timing optimization 是多阶段子流程：先用 `workspace.pdk.libs`（通常为 MAX/`ss_rcworst`）运行 setup Sizer；若 `sta_ecc.json` 声明了 `MIN` corner，再用该 corner 的 FF Liberty 执行一次 `-hold_only` 修复；然后用 DreamPlace 对最终暂存 DEF/网表做合法化，最后发布 ECC 产物。`ecc config timing optimization` 会列出 `db_ecc.json`、`sizer_ecc.json` 和 `dreamplace_ecc.json`。ECC 自己的 Sizer 配置提供 hold pass 控制项，完整命令行仍由生成的脚本承载。
+Timing optimization 是多阶段子流程：先用 `workspace.pdk.libs`（通常为 MAX/`ss_rcworst`）运行 setup Sizer；若 `sta_ecc.json` 声明了 `MIN` corner，再用该 corner 的 FF Liberty 执行一次 `-hold_only` 修复；然后用 DreamPlace 对最终暂存 DEF/网表做合法化，最后发布 ECC 产物。`ecc config timing_optimization` 会列出 `db_ecc.json`、`sizer_ecc.json` 和 `dreamplace_ecc.json`。ECC 自己的 Sizer 配置提供 hold pass 控制项，完整命令行仍由生成的脚本承载。
 
 最后的内部 DreamPlace 合法化使用 `legalize_flag=1`、`detailed_place_flag=0`，以保护已修复的 hold 时序。
 
@@ -648,7 +657,8 @@ ics55 的 corner 命名：`Cworst/Cbest`=电容最差/最好，`RCworst/RCbest`=
 `db_ecc.json` 的 DEF、网表、输出目录等路径由步骤调度生成，不能通过 CLI 设置。下列 PDK/设计资源路径会写入相应的 db 字段：
 
 ```bash
-ecc param list --step pdk
+ecc param list --all --plain   # pdk 是配置 owner 而非 flow 步骤：--step pdk 列不出内容
+ecc param show pdk.tech
 ecc param set pdk.tech VALUE   # pdk.lefs、pdk.libs、pdk.mapping_file、pdk.sdc、pdk.spef 用法相同
 ```
 
@@ -742,7 +752,9 @@ ecc param set rcx.thread_num VALUE
 
 ### 15.10 sta
 
-`liberty` 由 PDK 刷新生成，不能通过 STA 参数局部覆盖。STA JSON 的签核 corner 和运行时最大路径数可配置：
+`liberty` 默认取 PDK 提供的 corner 列表，一般无需改动；确需修改时可通过
+`ecc param set sta.liberty` 传 JSON 字面量（corner/temperature/path 条目）。
+STA JSON 的签核 corner 和运行时最大路径数可配置：
 
 ```bash
 ecc param list --step sta
@@ -757,10 +769,11 @@ harden 没有专属 `ecc param` schema；它只复用流程生成的 `db_ecc.jso
 ## 16. 配置查看与修改速查
 
 ```bash
-ecc config floorplan          # 看 floorplan 实际用的配置文件列表
+ecc config pre_floorplan     # 看 floorplan 各阶段实际用的配置文件列表
 ecc config --plain            # 项目级配置（ecc.toml 解析后）
 ecc param list --step cts                 # 查看 CTS 全部可调字段
-ecc param list --all                      # 查看完整审核 schema
+ecc param list --all                      # 查看完整审核 schema（--all --plain 同时列出 pdk.*）
+ecc param apply --set k=v --unset k2      # 原子批量应用参数修改
 ecc param show KEY / diff                 # 单参数 / 与默认差异
 ecc param set place.target_density 0.55  # 改参数（写入 ecc.toml，下次新建 workspace 时生效）
 ecc param set cts.skew_bound 0.05         # 直配 CTS JSON 字段
