@@ -8,8 +8,7 @@ def test_view_gds_launches_klayout_gui(monkeypatch, tmp_path):
     monkeypatch.setenv("KLAYOUT_BIN", "/bin/true")
     monkeypatch.setattr(
         "chipcompiler.tools.klayout_tool.viewer.subprocess.run",
-        lambda args, check: calls.append((args, check))
-        or type("Result", (), {"returncode": 0})(),
+        lambda args, check: calls.append((args, check)) or type("Result", (), {"returncode": 0})(),
     )
 
     view_gds(gds)

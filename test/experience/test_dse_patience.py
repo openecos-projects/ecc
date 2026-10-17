@@ -13,9 +13,7 @@ version2_spec = fixtures.version2_spec
 
 
 def test_fixed_patience_is_preserved():
-    resolved, policy = resolve_patience(
-        4, strategy="adaptive", domain_size=20, screening_trials=11
-    )
+    resolved, policy = resolve_patience(4, strategy="adaptive", domain_size=20, screening_trials=11)
 
     assert resolved == 4
     assert policy == {
@@ -55,9 +53,7 @@ def test_version2_auto_patience_is_frozen_and_old_shape_remains_readable(
 ):
     workspace, store, path = dse_project
     spec_payload = json.loads(version2_spec.read_text())
-    spec_payload["space"] = {
-        "floorplan.core_util": {"range": [0.3, 0.4], "step": 0.01}
-    }
+    spec_payload["space"] = {"floorplan.core_util": {"range": [0.3, 0.4], "step": 0.01}}
     spec_payload["limits"] = {
         "max_trials": 13,
         "max_seconds": 60,
