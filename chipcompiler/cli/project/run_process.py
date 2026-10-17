@@ -82,12 +82,8 @@ def managed_run_process(
             runtime_id=runtime_id,
             log_path=log_path,
         )
-        register_runtime_process(
-            project_dir,
-            workspace_id,
-            entry,
-            blocking=not command_input.no_wait,
-        )
+        # Only Workspace contention is nonblocking; Project registration writes must serialize.
+        register_runtime_process(project_dir, workspace_id, entry)
         registered = True
         workspace._ecc_run_id = run_id
         workspace._ecc_cancel_event = cancel_event
