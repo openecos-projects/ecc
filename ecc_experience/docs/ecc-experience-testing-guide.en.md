@@ -9,7 +9,7 @@ names, types, and size distributions do not define product behavior.
 
 **The current CLI provides run, param, report, sweep, explore, signoff, and
 reproducible for execution and evidence collection. ecc_experience now provides P0
-collect/list/show/verify and P1 enable/status/disable, post-commit attempt outbox
+collect/list/show/verify/summary and P1 enable/status/disable, post-commit attempt outbox
 recording, and drain recovery, plus campaign ledgers, recommend, plan, evaluate,
 release, and budgeted optimize. campaign quality/recover, neutral step resource
 observations, stage features, frozen-release match, bounded stage dse and isolated
@@ -812,6 +812,39 @@ After a crash, confirm that the original collector has stopped before removing t
 empty lock directory. Never delete cases or live temporary directories to manufacture
 a pass.
 
+### 10.3 Summarize store quality and resources
+
+After several designs or model runs have completed, use the read-only `summary`
+command to produce one quality report:
+
+```bash
+ecc experience summary \
+  --store "$EXPERIENCE_STORE" \
+  --output "$OUTPUT_ROOT/experience-summary" \
+  --json
+```
+
+The command classifies cases as `verified_pass`, `verified_observation`, `blocked`,
+`qor_unknown`, `incomplete`, or `evidence_invalid`. It also reports input/process/
+parameter configuration deduplication (also requiring matching runtime and flow),
+ICS55 and design-size bands, QoR ranges, and
+per-step runtime and peak RSS. Only a case with a successful flow, passing checklist,
+ready signoff, available QoR, an input fingerprint, and passing evidence verification is included in
+`release_eligible_case_ids`.
+
+`blocked` is valid negative evidence for placement convergence, signoff, or checklist
+failures; it does not mean that the store is corrupt. `evidence_invalid` means that a
+file was changed, missing, or no longer matches its digest and must be isolated and
+re-collected. Use `--json` for structured output; the command does not modify the store.
+With `--output`, it writes `summary.json` and `summary.md`. Status `unknown` returns
+exit code 7; damaged evidence or read failures return exit code 6, while JSON still
+contains the complete report.
+
+Use the summary as an audit input for the next dataset or DSE round, not as a causal
+parameter model. Before creating a release, wait for all writers to stop, rerun
+`summary` and full-store `experience verify`, deduplicate the observations, freeze
+tool/PDK provenance, and select only release-eligible cases.
+
 | Stage | Test | Required evidence |
 | --- | --- | --- |
 | Explicit collection | Collect, show, verify | Traceable case, unchanged source workspace, idempotence |
@@ -825,7 +858,107 @@ An empty store is a normal cold start. Collection can work while recommendation
 reports insufficient evidence. It cannot claim a learned optimum. AI-written
 summaries do not become validated rules without evidence and evaluation.
 
-### 10.3 Back up and exchange experience cases
+### 10.4 Normalize multiple experience stores
+
+Build a shared manifest from separate model runs or benchmark rounds:
+
+```bash
+ecc experience normalize \
+  --store "$STORE_A" --store "$STORE_B" \
+  --output "$OUTPUT_ROOT/normalized" --json
+```
+
+Repeat `--store` as needed. `--output` must name a new directory outside all source
+stores. The command reads cases and evidence and writes `normalized-manifest.json`
+and `normalized-manifest.md`. It does not move cases, repair sources, modify
+configuration, or launch EDA. Repeated references to one store are scanned once.
+
+Equal case IDs become one row with every source retained in `provenance`, including
+attempt, revision, stored integrity, and live-source verification. Different cases
+share a configuration group only when complete input, process, parameter, runtime/
+tool and ordered-flow identities match. All historical observations remain. Missing
+tool versions or other identity fields keep cases in separate groups. Repeated
+observations do not establish independent experiments.
+
+`selections.positive` contains complete passing candidates; `negative` contains
+reliably verified failed/blocked observations. `qor_missing` contains remaining
+cases without valid QoR, and `other` contains remaining observations. `quarantine`
+preserves failed or unreadable sources individually. A valid copy can still be
+selected when another copy of the same case is damaged; the damaged source remains
+quarantined and the report returns 6. `integrity=pass` with `verification=fail` can
+mean that copied evidence is intact while live sources changed. This does not prove
+archive corruption or authorize treating historical observations as fresh evidence.
+Negative observations may lack QoR, but all other verification must pass. Legacy
+workspaces and observations without attempt identity are not automatically negative
+training samples.
+
+A visible `.write-lock` or a case-list change during scanning marks that store
+`changed_during_read` and excludes its sources from positive/negative selections.
+This is not a cross-store transaction. Stop writers and rerun normalize/verify before
+publishing. Exit codes: 0 complete; 7 empty or insufficient evidence; 6 verification/
+read failure; 2 invalid path arguments; 21 existing output. Codes 6 and 7 still write
+the manifest. These are benchmark quality signals, not additional CI gates.
+
+Promote only the positive selections into a formal release with a fresh verification:
+
+```bash
+ecc experience release from-manifest \
+  --manifest "$OUTPUT_ROOT/normalized/normalized-manifest.json" \
+  --store "$OUTPUT_ROOT/reviewed-release-store" \
+  --output "$OUTPUT_ROOT/experience-release.json" --json
+```
+
+The command validates the manifest identity, reads only `selections.positive`,
+rechecks each case and its live evidence, copies passing cases into the independent
+destination store, and then calls the existing release creation contract. The source
+stores and manifest are read-only. Cases that changed after normalization are reported
+in `excluded`; a release containing the remaining valid cases is marked `partial` and
+returns exit 7. Negative, QoR-missing, quarantined, malformed, or non-release-eligible
+cases are never promoted. Run `release verify` against the destination store before
+using the release for dataset construction or DSE.
+
+The manifest is an audit handoff, not a replacement for `dataset build --release`
+or a DSE plan. AI consumers must reverify selected store/case references, optionally
+copy selected cases into a separate store with existing export/import commands,
+then create/verify a release and build a dataset. Never use negative or quarantined
+observations as successful candidates or infer parameter effectiveness from equal
+configurations. Preserve resource scopes and avoid summing reused steps or mixing
+legacy and differently scoped measurements. See the
+[normalization development contract](ecc-experience-normalization.en.md).
+
+#### 10.4.1 Record execution identity for new cases
+
+After `experience enable`, the recorder used by ordinary `ecc run` captures ECC
+source/frozen-binary identity, tool versions and selected PDK file digests before
+and after an attempt. It also checks selected PDK contents at step commits.
+`experience drain` binds the recorded context to the same attempt and final
+committed snapshot digest. Stable identities provide runtime and process
+fingerprints for subsequent configuration grouping. LEC uses the internal tool key
+`kepler_formal`, matching flow steps, and queries the resolved command with its
+sanitized subprocess environment.
+
+Context `checks.runtime` and `checks.process` report `available`, `changed` or
+`unknown`. Runtime/PDK changes preserve before/after observations and clear the
+unreliable primary runtime or process fingerprint. These cases must not be forced
+into complete configuration groups. Missing versions, incomplete PDK bindings or
+capture failures remain unknown and do not change flow success/failure. Disabled
+experience recording performs no additional identity probes. Probes occur only in
+enabled attempts; no CI workflow is added.
+
+Legacy outbox events remain drainable without context. Neither old events nor old
+cases are backfilled from today's installed tools. Drain validates attempt,
+snapshot and context fields; malformed events remain in the outbox with a failure
+result. Equal versions do not prove equal executable contents, selected PDK digests
+do not prove full process closure, and recorded configuration does not prove tool
+consumption. Check actual step execution, skips/reuse and resource costs separately.
+
+For long benchmark campaigns, use an independently derived workspace for each
+trial. Reusing a workspace changes live source files: older cases can fail source
+verification even when archived copies remain intact. History is preserved; never
+backfill identity or ignore digest changes to force a pass. A synthesis-only prefix
+can validate collection and grouping without proving full flow/signoff or PPA gains.
+
+### 10.5 Back up and exchange experience cases
 
 Select the cases to share explicitly; ECC never exports the entire store by default:
 

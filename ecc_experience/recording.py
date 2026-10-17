@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from ecc_experience.collection.context import AttemptContext
 from ecc_experience.files import canonical_bytes, read_json, safe_child
 from ecc_experience.models import ExperienceError
 
@@ -160,18 +161,25 @@ class ExperienceRecorder:
         self.config = config
         self.attempt_id = f"attempt-{uuid4().hex}"
         self._sequence = 0
+        self._context: AttemptContext | None = None
 
     def start(self, *, intent: str, requested_steps: tuple[str, ...] = ()) -> None:
+        self._context = AttemptContext.capture(self.attempt_id, self.workspace)
         self._write(
             "attempt_started",
             {
                 "intent": intent,
                 "requested_steps": list(requested_steps),
                 "workspace": str(self.workspace),
+                "execution_identity": {
+                    "runtime": self._context.runtime_before,
+                    "process": self._context.process_before,
+                },
             },
         )
 
     def committed_step(self, snapshot: dict, step, state, error: str | None = None) -> None:
+        process = self._context.committed(snapshot) if self._context is not None else None
         step_name = str(getattr(step, "name", ""))
         step_tool = str(getattr(step, "tool", ""))
         flow_step = next(
@@ -194,6 +202,7 @@ class ExperienceRecorder:
                 "tool": step_tool,
                 "state": getattr(state, "value", str(state)),
                 "error": error,
+                "process_observation": process,
                 "resource": {
                     "elapsed_seconds": _runtime_seconds(flow_step.get("runtime")),
                     "peak_memory_mb": _number(flow_step.get("peak memory (mb)")),
@@ -206,7 +215,15 @@ class ExperienceRecorder:
         )
 
     def finish(self, *, status: str, error: str | None = None) -> None:
-        self._write("attempt_finished", {"status": status, "error": error})
+        context = self._context.finish() if self._context is not None else None
+        self._write(
+            "attempt_finished",
+            {
+                "status": status,
+                "error": error,
+                "execution_context": context,
+            },
+        )
 
     def _write(self, event: str, payload: dict) -> None:
         outbox = _outbox_path(self.project)

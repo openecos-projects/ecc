@@ -7,7 +7,7 @@
 只作为外部输入，不定义产品的目录、设计名称、类型或规模标准。
 
 **当前版本可用 run、param、report、sweep、explore、signoff 和 reproducible 完成
-运行与证据采集。ecc_experience 已提供 P0 的 collect/list/show/verify，以及 P1 的
+运行与证据采集。ecc_experience 已提供 P0 的 collect/list/show/verify/summary，以及 P1 的
 enable/status/disable、提交后 attempt outbox 和 drain 恢复，以及 campaign 台账、
 recommend、plan、evaluate、release 和受预算约束的 optimize。campaign quality/recover、
 独立 step 资源观测、阶段 features、冻结 release 匹配 match、有界阶段 dse 以及
@@ -715,6 +715,34 @@ JSON 始终保留。P0 的显式 collect 没有 attempt 身份；P1 通过 drain
 .write-lock 表示写入占用；崩溃遗留时先确认原 collector 已停止，再移除这个空
 锁目录。不要删除案例或正在写入的临时目录来制造通过。
 
+### 10.3 汇总经验库质量与资源数据
+
+在多个 design 或多个模型完成测试后，使用只读的 `summary` 生成统一质量报告：
+
+```bash
+ecc experience summary \
+  --store "$EXPERIENCE_STORE" \
+  --output "$OUTPUT_ROOT/experience-summary" \
+  --json
+```
+
+命令会按 case 输出 `verified_pass`、`verified_observation`、`blocked`、
+`qor_unknown`、`incomplete` 和 `evidence_invalid` 六类结果，并统计输入/工艺/参数
+配置去重（还要求 runtime 和 flow 身份一致）、ICS55 与设计规模分布、QoR 范围、
+每个 step 的运行时间和峰值 RSS。只有输入指纹存在、
+flow 成功、checklist 通过、signoff ready、QoR 有效且 evidence verify 通过的
+`verified_pass` case 会列入 `release_eligible_case_ids`。
+
+`blocked` 表示有效的负向经验，可以用于分析布局不收敛、signoff 或 checklist
+失败；它不是经验库损坏。`evidence_invalid` 表示文件被改写、缺失或摘要不匹配，
+必须隔离并重新采集。使用 `--json` 输出结构化报告，不修改 store；指定 `--output` 时写入
+`summary.json` 和 `summary.md`。状态为 `unknown` 返回退出码 7，存在证据损坏或
+读取失败返回退出码 6，JSON 仍然保留完整报告。
+
+汇总报告可以直接作为下一轮 dataset/DSE 的输入审计材料，但不等于参数因果模型。
+在生成正式 release 前，应等待所有 writer 停止后重新运行 `summary` 和全库
+`experience verify`，再去重、固定工具/PDK 版本并选择 release-eligible cases。
+
 | 阶段 | 测试 | 必须证明 |
 | --- | --- | --- |
 | 显式采集 | collect、show、verify | 案例可追溯、源 workspace 不变、重复收集幂等 |
@@ -727,7 +755,87 @@ JSON 始终保留。P0 的显式 collect 没有 attempt 身份；P1 通过 drain
 知识库为空是正常冷启动场景。收集可以工作，推荐需要说明不足；不能返回
 “已学习的最佳配置”。AI 自己的文字总结不能升级为 validated rule。
 
-### 10.3 备份和交换经验案例
+### 10.4 多经验库归一化
+
+多个模型或多轮测试产生不同 store 时，可生成统一清单：
+
+```bash
+ecc experience normalize \
+  --store "$STORE_A" --store "$STORE_B" \
+  --output "$OUTPUT_ROOT/normalized" --json
+```
+
+`--store` 可以重复，`--output` 必须是所有源 store 以外的新目录。命令只读取
+案例及证据，生成 `normalized-manifest.json` 和 `normalized-manifest.md`；不移动
+案例、不修复源文件、不修改配置，也不启动 EDA。重复指定同一个 store 只读取一次。
+
+相同 `case_id` 合为一条案例，`provenance` 保留每份来源、attempt、revision、
+完整性及源文件校验结果。不同案例仅在输入、工艺、参数、工具/runtime 和有序 flow
+身份完整且相同时组成一个配置组；不删除重复配置的历史观察。缺少工具版本等身份
+信息时，各案例独立分组，避免把未知配置误认为等价。重复观察不等于独立实验。
+
+`selections.positive` 为完整通过的候选，`negative` 为有可靠证据的失败/blocked
+观察，`qor_missing` 为其余 QoR 不完整案例，`other` 为其他未满足准入的观察。
+`quarantine` 按来源保存校验失败或不可读取的记录。同一案例若一份副本损坏而另一
+份有效，仍可引用有效副本；损坏来源继续隔离，整个报告仍返回 6。`integrity=pass`
+但 `verification=fail` 可以表示归档副本完好、实时源文件已改变，不能直接认定归档
+损坏或将历史观察自动升级为当前有效证据。负向观察允许缺少 QoR，但其余校验必须
+通过，旧 workspace 或缺失 attempt 的观察不会直接成为负向训练样本。
+
+观察到 `.write-lock` 或扫描期间案例列表变化时，该 store 标记
+`changed_during_read`，不选入正向或负向候选。该检测不是跨 store 事务；正式发布
+前仍应等待所有 writer 停止，并重新执行 normalize/verify。空库或证据不足返回 7，
+校验/读取失败返回 6，路径参数错误返回 2，输出冲突返回 21，完整通过返回 0。
+诊断状态为 6 或 7 时仍生成清单；它们属于用户测试的质量提示，不新增 CI 阻断节点。
+
+只将正向选择重新复核并固化为正式 release：
+
+```bash
+ecc experience release from-manifest \
+  --manifest "$OUTPUT_ROOT/normalized/normalized-manifest.json" \
+  --store "$OUTPUT_ROOT/reviewed-release-store" \
+  --output "$OUTPUT_ROOT/experience-release.json" --json
+```
+
+命令会校验 manifest 身份，只读取 `selections.positive`，重新检查案例及实时证据，
+把通过复核的案例复制到独立 store，然后调用已有的 release 创建契约。源 store 和
+manifest 都只读。normalize 后发生变化的案例会出现在 `excluded`；如果其余案例仍
+成功生成 release，选择状态为 `partial`，命令返回 7。negative、qor_missing、
+quarantine、损坏或不满足 release 准入条件的案例不会被固化。生成后仍应针对目标
+store 执行 `release verify`，再用于 dataset 或 DSE。
+
+清单属于审核交接材料，不能把负向或隔离案例当作成功候选，也不能仅凭配置相同
+推断参数有效。AI 可以先检查排除项和资源 scope，再执行上述命令。
+资源记录保留原始 scope；不得混算旧记录、复用步骤与不同测量范围的成本。
+详细开发契约见 [归一化开发说明](ecc-experience-normalization.en.md)。
+
+#### 10.4.1 为新案例记录执行身份
+
+启用 `experience enable` 后，普通 `ecc run` 的 recorder 会在 attempt 开始和结束
+时记录 ECC 源码/冻结二进制、工具版本及所选 PDK 文件摘要，并在各 step 提交时
+检查所选 PDK。`experience drain` 将已记录的上下文绑定到同一个 attempt 和最后
+提交的 snapshot digest。运行前后身份一致时，案例具有 runtime 和 process
+fingerprint，后续 normalize 可以按完整配置分组。LEC 版本采用内部工具键
+`kepler_formal`，与 flow step 一致，使用实际解析的命令和隔离后的环境查询。
+
+上下文的 `checks.runtime` / `checks.process` 为 `available`、`changed` 或
+`unknown`。源码、工具或 PDK 变化会保留前后观察，同时清空不再可靠的主 runtime
+或 process fingerprint；不得把这些案例强行归入完整配置组。版本不可查询、PDK
+绑定不完整或采集异常均降级为未知，不会改变 flow 的通过/失败结果。关闭经验记录
+时不会执行额外的身份探测；探测只在启用记录的 attempt 中发生，不新增 CI 工作流。
+
+旧 outbox 没有此字段仍可 drain；旧案例和旧 outbox 都不会用当前安装环境回填
+历史版本。`drain` 校验事件的 attempt、snapshot 和上下文字段，损坏事件保留在
+outbox 并报告失败；不会悄悄生成身份完整的案例。版本一致仍不等于所有可执行文件
+内容一致，PDK 摘要也只覆盖已选择的文件，不证明完整工艺闭包或工具确实消耗了参数。
+实际工具执行、step skip/复用与资源成本仍应结合 step 的执行记录单独判断。
+
+长期 benchmark 建议每个 trial 使用独立派生的 workspace。重复使用同一 workspace
+会改变实时源文件，旧案例的归档副本虽然仍完整，但旧案例的 verify 可能失效；
+这不会删除历史记录，也不能通过回填身份或忽略摘要变化来恢复通过。仅运行综合等
+前缀阶段可以验证采集和配置归组，不代表完整 flow/signoff 或 PPA 优化已通过。
+
+### 10.5 备份和交换经验案例
 
 选择需要分享的案例，不会默认导出整个 store：
 

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
 from ecc_experience.collection.collect import collect_committed_case
+from ecc_experience.collection.context import recorded_context
 from ecc_experience.files import read_json, safe_child
 from ecc_experience.knowledge.store import ExperienceStore
 from ecc_experience.models import ExperienceError
@@ -54,12 +55,14 @@ def drain(project: str | Path, *, limit: int = 32) -> list[dict]:
             )
             continue
         try:
+            execution_context = recorded_context(finished, attempt_id, snapshot_digest)
             result = collect_committed_case(
                 workspace,
                 ExperienceStore(config.store),
                 read_workspace_observation,
                 attempt_id=attempt_id,
                 expected_snapshot_digest=snapshot_digest,
+                execution_context=execution_context,
             )
         except (ExperienceError, OSError) as exc:
             results.append({"attempt_id": attempt_id, "status": "failed", "reason": str(exc)})

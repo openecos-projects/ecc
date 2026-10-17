@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from pathlib import Path
 
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
@@ -16,9 +17,12 @@ from ecc_experience.dse.plan import plan_dse
 from ecc_experience.dse.report import report_dse
 from ecc_experience.knowledge.features import case_features
 from ecc_experience.knowledge.matching import match_cases
+from ecc_experience.knowledge.normalize import normalize_stores
 from ecc_experience.knowledge.recommend import recommend as recommend_cases
 from ecc_experience.knowledge.release import create_release, verify_release
+from ecc_experience.knowledge.release_from_manifest import release_from_manifest
 from ecc_experience.knowledge.store import ExperienceStore
+from ecc_experience.knowledge.summary import summarize_store
 from ecc_experience.knowledge.transfer import export_package, import_package
 from ecc_experience.knowledge.verify import verify_case
 from ecc_experience.modeling.dataset import build_dataset
@@ -237,6 +241,14 @@ def match(
 def verify(case_id: str, store: str | Path) -> Verification:
     repository = ExperienceStore(store)
     return verify_case(repository.read(case_id), repository.case_directory(case_id))
+
+
+def summary(store: str | Path, output: str | Path | None = None) -> dict:
+    return summarize_store(store, output)
+
+
+def normalize(stores: Sequence[str | Path], output: str | Path) -> dict:
+    return normalize_stores(stores, output)
 
 
 def enable(project: str | Path, store: str | Path):
@@ -486,6 +498,12 @@ def release_create(case_ids: list[str], store: str | Path, output: str | Path) -
 
 def release_verify(release: str | Path, store: str | Path) -> dict:
     return verify_release(release, store)
+
+
+def release_from_normalized_manifest(
+    manifest: str | Path, store: str | Path, output: str | Path
+) -> dict:
+    return release_from_manifest(manifest, store, output)
 
 
 def package_export(

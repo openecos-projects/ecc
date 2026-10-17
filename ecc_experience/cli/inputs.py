@@ -21,6 +21,14 @@ class StoreInput:
 
 
 @dataclass(frozen=True)
+class SummaryInput:
+    output: OutputOptions
+    store: str
+    output_path: str | None = None
+    project: ProjectOptions = ProjectOptions()
+
+
+@dataclass(frozen=True)
 class MatchInput:
     output: OutputOptions
     store: str
@@ -143,6 +151,7 @@ class ReleaseInput:
     case_ids: list[str] | None = None
     output_path: str | None = None
     release_path: str | None = None
+    manifest_path: str | None = None
 
 
 @dataclass(frozen=True)

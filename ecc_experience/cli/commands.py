@@ -21,15 +21,18 @@ from ecc_experience.cli.inputs import (
     RecordingInput,
     ReleaseInput,
     StoreInput,
+    SummaryInput,
     TransferInput,
 )
 from ecc_experience.cli.modeling import dataset_app, model_app
+from ecc_experience.cli.normalize import register_normalize
 from ecc_experience.cli.study import study_app
 
 StoreOption = Annotated[str, typer.Option("--store", help="External experience store directory")]
 CaseArgument = Annotated[str, typer.Argument(help="Experience case ID")]
 
 experience_app = create_app(help="Collect, query and verify design experience evidence")
+register_normalize(experience_app)
 campaign_app = create_app(help="Run and inspect generic experience campaigns")
 register_commands(campaign_app)
 release_app = create_app(help="Freeze and verify evidence-backed experience releases")
@@ -122,6 +125,26 @@ def features_cmd(
         through_step=through_step,
     )
     execute_command("experience", command_input, handlers.features)
+
+
+@experience_app.command(
+    "summary", help="Summarize case quality, deduplication and resource observations"
+)
+def summary_cmd(
+    *,
+    store: StoreOption,
+    output: Annotated[
+        str | None, typer.Option("--output", help="Directory for summary.json and summary.md")
+    ] = None,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = SummaryInput(
+        output=output_options(plain=plain, json_output=json_output),
+        store=store,
+        output_path=output,
+    )
+    execute_command("experience", command_input, handlers.summary)
 
 
 @experience_app.command("match", help="Explain compatible stage matches from a frozen release")
@@ -406,6 +429,25 @@ def release_verify_cmd(
         release_path=release,
     )
     execute_command("experience", command_input, handlers.release_verify)
+
+
+@release_app.command("from-manifest", help="Create a release from positive manifest selections")
+def release_from_manifest_cmd(
+    *,
+    manifest: Annotated[str, typer.Option("--manifest", help="Normalized manifest JSON")],
+    store: StoreOption,
+    output: Annotated[str, typer.Option("--output", help="Independent destination release JSON")],
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = ReleaseInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(None),
+        store=store,
+        output_path=output,
+        manifest_path=manifest,
+    )
+    execute_command("experience", command_input, handlers.release_from_manifest)
 
 
 @campaign_app.command("validate", help="Validate a campaign manifest without running EDA")

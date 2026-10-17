@@ -24,6 +24,7 @@ from ecc_experience.cli.inputs import (
     RecordingInput,
     ReleaseInput,
     StoreInput,
+    SummaryInput,
     TransferInput,
 )
 from ecc_experience.models import ExperienceError
@@ -57,6 +58,11 @@ def _guard(operation: Callable[[], CommandResult]) -> CommandResult:
             "experience_release_invalid": EXIT_USAGE_ERROR,
             "experience_release_unverified": EXIT_GATE_FAILED,
             "experience_release_conflict": EXIT_REVISION_CONFLICT,
+            "experience_release_manifest_invalid": EXIT_USAGE_ERROR,
+            "experience_summary_conflict": EXIT_REVISION_CONFLICT,
+            "experience_summary_invalid": EXIT_USAGE_ERROR,
+            "experience_normalize_invalid": EXIT_USAGE_ERROR,
+            "experience_normalize_conflict": EXIT_REVISION_CONFLICT,
             "experience_package_selection_invalid": EXIT_USAGE_ERROR,
             "experience_package_invalid": EXIT_GATE_FAILED,
             "experience_package_conflict": EXIT_REVISION_CONFLICT,
@@ -232,6 +238,28 @@ def release_verify(command_input: ReleaseInput, _ctx: CommandContext) -> Command
     return _guard(operation)
 
 
+def release_from_manifest(command_input: ReleaseInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import release_from_normalized_manifest as create
+
+        if command_input.manifest_path is None or command_input.output_path is None:
+            raise ExperienceError(
+                "Manifest and output paths are required",
+                code="experience_release_manifest_invalid",
+            )
+        result = create(
+            command_input.manifest_path,
+            command_input.store,
+            command_input.output_path,
+        )
+        return CommandResult(
+            records=({"experience": "release_from_manifest", **result},),
+            exit_code=result["exit_code"],
+        )
+
+    return _guard(operation)
+
+
 def package_export(command_input: TransferInput, _ctx: CommandContext) -> CommandResult:
     def operation() -> CommandResult:
         from ecc_experience.api import package_export as export
@@ -333,6 +361,18 @@ def verify(command_input: StoreInput, _ctx: CommandContext) -> CommandResult:
             else 0
         )
         return CommandResult(records=tuple(records), exit_code=exit_code)
+
+    return _guard(operation)
+
+
+def summary(command_input: SummaryInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import summary as summarize
+
+        result = summarize(command_input.store, command_input.output_path)
+        return CommandResult(
+            records=({"experience": "summary", **result},), exit_code=result["exit_code"]
+        )
 
     return _guard(operation)
 
