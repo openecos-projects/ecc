@@ -6,7 +6,6 @@ from typing import Annotated
 import typer
 
 from chipcompiler.cli.commands.chipview import register_chipview_commands
-from chipcompiler.cli.commands.gds_view import register_gds_view_commands
 from chipcompiler.cli.commands.compare import compare_app
 from chipcompiler.cli.commands.doc import register_doc_commands
 from chipcompiler.cli.commands.doctor import register_doctor_commands
@@ -17,6 +16,7 @@ from chipcompiler.cli.commands.experiments import (
     sweep_app,
 )
 from chipcompiler.cli.commands.flow import flow_app
+from chipcompiler.cli.commands.gds_view import register_gds_view_commands
 from chipcompiler.cli.commands.macro import macro_app
 from chipcompiler.cli.commands.param import param_app
 from chipcompiler.cli.commands.pdk import pdk_app
