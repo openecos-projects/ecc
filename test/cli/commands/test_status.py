@@ -153,6 +153,28 @@ class TestCorruptFlowJson:
 
 
 class TestRunStatusStates:
+    def test_advisory_failure_does_not_override_workspace_completion(
+        self, capsys, create_cli_project, create_flow_json, plain_records
+    ):
+        project_dir = create_cli_project()
+        create_flow_json(
+            os.path.join(project_dir, "default"),
+            [
+                {"name": "antennaCheck", "tool": "ecc", "state": "Incomplete"},
+                {"name": "emir", "tool": "ecc", "state": "Incomplete"},
+                {"name": "Harden", "tool": "ecc", "state": "Success"},
+            ],
+        )
+
+        assert cli_main.run(["status", "--plain", "--project", project_dir]) == 0
+        records = plain_records(capsys.readouterr().out)
+        assert records[0]["status"] == "success"
+        assert [record["status"] for record in records[1:]] == [
+            "incomplete",
+            "incomplete",
+            "success",
+        ]
+
     def test_partial_rerun_progress_is_not_failed(self):
         from chipcompiler.cli.inspection.discovery import get_run_status
 

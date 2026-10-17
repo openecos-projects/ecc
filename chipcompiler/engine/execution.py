@@ -2,7 +2,7 @@ import inspect
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from chipcompiler.data import StateEnum, is_finished_step_state
+from chipcompiler.data import ADVISORY_FLOW_STEPS, StateEnum, is_finished_step_state
 
 
 @dataclass(frozen=True)
@@ -54,9 +54,9 @@ def execute(flow: Any, plan: ExecutionPlan, *, event_sink: Any = None) -> Execut
                 if step is None:
                     raise ValueError(f"step not found: {step_id}")
                 state = _invoke(flow.run_step, step, rerun=rerun, observer=observer)
-                if (
-                    state is not StateEnum.Success
-                    and getattr(state, "value", state) != StateEnum.Success.value
+                state_value = getattr(state, "value", state)
+                if state_value != StateEnum.Success.value and not (
+                    step.name in ADVISORY_FLOW_STEPS and state_value == StateEnum.Imcomplete.value
                 ):
                     succeeded = False
                     break
@@ -122,7 +122,10 @@ class ExecutionObserver:
         if isinstance(name, str) and name:
             if getattr(state, "value", state) == StateEnum.Success.value:
                 self.executed_steps.append(name)
-            elif self.failed_step is None:
+            elif self.failed_step is None and not (
+                name in ADVISORY_FLOW_STEPS
+                and getattr(state, "value", state) == StateEnum.Imcomplete.value
+            ):
                 self.failed_step = name
         self._delegate_call("on_step_completed", step, state, error)
 

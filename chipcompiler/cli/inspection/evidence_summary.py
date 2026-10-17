@@ -35,7 +35,12 @@ def flow_status(flow: dict) -> str:
         if "blocked" in states:
             return "blocked"
         return get_run_status(
-            {"steps": [{"state": "success" if state == "passed" else state} for state in states]}
+            {
+                "steps": [
+                    {"name": step.get("name"), "state": "success" if state == "passed" else state}
+                    for step, state in zip(steps, states, strict=True)
+                ]
+            }
         )
     status = flow.get("status", flow.get("state", "unknown"))
     return normalize_state(status) if isinstance(status, str) else "unknown"
