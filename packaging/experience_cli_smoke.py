@@ -236,7 +236,7 @@ def _extensions(
         raise RuntimeError("Rejected experience input created execution or publication output")
 
 
-def _dse_spec(features: dict) -> dict | None:
+def _dse_spec(features: dict):
     supported = {"postfloorplan", "place", "cts"}
     direction_by_metric = {
         "sta_setup_wns": "maximize",
@@ -264,10 +264,7 @@ def _dse_spec(features: dict) -> dict | None:
                 if item.get("status") == "available"
                 and isinstance(item.get("id"), str)
                 and isinstance(item.get("unit"), str)
-                and (
-                    item["id"] in lower_is_better
-                    or item["id"] in direction_by_metric
-                )
+                and (item["id"] in lower_is_better or item["id"] in direction_by_metric)
             ),
             None,
         )
