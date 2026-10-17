@@ -865,8 +865,10 @@ ecc project doctor [--fix]            # 交叉核对 project.json 与 workspace 
 `project apply` 把 `set`/`unset`/`add`/`remove` 的修改打包成一次原子 manifest 更新
 （失败时不会出现改了一半的组合）。`project baseline` 记录后续 run 以哪个已声明
 workspace 的已存 QoR 为对比基线。`project doctor`（不要与环境自检 `ecc doctor`
-混淆，见 §4）报告派生字段与 workspace 目录不一致的条目、指向缺失目录的条目，
-以及未登记的 workspace 目录；存在不一致时退出码为 1，`--fix` 会逐项显式修复。
+混淆，见 §4）报告缺失的目录、无法读取的 workspace，以及未登记的 workspace 目录。
+运行状态、流程范围和参数以 workspace 文件为准，不再比较或重写 manifest 的缓存字段。
+存在问题时退出码为 1；`--fix` 移除缺失目录的登记项、登记未注册的目录；无法读取的
+workspace 需要手动恢复文件，并保留其登记项。
 
 ### 将 RTL 导入项目
 

@@ -799,10 +799,12 @@ ecc project doctor [--fix]            # cross-check project.json against workspa
 `project apply` batches the same edits as `set`/`unset`/`add`/`remove` so multi-field changes
 land in a single atomic manifest update (no half-applied combination on failure). `project
 baseline` records which declared workspace's saved QoR later runs compare against. `project
-doctor` (not to be confused with the environment `ecc doctor`, §4) reports manifest entries
-whose derived fields disagree with the workspace directory, entries pointing at missing
-directories, and unregistered workspace directories; it exits 1 while inconsistencies remain
-and repairs each one explicitly with `--fix`.
+doctor` (not to be confused with the environment `ecc doctor`, §4) reports missing
+directories, unreadable workspaces, and unregistered workspace directories. Execution
+state, flow ranges, and parameters are owned by workspace files; cached manifest fields
+are not compared or rewritten. It exits 1 while inconsistencies remain. `--fix` removes
+missing-directory entries and registers unregistered directories; unreadable workspace
+files require manual restoration and their registrations are preserved.
 
 ### Importing RTL into a project
 

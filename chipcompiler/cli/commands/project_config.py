@@ -201,13 +201,12 @@ def doctor_cmd(
 ) -> None:
     """Check manifest ↔ workspace-directory consistency.
 
-    Reports three classes: entries whose derived fields
-    (start_step/end_step/status/parameter_patch) disagree with the
-    workspace directory, entries pointing at missing directories, and
-    workspace directories under the project root with no manifest entry.
+    Reports missing directories, unreadable workspaces, and workspace
+    directories under the project root with no manifest entry. Execution
+    state and parameters belong to workspace files, not manifest caches.
     Read-only by default and exits 1 when inconsistencies are found.
-    With --fix, derived fields are rebuilt from directory facts, dead
-    entries are removed, unregistered directories are registered, and
+    With --fix, dead entries are removed, unregistered directories are
+    registered, unreadable workspace registrations are preserved, and
     every repair is printed as a record; the exit code is 1 only when a
     repair failed.
     """
