@@ -21,8 +21,8 @@ def test_parameter_catalog_is_context_free_and_typed(tmp_path, monkeypatch, caps
     assert [record["id"] for record in records] == sorted(schema.param for schema in list_schemas())
     assert all(record["record"] == "parameter" for record in records)
     density = next(record for record in records if record["id"] == "place.target_density")
-    assert json.loads(density["default_literal"]) == 0.2
-    assert json.loads(density["range_literal"]) == [0.1, 0.95]
+    assert json.loads(density["default_literal"]) == 0.4
+    assert json.loads(density["range_literal"]) == [0.1, 1.0]
     assert json.loads(density["maps_to_literal"]) == {"dreamplace": "target_density"}
 
 
