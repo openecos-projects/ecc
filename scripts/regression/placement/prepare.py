@@ -225,7 +225,7 @@ def prepare_workspaces(batch: Path):
             pdk_overrides={
                 key: value for key, value in pdk.items() if key not in ("name", "root", "version")
             },
-            flow_config={"start_step": "place", "end_step": "place"},
+            flow_config={"start_step": "place", "end_step": "route"},
             sdc=case["inputs"]["sdc"],
         )
         require(result is not None, f"Workspace creation failed: {name}")

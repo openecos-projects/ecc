@@ -71,6 +71,14 @@ def verify(batch: Path):
         for key, value in case["inputs"].items():
             require(digest(Path(value)) == case["hashes"][key], f"Input changed: {name}/{key}")
         require(digest(Path(saved["def"])) == saved["def_sha256"], f"Final DEF changed: {name}")
+        require(
+            digest(Path(saved["route_def"])) == saved["route_def_sha256"],
+            f"Final route DEF changed: {name}",
+        )
+        require(
+            digest(Path(saved["route_verilog"])) == saved["route_verilog_sha256"],
+            f"Final route netlist changed: {name}",
+        )
         require(content_digest(Path(saved["def"])) == saved["def_content_sha256"], name)
         for filename in (
             "pipeline.exit",
@@ -101,7 +109,7 @@ def verify(batch: Path):
                 report["status"] == "completed"
                 and report["clock"] == specification.clock
                 and report["design_unchanged"]
-                and report["source_def_sha256"] == saved["def_sha256"],
+                and report["source_def_sha256"] == saved["route_def_sha256"],
                 f"External result uses a different design: {name}/{stage}",
             )
         verified.append(

@@ -1,7 +1,7 @@
 # Placement regression
 
-这个入口从已准备好的 benchmark batch 读取 case 清单，运行 placement，
-再用同一份最终合法化 DEF 做 OpenROAD placement RC + STA 和 GR50 + STA。
+这个入口从已准备好的 benchmark batch 读取 case 清单，运行 `place → route`，
+再用每个 case 的最终 route DEF 做 OpenROAD placement RC + STA 和 GR50 + STA。
 默认最多 6 个 case 并发；每个 case 的 placement 线程数由 profile 决定。
 
 在 ECC 仓库根目录使用 Python 3.11+。按 `docs/development.md` 准备 Nix/uv
@@ -70,11 +70,11 @@ runtime、profile、DEF/netlist/SDC 和 LEF/Liberty 都保存到新 batch。
 - `collect`：生成 `results.md`、`results.csv`、`results.json`；未完成指标留空。
 - `verify`：独立校验输入/runtime/PDK/profile/runner 哈希、实际生效参数、传播设置、窗口权重、
   GP 系数恢复、合法化、TRACKS/GCELLGRID、外部评测的 terminal marker 和退出码。
-- `run`：每个 case 在独立目录启动进程，失败后记录具体阶段并继续其他 case；
+- `run`：每个 case 在独立目录启动 `place → route` 进程，失败后记录具体阶段并继续其他 case；
   启动前校验冻结文件，全部成功后自动执行 `verify`。流程或最终校验失败，
   `batch.exit` 都会非零。
 
-外部 evaluator 使用本套 ICS55 TT Liberty、4 个线程。
+外部 evaluator 使用本套 ICS55 TT Liberty、4 个线程，输入为最终 `route_ecc` DEF。
 Placement RC 使用 ideal clocks，固定 MET2；GR50 使用 propagated clocks，
 MET2–MET5、容量调整 0.5、50 次拥塞迭代，并保留所有 net（包括 clock net）参与
 global routing。两个 evaluator 都不执行 repair，

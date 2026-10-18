@@ -22,7 +22,7 @@ def run_case(batch: Path, name: str):
         )
 
     try:
-        status("placement")
+        status("place_to_route")
         for key, value in case["inputs"].items():
             require(digest(Path(value)) == case["hashes"][key], f"Changed input: {name}/{key}")
         placement_started = time.perf_counter()
@@ -41,7 +41,7 @@ def run_case(batch: Path, name: str):
                     "--from",
                     "place",
                     "--to",
-                    "place",
+                    "route",
                     "--plain",
                 ],
                 cwd=out,
@@ -52,6 +52,19 @@ def run_case(batch: Path, name: str):
         require(result.returncode == 0, f"Placement failed: {name}")
         inspection = inspect_placement(batch, case)
         report = inspection.report
+        route_dir = workspace(batch, name) / "route_ecc" / "output"
+        route_def = route_dir / f"{name}_route.def.gz"
+        route_netlist = route_dir / f"{name}_route.v.gz"
+        require(route_def.exists(), f"Missing final route DEF: {name}")
+        require(route_netlist.exists(), f"Missing final route netlist: {name}")
+        report.update(
+            {
+                "route_def": str(route_def),
+                "route_verilog": str(route_netlist),
+                "route_def_sha256": digest(route_def),
+                "route_verilog_sha256": digest(route_netlist),
+            }
+        )
         write(out / "effective-parameters.json", inspection.parameters)
         write(out / "timing-aggregation-effective.json", inspection.aggregation_events)
         report["placement_elapsed_seconds"] = time.perf_counter() - placement_started
@@ -59,7 +72,7 @@ def run_case(batch: Path, name: str):
         for stage in EVALUATIONS:
             status(stage)
             report[stage.replace("-", "_")] = evaluate(
-                batch, case, stage, Path(report["def"]), Path(report["verilog"])
+                batch, case, stage, route_def, route_netlist
             )
             write(out / "placement-report.json", report)
         report.update(status="completed", elapsed_seconds=time.time() - started)
