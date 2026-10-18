@@ -429,10 +429,21 @@ diff_optimization_flows = [
   ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
   ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
   ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
 ]
 ```
 
-This is also the default configuration for new workspaces. The list runs once;
+This is also the default configuration for new workspaces: ten S1+B1 cycles.
+The list runs once;
 repeated S1+B1 cycles are explicit entries. Each S phase performs one discrete
 sizing round and each B phase performs one buffering phase.
 When selecting sizing-only or buffering-only mode, replace the flow list with

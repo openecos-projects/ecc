@@ -28,11 +28,21 @@ SCHEMAS = (
             ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
             ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
             ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+            ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
         ],
         applies="diff_opt",
         description=(
             "ordered diff_opt tuples [action, steps, [wns, tns, slew, cap]]; "
-            "uses placement parasitics only; defaults to five S1+B1 cycles"
+            "uses placement parasitics only; defaults to ten S1+B1 cycles"
         ),
     ),
     config_param(
