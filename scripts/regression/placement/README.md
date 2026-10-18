@@ -50,7 +50,9 @@ timing_opt 的 terminal 报告检查最终实体化和合法化。窗口没有�
 runtime、profile、DEF/netlist/SDC 和 LEF/Liberty 都保存到新 batch。
 因此改 Python 后需要重新 prepare；涉及 native API 的改动应先构建并验证
 对应的 runtime，再通过 `--runtime-from` 使用它。来源 runtime 需要包含
-`runtime/python-nix` 和已验证的 `run_python.sh`。
+`runtime/python-nix` 和已验证的 `run_python.sh`；如果要运行完整的 `place → route`
+链，还必须包含 `runtime/sizer/src/sizer_os.tcl` 和 Sizer 可执行文件，准备阶段会
+自动把它加入 launcher 的 PATH 和 Sizer runtime root。
 当前 timing 导出要求 schema v2；上面的旧输入 batch 不能直接用作原生 runtime
 来源。只有局部 Python 源码和外部 native 路径的诊断目录也不满足完整 runtime 契约。
 

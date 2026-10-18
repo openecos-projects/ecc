@@ -64,6 +64,16 @@ def freeze_runtime(batch: Path, qualified: Path, repo: Path):
     runner = shlex.quote(str(batch / "runner") + ":")
     require("export PYTHONPATH=" in launcher, "Qualified launcher must define PYTHONPATH")
     launcher = launcher.replace("export PYTHONPATH=", "export PYTHONPATH=" + runner)
+    sizer_root = target / "sizer"
+    if (sizer_root / "src/sizer_os.tcl").exists():
+        sizer_root = shlex.quote(str(sizer_root))
+        sizer_env = (
+            f"\nexport CHIPCOMPILER_ECC_SIZER_ROOT={sizer_root}"
+            f"\nexport PATH={sizer_root}/bin:$PATH"
+            f"\nexport LD_LIBRARY_PATH={sizer_root}/lib:${{LD_LIBRARY_PATH:-}}"
+        )
+        require("\nexec " in launcher, "Qualified launcher must exec its Python runtime")
+        launcher = launcher.replace("\nexec ", sizer_env + "\nexec ", 1)
     policy = read(batch / "profile.json")
     if "random_seed" in policy:
         # Python fixes its hash seed at startup; setting it inside Placer is late.
