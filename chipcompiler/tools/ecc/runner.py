@@ -44,6 +44,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.MACRO_PLACEMENT.value,
         StepEnum.POST_FLOORPLAN.value,
         StepEnum.PLACEMENT.value,
+        StepEnum.DIFF_SIZING.value,
         StepEnum.CTS.value,
         SkippableStepEnum.TIMING_OPT.value,
         StepEnum.LEGALIZATION.value,
@@ -405,11 +406,20 @@ def save_data(
         return False
     ecc_module.def_save(def_path=step.output.def_ or "")
     ecc_module.verilog_save(output_verilog=step.output.verilog or "")
-    ecc_module.gds_save(
-        output_path=step.output.gds or "",
-        layer_map_path=workspace.pdk.mapping_file,
-    )
-    # ecc_module.save_data(path=step.output.db or "")
+    layer_map_path = getattr(workspace.pdk, "mapping_file", None)
+    if layer_map_path:
+        ecc_module.gds_save(
+            output_path=step.output.gds or "",
+            layer_map_path=layer_map_path,
+        )
+    else:
+        workspace.logger.warning(
+            "Skipping GDS export for %s: PDK mapping_file is not configured",
+            step.name,
+        )
+    if step.output.db and not ecc_module.save_data(path=step.output.db):
+        workspace.logger.error("Failed to save ECC native database for %s", step.name)
+        return False
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
         geometry_manifest = step.output.geometry_manifest
@@ -500,6 +510,10 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
             state = run_routing(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.DRC.value:
             state = run_drc(workspace=workspace, step=step, ecc_module=ecc_module)
+        case StepEnum.ANTENNA_CHECK.value:
+            from chipcompiler.tools.ecc.antenna import run_antenna_check
+
+            state = run_antenna_check(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.LVS.value:
             state = run_lvs(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.FILLER.value:
@@ -513,6 +527,10 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
             state = run_sta(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.POWER_ANALYSIS.value:
             state = run_power_analysis(workspace=workspace, step=step, ecc_module=ecc_module)
+        case StepEnum.EMIR.value:
+            from chipcompiler.tools.ecc.emir import run_emir
+
+            state = run_emir(workspace=workspace, step=step, ecc_module=ecc_module)
 
     return state
 
@@ -852,9 +870,13 @@ def run_harden(
             spef_path=signoff_item["spef_file"],
             design_name=workspace.design.name,
         )
+        layer_map_path = getattr(workspace.pdk, "mapping_file", None)
+        if not layer_map_path:
+            workspace.logger.error("Cannot harden without a PDK GDS layer map")
+            return False
         ecc_module.gds_save(
             output_path=step.output.gds or "",
-            layer_map_path=workspace.pdk.mapping_file,
+            layer_map_path=layer_map_path,
         )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)

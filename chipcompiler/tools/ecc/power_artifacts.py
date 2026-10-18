@@ -37,6 +37,11 @@ def workspace_power_summary_path(workspace_dir: str | Path) -> Path:
     )
 
 
+def workspace_instance_power_path(workspace_dir: str | Path) -> Path:
+    """Return iPW's per-instance power TSV consumed by iEMIR."""
+    return workspace_power_report_path(workspace_dir).with_name("instance_power.tsv")
+
+
 def discard_power_artifacts(data_dir: str | Path, feature_dir: str | Path) -> None:
     """Invalidate raw and derived power artifacts before an iPW rerun."""
     power_report_path(data_dir).unlink(missing_ok=True)

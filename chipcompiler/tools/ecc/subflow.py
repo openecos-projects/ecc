@@ -17,16 +17,19 @@ class EccSubFlowEnum(Enum):
     PDN = "PDN"
     set_clock_net = "set clock net"
     run_placement = "run placement"
+    run_diff_sizing = "run diff sizing"
     run_CTS = "run CTS"
     run_legalization = "run legalization"
     run_routing = "run routing"
     run_filler = "run filler"
     run_DRC = "run DRC"
+    check_antenna = "check antenna"
     run_LVS = "run LVS"
     run_harden = "run harden"
     run_rcx = "run rcx"
     run_sta = "run sta"
     run_power_analysis = "run power analysis"
+    run_emir = "run EMIR"
 
 
 class EccSubFlow:
@@ -90,6 +93,10 @@ class EccSubFlow:
                 steps.append(subflow_template(EccSubFlowEnum.run_placement.value))
                 steps.append(subflow_template(EccSubFlowEnum.save_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.analysis.value))
+            case StepEnum.DIFF_SIZING:
+                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
+                steps.append(subflow_template(EccSubFlowEnum.run_diff_sizing.value))
+                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
             case StepEnum.CTS:
                 steps.append(subflow_template(EccSubFlowEnum.load_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.run_CTS.value))
@@ -121,6 +128,11 @@ class EccSubFlow:
                 steps.append(subflow_template(EccSubFlowEnum.save_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.analysis.value))
 
+            case StepEnum.ANTENNA_CHECK:
+                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
+                steps.append(subflow_template(EccSubFlowEnum.check_antenna.value))
+                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
+
             case StepEnum.HARDEN:
                 steps.append(subflow_template(EccSubFlowEnum.load_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.run_harden.value))
@@ -138,6 +150,11 @@ class EccSubFlow:
                 steps.append(subflow_template(EccSubFlowEnum.run_power_analysis.value))
                 steps.append(subflow_template(EccSubFlowEnum.save_data.value))
                 steps.append(subflow_template(EccSubFlowEnum.analysis.value))
+
+            case StepEnum.EMIR:
+                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
+                steps.append(subflow_template(EccSubFlowEnum.run_emir.value))
+                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
 
         self.workspace_step.subflow.steps = steps
 

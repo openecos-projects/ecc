@@ -29,7 +29,9 @@ MANIFEST_FLOW_STEPS = (
     "PreFloorplan",
     "MacroPlacement",
     "PostFloorplan",
+    "Preplace",
     "Place",
+    "DiffSizing",
     "CTS",
     "Legal",
     "TimingOpt",
@@ -41,6 +43,8 @@ MANIFEST_FLOW_STEPS = (
     "LVS",
     "PostRouteLEC",
     "DRC",
+    "AntennaCheck",
+    "EMIR",
     "Harden",
 )
 
@@ -75,7 +79,9 @@ _CANONICAL_TO_MANIFEST_STEP = {
     "macroPlacement": "MacroPlacement",
     "postFloorplan": "PostFloorplan",
     "Floorplan": "PostFloorplan",
+    "preplace": "Preplace",
     "place": "Place",
+    "diff_sizing": "DiffSizing",
     "CTS": "CTS",
     "legalization": "Legal",
     "Timing optimization": "TimingOpt",
@@ -84,9 +90,11 @@ _CANONICAL_TO_MANIFEST_STEP = {
     "RCX": "RCX",
     "sta": "STA",
     "powerAnalysis": "PowerAnalysis",
+    "emir": "EMIR",
     "lvs": "LVS",
     "postRouteLec": "PostRouteLEC",
     "drc": "DRC",
+    "antennaCheck": "AntennaCheck",
     "Harden": "Harden",
 }
 

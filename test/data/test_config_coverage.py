@@ -19,6 +19,7 @@ TEMPLATES = {
     "filler": _PACKAGE_ROOT / "tools/ecc/configs/filler_ecc.json",
     "RCX": _PACKAGE_ROOT / "tools/ecc/configs/rcx_ecc.json",
     "sta": _PACKAGE_ROOT / "tools/ecc/configs/sta_ecc.json",
+    "emir": _PACKAGE_ROOT / "tools/ecc/configs/emir_ecc.json",
     "sizer": _PACKAGE_ROOT / "tools/ecc/configs/sizer_ecc.json",
 }
 # drc_ecc.json is empty today; add it here once it grows static fields so the
@@ -90,7 +91,9 @@ def covered_fields() -> dict[str, set[tuple[str, ...]]]:
     for schema in CONFIG_PARAM_SCHEMAS:
         target = schema.config_target
         if target is not None:
-            fields.setdefault(target.config_key, set()).add(target.json_path)
+            fields.setdefault(target.config_key, set()).update(
+                _iter_fields(schema.default, target.json_path)
+            )
     for key, protected in PROTECTED_FIELDS.items():
         fields.setdefault(key, set()).update(protected)
     return fields

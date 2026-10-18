@@ -816,7 +816,7 @@ $ ecc param show place.target_density
     applies        placement
     maps to        DreamPlace.target_density
     description    Target placement density
-    range          [0.1, 0.95]
+    range          [0.1, 1.0]
     ...
 
 $ ecc param set route.top_layer MET9     # invalid value
@@ -850,7 +850,7 @@ Legacy semantic parameters:
 | `floorplan.core_margin` | list[int] | [2, 2] | — | floorplan |
 | `floorplan.aspect_ratio` | float | 1.0 | [0.1, 10.0] | floorplan |
 | `cts.max_fanout` | int | 32 | [1, 200] | cts |
-| `place.target_density` | float | 0.2 | [0.1, 0.95] | placement |
+| `place.target_density` | float | 0.2 | [0.1, 1.0] | placement |
 | `place.target_overflow` | float | 0.1 | [0.0, 1.0] | placement |
 | `place.global_right_padding` | int | 0 | [0, 100] | placement |
 | `place.cell_padding_x` | int | 200 | [0, 10000] | placement |

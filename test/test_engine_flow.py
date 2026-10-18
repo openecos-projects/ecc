@@ -286,6 +286,35 @@ def test_check_step_result_default_requires_def_verilog_gds(tmp_path):
     assert EngineFlow(Workspace()).check_step_result(step) is True
 
 
+def test_check_step_result_placement_only_requires_def_and_verilog(tmp_path):
+    def_file = tmp_path / "gcd.def"
+    verilog_file = tmp_path / "gcd.v"
+    def_file.write_text("", encoding="utf-8")
+    verilog_file.write_text("", encoding="utf-8")
+    step = EccStep(
+        name=StepEnum.PLACEMENT.value,
+        tool="dreamplace",
+        output=EccOutput(
+            def_=def_file,
+            verilog=verilog_file,
+            gds=tmp_path / "missing.gds",
+        ),
+        subflow=SubflowState(
+            steps=[
+                {
+                    "name": "run placement",
+                    "state": StateEnum.Success.value,
+                    "info": {"placement_only": True},
+                }
+            ]
+        ),
+    )
+
+    assert EngineFlow(Workspace()).check_step_result(step) is True
+    def_file.unlink()
+    assert EngineFlow(Workspace()).check_step_result(step) is False
+
+
 def test_check_step_result_timing_opt_does_not_require_gds(tmp_path):
     (tmp_path / "gcd.def").write_text("")
     (tmp_path / "gcd.v").write_text("")

@@ -101,6 +101,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.MACRO_PLACEMENT.value,
         StepEnum.POST_FLOORPLAN.value,
         StepEnum.PLACEMENT.value,
+        StepEnum.DIFF_SIZING.value,
         StepEnum.CTS.value,
         SkippableStepEnum.TIMING_OPT.value,
         StepEnum.LEGALIZATION.value,
@@ -283,6 +284,19 @@ class EngineFlow:
 
         return True
 
+    @staticmethod
+    def _is_placement_only_step(workspace_step: WorkspaceStep) -> bool:
+        return (
+            workspace_step.name == StepEnum.PLACEMENT.value
+            and workspace_step.tool == "dreamplace"
+            and any(
+                item.get("name") == "run placement"
+                and item.get("info", {}).get("placement_only") is True
+                for item in (workspace_step.subflow.steps or [])
+                if isinstance(item, dict)
+            )
+        )
+
     def check_step_result(self, workspace_step: WorkspaceStep):
         """
         check step output exist
@@ -292,6 +306,8 @@ class EngineFlow:
         output = workspace_step.output
         # HARDEN/RCX/GDS results live on the place-and-route (ecc) output leaves.
         ecc_output = output if isinstance(output, EccOutput) else None
+        if self._is_placement_only_step(workspace_step):
+            return bool(os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""))
         if workspace_step.tool in LEC_STEP_TOOLS or workspace_step.name in (
             SkippableStepEnum.LEC.value,
             SkippableStepEnum.POST_ROUTE_LEC.value,
@@ -330,7 +346,11 @@ class EngineFlow:
                 success = bool(spef_list) and all(
                     os.path.isfile(spef) and os.path.getsize(spef) > 0 for spef in spef_list
                 )
-            case SkippableStepEnum.TIMING_OPT.value:
+            case (
+                SkippableStepEnum.TIMING_OPT.value
+                | StepEnum.PREPLACE.value
+                | StepEnum.DIFF_SIZING.value
+            ):
                 if os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""):
                     success = True
             case _:
@@ -338,7 +358,7 @@ class EngineFlow:
                 if (
                     os.path.exists(output.def_ or "")
                     and os.path.exists(output.verilog or "")
-                    and os.path.exists(gds or "")
+                    and (not self.workspace.pdk.mapping_file or os.path.exists(gds or ""))
                 ):
                     success = True
         if success and workspace_step.name in _GEOMETRY_SNAPSHOT_STEPS:
@@ -473,8 +493,20 @@ class EngineFlow:
         # from the LEC workspace.
         if workspace_step is not None and workspace_step.tool in LEC_STEP_TOOLS:
             return True
+        if workspace_step is not None and self._uses_openroad_placement_db(workspace_step):
+            return True
 
         return self.engine_db.create_db_engine(step=workspace_step)
+
+    def _uses_openroad_placement_db(self, workspace_step: WorkspaceStep) -> bool:
+        if workspace_step.name != StepEnum.PLACEMENT.value or workspace_step.tool != "dreamplace":
+            return False
+        config_path = self.workspace.config.get("dreamplace")
+        if not config_path:
+            return False
+        from chipcompiler.utility import json_read
+
+        return str(json_read(config_path).get("place_io_engine", "") or "").lower() == "openroad"
 
     def clear_db_engine_after_step(self, workspace_step: WorkspaceStep, state: StateEnum) -> None:
         _ = state
@@ -660,6 +692,7 @@ class EngineFlow:
 
         state = StateEnum.Imcomplete
         terminal_persisted = False
+        placement_only = self._is_placement_only_step(workspace_step)
         try:
             if step_error is None:
                 state = (
@@ -682,7 +715,7 @@ class EngineFlow:
             # failure here must still transition Ongoing -> a terminal failure
             # state; after a persisted Success the transition table forbids
             # the rollback and the ledger would claim a failed step succeeded.
-            if state == StateEnum.Success:
+            if state == StateEnum.Success and not placement_only:
                 from chipcompiler.tools import save_layout_image
 
                 save_layout_image(workspace=self.workspace, step=workspace_step)
@@ -712,7 +745,7 @@ class EngineFlow:
                         try:
                             from chipcompiler.tools import build_step_metrics
 
-                            if (
+                            if not placement_only and (
                                 build_step_metrics(workspace=self.workspace, step=workspace_step)
                                 is None
                             ):
@@ -739,7 +772,7 @@ class EngineFlow:
             # The workspace QoR report renders the per-step analysis
             # artifacts refreshed above, so it runs after they exist; a
             # failure degrades to a warning like the facts refresh.
-            if state == StateEnum.Success:
+            if state == StateEnum.Success and not placement_only:
                 _refresh_qor_report(self.workspace, step_tag)
         except (Exception, SystemExit) as exc:
             failure_message = record_tool_failure(self.workspace.logger, step_tag, exc)
@@ -797,6 +830,8 @@ class EngineFlow:
         if workspace_step.tool in LEC_STEP_TOOLS:
             # LEC is a netlist comparison step with no ECC DB input; the
             # batch path (init_db_engine) skips it the same way.
+            return True
+        if self._uses_openroad_placement_db(workspace_step):
             return True
 
         return self.engine_db.create_db_engine(step=workspace_step)

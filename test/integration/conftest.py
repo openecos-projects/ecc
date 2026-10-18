@@ -25,12 +25,17 @@ def run_workspace_flow(
     workspace_suffix,
     pdk_root=None,
     with_engine_db=False,
+    emir_technology_file: Path | None = None,
 ):
     workspace_dir = workspace_base / workspace_suffix
     parameters = get_design_parameters(pdk_name, design_name)
     parameters.data["design"] = design_name
     parameters.data["top_module"] = design_name
     parameters.data["clock"] = "clk"
+    if emir_technology_file is not None:
+        parameters.data["config_overrides"] = {
+            "emir": {"technology_file_path": str(emir_technology_file)}
+        }
 
     if pdk_root is None:
         pdk = get_pdk(pdk_name=pdk_name)

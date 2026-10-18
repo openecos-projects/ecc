@@ -1,3 +1,5 @@
+import pytest
+
 from chipcompiler.cli import main as cli_main
 
 
@@ -38,19 +40,23 @@ def test_param_set_rejects_parameter_outside_project_flow(
     assert "target_density" not in config_path.read_text()
 
 
+@pytest.mark.parametrize(
+    ("preset", "step"),
+    [("synthesis_lec", "floorplan"), ("synthesis_lec", "emir"), ("syn_sta", "emir")],
+)
 def test_param_list_excludes_steps_absent_from_selected_flow(
-    tmp_path, capsys, create_cli_project, plain_records
+    tmp_path, capsys, create_cli_project, preset, step
 ):
     project_dir = create_cli_project()
     config_path = tmp_path / "gcd" / "ecc.toml"
     config_path.write_text(
-        config_path.read_text().replace('preset = "rtl2gds"', 'preset = "synthesis_lec"')
+        config_path.read_text().replace('preset = "rtl2gds"', f'preset = "{preset}"')
     )
 
-    rc = cli_main.run(["param", "list", "--step", "floorplan", "--project", project_dir, "--plain"])
+    rc = cli_main.run(["param", "list", "--step", step, "--project", project_dir, "--plain"])
 
     assert rc == 0
-    assert plain_records(capsys.readouterr().out) == []
+    assert capsys.readouterr().out == ""
 
 
 def test_param_list_default_excludes_explicit_absent_step_parameters(

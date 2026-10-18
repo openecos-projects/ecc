@@ -504,7 +504,7 @@ uv run ecc pdk show
 
 ### Flow Preset 覆盖
 
-`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（规范链 18 步，含 Synthesis 后紧跟的综合级 LEC，默认策略会跳过该步，见下文「可跳过的 Flow Step」；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
+`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（规范链 20 步，含 Synthesis 后紧跟的综合级 LEC，默认策略会跳过该步，见下文「可跳过的 Flow Step」；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
 
 ```bash
 uv run ecc run --project gcd --preset rtl2gds
@@ -512,12 +512,33 @@ uv run ecc run --project gcd --preset rtl2gds
 
 ### 可跳过的 Flow Step
 
-默认布线后流程为 `route → filler → lvs → drc → postRouteLec → RCX → sta
-→ powerAnalysis → Harden`。LVS、DRC 先检查填充后的版图，随后执行布线后
+默认布线后流程为 `route → filler → lvs → drc → antennaCheck → postRouteLec
+→ RCX → sta → powerAnalysis → emir → Harden`。LVS、DRC 和天线检查先检查填充后的版图，随后执行布线后
 等价性检查，再由 RCX 为时序和功耗分析提供寄生参数。LEC 只做验证，不参与
-物理产物传递：RCX 使用前一步 DRC 的物理输出，而不是 LEC 的证明文件。
+物理产物传递：RCX 使用前一步 antennaCheck 的物理输出，而不是 LEC 的证明文件。
 新顺序适用于新建的预设流程及规范步骤范围；已有工作区的执行记录和显式
 自定义流程仍保留原顺序。
+
+`antennaCheck` 调用 iMJ 的 `init_mj → check_antenna → destroy_mj`，只检查，
+不插入二极管、不自动修复。原生报告为
+`antennaCheck_ecc/data/mj/antenna_checker/antenna_check.rpt`，原样复制到
+`antennaCheck_ecc/report/antennaCheck.rpt`。发现违例仍继续流程；原生调用失败
+或未生成本次报告则失败。步骤 `Success` 只表示执行和报告输出完成，不表示
+天线检查通过：LEF 缺少天线规则或引脚 gate-area 信息时可能没有实际检查覆盖。
+请结合原生日志查看报告。不需要单独的天线检查 JSON 配置。
+
+EMIR 使用 `powerAnalysis_ecc/data/pw/power_reporter/instance_power.tsv` 和前一步的
+物理数据库。运行前，通过 `ecc param set emir.technology_file_path /绝对路径/process.tech`
+或 `ecc.toml` 的 `[emir]` 配置真实工艺文件。此值会在创建或刷新工作区时写入
+`config/emir_ecc.json`；仅修改生成的 JSON 不会持久保留。
+默认空值只是占位，未填写时该步骤会停止。
+电源激励使用 iFP 输出的 `postFloorplan_ecc/data/fp/pdn_generator/power.ploc`，
+通过 `ploc_file_path` 传入，不同时启用 `add_ploc_from_top_def`。这些是电源条带
+交点上的理想电源假设，不代表实际封装或 pad。原生结果输出到 `emir_ecc/data/emir/`。
+
+CI 显式使用 `test/fixtures/emir/ics55_synthetic.tech`；其中电阻和 EM 限值均为
+模拟测试数据，不是工艺厂数据。运行成功只验证流程与数据交接，IR/EM 数值不能
+用于签核。普通项目不会自动使用这个文件。
 
 三个可选 step 可在创建 workspace 时按配置排除：综合级 LEC（`lec`）、布线后 LEC（`postRouteLec`）、时序优化（`Timing optimization`）。被跳过的 step 不会进入 workspace 的执行 ledger——其输入自然落到前一个保留 step，也不会为其创建 step 目录。状态机与 resume/rerun 语义零改动；已创建的 ledger 永远不会按新配置重过滤——事后修改策略不会向已有 workspace 插入或删除 step。
 

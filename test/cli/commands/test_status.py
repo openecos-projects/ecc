@@ -31,7 +31,9 @@ class TestStatus:
             "pre_floorplan",
             "macro_placement",
             "post_floorplan",
+            "preplace",
             "placement",
+            "diff_sizing",
             "cts",
             "legalization",
             "timing_optimization",
@@ -39,10 +41,12 @@ class TestStatus:
             "filler",
             "lvs",
             "drc",
+            "antennacheck",
             "postroutelec",
             "rcx",
             "sta",
             "poweranalysis",
+            "emir",
             "harden",
         ]
 
