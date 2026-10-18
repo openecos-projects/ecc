@@ -77,7 +77,7 @@ def run_case(batch: Path, name: str):
         for stage in EVALUATIONS:
             status(stage)
             report[stage.replace("-", "_")] = evaluate(
-                batch, case, stage, route_def, route_netlist
+                batch, case, stage, Path(report["def"]), Path(report["verilog"])
             )
             write(out / "placement-report.json", report)
         report.update(status="completed", elapsed_seconds=time.time() - started)
