@@ -232,7 +232,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `INPUT.lef_paths` | `[H7CR_lef, H7CL_lef]` | PDK | 标准单元 LEF（抽象） |
 | `INPUT.def_path` | `sta_ecc/output/gcd_sta.def.gz` | 每步重写 | 输入 DEF（上一步版图） |
 | `INPUT.verilog_path` | `sta_ecc/output/gcd_sta.v.gz` | 每步重写 | 输入门级网表 |
-| `INPUT.lib_path` | `[H7CR_ss_rcworst, H7CL_ss_rcworst]` | PDK | 时序库（综合/等效库） |
+| `INPUT.lib_path` | H7CR/H7CL/H7CH SS 库 + IO SS 库 | PDK | 公共时序库；Yosys 综合阶段排除 H7CH |
 | `INPUT.sdc_path` | `origin/gcd.sdc` | workspace | 时序约束（自动生成或用户提供） |
 | `INPUT.spef` | `""` | PDK/workspace | 预置寄生文件（RCX 前一般为空） |
 | `OUTPUT.output_dir_path` | `Harden_ecc/output` | 每步重写 | 本步骤产物输出目录 |
@@ -258,8 +258,15 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `tie_high_cell/port` | `TIEHIH7R` / `Z` | PDK | 高电平约束单元及输出端口 |
 | `abc_driver_cell` | `BUFX0P5H7L` | PDK | ABC 映射假设的驱动单元 |
 | `abc_load` | `0.015` | PDK | ABC 映射负载电容（pF） |
-| `lib_stdcell_list` / `lib_list` | H7CR/H7CL liberty | PDK | 标准单元时序库 |
+| `lib_stdcell_list` | H7CR/H7CL + IO SS 库 | PDK（排除 H7CH） | 传给 ABC、DFF 和 clockgate 的库列表，沿用原逻辑，不额外排除 IO |
+| `lib_list` | H7CR/H7CL + IO `ss_1p08_2p97_125c` | PDK / workspace DB | 通过 `read_liberty -lib` 读取的模型库；IO 用于识别已有实例，H7CH 仍不加载 |
 | `tmp_dir` | `Synthesis_yosys/data/tmp` | 步骤调度 | 中间文件目录 |
+
+ICS55 的公共 PDK 库列表默认增加
+`ICSIOA_N55_3P3_ss_1p08_2p97_125c.lib`（PDK 中存在该文件时加载）。CTS、setup Sizer
+及综合后 STA 也从该列表取得 IO 库；最终 STA 和 hold Sizer 仍使用 §13 的 corner
+配置。此项只增加 Liberty，不会自动插入 IO cell，也不替代带 IO 设计所需的 IO LEF。
+已有 workspace 的 DB 库列表或显式 `pdk.libs` 覆盖配置不会自动补齐，需要单独更新。
 
 另有环境变量 `YOSYS_SYNTH_STRATEGY`（如 `DELAY 4` / `AREA N` / `BALANCE N`）控制综合策略方向，默认 `DELAY 4`（提频优先）。
 
@@ -623,11 +630,18 @@ FF hold pass 只使用 `sta_ecc.json` 的 `MIN` Liberty 组，用于在 setup si
 | 字段 | 示例（gcd@ics55） | 含义 |
 |---|---|---|
 | `liberty[].corner` | `MAX` / `WCL` / `TYP` / `MIN` / `ML` | 时序 corner 类型（慢/最差低温/典型/快/快高温库组） |
-| `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | 对应结温（℃），与 SPEF 温度点对齐 |
-| `liberty[].path` | H7CR+H7CL liberty ×2 | 该 corner 的 liberty 文件（PDK 相对路径自动展开） |
+| `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | 标准单元库组温度（℃），用于选择对应温度的 SPEF，不覆盖 IO 库的表征温度 |
+| `liberty[].path` | H7CR + H7CL + H7CH + IO | 该 corner 的 liberty 文件（PDK 相对路径自动展开） |
 | `signoff[0]` | MAX:[Cworst,RCworst]；WCL:[Cworst,RCworst]；TYP:[TYPICAL]；MIN/ML:[Cworst,RCworst,Cbest,RCbest] | 签核要跑的「liberty corner × RC corner」组合，共 13 个分析 corner |
 
 ics55 的 corner 命名：`Cworst/Cbest`=电容最差/最好，`RCworst/RCbest`=RC 均最差/最好，`TYPICAL`=典型。
+
+默认 IO 库仅使用三种表征：MAX/WCL 使用 `ss_1p08_2p97_125c`，TYP 使用
+`tt_1p2_3p3_25c`，MIN/ML 均使用 `ff_1p32_3p63v_0c`。这些库位于 PDK 的
+`IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/`。此限制只针对 IO；标准单元库、
+SPEF 温度及上述 13 个分析 corner 不变。例如 MIN 的标准单元仍用 -40°C 库，
+IO 则用 0°C 库。项目或 workspace 显式设置的 `sta.liberty` 会替换整份默认列表，
+不会自动迁移；已有覆盖配置需要自行同步 IO 库路径。
 
 每个 corner 的报告由 ecc-tools 按路径类型拆分输出（`sta_ecc/report/<lib_corner>_<温度>/<RCcorner>/`）：
 

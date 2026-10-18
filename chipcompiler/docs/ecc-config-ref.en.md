@@ -231,7 +231,7 @@ Shared by all ecc tool steps. At step startup it is used to load LEF/DEF/netlist
 | `INPUT.lef_paths` | `[H7CR_lef, H7CL_lef]` | PDK | Standard-cell LEFs (abstract views) |
 | `INPUT.def_path` | `sta_ecc/output/gcd_sta.def.gz` | rewritten per step | Input DEF (previous step's layout) |
 | `INPUT.verilog_path` | `sta_ecc/output/gcd_sta.v.gz` | rewritten per step | Input gate-level netlist |
-| `INPUT.lib_path` | `[H7CR_ss_rcworst, H7CL_ss_rcworst]` | PDK | Timing libraries (synthesis/equivalence libraries) |
+| `INPUT.lib_path` | H7CR/H7CL/H7CH SS + IO SS | PDK | Shared timing libraries; Yosys synthesis excludes H7CH |
 | `INPUT.sdc_path` | `origin/gcd.sdc` | workspace | Timing constraints (auto-generated or user-provided) |
 | `INPUT.spef` | `""` | PDK/workspace | Pre-set parasitics file (usually empty before RCX) |
 | `OUTPUT.output_dir_path` | `Harden_ecc/output` | rewritten per step | Output directory for this step's artifacts |
@@ -257,8 +257,17 @@ No JSON configuration. Yosys is driven by two Tcl pieces: `script/yosys_synthesi
 | `tie_high_cell/port` | `TIEHIH7R` / `Z` | PDK | Tie-high cell and its output port |
 | `abc_driver_cell` | `BUFX0P5H7L` | PDK | Driver cell assumed by ABC mapping |
 | `abc_load` | `0.015` | PDK | Load capacitance for ABC mapping (pF) |
-| `lib_stdcell_list` / `lib_list` | H7CR/H7CL liberty | PDK | Standard-cell timing libraries |
+| `lib_stdcell_list` | H7CR/H7CL + IO SS | PDK (excluding H7CH) | Libraries passed to ABC, DFF and clockgate mapping; preserves the existing behavior without an additional IO filter |
+| `lib_list` | H7CR/H7CL + IO `ss_1p08_2p97_125c` | PDK / workspace DB | Models loaded by `read_liberty -lib`; IO describes existing instances, while H7CH remains excluded |
 | `tmp_dir` | `Synthesis_yosys/data/tmp` | step scheduling | Intermediate file directory |
+
+The shared ICS55 PDK library list includes
+`ICSIOA_N55_3P3_ss_1p08_2p97_125c.lib` when present in the PDK. CTS, setup
+Sizer and post-synthesis STA also obtain the IO library from this list; final
+STA and hold Sizer still use the corner configuration in §13. This adds only
+Liberty: it neither inserts IO cells nor replaces the IO LEFs required by
+designs with pads. Existing workspace DB library lists and explicit `pdk.libs`
+overrides are not extended automatically and must be updated separately.
 
 There is also the environment variable `YOSYS_SYNTH_STRATEGY` (e.g. `DELAY 4` / `AREA N` / `BALANCE N`) that steers the synthesis strategy; the default is `DELAY 4` (frequency-first).
 
@@ -633,11 +642,21 @@ Configuration file `sta_ecc.json`, made of two parts: `liberty` (corner → libe
 | Field | Example (gcd@ics55) | Meaning |
 |---|---|---|
 | `liberty[].corner` | `MAX` / `WCL` / `TYP` / `MIN` / `ML` | Timing corner type (slow / worst-cold / typical / fast / fast-hot library groups) |
-| `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | Corresponding junction temperature (°C), aligned with SPEF temperature points |
-| `liberty[].path` | H7CR+H7CL liberty ×2 | Liberty files for this corner (PDK-relative paths auto-expanded) |
+| `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | Standard-cell group temperature (°C), used to select the SPEF; does not override IO library characterization temperatures |
+| `liberty[].path` | H7CR + H7CL + H7CH + IO | Liberty files for this corner (PDK-relative paths auto-expanded) |
 | `signoff[0]` | MAX:[Cworst,RCworst]; WCL:[Cworst,RCworst]; TYP:[TYPICAL]; MIN/ML:[Cworst,RCworst,Cbest,RCbest] | "liberty corner × RC corner" combinations to run for signoff — 13 analysis corners in total |
 
 ics55 corner naming: `Cworst/Cbest` = worst/best capacitance; `RCworst/RCbest` = worst/best for both R and C; `TYPICAL` = typical.
+
+Default IO libraries use only three characterizations: MAX/WCL use
+`ss_1p08_2p97_125c`, TYP uses `tt_1p2_3p3_25c`, and MIN/ML both use
+`ff_1p32_3p63v_0c`. These libraries are under
+`IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/` in the PDK. This restriction
+applies only to IO; standard-cell libraries, SPEF temperatures and the 13 analysis
+corners remain unchanged. For example, MIN still uses -40°C standard-cell
+libraries alongside the 0°C IO library. Explicit project or workspace
+`sta.liberty` overrides replace the entire default list and are not migrated
+automatically; update their IO library paths separately.
 
 For each corner, ecc-tools splits the reports by path type (`sta_ecc/report/<lib_corner>_<temp>/<RCcorner>/`):
 
