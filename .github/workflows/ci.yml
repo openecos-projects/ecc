@@ -40,6 +40,10 @@ permissions:
   actions: read
   contents: read
 
+env:
+  # Known-good synthesis toolchain: Yosys 0.70+16 (3bb533450).
+  OSS_CAD_SUITE_VERSION: "2026-10-14"
+
 jobs:
   check-version:
     name: Check Version Consistency
@@ -84,8 +88,8 @@ jobs:
       - name: Setup OSS CAD Suite
         uses: YosysHQ/setup-oss-cad-suite@v4
         with:
+          version: ${{ env.OSS_CAD_SUITE_VERSION }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          version: "2026-10-14"
 
       - name: Verify Yosys
         run: |
@@ -378,8 +382,8 @@ jobs:
       - name: Setup OSS CAD Suite
         uses: YosysHQ/setup-oss-cad-suite@v4
         with:
+          version: ${{ env.OSS_CAD_SUITE_VERSION }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          version: "2026-10-14"
 
       - name: Setup Sizer
         uses: actions/download-artifact@v4
