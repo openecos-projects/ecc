@@ -334,6 +334,9 @@ def test_runtime_observer_cancellation_is_checked():
 def test_spawn_cancellation_reaps_all_workers(tmp_path, monkeypatch):
     original_children = {child.pid for child in multiprocessing.active_children()}
     monkeypatch.setattr(sta, "_run_corner", _slow_worker)
+    # Test cancellation independently of host memory; throttling has its own test.
+    monkeypatch.setattr(sta, "_memory_headroom_mb", lambda: 2048)
+    monkeypatch.setattr(sta, "get_process_rss_mb", lambda _: 0)
     tasks = [(None, None, None, tmp_path / f"{index}.log") for index in range(4)]
     started = time.monotonic()
 
