@@ -99,6 +99,9 @@ def _apply_diff_sizing_defaults(params: dict) -> dict:
     """Apply the standalone DreamPlace S50/RRR3 profile to a diff-sizing step."""
     result = deepcopy(params)
     continuous_steps = result.get("diff_sizing_continuous_steps", 0)
+    terminal_gr_sta_enabled = result.get("diff_sizing_terminal_gr_sta_enabled", 0)
+    if terminal_gr_sta_enabled not in (0, 1, False, True):
+        raise ValueError("diff_sizing_terminal_gr_sta_enabled must be 0 or 1")
     if (
         isinstance(continuous_steps, bool)
         or not isinstance(continuous_steps, int)
@@ -149,6 +152,7 @@ def _apply_diff_sizing_defaults(params: dict) -> dict:
         detailed_place_flag=0,
         detailed_place_engine="",
         diff_sizing_continuous_steps=continuous_steps,
+        diff_sizing_terminal_gr_sta_enabled=int(bool(terminal_gr_sta_enabled)),
         timing_wns_coeff=coefficients["wns"],
         timing_tns_coeff=coefficients["tns"],
         timing_cap_weight=coefficients["cap"],

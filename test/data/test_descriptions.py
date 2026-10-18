@@ -18,6 +18,7 @@ _ECC_OWNED_DREAMPLACE_PARAMETERS = {
     "diff_optimization_flows",
     "diff_optimization_mode",
     "diff_sizing_continuous_steps",
+    "diff_sizing_terminal_gr_sta_enabled",
     "diff_sizing_coefficients",
 }
 

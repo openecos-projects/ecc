@@ -137,6 +137,7 @@
     "timing_coeff_growth_factor": 1.01,
     "timing_opt_coefficients": {"mode": "fixed", "wns": 500.0, "tns": 5.0, "cap": 1.0, "slew": 1.0},
     "diff_sizing_continuous_steps": 0,
+    "diff_sizing_terminal_gr_sta_enabled": 0,
     "diff_sizing_coefficients": {"wns": 500.0, "tns": 5.0, "cap": 1.0, "slew": 1.0},
     "diff_buffering_rounds": 10,
     "diff_buffering_selection_fraction": 0.001,

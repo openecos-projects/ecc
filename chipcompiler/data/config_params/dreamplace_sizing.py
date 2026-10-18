@@ -19,6 +19,19 @@ SCHEMAS = (
         ),
     ),
     config_param(
+        "place.diff_sizing_terminal_gr_sta_enabled",
+        "dreamplace",
+        ("diff_sizing_terminal_gr_sta_enabled",),
+        0,
+        type="int",
+        range=(0, 1),
+        applies="diff_sizing",
+        description=(
+            "re-read the final DEF and run terminal GR/RRR plus STA after diff sizing; "
+            "disabled by default"
+        ),
+    ),
+    config_param(
         "place.diff_sizing_coefficients",
         "dreamplace",
         ("diff_sizing_coefficients",),
