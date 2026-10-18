@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from .artifacts import inspect_placement
-from .common import cases, content_digest, digest, read, require, write
+from .common import cases, content_digest, digest, grid, read, require, write
 from .external import EVALUATIONS, parse_metrics
 from .reports import collect
 
@@ -78,6 +78,10 @@ def verify(batch: Path):
         require(
             digest(Path(saved["route_verilog"])) == saved["route_verilog_sha256"],
             f"Final route netlist changed: {name}",
+        )
+        require(
+            grid(Path(saved["route_def"])) == grid(Path(saved["def"])),
+            f"Placement-to-route routing grid changed: {name}",
         )
         require(content_digest(Path(saved["def"])) == saved["def_content_sha256"], name)
         for filename in (

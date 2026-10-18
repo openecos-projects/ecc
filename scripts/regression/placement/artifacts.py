@@ -86,7 +86,6 @@ def inspect_placement(batch: Path, case: dict):
             )
     definition = place / "output" / f"{name}_place.def.gz"
     netlist = place / "output" / f"{name}_place.v.gz"
-    require(grid(definition) == grid(Path(case["inputs"]["def"])), f"Routing grid changed: {name}")
     flow = read(place.parent / "home/flow.json")
     require(all(step["state"] == "Success" for step in flow["steps"]), f"Flow incomplete: {name}")
     report = {

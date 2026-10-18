@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 from .artifacts import inspect_placement
-from .common import digest, read, require, workspace, write
+from .common import digest, grid, read, require, workspace, write
 from .external import EVALUATIONS, evaluate
 
 
@@ -57,12 +57,17 @@ def run_case(batch: Path, name: str):
         route_netlist = route_dir / f"{name}_route.v.gz"
         require(route_def.exists(), f"Missing final route DEF: {name}")
         require(route_netlist.exists(), f"Missing final route netlist: {name}")
+        require(
+            grid(route_def) == grid(Path(report["def"])),
+            f"Placement-to-route routing grid changed: {name}",
+        )
         report.update(
             {
                 "route_def": str(route_def),
                 "route_verilog": str(route_netlist),
                 "route_def_sha256": digest(route_def),
                 "route_verilog_sha256": digest(route_netlist),
+                "routing_grid_preserved": True,
             }
         )
         write(out / "effective-parameters.json", inspection.parameters)
