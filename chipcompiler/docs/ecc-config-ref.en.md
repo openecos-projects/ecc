@@ -343,7 +343,7 @@ The three steps share `config/dreamplace_ecc.json`; before each step runs, `def_
 
 ### Global placement core (★ the main tuning area)
 
-`place.timing_grad_balance_target_ratio` defaults to 0.2. In legacy mode, the first active
+`place.timing_grad_balance_target_ratio` defaults to 0.01. In legacy mode, the first active
 timing-gradient step in direct-loss placement, it initializes the outer timing
 weight from the timing and wirelength gradient L1 norms, then reuses that weight.
 Set it to 0.0 to disable balancing and retain an outer weight of 1.0. The value
@@ -457,8 +457,8 @@ set it to 3 to run three continuous sizing steps before switching to discrete
 sizing.
 
 `place.timing_coeff_growth_factor` multiplies both WNS/TNS coefficients at each
-GP density-weight update. The default `1.0` disables growth;
-`1.01` increases the coefficients and `0.99` decays them. The factor must be
+GP density-weight update. The default `1.01` increases the coefficients;
+`1.0` disables growth and `0.99` decays them. The factor must be
 positive and finite. Slew/cap and the outer norm weight retain their own settings.
 Inherit-mode windows read the resulting live coefficients; fixed-mode windows
 use their configured values. Standalone `diff_sizing` S50 in `size_only` mode
@@ -494,8 +494,8 @@ timing_metric_scope = "setup_plus_recovery"
 | `stop_overflow` | 0.1 `*place.target_overflow` | Overflow convergence threshold; stop once met |
 | `overflow_reference_mode` | `initial` | Overflow normalization: `initial` freezes GP-entry area; `ordinary` preserves the original PR's area publication behavior, using published native + virtual area when available, otherwise PlaceDB area. Both exclude fillers; normalized overflow also feeds gamma and overflow-based scheduling |
 | `density_weight` | 0.00085 | Initial weight of the density term (starting point of auto-adjustment) |
-| `timing_coeff_growth_factor` | 1.0 `*place.timing_coeff_growth_factor` | Multiplier for both WNS/TNS coefficients at each GP density-weight update; 1.0 disables growth; skipped in `size_only` |
-| `timing_grad_balance_target_ratio` | 0.2 `*place.timing_grad_balance_target_ratio` | Initial timing / wirelength gradient L1 norm ratio in direct-loss placement; 0.0 disables balancing |
+| `timing_coeff_growth_factor` | 1.01 `*place.timing_coeff_growth_factor` | Multiplier for both WNS/TNS coefficients at each GP density-weight update; 1.0 disables growth; skipped in `size_only` |
+| `timing_grad_balance_target_ratio` | 0.01 `*place.timing_grad_balance_target_ratio` | Initial timing / wirelength gradient L1 norm ratio in direct-loss placement; 0.0 disables balancing |
 | `timing_aggregation_mode` | `smooth` `*place.timing_aggregation_mode` | AAT/RAT propagation aggregation: `hard` or `smooth` (LSE) |
 | `timing_aggregation_tau_ps` | 2.0 `*place.timing_aggregation_tau_ps` | Positive temperature in ps for `smooth` mode |
 | `timing_metric_scope` | `setup_plus_recovery` `*place.timing_metric_scope` | Max timing checks in placement WNS/TNS: `setup_only` or `setup_plus_recovery` |

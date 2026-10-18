@@ -345,7 +345,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 全局布局核心（★ 主要调优区）
 
-`place.timing_grad_balance_target_ratio` 默认 0.2，在 legacy direct-loss placement
+`place.timing_grad_balance_target_ratio` 默认 0.01，在 legacy direct-loss placement
 首次启用 timing 梯度时，根据 timing 与 wirelength 梯度的 L1 范数初始化
 外层 timing 权重，之后沿用该权重。设为 0.0 可关闭平衡，保留外层权重 1.0。
 它是初始梯度比例目标，不是直接将 WNS/TNS 系数乘以 0.2。
@@ -444,7 +444,7 @@ buffering-only `diff_opt` 的兼容别名。
 step 后再投影到合法 cell 并切换到离散 sizing。
 
 `place.timing_coeff_growth_factor` 控制每次 GP density-weight 更新时，WNS/TNS
-系数共同乘上的倍率，默认 `1.0`，不增长；设为 `1.01` 逐次增长，设为 `0.99` 则逐次衰减。
+系数共同乘上的倍率，默认 `1.01`，逐次增长；设为 `1.0` 表示不增长，设为 `0.99` 则逐次衰减。
 倍率必须为正的有限数值，slew/cap 和 norm 外层权重沿用各自设置。
 窗口的继承模式读取增长后的实时系数，固定模式使用指定值；独立
 `diff_sizing` S50 的 `size_only` 模式跳过这项增长。新建 workspace 可通过
@@ -475,8 +475,8 @@ timing_metric_scope = "setup_plus_recovery"
 | `stop_overflow` | 0.1 `*place.target_overflow` | 溢出收敛阈值，达标即停 |
 | `overflow_reference_mode` | `initial` | overflow 面积归一化模式：`initial` 固定 GP 起始面积；`ordinary` 保留原 PR 的面积发布行为，有联合面积时使用 native + virtual，否则沿用 PlaceDB 面积。均不含 filler；归一化值也用于 gamma 和基于 overflow 的调度 |
 | `density_weight` | 0.00085 | 密度项初始权重（自动调整的起点） |
-| `timing_coeff_growth_factor` | 1.0 `*place.timing_coeff_growth_factor` | GP density-weight 更新时 WNS/TNS 系数的共同倍率；1.0 停止增长，`size_only` 不应用 |
-| `timing_grad_balance_target_ratio` | 0.2 `*place.timing_grad_balance_target_ratio` | direct-loss placement 初始 timing / wirelength 梯度 L1 范数比例目标；0.0 关闭 |
+| `timing_coeff_growth_factor` | 1.01 `*place.timing_coeff_growth_factor` | GP density-weight 更新时 WNS/TNS 系数的共同倍率；1.0 停止增长，`size_only` 不应用 |
+| `timing_grad_balance_target_ratio` | 0.01 `*place.timing_grad_balance_target_ratio` | direct-loss placement 初始 timing / wirelength 梯度 L1 范数比例目标；0.0 关闭 |
 | `timing_aggregation_mode` | `smooth` `*place.timing_aggregation_mode` | AAT/RAT 传播聚合方式：`hard` 或 `smooth`（LSE） |
 | `timing_aggregation_tau_ps` | 2.0 `*place.timing_aggregation_tau_ps` | `smooth` 模式的正平滑温度，单位 ps |
 | `timing_metric_scope` | `setup_plus_recovery` `*place.timing_metric_scope` | placement WNS/TNS 的 max timing check：`setup_only` 或 `setup_plus_recovery` |

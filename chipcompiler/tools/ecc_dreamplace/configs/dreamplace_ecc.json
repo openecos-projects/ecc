@@ -134,7 +134,7 @@
     "timing_opt_max_windows": 5,
     "timing_opt_overflow_milestones": [],
     "timing_opt_sizing_rounds": 10,
-    "timing_coeff_growth_factor": 1.0,
+    "timing_coeff_growth_factor": 1.01,
     "timing_opt_coefficients": {"mode": "fixed", "wns": 500.0, "tns": 5.0, "cap": 1.0, "slew": 1.0},
     "diff_sizing_continuous_steps": 0,
     "diff_sizing_coefficients": {"wns": 500.0, "tns": 5.0, "cap": 1.0, "slew": 1.0},
@@ -163,7 +163,7 @@
     "timing_aggregation_tau_ps": 2.0,
     "timing_metric_scope": "setup_plus_recovery",
     "timing_propagation_device": "inherit",
-    "timing_grad_balance_target_ratio": 0.2,
+    "timing_grad_balance_target_ratio": 0.01,
     "diff_optimization_mode": "joint",
     "diff_optimization_flows": [
         ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
