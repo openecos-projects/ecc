@@ -229,7 +229,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | 字段 | 示例值（harden 步运行时） | 来源 | 含义 |
 |---|---|---|---|
 | `INPUT.tech_lef_path` | `…/prtech/techLEF/N551P6M_ecos.lef` | PDK | 工艺 LEF（层定义/规则） |
-| `INPUT.lef_paths` | `[H7CR_lef, H7CL_lef]` | PDK | 标准单元 LEF（抽象） |
+| `INPUT.lef_paths` | `[H7CR_lef, H7CL_lef, H7CH_lef, IO_lef]` | PDK | 标准单元和 IO LEF（抽象） |
 | `INPUT.def_path` | `sta_ecc/output/gcd_sta.def.gz` | 每步重写 | 输入 DEF（上一步版图） |
 | `INPUT.verilog_path` | `sta_ecc/output/gcd_sta.v.gz` | 每步重写 | 输入门级网表 |
 | `INPUT.lib_path` | H7CR/H7CL/H7CH SS 库 + IO SS 库 | PDK | 公共时序库；Yosys 综合阶段排除 H7CH |
@@ -265,8 +265,10 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 ICS55 的公共 PDK 库列表默认增加
 `ICSIOA_N55_3P3_ss_1p08_2p97_125c.lib`（PDK 中存在该文件时加载）。CTS、setup Sizer
 及综合后 STA 也从该列表取得 IO 库；最终 STA 和 hold Sizer 仍使用 §13 的 corner
-配置。此项只增加 Liberty，不会自动插入 IO cell，也不替代带 IO 设计所需的 IO LEF。
-已有 workspace 的 DB 库列表或显式 `pdk.libs` 覆盖配置不会自动补齐，需要单独更新。
+配置。公共 LEF 列表同时加载配套的 `ICSIOA_N55_3P3_1P6M1TM_ecos.lef`，不会自动插入
+IO cell。Sizer 要求 Liberty 单元有对应的 LEF master，即使设计没有实例化 IO cell
+也需要该 LEF。已有 workspace 的 DB 库列表或显式 `pdk.libs` / `pdk.lefs` 覆盖配置
+不会自动补齐，需要单独更新。
 
 另有环境变量 `YOSYS_SYNTH_STRATEGY`（如 `DELAY 4` / `AREA N` / `BALANCE N`）控制综合策略方向，默认 `DELAY 4`（提频优先）。
 

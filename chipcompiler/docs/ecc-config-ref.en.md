@@ -228,7 +228,7 @@ Shared by all ecc tool steps. At step startup it is used to load LEF/DEF/netlist
 | Field | Example value (during the harden step) | Source | Meaning |
 |---|---|---|---|
 | `INPUT.tech_lef_path` | `…/prtech/techLEF/N551P6M_ecos.lef` | PDK | Process LEF (layer definitions/rules) |
-| `INPUT.lef_paths` | `[H7CR_lef, H7CL_lef]` | PDK | Standard-cell LEFs (abstract views) |
+| `INPUT.lef_paths` | `[H7CR_lef, H7CL_lef, H7CH_lef, IO_lef]` | PDK | Standard-cell and IO LEFs (abstract views) |
 | `INPUT.def_path` | `sta_ecc/output/gcd_sta.def.gz` | rewritten per step | Input DEF (previous step's layout) |
 | `INPUT.verilog_path` | `sta_ecc/output/gcd_sta.v.gz` | rewritten per step | Input gate-level netlist |
 | `INPUT.lib_path` | H7CR/H7CL/H7CH SS + IO SS | PDK | Shared timing libraries; Yosys synthesis excludes H7CH |
@@ -264,10 +264,12 @@ No JSON configuration. Yosys is driven by two Tcl pieces: `script/yosys_synthesi
 The shared ICS55 PDK library list includes
 `ICSIOA_N55_3P3_ss_1p08_2p97_125c.lib` when present in the PDK. CTS, setup
 Sizer and post-synthesis STA also obtain the IO library from this list; final
-STA and hold Sizer still use the corner configuration in §13. This adds only
-Liberty: it neither inserts IO cells nor replaces the IO LEFs required by
-designs with pads. Existing workspace DB library lists and explicit `pdk.libs`
-overrides are not extended automatically and must be updated separately.
+STA and hold Sizer still use the corner configuration in §13. The shared LEF
+list also loads the matching `ICSIOA_N55_3P3_1P6M1TM_ecos.lef`; this does not
+insert IO cells. Sizer requires LEF masters for Liberty cells even when the
+design instantiates no IO cells. Existing workspace DB library lists and
+explicit `pdk.libs` / `pdk.lefs` overrides are not extended automatically and
+must be updated separately.
 
 There is also the environment variable `YOSYS_SYNTH_STRATEGY` (e.g. `DELAY 4` / `AREA N` / `BALANCE N`) that steers the synthesis strategy; the default is `DELAY 4` (frequency-first).
 

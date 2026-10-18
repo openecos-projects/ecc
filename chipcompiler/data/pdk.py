@@ -310,6 +310,7 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
         stdcell_dir / "ics55_LLSC_H7CR" / "lef" / "ics55_LLSC_H7CR_ecos.lef",
         stdcell_dir / "ics55_LLSC_H7CL" / "lef" / "ics55_LLSC_H7CL_ecos.lef",
         stdcell_dir / "ics55_LLSC_H7CH" / "lef" / "ics55_LLSC_H7CH_ecos.lef",
+        io_dir / "lef" / "ICSIOA_N55_3P3_1P6M1TM_ecos.lef",
     ]
     lib_paths = [
         (
