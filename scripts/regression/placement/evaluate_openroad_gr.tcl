@@ -45,7 +45,7 @@ set_wire_rc -clock -layer MET2
 report_layer_rc
 set_routing_layers -signal MET2-MET5 -clock MET2-MET5
 set_global_routing_layer_adjustment * 0.5
-global_route -congestion_iterations 50 -skip_large_fanout_nets 100 -allow_congestion
+global_route -congestion_iterations 50 -allow_congestion
 estimate_parasitics -global_routing
 if {$before ne [design_state]} {error "External GR evaluation changed the design"}
 puts "OPENROAD_GR_AUDIT_BEGIN"

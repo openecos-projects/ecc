@@ -76,9 +76,8 @@ runtime、profile、DEF/netlist/SDC 和 LEF/Liberty 都保存到新 batch。
 
 外部 evaluator 使用本套 ICS55 TT Liberty、4 个线程。
 Placement RC 使用 ideal clocks，固定 MET2；GR50 使用 propagated clocks，
-MET2–MET5、容量调整 0.5、50 次拥塞迭代，并显式设置
-`-skip_large_fanout_nets 100`。其余网络选择沿用 OpenROAD；clock net 若达到
-该阈值也会被跳过。两个 evaluator 都不执行 repair，
+MET2–MET5、容量调整 0.5、50 次拥塞迭代，并保留所有 net（包括 clock net）参与
+global routing。两个 evaluator 都不执行 repair，
 并检查实例、坐标和连接关系没有被改变。它们的 Tcl 文件也会被冻结并核对哈希。
 此前冻结批次保留原脚本和时钟口径；重评测应使用新目录，不能把旧数值改标为新口径。
 
