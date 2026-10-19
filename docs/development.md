@@ -131,9 +131,9 @@ for details on the approach, test inventory, and known bugs found.
 
 ### BM64 CI Memory Preflight
 
-BM64 runs in pull-request, push, scheduled, and manual CI. Its result is
-informational for PR merging: `E2E Packaged Flow (BM64)` is not a required
-status check in the repository ruleset. Failures remain visible in CI.
+Like AES, BM64 is excluded from pull-request CI, but remains enabled for push,
+scheduled, and manual runs. `E2E Packaged Flow (BM64)` is also absent from the
+repository's required status checks, so PRs do not wait for an uncreated job.
 
 The packaged BM64 job checks available RAM immediately before running the flow.
 The provisional threshold is 12 GiB, with up to one hour of waiting in
