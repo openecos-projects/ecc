@@ -402,7 +402,13 @@ def _execute_existing_run(
 
         from chipcompiler.cli.rendering.progress import preserve_cli_stdio
         from chipcompiler.engine import EngineFlow
-        from chipcompiler.engine.rerun import bounded_resume_names, run_resume, selected_step_names
+        from chipcompiler.engine.rerun import (
+            bounded_resume_names,
+            run_from,
+            run_only,
+            run_resume,
+            selected_step_names,
+        )
 
         try:
             from contextlib import nullcontext
@@ -423,21 +429,51 @@ def _execute_existing_run(
             with process_context:
                 engine_flow = EngineFlow(workspace=workspace)
                 flow_ok = True
-                if result.outcome != "no_op":
+                explicit_selector = (
+                    command_input.only is not None or command_input.from_step is not None
+                )
+                if result.outcome != "no_op" or explicit_selector:
                     # Re-read the ledger: reconcile may have appended suffix steps
                     # after load_workspace populated the in-memory copy.
                     engine_flow.load()
 
-                    through = result.target[-1] if result.target else None
-                    if through is not None:
-                        selected = bounded_resume_names(engine_flow, through)
+                    if command_input.only is not None:
+                        selected = selected_step_names(
+                            engine_flow,
+                            only=command_input.only,
+                            force=command_input.force,
+                        )
+                    elif command_input.from_step is not None:
+                        selected = selected_step_names(
+                            engine_flow,
+                            from_step=command_input.from_step,
+                            through=command_input.to_step,
+                        )
                     else:
-                        selected = selected_step_names(engine_flow)
+                        through = result.target[-1] if result.target else None
+                        if through is not None:
+                            selected = bounded_resume_names(engine_flow, through)
+                        else:
+                            selected = selected_step_names(engine_flow)
                     if selected:
                         engine_flow.create_step_workspaces(executable_steps=set(selected))
 
                     with preserve_cli_stdio():
-                        run_result = run_resume(engine_flow, through=through)
+                        if command_input.only is not None:
+                            run_result = run_only(
+                                engine_flow,
+                                command_input.only,
+                                force=command_input.force,
+                            )
+                        elif command_input.from_step is not None:
+                            run_result = run_from(
+                                engine_flow,
+                                command_input.from_step,
+                                through=command_input.to_step,
+                            )
+                        else:
+                            through = result.target[-1] if result.target else None
+                            run_result = run_resume(engine_flow, through=through)
                     flow_ok = run_result.ok
         except Exception as exc:
             from chipcompiler.project.runtime_processes import RuntimeProcessError
@@ -465,7 +501,9 @@ def _execute_existing_run(
             "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
             "log_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
         }
-        if result.outcome == "no_op":
+        if result.outcome == "no_op" and not (
+            command_input.only is not None or command_input.from_step is not None
+        ):
             record["no_op"] = True
         if result.appended:
             record["appended_steps"] = list(result.appended)

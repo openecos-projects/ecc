@@ -64,7 +64,7 @@ SCHEMAS = (
         "place.timing_grad_balance_target_ratio",
         "dreamplace",
         ("timing_grad_balance_target_ratio",),
-        0.2,
+        0.01,
         applies="placement",
         description=(
             "initial target ratio rho between weighted timing-gradient and wirelength-gradient "
@@ -92,6 +92,17 @@ SCHEMAS = (
         description=(
             "positive LSE temperature in ps for smooth AAT/RAT aggregation; "
             "smaller values approach hard max/min"
+        ),
+    ),
+    config_param(
+        "place.timing_metric_scope",
+        "dreamplace",
+        ("timing_metric_scope",),
+        "setup_plus_recovery",
+        applies="placement",
+        choices=("setup_only", "setup_plus_recovery"),
+        description=(
+            "max timing checks used by placement WNS/TNS: setup_only or setup_plus_recovery"
         ),
     ),
     config_param(
@@ -324,7 +335,7 @@ SCHEMAS = (
         "place.timing_coeff_growth_factor",
         "dreamplace",
         ("timing_coeff_growth_factor",),
-        1.0,
+        1.01,
         applies="placement",
         description=(
             "positive finite multiplier applied to WNS/TNS coefficients at each GP "

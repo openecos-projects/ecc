@@ -7,10 +7,18 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DREAMPLACE_PARAMETERS = (
     _REPO_ROOT / "chipcompiler/thirdparty/ecc-dreamplace/dreamplace/params.json"
 )
-# These stage controls are translated by ECC's diff-sizing builder, not declared
-# in upstream Params metadata. Keep the set explicit so unknown fields still fail.
+# These ECC flow-controller controls are translated by the ECC builders and are
+# not declared in upstream Params metadata. Keep the set explicit so unknown
+# fields still fail.
 _ECC_OWNED_DREAMPLACE_PARAMETERS = {
+    "buffering_candidate_strategy",
+    "diff_buffering_coefficients",
+    "diff_buffering_rounds",
+    "diff_buffering_selection_fraction",
+    "diff_optimization_flows",
+    "diff_optimization_mode",
     "diff_sizing_continuous_steps",
+    "diff_sizing_terminal_gr_sta_enabled",
     "diff_sizing_coefficients",
 }
 

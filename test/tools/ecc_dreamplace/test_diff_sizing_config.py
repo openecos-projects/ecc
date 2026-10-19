@@ -141,6 +141,21 @@ def test_public_continuous_steps_parse_and_resolve(steps):
     assert actual == steps
 
 
+@pytest.mark.parametrize("enabled", [0, 1])
+def test_public_terminal_gr_sta_flag_parse_and_resolve(enabled):
+    expected = {"place.diff_sizing_terminal_gr_sta_enabled": enabled}
+    cli, errors = parse_cli_overrides([f"place.diff_sizing_terminal_gr_sta_enabled={enabled}"])
+    assert (cli, errors) == (expected, [])
+    toml, errors = parse_toml_params({"place": {"diff_sizing_terminal_gr_sta_enabled": enabled}})
+    assert (toml, errors) == (expected, [])
+    resolved, errors = resolve_parameters(cli_overrides=cli)
+    assert errors == []
+    actual = next(
+        item.value for item in resolved if item.param == "place.diff_sizing_terminal_gr_sta_enabled"
+    )
+    assert actual == enabled
+
+
 @pytest.mark.parametrize(
     ("steps", "parameterization", "execution", "dynamics"),
     [

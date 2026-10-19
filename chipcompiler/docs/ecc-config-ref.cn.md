@@ -363,7 +363,7 @@ IO cell。Sizer 要求 Liberty 单元有对应的 LEF master，即使设计没�
 
 ### 全局布局核心（★ 主要调优区）
 
-`place.timing_grad_balance_target_ratio` 默认 0.2，在 direct-loss placement
+`place.timing_grad_balance_target_ratio` 默认 0.01，在 legacy direct-loss placement
 首次启用 timing 梯度时，根据 timing 与 wirelength 梯度的 L1 范数初始化
 外层 timing 权重，之后沿用该权重。设为 0.0 可关闭平衡，保留外层权重 1.0。
 它是初始梯度比例目标，不是直接将 WNS/TNS 系数乘以 0.2。
@@ -409,13 +409,70 @@ slew = 1.0
 `ecc param set place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`。
 S50 继续使用 RRR=3、padding=0、固定 512×512 bins 和最终 legalization。
 
+`diff_opt` 是 placement 之后、`diff_sizing` 之前的独立步骤，用来替换新 workspace
+中的 `diff_buffering`。它从上一阶段的 DEF/Verilog 开始，只支持 placement parasitic，
+并可以执行 discrete sizing、candidate buffering 或二者交错：每个 segment 保留三个候选位置，
+使用 ICS55 的 BUFX8H7L、BUFX12H7L、BUFX16H7L、BUFX20H7L 四档 buffer，
+每轮每条 net 最多接受一个动作，再按全局梯度收益排序选取配置比例的 net。
+默认使用 joint 模式：执行五组 S1+B1，权重均为 500/5/1/1；合计 5 轮
+sizing、5 轮 buffering。
+每轮 buffering 的选择比例为 0.1%。buffer 实体化后完整刷新拓扑，
+使用 padding=0 做 geometry-only legalization，并保存新的 DEF/Verilog 和终态 hard STA。
+该步骤不执行 GP，按三元组顺序执行离散 sizing 或 buffering。
+每个子阶段使用自己的目标恢复最佳状态，不复用 placement 的外层 α。
+当前 PDK 必须包含上述四个 master；缺少时会明确报错。
+
+流程通过有序三元组配置。第一个字段是 `sz` 或 `bf`，第二个字段是离散 round 数，
+第三个字段按 `wns, tns, slew, cap` 排列：
+
+```toml
+[params.place]
+diff_optimization_mode = "joint"
+diff_optimization_flows = [
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+]
+```
+
+上例也是新 workspace 的默认配置，即十轮 S1+B1。列表只执行一次，S1+B1 的重复由列表显式表示；
+每个 S phase 执行一次离散 sizing，每个 B phase 执行一次 buffering。
+切换为 sizing-only 或 buffering-only 时，应同时将 flow 列表改为对应动作；
+JSON 中也可设为 `null`，分别使用该模式的 S50 或 B10 简写。
+
+`diff_opt` 固定使用 placement 寄生参数，输入 GGR/RRR、route grid、
+route-extracted SPEF 或 post-route RC 会直接报错。旧的 `diff_buffering_*` 参数仍作为
+buffering-only `diff_opt` 的兼容别名。
+
+可以用 `ecc run --project PROJECT --workspace NAME --from diff_opt --to diff_opt`
+单独执行；结束范围改为 `--to diff_sizing` 则继续做独立 GR S50。
+已有 workspace 继续使用保存的 `diff_buffering` alias；新建 workspace 使用
+`diff_opt → diff_sizing` 两个独立步骤。
+
 独立 S50 的连续 sizing step 数由 `place.diff_sizing_continuous_steps` 控制，默认值为 0。
 它表示投影到合法 cell 之前执行的 continuous real-size step 数；设为 0 会直接使用
 输入 master 的 logits 进入 `discrete_gradient_topk`，设为 3 则执行 3 个连续 sizing
 step 后再投影到合法 cell 并切换到离散 sizing。
 
 `place.timing_coeff_growth_factor` 控制每次 GP density-weight 更新时，WNS/TNS
-系数共同乘上的倍率，默认 `1.0`，不增长；设为 `1.01` 逐次增长，设为 `0.99` 则逐次衰减。
+系数共同乘上的倍率，默认 `1.01`，逐次增长；设为 `1.0` 表示不增长，设为 `0.99` 则逐次衰减。
 倍率必须为正的有限数值，slew/cap 和 norm 外层权重沿用各自设置。
 窗口的继承模式读取增长后的实时系数，固定模式使用指定值；独立
 `diff_sizing` S50 的 `size_only` 模式跳过这项增长。新建 workspace 可通过
@@ -427,12 +484,17 @@ step 后再投影到合法 cell 并切换到离散 sizing。
 使用 LSE，`hard` 使用 max/min。`place.timing_aggregation_tau_ps` 是正的
 平滑温度，默认 2.0 ps；越小越接近硬 max/min，越大梯度分配越平滑。
 这两个参数不改变最终 endpoint WNS 的硬 min 和 TNS 的负 slack 求和。
+`place.timing_metric_scope` 控制哪些 max timing check 进入 placement 的
+WNS/TNS。默认 `setup_plus_recovery` 同时包含普通 setup 和异步 recovery；
+`setup_only` 用于显式对照并排除只有 recovery 的端点。两种模式下 STA
+backend 都会导出 recovery check。
 例如，在 `ecc.toml` 中设置：
 
 ```toml
 [params.place]
 timing_aggregation_mode = "smooth"
 timing_aggregation_tau_ps = 2.0
+timing_metric_scope = "setup_plus_recovery"
 ```
 
 | 参数 | 默认 | 含义 |
@@ -441,10 +503,11 @@ timing_aggregation_tau_ps = 2.0
 | `stop_overflow` | 0.1 `*place.target_overflow` | 溢出收敛阈值，达标即停 |
 | `overflow_reference_mode` | `initial` | overflow 面积归一化模式：`initial` 固定 GP 起始面积；`ordinary` 保留原 PR 的面积发布行为，有联合面积时使用 native + virtual，否则沿用 PlaceDB 面积。均不含 filler；归一化值也用于 gamma 和基于 overflow 的调度 |
 | `density_weight` | 0.00085 | 密度项初始权重（自动调整的起点） |
-| `timing_coeff_growth_factor` | 1.0 `*place.timing_coeff_growth_factor` | GP density-weight 更新时 WNS/TNS 系数的共同倍率；1.0 停止增长，`size_only` 不应用 |
-| `timing_grad_balance_target_ratio` | 0.2 `*place.timing_grad_balance_target_ratio` | direct-loss placement 初始 timing / wirelength 梯度 L1 范数比例目标；0.0 关闭 |
+| `timing_coeff_growth_factor` | 1.01 `*place.timing_coeff_growth_factor` | GP density-weight 更新时 WNS/TNS 系数的共同倍率；1.0 停止增长，`size_only` 不应用 |
+| `timing_grad_balance_target_ratio` | 0.01 `*place.timing_grad_balance_target_ratio` | direct-loss placement 初始 timing / wirelength 梯度 L1 范数比例目标；0.0 关闭 |
 | `timing_aggregation_mode` | `smooth` `*place.timing_aggregation_mode` | AAT/RAT 传播聚合方式：`hard` 或 `smooth`（LSE） |
 | `timing_aggregation_tau_ps` | 2.0 `*place.timing_aggregation_tau_ps` | `smooth` 模式的正平滑温度，单位 ps |
+| `timing_metric_scope` | `setup_plus_recovery` `*place.timing_metric_scope` | placement WNS/TNS 的 max timing check：`setup_only` 或 `setup_plus_recovery` |
 | `num_bins_x/y` | 32/32 | 密度网格划分数 |
 | `global_place_stages[]` | 见下 | 多阶段全局布局表（可多段） |
 | `global_place_stages[].iteration` | 3000 | 本阶段迭代上限，收敛时可提前停止 |
@@ -532,6 +595,7 @@ Timing optimization 是多阶段子流程：先用 `workspace.pdk.libs`（通常
 
 最后的内部 DreamPlace 合法化使用 `legalize_flag=1`、`detailed_place_flag=0`，以保护已修复的 hold 时序。
 
+
 `config/sizer_ecc.json` 由 ECC 管理，与 ecc-sizer 仓库的命令行默认值分开。hold 阶段配置统一放在 `hold_stage` 对象中，便于后续扩展其他 hold-stage 控制项：
 
 | 字段 | 默认值 | 含义 |
@@ -540,6 +604,7 @@ Timing optimization 是多阶段子流程：先用 `workspace.pdk.libs`（通常
 | `hold_stage.rc_mode` | `global_routing` | Hold 寄生模型：`global_routing` 生成完整的分层/via `setRCFile`；`placement` 是显式的 scalar-RC 对照模式。 |
 | `hold_stage.global_routing_rc.corner` | `MIN_m40/Cbest` | 分层 RC 映射的来源 corner 标签。 |
 | `hold_stage.global_routing_rc.layers` | CX55 MET1–MET5 映射 | 各布线层的单位线电阻（ohm/um）和电容（pF/um）。默认电容为 CX55 Cbest 原表值的 0.5 倍。StarRC 表中的 M6/M7 不在 ECC 使用的 CX55 LEF 中，因此不写入默认 RC 文件。 |
+
 | `hold_stage.global_routing_rc.vias` | CX55 CT/VIA1–VIA4 映射 | 当前 MET1–MET5 叠层的各 via/cut 电阻（ohm）。CT_NP/CT_PP 使用保守的 30 ohm。 |
 | `hold_stage.placement_wire_rc` | CX55 `MIN_m40/Cbest` scalar 值 | 显式 placement-RC 对照模式，电阻单位为 ohm/um，电容单位为 pF/um。默认电容同样为 Cbest 原表值的 0.5 倍。 |
 
@@ -721,6 +786,7 @@ ecc param set timing_opt.hold_rc_mode global_routing
 ```
 
 `timing_opt.hold_margin` 映射到 `sizer_ecc.json` 的 `hold_stage.hold_margin`，单位是 ns，默认值为 `0.04`，并会以 `-hold_margin VALUE` 写入生成的 `hold.cmd_file`。`timing_opt.hold_rc_mode` 选择 `hold_stage` RC 模式；`global_routing` 还会生成 `hold.rc_file` 并写入 `-setRCFile`。
+
 
 ### 15.6 cts 与 routing
 

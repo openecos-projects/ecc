@@ -121,7 +121,7 @@ def run_only(flow: "EngineFlow", name: str, *, force: bool = False) -> StepRunRe
     _require_steps_available(flow, index)
     # Selectors accept CLI aliases and case-insensitive spellings. Resolve the
     # actual WorkspaceStep through the persisted canonical name, not the raw
-    # selector (for example, ``synthesis`` maps to persisted ``Synthesis``).
+    # selector, including ``diff_opt`` for a legacy ``diff_buffering`` ledger.
     workspace_step = flow.get_workspace_step(steps[index]["name"])
     (output_dir,) = _validated_output_dirs(flow.workspace, [workspace_step])
     _invalidate_suffix(flow, index)
@@ -141,6 +141,12 @@ def _require_step_index(flow: "EngineFlow", name: str) -> int:
     canonical = normalize_flow_step(name)
     for index, step in enumerate(steps):
         if step.get("name") == canonical:
+            return index
+        # A pre-migration ledger records the old step name, while the
+        # canonical selector and flow target now use diff_opt.  Keep the raw
+        # ledger entry executable so migration does not require rewriting its
+        # artifact directory before the first rerun.
+        if canonical == "diff_opt" and step.get("name") == "diff_buffering":
             return index
     folded = str(name or "").casefold()
     for index, step in enumerate(steps):

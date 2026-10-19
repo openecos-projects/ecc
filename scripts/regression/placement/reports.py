@@ -34,8 +34,10 @@ def collect(batch: Path):
                 "internal_tns_ns": data.get("internal_ns", {}).get("tns"),
                 "external_placement_wns_ns": placement.get("wns"),
                 "external_placement_tns_ns": placement.get("tns"),
+                "external_placement_clock": data.get("external_placement", {}).get("clock"),
                 "external_gr50_wns_ns": gr.get("wns"),
                 "external_gr50_tns_ns": gr.get("tns"),
+                "external_gr50_clock": data.get("external_gr50", {}).get("clock"),
                 "gr50_slew_violation_count": checks.get("slew_violation_count"),
                 "gr50_cap_violation_count": checks.get("cap_violation_count"),
                 "gr50_worst_slew_slack_ns": checks.get("worst_slew_slack_ns"),
@@ -54,7 +56,7 @@ def collect(batch: Path):
         )
     profile = read(batch / "provenance.json")["profile"]
     summary = {
-        "scope": "placement; external TT ideal-clock placement RC and GR50 STA",
+        "scope": "placement; external TT placement RC and GR50 STA",
         "profile": profile,
         "counts": counts,
         "rows": rows,
@@ -84,8 +86,18 @@ def collect(batch: Path):
         "",
         "Configuration: " + json.dumps({key: profile[key] for key in fields}),
         "",
-        "Timing units: ns. External TT, ideal clocks; placement MET2 RC or GR50 MET2-MET5, "
+        "Timing units: ns. External TT; placement MET2 RC or GR50 MET2-MET5, "
         "capacity adjustment 0.5; no repair.",
+        "",
+        "Clock modes recorded in measurements: "
+        + "; ".join(
+            f"{label}="
+            + (", ".join(sorted({row[key] for row in rows if row[key]})) or "unspecified")
+            for label, key in (
+                ("placement", "external_placement_clock"),
+                ("GR50", "external_gr50_clock"),
+            )
+        ),
         "",
         "| Case | Final placement internal WNS / TNS | External placement RC WNS / TNS | "
         "External GR50 WNS / TNS | Status |",

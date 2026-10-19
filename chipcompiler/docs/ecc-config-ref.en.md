@@ -364,7 +364,7 @@ The three steps share `config/dreamplace_ecc.json`; before each step runs, `def_
 
 ### Global placement core (★ the main tuning area)
 
-`place.timing_grad_balance_target_ratio` defaults to 0.2. At the first active
+`place.timing_grad_balance_target_ratio` defaults to 0.01. In legacy mode, the first active
 timing-gradient step in direct-loss placement, it initializes the outer timing
 weight from the timing and wirelength gradient L1 norms, then reuses that weight.
 Set it to 0.0 to disable balancing and retain an outer weight of 1.0. The value
@@ -415,6 +415,72 @@ For an existing workspace, use
 `ecc param set place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`.
 S50 retains RRR=3, zero padding, fixed 512×512 bins and final legalization.
 
+`diff_opt` is the independent step between placement and `diff_sizing`.
+It replaces the new-workspace `diff_buffering` entry and reads the preceding
+DEF/Verilog using placement parasitics only. It runs discrete candidate buffering
+with three positions per segment and the four ICS55 masters BUFX8H7L, BUFX12H7L,
+BUFX16H7L and BUFX20H7L. Each round accepts at most one action per net,
+then selects the configured fraction of nets by global gradient benefit.
+The default joint flow runs five S1+B1 cycles with weights 500/5/1/1:
+five sizing rounds and five buffering rounds in total.
+Each buffering round selects 0.1% of candidate-bearing nets. After native
+buffer insertion it rebuilds the topology,
+runs geometry-only legalization with zero padding, and saves DEF/Verilog and
+terminal hard STA. It performs no GP updates and executes the discrete sizing
+and buffering phases in tuple order.
+Each phase restores its own best objective, with outer timing weight 1.
+The PDK must contain
+all four masters; missing masters cause an explicit error.
+
+The flow can be selected with an ordered tuple list. The tuple action is `sz`
+for discrete sizing or `bf` for typed candidate buffering; `steps` is the
+number of discrete rounds and the four coefficients are WNS/TNS/slew/cap.
+
+```toml
+[params.place]
+diff_optimization_mode = "joint"
+diff_optimization_flows = [
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+]
+```
+
+This is also the default configuration for new workspaces: ten S1+B1 cycles.
+The list runs once;
+repeated S1+B1 cycles are explicit entries. Each S phase performs one discrete
+sizing round and each B phase performs one buffering phase.
+When selecting sizing-only or buffering-only mode, replace the flow list with
+the corresponding actions; a JSON `null` flow list selects the mode's S50 or
+B10 shorthand instead.
+
+`diff_opt` uses placement parasitics exclusively; GGR/RRR, route
+grid, route-extracted SPEF and post-route RC are rejected as inputs. The old
+`diff_buffering_*` fields remain legacy aliases for buffering-only `diff_opt`.
+
+Run it alone with
+`ecc run --project PROJECT --workspace NAME --from diff_opt --to diff_opt`;
+use `--to diff_sizing` to continue through the separate standalone GR S50 step.
+Existing workspace ledgers retain the stored `diff_buffering` alias; new
+workspaces use `diff_opt` followed by `diff_sizing`.
+
 The number of continuous sizing steps in standalone S50 is controlled by
 `place.diff_sizing_continuous_steps`, which defaults to 0. It is the number of
 continuous real-size steps before projection to legal cells. Set it to 0 to
@@ -423,8 +489,8 @@ set it to 3 to run three continuous sizing steps before switching to discrete
 sizing.
 
 `place.timing_coeff_growth_factor` multiplies both WNS/TNS coefficients at each
-GP density-weight update. The default `1.0` disables growth;
-`1.01` increases the coefficients and `0.99` decays them. The factor must be
+GP density-weight update. The default `1.01` increases the coefficients;
+`1.0` disables growth and `0.99` decays them. The factor must be
 positive and finite. Slew/cap and the outer norm weight retain their own settings.
 Inherit-mode windows read the resulting live coefficients; fixed-mode windows
 use their configured values. Standalone `diff_sizing` S50 in `size_only` mode
@@ -441,10 +507,17 @@ existing workspace, use
 gradients more evenly. Endpoint WNS still uses hard min, and TNS still sums
 negative slacks. For example, set the following in `ecc.toml`:
 
+`place.timing_metric_scope` controls which max timing checks enter the
+placement WNS/TNS metric. The default `setup_plus_recovery` includes ordinary
+setup and asynchronous recovery checks; `setup_only` is an explicit ablation
+that excludes recovery-only endpoints. Recovery checks remain exported by the
+STA backend in either mode.
+
 ```toml
 [params.place]
 timing_aggregation_mode = "smooth"
 timing_aggregation_tau_ps = 2.0
+timing_metric_scope = "setup_plus_recovery"
 ```
 
 | Parameter | Default | Meaning |
@@ -453,10 +526,11 @@ timing_aggregation_tau_ps = 2.0
 | `stop_overflow` | 0.1 `*place.target_overflow` | Overflow convergence threshold; stop once met |
 | `overflow_reference_mode` | `initial` | Overflow normalization: `initial` freezes GP-entry area; `ordinary` preserves the original PR's area publication behavior, using published native + virtual area when available, otherwise PlaceDB area. Both exclude fillers; normalized overflow also feeds gamma and overflow-based scheduling |
 | `density_weight` | 0.00085 | Initial weight of the density term (starting point of auto-adjustment) |
-| `timing_coeff_growth_factor` | 1.0 `*place.timing_coeff_growth_factor` | Multiplier for both WNS/TNS coefficients at each GP density-weight update; 1.0 disables growth; skipped in `size_only` |
-| `timing_grad_balance_target_ratio` | 0.2 `*place.timing_grad_balance_target_ratio` | Initial timing / wirelength gradient L1 norm ratio in direct-loss placement; 0.0 disables balancing |
+| `timing_coeff_growth_factor` | 1.01 `*place.timing_coeff_growth_factor` | Multiplier for both WNS/TNS coefficients at each GP density-weight update; 1.0 disables growth; skipped in `size_only` |
+| `timing_grad_balance_target_ratio` | 0.01 `*place.timing_grad_balance_target_ratio` | Initial timing / wirelength gradient L1 norm ratio in direct-loss placement; 0.0 disables balancing |
 | `timing_aggregation_mode` | `smooth` `*place.timing_aggregation_mode` | AAT/RAT propagation aggregation: `hard` or `smooth` (LSE) |
 | `timing_aggregation_tau_ps` | 2.0 `*place.timing_aggregation_tau_ps` | Positive temperature in ps for `smooth` mode |
+| `timing_metric_scope` | `setup_plus_recovery` `*place.timing_metric_scope` | Max timing checks in placement WNS/TNS: `setup_only` or `setup_plus_recovery` |
 | `num_bins_x/y` | 32/32 | Number of density grid bins |
 | `global_place_stages[]` | see below | Multi-stage global placement table (multiple entries allowed) |
 | `global_place_stages[].iteration` | 3000 | Iteration limit in this stage; convergence can stop earlier |
@@ -544,6 +618,7 @@ Timing optimization is a multi-stage subflow: first run setup Sizer with `worksp
 
 The final inner DreamPlace legalization uses `legalize_flag=1` and `detailed_place_flag=0` to protect the repaired hold timing.
 
+
 `config/sizer_ecc.json` is owned by ECC and is independent of the Sizer repository's command-line defaults. Hold-pass controls are grouped under `hold_stage` so future hold-stage controls can be added without widening the config root:
 
 | Field | Default | Meaning |
@@ -552,6 +627,7 @@ The final inner DreamPlace legalization uses `legalize_flag=1` and `detailed_pla
 | `hold_stage.rc_mode` | `global_routing` | Hold parasitic model: `global_routing` emits a complete per-layer/via `setRCFile`; `placement` is an explicit scalar-RC comparison mode. |
 | `hold_stage.global_routing_rc.corner` | `MIN_m40/Cbest` | Source corner label for the per-layer RC map. |
 | `hold_stage.global_routing_rc.layers` | CX55 MET1–MET5 map | Per-routing-layer resistance in ohm/um and capacitance in pF/um. Default capacitances are 0.5 times the CX55 Cbest source-table values. M6/M7 from the StarRC table are omitted because they are absent from the ECC CX55 LEF. |
+
 | `hold_stage.global_routing_rc.vias` | CX55 CT/VIA1–VIA4 map | Per-via/cut resistance in ohm for the active MET1–MET5 stack. CT uses the conservative 30 ohm value for the CT_NP/CT_PP pair. |
 | `hold_stage.placement_wire_rc` | CX55 `MIN_m40/Cbest` scalar values | Explicit placement-RC comparison mode, with resistance in ohm/um and capacitance in pF/um. Default capacitance is also 0.5 times the Cbest source-table value. |
 
@@ -562,11 +638,13 @@ The final inner DreamPlace legalization uses `legalize_flag=1` and `detailed_pla
 | `timing_optimization_sizer/script/hold.env_file` / `hold.cmd_file` | `MIN` Liberty entries in `sta_ecc.json` | Optional FF/MIN `-hold_only` pass; default hold mode uses propagated clocks and GR RC |
 | `timing_optimization_sizer/script/hold.rc_file` | `hold_stage.global_routing_rc` | Generated `set_layer_rc`/`set_layer_rc -via` file consumed through `-setRCFile` before GR RC initialization |
 | `config/sizer_ecc.json` | ECC template, optionally overridden by `timing_opt.*` | ECC-owned Sizer controls grouped under `hold_stage`; the selected RC mode and source are emitted in the hold scripts |
+
 | `data/to/sizer_setup.def.gz` / `sizer_setup.v.gz` | setup Sizer output | Snapshot consumed by the hold pass; legalization proceeds only after the hold pass writes its outputs |
 | `-min_route_layer` / `-max_route_layer` | `route.bottom_layer` / `route.top_layer` when set | Routing-layer limits passed directly to Sizer |
 | `data/to/sizer.def.gz` / `sizer.v.gz` | Sizer output | Staging artifacts consumed by the inner DreamPlace legalization; successful legalization is then saved as the Timing optimization step output |
 
 The FF hold pass uses only the `MIN` Liberty group from `sta_ecc.json` to repair hold after setup sizing. The default `global_routing` mode loads the complete per-layer/via RC map through `-setRCFile` before running GR in the configured routing-layer range; `placement` remains an explicit scalar-RC comparison mode. It is not final multi-corner signoff and is not equivalent to a `MIN/RCbest` SPEF evaluation. Final signoff still runs STA over the complete corner/SPEF combinations declared by `sta_ecc.json`.
+
 
 The runtime root must contain `src/sizer_os.tcl`; ECC discovers it from `CHIPCOMPILER_ECC_SIZER_ROOT` or by walking upward from the `Sizer` binary on `PATH`. `ecc doctor` requires both this runtime root and the Sizer executable. Sizer is required by the complete `rtl2gds` chain; for a fresh or `--overwrite` `rtl2gds` target, `ecc run` also checks it during environment preflight and returns `env_not_ready` before creating the workspace if it is missing. Existing workspaces and `--workspace` reruns skip this preflight and can still fail while executing Timing optimization.
 
@@ -737,6 +815,7 @@ ecc param set timing_opt.hold_rc_mode global_routing
 ```
 
 `timing_opt.hold_margin` maps to `sizer_ecc.json`'s `hold_stage.hold_margin`, is in ns, defaults to `0.04`, and is emitted as `-hold_margin VALUE` in the generated `hold.cmd_file`. `timing_opt.hold_rc_mode` selects the `hold_stage` RC mode; `global_routing` also generates `hold.rc_file` and emits `-setRCFile`.
+
 
 ### 15.6 cts and routing
 
