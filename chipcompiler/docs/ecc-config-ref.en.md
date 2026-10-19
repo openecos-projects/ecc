@@ -602,6 +602,17 @@ Configuration file `route_ecc.json`; the `RT` group holds the router parameters.
 
 - **drc**: `drc_ecc.json` is an empty object `{}` — the check rules come from the tech LEF's layer definitions and rules; there is nothing to tune.
 - **lvs**: no configuration file; the tool compares layout against netlist with its default flow (inputs/outputs are chained via `db_ecc.json`).
+- **antennaCheck**: uses the same post-route physical database input as DRC. ECC writes the native `antenna_check.rpt` report and passes the feature path to ecc-tools through `-step_json`; ecc-tools writes the structured `feature/antennaCheck.step.json` file. The JSON uses `schema_version: 1`, identifies the step as `antennaCheck`, records `antenna_check.violation_count` and diagnostic counters, and includes detailed entries in `violations`. A successful ECC step requires both the native report and the structured JSON file.
+
+The native interfaces accept the output path as follows:
+
+```python
+ecc.check_antenna(config_dict={"-step_json": "/path/to/antennaCheck.step.json"})
+```
+
+```tcl
+check_antenna -step_json /path/to/antennaCheck.step.json
+```
 
 Both steps' sub-phases are: load data → run DRC/LVS → save data → analysis.
 

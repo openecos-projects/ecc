@@ -726,8 +726,11 @@ class ECCToolsModule:
     def run_filler(self, config: PathArg) -> bool:
         return self.ecc.insert_filler(config=config)
 
-    def check_antenna(self) -> bool:
-        return self.ecc.check_antenna()
+    def check_antenna(self, step_json: PathArg = None) -> bool:
+        config_dict = {}
+        if step_json:
+            config_dict["-step_json"] = path_text(step_json)
+        return self.ecc.check_antenna(config_dict=config_dict)
 
     def destroy_mj(self) -> bool:
         return self.ecc.destroy_mj()

@@ -590,6 +590,17 @@ FF hold pass 只使用 `sta_ecc.json` 的 `MIN` Liberty 组，用于在 setup si
 
 - **drc**：`drc_ecc.json` 为空对象 `{}`——检查规则来自 tech LEF 的层定义与规则，无可调参数。
 - **lvs**：无配置文件，工具按默认流程比对版图与网表（输入输出经 `db_ecc.json` 链式传递）。
+- **antennaCheck**：使用与 DRC 相同的布线后版图数据库作为输入。ECC 生成原生 `antenna_check.rpt` 报告，并通过 `-step_json` 将 feature 路径传给 ecc-tools；ecc-tools 写出结构化的 `feature/antennaCheck.step.json`。该 JSON 使用 `schema_version: 1`，标识步骤为 `antennaCheck`，记录 `antenna_check.violation_count` 和诊断计数，并在 `violations` 数组中保存详细违例。ECC 判定步骤成功时，原生报告和结构化 JSON 必须同时存在。
+
+原生接口可以这样指定输出路径：
+
+```python
+ecc.check_antenna(config_dict={"-step_json": "/path/to/antennaCheck.step.json"})
+```
+
+```tcl
+check_antenna -step_json /path/to/antennaCheck.step.json
+```
 
 两者的子阶段均为 load data → run DRC/LVS → save data → analysis。
 
