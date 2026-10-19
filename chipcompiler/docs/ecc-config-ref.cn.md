@@ -614,12 +614,12 @@ check_antenna -step_json /path/to/antennaCheck.step.json
 
 ## 11. postroutelec（Yosys LEC）
 
-无 JSON 配置，由 `script/run_lec.tcl` 驱动（读 liberty → 双方网表规范化 → 等价性证明）。放在 LVS 之后、DRC 之前：
+无 JSON 配置，由 `script/run_lec.tcl` 驱动（读 liberty → 双方网表规范化 → 等价性证明）。放在 DRC 之后：
 
 | 项 | 内容 |
 |---|---|
 | 输入（golden） | 综合映射网表（如 `Synthesis_yosys/output/gcd_Synthesis.v.gz`） |
-| 输入（gate） | 上一步（LVS）输出网表（`lvs_ecc/output/gcd_lvs.v.gz`，链式取 `pre_step.output.verilog`） |
+| 输入（gate） | `filler` 输出网表（`filler_ecc/output/gcd_filler.v.gz`；post-route LEC 是唯一不按 checker 结果继续传递的例外） |
 | 输出 | `output/<设计>_postRouteLec_result.json`：`status`（`proven` / 失败）+ 双方 `sha256` + 报告路径；`report/equiv_status.rpt`、`report/run_lec_status.rpt` |
 | 签核 | `status=proven` 计入签核清单（LEC 结果进签核包 `final/reports/postRouteLec/`） |
 
@@ -675,7 +675,7 @@ IO 则用 0°C 库。项目或 workspace 显式设置的 `sta.liberty` 会替换
 
 ## 14. harden（ecc-tools）
 
-无专属配置文件：复用 `db_ecc.json` 定位输入（STA 输出的 DEF/网表）与输出（`Harden_ecc/output`）。子阶段仅 load data → run harden。产物为 `<设计>_Harden.gds/.lef/.lib/.png`（版图 / 抽象 LEF / 时序 LIB / 版图快照）。
+无专属配置文件：复用 `db_ecc.json` 定位输入（`filler` 输出的 DEF/网表）与输出（`Harden_ecc/output`）。子阶段仅 load data → run harden。产物为 `<设计>_Harden.gds/.lef/.lib/.png`（版图 / 抽象 LEF / 时序 LIB / 版图快照）。
 
 ## 15. 各步骤的 ECC CLI 配置命令
 

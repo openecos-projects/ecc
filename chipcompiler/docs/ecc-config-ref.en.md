@@ -626,12 +626,12 @@ Configuration file `filler_ecc.json`. Sub-phases: load data → run filler → s
 
 ## 11. postroutelec (Yosys LEC)
 
-No JSON configuration; driven by `script/run_lec.tcl` (read liberty → normalize both netlists → prove equivalence). It sits after LVS and before DRC:
+No JSON configuration; driven by `script/run_lec.tcl` (read liberty → normalize both netlists → prove equivalence). It sits after DRC:
 
 | Item | Content |
 |---|---|
 | Input (golden) | Synthesis mapped netlist (e.g. `Synthesis_yosys/output/gcd_Synthesis.v.gz`) |
-| Input (gate) | Previous (LVS) step's output netlist (`lvs_ecc/output/gcd_lvs.v.gz`; chaining uses `pre_step.output.verilog`) |
+| Input (gate) | `filler` output netlist (`filler_ecc/output/gcd_filler.v.gz`; post-route LEC is the only exception to checker-result chaining) |
 | Output | `output/<design>_postRouteLec_result.json`: `status` (`proven` / failure) + both sides' `sha256` + report paths; `report/equiv_status.rpt`, `report/run_lec_status.rpt` |
 | Signoff | `status=proven` counts toward the signoff checklist (LEC results go into the signoff package `final/reports/postRouteLec/`) |
 
@@ -692,7 +692,7 @@ present, the signoff package includes the report once at
 
 ## 14. harden (ecc-tools)
 
-No step-specific configuration file: it reuses `db_ecc.json` to locate its inputs (the DEF/netlist output by STA) and its output (`Harden_ecc/output`). Sub-phases are just load data → run harden. Artifacts are `<design>_Harden.gds/.lef/.lib/.png` (layout / abstract LEF / timing LIB / layout snapshot).
+No step-specific configuration file: it reuses `db_ecc.json` to locate its inputs (the DEF/netlist output by `filler`) and its output (`Harden_ecc/output`). Sub-phases are just load data → run harden. Artifacts are `<design>_Harden.gds/.lef/.lib/.png` (layout / abstract LEF / timing LIB / layout snapshot).
 
 ## 15. ECC CLI configuration commands by step
 

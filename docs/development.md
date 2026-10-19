@@ -744,6 +744,13 @@ advisory failure cannot leave downstream stages without physical inputs. This or
 newly created preset flows and canonical ranges; existing workspace ledgers and
 explicit custom flows retain their stored order.
 
+All physical signoff steps in this sequence, including LVS, DRC, antennaCheck,
+RCX, STA, powerAnalysis, EMIR, and Harden, load the filler output as their
+physical design input. Their own DEF, Verilog, and database snapshots are
+evidence or reports and do not become the next physical source. Post-route LEC
+is the exception: it compares the synthesis golden netlist with the filler gate
+netlist.
+
 The report-only `antennaCheck` step calls iMJ's `init_mj → check_antenna →
 destroy_mj`; it does not insert diodes or repair violations. The native report is
 `antennaCheck_ecc/data/mj/antenna_checker/antenna_check.rpt`, copied unchanged to
@@ -756,7 +763,7 @@ LEF antenna rules or gate-area annotations can leave the check without coverage.
 Inspect the native log and report together. No separate antenna JSON is needed.
 
 The EMIR stage consumes `powerAnalysis_ecc/data/pw/power_reporter/instance_power.tsv`
-and the preceding physical database. Set `emir.technology_file_path` to the absolute
+and the filler physical database. Set `emir.technology_file_path` to the absolute
 path of a real `process.tech`, using `ecc param set` or `[emir]` in `ecc.toml`.
 The value is replayed into `config/emir_ecc.json` when creating or refreshing the
 workspace; editing only that generated JSON is not persistent. The default is

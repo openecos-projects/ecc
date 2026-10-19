@@ -7,10 +7,10 @@ and the post-route LEC gate all call this module instead of re-deriving the
 rule.
 
 Input chaining follows the physical chain: a step consumes the output of the
-previous non-LEC, non-advisory step, or the step named by its explicit
-``input_step``. The parallel checker batch is the one exception: the checker
-steps immediately after ``filler`` run concurrently, so they all read the step
-before the batch.
+previous non-LEC, non-advisory step, the step named by its explicit
+``input_step``, or the source declared by its policy. Physical signoff steps
+read ``filler`` directly, and the parallel checker batch immediately after
+``filler`` also reads that anchor.
 """
 
 from chipcompiler.data.types import (
@@ -119,6 +119,14 @@ def checker_batch_anchor(records: list[dict], index: int) -> str | None:
     return step_name(anchor)
 
 
+def filler_anchor(records: list[dict], index: int) -> str | None:
+    """The nearest ``filler`` before *index*, if the ledger has one."""
+    for previous in reversed(records[:index]):
+        if step_name(previous) == StepEnum.FILLER.value:
+            return StepEnum.FILLER.value
+    return None
+
+
 class FlowInputResolver:
     """Resolve ledger step inputs in order, one resolver per walk.
 
@@ -135,6 +143,10 @@ class FlowInputResolver:
 
     def record(self, step) -> None:
         self._created[step.name] = step
+
+    def created_step(self, name: str):
+        """A step created earlier in this walk, or None when it is not available."""
+        return self._created.get(name)
 
     def _resolve(self, index: int, *, require_created: bool) -> tuple[str | None, bool]:
         record = self._records[index]
@@ -156,6 +168,12 @@ class FlowInputResolver:
                     f"{step_name(record) or 'step'}: input step {explicit!r} was not created"
                 )
             return explicit, True
+
+        policy = flow_step_policy(step_name(record))
+        if policy.input_source in (FlowInputSource.FILLER, FlowInputSource.CHECKER_BATCH):
+            anchor = filler_anchor(self._records, index)
+            if anchor is not None and (not require_created or anchor in self._created):
+                return anchor, False
 
         anchor = checker_batch_anchor(self._records, index)
         if anchor is not None and (not require_created or anchor in self._created):

@@ -396,14 +396,14 @@ class EngineFlow:
                 from chipcompiler.engine.step_chain import apply_info_spef_override
 
                 apply_info_spef_override(step, eda_step)
+                rcx_step = resolver.created_step(StepEnum.RCX.value)
                 if (
-                    input_source is not None
-                    and input_source.name == StepEnum.RCX.value
+                    rcx_step is not None
                     and eda_step.name == StepEnum.STA.value
                     and isinstance(eda_step.output, EccOutput)
-                    and isinstance(input_source.output, EccOutput)
+                    and isinstance(rcx_step.output, EccOutput)
                 ):
-                    eda_step.output.spef = input_source.output.spef
+                    eda_step.output.spef = rcx_step.output.spef
                 self.workspace_steps.append(eda_step)
                 resolver.record(eda_step)
                 if eda_step.name == StepEnum.SYNTHESIS.value:

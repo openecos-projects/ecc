@@ -58,32 +58,30 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
     flow.create_step_workspaces()
     steps = {step.name: step for step in flow.workspace_steps}
 
-    physical_names = [
-        "route",
-        "filler",
-        "lvs",
-        "drc",
-        "RCX",
-        "sta",
-        "powerAnalysis",
-        "Harden",
-    ]
-    for previous_name, current_name in zip(physical_names[:-1], physical_names[1:], strict=True):
-        previous = steps[previous_name]
+    filler = steps["filler"]
+    for current_name in ("lvs", "drc", "RCX", "sta", "powerAnalysis", "Harden"):
         current = steps[current_name]
         assert (current.input.def_, current.input.verilog, current.input.db) == (
-            previous.output.def_,
-            previous.output.verilog,
-            previous.output.db,
+            filler.output.def_,
+            filler.output.verilog,
+            filler.output.db,
         )
-    assert steps["antennaCheck"].input.def_ == steps["drc"].output.def_
-    assert steps["emir"].input.def_ == steps["powerAnalysis"].output.def_
+    assert (
+        steps["antennaCheck"].input.def_,
+        steps["antennaCheck"].input.verilog,
+        steps["antennaCheck"].input.db,
+    ) == (filler.output.def_, filler.output.verilog, filler.output.db)
+    assert (steps["emir"].input.def_, steps["emir"].input.verilog, steps["emir"].input.db) == (
+        filler.output.def_,
+        filler.output.verilog,
+        filler.output.db,
+    )
 
     # Read-only workspace projections must use the same bypass as execution.
     from chipcompiler.engine.workspace_flow import iter_workspace_steps
 
     projected = {entry["name"]: step for entry, step in iter_workspace_steps(workspace)}
-    for name in ("RCX", "Harden"):
+    for name in ("lvs", "drc", "RCX", "sta", "powerAnalysis", "emir", "Harden"):
         assert projected[name].input.def_ == steps[name].input.def_
     assert steps["sta"].output.spef == steps["RCX"].output.spef
     if not skip:

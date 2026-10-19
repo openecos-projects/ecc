@@ -54,12 +54,9 @@ class CollectorAnalysisMixin:
                 continue
             resolver.record(workspace_step)
 
-            if (
-                input_source is not None
-                and input_source.name == StepEnum.RCX.value
-                and workspace_step.name == StepEnum.STA.value
-            ):
-                workspace_step.output.spef = input_source.output.spef
+            rcx_step = resolver.created_step(StepEnum.RCX.value)
+            if rcx_step is not None and workspace_step.name == StepEnum.STA.value:
+                workspace_step.output.spef = rcx_step.output.spef
 
             if flow_step.get("state") != StateEnum.Success.value:
                 continue

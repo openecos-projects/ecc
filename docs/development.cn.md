@@ -520,6 +520,12 @@ Harden 绕过 emir，因此 advisory 步骤失败不会导致后续步骤缺少�
 新顺序适用于新建的预设流程及规范步骤范围；已有工作区的执行记录和显式
 自定义流程仍保留原顺序。
 
+这条流程中除 `postRouteLec` 外，LVS、DRC、`antennaCheck`、RCX、STA、
+`powerAnalysis`、EMIR 和 Harden 均加载 `filler` 的 DEF、Verilog 和数据库
+作为物理设计输入。各 checker 自己生成的 DEF、Verilog 和数据库只是证据或
+报告快照，不会成为后续物理设计源。`postRouteLec` 是例外：它比较综合 golden
+网表和 filler gate 网表。
+
 `antennaCheck` 调用 iMJ 的 `init_mj → check_antenna → destroy_mj`，只检查，
 不插入二极管、不自动修复。原生报告为
 `antennaCheck_ecc/data/mj/antenna_checker/antenna_check.rpt`，原样复制到
@@ -529,7 +535,7 @@ Harden 绕过 emir，因此 advisory 步骤失败不会导致后续步骤缺少�
 天线检查通过：LEF 缺少天线规则或引脚 gate-area 信息时可能没有实际检查覆盖。
 请结合原生日志查看报告。不需要单独的天线检查 JSON 配置。
 
-EMIR 使用 `powerAnalysis_ecc/data/pw/power_reporter/instance_power.tsv` 和前一步的
+EMIR 使用 `powerAnalysis_ecc/data/pw/power_reporter/instance_power.tsv` 和 `filler`
 物理数据库。运行前，通过 `ecc param set emir.technology_file_path /绝对路径/process.tech`
 或 `ecc.toml` 的 `[emir]` 配置真实工艺文件。此值会在创建或刷新工作区时写入
 `config/emir_ecc.json`；仅修改生成的 JSON 不会持久保留。
