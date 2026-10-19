@@ -74,11 +74,6 @@ def publish_power_summary(data_dir: str | Path, feature_dir: str | Path) -> Path
         "schema_version": 1,
         "step": StepEnum.POWER_ANALYSIS.value,
         "power_summary": payload,
-        "metrics": {
-            key: value
-            for key, value in payload.items()
-            if key != "schema_version" and isinstance(value, (int, float))
-        },
     }
     if not json_write(step_path, step_payload):
         raise OSError(f"Failed to write merged power step artifact: {step_path}")

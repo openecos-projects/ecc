@@ -20,6 +20,10 @@ def test_density_weight_uses_existing_public_workspace_parameter_contract():
         validate_reviewed_values({"place.density_weight": -1}, {})
 
 
+def test_emir_parameter_uses_the_emir_workspace_step_contract():
+    assert workspace_param_step(lookup_schema("emir.technology_file_path")) == "emir"
+
+
 def test_routing_parameters_require_supported_profile_and_ordered_layers():
     baseline = {"workspaceSpec": {"pdk": {"familyId": "ics55"}, "parameters": {}}}
     validate_reviewed_values({"route.bottom_layer": "MET3", "route.top_layer": "MET5"}, baseline)

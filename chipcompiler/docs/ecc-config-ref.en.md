@@ -672,7 +672,10 @@ Power is produced by the separate `powerAnalysis` iPW step, not by each STA
 corner. Its native outputs are
 `powerAnalysis_ecc/data/pw/power_reporter/power.rpt` and
 `powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`; ECC derives
-`powerAnalysis_ecc/feature/power_summary.json` from the report for QoR. When
+`powerAnalysis_ecc/feature/power_summary.json` from the report for QoR and
+stores the same payload under the `power_summary` key in
+`powerAnalysis_ecc/feature/powerAnalysis.step.json`. The step artifact has no
+duplicate top-level `metrics` object. When
 present, the signoff package includes the report once at
 `final/timing/power/power.rpt`.
 

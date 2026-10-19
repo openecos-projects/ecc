@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from unittest.mock import Mock, call
 
@@ -136,6 +137,11 @@ def test_power_analysis_uses_its_own_data_directory_and_native_lifecycle(tmp_pat
     ]
     assert (power_data_dir / "power_reporter" / STA_POWER_REPORT_FILENAME).is_file()
     assert read_sta_power_summary_json(step.feature.dir / STA_POWER_SUMMARY_FILENAME) is not None
+    power_step = json.loads(
+        (step.feature.dir / "powerAnalysis.step.json").read_text(encoding="utf-8")
+    )
+    assert power_step["power_summary"]["internal_uw"] == 1000.0
+    assert "metrics" not in power_step
 
 
 def test_power_analysis_requires_native_power_report(tmp_path, monkeypatch):

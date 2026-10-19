@@ -16,6 +16,28 @@ from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.utility import json_read, json_write
 
 
+def test_emir_default_technology_path_uses_packaged_resource(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    fixtures = Path(__file__).resolve().parents[2] / "fixtures"
+    workspace = create_workspace(
+        directory=tmp_path / "workspace",
+        origin_def="",
+        origin_verilog=fixtures / "gcd/gcd.v",
+        pdk="ics55",
+        pdk_root=str(minimal_ics55_pdk_factory(tmp_path / "pdk")),
+        parameters={},
+    )
+
+    technology_path = Path(
+        json_read(workspace.config[StepEnum.EMIR.value])["technology_file_path"]
+    )
+
+    assert technology_path.name == "ics55_synthetic.tech"
+    assert technology_path.is_file()
+    assert technology_path == Path(builder.__file__).parent / "configs" / technology_path.name
+
+
 def test_emir_technology_override_survives_workspace_refresh(tmp_path, minimal_ics55_pdk_factory):
     fixtures = Path(__file__).resolve().parents[2] / "fixtures"
     technology_path = fixtures / "emir/ics55_synthetic.tech"
