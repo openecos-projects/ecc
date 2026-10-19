@@ -349,7 +349,8 @@ jobs:
     # Bare ubuntu-latest (not the manylinux container): also proves the
     # manylinux-built bundle runs on a current distro.
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # BM64 may wait up to an hour for memory in addition to the flow's hour.
+    timeout-minutes: ${{ matrix.design == 'BM64' && 120 || 60 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -433,6 +434,17 @@ jobs:
       - name: Cache Nix store
         uses: DeterminateSystems/magic-nix-cache-action@v15
 
+      - name: Wait for BM64 memory headroom
+        if: ${{ matrix.design == 'BM64' }}
+        shell: bash
+        # Provisional startup threshold, not a measured peak or an OOM guarantee.
+        run: |
+          python3 .github/scripts/wait-for-memory.py \
+            --minimum-gib 12 \
+            --timeout-seconds 3600 \
+            --poll-seconds 10 \
+            | tee "$RUNNER_TEMP/bm64-memory-preflight.log"
+
       - name: Run design flows
         id: design-flow
         run: |
@@ -464,6 +476,16 @@ jobs:
             --project "$RUNNER_TEMP/e2e/${{ matrix.design }}" \
             --workspace default \
             --output "$RUNNER_TEMP/experience/${{ matrix.design }}"
+
+      - name: Upload BM64 resource evidence
+        if: ${{ always() && matrix.design == 'BM64' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bm64-resource-report-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/bm64-memory-preflight.log
+            ${{ runner.temp }}/e2e/BM64/default/home/flow.json
 
       - name: Upload e2e workspaces on failure
         if: failure()
