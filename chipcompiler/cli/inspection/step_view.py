@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 from chipcompiler.utility.json import json_read
 
-SECTIONS = ("feature", "analysis", "checklist")
+SECTIONS = ("feature", "analysis", "checklist", "outputs")
 
 _HOME_CHECKLIST_PATH = ("home", "checklist.json")
 _MAX_FLATTEN_DEPTH = 3
@@ -380,20 +380,26 @@ def build_step_overview_records(workspace_dir: str, project=None, run_id=None) -
             blocked = (
                 checklist.get("summary", {}).get("blocked", 0) if isinstance(checklist, dict) else 0
             )
-        records.append(
-            {
-                "step": entry.token,
-                "tool": entry.tool,
-                "status": entry.state(),
-                "runtime": entry.runtime(),
-                "peak_memory_mb": entry.peak_memory_mb(),
-                "metrics": metrics,
-                "quality": quality,
-                "checklist": checklist_status,
-                "blocked": blocked,
-                "inspect": disclosure_cmd(f"ecc report step {entry.token}", project, run_id),
-            }
-        )
+        record = {
+            "step": entry.token,
+            "tool": entry.tool,
+            "status": entry.state(),
+            "runtime": entry.runtime(),
+            "peak_memory_mb": entry.peak_memory_mb(),
+            "metrics": metrics,
+            "quality": quality,
+            "checklist": checklist_status,
+            "blocked": blocked,
+            "inspect": disclosure_cmd(f"ecc report step {entry.token}", project, run_id),
+        }
+        if isinstance(entry.flow, dict) and isinstance(entry.flow.get("checklist_status"), dict):
+            checklist_projection = entry.flow["checklist_status"]
+            record.update(
+                checklist_status=checklist_projection.get("status"),
+                checklist_blocked=bool(checklist_projection.get("blocked")),
+                checklist_failed_items=checklist_projection.get("failed_items", []),
+            )
+        records.append(record)
     return records
 
 
@@ -420,7 +426,11 @@ def build_step_detail_records(
         }
     ]
     for section in sections:
-        if section == "feature":
+        if section == "outputs":
+            from chipcompiler.cli.inspection.step_outputs import output_records
+
+            section_records = output_records(workspace_dir, entry.token, entry.state())
+        elif section == "feature":
             section_records = _feature_records(entry, workspace_dir) if entry.directory else []
         elif section == "analysis":
             section_records = _analysis_records(entry, workspace_dir) if entry.directory else []
@@ -484,7 +494,12 @@ def _render_detail_section(records, section: str) -> None:
         return
     for record in section_records:
         kind = record.get("kind")
-        if section == "feature":
+        if section == "outputs":
+            print(
+                f"    {record['role']}: {record['path']}  "
+                f"[{record['availability']}, {record['validity']}]"
+            )
+        elif section == "feature":
             print(f"    {record['key']:44s} {_fmt(record['value'])}")
         elif kind == "summary":
             if section == "analysis":

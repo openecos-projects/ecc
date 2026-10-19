@@ -2,11 +2,13 @@
 
 Fixtures build manifest-only projects (no ecc.toml) through the shared
 ``manifest_stubs`` scaffolding; workspace directories carry the real
-``home/flow.json`` + ``home/params.toml`` pair so inspection derives the
-same fields a registration would write.
+``home/flow.json`` + ``home/params.toml`` pair so inspection validates
+workspace files independently of cached manifest execution fields.
 """
 
 import json
+
+import pytest
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.data.parameter import Parameters, save_parameter
@@ -34,21 +36,6 @@ def _make_workspace(project_dir, name, *, state="Success", start="Synthesis", en
     )
 
 
-def _make_partial_workspace(project_dir, name):
-    """A consistent workspace whose ledger mixes Success/Unstart (partial)."""
-    _make_workspace(project_dir, name)
-    (project_dir / name / "home" / "flow.json").write_text(
-        json.dumps(
-            {
-                "steps": [
-                    {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-                    {"name": "Floorplan", "tool": "ecc", "state": "Unstart"},
-                ]
-            }
-        )
-    )
-
-
 def _run_doctor(project_dir, *extra):
     return cli_main.run(["project", "doctor", "--project", str(project_dir), "--plain", *extra])
 
@@ -58,6 +45,26 @@ def _manifest(project_dir):
 
 
 class TestProjectDoctorReport:
+    @pytest.mark.parametrize("extra", [(), ("--fix",)])
+    def test_cached_execution_fields_do_not_require_manifest_repair(
+        self, tmp_path, capsys, manifest_stubs, plain_records, extra
+    ):
+        project_dir = tmp_path / "gcd"
+        _make_workspace(project_dir, "ws_0004")
+        entry = {
+            **manifest_stubs.entry(project_dir, "ws_0004", status="not_started"),
+            "start_step": "Place",
+            "parameter_patch": {"frequency_max": {"from": 100, "to": 125}},
+        }
+        manifest_stubs.write(project_dir, [entry])
+        before = (project_dir / "project.json").read_bytes()
+
+        assert _run_doctor(project_dir, *extra) == 0
+        assert plain_records(capsys.readouterr().out) == [
+            {"doctor": "project", "status": "ok", "checked": "1", "inconsistent": "0"}
+        ]
+        assert (project_dir / "project.json").read_bytes() == before
+
     def test_consistent_project_passes_and_writes_nothing(
         self, tmp_path, capsys, manifest_stubs, plain_records
     ):
@@ -72,39 +79,6 @@ class TestProjectDoctorReport:
         assert plain_records(capsys.readouterr().out) == [
             {"doctor": "project", "status": "ok", "checked": "1", "inconsistent": "0"}
         ]
-        assert (project_dir / "project.json").read_bytes() == before
-
-    def test_derived_field_mismatch_is_reported_without_writes(
-        self, tmp_path, capsys, manifest_stubs, plain_records
-    ):
-        project_dir = tmp_path / "gcd"
-        _make_workspace(project_dir, "ws_0001")
-        entry = {
-            **manifest_stubs.entry(project_dir, "ws_0001", status="failed"),
-            "start_step": "Place",
-            "parameter_patch": {"frequency_max": {"from": 100, "to": 125}},
-        }
-        manifest_stubs.write(project_dir, [entry])
-        before = (project_dir / "project.json").read_bytes()
-
-        rc = _run_doctor(project_dir)
-
-        records = plain_records(capsys.readouterr().out)
-        assert rc == 1
-        assert records[0] == {
-            "doctor": "project",
-            "status": "failed",
-            "checked": "1",
-            "inconsistent": "1",
-        }
-        finding = records[1]
-        assert finding["check"] == "derived-field-mismatch"
-        assert finding["status"] == "fail"
-        assert finding["workspace_id"] == "ws_0001"
-        assert finding["workspace"] == str(project_dir / "ws_0001")
-        for field in ("start_step", "status", "parameter_patch"):
-            assert field in finding["detail"]
-        assert finding["remediation"] == f"ecc project doctor --fix --project {project_dir}"
         assert (project_dir / "project.json").read_bytes() == before
 
     def test_missing_directory_is_reported(self, tmp_path, capsys, manifest_stubs, plain_records):
@@ -154,10 +128,10 @@ class TestProjectDoctorReport:
 
         records = plain_records(capsys.readouterr().out)
         assert rc == 1
-        assert records[1]["check"] == "derived-field-mismatch"
+        assert records[1]["check"] == "invalid-workspace"
         assert "workspace facts unreadable" in records[1]["detail"]
 
-    def test_archived_entry_skips_derived_fields_but_not_existence(
+    def test_archived_entry_keeps_lifecycle_but_checks_existence(
         self, tmp_path, capsys, manifest_stubs, plain_records
     ):
         project_dir = tmp_path / "gcd"
@@ -176,7 +150,7 @@ class TestProjectDoctorReport:
         assert [r["check"] for r in records[1:]] == ["missing-directory"]
         assert records[1]["workspace_id"] == "ghost"
 
-    def test_running_entry_skips_derived_fields_but_not_existence(
+    def test_cached_running_entry_still_checks_existence(
         self, tmp_path, capsys, manifest_stubs, plain_records
     ):
         project_dir = tmp_path / "gcd"
@@ -196,49 +170,25 @@ class TestProjectDoctorReport:
         assert [r["check"] for r in records[1:]] == ["missing-directory"]
         assert records[1]["workspace_id"] == "ghost"
 
-    def test_failed_entry_with_ongoing_ledger_is_consistent(
-        self, tmp_path, capsys, manifest_stubs, plain_records
+    def test_stale_runtime_entry_does_not_hide_unreadable_workspace(
+        self, tmp_path, capsys, manifest_stubs, plain_records, monkeypatch
     ):
-        # A fatal completion-commit failure rolls steps back to Ongoing while
-        # the terminal write-back records failed: not an inconsistency.
         project_dir = tmp_path / "gcd"
-        _make_workspace(project_dir, "ws_0001", state="Ongoing")
+        (project_dir / "ws_0001").mkdir(parents=True)
+        entry = manifest_stubs.entry(project_dir, "ws_0001")
         manifest_stubs.write(
-            project_dir, [manifest_stubs.entry(project_dir, "ws_0001", status="failed")]
+            project_dir,
+            [entry],
+            runtime_processes={"ws_0001": {"run_id": "stale"}},
+        )
+        monkeypatch.setattr(
+            "chipcompiler.project.runtime_processes.identity_is_live",
+            lambda _entry: False,
         )
 
-        rc = _run_doctor(project_dir)
-
-        assert rc == 0
-        assert plain_records(capsys.readouterr().out)[0]["status"] == "ok"
-
-    def test_success_entry_with_partial_ledger_is_consistent(
-        self, tmp_path, capsys, manifest_stubs, plain_records
-    ):
-        # A deliberate single-step/bounded run leaves a partial ledger next
-        # to a success entry: not an inconsistency.
-        project_dir = tmp_path / "gcd"
-        _make_partial_workspace(project_dir, "ws_0001")
-        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
-
-        rc = _run_doctor(project_dir)
-
-        assert rc == 0
-        assert plain_records(capsys.readouterr().out)[0]["status"] == "ok"
-
-    def test_success_entry_with_failed_ledger_is_flagged(
-        self, tmp_path, capsys, manifest_stubs, plain_records
-    ):
-        project_dir = tmp_path / "gcd"
-        _make_workspace(project_dir, "ws_0001", state="Incomplete")
-        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
-
-        rc = _run_doctor(project_dir)
-
+        assert _run_doctor(project_dir) == 1
         records = plain_records(capsys.readouterr().out)
-        assert rc == 1
-        assert records[1]["check"] == "derived-field-mismatch"
-        assert "status" in records[1]["detail"]
+        assert records[1]["check"] == "invalid-workspace"
 
     def test_project_without_manifest_is_an_error(
         self, tmp_path, capsys, create_cli_project, plain_records
@@ -252,66 +202,6 @@ class TestProjectDoctorReport:
 
 
 class TestProjectDoctorFix:
-    def test_fix_rebuilds_derived_fields_from_directory_facts(
-        self, tmp_path, capsys, manifest_stubs, plain_records
-    ):
-        project_dir = tmp_path / "gcd"
-        _make_workspace(project_dir, "ws_0001")
-        entry = {
-            **manifest_stubs.entry(project_dir, "ws_0001", status="failed"),
-            "start_step": "Place",
-            "parameter_patch": {"frequency_max": {"from": 100, "to": 125}},
-            "source_workspace_id": "ws_0000",
-        }
-        manifest_stubs.write(project_dir, [entry])
-
-        rc = _run_doctor(project_dir, "--fix")
-
-        records = plain_records(capsys.readouterr().out)
-        assert rc == 0
-        assert records[0] == {
-            "doctor": "project",
-            "status": "fixed",
-            "checked": "1",
-            "inconsistent": "1",
-            "fixed": "1",
-        }
-        assert records[1]["check"] == "derived-field-mismatch"
-        assert records[1]["fix"] == "rebuilt"
-        (repaired,) = _manifest(project_dir)["workspaces"]
-        assert repaired["start_step"] == "Synth"
-        assert repaired["end_step"] == "Harden"
-        assert repaired["status"] == "success"
-        assert repaired["parameter_patch"] == {}
-        # Lineage is never rewritten by a derived-field repair.
-        assert repaired["source_workspace_id"] == "ws_0000"
-
-        capsys.readouterr()
-        assert _run_doctor(project_dir) == 0
-        assert plain_records(capsys.readouterr().out)[0]["status"] == "ok"
-
-    def test_fix_maps_partial_ledger_to_in_progress(
-        self, tmp_path, capsys, manifest_stubs, plain_records
-    ):
-        project_dir = tmp_path / "gcd"
-        _make_partial_workspace(project_dir, "ws_0001")
-        manifest_stubs.write(
-            project_dir, [manifest_stubs.entry(project_dir, "ws_0001", status="not_started")]
-        )
-
-        rc = _run_doctor(project_dir, "--fix")
-
-        records = plain_records(capsys.readouterr().out)
-        assert rc == 0
-        assert records[1]["check"] == "derived-field-mismatch"
-        assert "status" in records[1]["detail"]
-        assert records[1]["fix"] == "rebuilt"
-        (repaired,) = _manifest(project_dir)["workspaces"]
-        assert repaired["status"] == "in_progress"
-
-        capsys.readouterr()
-        assert _run_doctor(project_dir) == 0
-
     def test_fix_removes_missing_directory_entry_and_nulls_references(
         self, tmp_path, capsys, manifest_stubs, plain_records
     ):
@@ -367,19 +257,22 @@ class TestProjectDoctorFix:
         assert _run_doctor(project_dir) == 0
         assert plain_records(capsys.readouterr().out)[0]["status"] == "ok"
 
-    def test_fix_removes_uninspectable_directory_entry(
+    def test_fix_preserves_uninspectable_workspace_registration(
         self, tmp_path, capsys, manifest_stubs, plain_records
     ):
         project_dir = tmp_path / "gcd"
         (project_dir / "ws_0001").mkdir(parents=True)
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
+        before = (project_dir / "project.json").read_bytes()
 
         rc = _run_doctor(project_dir, "--fix")
 
         records = plain_records(capsys.readouterr().out)
-        assert rc == 0
-        assert records[1]["fix"] == "removed"
-        assert _manifest(project_dir)["workspaces"] == []
+        assert rc == 1
+        assert records[1]["check"] == "invalid-workspace"
+        assert records[1]["fix"] == "failed"
+        assert "restore the workspace files" in records[1]["fix_detail"]
+        assert (project_dir / "project.json").read_bytes() == before
 
     def test_fix_on_consistent_project_changes_nothing(
         self, tmp_path, capsys, manifest_stubs, plain_records

@@ -172,6 +172,26 @@ def test_failed_synthesis_lec_is_persisted_as_incomplete(monkeypatch, tmp_path):
     assert workspace.flow.data["steps"][0]["state"] == StateEnum.Imcomplete.value
 
 
+def test_step_execution_exception_is_persisted_as_incomplete(monkeypatch, tmp_path):
+    workspace = Workspace(directory=tmp_path)
+    workspace.flow.path = tmp_path / "flow.json"
+    workspace.flow.data = {"steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]}
+    workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
+    workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    engine_flow = EngineFlow(workspace)
+    engine_flow.workspace_steps = [workspace_step]
+    engine_flow.engine_db = SimpleNamespace(engine=None)
+
+    monkeypatch.setattr(
+        flow_module,
+        "execute_tool_step",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("worker crashed")),
+    )
+
+    assert engine_flow.run_step(workspace_step) is StateEnum.Imcomplete
+    assert workspace.flow.data["steps"][0]["state"] == StateEnum.Imcomplete.value
+
+
 def test_run_steps_stops_after_synthesis_lec_failure(monkeypatch, tmp_path):
     workspace = Workspace(directory=tmp_path)
     workspace.flow.data = {
@@ -272,15 +292,14 @@ def test_check_step_result_harden_reads_ecc_only_lef_lib(tmp_path):
     assert EngineFlow(Workspace()).check_step_result(step_missing) is False
 
 
-def test_check_step_result_default_requires_def_verilog_gds(tmp_path):
-    for name in ("gcd.def", "gcd.v", "gcd.gds"):
+def test_check_step_result_default_requires_def_verilog(tmp_path):
+    for name in ("gcd.def", "gcd.v"):
         (tmp_path / name).write_text("")
     step = EccStep(
         name=StepEnum.PLACEMENT.value,
         output=EccOutput(
             def_=tmp_path / "gcd.def",
             verilog=tmp_path / "gcd.v",
-            gds=tmp_path / "gcd.gds",
         ),
     )
     assert EngineFlow(Workspace()).check_step_result(step) is True
@@ -397,6 +416,70 @@ def test_create_step_workspaces_can_preserve_existing_configs(monkeypatch, tmp_p
     flow.create_step_workspaces(initialize_config=False)
 
     assert initialize_config_values == [False]
+
+
+def test_checker_step_uses_latest_pnr_input(monkeypatch, tmp_path):
+    import chipcompiler.tools as tools_api
+    from chipcompiler.data import OriginDesign
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    inputs = []
+    outputs = {
+        "route": EccOutput(def_=tmp_path / "route.def", verilog=tmp_path / "route.v"),
+        "filler": EccOutput(def_=tmp_path / "filler.def", verilog=tmp_path / "filler.v"),
+    }
+
+    def fake_create_step(workspace, step, eda, **kwargs):
+        inputs.append((step, kwargs["input_def"], kwargs["input_verilog"]))
+        return EccStep(name=step, tool=eda, output=outputs.get(step, EccOutput()))
+
+    monkeypatch.setattr(tools_api, "create_step", fake_create_step)
+    flow = EngineFlow(workspace)
+    flow.workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc", "category": "PNR"},
+            {"name": "filler", "tool": "ecc", "category": "PNR"},
+            {"name": "drc", "tool": "ecc", "category": "CHECKER"},
+            {"name": "lvs", "tool": "ecc", "category": "CHECKER"},
+        ]
+    }
+
+    flow.create_step_workspaces()
+
+    assert inputs[2:] == [
+        ("drc", outputs["filler"].def_, outputs["filler"].verilog),
+        ("lvs", outputs["filler"].def_, outputs["filler"].verilog),
+    ]
+
+
+def test_checker_step_can_select_explicit_input_step(monkeypatch, tmp_path):
+    import chipcompiler.tools as tools_api
+    from chipcompiler.data import OriginDesign
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    inputs = []
+    outputs = {
+        "route": EccOutput(def_=tmp_path / "route.def", verilog=tmp_path / "route.v"),
+        "filler": EccOutput(def_=tmp_path / "filler.def", verilog=tmp_path / "filler.v"),
+    }
+
+    def fake_create_step(workspace, step, eda, **kwargs):
+        inputs.append((step, kwargs["input_def"]))
+        return EccStep(name=step, tool=eda, output=outputs.get(step, EccOutput()))
+
+    monkeypatch.setattr(tools_api, "create_step", fake_create_step)
+    flow = EngineFlow(workspace)
+    flow.workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc", "category": "PNR"},
+            {"name": "filler", "tool": "ecc", "category": "PNR"},
+            {"name": "drc", "tool": "ecc", "category": "CHECKER", "input_step": "route"},
+        ]
+    }
+
+    flow.create_step_workspaces()
+
+    assert inputs[-1] == ("drc", outputs["route"].def_)
 
 
 # --- Phase 2: Silent failure regression tests ---
@@ -981,7 +1064,8 @@ class TestMandatoryArtifactFailure:
         state = engine_flow.run_step(ws_step)
         assert state == StateEnum.Imcomplete
 
-    def test_floorplan_missing_gds_gives_incomplete(self, monkeypatch, tmp_path):
+    def test_floorplan_missing_gds_succeeds(self, monkeypatch, tmp_path):
+        (tmp_path / "home").mkdir()
         workspace = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
         workspace.flow.data = {"steps": [{"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"}]}
@@ -998,11 +1082,14 @@ class TestMandatoryArtifactFailure:
         (tmp_path / "gcd.def").write_text("")
         (tmp_path / "gcd.v").write_text("")
         engine_flow.workspace_steps = [ws_step]
+        engine_flow.engine_db = SimpleNamespace(engine=None)
 
         monkeypatch.setattr("chipcompiler.tools.run_step", lambda **kw: True)
+        monkeypatch.setattr("chipcompiler.tools.save_layout_image", lambda **kw: True)
+        monkeypatch.setattr("chipcompiler.tools.build_step_metrics", lambda **kw: None)
 
         state = engine_flow.run_step(ws_step)
-        assert state == StateEnum.Imcomplete
+        assert state == StateEnum.Success
 
     def test_exception_with_partial_output_gives_incomplete(self, monkeypatch, tmp_path):
         workspace = Workspace(directory=tmp_path)

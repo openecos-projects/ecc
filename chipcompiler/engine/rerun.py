@@ -119,11 +119,10 @@ def run_only(flow: "EngineFlow", name: str, *, force: bool = False) -> StepRunRe
     if not force and is_finished_step_state(steps[index].get("state")):
         return StepRunResult(ok=True, executed=())
     _require_steps_available(flow, index)
-    # ``diff_opt`` is the canonical selector for an older persisted
-    # ``diff_buffering`` ledger.  Resolve the index first, then use the raw
-    # persisted name to obtain its workspace step and output directory.
-    persisted_name = steps[index]["name"]
-    workspace_step = flow.get_workspace_step(persisted_name)
+    # Selectors accept CLI aliases and case-insensitive spellings. Resolve the
+    # actual WorkspaceStep through the persisted canonical name, not the raw
+    # selector, including ``diff_opt`` for a legacy ``diff_buffering`` ledger.
+    workspace_step = flow.get_workspace_step(steps[index]["name"])
     (output_dir,) = _validated_output_dirs(flow.workspace, [workspace_step])
     _invalidate_suffix(flow, index)
     return _run_selected(flow, [(workspace_step, output_dir)])
@@ -182,6 +181,7 @@ def _invalidate_suffix(flow: "EngineFlow", index: int, last_index: int | None = 
         step["state"] = StateEnum.Unstart.value
         step["runtime"] = ""
         step["peak memory (mb)"] = 0
+        step.pop("resource_observation", None)
     if not flow.save():
         raise ValueError("failed to persist step invalidation; refusing to modify outputs")
 

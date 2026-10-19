@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 
 from chipcompiler.data import (
+    ADVISORY_FLOW_STEPS,
     Checklist,
     SkippableStepEnum,
     StateEnum,
@@ -18,11 +19,15 @@ from chipcompiler.data import (
 )
 from chipcompiler.data.step import STEP_DIRECTORIES, all_step_directories, flow_step_directory
 from chipcompiler.tools.ecc.lec_gates import (
+    latest_pnr_output as _latest_pnr_output,
+)
+from chipcompiler.tools.ecc.lec_gates import (
     post_route_lec_netlists as _post_route_lec_netlists,
 )
 from chipcompiler.tools.ecc.lec_gates import (
     requires_post_route_lec as _requires_post_route_lec,
 )
+from chipcompiler.tools.ecc.power_artifacts import power_step_path
 from chipcompiler.tools.ecc.sta_qor import (
     STA_QOR_SUMMARY_FILENAME,
     STA_REPORT_FILENAMES,
@@ -266,7 +271,11 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
         artifacts = (
             ("def", "LVS DEF", getattr(step.output, "def_", None)),
             ("verilog", "LVS Verilog", getattr(step.output, "verilog", None)),
-            ("gds", "LVS GDS", getattr(step.output, "gds", None)),
+            (
+                "gds",
+                "LVS source GDS",
+                _latest_pnr_output(workspace, ".gds") or getattr(step.output, "gds", None),
+            ),
             ("report", "LVS report", getattr(step.report, "step", None)),
             ("json", "LVS JSON", getattr(step.feature, "step", None)),
         )
@@ -297,6 +306,27 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
                 evidence=[
                     {"kind": "output", "path": _path_text(workspace, path)} for path in files
                 ],
+            )
+        ]
+    elif step.name == StepEnum.POWER_ANALYSIS.value:
+        artifact = power_step_path(step.feature.dir)
+        state, summary = _file_state(artifact)
+        return [
+            _item(
+                item_id="artifact.poweranalysis.step",
+                step=step.name,
+                category="artifact",
+                owner="checklist",
+                policy="block",
+                state=state,
+                title="Power analysis step data",
+                summary=(
+                    "Merged power summary is present and non-empty."
+                    if state == "pass"
+                    else "Merged power summary is missing or empty."
+                ),
+                source={"kind": "feature", "path": _path_text(workspace, artifact)},
+                evidence=[{"kind": "feature", "path": _path_text(workspace, artifact)}],
             )
         ]
     elif step.name == StepEnum.STA.value:
@@ -501,6 +531,8 @@ def refresh_step_checklist(workspace: Workspace, step: WorkspaceStep) -> bool:
     checklist_path.parent.mkdir(parents=True, exist_ok=True)
     checklist = Checklist(checklist_path)
     items = [*_quality_gate_items(workspace, step), *_step_artifact_items(workspace, step)]
+    if step.name in ADVISORY_FLOW_STEPS:
+        items.extend(item for item in _flow_items(workspace) if item["step"] == step.name)
     step.checklist.checklist = checklist.replace(items)
     if getattr(workspace, "directory", None):
         rebuild_home_checklist(workspace)
@@ -515,25 +547,37 @@ def _flow_items(workspace: Workspace) -> list[dict]:
         if isinstance(item.get("name"), str)
     }
     items = []
-    for step in _REQUIRED_FLOW_STEPS:
+    for step in (*_REQUIRED_FLOW_STEPS, *sorted(ADVISORY_FLOW_STEPS)):
+        if step in ADVISORY_FLOW_STEPS and step not in states:
+            continue
         if step == SkippableStepEnum.POST_ROUTE_LEC.value and not _requires_post_route_lec(
             workspace
         ):
             continue
         state = "pass" if states.get(step) == StateEnum.Success.value else "failed"
+        advisory = step in ADVISORY_FLOW_STEPS
         items.append(
             _item(
                 item_id=f"flow.{step.lower()}.completed",
                 step=step,
                 category="flow",
                 owner="checklist",
-                policy="block",
-                state=state,
+                policy="warn" if advisory else "block",
+                state="warning" if advisory else state,
                 title=f"{step} flow completed",
                 summary=(
-                    "Required flow stage completed successfully."
+                    (
+                        "Advisory analysis completed; review its report and coverage. "
+                        "Execution success is not a signoff verdict."
+                        if advisory
+                        else "Required flow stage completed successfully."
+                    )
                     if state == "pass"
-                    else f"Current flow state is {states.get(step) or 'missing'}."
+                    else (
+                        f"Advisory analysis state is {states.get(step) or 'missing'}."
+                        if advisory
+                        else f"Current flow state is {states.get(step) or 'missing'}."
+                    )
                 ),
                 source={"kind": "flow", "path": "home/flow.json", "step": step},
                 evidence=[{"kind": "flow", "path": "home/flow.json", "selector": f"/steps/{step}"}],

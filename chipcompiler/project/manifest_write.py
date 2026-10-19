@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import tempfile
+import uuid
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import UTC, datetime
@@ -145,7 +146,7 @@ def build_project_document(
     project_name = name or os.path.basename(os.path.normpath(project_dir)) or "project"
     return {
         "schema_version": 1,
-        "project_id": f"proj_{_slugify(project_name)}",
+        "project_id": f"proj_{_slugify(project_name)}_{uuid.uuid4().hex[:12]}",
         "name": project_name,
         "design_name": design_name,
         "description": "",
@@ -240,11 +241,11 @@ def update_manifest(project_dir: str, mutator) -> bool:
 
 
 @contextmanager
-def manifest_lock(project_dir: str | Path):
+def manifest_lock(project_dir: str | Path, *, blocking: bool = True):
     from chipcompiler.project.locking import flock_file
 
     yield_lock_path = os.path.join(str(project_dir), ".manifest.lock")
-    with flock_file(yield_lock_path, exclusive=True):
+    with flock_file(yield_lock_path, exclusive=True, blocking=blocking):
         yield
 
 

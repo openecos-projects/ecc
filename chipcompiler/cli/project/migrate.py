@@ -16,13 +16,14 @@ import sys
 
 from typing_extensions import deprecated
 
-from chipcompiler.cli.project.manifest import find_manifest, load_manifest
+from chipcompiler.cli.project.manifest import find_manifest
 from chipcompiler.cli.project.manifest_write import update_manifest
 from chipcompiler.cli.project.migrate_plan import (
     MigrationEntry,
     MigrationPreview,
     build_migration_preview,
     preview_records,
+    read_migration_manifest,
     render_preview,
 )
 
@@ -39,7 +40,12 @@ class _ManifestRebindConflict(ValueError):
     category=None,
 )
 def _append_manifest_entries(
-    project_dir: str, append_set: tuple[dict, ...], keep_ids: set[str]
+    project_dir: str,
+    append_set: tuple[dict, ...],
+    keep_ids: set[str],
+    *,
+    rebind_legacy_paths: bool = False,
+    legacy_source_by_id: dict[str, str] | None = None,
 ) -> bool:
     """Append the planned workspaces to an existing manifest (resume path).
 
@@ -49,6 +55,8 @@ def _append_manifest_entries(
     atomic update."""
 
     def mutate(document: dict) -> None:
+        if rebind_legacy_paths:
+            _normalize_legacy_manifest(document, project_dir)
         workspaces = document.setdefault("workspaces", [])
         known = {
             entry.get("workspace_id"): entry
@@ -64,6 +72,15 @@ def _append_manifest_entries(
                 # writer: silently keeping it would report a migration whose
                 # workspace the manifest does not point at.
                 if existing.get("workspace_path") != planned.get("workspace_path"):
+                    if rebind_legacy_paths and _is_legacy_workspace_path(
+                        project_dir,
+                        existing.get("workspace_path"),
+                        (legacy_source_by_id or {}).get(
+                            planned["workspace_id"], planned["workspace_id"]
+                        ),
+                    ):
+                        existing.update(dict(planned))
+                        continue
                     raise _ManifestRebindConflict(
                         f"workspace {planned['workspace_id']!r} is already registered "
                         f"at {existing.get('workspace_path')!r}, refusing to rebind "
@@ -77,6 +94,42 @@ def _append_manifest_entries(
     except _ManifestRebindConflict as exc:
         logger.warning("manifest registration refused: %s", exc)
         return False
+
+
+def _is_legacy_workspace_path(project_dir: str, workspace_path: object, workspace_id: str) -> bool:
+    if not isinstance(workspace_path, str):
+        return False
+    candidate = (
+        workspace_path
+        if os.path.isabs(workspace_path)
+        else os.path.join(project_dir, workspace_path)
+    )
+    expected = os.path.join(project_dir, "runs", workspace_id)
+    return os.path.realpath(candidate) == os.path.realpath(expected)
+
+
+def _manifest_workspace_path(project_dir: str, workspace_path: object) -> str:
+    if not isinstance(workspace_path, str):
+        return ""
+    candidate = (
+        workspace_path
+        if os.path.isabs(workspace_path)
+        else os.path.join(project_dir, workspace_path)
+    )
+    return os.path.realpath(candidate)
+
+
+def _normalize_legacy_manifest(document: dict, project_dir: str) -> None:
+    """Make a tolerant legacy document valid for the strict loader after moves."""
+    document["schema_version"] = 1
+    document["root_path"] = project_dir
+    document.setdefault("name", os.path.basename(os.path.normpath(project_dir)) or "project")
+    document.setdefault("description", "")
+    document.setdefault("objectives", {})
+    document.setdefault("base_design", {})
+    document.setdefault("mpc", None)
+    document.setdefault("best_workspace", None)
+    document.setdefault("qor_baseline", None)
 
 
 @deprecated(
@@ -277,19 +330,33 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
 
         if migrated:
             registered = False
-            keep_ids = {entry.run_id for entry in migrated}
+            keep_ids = {entry.workspace_id or entry.run_id for entry in migrated}
             if plan.resume:
                 # An already-registered ID bound to a DIFFERENT path is a
                 # collision, not a silent skip: never report a move as
                 # migrated while project.json points that ID elsewhere.
                 id_conflicts = []
-                existing = load_manifest(project_dir)
+                existing = preview.resume_manifest or read_migration_manifest(project_dir)
                 for entry in migrated:
-                    declared = existing.find_workspace(entry.run_id)
-                    if declared is not None and os.path.realpath(
-                        declared.workspace_path
-                    ) != os.path.realpath(entry.target):
-                        id_conflicts.append(entry.run_id)
+                    workspace_id = entry.workspace_id or entry.run_id
+                    declared = next(
+                        (
+                            item
+                            for item in (existing or {}).get("workspaces", [])
+                            if isinstance(item, dict) and item.get("workspace_id") == workspace_id
+                        ),
+                        None,
+                    )
+                    if declared is not None:
+                        declared_path = declared.get("workspace_path")
+                        same_target = _manifest_workspace_path(
+                            project_dir, declared_path
+                        ) == os.path.realpath(entry.target)
+                        legacy_source = _is_legacy_workspace_path(
+                            project_dir, declared_path, entry.run_id
+                        )
+                        if not same_target and not legacy_source:
+                            id_conflicts.append(entry.run_id)
                 if id_conflicts:
                     records.append(
                         {
@@ -301,9 +368,17 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
                         }
                     )
                 else:
-                    registered = _append_manifest_entries(
-                        project_dir, preview.manifest_appends, keep_ids
-                    )
+                    if existing is not None:
+                        registered = _append_manifest_entries(
+                            project_dir,
+                            preview.manifest_appends,
+                            keep_ids,
+                            rebind_legacy_paths=True,
+                            legacy_source_by_id={
+                                entry.workspace_id or entry.run_id: entry.run_id
+                                for entry in migrated
+                            },
+                        )
                     if not registered:
                         records.append(
                             {
@@ -422,22 +497,79 @@ def _migrate_project_impl(command_input, ctx):
     has_manifest = find_manifest(project_dir) is not None
     has_legacy = has_legacy_runs_layout(project_dir)
 
+    migration_records: list[dict] = []
     if has_manifest:
         # Validate the existing manifest semantically before reporting any
         # outcome — a malformed winner must fail loud, whether it is about
         # to be resumed into or reported as already migrated.
         from chipcompiler.cli.project.manifest import ManifestError, load_manifest
 
+        manifest = None
         try:
-            load_manifest(project_dir)
+            manifest = load_manifest(project_dir)
         except ManifestError as exc:
-            return CommandResult.err(
-                [{"kind": "error", "error": "manifest_invalid", "reason": str(exc)}]
+            if not has_legacy:
+                return CommandResult.err(
+                    [{"kind": "error", "error": "manifest_invalid", "reason": str(exc)}]
+                )
+            try:
+                legacy_manifest = read_migration_manifest(project_dir)
+            except ValueError as legacy_exc:
+                return CommandResult.err(
+                    [
+                        {
+                            "kind": "error",
+                            "error": "manifest_invalid",
+                            "reason": str(legacy_exc),
+                        }
+                    ]
+                )
+            if not isinstance(legacy_manifest, dict) or not legacy_manifest.get("design_name"):
+                return CommandResult.err(
+                    [
+                        {
+                            "kind": "error",
+                            "error": "manifest_invalid",
+                            "reason": "legacy project manifest requires design_name",
+                        }
+                    ]
+                )
+
+        if manifest is not None:
+            # Older GUI-created manifest projects may predate ecc.toml or its
+            # project identity tables. Keep the compatibility write inside the
+            # explicit ECC migration command; the GUI remains a read-only
+            # detector and never synthesizes ECC configuration itself.
+            from chipcompiler.cli.project.config_migration import (
+                ConfigMigrationError,
+                repair_manifest_project_config,
             )
+
+            try:
+                repaired = repair_manifest_project_config(project_dir, manifest)
+            except ConfigMigrationError as exc:
+                return CommandResult.err(
+                    [
+                        {
+                            "kind": "error",
+                            "error": "config_migration_failed",
+                            "reason": str(exc),
+                        }
+                    ]
+                )
+            if repaired:
+                migration_records.append(
+                    {
+                        "status": "config_repaired",
+                        "project": project_dir,
+                        "fields": list(repaired),
+                    }
+                )
 
     if has_manifest and not has_legacy:
         return CommandResult.ok(
-            [
+            migration_records
+            + [
                 {
                     "status": "already_migrated",
                     "project": project_dir,
@@ -546,4 +678,6 @@ def _migrate_project_impl(command_input, ctx):
         render_preview(preview)
 
     records, exit_code = execute_migration(project_dir, preview)
-    return CommandResult(records=tuple(plan_records + records), exit_code=exit_code)
+    return CommandResult(
+        records=tuple(migration_records + plan_records + records), exit_code=exit_code
+    )

@@ -609,6 +609,59 @@ def test_home_checklist_flow_completed_tracks_final_harden_state(tmp_path):
     )
 
 
+def test_advisory_flow_checks_are_attention_without_blocking(tmp_path):
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    workspace.flow.data = {
+        "steps": [
+            {
+                "name": StepEnum.ANTENNA_CHECK.value,
+                "tool": "ecc",
+                "state": StateEnum.Imcomplete.value,
+            },
+            {
+                "name": StepEnum.EMIR.value,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+            },
+        ]
+    }
+
+    items = {item["id"]: item for item in _flow_items(workspace)}
+
+    for item_id in ("flow.antennacheck.completed", "flow.emir.completed"):
+        assert items[item_id]["policy"] == "warn"
+        assert items[item_id]["state"] == "warning"
+        assert items[item_id]["blocked"] is False
+
+    workspace.flow.data["steps"][0]["state"] = StateEnum.Success.value
+    workspace.flow.data["steps"][1]["state"] = StateEnum.Success.value
+    items = {item["id"]: item for item in _flow_items(workspace)}
+    assert items["flow.antennacheck.completed"]["state"] == "warning"
+    assert items["flow.emir.completed"]["state"] == "warning"
+
+
+def test_advisory_steps_have_nonblocking_detail_checklists(tmp_path):
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    workspace.flow.data = {
+        "steps": [
+            {"name": name, "tool": "ecc", "state": StateEnum.Imcomplete.value}
+            for name in (StepEnum.ANTENNA_CHECK.value, StepEnum.EMIR.value)
+        ]
+    }
+    for name in (StepEnum.ANTENNA_CHECK.value, StepEnum.EMIR.value):
+        step = WorkspaceStep(name=name, directory=tmp_path / f"{name}_ecc")
+        assert refresh_step_checklist(workspace, step) is True
+        assert len(step.checklist.checklist) == 1
+        assert step.checklist.checklist[0]["state"] == "warning"
+        assert step.checklist.checklist[0]["blocked"] is False
+
+
+def test_legacy_flows_do_not_gain_uncommitted_advisory_checks(tmp_path):
+    workspace = Workspace(directory=tmp_path)
+    workspace.flow.data = {"steps": []}
+    assert not any(item["step"] in ("antennaCheck", "emir") for item in _flow_items(workspace))
+
+
 def test_home_checklist_uses_origin_golden_when_flow_has_no_synthesis(tmp_path):
     origin = tmp_path / "origin" / "gcd.v"
     origin.parent.mkdir()
@@ -640,6 +693,7 @@ def test_home_checklist_uses_origin_golden_when_flow_has_no_synthesis(tmp_path):
         ]
     }
     workspace.flow.data["steps"][5]["tool"] = "yosys_lec"
+    workspace.flow.data["steps"][5]["input_step"] = "lvs"
 
     items = {item["id"]: item for item in _flow_items(workspace)}
     assert "flow.postroutelec.completed" in items

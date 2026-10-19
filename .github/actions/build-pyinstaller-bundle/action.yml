@@ -86,12 +86,20 @@ runs:
 
         "$SMOKE_DIR/ecc" --help
         "$SMOKE_DIR/ecc" --version
-        "$SMOKE_DIR/ecc" version --json
-        test -x "$SMOKE_DIR/ecc-agent-rpc"
-        test "$SMOKE_DIR/ecc" -ef "$SMOKE_DIR/ecc-agent-rpc"
-        payload='{"jsonrpc":"2.0","method":"rpc.hello","id":1,"params":{"version":1}}'
-        response="$(printf 'Content-Length: %s\r\n\r\n%s' "${#payload}" "$payload" | "$SMOKE_DIR/ecc-agent-rpc")"
-        grep -q 'candidate.rerun' <<<"$response"
+        version_json="$("$SMOKE_DIR/ecc" version --json)"
+        printf '%s\n' "$version_json"
+        grep -q '"cli_contract": 1' <<<"$version_json"
         "$SMOKE_DIR/ecc" doc config --plain > /dev/null
         "$SMOKE_DIR/ecc" doc ug --lang cn --plain > /dev/null
+        "$SMOKE_DIR/ecc" experience --help
+        experience_smoke_root="$(mktemp -d "${RUNNER_TEMP:-/tmp}/ecc-experience-smoke.XXXXXX")"
+        mkdir -p "$experience_smoke_root/project/default/home"
+        printf '%s\n' '' > "$experience_smoke_root/project/ecc.toml"
+        printf '%s\n' '{"steps":[{"name":"Synthesis","tool":"yosys","state":"Success"}]}' \
+          > "$experience_smoke_root/project/default/home/flow.json"
+        python3 packaging/experience_cli_smoke.py \
+          --binary "$SMOKE_DIR/ecc" \
+          --project "$experience_smoke_root/project" \
+          --workspace default \
+          --output "$experience_smoke_root/output"
         test -x "$SMOKE_DIR/_internal/torch/bin/torch_shm_manager"

@@ -132,7 +132,7 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
     assert workspace.directory == workspace_dir.resolve()
     assert isinstance(workspace.directory, Path)
     assert isinstance(workspace.design.origin_verilog, Path)
-    assert isinstance(workspace.design.origin_def, Path)
+    assert workspace.design.origin_def is None
     assert isinstance(workspace.flow.path, Path)
     assert isinstance(workspace.parameters.path, Path)
     assert all(isinstance(path, Path) for path in workspace.config.values())
@@ -143,6 +143,18 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
     cts = json_read(workspace.config[StepEnum.CTS.value])
     assert cts["max_fanout"] == 37
     assert cts["buffer_type"] == workspace.pdk.buffers
+
+    from chipcompiler.engine.workspace_configuration import (
+        build_workspace_configuration_projection,
+    )
+
+    projection = build_workspace_configuration_projection(workspace)
+    assert projection["workspaceSpec"]["inputMode"] == "rtl"
+    assert projection["workspaceSpec"]["inputs"] == [
+        {"inputId": "rtl", "role": "rtl"},
+        {"inputId": "sdc", "role": "sdc"},
+    ]
+    assert projection == build_workspace_configuration_projection(load_workspace(workspace_dir))
 
 
 def test_create_workspace_rejects_existing_non_empty_directory(tmp_path):
@@ -670,7 +682,7 @@ def test_build_flow_for_dynamic_workspace_initializes_step_metadata_files(
         },
     )
 
-    from chipcompiler.runtime.workspace_api import build_flow_for_workspace
+    from chipcompiler.engine.workspace_flow import build_flow_for_workspace
 
     build_flow_for_workspace(workspace)
 
@@ -744,6 +756,66 @@ def test_writable_load_removes_legacy_home_files_but_read_only_load_preserves_th
     assert load_workspace(workspace_dir) is not None
     assert not home_json.exists()
     assert not home_lock.exists()
+
+
+def test_worker_can_hydrate_while_parent_owns_workspace_lock(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    import subprocess
+    import sys
+
+    from chipcompiler.utility.workspace_lock import workspace_lock
+
+    workspace_dir, _workspace = _create_loaded_ics55_workspace(
+        tmp_path, "workspace", minimal_ics55_pdk_factory, default_ics55_parameters
+    )
+    with workspace_lock(workspace_dir):
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; from chipcompiler.data import load_workspace; "
+                "assert load_workspace(sys.argv[1], read_only=True) is not None",
+                str(workspace_dir),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_derived_snapshot_inputs_bind_to_final_workspace(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    from chipcompiler.engine.snapshot import (
+        create_engineering_snapshot,
+        read_engineering_snapshot_from_directory,
+    )
+    from chipcompiler.engine.workspace_derive import derive_workspace
+
+    source, workspace = _create_loaded_ics55_workspace(
+        tmp_path, "workspace", minimal_ics55_pdk_factory, default_ics55_parameters
+    )
+    from chipcompiler.engine.workspace_reset import build_flow_for_workspace
+
+    engine_flow = build_flow_for_workspace(workspace)
+    assert engine_flow.save()
+    create_engineering_snapshot(workspace)
+    original = (source / "home/engineering-snapshot.json").read_bytes()
+    target = tmp_path / "derived"
+
+    derive_workspace(source, target)
+
+    snapshot = read_engineering_snapshot_from_directory(target)
+    inputs = snapshot["workspaceBindings"]["inputs"]
+    assert inputs
+    for path in inputs.values():
+        assert Path(path).is_relative_to(target)
+        assert Path(path).is_file()
+    assert ".staging-" not in json.dumps(snapshot)
+    assert (source / "home/engineering-snapshot.json").read_bytes() == original
 
 
 def test_writable_load_unlinks_legacy_home_symlink_without_following_target(

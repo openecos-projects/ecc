@@ -645,7 +645,7 @@ class TestStepErrors:
 
         assert rc == 1
         assert records[0]["error"] == "invalid_section"
-        assert records[0]["sections"] == "['feature', 'analysis', 'checklist']"
+        assert records[0]["sections"] == "['feature', 'analysis', 'checklist', 'outputs']"
 
     def test_section_requires_step(self, tmp_path, capsys, plain_records):
         create_step_workspace(tmp_path, with_drc=False)

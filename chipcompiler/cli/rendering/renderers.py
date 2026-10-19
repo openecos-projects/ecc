@@ -1,10 +1,13 @@
 import os
+import sys
 from collections.abc import Callable
 from typing import Protocol
 
 from chipcompiler.cli.core.inputs import LogInput
 from chipcompiler.cli.core.invocation import CommandInput
+from chipcompiler.cli.core.line_records import serialize_line_records
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
+from chipcompiler.cli.rendering.compare import render_compare_run_text
 from chipcompiler.cli.rendering.pretty import (
     render_check,
     render_config,
@@ -15,9 +18,11 @@ from chipcompiler.cli.rendering.pretty import (
     render_param_set_text,
     render_param_show_text,
     render_run_summary,
+    render_signoff_check_text,
     render_signoff_inspect_text,
     render_status,
 )
+from chipcompiler.cli.rendering.project_matrix import render_project_plain, render_project_text
 from chipcompiler.cli.rendering.render import render_result
 
 
@@ -94,6 +99,20 @@ def _plain_text(render_text: PlainTextRenderer) -> Callable[..., None]:
         render_text(records)
 
     return renderer
+
+
+def _render_line_records(
+    result: CommandResult,
+    ctx: CommandContext,
+    command_input: CommandInput,
+    *,
+    color: bool,
+) -> None:
+    if result.exit_code != 0:
+        # Narrow-query failures must leave stdout clean (§6.2).
+        render_result(result, OutputMode.PLAIN, file=sys.stderr)
+        return
+    print(serialize_line_records(result.records), end="")
 
 
 def _render_report_step_text(
@@ -213,17 +232,24 @@ def _render_log_plain(
 
 
 RENDERERS: dict[RendererKey, Renderer] = {
+    ("report:project", OutputMode.TEXT): render_project_text,
+    ("report:project", OutputMode.PLAIN): render_project_plain,
+    ("compare:run", OutputMode.TEXT): _pretty(render_compare_run_text),
     ("init", OutputMode.TEXT): _pretty(render_init),
     ("check", OutputMode.TEXT): _pretty(render_check),
     ("run", OutputMode.TEXT): _pretty(render_run_summary),
     ("status", OutputMode.TEXT): _pretty(render_status),
     ("config", OutputMode.TEXT): _pretty(render_config),
     ("param:list", OutputMode.TEXT): _plain_text(render_param_list_text),
+    ("param:catalog", OutputMode.PLAIN): _render_line_records,
+    ("param:workspace:list", OutputMode.PLAIN): _render_line_records,
+    ("flow:list", OutputMode.PLAIN): _render_line_records,
     ("param:show", OutputMode.TEXT): _plain_text(render_param_show_text),
     ("param:set", OutputMode.TEXT): _plain_text(render_param_set_text),
     ("param:unset", OutputMode.TEXT): _plain_text(render_param_set_text),
     ("param:diff", OutputMode.TEXT): _plain_text(render_param_diff_text),
     ("signoff:inspect", OutputMode.TEXT): _plain_text(render_signoff_inspect_text),
+    ("signoff:check", OutputMode.TEXT): _plain_text(render_signoff_check_text),
     ("report:step", OutputMode.TEXT): _render_report_step_text,
     ("log", OutputMode.TEXT): _render_log_text,
     ("log", OutputMode.PLAIN): _render_log_plain,

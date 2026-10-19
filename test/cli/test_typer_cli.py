@@ -23,6 +23,8 @@ def test_root_help_returns_zero_and_lists_commands(capsys):
         "log",
         "config",
         "doctor",
+        "chipview",
+        "gdsview",
         "param",
         "macro",
         "pdk",
@@ -30,11 +32,10 @@ def test_root_help_returns_zero_and_lists_commands(capsys):
         "workspace",
         "signoff",
         "report",
-        "rpc",
     ):
         assert command in out
-    for removed_command in ("metrics", "artifacts", "diagnose"):
-        assert removed_command not in out
+        for removed_command in ("metrics", "artifacts"):
+            assert removed_command not in out
 
 
 def test_root_help_lists_doc_right_after_version(capsys):
@@ -49,7 +50,7 @@ def test_root_help_lists_doc_right_after_version(capsys):
         for line in out.splitlines()
         if (match := re.match(r"^│ (\w[\w-]*)  +\S", line))
     ]
-    assert order[:3] == ["version", "doc", "layout-image"]
+    assert order[:4] == ["version", "doc", "chipview", "gdsview"]
 
 
 def test_root_version_returns_single_line(capsys):
@@ -92,8 +93,17 @@ def test_version_command_returns_json_payload(monkeypatch, capsys):
 
     data = json.loads(capsys.readouterr().out)
     assert rc == 0
-    assert set(data) == {"schema_version", "runtime", "ecc", "dreamplace", "ecc_tools", "tools"}
-    assert data["schema_version"] == 1
+    assert set(data) == {
+        "schema_version",
+        "runtime",
+        "ecc",
+        "dreamplace",
+        "ecc_tools",
+        "cli_contract",
+        "tools",
+    }
+    assert data["schema_version"] == 2
+    assert data["cli_contract"] == 1
     assert data["runtime"] == "ECC CLI"
     assert data["tools"] == {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"}
 
@@ -114,11 +124,12 @@ def test_version_metadata_missing_uses_unknown(monkeypatch, capsys):
     data = json.loads(capsys.readouterr().out)
     assert rc == 0
     assert data == {
-        "schema_version": 1,
+        "schema_version": 2,
         "runtime": "ECC CLI",
         "ecc": "source-fallback",
         "dreamplace": "unknown",
         "ecc_tools": "unknown",
+        "cli_contract": 1,
         "tools": {"yosys": "0.68", "sizer": "unknown", "klayout": "not installed"},
     }
 
@@ -148,7 +159,7 @@ def test_unknown_command_returns_nonzero_without_system_exit(capsys):
     assert "No such command" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("command", ("metrics", "artifacts", "diagnose"))
+@pytest.mark.parametrize("command", ("metrics", "artifacts"))
 def test_removed_commands_return_unknown_command(command, capsys):
     rc = cli_main.run([command])
 
@@ -381,3 +392,40 @@ class TestEdgeCases:
     def test_no_command_returns_nonzero(self, capsys):
         rc = cli_main.run([])
         assert rc == 1
+
+
+def test_flow_list_supports_json_output(capsys):
+    rc = cli_main.run(["flow", "list", "--json"])
+
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert data
+    assert all(record["record"] == "flow_step" for record in data)
+
+
+def test_flow_list_rejects_plain_and_json_together(capsys):
+    rc = cli_main.run(["flow", "list", "--plain", "--json"])
+
+    captured = capsys.readouterr()
+    assert rc != 0
+    assert "cannot be used together" in captured.err
+
+
+def test_flow_show_returns_one_flow_as_json(capsys):
+    rc = cli_main.run(["flow", "show", "rtl2gds", "--json"])
+
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert data
+    assert {record["flow_id"] for record in data} == {"rtl2gds"}
+
+
+def test_flow_validate_returns_validation_records(capsys):
+    rc = cli_main.run(["flow", "validate", "--flow", "rtl2gds", "--json"])
+
+    data = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    assert data[0]["record"] == "flow_validation"
+    assert data[0]["status"] == "valid"
+    assert data[0]["flow_id"] == "rtl2gds"
+    assert data[0]["step_count"] > 0

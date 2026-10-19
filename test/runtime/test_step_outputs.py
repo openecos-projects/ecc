@@ -5,9 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from chipcompiler.data.workspace import Flow
-from chipcompiler.runtime.requests import WorkspaceStepOutputsRequest
-from chipcompiler.runtime.step_outputs import resolve_workspace_step_outputs
-from chipcompiler.runtime.workspace_api import RuntimeApiError, WorkspaceRuntimeApi
+from chipcompiler.engine.step_outputs import resolve_workspace_step_outputs
 
 _STEPS = [
     {"name": "Synthesis", "tool": "yosys", "state": "Success"},
@@ -39,7 +37,7 @@ def test_resolves_every_committed_step_with_builder_owned_paths(tmp_path):
     result = resolve_workspace_step_outputs(workspace)
 
     assert result["design"] == "gcd"
-    assert result["directory"] == str((tmp_path / "ws_0001").resolve())
+    assert result["directory"] == "."
     assert [entry["step"] for entry in result["steps"]] == [
         "Synthesis",
         "preFloorplan",
@@ -89,7 +87,7 @@ def test_sdc_comes_from_the_loaded_workspace(tmp_path):
 
     result = resolve_workspace_step_outputs(workspace)
 
-    assert result["sdc"] == {"path": str(sdc), "exists": True}
+    assert result["sdc"] == {"path": "origin/gcd.sdc", "exists": True}
 
 
 def test_step_filter_selects_one_entry(tmp_path):
@@ -105,39 +103,3 @@ def test_unknown_step_raises(tmp_path):
 
     with pytest.raises(ValueError, match="flow step not found"):
         resolve_workspace_step_outputs(workspace, "Floorplan")
-
-
-def test_handler_loads_workspace_by_directory(monkeypatch, tmp_path):
-    workspace = _workspace(tmp_path / "ws_0001")
-    monkeypatch.setattr(
-        "chipcompiler.runtime.workspace_api._looks_like_old_workspace",
-        lambda directory: True,
-    )
-    monkeypatch.setattr(
-        "chipcompiler.data.load_workspace", lambda directory, read_only=False: workspace
-    )
-    api = WorkspaceRuntimeApi()
-
-    result = api.workspace_step_outputs(
-        WorkspaceStepOutputsRequest(directory=str(tmp_path / "ws_0001"))
-    )
-
-    assert result["design"] == "gcd"
-    assert len(result["steps"]) == len(_STEPS)
-
-
-def test_handler_rejects_unknown_step(monkeypatch, tmp_path):
-    workspace = _workspace(tmp_path / "ws_0001")
-    monkeypatch.setattr(
-        "chipcompiler.runtime.workspace_api._looks_like_old_workspace",
-        lambda directory: True,
-    )
-    monkeypatch.setattr(
-        "chipcompiler.data.load_workspace", lambda directory, read_only=False: workspace
-    )
-    api = WorkspaceRuntimeApi()
-
-    with pytest.raises(RuntimeApiError, match="flow step not found"):
-        api.workspace_step_outputs(
-            WorkspaceStepOutputsRequest(directory=str(tmp_path / "ws_0001"), step="nope")
-        )

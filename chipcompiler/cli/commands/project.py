@@ -4,12 +4,14 @@ import typer
 
 from chipcompiler.cli.command_handlers import inspect as inspect_handlers
 from chipcompiler.cli.command_handlers import project as project_handlers
+from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import (
     CheckInput,
     ConfigInput,
     InitInput,
     LogInput,
     MigrateInput,
+    RtlImportInput,
     RunInput,
     StatusInput,
     output_options,
@@ -17,6 +19,7 @@ from chipcompiler.cli.core.inputs import (
 )
 from chipcompiler.cli.core.invocation import execute_command
 from chipcompiler.cli.core.options import (
+    JsonOption,
     PlainOption,
     ProjectOption,
     WorkspaceOption,
@@ -25,6 +28,7 @@ from chipcompiler.cli.core.options import (
 
 def register_project_commands(app: typer.Typer) -> None:
     app.command("init", help="Create a new ECC project")(init_cmd)
+    app.add_typer(rtl_app, name="rtl")
     app.command("check", help="Validate the current project setup")(check_cmd)
     app.command("run")(run_cmd)
     app.command(
@@ -37,12 +41,53 @@ def register_project_commands(app: typer.Typer) -> None:
     )
 
 
+rtl_app = create_app(help="Import project RTL sources")
+
+
+@rtl_app.command("import")
+def rtl_import_cmd(
+    *,
+    filelist: Annotated[str | None, typer.Option("--filelist")] = None,
+    verilog: Annotated[list[str] | None, typer.Option("--verilog")] = None,
+    project: ProjectOption = None,
+    force: Annotated[bool, typer.Option("--force")] = False,
+    plain: PlainOption = False,
+) -> None:
+    if not filelist and not verilog:
+        raise typer.BadParameter("provide --filelist or at least one --verilog")
+    command_input = RtlImportInput(
+        output=output_options(plain=plain),
+        project=project_options(project),
+        filelist=filelist,
+        verilog=tuple(verilog or ()),
+        force=force,
+    )
+    execute_command("project", command_input, project_handlers.import_rtl)
+
+
 def init_cmd(
     *,
     name: Annotated[str, typer.Argument()],
+    project_name: Annotated[str | None, typer.Option("--project-name")] = None,
+    design_name: Annotated[str | None, typer.Option("--design-name")] = None,
+    mpc_resource_id: Annotated[str | None, typer.Option("--mpc-resource-id")] = None,
+    mpc_display_name: Annotated[str | None, typer.Option("--mpc-display-name")] = None,
+    mpc_version: Annotated[str | None, typer.Option("--mpc-version")] = None,
+    mpc_root: Annotated[str | None, typer.Option("--mpc-root")] = None,
+    mpc_design_index: Annotated[int | None, typer.Option("--mpc-design-index", min=0)] = None,
     plain: PlainOption = False,
 ) -> None:
-    command_input = InitInput(name=name, output=output_options(plain=plain))
+    command_input = InitInput(
+        name=name,
+        output=output_options(plain=plain),
+        project_name=project_name,
+        design_name=design_name,
+        mpc_resource_id=mpc_resource_id,
+        mpc_display_name=mpc_display_name,
+        mpc_version=mpc_version,
+        mpc_root=mpc_root,
+        mpc_design_index=mpc_design_index,
+    )
     execute_command("init", command_input, project_handlers.init)
 
 
@@ -105,6 +150,12 @@ def run_cmd(
             help="Set parameter override (repeatable, e.g. --set place.target_density=0.65)",
         ),
     ] = None,
+    expected_revision: Annotated[int | None, typer.Option("--expected-revision", min=1)] = None,
+    command_id: Annotated[str, typer.Option("--command-id")] = "",
+    no_wait: Annotated[bool, typer.Option("--no-wait")] = False,
+    run_id: Annotated[str, typer.Option("--run-id")] = "",
+    runtime_id: Annotated[str, typer.Option("--runtime-id")] = "",
+    log_file: Annotated[str, typer.Option("--log-file")] = "",
     plain: PlainOption = False,
 ) -> None:
     """Run the configured RTL-to-GDS flow.
@@ -135,6 +186,12 @@ def run_cmd(
         only=only,
         force=force,
         preset=preset,
+        expected_revision=expected_revision,
+        command_id=command_id,
+        no_wait=no_wait,
+        run_id=run_id,
+        runtime_id=runtime_id,
+        log_file=log_file,
     )
     execute_command("run", command_input, project_handlers.run)
 
@@ -144,9 +201,10 @@ def status_cmd(
     project: ProjectOption = None,
     plain: PlainOption = False,
     workspace: WorkspaceOption = None,
+    json_output: JsonOption = False,
 ) -> None:
     command_input = StatusInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         workspace=workspace,
     )
@@ -192,6 +250,7 @@ def config_cmd(
     project: ProjectOption = None,
     plain: PlainOption = False,
     workspace: WorkspaceOption = None,
+    json_output: JsonOption = False,
 ) -> None:
     """Show resolved project or step configuration.
 
@@ -203,7 +262,7 @@ def config_cmd(
     See 'ecc doc config' for the full reference.
     """
     command_input = ConfigInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         step=step,
         workspace=workspace,

@@ -8,6 +8,11 @@ on:
         required: false
         type: boolean
         default: false
+      run-experience:
+        description: Run the optional experience benchmark and contract checks.
+        required: false
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -16,6 +21,7 @@ on:
     paths:
       - 'chipcompiler/**'
       - 'agent/**'
+      - 'ecc_experience/**'
       - 'test/**'
       - 'ecc.spec'
       - 'packaging/**'
@@ -136,7 +142,7 @@ jobs:
           "${CHIPCOMPILER_KEPLER_FORMAL_ROOT}/bin/kepler-formal" --version
 
       - name: Pytest
-        run: uv run --no-sync pytest test/ -v --basetemp=pytest-tmp --cov=chipcompiler --cov-report=
+        run: uv run --no-sync pytest test/ -v --basetemp=pytest-tmp --cov=chipcompiler --cov=ecc_experience --cov-report=
 
       - name: Pytest (agent)
         run: uv run --no-sync pytest agent/test -v --basetemp=pytest-agent-tmp
@@ -428,6 +434,7 @@ jobs:
         uses: DeterminateSystems/magic-nix-cache-action@v15
 
       - name: Run design flows
+        id: design-flow
         run: |
           emir_params="$(dist/ecc-bundle/ecc param list --step emir --plain \
             --project "designs/${{ matrix.design }}")"
@@ -448,6 +455,16 @@ jobs:
           ECC_FLOW_WORKSPACES="$RUNNER_TEMP/e2e" \
             nix run -L .#signoff-lit -- designs --filter "${{ matrix.design }}"
 
+      - name: Verify packaged experience collection
+        if: ${{ !cancelled() && steps.design-flow.outcome == 'success' && github.event_name == 'workflow_dispatch' && inputs.run-experience }}
+        continue-on-error: true
+        run: |
+          python3 packaging/experience_cli_smoke.py \
+            --binary "$PWD/dist/ecc-bundle/ecc" \
+            --project "$RUNNER_TEMP/e2e/${{ matrix.design }}" \
+            --workspace default \
+            --output "$RUNNER_TEMP/experience/${{ matrix.design }}"
+
       - name: Upload e2e workspaces on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -456,6 +473,58 @@ jobs:
           if-no-files-found: ignore
           path: |
             ${{ runner.temp }}/e2e
+            ${{ runner.temp }}/experience
+
+      - name: Upload real experience matrix observation
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run-experience }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-observation-${{ matrix.design }}
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/experience/${{ matrix.design }}/show.stdout.json
+            ${{ runner.temp }}/experience/${{ matrix.design }}/verify.stdout.json
+            ${{ runner.temp }}/experience/${{ matrix.design }}/features.stdout.json
+
+  experience-design-matrix:
+    name: Aggregate real experience design matrix
+    continue-on-error: true
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run-experience && needs.e2e-designs.result == 'success' }}
+    needs: [e2e-designs, e2e-packaged-flow]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: experience-observation-*
+          path: observations
+
+      - name: Aggregate real observations
+        env:
+          EXPECTED_DESIGNS: ${{ needs.e2e-designs.outputs.designs }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path('observations')
+          for path in root.glob('experience-observation-*'):
+              path.rename(root / path.name.removeprefix('experience-observation-'))
+          PY
+          status=0
+          python3 packaging/experience_matrix_report.py \
+            --inputs observations --expected-designs-json "$EXPECTED_DESIGNS" \
+            --output matrix-report || status=$?
+          if [ "$status" -ne 0 ] && [ "$status" -ne 7 ]; then
+            exit "$status"
+          fi
+          cat matrix-report/matrix-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: experience-design-matrix-report
+          if-no-files-found: error
+          path: matrix-report
 
   lint:
     needs: check-version
@@ -471,10 +540,10 @@ jobs:
         uses: ./.github/actions/setup-python-deps
 
       - name: Ruff format check
-        run: uv run --no-sync ruff format --check chipcompiler test agent
+        run: uv run --no-sync ruff format --check chipcompiler test agent ecc_experience
 
       - name: Ruff lint
-        run: uv run --no-sync ruff check --output-format=github chipcompiler test agent
+        run: uv run --no-sync ruff check --output-format=github chipcompiler test agent ecc_experience
 
       # - name: Pyright
       #   run: uv run pyright chipcompiler

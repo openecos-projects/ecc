@@ -75,7 +75,12 @@ def _make_signoff_workspace(
                 {"name": "drc", "tool": "ecc", "state": StateEnum.Success.value},
                 {"name": "lvs", "tool": "ecc", "state": StateEnum.Success.value},
                 {"name": "filler", "tool": "ecc", "state": StateEnum.Success.value},
-                {"name": "postRouteLec", "tool": "yosys_lec", "state": StateEnum.Success.value},
+                {
+                    "name": "postRouteLec",
+                    "tool": "yosys_lec",
+                    "input_step": "lvs",
+                    "state": StateEnum.Success.value,
+                },
                 {"name": "RCX", "tool": "ecc", "state": StateEnum.Success.value},
                 {"name": "sta", "tool": "ecc", "state": StateEnum.Success.value},
                 {"name": "powerAnalysis", "tool": "ecc", "state": StateEnum.Success.value},

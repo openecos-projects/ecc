@@ -6,6 +6,13 @@ import pytest
 TEST_DIR = Path(__file__).resolve().parent
 
 
+@pytest.fixture(autouse=True)
+def _step_subprocess_disabled(monkeypatch):
+    """Unit tests drive fake flows with in-memory state; keep step execution
+    in process unless a test explicitly enables the worker subprocess."""
+    monkeypatch.setenv("ECC_STEP_SUBPROCESS", "0")
+
+
 def _load_complete_ics55_pdk_available():
     spec = importlib.util.spec_from_file_location("pdk_runtime", TEST_DIR / "pdk_runtime.py")
     if spec is None or spec.loader is None:

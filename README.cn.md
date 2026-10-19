@@ -32,7 +32,7 @@ GUI（ECOS Studio）已迁移至 [ecos-studio](https://github.com/0xharry/ecos-s
 
 ### 安装脚本（推荐）
 
-安装 `ecc` CLI（Linux x86_64，glibc 2.34+，fontconfig）：
+安装 `ecc` CLI（Linux x86_64，glibc 2.34+，fontconfig，libxcb）：
 
 ```sh
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh
@@ -43,6 +43,18 @@ curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | 
 ```sh
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --with-toolchain
 ```
+
+如需最新的 nightly 构建（含 ecc、ecc-sizer、kepler-formal 和 ICS55
+PDK），替代固定的 stable 版本：
+
+```sh
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --nightly
+```
+
+在同一命令中加 `--with-toolchain` 可一并安装 Yosys（OSS CAD Suite）。
+不带 `--nightly` 重跑安装脚本即可切回 stable 版本；用
+`--nightly-tag vX.Y.Z-nightly.YYYYMMDD` 可指定具体的 nightly；可用版本见
+[ecos-installer releases 页面](https://github.com/openecos-projects/ecos-installer/releases)。
 
 wrapper 默认安装到 `~/.local/bin`。如果该目录不在 `PATH` 中，请加入：
 
@@ -170,11 +182,20 @@ ecc run --project gcd --workspace recovered --resume
 | `ecc workspace` | 导入已有 workspace，或从项目配置刷新受管 workspace |
 | `ecc signoff` | 检查签核就绪度并导出签核包 |
 | `ecc report` | 生成设计总结、QoR、签核清单和步骤报告 |
+| `ecc report snapshot` | 将已提交的 Engineering Snapshot 保存为工作区外的新 JSON 文件 |
+| `ecc report project` | 按已有 QoR 分数降序列出全部工作区及 flow、step、checker 状态矩阵 |
+| `ecc compare run` | 只读比较两份保存的 Engineering Snapshot JSON，不启动 EDA |
 | `ecc version` | 显示 ECC 运行时和组件版本 |
-| `ecc layout-image` | 将 GDS 文件渲染为版图图像 |
+| `ecc gdsview` | 打开 workspace 指定 step 的 GDS 版图查看器 |
+| `ecc chipview` | 打开 workspace 指定 step 的 geometry 版图数据 |
 
 项目命令均接受 `--project <dir>`（默认为当前目录）。大多数命令支持
 `--plain` 输出，便于脚本化。
+
+在项目根目录执行时，`--project` 默认当前目录；在工作区根目录执行时，自动识别
+父级项目与当前工作区，显式参数优先。外部工作区无法发现所属项目时，请显式传
+`--project`。参数命令在工作区内默认操作该工作区；要操作项目级参数，请在项目
+根目录执行。详见内置用户指南 `chipcompiler/docs/ecc-user-guide.cn.md` §1.1。
 
 完整指南随 CLI 分发、可离线阅读：`ecc doc ug --lang cn`（用户指南）、
 `ecc doc config --lang cn`（配置参考）、`ecc doc tutorial --lang cn`（从零上手的教程）。

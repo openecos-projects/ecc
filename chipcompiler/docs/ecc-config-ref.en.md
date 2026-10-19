@@ -7,6 +7,13 @@ This document consolidates **the tool configuration files actually used by each 
 
 ## 0. Configuration System Overview
 
+`sta.max_parallel_corners` is an integer from 1 to 4 (default 1). Set it with
+`ecc param set sta.max_parallel_corners 3 --workspace baseline`. Standard config
+refresh writes the value into the STA JSON's `max_parallel_corners`. ECC/Studio's
+Linux runtime treats it as an upper bound and reduces concurrency when memory
+headroom is insufficient; other platforms remain serial. The environment variable
+`ECOS_AGENT_STA_WORKERS` no longer overrides this configuration.
+
 ### 0.1 Where the configuration files live
 
 Each run's workspace has a shared `config/` directory where the JSON configurations of all steps land; **files with the same name are rewritten in place by whichever step runs later** (each step only updates the fields relevant to it):
@@ -31,10 +38,10 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 │   └── macro_location.tcl # macro-placement Tcl handoff (see §1.5; written by macroPlacement or the macro.placements parameter)
 ├── Synthesis_yosys/
 │   └── data/global_var.tcl  # the synthesis step's "config" (Tcl variables, not JSON)
-├── lec_yosys_lec/            # synthesis-level LEC (Tcl-script driven)
+├── lec_kepler_formal/         # synthesis-level LEC (Tcl-script driven)
 ├── timing_optimization_sizer/
 │   └── script/<design>.{env_file,cmd_file}  # generated Sizer configuration
-└── postRouteLec_yosys_lec/  # post-route LEC step (Tcl-script driven)
+└── postRouteLec_kepler_formal/  # post-route LEC step (Tcl-script driven)
 ```
 
 > History: the old `flow_ecc.json` (configuration-path aggregator) and `fixfanout_ecc.json` (high-fanout fixing, a standalone step) were removed along with an ecc-tools update. `cts.max_fanout` now feeds both the auto-generated SDC `set_max_fanout` constraint and CTS's `max_fanout` field.
@@ -114,7 +121,8 @@ Source: `_LEGACY_PARAM_REGISTRY` in [chipcompiler/data/parameter_schema.py](http
 ```bash
 ecc param list --step cts
 ecc param list --step floorplan
-ecc param list --all
+ecc param list --all              # full reviewed schema (pdk.* needs --all --plain in preset projects)
+ecc param list --all --plain      # complete catalog, including the pdk.* path parameters
 ecc param set cts.skew_bound 0.05
 ecc param set floorplan.phy_placer.well_tap.distance_micron 30.0
 ecc param set cts.routing_layer '[4, 5]'
@@ -160,10 +168,11 @@ Parameter inspection and modification go through the `ecc param` subcommands (su
 
 | Command | What it does |
 |---|---|
-| `ecc param list [--step STEP] [--all]` | List parameters. By default only the §1.1 legacy-semantic parameters plus explicitly overridden direct-config parameters are shown; `--step STEP` filters by group/applies to show the full reviewed schema of that step; `--all` shows the entire reviewed schema |
+| `ecc param list [--step STEP] [--all]` | List parameters. By default only the §1.1 legacy-semantic parameters plus explicitly overridden direct-config parameters are shown; `--step STEP` filters by group/applies to show the full reviewed schema of that step; `--all` shows the entire reviewed schema (`pdk.*` parameters only appear with `--all --plain` while a flow preset is configured) |
 | `ecc param show KEY` | Single-parameter detail: current value / default / source / type / range / write target (`maps_to`, `config_target`, `pdk_target`) and description |
 | `ecc param set KEY VALUE` | Validate and write the parameter override (two scopes in the table below); invalid values (out of range, not in choices, wrong type) fail with `invalid_value` and nothing is written |
 | `ecc param unset KEY` | Remove the override and fall back to the default (workspace scope restores the pre-edit `baseline`) |
+| `ecc param apply [--set KEY=VALUE...] [--unset KEY...]` | Atomically apply a batch of set/unset edits (project scope, or one workspace with `--workspace NAME`; in workspace scope `--step STEP` restricts the batch to that step's parameters). A mid-batch validation failure writes nothing |
 | `ecc param diff` | List only parameters that differ from their defaults (workspace scope: local overrides with their `baseline`) |
 
 Options shared by every subcommand:
@@ -173,6 +182,7 @@ Options shared by every subcommand:
 | `--project DIR` | Select the project directory (defaults to the current directory) |
 | `--workspace NAME` | Switch to workspace scope: operate on the named workspace declared in the project.json manifest instead of the project `ecc.toml` |
 | `--plain` | Machine-readable `key=value` output (script-friendly); the default is human-readable text |
+| `--json` | Record-array output — accepted by `list`, `show`, and `diff` only |
 
 Behavior differences between the two scopes:
 
@@ -218,10 +228,10 @@ Shared by all ecc tool steps. At step startup it is used to load LEF/DEF/netlist
 | Field | Example value (during the harden step) | Source | Meaning |
 |---|---|---|---|
 | `INPUT.tech_lef_path` | `…/prtech/techLEF/N551P6M_ecos.lef` | PDK | Process LEF (layer definitions/rules) |
-| `INPUT.lef_paths` | `[H7CR_lef, H7CL_lef]` | PDK | Standard-cell LEFs (abstract views) |
+| `INPUT.lef_paths` | `[H7CR_lef, H7CL_lef, H7CH_lef, IO_lef]` | PDK | Standard-cell and IO LEFs (abstract views) |
 | `INPUT.def_path` | `sta_ecc/output/gcd_sta.def.gz` | rewritten per step | Input DEF (previous step's layout) |
 | `INPUT.verilog_path` | `sta_ecc/output/gcd_sta.v.gz` | rewritten per step | Input gate-level netlist |
-| `INPUT.lib_path` | `[H7CR_ss_rcworst, H7CL_ss_rcworst]` | PDK | Timing libraries (synthesis/equivalence libraries) |
+| `INPUT.lib_path` | H7CR/H7CL/H7CH SS + IO SS | PDK | Shared timing libraries; Yosys synthesis excludes H7CH |
 | `INPUT.sdc_path` | `origin/gcd.sdc` | workspace | Timing constraints (auto-generated or user-provided) |
 | `INPUT.spef` | `""` | PDK/workspace | Pre-set parasitics file (usually empty before RCX) |
 | `OUTPUT.output_dir_path` | `Harden_ecc/output` | rewritten per step | Output directory for this step's artifacts |
@@ -247,8 +257,19 @@ No JSON configuration. Yosys is driven by two Tcl pieces: `script/yosys_synthesi
 | `tie_high_cell/port` | `TIEHIH7R` / `Z` | PDK | Tie-high cell and its output port |
 | `abc_driver_cell` | `BUFX0P5H7L` | PDK | Driver cell assumed by ABC mapping |
 | `abc_load` | `0.015` | PDK | Load capacitance for ABC mapping (pF) |
-| `lib_stdcell_list` / `lib_list` | H7CR/H7CL liberty | PDK | Standard-cell timing libraries |
+| `lib_stdcell_list` | H7CR/H7CL + IO SS | PDK (excluding H7CH) | Libraries passed to ABC, DFF and clockgate mapping; preserves the existing behavior without an additional IO filter |
+| `lib_list` | H7CR/H7CL + IO `ss_1p08_2p97_125c` | PDK / workspace DB | Models loaded by `read_liberty -lib`; IO describes existing instances, while H7CH remains excluded |
 | `tmp_dir` | `Synthesis_yosys/data/tmp` | step scheduling | Intermediate file directory |
+
+The shared ICS55 PDK library list includes
+`ICSIOA_N55_3P3_ss_1p08_2p97_125c.lib` when present in the PDK. CTS, setup
+Sizer and post-synthesis STA also obtain the IO library from this list; final
+STA and hold Sizer still use the corner configuration in §13. The shared LEF
+list also loads the matching `ICSIOA_N55_3P3_1P6M1TM_ecos.lef`; this does not
+insert IO cells. Sizer requires LEF masters for Liberty cells even when the
+design instantiates no IO cells. Existing workspace DB library lists and
+explicit `pdk.libs` / `pdk.lefs` overrides are not extended automatically and
+must be updated separately.
 
 There is also the environment variable `YOSYS_SYNTH_STRATEGY` (e.g. `DELAY 4` / `AREA N` / `BALANCE N`) that steers the synthesis strategy; the default is `DELAY 4` (frequency-first).
 
@@ -593,7 +614,7 @@ also be set in that section without adding top-level ECC parameters.
 
 ## 6. timing optimization (Sizer)
 
-Timing optimization is a multi-stage subflow: first run setup Sizer with `workspace.pdk.libs` (normally MAX/`ss_rcworst`); when `sta_ecc.json` declares a `MIN` corner, run a second Sizer invocation in `-hold_only` mode with that corner's FF Liberty; then legalize the resulting DEF/netlist with DreamPlace and publish the ECC artifacts. `ecc config timing optimization` lists `db_ecc.json`, `sizer_ecc.json`, and `dreamplace_ecc.json`. The ECC-owned Sizer config supplies hold-pass controls, while the generated scripts carry the complete command line.
+Timing optimization is a multi-stage subflow: first run setup Sizer with `workspace.pdk.libs` (normally MAX/`ss_rcworst`); when `sta_ecc.json` declares a `MIN` corner, run a second Sizer invocation in `-hold_only` mode with that corner's FF Liberty; then legalize the resulting DEF/netlist with DreamPlace and publish the ECC artifacts. `ecc config timing_optimization` lists `db_ecc.json`, `sizer_ecc.json`, and `dreamplace_ecc.json`. The ECC-owned Sizer config supplies hold-pass controls, while the generated scripts carry the complete command line.
 
 The final inner DreamPlace legalization uses `legalize_flag=1` and `detailed_place_flag=0` to protect the repaired hold timing.
 
@@ -701,11 +722,21 @@ Configuration file `sta_ecc.json`, made of two parts: `liberty` (corner → libe
 | Field | Example (gcd@ics55) | Meaning |
 |---|---|---|
 | `liberty[].corner` | `MAX` / `WCL` / `TYP` / `MIN` / `ML` | Timing corner type (slow / worst-cold / typical / fast / fast-hot library groups) |
-| `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | Corresponding junction temperature (°C), aligned with SPEF temperature points |
-| `liberty[].path` | H7CR+H7CL liberty ×2 | Liberty files for this corner (PDK-relative paths auto-expanded) |
+| `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | Standard-cell group temperature (°C), used to select the SPEF; does not override IO library characterization temperatures |
+| `liberty[].path` | H7CR + H7CL + H7CH + IO | Liberty files for this corner (PDK-relative paths auto-expanded) |
 | `signoff[0]` | MAX:[Cworst,RCworst]; WCL:[Cworst,RCworst]; TYP:[TYPICAL]; MIN/ML:[Cworst,RCworst,Cbest,RCbest] | "liberty corner × RC corner" combinations to run for signoff — 13 analysis corners in total |
 
 ics55 corner naming: `Cworst/Cbest` = worst/best capacitance; `RCworst/RCbest` = worst/best for both R and C; `TYPICAL` = typical.
+
+Default IO libraries use only three characterizations: MAX/WCL use
+`ss_1p08_2p97_125c`, TYP uses `tt_1p2_3p3_25c`, and MIN/ML both use
+`ff_1p32_3p63v_0c`. These libraries are under
+`IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/` in the PDK. This restriction
+applies only to IO; standard-cell libraries, SPEF temperatures and the 13 analysis
+corners remain unchanged. For example, MIN still uses -40°C standard-cell
+libraries alongside the 0°C IO library. Explicit project or workspace
+`sta.liberty` overrides replace the entire default list and are not migrated
+automatically; update their IO library paths separately.
 
 For each corner, ecc-tools splits the reports by path type (`sta_ecc/report/<lib_corner>_<temp>/<RCcorner>/`):
 
@@ -736,7 +767,8 @@ Every field is set the same way — `ecc param set KEY VALUE` — so each step b
 The DEF, netlist, and output paths in `db_ecc.json` are generated by step scheduling and cannot be set with the CLI. The following PDK/design resource paths populate their corresponding db fields:
 
 ```bash
-ecc param list --step pdk
+ecc param list --all --plain   # pdk is a config owner, not a flow step: --step pdk lists nothing
+ecc param show pdk.tech
 ecc param set pdk.tech VALUE   # likewise pdk.lefs, pdk.libs, pdk.mapping_file, pdk.sdc, pdk.spef
 ```
 
@@ -831,7 +863,9 @@ ecc param set rcx.thread_num VALUE
 
 ### 15.10 sta
 
-`liberty` is refreshed from the PDK and cannot be overridden locally through STA parameters. The STA JSON signoff corners and runtime maximum path count are configurable:
+`liberty` defaults to the PDK-provided corner list and is rarely changed; when it must be,
+`sta.liberty` accepts a JSON literal (corner/temperature/path entries) via `ecc param set`.
+The STA JSON signoff corners and runtime maximum path count are configurable:
 
 ```bash
 ecc param list --step sta
@@ -846,10 +880,11 @@ harden has no dedicated `ecc param` schema; it only reuses workflow-generated `d
 ## 16. Configuration inspection and modification cheat sheet
 
 ```bash
-ecc config floorplan          # list the config files floorplan actually uses
+ecc config pre_floorplan     # list the config files the floorplan stages actually use
 ecc config --plain            # project-level config (ecc.toml after resolution)
 ecc param list --step cts                 # list all tunable CTS fields
-ecc param list --all                      # show the full reviewed schema
+ecc param list --all                      # show the full reviewed schema (--all --plain also lists pdk.*)
+ecc param apply --set k=v --unset k2      # atomically apply a batch of parameter edits
 ecc param show KEY / diff                 # single parameter / diff against defaults
 ecc param set place.target_density 0.55  # change a parameter (written to ecc.toml; applies when a workspace is next created)
 ecc param set cts.skew_bound 0.05         # set a CTS JSON field directly
