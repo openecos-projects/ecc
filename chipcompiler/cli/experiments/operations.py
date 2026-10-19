@@ -237,6 +237,8 @@ def read_package(package: Path) -> Iterator[tuple[tarfile.TarFile, dict[str, Any
             raise ValueError("package does not contain manifest.json") from None
         with archive.extractfile(member) as stream:
             manifest = json.load(stream)
+        if not isinstance(manifest, dict):
+            raise ValueError("manifest must be a JSON object")
         yield archive, manifest
 
 
