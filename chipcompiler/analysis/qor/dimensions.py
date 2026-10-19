@@ -9,7 +9,7 @@ coordinates while the scalar projection is vetoed to zero elsewhere.
 from chipcompiler.analysis.qor.calibration import (
     GUARDBAND_FRACTION,
     OVER_PROVISION_FRACTION,
-    TAU_AREA_FAIL,
+    TAU_AREA_HARD_MAX,
     TAU_AREA_MAX,
     TAU_AREA_MIN,
     TAU_I_FAIL,
@@ -92,7 +92,7 @@ def _area(bundle, inputs):
     utilization = inputs.value("core_utilization")
     value = None
     if utilization is not None:
-        value = 100.0 * psi_target(utilization, TAU_AREA_MIN, TAU_AREA_MAX, TAU_AREA_FAIL)
+        value = 100.0 * psi_target(utilization, TAU_AREA_MIN, TAU_AREA_MAX, TAU_AREA_HARD_MAX)
     return QorDimension(
         key="area",
         value=value,

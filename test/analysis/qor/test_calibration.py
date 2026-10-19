@@ -41,8 +41,12 @@ class TestPsiTarget:
         assert psi_target(0.225, 0.45, 0.70, 0.85) == pytest.approx(0.5)
 
     def test_over_allocation_penalized(self):
-        assert psi_target(0.85, 0.45, 0.70, 0.85) == 0.0
+        assert psi_target(0.85, 0.45, 0.70, 1.0) == pytest.approx(0.5)
         assert psi_target(0.775, 0.45, 0.70, 0.85) == pytest.approx(0.5)
+
+    def test_over_allocation_reaches_zero_only_at_hard_upper_bound(self):
+        assert psi_target(0.925, 0.45, 0.70, 1.0) == pytest.approx(0.25)
+        assert psi_target(1.0, 0.45, 0.70, 1.0) == 0.0
 
     def test_strict_positivity_required(self):
         with pytest.raises(CalibrationError):

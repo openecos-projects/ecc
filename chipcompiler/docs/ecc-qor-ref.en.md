@@ -167,10 +167,11 @@ $$
 Two-sided target-interval calibration of the placed core utilization `core_utilization` (under-utilization wastes silicon; over-utilization risks routability):
 
 $$
-Q_A=100\cdot\psi_{target}(U_{core};\;0.45,\;0.70,\;0.85)
+Q_A=100\cdot\psi_{target}(U_{core};\;0.45,\;0.70,\;1.00)
 $$
 
-- U ∈ [0.45, 0.70] scores full marks; U < 0.45 decays as U/0.45; U ∈ (0.70, 0.85] decays as (0.85−U)/0.15 to 0.
+- U ∈ [0.45, 0.70] scores full marks; U < 0.45 decays as U/0.45; U ∈ (0.70, 1.00] decays as (1.00−U)/0.30 to 0. For example, U=0.85 receives 50 points and U=0.925 receives 25 points.
+- The continuous area score is independent from signoff gating. A low or zero Q_A does not by itself make `feasibility.status` `PHYSICAL_FAIL`; MPC minimum/maximum-area checklist gates can still block signoff export when configured.
 - Note this is the **placed** core utilization, not the planning density (synthesis area / core area — that is an early indicator `F_PLAN_DENSITY` and is never scored).
 
 ### 3.4 Q_P — Power Quality
