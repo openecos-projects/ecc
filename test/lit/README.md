@@ -1,35 +1,51 @@
-# Signoff CSV gates
+# Lit suites (CI contracts)
 
-`csv_gates/` is the CI-side signoff gate library: it reads a real flow
-workspace (`home/flow.json`, `home/checklist.json`, `*/analysis/qor_*.json`),
-projects it to CSV tables plus a FileCheck-friendly text projection, evaluates
-the gates declared in a profile YAML, and writes a `run_manifest.json`.
+This tree holds **CI-side** lit suites and libraries. Product readiness remains
+`ecc signoff inspect/export` and ordinary CLI/RPC unit tests under `test/cli`
+and `test/runtime`.
 
-Entry point: `nix/scripts/export-signoff-csv.sh --workspace WS --out-dir DIR
---spec SPEC` (thin wrapper over `csv_gates.cli`).
+## Suites
 
-Status: **v0 / trial** — this is a CI contract, not product signoff truth.
-Product readiness is `ecc signoff inspect/export`.
+| Suite | Path | Runner |
+|-------|------|--------|
+| Signoff CSV gates (library) | `csv_gates/` | used by designs repo / e2e via `nix run .#signoff-lit` |
+| Project scenarios | `project/` | CLI `--project` + RPC stdio Synthesis smoke |
 
-## Where it runs
+## Project scenarios (`project/`)
 
-The gates run against **real design workspaces** produced by the
-PyInstaller-bundle e2e flow (`e2e-packaged-flow` CI job). The lit suite,
-the gate profile (`profiles/signoff.yml`), and the FileCheck gate files live
-in [openecos-projects/ecc-ci-designs](https://github.com/openecos-projects/ecc-ci-designs);
-this repo keeps only the library and the runner scripts.
+Two lit cases share one FileCheck contract (`checks/status_success.check`):
 
-## Local run
+1. **CLI** — `ecc run --project … --from/--to Synthesis` then `ecc status --project`
+2. **RPC** — `ecc rpc serve --stdio` lifecycle via `test/rpc_check.py`, then the same status check
+
+Drivers live under `nix/scripts/`:
+
+- `prepare_gcd_project.sh`
+- `run_cli_project_scenario.sh`
+- `run_rpc_project_scenario.sh`
+- `ci_project_lit.sh` (CI entry; installs Nix if needed)
+
+### Local / CI run
 
 ```bash
-uv run pytest test/test_signoff_csv_export.py -q   # unit coverage incl. negative gates
+export CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/icsprout55-pdk
+# OSS CAD / sizer env as for normal ecc run
+bash nix/scripts/ci_project_lit.sh
+# or:
+nix run .#signoff-lit -- test/lit/project
+```
 
+Without `CHIPCOMPILER_ICS55_PDK_ROOT`, lit reports `UNSUPPORTED` (`REQUIRES: ics55-pdk`).
+
+## Signoff CSV gates (`csv_gates/`)
+
+See historical notes below. Gates against **real design workspaces** from the
+PyInstaller e2e job; profiles/FileCheck files for packaged designs live in
+[openecos-projects/ecc-ci-designs](https://github.com/openecos-projects/ecc-ci-designs).
+
+```bash
 ECC_FLOW_WORKSPACES=<workspaces> \
   nix run .#signoff-lit -- <ecc-ci-designs checkout>
 ```
 
-## Profile schema (`version: 1`)
-
-See `profiles/signoff.yml` in the designs repository. CSV columns are additive
-within a major version; `run_manifest.json` changes bump
-`MANIFEST_SCHEMA_VERSION`.
+Status: **v0 / trial** — CI contract, not product signoff truth.
