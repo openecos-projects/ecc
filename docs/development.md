@@ -131,6 +131,9 @@ for details on the approach, test inventory, and known bugs found.
 
 ### BM64 CI Memory Preflight
 
+BM64 is excluded from pull-request validation. It remains enabled for push,
+scheduled, and manual runs.
+
 The packaged BM64 job checks available RAM immediately before running the flow.
 The provisional threshold is 12 GiB, with up to one hour of waiting in
 10-second intervals. The check caps Linux `MemAvailable` by the remaining

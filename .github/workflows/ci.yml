@@ -329,10 +329,11 @@ jobs:
         run: |
           # xtea disabled everywhere for now: real run shows hold WNS < 0,
           # which would keep its strict signoff gates red until tuned.
-          # aes is nightly-only: its ~50min flow would dominate PR feedback.
+          # Keep aes (~50min) and memory-heavy BM64 out of PR validation;
+          # retain both for push, scheduled, and manual runs.
           excludes=(xtea)
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            excludes+=(aes)
+            excludes+=(aes BM64)
           fi
           designs="$(find designs -mindepth 2 -maxdepth 2 -name ecc.toml -printf '%h\n' \
             | xargs -n1 basename | grep -vxFf <(printf '%s\n' "${excludes[@]}") \
