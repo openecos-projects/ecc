@@ -531,7 +531,7 @@ timing_metric_scope = "setup_plus_recovery"
 | `route_num_bins_x/y` | 512/512 | 拥塞评估网格 |
 | `node_area_adjust_overflow` | 0.15 | 面积调整触发溢出阈值 |
 | `two_stage_density_scaler` | 1000 | 两阶段密度缩放因子 |
-| `max_num_area_adjust` | 3 | 最大面积调整轮数 |
+| `max_num_area_adjust` | 5 | 最大面积调整轮数 |
 | `adjust_gpugr_area_flag` | 1 | 使用 GGR 拥塞图指导面积膨胀 |
 | `adjust_nctugr_area_flag` / `adjust_rudy_area_flag` / `adjust_pin_area_flag` | 0 / 0 / 0 | 旧 ECC/iRT EGR 兼容路径 / RUDY / 引脚面积调整 |
 | `gpugr_backend` | `auto` | 设备和扩展均支持 CUDA 时使用 CUDA，否则使用并行 CPU `cpu_pr_mt`，线程数由 `num_threads` 控制 |

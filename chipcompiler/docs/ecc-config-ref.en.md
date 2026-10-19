@@ -554,7 +554,7 @@ timing_metric_scope = "setup_plus_recovery"
 | `route_num_bins_x/y` | 512/512 | Congestion evaluation grid |
 | `node_area_adjust_overflow` | 0.15 | Overflow threshold that triggers area adjustment |
 | `two_stage_density_scaler` | 1000 | Two-stage density scaling factor |
-| `max_num_area_adjust` | 3 | Maximum number of area-adjustment rounds |
+| `max_num_area_adjust` | 5 | Maximum number of area-adjustment rounds |
 | `adjust_gpugr_area_flag` | 1 | Use GGR congestion for area inflation |
 | `adjust_nctugr_area_flag` / `adjust_rudy_area_flag` / `adjust_pin_area_flag` | 0 / 0 / 0 | Legacy ECC/iRT EGR compatibility / RUDY / pin area adjustment |
 | `gpugr_backend` | `auto` | CUDA when both device and extension support it; otherwise parallel CPU `cpu_pr_mt`, using `num_threads` |
