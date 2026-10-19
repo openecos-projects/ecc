@@ -937,16 +937,13 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
     )
     assert step.analysis.dir is not None
     legacy_metrics = step.analysis.dir / "CTS_metrics.json"
-    legacy_preview = step.analysis.dir / "CTS_metrics.png"
     legacy_metrics.write_text("{}", encoding="utf-8")
-    legacy_preview.write_text("legacy", encoding="utf-8")
 
     metrics = build_metrics_cts(workspace, step)
 
     assert metrics.data["max_clock_wirelength"] == 97514
     assert metrics.data["max_level_of_clock_tree"] == 2
     assert not legacy_metrics.exists()
-    assert not legacy_preview.exists()
     assert step.analysis.qor_metrics is not None
     records = {
         record["id"]: record

@@ -409,9 +409,6 @@ def save_data(
         return False
     ecc_module.def_save(def_path=step.output.def_ or "")
     ecc_module.verilog_save(output_verilog=step.output.verilog or "")
-    if step.output.db and not ecc_module.save_data(path=step.output.db):
-        workspace.logger.error("Failed to save ECC native database for %s", step.name)
-        return False
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
         geometry_manifest = step.output.geometry_manifest
@@ -535,29 +532,12 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
     return state
 
 
-def _plotter_class():
-    # Resolved through the module global so agent.tools can substitute its
-    # plotter (ecc_runner.ECCToolsPlot = AgentECCToolsPlot). The default import
-    # stays deferred because ECCToolsPlot pulls in matplotlib, which must stay
-    # off the package import path (test/utility/test_plot_lazy.py).
-    override = globals().get("ECCToolsPlot")
-    if override is not None:
-        return override
-    from chipcompiler.tools.ecc.plot import ECCToolsPlot
-
-    return ECCToolsPlot
-
-
 def run_analysis(workspace: Workspace, step: EccStep, subflow: EccSubFlow):
     if not workspace.parameters.data.get("run_analysis", True):
         return
 
     # save metrics
     build_step_metrics(workspace=workspace, step=step, subflow=subflow)
-
-    # plot layout image
-    ploter = _plotter_class()(workspace=workspace, step=step)
-    ploter.plot()
 
     # do checklist
     checklist = EccChecklist(workspace=workspace, workspace_step=step)

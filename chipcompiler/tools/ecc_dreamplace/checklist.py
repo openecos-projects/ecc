@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import ast
-import glob
 import os
 from pathlib import Path
 
@@ -24,7 +23,6 @@ class DreamplaceChecklist:
             ("Density", "check placement overflow"),
             ("Wirelength", "check HPWL"),
             ("Legality", "check cell overlap"),
-            ("Congestion", "check placement congestion"),
         ],
         StepEnum.LEGALIZATION: [
             ("Legality", "check cell overlap"),
@@ -185,19 +183,6 @@ class DreamplaceChecklist:
 
         return data
 
-    def has_plot_files(self) -> bool:
-        step_dirs = self.workspace_step.data.steps or {}
-        pattern = os.path.join(
-            step_dirs.get(self.workspace_step.name, ""),
-            self.workspace.design.name,
-            "plot",
-            "*.png",
-        )
-        return any(
-            os.path.isfile(path) and os.path.getsize(path) > 0 for path in glob.glob(pattern)
-        )
-
-
 class DreamplacePlacementChecklist(DreamplaceChecklist):
     def cell_overlap_success(self) -> bool:
         text = self.log_text()
@@ -216,8 +201,6 @@ class DreamplacePlacementChecklist(DreamplaceChecklist):
         overflow_max, overflow_max_error = metrics.number("place_congestion_egr_overflow_max")
         overflow_total, overflow_total_error = metrics.number("place_congestion_egr_overflow_total")
         hpwl, hpwl_error = metrics.number("place_hpwl")
-        lut_rudy, lut_rudy_error = metrics.number("place_lutrudy_utilization_max")
-        rudy, rudy_error = metrics.number("place_rudy_utilization_max")
         config = self.dreamplace_config()
         target_density = self.to_float(config.get("target_density"))
         stop_overflow = self.to_float(config.get("stop_overflow"))
@@ -234,17 +217,6 @@ class DreamplacePlacementChecklist(DreamplaceChecklist):
             and overflow_total is not None
             and overflow_max == 0
             and overflow_total == 0
-        )
-        congestion_success = (
-            overflow_max is not None
-            and overflow_total is not None
-            and lut_rudy is not None
-            and rudy is not None
-            and overflow_max >= 0
-            and overflow_total >= 0
-            and lut_rudy >= 0
-            and rudy >= 0
-            and self.has_plot_files()
         )
         checks = [
             (
@@ -278,17 +250,6 @@ class DreamplacePlacementChecklist(DreamplaceChecklist):
                 "check cell overlap",
                 self.cell_overlap_success(),
                 "legalization did not complete cleanly or unplaced cells remain",
-            ),
-            (
-                "Congestion",
-                "check placement congestion",
-                congestion_success,
-                overflow_max_error
-                or overflow_total_error
-                or lut_rudy_error
-                or rudy_error
-                or "Placement congestion metrics or plot files are missing",
-                True,
             ),
         ]
 

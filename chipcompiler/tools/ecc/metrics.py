@@ -3631,14 +3631,12 @@ def _finish_step_metrics(
     step: EccStep,
     step_metrics: StepMetrics,
     metrics: dict,
-    image_path: str,
 ) -> StepMetrics | None:
-    """Attach the collected metrics and report image, then persist them.
+    """Attach the collected metrics, then persist them.
 
     Returns None when the metrics could not be saved.
     """
     step_metrics.data = metrics
-    step_metrics.report.append((image_path, f"{step.name} step metrics:\n"))
 
     if save_step_metrics(workspace, step, step_metrics):
         return step_metrics
@@ -3660,9 +3658,7 @@ def build_metrics_floorplan(workspace: Workspace, step: EccStep) -> StepMetrics 
     # step matrics
     json_path = getattr(step.feature, "step", "") or ""
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(json_path).replace(".json", ".png")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_filler(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -3680,9 +3676,7 @@ def build_metrics_filler(workspace: Workspace, step: EccStep) -> StepMetrics | N
     # step matrics
     json_path = getattr(step.feature, "step", "") or ""
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(json_path).replace(".json", ".png")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_drc(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -3705,9 +3699,7 @@ def build_metrics_drc(workspace: Workspace, step: EccStep) -> StepMetrics | None
         if isinstance(drc, dict):
             _add_number_metric(metrics, "drc_num", drc.get("number"))
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(json_path).replace(".json", ".png")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_lvs(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -3729,9 +3721,7 @@ def build_metrics_lvs(workspace: Workspace, step: EccStep) -> StepMetrics | None
         violations = data.get("violations", [])
         metrics["lvs_count"] = len(violations) if isinstance(violations, list) else 0
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(json_path).replace(".json", ".png")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_routing(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -3799,9 +3789,7 @@ def build_metrics_routing(workspace: Workspace, step: EccStep) -> StepMetrics | 
                 dr.get("total_via_num"),
             )
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(json_path).replace(".json", ".png")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_rcx(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -3850,9 +3838,7 @@ def build_metrics_rcx(workspace: Workspace, step: EccStep) -> StepMetrics | None
             "rc_corners": signoff_metrics.get("rc_corners", []),
         }
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(step.output.image or "")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_sta(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -3988,9 +3974,7 @@ def build_metrics_sta(workspace: Workspace, step: EccStep) -> StepMetrics | None
     ):
         return None
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(step.output.image or "")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_harden(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -4032,9 +4016,7 @@ def build_metrics_harden(workspace: Workspace, step: EccStep) -> StepMetrics | N
     ):
         return None
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(step.output.image or "")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_legalization(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -4054,9 +4036,7 @@ def build_metrics_legalization(workspace: Workspace, step: EccStep) -> StepMetri
     # V3 metric requirement from an absent legacy field.
     json_path = getattr(step.feature, "step", "") or ""
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(json_path).replace(".json", ".png")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_cts(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -4115,9 +4095,7 @@ def build_metrics_cts(workspace: Workspace, step: EccStep) -> StepMetrics | None
                 ),
             }
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(json_path).replace(".json", ".png")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_placement(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -4176,6 +4154,4 @@ def build_metrics_placement(workspace: Workspace, step: EccStep) -> StepMetrics 
             utilization.get("lutrudy", {}).get("max", {}).get("union"),
         )
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(json_path).replace(".json", ".png")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)

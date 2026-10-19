@@ -32,20 +32,6 @@ _TIMING_PREVIEW_ISSUE_LIMIT = 5
 _HOTSPOT_PREVIEW_LIMIT = 5
 _HOTSPOT_SEVERITY_RANK = {"critical": 0, "warning": 1}
 _STA_CORNER_LIMIT = 32
-_CONGESTION_IMAGES = (
-    ("egr_congestion_map", "{step}_egr_horizontal_overflow.png"),
-    ("egr_congestion_map", "{step}_egr_vertical_overflow.png"),
-    ("egr_congestion_map", "{step}_egr_union_overflow.png"),
-    ("RUDY_map", "{step}_rudy_horizontal.png"),
-    ("RUDY_map", "{step}_rudy_vertical.png"),
-    ("RUDY_map", "{step}_rudy_union.png"),
-    ("RUDY_map", "{step}_lut_rudy_horizontal.png"),
-    ("RUDY_map", "{step}_lut_rudy_vertical.png"),
-    ("RUDY_map", "{step}_lut_rudy_union.png"),
-    ("density_map", "{step}_allcell_density.png"),
-)
-
-
 def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str, Any]:
     """Build the pure artifact index and the bounded metrics/timing/hotspot projections.
 
@@ -232,17 +218,6 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
             if step_id.lower() == "sta":
                 artifact["name"] = path.relative_to(step_dir / "feature").as_posix()
             artifacts.append(artifact)
-        if step_id.lower() in {"place", "cts"}:
-            for directory, filename in _CONGESTION_IMAGES:
-                artifacts.append(
-                    _artifact_ref(
-                        step_dir / "feature" / directory / filename.format(step=step_id),
-                        workspace_id=workspace_id,
-                        step_id=step_id,
-                        kind="congestion_image",
-                        root=root,
-                    )
-                )
     checklist_artifact = _artifact_ref(
         root / "home" / "checklist.json",
         workspace_id=workspace_id,

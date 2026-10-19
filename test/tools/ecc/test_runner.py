@@ -117,21 +117,13 @@ def test_run_analysis_switch(parameters, expected_calls, tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, parameters=Parameters(data=parameters))
     step = EccStep(name=StepEnum.POST_FLOORPLAN.value)
     metrics = Mock()
-    plotter = Mock()
     checklist = Mock()
     monkeypatch.setattr(ecc_runner, "build_step_metrics", metrics)
-    # run_analysis resolves the plotter through the runner module global first
-    # (agent.tools installs an override there); clear any imported override so
-    # this test exercises the default plot-module resolution.
-    monkeypatch.delattr(ecc_runner, "ECCToolsPlot", raising=False)
-    monkeypatch.setattr("chipcompiler.tools.ecc.plot.ECCToolsPlot", plotter)
     monkeypatch.setattr(ecc_runner, "EccChecklist", checklist)
 
     ecc_runner.run_analysis(workspace=workspace, step=step, subflow=FakeSubFlow())
 
     assert metrics.call_count == expected_calls
-    assert plotter.call_count == expected_calls
-    assert plotter.return_value.plot.call_count == expected_calls
     assert checklist.call_count == expected_calls
     assert checklist.return_value.check.call_count == expected_calls
 
