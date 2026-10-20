@@ -59,9 +59,7 @@ def classify_signoff_readiness(
                 saw_missing = True
         elif state == "unavailable":
             saw_missing = True
-        elif state == "failed":
-            saw_attention = True
-        elif state != "pass":
+        elif state == "failed" or state != "pass":
             saw_attention = True
 
     status = checklist.get("status")
