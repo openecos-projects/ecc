@@ -198,6 +198,19 @@ SCHEMAS = (
         description="whether enable the enhanced outer-loop inflation controller skeleton",
     ),
     config_param(
+        "place.inflation_density_weight_scale",
+        "dreamplace",
+        ("inflation_density_weight_scale",),
+        0.001,
+        applies="placement",
+        description=(
+            "positive scale for the Xplace-style density-weight restart ratio after "
+            "inflation; the default 0.001 keeps the restarted density force small, "
+            "1.0 uses the normalized gradient ratio directly, and 0.1 reproduces "
+            "the historical DreamPlace post-restart scale"
+        ),
+    ),
+    config_param(
         "place.enhanced_inflation_replay_best_round_flag",
         "dreamplace",
         ("enhanced_inflation_replay_best_round_flag",),
