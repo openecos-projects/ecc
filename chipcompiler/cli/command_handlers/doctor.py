@@ -1,6 +1,15 @@
+import pathlib
+
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandContext, CommandResult
+from chipcompiler.cli.core.version_info import ecc_version
 from chipcompiler.cli.inspection import env_probe
+
+
+def _ecc_install_path() -> str:
+    import chipcompiler
+
+    return str(pathlib.Path(chipcompiler.__file__).resolve().parent)
 
 
 def doctor(command_input, ctx: CommandContext) -> CommandResult:
@@ -26,6 +35,7 @@ def doctor(command_input, ctx: CommandContext) -> CommandResult:
             "checked": len(results),
             "failed": len(failed_required),
             "attention": len(failed_optional),
+            "detail": f"ecc {ecc_version()} at {_ecc_install_path()}",
             "run": disclosure_cmd("ecc run", ctx.project),
         }
     ]

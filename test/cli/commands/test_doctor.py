@@ -46,6 +46,8 @@ class TestDoctorCommand:
         assert summary["checked"] == "2"
         assert summary["failed"] == "0"
         assert summary["attention"] == "0"
+        assert summary["detail"].startswith("ecc ")
+        assert summary["detail"].endswith("chipcompiler")
         assert {r["component"] for r in records[1:]} == {"yosys", "ecc-tools"}
 
     def test_doctor_required_failure_exits_nonzero(
