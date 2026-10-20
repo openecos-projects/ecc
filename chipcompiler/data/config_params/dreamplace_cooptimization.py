@@ -198,6 +198,20 @@ SCHEMAS = (
         description="whether enable the enhanced outer-loop inflation controller skeleton",
     ),
     config_param(
+        "place.inflation_filler_consumption_mode",
+        "dreamplace",
+        ("inflation_filler_consumption_mode",),
+        "filler_first",
+        applies="placement",
+        choices=("filler_first", "proportional", "capacity_only"),
+        description=(
+            "how routability inflation consumes filler: filler_first subtracts "
+            "the inflation area from filler before raising target density, "
+            "proportional shrinks filler and non-filler whitespace together, "
+            "capacity_only preserves the legacy limit-only shrink"
+        ),
+    ),
+    config_param(
         "place.inflation_density_weight_scale",
         "dreamplace",
         ("inflation_density_weight_scale",),

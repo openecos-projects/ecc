@@ -200,6 +200,7 @@
     "l_shape_overflow_threshold": 0.3,
     "enhanced_inflation_flag": 0,
     "inflation_density_weight_scale": 0.001,
+    "inflation_filler_consumption_mode": "filler_first",
     "enhanced_inflation_replay_best_round_flag": 0,
     "legalize_before_each_inflation_flag": 0,
     "gpugr_bottom_routing_layer": "MET2",
