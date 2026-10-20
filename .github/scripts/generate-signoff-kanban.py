@@ -190,7 +190,7 @@ def _category_diagram(category: str, items: list) -> str:
     for it in items:
         by_step[str(it.step)].append(it)
     step_ids = list(by_step)
-    for a, b in zip(step_ids, step_ids[1:]):
+    for a, b in zip(step_ids, step_ids[1:], strict=False):
         left = _mermaid_id(by_step[a][0].id)
         right = _mermaid_id(by_step[b][0].id)
         lines.append(f"  {left} -.-> {right}")
@@ -352,7 +352,10 @@ def render_markdown(catalog: list, assessment: dict | None) -> str:
         out.append("")
         out.append(_category_diagram(cat, by_cat[cat]))
         out.append("")
-        out.append("[↑ Contents](#contents) · [↑ Map](#catalog-map) · [↑ Readiness](#readiness-board)")
+        out.append(
+            "[↑ Contents](#contents) · [↑ Map](#catalog-map) · "
+            "[↑ Readiness](#readiness-board)"
+        )
         out.append("")
 
     out.append("## Per-metric index")
