@@ -476,7 +476,8 @@ step 后再投影到合法 cell 并切换到离散 sizing。
 
 `place.timing_coeff_growth_factor` 控制每次 GP density-weight 更新时，WNS/TNS
 系数共同乘上的倍率，默认 `1.01`，逐次增长；设为 `1.0` 表示不增长，设为 `0.99` 则逐次衰减。
-倍率必须为正的有限数值，slew/cap 和 norm 外层权重沿用各自设置。
+倍率必须为正的有限数值，累计增长最多为 placement 起始 WNS/TNS 系数的
+`1000` 倍；slew/cap 和 norm 外层权重沿用各自设置。
 窗口的继承模式读取增长后的实时系数，固定模式使用指定值；独立
 `diff_sizing` S50 的 `size_only` 模式跳过这项增长。新建 workspace 可通过
 `ecc run --set place.timing_coeff_growth_factor=1.0` 或 `ecc.toml` 的
@@ -544,6 +545,7 @@ timing_metric_scope = "setup_plus_recovery"
 | `gpugr_area_adjust_rrr_iters` | 0 | inflation 只运行 pattern routing，CPU 后端要求为 0 |
 | `gpugr_area_adjust_congestion_mode` | `max_hv` | 水平和垂直 overflow 按最大值聚合 |
 | `l_shape_routability_flag` / `l_shape_update_interval` | 0 / 30 | 启用 L-shape 目标 / 拓扑与方向更新间隔 |
+| `l_shape_weight_max_multiplier` | 10.0 `*place.l_shape_weight_max_multiplier` | 自适应 L-shape 权重在每个校准周期内最多增长到首次校准权重的该倍数；0 表示关闭相对上限 |
 | `area_adjust_stop_ratio` / `route_area_adjust_stop_ratio` / `pin_area_adjust_stop_ratio` | 0.01 / 0.01 / 0.05 | 各类面积调整停止比例 |
 | `unit_horizontal_capacity` / `unit_vertical_capacity` / `unit_pin_capacity` | 1.5625 / 1.45 / 0.058 | 单位绕线/引脚容量 |
 | `max_route_opt_adjust_rate` / `route_opt_adjust_exponent` | 2.0 / 2.0 | 绕线面积调整倍率上限/指数 |

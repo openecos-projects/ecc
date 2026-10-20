@@ -618,6 +618,18 @@ SCHEMAS = (
         description="maximum adaptive routability gradient target ratio",
     ),
     config_param(
+        "place.l_shape_weight_max_multiplier",
+        "dreamplace",
+        ("l_shape_weight_max_multiplier",),
+        10.0,
+        applies="placement",
+        description=(
+            "maximum adaptive L-shape weight as a multiple of the first "
+            "calibrated weight in each calibration epoch; 0 disables the "
+            "relative cap"
+        ),
+    ),
+    config_param(
         "place.l_shape_update_interval",
         "dreamplace",
         ("l_shape_update_interval",),

@@ -232,5 +232,6 @@
     "timing_obj_profile": 0,
     "timing_obj_profile_interval": 100,
     "l_shape_grad_target_ratio": 0.2,
-    "l_shape_grad_target_ratio_max": 0.2
+    "l_shape_grad_target_ratio_max": 0.2,
+    "l_shape_weight_max_multiplier": 10.0
 }

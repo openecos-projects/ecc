@@ -494,7 +494,9 @@ sizing.
 `place.timing_coeff_growth_factor` multiplies both WNS/TNS coefficients at each
 GP density-weight update. The default `1.01` increases the coefficients;
 `1.0` disables growth and `0.99` decays them. The factor must be
-positive and finite. Slew/cap and the outer norm weight retain their own settings.
+positive and finite, and cumulative growth is capped at 1000 times the
+placement's starting WNS/TNS coefficients. Slew/cap and the outer norm weight
+retain their own settings.
 Inherit-mode windows read the resulting live coefficients; fixed-mode windows
 use their configured values. Standalone `diff_sizing` S50 in `size_only` mode
 skips this schedule. For a fresh workspace, configure it with
@@ -567,6 +569,7 @@ timing_metric_scope = "setup_plus_recovery"
 | `gpugr_area_adjust_rrr_iters` | 0 | Pattern-routing-only inflation; CPU routing requires 0 |
 | `gpugr_area_adjust_congestion_mode` | `max_hv` | Aggregate horizontal and vertical overflow by maximum |
 | `l_shape_routability_flag` / `l_shape_update_interval` | 0 / 30 | Enable the L-shape objective / iterations between topology and direction refreshes |
+| `l_shape_weight_max_multiplier` | 10.0 `*place.l_shape_weight_max_multiplier` | Cap adaptive L-shape weight growth at this multiple of the first calibrated weight in each calibration epoch; 0 disables the relative cap |
 | `area_adjust_stop_ratio` / `route_area_adjust_stop_ratio` / `pin_area_adjust_stop_ratio` | 0.01 / 0.01 / 0.05 | Stop ratios for each kind of area adjustment |
 | `unit_horizontal_capacity` / `unit_vertical_capacity` / `unit_pin_capacity` | 1.5625 / 1.45 / 0.058 | Unit routing/pin capacities |
 | `max_route_opt_adjust_rate` / `route_opt_adjust_exponent` | 2.0 / 2.0 | Max multiplier / exponent for routing-area adjustment |

@@ -69,6 +69,7 @@ def test_default_placement_recipe_preserves_tested_optimization_policy(dreamplac
         {"place.timing_grad_balance_target_ratio": 0.2},
         {"place.timing_grad_balance_target_ratio": 0.0},
         {"place.timing_grad_balance_reset_on_restart": 0},
+        {"place.l_shape_weight_max_multiplier": 10.0},
         {
             "place.timing_aggregation_mode": "smooth",
             "place.timing_aggregation_tau_ps": 10.0,
