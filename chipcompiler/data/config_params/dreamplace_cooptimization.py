@@ -72,6 +72,17 @@ SCHEMAS = (
         ),
     ),
     config_param(
+        "place.timing_grad_balance_reset_on_restart",
+        "dreamplace",
+        ("timing_grad_balance_reset_on_restart",),
+        1,
+        applies="placement",
+        description=(
+            "reset and reinitialize the timing-gradient balance weight after "
+            "each inflation/GP restart; 0 preserves the current weight"
+        ),
+    ),
+    config_param(
         "place.timing_aggregation_mode",
         "dreamplace",
         ("timing_aggregation_mode",),

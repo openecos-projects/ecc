@@ -368,6 +368,9 @@ IO cell。Sizer 要求 Liberty 单元有对应的 LEF master，即使设计没�
 外层 timing 权重，之后沿用该权重。设为 0.0 可关闭平衡，保留外层权重 1.0。
 它是初始梯度比例目标，不是直接将 WNS/TNS 系数乘以 0.2。
 独立 `size_only` sizing 不初始化坐标梯度平衡；显式配置仍优先于默认值。
+`place.timing_grad_balance_reset_on_restart` 默认值为 `1`，每次
+inflation/GP restart 后重新初始化 timing balance 权重；设为 `0` 时保留当前
+timing 权重及缓存的 balance 状态，不再重算。
 
 GP 内 sizing 窗口的系数策略使用一个参数 `place.timing_opt_coefficients`。
 默认固定为 WNS/TNS/cap/slew = 500/5/1/1，窗口外层 α=1。
@@ -507,6 +510,7 @@ timing_metric_scope = "setup_plus_recovery"
 | `inflation_filler_consumption_mode` | `filler_first` | routability inflation 消耗空白区域的方式：`filler_first` 先缩小 filler，filler 用尽后才提高 target density；`proportional` 按同一比例缩小 filler 和其他空白区域；`capacity_only` 保留 filler，直到达到布局区域容量上限 |
 | `timing_coeff_growth_factor` | 1.01 `*place.timing_coeff_growth_factor` | GP density-weight 更新时 WNS/TNS 系数的共同倍率；1.0 停止增长，`size_only` 不应用 |
 | `timing_grad_balance_target_ratio` | 0.01 `*place.timing_grad_balance_target_ratio` | direct-loss placement 初始 timing / wirelength 梯度 L1 范数比例目标；0.0 关闭 |
+| `timing_grad_balance_reset_on_restart` | 1 `*place.timing_grad_balance_reset_on_restart` | inflation/GP restart 后是否重新初始化 timing balance 权重；0 表示保留当前权重 |
 | `timing_aggregation_mode` | `smooth` `*place.timing_aggregation_mode` | AAT/RAT 传播聚合方式：`hard` 或 `smooth`（LSE） |
 | `timing_aggregation_tau_ps` | 2.0 `*place.timing_aggregation_tau_ps` | `smooth` 模式的正平滑温度，单位 ps |
 | `timing_metric_scope` | `setup_plus_recovery` `*place.timing_metric_scope` | placement WNS/TNS 的 max timing check：`setup_only` 或 `setup_plus_recovery` |

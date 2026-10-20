@@ -165,6 +165,7 @@
     "timing_metric_scope": "setup_plus_recovery",
     "timing_propagation_device": "inherit",
     "timing_grad_balance_target_ratio": 0.01,
+    "timing_grad_balance_reset_on_restart": 1,
     "diff_optimization_mode": "joint",
     "diff_optimization_flows": [
         ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
