@@ -326,7 +326,9 @@ def render_markdown(catalog: list, assessment: dict | None) -> str:
             "Re-run with `--assessment` to split swimlanes."
         )
     out.append("")
-    out.append(_swimlane_board(items_by_state, compact=True))
+    # Keep every card visible when the catalog is small enough to read.
+    card_total = sum(len(v) for v in items_by_state.values())
+    out.append(_swimlane_board(items_by_state, compact=card_total > 40))
     out.append("")
 
     out.append("## Categories")
