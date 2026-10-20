@@ -1,5 +1,12 @@
 #!/usr/bin/env python
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
+
+if TYPE_CHECKING:
+    from chipcompiler.tools.ecc import ECCToolsModule
 
 
 class EngineDB:
@@ -8,9 +15,7 @@ class EngineDB:
     db : use ecc-tools-idb as the database engine
     """
 
-    from chipcompiler.tools.ecc import ECCToolsModule
-
-    def __init__(self, workspace: Workspace, ecc_module: "ECCToolsModule | None" = None):
+    def __init__(self, workspace: Workspace, ecc_module: ECCToolsModule | None = None):
         self.workspace = workspace
         self.ecc_module = ecc_module
         self.initialization_error: Exception | None = None
