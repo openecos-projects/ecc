@@ -155,6 +155,16 @@ def reconcile_project_state(project_dir: str | Path, *, blocking: bool) -> Proje
             )
         except BlockingIOError:
             busy.append(entry.workspace_id)
+        except ProjectApplicationError as exc:
+            if exc.code == "runtime_process_inconsistent":
+                # A live runtime process owns this Workspace even when the
+                # sibling lock is momentarily acquirable (for example a
+                # fresh CLI run between lock windows): recovery must not
+                # touch it, and readers like ECOS Studio must keep opening
+                # the Workspace read-only instead of failing reconcile.
+                busy.append(entry.workspace_id)
+            else:
+                errors.append(f"{entry.workspace_id}: {exc}")
         except Exception as exc:
             errors.append(f"{entry.workspace_id}: {exc}")
 
