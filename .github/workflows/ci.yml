@@ -434,25 +434,24 @@ jobs:
       - name: Cache Nix store
         uses: DeterminateSystems/magic-nix-cache-action@v15
 
-      - name: Add BM64 swap cushion
-        if: ${{ matrix.design == 'BM64' }}
+      - name: Add swap cushion
         shell: bash
-        # The runner VM has 16 GiB and no swap. A 4 GiB file absorbs a short
-        # overshoot instead of letting the kernel OOM-kill a native tool. It
-        # adds no capacity: a sustained overshoot still shows up as a timeout.
+        # The image already carries a 3 GiB /swapfile, and fallocate on an
+        # in-use swap file fails with ETXTBSY, so the cushion is a separate
+        # file. It absorbs a short overshoot instead of letting the kernel
+        # OOM-kill a native tool; a sustained overshoot still shows up as the
+        # job's timeout.
         run: |
           free -h
-          swap_dir=/
-          if mountpoint -q /mnt; then
-            swap_dir=/mnt
-          fi
-          df -h "$swap_dir"
-          sudo fallocate -l 4G "$swap_dir/swapfile"
-          sudo chmod 600 "$swap_dir/swapfile"
-          sudo mkswap "$swap_dir/swapfile"
-          sudo swapon "$swap_dir/swapfile"
+          swapon --show
+          df -h /
+          sudo fallocate -l 4G /swapfile.ecc
+          sudo chmod 600 /swapfile.ecc
+          sudo mkswap /swapfile.ecc
+          sudo swapon /swapfile.ecc
           # Keep swap as a safety net rather than a routine spill area.
           sudo sysctl -w vm.swappiness=10
+          swapon --show
           free -h
 
       - name: Run design flows
