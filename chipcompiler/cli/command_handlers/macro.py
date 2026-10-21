@@ -6,7 +6,6 @@ import uuid
 from pathlib import Path
 
 from chipcompiler.cli.command_handlers.param import (
-    _find_config_path,
     _load_toml_overrides,
     _manifest_mode_error,
     _remove_param_from_toml,
@@ -14,6 +13,7 @@ from chipcompiler.cli.command_handlers.param import (
 )
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
+from chipcompiler.cli.project.config import find_config_path
 from chipcompiler.cli.project.params import lookup_schema
 from chipcompiler.cli.project.workspace_params import (
     set_workspace_param,
@@ -268,7 +268,7 @@ def _project_set(args, ctx: CommandContext, schema, entry: dict) -> CommandResul
         return load_error
 
     placements = _upsert(current, entry)
-    config_path = _find_config_path(ctx.project_dir)
+    config_path = find_config_path(ctx.project_dir)
     if config_path is None:
         return CommandResult.err([error_record("missing_config")], exit_code=1)
     try:
@@ -316,7 +316,7 @@ def _project_remove(args, ctx: CommandContext, schema) -> CommandResult:
         )
 
     remaining = [entry for entry in current if entry.get("instance") != args.instance]
-    config_path = _find_config_path(ctx.project_dir)
+    config_path = find_config_path(ctx.project_dir)
     if config_path is None:
         return CommandResult.err([error_record("missing_config")], exit_code=1)
     try:
@@ -376,7 +376,7 @@ def _project_import(args, ctx, schema, placements: list) -> CommandResult:
     manifest_error = _manifest_mode_error(ctx)
     if manifest_error is not None:
         return manifest_error
-    config_path = _find_config_path(ctx.project_dir)
+    config_path = find_config_path(ctx.project_dir)
     if config_path is None:
         return CommandResult.err([error_record("missing_config")], exit_code=1)
     try:

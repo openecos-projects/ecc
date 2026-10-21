@@ -4,6 +4,7 @@ from chipcompiler.cli.core.line_records import json_literal
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
+from chipcompiler.cli.project.config import find_config_path
 from chipcompiler.cli.project.param_edit import set_parameter, unset_parameter
 from chipcompiler.cli.project.params import (
     lookup_schema,
@@ -264,7 +265,7 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
             exit_code=1,
         )
 
-    config_path = _find_config_path(ctx.project_dir)
+    config_path = find_config_path(ctx.project_dir)
     if config_path is None:
         return CommandResult.err(
             [
@@ -278,7 +279,13 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
     if schema.pdk_target is not None:
         from chipcompiler.cli.project.config import load_project_config
 
-        problem = validate_pdk_target(schema, value, load_project_config(config_path))
+        try:
+            pdk_config = load_project_config(config_path)
+        except (OSError, UnicodeDecodeError) as exc:
+            return CommandResult.err(
+                [error_record("config_error", param=key, reason=str(exc))], exit_code=1
+            )
+        problem = validate_pdk_target(schema, value, pdk_config)
         if problem is not None:
             return CommandResult.err(
                 [error_record("invalid_value", param=key, reason=problem)], exit_code=1
@@ -336,7 +343,7 @@ def param_unset(args, ctx: CommandContext) -> CommandResult:
     if flow_error is not None:
         return flow_error
 
-    config_path = _find_config_path(ctx.project_dir)
+    config_path = find_config_path(ctx.project_dir)
     if config_path is None:
         return CommandResult.ok(
             [
@@ -586,11 +593,6 @@ def _pdk_target_str(target: str) -> str:
     return f"pdk.overrides:{target}"
 
 
-def _find_config_path(project_dir: str) -> str | None:
-    path = os.path.join(project_dir, "ecc.toml")
-    return path if os.path.isfile(path) else None
-
-
 def _registered_workspace_names(project_dir: str) -> list[str]:
     """Workspace ids registered in project.json ([] for non-manifest projects)."""
     from chipcompiler.project.manifest import ManifestError, load_manifest
@@ -605,11 +607,14 @@ def _registered_workspace_names(project_dir: str) -> list[str]:
 def _load_toml_overrides(project_dir: str) -> tuple[dict[str, object], list[str]]:
     from chipcompiler.cli.project.config import load_project_config
 
-    config_path = _find_config_path(project_dir)
+    config_path = find_config_path(project_dir)
     if config_path is None:
         return {}, []
 
-    cfg = load_project_config(config_path)
+    try:
+        cfg = load_project_config(config_path)
+    except (OSError, UnicodeDecodeError) as exc:
+        return {}, [f"unreadable ecc.toml: {exc}"]
     errors = list(getattr(cfg, "_param_errors", []))
     toml_error = getattr(cfg, "_toml_error", None)
     if toml_error:
