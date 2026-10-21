@@ -134,10 +134,40 @@ def test_build_params_preserves_placement_timing_config(tmp_path):
     assert params.timing_opt_flag == 1
     assert params.timing_eval_flag == 1
     assert params.differentiable_timing_obj == 1
-    assert params.def_input == str(tmp_path / "input.def")
-    assert params.verilog_input == str(tmp_path / "input.v")
+    # ECC hands the workspace Paths over unchanged; dreamplace's Params
+    # normalizes path-like values to str on assignment.
+    assert params.def_input == tmp_path / "input.def"
+    assert params.verilog_input == tmp_path / "input.v"
     assert params.result_dir == str(result_dir)
     assert params.base_design_name == "gcd"
+
+
+def test_build_params_uses_empty_string_for_unset_inputs(tmp_path):
+    config_path = tmp_path / "dreamplace_ecc.json"
+    config_path.write_text("{}", encoding="utf-8")
+    workspace = Workspace(
+        directory=str(tmp_path / "workspace"),
+        design=OriginDesign(name="gcd"),
+        config={"dreamplace": config_path},
+    )
+    result_dir = tmp_path / "data" / "pl"
+    step_data = EccData(dir=tmp_path / "data", steps={StepEnum.PLACEMENT.value: result_dir})
+    step = EccStep(name=StepEnum.PLACEMENT.value, data=step_data)
+    module = DreamplaceModule(
+        workspace=workspace,
+        step=step,
+        ecc_module=None,
+        input_def=None,
+        input_verilog=None,
+        output_def=None,
+        output_verilog=None,
+    )
+
+    params = module._build_params(FakeParams, mode=DreamplaceRunMode.PLACEMENT)
+
+    # The C++ options spell "unset" as the empty string, not None.
+    assert params.def_input == ""
+    assert params.verilog_input == ""
 
 
 def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreamplace_default_config):

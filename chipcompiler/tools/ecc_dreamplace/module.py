@@ -102,11 +102,11 @@ class DreamplaceModule:
         from dreamplace.flows.flow_config import apply_flow_defaults
 
         apply_flow_defaults(params)
-        # DREAMPlace's Params.def_input/verilog_input feed a std::string C++
-        # option (place_io) and are json.dump-ed by Params.dump, so normalize to
-        # str at this native boundary (path_text: None -> "").
-        params.def_input = path_text(self.input_def)
-        params.verilog_input = path_text(self.input_verilog)
+        # Params normalizes path-like values to str on assignment (they are also
+        # json.dump-ed by Params.dump), so hand over Path | None as-is; None
+        # keeps the "unset" spelling the C++ options expect.
+        params.def_input = self.input_def or ""
+        params.verilog_input = self.input_verilog or ""
         params.result_dir = self.result_dir
         params.base_design_name = self.workspace.design.name
 
@@ -307,9 +307,9 @@ class DreamplaceModule:
 
             if place_io_engine in {"openroad", "ecc"}:
                 if self.output_def:
-                    engine.write_back(str(self.output_def))
+                    engine.write_back(self.output_def)
                 if place_io_engine in {"openroad", "ecc"} and self.output_verilog:
-                    engine.write_verilog(str(self.output_verilog))
+                    engine.write_verilog(self.output_verilog)
 
             return True
 
