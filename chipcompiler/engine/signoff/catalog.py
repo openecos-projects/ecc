@@ -212,7 +212,9 @@ SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
         title="Configuration sta",
         fail_readiness="MISS",
     ),
-    # Performance / iSTA precision (metrics exist in tools.ecc; gates optional for now).
+    # Performance — chip timing/power (from qor_metrics / STA reports) + host cost
+    # (wall latency, throughput, peak RSS). Host numbers come from the board
+    # collector (resource / optional perf); chip numbers from QoR records.
     _performance("performance.sta.setup_wns", StepEnum.STA.value, "STA setup WNS"),
     _performance("performance.sta.setup_tns", StepEnum.STA.value, "STA setup TNS"),
     _performance("performance.sta.hold_wns", StepEnum.STA.value, "STA hold WNS"),
@@ -220,6 +222,9 @@ SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
     _performance("performance.sta.frequency", StepEnum.STA.value, "STA frequency"),
     _performance("performance.power.dynamic", StepEnum.STA.value, "Dynamic power"),
     _performance("performance.power.leakage", StepEnum.STA.value, "Leakage power"),
+    _performance("performance.host.latency", "host", "Host wall latency"),
+    _performance("performance.host.throughput", "host", "Host throughput"),
+    _performance("performance.host.peak_memory", "host", "Host peak memory"),
 )
 
 CATALOG_BY_ID: dict[str, SignoffItemSpec] = {item.id: item for item in SIGNOFF_ITEM_CATALOG}
