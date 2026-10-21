@@ -371,9 +371,9 @@ Set it to 0.0 to disable balancing and retain an outer weight of 1.0. The value
 is an initial gradient-ratio target, rather than a multiplier on WNS/TNS
 coefficients. Standalone `size_only` sizing does not initialize coordinate
 gradient balancing; explicit values retain precedence over defaults.
-`place.timing_grad_balance_reset_on_restart` defaults to `1`, which reinitializes
-the timing balance weight after each inflation/GP restart. Set it to `0` to
-preserve the current timing weight and cached balance state across restarts.
+`place.timing_grad_balance_reset_on_restart` defaults to `0`, which preserves
+the current timing weight and cached balance state across inflation/GP restarts.
+Set it to `1` to reinitialize the timing balance weight after each restart.
 
 `place.timing_opt_coefficients` controls the coefficients used by GP sizing
 windows. The default fixes WNS/TNS/cap/slew at 500/5/1/1 with outer timing
@@ -535,7 +535,7 @@ timing_metric_scope = "setup_plus_recovery"
 | `inflation_filler_consumption_mode` | `filler_first` | How routability inflation consumes whitespace: `filler_first` shrinks filler before raising target density, `proportional` shrinks filler and other whitespace together, and `capacity_only` preserves filler until the placement-area limit |
 | `timing_coeff_growth_factor` | 1.01 `*place.timing_coeff_growth_factor` | Multiplier for both WNS/TNS coefficients at each GP density-weight update; 1.0 disables growth; skipped in `size_only` |
 | `timing_grad_balance_target_ratio` | 0.01 `*place.timing_grad_balance_target_ratio` | Initial timing / wirelength gradient L1 norm ratio in direct-loss placement; 0.0 disables balancing |
-| `timing_grad_balance_reset_on_restart` | 1 `*place.timing_grad_balance_reset_on_restart` | Reinitialize the timing balance weight after inflation/GP restart; 0 preserves the current weight |
+| `timing_grad_balance_reset_on_restart` | 0 `*place.timing_grad_balance_reset_on_restart` | Reinitialize the timing balance weight after inflation/GP restart; 1 reinitializes, 0 preserves the current weight |
 | `timing_aggregation_mode` | `smooth` `*place.timing_aggregation_mode` | AAT/RAT propagation aggregation: `hard` or `smooth` (LSE) |
 | `timing_aggregation_tau_ps` | 2.0 `*place.timing_aggregation_tau_ps` | Positive temperature in ps for `smooth` mode |
 | `timing_metric_scope` | `setup_plus_recovery` `*place.timing_metric_scope` | Max timing checks in placement WNS/TNS: `setup_only` or `setup_plus_recovery` |

@@ -75,7 +75,7 @@ SCHEMAS = (
         "place.timing_grad_balance_reset_on_restart",
         "dreamplace",
         ("timing_grad_balance_reset_on_restart",),
-        1,
+        0,
         applies="placement",
         description=(
             "reset and reinitialize the timing-gradient balance weight after "
