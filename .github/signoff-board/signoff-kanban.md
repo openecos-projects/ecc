@@ -2,11 +2,11 @@
 
 > **导览首页** — start here. This page is the human guide to signoff metrics; CSV/FileCheck under `test/lit/csv_gates` stays a util.
 
-**Live snapshot:** readiness `WARN` · legacy `` · 46 catalog metrics
+**Live snapshot:** readiness `WARN` · legacy `` · 47 catalog metrics
 
 | PASS | WARN | MISS | ERROR |
 | ---: | ---: | ---: | ---: |
-| 36 | 0 | 0 | 0 |
+| 37 | 0 | 0 | 0 |
 
 ## Contents
 
@@ -69,9 +69,10 @@
 - [`performance.sta.frequency`](#performancestafrequency) — STA frequency
 - [`performance.power.dynamic`](#performancepowerdynamic) — Dynamic power
 - [`performance.power.leakage`](#performancepowerleakage) — Leakage power
-- [`performance.host.latency`](#performancehostlatency) — Host wall latency
-- [`performance.host.throughput`](#performancehostthroughput) — Host throughput
-- [`performance.host.peak_memory`](#performancehostpeak_memory) — Host peak memory
+- [`performance.host.latency`](#performancehostlatency) — Runtime wall time
+- [`performance.host.throughput`](#performancehostthroughput) — Runtime throughput
+- [`performance.host.peak_memory`](#performancehostpeak_memory) — Runtime peak RSS
+- [`performance.host.compile_peak_memory`](#performancehostcompile_peak_memory) — Compile peak RSS
 
 </details>
 
@@ -103,7 +104,7 @@ flowchart TB
   hub["Signoff catalog"]
   map_quality_gate["Quality gates<br/>8 metrics"]
   hub --> map_quality_gate
-  map_performance["Performance / iSTA<br/>10 metrics"]
+  map_performance["Performance / iSTA<br/>11 metrics"]
   hub --> map_performance
   map_artifact["Evidence artifacts<br/>13 metrics"]
   hub --> map_artifact
@@ -120,7 +121,7 @@ flowchart TB
 | Domain | Metrics | Role |
 | --- | ---: | --- |
 | [Quality gates](#category-quality_gate) | 8 | Machine predicates (DRC/LVS/STA/RCX/area). Failures → ERROR readiness. |
-| [Performance / iSTA](#category-performance) | 10 | Numeric timing (WNS/TNS/freq) and power slots for multi-version compare. |
+| [Performance / iSTA](#category-performance) | 11 | Numeric timing (WNS/TNS/freq) and power slots for multi-version compare. |
 | [Evidence artifacts](#category-artifact) | 13 | Required files from Harden / LVS / RCX / STA / synthesis (and optional LEC). |
 | [Reports](#category-report) | 2 | Human-readable reports tied to steps (e.g. STA timing reports). |
 | [Flow completion](#category-flow) | 8 | Ledger steps that must have completed for a full package. |
@@ -129,11 +130,11 @@ flowchart TB
 
 ## Readiness board
 
-Cards placed by live assessment (PASS=36, WARN=0, MISS=0, ERROR=0).
+Cards placed by live assessment (PASS=37, WARN=0, MISS=0, ERROR=0).
 
 ```mermaid
 flowchart LR
-  subgraph col_PASS["PASS (36)"]
+  subgraph col_PASS["PASS (37)"]
     PASS_quality_drc_clean["quality.drc.clean<br/>Final DRC clean"]
     PASS_quality_lvs_clean["quality.lvs.clean<br/>Final LVS clean"]
     PASS_quality_rcx_corner_coverage["quality.rcx.corner_coverage<br/>RCX corner coverage"]
@@ -146,7 +147,7 @@ flowchart LR
     PASS_artifact_lvs_verilog["artifact.lvs.verilog<br/>LVS Verilog"]
     PASS_artifact_rcx_spef_outputs["artifact.rcx.spef_outputs<br/>RCX SPEF outputs"]
     PASS_artifact_synthesis_netlist["artifact.synthesis.netlist<br/>Mapped synthesis netlist"]
-    more_PASS["… +24 more — see TOC"]
+    more_PASS["… +25 more — see TOC"]
   end
   subgraph col_WARN["WARN"]
     empty_WARN["(none)"]
@@ -213,9 +214,10 @@ flowchart TB
 | [`performance.sta.frequency`](#performancestafrequency) | STA frequency | `sta` | yes |
 | [`performance.power.dynamic`](#performancepowerdynamic) | Dynamic power | `sta` | yes |
 | [`performance.power.leakage`](#performancepowerleakage) | Leakage power | `sta` | yes |
-| [`performance.host.latency`](#performancehostlatency) | Host wall latency | `host` | yes |
-| [`performance.host.throughput`](#performancehostthroughput) | Host throughput | `host` | yes |
-| [`performance.host.peak_memory`](#performancehostpeak_memory) | Host peak memory | `host` | yes |
+| [`performance.host.latency`](#performancehostlatency) | Runtime wall time | `host` | yes |
+| [`performance.host.throughput`](#performancehostthroughput) | Runtime throughput | `host` | yes |
+| [`performance.host.peak_memory`](#performancehostpeak_memory) | Runtime peak RSS | `host` | yes |
+| [`performance.host.compile_peak_memory`](#performancehostcompile_peak_memory) | Compile peak RSS | `host` | yes |
 
 ```mermaid
 flowchart TB
@@ -227,9 +229,10 @@ flowchart TB
     performance_sta_frequency["performance.sta.frequency<br/>STA frequency (optional)"]
     performance_power_dynamic["performance.power.dynamic<br/>Dynamic power (optional)"]
     performance_power_leakage["performance.power.leakage<br/>Leakage power (optional)"]
-    performance_host_latency["performance.host.latency<br/>Host wall latency (optional)"]
-    performance_host_throughput["performance.host.throughput<br/>Host throughput (optional)"]
-    performance_host_peak_memory["performance.host.peak_memory<br/>Host peak memory (optional)"]
+    performance_host_latency["performance.host.latency<br/>Runtime wall time (optional)"]
+    performance_host_throughput["performance.host.throughput<br/>Runtime throughput (optional)"]
+    performance_host_peak_memory["performance.host.peak_memory<br/>Runtime peak RSS (optional)"]
+    performance_host_compile_peak_memory["performance.host.compile_peak_memory<br/>Compile peak RSS (optional)"]
   end
   performance_sta_setup_wns -.-> performance_host_latency
 ```
@@ -956,7 +959,7 @@ flowchart LR
 
 ### `performance.host.latency`
 
-- **Host wall latency** · category `performance` · step `host` · optional `True` · state **PASS**
+- **Runtime wall time** · category `performance` · step `host` · optional `True` · state **PASS**
 
 ```mermaid
 flowchart LR
@@ -969,7 +972,7 @@ flowchart LR
 
 ### `performance.host.throughput`
 
-- **Host throughput** · category `performance` · step `host` · optional `True` · state **PASS**
+- **Runtime throughput** · category `performance` · step `host` · optional `True` · state **PASS**
 
 ```mermaid
 flowchart LR
@@ -982,13 +985,26 @@ flowchart LR
 
 ### `performance.host.peak_memory`
 
-- **Host peak memory** · category `performance` · step `host` · optional `True` · state **PASS**
+- **Runtime peak RSS** · category `performance` · step `host` · optional `True` · state **PASS**
 
 ```mermaid
 flowchart LR
   step_performance_host_peak_memory["step: host"] --> metric_performance_host_peak_memory["performance.host.peak_memory"]
   metric_performance_host_peak_memory --> state_performance_host_peak_memory["PASS"]
   cat_performance_host_peak_memory["performance"] -.-> metric_performance_host_peak_memory
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.host.compile_peak_memory`
+
+- **Compile peak RSS** · category `performance` · step `host` · optional `True` · state **PASS**
+
+```mermaid
+flowchart LR
+  step_performance_host_compile_peak_memory["step: host"] --> metric_performance_host_compile_peak_memory["performance.host.compile_peak_memory"]
+  metric_performance_host_compile_peak_memory --> state_performance_host_compile_peak_memory["PASS"]
+  cat_performance_host_compile_peak_memory["performance"] -.-> metric_performance_host_compile_peak_memory
 ```
 
 [↑ category `performance`](#category-performance) · [↑ Contents](#contents)
@@ -1001,9 +1017,9 @@ _Generated by `.github/scripts/generate-signoff-kanban.py` from `chipcompiler.en
 
 | Field | Value |
 | --- | --- |
-| Git commit | [`675aa4e7925e`](https://github.com/plitenh/ecc/commit/675aa4e7925e45ccb7c245abc0a43fc638ba455c) |
-| Git commit (full) | `675aa4e7925e45ccb7c245abc0a43fc638ba455c` |
-| Snapshot SHA-256 | `c02ccd944015ba46b90a57d1238fb2586e70d431f04b78cf138dd458d6c23ed9` |
+| Git commit | [`4d141bcd01d1`](https://github.com/plitenh/ecc/commit/4d141bcd01d15475f236394bc15dcf1574c944e5) |
+| Git commit (full) | `4d141bcd01d15475f236394bc15dcf1574c944e5` |
+| Snapshot SHA-256 | `5320f506a20bdb8e54a455e2207ac2eb035a5413f6bbd56695437481eb655bbb` |
 
 Compare snapshots with `plitenh/ecc-ci`:
 

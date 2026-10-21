@@ -212,9 +212,9 @@ SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
         title="Configuration sta",
         fail_readiness="MISS",
     ),
-    # Performance — chip timing/power (from qor_metrics / STA reports) + host cost
-    # (wall latency, throughput, peak RSS). Host numbers come from the board
-    # collector (resource / optional perf); chip numbers from QoR records.
+    # Performance — chip timing/power (qor_metrics) + host cost split by phase:
+    # runtime (tests/flow) vs compile (g++/ninja). Unit strings on the board are
+    # self-describing ("MiB (peak RSS @ compile)"), not bare SI tokens.
     _performance("performance.sta.setup_wns", StepEnum.STA.value, "STA setup WNS"),
     _performance("performance.sta.setup_tns", StepEnum.STA.value, "STA setup TNS"),
     _performance("performance.sta.hold_wns", StepEnum.STA.value, "STA hold WNS"),
@@ -222,9 +222,12 @@ SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
     _performance("performance.sta.frequency", StepEnum.STA.value, "STA frequency"),
     _performance("performance.power.dynamic", StepEnum.STA.value, "Dynamic power"),
     _performance("performance.power.leakage", StepEnum.STA.value, "Leakage power"),
-    _performance("performance.host.latency", "host", "Host wall latency"),
-    _performance("performance.host.throughput", "host", "Host throughput"),
-    _performance("performance.host.peak_memory", "host", "Host peak memory"),
+    _performance("performance.host.latency", "host", "Runtime wall time"),
+    _performance("performance.host.throughput", "host", "Runtime throughput"),
+    _performance("performance.host.peak_memory", "host", "Runtime peak RSS"),
+    _performance(
+        "performance.host.compile_peak_memory", "host", "Compile peak RSS"
+    ),
 )
 
 CATALOG_BY_ID: dict[str, SignoffItemSpec] = {item.id: item for item in SIGNOFF_ITEM_CATALOG}
