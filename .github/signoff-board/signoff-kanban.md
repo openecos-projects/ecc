@@ -2,11 +2,11 @@
 
 > **导览首页** — start here. This page is the human guide to signoff metrics; CSV/FileCheck under `test/lit/csv_gates` stays a util.
 
-**Live snapshot:** readiness `WARN` · legacy `` · 47 catalog metrics
+**Live snapshot:** readiness `WARN` · legacy `` · 48 catalog metrics
 
 | PASS | WARN | MISS | ERROR |
 | ---: | ---: | ---: | ---: |
-| 37 | 0 | 0 | 0 |
+| 38 | 0 | 0 | 0 |
 
 ## Contents
 
@@ -69,10 +69,11 @@
 - [`performance.sta.frequency`](#performancestafrequency) — STA frequency
 - [`performance.power.dynamic`](#performancepowerdynamic) — Dynamic power
 - [`performance.power.leakage`](#performancepowerleakage) — Leakage power
-- [`performance.host.latency`](#performancehostlatency) — Runtime wall time
-- [`performance.host.throughput`](#performancehostthroughput) — Runtime throughput
-- [`performance.host.peak_memory`](#performancehostpeak_memory) — Runtime peak RSS
-- [`performance.host.compile_peak_memory`](#performancehostcompile_peak_memory) — Compile peak RSS
+- [`performance.host.latency`](#performancehostlatency) — 组件耗时
+- [`performance.host.throughput`](#performancehostthroughput) — 速度
+- [`performance.host.peak_memory`](#performancehostpeak_memory) — 内存峰值
+- [`performance.host.avg_memory`](#performancehostavg_memory) — 内存平均
+- [`performance.host.compile_peak_memory`](#performancehostcompile_peak_memory) — 编译内存峰值
 
 </details>
 
@@ -104,7 +105,7 @@ flowchart TB
   hub["Signoff catalog"]
   map_quality_gate["Quality gates<br/>8 metrics"]
   hub --> map_quality_gate
-  map_performance["Performance / iSTA<br/>11 metrics"]
+  map_performance["Performance / iSTA<br/>12 metrics"]
   hub --> map_performance
   map_artifact["Evidence artifacts<br/>13 metrics"]
   hub --> map_artifact
@@ -121,7 +122,7 @@ flowchart TB
 | Domain | Metrics | Role |
 | --- | ---: | --- |
 | [Quality gates](#category-quality_gate) | 8 | Machine predicates (DRC/LVS/STA/RCX/area). Failures → ERROR readiness. |
-| [Performance / iSTA](#category-performance) | 11 | Numeric timing (WNS/TNS/freq) and power slots for multi-version compare. |
+| [Performance / iSTA](#category-performance) | 12 | Numeric timing (WNS/TNS/freq) and power slots for multi-version compare. |
 | [Evidence artifacts](#category-artifact) | 13 | Required files from Harden / LVS / RCX / STA / synthesis (and optional LEC). |
 | [Reports](#category-report) | 2 | Human-readable reports tied to steps (e.g. STA timing reports). |
 | [Flow completion](#category-flow) | 8 | Ledger steps that must have completed for a full package. |
@@ -130,11 +131,11 @@ flowchart TB
 
 ## Readiness board
 
-Cards placed by live assessment (PASS=37, WARN=0, MISS=0, ERROR=0).
+Cards placed by live assessment (PASS=38, WARN=0, MISS=0, ERROR=0).
 
 ```mermaid
 flowchart LR
-  subgraph col_PASS["PASS (37)"]
+  subgraph col_PASS["PASS (38)"]
     PASS_quality_drc_clean["quality.drc.clean<br/>Final DRC clean"]
     PASS_quality_lvs_clean["quality.lvs.clean<br/>Final LVS clean"]
     PASS_quality_rcx_corner_coverage["quality.rcx.corner_coverage<br/>RCX corner coverage"]
@@ -147,7 +148,7 @@ flowchart LR
     PASS_artifact_lvs_verilog["artifact.lvs.verilog<br/>LVS Verilog"]
     PASS_artifact_rcx_spef_outputs["artifact.rcx.spef_outputs<br/>RCX SPEF outputs"]
     PASS_artifact_synthesis_netlist["artifact.synthesis.netlist<br/>Mapped synthesis netlist"]
-    more_PASS["… +25 more — see TOC"]
+    more_PASS["… +26 more — see TOC"]
   end
   subgraph col_WARN["WARN"]
     empty_WARN["(none)"]
@@ -214,10 +215,11 @@ flowchart TB
 | [`performance.sta.frequency`](#performancestafrequency) | STA frequency | `sta` | yes |
 | [`performance.power.dynamic`](#performancepowerdynamic) | Dynamic power | `sta` | yes |
 | [`performance.power.leakage`](#performancepowerleakage) | Leakage power | `sta` | yes |
-| [`performance.host.latency`](#performancehostlatency) | Runtime wall time | `host` | yes |
-| [`performance.host.throughput`](#performancehostthroughput) | Runtime throughput | `host` | yes |
-| [`performance.host.peak_memory`](#performancehostpeak_memory) | Runtime peak RSS | `host` | yes |
-| [`performance.host.compile_peak_memory`](#performancehostcompile_peak_memory) | Compile peak RSS | `host` | yes |
+| [`performance.host.latency`](#performancehostlatency) | 组件耗时 | `host` | yes |
+| [`performance.host.throughput`](#performancehostthroughput) | 速度 | `host` | yes |
+| [`performance.host.peak_memory`](#performancehostpeak_memory) | 内存峰值 | `host` | yes |
+| [`performance.host.avg_memory`](#performancehostavg_memory) | 内存平均 | `host` | yes |
+| [`performance.host.compile_peak_memory`](#performancehostcompile_peak_memory) | 编译内存峰值 | `host` | yes |
 
 ```mermaid
 flowchart TB
@@ -229,10 +231,11 @@ flowchart TB
     performance_sta_frequency["performance.sta.frequency<br/>STA frequency (optional)"]
     performance_power_dynamic["performance.power.dynamic<br/>Dynamic power (optional)"]
     performance_power_leakage["performance.power.leakage<br/>Leakage power (optional)"]
-    performance_host_latency["performance.host.latency<br/>Runtime wall time (optional)"]
-    performance_host_throughput["performance.host.throughput<br/>Runtime throughput (optional)"]
-    performance_host_peak_memory["performance.host.peak_memory<br/>Runtime peak RSS (optional)"]
-    performance_host_compile_peak_memory["performance.host.compile_peak_memory<br/>Compile peak RSS (optional)"]
+    performance_host_latency["performance.host.latency<br/>组件耗时 (optional)"]
+    performance_host_throughput["performance.host.throughput<br/>速度 (optional)"]
+    performance_host_peak_memory["performance.host.peak_memory<br/>内存峰值 (optional)"]
+    performance_host_avg_memory["performance.host.avg_memory<br/>内存平均 (optional)"]
+    performance_host_compile_peak_memory["performance.host.compile_peak_memory<br/>编译内存峰值 (optional)"]
   end
   performance_sta_setup_wns -.-> performance_host_latency
 ```
@@ -959,7 +962,7 @@ flowchart LR
 
 ### `performance.host.latency`
 
-- **Runtime wall time** · category `performance` · step `host` · optional `True` · state **PASS**
+- **组件耗时** · category `performance` · step `host` · optional `True` · state **PASS**
 
 ```mermaid
 flowchart LR
@@ -972,7 +975,7 @@ flowchart LR
 
 ### `performance.host.throughput`
 
-- **Runtime throughput** · category `performance` · step `host` · optional `True` · state **PASS**
+- **速度** · category `performance` · step `host` · optional `True` · state **PASS**
 
 ```mermaid
 flowchart LR
@@ -985,7 +988,7 @@ flowchart LR
 
 ### `performance.host.peak_memory`
 
-- **Runtime peak RSS** · category `performance` · step `host` · optional `True` · state **PASS**
+- **内存峰值** · category `performance` · step `host` · optional `True` · state **PASS**
 
 ```mermaid
 flowchart LR
@@ -996,9 +999,22 @@ flowchart LR
 
 [↑ category `performance`](#category-performance) · [↑ Contents](#contents)
 
+### `performance.host.avg_memory`
+
+- **内存平均** · category `performance` · step `host` · optional `True` · state **PASS**
+
+```mermaid
+flowchart LR
+  step_performance_host_avg_memory["step: host"] --> metric_performance_host_avg_memory["performance.host.avg_memory"]
+  metric_performance_host_avg_memory --> state_performance_host_avg_memory["PASS"]
+  cat_performance_host_avg_memory["performance"] -.-> metric_performance_host_avg_memory
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
 ### `performance.host.compile_peak_memory`
 
-- **Compile peak RSS** · category `performance` · step `host` · optional `True` · state **PASS**
+- **编译内存峰值** · category `performance` · step `host` · optional `True` · state **PASS**
 
 ```mermaid
 flowchart LR
@@ -1017,9 +1033,9 @@ _Generated by `.github/scripts/generate-signoff-kanban.py` from `chipcompiler.en
 
 | Field | Value |
 | --- | --- |
-| Git commit | [`4d141bcd01d1`](https://github.com/plitenh/ecc/commit/4d141bcd01d15475f236394bc15dcf1574c944e5) |
-| Git commit (full) | `4d141bcd01d15475f236394bc15dcf1574c944e5` |
-| Snapshot SHA-256 | `5320f506a20bdb8e54a455e2207ac2eb035a5413f6bbd56695437481eb655bbb` |
+| Git commit | [`44f6281d8901`](https://github.com/plitenh/ecc/commit/44f6281d8901d2b2cf6dfbaaa3e5989483783da8) |
+| Git commit (full) | `44f6281d8901d2b2cf6dfbaaa3e5989483783da8` |
+| Snapshot SHA-256 | `0ba3382f4e682933162424360c86216bfed66c83127c5e98fd7f24b63255c270` |
 
 Compare snapshots with `plitenh/ecc-ci`:
 
