@@ -91,8 +91,9 @@ def _artifact(
     )
 
 
-def _flow(step: str) -> SignoffItemSpec:
-    optional = step == SkippableStepEnum.POST_ROUTE_LEC.value
+def _flow(step: str, *, optional: bool | None = None) -> SignoffItemSpec:
+    if optional is None:
+        optional = step == SkippableStepEnum.POST_ROUTE_LEC.value
     return SignoffItemSpec(
         id=f"flow.{step.lower()}.completed",
         step=step,
@@ -102,6 +103,21 @@ def _flow(step: str) -> SignoffItemSpec:
         title=f"{step} flow completed",
         optional=optional,
         fail_readiness="MISS",
+    )
+
+
+def _quality_optional(gate_id: str, step: str, title: str) -> SignoffItemSpec:
+    """Quality-shaped slot not yet bound to a blocking QoR gate."""
+    return SignoffItemSpec(
+        id=f"quality.{gate_id.removeprefix('qor.')}",
+        step=step,
+        category="quality_gate",
+        owner="qor",
+        policy="warn",
+        title=title,
+        qor_gate=gate_id,
+        optional=True,
+        fail_readiness="WARN",
     )
 
 
@@ -153,6 +169,12 @@ SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
     _artifact("artifact.sta.timing_paths", StepEnum.STA.value, "STA structured timing paths"),
     _artifact("artifact.synthesis.netlist", StepEnum.SYNTHESIS.value, "Mapped synthesis netlist"),
     _artifact(
+        "artifact.sdc.constraints",
+        "workspace",
+        "SDC constraints file",
+        optional=True,
+    ),
+    _artifact(
         "artifact.postroutelec.result",
         SkippableStepEnum.POST_ROUTE_LEC.value,
         "Post-route LEC result",
@@ -166,6 +188,15 @@ SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
     ),
     # Required flow completion (postRouteLec omitted when the ledger skipped it).
     *(_flow(step) for step in REQUIRED_FLOW_STEPS),
+    # Early / mid-chain flow (optional until checklist builders bind evidence).
+    _flow(StepEnum.SYNTHESIS.value, optional=True),
+    _flow(StepEnum.PLACEMENT.value, optional=True),
+    _flow(StepEnum.CTS.value, optional=True),
+    _flow(StepEnum.LEGALIZATION.value, optional=True),
+    _flow(StepEnum.POWER_ANALYSIS.value, optional=True),
+    # Soft quality (optional) — CTS skew target / route DR.
+    _quality_optional("qor.cts.skew_target", StepEnum.CTS.value, "CTS skew target met"),
+    _quality_optional("qor.route.dr_clean", StepEnum.ROUTING.value, "Route DR clean"),
     # Workspace provenance + config snapshots.
     SignoffItemSpec(
         id="provenance.initial.rtl",
@@ -212,8 +243,8 @@ SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
         title="Configuration sta",
         fail_readiness="MISS",
     ),
-    # Performance — chip timing/power + host four for now:
-    # 组件耗时 / 速度 / 内存峰值 / 内存平均 (Reading = "value unit").
+    # Performance — STA/power + SDC/CTS/place/route/synthesis + host.
+    # Reading on the board = "<value> <unit>".
     _performance("performance.sta.setup_wns", StepEnum.STA.value, "STA setup WNS"),
     _performance("performance.sta.setup_tns", StepEnum.STA.value, "STA setup TNS"),
     _performance("performance.sta.hold_wns", StepEnum.STA.value, "STA hold WNS"),
@@ -221,6 +252,34 @@ SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
     _performance("performance.sta.frequency", StepEnum.STA.value, "STA frequency"),
     _performance("performance.power.dynamic", StepEnum.STA.value, "Dynamic power"),
     _performance("performance.power.leakage", StepEnum.STA.value, "Leakage power"),
+    _performance("performance.sdc.clock_count", "workspace", "SDC clock count"),
+    _performance("performance.cts.skew", StepEnum.CTS.value, "CTS worst skew"),
+    _performance(
+        "performance.cts.insertion_latency",
+        StepEnum.CTS.value,
+        "CTS max insertion latency",
+    ),
+    _performance("performance.cts.buffer_count", StepEnum.CTS.value, "CTS buffer count"),
+    _performance(
+        "performance.cts.clock_wirelength", StepEnum.CTS.value, "CTS clock wirelength"
+    ),
+    _performance(
+        "performance.cts.tree_max_level", StepEnum.CTS.value, "CTS clock tree max level"
+    ),
+    _performance("performance.place.hpwl", StepEnum.PLACEMENT.value, "Place HPWL"),
+    _performance(
+        "performance.place.congestion_overflow",
+        StepEnum.PLACEMENT.value,
+        "Place EGR overflow total",
+    ),
+    _performance("performance.route.wirelength", StepEnum.ROUTING.value, "Route wirelength"),
+    _performance("performance.route.via_count", StepEnum.ROUTING.value, "Route via count"),
+    _performance(
+        "performance.synthesis.cell_area", StepEnum.SYNTHESIS.value, "Synthesis cell area"
+    ),
+    _performance(
+        "performance.synthesis.cell_count", StepEnum.SYNTHESIS.value, "Synthesis cell count"
+    ),
     _performance("performance.host.latency", "host", "组件耗时"),
     _performance("performance.host.throughput", "host", "速度"),
     _performance("performance.host.peak_memory", "host", "内存峰值"),

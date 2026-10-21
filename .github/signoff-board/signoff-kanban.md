@@ -2,11 +2,11 @@
 
 > **导览首页** — start here. This page is the human guide to signoff metrics; CSV/FileCheck under `test/lit/csv_gates` stays a util.
 
-**Live snapshot:** readiness `WARN` · legacy `` · 48 catalog metrics
+**Live snapshot:** readiness `WARN` · legacy `` · 68 catalog metrics
 
 | PASS | WARN | MISS | ERROR |
 | ---: | ---: | ---: | ---: |
-| 38 | 0 | 0 | 0 |
+| 49 | 8 | 1 | 0 |
 
 ## Contents
 
@@ -47,6 +47,7 @@
 - [`artifact.sta.corner_summaries`](#artifactstacorner_summaries) — STA structured corner summaries
 - [`artifact.sta.timing_paths`](#artifactstatiming_paths) — STA structured timing paths
 - [`artifact.synthesis.netlist`](#artifactsynthesisnetlist) — Mapped synthesis netlist
+- [`artifact.sdc.constraints`](#artifactsdcconstraints) — SDC constraints file
 - [`artifact.postroutelec.result`](#artifactpostroutelecresult) — Post-route LEC result
 - [`artifact.lec.result`](#artifactlecresult) — Synthesis LEC result
 - [`flow.route.completed`](#flowroutecompleted) — route flow completed
@@ -57,6 +58,13 @@
 - [`flow.rcx.completed`](#flowrcxcompleted) — RCX flow completed
 - [`flow.sta.completed`](#flowstacompleted) — sta flow completed
 - [`flow.harden.completed`](#flowhardencompleted) — Harden flow completed
+- [`flow.synthesis.completed`](#flowsynthesiscompleted) — Synthesis flow completed
+- [`flow.place.completed`](#flowplacecompleted) — place flow completed
+- [`flow.cts.completed`](#flowctscompleted) — CTS flow completed
+- [`flow.legalization.completed`](#flowlegalizationcompleted) — legalization flow completed
+- [`flow.poweranalysis.completed`](#flowpoweranalysiscompleted) — powerAnalysis flow completed
+- [`quality.cts.skew_target`](#qualityctsskew_target) — CTS skew target met
+- [`quality.route.dr_clean`](#qualityroutedr_clean) — Route DR clean
 - [`provenance.initial.rtl`](#provenanceinitialrtl) — Initial RTL
 - [`provenance.initial.sdc`](#provenanceinitialsdc) — Initial SDC
 - [`configuration.db`](#configurationdb) — Configuration db
@@ -69,6 +77,18 @@
 - [`performance.sta.frequency`](#performancestafrequency) — STA frequency
 - [`performance.power.dynamic`](#performancepowerdynamic) — Dynamic power
 - [`performance.power.leakage`](#performancepowerleakage) — Leakage power
+- [`performance.sdc.clock_count`](#performancesdcclock_count) — SDC clock count
+- [`performance.cts.skew`](#performancectsskew) — CTS worst skew
+- [`performance.cts.insertion_latency`](#performancectsinsertion_latency) — CTS max insertion latency
+- [`performance.cts.buffer_count`](#performancectsbuffer_count) — CTS buffer count
+- [`performance.cts.clock_wirelength`](#performancectsclock_wirelength) — CTS clock wirelength
+- [`performance.cts.tree_max_level`](#performancectstree_max_level) — CTS clock tree max level
+- [`performance.place.hpwl`](#performanceplacehpwl) — Place HPWL
+- [`performance.place.congestion_overflow`](#performanceplacecongestion_overflow) — Place EGR overflow total
+- [`performance.route.wirelength`](#performanceroutewirelength) — Route wirelength
+- [`performance.route.via_count`](#performanceroutevia_count) — Route via count
+- [`performance.synthesis.cell_area`](#performancesynthesiscell_area) — Synthesis cell area
+- [`performance.synthesis.cell_count`](#performancesynthesiscell_count) — Synthesis cell count
 - [`performance.host.latency`](#performancehostlatency) — 组件耗时
 - [`performance.host.throughput`](#performancehostthroughput) — 速度
 - [`performance.host.peak_memory`](#performancehostpeak_memory) — 内存峰值
@@ -103,15 +123,15 @@ One hub per domain — click a category section below for detail.
 ```mermaid
 flowchart TB
   hub["Signoff catalog"]
-  map_quality_gate["Quality gates<br/>8 metrics"]
+  map_quality_gate["Quality gates<br/>10 metrics"]
   hub --> map_quality_gate
-  map_performance["Performance / iSTA<br/>12 metrics"]
+  map_performance["Performance / iSTA<br/>24 metrics"]
   hub --> map_performance
-  map_artifact["Evidence artifacts<br/>13 metrics"]
+  map_artifact["Evidence artifacts<br/>14 metrics"]
   hub --> map_artifact
   map_report["Reports<br/>2 metrics"]
   hub --> map_report
-  map_flow["Flow completion<br/>8 metrics"]
+  map_flow["Flow completion<br/>13 metrics"]
   hub --> map_flow
   map_configuration["Configuration snapshots<br/>3 metrics"]
   hub --> map_configuration
@@ -121,21 +141,21 @@ flowchart TB
 
 | Domain | Metrics | Role |
 | --- | ---: | --- |
-| [Quality gates](#category-quality_gate) | 8 | Machine predicates (DRC/LVS/STA/RCX/area). Failures → ERROR readiness. |
-| [Performance / iSTA](#category-performance) | 12 | Numeric timing (WNS/TNS/freq) and power slots for multi-version compare. |
-| [Evidence artifacts](#category-artifact) | 13 | Required files from Harden / LVS / RCX / STA / synthesis (and optional LEC). |
+| [Quality gates](#category-quality_gate) | 10 | Machine predicates (DRC/LVS/STA/RCX/area). Failures → ERROR readiness. |
+| [Performance / iSTA](#category-performance) | 24 | Numeric timing (WNS/TNS/freq) and power slots for multi-version compare. |
+| [Evidence artifacts](#category-artifact) | 14 | Required files from Harden / LVS / RCX / STA / synthesis (and optional LEC). |
 | [Reports](#category-report) | 2 | Human-readable reports tied to steps (e.g. STA timing reports). |
-| [Flow completion](#category-flow) | 8 | Ledger steps that must have completed for a full package. |
+| [Flow completion](#category-flow) | 13 | Ledger steps that must have completed for a full package. |
 | [Configuration snapshots](#category-configuration) | 3 | Workspace config JSON (db / rcx / sta) frozen for the run. |
 | [Provenance](#category-provenance) | 2 | Initial RTL / SDC inputs that anchor the workspace. |
 
 ## Readiness board
 
-Cards placed by live assessment (PASS=38, WARN=0, MISS=0, ERROR=0).
+Cards placed by live assessment (PASS=49, WARN=8, MISS=1, ERROR=0).
 
 ```mermaid
 flowchart LR
-  subgraph col_PASS["PASS (38)"]
+  subgraph col_PASS["PASS (49)"]
     PASS_quality_drc_clean["quality.drc.clean<br/>Final DRC clean"]
     PASS_quality_lvs_clean["quality.lvs.clean<br/>Final LVS clean"]
     PASS_quality_rcx_corner_coverage["quality.rcx.corner_coverage<br/>RCX corner coverage"]
@@ -148,13 +168,20 @@ flowchart LR
     PASS_artifact_lvs_verilog["artifact.lvs.verilog<br/>LVS Verilog"]
     PASS_artifact_rcx_spef_outputs["artifact.rcx.spef_outputs<br/>RCX SPEF outputs"]
     PASS_artifact_synthesis_netlist["artifact.synthesis.netlist<br/>Mapped synthesis netlist"]
-    more_PASS["… +26 more — see TOC"]
+    more_PASS["… +37 more — see TOC"]
   end
-  subgraph col_WARN["WARN"]
-    empty_WARN["(none)"]
+  subgraph col_WARN["WARN (8)"]
+    WARN_artifact_sdc_constraints["artifact.sdc.constraints<br/>SDC constraints file"]
+    WARN_flow_synthesis_completed["flow.synthesis.completed<br/>Synthesis flow completed"]
+    WARN_flow_place_completed["flow.place.completed<br/>place flow completed"]
+    WARN_flow_cts_completed["flow.cts.completed<br/>CTS flow completed"]
+    WARN_flow_legalization_completed["flow.legalization.completed<br/>legalization flow completed"]
+    WARN_flow_poweranalysis_completed["flow.poweranalysis.completed<br/>powerAnalysis flow completed"]
+    WARN_quality_cts_skew_target["quality.cts.skew_target<br/>CTS skew target met"]
+    WARN_quality_route_dr_clean["quality.route.dr_clean<br/>Route DR clean"]
   end
-  subgraph col_MISS["MISS"]
-    empty_MISS["(none)"]
+  subgraph col_MISS["MISS (1)"]
+    MISS_performance_host_compile_peak_memory["performance.host.compile_peak_memory<br/>编译内存峰值"]
   end
   subgraph col_ERROR["ERROR"]
     empty_ERROR["(none)"]
@@ -179,6 +206,8 @@ flowchart LR
 | [`quality.sta.hold_closed`](#qualitystahold_closed) | STA hold closure | `sta` |  |
 | [`quality.mpc.minimum_area`](#qualitympcminimum_area) | Minimum core area | `Harden` |  |
 | [`quality.mpc.maximum_area`](#qualitympcmaximum_area) | Maximum core area | `Harden` |  |
+| [`quality.cts.skew_target`](#qualityctsskew_target) | CTS skew target met | `CTS` | yes |
+| [`quality.route.dr_clean`](#qualityroutedr_clean) | Route DR clean | `route` | yes |
 
 ```mermaid
 flowchart TB
@@ -191,11 +220,15 @@ flowchart TB
     quality_sta_hold_closed["quality.sta.hold_closed<br/>STA hold closure"]
     quality_mpc_minimum_area["quality.mpc.minimum_area<br/>Minimum core area"]
     quality_mpc_maximum_area["quality.mpc.maximum_area<br/>Maximum core area"]
+    quality_cts_skew_target["quality.cts.skew_target<br/>CTS skew target met (optional)"]
+    quality_route_dr_clean["quality.route.dr_clean<br/>Route DR clean (optional)"]
   end
   quality_drc_clean -.-> quality_lvs_clean
   quality_lvs_clean -.-> quality_rcx_corner_coverage
   quality_rcx_corner_coverage -.-> quality_sta_setup_closed
   quality_sta_setup_closed -.-> quality_mpc_minimum_area
+  quality_mpc_minimum_area -.-> quality_cts_skew_target
+  quality_cts_skew_target -.-> quality_route_dr_clean
 ```
 
 [↑ Contents](#contents) · [↑ Map](#catalog-map) · [↑ Readiness](#readiness-board)
@@ -215,6 +248,18 @@ flowchart TB
 | [`performance.sta.frequency`](#performancestafrequency) | STA frequency | `sta` | yes |
 | [`performance.power.dynamic`](#performancepowerdynamic) | Dynamic power | `sta` | yes |
 | [`performance.power.leakage`](#performancepowerleakage) | Leakage power | `sta` | yes |
+| [`performance.sdc.clock_count`](#performancesdcclock_count) | SDC clock count | `workspace` | yes |
+| [`performance.cts.skew`](#performancectsskew) | CTS worst skew | `CTS` | yes |
+| [`performance.cts.insertion_latency`](#performancectsinsertion_latency) | CTS max insertion latency | `CTS` | yes |
+| [`performance.cts.buffer_count`](#performancectsbuffer_count) | CTS buffer count | `CTS` | yes |
+| [`performance.cts.clock_wirelength`](#performancectsclock_wirelength) | CTS clock wirelength | `CTS` | yes |
+| [`performance.cts.tree_max_level`](#performancectstree_max_level) | CTS clock tree max level | `CTS` | yes |
+| [`performance.place.hpwl`](#performanceplacehpwl) | Place HPWL | `place` | yes |
+| [`performance.place.congestion_overflow`](#performanceplacecongestion_overflow) | Place EGR overflow total | `place` | yes |
+| [`performance.route.wirelength`](#performanceroutewirelength) | Route wirelength | `route` | yes |
+| [`performance.route.via_count`](#performanceroutevia_count) | Route via count | `route` | yes |
+| [`performance.synthesis.cell_area`](#performancesynthesiscell_area) | Synthesis cell area | `Synthesis` | yes |
+| [`performance.synthesis.cell_count`](#performancesynthesiscell_count) | Synthesis cell count | `Synthesis` | yes |
 | [`performance.host.latency`](#performancehostlatency) | 组件耗时 | `host` | yes |
 | [`performance.host.throughput`](#performancehostthroughput) | 速度 | `host` | yes |
 | [`performance.host.peak_memory`](#performancehostpeak_memory) | 内存峰值 | `host` | yes |
@@ -231,13 +276,30 @@ flowchart TB
     performance_sta_frequency["performance.sta.frequency<br/>STA frequency (optional)"]
     performance_power_dynamic["performance.power.dynamic<br/>Dynamic power (optional)"]
     performance_power_leakage["performance.power.leakage<br/>Leakage power (optional)"]
+    performance_sdc_clock_count["performance.sdc.clock_count<br/>SDC clock count (optional)"]
+    performance_cts_skew["performance.cts.skew<br/>CTS worst skew (optional)"]
+    performance_cts_insertion_latency["performance.cts.insertion_latency<br/>CTS max insertion latency (optional)"]
+    performance_cts_buffer_count["performance.cts.buffer_count<br/>CTS buffer count (optional)"]
+    performance_cts_clock_wirelength["performance.cts.clock_wirelength<br/>CTS clock wirelength (optional)"]
+    performance_cts_tree_max_level["performance.cts.tree_max_level<br/>CTS clock tree max level (optional)"]
+    performance_place_hpwl["performance.place.hpwl<br/>Place HPWL (optional)"]
+    performance_place_congestion_overflow["performance.place.congestion_overflow<br/>Place EGR overflow total (optional)"]
+    performance_route_wirelength["performance.route.wirelength<br/>Route wirelength (optional)"]
+    performance_route_via_count["performance.route.via_count<br/>Route via count (optional)"]
+    performance_synthesis_cell_area["performance.synthesis.cell_area<br/>Synthesis cell area (optional)"]
+    performance_synthesis_cell_count["performance.synthesis.cell_count<br/>Synthesis cell count (optional)"]
     performance_host_latency["performance.host.latency<br/>组件耗时 (optional)"]
     performance_host_throughput["performance.host.throughput<br/>速度 (optional)"]
     performance_host_peak_memory["performance.host.peak_memory<br/>内存峰值 (optional)"]
     performance_host_avg_memory["performance.host.avg_memory<br/>内存平均 (optional)"]
     performance_host_compile_peak_memory["performance.host.compile_peak_memory<br/>编译内存峰值 (optional)"]
   end
-  performance_sta_setup_wns -.-> performance_host_latency
+  performance_sta_setup_wns -.-> performance_sdc_clock_count
+  performance_sdc_clock_count -.-> performance_cts_skew
+  performance_cts_skew -.-> performance_place_hpwl
+  performance_place_hpwl -.-> performance_route_wirelength
+  performance_route_wirelength -.-> performance_synthesis_cell_area
+  performance_synthesis_cell_area -.-> performance_host_latency
 ```
 
 [↑ Contents](#contents) · [↑ Map](#catalog-map) · [↑ Readiness](#readiness-board)
@@ -261,6 +323,7 @@ flowchart TB
 | [`artifact.sta.corner_summaries`](#artifactstacorner_summaries) | STA structured corner summaries | `sta` |  |
 | [`artifact.sta.timing_paths`](#artifactstatiming_paths) | STA structured timing paths | `sta` |  |
 | [`artifact.synthesis.netlist`](#artifactsynthesisnetlist) | Mapped synthesis netlist | `Synthesis` |  |
+| [`artifact.sdc.constraints`](#artifactsdcconstraints) | SDC constraints file | `workspace` | yes |
 | [`artifact.postroutelec.result`](#artifactpostroutelecresult) | Post-route LEC result | `postRouteLec` | yes |
 | [`artifact.lec.result`](#artifactlecresult) | Synthesis LEC result | `lec` | yes |
 
@@ -278,6 +341,7 @@ flowchart TB
     artifact_sta_corner_summaries["artifact.sta.corner_summaries<br/>STA structured corner summaries"]
     artifact_sta_timing_paths["artifact.sta.timing_paths<br/>STA structured timing paths"]
     artifact_synthesis_netlist["artifact.synthesis.netlist<br/>Mapped synthesis netlist"]
+    artifact_sdc_constraints["artifact.sdc.constraints<br/>SDC constraints file (optional)"]
     artifact_postroutelec_result["artifact.postroutelec.result<br/>Post-route LEC result (optional)"]
     artifact_lec_result["artifact.lec.result<br/>Synthesis LEC result (optional)"]
   end
@@ -285,7 +349,8 @@ flowchart TB
   artifact_lvs_def -.-> artifact_rcx_spef_outputs
   artifact_rcx_spef_outputs -.-> artifact_sta_corner_summaries
   artifact_sta_corner_summaries -.-> artifact_synthesis_netlist
-  artifact_synthesis_netlist -.-> artifact_postroutelec_result
+  artifact_synthesis_netlist -.-> artifact_sdc_constraints
+  artifact_sdc_constraints -.-> artifact_postroutelec_result
   artifact_postroutelec_result -.-> artifact_lec_result
 ```
 
@@ -329,6 +394,11 @@ flowchart TB
 | [`flow.rcx.completed`](#flowrcxcompleted) | RCX flow completed | `RCX` |  |
 | [`flow.sta.completed`](#flowstacompleted) | sta flow completed | `sta` |  |
 | [`flow.harden.completed`](#flowhardencompleted) | Harden flow completed | `Harden` |  |
+| [`flow.synthesis.completed`](#flowsynthesiscompleted) | Synthesis flow completed | `Synthesis` | yes |
+| [`flow.place.completed`](#flowplacecompleted) | place flow completed | `place` | yes |
+| [`flow.cts.completed`](#flowctscompleted) | CTS flow completed | `CTS` | yes |
+| [`flow.legalization.completed`](#flowlegalizationcompleted) | legalization flow completed | `legalization` | yes |
+| [`flow.poweranalysis.completed`](#flowpoweranalysiscompleted) | powerAnalysis flow completed | `powerAnalysis` | yes |
 
 ```mermaid
 flowchart TB
@@ -341,6 +411,11 @@ flowchart TB
     flow_rcx_completed["flow.rcx.completed<br/>RCX flow completed"]
     flow_sta_completed["flow.sta.completed<br/>sta flow completed"]
     flow_harden_completed["flow.harden.completed<br/>Harden flow completed"]
+    flow_synthesis_completed["flow.synthesis.completed<br/>Synthesis flow completed (optional)"]
+    flow_place_completed["flow.place.completed<br/>place flow completed (optional)"]
+    flow_cts_completed["flow.cts.completed<br/>CTS flow completed (optional)"]
+    flow_legalization_completed["flow.legalization.completed<br/>legalization flow completed (optional)"]
+    flow_poweranalysis_completed["flow.poweranalysis.completed<br/>powerAnalysis flow completed (optional)"]
   end
   flow_route_completed -.-> flow_drc_completed
   flow_drc_completed -.-> flow_lvs_completed
@@ -349,6 +424,11 @@ flowchart TB
   flow_postroutelec_completed -.-> flow_rcx_completed
   flow_rcx_completed -.-> flow_sta_completed
   flow_sta_completed -.-> flow_harden_completed
+  flow_harden_completed -.-> flow_synthesis_completed
+  flow_synthesis_completed -.-> flow_place_completed
+  flow_place_completed -.-> flow_cts_completed
+  flow_cts_completed -.-> flow_legalization_completed
+  flow_legalization_completed -.-> flow_poweranalysis_completed
 ```
 
 [↑ Contents](#contents) · [↑ Map](#catalog-map) · [↑ Readiness](#readiness-board)
@@ -674,6 +754,19 @@ flowchart LR
 
 [↑ category `artifact`](#category-artifact) · [↑ Contents](#contents)
 
+### `artifact.sdc.constraints`
+
+- **SDC constraints file** · category `artifact` · step `workspace` · optional `True` · state **WARN**
+
+```mermaid
+flowchart LR
+  step_artifact_sdc_constraints["step: workspace"] --> metric_artifact_sdc_constraints["artifact.sdc.constraints"]
+  metric_artifact_sdc_constraints --> state_artifact_sdc_constraints["WARN"]
+  cat_artifact_sdc_constraints["artifact"] -.-> metric_artifact_sdc_constraints
+```
+
+[↑ category `artifact`](#category-artifact) · [↑ Contents](#contents)
+
 ### `artifact.postroutelec.result`
 
 - **Post-route LEC result** · category `artifact` · step `postRouteLec` · optional `True` · state **PASS**
@@ -803,6 +896,97 @@ flowchart LR
 ```
 
 [↑ category `flow`](#category-flow) · [↑ Contents](#contents)
+
+### `flow.synthesis.completed`
+
+- **Synthesis flow completed** · category `flow` · step `Synthesis` · optional `True` · state **WARN**
+
+```mermaid
+flowchart LR
+  step_flow_synthesis_completed["step: Synthesis"] --> metric_flow_synthesis_completed["flow.synthesis.completed"]
+  metric_flow_synthesis_completed --> state_flow_synthesis_completed["WARN"]
+  cat_flow_synthesis_completed["flow"] -.-> metric_flow_synthesis_completed
+```
+
+[↑ category `flow`](#category-flow) · [↑ Contents](#contents)
+
+### `flow.place.completed`
+
+- **place flow completed** · category `flow` · step `place` · optional `True` · state **WARN**
+
+```mermaid
+flowchart LR
+  step_flow_place_completed["step: place"] --> metric_flow_place_completed["flow.place.completed"]
+  metric_flow_place_completed --> state_flow_place_completed["WARN"]
+  cat_flow_place_completed["flow"] -.-> metric_flow_place_completed
+```
+
+[↑ category `flow`](#category-flow) · [↑ Contents](#contents)
+
+### `flow.cts.completed`
+
+- **CTS flow completed** · category `flow` · step `CTS` · optional `True` · state **WARN**
+
+```mermaid
+flowchart LR
+  step_flow_cts_completed["step: CTS"] --> metric_flow_cts_completed["flow.cts.completed"]
+  metric_flow_cts_completed --> state_flow_cts_completed["WARN"]
+  cat_flow_cts_completed["flow"] -.-> metric_flow_cts_completed
+```
+
+[↑ category `flow`](#category-flow) · [↑ Contents](#contents)
+
+### `flow.legalization.completed`
+
+- **legalization flow completed** · category `flow` · step `legalization` · optional `True` · state **WARN**
+
+```mermaid
+flowchart LR
+  step_flow_legalization_completed["step: legalization"] --> metric_flow_legalization_completed["flow.legalization.completed"]
+  metric_flow_legalization_completed --> state_flow_legalization_completed["WARN"]
+  cat_flow_legalization_completed["flow"] -.-> metric_flow_legalization_completed
+```
+
+[↑ category `flow`](#category-flow) · [↑ Contents](#contents)
+
+### `flow.poweranalysis.completed`
+
+- **powerAnalysis flow completed** · category `flow` · step `powerAnalysis` · optional `True` · state **WARN**
+
+```mermaid
+flowchart LR
+  step_flow_poweranalysis_completed["step: powerAnalysis"] --> metric_flow_poweranalysis_completed["flow.poweranalysis.completed"]
+  metric_flow_poweranalysis_completed --> state_flow_poweranalysis_completed["WARN"]
+  cat_flow_poweranalysis_completed["flow"] -.-> metric_flow_poweranalysis_completed
+```
+
+[↑ category `flow`](#category-flow) · [↑ Contents](#contents)
+
+### `quality.cts.skew_target`
+
+- **CTS skew target met** · category `quality_gate` · step `CTS` · optional `True` · state **WARN**
+
+```mermaid
+flowchart LR
+  step_quality_cts_skew_target["step: CTS"] --> metric_quality_cts_skew_target["quality.cts.skew_target"]
+  metric_quality_cts_skew_target --> state_quality_cts_skew_target["WARN"]
+  cat_quality_cts_skew_target["quality_gate"] -.-> metric_quality_cts_skew_target
+```
+
+[↑ category `quality_gate`](#category-quality_gate) · [↑ Contents](#contents)
+
+### `quality.route.dr_clean`
+
+- **Route DR clean** · category `quality_gate` · step `route` · optional `True` · state **WARN**
+
+```mermaid
+flowchart LR
+  step_quality_route_dr_clean["step: route"] --> metric_quality_route_dr_clean["quality.route.dr_clean"]
+  metric_quality_route_dr_clean --> state_quality_route_dr_clean["WARN"]
+  cat_quality_route_dr_clean["quality_gate"] -.-> metric_quality_route_dr_clean
+```
+
+[↑ category `quality_gate`](#category-quality_gate) · [↑ Contents](#contents)
 
 ### `provenance.initial.rtl`
 
@@ -960,6 +1144,162 @@ flowchart LR
 
 [↑ category `performance`](#category-performance) · [↑ Contents](#contents)
 
+### `performance.sdc.clock_count`
+
+- **SDC clock count** · category `performance` · step `workspace` · optional `True` · state **PASS**
+
+```mermaid
+flowchart LR
+  step_performance_sdc_clock_count["step: workspace"] --> metric_performance_sdc_clock_count["performance.sdc.clock_count"]
+  metric_performance_sdc_clock_count --> state_performance_sdc_clock_count["PASS"]
+  cat_performance_sdc_clock_count["performance"] -.-> metric_performance_sdc_clock_count
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.cts.skew`
+
+- **CTS worst skew** · category `performance` · step `CTS` · optional `True` · state **PASS**
+
+```mermaid
+flowchart LR
+  step_performance_cts_skew["step: CTS"] --> metric_performance_cts_skew["performance.cts.skew"]
+  metric_performance_cts_skew --> state_performance_cts_skew["PASS"]
+  cat_performance_cts_skew["performance"] -.-> metric_performance_cts_skew
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.cts.insertion_latency`
+
+- **CTS max insertion latency** · category `performance` · step `CTS` · optional `True` · state **PASS**
+
+```mermaid
+flowchart LR
+  step_performance_cts_insertion_latency["step: CTS"] --> metric_performance_cts_insertion_latency["performance.cts.insertion_latency"]
+  metric_performance_cts_insertion_latency --> state_performance_cts_insertion_latency["PASS"]
+  cat_performance_cts_insertion_latency["performance"] -.-> metric_performance_cts_insertion_latency
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.cts.buffer_count`
+
+- **CTS buffer count** · category `performance` · step `CTS` · optional `True` · state **PASS**
+
+```mermaid
+flowchart LR
+  step_performance_cts_buffer_count["step: CTS"] --> metric_performance_cts_buffer_count["performance.cts.buffer_count"]
+  metric_performance_cts_buffer_count --> state_performance_cts_buffer_count["PASS"]
+  cat_performance_cts_buffer_count["performance"] -.-> metric_performance_cts_buffer_count
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.cts.clock_wirelength`
+
+- **CTS clock wirelength** · category `performance` · step `CTS` · optional `True` · state **PASS**
+
+```mermaid
+flowchart LR
+  step_performance_cts_clock_wirelength["step: CTS"] --> metric_performance_cts_clock_wirelength["performance.cts.clock_wirelength"]
+  metric_performance_cts_clock_wirelength --> state_performance_cts_clock_wirelength["PASS"]
+  cat_performance_cts_clock_wirelength["performance"] -.-> metric_performance_cts_clock_wirelength
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.cts.tree_max_level`
+
+- **CTS clock tree max level** · category `performance` · step `CTS` · optional `True` · state **PASS**
+
+```mermaid
+flowchart LR
+  step_performance_cts_tree_max_level["step: CTS"] --> metric_performance_cts_tree_max_level["performance.cts.tree_max_level"]
+  metric_performance_cts_tree_max_level --> state_performance_cts_tree_max_level["PASS"]
+  cat_performance_cts_tree_max_level["performance"] -.-> metric_performance_cts_tree_max_level
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.place.hpwl`
+
+- **Place HPWL** · category `performance` · step `place` · optional `True` · state **PASS**
+
+```mermaid
+flowchart LR
+  step_performance_place_hpwl["step: place"] --> metric_performance_place_hpwl["performance.place.hpwl"]
+  metric_performance_place_hpwl --> state_performance_place_hpwl["PASS"]
+  cat_performance_place_hpwl["performance"] -.-> metric_performance_place_hpwl
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.place.congestion_overflow`
+
+- **Place EGR overflow total** · category `performance` · step `place` · optional `True` · state **PASS**
+
+```mermaid
+flowchart LR
+  step_performance_place_congestion_overflow["step: place"] --> metric_performance_place_congestion_overflow["performance.place.congestion_overflow"]
+  metric_performance_place_congestion_overflow --> state_performance_place_congestion_overflow["PASS"]
+  cat_performance_place_congestion_overflow["performance"] -.-> metric_performance_place_congestion_overflow
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.route.wirelength`
+
+- **Route wirelength** · category `performance` · step `route` · optional `True` · state **PASS**
+
+```mermaid
+flowchart LR
+  step_performance_route_wirelength["step: route"] --> metric_performance_route_wirelength["performance.route.wirelength"]
+  metric_performance_route_wirelength --> state_performance_route_wirelength["PASS"]
+  cat_performance_route_wirelength["performance"] -.-> metric_performance_route_wirelength
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.route.via_count`
+
+- **Route via count** · category `performance` · step `route` · optional `True` · state **PASS**
+
+```mermaid
+flowchart LR
+  step_performance_route_via_count["step: route"] --> metric_performance_route_via_count["performance.route.via_count"]
+  metric_performance_route_via_count --> state_performance_route_via_count["PASS"]
+  cat_performance_route_via_count["performance"] -.-> metric_performance_route_via_count
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.synthesis.cell_area`
+
+- **Synthesis cell area** · category `performance` · step `Synthesis` · optional `True` · state **PASS**
+
+```mermaid
+flowchart LR
+  step_performance_synthesis_cell_area["step: Synthesis"] --> metric_performance_synthesis_cell_area["performance.synthesis.cell_area"]
+  metric_performance_synthesis_cell_area --> state_performance_synthesis_cell_area["PASS"]
+  cat_performance_synthesis_cell_area["performance"] -.-> metric_performance_synthesis_cell_area
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.synthesis.cell_count`
+
+- **Synthesis cell count** · category `performance` · step `Synthesis` · optional `True` · state **PASS**
+
+```mermaid
+flowchart LR
+  step_performance_synthesis_cell_count["step: Synthesis"] --> metric_performance_synthesis_cell_count["performance.synthesis.cell_count"]
+  metric_performance_synthesis_cell_count --> state_performance_synthesis_cell_count["PASS"]
+  cat_performance_synthesis_cell_count["performance"] -.-> metric_performance_synthesis_cell_count
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
 ### `performance.host.latency`
 
 - **组件耗时** · category `performance` · step `host` · optional `True` · state **PASS**
@@ -1014,12 +1354,12 @@ flowchart LR
 
 ### `performance.host.compile_peak_memory`
 
-- **编译内存峰值** · category `performance` · step `host` · optional `True` · state **PASS**
+- **编译内存峰值** · category `performance` · step `host` · optional `True` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_performance_host_compile_peak_memory["step: host"] --> metric_performance_host_compile_peak_memory["performance.host.compile_peak_memory"]
-  metric_performance_host_compile_peak_memory --> state_performance_host_compile_peak_memory["PASS"]
+  metric_performance_host_compile_peak_memory --> state_performance_host_compile_peak_memory["MISS"]
   cat_performance_host_compile_peak_memory["performance"] -.-> metric_performance_host_compile_peak_memory
 ```
 
@@ -1033,9 +1373,9 @@ _Generated by `.github/scripts/generate-signoff-kanban.py` from `chipcompiler.en
 
 | Field | Value |
 | --- | --- |
-| Git commit | [`44f6281d8901`](https://github.com/plitenh/ecc/commit/44f6281d8901d2b2cf6dfbaaa3e5989483783da8) |
-| Git commit (full) | `44f6281d8901d2b2cf6dfbaaa3e5989483783da8` |
-| Snapshot SHA-256 | `0ba3382f4e682933162424360c86216bfed66c83127c5e98fd7f24b63255c270` |
+| Git commit | [`5ef13d11ec40`](https://github.com/plitenh/ecc/commit/5ef13d11ec40f352c97c7f401d6dcbe4526139d1) |
+| Git commit (full) | `5ef13d11ec40f352c97c7f401d6dcbe4526139d1` |
+| Snapshot SHA-256 | `3dda23f35c290f651d33c89f8fb0366166ca2de5ce855d3cc2f7ab2e48368b7a` |
 
 Compare snapshots with `plitenh/ecc-ci`:
 
