@@ -2,7 +2,11 @@
 
 > **导览首页** — start here. This page is the human guide to signoff metrics; CSV/FileCheck under `test/lit/csv_gates` stays a util.
 
-**Catalog mode:** 36 metrics · no assessment JSON (swimlanes show topology until you pass `--assessment`).
+**Live snapshot:** readiness `WARN` · legacy `` · 43 catalog metrics
+
+| PASS | WARN | MISS | ERROR |
+| ---: | ---: | ---: | ---: |
+| 0 | 0 | 43 | 0 |
 
 ## Contents
 
@@ -11,6 +15,7 @@
 3. [Readiness board](#readiness-board)
 4. [Categories](#categories)
    - [Quality gates (`quality_gate`)](#category-quality_gate)
+   - [Performance / iSTA (`performance`)](#category-performance)
    - [Evidence artifacts (`artifact`)](#category-artifact)
    - [Reports (`report`)](#category-report)
    - [Flow completion (`flow`)](#category-flow)
@@ -57,6 +62,13 @@
 - [`configuration.db`](#configurationdb) — Configuration db
 - [`configuration.rcx`](#configurationrcx) — Configuration RCX
 - [`configuration.sta`](#configurationsta) — Configuration sta
+- [`performance.sta.setup_wns`](#performancestasetup_wns) — STA setup WNS
+- [`performance.sta.setup_tns`](#performancestasetup_tns) — STA setup TNS
+- [`performance.sta.hold_wns`](#performancestahold_wns) — STA hold WNS
+- [`performance.sta.hold_tns`](#performancestahold_tns) — STA hold TNS
+- [`performance.sta.frequency`](#performancestafrequency) — STA frequency
+- [`performance.power.dynamic`](#performancepowerdynamic) — Dynamic power
+- [`performance.power.leakage`](#performancepowerleakage) — Leakage power
 
 </details>
 
@@ -88,6 +100,8 @@ flowchart TB
   hub["Signoff catalog"]
   map_quality_gate["Quality gates<br/>8 metrics"]
   hub --> map_quality_gate
+  map_performance["Performance / iSTA<br/>7 metrics"]
+  hub --> map_performance
   map_artifact["Evidence artifacts<br/>13 metrics"]
   hub --> map_artifact
   map_report["Reports<br/>2 metrics"]
@@ -103,6 +117,7 @@ flowchart TB
 | Domain | Metrics | Role |
 | --- | ---: | --- |
 | [Quality gates](#category-quality_gate) | 8 | Machine predicates (DRC/LVS/STA/RCX/area). Failures → ERROR readiness. |
+| [Performance / iSTA](#category-performance) | 7 | Numeric timing (WNS/TNS/freq) and power slots for multi-version compare. |
 | [Evidence artifacts](#category-artifact) | 13 | Required files from Harden / LVS / RCX / STA / synthesis (and optional LEC). |
 | [Reports](#category-report) | 2 | Human-readable reports tied to steps (e.g. STA timing reports). |
 | [Flow completion](#category-flow) | 8 | Ledger steps that must have completed for a full package. |
@@ -111,47 +126,33 @@ flowchart TB
 
 ## Readiness board
 
-No assessment — all metrics listed under **catalog**. Re-run with `--assessment` to split swimlanes.
+Cards placed by live assessment (PASS=0, WARN=0, MISS=43, ERROR=0).
 
 ```mermaid
 flowchart LR
-  subgraph col_catalog["catalog (36)"]
-    catalog_quality_drc_clean["quality.drc.clean<br/>Final DRC clean"]
-    catalog_quality_lvs_clean["quality.lvs.clean<br/>Final LVS clean"]
-    catalog_quality_rcx_corner_coverage["quality.rcx.corner_coverage<br/>RCX corner coverage"]
-    catalog_quality_rcx_spef_parse_health["quality.rcx.spef_parse_health<br/>RCX SPEF integrity"]
-    catalog_quality_sta_setup_closed["quality.sta.setup_closed<br/>STA setup closure"]
-    catalog_quality_sta_hold_closed["quality.sta.hold_closed<br/>STA hold closure"]
-    catalog_quality_mpc_minimum_area["quality.mpc.minimum_area<br/>Minimum core area"]
-    catalog_quality_mpc_maximum_area["quality.mpc.maximum_area<br/>Maximum core area"]
-    catalog_artifact_harden_gds["artifact.harden.gds<br/>Harden GDS"]
-    catalog_artifact_harden_lef["artifact.harden.lef<br/>Harden LEF"]
-    catalog_artifact_harden_lib["artifact.harden.lib<br/>Harden LIB"]
-    catalog_artifact_lvs_def["artifact.lvs.def<br/>LVS DEF"]
-    catalog_artifact_lvs_verilog["artifact.lvs.verilog<br/>LVS Verilog"]
-    catalog_artifact_lvs_gds["artifact.lvs.gds<br/>LVS GDS"]
-    catalog_artifact_lvs_report["artifact.lvs.report<br/>LVS report"]
-    catalog_artifact_lvs_json["artifact.lvs.json<br/>LVS JSON"]
-    catalog_artifact_rcx_spef_outputs["artifact.rcx.spef_outputs<br/>RCX SPEF outputs"]
-    catalog_report_sta_timing_reports["report.sta.timing_reports<br/>STA timing reports"]
-    catalog_artifact_sta_corner_summaries["artifact.sta.corner_summaries<br/>STA structured corner summ…"]
-    catalog_artifact_sta_timing_paths["artifact.sta.timing_paths<br/>STA structured timing paths"]
-    catalog_artifact_synthesis_netlist["artifact.synthesis.netlist<br/>Mapped synthesis netlist"]
-    catalog_artifact_postroutelec_result["artifact.postroutelec.result<br/>Post-route LEC result"]
-    catalog_artifact_lec_result["artifact.lec.result<br/>Synthesis LEC result"]
-    catalog_flow_route_completed["flow.route.completed<br/>route flow completed"]
-    catalog_flow_drc_completed["flow.drc.completed<br/>drc flow completed"]
-    catalog_flow_lvs_completed["flow.lvs.completed<br/>lvs flow completed"]
-    catalog_flow_filler_completed["flow.filler.completed<br/>filler flow completed"]
-    catalog_flow_postroutelec_completed["flow.postroutelec.completed<br/>postRouteLec flow completed"]
-    catalog_flow_rcx_completed["flow.rcx.completed<br/>RCX flow completed"]
-    catalog_flow_sta_completed["flow.sta.completed<br/>sta flow completed"]
-    catalog_flow_harden_completed["flow.harden.completed<br/>Harden flow completed"]
-    catalog_provenance_initial_rtl["provenance.initial.rtl<br/>Initial RTL"]
-    catalog_provenance_initial_sdc["provenance.initial.sdc<br/>Initial SDC"]
-    catalog_configuration_db["configuration.db<br/>Configuration db"]
-    catalog_configuration_rcx["configuration.rcx<br/>Configuration RCX"]
-    catalog_configuration_sta["configuration.sta<br/>Configuration sta"]
+  subgraph col_PASS["PASS"]
+    empty_PASS["(none)"]
+  end
+  subgraph col_WARN["WARN"]
+    empty_WARN["(none)"]
+  end
+  subgraph col_MISS["MISS (43)"]
+    MISS_quality_drc_clean["quality.drc.clean<br/>Final DRC clean"]
+    MISS_quality_lvs_clean["quality.lvs.clean<br/>Final LVS clean"]
+    MISS_quality_rcx_corner_coverage["quality.rcx.corner_coverage<br/>RCX corner coverage"]
+    MISS_quality_rcx_spef_parse_health["quality.rcx.spef_parse_health<br/>RCX SPEF integrity"]
+    MISS_quality_sta_setup_closed["quality.sta.setup_closed<br/>STA setup closure"]
+    MISS_quality_sta_hold_closed["quality.sta.hold_closed<br/>STA hold closure"]
+    MISS_quality_mpc_minimum_area["quality.mpc.minimum_area<br/>Minimum core area"]
+    MISS_quality_mpc_maximum_area["quality.mpc.maximum_area<br/>Maximum core area"]
+    MISS_artifact_harden_gds["artifact.harden.gds<br/>Harden GDS"]
+    MISS_artifact_harden_lef["artifact.harden.lef<br/>Harden LEF"]
+    MISS_artifact_harden_lib["artifact.harden.lib<br/>Harden LIB"]
+    MISS_artifact_lvs_def["artifact.lvs.def<br/>LVS DEF"]
+    more_MISS["… +31 more — see TOC"]
+  end
+  subgraph col_ERROR["ERROR"]
+    empty_ERROR["(none)"]
   end
 ```
 
@@ -190,6 +191,37 @@ flowchart TB
   quality_lvs_clean -.-> quality_rcx_corner_coverage
   quality_rcx_corner_coverage -.-> quality_sta_setup_closed
   quality_sta_setup_closed -.-> quality_mpc_minimum_area
+```
+
+[↑ Contents](#contents) · [↑ Map](#catalog-map) · [↑ Readiness](#readiness-board)
+
+### Category: `performance`
+
+<a id="category-performance"></a>
+
+**Performance / iSTA.** Numeric timing (WNS/TNS/freq) and power slots for multi-version compare.
+
+| id | title | step | optional |
+| --- | --- | --- | --- |
+| [`performance.sta.setup_wns`](#performancestasetup_wns) | STA setup WNS | `sta` | yes |
+| [`performance.sta.setup_tns`](#performancestasetup_tns) | STA setup TNS | `sta` | yes |
+| [`performance.sta.hold_wns`](#performancestahold_wns) | STA hold WNS | `sta` | yes |
+| [`performance.sta.hold_tns`](#performancestahold_tns) | STA hold TNS | `sta` | yes |
+| [`performance.sta.frequency`](#performancestafrequency) | STA frequency | `sta` | yes |
+| [`performance.power.dynamic`](#performancepowerdynamic) | Dynamic power | `sta` | yes |
+| [`performance.power.leakage`](#performancepowerleakage) | Leakage power | `sta` | yes |
+
+```mermaid
+flowchart TB
+  subgraph cat_performance["Performance / iSTA"]
+    performance_sta_setup_wns["performance.sta.setup_wns<br/>STA setup WNS (optional)"]
+    performance_sta_setup_tns["performance.sta.setup_tns<br/>STA setup TNS (optional)"]
+    performance_sta_hold_wns["performance.sta.hold_wns<br/>STA hold WNS (optional)"]
+    performance_sta_hold_tns["performance.sta.hold_tns<br/>STA hold TNS (optional)"]
+    performance_sta_frequency["performance.sta.frequency<br/>STA frequency (optional)"]
+    performance_power_dynamic["performance.power.dynamic<br/>Dynamic power (optional)"]
+    performance_power_leakage["performance.power.leakage<br/>Leakage power (optional)"]
+  end
 ```
 
 [↑ Contents](#contents) · [↑ Map](#catalog-map) · [↑ Readiness](#readiness-board)
@@ -355,12 +387,12 @@ Each metric: step → id → board state.
 
 ### `quality.drc.clean`
 
-- **Final DRC clean** · category `quality_gate` · step `drc` · optional `False` · state **catalog**
+- **Final DRC clean** · category `quality_gate` · step `drc` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_quality_drc_clean["step: drc"] --> metric_quality_drc_clean["quality.drc.clean"]
-  metric_quality_drc_clean --> state_quality_drc_clean["catalog"]
+  metric_quality_drc_clean --> state_quality_drc_clean["MISS"]
   cat_quality_drc_clean["quality_gate"] -.-> metric_quality_drc_clean
 ```
 
@@ -368,12 +400,12 @@ flowchart LR
 
 ### `quality.lvs.clean`
 
-- **Final LVS clean** · category `quality_gate` · step `lvs` · optional `False` · state **catalog**
+- **Final LVS clean** · category `quality_gate` · step `lvs` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_quality_lvs_clean["step: lvs"] --> metric_quality_lvs_clean["quality.lvs.clean"]
-  metric_quality_lvs_clean --> state_quality_lvs_clean["catalog"]
+  metric_quality_lvs_clean --> state_quality_lvs_clean["MISS"]
   cat_quality_lvs_clean["quality_gate"] -.-> metric_quality_lvs_clean
 ```
 
@@ -381,12 +413,12 @@ flowchart LR
 
 ### `quality.rcx.corner_coverage`
 
-- **RCX corner coverage** · category `quality_gate` · step `RCX` · optional `False` · state **catalog**
+- **RCX corner coverage** · category `quality_gate` · step `RCX` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_quality_rcx_corner_coverage["step: RCX"] --> metric_quality_rcx_corner_coverage["quality.rcx.corner_coverage"]
-  metric_quality_rcx_corner_coverage --> state_quality_rcx_corner_coverage["catalog"]
+  metric_quality_rcx_corner_coverage --> state_quality_rcx_corner_coverage["MISS"]
   cat_quality_rcx_corner_coverage["quality_gate"] -.-> metric_quality_rcx_corner_coverage
 ```
 
@@ -394,12 +426,12 @@ flowchart LR
 
 ### `quality.rcx.spef_parse_health`
 
-- **RCX SPEF integrity** · category `quality_gate` · step `RCX` · optional `False` · state **catalog**
+- **RCX SPEF integrity** · category `quality_gate` · step `RCX` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_quality_rcx_spef_parse_health["step: RCX"] --> metric_quality_rcx_spef_parse_health["quality.rcx.spef_parse_health"]
-  metric_quality_rcx_spef_parse_health --> state_quality_rcx_spef_parse_health["catalog"]
+  metric_quality_rcx_spef_parse_health --> state_quality_rcx_spef_parse_health["MISS"]
   cat_quality_rcx_spef_parse_health["quality_gate"] -.-> metric_quality_rcx_spef_parse_health
 ```
 
@@ -407,12 +439,12 @@ flowchart LR
 
 ### `quality.sta.setup_closed`
 
-- **STA setup closure** · category `quality_gate` · step `sta` · optional `False` · state **catalog**
+- **STA setup closure** · category `quality_gate` · step `sta` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_quality_sta_setup_closed["step: sta"] --> metric_quality_sta_setup_closed["quality.sta.setup_closed"]
-  metric_quality_sta_setup_closed --> state_quality_sta_setup_closed["catalog"]
+  metric_quality_sta_setup_closed --> state_quality_sta_setup_closed["MISS"]
   cat_quality_sta_setup_closed["quality_gate"] -.-> metric_quality_sta_setup_closed
 ```
 
@@ -420,12 +452,12 @@ flowchart LR
 
 ### `quality.sta.hold_closed`
 
-- **STA hold closure** · category `quality_gate` · step `sta` · optional `False` · state **catalog**
+- **STA hold closure** · category `quality_gate` · step `sta` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_quality_sta_hold_closed["step: sta"] --> metric_quality_sta_hold_closed["quality.sta.hold_closed"]
-  metric_quality_sta_hold_closed --> state_quality_sta_hold_closed["catalog"]
+  metric_quality_sta_hold_closed --> state_quality_sta_hold_closed["MISS"]
   cat_quality_sta_hold_closed["quality_gate"] -.-> metric_quality_sta_hold_closed
 ```
 
@@ -433,12 +465,12 @@ flowchart LR
 
 ### `quality.mpc.minimum_area`
 
-- **Minimum core area** · category `quality_gate` · step `Harden` · optional `False` · state **catalog**
+- **Minimum core area** · category `quality_gate` · step `Harden` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_quality_mpc_minimum_area["step: Harden"] --> metric_quality_mpc_minimum_area["quality.mpc.minimum_area"]
-  metric_quality_mpc_minimum_area --> state_quality_mpc_minimum_area["catalog"]
+  metric_quality_mpc_minimum_area --> state_quality_mpc_minimum_area["MISS"]
   cat_quality_mpc_minimum_area["quality_gate"] -.-> metric_quality_mpc_minimum_area
 ```
 
@@ -446,12 +478,12 @@ flowchart LR
 
 ### `quality.mpc.maximum_area`
 
-- **Maximum core area** · category `quality_gate` · step `Harden` · optional `False` · state **catalog**
+- **Maximum core area** · category `quality_gate` · step `Harden` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_quality_mpc_maximum_area["step: Harden"] --> metric_quality_mpc_maximum_area["quality.mpc.maximum_area"]
-  metric_quality_mpc_maximum_area --> state_quality_mpc_maximum_area["catalog"]
+  metric_quality_mpc_maximum_area --> state_quality_mpc_maximum_area["MISS"]
   cat_quality_mpc_maximum_area["quality_gate"] -.-> metric_quality_mpc_maximum_area
 ```
 
@@ -459,12 +491,12 @@ flowchart LR
 
 ### `artifact.harden.gds`
 
-- **Harden GDS** · category `artifact` · step `Harden` · optional `False` · state **catalog**
+- **Harden GDS** · category `artifact` · step `Harden` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_artifact_harden_gds["step: Harden"] --> metric_artifact_harden_gds["artifact.harden.gds"]
-  metric_artifact_harden_gds --> state_artifact_harden_gds["catalog"]
+  metric_artifact_harden_gds --> state_artifact_harden_gds["MISS"]
   cat_artifact_harden_gds["artifact"] -.-> metric_artifact_harden_gds
 ```
 
@@ -472,12 +504,12 @@ flowchart LR
 
 ### `artifact.harden.lef`
 
-- **Harden LEF** · category `artifact` · step `Harden` · optional `False` · state **catalog**
+- **Harden LEF** · category `artifact` · step `Harden` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_artifact_harden_lef["step: Harden"] --> metric_artifact_harden_lef["artifact.harden.lef"]
-  metric_artifact_harden_lef --> state_artifact_harden_lef["catalog"]
+  metric_artifact_harden_lef --> state_artifact_harden_lef["MISS"]
   cat_artifact_harden_lef["artifact"] -.-> metric_artifact_harden_lef
 ```
 
@@ -485,12 +517,12 @@ flowchart LR
 
 ### `artifact.harden.lib`
 
-- **Harden LIB** · category `artifact` · step `Harden` · optional `False` · state **catalog**
+- **Harden LIB** · category `artifact` · step `Harden` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_artifact_harden_lib["step: Harden"] --> metric_artifact_harden_lib["artifact.harden.lib"]
-  metric_artifact_harden_lib --> state_artifact_harden_lib["catalog"]
+  metric_artifact_harden_lib --> state_artifact_harden_lib["MISS"]
   cat_artifact_harden_lib["artifact"] -.-> metric_artifact_harden_lib
 ```
 
@@ -498,12 +530,12 @@ flowchart LR
 
 ### `artifact.lvs.def`
 
-- **LVS DEF** · category `artifact` · step `lvs` · optional `False` · state **catalog**
+- **LVS DEF** · category `artifact` · step `lvs` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_artifact_lvs_def["step: lvs"] --> metric_artifact_lvs_def["artifact.lvs.def"]
-  metric_artifact_lvs_def --> state_artifact_lvs_def["catalog"]
+  metric_artifact_lvs_def --> state_artifact_lvs_def["MISS"]
   cat_artifact_lvs_def["artifact"] -.-> metric_artifact_lvs_def
 ```
 
@@ -511,12 +543,12 @@ flowchart LR
 
 ### `artifact.lvs.verilog`
 
-- **LVS Verilog** · category `artifact` · step `lvs` · optional `False` · state **catalog**
+- **LVS Verilog** · category `artifact` · step `lvs` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_artifact_lvs_verilog["step: lvs"] --> metric_artifact_lvs_verilog["artifact.lvs.verilog"]
-  metric_artifact_lvs_verilog --> state_artifact_lvs_verilog["catalog"]
+  metric_artifact_lvs_verilog --> state_artifact_lvs_verilog["MISS"]
   cat_artifact_lvs_verilog["artifact"] -.-> metric_artifact_lvs_verilog
 ```
 
@@ -524,12 +556,12 @@ flowchart LR
 
 ### `artifact.lvs.gds`
 
-- **LVS GDS** · category `artifact` · step `lvs` · optional `False` · state **catalog**
+- **LVS GDS** · category `artifact` · step `lvs` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_artifact_lvs_gds["step: lvs"] --> metric_artifact_lvs_gds["artifact.lvs.gds"]
-  metric_artifact_lvs_gds --> state_artifact_lvs_gds["catalog"]
+  metric_artifact_lvs_gds --> state_artifact_lvs_gds["MISS"]
   cat_artifact_lvs_gds["artifact"] -.-> metric_artifact_lvs_gds
 ```
 
@@ -537,12 +569,12 @@ flowchart LR
 
 ### `artifact.lvs.report`
 
-- **LVS report** · category `report` · step `lvs` · optional `False` · state **catalog**
+- **LVS report** · category `report` · step `lvs` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_artifact_lvs_report["step: lvs"] --> metric_artifact_lvs_report["artifact.lvs.report"]
-  metric_artifact_lvs_report --> state_artifact_lvs_report["catalog"]
+  metric_artifact_lvs_report --> state_artifact_lvs_report["MISS"]
   cat_artifact_lvs_report["report"] -.-> metric_artifact_lvs_report
 ```
 
@@ -550,12 +582,12 @@ flowchart LR
 
 ### `artifact.lvs.json`
 
-- **LVS JSON** · category `artifact` · step `lvs` · optional `False` · state **catalog**
+- **LVS JSON** · category `artifact` · step `lvs` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_artifact_lvs_json["step: lvs"] --> metric_artifact_lvs_json["artifact.lvs.json"]
-  metric_artifact_lvs_json --> state_artifact_lvs_json["catalog"]
+  metric_artifact_lvs_json --> state_artifact_lvs_json["MISS"]
   cat_artifact_lvs_json["artifact"] -.-> metric_artifact_lvs_json
 ```
 
@@ -563,12 +595,12 @@ flowchart LR
 
 ### `artifact.rcx.spef_outputs`
 
-- **RCX SPEF outputs** · category `artifact` · step `RCX` · optional `False` · state **catalog**
+- **RCX SPEF outputs** · category `artifact` · step `RCX` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_artifact_rcx_spef_outputs["step: RCX"] --> metric_artifact_rcx_spef_outputs["artifact.rcx.spef_outputs"]
-  metric_artifact_rcx_spef_outputs --> state_artifact_rcx_spef_outputs["catalog"]
+  metric_artifact_rcx_spef_outputs --> state_artifact_rcx_spef_outputs["MISS"]
   cat_artifact_rcx_spef_outputs["artifact"] -.-> metric_artifact_rcx_spef_outputs
 ```
 
@@ -576,12 +608,12 @@ flowchart LR
 
 ### `report.sta.timing_reports`
 
-- **STA timing reports** · category `report` · step `sta` · optional `False` · state **catalog**
+- **STA timing reports** · category `report` · step `sta` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_report_sta_timing_reports["step: sta"] --> metric_report_sta_timing_reports["report.sta.timing_reports"]
-  metric_report_sta_timing_reports --> state_report_sta_timing_reports["catalog"]
+  metric_report_sta_timing_reports --> state_report_sta_timing_reports["MISS"]
   cat_report_sta_timing_reports["report"] -.-> metric_report_sta_timing_reports
 ```
 
@@ -589,12 +621,12 @@ flowchart LR
 
 ### `artifact.sta.corner_summaries`
 
-- **STA structured corner summaries** · category `artifact` · step `sta` · optional `False` · state **catalog**
+- **STA structured corner summaries** · category `artifact` · step `sta` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_artifact_sta_corner_summaries["step: sta"] --> metric_artifact_sta_corner_summaries["artifact.sta.corner_summaries"]
-  metric_artifact_sta_corner_summaries --> state_artifact_sta_corner_summaries["catalog"]
+  metric_artifact_sta_corner_summaries --> state_artifact_sta_corner_summaries["MISS"]
   cat_artifact_sta_corner_summaries["artifact"] -.-> metric_artifact_sta_corner_summaries
 ```
 
@@ -602,12 +634,12 @@ flowchart LR
 
 ### `artifact.sta.timing_paths`
 
-- **STA structured timing paths** · category `artifact` · step `sta` · optional `False` · state **catalog**
+- **STA structured timing paths** · category `artifact` · step `sta` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_artifact_sta_timing_paths["step: sta"] --> metric_artifact_sta_timing_paths["artifact.sta.timing_paths"]
-  metric_artifact_sta_timing_paths --> state_artifact_sta_timing_paths["catalog"]
+  metric_artifact_sta_timing_paths --> state_artifact_sta_timing_paths["MISS"]
   cat_artifact_sta_timing_paths["artifact"] -.-> metric_artifact_sta_timing_paths
 ```
 
@@ -615,12 +647,12 @@ flowchart LR
 
 ### `artifact.synthesis.netlist`
 
-- **Mapped synthesis netlist** · category `artifact` · step `Synthesis` · optional `False` · state **catalog**
+- **Mapped synthesis netlist** · category `artifact` · step `Synthesis` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_artifact_synthesis_netlist["step: Synthesis"] --> metric_artifact_synthesis_netlist["artifact.synthesis.netlist"]
-  metric_artifact_synthesis_netlist --> state_artifact_synthesis_netlist["catalog"]
+  metric_artifact_synthesis_netlist --> state_artifact_synthesis_netlist["MISS"]
   cat_artifact_synthesis_netlist["artifact"] -.-> metric_artifact_synthesis_netlist
 ```
 
@@ -628,12 +660,12 @@ flowchart LR
 
 ### `artifact.postroutelec.result`
 
-- **Post-route LEC result** · category `artifact` · step `postRouteLec` · optional `True` · state **catalog**
+- **Post-route LEC result** · category `artifact` · step `postRouteLec` · optional `True` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_artifact_postroutelec_result["step: postRouteLec"] --> metric_artifact_postroutelec_result["artifact.postroutelec.result"]
-  metric_artifact_postroutelec_result --> state_artifact_postroutelec_result["catalog"]
+  metric_artifact_postroutelec_result --> state_artifact_postroutelec_result["MISS"]
   cat_artifact_postroutelec_result["artifact"] -.-> metric_artifact_postroutelec_result
 ```
 
@@ -641,12 +673,12 @@ flowchart LR
 
 ### `artifact.lec.result`
 
-- **Synthesis LEC result** · category `artifact` · step `lec` · optional `True` · state **catalog**
+- **Synthesis LEC result** · category `artifact` · step `lec` · optional `True` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_artifact_lec_result["step: lec"] --> metric_artifact_lec_result["artifact.lec.result"]
-  metric_artifact_lec_result --> state_artifact_lec_result["catalog"]
+  metric_artifact_lec_result --> state_artifact_lec_result["MISS"]
   cat_artifact_lec_result["artifact"] -.-> metric_artifact_lec_result
 ```
 
@@ -654,12 +686,12 @@ flowchart LR
 
 ### `flow.route.completed`
 
-- **route flow completed** · category `flow` · step `route` · optional `False` · state **catalog**
+- **route flow completed** · category `flow` · step `route` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_flow_route_completed["step: route"] --> metric_flow_route_completed["flow.route.completed"]
-  metric_flow_route_completed --> state_flow_route_completed["catalog"]
+  metric_flow_route_completed --> state_flow_route_completed["MISS"]
   cat_flow_route_completed["flow"] -.-> metric_flow_route_completed
 ```
 
@@ -667,12 +699,12 @@ flowchart LR
 
 ### `flow.drc.completed`
 
-- **drc flow completed** · category `flow` · step `drc` · optional `False` · state **catalog**
+- **drc flow completed** · category `flow` · step `drc` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_flow_drc_completed["step: drc"] --> metric_flow_drc_completed["flow.drc.completed"]
-  metric_flow_drc_completed --> state_flow_drc_completed["catalog"]
+  metric_flow_drc_completed --> state_flow_drc_completed["MISS"]
   cat_flow_drc_completed["flow"] -.-> metric_flow_drc_completed
 ```
 
@@ -680,12 +712,12 @@ flowchart LR
 
 ### `flow.lvs.completed`
 
-- **lvs flow completed** · category `flow` · step `lvs` · optional `False` · state **catalog**
+- **lvs flow completed** · category `flow` · step `lvs` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_flow_lvs_completed["step: lvs"] --> metric_flow_lvs_completed["flow.lvs.completed"]
-  metric_flow_lvs_completed --> state_flow_lvs_completed["catalog"]
+  metric_flow_lvs_completed --> state_flow_lvs_completed["MISS"]
   cat_flow_lvs_completed["flow"] -.-> metric_flow_lvs_completed
 ```
 
@@ -693,12 +725,12 @@ flowchart LR
 
 ### `flow.filler.completed`
 
-- **filler flow completed** · category `flow` · step `filler` · optional `False` · state **catalog**
+- **filler flow completed** · category `flow` · step `filler` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_flow_filler_completed["step: filler"] --> metric_flow_filler_completed["flow.filler.completed"]
-  metric_flow_filler_completed --> state_flow_filler_completed["catalog"]
+  metric_flow_filler_completed --> state_flow_filler_completed["MISS"]
   cat_flow_filler_completed["flow"] -.-> metric_flow_filler_completed
 ```
 
@@ -706,12 +738,12 @@ flowchart LR
 
 ### `flow.postroutelec.completed`
 
-- **postRouteLec flow completed** · category `flow` · step `postRouteLec` · optional `True` · state **catalog**
+- **postRouteLec flow completed** · category `flow` · step `postRouteLec` · optional `True` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_flow_postroutelec_completed["step: postRouteLec"] --> metric_flow_postroutelec_completed["flow.postroutelec.completed"]
-  metric_flow_postroutelec_completed --> state_flow_postroutelec_completed["catalog"]
+  metric_flow_postroutelec_completed --> state_flow_postroutelec_completed["MISS"]
   cat_flow_postroutelec_completed["flow"] -.-> metric_flow_postroutelec_completed
 ```
 
@@ -719,12 +751,12 @@ flowchart LR
 
 ### `flow.rcx.completed`
 
-- **RCX flow completed** · category `flow` · step `RCX` · optional `False` · state **catalog**
+- **RCX flow completed** · category `flow` · step `RCX` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_flow_rcx_completed["step: RCX"] --> metric_flow_rcx_completed["flow.rcx.completed"]
-  metric_flow_rcx_completed --> state_flow_rcx_completed["catalog"]
+  metric_flow_rcx_completed --> state_flow_rcx_completed["MISS"]
   cat_flow_rcx_completed["flow"] -.-> metric_flow_rcx_completed
 ```
 
@@ -732,12 +764,12 @@ flowchart LR
 
 ### `flow.sta.completed`
 
-- **sta flow completed** · category `flow` · step `sta` · optional `False` · state **catalog**
+- **sta flow completed** · category `flow` · step `sta` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_flow_sta_completed["step: sta"] --> metric_flow_sta_completed["flow.sta.completed"]
-  metric_flow_sta_completed --> state_flow_sta_completed["catalog"]
+  metric_flow_sta_completed --> state_flow_sta_completed["MISS"]
   cat_flow_sta_completed["flow"] -.-> metric_flow_sta_completed
 ```
 
@@ -745,12 +777,12 @@ flowchart LR
 
 ### `flow.harden.completed`
 
-- **Harden flow completed** · category `flow` · step `Harden` · optional `False` · state **catalog**
+- **Harden flow completed** · category `flow` · step `Harden` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_flow_harden_completed["step: Harden"] --> metric_flow_harden_completed["flow.harden.completed"]
-  metric_flow_harden_completed --> state_flow_harden_completed["catalog"]
+  metric_flow_harden_completed --> state_flow_harden_completed["MISS"]
   cat_flow_harden_completed["flow"] -.-> metric_flow_harden_completed
 ```
 
@@ -758,12 +790,12 @@ flowchart LR
 
 ### `provenance.initial.rtl`
 
-- **Initial RTL** · category `provenance` · step `workspace` · optional `False` · state **catalog**
+- **Initial RTL** · category `provenance` · step `workspace` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_provenance_initial_rtl["step: workspace"] --> metric_provenance_initial_rtl["provenance.initial.rtl"]
-  metric_provenance_initial_rtl --> state_provenance_initial_rtl["catalog"]
+  metric_provenance_initial_rtl --> state_provenance_initial_rtl["MISS"]
   cat_provenance_initial_rtl["provenance"] -.-> metric_provenance_initial_rtl
 ```
 
@@ -771,12 +803,12 @@ flowchart LR
 
 ### `provenance.initial.sdc`
 
-- **Initial SDC** · category `provenance` · step `workspace` · optional `False` · state **catalog**
+- **Initial SDC** · category `provenance` · step `workspace` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_provenance_initial_sdc["step: workspace"] --> metric_provenance_initial_sdc["provenance.initial.sdc"]
-  metric_provenance_initial_sdc --> state_provenance_initial_sdc["catalog"]
+  metric_provenance_initial_sdc --> state_provenance_initial_sdc["MISS"]
   cat_provenance_initial_sdc["provenance"] -.-> metric_provenance_initial_sdc
 ```
 
@@ -784,12 +816,12 @@ flowchart LR
 
 ### `configuration.db`
 
-- **Configuration db** · category `configuration` · step `workspace` · optional `False` · state **catalog**
+- **Configuration db** · category `configuration` · step `workspace` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_configuration_db["step: workspace"] --> metric_configuration_db["configuration.db"]
-  metric_configuration_db --> state_configuration_db["catalog"]
+  metric_configuration_db --> state_configuration_db["MISS"]
   cat_configuration_db["configuration"] -.-> metric_configuration_db
 ```
 
@@ -797,12 +829,12 @@ flowchart LR
 
 ### `configuration.rcx`
 
-- **Configuration RCX** · category `configuration` · step `workspace` · optional `False` · state **catalog**
+- **Configuration RCX** · category `configuration` · step `workspace` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_configuration_rcx["step: workspace"] --> metric_configuration_rcx["configuration.rcx"]
-  metric_configuration_rcx --> state_configuration_rcx["catalog"]
+  metric_configuration_rcx --> state_configuration_rcx["MISS"]
   cat_configuration_rcx["configuration"] -.-> metric_configuration_rcx
 ```
 
@@ -810,16 +842,107 @@ flowchart LR
 
 ### `configuration.sta`
 
-- **Configuration sta** · category `configuration` · step `workspace` · optional `False` · state **catalog**
+- **Configuration sta** · category `configuration` · step `workspace` · optional `False` · state **MISS**
 
 ```mermaid
 flowchart LR
   step_configuration_sta["step: workspace"] --> metric_configuration_sta["configuration.sta"]
-  metric_configuration_sta --> state_configuration_sta["catalog"]
+  metric_configuration_sta --> state_configuration_sta["MISS"]
   cat_configuration_sta["configuration"] -.-> metric_configuration_sta
 ```
 
 [↑ category `configuration`](#category-configuration) · [↑ Contents](#contents)
+
+### `performance.sta.setup_wns`
+
+- **STA setup WNS** · category `performance` · step `sta` · optional `True` · state **MISS**
+
+```mermaid
+flowchart LR
+  step_performance_sta_setup_wns["step: sta"] --> metric_performance_sta_setup_wns["performance.sta.setup_wns"]
+  metric_performance_sta_setup_wns --> state_performance_sta_setup_wns["MISS"]
+  cat_performance_sta_setup_wns["performance"] -.-> metric_performance_sta_setup_wns
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.sta.setup_tns`
+
+- **STA setup TNS** · category `performance` · step `sta` · optional `True` · state **MISS**
+
+```mermaid
+flowchart LR
+  step_performance_sta_setup_tns["step: sta"] --> metric_performance_sta_setup_tns["performance.sta.setup_tns"]
+  metric_performance_sta_setup_tns --> state_performance_sta_setup_tns["MISS"]
+  cat_performance_sta_setup_tns["performance"] -.-> metric_performance_sta_setup_tns
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.sta.hold_wns`
+
+- **STA hold WNS** · category `performance` · step `sta` · optional `True` · state **MISS**
+
+```mermaid
+flowchart LR
+  step_performance_sta_hold_wns["step: sta"] --> metric_performance_sta_hold_wns["performance.sta.hold_wns"]
+  metric_performance_sta_hold_wns --> state_performance_sta_hold_wns["MISS"]
+  cat_performance_sta_hold_wns["performance"] -.-> metric_performance_sta_hold_wns
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.sta.hold_tns`
+
+- **STA hold TNS** · category `performance` · step `sta` · optional `True` · state **MISS**
+
+```mermaid
+flowchart LR
+  step_performance_sta_hold_tns["step: sta"] --> metric_performance_sta_hold_tns["performance.sta.hold_tns"]
+  metric_performance_sta_hold_tns --> state_performance_sta_hold_tns["MISS"]
+  cat_performance_sta_hold_tns["performance"] -.-> metric_performance_sta_hold_tns
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.sta.frequency`
+
+- **STA frequency** · category `performance` · step `sta` · optional `True` · state **MISS**
+
+```mermaid
+flowchart LR
+  step_performance_sta_frequency["step: sta"] --> metric_performance_sta_frequency["performance.sta.frequency"]
+  metric_performance_sta_frequency --> state_performance_sta_frequency["MISS"]
+  cat_performance_sta_frequency["performance"] -.-> metric_performance_sta_frequency
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.power.dynamic`
+
+- **Dynamic power** · category `performance` · step `sta` · optional `True` · state **MISS**
+
+```mermaid
+flowchart LR
+  step_performance_power_dynamic["step: sta"] --> metric_performance_power_dynamic["performance.power.dynamic"]
+  metric_performance_power_dynamic --> state_performance_power_dynamic["MISS"]
+  cat_performance_power_dynamic["performance"] -.-> metric_performance_power_dynamic
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
+
+### `performance.power.leakage`
+
+- **Leakage power** · category `performance` · step `sta` · optional `True` · state **MISS**
+
+```mermaid
+flowchart LR
+  step_performance_power_leakage["step: sta"] --> metric_performance_power_leakage["performance.power.leakage"]
+  metric_performance_power_leakage --> state_performance_power_leakage["MISS"]
+  cat_performance_power_leakage["performance"] -.-> metric_performance_power_leakage
+```
+
+[↑ category `performance`](#category-performance) · [↑ Contents](#contents)
 
 ---
 
@@ -829,8 +952,11 @@ _Generated by `.github/scripts/generate-signoff-kanban.py` from `chipcompiler.en
 
 | Field | Value |
 | --- | --- |
-| Git commit | [`077a0e1c470a`](https://github.com/plitenh/ecc/commit/077a0e1c470a0fdcb6db554ecef2649c89219f56) |
-| Git commit (full) | `077a0e1c470a0fdcb6db554ecef2649c89219f56` |
-| Snapshot SHA-256 | `20f52e4eea5bec2fb89582e89baa543e28118e72e65febe9a571026705ceb5a9` |
+| Git commit | [`a07184e605a5`](https://github.com/plitenh/ecc/commit/a07184e605a5160777b8e2217222c6ddaadd8f0f) |
+| Git commit (full) | `a07184e605a5160777b8e2217222c6ddaadd8f0f` |
+| Snapshot SHA-256 | `451a5e43cb40f5b9aff5c87ff713ccf4cf629a59c4aa2f776ce8189edbb15a21` |
 
-Compare two snapshots with `plitenh/ecc-ci` `scripts/diff_signoff_snapshots.py` (versions · item delta · state delta).
+Compare snapshots with `plitenh/ecc-ci`:
+
+- pairwise: `scripts/diff_signoff_snapshots.py` (versions · item delta · state delta)
+- multi-point batch diagram: `scripts/diagram_signoff_compare.py` (mermaid + ASCII matrix across N versions)

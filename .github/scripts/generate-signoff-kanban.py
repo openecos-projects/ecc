@@ -25,6 +25,11 @@ _CATEGORY_GUIDE: tuple[tuple[str, str, str], ...] = (
         "Machine predicates (DRC/LVS/STA/RCX/area). Failures → ERROR readiness.",
     ),
     (
+        "performance",
+        "Performance / iSTA",
+        "Numeric timing (WNS/TNS/freq) and power slots for multi-version compare.",
+    ),
+    (
         "artifact",
         "Evidence artifacts",
         "Required files from Harden / LVS / RCX / STA / synthesis (and optional LEC).",
@@ -409,8 +414,11 @@ def _append_version_footer(
         f"| Git commit (full) | `{commit}` |",
         f"| Snapshot SHA-256 | `{snapshot_sha256}` |",
         "",
-        "Compare two snapshots with `plitenh/ecc-ci` "
-        "`scripts/diff_signoff_snapshots.py` (versions · item delta · state delta).",
+        "Compare snapshots with `plitenh/ecc-ci`:",
+        "",
+        "- pairwise: `scripts/diff_signoff_snapshots.py` (versions · item delta · state delta)",
+        "- multi-point batch diagram: `scripts/diagram_signoff_compare.py` "
+        "(mermaid + ASCII matrix across N versions)",
         "",
     ]
     return "\n".join(lines)

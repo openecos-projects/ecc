@@ -105,6 +105,20 @@ def _flow(step: str) -> SignoffItemSpec:
     )
 
 
+def _performance(item_id: str, step: str, title: str) -> SignoffItemSpec:
+    """Numeric PPA / iSTA slots. Optional until QoR gates bind predicates."""
+    return SignoffItemSpec(
+        id=item_id,
+        step=step,
+        category="performance",
+        owner="qor",
+        policy="warn",
+        title=title,
+        optional=True,
+        fail_readiness="WARN",
+    )
+
+
 SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
     # Quality gates (QoR owns the predicate).
     _quality("qor.drc.clean", StepEnum.DRC.value, "Final DRC clean"),
@@ -198,6 +212,14 @@ SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
         title="Configuration sta",
         fail_readiness="MISS",
     ),
+    # Performance / iSTA precision (metrics exist in tools.ecc; gates optional for now).
+    _performance("performance.sta.setup_wns", StepEnum.STA.value, "STA setup WNS"),
+    _performance("performance.sta.setup_tns", StepEnum.STA.value, "STA setup TNS"),
+    _performance("performance.sta.hold_wns", StepEnum.STA.value, "STA hold WNS"),
+    _performance("performance.sta.hold_tns", StepEnum.STA.value, "STA hold TNS"),
+    _performance("performance.sta.frequency", StepEnum.STA.value, "STA frequency"),
+    _performance("performance.power.dynamic", StepEnum.STA.value, "Dynamic power"),
+    _performance("performance.power.leakage", StepEnum.STA.value, "Leakage power"),
 )
 
 CATALOG_BY_ID: dict[str, SignoffItemSpec] = {item.id: item for item in SIGNOFF_ITEM_CATALOG}
