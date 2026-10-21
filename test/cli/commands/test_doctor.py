@@ -31,8 +31,18 @@ class TestDoctorCommand:
         _patch_probes(
             monkeypatch,
             {
-                "yosys": ProbeResult("yosys", PASS, detail="yosys"),
-                "ecc-tools": ProbeResult("ecc-tools", PASS, detail="ecc-tools-bin 1.0"),
+                "yosys": ProbeResult(
+                    "yosys",
+                    PASS,
+                    detail="yosys",
+                    installed_at="2026-10-21T08:30:00+00:00",
+                ),
+                "ecc-tools": ProbeResult(
+                    "ecc-tools",
+                    PASS,
+                    detail="ecc-tools-bin 1.0",
+                    installed_at="2026-10-21T08:31:00+00:00",
+                ),
             },
         )
 
@@ -48,7 +58,33 @@ class TestDoctorCommand:
         assert summary["attention"] == "0"
         assert summary["detail"].startswith("ecc ")
         assert summary["detail"].endswith("chipcompiler")
-        assert {r["component"] for r in records[1:]} == {"yosys", "ecc-tools"}
+        assert summary["installed_at"].endswith("+00:00")
+        by_component = {r["component"]: r for r in records[1:]}
+        assert set(by_component) == {"yosys", "ecc-tools"}
+        assert by_component["yosys"]["installed_at"] == "2026-10-21T08:30:00+00:00"
+        assert by_component["ecc-tools"]["installed_at"] == "2026-10-21T08:31:00+00:00"
+
+    def test_installed_at_for_path_uses_utc_filesystem_time(self, tmp_path):
+        tool = tmp_path / "tool"
+        tool.write_text("#!/bin/sh\n", encoding="utf-8")
+
+        installed_at = env_probe.installed_at_for_path(tool)
+
+        assert installed_at.endswith("+00:00")
+        assert env_probe.installed_at_for_path(tmp_path / "missing") == ""
+
+    def test_yosys_probe_reports_installed_at(self, tmp_path, monkeypatch):
+        binary = tmp_path / "yosys"
+        binary.write_text("#!/bin/sh\n", encoding="utf-8")
+        monkeypatch.setattr(
+            "chipcompiler.tools.yosys.utility.get_yosys_command",
+            lambda: [str(binary)],
+        )
+
+        result = env_probe.probe_yosys()
+
+        assert result.status == PASS
+        assert result.installed_at == env_probe.installed_at_for_path(binary)
 
     def test_doctor_required_failure_exits_nonzero(
         self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records

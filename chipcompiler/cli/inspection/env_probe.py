@@ -8,8 +8,13 @@ reserved for command records.
 
 import contextlib
 import dataclasses
+import importlib.util
+import os
+import pathlib
+import shutil
 import sys
 import tempfile
+from datetime import UTC, datetime
 
 PASS = "pass"
 FAIL = "fail"
@@ -23,6 +28,47 @@ class ProbeResult:
     required: bool = True
     detail: str = ""
     remediation: str = ""
+    installed_at: str = ""
+
+
+def installed_at_for_path(path: str | os.PathLike[str] | None) -> str:
+    """Return a best-effort UTC install timestamp for a resolved path.
+
+    Python exposes no portable birth time on Linux, so use ctime (inode
+    metadata change time). For a freshly extracted or copied install tree this
+    matches the install time; later chmod/chown operations can change it. An
+    unavailable path yields an empty string rather than failing the probe.
+    """
+    if not path:
+        return ""
+    try:
+        timestamp = pathlib.Path(path).stat().st_ctime
+    except OSError:
+        return ""
+    return datetime.fromtimestamp(timestamp, tz=UTC).isoformat(timespec="seconds")
+
+
+def _resolved_command_path(command: list[str]) -> str:
+    if not command:
+        return ""
+    executable = command[0]
+    if os.path.sep in executable or (os.altsep and os.altsep in executable):
+        return executable
+    return shutil.which(executable) or ""
+
+
+def _installed_at_for_command(command: list[str]) -> str:
+    return installed_at_for_path(_resolved_command_path(command))
+
+
+def _installed_at_for_module(module_name: str) -> str:
+    try:
+        spec = importlib.util.find_spec(module_name)
+    except (ImportError, ValueError):
+        return ""
+    if spec is None or not spec.origin or not spec.has_location:
+        return ""
+    return installed_at_for_path(pathlib.Path(spec.origin).resolve().parent)
 
 
 def probe_yosys() -> ProbeResult:
@@ -30,7 +76,12 @@ def probe_yosys() -> ProbeResult:
 
     command = get_yosys_command()
     if command:
-        return ProbeResult("yosys", PASS, detail=" ".join(command))
+        return ProbeResult(
+            "yosys",
+            PASS,
+            detail=" ".join(command),
+            installed_at=_installed_at_for_command(command),
+        )
     return ProbeResult("yosys", FAIL, remediation=get_yosys_not_found_error())
 
 
@@ -42,7 +93,8 @@ def probe_yosys_slang() -> ProbeResult:
         get_yosys_runtime,
     )
 
-    if not get_yosys_command():
+    command = get_yosys_command()
+    if not command:
         return ProbeResult("yosys-slang", SKIP, detail="yosys not installed")
     yosys_cmd, yosys_env = get_yosys_runtime()
     with (
@@ -52,7 +104,12 @@ def probe_yosys_slang() -> ProbeResult:
     ):
         supported = check_slang_support(yosys_cmd, probe_dir, yosys_env, log_file)
     if supported:
-        return ProbeResult("yosys-slang", PASS, detail="read_slang frontend available")
+        return ProbeResult(
+            "yosys-slang",
+            PASS,
+            detail="read_slang frontend available",
+            installed_at=_installed_at_for_command(command),
+        )
     return ProbeResult(
         "yosys-slang",
         FAIL,
@@ -60,6 +117,7 @@ def probe_yosys_slang() -> ProbeResult:
             "Use a yosys build with slang support (builtin since v0.67, or a loadable "
             "slang plugin), e.g. the latest OSS CAD Suite."
         ),
+        installed_at=_installed_at_for_command(command),
     )
 
 
@@ -69,7 +127,12 @@ def probe_ecc_tools() -> ProbeResult:
 
     version = distribution_version("ecc-tools-bin")
     if is_eda_exist():
-        return ProbeResult("ecc-tools", PASS, detail=f"ecc-tools-bin {version}")
+        return ProbeResult(
+            "ecc-tools",
+            PASS,
+            detail=f"ecc-tools-bin {version}",
+            installed_at=_installed_at_for_module("ecc_tools_bin"),
+        )
     return ProbeResult(
         "ecc-tools",
         FAIL,
@@ -85,7 +148,12 @@ def probe_dreamplace() -> ProbeResult:
     with contextlib.redirect_stdout(sys.stderr):
         available = is_eda_exist()
     if available:
-        return ProbeResult("dreamplace", PASS, detail=f"ecc-dreamplace {version}")
+        return ProbeResult(
+            "dreamplace",
+            PASS,
+            detail=f"ecc-dreamplace {version}",
+            installed_at=_installed_at_for_module("dreamplace"),
+        )
     return ProbeResult(
         "dreamplace",
         FAIL,
@@ -97,7 +165,13 @@ def probe_klayout() -> ProbeResult:
     from chipcompiler.tools.klayout_tool.utility import is_eda_exist
 
     if is_eda_exist():
-        return ProbeResult("klayout", PASS, required=False, detail="klayout module available")
+        return ProbeResult(
+            "klayout",
+            PASS,
+            required=False,
+            detail="klayout module available",
+            installed_at=_installed_at_for_module("klayout"),
+        )
     return ProbeResult(
         "klayout",
         FAIL,
@@ -114,8 +188,14 @@ def probe_sizer() -> ProbeResult:
         is_sizer_runtime_exist,
     )
 
+    command = get_sizer_command()
     if is_eda_exist() and is_sizer_runtime_exist():
-        return ProbeResult("sizer", PASS, detail=" ".join(get_sizer_command()))
+        return ProbeResult(
+            "sizer",
+            PASS,
+            detail=" ".join(command),
+            installed_at=_installed_at_for_command(command),
+        )
     return ProbeResult(
         "sizer",
         FAIL,
@@ -124,6 +204,7 @@ def probe_sizer() -> ProbeResult:
             "Build ecc-sizer, add its build/src directory to PATH, and set "
             "CHIPCOMPILER_ECC_SIZER_ROOT to the checkout."
         ),
+        installed_at=_installed_at_for_command(command),
     )
 
 
@@ -135,7 +216,12 @@ def probe_kepler_formal() -> ProbeResult:
 
     command = get_kepler_formal_command()
     if command:
-        return ProbeResult("kepler-formal", PASS, detail=" ".join(command))
+        return ProbeResult(
+            "kepler-formal",
+            PASS,
+            detail=" ".join(command),
+            installed_at=_installed_at_for_command(command),
+        )
     return ProbeResult("kepler-formal", FAIL, remediation=get_kepler_formal_not_found_error())
 
 
@@ -195,8 +281,14 @@ def probe_pdk(cfg) -> ProbeResult:
     with contextlib.redirect_stdout(sys.stderr):
         problem = _validate_pdk_contents(cfg.pdk_name, root, resolve_pdk_overrides(cfg))
     if problem is None:
-        return ProbeResult("pdk", PASS, detail=root)
-    return ProbeResult("pdk", FAIL, detail=root, remediation=problem)
+        return ProbeResult("pdk", PASS, detail=root, installed_at=installed_at_for_path(root))
+    return ProbeResult(
+        "pdk",
+        FAIL,
+        detail=root,
+        remediation=problem,
+        installed_at=installed_at_for_path(root),
+    )
 
 
 _PROBES = {

@@ -137,6 +137,7 @@ $ ecc doctor
   status: pass
   required: True
   detail: ~/.local/oss-cad-suite/bin/yosys
+  installed_at: 2026-10-21T08:30:55+00:00
   component: yosys-slang
   status: pass
   required: True
@@ -148,6 +149,9 @@ $ ecc doctor
   required: True             # doctor 和 Timing optimization 均要求该组件
   ...
 ```
+
+`installed_at` 是由已解析安装路径的文件系统元数据推导出的 best-effort UTC
+时间；路径不可用时省略该字段。
 
 必需项（yosys、yosys-slang、ecc-tools、dreamplace、sizer、kepler-formal、lec-dual、pdk；可选 klayout）全部 `pass` 后，`ecc doctor` 才会成功。kepler-formal 与 lec-dual 是 LEC 等价性检查的组件（本教程 §4.1 启用 LEC 后需要；lec-dual 允许单引擎降级）。就绪的 Sizer 同时需要可执行文件和 runtime root。完整 `rtl2gds` 流包含 Timing optimization 步骤；新建或 `--overwrite` 的 `rtl2gds` 会在启动预检中检查 Sizer，缺失时以 `env_not_ready` 失败。已有 workspace 或 `--workspace` 重跑不预检，缺 Sizer 时仍可能在流中段失败。缺组件时按 `ecc doctor` 的 remediation 提示补齐（如重新运行 §2.1 安装脚本加 `--with-toolchain`）。
 

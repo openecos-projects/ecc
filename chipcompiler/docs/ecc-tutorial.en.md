@@ -137,6 +137,7 @@ $ ecc doctor
   status: pass
   required: True
   detail: ~/.local/oss-cad-suite/bin/yosys
+  installed_at: 2026-10-21T08:30:55+00:00
   component: yosys-slang
   status: pass
   required: True
@@ -148,6 +149,9 @@ $ ecc doctor
   required: True             # required by doctor and by Timing optimization
   ...
 ```
+
+`installed_at` is a best-effort UTC timestamp derived from the resolved
+install path's filesystem metadata; it is omitted when the path is unavailable.
 
 All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, kepler-formal, lec-dual, and pdk; klayout is optional) must `pass` before `ecc doctor` succeeds. kepler-formal and lec-dual serve the LEC equivalence checks (needed once LEC is enabled in §4.1; lec-dual allows a degraded single-engine pass). A ready Sizer has both its executable and runtime root. The complete `rtl2gds` flow contains Timing optimization; fresh or `--overwrite` `rtl2gds` targets check Sizer during startup preflight and return `env_not_ready` when it is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail mid-flow. When a component is missing, follow the `ecc doctor` remediation hint (e.g. re-run the §2.1 installer with `--with-toolchain`).
 
