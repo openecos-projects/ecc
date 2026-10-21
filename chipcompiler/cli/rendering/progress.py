@@ -429,7 +429,12 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
         run_dir = engine_flow.workspace.directory
         run_name = ctx.run_id or "default"
         renderer.start_run(run_name, run_dir)
-        observer = execution_observer(event_sink_for_workspace(workspace))
+        event_sink = event_sink_for_workspace(workspace)
+        observer = execution_observer(event_sink)
+        started_callback = getattr(event_sink, "on_execution_started", None)
+        if callable(started_callback):
+            started_callback("run", ())
+        execution_state = "interrupted"
 
         for workspace_step in engine_flow.workspace_steps:
             step_token = normalize_step_name(workspace_step.name)
@@ -511,10 +516,15 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
                 _maybe_render_failure_context(
                     renderer, log_path, rel_log, step_token, project, ctx.run_id, color
                 )
+                execution_state = StateEnum.Imcomplete.value
                 return False
 
+        execution_state = StateEnum.Success.value
         return True
     finally:
+        finished_callback = getattr(locals().get("event_sink"), "on_execution_finished", None)
+        if callable(finished_callback):
+            finished_callback(execution_state, None)
         if progress_stream is not stderr:
             progress_stream.close()
 

@@ -7,6 +7,7 @@ from chipcompiler.cli.project.config import ProjectConfig
 class OutputMode(Enum):
     TEXT = "text"
     PLAIN = "plain"
+    JSON = "json"
 
 
 @dataclass(frozen=True)

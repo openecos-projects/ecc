@@ -20,7 +20,9 @@ STEP_DIRECTORIES = {
     StepEnum.PRE_FLOORPLAN.value: "preFloorplan_ecc",
     StepEnum.MACRO_PLACEMENT.value: "macroPlacement_dreamplace",
     StepEnum.POST_FLOORPLAN.value: "postFloorplan_ecc",
+    StepEnum.PREPLACE.value: "preplace_sizer",
     StepEnum.PLACEMENT.value: "place_dreamplace",
+    StepEnum.DIFF_SIZING.value: "diff_sizing_dreamplace",
     StepEnum.CTS.value: "CTS_ecc",
     StepEnum.LEGALIZATION.value: "legalization_dreamplace",
     StepEnum.ROUTING.value: "route_ecc",
@@ -28,9 +30,11 @@ STEP_DIRECTORIES = {
     StepEnum.RCX.value: "RCX_ecc",
     StepEnum.STA.value: "sta_ecc",
     StepEnum.POWER_ANALYSIS.value: "powerAnalysis_ecc",
+    StepEnum.EMIR.value: "emir_ecc",
     StepEnum.LVS.value: "lvs_ecc",
     SkippableStepEnum.POST_ROUTE_LEC.value: "postRouteLec_kepler_formal",
     StepEnum.DRC.value: "drc_ecc",
+    StepEnum.ANTENNA_CHECK.value: "antennaCheck_ecc",
     StepEnum.HARDEN.value: "Harden_ecc",
 }
 

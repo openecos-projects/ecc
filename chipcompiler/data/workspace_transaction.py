@@ -1,4 +1,5 @@
 import fcntl
+import json
 import os
 import shutil
 from collections.abc import Iterable
@@ -7,6 +8,9 @@ from typing import BinaryIO
 
 _BACKUP_NAME = ".workspace-configuration-backup"
 _DISCARD_NAME = f"{_BACKUP_NAME}.discard"
+_ABSENT_MARKER = ".absent-paths.json"
+_MAX_MANAGED_PATHS = 1024
+_MAX_RELATIVE_PATH_LENGTH = 4096
 _ACTIVE: set[Path] = set()
 
 
@@ -56,14 +60,29 @@ class WorkspaceFileTransaction:
         home.mkdir(parents=True, exist_ok=True)
         shutil.rmtree(self.backup, ignore_errors=True)
         self.backup.mkdir(parents=True)
-        for path in sorted(set(paths)):
+        managed = sorted(set(paths))
+        if len(managed) > _MAX_MANAGED_PATHS:
+            raise OSError("Workspace transaction path limit exceeded")
+        absent: list[str] = []
+        for path in managed:
             target = Path(path).resolve()
             relative = target.relative_to(self.workspace)
-            if not target.is_file():
+            _validate_relative_path(relative)
+            if not target.exists():
+                absent.append(relative.as_posix())
                 continue
+            if target.is_symlink() or not target.is_file():
+                raise OSError(f"Workspace transaction target is not a regular file: {target}")
             destination = self.backup / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(target, destination)
+        marker = self.backup / _ABSENT_MARKER
+        with open(marker, "x", encoding="utf-8") as stream:
+            json.dump({"schemaVersion": 1, "paths": absent}, stream, separators=(",", ":"))
+            stream.flush()
+            os.fsync(stream.fileno())
+        _fsync_directory(self.backup)
+        _fsync_directory(self.backup.parent)
 
     def _release(self) -> None:
         if self.finished:
@@ -105,12 +124,62 @@ def _recover_locked(workspace: Path) -> None:
 def _restore_backup(workspace: Path, backup: Path) -> None:
     if not backup.is_dir():
         return
+    absent = _read_absent_marker(backup)
     for source in backup.rglob("*"):
-        if not source.is_file():
+        if not source.is_file() or source == backup / _ABSENT_MARKER:
             continue
         target = workspace / source.relative_to(backup)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
+    for relative in absent:
+        target = workspace / relative
+        if target.is_symlink() or target.is_file():
+            target.unlink()
+        elif target.exists():
+            raise OSError(f"Workspace transaction cannot remove non-file target: {target}")
+
+
+def _read_absent_marker(backup: Path) -> tuple[Path, ...]:
+    marker = backup / _ABSENT_MARKER
+    try:
+        payload = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise OSError(f"Invalid Workspace transaction marker: {marker}") from exc
+    paths = payload.get("paths") if isinstance(payload, dict) else None
+    if (
+        payload.get("schemaVersion") != 1
+        or not isinstance(paths, list)
+        or len(paths) > _MAX_MANAGED_PATHS
+    ):
+        raise OSError(f"Invalid Workspace transaction marker: {marker}")
+    result = []
+    for value in paths:
+        if not isinstance(value, str):
+            raise OSError(f"Invalid Workspace transaction marker: {marker}")
+        relative = Path(value)
+        _validate_relative_path(relative)
+        result.append(relative)
+    return tuple(result)
+
+
+def _validate_relative_path(path: Path) -> None:
+    if (
+        path.is_absolute()
+        or not path.parts
+        or ".." in path.parts
+        or len(path.as_posix()) > _MAX_RELATIVE_PATH_LENGTH
+        or path.parts[0] != "home"
+        and path.parts[0] != "config"
+    ):
+        raise OSError(f"Invalid Workspace transaction path: {path}")
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _lock_path(workspace: Path) -> Path:

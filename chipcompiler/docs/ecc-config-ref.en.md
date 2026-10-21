@@ -7,6 +7,13 @@ This document consolidates **the tool configuration files actually used by each 
 
 ## 0. Configuration System Overview
 
+`sta.max_parallel_corners` is an integer from 1 to 4 (default 1). Set it with
+`ecc param set sta.max_parallel_corners 3 --workspace baseline`. Standard config
+refresh writes the value into the STA JSON's `max_parallel_corners`. ECC/Studio's
+Linux runtime treats it as an upper bound and reduces concurrency when memory
+headroom is insufficient; other platforms remain serial. The environment variable
+`ECOS_AGENT_STA_WORKERS` no longer overrides this configuration.
+
 ### 0.1 Where the configuration files live
 
 Each run's workspace has a shared `config/` directory where the JSON configurations of all steps land; **files with the same name are rewritten in place by whichever step runs later** (each step only updates the fields relevant to it):
@@ -14,10 +21,10 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 ```
 <workspace>/                 # <project>/<id> for fresh/manifest projects; runs/<id> for legacy projects
 ├── home/
-│   ├── params.toml        # schema_version 1; parameter hub (see §1)
+│   ├── params.toml        # schema_version 2; parameter hub (see §1)
 │   ├── flow.json          # schema_version 1; step status
 │   └── config-derived-manifest.json # hashes from the last config derivation
-├── config/                # ← this document's focus: 9 JSON files + the Tcl macro-location handoff
+├── config/                # ← this document's focus: 10 JSON files + the Tcl macro-location handoff
 │   ├── db_ecc.json        # database build (loads LEF/DEF/netlist/LIB/SDC; shared by every ecc step)
 │   ├── floorplan_ecc.json # floorplanning
 │   ├── cts_ecc.json       # clock tree synthesis
@@ -26,14 +33,15 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 │   ├── filler_ecc.json    # filler cells
 │   ├── rcx_ecc.json       # parasitic extraction
 │   ├── sta_ecc.json       # static timing analysis (multi-corner)
+│   ├── sizer_ecc.json     # ECC Sizer hold-pass options
 │   ├── dreamplace_ecc.json# DreamPlace placement/legalization (shared by placement and legalization)
 │   └── macro_location.tcl # macro-placement Tcl handoff (see §1.5; written by macroPlacement or the macro.placements parameter)
 ├── Synthesis_yosys/
 │   └── data/global_var.tcl  # the synthesis step's "config" (Tcl variables, not JSON)
-├── lec_yosys_lec/            # synthesis-level LEC (Tcl-script driven)
+├── lec_kepler_formal/         # synthesis-level LEC (Tcl-script driven)
 ├── timing_optimization_sizer/
 │   └── script/<design>.{env_file,cmd_file}  # generated Sizer configuration
-└── postRouteLec_yosys_lec/  # post-route LEC step (Tcl-script driven)
+└── postRouteLec_kepler_formal/  # post-route LEC step (Tcl-script driven)
 ```
 
 > History: the old `flow_ecc.json` (configuration-path aggregator) and `fixfanout_ecc.json` (high-fanout fixing, a standalone step) were removed along with an ecc-tools update. `cts.max_fanout` now feeds both the auto-generated SDC `set_max_fanout` constraint and CTS's `max_fanout` field.
@@ -74,7 +82,7 @@ Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG
 | placement | — | `dreamplace_ecc.json` | shares one file with legalization |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | `def_input`/`result_dir` etc. rewritten per step |
-| timing optimization | ✓ | `dreamplace_ecc.json` | Sizer uses generated scripts, then runs an inner DreamPlace legalization; see §6 |
+| timing optimization | ✓ | `sizer_ecc.json` + `dreamplace_ecc.json` | Sizer uses its ECC config and generated scripts, then runs an inner DreamPlace legalization; see §6 |
 | routing | ✓ | `route_ecc.json` | |
 | filler | ✓ | `filler_ecc.json` | |
 | rcx | ✓ | `rcx_ecc.json` | corner set decided by the PDK (see §12) |
@@ -97,10 +105,10 @@ Source: `_LEGACY_PARAM_REGISTRY` in [chipcompiler/data/parameter_schema.py](http
 | `floorplan.core_margin` | int×2 (µm) | [2, 2] | floorplan `die_builder.margin.{left,right,top,bottom}_micron` | Margin from core to die edge [horizontal, vertical] |
 | `floorplan.aspect_ratio` | float [0.1, 10] | 1.0 | floorplan `die_builder.die_util.aspect_ratio` | Core width/height ratio |
 | `cts.max_fanout` | int [1, 200] | 32 | auto-generated SDC `set_max_fanout` + cts `max_fanout` | Design and clock-tree maximum fanout constraint |
-| `place.target_density` | float [0.1, 0.95] | 0.2 | dreamplace `target_density` | Global placement target density |
+| `place.target_density` | float [0.1, 1.0] | 0.4 | dreamplace `target_density` | Global placement target density |
 | `place.target_overflow` | float [0.0, 1.0] | 0.1 | dreamplace `stop_overflow` | Global placement overflow convergence target |
 | `place.global_right_padding` | int [0, 100] | 0 | recorded only in params.toml | Global padding on the right side of placement sites (not yet wired into a tool config field in the current version) |
-| `place.cell_padding_x` | int [0, 10000] (dbu) | 300 | dreamplace `cell_padding_x` | Cell padding in X (routing congestion relief) |
+| `place.cell_padding_x` | int [0, 10000] (dbu) | 200 | dreamplace `cell_padding_x` | Cell padding in X (routing congestion relief) |
 | `place.routability_opt` | {0, 1} | 1 | dreamplace `routability_opt_flag` | Enable routability (congestion-driven) optimization during placement |
 | `route.bottom_layer` | MET1–MET5 | MET2 | route `RT.-bottom_routing_layer` + db `LayerSettings.routing_layer_1st` | Lowest routing layer |
 | `route.top_layer` | MET2–MET6 | MET5 | route `RT.-top_routing_layer` | Highest routing layer |
@@ -113,7 +121,8 @@ Source: `_LEGACY_PARAM_REGISTRY` in [chipcompiler/data/parameter_schema.py](http
 ```bash
 ecc param list --step cts
 ecc param list --step floorplan
-ecc param list --all
+ecc param list --all              # full reviewed schema (pdk.* needs --all --plain in preset projects)
+ecc param list --all --plain      # complete catalog, including the pdk.* path parameters
 ecc param set cts.skew_bound 0.05
 ecc param set floorplan.phy_placer.well_tap.distance_micron 30.0
 ecc param set cts.routing_layer '[4, 5]'
@@ -134,7 +143,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 1.3 The parameter hub: params.toml
 
-`home/params.toml` is a schema-versioned document. New files carry the top-level marker `schema_version = 1`; a valid file from the pre-versioning era is treated as version 0 and stamped as version 1 when the workspace migration path opens it. A version newer than the running ECC supports is rejected as `unsupported_schema_version` rather than parsed silently.
+`home/params.toml` is a schema-versioned document. New files carry the top-level marker `schema_version = 2`; a valid file from the pre-versioning era is treated as version 0 and migrated through version 2 when the workspace migration path opens it. A version newer than the running ECC supports is rejected as `unsupported_schema_version` rather than parsed silently.
 
 The file holds canonical workspace parameters, `config_overrides`, and **result values back-filled after a flow run** (for example actual die/core dimensions and utilization). `config_overrides` is a nested TOML patch generated by the CLI from reviewed schemas and reapplied after PDK and semantic parameter mappings on each workspace refresh. `home/parameters.json` is read only when migrating a legacy workspace.
 
@@ -147,9 +156,9 @@ The file has four sections:
 | `[flow]` | `preset = "rtl2gds"`, or a `start` + `end` pair (canonical persisted step names only); when absent, it is derived from the first/last steps of `home/flow.json` |
 | `[params]` | canonical flat snake_case parameters; nested values render as subtables (for example `[params.die]`, `[params.floorplan.phy_placer.well_tap]`) |
 
-**The duplicated identity parameters are by design, not an error**: the seven identity keys `design`, `top_module`, `clock`, `frequency_max`, `pdk`, `pdk_root`, and `pdk_config` are stored both as flat `[params]` keys and mirrored in the `[design]`/`[pdk]` sections (for example `[design] top` ↔ `[params] top_module`, `[design] frequency_mhz` ↔ `[params] frequency_max`, `[pdk] root` ↔ `[params] pdk_root`). The two vocabularies serve different readers: `[design]`/`[pdk]`/`[flow]` are the human-facing view in the same vocabulary as `ecc.toml`, keeping the workspace self-describing; `[params]` is the canonical flat store consumed by the program (step parameters, `config_overrides`, and back-filled results all live there).
+**Identity parameters remain canonical flat keys at runtime, but v2 no longer persists them twice**: the seven identity keys `design`, `top_module`, `clock`, `frequency_max`, `pdk`, `pdk_root`, and `pdk_config` are persisted in the human-facing `[design]`/`[pdk]` sections and reconstructed into the flat `[params]` payload when loaded. Version-1 files remain readable and are deduplicated when a writable workspace is opened. This keeps `[design]`/`[pdk]`/`[flow]` in the same vocabulary as `ecc.toml` while the runtime parameter hub continues to provide step parameters, `config_overrides`, and back-filled results.
 
-On save, both copies are rendered from the same flat payload, so they never diverge in normal operation. If the file is hand-edited into disagreement, the load rule is: **a non-empty `[design]`/`[pdk]` value overrides its `[params]` copy; an empty or missing section key falls back to the `[params]` copy**. Writes are staged to a temp file and installed with an atomic rename, never through a symlink.
+On save, identity fields are rendered only into `[design]`/`[pdk]`; loading remains compatible with version-1 `[params]` mirrors. If an older hand-edited file makes the two representations disagree, the load rule is: **a non-empty `[design]`/`[pdk]` value overrides its `[params]` copy; an empty or missing section key falls back to the `[params]` copy**. Writes are staged to a temp file and installed with an atomic rename, never through a symlink.
 
 Workspace-local overrides written by `ecc param set KEY VALUE --workspace NAME` also live under `[params]`: the effective parameter value and `config_overrides` together determine the refreshed step configuration, while the `workspace_param_overrides` list records each `key`, its first pre-edit `baseline`, and current `value` for `ecc param diff --workspace NAME`. `ecc param unset KEY --workspace NAME` restores that baseline and removes the local override record; the owning step and its suffix become invalid until they run again. PDK resource paths and references cannot be changed locally; update `ecc.toml` and use `ecc workspace refresh NAME` instead.
 
@@ -159,10 +168,11 @@ Parameter inspection and modification go through the `ecc param` subcommands (su
 
 | Command | What it does |
 |---|---|
-| `ecc param list [--step STEP] [--all]` | List parameters. By default only the §1.1 legacy-semantic parameters plus explicitly overridden direct-config parameters are shown; `--step STEP` filters by group/applies to show the full reviewed schema of that step; `--all` shows the entire reviewed schema |
+| `ecc param list [--step STEP] [--all]` | List parameters. By default only the §1.1 legacy-semantic parameters plus explicitly overridden direct-config parameters are shown; `--step STEP` filters by group/applies to show the full reviewed schema of that step; `--all` shows the entire reviewed schema (`pdk.*` parameters only appear with `--all --plain` while a flow preset is configured) |
 | `ecc param show KEY` | Single-parameter detail: current value / default / source / type / range / write target (`maps_to`, `config_target`, `pdk_target`) and description |
 | `ecc param set KEY VALUE` | Validate and write the parameter override (two scopes in the table below); invalid values (out of range, not in choices, wrong type) fail with `invalid_value` and nothing is written |
 | `ecc param unset KEY` | Remove the override and fall back to the default (workspace scope restores the pre-edit `baseline`) |
+| `ecc param apply [--set KEY=VALUE...] [--unset KEY...]` | Atomically apply a batch of set/unset edits (project scope, or one workspace with `--workspace NAME`; in workspace scope `--step STEP` restricts the batch to that step's parameters). A mid-batch validation failure writes nothing |
 | `ecc param diff` | List only parameters that differ from their defaults (workspace scope: local overrides with their `baseline`) |
 
 Options shared by every subcommand:
@@ -172,6 +182,7 @@ Options shared by every subcommand:
 | `--project DIR` | Select the project directory (defaults to the current directory) |
 | `--workspace NAME` | Switch to workspace scope: operate on the named workspace declared in the project.json manifest instead of the project `ecc.toml` |
 | `--plain` | Machine-readable `key=value` output (script-friendly); the default is human-readable text |
+| `--json` | Record-array output — accepted by `list`, `show`, and `diff` only |
 
 Behavior differences between the two scopes:
 
@@ -217,10 +228,10 @@ Shared by all ecc tool steps. At step startup it is used to load LEF/DEF/netlist
 | Field | Example value (during the harden step) | Source | Meaning |
 |---|---|---|---|
 | `INPUT.tech_lef_path` | `…/prtech/techLEF/N551P6M_ecos.lef` | PDK | Process LEF (layer definitions/rules) |
-| `INPUT.lef_paths` | `[H7CR_lef, H7CL_lef]` | PDK | Standard-cell LEFs (abstract views) |
+| `INPUT.lef_paths` | `[H7CR_lef, H7CL_lef, H7CH_lef, IO_lef]` | PDK | Standard-cell and IO LEFs (abstract views) |
 | `INPUT.def_path` | `sta_ecc/output/gcd_sta.def.gz` | rewritten per step | Input DEF (previous step's layout) |
 | `INPUT.verilog_path` | `sta_ecc/output/gcd_sta.v.gz` | rewritten per step | Input gate-level netlist |
-| `INPUT.lib_path` | `[H7CR_ss_rcworst, H7CL_ss_rcworst]` | PDK | Timing libraries (synthesis/equivalence libraries) |
+| `INPUT.lib_path` | H7CR/H7CL/H7CH SS + IO SS | PDK | Shared timing libraries; Yosys synthesis excludes H7CH |
 | `INPUT.sdc_path` | `origin/gcd.sdc` | workspace | Timing constraints (auto-generated or user-provided) |
 | `INPUT.spef` | `""` | PDK/workspace | Pre-set parasitics file (usually empty before RCX) |
 | `OUTPUT.output_dir_path` | `Harden_ecc/output` | rewritten per step | Output directory for this step's artifacts |
@@ -246,8 +257,19 @@ No JSON configuration. Yosys is driven by two Tcl pieces: `script/yosys_synthesi
 | `tie_high_cell/port` | `TIEHIH7R` / `Z` | PDK | Tie-high cell and its output port |
 | `abc_driver_cell` | `BUFX0P5H7L` | PDK | Driver cell assumed by ABC mapping |
 | `abc_load` | `0.015` | PDK | Load capacitance for ABC mapping (pF) |
-| `lib_stdcell_list` / `lib_list` | H7CR/H7CL liberty | PDK | Standard-cell timing libraries |
+| `lib_stdcell_list` | H7CR/H7CL + IO SS | PDK (excluding H7CH) | Libraries passed to ABC, DFF and clockgate mapping; preserves the existing behavior without an additional IO filter |
+| `lib_list` | H7CR/H7CL + IO `ss_1p08_2p97_125c` | PDK / workspace DB | Models loaded by `read_liberty -lib`; IO describes existing instances, while H7CH remains excluded |
 | `tmp_dir` | `Synthesis_yosys/data/tmp` | step scheduling | Intermediate file directory |
+
+The shared ICS55 PDK library list includes
+`ICSIOA_N55_3P3_ss_1p08_2p97_125c.lib` when present in the PDK. CTS, setup
+Sizer and post-synthesis STA also obtain the IO library from this list; final
+STA and hold Sizer still use the corner configuration in §13. The shared LEF
+list also loads the matching `ICSIOA_N55_3P3_1P6M1TM_ecos.lef`; this does not
+insert IO cells. Sizer requires LEF masters for Liberty cells even when the
+design instantiates no IO cells. Existing workspace DB library lists and
+explicit `pdk.libs` / `pdk.lefs` overrides are not extended automatically and
+must be updated separately.
 
 There is also the environment variable `YOSYS_SYNTH_STRATEGY` (e.g. `DELAY 4` / `AREA N` / `BALANCE N`) that steers the synthesis strategy; the default is `DELAY 4` (frequency-first).
 
@@ -342,11 +364,99 @@ The three steps share `config/dreamplace_ecc.json`; before each step runs, `def_
 
 ### Global placement core (★ the main tuning area)
 
+`place.timing_grad_balance_target_ratio` defaults to 0.2. At the first active
+timing-gradient step in direct-loss placement, it initializes the outer timing
+weight from the timing and wirelength gradient L1 norms, then reuses that weight.
+Set it to 0.0 to disable balancing and retain an outer weight of 1.0. The value
+is an initial gradient-ratio target, rather than a multiplier on WNS/TNS
+coefficients. Standalone `size_only` sizing does not initialize coordinate
+gradient balancing; explicit values retain precedence over defaults.
+
+`place.timing_opt_coefficients` controls the coefficients used by GP sizing
+windows. The default fixes WNS/TNS/cap/slew at 500/5/1/1 with outer timing
+weight 1. The following `ecc.toml` configuration matches the defaults:
+
+```toml
+[params.place.timing_opt_coefficients]
+mode = "fixed"
+wns = 500.0
+tns = 5.0
+slew = 1.0
+cap = 1.0
+```
+
+Fixed mode requires all four finite, nonnegative values and uses outer timing
+weight 1.0, so those values are the effective weights. Inherit mode retains
+placement's live coefficients and outer weight. Overrides apply during GP S
+rounds and are restored on normal or exceptional exit;
+standalone `diff_sizing` uses its own configuration. Each window records its
+effective values in `sizing.coefficients`.
+Switching `mode` to `"inherit"` may retain the fixed preset in the object;
+inherit mode always reads the live placement values.
+
+Standalone S50 uses a separate `place.diff_sizing_coefficients` parameter,
+also defaulting to WNS/TNS/cap/slew = 500/5/1/1. It applies only to the
+`diff_sizing` step with outer timing weight 1. It neither inherits placement's
+live coefficients or outer weight nor changes GP S10 windows. Partial overrides
+retain the other configured values (or their defaults); all values must be
+finite and nonnegative. For example, configure S50 independently at 1000/10/1/1:
+
+```toml
+[params.place.diff_sizing_coefficients]
+wns = 1000.0
+tns = 10.0
+cap = 1.0
+slew = 1.0
+```
+
+For a fresh workspace, use
+`ecc run --set 'place.diff_sizing_coefficients={"tns":10.0}'` to override TNS alone.
+For an existing workspace, use
+`ecc param set place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`.
+S50 retains RRR=3, zero padding, fixed 512×512 bins and final legalization.
+
+The number of continuous sizing steps in standalone S50 is controlled by
+`place.diff_sizing_continuous_steps`, which defaults to 0. It is the number of
+continuous real-size steps before projection to legal cells. Set it to 0 to
+start directly from the input masters with logits and `discrete_gradient_topk`;
+set it to 3 to run three continuous sizing steps before switching to discrete
+sizing.
+
+`place.timing_coeff_growth_factor` multiplies both WNS/TNS coefficients at each
+GP density-weight update. The default `1.0` disables growth;
+`1.01` increases the coefficients and `0.99` decays them. The factor must be
+positive and finite. Slew/cap and the outer norm weight retain their own settings.
+Inherit-mode windows read the resulting live coefficients; fixed-mode windows
+use their configured values. Standalone `diff_sizing` S50 in `size_only` mode
+skips this schedule. For a fresh workspace, configure it with
+`ecc run --set place.timing_coeff_growth_factor=1.0` or
+`timing_coeff_growth_factor = 1.0` under `[params.place]` in `ecc.toml`. For an
+existing workspace, use
+`ecc param set place.timing_coeff_growth_factor 1.0 --workspace NAME`.
+
+`place.timing_aggregation_mode` selects AAT/RAT propagation aggregation:
+`smooth` (default) uses LSE, and `hard` uses max/min.
+`place.timing_aggregation_tau_ps` is its positive temperature, defaulting to
+2.0 ps; smaller values approach hard max/min, while larger values spread
+gradients more evenly. Endpoint WNS still uses hard min, and TNS still sums
+negative slacks. For example, set the following in `ecc.toml`:
+
+```toml
+[params.place]
+timing_aggregation_mode = "smooth"
+timing_aggregation_tau_ps = 2.0
+```
+
 | Parameter | Default | Meaning |
 |---|---|---|
-| `target_density` | 0.2 `*place.target_density` (template 0.8) | Target placement density (lower = looser, friendlier to routing) |
+| `target_density` | 0.4 `*place.target_density` (template 0.4) | Target placement density (lower = looser, friendlier to routing) |
 | `stop_overflow` | 0.1 `*place.target_overflow` | Overflow convergence threshold; stop once met |
+| `overflow_reference_mode` | `initial` | Overflow normalization: `initial` freezes GP-entry area; `ordinary` preserves the original PR's area publication behavior, using published native + virtual area when available, otherwise PlaceDB area. Both exclude fillers; normalized overflow also feeds gamma and overflow-based scheduling |
 | `density_weight` | 0.00085 | Initial weight of the density term (starting point of auto-adjustment) |
+| `timing_coeff_growth_factor` | 1.0 `*place.timing_coeff_growth_factor` | Multiplier for both WNS/TNS coefficients at each GP density-weight update; 1.0 disables growth; skipped in `size_only` |
+| `timing_grad_balance_target_ratio` | 0.2 `*place.timing_grad_balance_target_ratio` | Initial timing / wirelength gradient L1 norm ratio in direct-loss placement; 0.0 disables balancing |
+| `timing_aggregation_mode` | `smooth` `*place.timing_aggregation_mode` | AAT/RAT propagation aggregation: `hard` or `smooth` (LSE) |
+| `timing_aggregation_tau_ps` | 2.0 `*place.timing_aggregation_tau_ps` | Positive temperature in ps for `smooth` mode |
 | `num_bins_x/y` | 32/32 | Number of density grid bins |
 | `global_place_stages[]` | see below | Multi-stage global placement table (multiple entries allowed) |
 | `global_place_stages[].iteration` | 3000 | Iteration limit in this stage; convergence can stop earlier |
@@ -392,7 +502,7 @@ also be set in that section without adding top-level ECC parameters.
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `cell_padding_x` | 300 dbu `*place.cell_padding_x` | Cell padding in X (database units) |
+| `cell_padding_x` | 200 dbu `*place.cell_padding_x` | Cell padding in X (database units) |
 | `bndry_padding_x/y` | 0 | Boundary padding |
 
 ### Macros
@@ -425,23 +535,38 @@ also be set in that section without adding top-level ECC parameters.
 | `ignore_net_weight` / `ignore_net_degree` | 1 / 100 | Ignore netlist weights / max net degree handled |
 | `sort_nets_by_degree` | 0 | Sort nets by degree |
 | `detailed_place_engine` / `detailed_place_command` | `""` | External detailed placement engine and command |
-| `pin_density` | 0.6 | Pin density threshold |
+| `pin_density` | -1 | Pin-density inflation disabled by default; set a value in (0, 1) to enable it |
 | `use_bb` | 0 | Use bounding-box wirelength |
 
 ## 6. timing optimization (Sizer)
 
-Timing optimization is a multi-stage subflow: first run setup Sizer with `workspace.pdk.libs` (normally MAX/`ss_rcworst`); when `sta_ecc.json` declares a `MIN` corner, run a second Sizer invocation in `-hold_only` mode with that corner's FF Liberty; then legalize the resulting DEF/netlist with DreamPlace and publish the ECC artifacts. `ecc config timing optimization` lists `db_ecc.json` and `dreamplace_ecc.json` because the inner legalization uses the normal workspace configuration mapping; **Sizer itself is driven by generated script files, not either JSON file**.
+Timing optimization is a multi-stage subflow: first run setup Sizer with `workspace.pdk.libs` (normally MAX/`ss_rcworst`); when `sta_ecc.json` declares a `MIN` corner, run a second Sizer invocation in `-hold_only` mode with that corner's FF Liberty; then legalize the resulting DEF/netlist with DreamPlace and publish the ECC artifacts. `ecc config timing_optimization` lists `db_ecc.json`, `sizer_ecc.json`, and `dreamplace_ecc.json`. The ECC-owned Sizer config supplies hold-pass controls, while the generated scripts carry the complete command line.
+
+The final inner DreamPlace legalization uses `legalize_flag=1` and `detailed_place_flag=0` to protect the repaired hold timing.
+
+`config/sizer_ecc.json` is owned by ECC and is independent of the Sizer repository's command-line defaults. Hold-pass controls are grouped under `hold_stage` so future hold-stage controls can be added without widening the config root:
+
+| Field | Default | Meaning |
+|---|---:|---|
+| `hold_stage.hold_margin` | `0.04` ns | Additional hold slack margin passed to ecc-sizer's `-hold_margin` option during the FF/MIN hold-only pass. It is only used by that pass and is not a final multi-corner signoff margin. |
+| `hold_stage.rc_mode` | `global_routing` | Hold parasitic model: `global_routing` emits a complete per-layer/via `setRCFile`; `placement` is an explicit scalar-RC comparison mode. |
+| `hold_stage.global_routing_rc.corner` | `MIN_m40/Cbest` | Source corner label for the per-layer RC map. |
+| `hold_stage.global_routing_rc.layers` | CX55 MET1–MET5 map | Per-routing-layer resistance in ohm/um and capacitance in pF/um. Default capacitances are 0.5 times the CX55 Cbest source-table values. M6/M7 from the StarRC table are omitted because they are absent from the ECC CX55 LEF. |
+| `hold_stage.global_routing_rc.vias` | CX55 CT/VIA1–VIA4 map | Per-via/cut resistance in ohm for the active MET1–MET5 stack. CT uses the conservative 30 ohm value for the CT_NP/CT_PP pair. |
+| `hold_stage.placement_wire_rc` | CX55 `MIN_m40/Cbest` scalar values | Explicit placement-RC comparison mode, with resistance in ohm/um and capacitance in pF/um. Default capacitance is also 0.5 times the Cbest source-table value. |
 
 | Generated file or option | Source | Meaning |
 |---|---|---|
 | `timing_optimization_sizer/script/<design>.env_file` | Sizer `submit/env_base_file` when present, otherwise `-num_vt 1`; plus PDK | Sizer environment: appends tech/cell LEFs (`-lef`), liberty files (`-lib`), and `<sizer-root>/src/sizer_os.tcl` (`-tclFile`) |
 | `timing_optimization_sizer/script/<design>.cmd_file` | workspace step + PDK | Sizer command: `-useOpenSTA`, top module, input `-def`/`-v`, `-sdc`, optional `-spef`, and staging output paths |
-| `timing_optimization_sizer/script/hold.env_file` / `hold.cmd_file` | `MIN` Liberty entries in `sta_ecc.json` | Optional FF/MIN `-hold_only` pass; the hold pass does not reuse setup `-spef` and uses Sizer placement parasitics |
+| `timing_optimization_sizer/script/hold.env_file` / `hold.cmd_file` | `MIN` Liberty entries in `sta_ecc.json` | Optional FF/MIN `-hold_only` pass; default hold mode uses propagated clocks and GR RC |
+| `timing_optimization_sizer/script/hold.rc_file` | `hold_stage.global_routing_rc` | Generated `set_layer_rc`/`set_layer_rc -via` file consumed through `-setRCFile` before GR RC initialization |
+| `config/sizer_ecc.json` | ECC template, optionally overridden by `timing_opt.*` | ECC-owned Sizer controls grouped under `hold_stage`; the selected RC mode and source are emitted in the hold scripts |
 | `data/to/sizer_setup.def.gz` / `sizer_setup.v.gz` | setup Sizer output | Snapshot consumed by the hold pass; legalization proceeds only after the hold pass writes its outputs |
 | `-min_route_layer` / `-max_route_layer` | `route.bottom_layer` / `route.top_layer` when set | Routing-layer limits passed directly to Sizer |
 | `data/to/sizer.def.gz` / `sizer.v.gz` | Sizer output | Staging artifacts consumed by the inner DreamPlace legalization; successful legalization is then saved as the Timing optimization step output |
 
-The FF hold pass uses only the `MIN` Liberty group from `sta_ecc.json` to repair hold after setup sizing. It is not final multi-corner signoff and is not equivalent to a `MIN/RCbest` SPEF evaluation. Final signoff still runs STA over the complete corner/SPEF combinations declared by `sta_ecc.json`.
+The FF hold pass uses only the `MIN` Liberty group from `sta_ecc.json` to repair hold after setup sizing. The default `global_routing` mode loads the complete per-layer/via RC map through `-setRCFile` before running GR in the configured routing-layer range; `placement` remains an explicit scalar-RC comparison mode. It is not final multi-corner signoff and is not equivalent to a `MIN/RCbest` SPEF evaluation. Final signoff still runs STA over the complete corner/SPEF combinations declared by `sta_ecc.json`.
 
 The runtime root must contain `src/sizer_os.tcl`; ECC discovers it from `CHIPCOMPILER_ECC_SIZER_ROOT` or by walking upward from the `Sizer` binary on `PATH`. `ecc doctor` requires both this runtime root and the Sizer executable. Sizer is required by the complete `rtl2gds` chain; for a fresh or `--overwrite` `rtl2gds` target, `ecc run` also checks it during environment preflight and returns `env_not_ready` before creating the workspace if it is missing. Existing workspaces and `--workspace` reruns skip this preflight and can still fail while executing Timing optimization.
 
@@ -519,11 +644,21 @@ Configuration file `sta_ecc.json`, made of two parts: `liberty` (corner → libe
 | Field | Example (gcd@ics55) | Meaning |
 |---|---|---|
 | `liberty[].corner` | `MAX` / `WCL` / `TYP` / `MIN` / `ML` | Timing corner type (slow / worst-cold / typical / fast / fast-hot library groups) |
-| `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | Corresponding junction temperature (°C), aligned with SPEF temperature points |
-| `liberty[].path` | H7CR+H7CL liberty ×2 | Liberty files for this corner (PDK-relative paths auto-expanded) |
+| `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | Standard-cell group temperature (°C), used to select the SPEF; does not override IO library characterization temperatures |
+| `liberty[].path` | H7CR + H7CL + H7CH + IO | Liberty files for this corner (PDK-relative paths auto-expanded) |
 | `signoff[0]` | MAX:[Cworst,RCworst]; WCL:[Cworst,RCworst]; TYP:[TYPICAL]; MIN/ML:[Cworst,RCworst,Cbest,RCbest] | "liberty corner × RC corner" combinations to run for signoff — 13 analysis corners in total |
 
 ics55 corner naming: `Cworst/Cbest` = worst/best capacitance; `RCworst/RCbest` = worst/best for both R and C; `TYPICAL` = typical.
+
+Default IO libraries use only three characterizations: MAX/WCL use
+`ss_1p08_2p97_125c`, TYP uses `tt_1p2_3p3_25c`, and MIN/ML both use
+`ff_1p32_3p63v_0c`. These libraries are under
+`IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/` in the PDK. This restriction
+applies only to IO; standard-cell libraries, SPEF temperatures and the 13 analysis
+corners remain unchanged. For example, MIN still uses -40°C standard-cell
+libraries alongside the 0°C IO library. Explicit project or workspace
+`sta.liberty` overrides replace the entire default list and are not migrated
+automatically; update their IO library paths separately.
 
 For each corner, ecc-tools splits the reports by path type (`sta_ecc/report/<lib_corner>_<temp>/<RCcorner>/`):
 
@@ -554,7 +689,8 @@ Every field is set the same way — `ecc param set KEY VALUE` — so each step b
 The DEF, netlist, and output paths in `db_ecc.json` are generated by step scheduling and cannot be set with the CLI. The following PDK/design resource paths populate their corresponding db fields:
 
 ```bash
-ecc param list --step pdk
+ecc param list --all --plain   # pdk is a config owner, not a flow step: --step pdk lists nothing
+ecc param show pdk.tech
 ecc param set pdk.tech VALUE   # likewise pdk.lefs, pdk.libs, pdk.mapping_file, pdk.sdc, pdk.spef
 ```
 
@@ -592,7 +728,15 @@ ecc param set place.num_threads VALUE
 
 ### 15.5 timing optimization
 
-Sizer has no dedicated `ecc param` schema. Its internal DreamPlace legalization uses the `place.*` parameters in §15.4, and its routing-layer limits use `route.bottom_layer` / `route.top_layer` from §15.6. Sizer inputs, outputs, and scripts are workflow-generated and cannot be configured independently.
+Sizer has an ECC-owned configuration for its FF/MIN hold-only pass. Its internal DreamPlace legalization uses the `place.*` parameters in §15.4, and its routing-layer limits use `route.bottom_layer` / `route.top_layer` from §15.6. Sizer inputs, outputs, and generated scripts remain workflow-managed.
+
+```bash
+ecc param list --step timing_optimization
+ecc param set timing_opt.hold_margin VALUE
+ecc param set timing_opt.hold_rc_mode global_routing
+```
+
+`timing_opt.hold_margin` maps to `sizer_ecc.json`'s `hold_stage.hold_margin`, is in ns, defaults to `0.04`, and is emitted as `-hold_margin VALUE` in the generated `hold.cmd_file`. `timing_opt.hold_rc_mode` selects the `hold_stage` RC mode; `global_routing` also generates `hold.rc_file` and emits `-setRCFile`.
 
 ### 15.6 cts and routing
 
@@ -640,7 +784,9 @@ ecc param set rcx.thread_num VALUE
 
 ### 15.10 sta
 
-`liberty` is refreshed from the PDK and cannot be overridden locally through STA parameters. The STA JSON signoff corners and runtime maximum path count are configurable:
+`liberty` defaults to the PDK-provided corner list and is rarely changed; when it must be,
+`sta.liberty` accepts a JSON literal (corner/temperature/path entries) via `ecc param set`.
+The STA JSON signoff corners and runtime maximum path count are configurable:
 
 ```bash
 ecc param list --step sta
@@ -655,10 +801,11 @@ harden has no dedicated `ecc param` schema; it only reuses workflow-generated `d
 ## 16. Configuration inspection and modification cheat sheet
 
 ```bash
-ecc config floorplan          # list the config files floorplan actually uses
+ecc config pre_floorplan     # list the config files the floorplan stages actually use
 ecc config --plain            # project-level config (ecc.toml after resolution)
 ecc param list --step cts                 # list all tunable CTS fields
-ecc param list --all                      # show the full reviewed schema
+ecc param list --all                      # show the full reviewed schema (--all --plain also lists pdk.*)
+ecc param apply --set k=v --unset k2      # atomically apply a batch of parameter edits
 ecc param show KEY / diff                 # single parameter / diff against defaults
 ecc param set place.target_density 0.55  # change a parameter (written to ecc.toml; applies when a workspace is next created)
 ecc param set cts.skew_bound 0.05         # set a CTS JSON field directly
@@ -673,3 +820,11 @@ Recommended practice for making changes: **use `ecc param` (and `ecc macro` for 
 ---
 
 *Parameter defaults were rechecked against the v0.1.0-alpha.12 source templates and a real run of the gcd design under the ics55 PDK; a `*` mark means the field is driven by a user parameter.*
+
+## 17. Automation boundaries for configuration
+
+This section targets automation agents and batch scripts; it sets the boundaries for changing configuration.
+
+Before tuning parameters, check which fields are actually public — run `ecc param list --all`, `ecc param show`, or the installed version's `--help` — then change them with `ecc param set` or `ecc param unset` in the scope that owns them. As a rule, do not edit `home/params.toml`, generated JSON/Tcl, or internal templates by hand. The one exception is the QoR reference's `qor_profile` and `qor_power_budget_w`: both are workspace parameters outside the CLI schema, and they must still follow the QoR document's semantics and revalidation rules. `run --set` only applies when creating a new workspace, and the override must be recorded as part of the candidate's provenance. When changing parameters on an existing workspace, first work out which steps are invalidated and what range must be rerun.
+
+A field mentioned in documentation but absent from the current public schema is not a usable interface. In particular, do not bypass the CLI by writing to internal `flow.skip_steps`, QoR profiles/budgets, or unreviewed DreamPlace fields. If the CLI lacks a capability you need, record the version, the command output, and the impact — do not claim the configuration succeeded. Changing frequency, corners, constraints, or verification coverage changes what an experiment means: give it its own candidate and never compare it directly against the original result.

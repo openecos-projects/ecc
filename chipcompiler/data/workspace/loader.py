@@ -78,8 +78,8 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
         config_version = read_file_schema_version(PARAMS_TOML, workspace_dir)
         apply_schema_migrations(PARAMS_TOML, workspace_dir)
         if config_version >= WORKSPACE_CONFIG_SCHEMA_VERSION:
-            # The migration itself runs only for version-0 configs; the
-            # shadow disclosure must fire on every open regardless.
+            # The migration chain may normalize older versions; the shadow
+            # disclosure must fire on every open for the current format.
             warn_legacy_config_shadow(workspace_dir)
 
     workspace = Workspace()
@@ -107,6 +107,7 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
         pdk_name=parameters.data.get("pdk", ""),
         pdk_root=parameters.data.get("pdk_root", ""),
         pdk_config=parameters.data.get("pdk_config", ""),
+        overrides=parameters.data.get("pdk_overrides", {}),
         validate=not read_only,
     )
     sdc_path = list(origin_dir.rglob("*.sdc"))

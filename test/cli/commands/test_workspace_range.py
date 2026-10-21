@@ -23,7 +23,7 @@ def _set_design_inputs(project_dir: str) -> tuple[Path, Path]:
     return design_def, netlist
 
 
-def test_new_workspace_range_uses_ecc_toml_inputs_and_registers_before_execution(
+def test_new_workspace_range_uses_ecc_toml_inputs_and_registers_after_execution(
     monkeypatch, tmp_path, capsys, create_cli_project, flow_mocks, plain_records
 ):
     project_dir = create_cli_project()
@@ -58,7 +58,9 @@ def test_new_workspace_range_uses_ecc_toml_inputs_and_registers_before_execution
     manifest = json.loads((Path(project_dir) / "project.json").read_text())
     entry = manifest["workspaces"][0]
     assert entry["workspace_id"] == "cts-only"
-    assert entry["status"] == "success"
+    # Runtime status is derived from flow.json and the process registry; the
+    # Project manifest only records durable Workspace identity.
+    assert entry["status"] == "not_started"
     assert "input_snapshot" not in entry
     result = plain_records(capsys.readouterr().out)[0]
     assert result["workspace_id"] == "cts-only"

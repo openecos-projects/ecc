@@ -13,7 +13,6 @@ from pathlib import Path
 
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandResult
-from chipcompiler.cli.project.run_prepare import _write_back_status
 
 
 def _manifest_skip_target(run_dir: str, flow_config) -> dict | None:
@@ -105,12 +104,10 @@ def run_existing_workspace(
     no-ops when everything already succeeded, and fails divergent flows with
     flow_mismatch before any mutation.
     """
-    from chipcompiler.cli.core.records import error_record, warning_record
-
-    project = ctx.project
-    project_dir = ctx.project_dir
 
     if cli_overrides:
+        from chipcompiler.cli.core.records import error_record
+
         return CommandResult.err(
             [
                 error_record(
@@ -124,26 +121,122 @@ def run_existing_workspace(
                 )
             ]
         )
+    if command_input.from_step is not None or command_input.only is not None:
+        from chipcompiler.cli.project.run_workspace import execute_workspace_run
 
-    warnings = list(warning_records)
+        return execute_workspace_run(
+            command_input,
+            run_dir,
+            run_name,
+            project_dir=ctx.project_dir if ctx.project_state == "manifest" else None,
+        )
+    return _resume_existing_workspace(
+        command_input,
+        ctx,
+        cfg,
+        run_dir,
+        run_name,
+        warning_records,
+        flow_config=flow_config,
+        workspace_registered=workspace_registered,
+    )
+
+
+def _resume_existing_workspace(
+    command_input,
+    ctx,
+    cfg,
+    run_dir: str,
+    run_name: str,
+    warning_records: list[dict],
+    *,
+    flow_config,
+    workspace_registered: bool,
+) -> CommandResult:
+    from chipcompiler.cli.core.records import warning_record
+
     if cfg.params_overrides:
-        warnings.append(
+        warning_records = [
+            *warning_records,
             warning_record(
                 "params_ignored_on_existing_run",
                 reason="[params] in ecc.toml apply only to fresh runs; "
                 "the workspace reuses its persisted home/params.toml",
-            )
-        )
+            ),
+        ]
     from chipcompiler.cli.project.pdk_root_fallback import pdk_root_env_fallback_warning
     from chipcompiler.cli.project.spec_drift import workspace_spec_drift_warning
 
     pdk_root_warning = pdk_root_env_fallback_warning(run_dir)
     if pdk_root_warning is not None:
-        warnings.append(pdk_root_warning)
+        warning_records = [*warning_records, pdk_root_warning]
     spec_drift = workspace_spec_drift_warning(run_dir)
     if spec_drift is not None:
-        warnings.append(spec_drift)
+        warning_records = [*warning_records, spec_drift]
 
+    if cfg.manifest_driven:
+        # Manifest mode: the workspace's own [flow] governs the range (the
+        # seeded start/end is not re-consulted), but the effective declared
+        # skip policy (ecc.toml over the project.json entry, carried on the
+        # flow config) is applied over it so classification and any extension
+        # use the same policy a fresh creation would.
+        target_section = _manifest_skip_target(run_dir, flow_config)
+    else:
+        # The target carries the preset plus the effective declared skip
+        # policy (already resolved through the shared ecc.toml-over-manifest
+        # precedence onto the flow config), so an existing workspace
+        # classifies against the same policy a fresh creation would use.
+        target_section = {"preset": cfg.flow_preset} if cfg.flow_preset else None
+        if target_section is not None:
+            if isinstance(flow_config, dict) and "skip_steps" in flow_config:
+                target_section["skip_steps"] = flow_config["skip_steps"]
+            elif "flow.skip_steps" in cfg._explicit_keys:
+                target_section["skip_steps"] = cfg.flow_skip_steps
+
+    from chipcompiler.cli.project.run_process import run_log_stdio
+    from chipcompiler.project.runtime_processes import RuntimeProcessError
+
+    try:
+        # §13.1 step 2: an explicit --log-file owns stdout/stderr before the
+        # pure-read preflight below; a log-open failure exits without running
+        # the flow.
+        with run_log_stdio(command_input, run_dir) as run_log:
+            return _execute_existing_run(
+                command_input,
+                ctx,
+                cfg,
+                run_dir,
+                run_name,
+                flow_config,
+                target_section,
+                warning_records,
+                workspace_registered=workspace_registered,
+                run_log=run_log,
+            )
+    except RuntimeProcessError as exc:
+        from chipcompiler.cli.project.run_process import runtime_process_error_result
+
+        return runtime_process_error_result(exc, workspace_id=run_name, workspace=run_dir)
+
+
+def _execute_existing_run(
+    command_input,
+    ctx,
+    cfg,
+    run_dir: str,
+    run_name: str,
+    flow_config,
+    target_section,
+    warning_records: list[dict],
+    *,
+    workspace_registered: bool,
+    run_log,
+) -> CommandResult:
+    from chipcompiler.cli.core.records import error_record
+
+    project = ctx.project
+    project_dir = ctx.project_dir
+    warnings = list(warning_records)
     from chipcompiler.data import load_workspace
     from chipcompiler.data.schema_migrations import UnsupportedSchemaVersionError
     from chipcompiler.data.workspace_config import (
@@ -199,25 +292,6 @@ def run_existing_workspace(
             ]
         )
 
-    if cfg.manifest_driven:
-        # Manifest mode: the workspace's own [flow] governs the range (the
-        # seeded start/end is not re-consulted), but the effective declared
-        # skip policy (ecc.toml over the project.json entry, carried on the
-        # flow config) is applied over it so classification and any extension
-        # use the same policy a fresh creation would.
-        target_section = _manifest_skip_target(run_dir, flow_config)
-    else:
-        # The target carries the preset plus the effective declared skip
-        # policy (already resolved through the shared ecc.toml-over-manifest
-        # precedence onto the flow config), so an existing workspace
-        # classifies against the same policy a fresh creation would use.
-        target_section = {"preset": cfg.flow_preset} if cfg.flow_preset else None
-        if target_section is not None:
-            if isinstance(flow_config, dict) and "skip_steps" in flow_config:
-                target_section["skip_steps"] = flow_config["skip_steps"]
-            elif "flow.skip_steps" in cfg._explicit_keys:
-                target_section["skip_steps"] = cfg.flow_skip_steps
-
     # Pure-read preflight: a divergent flow is rejected BEFORE load_workspace
     # can migrate configs, create checklist state, or take the lock.
     probe = classify_workspace(run_dir, target_section)
@@ -229,13 +303,23 @@ def run_existing_workspace(
     # processes can never execute the same workspace concurrently.
     from chipcompiler.engine.reconcile import _workspace_lock, reconcile_workspace_locked
 
-    with _workspace_lock(Path(run_dir)):
+    with _workspace_lock(Path(run_dir), blocking=not command_input.no_wait):
+        from chipcompiler.cli.project.revision import expected_revision_error
+
+        conflict = expected_revision_error(
+            run_dir,
+            command_input.expected_revision,
+            workspace_id=run_name,
+        )
+        if conflict is not None:
+            return conflict
         probe = classify_workspace(run_dir, target_section)
         if probe.outcome == "mismatch":
             return mismatch_error(probe.error or "flow_mismatch")
 
         try:
             workspace = load_workspace(run_dir)
+            workspace.__dict__["_ecc_project_dir"] = project_dir
         except UnsupportedSchemaVersionError as exc:
             return CommandResult.err(
                 [
@@ -321,33 +405,47 @@ def run_existing_workspace(
         from chipcompiler.engine.rerun import bounded_resume_names, run_resume, selected_step_names
 
         try:
-            engine_flow = EngineFlow(workspace=workspace)
-            flow_ok = True
-            if result.outcome != "no_op":
-                # Re-read the ledger: reconcile may have appended suffix steps
-                # after load_workspace populated the in-memory copy.
-                engine_flow.load()
+            from contextlib import nullcontext
 
-                through = result.target[-1] if result.target else None
-                if through is not None:
-                    selected = bounded_resume_names(engine_flow, through)
-                else:
-                    selected = selected_step_names(engine_flow)
-                if selected:
-                    engine_flow.create_step_workspaces(executable_steps=set(selected))
-
-                with preserve_cli_stdio():
-                    run_result = run_resume(engine_flow, through=through)
-                flow_ok = run_result.ok
-        except Exception as exc:
             if workspace_registered:
-                _write_back_status(
+                from chipcompiler.cli.project.run_process import managed_run_process
+
+                process_context = managed_run_process(
+                    command_input,
                     project_dir,
                     run_name,
-                    "failed",
-                    warnings,
-                    repair=disclosure_cmd("ecc run", project, run_name),
+                    workspace,
+                    workspace_path=run_dir,
+                    run_log=run_log,
                 )
+            else:
+                process_context = nullcontext()
+            with process_context:
+                engine_flow = EngineFlow(workspace=workspace)
+                flow_ok = True
+                if result.outcome != "no_op":
+                    # Re-read the ledger: reconcile may have appended suffix steps
+                    # after load_workspace populated the in-memory copy.
+                    engine_flow.load()
+
+                    through = result.target[-1] if result.target else None
+                    if through is not None:
+                        selected = bounded_resume_names(engine_flow, through)
+                    else:
+                        selected = selected_step_names(engine_flow)
+                    if selected:
+                        engine_flow.create_step_workspaces(executable_steps=set(selected))
+
+                    with preserve_cli_stdio():
+                        run_result = run_resume(engine_flow, through=through)
+                    flow_ok = run_result.ok
+        except Exception as exc:
+            from chipcompiler.project.runtime_processes import RuntimeProcessError
+
+            if isinstance(exc, RuntimeProcessError):
+                from chipcompiler.cli.project.run_process import runtime_process_error_result
+
+                return runtime_process_error_result(exc, workspace_id=run_name, workspace=run_dir)
             return CommandResult.err(
                 warnings
                 + [
@@ -358,15 +456,6 @@ def run_existing_workspace(
                         reason=str(exc),
                     )
                 ]
-            )
-
-        if workspace_registered:
-            _write_back_status(
-                project_dir,
-                run_name,
-                "success" if flow_ok else "failed",
-                warnings,
-                repair=disclosure_cmd("ecc run", project, run_name),
             )
 
         record: dict = {

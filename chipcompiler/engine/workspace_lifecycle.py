@@ -15,6 +15,7 @@ from chipcompiler.data import PDK, create_workspace, get_pdk, load_workspace
 from chipcompiler.data.parameter_schema import (
     build_backend_overrides,
     build_config_overrides,
+    list_schemas,
     resolve_parameters,
 )
 from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
@@ -75,7 +76,11 @@ def assess_execution_readiness(
                 return {"ready": False, "code": "pdk_binding_mismatch"}
             workspace.pdk.validate()
         else:
-            get_pdk(workspace.pdk.name, pdk_root=root).validate()
+            get_pdk(
+                workspace.pdk.name,
+                pdk_root=root,
+                overrides=workspace.parameters.data.get("pdk_overrides", {}),
+            ).validate()
     except (OSError, ValueError):
         return {"ready": False, "code": "pdk_binding_mismatch"}
     return {"ready": True}
@@ -93,7 +98,11 @@ def apply_workspace_bindings(workspace, bindings: object) -> None:
             raise WorkspaceLifecycleError("pdk_binding_mismatch", "PDK binding root does not match")
         workspace.pdk.validate()
     else:
-        workspace.pdk = get_pdk(workspace.pdk.name, pdk_root=root)
+        workspace.pdk = get_pdk(
+            workspace.pdk.name,
+            pdk_root=root,
+            overrides=workspace.parameters.data.get("pdk_overrides", {}),
+        )
     workspace.pdk.sdc, workspace.pdk.spef = sdc, spef
     from chipcompiler.data import refresh_workspace_config
 
@@ -129,6 +138,7 @@ def _create_workspace_from_spec(
     command_id: str = "",
     *,
     preserved_parameters: Collection[str] = (),
+    config_override_parameters: Collection[str] | None = None,
 ):
     target = Path(target_directory).expanduser().resolve()
     fingerprint = _workspace_command_fingerprint("create", spec, bindings)
@@ -165,7 +175,14 @@ def _create_workspace_from_spec(
             {"issues": errors},
         )
     backend_parameters = build_backend_overrides(parameters, include_defaults=True)
-    config_overrides = build_config_overrides(parameters)
+    if config_override_parameters is None:
+        requested_spec = _string_keyed_dict(spec)
+        requested_parameters = _string_keyed_dict(requested_spec.get("parameters"))
+        config_override_parameters = requested_parameters.keys()
+    explicit_config_parameters = set(config_override_parameters)
+    config_overrides = build_config_overrides(
+        item for item in parameters if item.param in explicit_config_parameters
+    )
     if config_overrides:
         backend_parameters[CONFIG_OVERRIDES_KEY] = config_overrides
     backend_parameters.update(
@@ -254,14 +271,15 @@ def update_workspace_from_spec(
     bindings: object,
     command_id: str = "",
     *,
+    blocking: bool = True,
     retain_backup: bool = False,
-) -> WorkspaceUpdateResult:
+):
     target = Path(target_directory).expanduser().resolve()
     if not target.is_dir():
         raise WorkspaceLifecycleError("workspace_missing", f"Workspace not found: {target}")
     from chipcompiler.engine.reconcile import _workspace_lock
 
-    with _workspace_lock(target):
+    with _workspace_lock(target, blocking=blocking):
         return _update_workspace_from_spec(
             target,
             expected_workspace_revision,
@@ -327,19 +345,19 @@ def _update_workspace_from_spec(
             },
         )
 
-    update_spec, preserved_parameters = _merge_workspace_update_parameters(
-        current, spec, committed_snapshot=snapshot
+    update_spec, preserved_parameters, config_override_parameters = (
+        _merge_workspace_update_parameters(current, spec, committed_snapshot=snapshot)
     )
     staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=target.parent))
     staging.rmdir()
-    staging_consumed = False
     backup_directory: Path | None = None
     try:
-        staged = create_workspace_from_spec(
+        staged = _create_workspace_from_spec(
             staging,
             update_spec,
             bindings,
             preserved_parameters=preserved_parameters,
+            config_override_parameters=config_override_parameters,
         )
         _preserve_workspace_config_extensions(target, staging)
         create_engineering_snapshot(
@@ -355,6 +373,14 @@ def _update_workspace_from_spec(
             fingerprint,
             snapshot["workspaceId"],
             snapshot["workspaceRevision"] + 1,
+            metadata={
+                "operation": "update",
+                "expectedRevision": expected_workspace_revision,
+                "request": {
+                    "workspaceSpec": deepcopy(spec),
+                    "workspaceBindings": deepcopy(bindings),
+                },
+            },
         )
         _rewrite_workspace_paths(staging, target)
         _exchange_directories(target, staging)
@@ -370,23 +396,13 @@ def _update_workspace_from_spec(
             # leaves the tree at the staging path rather than deleting a
             # tree the caller asked to retain.
             backup_directory = retain_replaced_tree(staging, target)
-            staging_consumed = True
         return WorkspaceUpdateResult(workspace=workspace, backup_directory=backup_directory)
     finally:
-        if not staging_consumed:
-            shutil.rmtree(staging, ignore_errors=True)
-
-
-def _sweep_staging_siblings(target: Path) -> None:
-    """Best-effort removal of staging trees stranded by a killed update."""
-    prefix = f".{target.name}.staging-"
-    try:
-        siblings = list(target.parent.iterdir())
-    except OSError:
-        return
-    for sibling in siblings:
-        if sibling.is_dir() and not sibling.is_symlink() and sibling.name.startswith(prefix):
-            shutil.rmtree(sibling, ignore_errors=True)
+        # A failed portable exchange can leave both trees as recovery proof.
+        # Reconcile owns that state; deleting staging here would strand the
+        # previous committed Workspace under the exchange backup name.
+        if not _exchange_backup_path(staging).exists():
+            _remove_refresh_staging(staging)
 
 
 def _merge_workspace_update_parameters(
@@ -394,7 +410,7 @@ def _merge_workspace_update_parameters(
     spec: object,
     *,
     committed_snapshot: dict[str, Any] | None = None,
-) -> tuple[object, frozenset[str]]:
+) -> tuple[object, frozenset[str], frozenset[str]]:
     """Overlay an update request on the committed Workspace parameters.
 
     The public Workspace Spec remains replace-oriented for creation and
@@ -402,11 +418,11 @@ def _merge_workspace_update_parameters(
     parameter baseline, so omitted config values do not silently reset.
     """
     if not isinstance(spec, dict):
-        return spec, frozenset()
+        return spec, frozenset(), frozenset()
 
     requested = spec.get("parameters", {})
     if not isinstance(requested, dict):
-        return spec, frozenset()
+        return spec, frozenset(), frozenset()
 
     from chipcompiler.utility import JsonReadError
 
@@ -445,7 +461,34 @@ def _merge_workspace_update_parameters(
         **{str(key): deepcopy(value) for key, value in requested.items()},
     }
     preserved = frozenset(str(key) for key in current_parameters.keys() - requested.keys())
-    return merged, preserved
+    explicit_config_parameters = frozenset(
+        {str(key) for key in requested} | _config_override_parameter_ids(current.parameters.data)
+    )
+    return merged, preserved, explicit_config_parameters
+
+
+def _config_override_parameter_ids(parameters: object) -> set[str]:
+    if not isinstance(parameters, dict):
+        return set()
+    overrides = parameters.get(CONFIG_OVERRIDES_KEY)
+    if overrides is None:
+        overrides = parameters.get("Config Overrides")
+    if not isinstance(overrides, dict):
+        return set()
+
+    result: set[str] = set()
+    for schema in list_schemas():
+        target = schema.config_target
+        if target is None:
+            continue
+        value: object = overrides.get(target.config_key)
+        for key in target.json_path:
+            if not isinstance(value, dict) or key not in value:
+                break
+            value = value[key]
+        else:
+            result.add(schema.param)
+    return result
 
 
 def _declared_pdk_relative_parameters(workspace: Any, parameters: dict) -> dict:
@@ -574,10 +617,36 @@ def _string_keyed_dict(value: object) -> dict[str, Any]:
 
 
 def _load_committed_workspace(path: Path):
-    workspace = load_workspace(path)
+    # Lifecycle inspection must not attach a file logger to the source tree.
+    # After a directory exchange that open file would move under staging and
+    # prevent its removal on NFS.
+    workspace = load_workspace(path, read_only=True)
     if workspace is None:
         raise WorkspaceLifecycleError("workspace_invalid", f"Workspace cannot be opened: {path}")
     return workspace
+
+
+def _sweep_staging_siblings(target: Path) -> None:
+    prefix = f".{target.name}.staging-"
+    try:
+        siblings = list(target.parent.iterdir())
+    except OSError:
+        return
+    for sibling in siblings:
+        if sibling.is_dir() and not sibling.is_symlink() and sibling.name.startswith(prefix):
+            # A sibling with a committed snapshot may be an exchange-recovery
+            # candidate. Leave it for project reconciliation to validate and
+            # either roll forward or remove atomically.
+            if (sibling / "home" / "engineering-snapshot.json").is_file():
+                continue
+            shutil.rmtree(sibling, ignore_errors=True)
+
+
+def _remove_refresh_staging(staging: Path) -> None:
+    if staging.exists() or staging.is_symlink():
+        shutil.rmtree(staging)
+    if not staging.exists() and not staging.is_symlink():
+        Path(f"{staging}.lock").unlink(missing_ok=True)
 
 
 def _workspace_command_fingerprint(
@@ -627,19 +696,23 @@ def _write_workspace_command(
     fingerprint: str,
     workspace_id: str,
     workspace_revision: int,
+    metadata: dict[str, Any] | None = None,
 ) -> None:
     if not command_id:
         return
     from chipcompiler.utility import json_write
 
     payload = _workspace_commands(path)
-    payload["commands"][command_id] = {
+    record = {
         "fingerprint": fingerprint,
         "result": {
             "workspaceId": workspace_id,
             "workspaceRevision": workspace_revision,
         },
     }
+    if metadata is not None:
+        record["metadata"] = deepcopy(metadata)
+    payload["commands"][command_id] = record
     if not json_write(path / "home" / "workspace-commands.json", payload):
         raise OSError("Failed to persist Workspace command ledger")
 
@@ -678,9 +751,41 @@ def _replace_string_prefix(value: Any, source: str, target: str) -> Any:
 def _exchange_directories(left: Path, right: Path) -> None:
     libc = ctypes.CDLL(None, use_errno=True)
     renameat2 = getattr(libc, "renameat2", None)
-    if os.name != "posix" or renameat2 is None:
-        raise OSError(errno.ENOTSUP, "atomic Workspace Update is unavailable")
-    if renameat2(-100, os.fsencode(left), -100, os.fsencode(right), 2) == 0:
-        return
-    error = ctypes.get_errno()
-    raise OSError(error, os.strerror(error))
+    if os.name == "posix" and renameat2 is not None:
+        if renameat2(-100, os.fsencode(left), -100, os.fsencode(right), 2) == 0:
+            return
+        error = ctypes.get_errno()
+        unsupported = {errno.EINVAL, errno.ENOSYS, errno.ENOTSUP}
+        if hasattr(errno, "EOPNOTSUPP"):
+            unsupported.add(errno.EOPNOTSUPP)
+        if error not in unsupported:
+            raise OSError(error, os.strerror(error))
+    _exchange_directories_portable(left, right)
+
+
+def _exchange_backup_path(staging: Path) -> Path:
+    return staging.with_name(f"{staging.name}.exchange-old")
+
+
+def _exchange_directories_portable(left: Path, right: Path) -> None:
+    """Swap sibling directories with crash-recoverable plain renames.
+
+    Some NFS servers reject ``RENAME_EXCHANGE`` with ``EINVAL``. The caller
+    holds the Workspace lock, and Project reconcile recognizes either
+    intermediate state using the two Workspace snapshots and command ledger.
+    """
+    if left.parent != right.parent:
+        raise OSError(errno.EXDEV, "Workspace exchange requires sibling directories")
+    if left.is_symlink() or right.is_symlink() or not left.is_dir() or not right.is_dir():
+        raise OSError(errno.EINVAL, "Workspace exchange requires real directories")
+    backup = _exchange_backup_path(right)
+    if backup.exists() or backup.is_symlink():
+        raise FileExistsError(errno.EEXIST, "Workspace exchange backup exists", backup)
+
+    os.rename(left, backup)
+    try:
+        os.rename(right, left)
+    except Exception:
+        os.rename(backup, left)
+        raise
+    os.rename(backup, right)

@@ -105,18 +105,22 @@ def build_rtl2gds_flow(
     steps.append((StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart))
+    steps.append((StepEnum.PREPLACE, "sizer", StateEnum.Unstart))
     steps.append((StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
+    steps.append((StepEnum.DIFF_SIZING, "dreamplace", StateEnum.Unstart))
     steps.append((StepEnum.CTS, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart))
     steps.append((SkippableStepEnum.TIMING_OPT, "sizer", StateEnum.Unstart))
     steps.append((StepEnum.ROUTING, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.FILLER, "ecc", StateEnum.Unstart))
+    steps.append((StepEnum.LVS, "ecc", StateEnum.Unstart))
+    steps.append((StepEnum.DRC, "ecc", StateEnum.Unstart))
+    steps.append((StepEnum.ANTENNA_CHECK, "ecc", StateEnum.Unstart))
+    steps.append((SkippableStepEnum.POST_ROUTE_LEC, lec_tool, StateEnum.Unstart))
     steps.append((StepEnum.RCX, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.STA, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.POWER_ANALYSIS, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.LVS, "ecc", StateEnum.Unstart))
-    steps.append((SkippableStepEnum.POST_ROUTE_LEC, lec_tool, StateEnum.Unstart))
-    steps.append((StepEnum.DRC, "ecc", StateEnum.Unstart))
+    steps.append((StepEnum.EMIR, "ecc", StateEnum.Unstart))
     steps.append((StepEnum.HARDEN, "ecc", StateEnum.Unstart))
 
     return filter_flow_steps(steps, skip)
@@ -140,8 +144,12 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
         "macroplace": StepEnum.MACRO_PLACEMENT.value,
         "macroplacement": StepEnum.MACRO_PLACEMENT.value,
         "postfloorplan": StepEnum.POST_FLOORPLAN.value,
+        "preplace": StepEnum.PREPLACE.value,
+        "preplaceopt": StepEnum.PREPLACE.value,
+        "preplaceoptimization": StepEnum.PREPLACE.value,
         "place": StepEnum.PLACEMENT.value,
         "placement": StepEnum.PLACEMENT.value,
+        "diffsizing": StepEnum.DIFF_SIZING.value,
         "cts": StepEnum.CTS.value,
         "legal": StepEnum.LEGALIZATION.value,
         "legalization": StepEnum.LEGALIZATION.value,
@@ -150,6 +158,8 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
         "route": StepEnum.ROUTING.value,
         "routing": StepEnum.ROUTING.value,
         "drc": StepEnum.DRC.value,
+        "antenna": StepEnum.ANTENNA_CHECK.value,
+        "antennacheck": StepEnum.ANTENNA_CHECK.value,
         "lvs": StepEnum.LVS.value,
         "filler": StepEnum.FILLER.value,
         "lec": SkippableStepEnum.LEC.value,
@@ -158,6 +168,7 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
         "rcx": StepEnum.RCX.value,
         "sta": StepEnum.STA.value,
         "poweranalysis": StepEnum.POWER_ANALYSIS.value,
+        "emir": StepEnum.EMIR.value,
         "harden": StepEnum.HARDEN.value,
     }
     return aliases.get(alias_key, token)

@@ -244,7 +244,7 @@ Sizer 目前被视为外部原生工具，而不是 ECC 的 Python 工作区包�
 ```
 pyproject.toml                    # scripts.ecc = "chipcompiler.cli.main:main"
 chipcompiler/cli/main.py          # run(argv) / main()，仅做薄封装
-chipcompiler/cli/app.py           # 根 typer app；invoke_typer_app() 统一执行与退出码；version / layout-image 两命令直接注册于此
+chipcompiler/cli/app.py           # 根 typer app；invoke_typer_app() 统一执行与退出码；version / gdsview / chipview 直接注册于此
 chipcompiler/cli/commands/        # typer 命令定义层（薄）
   ├── project.py                  # init/check/run/status/log/config/migrate 的注册与参数声明
   ├── doctor.py                   # doctor 顶层命令（环境体检）
@@ -255,7 +255,9 @@ chipcompiler/cli/commands/        # typer 命令定义层（薄）
   ├── project_config.py           # project 子应用（set/unset/add/remove/show）
   ├── workspace.py                # workspace 子应用（import/refresh）
   ├── signoff.py                  # signoff 子应用（inspect/export）
-  └── report.py                   # report 子应用（summary/qor/checklist/step）
+  ├── report.py                   # report 子应用（summary/qor/checklist/step）
+  ├── chipview.py                 # 打开 geometry snapshot 的原生 Chip Viewer
+  └── gds_view.py                 # 在 KLayout 中打开 step 的 GDS
 chipcompiler/cli/command_handlers/  # 业务处理层（唯一的处理器包，有状态/重逻辑）
   ├── project.py                  # init / check / run / migrate / workspace refresh（含 preset 解析与环境预检）
   ├── inspect.py                  # status / log / config
@@ -266,7 +268,9 @@ chipcompiler/cli/command_handlers/  # 业务处理层（唯一的处理器包，
   ├── workspace_params.py         # workspace 局部 param set/unset/list/diff（改 home/params.toml + 失效后缀步骤）
   ├── macro.py                    # macro set/remove/show/import（渲染 macro_location.tcl + 写 params.toml）
   ├── signoff.py                  # signoff inspect/export
-  └── report.py                   # report 四子命令（文件写出 + 记录汇总）
+  ├── report.py                   # report 四子命令（文件写出 + 记录汇总）
+  ├── chipview.py                 # geometry manifest 校验与原生 Viewer 启动
+  └── gds_view.py                 # GDS 探测与 KLayout Viewer 启动
 chipcompiler/cli/core/            # 框架层
   ├── apps.py                     # 共享 typer app 工厂（create_app()：no_args_is_help、补全）
   ├── docs.py                     # 定位并加载 `ecc doc` 的内置指南文档
@@ -321,7 +325,7 @@ chipcompiler/engine/qor_report.py # CLI QoR facade，委托 analysis.qor
 - 错误记录用 `core/records.py::error_record(...)`，产出 `{"kind": "error", "error": "<机器可读错误码>", ...}`；TEXT 模式下由 `render_error` 打成 `[error]` 块。错误码是稳定契约（如 `missing_config`、`run_exists`、`unknown_parameter`、`invalid_value`），测试会对它们断言。
 - 给用户的「下一步」提示统一用 `core/output.py::disclosure_cmd("ecc status", project, run_id)` 生成可复制的完整命令，记录里放在 `inspect` / `log_cmd` / `run` 等字段。
 
-`ecc version` 直接格式化版本元数据；另有一个隐藏的 `--json` 选项（单对象、版本专用 schema）预留给桌面应用，不出现在 `--help` 中。`ecc rpc serve` 与 `ecc layout-image` 有意不使用 records 渲染器输出模式。
+`ecc version` 直接格式化版本元数据；`--json` 输出带版本的桌面 CLI 契约。`ecc gdsview` 和 `ecc chipview` 使用通用 records 渲染器，并支持 `--plain`/`--json`。
 
 ### 新增一个命令
 
@@ -454,14 +458,11 @@ config_param(
 - `engine/signoff/report_checklist.py`：只读渲染 `home/checklist.json`（不合法时报 unavailable，绝不回写文件）。
 - CLI：`cli/commands/report.py` + `cli/command_handlers/report.py`；workspace 解析复用 `inspection/discovery.py`（`resolve_workspace_path` 是无副作用核心，`resolve_command_workspace` 是核心加 `load_workspace`；signoff、report 与只读的 status/log/config 共用）。
 
-#### 扩展 RPC（`ecc rpc serve`）
-
-`rpc serve --stdio` 启动 JSON-RPC 2.0 sidecar（`chipcompiler/runtime/stdio_server.py`）。方法在 `chipcompiler/runtime/methods.py::RUNTIME_METHODS` 声明（`method_name` + pydantic `request_model` + `handler_name`），handler 实现在 `chipcompiler/runtime/workspace_api.py`，由 `runtime/server.py` 统一挂载；协议细节见 [rpc-guide.md](rpc-guide.md)。新增方法 = 加一个 `RuntimeMethodSpec` + 对应 API 方法 + 请求模型，无需改 CLI 层。
-
 #### 扩展项目声明（`ecc project *` / `ecc workspace refresh`）
 
 - `ecc project set/unset/add/remove/show` 的可编辑键在 `cli/project/config_fields.py::PROJECT_FIELDS` 声明（`key` / TOML 表 / 字段名 / 类型 / `list_value`）。加一个字段五个子命令自动生效；`add`/`remove` 硬性只支持 `design.rtl`（其余键报 `unsupported_project_collection`）。
-- `ecc workspace refresh` 的实现等价于 run 路径的 `overwrite=True, execute_flow=False`（`cli/command_handlers/project.py::refresh_workspace`），因此它和新建 run 一样做环境预检（`ecc.toml` 的 `preset: rtl2gds` 要求全套工具就绪，即使并不真正执行步骤）；非 manifest 项目报 `workspace_refresh_requires_managed_workspace`。覆盖前它会把 `config/*.json` 与上次派生记录（`home/config-derived-manifest.json`，由 `refresh_workspace_config` 写出）比对；检测到差异时以 `derived_configs_modified` 拒绝并列出文件，除非给出 `--force`。
+- `ecc workspace refresh` 把当前 Project 结构投影到 Engine 的 Workspace update transaction。事务校验 expected revision，在 staging 中构造新 Workspace，保留 Workspace 局部参数覆盖，然后交换目录并只增加一次 revision。它仍执行新建 Workspace 的环境预检（`ecc.toml` 的 `preset: rtl2gds` 要求全套工具就绪，即使并不真正执行步骤）；非 manifest 项目报 `workspace_refresh_requires_managed_workspace`。事务开始前会把 `config/*.json` 与上次派生记录 `home/config-derived-manifest.json` 比对；检测到差异时以 `derived_configs_modified` 拒绝，除非给出 `--force`。
+- 目录发布会优先使用 Linux `renameat2` 的 exchange/no-replace 操作。NFS 等文件系统可能以 `EINVAL` 拒绝这些 flag；此时 refresh 在锁内使用三次 rename 完成交换，并保留 Snapshot/command ledger 证据供崩溃后的 `project reconcile` 恢复。旧布局迁移也会在 migration lock 内通过已绑定的目录 fd 重新检查目标后使用普通 rename。目标冲突始终 fail closed，绝不静默覆盖。
 - workspace 局部 `param set/unset/list/diff --workspace NAME` 经 `cli/command_handlers/workspace_params.py` 修改 `home/params.toml`（记录到 `workspace_param_overrides`，经 `chipcompiler.engine.rerun` 失效后缀步骤）；项目级 `param` 走 `cli/command_handlers/param.py`。
 
 ## CLI 用法
@@ -504,13 +505,42 @@ uv run ecc pdk show
 
 ### Flow Preset 覆盖
 
-`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（规范链 18 步，含 Synthesis 后紧跟的综合级 LEC，默认策略会跳过该步，见下文「可跳过的 Flow Step」；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
+`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（规范链 20 步，含 Synthesis 后紧跟的综合级 LEC，默认策略会跳过该步，见下文「可跳过的 Flow Step」；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
 
 ```bash
 uv run ecc run --project gcd --preset rtl2gds
 ```
 
 ### 可跳过的 Flow Step
+
+默认布线后流程为 `route → filler → lvs → drc → antennaCheck → postRouteLec
+→ RCX → sta → powerAnalysis → emir → Harden`。LVS、DRC 和天线检查先检查填充后的版图，随后执行布线后
+等价性检查，再由 RCX 为时序和功耗分析提供寄生参数。LEC、antennaCheck 和 emir 不向后续步骤传递物理产物：RCX 绕过天线检查和 LEC，
+Harden 绕过 emir，因此 advisory 步骤失败不会导致后续步骤缺少物理输入。
+新顺序适用于新建的预设流程及规范步骤范围；已有工作区的执行记录和显式
+自定义流程仍保留原顺序。
+
+`antennaCheck` 调用 iMJ 的 `init_mj → check_antenna → destroy_mj`，只检查，
+不插入二极管、不自动修复。原生报告为
+`antennaCheck_ecc/data/mj/antenna_checker/antenna_check.rpt`，原样复制到
+`antennaCheck_ecc/report/antennaCheck.rpt`。发现违例、原生调用失败或未生成本次报告均不阻断后续 flow；
+调用失败仍保留 `Incomplete` 执行状态。antennaCheck 和 emir 在首页及步骤 checklist 中
+均作为非阻断的 attention 项，执行成功后仍提示人工审阅报告和检查覆盖。步骤 `Success` 只表示执行和报告输出完成，不表示
+天线检查通过：LEF 缺少天线规则或引脚 gate-area 信息时可能没有实际检查覆盖。
+请结合原生日志查看报告。不需要单独的天线检查 JSON 配置。
+
+EMIR 使用 `powerAnalysis_ecc/data/pw/power_reporter/instance_power.tsv` 和前一步的
+物理数据库。运行前，通过 `ecc param set emir.technology_file_path /绝对路径/process.tech`
+或 `ecc.toml` 的 `[emir]` 配置真实工艺文件。此值会在创建或刷新工作区时写入
+`config/emir_ecc.json`；仅修改生成的 JSON 不会持久保留。
+默认空值只是占位，未填写时该步骤会停止。
+电源激励使用 iFP 输出的 `postFloorplan_ecc/data/fp/pdn_generator/power.ploc`，
+通过 `ploc_file_path` 传入，不同时启用 `add_ploc_from_top_def`。这些是电源条带
+交点上的理想电源假设，不代表实际封装或 pad。原生结果输出到 `emir_ecc/data/emir/`。
+
+CI 显式使用 `test/fixtures/emir/ics55_synthetic.tech`；其中电阻和 EM 限值均为
+模拟测试数据，不是工艺厂数据。运行成功只验证流程与数据交接，IR/EM 数值不能
+用于签核。普通项目不会自动使用这个文件。
 
 三个可选 step 可在创建 workspace 时按配置排除：综合级 LEC（`lec`）、布线后 LEC（`postRouteLec`）、时序优化（`Timing optimization`）。被跳过的 step 不会进入 workspace 的执行 ledger——其输入自然落到前一个保留 step，也不会为其创建 step 目录。状态机与 resume/rerun 语义零改动；已创建的 ledger 永远不会按新配置重过滤——事后修改策略不会向已有 workspace 插入或删除 step。
 
@@ -655,7 +685,7 @@ export CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/ics55-pdk
 3. 旧的 `ICS55_PDK_ROOT` 环境变量；
 4. 默认：ecc 检出目录旁的 `../pdk/icsprout55-pdk`（ecos-studio 工作区布局）。
 
-运行时路径由 RPC `workspace.create` 请求的 `pdkRoot` 字段承担，CLI 工程则使用 `ecc pdk set-root`。workspace 创建时会把解析出的 root（绝对路径）持久化到 `home/params.toml` 的 `[pdk] root`，因此同一 workspace 在任何机器上解析结果一致。加载持久化 root 为空/缺失的已有 workspace 时仍会回退环境变量，但 `ecc run` 会发出 `pdk_root_env_fallback` 警告并指明解析来源；该警告仅在 workspace 的 PDK 名为 ics55（或未命名 PDK）时触发，因为这些环境变量只适用于 ics55。执行 `ecc run --overwrite` 可把解析出的 root 固化进 workspace。
+Project 使用 `ecc pdk set-root` 或 `ecc project apply` 配置运行时路径。Workspace 创建时会把解析出的 root（绝对路径）持久化到 `home/params.toml` 的 `[pdk] root`，因此同一 Workspace 在任何机器上解析结果一致。加载持久化 root 为空/缺失的已有 Workspace 时仍会回退环境变量，但 `ecc run` 会发出 `pdk_root_env_fallback` 警告并指明解析来源；该警告仅在 Workspace 的 PDK 名为 ics55（或未命名 PDK）时触发，因为这些环境变量只适用于 ics55。执行 `ecc workspace refresh` 可把当前 Project 配置投影到 Workspace。
 
 示例：
 
@@ -714,6 +744,5 @@ Python 层调试可直接调同一 CLI 模块：
 
 ## 相关文档
 
-- [rpc-guide.md](rpc-guide.md) - RPC sidecar 协议
 - [examples/](examples/) - 示例项目与 CLI 用法
 - [English version](development.md)

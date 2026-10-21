@@ -86,12 +86,10 @@ def test_unknown_high_version_rejected_with_path_and_version(tmp_path, monkeypat
     assert "9" in message
 
 
-def test_params_toml_migration_registered_and_stamps_version_one(
+def test_params_toml_migration_registered_and_migrates_to_version_two(
     tmp_path, minimal_ics55_pdk_factory, monkeypatch
 ):
-    """The 0→1 entry of the params.toml chain is the legacy parameters.json
-    migration; the rewritten TOML carries schema_version = 1, so the next
-    open takes no migration step."""
+    """Legacy parameters migrate through the current params.toml format."""
     from chipcompiler.data import load_workspace
 
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
@@ -113,29 +111,35 @@ def test_params_toml_migration_registered_and_stamps_version_one(
         )
     )
 
-    assert apply_schema_migrations(PARAMS_TOML, workspace_dir) == 1
+    assert apply_schema_migrations(PARAMS_TOML, workspace_dir) == 2
 
     config_path = home / "params.toml"
     assert config_path.is_file()
     with open(config_path, "rb") as f:
         document = tomllib.load(f)
-    assert document["schema_version"] == 1
+    assert document["schema_version"] == 2
+    assert "pdk" not in document["params"]
+    assert "design" not in document["params"]
+    assert "top_module" not in document["params"]
+    assert "clock" not in document["params"]
+    assert "frequency_max" not in document["params"]
+    assert "pdk_root" not in document["params"]
 
-    # The second open is version-1 already: no migration function re-runs.
+    # The second open is version-2 already: no migration function re-runs.
     for version, fn in SCHEMA_MIGRATIONS[PARAMS_TOML].items():
         monkeypatch.setitem(
             SCHEMA_MIGRATIONS[PARAMS_TOML],
             version,
-            lambda _dir, _fn=fn: pytest.fail(f"migration {_fn} re-ran for a v1 file"),
+            lambda _dir, _fn=fn: pytest.fail(f"migration {_fn} re-ran for a v2 file"),
         )
-    assert apply_schema_migrations(PARAMS_TOML, workspace_dir) == 1
+    assert apply_schema_migrations(PARAMS_TOML, workspace_dir) == 2
 
     loaded = load_workspace(str(workspace_dir))
     assert loaded is not None
     assert loaded.parameters.data["frequency_max"] == 250
 
 
-def test_preversioned_params_toml_is_stamped_without_reformatting(tmp_path):
+def test_preversioned_params_toml_is_migrated_to_v2(tmp_path):
     workspace_dir = tmp_path / "workspace"
     home = workspace_dir / "home"
     home.mkdir(parents=True)
@@ -143,11 +147,12 @@ def test_preversioned_params_toml_is_stamped_without_reformatting(tmp_path):
     config_path = home / "params.toml"
     config_path.write_bytes(original_tail)
 
-    assert apply_schema_migrations(PARAMS_TOML, workspace_dir) == 1
-    content = config_path.read_bytes()
-    assert content == b"schema_version = 1\n" + original_tail
+    assert apply_schema_migrations(PARAMS_TOML, workspace_dir) == 2
     with open(config_path, "rb") as file:
-        assert tomllib.load(file)["params"]["custom"] == "value"
+        document = tomllib.load(file)
+    assert document["schema_version"] == 2
+    assert document["design"] == {"name": "gcd"}
+    assert document["params"]["custom"] == "value"
 
 
 def test_corrupt_preversioned_params_toml_is_left_untouched(tmp_path):
@@ -158,8 +163,51 @@ def test_corrupt_preversioned_params_toml_is_left_untouched(tmp_path):
     original = b"[design\nname = 'broken'\n"
     config_path.write_bytes(original)
 
-    assert apply_schema_migrations(PARAMS_TOML, workspace_dir) == 1
+    assert apply_schema_migrations(PARAMS_TOML, workspace_dir) == 2
     assert config_path.read_bytes() == original
+
+
+def test_v1_params_toml_is_deduplicated_to_v2(tmp_path):
+    workspace_dir = tmp_path / "workspace"
+    config_path = workspace_dir / "home" / "params.toml"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        """schema_version = 1
+
+[design]
+name = "gcd"
+top = "gcd"
+clock_port = "clk"
+frequency_mhz = 50.0
+
+[pdk]
+name = "ics55"
+root = "/pdk"
+
+[params]
+pdk = "ics55"
+design = "gcd"
+top_module = "gcd"
+clock = "clk"
+frequency_max = 50.0
+pdk_root = "/pdk"
+target_density = 0.2
+
+[params.dreamplace]
+target_density = 0.2
+num_threads = 8
+"""
+    )
+
+    assert apply_schema_migrations(PARAMS_TOML, workspace_dir) == 2
+
+    with config_path.open("rb") as file:
+        document = tomllib.load(file)
+    assert document["schema_version"] == 2
+    assert document["params"]["target_density"] == 0.2
+    assert document["params"]["dreamplace"] == {"num_threads": 8}
+    for key in ("pdk", "design", "top_module", "clock", "frequency_max", "pdk_root"):
+        assert key not in document["params"]
 
 
 def test_load_workspace_rejects_unsupported_params_toml_version(

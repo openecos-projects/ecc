@@ -60,20 +60,40 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
         (StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart),
         (StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart),
         (StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart),
+        (StepEnum.PREPLACE, "sizer", StateEnum.Unstart),
         (StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart),
+        (StepEnum.DIFF_SIZING, "dreamplace", StateEnum.Unstart),
         (StepEnum.CTS, "ecc", StateEnum.Unstart),
         (StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart),
         (SkippableStepEnum.TIMING_OPT, "sizer", StateEnum.Unstart),
         (StepEnum.ROUTING, "ecc", StateEnum.Unstart),
         (StepEnum.FILLER, "ecc", StateEnum.Unstart),
+        (StepEnum.LVS, "ecc", StateEnum.Unstart),
+        (StepEnum.DRC, "ecc", StateEnum.Unstart),
+        (StepEnum.ANTENNA_CHECK, "ecc", StateEnum.Unstart),
+        (SkippableStepEnum.POST_ROUTE_LEC, "kepler_formal", StateEnum.Unstart),
         (StepEnum.RCX, "ecc", StateEnum.Unstart),
         (StepEnum.STA, "ecc", StateEnum.Unstart),
         (StepEnum.POWER_ANALYSIS, "ecc", StateEnum.Unstart),
-        (StepEnum.LVS, "ecc", StateEnum.Unstart),
-        (SkippableStepEnum.POST_ROUTE_LEC, "kepler_formal", StateEnum.Unstart),
-        (StepEnum.DRC, "ecc", StateEnum.Unstart),
+        (StepEnum.EMIR, "ecc", StateEnum.Unstart),
         (StepEnum.HARDEN, "ecc", StateEnum.Unstart),
     ]
+
+
+def test_default_flow_data_marks_checker_steps():
+    from chipcompiler.data.workspace import build_dynamic_flow_data
+
+    ledger = build_dynamic_flow_data({"start_step": "Synthesis", "end_step": "Harden"})
+    categories = {step["name"]: step["category"] for step in ledger["steps"]}
+
+    assert {name for name, category in categories.items() if category == "CHECKER"} == {
+        "lvs",
+        "drc",
+        "postRouteLec",
+        "RCX",
+        "sta",
+        "powerAnalysis",
+    }
 
 
 def test_build_rtl2gds_flow_skip_removes_exactly_the_skipped_steps():
@@ -87,9 +107,10 @@ def test_build_rtl2gds_flow_skip_removes_exactly_the_skipped_steps():
 
 
 def test_build_flow_range_slices_the_canonical_chain():
-    flow = builder_module.build_flow_range("CTS", "route")
+    flow = builder_module.build_flow_range("diff_sizing", "route")
 
     assert [(step, tool) for step, tool, _state in flow] == [
+        (StepEnum.DIFF_SIZING, "dreamplace"),
         (StepEnum.CTS, "ecc"),
         (StepEnum.LEGALIZATION, "dreamplace"),
         (SkippableStepEnum.TIMING_OPT, "sizer"),
@@ -97,20 +118,38 @@ def test_build_flow_range_slices_the_canonical_chain():
     ]
 
 
+def test_build_flow_range_accepts_emir_after_power_analysis():
+    assert builder_module.build_flow_range("power_analysis", "EMIR") == [
+        (StepEnum.POWER_ANALYSIS, "ecc", StateEnum.Unstart),
+        (StepEnum.EMIR, "ecc", StateEnum.Unstart),
+    ]
+
+
+@pytest.mark.parametrize("spelling", ["antennaCheck", "antenna_check", "antenna"])
+def test_build_flow_range_accepts_antenna_after_drc(spelling):
+    assert builder_module.build_flow_range("DRC", spelling) == [
+        (StepEnum.DRC, "ecc", StateEnum.Unstart),
+        (StepEnum.ANTENNA_CHECK, "ecc", StateEnum.Unstart),
+    ]
+
+
 def test_build_flow_range_normalizes_aliases_and_rejects_reverse_ranges():
     assert [step for step, _tool, _state in builder_module.build_flow_range("place", "cts")] == [
         StepEnum.PLACEMENT,
+        StepEnum.DIFF_SIZING,
         StepEnum.CTS,
     ]
     assert [
-        step for step, _tool, _state in builder_module.build_flow_range("power_analysis", "lvs")
+        step for step, _tool, _state in builder_module.build_flow_range("sta", "power_analysis")
     ] == [
+        StepEnum.STA,
         StepEnum.POWER_ANALYSIS,
-        StepEnum.LVS,
     ]
 
     with pytest.raises(ValueError, match="reversed"):
         builder_module.build_flow_range("route", "CTS")
+    with pytest.raises(ValueError, match="reversed"):
+        builder_module.build_flow_range("power_analysis", "lvs")
 
 
 def test_build_flow_range_exposes_split_floorplan_steps():

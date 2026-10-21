@@ -52,6 +52,7 @@ and the `ecc macro` commands:
 ```bash
 ecc macro set u_ram0 --x 10 --y 20.5 --orient R0
 ecc macro remove u_ram0
+ecc macro import /path/to/macro_location.tcl   # adopt an externally supplied handoff
 ecc macro show
 ```
 
@@ -96,3 +97,7 @@ Use `ecc param` or `ecc.toml` parameters to change reviewed floorplan settings
 rather than relying on generated per-run values. The
 [Configuration Reference](ecc-config-ref.en.md) lists the supported floorplan
 parameters and JSON fields.
+
+## Automation boundaries
+
+Automation agents and scripts must follow these constraints when changing the floorplan. The three floorplan stages hand off state through the managed `macro_location.tcl`; never edit generated files to change the design. The macro list must cover every hard macro, coordinates are in microns, and orientations must be one of the supported values. For every change to macros, die/core, density, or padding, record where the parameter came from, its units, the workspace, which downstream steps it invalidates, and what range you actually reran. Do not fake routing convergence by lowering utilization or dropping macros.

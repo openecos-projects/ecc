@@ -22,7 +22,17 @@ class CollectorDiscoveryMixin:
         return data if isinstance(data, dict) else {}
 
     def _read_parameters(self, path: Path) -> dict:
-        """Read the workspace configuration's [params] section; {} when unreadable."""
+        """Read canonical workspace parameters; return {} when unreadable."""
+        from chipcompiler.data.workspace_config import load_workspace_config
+
+        try:
+            payload = load_workspace_config(path.parent.parent)
+        except (OSError, UnicodeDecodeError, ValueError):
+            payload = None
+        if isinstance(payload, dict):
+            payload.pop("_flow", None)
+            return payload
+
         import tomllib
 
         try:

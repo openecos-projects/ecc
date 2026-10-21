@@ -49,10 +49,17 @@ def _safe_steps(flow_data: dict) -> list[dict]:
 
 
 def get_run_status(flow_data: dict) -> str:
+    from chipcompiler.data import ADVISORY_FLOW_STEPS
+
     steps = _safe_steps(flow_data)
     if not steps:
         return "unstart"
-    states = {normalize_state(s.get("state", "")) for s in steps}
+    states = set()
+    for step in steps:
+        state = normalize_state(step.get("state", ""))
+        if step.get("name") in ADVISORY_FLOW_STEPS and state == "incomplete":
+            state = "success"
+        states.add(state)
     if states & {"ongoing", "pending"}:
         return "ongoing"
     if states & {"incomplete", "invalid"}:

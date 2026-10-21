@@ -196,3 +196,6 @@ task_plan.md
 
 # Lit suite exec root (ephemeral)
 ci-artifacts/
+
+# Build identity stamped by CI before packaging (ephemeral)
+chipcompiler/_build_info.py

@@ -1,9 +1,12 @@
 from dataclasses import dataclass
 
+import typer
+
 
 @dataclass(frozen=True)
 class OutputOptions:
     plain: bool = False
+    json: bool = False
 
 
 @dataclass(frozen=True)
@@ -12,10 +15,40 @@ class ProjectOptions:
 
 
 @dataclass(frozen=True)
+class FlowShowInput:
+    output: OutputOptions
+    flow_id: str
+    project: ProjectOptions = ProjectOptions()
+
+
+@dataclass(frozen=True)
+class FlowValidateInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+    flow_id: str | None = None
+
+
+@dataclass(frozen=True)
 class InitInput:
     name: str
     output: OutputOptions
     project: ProjectOptions = ProjectOptions()
+    project_name: str | None = None
+    design_name: str | None = None
+    mpc_resource_id: str | None = None
+    mpc_display_name: str | None = None
+    mpc_version: str | None = None
+    mpc_root: str | None = None
+    mpc_design_index: int | None = None
+
+
+@dataclass(frozen=True)
+class RtlImportInput:
+    output: OutputOptions
+    project: ProjectOptions
+    filelist: str | None = None
+    verilog: tuple[str, ...] = ()
+    force: bool = False
 
 
 @dataclass(frozen=True)
@@ -26,9 +59,31 @@ class CheckInput:
 
 
 @dataclass(frozen=True)
+class ChipviewInput:
+    output: OutputOptions
+    project: ProjectOptions
+    step: str
+    workspace: str | None = None
+
+
+@dataclass(frozen=True)
+class GdsViewInput:
+    output: OutputOptions
+    project: ProjectOptions
+    step: str
+    workspace: str | None = None
+
+
+@dataclass(frozen=True)
 class DoctorInput:
     output: OutputOptions
     project: ProjectOptions
+
+
+@dataclass(frozen=True)
+class CheckUpdateInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
 
 
 @dataclass(frozen=True)
@@ -45,6 +100,38 @@ class RunInput:
     force: bool = False
     preset: str | None = None
     keep_backup: bool = False
+    expected_revision: int | None = None
+    command_id: str = ""
+    no_wait: bool = False
+    run_id: str = ""
+    runtime_id: str = ""
+    log_file: str = ""
+
+
+@dataclass(frozen=True)
+class ProcessInspectInput:
+    output: OutputOptions
+    project: ProjectOptions
+    workspace: str | None
+    run_id: str | None = None
+
+
+@dataclass(frozen=True)
+class ProcessCancelInput:
+    output: OutputOptions
+    project: ProjectOptions
+    workspace: str | None
+    run_id: str
+    force: bool = False
+
+
+@dataclass(frozen=True)
+class ProcessReconcileInput:
+    output: OutputOptions
+    project: ProjectOptions
+    workspace: str | None
+    run_id: str | None = None
+    no_wait: bool = False
 
 
 @dataclass(frozen=True)
@@ -129,12 +216,23 @@ class SignoffInspectInput:
 
 
 @dataclass(frozen=True)
+class SignoffCheckInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+    workspace: str | None = None
+    profile: str = "rtl2gds"
+
+
+@dataclass(frozen=True)
 class SignoffExportInput:
     output: OutputOptions
     project: ProjectOptions = ProjectOptions()
     workspace: str | None = None
     output_path: str = ""
     include_debug: bool = False
+    expected_revision: int | None = None
+    no_wait: bool = False
+    additional_files: str | None = None
 
 
 @dataclass(frozen=True)
@@ -152,6 +250,12 @@ class ParamListInput:
     step: str | None = None
     all: bool = False
     workspace: str | None = None
+
+
+@dataclass(frozen=True)
+class FlowListInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
 
 
 @dataclass(frozen=True)
@@ -187,6 +291,19 @@ class ParamDiffInput:
 
 
 @dataclass(frozen=True)
+class ParamApplyInput:
+    output: OutputOptions
+    project: ProjectOptions
+    sets: tuple[str, ...] = ()
+    unsets: tuple[str, ...] = ()
+    workspace: str | None = None
+    step: str | None = None
+    expected_revision: int | None = None
+    command_id: str = ""
+    no_wait: bool = False
+
+
+@dataclass(frozen=True)
 class ProjectSetInput:
     output: OutputOptions
     project: ProjectOptions
@@ -217,6 +334,32 @@ class ProjectShowInput:
 
 
 @dataclass(frozen=True)
+class ProjectApplyInput:
+    output: OutputOptions
+    project: ProjectOptions
+    sets: tuple[str, ...] = ()
+    unsets: tuple[str, ...] = ()
+    add_rtl: tuple[str, ...] = ()
+    remove_rtl: tuple[str, ...] = ()
+    no_wait: bool = False
+
+
+@dataclass(frozen=True)
+class ProjectBaselineInput:
+    output: OutputOptions
+    project: ProjectOptions
+    workspace_id: str
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class ProjectReconcileInput:
+    output: OutputOptions
+    project: ProjectOptions
+    no_wait: bool = False
+
+
+@dataclass(frozen=True)
 class ProjectDoctorInput:
     output: OutputOptions
     project: ProjectOptions
@@ -230,6 +373,9 @@ class WorkspaceRefreshInput:
     workspace: str
     force: bool = False
     keep_backup: bool = False
+    expected_revision: int | None = None
+    command_id: str = ""
+    no_wait: bool = False
 
 
 @dataclass(frozen=True)
@@ -238,6 +384,69 @@ class WorkspaceImportInput:
     project: ProjectOptions
     workspace: str
     path: str
+    no_wait: bool = False
+
+
+@dataclass(frozen=True)
+class WorkspaceDeriveInput:
+    output: OutputOptions
+    project: ProjectOptions
+    workspace: str
+    target_workspace: str
+    from_step: str | None = None
+    command_id: str = ""
+    no_wait: bool = False
+
+
+@dataclass(frozen=True)
+class WorkspaceArchiveInput:
+    output: OutputOptions
+    project: ProjectOptions
+    workspace: str
+    expected_revision: int | None = None
+    command_id: str = ""
+    no_wait: bool = False
+
+
+@dataclass(frozen=True)
+class WorkspaceDeleteInput:
+    output: OutputOptions
+    project: ProjectOptions
+    workspace: str
+    expected_revision: int | None = None
+    command_id: str = ""
+    no_wait: bool = False
+    delete_directory: bool = False
+
+
+@dataclass(frozen=True)
+class WorkspaceResetFlowInput:
+    output: OutputOptions
+    project: ProjectOptions
+    workspace: str
+    expected_revision: int | None = None
+    command_id: str = ""
+    no_wait: bool = False
+
+
+@dataclass(frozen=True)
+class WorkspaceReconcileDeletesInput:
+    output: OutputOptions
+    project: ProjectOptions
+    no_wait: bool = False
+
+
+@dataclass(frozen=True)
+class WorkspaceCreateInput:
+    output: OutputOptions
+    project: ProjectOptions
+    workspace: str
+    path: str | None = None
+    from_step: str | None = None
+    to_step: str | None = None
+    param_set: tuple[str, ...] = ()
+    command_id: str = ""
+    no_wait: bool = False
 
 
 @dataclass(frozen=True)
@@ -272,10 +481,15 @@ class MacroImportInput:
     project: ProjectOptions
     path: str
     workspace: str | None = None
+    expected_revision: int | None = None
+    command_id: str = ""
+    no_wait: bool = False
 
 
-def output_options(*, plain: bool) -> OutputOptions:
-    return OutputOptions(plain=plain)
+def output_options(*, plain: bool = False, json_output: bool = False) -> OutputOptions:
+    if plain and json_output:
+        raise typer.BadParameter("--plain and --json cannot be used together")
+    return OutputOptions(plain=plain, json=json_output)
 
 
 def project_options(project: str | None) -> ProjectOptions:

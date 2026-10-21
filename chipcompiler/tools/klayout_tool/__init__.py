@@ -6,6 +6,7 @@ from .runner import (
     save_gds_image,
 )
 from .utility import is_eda_exist
+from .viewer import view_gds
 
 __all__ = [
     "is_eda_exist",
@@ -16,4 +17,5 @@ __all__ = [
     "KlayoutModule",
     "save_gds_image",
     "save_snapshot_image",
+    "view_gds",
 ]

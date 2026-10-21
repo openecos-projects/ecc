@@ -44,7 +44,6 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     assert "-def input.def" in cmd_text
     assert "-v input.v" in cmd_text
     assert "-sdc clock.sdc" in cmd_text
-    assert "-spef route.spef" in cmd_text
     assert "-asap7" not in cmd_text
     assert "-prft_only" not in cmd_text
     assert "-outputPath ." in cmd_text
@@ -76,7 +75,132 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     assert checklist["checklist"] == []
 
 
-def test_sizer_step_config_writes_ff_hold_pass_from_sta_contract(tmp_path, monkeypatch):
+def test_sizer_config_emits_configured_placement_wire_rc(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    runtime_root = _sizer_runtime(tmp_path)
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime_root))
+
+    workspace = _workspace(tmp_path)
+    workspace.config["sizer"] = tmp_path / "sizer_ecc.json"
+    workspace.config["sizer"].write_text(
+        json.dumps(
+            {
+                "hold_stage": {
+                    "hold_margin": 0.02,
+                    "placement_wire_rc_corner": "MIN_m40/Cbest",
+                    "placement_wire_resistance_ohm_per_um": 1.053236741,
+                    "placement_wire_capacitance_pf_per_um": 0.0002207,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    workspace.config[StepEnum.STA.value] = tmp_path / "sta_ecc.json"
+    workspace.config[StepEnum.STA.value].write_text(
+        json.dumps({"liberty": [{"corner": "MIN", "path": ["ff.lib"]}]}),
+        encoding="utf-8",
+    )
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
+        input_def="input.def",
+        input_verilog="input.v",
+    )
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_step_config(workspace, step)
+
+    hold_cmd = step.script.sizer_hold_cmd.read_text(encoding="utf-8")
+    expected = {
+        "-placement_wire_rc_corner MIN_m40/Cbest",
+        "-placement_wire_resistance_ohm_per_um 1.053236741",
+        "-placement_wire_capacitance_pf_per_um 0.0002207",
+    }
+    assert expected <= set(hold_cmd.splitlines())
+
+
+def test_sizer_config_rejects_partial_placement_wire_rc(tmp_path):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    workspace = _workspace(tmp_path)
+    workspace.config["sizer"] = tmp_path / "sizer_ecc.json"
+    workspace.config["sizer"].write_text(
+        json.dumps({"hold_stage": {"placement_wire_resistance_ohm_per_um": 1.0}}),
+        encoding="utf-8",
+    )
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
+        input_def="input.def",
+        input_verilog="input.v",
+    )
+
+    with pytest.raises(ValueError, match="must be configured together"):
+        sizer_builder._hold_cmd_text(workspace, step)
+
+
+def test_sizer_config_emits_global_routing_layer_rc_file(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    runtime_root = _sizer_runtime(tmp_path)
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime_root))
+    workspace = _workspace(tmp_path)
+    workspace.config["sizer"] = tmp_path / "sizer_ecc.json"
+    workspace.config["sizer"].write_text(
+        json.dumps(
+            {
+                "hold_stage": {
+                    "hold_margin": 0.02,
+                    "rc_mode": "global_routing",
+                    "global_routing_rc": {
+                        "corner": "MIN_m40/Cbest",
+                        "layers": {
+                            "MET2": {
+                                "resistance_ohm_per_um": 1.053236741,
+                                "capacitance_pf_per_um": 0.0002207,
+                            }
+                        },
+                        "vias": {"VIA1": {"resistance_ohm": 2.0}},
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    workspace.config[StepEnum.STA.value] = tmp_path / "sta_ecc.json"
+    workspace.config[StepEnum.STA.value].write_text(
+        json.dumps({"liberty": [{"corner": "MIN", "path": ["ff.lib"]}]}),
+        encoding="utf-8",
+    )
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
+        input_def="input.def",
+        input_verilog="input.v",
+    )
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_step_config(workspace, step)
+
+    hold_cmd = step.script.sizer_hold_cmd.read_text(encoding="utf-8")
+    hold_env = step.script.sizer_hold_env.read_text(encoding="utf-8")
+    rc_file = sizer_builder.sizer_hold_rc(step)
+    assert "-use_gr_rc 1" in hold_cmd
+    assert f"-setRCFile {rc_file.resolve()}" in hold_env
+    assert "placement_wire_resistance" not in hold_cmd
+    assert rc_file.read_text(encoding="utf-8") == (
+        "# source corner: MIN_m40/Cbest\n"
+        "set_layer_rc -layer MET2 -resistance 0.001053236741 -capacitance 0.0002207\n"
+        "set_layer_rc -via VIA1 -resistance 0.002\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "step_name, rc_mode",
+    [(SkippableStepEnum.TIMING_OPT.value, "1"), (StepEnum.PREPLACE.value, "0")],
+)
+def test_sizer_step_config_writes_ff_hold_pass_from_sta_contract(
+    tmp_path, monkeypatch, step_name, rc_mode
+):
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
 
     runtime_root = _sizer_runtime(tmp_path)
@@ -98,7 +222,7 @@ def test_sizer_step_config_writes_ff_hold_pass_from_sta_contract(tmp_path, monke
     )
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name=SkippableStepEnum.TIMING_OPT.value,
+        step_name=step_name,
         input_def="input.def",
         input_verilog="input.v",
     )
@@ -112,13 +236,72 @@ def test_sizer_step_config_writes_ff_hold_pass_from_sta_contract(tmp_path, monke
     assert hold_cmd is not None and hold_cmd.is_file()
     assert f"-lib {min_lib}" in hold_env.read_text(encoding="utf-8")
     hold_cmd_text = hold_cmd.read_text(encoding="utf-8")
+    setup_cmd_text = step.script.sizer_cmd.read_text(encoding="utf-8")
+    assert {
+        "setup": next(
+            line for line in setup_cmd_text.splitlines() if line.startswith("-use_gr_rc ")
+        ),
+        "hold": next(line for line in hold_cmd_text.splitlines() if line.startswith("-use_gr_rc ")),
+    } == {"setup": f"-use_gr_rc {rc_mode}", "hold": "-use_gr_rc 0"}
     assert "-hold_only" in hold_cmd_text
+    assert "-hold_margin 0.04" in hold_cmd_text
     assert "-spef " not in hold_cmd_text
     assert f"-def {sizer_builder.sizer_setup_staging_def(step)}" in hold_cmd_text
     assert f"-def_out_path {sizer_builder.sizer_staging_def(step).resolve()}" in hold_cmd_text
     assert (
         f"-verilog_out_path {sizer_builder.sizer_staging_verilog(step).resolve()}" in hold_cmd_text
     )
+
+
+def test_sizer_hold_pass_reads_hold_margin_from_ecc_config(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    runtime_root = _sizer_runtime(tmp_path)
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime_root))
+
+    workspace = _workspace(tmp_path)
+    min_lib = tmp_path / "ff_rcbest.lib"
+    workspace.config[StepEnum.STA.value] = tmp_path / "sta_ecc.json"
+    workspace.config[StepEnum.STA.value].write_text(
+        json.dumps({"liberty": [{"corner": "MIN", "path": [str(min_lib)]}]}),
+        encoding="utf-8",
+    )
+    workspace.config["sizer"] = tmp_path / "sizer_ecc.json"
+    workspace.config["sizer"].write_text(json.dumps({"hold_margin": 0.25}), encoding="utf-8")
+
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
+        input_def="input.def",
+        input_verilog="input.v",
+    )
+    sizer_builder.build_step_space(step)
+    sizer_builder.build_step_config(workspace, step)
+
+    assert step.script.sizer_hold_cmd is not None
+    hold_cmd_text = step.script.sizer_hold_cmd.read_text(encoding="utf-8")
+    assert "-hold_margin 0.25" in hold_cmd_text
+
+
+def test_sizer_hold_pass_rejects_negative_hold_margin(tmp_path, monkeypatch):
+    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
+
+    runtime_root = _sizer_runtime(tmp_path)
+    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime_root))
+
+    workspace = _workspace(tmp_path)
+    workspace.config["sizer"] = tmp_path / "sizer_ecc.json"
+    workspace.config["sizer"].write_text(json.dumps({"hold_margin": -0.1}), encoding="utf-8")
+    step = sizer_builder.build_step(
+        workspace=workspace,
+        step_name=SkippableStepEnum.TIMING_OPT.value,
+        input_def="input.def",
+        input_verilog="input.v",
+    )
+    sizer_builder.build_step_space(step)
+
+    with pytest.raises(ValueError, match="hold_margin must be non-negative"):
+        sizer_builder.build_hold_config(workspace, step, [Path("ff.lib")])
 
 
 def test_min_corner_libs_reads_sta_contract_verbatim(tmp_path):
@@ -236,11 +419,11 @@ def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
     expected_verilog_out = str(sizer_builder.sizer_staging_verilog(step).resolve())
     assert cmd_lines == [
         "-useOpenSTA",
+        "-use_gr_rc 1",
         "-top gcd",
         f"-def {step.input.def_}",
         f"-v {step.input.verilog}",
         f"-sdc {workspace.pdk.sdc}",
-        f"-spef {workspace.pdk.spef}",
         "-outputPath .",
         f"-def_out_path {expected_def_out}",
         f"-verilog_out_path {expected_verilog_out}",

@@ -16,7 +16,7 @@ The target process is the official [ICS55 PDK](https://github.com/openecos-proje
 graph LR
     A[Install ecc CLI<br/>+ PDK + Yosys] --> B[ecc init gcd<br/>create project, add RTL]
     B --> C[ecc doctor / check<br/>environment & config checks]
-    C --> D[ecc run --preset rtl2gds<br/>17-step flow]
+    C --> D[ecc run --preset rtl2gds<br/>18-step flow]
     D --> E[ecc status / log<br/>inspect results & logs]
     E --> F[ecc signoff export<br/>signoff tar.gz]
     E --> G[ecc report summary<br/>design summary]
@@ -37,7 +37,7 @@ graph LR
 
 ### 2.1 One-shot installer (recommended)
 
-Install the `ecc` CLI (Linux x86_64, glibc 2.34+, fontconfig) with the official installer:
+Install the `ecc` CLI (Linux x86_64, glibc 2.34+, fontconfig, libxcb) with the official installer:
 
 > This tutorial targets v0.1.0-alpha.12. Earlier releases do not provide every command used here (`ecc doctor`, `ecc doc`, the `signoff`/`report` groups, and all `run` workspace/range selectors). Check with `ecc --version`; for source-tree development, follow [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli).
 
@@ -50,6 +50,14 @@ Install Yosys (OSS CAD Suite with the slang frontend built in) and the ICS55 PDK
 ```bash
 curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --with-toolchain
 ```
+
+To install the latest nightly build (ecc, ecc-sizer, kepler-formal, and the ICS55 PDK) instead of the pinned stable release:
+
+```bash
+curl -fsSL http://release.openecos.com/installers/ecc/latest/ecc-installer.sh | sh -s -- --nightly
+```
+
+Add `--with-toolchain` to the same command to install Yosys (OSS CAD Suite) as well. Re-running the installer without `--nightly` switches back to the stable release; `--nightly-tag vX.Y.Z-nightly.YYYYMMDD` pins a specific nightly — browse the available tags on the [ecos-installer releases page](https://github.com/openecos-projects/ecos-installer/releases).
 
 The wrapper installs to `~/.local/bin`. If that directory is not on your `PATH`, add it (effective in the current terminal immediately; new terminals pick it up automatically):
 
@@ -121,7 +129,7 @@ $ ecc doctor
 [status]
   doctor: environment
   status: failed             # a missing required component returns rc=1
-  checked: 7
+  checked: 9
   failed: 1
   attention: 0
   run: ecc run
@@ -133,7 +141,7 @@ $ ecc doctor
   status: pass
   required: True
   detail: read_slang frontend available
-  component: ecc-tools       # dreamplace / klayout / pdk are listed the same way, one by one
+  component: ecc-tools       # dreamplace / kepler-formal / lec-dual / pdk are listed the same way
   ...
   component: sizer
   status: fail
@@ -141,7 +149,7 @@ $ ecc doctor
   ...
 ```
 
-All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, and pdk) must `pass` before `ecc doctor` succeeds. A ready Sizer has both its executable and runtime root. The complete `rtl2gds` flow contains Timing optimization; fresh or `--overwrite` `rtl2gds` targets check Sizer during startup preflight and return `env_not_ready` when it is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail mid-flow. When a component is missing, follow the `ecc doctor` remediation hint (e.g. re-run the §2.1 installer with `--with-toolchain`).
+All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, kepler-formal, lec-dual, and pdk; klayout is optional) must `pass` before `ecc doctor` succeeds. kepler-formal and lec-dual serve the LEC equivalence checks (needed once LEC is enabled in §4.1; lec-dual allows a degraded single-engine pass). A ready Sizer has both its executable and runtime root. The complete `rtl2gds` flow contains Timing optimization; fresh or `--overwrite` `rtl2gds` targets check Sizer during startup preflight and return `env_not_ready` when it is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail mid-flow. When a component is missing, follow the `ecc doctor` remediation hint (e.g. re-run the §2.1 installer with `--with-toolchain`).
 
 ## 3. Creating Your First Project
 
@@ -254,7 +262,7 @@ rc=0
 
 ### 4.1 Start
 
-The `rtl2gds` preset is the full 17-step chain, running all the way through Harden (which produces the GDS + abstract LEF + timing LIB). The synthesis LEC (step 2) is part of the chain but **skipped by default**: `[flow] skip_steps` defaults to `["lec"]`, and setting `skip_steps = []` in `ecc.toml` is the only way to run it. To reproduce every step shown below (including the LEC), clear the list once before running:
+The `rtl2gds` preset is the full 18-step chain, running all the way through Harden (which produces the GDS + abstract LEF + timing LIB). The synthesis LEC (step 2) is part of the chain but **skipped by default**: `[flow] skip_steps` defaults to `["lec"]`, and setting `skip_steps = []` in `ecc.toml` is the only way to run it. To reproduce every step shown below (including the LEC), clear the list once before running:
 
 ```bash
 # enable the synthesis LEC for this tutorial
@@ -265,12 +273,12 @@ ecc run --preset rtl2gds
 
 (The generated `ecc.toml` already selects `rtl2gds`; `--preset` applies to this run only and is not written back.)
 
-In an interactive terminal the CLI renders live per-step progress and log tails; with output redirected to a file it runs silently and prints a summary at the end. The 17 `rtl2gds` steps are:
+In an interactive terminal the CLI renders live per-step progress and log tails; with output redirected to a file it runs silently and prints a summary at the end. The 18 `rtl2gds` steps are:
 
 | # | Step | Tool | What it does |
 |---|------|------|--------------|
 | 1 | synthesis | yosys | RTL synthesis and technology mapping (slang frontend reads SystemVerilog) |
-| 2 | lec | yosys_lec | Logic equivalence check: synthesis netlist vs its golden netlist |
+| 2 | lec | kepler_formal | Logic equivalence check: synthesis netlist vs its golden netlist |
 | 3 | pre_floorplan | ecc | Build the simple floorplan with automatic macro placement |
 | 4 | macro_placement | dreamplace | Run macro-only placement (positions can also be set manually with `ecc macro`, see §6.5); this is the handoff checkpoint before the macro-location file is consumed |
 | 5 | post_floorplan | ecc | Read the macro-location file; create tracks, IO pins, tap cells, PDN, and clock-net setup |
@@ -280,21 +288,22 @@ In an interactive terminal the CLI renders live per-step progress and log tails;
 | 9 | timing optimization | sizer | Timing optimization (cell sizing) |
 | 10 | routing | ecc | Routing |
 | 11 | filler | ecc | Filler cell insertion |
-| 12 | rcx | ecc | Parasitic extraction (multi-corner SPEF) |
-| 13 | sta | ecc | Multi-corner static timing analysis |
-| 14 | lvs | ecc | Layout-vs-schematic check |
-| 15 | postroutelec | yosys_lec | Logic equivalence check: synthesis netlist vs post-route netlist |
-| 16 | drc | ecc | Design rule check |
-| 17 | harden | ecc | Hardened handoff: GDS + abstract LEF + timing LIB + layout snapshot |
+| 12 | lvs | ecc | Layout-vs-schematic check |
+| 13 | drc | ecc | Design rule check |
+| 14 | postroutelec | kepler_formal | Logic equivalence check: synthesis netlist vs post-route netlist |
+| 15 | rcx | ecc | Parasitic extraction (multi-corner SPEF) |
+| 16 | sta | ecc | Multi-corner static timing analysis |
+| 17 | poweranalysis | ecc | Power analysis using extracted parasitics |
+| 18 | harden | ecc | Hardened handoff: GDS + abstract LEF + timing LIB + layout snapshot |
 
 ```mermaid
 graph LR
-    A[Synthesis<br/>yosys] --> Q[LEC<br/>yosys_lec] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> D[Placement<br/>dreamplace]
+    A[Synthesis<br/>yosys] --> Q[LEC<br/>kepler_formal] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> D[Placement<br/>dreamplace]
     D --> E[CTS] --> F[Legalization<br/>dreamplace] --> T[Timing Opt<br/>sizer] --> G[Routing]
-    G --> J[Filler] --> K[RCX] --> L[STA] --> I[LVS] --> N[LEC<br/>yosys_lec] --> H[DRC] --> M[Harden<br/>GDS/LEF/LIB]
+    G --> J[Filler] --> I[LVS] --> H[DRC] --> N[Post-route LEC<br/>kepler_formal] --> K[RCX] --> L[STA] --> W[Power Analysis] --> M[Harden<br/>GDS/LEF/LIB]
 ```
 
-For a fresh or `--overwrite` target, `ecc run` pre-checks bundled ecc-tools plus preset-selected Yosys, DreamPlace, and Sizer (Sizer only for flows containing Timing optimization, such as `rtl2gds`), and returns `env_not_ready` with a pointer to `ecc doctor` when a component is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail at Timing optimization.
+For a fresh or `--overwrite` target, `ecc run` preflights components derived from the target flow's actual step-tool mapping: bundled ecc-tools plus preset-selected Yosys, DreamPlace, and Sizer (Sizer only for flows containing Timing optimization, such as `rtl2gds`); this section enables LEC, so kepler-formal and lec-dual are probed as well. A missing component returns `env_not_ready` with a pointer to `ecc doctor`. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail at Timing optimization.
 
 ### 4.2 Watching progress (in a second terminal)
 
@@ -316,7 +325,7 @@ $ ecc status
   steps:
     synthesis (yosys) success 0:0:17
       log: ecc log synthesis --workspace default
-    lec (yosys_lec) success 0:0:1
+    lec (kepler_formal) success 0:0:1
       log: ecc log lec --workspace default
     pre_floorplan (ecc) success 0:0:1
       log: ecc log pre_floorplan --workspace default
@@ -347,7 +356,7 @@ $ ecc status
   steps:
     synthesis (yosys) success 0:0:17
       log: ecc log synthesis --workspace default
-    lec (yosys_lec) success 0:0:1
+    lec (kepler_formal) success 0:0:1
     pre_floorplan (ecc) success 0:0:1
     macro_placement (dreamplace) success 0:0:5
     post_floorplan (ecc) success 0:0:1
@@ -360,7 +369,7 @@ $ ecc status
     rcx (ecc) success 0:0:0
     sta (ecc) success 0:2:35
     lvs (ecc) success 0:0:1
-    postroutelec (yosys_lec) success 0:0:1
+    postroutelec (kepler_formal) success 0:0:1
     drc (ecc) success 0:0:2
     harden (ecc) success 0:0:11
 rc=0
@@ -378,7 +387,7 @@ $ ecc run --preset rtl2gds
   log: ecc log --workspace default
 ```
 
-If a step fails, `status` shows `failed`; locate the cause with `ecc log <step>` — remedies in §6 and §7. Running `ecc run` again is a no-op when every step has already succeeded; after an interruption or a failure it automatically resumes from the first non-successful step — steps that already succeeded are not rerun.
+If a step fails, `status` shows `failed`; locate the cause with `ecc log <step>` — remedies in §6–§8. Running `ecc run` again is a no-op when every step has already succeeded; after an interruption or a failure it automatically resumes from the first non-successful step — steps that already succeeded are not rerun.
 
 ### 4.4 Where everything lands
 
@@ -390,12 +399,12 @@ default/
 ├── origin/             # frozen inputs: gcd.v + the auto-generated gcd.sdc
 ├── config/             # configs actually in effect per step (view: ecc config <step>)
 ├── Synthesis_yosys/    # each step dir is organized into log/ script/ output/ report/ ...
-├── lec_yosys_lec/       # synthesis-level LEC equivalence check
+├── lec_kepler_formal/   # synthesis-level LEC equivalence check
 ├── preFloorplan_ecc/
 ├── macroPlacement_dreamplace/
 ├── postFloorplan_ecc/
 ├── ...
-├── postRouteLec_yosys_lec/   # LEC equivalence check (output/<design>_postRouteLec_result.json)
+├── postRouteLec_kepler_formal/   # LEC equivalence check (output/<design>_postRouteLec_result.json)
 ├── Harden_ecc/
 │   └── output/
 │       ├── gcd_Harden.gds     # final layout
@@ -578,14 +587,39 @@ $ ecc report checklist
 
 Of the 36 items, 33 PASS (mapped netlist, DRC clean, LVS clean, **LEC equivalence proven**, SPEF integrity, setup/hold closure, Harden GDS/LEF/LIB, ...); the 3 ATTENTION items are all missing optional files (`config.macro_locations` and the LEC debug dumps `lec.failed_rtlil`/`lec.failed_verilog`, which only exist when LEC fails).
 
-### 5.6 Render a layout image (optional): ecc layout-image
+### 5.6 Open a step GDS in KLayout (optional): ecc gdsview
 
-With KLayout available in the environment, any GDS can be rendered to a snapshot (the Harden step already auto-generates `gcd_Harden.png`; use this command for other GDS files or custom sizes):
+Some flow steps publish a GDS file under their `output` directory. Open the
+single GDS produced by a selected step in KLayout's interactive viewer:
 
 ```bash
-ecc layout-image --gds default/Harden_ecc/output/gcd_Harden.gds \
-                 --image gcd_layout.png --width 2560 --height 1600
+ecc gdsview --workspace default --step Harden
 ```
+
+The command opens the GDS and keeps the KLayout window open until it is closed;
+it does not save a PNG. A step without a GDS is reported clearly, and the
+diagnostic lists other workspace steps that do publish GDS files. If a step
+contains more than one GDS candidate, remove the ambiguity before retrying.
+
+### 5.7 Open the native layout viewer (optional): ecc chipview
+
+ECOS Studio stores the interactive layout snapshot under each completed step's
+`output/geometry` directory. To open that snapshot in the same native Chip
+Viewer used by the ECOS Studio layout thumbnail, run the command from the
+ECOS Studio AppImage's built-in terminal:
+
+```bash
+ecc chipview --workspace default --step Harden
+```
+
+The command reads `Harden_ecc/output/geometry/geometry.manifest` and its
+sidecar files. It does not read the Harden GDS and does not create a PNG. The
+AppImage terminal supplies `ECOS_CHIP_VIEWER_BIN`, pointing to the packaged
+`chip-viewer-native`; when using a development checkout, set that variable to
+an executable Viewer path explicitly. A missing step snapshot, Viewer, or Linux
+display produces an actionable error instead of silently switching to
+the GDS viewer command. Viewer logs are written to
+`default/.chip-viewer/logs/`.
 
 ## 6. Tuning Parameters and Rerunning
 
@@ -699,8 +733,8 @@ rc=1
 > $ ecc run --workspace default --only placemen   # typo: not a persisted step name
 > [error]
 >   unknown_step unknown step 'placemen'; available steps: Synthesis, lec, preFloorplan,
->   macroPlacement, postFloorplan, place, CTS, legalization, Timing optimization, route, filler, RCX, sta, lvs,
->   postRouteLec, drc, Harden
+>   macroPlacement, postFloorplan, place, CTS, legalization, Timing optimization, route, filler, lvs, drc,
+>   postRouteLec, RCX, sta, powerAnalysis, Harden
 > ```
 
 ### 6.4 Inspecting a step's effective configuration
@@ -733,7 +767,118 @@ ecc run --workspace default
 
 The list must cover **every** hard macro in the design and use real instance names, otherwise `post_floorplan` fails with the missing instance names. See [User Guide §9.5](ecc-user-guide.en.md#95-macro--manual-macro-placement) for the command details and [floorplan-flow.en.md](floorplan-flow.en.md) for the staged floorplan and the handoff format.
 
-## 7. Troubleshooting
+## 7. Tuning PPA in Practice
+
+PPA stands for **P**erformance (timing), **P**ower, and **A**rea. Physical-design optimization is a trade-off between the three: raising the target frequency usually costs area and power; raising utilization shrinks the die but worsens routing congestion. This section gives a loop you can copy verbatim: **freeze a baseline → change one parameter at a time → run it in a fresh workspace → compare with QoR reports and snapshots → keep or discard**.
+
+### 7.1 Step one: freeze the baseline
+
+Record the current state before optimizing anything. The `default` workspace from §4 is the baseline:
+
+```bash
+mkdir -p comparisons
+ecc report qor      # current score and five dimensions (timing/interconnect/area/power/robustness)
+ecc report summary  # text summary: area / timing / power sections
+ecc report snapshot --workspace default -o comparisons/before.json   # freeze the comparison baseline
+```
+
+A snapshot is a read-only copy of `home/engineering-snapshot.json` holding the committed run facts; save one per side of a comparison (see [User Guide §12.5](ecc-user-guide.en.md) — prefer saving while the workspace is idle).
+
+### 7.2 Knob cheat sheet: what to change for which goal
+
+Common parameters mapped to PPA dimensions (defaults in parentheses; the complete registry is `ecc param list --all`, and `ecc param show KEY` prints one parameter's type, range, and write target):
+
+| Goal | Start with these knobs | Trade-off |
+|---|---|---|
+| Timing (P) | `design.frequency_mhz` (100.0) target frequency; clock tree `cts.max_fanout` (32), `cts.skew_bound` (0.08 ns), `cts.max_buf_tran` (0.5 ns), `cts.routing_layer` ([4,5]); `route.top_layer` (MET5 — higher metals have lower RC); `route.RT.-enable_timing` ("0", timing-driven routing switch) | Higher frequency → more synthesis and timing pressure, usually worse area/power; tighter clock-tree constraints → more buffers, higher insertion delay and power |
+| Area (A) | `floorplan.core_util` (0.4) core utilization; `floorplan.aspect_ratio` (1.0) and `floorplan.core_margin` ([2,2] µm); `place.target_density` (0.2) placement density | Higher utilization/density → smaller die but more congestion and timing/DRC risk |
+| Power (W) | No dedicated knob; driven indirectly by target frequency and clock structure: `design.frequency_mhz`, the `cts.*` buffer policy | To have QoR score power, declare a budget first: add `qor_power_budget_w = 0.5` (watts) to the `[params]` table of `<workspace>/home/params.toml` (see [QoR Reference §8](ecc-qor-ref.en.md)) |
+| Routability | `place.cell_padding_x` (200, db units), `place.routability_opt` (1), `route.top_layer` (more layers available higher up) | More padding → easier routing, larger area |
+
+Out-of-range values are rejected with `invalid_value` and nothing is written — so experiment freely.
+
+### 7.3 The standard loop: change one knob → fresh workspace → compare
+
+Example goal: **shrink area** — raise utilization and placement density, keep everything else unchanged:
+
+```bash
+# 1. Fresh experiment workspace: --set is recorded for this creation only —
+#    ecc.toml and default are untouched
+ecc run --workspace exp-area --preset rtl2gds \
+  --set floorplan.core_util=0.6 --set place.target_density=0.45
+
+# 2. Look at both workspaces' QoR
+ecc report qor --workspace default
+ecc report qor --workspace exp-area
+
+# 3. Numeric comparison: save the experiment snapshot, diff against 7.1's baseline
+ecc report snapshot --workspace exp-area -o comparisons/after-area.json
+ecc compare run --baseline comparisons/before.json --current comparisons/after-area.json
+```
+
+`compare run` reports per-metric before/after values, deltas, and trends (output skeleton below; numbers come from your runs):
+
+```console
+$ ecc compare run --baseline comparisons/before.json --current comparisons/after-area.json
+[run_comparison]
+  overall : ...
+  counts  : improved=... regressed=... unchanged=... unknown=...
+  ...     # steps / metrics / qor / parameter_changes expand section by section
+```
+
+How to read it:
+
+- Only metrics whose direction is defined in the registry get improved/regressed (area-like metrics: smaller is better; slack-like metrics: larger is better); unknown directions get a delta only;
+- `overall` summarizes numeric-metric and QoR-score trends only — **it is not a signoff verdict**. If area improves but DRC goes from 0 to non-zero, that is a regression; signoff status always comes from `ecc signoff check`;
+- When only part of the flow was rerun, some metrics are unknown — that is honest reporting, not an error.
+
+Keeping the winner: keep using `--workspace exp-area`, or make it the project comparison baseline (`ecc project baseline exp-area` — later QoR comparisons use it). Discard failures with `ecc workspace delete exp-area`.
+
+### 7.4 The cheap path on an existing workspace: local parameters + resume
+
+When a full rebuild is not warranted, use a workspace-local override — only the owning step and its suffix are invalidated:
+
+```bash
+ecc param set place.target_density 0.50 --workspace exp-area   # invalidates place and its suffix only
+ecc run --workspace exp-area                                    # resumes from place
+ecc param diff --workspace exp-area                             # current overrides vs creation-time values
+ecc param unset place.target_density --workspace exp-area      # restore the original value
+```
+
+The invalidation scope follows the parameter's owning step (`param set` prints `invalidated_steps`): `place.*` invalidates from place onward (cheap — only the back half of the physical flow reruns); `design.frequency_mhz` invalidates from Synthesis onward (the whole chain — for frequency changes prefer a fresh workspace).
+
+### 7.5 Finding the next knob from the QoR report
+
+The text report generated by `ecc report qor` (`<workspace>/signoff/<design>_qor_report.txt`) contains, beyond the score, **deterministic diagnoses and prioritized intervention hypotheses** — when unsure what to try next, read it first:
+
+- Low `timing` dimension / setup violations → is the target frequency too aggressive (`design.frequency_mhz`), CTS skew (`cts.skew_bound`), timing-driven routing (`route.RT.-enable_timing`);
+- Low `area` dimension → `floorplan.core_util`, `place.target_density`;
+- DRC / congestion problems → lower the density, raise `place.cell_padding_x`, or raise `route.top_layer` to MET6 for more routing layers;
+- Per-step detail: `ecc report step placement --section analysis` (all metrics of that step), `ecc report step drc --section analysis` (DRC count and quality gates).
+
+Scoring profiles (`balanced` / `timing_critical` / `low_power` / `area_optimized`), formulas, and the JSON contract are in the [QoR Reference](ecc-qor-ref.en.md).
+
+### 7.6 Batch exploration: sweep (advanced)
+
+To try several values of one parameter in one go, use sweep — it builds an isolated workspace per candidate and never touches the baseline:
+
+```bash
+ecc sweep create --name density --param place.target_density=0.30,0.45,0.60
+ecc sweep run --name density            # runs candidates in order, resumable; --max-candidates N smokes the first N
+ecc sweep compare --name density        # table of all candidates
+ecc explore rank --name density         # passed-first, descending-QoR ranking
+```
+
+Plan/results schemas, ranking, and promotion rules are in [User Guide §11.5](ecc-user-guide.en.md) and the [Sweep Reference](ecc-sweep-ref.en.md).
+
+### 7.7 Beginner pitfalls
+
+- **Change one parameter at a time** — otherwise the comparison cannot be attributed; leave multi-parameter exploration to sweep (§7.6);
+- `--set` only takes effect when **creating** a workspace (`set_requires_fresh_run` is exactly that); for an existing workspace use `ecc param set ... --workspace` or `--overwrite`;
+- PPA is a trade-off — one metric improving does not mean the design improved: judge with `ecc report qor` plus `ecc signoff check`;
+- Never hand-edit generated files inside a workspace (`config/*.json`, `macro_location.tcl`) — reruns overwrite them or trigger `derived_configs_modified`; make every change through `ecc param` / `ecc macro` / `ecc.toml`.
+
+## 8. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -752,11 +897,13 @@ The list must cover **every** hard macro in the design and use real instance nam
 | doctor shows `sizer: fail` | required Sizer component not installed | `ecc doctor` exits non-zero. The complete `rtl2gds` chain contains Timing optimization, so install Sizer before running it. Build ecc-sizer per the remediation hint |
 | synthesis log says `yosys slang frontend check failed` | yosys lacks the slang frontend | use an OSS CAD Suite yosys ≥ v0.67; debug with `ecc log synthesis` |
 | synthesis aborts at DFFLIBMAP with `uncaught exception during Yosys command invoked from TCL` | the current shell never loaded the ecc env (e.g. a non-interactive terminal), so ecc fell back to an old yosys on system PATH, which crashes parsing the ics55 liberty (the TCL wrapper swallows the exception detail) | verify `which yosys` points at the OSS CAD Suite; open a new terminal (or re-run the installer with `--with-toolchain`) and rerun |
+| placement fails with `ImportError: libxcb.so.1` | the X11 client library required by DreamPlace's draw_place module is missing (common on minimal systems) | install libxcb (Debian/Ubuntu: `apt install libxcb1`) and rerun — the flow resumes from the failed step |
 
-## 8. Next Steps
+## 9. Next Steps
 
 - Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist) for multi-file designs;
-- Preset differences: `rtl2gds` (the complete 17-step synthesis-to-Harden chain; the synthesis-level LEC is in the chain but skipped by default — `skip_steps = []` enables it), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps, requires `skip_steps = []`);
+- Preset differences: `rtl2gds` (the complete 18-step synthesis-to-Harden chain; the synthesis-level LEC is in the chain but skipped by default — `skip_steps = []` enables it), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps, requires `skip_steps = []`);
+- The PPA-optimization loop and batch sweeps are in §7; read the [QoR Reference](ecc-qor-ref.en.md) and [Sweep Reference](ecc-sweep-ref.en.md) to go deeper;
 - Full command details in the **[ECC CLI User Guide](ecc-user-guide.en.md)** (`ecc doc ug`); extending the CLI is covered in [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli);
 - Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/ics55flow.py).
 

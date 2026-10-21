@@ -7,8 +7,8 @@ from types import SimpleNamespace
 import pytest
 
 from agent import candidate_worker
-from chipcompiler.runtime.operations import RuntimeOperationCancelled
-from chipcompiler.runtime.workspace_api import RuntimeApiError
+from agent.operations import RuntimeOperationCancelled
+from agent.runtime_support import AgentApplicationError as RuntimeApiError
 
 # Captured at import time: tests patch subprocess.Popen on the shared module,
 # so fake workers must spawn through the original.

@@ -1,4 +1,7 @@
+import io
 import os
+import sys
+import tarfile
 from types import SimpleNamespace
 
 import pytest
@@ -222,6 +225,70 @@ class TestSignoffExport:
 
         assert rc == 0
         assert calls[0]["include_debug"] is True
+
+    def test_export_reads_additional_files_from_stdin_tar(
+        self, tmp_path, monkeypatch, create_cli_project, workspace_stub
+    ):
+        project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "default"))
+        calls = _patch_export(monkeypatch)
+        payload = io.BytesIO()
+        with tarfile.open(fileobj=payload, mode="w") as archive:
+            content = b"summary\n"
+            member = tarfile.TarInfo("reports/design.md")
+            member.size = len(content)
+            archive.addfile(member, io.BytesIO(content))
+        monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(payload.getvalue())))
+
+        rc = cli_main.run(
+            [
+                "signoff",
+                "export",
+                "-o",
+                "/tmp/pkg.tar.gz",
+                "--additional-files",
+                "-",
+                "--project",
+                project_dir,
+            ]
+        )
+
+        assert rc == 0
+        assert calls[0]["additional_files"] == [
+            {"archivePath": "reports/design.md", "content": "summary\n"}
+        ]
+
+    def test_export_rejects_link_in_additional_tar(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub, plain_records
+    ):
+        project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "default"))
+        calls = _patch_export(monkeypatch)
+        payload = io.BytesIO()
+        with tarfile.open(fileobj=payload, mode="w") as archive:
+            member = tarfile.TarInfo("reports/link")
+            member.type = tarfile.SYMTYPE
+            member.linkname = "/etc/passwd"
+            archive.addfile(member)
+        monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(payload.getvalue())))
+
+        rc = cli_main.run(
+            [
+                "signoff",
+                "export",
+                "-o",
+                "/tmp/pkg.tar.gz",
+                "--additional-files",
+                "-",
+                "--project",
+                project_dir,
+                "--plain",
+            ]
+        )
+
+        assert rc == 1
+        assert plain_records(capsys.readouterr().out)[0]["error"] == "invalid_additional_files"
+        assert calls == []
 
     def test_export_incomplete_maps_to_error(
         self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub, plain_records

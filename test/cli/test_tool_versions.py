@@ -78,3 +78,33 @@ def test_klayout_version_uses_distribution_when_importable(monkeypatch):
 
     monkeypatch.setattr("chipcompiler.tools.klayout_tool.utility.is_eda_exist", lambda: False)
     assert tool_versions.klayout_version() == "not installed"
+
+
+def test_kepler_version_uses_the_resolved_runtime_and_sanitized_environment(monkeypatch):
+    monkeypatch.setattr(
+        "chipcompiler.tools.kepler_formal.utility.get_kepler_formal_runtime",
+        lambda: (["/opt/kepler/kepler-formal"], {"PATH": "/opt/bin"}),
+    )
+    calls = []
+
+    def query(command, env=None):
+        calls.append((command, env))
+        return "kepler-formal 0.3.0\nAdditional build information"
+
+    monkeypatch.setattr(tool_versions, "_query", query)
+
+    assert tool_versions.kepler_formal_version() == "kepler-formal 0.3.0"
+    assert calls == [(["/opt/kepler/kepler-formal", "--version"], {"PATH": "/opt/bin"})]
+
+
+def test_kepler_version_distinguishes_missing_and_failed_queries(monkeypatch):
+    monkeypatch.setattr(
+        "chipcompiler.tools.kepler_formal.utility.get_kepler_formal_runtime", lambda: ([], {})
+    )
+    assert tool_versions.kepler_formal_version() == "not installed"
+    monkeypatch.setattr(
+        "chipcompiler.tools.kepler_formal.utility.get_kepler_formal_runtime",
+        lambda: (["kepler-formal"], {}),
+    )
+    monkeypatch.setattr(tool_versions, "_query", lambda command, env=None: "")
+    assert tool_versions.kepler_formal_version() == "unknown"
