@@ -350,8 +350,7 @@ jobs:
     # Bare ubuntu-latest (not the manylinux container): also proves the
     # manylinux-built bundle runs on a current distro.
     runs-on: ubuntu-latest
-    # BM64 may wait up to an hour for memory in addition to the flow's hour.
-    timeout-minutes: ${{ matrix.design == 'BM64' && 120 || 60 }}
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -435,16 +434,26 @@ jobs:
       - name: Cache Nix store
         uses: DeterminateSystems/magic-nix-cache-action@v15
 
-      - name: Wait for BM64 memory headroom
+      - name: Add BM64 swap cushion
         if: ${{ matrix.design == 'BM64' }}
         shell: bash
-        # Provisional startup threshold, not a measured peak or an OOM guarantee.
+        # The runner VM has 16 GiB and no swap. A 4 GiB file absorbs a short
+        # overshoot instead of letting the kernel OOM-kill a native tool. It
+        # adds no capacity: a sustained overshoot still shows up as a timeout.
         run: |
-          python3 .github/scripts/wait-for-memory.py \
-            --minimum-gib 12 \
-            --timeout-seconds 3600 \
-            --poll-seconds 10 \
-            | tee "$RUNNER_TEMP/bm64-memory-preflight.log"
+          free -h
+          swap_dir=/
+          if mountpoint -q /mnt; then
+            swap_dir=/mnt
+          fi
+          df -h "$swap_dir"
+          sudo fallocate -l 4G "$swap_dir/swapfile"
+          sudo chmod 600 "$swap_dir/swapfile"
+          sudo mkswap "$swap_dir/swapfile"
+          sudo swapon "$swap_dir/swapfile"
+          # Keep swap as a safety net rather than a routine spill area.
+          sudo sysctl -w vm.swappiness=10
+          free -h
 
       - name: Run design flows
         id: design-flow
@@ -477,16 +486,6 @@ jobs:
             --project "$RUNNER_TEMP/e2e/${{ matrix.design }}" \
             --workspace default \
             --output "$RUNNER_TEMP/experience/${{ matrix.design }}"
-
-      - name: Upload BM64 resource evidence
-        if: ${{ always() && matrix.design == 'BM64' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: bm64-resource-report-${{ github.run_attempt }}
-          if-no-files-found: ignore
-          path: |
-            ${{ runner.temp }}/bm64-memory-preflight.log
-            ${{ runner.temp }}/e2e/BM64/default/home/flow.json
 
       - name: Upload e2e workspaces on failure
         if: failure()

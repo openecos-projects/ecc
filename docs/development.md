@@ -129,27 +129,6 @@ uv run pytest test/formal/ -v
 z3-based formal verification. See [test/formal/README.md](../test/formal/README.md)
 for details on the approach, test inventory, and known bugs found.
 
-### BM64 CI Memory Preflight
-
-Like AES, BM64 is excluded from pull-request CI, but remains enabled for push,
-scheduled, and manual runs. `E2E Packaged Flow (BM64)` is also absent from the
-repository's required status checks, so PRs do not wait for an uncreated job.
-
-The packaged BM64 job checks available RAM immediately before running the flow.
-The provisional threshold is 12 GiB, with up to one hour of waiting in
-10-second intervals. The check caps Linux `MemAvailable` by the remaining
-cgroup-v2 memory limits of the runner and its ancestors. Insufficient or
-unreadable memory fails the job; BM64 is not silently skipped.
-BM64's job timeout is two hours so the wait does not consume its original
-one-hour flow budget; other E2E jobs keep their one-hour timeout.
-
-This is startup admission, not a memory reservation or a guarantee against
-later routing memory guards. The threshold is not a measured successful-run
-minimum. The `bm64-resource-report-<attempt>` artifact preserves the preflight
-log and, when produced, `flow.json` on success and failure. Use its existing
-resource observations (including their scope/limitations) to calibrate the
-threshold. Other designs are unaffected.
-
 ### Placement Regression
 
 For frozen placement experiments with parallel execution and external OpenROAD
