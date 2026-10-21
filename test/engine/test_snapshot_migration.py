@@ -9,6 +9,7 @@ import pytest
 from chipcompiler.engine.snapshot import (
     SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_V3_SCHEMA_VERSION,
+    SNAPSHOT_V4_SCHEMA_VERSION,
     EngineeringSnapshotError,
     create_engineering_snapshot,
     ensure_engineering_snapshot,
@@ -46,8 +47,11 @@ def _write_legacy_snapshot(workspace, version: int = 2) -> dict:
     return legacy
 
 
-@pytest.mark.parametrize("legacy_version", [2, SNAPSHOT_V3_SCHEMA_VERSION])
-def test_migration_preserves_identity_revision_and_projects_v4(tmp_path, legacy_version):
+@pytest.mark.parametrize(
+    "legacy_version",
+    [2, SNAPSHOT_V3_SCHEMA_VERSION, SNAPSHOT_V4_SCHEMA_VERSION],
+)
+def test_migration_preserves_identity_revision_and_projects_v6(tmp_path, legacy_version):
     workspace = _workspace(tmp_path)
     current = _write_legacy_snapshot(workspace, legacy_version)
     assert str(workspace.directory) not in json.dumps(current["qorSnapshotExtension"])
@@ -60,7 +64,7 @@ def test_migration_preserves_identity_revision_and_projects_v4(tmp_path, legacy_
     assert migrated["schemaVersion"] == SNAPSHOT_SCHEMA_VERSION
     assert migrated["workspaceId"] == "engineering-gcd"
     assert migrated["workspaceRevision"] == current["workspaceRevision"]
-    assert migrated["cause"] == "snapshot.migrated.to_v4"
+    assert migrated["cause"] == "snapshot.migrated.to_v6"
     assert migrated["qorSnapshotExtension"]["scoringEngine"] == "qor-v3"
     assert isinstance(migrated["workspaceSpec"], dict)
     assert isinstance(migrated["workspaceBindings"], dict)
@@ -111,24 +115,34 @@ def test_production_write_paths_reject_legacy_snapshot(tmp_path):
     workspace = _workspace(tmp_path)
     _write_legacy_snapshot(workspace, SNAPSHOT_V3_SCHEMA_VERSION)
 
-    with pytest.raises(EngineeringSnapshotError, match="requires schemaVersion 4"):
+    with pytest.raises(EngineeringSnapshotError, match="requires schemaVersion 6"):
         ensure_engineering_snapshot(workspace)
 
 
-def test_v4_requires_persisted_gui_projection(tmp_path):
+def test_v6_tolerates_missing_gui_projection(tmp_path):
     workspace = _workspace(tmp_path)
     snapshot = create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
     path = Path(workspace.directory) / "home" / "engineering-snapshot.json"
 
+    legacy = deepcopy(snapshot)
     for field in ("workspaceSpec", "workspaceBindings", "stepOutputs"):
-        invalid = deepcopy(snapshot)
-        invalid.pop(field)
-        path.write_text(json.dumps(invalid), encoding="utf-8")
-        with pytest.raises(EngineeringSnapshotError, match=field):
-            read_engineering_snapshot(workspace)
+        legacy.pop(field)
+    path.write_text(json.dumps(legacy), encoding="utf-8")
+    assert read_engineering_snapshot(workspace)["schemaVersion"] == SNAPSHOT_SCHEMA_VERSION
 
 
-def test_v4_rejects_unauthorized_absolute_step_output(tmp_path):
+def test_v6_step_outputs_require_bindings(tmp_path):
+    workspace = _workspace(tmp_path)
+    snapshot = create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
+    path = Path(workspace.directory) / "home" / "engineering-snapshot.json"
+    snapshot.pop("workspaceBindings")
+    path.write_text(json.dumps(snapshot), encoding="utf-8")
+
+    with pytest.raises(EngineeringSnapshotError, match="workspaceBindings"):
+        read_engineering_snapshot(workspace)
+
+
+def test_v6_rejects_unauthorized_absolute_step_output(tmp_path):
     workspace = _workspace(tmp_path)
     snapshot = create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
     path = Path(workspace.directory) / "home" / "engineering-snapshot.json"

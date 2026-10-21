@@ -6,6 +6,7 @@ from chipcompiler.engine.snapshot import (
     LEGACY_SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_V3_SCHEMA_VERSION,
+    SNAPSHOT_V4_SCHEMA_VERSION,
     EngineeringSnapshotError,
     read_engineering_snapshot_file,
     read_engineering_snapshot_from_directory,
@@ -42,7 +43,12 @@ def snapshot_file(tmp_path):
 
 @pytest.mark.parametrize(
     "schema_version",
-    [LEGACY_SNAPSHOT_SCHEMA_VERSION, SNAPSHOT_V3_SCHEMA_VERSION, SNAPSHOT_SCHEMA_VERSION],
+    [
+        LEGACY_SNAPSHOT_SCHEMA_VERSION,
+        SNAPSHOT_V3_SCHEMA_VERSION,
+        SNAPSHOT_V4_SCHEMA_VERSION,
+        SNAPSHOT_SCHEMA_VERSION,
+    ],
 )
 def test_file_reader_supports_existing_schemas_without_migration(snapshot_file, schema_version):
     path, snapshot = snapshot_file
