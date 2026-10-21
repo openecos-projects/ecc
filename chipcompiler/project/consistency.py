@@ -13,7 +13,7 @@ import os
 from dataclasses import dataclass
 
 from chipcompiler.project.manifest import ManifestError, ProjectManifest
-from chipcompiler.project.manifest_write import _now_iso, update_manifest
+from chipcompiler.project.manifest_write import now_iso, update_manifest
 
 INVALID_WORKSPACE = "invalid-workspace"
 MISSING_DIRECTORY = "missing-directory"
@@ -154,7 +154,7 @@ def _remove_dead_entry(manifest: ProjectManifest, finding: ConsistencyFinding) -
             selection = document.get(field)
             if isinstance(selection, dict) and selection.get("workspace_id") == workspace_id:
                 document[field] = None
-        document["updated_at"] = _now_iso()
+        document["updated_at"] = now_iso()
 
     if not update_manifest(manifest.project_dir, mutate):
         return FixAction(finding, "failed", "manifest update failed")

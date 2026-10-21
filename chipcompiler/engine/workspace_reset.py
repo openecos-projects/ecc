@@ -7,10 +7,10 @@ from typing import Any
 from chipcompiler.engine.snapshot import commit_engineering_snapshot, read_engineering_snapshot
 from chipcompiler.engine.workspace_lifecycle import (
     WorkspaceLifecycleError,
-    _command_retry_matches,
     _load_committed_workspace,
-    _workspace_command_fingerprint,
-    _write_workspace_command,
+    command_retry_matches,
+    workspace_command_fingerprint,
+    write_workspace_command,
 )
 from chipcompiler.utility.path import path_is_within
 
@@ -98,10 +98,10 @@ def _reset_workspace_flow(
     *,
     command_id: str,
 ):
-    fingerprint = _workspace_command_fingerprint(
+    fingerprint = workspace_command_fingerprint(
         "reset_flow", {"directory": str(target)}, {}, expected_workspace_revision
     )
-    if command_id and _command_retry_matches(target, command_id, fingerprint):
+    if command_id and command_retry_matches(target, command_id, fingerprint):
         return _load_committed_workspace(target)
     workspace = _load_committed_workspace(target)
     snapshot = read_engineering_snapshot(workspace)
@@ -123,7 +123,7 @@ def _reset_workspace_flow(
         workspace_id=snapshot["workspaceId"],
         cause="workspace.flow_reset",
     )
-    _write_workspace_command(
+    write_workspace_command(
         target,
         command_id,
         fingerprint,

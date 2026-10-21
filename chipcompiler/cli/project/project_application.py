@@ -191,9 +191,9 @@ def _reconcile_orphan_workspace(project: Path, candidate: Path, *, blocking: boo
     from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
     from chipcompiler.engine.workspace_lifecycle import (
         WorkspaceLifecycleError,
-        _workspace_command_fingerprint,
+        workspace_command_fingerprint,
     )
-    from chipcompiler.project.api import _project_manifest_mutator
+    from chipcompiler.project.api import project_manifest_mutator
     from chipcompiler.utility.workspace_lock import workspace_lock
 
     initial_stat = candidate.stat(follow_symlinks=False)
@@ -246,7 +246,7 @@ def _reconcile_orphan_workspace(project: Path, candidate: Path, *, blocking: boo
                 not isinstance(expected_revision, int) or isinstance(expected_revision, bool)
             ):
                 continue
-            expected = _workspace_command_fingerprint(
+            expected = workspace_command_fingerprint(
                 operation,
                 request,
                 None,
@@ -301,7 +301,7 @@ def _reconcile_orphan_workspace(project: Path, candidate: Path, *, blocking: boo
                 raise WorkspaceLifecycleError(
                     "workspace_identity_changed", "Project identity changed during reconcile"
                 )
-            if not update_manifest_locked(project, _project_manifest_mutator(project, mutation)):
+            if not update_manifest_locked(project, project_manifest_mutator(project, mutation)):
                 raise WorkspaceLifecycleError(
                     "project_manifest_update_failed", "Project Manifest update failed"
                 )
@@ -386,7 +386,7 @@ def _reconcile_workspace_refresh_exchange(workspace: Path) -> bool:
     from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
     from chipcompiler.engine.workspace_lifecycle import (
         WorkspaceLifecycleError,
-        _exchange_directories,
+        exchange_directories,
     )
 
     prefix = f".{workspace.name}.staging-"
@@ -419,7 +419,7 @@ def _reconcile_workspace_refresh_exchange(workspace: Path) -> bool:
     staging_revision = staging_snapshot["workspaceRevision"]
     if staging_revision == target_revision + 1:
         _require_refresh_command_proof(staging, staging_snapshot, target_revision)
-        _exchange_directories(workspace, staging)
+        exchange_directories(workspace, staging)
         shutil.rmtree(staging)
         return True
     if target_revision == staging_revision + 1:
@@ -481,7 +481,7 @@ def _require_refresh_command_proof(
 ) -> None:
     from chipcompiler.engine.workspace_lifecycle import (
         WorkspaceLifecycleError,
-        _workspace_command_fingerprint,
+        workspace_command_fingerprint,
     )
 
     try:
@@ -521,7 +521,7 @@ def _require_refresh_command_proof(
             or set(request) != {"workspaceSpec", "workspaceBindings"}
         ):
             continue
-        expected = _workspace_command_fingerprint(
+        expected = workspace_command_fingerprint(
             "update",
             request["workspaceSpec"],
             request["workspaceBindings"],
@@ -564,7 +564,7 @@ def _remove_runtime_entry(
 
 
 def select_qor_baseline(project_dir: str | Path, workspace_id: str, reason: str) -> None:
-    from chipcompiler.project.api import _project_manifest_mutator
+    from chipcompiler.project.api import project_manifest_mutator
 
     project = Path(project_dir).expanduser().resolve()
     mutation = {
@@ -573,7 +573,7 @@ def select_qor_baseline(project_dir: str | Path, workspace_id: str, reason: str)
         "reason": reason,
     }
     with manifest_lock(project):
-        if not update_manifest_locked(project, _project_manifest_mutator(project, mutation)):
+        if not update_manifest_locked(project, project_manifest_mutator(project, mutation)):
             raise ProjectApplicationError(
                 "project_manifest_update_failed", "Manifest update failed"
             )

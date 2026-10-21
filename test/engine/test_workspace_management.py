@@ -127,13 +127,13 @@ def test_lifecycle_refuses_registered_runtime_process(tmp_path, minimal_ics55_pd
 def _stage_delete(project: Path, workspace: Path, workspace_id: str, command_id: str) -> Path:
     from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
     from chipcompiler.engine.workspace_lifecycle import (
-        _workspace_command_fingerprint,
-        _write_workspace_command,
+        workspace_command_fingerprint,
+        write_workspace_command,
     )
 
     manifest = load_project_manifest(project)
     snapshot = read_engineering_snapshot_from_directory(workspace)
-    fingerprint = _workspace_command_fingerprint(
+    fingerprint = workspace_command_fingerprint(
         "delete",
         {
             "project": str(project.resolve()),
@@ -144,7 +144,7 @@ def _stage_delete(project: Path, workspace: Path, workspace_id: str, command_id:
         {},
         snapshot["workspaceRevision"],
     )
-    _write_workspace_command(
+    write_workspace_command(
         workspace,
         command_id,
         fingerprint,

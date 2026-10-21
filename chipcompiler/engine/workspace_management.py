@@ -8,10 +8,10 @@ from pathlib import Path
 from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
 from chipcompiler.engine.workspace_lifecycle import (
     WorkspaceLifecycleError,
-    _workspace_command_fingerprint,
-    _write_workspace_command,
+    workspace_command_fingerprint,
+    write_workspace_command,
 )
-from chipcompiler.project.api import _project_manifest_mutator
+from chipcompiler.project.api import project_manifest_mutator
 from chipcompiler.project.manifest import load_manifest
 from chipcompiler.project.manifest_write import manifest_lock, update_manifest_locked
 from chipcompiler.utility.workspace_lock import workspace_lock
@@ -30,7 +30,7 @@ def archive_managed_workspace(
 ) -> Path:
     project = Path(project_dir).expanduser().resolve()
     workspace = _manifest_workspace_path(project, workspace_id)
-    fingerprint = _workspace_command_fingerprint(
+    fingerprint = workspace_command_fingerprint(
         "archive", {"project": str(project), "workspaceId": workspace_id}, {}, expected_revision
     )
     with workspace_lock(workspace, blocking=blocking):
@@ -41,14 +41,14 @@ def archive_managed_workspace(
             _reject_running(manifest.raw, workspace_id)
             if entry.status != "archived" and not update_manifest_locked(
                 project,
-                _project_manifest_mutator(
+                project_manifest_mutator(
                     project, {"type": "archive_workspace", "workspace_id": workspace_id}
                 ),
             ):
                 raise WorkspaceLifecycleError(
                     "project_manifest_update_failed", "Project Manifest update failed"
                 )
-        _write_workspace_command(
+        write_workspace_command(
             workspace,
             command_id,
             fingerprint,
@@ -73,7 +73,7 @@ def delete_managed_workspace(
         raise WorkspaceLifecycleError(
             "invalid_command_id", "Workspace delete requires a safe command ID"
         )
-    fingerprint = _workspace_command_fingerprint(
+    fingerprint = workspace_command_fingerprint(
         "delete",
         {
             "project": str(project),
@@ -89,7 +89,7 @@ def delete_managed_workspace(
         snapshot = _check_revision(workspace, expected_revision)
         if delete_directory:
             _validate_deletable_workspace(project, workspace, staging)
-            _write_workspace_command(
+            write_workspace_command(
                 workspace,
                 command_id,
                 fingerprint,
@@ -111,7 +111,7 @@ def delete_managed_workspace(
                 _reject_running(manifest.raw, workspace_id)
                 if not update_manifest_locked(
                     project,
-                    _project_manifest_mutator(
+                    project_manifest_mutator(
                         project, {"type": "delete_workspace", "workspace_id": workspace_id}
                     ),
                 ):
@@ -123,7 +123,7 @@ def delete_managed_workspace(
                 staging.rename(workspace)
             raise
         if not delete_directory:
-            _write_workspace_command(
+            write_workspace_command(
                 workspace,
                 command_id,
                 fingerprint,
@@ -238,7 +238,7 @@ def _validate_delete_staging(project: Path, project_id: str, staging: Path) -> d
         )
     snapshot = read_engineering_snapshot_from_directory(staging)
     result = record.get("result") if isinstance(record, dict) else None
-    expected_fingerprint = _workspace_command_fingerprint(
+    expected_fingerprint = workspace_command_fingerprint(
         "delete",
         {
             "project": str(project),

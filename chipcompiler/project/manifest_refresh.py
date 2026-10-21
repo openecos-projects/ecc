@@ -20,7 +20,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from chipcompiler.project.manifest import _CANONICAL_TO_MANIFEST_STEP
-from chipcompiler.project.manifest_write import _now_iso, update_manifest
+from chipcompiler.project.manifest_write import now_iso, update_manifest
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +177,7 @@ def refresh_workspace_derived_fields(
             if not include_status:
                 derived.pop("status", None)
             if apply_derived_fields(entry, derived):
-                timestamp = _now_iso()
+                timestamp = now_iso()
                 entry["updated_at"] = timestamp
                 document["updated_at"] = timestamp
             return

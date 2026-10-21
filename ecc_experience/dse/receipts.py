@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from chipcompiler.project.runtime_processes import _boot_id, _host_id
+from chipcompiler.project.runtime_processes import boot_id, host_id
 from ecc_experience.command_receipts import load_request, read_receipt
 from ecc_experience.models import ExperienceError
 
@@ -22,7 +22,7 @@ def recover_command(command: dict, expected: list[str], output: Path) -> None:
             "DSE command or descendants have not completed", code="experience_workspace_busy"
         )
     worker = receipt.get("worker", {})
-    if worker.get("host_id") != _host_id() or worker.get("boot_id") != _boot_id():
+    if worker.get("host_id") != host_id() or worker.get("boot_id") != boot_id():
         raise ExperienceError(
             "DSE receipt belongs to a different host or boot", code="experience_workspace_busy"
         )

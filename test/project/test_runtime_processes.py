@@ -138,7 +138,7 @@ def test_container_identity_without_machine_id_is_shared_by_child(monkeypatch):
     import subprocess
     import sys
 
-    from chipcompiler.project.runtime_processes import _host_id
+    from chipcompiler.project.runtime_processes import host_id
 
     original = Path.read_bytes
 
@@ -148,14 +148,14 @@ def test_container_identity_without_machine_id_is_shared_by_child(monkeypatch):
         return original(path)
 
     monkeypatch.setattr(Path, "read_bytes", without_machine_id)
-    parent = _host_id()
+    parent = host_id()
     child = subprocess.check_output(
         [
             sys.executable,
             "-c",
             "from pathlib import Path; "
-            "from chipcompiler.project.runtime_processes import _host_id; "
-            "Path.read_bytes=lambda self: b''; print(_host_id())",
+            "from chipcompiler.project.runtime_processes import host_id; "
+            "Path.read_bytes=lambda self: b''; print(host_id())",
         ],
         text=True,
     ).strip()
@@ -168,15 +168,15 @@ def test_container_identity_changes_with_namespace_and_rejects_missing_boot(monk
     from chipcompiler.project import runtime_processes
 
     monkeypatch.setattr(Path, "read_bytes", lambda _path: b"")
-    monkeypatch.setattr(runtime_processes, "_boot_id", lambda: "boot-a")
+    monkeypatch.setattr(runtime_processes, "boot_id", lambda: "boot-a")
     monkeypatch.setattr(Path, "stat", lambda _path: SimpleNamespace(st_dev=1, st_ino=2))
-    first = runtime_processes._host_id()
+    first = runtime_processes.host_id()
     monkeypatch.setattr(Path, "stat", lambda _path: SimpleNamespace(st_dev=1, st_ino=3))
-    assert runtime_processes._host_id() != first
+    assert runtime_processes.host_id() != first
 
     def unavailable():
         raise RuntimeProcessError("host_identity_unavailable", "boot ID unavailable")
 
-    monkeypatch.setattr(runtime_processes, "_boot_id", unavailable)
+    monkeypatch.setattr(runtime_processes, "boot_id", unavailable)
     with pytest.raises(RuntimeProcessError, match="boot ID unavailable"):
-        runtime_processes._host_id()
+        runtime_processes.host_id()

@@ -559,7 +559,7 @@ def derive_workspace(command_input, ctx: CommandContext) -> CommandResult:
     from chipcompiler.cli.project.run_prepare import invalid_workspace_name
     from chipcompiler.engine.workspace_derive import derive_workspace as derive
     from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
-    from chipcompiler.project.api import _project_manifest_mutator
+    from chipcompiler.project.api import project_manifest_mutator
     from chipcompiler.project.manifest import load_manifest
     from chipcompiler.project.manifest_write import manifest_lock, update_manifest_locked
 
@@ -598,7 +598,7 @@ def derive_workspace(command_input, ctx: CommandContext) -> CommandResult:
                     **({"source_step": command_input.from_step} if command_input.from_step else {}),
                 },
             }
-            if not update_manifest_locked(project, _project_manifest_mutator(project, mutation)):
+            if not update_manifest_locked(project, project_manifest_mutator(project, mutation)):
                 raise OSError("Project Manifest update failed")
     except BlockingIOError:
         return CommandResult.err([error_record("workspace_busy")], exit_code=20)

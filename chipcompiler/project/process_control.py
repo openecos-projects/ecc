@@ -105,6 +105,6 @@ def _workspace_path(project: Path, workspace_id: str) -> Path:
 
 
 def _entry_is_local(entry: dict) -> bool:
-    from chipcompiler.project.runtime_processes import _boot_id, _host_id
+    from chipcompiler.project.runtime_processes import boot_id, host_id
 
-    return entry["host_id"] == _host_id() and entry["boot_id"] == _boot_id()
+    return entry["host_id"] == host_id() and entry["boot_id"] == boot_id()

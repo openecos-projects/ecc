@@ -85,7 +85,7 @@ def mutate_project_manifest(project_dir: str | Path, mutation: dict) -> dict:
     project = Path(project_dir).expanduser().resolve()
     load_project_manifest(project)
 
-    apply = _project_manifest_mutator(project, mutation)
+    apply = project_manifest_mutator(project, mutation)
 
     if not update_manifest(str(project), apply):
         raise ManifestError("Project Manifest update failed")
@@ -141,7 +141,7 @@ def repoint_generation_pointers(
     )
 
 
-def _project_manifest_mutator(project: Path, mutation: dict):
+def project_manifest_mutator(project: Path, mutation: dict):
     def apply(document: dict) -> None:
         kind = mutation.get("type")
         if kind == "register_workspace":
@@ -205,7 +205,7 @@ def create_project_workspace(
                 "updated_at": now,
                 "parameter_patch": derived.get("parameter_patch", {}),
             }
-            if not update_manifest_locked(project, _project_manifest_mutator(project, mutation)):
+            if not update_manifest_locked(project, project_manifest_mutator(project, mutation)):
                 raise ManifestError("Project Manifest update failed")
         except Exception:
             if not existed:

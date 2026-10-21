@@ -558,8 +558,8 @@ def execute_fresh_run(
                 snapshot = create_engineering_snapshot(workspace, workspace_id=run_name)
                 if command_input.command_id and not execute_flow:
                     from chipcompiler.engine.workspace_lifecycle import (
-                        _workspace_command_fingerprint,
-                        _write_workspace_command,
+                        workspace_command_fingerprint,
+                        write_workspace_command,
                     )
                     from chipcompiler.project.manifest import load_manifest
 
@@ -569,10 +569,10 @@ def execute_fresh_run(
                         "to": command_input.to_step,
                         "parameters": list(command_input.param_set),
                     }
-                    _write_workspace_command(
+                    write_workspace_command(
                         Path(run_dir),
                         command_input.command_id,
-                        _workspace_command_fingerprint(
+                        workspace_command_fingerprint(
                             "create" if backup_path is None else "refresh",
                             command_spec,
                             None,
