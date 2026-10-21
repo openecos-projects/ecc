@@ -26,6 +26,7 @@ from chipcompiler.cli.project.migrate_plan import (
     read_migration_manifest,
     render_preview,
 )
+from chipcompiler.project.manifest import CONFIG_FILENAME
 
 logger = logging.getLogger(__name__)
 
@@ -595,7 +596,7 @@ def _migrate_project_impl(command_input, ctx):
                 {
                     "kind": "error",
                     "error": "missing_config",
-                    "path": os.path.join(project_dir, "ecc.toml"),
+                    "path": os.path.join(project_dir, CONFIG_FILENAME),
                 }
             ]
         )

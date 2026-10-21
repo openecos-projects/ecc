@@ -3,6 +3,7 @@ import os
 import tomllib
 from dataclasses import dataclass, field
 
+from chipcompiler.project.manifest import CONFIG_FILENAME
 from chipcompiler.utility.filelist import FILELIST_SUFFIXES, RTL_SUFFIXES
 
 SUPPORTED_PDK_NAMES = {"ics55"}
@@ -175,7 +176,7 @@ def find_config_path(project_dir: str) -> str | None:
     follows fails loud (ConfigUnreadableError) instead of silently
     demoting the project to a lower-precedence configuration layer.
     """
-    path = os.path.join(project_dir, "ecc.toml")
+    path = os.path.join(project_dir, CONFIG_FILENAME)
     return path if os.path.lexists(path) else None
 
 

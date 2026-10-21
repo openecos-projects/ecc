@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from chipcompiler.cli.experiments.operations import parse_parameters
 from chipcompiler.data.parameter_schema import lookup_schema, parse_cli_overrides
 from chipcompiler.data.workspace_parameters import workspace_param_step
-from chipcompiler.project.manifest import load_manifest
+from chipcompiler.project.manifest import CONFIG_FILENAME, MANIFEST_FILENAME, load_manifest
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
 from ecc_experience.adapters.process_context import process_context
 from ecc_experience.benchmark.preparation import runtime_identity
@@ -242,8 +242,8 @@ def read_dse_plan(path: str | Path) -> tuple[dict, DseLimits]:
 def project_configuration(root: Path) -> str:
     from ecc_experience.files import file_digest
 
-    manifest = read_json(root / "project.json")
-    settings = root / "ecc.toml"
+    manifest = read_json(root / MANIFEST_FILENAME)
+    settings = root / CONFIG_FILENAME
     return digest(
         {
             "project": {

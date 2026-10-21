@@ -17,7 +17,7 @@ from chipcompiler.cli.project.config_fields import lookup_project_field, parse_p
 from chipcompiler.cli.project.param_edit import set_parameter, unset_parameter
 from chipcompiler.cli.project.params import lookup_schema, parse_value, validate_value
 from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_scoped_key
-from chipcompiler.project.manifest import load_manifest
+from chipcompiler.project.manifest import CONFIG_FILENAME, load_manifest
 from chipcompiler.project.manifest_write import (
     base_design_from_config,
     manifest_lock,
@@ -50,7 +50,7 @@ def apply_project(
     blocking: bool = True,
 ) -> tuple[str, ...]:
     project = Path(project_dir).expanduser().resolve()
-    config_path = project / "ecc.toml"
+    config_path = project / CONFIG_FILENAME
     if not any((sets, unsets, add_rtl, remove_rtl)):
         raise ProjectApplicationError("project_patch_empty", "At least one change is required")
     parsed_sets = _parse_sets(sets)
@@ -91,7 +91,7 @@ def apply_project(
 
 def reconcile_project_summary(project_dir: str | Path, *, blocking: bool) -> bool:
     project = Path(project_dir).expanduser().resolve()
-    config_path = project / "ecc.toml"
+    config_path = project / CONFIG_FILENAME
     with manifest_lock(project, blocking=blocking):
         load_manifest(str(project))
         cfg = load_project_config(str(config_path))
@@ -704,7 +704,7 @@ def _validate_text(project: Path, text: str):
         errors = validate_project_config(cfg)
         if errors:
             raise ProjectApplicationError("invalid_project_config", errors[0])
-        cfg.config_path = str(project / "ecc.toml")
+        cfg.config_path = str(project / CONFIG_FILENAME)
         cfg.project_dir = str(project)
         return cfg
     finally:

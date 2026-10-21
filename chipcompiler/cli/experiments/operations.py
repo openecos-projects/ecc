@@ -17,6 +17,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from chipcompiler.project.manifest import CONFIG_FILENAME, MANIFEST_FILENAME
+
 SCHEMA_VERSION = 1
 
 
@@ -60,7 +62,7 @@ def runtime_versions(project: Path) -> dict[str, Any]:
         versions["tools"] = tool_versions()
     except (ImportError, OSError):
         versions["tools"] = {}
-    config_path = project / "ecc.toml"
+    config_path = project / CONFIG_FILENAME
     try:
         config = tomllib.loads(config_path.read_text())
         pdk = config.get("pdk", {})
@@ -77,7 +79,7 @@ def project_path(value: str | None) -> Path:
     if path.is_file():
         path = path.parent
     for candidate in (path, *path.parents):
-        if (candidate / "project.json").exists() or (candidate / "ecc.toml").exists():
+        if (candidate / MANIFEST_FILENAME).exists() or (candidate / CONFIG_FILENAME).exists():
             return candidate
     return path
 
@@ -175,7 +177,7 @@ def export_package(project: Path, workspace: Path, output: Path) -> dict[str, An
     if not workspace.is_dir():
         raise ValueError(f"workspace does not exist: {workspace}")
     files: list[Path] = []
-    roots = [project / "project.json", project / "ecc.toml"]
+    roots = [project / MANIFEST_FILENAME, project / CONFIG_FILENAME]
     for relative in ("home", "config", "reports", "results"):
         candidate = workspace / relative
         if candidate.exists():
@@ -687,7 +689,7 @@ def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str,
                 }
 
             shutil.copytree(project, candidate_project, ignore=ignore)
-            manifest_path = candidate_project / "project.json"
+            manifest_path = candidate_project / MANIFEST_FILENAME
             manifest = load_json(manifest_path, {})
             if isinstance(manifest, dict):
                 manifest["root_path"] = str(candidate_project)

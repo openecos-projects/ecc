@@ -14,6 +14,7 @@ from chipcompiler.cli.core.inputs import (
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
+from chipcompiler.project.manifest import CONFIG_FILENAME
 
 
 def init(command_input: InitInput, ctx: CommandContext) -> CommandResult:
@@ -87,7 +88,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             [
                 error_record(
                     "missing_config",
-                    path=os.path.join(ctx.project_dir, "ecc.toml"),
+                    path=os.path.join(ctx.project_dir, CONFIG_FILENAME),
                     inspect=disclosure_cmd("ecc check", project),
                 )
             ]
@@ -471,7 +472,7 @@ def import_workspace(command_input: WorkspaceImportInput, ctx: CommandContext) -
             [
                 error_record(
                     "missing_config",
-                    path=os.path.join(ctx.project_dir, "ecc.toml"),
+                    path=os.path.join(ctx.project_dir, CONFIG_FILENAME),
                 )
             ]
         )
@@ -803,7 +804,7 @@ def _run_project(
                 {
                     "kind": "error",
                     "error": "missing_config",
-                    "path": os.path.join(project_dir, "ecc.toml"),
+                    "path": os.path.join(project_dir, CONFIG_FILENAME),
                 }
             ]
         )

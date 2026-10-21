@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from chipcompiler.project.manifest import (
+    MANIFEST_FILENAME,
     ManifestError,
     load_manifest,
     validate_manifest_range,
@@ -49,7 +50,7 @@ def discover_project_manifest(directory: str | Path) -> tuple[Path, dict] | None
     if not current.is_dir():
         current = current.parent
     for project in (current, *current.parents):
-        if (project / "project.json").exists() or (project / "project.json").is_symlink():
+        if (project / MANIFEST_FILENAME).exists() or (project / MANIFEST_FILENAME).is_symlink():
             return project, load_project_manifest(project)
     return None
 
@@ -73,11 +74,11 @@ def create_project_manifest(
         mpc=mpc,
     )
     if not write_manifest_if_absent(str(project), document):
-        raise ManifestError(f"Project Manifest already exists: {project / 'project.json'}")
+        raise ManifestError(f"Project Manifest already exists: {project / MANIFEST_FILENAME}")
     try:
         return load_project_manifest(project)
     except Exception:
-        (project / "project.json").unlink(missing_ok=True)
+        (project / MANIFEST_FILENAME).unlink(missing_ok=True)
         raise
 
 

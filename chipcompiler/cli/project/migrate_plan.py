@@ -26,6 +26,7 @@ from chipcompiler.cli.project.manifest_write import (
     build_manifest_document,
     manifest_workspace_entry,
 )
+from chipcompiler.project.manifest import MANIFEST_FILENAME
 
 # Canonical step name -> GUI display name (manifest vocabulary).
 CANONICAL_TO_DISPLAY = {
@@ -121,7 +122,7 @@ def read_migration_manifest(project_dir: str) -> dict | None:
     ``root_path`` values. The strict loader remains authoritative after the
     migration has rewritten those fields.
     """
-    path = os.path.join(project_dir, "project.json")
+    path = os.path.join(project_dir, MANIFEST_FILENAME)
     if not os.path.lexists(path):
         return None
     try:

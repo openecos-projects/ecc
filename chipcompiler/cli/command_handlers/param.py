@@ -15,6 +15,7 @@ from chipcompiler.cli.project.params import (
 )
 from chipcompiler.data.param_keys import display_key_for, knob_id_for
 from chipcompiler.data.parameter_schema import list_schemas
+from chipcompiler.project.manifest import CONFIG_FILENAME
 from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
 from chipcompiler.utility.file import write_text_atomic
 
@@ -27,7 +28,7 @@ def _manifest_mode_error(ctx: CommandContext) -> CommandResult | None:
                 error_record(
                     "param_requires_ecc_toml",
                     reason="ecc param requires ecc.toml; project.json projects not supported yet",
-                    path=os.path.join(ctx.project_dir, "ecc.toml"),
+                    path=os.path.join(ctx.project_dir, CONFIG_FILENAME),
                 )
             ]
         )

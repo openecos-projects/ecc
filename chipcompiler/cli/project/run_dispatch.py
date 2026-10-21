@@ -21,6 +21,7 @@ from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandResult
 from chipcompiler.cli.project.run_existing import run_existing_workspace
 from chipcompiler.cli.project.run_prepare import execute_fresh_run
+from chipcompiler.project.manifest import MANIFEST_FILENAME
 
 
 def _is_ecc_run_dir(path: str) -> bool:
@@ -392,7 +393,7 @@ def dispatch_project_run(
                 # publishes the directory first and registers it in the
                 # fresh-run commit path.
                 if not workspace_registered and not os.path.lexists(
-                    os.path.join(project_dir, "project.json")
+                    os.path.join(project_dir, MANIFEST_FILENAME)
                 ):
                     from chipcompiler.cli.core.records import error_record
                     from chipcompiler.cli.project.config import resolve_pdk_root
