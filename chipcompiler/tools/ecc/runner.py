@@ -11,7 +11,7 @@ from chipcompiler.data import (
     StepMetrics,
     Workspace,
     WorkspaceStep,
-    workspace_config_path,
+    workspace_config_key_path,
 )
 from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.tools.ecc.drc_artifacts import save_drc_feature
@@ -77,7 +77,7 @@ def temperature_token(temperature) -> str:
 def _workspace_sta_config_path(workspace: Workspace) -> str | None:
     if workspace.directory is None:
         return None
-    config_path = workspace_config_path(workspace.directory, StepEnum.STA.value)
+    config_path = workspace_config_key_path(workspace.directory, StepEnum.STA.value)
     return os.fspath(config_path) if config_path is not None else None
 
 
