@@ -391,10 +391,42 @@ def render_markdown(catalog: list, assessment: dict | None) -> str:
     return "\n".join(out)
 
 
+def _append_version_footer(
+    text: str,
+    *,
+    commit: str,
+    commit_url: str,
+    snapshot_sha256: str,
+) -> str:
+    lines = [
+        text.rstrip(),
+        "",
+        "## Version",
+        "",
+        f"| Field | Value |",
+        f"| --- | --- |",
+        f"| Git commit | [`{commit[:12]}`]({commit_url}) |",
+        f"| Git commit (full) | `{commit}` |",
+        f"| Snapshot SHA-256 | `{snapshot_sha256}` |",
+        "",
+        "Compare two snapshots with `plitenh/ecc-ci` "
+        "`scripts/diff_signoff_snapshots.py` (versions · item delta · state delta).",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--assessment", default="", help="optional assessment JSON")
     parser.add_argument("--out", default="signoff-kanban.md", help="output markdown")
+    parser.add_argument("--commit", default="", help="git commit id to stamp")
+    parser.add_argument("--commit-url", default="", help="browse URL for --commit")
+    parser.add_argument(
+        "--snapshot-sha256",
+        default="",
+        help="content fingerprint (SHA-256) for version compare hooks",
+    )
     args = parser.parse_args()
 
     assessment = None
@@ -402,6 +434,13 @@ def main() -> int:
         assessment = json.loads(Path(args.assessment).read_text(encoding="utf-8"))
 
     text = render_markdown(_load_catalog(), assessment)
+    if args.commit and args.commit_url and args.snapshot_sha256:
+        text = _append_version_footer(
+            text,
+            commit=args.commit,
+            commit_url=args.commit_url,
+            snapshot_sha256=args.snapshot_sha256,
+        )
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text, encoding="utf-8")
