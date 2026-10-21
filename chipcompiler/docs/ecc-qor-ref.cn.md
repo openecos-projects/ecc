@@ -10,7 +10,7 @@
 
 ```mermaid
 graph LR
-    A["各步骤产物<br/>qor_metrics.json / qor_summary.json<br/>power_summary.json"] --> B["ECC QoR V3 引擎<br/>（唯一计算方）"]
+    A["各步骤产物<br/>qor_metrics.json / qor_summary.json<br/>powerAnalysis.step.json"] --> B["ECC QoR V3 引擎<br/>（唯一计算方）"]
     B --> C["home/qor_report.json<br/>每步成功后自动刷新"]
     C --> D["ECOS Studio<br/>（渲染方：五维分解/门禁/诊断）"]
     B --> E["ecc report qor<br/>文本报告 → signoff/*.txt"]
@@ -343,7 +343,7 @@ qor_power_budget_w = 0.5
 |---|---|---|
 | 逐步指标 | `<step_dir>/analysis/qor_metrics.json`（schema_version 3，由各步骤产出，**保持不变**） | 指标值与溯源 |
 | 逐 corner 时序 | `sta_ecc/feature/<corner>/Cworst/qor_summary.json` | 有符号 setup/hold WS、TNS、NVP；PVT 离散度 |
-| 功耗 | `powerAnalysis_ecc/feature/power_summary.json`（回退 `Synthesis_yosys/feature/post_synthesis/power_summary.json`） | P_total |
+| 功耗 | `powerAnalysis_ecc/feature/powerAnalysis.step.json`（读取 `power_summary`；兼容回退 `power_summary.json`，再回退 `Synthesis_yosys/feature/post_synthesis/power_summary.json`） | P_total |
 | 步骤状态 | `home/flow.json` | 只有状态为 `Success` 的步骤参与分析（invalidation 后的陈旧产物不计分） |
 | 参数 | `home/params.toml` | profile / 预算 / 频率 |
 

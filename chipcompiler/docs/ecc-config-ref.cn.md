@@ -668,9 +668,9 @@ IO 则用 0°C 库。项目或 workspace 显式设置的 `sta.liberty` 会替换
 产生。其原生输出为
 `powerAnalysis_ecc/data/pw/power_reporter/power.rpt` 和
 `powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`；ECC 从报告
-生成 `powerAnalysis_ecc/feature/power_summary.json` 供 QoR 使用，并将同一份
-数据放在 `powerAnalysis_ecc/feature/powerAnalysis.step.json` 的
-`power_summary` 关键字下。step 文件不再生成重复的顶层 `metrics` 对象。报告存在时，
+生成 `powerAnalysis_ecc/feature/powerAnalysis.step.json` 供 QoR 使用，并将数据放在
+其 `power_summary` 关键字下。旧的 `powerAnalysis_ecc/feature/power_summary.json`
+保留作兼容回退。step 文件不再生成重复的顶层 `metrics` 对象。报告存在时，
 签核包会将其单独收录为 `final/timing/power/power.rpt`。
 
 ## 14. harden（ecc-tools）

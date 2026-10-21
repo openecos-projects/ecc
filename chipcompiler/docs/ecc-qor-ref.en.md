@@ -10,7 +10,7 @@ This manual documents ECC's current QoR scheme (**ECC-QoR V3**, report `schema_v
 
 ```mermaid
 graph LR
-    A["Per-step artifacts<br/>qor_metrics.json / qor_summary.json<br/>power_summary.json"] --> B["ECC QoR V3 engine<br/>(single scorer)"]
+    A["Per-step artifacts<br/>qor_metrics.json / qor_summary.json<br/>powerAnalysis.step.json"] --> B["ECC QoR V3 engine<br/>(single scorer)"]
     B --> C["home/qor_report.json<br/>auto-refreshed after each step"]
     C --> D["ECOS Studio<br/>(renderer: 5-dim breakdown / gates / diagnoses)"]
     B --> E["ecc report qor<br/>text report → signoff/*.txt"]
@@ -343,7 +343,7 @@ qor_power_budget_w = 0.5
 |---|---|---|
 | Per-step metrics | `<step_dir>/analysis/qor_metrics.json` (schema_version 3, emitted by every step — **unchanged**) | metric values and provenance |
 | Per-corner timing | `sta_ecc/feature/<corner>/Cworst/qor_summary.json` | signed setup/hold WS, TNS, NVP; PVT dispersion |
-| Power | `powerAnalysis_ecc/feature/power_summary.json` (falls back to `Synthesis_yosys/feature/post_synthesis/power_summary.json`) | P_total |
+| Power | `powerAnalysis_ecc/feature/powerAnalysis.step.json` (`power_summary`, with legacy `power_summary.json` fallback; then `Synthesis_yosys/feature/post_synthesis/power_summary.json`) | P_total |
 | Step states | `home/flow.json` | only steps whose state is `Success` are analyzed (stale artifacts after invalidation never score) |
 | Parameters | `home/params.toml` | profile / budget / frequency |
 

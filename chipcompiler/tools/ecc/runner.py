@@ -25,6 +25,7 @@ from chipcompiler.tools.ecc.metrics import (
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.power_artifacts import (
     discard_power_artifacts,
+    power_step_path,
     publish_power_summary,
 )
 from chipcompiler.tools.ecc.rcx_artifacts import (
@@ -35,7 +36,9 @@ from chipcompiler.tools.ecc.rcx_artifacts import (
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_outputs
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
+    read_power_step_summary_json,
     sta_artifact_directory,
+    sta_power_summary_payload,
 )
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 from chipcompiler.tools.ecc.utility import is_eda_exist
@@ -1043,7 +1046,11 @@ def run_power_analysis(
         )
         return False
 
-    power_payload = json_read(Path(power_feature_dir) / "power_summary.json") or {}
+    power_summary = read_power_step_summary_json(power_step_path(power_feature_dir))
+    if power_summary is None:
+        workspace.logger.error("Merged power analysis step artifact is invalid")
+        return False
+    power_payload = sta_power_summary_payload(power_summary)
     power_metrics = StepMetrics(
         data={
             "Power internal [uW]": power_payload.get("internal_uw"),

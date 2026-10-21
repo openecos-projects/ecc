@@ -5,7 +5,7 @@ from typing import Any
 
 from chipcompiler.data import DEFAULT_SKIP_STEPS, StepBaseEnum
 from chipcompiler.data.param_keys import display_key_for, knob_id_for
-from chipcompiler.data.parameter_schema import list_schemas, resolve_parameters
+from chipcompiler.data.parameter_schema import list_schemas, lookup_schema, resolve_parameters
 from chipcompiler.engine.pdk_binding import pdk_binding_content_hash
 from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
 from chipcompiler.utility.filelist import validate_filelist
@@ -160,6 +160,15 @@ def validate_workspace_spec(
         parameters = {}
     else:
         parameters = {str(key): value for key, value in parameters.items()}
+    # DreamPlace round-trips its 0/1 flag parameters as JSON booleans into the
+    # committed Snapshot. A refresh revalidates that baseline, so normalize the
+    # persisted spelling back to the registry's int; freshly requested values
+    # keep strict typing.
+    for parameter_id in preserved_parameters:
+        if isinstance(parameters.get(parameter_id), bool):
+            schema = lookup_schema(parameter_id)
+            if schema is not None and schema.type == "int":
+                parameters[parameter_id] = int(parameters[parameter_id])
     known_parameters = {schema.param for schema in list_schemas()}
     for parameter_id in parameters:
         if parameter_id not in known_parameters:

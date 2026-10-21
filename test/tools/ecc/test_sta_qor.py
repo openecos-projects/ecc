@@ -4,6 +4,7 @@ import json
 
 from chipcompiler.tools.ecc.sta_qor import (
     StaPowerSummary,
+    read_power_step_summary_json,
     read_sta_power_summary,
     read_sta_power_summary_json,
     sta_power_summary_payload,
@@ -142,6 +143,35 @@ def test_sta_power_summary_json_round_trip(tmp_path):
     )
 
 
+def test_power_step_summary_json_reads_nested_power_summary(tmp_path):
+    step_path = tmp_path / "powerAnalysis.step.json"
+    step_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "step": "powerAnalysis",
+                "power_summary": {
+                    "schema_version": 1,
+                    "internal_uw": 51.2062,
+                    "switching_uw": 11.5906,
+                    "dynamic_uw": 62.7968,
+                    "leakage_uw": 1.7151,
+                },
+                "run": {"state": "Success"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert read_power_step_summary_json(step_path) == StaPowerSummary(
+        path=step_path,
+        internal_uw=51.2062,
+        switching_uw=11.5906,
+        dynamic_uw=62.7968,
+        leakage_uw=1.7151,
+    )
+
+
 def test_read_sta_power_summary_json_returns_none_for_wrong_schema_version(tmp_path):
     summary_path = tmp_path / "power_summary.json"
     summary_path.write_text(
@@ -158,6 +188,28 @@ def test_read_sta_power_summary_json_returns_none_for_wrong_schema_version(tmp_p
     )
 
     assert read_sta_power_summary_json(summary_path) is None
+
+
+def test_power_step_summary_json_rejects_wrong_step(tmp_path):
+    step_path = tmp_path / "powerAnalysis.step.json"
+    step_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "step": "sta",
+                "power_summary": {
+                    "schema_version": 1,
+                    "internal_uw": 1.0,
+                    "switching_uw": 2.0,
+                    "dynamic_uw": 3.0,
+                    "leakage_uw": 4.0,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert read_power_step_summary_json(step_path) is None
 
 
 def test_read_sta_power_summary_json_returns_none_when_field_missing(tmp_path):

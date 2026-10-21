@@ -336,6 +336,42 @@ def test_workspace_spec_update_preserves_omitted_config_parameters(
     assert cts["skew_bound"] == "0.20"
 
 
+def test_workspace_spec_update_normalizes_persisted_flag_booleans(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    """DreamPlace round-trips its 0/1 flags as JSON booleans into the Snapshot.
+
+    A refresh revalidates that committed baseline, so the persisted spelling
+    must be normalized back to the registry's int instead of failing the
+    Workspace that produced it.
+    """
+    from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
+    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    create_workspace_from_spec(target, deepcopy(payload["workspaceSpec"]), bindings)
+
+    snapshot_path = target / "home" / "engineering-snapshot.json"
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    snapshot["workspaceSpec"]["parameters"]["place.auto_adjust_bins"] = True
+    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+    after = read_engineering_snapshot_from_directory(target)
+
+    update_spec = deepcopy(payload["workspaceSpec"])
+    update_spec["parameters"] = {}
+    update_workspace_from_spec(
+        target,
+        after["workspaceRevision"],
+        update_spec,
+        bindings,
+        "flag-bool-1",
+    )
+    refreshed = read_engineering_snapshot_from_directory(target)
+    assert refreshed["workspaceSpec"]["parameters"]["place.auto_adjust_bins"] == 1
+
+
 def test_workspace_spec_update_preserves_declared_sta_paths_across_pdk_migration(
     tmp_path, minimal_ics55_pdk_factory
 ):

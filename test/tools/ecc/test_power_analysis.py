@@ -2,7 +2,16 @@ import json
 from pathlib import Path
 from unittest.mock import Mock, call
 
-from chipcompiler.data import PDK, EccData, EccFeature, EccStep, OriginDesign, StepEnum, Workspace
+from chipcompiler.data import (
+    PDK,
+    EccAnalysis,
+    EccData,
+    EccFeature,
+    EccStep,
+    OriginDesign,
+    StepEnum,
+    Workspace,
+)
 from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc.module import ECCToolsModule
@@ -93,13 +102,17 @@ def _power_workspace(tmp_path, monkeypatch):
 
 def test_power_analysis_uses_its_own_data_directory_and_native_lifecycle(tmp_path, monkeypatch):
     power_data_dir = tmp_path / "powerAnalysis_ecc" / "data" / "pw"
+    analysis_dir = tmp_path / "powerAnalysis_ecc" / "analysis"
+    analysis_dir.mkdir(parents=True)
     step = EccStep(
         name=StepEnum.POWER_ANALYSIS.value,
+        directory=tmp_path / "powerAnalysis_ecc",
         data=EccData(
             dir=tmp_path / "powerAnalysis_ecc" / "data",
             steps={StepEnum.POWER_ANALYSIS.value: power_data_dir},
         ),
         feature=EccFeature(dir=tmp_path / "powerAnalysis_ecc" / "feature"),
+        analysis=EccAnalysis(qor_metrics=analysis_dir / "qor_metrics.json"),
     )
     module = FakePowerModule()
     workspace, liberty, sdc, spef = _power_workspace(tmp_path, monkeypatch)
@@ -142,6 +155,10 @@ def test_power_analysis_uses_its_own_data_directory_and_native_lifecycle(tmp_pat
     )
     assert power_step["power_summary"]["internal_uw"] == 1000.0
     assert "metrics" not in power_step
+    power_metrics = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
+    assert {record["source"]["path"] for record in power_metrics["metrics"]} == {
+        "feature/powerAnalysis.step.json"
+    }
 
 
 def test_power_analysis_requires_native_power_report(tmp_path, monkeypatch):

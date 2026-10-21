@@ -2060,17 +2060,21 @@ def _metric_feature_source(
         }.get(metric_id, "")
     elif metric_id.startswith("synthesis_power_"):
         feature_dir = getattr(step.feature, "dir", None)
-        feature_path = (
-            Path(feature_dir) / POST_SYNTHESIS_STA_CORNER / STA_POWER_SUMMARY_FILENAME
-            if feature_dir
-            else None
-        )
         selector = {
             "synthesis_power_internal_uw": "/internal_uw",
             "synthesis_power_switching_uw": "/switching_uw",
             "synthesis_power_dynamic_uw": "/dynamic_uw",
             "synthesis_power_leakage_uw": "/leakage_uw",
         }.get(metric_id, "")
+        if step.name == StepEnum.POWER_ANALYSIS.value:
+            feature_path = Path(feature_dir) / "powerAnalysis.step.json" if feature_dir else None
+            selector = f"/power_summary{selector}"
+        else:
+            feature_path = (
+                Path(feature_dir) / POST_SYNTHESIS_STA_CORNER / STA_POWER_SUMMARY_FILENAME
+                if feature_dir
+                else None
+            )
     elif metric_id.startswith("synthesis_"):
         feature_path = getattr(step.feature, "stat", None)
         selector = {
