@@ -3,8 +3,6 @@ import os
 import sys
 from pathlib import Path
 
-import chipcompiler.runtime.stdio_server
-
 
 def _load_entrypoint_module():
     project_root = Path(__file__).parents[2]
@@ -14,20 +12,6 @@ def _load_entrypoint_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def test_agent_rpc_alias_selects_agent_entrypoint(monkeypatch):
-    module = _load_entrypoint_module()
-    calls = []
-
-    monkeypatch.setattr(sys, "argv", [os.path.join("dist", "ecc-agent-rpc")])
-    monkeypatch.setattr(
-        chipcompiler.runtime.stdio_server, "main", lambda: calls.append("agent") or 7
-    )
-
-    assert module.main() == 7
-
-    assert calls == ["agent"]
 
 
 def test_candidate_worker_flag_selects_worker_entrypoint(monkeypatch):

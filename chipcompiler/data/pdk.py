@@ -303,11 +303,14 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
     )
     resolved_root = Path(root_text).expanduser().resolve()
     stdcell_dir = resolved_root / "IP" / "STD_cell" / "ics55_LLSC_H7C_V1p10C100"
+    io_dir = resolved_root / "IP" / "IO" / "ICsprout_55LLULP1233_IO_251013"
 
     tech_path = resolved_root / "prtech" / "techLEF" / "N551P6M_ecos.lef"
     lef_paths = [
         stdcell_dir / "ics55_LLSC_H7CR" / "lef" / "ics55_LLSC_H7CR_ecos.lef",
         stdcell_dir / "ics55_LLSC_H7CL" / "lef" / "ics55_LLSC_H7CL_ecos.lef",
+        stdcell_dir / "ics55_LLSC_H7CH" / "lef" / "ics55_LLSC_H7CH_ecos.lef",
+        io_dir / "lef" / "ICSIOA_N55_3P3_1P6M1TM_ecos.lef",
     ]
     lib_paths = [
         (
@@ -322,6 +325,13 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
             / "liberty"
             / "ics55_LLSC_H7CL_ss_rcworst_1p08_125_nldm.lib"
         ),
+        (
+            stdcell_dir
+            / "ics55_LLSC_H7CH"
+            / "liberty"
+            / "ics55_LLSC_H7CH_ss_rcworst_1p08_125_nldm.lib"
+        ),
+        io_dir / "liberty" / "ICSIOA_N55_3P3_ss_1p08_2p97_125c.lib",
     ]
     mapping_path = resolved_root / "techfile" / "icsprout55.layermap"
     mapping_file = mapping_path if mapping_path.is_file() else None

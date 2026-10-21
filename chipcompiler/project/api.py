@@ -183,33 +183,30 @@ def create_project_workspace(
     except ValueError as exc:
         raise ManifestError("Workspace must be inside the Project root") from exc
     existed = target.exists()
-    with manifest_lock(project):
+    with _workspace_lock(target), manifest_lock(project):
         manifest = load_project_manifest(project)
         if expected_project_id is not None and manifest["project_id"] != expected_project_id:
             raise ManifestError("Project identity does not match")
         try:
-            with _workspace_lock(target):
-                workspace = _create_workspace_from_spec(str(target), spec, bindings, command_id)
-                if workspace is None:
-                    raise ManifestError("Workspace creation returned no Workspace")
-                identity = workspace_id or target.name
-                # Register the directory-derived patch so a fresh entry equals
-                # what doctor/re-registration would derive from the workspace.
-                derived = derive_workspace_fields(target, manifest_base_parameters(manifest))
-                mutation = {
-                    "type": "register_workspace",
-                    "workspace_id": identity,
-                    "name": name or identity,
-                    "workspace_path": str(target),
-                    "source_workspace_id": source_workspace_id,
-                    "created_at": now,
-                    "updated_at": now,
-                    "parameter_patch": derived.get("parameter_patch", {}),
-                }
-                if not update_manifest_locked(
-                    project, _project_manifest_mutator(project, mutation)
-                ):
-                    raise ManifestError("Project Manifest update failed")
+            workspace = _create_workspace_from_spec(str(target), spec, bindings, command_id)
+            if workspace is None:
+                raise ManifestError("Workspace creation returned no Workspace")
+            identity = workspace_id or target.name
+            # Register the directory-derived patch so a fresh entry equals
+            # what doctor/re-registration would derive from the workspace.
+            derived = derive_workspace_fields(target, manifest_base_parameters(manifest))
+            mutation = {
+                "type": "register_workspace",
+                "workspace_id": identity,
+                "name": name or identity,
+                "workspace_path": str(target),
+                "source_workspace_id": source_workspace_id,
+                "created_at": now,
+                "updated_at": now,
+                "parameter_patch": derived.get("parameter_patch", {}),
+            }
+            if not update_manifest_locked(project, _project_manifest_mutator(project, mutation)):
+                raise ManifestError("Project Manifest update failed")
         except Exception:
             if not existed:
                 shutil.rmtree(target, ignore_errors=True)

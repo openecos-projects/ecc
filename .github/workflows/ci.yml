@@ -8,6 +8,11 @@ on:
         required: false
         type: boolean
         default: false
+      run-experience:
+        description: Run the optional experience benchmark and contract checks.
+        required: false
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -16,11 +21,14 @@ on:
     paths:
       - 'chipcompiler/**'
       - 'agent/**'
+      - 'ecc_experience/**'
       - 'test/**'
       - 'ecc.spec'
       - 'packaging/**'
       - 'hooks/**'
       - 'pyproject.toml'
+      - 'flake.nix'
+      - 'flake.lock'
       - '.github/workflows/**'
       - '.github/actions/**'
       - '.github/scripts/**'
@@ -37,6 +45,10 @@ concurrency:
 permissions:
   actions: read
   contents: read
+
+env:
+  # Known-good synthesis toolchain: Yosys 0.70+16 (3bb533450).
+  OSS_CAD_SUITE_VERSION: "2026-10-14"
 
 jobs:
   check-version:
@@ -82,6 +94,7 @@ jobs:
       - name: Setup OSS CAD Suite
         uses: YosysHQ/setup-oss-cad-suite@v4
         with:
+          version: ${{ env.OSS_CAD_SUITE_VERSION }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify Yosys
@@ -129,7 +142,7 @@ jobs:
           "${CHIPCOMPILER_KEPLER_FORMAL_ROOT}/bin/kepler-formal" --version
 
       - name: Pytest
-        run: uv run --no-sync pytest test/ -v --basetemp=pytest-tmp --cov=chipcompiler --cov-report=
+        run: uv run --no-sync pytest test/ -v --basetemp=pytest-tmp --cov=chipcompiler --cov=ecc_experience --cov-report=
 
       - name: Pytest (agent)
         run: uv run --no-sync pytest agent/test -v --basetemp=pytest-agent-tmp
@@ -210,7 +223,12 @@ jobs:
         run: git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git pdk
 
       - name: Unpack PDK
-        run: cd pdk && make unzip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd pdk
+          gh release download --repo openecos-projects/icsprout55-pdk --pattern '*.tar.bz2'
+          make unzip
 
       - name: Package PDK
         run: tar -czf icsprout55-pdk.tar.gz -C pdk .
@@ -229,14 +247,16 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          SIZER_REVISION: b62dbfa6b0b57c446b7b272b41def4b502b93cb3
         run: |
           set -euo pipefail
 
           run_id="$(
             gh api --paginate \
-              "repos/openecos-projects/ecc-sizer/actions/workflows/ci.yml/runs?branch=main&status=completed&per_page=100" |
+              "repos/openecos-projects/ecc-sizer/actions/workflows/ci.yml/runs?head_sha=${SIZER_REVISION}&status=completed&per_page=100" |
               python3 -c '
           import json
+          import os
           import sys
 
           pages = [json.loads(line) for line in sys.stdin if line.strip()]
@@ -245,18 +265,19 @@ jobs:
               for page in pages
               for run in page.get("workflow_runs", [])
               if run.get("status") == "completed" and run.get("conclusion") == "success"
+              and run.get("head_sha") == os.environ["SIZER_REVISION"]
           ]
           print(max(runs, key=lambda run: run["created_at"])["id"] if runs else "")
           '
           )"
           if [ -z "$run_id" ]; then
-            echo "::error::No successful ecc-sizer CI artifact found on main"
+            echo "::error::No successful ecc-sizer CI artifact found for ${SIZER_REVISION}"
             exit 1
           fi
 
           install_root="${RUNNER_TEMP}/ecc-sizer-${run_id}"
           mkdir -p "$install_root"
-          echo "Downloading ecc-sizer-linux-x64 from openecos-projects/ecc-sizer CI run ${run_id}"
+          echo "Downloading ecc-sizer ${SIZER_REVISION} from CI run ${run_id}"
           gh run download "$run_id" \
             --repo openecos-projects/ecc-sizer \
             --name ecc-sizer-linux-x64 \
@@ -308,10 +329,11 @@ jobs:
         run: |
           # xtea disabled everywhere for now: real run shows hold WNS < 0,
           # which would keep its strict signoff gates red until tuned.
-          # aes is nightly-only: its ~50min flow would dominate PR feedback.
+          # Keep aes (~50min) and memory-heavy BM64 out of PR validation;
+          # retain both for push, scheduled, and manual runs.
           excludes=(xtea)
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            excludes+=(aes)
+            excludes+=(aes BM64)
           fi
           designs="$(find designs -mindepth 2 -maxdepth 2 -name ecc.toml -printf '%h\n' \
             | xargs -n1 basename | grep -vxFf <(printf '%s\n' "${excludes[@]}") \
@@ -367,6 +389,7 @@ jobs:
       - name: Setup OSS CAD Suite
         uses: YosysHQ/setup-oss-cad-suite@v4
         with:
+          version: ${{ env.OSS_CAD_SUITE_VERSION }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Sizer
@@ -411,8 +434,38 @@ jobs:
       - name: Cache Nix store
         uses: DeterminateSystems/magic-nix-cache-action@v15
 
-      - name: Run design flows
+      - name: Add BM64 swap cushion
+        if: ${{ matrix.design == 'BM64' }}
+        shell: bash
+        # The runner VM has 16 GiB and no swap. A 4 GiB file absorbs a short
+        # overshoot instead of letting the kernel OOM-kill a native tool. It
+        # adds no capacity: a sustained overshoot still shows up as a timeout.
         run: |
+          free -h
+          swap_dir=/
+          if mountpoint -q /mnt; then
+            swap_dir=/mnt
+          fi
+          df -h "$swap_dir"
+          sudo fallocate -l 4G "$swap_dir/swapfile"
+          sudo chmod 600 "$swap_dir/swapfile"
+          sudo mkswap "$swap_dir/swapfile"
+          sudo swapon "$swap_dir/swapfile"
+          # Keep swap as a safety net rather than a routine spill area.
+          sudo sysctl -w vm.swappiness=10
+          free -h
+
+      - name: Run design flows
+        id: design-flow
+        run: |
+          emir_params="$(dist/ecc-bundle/ecc param list --step emir --plain \
+            --project "designs/${{ matrix.design }}")"
+          if [[ -n "$emir_params" ]]; then
+            echo "::warning::EMIR uses synthetic process data for flow testing, not signoff."
+            dist/ecc-bundle/ecc param set emir.technology_file_path \
+              "$PWD/test/fixtures/emir/ics55_synthetic.tech" \
+              --project "designs/${{ matrix.design }}"
+          fi
           bash nix/scripts/run-designs.sh \
             --ecc "$PWD/dist/ecc-bundle/ecc" \
             --designs-dir designs \
@@ -424,6 +477,16 @@ jobs:
           ECC_FLOW_WORKSPACES="$RUNNER_TEMP/e2e" \
             nix run -L .#signoff-lit -- designs --filter "${{ matrix.design }}"
 
+      - name: Verify packaged experience collection
+        if: ${{ !cancelled() && steps.design-flow.outcome == 'success' && github.event_name == 'workflow_dispatch' && inputs.run-experience }}
+        continue-on-error: true
+        run: |
+          python3 packaging/experience_cli_smoke.py \
+            --binary "$PWD/dist/ecc-bundle/ecc" \
+            --project "$RUNNER_TEMP/e2e/${{ matrix.design }}" \
+            --workspace default \
+            --output "$RUNNER_TEMP/experience/${{ matrix.design }}"
+
       - name: Upload e2e workspaces on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -432,6 +495,58 @@ jobs:
           if-no-files-found: ignore
           path: |
             ${{ runner.temp }}/e2e
+            ${{ runner.temp }}/experience
+
+      - name: Upload real experience matrix observation
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run-experience }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: experience-observation-${{ matrix.design }}
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/experience/${{ matrix.design }}/show.stdout.json
+            ${{ runner.temp }}/experience/${{ matrix.design }}/verify.stdout.json
+            ${{ runner.temp }}/experience/${{ matrix.design }}/features.stdout.json
+
+  experience-design-matrix:
+    name: Aggregate real experience design matrix
+    continue-on-error: true
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run-experience && needs.e2e-designs.result == 'success' }}
+    needs: [e2e-designs, e2e-packaged-flow]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: experience-observation-*
+          path: observations
+
+      - name: Aggregate real observations
+        env:
+          EXPECTED_DESIGNS: ${{ needs.e2e-designs.outputs.designs }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path('observations')
+          for path in root.glob('experience-observation-*'):
+              path.rename(root / path.name.removeprefix('experience-observation-'))
+          PY
+          status=0
+          python3 packaging/experience_matrix_report.py \
+            --inputs observations --expected-designs-json "$EXPECTED_DESIGNS" \
+            --output matrix-report || status=$?
+          if [ "$status" -ne 0 ] && [ "$status" -ne 7 ]; then
+            exit "$status"
+          fi
+          cat matrix-report/matrix-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: experience-design-matrix-report
+          if-no-files-found: error
+          path: matrix-report
 
   lint:
     needs: check-version
@@ -447,10 +562,36 @@ jobs:
         uses: ./.github/actions/setup-python-deps
 
       - name: Ruff format check
-        run: uv run --no-sync ruff format --check chipcompiler test agent
+        run: uv run --no-sync ruff format --check chipcompiler test agent ecc_experience
 
       - name: Ruff lint
-        run: uv run --no-sync ruff check --output-format=github chipcompiler test agent
+        run: uv run --no-sync ruff check --output-format=github chipcompiler test agent ecc_experience
 
       # - name: Pyright
       #   run: uv run pyright chipcompiler
+
+  nix-build:
+    name: Nix Build (flake checks)
+    runs-on: ubuntu-latest
+    # Cold cache builds boost, ecc-tools, dreamplace and kepler-formal/naja
+    # from source; magic-nix-cache makes subsequent runs incremental.
+    timeout-minutes: 240
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v19
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          extra-conf: |
+            extra-substituters = https://cache.ani.llc
+            extra-trusted-public-keys = cache.ani.llc:8nINs8lCCU0Yoed1KMjLj6fCHpMmrY+sFuhGTdxLB88=
+
+      - name: Cache Nix store
+        uses: DeterminateSystems/magic-nix-cache-action@v15
+
+      - name: Build all flake checks
+        run: nix flake check -L

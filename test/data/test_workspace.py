@@ -36,6 +36,8 @@ EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
     StepEnum.FILLER.value: "filler_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",
     StepEnum.STA.value: "sta_ecc.json",
+    "sizer": "sizer_ecc.json",
+    StepEnum.EMIR.value: "emir_ecc.json",
     "dreamplace": "dreamplace_ecc.json",
 }
 
@@ -130,7 +132,7 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
     assert workspace.directory == workspace_dir.resolve()
     assert isinstance(workspace.directory, Path)
     assert isinstance(workspace.design.origin_verilog, Path)
-    assert isinstance(workspace.design.origin_def, Path)
+    assert workspace.design.origin_def is None
     assert isinstance(workspace.flow.path, Path)
     assert isinstance(workspace.parameters.path, Path)
     assert all(isinstance(path, Path) for path in workspace.config.values())
@@ -141,6 +143,18 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
     cts = json_read(workspace.config[StepEnum.CTS.value])
     assert cts["max_fanout"] == 37
     assert cts["buffer_type"] == workspace.pdk.buffers
+
+    from chipcompiler.engine.workspace_configuration import (
+        build_workspace_configuration_projection,
+    )
+
+    projection = build_workspace_configuration_projection(workspace)
+    assert projection["workspaceSpec"]["inputMode"] == "rtl"
+    assert projection["workspaceSpec"]["inputs"] == [
+        {"inputId": "rtl", "role": "rtl"},
+        {"inputId": "sdc", "role": "sdc"},
+    ]
+    assert projection == build_workspace_configuration_projection(load_workspace(workspace_dir))
 
 
 def test_create_workspace_rejects_existing_non_empty_directory(tmp_path):
@@ -160,7 +174,7 @@ def test_create_workspace_rejects_existing_non_empty_directory(tmp_path):
 
 
 EXPECTED_ICS55_DEFAULT_SDC = """\
-# Auto-generated SDC file
+# ECC-generated SDC file
 
 set clk_name          clk
 set clk_port_name     clk
@@ -172,6 +186,7 @@ set clk_period        [expr 1000.0 / $clk_freq_mhz]
 # -------------------------------------------------
 set clk_port [get_ports $clk_port_name]
 create_clock -name $clk_name -period $clk_period $clk_port
+set_propagated_clock [get_clocks $clk_name]
 
 # -------------------------------------------------
 # IO Delay
@@ -229,7 +244,7 @@ def test_create_workspace_generates_default_sdc_from_parameters(
 
 
 EXPECTED_ICS55_VIRTUAL_CLOCK_SDC = """\
-# Auto-generated SDC file
+# ECC-generated SDC file
 
 set clk_name          __VIRTUAL_CLK__
 set clk_freq_mhz      100
@@ -322,19 +337,17 @@ def test_create_workspace_persists_dynamic_flow_steps(
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [step["name"] for step in flow_data["steps"]] == [
         "place",
+        "diff_sizing",
         "CTS",
         "legalization",
         "Timing optimization",
         "route",
         "filler",
-        "RCX",
-        "sta",
-        "powerAnalysis",
         "lvs",
-        "postRouteLec",
         "drc",
     ]
     assert [step["tool"] for step in flow_data["steps"]] == [
+        "dreamplace",
         "dreamplace",
         "ecc",
         "dreamplace",
@@ -342,10 +355,6 @@ def test_create_workspace_persists_dynamic_flow_steps(
         "ecc",
         "ecc",
         "ecc",
-        "ecc",
-        "ecc",
-        "ecc",
-        "kepler_formal",
         "ecc",
     ]
     assert all(step["state"] == "Unstart" for step in flow_data["steps"])
@@ -466,7 +475,9 @@ def test_create_workspace_non_contiguous_flow_seeds_both_stores_contiguous(
         "preFloorplan",
         "macroPlacement",
         "postFloorplan",
+        "preplace",
         "place",
+        "diff_sizing",
         "CTS",
     ]
     assert workspace.parameters.data["_flow"] == {"start": "Synthesis", "end": "CTS"}
@@ -499,27 +510,30 @@ def test_create_workspace_derives_dynamic_flow_from_boundaries(
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [step["name"] for step in flow_data["steps"]] == [
         "place",
+        "diff_sizing",
         "CTS",
         "legalization",
         "Timing optimization",
         "route",
         "filler",
+        "lvs",
+        "drc",
+        "antennaCheck",
+        "postRouteLec",
         "RCX",
         "sta",
         "powerAnalysis",
-        "lvs",
-        "postRouteLec",
-        "drc",
+        "emir",
         "Harden",
     ]
 
 
 POST_ROUTE_LEC_STEP_ALIAS_CASES = (
-    ["lvs", "postRouteLec", "DRC"],
-    ["lvs", "postlec", "DRC"],
-    ["lvs", "postroutelec", "DRC"],
-    ["lvs", "post_route_lec", "DRC"],
-    ["lvs", "Post-Route-LEC", "DRC"],
+    ["lvs", "DRC", "postRouteLec"],
+    ["lvs", "DRC", "postlec"],
+    ["lvs", "DRC", "postroutelec"],
+    ["lvs", "DRC", "post_route_lec"],
+    ["lvs", "DRC", "Post-Route-LEC"],
 )
 
 
@@ -543,7 +557,7 @@ def test_create_workspace_normalizes_post_route_lec_step_aliases(
         pdk_root=pdk_root,
         flow_config={
             "start_step": "lvs",
-            "end_step": "DRC",
+            "end_step": steps[-1],
             "steps": steps,
         },
     )
@@ -551,8 +565,9 @@ def test_create_workspace_normalizes_post_route_lec_step_aliases(
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [(step["name"], step["tool"]) for step in flow_data["steps"]] == [
         ("lvs", "ecc"),
-        ("postRouteLec", "kepler_formal"),
         ("drc", "ecc"),
+        ("antennaCheck", "ecc"),
+        ("postRouteLec", "kepler_formal"),
     ]
 
 
@@ -630,6 +645,7 @@ def test_create_workspace_from_step_output_copies_only_origin_inputs_and_rebuild
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [step["name"] for step in flow_data["steps"]] == [
         "place",
+        "diff_sizing",
         "CTS",
         "legalization",
     ]
@@ -661,7 +677,7 @@ def test_build_flow_for_dynamic_workspace_initializes_step_metadata_files(
         },
     )
 
-    from chipcompiler.runtime.workspace_api import build_flow_for_workspace
+    from chipcompiler.engine.workspace_flow import build_flow_for_workspace
 
     build_flow_for_workspace(workspace)
 
@@ -735,6 +751,66 @@ def test_writable_load_removes_legacy_home_files_but_read_only_load_preserves_th
     assert load_workspace(workspace_dir) is not None
     assert not home_json.exists()
     assert not home_lock.exists()
+
+
+def test_worker_can_hydrate_while_parent_owns_workspace_lock(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    import subprocess
+    import sys
+
+    from chipcompiler.utility.workspace_lock import workspace_lock
+
+    workspace_dir, _workspace = _create_loaded_ics55_workspace(
+        tmp_path, "workspace", minimal_ics55_pdk_factory, default_ics55_parameters
+    )
+    with workspace_lock(workspace_dir):
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; from chipcompiler.data import load_workspace; "
+                "assert load_workspace(sys.argv[1], read_only=True) is not None",
+                str(workspace_dir),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_derived_snapshot_inputs_bind_to_final_workspace(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    from chipcompiler.engine.snapshot import (
+        create_engineering_snapshot,
+        read_engineering_snapshot_from_directory,
+    )
+    from chipcompiler.engine.workspace_derive import derive_workspace
+
+    source, workspace = _create_loaded_ics55_workspace(
+        tmp_path, "workspace", minimal_ics55_pdk_factory, default_ics55_parameters
+    )
+    from chipcompiler.engine.workspace_reset import build_flow_for_workspace
+
+    engine_flow = build_flow_for_workspace(workspace)
+    assert engine_flow.save()
+    create_engineering_snapshot(workspace)
+    original = (source / "home/engineering-snapshot.json").read_bytes()
+    target = tmp_path / "derived"
+
+    derive_workspace(source, target)
+
+    snapshot = read_engineering_snapshot_from_directory(target)
+    inputs = snapshot["workspaceBindings"]["inputs"]
+    assert inputs
+    for path in inputs.values():
+        assert Path(path).is_relative_to(target)
+        assert Path(path).is_file()
+    assert ".staging-" not in json.dumps(snapshot)
+    assert (source / "home/engineering-snapshot.json").read_bytes() == original
 
 
 def test_writable_load_unlinks_legacy_home_symlink_without_following_target(
@@ -853,6 +929,7 @@ def test_step_config_keys_return_workspace_config_keys():
     )
     assert data_api.step_config_keys("place", "ecc") == ("db",)
     assert data_api.step_config_keys(StepEnum.PLACEMENT, "ecc") == ("db",)
+    assert data_api.step_config_keys(StepEnum.DIFF_SIZING, "dreamplace") == ("dreamplace",)
     assert data_api.step_config_keys("legalization", "ecc") == ("db",)
     assert data_api.step_config_keys("filler", "ecc") == (
         "db",
@@ -865,8 +942,16 @@ def test_step_config_keys_return_workspace_config_keys():
     )
     assert data_api.step_config_keys("place", "dreamplace") == ("dreamplace",)
     assert data_api.step_config_keys("legalization", "dreamplace") == ("dreamplace",)
-    assert data_api.step_config_keys("Timing optimization", "sizer") == ("db", "dreamplace")
-    assert data_api.step_config_keys(SkippableStepEnum.TIMING_OPT, "sizer") == ("db", "dreamplace")
+    assert data_api.step_config_keys("Timing optimization", "sizer") == (
+        "db",
+        "sizer",
+        "dreamplace",
+    )
+    assert data_api.step_config_keys(SkippableStepEnum.TIMING_OPT, "sizer") == (
+        "db",
+        "sizer",
+        "dreamplace",
+    )
     assert data_api.step_config_keys("synthesis", "yosys") == ()
     assert data_api.step_config_keys("place", None) == ()
 
@@ -918,6 +1003,7 @@ def test_step_config_paths_return_expected_and_existing_paths(tmp_path):
     )
     assert data_api.step_config_paths(workspace_dir, SkippableStepEnum.TIMING_OPT, "sizer") == (
         config_dir / "db_ecc.json",
+        config_dir / "sizer_ecc.json",
         config_dir / "dreamplace_ecc.json",
     )
     assert data_api.step_config_paths(workspace_dir, "place", "ECC") == ()
@@ -1334,7 +1420,7 @@ def test_refresh_workspace_config_reapplies_direct_config_overrides(
         parameters={
             **default_ics55_parameters,
             "Config Overrides": {
-                "CTS": {"skew_bound": "0.05"},
+                "CTS": {"skew_bound": "0.05", "buffer_type": []},
                 "dreamplace": {"num_threads": 12},
             },
         },
@@ -1344,6 +1430,7 @@ def test_refresh_workspace_config_reapplies_direct_config_overrides(
     cts = json_read(workspace.config[StepEnum.CTS.value])
     dreamplace = json_read(workspace.config["dreamplace"])
     assert cts["skew_bound"] == "0.05"
+    assert cts["buffer_type"] == workspace.pdk.buffers
     assert dreamplace["num_threads"] == 12
 
     cts["skew_bound"] = "0.20"
@@ -1353,7 +1440,9 @@ def test_refresh_workspace_config_reapplies_direct_config_overrides(
 
     refresh_workspace_config(workspace)
 
-    assert json_read(workspace.config[StepEnum.CTS.value])["skew_bound"] == "0.05"
+    cts = json_read(workspace.config[StepEnum.CTS.value])
+    assert cts["skew_bound"] == "0.05"
+    assert cts["buffer_type"] == workspace.pdk.buffers
     assert json_read(workspace.config["dreamplace"])["num_threads"] == 12
 
 
@@ -1861,12 +1950,14 @@ def test_create_workspace_with_pdk_overrides_pdk_object_ignored(
     assert workspace.pdk.dont_use == original_dont_use
 
 
-def test_workspace_pdk_overrides_not_persisted_on_reload(
+def test_workspace_pdk_overrides_persisted_on_reload(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    layer_map = tmp_path / "layers.map"
+    layer_map.write_text("MET1 1 0\n")
 
     workspace_dir = tmp_path / "workspace"
     workspace = create_workspace(
@@ -1876,16 +1967,13 @@ def test_workspace_pdk_overrides_not_persisted_on_reload(
         pdk="ics55",
         parameters=default_ics55_parameters,
         pdk_root=str(pdk_root),
-        pdk_overrides={"dont_use": ["ICG*"]},
+        pdk_overrides={"dont_use": ["ICG*"], "mapping_file": str(layer_map)},
     )
     assert workspace.pdk.dont_use == ["ICG*"]
 
     loaded = load_workspace(str(workspace_dir))
 
-    from chipcompiler.data.pdk import get_pdk
-
-    base_pdk = get_pdk("ics55", pdk_root=pdk_root)
-    assert loaded.pdk.dont_use == base_pdk.dont_use
+    assert loaded.pdk == workspace.pdk
 
 
 def test_create_workspace_pdk_overrides_typo_propagates(

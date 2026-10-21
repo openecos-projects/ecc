@@ -9,12 +9,13 @@ metrics); this module owns the human-facing configuration file only.
 
 Layout::
 
-    schema_version = 1   (top-level; absent in pre-versioning files = version 0)
+    schema_version = 2   (top-level; absent in pre-versioning files = version 0)
     [design]   name / top / clock_port / frequency_mhz
     [pdk]      name / root (absolute) / config (workspace-relative)
     [flow]     preset = "rtl2gds"  OR  start = "...", end = "..."
                skip_steps = [...]  (optional, normalized)
-    [params]   flat snake_case parameters; nested dicts map to subtables
+    [params]   flat snake_case parameters; nested dicts map to subtables;
+               identity mirrors are reconstructed on load, not persisted
 """
 
 import logging
@@ -44,9 +45,9 @@ WORKSPACE_CONFIG_SCHEMA_VERSION = SUPPORTED_SCHEMA_VERSIONS[PARAMS_TOML]
 
 _IDENTITY_FIELDS = ("pdk", "design", "top_module", "clock")
 
-# param key -> TOML section key, for [design] and [pdk]. Splitting mirrors a
-# non-empty section value back under the param key; frequency is copied (not
-# moved) so the params copy stays authoritative on load.
+# param key -> TOML section key, for [design] and [pdk]. The persisted TOML
+# keeps identity fields in these human-facing sections; loading reconstructs
+# the canonical flat keys for the runtime parameter payload.
 _DESIGN_SECTION_KEYS = {
     "design": "name",
     "top_module": "top",
@@ -57,6 +58,13 @@ _PDK_SECTION_KEYS = {
     "pdk": "name",
     "pdk_root": "root",
     "pdk_config": "config",
+}
+
+_DREAMPLACE_MIRROR_KEYS = {
+    "target_density": "target_density",
+    "target_overflow": "stop_overflow",
+    "cell_padding_x": "cell_padding_x",
+    "routability_opt_flag": "routability_opt_flag",
 }
 
 # Ranges for presets removed when RCX/STA/Harden folded into the canonical
@@ -305,20 +313,35 @@ def _split_payload(data: dict) -> dict[str, Any]:
         for section_key in _DESIGN_SECTION_KEYS.values()
         if section_key in params
     }
-    # Sync identity keys into the [design] section; the params copies are the
-    # authoritative store read back into Parameters.data.
     for param_key, section_key in _DESIGN_SECTION_KEYS.items():
-        value = params.get(param_key)
+        value = params.pop(param_key, None)
         if section_key not in design and value is not None:
-            if isinstance(value, str) and not value.strip():
-                continue
             design[section_key] = value
 
-    pdk = {
-        section_key: params[param_key]
-        for param_key, section_key in _PDK_SECTION_KEYS.items()
-        if str(params.get(param_key, "")).strip()
-    }
+    pdk = {}
+    for param_key, section_key in _PDK_SECTION_KEYS.items():
+        value = params.pop(param_key, None)
+        if value is not None:
+            pdk[section_key] = value
+    dreamplace = params.get("dreamplace")
+    if isinstance(dreamplace, dict):
+        dreamplace = dict(dreamplace)
+        for parameter_key, dreamplace_key in _DREAMPLACE_MIRROR_KEYS.items():
+            if dreamplace_key not in dreamplace or parameter_key not in data:
+                continue
+            if dreamplace[dreamplace_key] != data[parameter_key]:
+                logger.warning(
+                    "[params.dreamplace].%s conflicts with top-level %s; "
+                    "preserving the nested override",
+                    dreamplace_key,
+                    parameter_key,
+                )
+                continue
+            dreamplace.pop(dreamplace_key)
+        if dreamplace:
+            params["dreamplace"] = dreamplace
+        else:
+            params.pop("dreamplace", None)
     return {"design": design, "pdk": pdk, "params": params}
 
 
@@ -342,13 +365,13 @@ def _merge_payload(sections: dict[str, Any]) -> dict:
         value = design.get(section_key)
         if value is None:
             continue
-        if isinstance(value, str) and not value.strip():
+        if isinstance(value, str) and not value.strip() and param_key in params:
             continue
         params[param_key] = value
 
     for param_key, section_key in _PDK_SECTION_KEYS.items():
         value = pdk.get(section_key)
-        if str(value or "").strip():
+        if value is not None and (str(value or "").strip() or param_key not in params):
             params[param_key] = value
 
     from .parameter_keys import normalize_parameter_dict
@@ -539,7 +562,7 @@ def _stamp_preversioned_params_toml(config_path: Path, workspace_dir: Path) -> N
     if not isinstance(document, dict) or SCHEMA_VERSION_FIELD in document:
         return
 
-    prefix = b"schema_version = 1\n"
+    prefix = f"schema_version = {WORKSPACE_CONFIG_SCHEMA_VERSION}\n".encode("ascii")
     if original.startswith(b"\xef\xbb\xbf"):
         content = original[:3] + prefix + original[3:]
     else:

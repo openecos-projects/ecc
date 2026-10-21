@@ -19,7 +19,7 @@ from chipcompiler.tools.ecc.power_artifacts import (
     workspace_power_summary_path,
 )
 from chipcompiler.tools.ecc.sta_qor import STA_REPORT_FILENAMES
-from chipcompiler.utility import JsonReadError, file_digest, json_read_strict
+from chipcompiler.utility import JsonReadError, json_read_strict
 
 _ANALYSIS_FILES = (
     ("qor_metrics", "qor_metrics.json"),
@@ -394,30 +394,6 @@ def _sta_corner_directories(step_dir: Path, root: Path) -> list[tuple[Path, Path
             if len(corners) >= _STA_CORNER_LIMIT:
                 return corners
     return corners
-
-
-def _lec_freshness_status(data: dict[str, Any], root: Path) -> str:
-    """LEC input freshness ("proven" semantics); kept per ADR-0010.
-
-    Currently unreferenced: it used to back the inlined ``lecResult`` snapshot
-    payload, which the bounded-projection contract removed. Retained so the LEC
-    freshness digest keeps a producer-side home until a consumer reattaches it.
-    """
-    if data.get("status") != "proven":
-        return "incomplete"
-    for role in ("golden", "gate"):
-        path = data.get(f"{role}_verilog")
-        digest = data.get(f"{role}_sha256")
-        size = data.get(f"{role}_size_bytes")
-        if not isinstance(path, str) or not isinstance(digest, str) or type(size) is not int:
-            return "stale"
-        candidate = Path(path).resolve()
-        if not candidate.is_relative_to(root) or not candidate.is_file():
-            return "stale"
-        actual = file_digest(candidate)
-        if actual is None or actual != (digest, size):
-            return "stale"
-    return "proven"
 
 
 def _safe_segment(value: object) -> TypeGuard[str]:

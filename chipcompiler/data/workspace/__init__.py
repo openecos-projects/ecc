@@ -188,6 +188,8 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     StepEnum.FILLER.value: "filler_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",
     StepEnum.STA.value: "sta_ecc.json",
+    "sizer": "sizer_ecc.json",
+    StepEnum.EMIR.value: "emir_ecc.json",
     "dreamplace": "dreamplace_ecc.json",
 }
 
@@ -201,6 +203,7 @@ _LEGACY_WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     StepEnum.FILLER.value: "pl_default_config.json",
     StepEnum.RCX.value: "rcx.json",
     StepEnum.STA.value: "sta.json",
+    "sizer": "sizer_default_config.json",
     "dreamplace": "dreamplace.json",
 }
 
@@ -212,17 +215,21 @@ _STEP_CONFIG_KEYS: Final[dict[tuple[StepBaseEnum, str], tuple[str, ...]]] = {
     (StepEnum.PRE_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value),
     (StepEnum.MACRO_PLACEMENT, "dreamplace"): ("dreamplace", "macro_location"),
     (StepEnum.POST_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value, "macro_location"),
+    (StepEnum.PREPLACE, "sizer"): ("db",),
     (StepEnum.PLACEMENT, "ecc"): ("db",),
     (StepEnum.CTS, "ecc"): ("db", StepEnum.CTS.value),
     (StepEnum.ROUTING, "ecc"): ("db", StepEnum.ROUTING.value),
     (StepEnum.DRC, "ecc"): ("db", StepEnum.DRC.value),
+    (StepEnum.ANTENNA_CHECK, "ecc"): ("db",),
     (StepEnum.LEGALIZATION, "ecc"): ("db",),
     (StepEnum.FILLER, "ecc"): ("db", StepEnum.FILLER.value),
     (StepEnum.RCX, "ecc"): ("db", StepEnum.RCX.value),
     (StepEnum.STA, "ecc"): ("db", StepEnum.RCX.value, StepEnum.STA.value),
+    (StepEnum.EMIR, "ecc"): ("db", StepEnum.EMIR.value),
     (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
+    (StepEnum.DIFF_SIZING, "dreamplace"): ("dreamplace",),
     (StepEnum.LEGALIZATION, "dreamplace"): ("dreamplace",),
-    (SkippableStepEnum.TIMING_OPT, "sizer"): ("db", "dreamplace"),
+    (SkippableStepEnum.TIMING_OPT, "sizer"): ("db", "sizer", "dreamplace"),
 }
 
 
@@ -726,6 +733,12 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     from .config_overrides import apply_config_overrides
 
     apply_config_overrides(workspace.config, workspace.parameters.data)
+    cts_path = workspace.config[f"{StepEnum.CTS.value}"]
+    cts = json_read(cts_path)
+    if not cts.get("buffer_type") and workspace.pdk.buffers:
+        cts["buffer_type"] = workspace.pdk.buffers
+        if not json_write(cts_path, cts):
+            raise OSError(f"Failed to restore PDK CTS buffers: {cts_path}")
     # Expand PDK-relative liberty paths only after overrides are applied:
     # explicit sta.liberty parameters carry the same PDK-relative defaults,
     # and re-applying them above must not resurrect unexpanded paths.
@@ -875,7 +888,16 @@ def prepare_workspace_for_rerun(
     if hasattr(engine_flow, "workspace_steps"):
         engine_flow.workspace_steps.clear()
     if hasattr(engine_flow, "create_step_workspaces"):
-        engine_flow.create_step_workspaces()
+        # Reset/derive preparation must not require optional execution tools;
+        # dependency checks belong to the subsequent flow run.
+        try:
+            engine_flow.create_step_workspaces(executable_steps=set())
+        except TypeError as exc:
+            # Keep compatibility with lightweight EngineFlow test doubles and
+            # older embedders that predate the executable_steps keyword.
+            if "executable_steps" not in str(exc):
+                raise
+            engine_flow.create_step_workspaces()
 
 
 def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
@@ -940,6 +962,12 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
                     for temperature in temperatures
                 ]
         json_write(workspace.config[f"{StepEnum.RCX.value}"], rcx)
+
+    # Step-dependent paths are written after the common parameter/PDK refresh.
+    # Record the final managed JSON state so refresh detects only later edits.
+    from .config_manifest import record_derived_config
+
+    record_derived_config(workspace)
 
 
 def _workspace_directory_has_existing_data(workspace_dir: Path) -> bool:
@@ -1122,6 +1150,14 @@ def create_workspace(
 
     if workspace.pdk.root:
         workspace.parameters.data["pdk_root"] = str(workspace.pdk.root)
+    if isinstance(pdk, str) and pdk_overrides:
+        from copy import deepcopy
+
+        persisted_overrides = deepcopy(pdk_overrides)
+        for key in ("sdc", "spef"):
+            if key in persisted_overrides:
+                persisted_overrides[key] = path_text(getattr(workspace.pdk, key))
+        workspace.parameters.data["pdk_overrides"] = persisted_overrides
     if pdk_json:
         pdk_config_path = home_dir / "pdk.json"
         shutil.copy(pdk_json, pdk_config_path)

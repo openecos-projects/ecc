@@ -8,7 +8,36 @@ requires it), then the golden/gate artifacts on disk.
 
 from pathlib import Path
 
-from chipcompiler.data import SkippableStepEnum, StepEnum, Workspace
+from chipcompiler.data import (
+    ADVISORY_FLOW_STEPS,
+    LEC_STEP_TOOLS,
+    SkippableStepEnum,
+    StepEnum,
+    Workspace,
+)
+
+
+def latest_pnr_output(workspace: Workspace, suffix: str) -> Path | None:
+    """Return the latest PNR output matching *suffix* before checker steps."""
+    workspace_dir = Path(workspace.directory) if getattr(workspace, "directory", None) else None
+    flow = getattr(workspace, "flow", None)
+    if workspace_dir is None or flow is None:
+        return None
+
+    candidate = None
+    for flow_step in flow.steps():
+        category = str(flow_step.get("category") or "PNR").upper()
+        if category != "PNR":
+            continue
+        tool = flow_step.get("tool")
+        name = flow_step.get("name")
+        if not tool or not name or name in ADVISORY_FLOW_STEPS:
+            continue
+        output_dir = workspace_dir / f"{name}_{tool}" / "output"
+        matches = sorted(output_dir.glob(f"*{suffix}"))
+        if matches:
+            candidate = matches[-1]
+    return candidate
 
 
 def post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | None]:
@@ -22,14 +51,36 @@ def post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | N
     workspace_dir = Path(workspace.directory) if getattr(workspace, "directory", None) else None
     flow = getattr(workspace, "flow", None)
     if workspace_dir is not None:
-        # The canonical chain wires postRouteLec's gate input to the LVS
-        # output netlist (the step immediately before it), not the filler one.
-        gate = workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz"
+        gate = _post_route_gate(workspace)
         if flow is not None and flow.has_step(StepEnum.SYNTHESIS):
             golden = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
         else:
             golden = getattr(workspace.design, "golden_verilog", None) or golden
     return golden, gate
+
+
+def _post_route_gate(workspace: Workspace) -> Path | None:
+    from chipcompiler.engine.step_chain import build_workspace_step_for_info, step_category
+
+    previous = None
+    pnr = None
+    created = {}
+    for record in workspace.flow.steps():
+        step = build_workspace_step_for_info(
+            workspace, record, previous, pnr_step=pnr, created_steps=created
+        )
+        if step is None:
+            continue
+        if record.get("name") == SkippableStepEnum.POST_ROUTE_LEC.value:
+            return getattr(step.input, "gate_verilog", None)
+        created[step.name] = step
+        if step.name in ADVISORY_FLOW_STEPS:
+            continue
+        if step_category(record) == "PNR" and step.tool not in LEC_STEP_TOOLS:
+            pnr = step
+        if step.tool not in LEC_STEP_TOOLS:
+            previous = step
+    return None
 
 
 def requires_post_route_lec(workspace: Workspace) -> bool:

@@ -2,6 +2,7 @@ from typing import Annotated
 
 import typer
 
+from chipcompiler.cli.command_handlers.param import param_apply as param_apply_handler
 from chipcompiler.cli.command_handlers.param import param_diff as param_diff_handler
 from chipcompiler.cli.command_handlers.param import param_list as param_list_handler
 from chipcompiler.cli.command_handlers.param import param_set as param_set_handler
@@ -9,6 +10,7 @@ from chipcompiler.cli.command_handlers.param import param_show as param_show_han
 from chipcompiler.cli.command_handlers.param import param_unset as param_unset_handler
 from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import (
+    ParamApplyInput,
     ParamDiffInput,
     ParamListInput,
     ParamSetInput,
@@ -17,8 +19,14 @@ from chipcompiler.cli.core.inputs import (
     output_options,
     project_options,
 )
-from chipcompiler.cli.core.invocation import CommandHandler, CommandInputT, execute_command
+from chipcompiler.cli.core.invocation import (
+    CommandHandler,
+    CommandInputT,
+    apply_location_defaults,
+    execute_command,
+)
 from chipcompiler.cli.core.options import (
+    JsonOption,
     PlainOption,
     ProjectOption,
     WorkspaceOption,
@@ -35,6 +43,34 @@ def _finish_param(
     execute_command("param", command_input, handler, render_key=f"param:{param_command}")
 
 
+@param_app.command("apply", context_settings={"ignore_unknown_options": True})
+def apply_cmd(
+    *,
+    sets: Annotated[list[str] | None, typer.Option("--set")] = None,
+    unsets: Annotated[list[str] | None, typer.Option("--unset")] = None,
+    project: ProjectOption = None,
+    workspace: WorkspaceOption = None,
+    step: Annotated[str | None, typer.Option("--step")] = None,
+    expected_revision: Annotated[int | None, typer.Option("--expected-revision", min=1)] = None,
+    command_id: Annotated[str, typer.Option("--command-id")] = "",
+    no_wait: Annotated[bool, typer.Option("--no-wait")] = False,
+    plain: PlainOption = False,
+) -> None:
+    """Atomically apply a batch of Project or Workspace parameters."""
+    command_input = ParamApplyInput(
+        output=output_options(plain=plain),
+        project=project_options(project),
+        sets=tuple(sets or ()),
+        unsets=tuple(unsets or ()),
+        workspace=workspace,
+        step=step,
+        expected_revision=expected_revision,
+        command_id=command_id,
+        no_wait=no_wait,
+    )
+    _finish_param("apply", command_input, param_apply_handler)
+
+
 @param_app.command("list")
 def list_cmd(
     *,
@@ -43,6 +79,7 @@ def list_cmd(
     all_params: Annotated[bool, typer.Option("--all")] = False,
     workspace: WorkspaceOption = None,
     plain: PlainOption = False,
+    json_output: JsonOption = False,
 ) -> None:
     """List parameter overrides.
 
@@ -59,13 +96,21 @@ def list_cmd(
     See 'ecc doc config' for the full reference.
     """
     command_input = ParamListInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         step=step,
         all=all_params,
         workspace=workspace,
     )
-    _finish_param("list", command_input, param_list_handler)
+    command_input = apply_location_defaults(command_input)
+    render_key = (
+        "param:catalog"
+        if all_params and plain and command_input.workspace is None and step is None
+        else "param:workspace:list"
+        if plain and command_input.workspace is not None
+        else "param:list"
+    )
+    execute_command("param", command_input, param_list_handler, render_key=render_key)
 
 
 @param_app.command("show")
@@ -75,6 +120,7 @@ def show_cmd(
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
     plain: PlainOption = False,
+    json_output: JsonOption = False,
 ) -> None:
     """Show one parameter value.
 
@@ -86,7 +132,7 @@ def show_cmd(
     See 'ecc doc config' for the full reference.
     """
     command_input = ParamShowInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         key=key,
         workspace=workspace,
@@ -174,6 +220,7 @@ def diff_cmd(
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
     plain: PlainOption = False,
+    json_output: JsonOption = False,
 ) -> None:
     """Compare parameter overrides with defaults.
 
@@ -184,7 +231,7 @@ def diff_cmd(
     See 'ecc doc config' for the full reference.
     """
     command_input = ParamDiffInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         workspace=workspace,
     )

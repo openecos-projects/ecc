@@ -11,9 +11,9 @@ from agent.floorplan_mode import (
     prepare_floorplan_mode,
     read_floorplan_mode,
 )
-from agent.requests import CandidateRerunRequest, parse_agent_request_model
+from agent.requests import CandidateRerunRequest
+from agent.runtime_support import AgentApplicationError as RuntimeApiError
 from agent.workspace_api import _validate_candidate_rerun_request
-from chipcompiler.runtime.workspace_api import RuntimeApiError
 
 
 def _request(**kwargs):
@@ -57,9 +57,7 @@ def _workspace(tmp_path):
 def test_explicit_mode_only_baseline_request(mode):
     request = _request(floorplan_mode=mode)
     _validate_candidate_rerun_request(request)
-    payload = dict(vars(request))
-    payload["floorplanMode"] = payload.pop("floorplan_mode")
-    assert parse_agent_request_model(CandidateRerunRequest, payload) == request
+    assert request.floorplan_mode == mode
 
 
 @pytest.mark.parametrize(

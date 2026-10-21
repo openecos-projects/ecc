@@ -1,14 +1,17 @@
 import os
 import sys
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Protocol, TypeVar
 
 import typer
 
 from chipcompiler.cli.core.inputs import (
+    InitInput,
     OutputOptions,
     ProjectOptions,
     RunInput,
+    WorkspaceCreateInput,
     WorkspaceImportInput,
 )
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
@@ -31,7 +34,11 @@ CommandInputT = TypeVar("CommandInputT", bound=CommandInput)
 CommandHandler = Callable[[CommandInputT, CommandContext], CommandResult]
 
 
-def output_mode(*, plain: bool) -> OutputMode:
+def output_mode(*, plain: bool, json_output: bool = False) -> OutputMode:
+    if plain and json_output:
+        raise typer.BadParameter("--plain and --json cannot be used together")
+    if json_output:
+        return OutputMode.JSON
     if plain:
         return OutputMode.PLAIN
     return OutputMode.TEXT
@@ -120,13 +127,16 @@ def _resolve_manifest_workspace(
 
 
 def build_context(command_input: CommandInput) -> CommandContext:
+    command_input = apply_location_defaults(command_input)
     project = command_input.project.project
     project_dir = resolve_project_dir(project)
 
     workspace_name = getattr(command_input, "workspace", None)
     workspace_path_selector = False
     supplied_workspace_path = (
-        command_input.path if isinstance(command_input, WorkspaceImportInput) else None
+        command_input.path
+        if isinstance(command_input, (WorkspaceCreateInput, WorkspaceImportInput))
+        else None
     )
     workspace_path = None
     workspace_path_explicit = False
@@ -206,7 +216,9 @@ def build_context(command_input: CommandInput) -> CommandContext:
             run_dir, run_id, manifest_error = _resolve_manifest_workspace(
                 project_dir,
                 workspace_name,
-                allow_create=isinstance(command_input, (RunInput, WorkspaceImportInput)),
+                allow_create=isinstance(
+                    command_input, (RunInput, WorkspaceCreateInput, WorkspaceImportInput)
+                ),
                 workspace_path=workspace_path,
                 path_selector=workspace_path_selector,
             )
@@ -217,7 +229,10 @@ def build_context(command_input: CommandInput) -> CommandContext:
         workspace_id = workspace_name or "default"
         run_dir, run_id = workspace_path or os.path.join(project_dir, workspace_id), workspace_id
 
-    mode = output_mode(plain=command_input.output.plain)
+    mode = output_mode(
+        plain=command_input.output.plain,
+        json_output=command_input.output.json,
+    )
 
     return CommandContext(
         project_dir=project_dir,
@@ -231,6 +246,23 @@ def build_context(command_input: CommandInput) -> CommandContext:
         manifest_error=manifest_error,
         workspace_path_explicit=workspace_path_explicit,
     )
+
+
+def apply_location_defaults(command_input: CommandInputT) -> CommandInputT:
+    if isinstance(command_input, InitInput):
+        return command_input
+    from chipcompiler.cli.project.current_location import resolve_current_location
+
+    workspace_supported = hasattr(command_input, "workspace")
+    workspace = getattr(command_input, "workspace", None)
+    project = command_input.project.project
+    location = resolve_current_location(project, workspace, workspace_supported=workspace_supported)
+    changes = {}
+    if location.project != project:
+        changes["project"] = ProjectOptions(project=location.project)
+    if workspace_supported and location.workspace != workspace:
+        changes["workspace"] = location.workspace
+    return replace(command_input, **changes) if changes else command_input
 
 
 def _should_colorize():
@@ -299,6 +331,7 @@ def execute_command(
     handler: CommandHandler[CommandInputT],
     render_key: str | None = None,
 ) -> None:
+    command_input = apply_location_defaults(command_input)
     ctx = build_context(command_input)
     result = _with_legacy_hint(command, command_input, handler(command_input, ctx), ctx)
     result = _with_config_shadow_hint(command, command_input, result, ctx)

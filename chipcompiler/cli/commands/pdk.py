@@ -13,6 +13,7 @@ from chipcompiler.cli.core.inputs import (
 )
 from chipcompiler.cli.core.invocation import execute_command
 from chipcompiler.cli.core.options import (
+    JsonOption,
     PlainOption,
     ProjectOption,
 )
@@ -56,12 +57,27 @@ def show_cmd(
     *,
     project: ProjectOption = None,
     plain: PlainOption = False,
+    json_output: JsonOption = False,
 ) -> None:
     command_input = PdkShowInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
     )
     _finish("show", command_input, pdk_handlers.show)
+
+
+@pdk_app.command("verify", help="Verify the resolved PDK contents without changing configuration")
+def verify_cmd(
+    *,
+    project: ProjectOption = None,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = PdkShowInput(
+        output=output_options(plain=plain, json_output=json_output),
+        project=project_options(project),
+    )
+    _finish("verify", command_input, pdk_handlers.verify)
 
 
 @pdk_app.command("unset", help="Clear [pdk] root (fall back to env vars / repo default)")

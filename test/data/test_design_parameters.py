@@ -52,7 +52,7 @@ def test_get_parameters_returns_independent_copies():
 def test_ics55_template_has_dreamplace_padding_defaults():
     parameters = get_parameters("ics55")
 
-    assert parameters.data["cell_padding_x"] == 300
+    assert parameters.data["cell_padding_x"] == 200
     assert parameters.data["routability_opt_flag"] == 1
 
 
@@ -155,7 +155,7 @@ def test_get_parameters_accepts_path_and_save_writes_to_path(tmp_path):
     assert parameters.path == path
     assert save_parameter(parameters)
     with open(path, "rb") as f:
-        assert tomllib.load(f)["params"]["design"] == "gcd"
+        assert tomllib.load(f)["design"]["name"] == "gcd"
 
 
 def test_get_parameters_without_path_uses_none():

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import json
 import os
 import shutil
 from pathlib import Path
@@ -53,6 +54,8 @@ class ECCToolsModule:
             ) from exc
 
         self.ecc = ecc
+        self._place_timing_active = False
+        self._place_timing_inputs = None
 
     def get_ecc(self):
         return self.ecc
@@ -63,6 +66,8 @@ class ECCToolsModule:
 
     def close(self):
         """release ECC data without terminating the host process"""
+        if getattr(self, "_place_timing_active", False):
+            self.destroy_place_timing()
         self.reset_data()
 
     def get_dmInst_ptr(self):
@@ -87,6 +92,215 @@ class ECCToolsModule:
             include_m2_pg_rail_blockage,
             include_m2_pg_rail_density,
         )
+
+    def _place_timing_config(
+        self,
+        *,
+        config: str = "",
+        work_dir: PathArg = "",
+        thread_number: int = 2,
+        max_paths: int = 20,
+    ) -> dict[str, str]:
+        if isinstance(thread_number, bool) or int(thread_number) <= 0:
+            raise ValueError("placement timing thread_number must be positive")
+        if isinstance(max_paths, bool) or int(max_paths) <= 0:
+            raise ValueError("placement timing max_paths must be positive")
+        config_dict = {
+            "-output_timing_reports": "0",
+            "-output_timing_features": "0",
+            "-timing_path_limit": str(int(max_paths)),
+            "-max_paths": str(int(max_paths)),
+            "-thread_number": str(int(thread_number)),
+        }
+        if work_dir:
+            config_dict["-temp_directory_path"] = path_text(work_dir)
+        return {"config": path_text(config), **config_dict}
+
+    def _start_place_timing(
+        self,
+        *,
+        lib_paths: list[Path] | list[str],
+        sdc_path: PathArg,
+        spef_path: PathArg = "",
+        rcx_config: PathArg = "",
+        rcx_pdk: str = "",
+        rcx_output_dir: PathArg = "",
+        rcx_spef_path: PathArg = "",
+        config: str = "",
+        work_dir: PathArg = "",
+        thread_number: int = 2,
+        max_paths: int = 20,
+    ) -> dict[str, object]:
+        normalized_libs = [path_text(path) for path in lib_paths if path]
+        normalized_sdc = path_text(sdc_path)
+        normalized_spef = path_text(spef_path)
+        if not normalized_libs:
+            raise ValueError("ECC placement timing requires at least one Liberty")
+        if not normalized_sdc:
+            raise ValueError("ECC placement timing requires an SDC path")
+
+        if self.ecc.lib_init(lib_paths=normalized_libs) is not True:
+            raise RuntimeError("ECC placement timing Liberty initialization failed")
+        if self.ecc.sdc_init(normalized_sdc) is not True:
+            raise RuntimeError("ECC placement timing SDC initialization failed")
+        normalized_rcx = path_text(rcx_config)
+        normalized_rcx_output = path_text(rcx_output_dir)
+        if normalized_rcx:
+            normalized_spef, rcx_summary = self._extract_place_parasitics(
+                normalized_rcx,
+                pdk=rcx_pdk,
+                output_dir=normalized_rcx_output,
+                requested_spef=path_text(rcx_spef_path) or normalized_spef,
+            )
+        else:
+            rcx_summary = {
+                "status": "skipped",
+                "reason": "no_rcx_config",
+            }
+        if normalized_spef and self.ecc.spef_init(normalized_spef) is not True:
+            raise RuntimeError("ECC placement timing SPEF initialization failed")
+        config_dict = self._place_timing_config(
+            config=config,
+            work_dir=work_dir,
+            thread_number=thread_number,
+            max_paths=max_paths,
+        )
+        sta_config = config_dict.pop("config")
+        if self.ecc.init_sta(config=sta_config, config_dict=config_dict) is not True:
+            raise RuntimeError("ECC placement timing STA initialization failed")
+        try:
+            if self.ecc.run_sta() is not True:
+                raise RuntimeError("ECC placement timing STA execution failed")
+        except Exception:
+            self.ecc.destroy_sta()
+            raise
+        self._place_timing_active = True
+        self._place_timing_inputs = {
+            "lib_paths": normalized_libs,
+            "sdc_path": normalized_sdc,
+            "spef_path": normalized_spef,
+            "rcx_config": normalized_rcx,
+            "rcx_pdk": rcx_pdk,
+            "rcx_output_dir": normalized_rcx_output,
+            "rcx_spef_path": normalized_spef if normalized_rcx else "",
+            "config": sta_config,
+            "work_dir": path_text(work_dir),
+            "thread_number": int(thread_number),
+            "max_paths": int(max_paths),
+        }
+        return {
+            "status": "ok",
+            "mode": "full_rebuild",
+            "lib_count": len(normalized_libs),
+            "sdc_path": normalized_sdc,
+            "spef_path": normalized_spef,
+            "parasitics_initialization": (
+                "rcx" if normalized_rcx else ("spef" if normalized_spef else "none")
+            ),
+            "rcx": rcx_summary,
+        }
+
+    def _extract_place_parasitics(
+        self,
+        config: str,
+        *,
+        pdk: str = "",
+        output_dir: PathArg = "",
+        requested_spef: str = "",
+    ) -> tuple[str, dict[str, object]]:
+        """Run the configured native RCX backend and select its fresh SPEF."""
+        if self.init_rcx(config=config, pdk=pdk) is not True:
+            raise RuntimeError("ECC placement timing RCX initialization failed")
+        try:
+            if self.run_rcx() is not True:
+                raise RuntimeError("ECC placement timing RCX execution failed")
+        finally:
+            self.destroy_rcx()
+
+        output_path = Path(output_dir) if output_dir else None
+        if output_path is None:
+            with open(config, encoding="utf-8") as stream:
+                config_payload = json.load(stream)
+            configured_output = config_payload.get("output")
+            if not configured_output:
+                raise ValueError("ECC placement timing RCX config has no output")
+            output_path = Path(configured_output)
+            if not output_path.is_absolute():
+                output_path = Path(config).resolve().parent / output_path
+        spef_dir = output_path / "spef_writer"
+        candidates = sorted(spef_dir.glob("*.spef"))
+        selected = None
+        if requested_spef:
+            requested_name = Path(requested_spef).name
+            matching = [candidate for candidate in candidates if candidate.name == requested_name]
+            if matching:
+                selected = matching[0]
+        elif len(candidates) == 1:
+            selected = candidates[0]
+        elif candidates:
+            raise ValueError(
+                "ECC placement timing RCX produced multiple SPEFs; provide rcx_spef_path"
+            )
+        if selected is None or not selected.is_file() or selected.stat().st_size == 0:
+            raise FileNotFoundError(
+                f"ECC placement timing RCX produced no usable SPEF in {spef_dir}"
+            )
+        return str(selected), {
+            "status": "ok",
+            "backend": "native_rcx",
+            "output_dir": str(output_path),
+            "spef_path": str(selected),
+            "candidate_count": len(candidates),
+        }
+
+    def prepare_place_timing(self, inputs: dict[str, object]) -> dict[str, object]:
+        """Initialize current-main iSTA for an ECC DreamPlace session."""
+        if self._place_timing_active:
+            self.destroy_place_timing()
+        return self._start_place_timing(
+            lib_paths=list(inputs.get("lib_paths") or inputs.get("lib") or []),
+            sdc_path=inputs.get("sdc_path") or inputs.get("sdc") or "",
+            spef_path=inputs.get("spef_path") or inputs.get("spef") or "",
+            rcx_config=inputs.get("rcx_config") or "",
+            rcx_pdk=str(inputs.get("rcx_pdk") or ""),
+            rcx_output_dir=inputs.get("rcx_output_dir") or "",
+            rcx_spef_path=inputs.get("rcx_spef_path") or "",
+            config=inputs.get("config") or inputs.get("sta_config") or "",
+            work_dir=inputs.get("work_dir") or "",
+            thread_number=int(inputs.get("thread_number", 2) or 2),
+            max_paths=int(inputs.get("max_paths", 20) or 20),
+        )
+
+    def refresh_place_timing(self, inputs: dict[str, object] | None = None) -> dict[str, object]:
+        """Destroy and fully rebuild current-main iSTA after a native mutation."""
+        if self._place_timing_active:
+            self.destroy_place_timing()
+        refresh_inputs = dict(inputs or self._place_timing_inputs or {})
+        return self._start_place_timing(
+            lib_paths=list(refresh_inputs.get("lib_paths") or refresh_inputs.get("lib") or []),
+            sdc_path=refresh_inputs.get("sdc_path") or refresh_inputs.get("sdc") or "",
+            spef_path=refresh_inputs.get("spef_path") or refresh_inputs.get("spef") or "",
+            rcx_config=refresh_inputs.get("rcx_config") or "",
+            rcx_pdk=str(refresh_inputs.get("rcx_pdk") or ""),
+            rcx_output_dir=refresh_inputs.get("rcx_output_dir") or "",
+            rcx_spef_path=refresh_inputs.get("rcx_spef_path") or "",
+            config=refresh_inputs.get("config") or refresh_inputs.get("sta_config") or "",
+            work_dir=refresh_inputs.get("work_dir") or "",
+            thread_number=int(refresh_inputs.get("thread_number", 2) or 2),
+            max_paths=int(refresh_inputs.get("max_paths", 20) or 20),
+        )
+
+    def destroy_place_timing(self) -> None:
+        if not self._place_timing_active:
+            return
+        try:
+            self.ecc.destroy_sta()
+        finally:
+            self._place_timing_active = False
+
+    @property
+    def place_timing_active(self) -> bool:
+        return self._place_timing_active
 
     def build_macro_connection_map(self, max_hop: int):
         return self.ecc.build_macro_connection_map(max_hop)
@@ -243,9 +457,14 @@ class ECCToolsModule:
 
     def gds_save(self, output_path: PathArg, layer_map_path: PathArg) -> bool:
         """save gds file"""
+        layer_map = path_text(layer_map_path)
+        if not layer_map:
+            raise ValueError(
+                "PDK layer mapping file is required for GDS export; set pdk.mapping_file"
+            )
         return self.ecc.gds_save(
             gds_name=path_text(output_path),
-            layer_map_path=path_text(layer_map_path),
+            layer_map_path=layer_map,
         )
 
     def tcl_save(self, output_path: PathArg) -> bool:
@@ -261,13 +480,20 @@ class ECCToolsModule:
     def json_save(self, path: str):
         self.ecc.json_save(path=path_text(path))
 
-    def geometry_snapshot_save(self, output_dir: PathArg, *, include_drc: bool = False):
+    def geometry_snapshot_save(
+        self,
+        output_dir: PathArg,
+        *,
+        include_drc: bool = False,
+        thumbnail_path: PathArg | None = None,
+    ):
         """Export the current in-memory IDB geometry for GUI rendering."""
+        kwargs: dict[str, object] = {"output_dir": path_text(output_dir)}
         if include_drc:
-            return self.ecc.geometry_snapshot_save(
-                output_dir=path_text(output_dir), include_drc=True
-            )
-        return self.ecc.geometry_snapshot_save(output_dir=path_text(output_dir))
+            kwargs["include_drc"] = True
+        if thumbnail_path is not None:
+            kwargs["thumbnail_path"] = path_text(thumbnail_path)
+        return self.ecc.geometry_snapshot_save(**kwargs)
 
     def initialize_geometry_session(self):
         """Begin a geometry edit session for incremental GUI updates."""
@@ -412,27 +638,6 @@ class ECCToolsModule:
         return self.ecc.report_drc(path=path_text(path))
 
     ########################################################################
-    # power api
-    ########################################################################
-    def read_vcd_cpp(self, file_name: str, top_name: str):
-        return self.ecc.read_vcd_cpp(file_name=file_name, top_name=top_name)
-
-    def read_pg_spef(self, pg_spef_file: str):
-        return self.ecc.read_pg_spef(pg_spef_file=pg_spef_file)
-
-    def report_power_cpp(self):
-        return self.ecc.report_power_cpp()
-
-    def report_power(self):
-        return self.ecc.report_power()
-
-    def report_ir_drop(self, power_nets: list[str]):
-        return self.ecc.report_ir_drop(power_nets=power_nets)
-
-    def get_wire_timing_power_data(self, n_worst_path_per_clock: int):
-        return self.ecc.get_wire_timing_power_data(n_worst_path_per_clock)
-
-    ########################################################################
     # CTS api
     ########################################################################
     def run_cts(self, config: str, output: PathArg) -> bool:
@@ -503,12 +708,6 @@ class ECCToolsModule:
         return self.ecc.destroy_fp()
 
     ########################################################################
-    # pnp api
-    ########################################################################
-    def pnp(self, config: str):
-        self.ecc.run_pnp(path_text(config))
-
-    ########################################################################
     # placement api
     ########################################################################
     def feature_placement_map(self, json_path: PathArg, map_grid_size=5):
@@ -525,6 +724,9 @@ class ECCToolsModule:
 
     def run_filler(self, config: PathArg) -> bool:
         return self.ecc.insert_filler(config=path_text(config))
+
+    def check_antenna(self) -> bool:
+        return self.ecc.check_antenna()
 
     def destroy_mj(self) -> bool:
         return self.ecc.destroy_mj()
@@ -593,6 +795,29 @@ class ECCToolsModule:
 
     def destroy_pw(self):
         return self.ecc.destroy_pw()
+
+    ########################################################################
+    # EMIR api
+    ########################################################################
+    def init_emir(
+        self,
+        output_dir: PathArg,
+        instance_power_file_path: PathArg,
+        technology_file_path: PathArg,
+        ploc_file_path: PathArg,
+    ):
+        return self.ecc.init_emir(
+            temp_directory_path=path_text(output_dir),
+            instance_power_file_path=path_text(instance_power_file_path),
+            technology_file_path=path_text(technology_file_path),
+            ploc_file_path=path_text(ploc_file_path),
+        )
+
+    def run_emir(self):
+        return self.ecc.run_emir()
+
+    def destroy_emir(self):
+        return self.ecc.destroy_emir()
 
     ########################################################################
     # STA api
@@ -722,172 +947,3 @@ class ECCToolsModule:
                 "}\n",
                 encoding="utf-8",
             )
-
-    ########################################################################
-    # evaluation api
-    ########################################################################
-    def total_wirelength_dict(self):
-        return self.ecc.total_wirelength_dict()
-
-    def cell_density(
-        self,
-        bin_cnt_x: int = 256,
-        bin_cnt_y: int = 256,
-        save_path: str = "",
-    ):
-        return self.ecc.cell_density(
-            bin_cnt_x=bin_cnt_x,
-            bin_cnt_y=bin_cnt_y,
-            save_path=path_text(save_path),
-        )
-
-    def pin_density(
-        self,
-        bin_cnt_x: int = 256,
-        bin_cnt_y: int = 256,
-        save_path: str = "",
-    ):
-        return self.ecc.pin_density(
-            bin_cnt_x=bin_cnt_x,
-            bin_cnt_y=bin_cnt_y,
-            save_path=path_text(save_path),
-        )
-
-    def net_density(
-        self,
-        bin_cnt_x: int = 256,
-        bin_cnt_y: int = 256,
-        save_path: str = "",
-    ):
-        return self.ecc.net_density(
-            bin_cnt_x=bin_cnt_x,
-            bin_cnt_y=bin_cnt_y,
-            save_path=path_text(save_path),
-        )
-
-    def rudy_congestion(
-        self,
-        bin_cnt_x: int = 256,
-        bin_cnt_y: int = 256,
-        save_path: str = "",
-    ):
-        return self.ecc.rudy_congestion(
-            bin_cnt_x=bin_cnt_x,
-            bin_cnt_y=bin_cnt_y,
-            save_path=path_text(save_path),
-        )
-
-    def lut_rudy_congestion(
-        self,
-        bin_cnt_x: int = 256,
-        bin_cnt_y: int = 256,
-        save_path: str = "",
-    ):
-        return self.ecc.lut_rudy_congestion(
-            bin_cnt_x=bin_cnt_x,
-            bin_cnt_y=bin_cnt_y,
-            save_path=path_text(save_path),
-        )
-
-    def egr_congestion(self, save_path: str = ""):
-        return self.ecc.egr_congestion(save_path=path_text(save_path))
-
-    def timing_power_hpwl(self):
-        return self.ecc.timing_power_hpwl()
-
-    def timing_power_stwl(self):
-        return self.ecc.timing_power_stwl()
-
-    def timing_power_egr(self):
-        return self.ecc.timing_power_egr()
-
-    def eval_macro_margin(self):
-        return self.ecc.eval_macro_margin()
-
-    def eval_continuous_white_space(self):
-        return self.ecc.eval_continuous_white_space()
-
-    def eval_macro_channel(self, die_size_ratio: float):
-        return self.ecc.eval_macro_channel(die_size_ratio=die_size_ratio)
-
-    def eval_cell_hierarchy(self, plot_path: str, level: int, forward: int):
-        return self.ecc.eval_cell_hierarchy(
-            plot_path=path_text(plot_path),
-            level=level,
-            forward=forward,
-        )
-
-    def eval_macro_hierarchy(self, plot_path: str, level: int, forward: int):
-        return self.ecc.eval_macro_hierarchy(
-            plot_path=path_text(plot_path),
-            level=level,
-            forward=forward,
-        )
-
-    def eval_macro_connection(self, plot_path: str, level: int, forward: int):
-        return self.ecc.eval_macro_connection(
-            plot_path=path_text(plot_path),
-            level=level,
-            forward=forward,
-        )
-
-    def eval_macro_pin_connection(self, plot_path: str, level: int, forward: int):
-        return self.ecc.eval_macro_pin_connection(
-            plot_path=path_text(plot_path),
-            level=level,
-            forward=forward,
-        )
-
-    def eval_macro_io_pin_connection(self, plot_path: str, level: int, forward: int):
-        return self.ecc.eval_macro_io_pin_connection(
-            plot_path=path_text(plot_path),
-            level=level,
-            forward=forward,
-        )
-
-    def eval_overflow(self):
-        return self.ecc.eval_overflow()
-
-    def build_rc_tree_from_flat_data(
-        self,
-        netName: str,
-        node_sta_names: list[str],
-        node_is_pin: list[bool],
-        steiner_indices: list[int],
-        parent_indices: list[int],
-        node_total_caps: list[float],
-        edge_resistances: list[float],
-        node_global_indices: list[int],
-    ):
-        return self.ecc.build_rc_tree_from_flat_data(
-            netName,
-            node_sta_names,
-            node_is_pin,
-            steiner_indices,
-            parent_indices,
-            node_total_caps,
-            edge_resistances,
-            node_global_indices,
-        )
-
-    def update_and_get_all_pin_timings(
-        self,
-        pin_names: list[str],
-        arrival_late_times,
-        arrival_early_times,
-        required_late_times,
-        required_early_times,
-        pin_net_delay,
-        cell_arc_delays,
-        net_timing_details,
-    ):
-        return self.ecc.update_and_get_all_pin_timings(
-            pin_names,
-            arrival_late_times,
-            arrival_early_times,
-            required_late_times,
-            required_early_times,
-            pin_net_delay,
-            cell_arc_delays,
-            net_timing_details,
-        )

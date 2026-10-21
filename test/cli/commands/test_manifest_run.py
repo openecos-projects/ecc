@@ -1,5 +1,6 @@
 import json
 import os
+import uuid
 from pathlib import Path
 
 from chipcompiler.cli import main as cli_main
@@ -34,9 +35,10 @@ class TestVirginFirstRun:
         assert entry["workspace_path"] == run_dir
         assert entry["start_step"] == "Synth"
         assert entry["end_step"] == "Harden"
-        # The DummyFlow run succeeds, so the D4 write-back finalizes the
-        # initial "running" status.
-        assert entry["status"] == "success"
+        # Flow state belongs to flow.json. The manifest status is legacy
+        # compatibility data and is not changed by a run.
+        assert entry["status"] == "not_started"
+        assert manifest["runtime_processes"] == {}
         assert entry["parameter_patch"] == {}
         # The complete D3 source shape, GUI-flat parameters included.
         assert manifest["base_design"] == {
@@ -67,7 +69,7 @@ class TestVirginFirstRun:
         assert "max_fanout" not in manifest["base_design"]["parameters"]
         assert manifest["base_design"]["parameters"]["frequency_max"] == 100.0
 
-    def test_virgin_run_failed_writes_back_failed(
+    def test_virgin_run_failure_does_not_write_manifest_flow_status(
         self, tmp_path, capsys, create_cli_project, flow_mocks
     ):
         flow_mocks.flow.run_steps_value = False
@@ -77,7 +79,8 @@ class TestVirginFirstRun:
 
         assert rc != 0
         manifest = json.loads((tmp_path / "gcd" / "project.json").read_text())
-        assert manifest["workspaces"][0]["status"] == "failed"
+        assert manifest["workspaces"][0]["status"] == "not_started"
+        assert manifest["runtime_processes"] == {}
 
     def test_virgin_run_rejects_nested_workspace_name(
         self, tmp_path, capsys, create_cli_project, flow_mocks, manifest_stubs
@@ -175,9 +178,10 @@ class TestManifestRunCommand:
         # A new --workspace id is registered before filesystem creation.
         manifest = json.loads((project_dir / "project.json").read_text())
         assert [w["workspace_id"] for w in manifest["workspaces"]] == ["ws_0001", "exp2"]
-        assert manifest["workspaces"][1]["status"] == "success"
+        assert manifest["workspaces"][1]["status"] == "not_started"
+        assert manifest["runtime_processes"] == {}
 
-    def test_declared_workspace_run_writes_back_status(
+    def test_declared_workspace_run_preserves_manifest_status(
         self, tmp_path, capsys, flow_mocks, manifest_stubs
     ):
         project_dir = tmp_path / "proj"
@@ -191,14 +195,10 @@ class TestManifestRunCommand:
         manifest = json.loads((project_dir / "project.json").read_text())
         assert manifest["workspaces"][0]["status"] == "success"
 
-    def test_write_back_failure_is_a_diagnosable_error(
+    def test_run_does_not_call_legacy_status_write_back(
         self, tmp_path, capsys, flow_mocks, manifest_stubs, monkeypatch
     ):
-        """AC-10: a failed status write-back never changes the run result —
-        the successful run stays successful — but each lost write is an
-        error record (manifest_write_back_failed) carrying the lost status
-        and a repair command, never a silent warning (the pre-engine
-        "running" update and the final status update)."""
+        """Runtime registry and flow.json replace manifest status writes."""
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         manifest_stubs.write(
@@ -206,7 +206,9 @@ class TestManifestRunCommand:
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.manifest_write.write_back_workspace_status",
-            lambda project_dir, workspace_id, status: False,
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("legacy status write-back must not be called")
+            ),
         )
 
         rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
@@ -215,45 +217,10 @@ class TestManifestRunCommand:
         records = manifest_stubs.records()
         statuses = [r for r in records if r.get("status") == "success"]
         assert len(statuses) == 1
-        failures = [r for r in records if r.get("error") == "manifest_write_back_failed"]
-        assert len(failures) == 2
-        assert {f["lost_status"] for f in failures} == {"running", "success"}
-        assert all(f["repair"].startswith("ecc run") for f in failures)
-        # The on-disk manifest keeps its pre-run entry status.
+        assert not [r for r in records if r.get("error") == "manifest_write_back_failed"]
         manifest = json.loads((project_dir / "project.json").read_text())
         assert manifest["workspaces"][0]["status"] == "running"
-
-    def test_terminal_write_back_converges_derived_fields_before_status(
-        self, tmp_path, capsys, flow_mocks, manifest_stubs, monkeypatch
-    ):
-        """A run writes back computed parameters, so at the terminal exit the
-        entry's derived fields re-converge on the directory (status excluded:
-        it stays with the explicit write-backs) before the terminal status
-        lands."""
-        project_dir = tmp_path / "proj"
-        project_dir.mkdir()
-        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
-        events = []
-        monkeypatch.setattr(
-            "chipcompiler.project.manifest_refresh.refresh_workspace_derived_fields",
-            lambda _project_dir, workspace_id, *, include_status=True: events.append(
-                ("derived", workspace_id, include_status)
-            )
-            or True,
-        )
-        monkeypatch.setattr(
-            "chipcompiler.cli.project.manifest_write.write_back_workspace_status",
-            lambda _project_dir, _workspace_id, status: events.append(("status", status)) or True,
-        )
-
-        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
-
-        assert rc == 0
-        assert events == [
-            ("status", "running"),
-            ("derived", "ws_0001", False),
-            ("status", "success"),
-        ]
+        assert manifest["runtime_processes"] == {}
 
 
 class TestOriginDefResolution:
@@ -719,3 +686,105 @@ class TestFreshRunCoercionCleanup:
         assert result.exit_code == 1
         assert run_dir.exists()
         assert (run_dir / "marker.txt").read_text() == "keep"
+
+
+class TestExplicitRunLogOrdering:
+    """§13.1 step 2: an explicit --log-file owns stdout/stderr before the
+    pure-read preflight, and a log-open failure exits without running flow."""
+
+    @staticmethod
+    def _divergent_workspace(project_dir, pdk_root):
+        """An existing workspace whose persisted ledger diverges from the
+        rtl2gds preset, so the pure-read preflight rejects the run."""
+        run_dir = os.path.join(project_dir, "default")
+        home = os.path.join(run_dir, "home")
+        os.makedirs(home)
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            json.dump(
+                {
+                    "steps": [
+                        {
+                            "name": "place",
+                            "tool": "ecc",
+                            "state": "Success",
+                            "runtime": "",
+                            "info": {},
+                        }
+                    ]
+                },
+                f,
+            )
+        from chipcompiler.data.workspace_config import save_workspace_config
+
+        assert save_workspace_config(
+            run_dir,
+            {
+                "pdk": "ics55",
+                "pdk_root": str(pdk_root),
+                "design": "gcd",
+                "top_module": "gcd",
+                "clock": "clk",
+            },
+            {"preset": "rtl2gds"},
+        )
+        return run_dir
+
+    def test_explicit_log_file_exists_before_preflight_rejects_run(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, manifest_stubs
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = self._divergent_workspace(project_dir, pdk_root)
+        run_id = str(uuid.uuid4())
+        log_rel = f"log/{run_id}.log"
+
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                project_dir,
+                "--run-id",
+                run_id,
+                "--log-file",
+                log_rel,
+                "--plain",
+            ]
+        )
+
+        assert rc != 0
+        (record,) = [r for r in manifest_stubs.records() if r.get("error") == "flow_mismatch"]
+        assert record["workspace"] == run_dir
+        # The run log exists even though preflight rejected the run: it was
+        # opened before the preflight ran.
+        assert Path(run_dir, log_rel).is_file()
+
+    def test_log_open_failure_exits_without_running_flow(
+        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, manifest_stubs
+    ):
+        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+        project_dir = create_cli_project(pdk_root=pdk_root)
+        run_dir = self._divergent_workspace(project_dir, pdk_root)
+        # A regular file blocks the log directory: opening the log must
+        # fail before preflight (which would report flow_mismatch) and before
+        # any flow execution.
+        Path(run_dir, "log").write_text("not a directory")
+        run_id = str(uuid.uuid4())
+
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                project_dir,
+                "--run-id",
+                run_id,
+                "--log-file",
+                f"log/{run_id}.log",
+                "--plain",
+            ]
+        )
+
+        assert rc == 1
+        (record,) = manifest_stubs.records()
+        assert record["error"] == "run_log_open_failed"
+        ledger = json.loads(Path(run_dir, "home", "flow.json").read_text())
+        assert [step["name"] for step in ledger["steps"]] == ["place"]

@@ -156,6 +156,9 @@ def test_validated_workspace_spec_creates_main_compatible_workspace(
     assert reopened.design.name == "gcd"
     assert reopened.parameters.data["frequency_max"] == 200.0
     assert reopened.flow.steps()[0]["name"] == "Synthesis"
+    cts = json.loads(reopened.config["CTS"].read_text(encoding="utf-8"))
+    assert cts["buffer_type"] == reopened.pdk.buffers
+    assert "config_overrides" not in reopened.parameters.data
 
 
 def test_workspace_spec_applies_config_target_parameters(tmp_path, minimal_ics55_pdk_factory):
@@ -166,12 +169,18 @@ def test_workspace_spec_applies_config_target_parameters(tmp_path, minimal_ics55
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
     spec = deepcopy(payload["workspaceSpec"])
     spec["parameters"]["cts.skew_bound"] = "0.12"
+    spec["parameters"]["sta.max_parallel_corners"] = 3
 
     workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings)
     reopened = load_workspace(workspace.directory)
     cts = json.loads(reopened.config["CTS"].read_text(encoding="utf-8"))
 
     assert cts["skew_bound"] == "0.12"
+    assert reopened.parameters.data["config_overrides"] == {
+        "CTS": {"skew_bound": "0.12"},
+        "sta": {"max_parallel_corners": 3},
+    }
+    assert json.loads(reopened.config["sta"].read_text())["max_parallel_corners"] == 3
 
 
 def test_manual_pdk_workspace_reopens_through_main_persistence(tmp_path):
@@ -405,6 +414,7 @@ def test_workspace_spec_update_preserves_inapplicable_parameters_when_flow_chang
     assert configuration["workspaceSpec"]["parameters"]["cts.skew_bound"] == "0.12"
     cts = json.loads(updated.workspace.config["CTS"].read_text(encoding="utf-8"))
     assert cts["skew_bound"] == "0.12"
+    assert list(tmp_path.glob(".workspace.staging-*")) == []
 
 
 def test_workspace_spec_update_preserves_unknown_config_extensions(

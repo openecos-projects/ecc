@@ -55,8 +55,10 @@ class TestSchemaRegistry:
         )
         for schema in PARAM_REGISTRY:
             for field_name in required:
+                assert hasattr(schema, field_name)
                 val = getattr(schema, field_name, None)
-                assert val is not None, f"{schema.param} missing required field: {field_name}"
+                if field_name != "default":
+                    assert val is not None, f"{schema.param} missing required field: {field_name}"
             assert (
                 schema.maps_to or schema.config_target is not None or schema.pdk_target is not None
             )
@@ -283,8 +285,9 @@ class TestSourceAwareResolution:
     def test_int_accepted_for_float_schema(self):
         toml = {"place.target_density": 1}
         resolved, errors = resolve_parameters(toml_overrides=toml)
-        # 1 converts to 1.0 which is out of range for target_density
-        assert len(errors) > 0  # range validation catches it
+        assert errors == []
+        density = next(r for r in resolved if r.param == "place.target_density")
+        assert density.value == 1.0
 
     def test_int_in_range_accepted_for_float_schema(self):
         toml = {"floorplan.core_util": 1}

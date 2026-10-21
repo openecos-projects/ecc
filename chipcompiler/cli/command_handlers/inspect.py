@@ -103,15 +103,21 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
 
     for step in _safe_steps(flow_data):
         step_token = normalize_step_name(step.get("name", ""))
-        records.append(
-            {
-                "step": step_token,
-                "tool": step.get("tool", ""),
-                "status": normalize_state(step.get("state", "")),
-                "runtime": step.get("runtime", "") or None,
-                "log_cmd": disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id),
-            }
-        )
+        record = {
+            "step": step_token,
+            "tool": step.get("tool", ""),
+            "status": normalize_state(step.get("state", "")),
+            "runtime": step.get("runtime", "") or None,
+            "log_cmd": disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id),
+        }
+        if isinstance(step.get("checklist_status"), dict):
+            projection = step["checklist_status"]
+            record.update(
+                checklist_status=projection.get("status"),
+                checklist_blocked=bool(projection.get("blocked")),
+                checklist_failed_items=projection.get("failed_items", []),
+            )
+        records.append(record)
 
     return CommandResult.ok(records)
 

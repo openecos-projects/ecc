@@ -1,70 +1,23 @@
-"""project.json ↔ workspace-directory consistency checks and explicit repair.
+"""Project workspace registration checks and explicit repair.
 
-``ecc project doctor`` compares the manifest against workspace directory
-facts and reports three inconsistency classes:
+The CLI owns execution state in workspace files and no longer synchronizes
+cached range, status, or parameter fields in project.json. Doctor checks
+directory existence, workspace readability, and unregistered directories.
+Repair removes missing-directory entries and registers existing workspaces;
+unreadable workspace files must be restored without deleting their registration.
 
-- ``derived-field-mismatch``: an entry's derived fields (``start_step``,
-  ``end_step``, ``status``, ``parameter_patch``) disagree with the
-  workspace directory. The directory is the truth.
-- ``missing-directory``: an entry's ``workspace_path`` does not exist.
-- ``unregistered-directory``: a workspace directory exists directly under
-  the project root without a manifest entry.
-
-Checks are read-only. Repair (``--fix``) rebuilds derived fields from
-directory facts, removes dead entries (mirroring the delete-workspace
-reference cleanup), and registers unregistered directories through the
-existing inspection + registration path. Archived entries keep their
-lifecycle status — only their directory existence is checked. Running
-entries are skipped beyond directory existence: a live run keeps
-rewriting the directory, and the terminal run write-back re-converges
-the derived fields. Status comparison is tolerant
-(``_STATUS_CONSISTENT_WITH_DERIVED``) because the ledger cannot encode
-every run outcome (cancellation, a deliberate partial or single-step
-run, a fatal completion-commit failure rolling steps back to Ongoing).
-
-Like the other manifest modules, this one may sit on the CLI startup
-path: keep module-level imports cheap — no chipcompiler.data imports.
+Keep module-level imports cheap: this module sits on the CLI startup path.
 """
 
 import os
 from dataclasses import dataclass
 
 from chipcompiler.project.manifest import ManifestError, ProjectManifest
-from chipcompiler.project.manifest_refresh import apply_derived_fields
 from chipcompiler.project.manifest_write import _now_iso, update_manifest
 
-DERIVED_FIELD_MISMATCH = "derived-field-mismatch"
+INVALID_WORKSPACE = "invalid-workspace"
 MISSING_DIRECTORY = "missing-directory"
 UNREGISTERED_DIRECTORY = "unregistered-directory"
-
-# Manifest entry statuses consistent with each directory-derived status.
-# Anything outside the set is an outright contradiction worth flagging.
-_STATUS_CONSISTENT_WITH_DERIVED = {
-    "not_started": {"not_started"},
-    # Ongoing ledger: a live run, a crashed/killed run, or a fatal
-    # completion-commit failure that rolled steps back to Ongoing.
-    "running": {"running", "in_progress", "failed"},
-    # Partial ledger: a cancelled or deliberately partial/single-step
-    # run, or a live run caught in the gap between steps.
-    "in_progress": {"running", "in_progress", "success"},
-    "success": {"success"},
-    "failed": {"failed"},
-}
-
-
-def _status_consistent(entry_status: str, derived_status: str) -> bool:
-    allowed = _STATUS_CONSISTENT_WITH_DERIVED.get(derived_status, {derived_status})
-    return entry_status in allowed
-
-
-@dataclass(frozen=True)
-class DerivedFields:
-    """The manifest entry fields a workspace directory implies."""
-
-    start_step: str
-    end_step: str
-    status: str
-    parameter_patch: dict
 
 
 @dataclass(frozen=True)
@@ -73,15 +26,12 @@ class ConsistencyFinding:
     workspace_id: str
     workspace_path: str
     detail: str
-    # Directory-derived truth for repair; None when the directory exists
-    # but its workspace facts cannot be read at all.
-    derived: DerivedFields | None = None
 
 
 @dataclass(frozen=True)
 class FixAction:
     finding: ConsistencyFinding
-    action: str  # rebuilt | removed | registered | existing | unchanged | failed
+    action: str  # removed | registered | existing | unchanged | failed
     detail: str = ""
 
 
@@ -108,15 +58,21 @@ def repair_findings(
     for finding in findings:
         if finding.check == UNREGISTERED_DIRECTORY:
             actions.append(_register_directory(manifest, finding))
-        elif finding.check == MISSING_DIRECTORY or finding.derived is None:
+        elif finding.check == MISSING_DIRECTORY:
             actions.append(_remove_dead_entry(manifest, finding))
         else:
-            actions.append(_rebuild_derived_fields(manifest, finding))
+            actions.append(
+                FixAction(finding, "failed", "restore the workspace files before retrying")
+            )
     return actions
 
 
 def _check_entry(manifest: ProjectManifest, entry) -> ConsistencyFinding | None:
-    from chipcompiler.cli.project.workspace_registration import WorkspaceRegistrationError
+    from chipcompiler.cli.project.workspace_registration import (
+        WorkspaceRegistrationError,
+        inspect_existing_workspace,
+    )
+    from chipcompiler.project.runtime_processes import identity_is_live
 
     path = entry.workspace_path
     if not os.path.isdir(path):
@@ -127,66 +83,30 @@ def _check_entry(manifest: ProjectManifest, entry) -> ConsistencyFinding | None:
             "workspace directory does not exist",
         )
     if entry.status == "archived":
-        # Archival is a lifecycle decision, not a directory fact; only the
-        # directory's existence is checked for archived entries.
         return None
-    if entry.status == "running":
-        # A live run keeps rewriting the directory (geometry write-back,
-        # status transitions), so derived fields cannot converge yet; the
-        # terminal run write-back re-converges them.
-        return None
+    runtime_entry = (manifest.raw.get("runtime_processes") or {}).get(entry.workspace_id)
+    if isinstance(runtime_entry, dict):
+        try:
+            if identity_is_live(runtime_entry):
+                # Live processes can be replacing workspace files during inspection.
+                return None
+        except Exception:
+            # Invalid or stale registrations must be inspected like any other workspace.
+            pass
     try:
-        derived = _derive_fields(manifest, path)
+        inspect_existing_workspace(
+            path,
+            expected_design=manifest.design_name,
+            expected_pdk=str(manifest.base_design.get("pdk") or ""),
+        )
     except (WorkspaceRegistrationError, ManifestError) as exc:
         return ConsistencyFinding(
-            DERIVED_FIELD_MISMATCH,
+            INVALID_WORKSPACE,
             entry.workspace_id,
             path,
             f"workspace facts unreadable: {exc}",
         )
-    mismatched = [
-        field
-        for field, consistent in (
-            ("start_step", entry.start_step == derived.start_step),
-            ("end_step", entry.end_step == derived.end_step),
-            ("status", _status_consistent(entry.status, derived.status)),
-            ("parameter_patch", entry.parameter_patch == derived.parameter_patch),
-        )
-        if not consistent
-    ]
-    if not mismatched:
-        return None
-    return ConsistencyFinding(
-        DERIVED_FIELD_MISMATCH,
-        entry.workspace_id,
-        path,
-        f"derived fields disagree with directory facts: {', '.join(mismatched)}",
-        derived=derived,
-    )
-
-
-def _derive_fields(manifest: ProjectManifest, workspace_path: str) -> DerivedFields:
-    """Rebuild one entry's derived fields from the workspace directory.
-
-    Uses the same inspection and range-mapping helpers as workspace
-    registration, so a repaired entry equals what a fresh registration
-    would write. Expectations and the parameter baseline come from the
-    manifest itself, never from ecc.toml.
-    """
-    from chipcompiler.cli.project.workspace_registration import inspect_existing_workspace
-    from chipcompiler.project.manifest_write import manifest_range_for_steps
-
-    base_design = manifest.base_design
-    metadata = inspect_existing_workspace(
-        workspace_path,
-        expected_design=manifest.design_name,
-        expected_pdk=str(base_design.get("pdk") or ""),
-        base_parameters=base_design.get("parameters") or {},
-    )
-    start_step, end_step = manifest_range_for_steps(
-        metadata.flow_config["start_step"], metadata.flow_config["end_step"]
-    )
-    return DerivedFields(start_step, end_step, metadata.status, metadata.parameter_patch)
+    return None
 
 
 def _scan_unregistered(manifest: ProjectManifest) -> list[ConsistencyFinding]:
@@ -212,43 +132,6 @@ def _scan_unregistered(manifest: ProjectManifest) -> list[ConsistencyFinding]:
                 )
             )
     return findings
-
-
-def _rebuild_derived_fields(manifest: ProjectManifest, finding: ConsistencyFinding) -> FixAction:
-    derived = finding.derived
-    assert derived is not None
-    outcome = "rebuilt"
-    detail = ""
-
-    def mutate(document: dict) -> None:
-        nonlocal outcome, detail
-        entry = _find_entry(document, finding.workspace_id)
-        if entry is None:
-            outcome = "failed"
-            detail = "manifest entry vanished before repair"
-            return
-        # apply_derived_fields never touches lineage and freezes archived
-        # entries; only a real correction bumps updated_at, so a concurrent
-        # fix stays a no-op.
-        if apply_derived_fields(
-            entry,
-            {
-                "start_step": derived.start_step,
-                "end_step": derived.end_step,
-                "status": derived.status,
-                "parameter_patch": derived.parameter_patch,
-            },
-        ):
-            now = _now_iso()
-            entry["updated_at"] = now
-            document["updated_at"] = now
-        else:
-            outcome = "unchanged"
-
-    if not update_manifest(manifest.project_dir, mutate):
-        outcome = "failed"
-        detail = "manifest update failed"
-    return FixAction(finding, outcome, detail)
 
 
 def _remove_dead_entry(manifest: ProjectManifest, finding: ConsistencyFinding) -> FixAction:
@@ -299,10 +182,3 @@ def _register_directory(manifest: ProjectManifest, finding: ConsistencyFinding) 
     if outcome in ("registered", "existing"):
         return FixAction(finding, outcome)
     return FixAction(finding, "failed", f"registration outcome: {outcome}")
-
-
-def _find_entry(document: dict, workspace_id: str) -> dict | None:
-    for entry in document.get("workspaces", []):
-        if isinstance(entry, dict) and entry.get("workspace_id") == workspace_id:
-            return entry
-    return None

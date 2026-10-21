@@ -84,9 +84,20 @@ def klayout_version() -> str:
     return distribution_version("klayout")
 
 
+def kepler_formal_version() -> str:
+    from chipcompiler.tools.kepler_formal.utility import get_kepler_formal_runtime
+
+    command, env = get_kepler_formal_runtime()
+    if not command:
+        return NOT_INSTALLED
+    output = _query(command + ["--version"], env)
+    return output.splitlines()[0].strip() if output else UNKNOWN
+
+
 def tool_versions() -> dict[str, str]:
     return {
         "yosys": yosys_version(),
         "sizer": sizer_version(),
         "klayout": klayout_version(),
+        "kepler_formal": kepler_formal_version(),
     }

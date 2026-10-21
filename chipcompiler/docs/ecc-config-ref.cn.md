@@ -7,6 +7,12 @@
 
 ## 0. 配置体系总览
 
+STA 并行调度参数：`sta.max_parallel_corners` 为整数 1–4，默认 1，
+通过 `ecc param set sta.max_parallel_corners 3 --workspace baseline` 设置。
+参数经标准配置刷新写入 STA JSON 的 `max_parallel_corners`。ECC/Studio Linux
+runtime 将其作为最大并行 corner 数，内存余量不足时减少并行度；
+非 Linux 为串行。`ECOS_AGENT_STA_WORKERS` 不再覆盖此配置。
+
 ### 0.1 配置文件放在哪
 
 每次运行（run）的 workspace 下有一个共享 `config/` 目录，所有步骤的 JSON 配置都落在这里，**同名文件会被后运行的步骤原地重写**（每步只更新与自己相关的字段）：
@@ -14,10 +20,10 @@
 ```
 <workspace>/                 # 新项目/manifest 项目为 <project>/<id>；legacy 项目为 runs/<id>
 ├── home/
-│   ├── params.toml        # schema_version 1；参数中枢（见 §1）
+│   ├── params.toml        # schema_version 2；参数中枢（见 §1）
 │   ├── flow.json          # schema_version 1；步骤状态
 │   └── config-derived-manifest.json # 上次配置派生后的文件哈希
-├── config/                # ← 本文档的主角：9 个 JSON + Tcl 宏位置交接文件
+├── config/                # ← 本文档的主角：10 个 JSON + Tcl 宏位置交接文件
 │   ├── db_ecc.json        # 数据库构建（读入 LEF/DEF/网表/LIB/SDC，每个 ecc 步骤共用）
 │   ├── floorplan_ecc.json # 布局规划
 │   ├── cts_ecc.json       # 时钟树综合
@@ -26,14 +32,15 @@
 │   ├── filler_ecc.json    # 填充单元
 │   ├── rcx_ecc.json       # 寄生提取
 │   ├── sta_ecc.json       # 静态时序分析（多 corner）
+│   ├── sizer_ecc.json     # ECC Sizer hold pass 选项
 │   ├── dreamplace_ecc.json# DreamPlace 布局/合法化（placement 与 legalization 共用）
 │   └── macro_location.tcl # 宏摆放 Tcl 交接文件（见 §1.5；由 macroPlacement 或 macro.placements 参数写出）
 ├── Synthesis_yosys/
 │   └── data/global_var.tcl  # 综合步骤的"配置"（Tcl 变量，非 JSON）
-├── lec_yosys_lec/            # 综合级 LEC（Tcl 脚本驱动）
+├── lec_kepler_formal/         # 综合级 LEC（Tcl 脚本驱动）
 ├── timing_optimization_sizer/
 │   └── script/<design>.{env_file,cmd_file}  # 自动生成的 Sizer 配置
-└── postRouteLec_yosys_lec/  # 布线后 LEC 步骤（Tcl 脚本驱动）
+└── postRouteLec_kepler_formal/  # 布线后 LEC 步骤（Tcl 脚本驱动）
 ```
 
 > 历史变化：旧版本的 `flow_ecc.json`（配置路径聚合器）与 `fixfanout_ecc.json`（高扇出修复，独立步骤）已随 ecc-tools 更新移除。`cts.max_fanout` 现在同时写入自动生成 SDC 的 `set_max_fanout` 约束和 CTS 的 `max_fanout` 字段。
@@ -74,7 +81,7 @@ graph LR
 | placement | — | `dreamplace_ecc.json` | 与 legalization 共用一个文件 |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | 每步重写 `def_input`/`result_dir` 等 |
-| timing optimization | ✓ | `dreamplace_ecc.json` | Sizer 使用生成的脚本，随后做内部 DreamPlace 合法化；见 §6 |
+| timing optimization | ✓ | `sizer_ecc.json` + `dreamplace_ecc.json` | Sizer 使用 ECC 配置和生成的脚本，随后做内部 DreamPlace 合法化；见 §6 |
 | routing | ✓ | `route_ecc.json` | |
 | filler | ✓ | `filler_ecc.json` | |
 | rcx | ✓ | `rcx_ecc.json` | corner 由 PDK 决定（见 §12） |
@@ -97,10 +104,10 @@ graph LR
 | `floorplan.core_margin` | int×2（µm） | [2, 2] | floorplan `die_builder.margin.{left,right,top,bottom}_micron` | 核心到 die 边的留白 [水平, 垂直] |
 | `floorplan.aspect_ratio` | float [0.1, 10] | 1.0 | floorplan `die_builder.die_util.aspect_ratio` | 核心宽高比 |
 | `cts.max_fanout` | int [1, 200] | 32 | 自动生成 SDC 的 `set_max_fanout` + cts `max_fanout` | 设计与时钟树最大扇出约束 |
-| `place.target_density` | float [0.1, 0.95] | 0.2 | dreamplace `target_density` | 全局布局目标密度 |
+| `place.target_density` | float [0.1, 1.0] | 0.4 | dreamplace `target_density` | 全局布局目标密度 |
 | `place.target_overflow` | float [0.0, 1.0] | 0.1 | dreamplace `stop_overflow` | 全局布局溢出收敛目标 |
 | `place.global_right_padding` | int [0, 100] | 0 | 仅记录于 params.toml | 布局 site 右侧全局 padding（当前版本尚未接入工具配置字段） |
-| `place.cell_padding_x` | int [0, 10000]（dbu） | 300 | dreamplace `cell_padding_x` | 单元 X 方向 padding（绕线拥塞缓解） |
+| `place.cell_padding_x` | int [0, 10000]（dbu） | 200 | dreamplace `cell_padding_x` | 单元 X 方向 padding（绕线拥塞缓解） |
 | `place.routability_opt` | {0, 1} | 1 | dreamplace `routability_opt_flag` | 布局阶段开启绕线拥塞驱动优化 |
 | `route.bottom_layer` | MET1–MET5 | MET2 | route `RT.-bottom_routing_layer` + db `LayerSettings.routing_layer_1st` | 绕线最低层 |
 | `route.top_layer` | MET2–MET6 | MET5 | route `RT.-top_routing_layer` | 绕线最高层 |
@@ -113,7 +120,8 @@ graph LR
 ```bash
 ecc param list --step cts
 ecc param list --step floorplan
-ecc param list --all
+ecc param list --all              # 完整审核 schema（配置了 preset 的项目里 pdk.* 需要 --all --plain）
+ecc param list --all --plain      # 完整目录，含 pdk.* 路径参数
 ecc param set cts.skew_bound 0.05
 ecc param set floorplan.phy_placer.well_tap.distance_micron 30.0
 ecc param set cts.routing_layer '[4, 5]'
@@ -136,7 +144,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 1.3 参数中枢 params.toml
 
-`home/params.toml` 是带 schema 版本的文档。新文件在顶层写入 `schema_version = 1`；早于版本化机制的合法文件按 version 0 处理，workspace 迁移路径打开它时会补上 version 1 标记。如文件声明的版本高于当前 ECC 支持上限，则返回 `unsupported_schema_version`，不会静默解析。
+`home/params.toml` 是带 schema 版本的文档。新文件在顶层写入 `schema_version = 2`；早于版本化机制的合法文件按 version 0 处理，workspace 迁移路径打开它时会依次迁移到 version 2。如文件声明的版本高于当前 ECC 支持上限，则返回 `unsupported_schema_version`，不会静默解析。
 
 该文件保存规范化的 workspace 参数、`config_overrides` 以及 **flow 运行后回填的结果值**（如实际 die/core 尺寸、利用率）。`config_overrides` 是 CLI 从审核 schema 生成的嵌套 TOML 补丁；每次 workspace 刷新都会在 PDK 和语义参数映射之后重新应用。`home/parameters.json` 仅在迁移旧 workspace 时读取。
 
@@ -149,9 +157,9 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `[flow]` | `preset = "rtl2gds"`，或 `start` + `end` 成对出现（只接受持久化规范步骤名）；缺省时由 `home/flow.json` 的首末步骤推导 |
 | `[params]` | 规范扁平参数（snake_case）；嵌套值渲染为子表（如 `[params.die]`、`[params.floorplan.phy_placer.well_tap]`） |
 
-**身份参数的双份存储是刻意设计，不是冗余错误**：`design`、`top_module`、`clock`、`frequency_max`、`pdk`、`pdk_root`、`pdk_config` 七个身份键在 `[params]` 扁平键与 `[design]`/`[pdk]` 节区各存一份（如 `[design] top` ↔ `[params] top_module`、`[design] frequency_mhz` ↔ `[params] frequency_max`、`[pdk] root` ↔ `[params] pdk_root`）。两套词汇各司其职：`[design]`/`[pdk]`/`[flow]` 是与 `ecc.toml` 同词汇的人读视图，使 workspace 自描述；`[params]` 是程序消费的规范扁平存储（步骤参数、`config_overrides` 与回填结果都在其中）。
+**身份参数在运行时仍使用规范扁平键，但 v2 不再在文件中保存两份**：`design`、`top_module`、`clock`、`frequency_max`、`pdk`、`pdk_root`、`pdk_config` 以 `[design]`/`[pdk]` 的人读词汇持久化；加载时重建为程序消费的 `[params]` 扁平键。旧版 v1 文件仍接受读取，并在可写 workspace 打开时迁移去重。这样 `[design]`/`[pdk]`/`[flow]` 保持与 `ecc.toml` 同词汇，步骤参数、`config_overrides` 与回填结果仍由运行时扁平参数中枢提供。
 
-保存时两份由同一份扁平参数渲染，正常情况下永远一致。若文件被手工改到两处不一致，加载规则为：**`[design]`/`[pdk]` 的非空值覆盖 `[params]` 副本；节区键为空或缺失时回落到 `[params]` 副本**。写入采用临时文件 + 原子 rename，不穿透 symlink。
+保存时身份字段只渲染到 `[design]`/`[pdk]`，加载仍兼容 v1 的 `[params]` 镜像。若旧文件被手工改到两处不一致，加载规则为：**`[design]`/`[pdk]` 的非空值覆盖 `[params]` 副本；节区键为空或缺失时回落到 `[params]` 副本**。写入采用临时文件 + 原子 rename，不穿透 symlink。
 
 通过 `ecc param set KEY VALUE --workspace NAME` 写入的已创建 workspace 覆盖也保存在 `[params]`：实际参数值与 `config_overrides` 共同决定刷新后的步骤配置，`workspace_param_overrides` 列表记录 `key`、首次修改前的 `baseline` 和当前 `value`，供 `ecc param diff --workspace NAME` 使用。`ecc param unset KEY --workspace NAME` 会恢复该 `baseline` 并清除这条本地覆盖记录；其所属步骤及后续步骤会失效，直到再次运行。PDK 资源路径和引用不能在此处局部修改，应更新 `ecc.toml` 后执行 `ecc workspace refresh NAME`。
 
@@ -161,10 +169,11 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 | 命令 | 作用 |
 |---|---|
-| `ecc param list [--step STEP] [--all]` | 列出参数。缺省只显示 §1.1 的旧语义参数和已显式覆盖的直配参数；`--step STEP` 按 group/applies 过滤出该步骤的完整已审核 schema；`--all` 显示全部审核 schema |
+| `ecc param list [--step STEP] [--all]` | 列出参数。缺省只显示 §1.1 的旧语义参数和已显式覆盖的直配参数；`--step STEP` 按 group/applies 过滤出该步骤的完整已审核 schema；`--all` 显示全部审核 schema（配置了 flow preset 时，`pdk.*` 参数仅出现在 `--all --plain`） |
 | `ecc param show KEY` | 单参数详情：当前值 / 默认值 / 来源 / 类型 / 取值范围 / 写入目标（`maps_to`、`config_target`、`pdk_target`）及描述 |
 | `ecc param set KEY VALUE` | 校验后写入参数覆盖（两种作用域见下表）；取值非法（超范围、不在 choices、类型不符）直接报 `invalid_value`，不落盘 |
 | `ecc param unset KEY` | 移除该参数的覆盖，恢复默认值（workspace 作用域恢复到首次修改前的 `baseline`） |
+| `ecc param apply [--set KEY=VALUE...] [--unset KEY...]` | 原子批量应用多个 set/unset 修改（默认项目作用域；`--workspace NAME` 指定单个 workspace，workspace 作用域下 `--step STEP` 把批次限制为该步骤可配置的参数）。批内任一校验失败则什么都不写 |
 | `ecc param diff` | 只列出与默认值不同的参数（workspace 作用域：局部覆盖及其 `baseline`） |
 
 所有子命令共享的通用选项：
@@ -174,6 +183,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `--project DIR` | 指定项目目录（缺省为当前目录） |
 | `--workspace NAME` | 切换到 workspace 作用域：操作 project.json 清单中声明的指定 workspace，而不是项目 `ecc.toml` |
 | `--plain` | 机器可读的 `key=value` 输出（便于脚本解析）；缺省为人类可读文本 |
+| `--json` | 记录数组输出——仅 `list`、`show`、`diff` 支持 |
 
 两种作用域的行为差异：
 
@@ -219,10 +229,10 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | 字段 | 示例值（harden 步运行时） | 来源 | 含义 |
 |---|---|---|---|
 | `INPUT.tech_lef_path` | `…/prtech/techLEF/N551P6M_ecos.lef` | PDK | 工艺 LEF（层定义/规则） |
-| `INPUT.lef_paths` | `[H7CR_lef, H7CL_lef]` | PDK | 标准单元 LEF（抽象） |
+| `INPUT.lef_paths` | `[H7CR_lef, H7CL_lef, H7CH_lef, IO_lef]` | PDK | 标准单元和 IO LEF（抽象） |
 | `INPUT.def_path` | `sta_ecc/output/gcd_sta.def.gz` | 每步重写 | 输入 DEF（上一步版图） |
 | `INPUT.verilog_path` | `sta_ecc/output/gcd_sta.v.gz` | 每步重写 | 输入门级网表 |
-| `INPUT.lib_path` | `[H7CR_ss_rcworst, H7CL_ss_rcworst]` | PDK | 时序库（综合/等效库） |
+| `INPUT.lib_path` | H7CR/H7CL/H7CH SS 库 + IO SS 库 | PDK | 公共时序库；Yosys 综合阶段排除 H7CH |
 | `INPUT.sdc_path` | `origin/gcd.sdc` | workspace | 时序约束（自动生成或用户提供） |
 | `INPUT.spef` | `""` | PDK/workspace | 预置寄生文件（RCX 前一般为空） |
 | `OUTPUT.output_dir_path` | `Harden_ecc/output` | 每步重写 | 本步骤产物输出目录 |
@@ -248,8 +258,17 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `tie_high_cell/port` | `TIEHIH7R` / `Z` | PDK | 高电平约束单元及输出端口 |
 | `abc_driver_cell` | `BUFX0P5H7L` | PDK | ABC 映射假设的驱动单元 |
 | `abc_load` | `0.015` | PDK | ABC 映射负载电容（pF） |
-| `lib_stdcell_list` / `lib_list` | H7CR/H7CL liberty | PDK | 标准单元时序库 |
+| `lib_stdcell_list` | H7CR/H7CL + IO SS 库 | PDK（排除 H7CH） | 传给 ABC、DFF 和 clockgate 的库列表，沿用原逻辑，不额外排除 IO |
+| `lib_list` | H7CR/H7CL + IO `ss_1p08_2p97_125c` | PDK / workspace DB | 通过 `read_liberty -lib` 读取的模型库；IO 用于识别已有实例，H7CH 仍不加载 |
 | `tmp_dir` | `Synthesis_yosys/data/tmp` | 步骤调度 | 中间文件目录 |
+
+ICS55 的公共 PDK 库列表默认增加
+`ICSIOA_N55_3P3_ss_1p08_2p97_125c.lib`（PDK 中存在该文件时加载）。CTS、setup Sizer
+及综合后 STA 也从该列表取得 IO 库；最终 STA 和 hold Sizer 仍使用 §13 的 corner
+配置。公共 LEF 列表同时加载配套的 `ICSIOA_N55_3P3_1P6M1TM_ecos.lef`，不会自动插入
+IO cell。Sizer 要求 Liberty 单元有对应的 LEF master，即使设计没有实例化 IO cell
+也需要该 LEF。已有 workspace 的 DB 库列表或显式 `pdk.libs` / `pdk.lefs` 覆盖配置
+不会自动补齐，需要单独更新。
 
 另有环境变量 `YOSYS_SYNTH_STRATEGY`（如 `DELAY 4` / `AREA N` / `BALANCE N`）控制综合策略方向，默认 `DELAY 4`（提频优先）。
 
@@ -344,11 +363,88 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 全局布局核心（★ 主要调优区）
 
+`place.timing_grad_balance_target_ratio` 默认 0.2，在 direct-loss placement
+首次启用 timing 梯度时，根据 timing 与 wirelength 梯度的 L1 范数初始化
+外层 timing 权重，之后沿用该权重。设为 0.0 可关闭平衡，保留外层权重 1.0。
+它是初始梯度比例目标，不是直接将 WNS/TNS 系数乘以 0.2。
+独立 `size_only` sizing 不初始化坐标梯度平衡；显式配置仍优先于默认值。
+
+GP 内 sizing 窗口的系数策略使用一个参数 `place.timing_opt_coefficients`。
+默认固定为 WNS/TNS/cap/slew = 500/5/1/1，窗口外层 α=1。
+以下 `ecc.toml` 配置与默认值一致：
+
+```toml
+[params.place.timing_opt_coefficients]
+mode = "fixed"
+wns = 500.0
+tns = 5.0
+slew = 1.0
+cap = 1.0
+```
+
+固定模式必须提供四个非负有限数值，窗口内外层 timing 权重固定为 1.0，
+四个值直接作为实际权重；继承模式沿用 placement 的实时系数和外层 α。
+该策略只在 GP 内 S 轮期间覆盖系数及外层权重，正常或异常退出均恢复；独立 `diff_sizing`
+继续使用自己的配置。窗口报告的 `sizing.coefficients` 保存实际使用值。
+切回继承模式时只需将 `mode` 改为 `"inherit"`；可保留固定预设的四项数值，
+继承模式始终使用 placement 实时值。
+
+独立 S50 使用单独的 `place.diff_sizing_coefficients`，默认 WNS/TNS/cap/slew
+也是 500/5/1/1。该参数只在 `diff_sizing` 步骤生效，外层 timing 权重固定为 1，
+不继承 placement 的实时系数或外层 α，也不影响 GP 内 S10 窗口。
+只覆盖部分字段时，其余字段保留原有配置（未配置则使用默认值）；数值必须非负且有限。
+例如单独调整 S50 为 1000/10/1/1：
+
+```toml
+[params.place.diff_sizing_coefficients]
+wns = 1000.0
+tns = 10.0
+cap = 1.0
+slew = 1.0
+```
+
+新建 workspace 也可使用
+`ecc run --set 'place.diff_sizing_coefficients={"tns":10.0}'` 单独覆盖 TNS。
+已有 workspace 使用
+`ecc param set place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`。
+S50 继续使用 RRR=3、padding=0、固定 512×512 bins 和最终 legalization。
+
+独立 S50 的连续 sizing step 数由 `place.diff_sizing_continuous_steps` 控制，默认值为 0。
+它表示投影到合法 cell 之前执行的 continuous real-size step 数；设为 0 会直接使用
+输入 master 的 logits 进入 `discrete_gradient_topk`，设为 3 则执行 3 个连续 sizing
+step 后再投影到合法 cell 并切换到离散 sizing。
+
+`place.timing_coeff_growth_factor` 控制每次 GP density-weight 更新时，WNS/TNS
+系数共同乘上的倍率，默认 `1.0`，不增长；设为 `1.01` 逐次增长，设为 `0.99` 则逐次衰减。
+倍率必须为正的有限数值，slew/cap 和 norm 外层权重沿用各自设置。
+窗口的继承模式读取增长后的实时系数，固定模式使用指定值；独立
+`diff_sizing` S50 的 `size_only` 模式跳过这项增长。新建 workspace 可通过
+`ecc run --set place.timing_coeff_growth_factor=1.0` 或 `ecc.toml` 的
+`[params.place] timing_coeff_growth_factor = 1.0` 配置；已有 workspace 使用
+`ecc param set place.timing_coeff_growth_factor 1.0 --workspace NAME`。
+
+`place.timing_aggregation_mode` 控制 AAT/RAT 传播的聚合方式：默认 `smooth`
+使用 LSE，`hard` 使用 max/min。`place.timing_aggregation_tau_ps` 是正的
+平滑温度，默认 2.0 ps；越小越接近硬 max/min，越大梯度分配越平滑。
+这两个参数不改变最终 endpoint WNS 的硬 min 和 TNS 的负 slack 求和。
+例如，在 `ecc.toml` 中设置：
+
+```toml
+[params.place]
+timing_aggregation_mode = "smooth"
+timing_aggregation_tau_ps = 2.0
+```
+
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `target_density` | 0.2 `*place.target_density`（模板 0.8） | 目标布局密度（越低越松、越利绕线） |
+| `target_density` | 0.4 `*place.target_density`（模板 0.4） | 目标布局密度（越低越松、越利绕线） |
 | `stop_overflow` | 0.1 `*place.target_overflow` | 溢出收敛阈值，达标即停 |
+| `overflow_reference_mode` | `initial` | overflow 面积归一化模式：`initial` 固定 GP 起始面积；`ordinary` 保留原 PR 的面积发布行为，有联合面积时使用 native + virtual，否则沿用 PlaceDB 面积。均不含 filler；归一化值也用于 gamma 和基于 overflow 的调度 |
 | `density_weight` | 0.00085 | 密度项初始权重（自动调整的起点） |
+| `timing_coeff_growth_factor` | 1.0 `*place.timing_coeff_growth_factor` | GP density-weight 更新时 WNS/TNS 系数的共同倍率；1.0 停止增长，`size_only` 不应用 |
+| `timing_grad_balance_target_ratio` | 0.2 `*place.timing_grad_balance_target_ratio` | direct-loss placement 初始 timing / wirelength 梯度 L1 范数比例目标；0.0 关闭 |
+| `timing_aggregation_mode` | `smooth` `*place.timing_aggregation_mode` | AAT/RAT 传播聚合方式：`hard` 或 `smooth`（LSE） |
+| `timing_aggregation_tau_ps` | 2.0 `*place.timing_aggregation_tau_ps` | `smooth` 模式的正平滑温度，单位 ps |
 | `num_bins_x/y` | 32/32 | 密度网格划分数 |
 | `global_place_stages[]` | 见下 | 多阶段全局布局表（可多段） |
 | `global_place_stages[].iteration` | 3000 | 本阶段迭代上限，收敛时可提前停止 |
@@ -394,7 +490,7 @@ GPUGR 默认继承 workspace 的 `bottom_layer`/`top_layer`。
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `cell_padding_x` | 300 dbu `*place.cell_padding_x` | 单元 X 向 padding（数据库单位） |
+| `cell_padding_x` | 200 dbu `*place.cell_padding_x` | 单元 X 向 padding（数据库单位） |
 | `bndry_padding_x/y` | 0 | 边界 padding |
 
 ### 宏单元
@@ -427,23 +523,38 @@ GPUGR 默认继承 workspace 的 `bottom_layer`/`top_layer`。
 | `ignore_net_weight` / `ignore_net_degree` | 1 / 100 | 忽略网表权重 / 最大处理网度 |
 | `sort_nets_by_degree` | 0 | 按网度排序 |
 | `detailed_place_engine` / `detailed_place_command` | `""` | 外部详细布局引擎及命令 |
-| `pin_density` | 0.6 | 引脚密度阈值 |
+| `pin_density` | -1 | 默认关闭引脚密度 inflation；设置为 (0, 1) 内的值可启用 |
 | `use_bb` | 0 | 使用包围盒线长 |
 
 ## 6. timing optimization（Sizer）
 
-Timing optimization 是多阶段子流程：先用 `workspace.pdk.libs`（通常为 MAX/`ss_rcworst`）运行 setup Sizer；若 `sta_ecc.json` 声明了 `MIN` corner，再用该 corner 的 FF Liberty 执行一次 `-hold_only` 修复；然后用 DreamPlace 对最终暂存 DEF/网表做合法化，最后发布 ECC 产物。`ecc config timing optimization` 会列出 `db_ecc.json` 与 `dreamplace_ecc.json`，因为内部合法化使用常规 workspace 配置映射；**Sizer 本身由生成的脚本文件驱动，不直接使用这两个 JSON**。
+Timing optimization 是多阶段子流程：先用 `workspace.pdk.libs`（通常为 MAX/`ss_rcworst`）运行 setup Sizer；若 `sta_ecc.json` 声明了 `MIN` corner，再用该 corner 的 FF Liberty 执行一次 `-hold_only` 修复；然后用 DreamPlace 对最终暂存 DEF/网表做合法化，最后发布 ECC 产物。`ecc config timing_optimization` 会列出 `db_ecc.json`、`sizer_ecc.json` 和 `dreamplace_ecc.json`。ECC 自己的 Sizer 配置提供 hold pass 控制项，完整命令行仍由生成的脚本承载。
+
+最后的内部 DreamPlace 合法化使用 `legalize_flag=1`、`detailed_place_flag=0`，以保护已修复的 hold 时序。
+
+`config/sizer_ecc.json` 由 ECC 管理，与 ecc-sizer 仓库的命令行默认值分开。hold 阶段配置统一放在 `hold_stage` 对象中，便于后续扩展其他 hold-stage 控制项：
+
+| 字段 | 默认值 | 含义 |
+|---|---:|---|
+| `hold_stage.hold_margin` | `0.04` ns | FF/MIN hold-only pass 传给 ecc-sizer 的 `-hold_margin` 附加 hold slack margin。只影响该 pass，不是最终多 corner signoff margin。 |
+| `hold_stage.rc_mode` | `global_routing` | Hold 寄生模型：`global_routing` 生成完整的分层/via `setRCFile`；`placement` 是显式的 scalar-RC 对照模式。 |
+| `hold_stage.global_routing_rc.corner` | `MIN_m40/Cbest` | 分层 RC 映射的来源 corner 标签。 |
+| `hold_stage.global_routing_rc.layers` | CX55 MET1–MET5 映射 | 各布线层的单位线电阻（ohm/um）和电容（pF/um）。默认电容为 CX55 Cbest 原表值的 0.5 倍。StarRC 表中的 M6/M7 不在 ECC 使用的 CX55 LEF 中，因此不写入默认 RC 文件。 |
+| `hold_stage.global_routing_rc.vias` | CX55 CT/VIA1–VIA4 映射 | 当前 MET1–MET5 叠层的各 via/cut 电阻（ohm）。CT_NP/CT_PP 使用保守的 30 ohm。 |
+| `hold_stage.placement_wire_rc` | CX55 `MIN_m40/Cbest` scalar 值 | 显式 placement-RC 对照模式，电阻单位为 ohm/um，电容单位为 pF/um。默认电容同样为 Cbest 原表值的 0.5 倍。 |
 
 | 生成文件或选项 | 来源 | 含义 |
 |---|---|---|
 | `timing_optimization_sizer/script/<design>.env_file` | 存在时取 Sizer 的 `submit/env_base_file`，否则为 `-num_vt 1`；再追加 PDK | Sizer 环境：追加工艺/单元 LEF（`-lef`）、liberty（`-lib`）及 `<sizer-root>/src/sizer_os.tcl`（`-tclFile`） |
 | `timing_optimization_sizer/script/<design>.cmd_file` | workspace 步骤 + PDK | Sizer 命令：`-useOpenSTA`、顶层模块、输入 `-def`/`-v`、`-sdc`、可选 `-spef` 及暂存输出路径 |
-| `timing_optimization_sizer/script/hold.env_file` / `hold.cmd_file` | `sta_ecc.json` 中的 `MIN` Liberty | 可选 FF/MIN `-hold_only` pass；hold pass 不复用 setup 的 `-spef`，使用 Sizer 的 placement parasitics |
+| `timing_optimization_sizer/script/hold.env_file` / `hold.cmd_file` | `sta_ecc.json` 中的 `MIN` Liberty | 可选 FF/MIN `-hold_only` pass；默认 hold 模式使用 propagated clock 和 GR RC |
+| `timing_optimization_sizer/script/hold.rc_file` | `hold_stage.global_routing_rc` | 生成 `set_layer_rc`/`set_layer_rc -via` 文件，并通过 `-setRCFile` 在 GR RC 初始化前加载 |
+| `config/sizer_ecc.json` | ECC 模板，也可由 `timing_opt.*` 覆盖 | ECC 管理的 Sizer 控制项，统一放在 `hold_stage` 下；所选 RC 模式及其来源会写入 hold 脚本 |
 | `data/to/sizer_setup.def.gz` / `sizer_setup.v.gz` | setup Sizer 输出 | hold pass 的输入快照；只有在 hold pass 成功写出产物后才继续合法化 |
 | `-min_route_layer` / `-max_route_layer` | 设置后取 `route.bottom_layer` / `route.top_layer` | 直接传给 Sizer 的布线层限制 |
 | `data/to/sizer.def.gz` / `sizer.v.gz` | Sizer 输出 | 被内部 DreamPlace 合法化消费的暂存产物；合法化成功后保存为 Timing optimization 步骤输出 |
 
-FF hold pass 只使用 `sta_ecc.json` 的 `MIN` Liberty 组，用于在 setup sizing 后提前修复 hold；它不是最终 STA 的多 corner signoff，也不等价于 `MIN/RCbest` SPEF 评估。最终签核仍由 STA 按完整 `sta_ecc.json` 的 corner/SPEF 组合执行。
+FF hold pass 只使用 `sta_ecc.json` 的 `MIN` Liberty 组，用于在 setup sizing 后提前修复 hold。默认 `global_routing` 模式通过 `-setRCFile` 加载完整的分层/via RC 映射，再在配置的布线层范围内执行 GR；`placement` 保留为显式 scalar-RC 对照模式。它不是最终 STA 的多 corner signoff，也不等价于 `MIN/RCbest` SPEF 评估。最终签核仍由 STA 按完整 `sta_ecc.json` 的 corner/SPEF 组合执行。
 
 运行时根目录必须含 `src/sizer_os.tcl`；ECC 从 `CHIPCOMPILER_ECC_SIZER_ROOT`，或从 `PATH` 上的 `Sizer` 二进制逐级向上查找。`ecc doctor` 同时要求此 runtime root 与 Sizer 可执行文件。完整 `rtl2gds` 链需要 Sizer；对新建或 `--overwrite` 的 `rtl2gds` 目标，`ecc run` 环境预检也会检查它，缺失时会在创建 workspace 前以 `env_not_ready` 失败。已有 workspace 或 `--workspace` 重跑不执行该预检，仍可能在 Timing optimization 执行时失败。
 
@@ -521,11 +632,18 @@ FF hold pass 只使用 `sta_ecc.json` 的 `MIN` Liberty 组，用于在 setup si
 | 字段 | 示例（gcd@ics55） | 含义 |
 |---|---|---|
 | `liberty[].corner` | `MAX` / `WCL` / `TYP` / `MIN` / `ML` | 时序 corner 类型（慢/最差低温/典型/快/快高温库组） |
-| `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | 对应结温（℃），与 SPEF 温度点对齐 |
-| `liberty[].path` | H7CR+H7CL liberty ×2 | 该 corner 的 liberty 文件（PDK 相对路径自动展开） |
+| `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | 标准单元库组温度（℃），用于选择对应温度的 SPEF，不覆盖 IO 库的表征温度 |
+| `liberty[].path` | H7CR + H7CL + H7CH + IO | 该 corner 的 liberty 文件（PDK 相对路径自动展开） |
 | `signoff[0]` | MAX:[Cworst,RCworst]；WCL:[Cworst,RCworst]；TYP:[TYPICAL]；MIN/ML:[Cworst,RCworst,Cbest,RCbest] | 签核要跑的「liberty corner × RC corner」组合，共 13 个分析 corner |
 
 ics55 的 corner 命名：`Cworst/Cbest`=电容最差/最好，`RCworst/RCbest`=RC 均最差/最好，`TYPICAL`=典型。
+
+默认 IO 库仅使用三种表征：MAX/WCL 使用 `ss_1p08_2p97_125c`，TYP 使用
+`tt_1p2_3p3_25c`，MIN/ML 均使用 `ff_1p32_3p63v_0c`。这些库位于 PDK 的
+`IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/`。此限制只针对 IO；标准单元库、
+SPEF 温度及上述 13 个分析 corner 不变。例如 MIN 的标准单元仍用 -40°C 库，
+IO 则用 0°C 库。项目或 workspace 显式设置的 `sta.liberty` 会替换整份默认列表，
+不会自动迁移；已有覆盖配置需要自行同步 IO 库路径。
 
 每个 corner 的报告由 ecc-tools 按路径类型拆分输出（`sta_ecc/report/<lib_corner>_<温度>/<RCcorner>/`）：
 
@@ -555,7 +673,8 @@ ics55 的 corner 命名：`Cworst/Cbest`=电容最差/最好，`RCworst/RCbest`=
 `db_ecc.json` 的 DEF、网表、输出目录等路径由步骤调度生成，不能通过 CLI 设置。下列 PDK/设计资源路径会写入相应的 db 字段：
 
 ```bash
-ecc param list --step pdk
+ecc param list --all --plain   # pdk 是配置 owner 而非 flow 步骤：--step pdk 列不出内容
+ecc param show pdk.tech
 ecc param set pdk.tech VALUE   # pdk.lefs、pdk.libs、pdk.mapping_file、pdk.sdc、pdk.spef 用法相同
 ```
 
@@ -593,7 +712,15 @@ ecc param set place.num_threads VALUE
 
 ### 15.5 timing optimization
 
-Sizer 没有专属 `ecc param` schema。其内部 DreamPlace 合法化使用 §15.4 的 `place.*` 参数，布线层限制使用 §15.6 的 `route.bottom_layer` / `route.top_layer`；Sizer 的输入、输出和脚本由流程生成，不能单独配置。
+Sizer 的 FF/MIN hold-only pass 使用 ECC 自己维护的配置。其内部 DreamPlace 合法化使用 §15.4 的 `place.*` 参数，布线层限制使用 §15.6 的 `route.bottom_layer` / `route.top_layer`；Sizer 的输入、输出和生成脚本仍由流程管理。
+
+```bash
+ecc param list --step timing_optimization
+ecc param set timing_opt.hold_margin VALUE
+ecc param set timing_opt.hold_rc_mode global_routing
+```
+
+`timing_opt.hold_margin` 映射到 `sizer_ecc.json` 的 `hold_stage.hold_margin`，单位是 ns，默认值为 `0.04`，并会以 `-hold_margin VALUE` 写入生成的 `hold.cmd_file`。`timing_opt.hold_rc_mode` 选择 `hold_stage` RC 模式；`global_routing` 还会生成 `hold.rc_file` 并写入 `-setRCFile`。
 
 ### 15.6 cts 与 routing
 
@@ -641,7 +768,9 @@ ecc param set rcx.thread_num VALUE
 
 ### 15.10 sta
 
-`liberty` 由 PDK 刷新生成，不能通过 STA 参数局部覆盖。STA JSON 的签核 corner 和运行时最大路径数可配置：
+`liberty` 默认取 PDK 提供的 corner 列表，一般无需改动；确需修改时可通过
+`ecc param set sta.liberty` 传 JSON 字面量（corner/temperature/path 条目）。
+STA JSON 的签核 corner 和运行时最大路径数可配置：
 
 ```bash
 ecc param list --step sta
@@ -656,10 +785,11 @@ harden 没有专属 `ecc param` schema；它只复用流程生成的 `db_ecc.jso
 ## 16. 配置查看与修改速查
 
 ```bash
-ecc config floorplan          # 看 floorplan 实际用的配置文件列表
+ecc config pre_floorplan     # 看 floorplan 各阶段实际用的配置文件列表
 ecc config --plain            # 项目级配置（ecc.toml 解析后）
 ecc param list --step cts                 # 查看 CTS 全部可调字段
-ecc param list --all                      # 查看完整审核 schema
+ecc param list --all                      # 查看完整审核 schema（--all --plain 同时列出 pdk.*）
+ecc param apply --set k=v --unset k2      # 原子批量应用参数修改
 ecc param show KEY / diff                 # 单参数 / 与默认差异
 ecc param set place.target_density 0.55  # 改参数（写入 ecc.toml，下次新建 workspace 时生效）
 ecc param set cts.skew_bound 0.05         # 直配 CTS JSON 字段
@@ -674,3 +804,11 @@ ecc run --set place.target_density=0.55  # 一次性覆盖：仅新建（含 --o
 ---
 
 *参数默认值已按 v0.1.0-alpha.12 源码模板重新核对，并对照了 ics55 PDK 下 gcd 设计的真实运行；`*` 标记表示该字段由用户参数驱动。*
+
+## 17. 自动化配置边界
+
+本节面向自动化代理（agent）和批量脚本，约束配置参数时的操作边界。
+
+调参之前，先用 `ecc param list --all`、`ecc param show` 或当前版本的 `--help` 确认哪些字段是公开的，再按字段所属的 scope 用 `ecc param set` / `ecc param unset` 修改。一般不要直接编辑 `home/params.toml`、生成的 JSON/Tcl 或内部模板。唯一的例外是 QoR 参考中列出的 `qor_profile` 和 `qor_power_budget_w`：它们是 workspace 参数，不在 CLI schema 里，但仍要遵守 QoR 文档中的语义和复验要求。`run --set` 只对新 workspace 生效，并且要记录到候选实验的来源信息（provenance）里；在已有 workspace 上改参数时，先确认哪些步骤会失效、需要重跑哪些范围。
+
+文档里提到、但当前公开 schema 中没有的字段，不等于可以直接使用的接口。尤其不要绕过 CLI 去写内部的 `flow.skip_steps`、QoR profile/预算或未经审核的 DreamPlace 字段。如果遇到能力缺口（capability gap），如实记录版本、命令输出和影响即可，不要假装配置成功。修改 frequency、corner、约束或验证覆盖都会改变实验的语义：这类实验要建独立候选，不能和原始结果直接对比。

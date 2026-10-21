@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.data.parameter import Parameters
+from chipcompiler.data.workspace import Flow
 
 
 class _Flow:
@@ -68,6 +69,66 @@ def _write_manifest(project_dir: str) -> None:
             }
         )
     )
+
+
+def test_workspace_sta_parallel_limit_replays_into_config(create_cli_project, monkeypatch):
+    from chipcompiler.data.workspace.config_overrides import apply_config_overrides
+
+    project_dir = create_cli_project()
+    workspace_dir = Path(project_dir) / "baseline"
+    _write_manifest(project_dir)
+    workspace = _workspace(workspace_dir)
+    workspace.flow.data["steps"].append(
+        {"name": "sta", "state": "Success", "runtime": "", "peak memory (mb)": 0}
+    )
+    config_path = workspace_dir / "sta.json"
+    config_path.write_text('{"max_parallel_corners": 1, "signoff": []}')
+    workspace.config["sta"] = config_path
+    monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _: workspace)
+    monkeypatch.setattr(
+        "chipcompiler.data.refresh_workspace_config",
+        lambda current: apply_config_overrides(current.config, current.parameters.data),
+    )
+    monkeypatch.setattr("chipcompiler.engine.EngineFlow", _Flow)
+    assert (
+        cli_main.run(
+            [
+                "param",
+                "set",
+                "sta.max_parallel_corners",
+                "3",
+                "--workspace",
+                "baseline",
+                "--project",
+                project_dir,
+                "--plain",
+            ]
+        )
+        == 0
+    )
+    assert json.loads(config_path.read_text()) == {"max_parallel_corners": 3, "signoff": []}
+    assert workspace.flow.data["steps"][-1]["state"] == "Unstart"
+    assert workspace.parameters.data["config_overrides"] == {"sta": {"max_parallel_corners": 3}}
+    before = workspace.parameters.path.read_bytes()
+    for value in ("0", "5", "2.5", "true"):
+        assert (
+            cli_main.run(
+                [
+                    "param",
+                    "set",
+                    "sta.max_parallel_corners",
+                    value,
+                    "--workspace",
+                    "baseline",
+                    "--project",
+                    project_dir,
+                    "--plain",
+                ]
+            )
+            == 1
+        )
+        assert workspace.parameters.path.read_bytes() == before
+        assert json.loads(config_path.read_text())["max_parallel_corners"] == 3
 
 
 def test_workspace_param_set_persists_and_invalidates_suffix(
@@ -193,7 +254,7 @@ def test_workspace_param_list_honors_step_filter(
             "--workspace",
             "baseline",
             "--step",
-            "cts",
+            "place",
             "--project",
             project_dir,
             "--plain",
@@ -201,9 +262,40 @@ def test_workspace_param_list_honors_step_filter(
     )
 
     assert rc == 0
-    assert plain_records(capsys.readouterr().out) == [
-        {"param": "list", "status": "clean", "workspace": "baseline"}
-    ]
+    record = plain_records(capsys.readouterr().out)[0]
+    assert record["id"] == "place.target_density"
+    assert record["value_literal"] == "0.2"
+
+
+def test_workspace_param_list_rejects_unknown_step(
+    capsys, create_cli_project, monkeypatch, plain_records
+):
+    project_dir = create_cli_project()
+    workspace_dir = Path(project_dir) / "baseline"
+    _write_manifest(project_dir)
+    workspace = _workspace(workspace_dir)
+    monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _path: workspace)
+
+    rc = cli_main.run(
+        [
+            "param",
+            "list",
+            "--workspace",
+            "baseline",
+            "--step",
+            "cts",
+            "--project",
+            project_dir,
+            "--plain",
+        ]
+    )
+
+    assert rc == 1
+    assert plain_records(capsys.readouterr().err)[0] == {
+        "kind": "error",
+        "error": "unknown_step",
+        "step": "cts",
+    }
 
 
 def test_workspace_param_list_matches_first_step_configuration(
@@ -231,7 +323,50 @@ def test_workspace_param_list_matches_first_step_configuration(
     )
 
     assert rc == 0
-    assert [record["param"] for record in plain_records(capsys.readouterr().out)] == [
+    records = plain_records(capsys.readouterr().out)
+    assert [record["id"] for record in records] == [
         "design.frequency_mhz",
         "flow.run_analysis",
     ]
+    assert records[0]["record"] == "parameter"
+    assert records[0]["step_id"] == "Synthesis"
+    assert records[0]["type"] == "float"
+    assert records[0]["applies_to"] == "synthesis"
+    assert records[0]["value_literal"] == "100.0"
+
+
+def test_workspace_param_list_hydrates_persisted_flow_ledger(
+    capsys, create_cli_project, monkeypatch, plain_records
+):
+    project_dir = create_cli_project()
+    workspace_dir = Path(project_dir) / "baseline"
+    _write_manifest(project_dir)
+    workspace = _workspace(workspace_dir)
+    flow_data = workspace.flow.data
+    workspace.flow = Flow(path=workspace_dir / "home" / "flow.json")
+    workspace.flow.path.parent.mkdir(parents=True, exist_ok=True)
+    workspace.flow.path.write_text(json.dumps(flow_data), encoding="utf-8")
+    monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _path: workspace)
+
+    rc = cli_main.run(
+        [
+            "param",
+            "list",
+            "--workspace",
+            "baseline",
+            "--step",
+            "synthesis",
+            "--all",
+            "--project",
+            project_dir,
+            "--plain",
+        ]
+    )
+
+    assert rc == 0
+    records = plain_records(capsys.readouterr().out)
+    assert [record["id"] for record in records] == [
+        "design.frequency_mhz",
+        "flow.run_analysis",
+    ]
+    assert records[0]["step_id"] == "Synthesis"

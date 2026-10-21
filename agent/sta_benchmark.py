@@ -102,13 +102,19 @@ def _compare(reference, candidate, path=""):
         raise ValueError(f"metric differs at {path}: {reference} != {candidate}")
 
 
-def _run_workspace(root):
+def _run_workspace(root, workers):
     from agent.engine import AgentEngineFlow
     from agent.workspace_api import _prepare_candidate_rerun
     from chipcompiler.data import StateEnum
+    from chipcompiler.data.parameter import save_parameter
     from chipcompiler.data.workspace import load_workspace
 
     workspace = load_workspace(root)
+    workspace.parameters.data.setdefault("config_overrides", {}).setdefault("sta", {})[
+        "max_parallel_corners"
+    ] = workers
+    if not save_parameter(workspace.parameters):
+        raise RuntimeError("cannot save benchmark STA parallel limit")
     flow = AgentEngineFlow(workspace)
     flow.create_step_workspaces(initialize_config=False, executable_steps={"sta", "Harden"})
     _prepare_candidate_rerun(
@@ -138,7 +144,7 @@ def main():
     parser.add_argument("--workspace", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.workspace:
-        _run_workspace(args.workspace)
+        _run_workspace(args.workspace, args.workers[0])
         return
     if not args.source or not args.output or args.repeats < 1 or args.workers[0] != 1:
         parser.error(
@@ -161,8 +167,13 @@ def main():
             for name in ("sta_parallel.py", "sta_benchmark.py", "engine.py", "tools.py")
         },
     }
-    (output / "environment.json").write_text(json.dumps(metadata, indent=2) + "\n")
     from agent.candidate_clone import candidate_clone_ignore
+    from chipcompiler.tools.ecc import sta_parallel
+
+    metadata["implementation_sha256"]["chipcompiler/tools/ecc/sta_parallel.py"] = hashlib.sha256(
+        Path(sta_parallel.__file__).read_bytes()
+    ).hexdigest()
+    (output / "environment.json").write_text(json.dumps(metadata, indent=2) + "\n")
 
     results, reference = [], None
     try:
@@ -171,12 +182,18 @@ def main():
                 name = f"r{repeat + 1}-w{workers}"
                 root = output / ".agent/candidates" / name
                 shutil.copytree(source, root, ignore=candidate_clone_ignore(source, "sta"))
-                env = dict(os.environ, ECOS_AGENT_STA_WORKERS=str(workers))
                 started, peak = time.monotonic(), 0.0
                 with (output / f"{name}.log").open("w") as log:
                     process = subprocess.Popen(
-                        [sys.executable, "-m", "agent.sta_benchmark", "--workspace", str(root)],
-                        env=env,
+                        [
+                            sys.executable,
+                            "-m",
+                            "agent.sta_benchmark",
+                            "--workspace",
+                            str(root),
+                            "--workers",
+                            str(workers),
+                        ],
                         stdout=log,
                         stderr=subprocess.STDOUT,
                         start_new_session=True,

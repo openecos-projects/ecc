@@ -1,0 +1,43 @@
+{
+    "hold_stage": {
+        "hold_margin": 0.04,
+        "rc_mode": "global_routing",
+        "global_routing_rc": {
+            "corner": "MIN_m40/Cbest",
+            "layers": {
+                "MET1": {
+                    "resistance_ohm_per_um": 1.43092115,
+                    "capacitance_pf_per_um": 0.00012205
+                },
+                "MET2": {
+                    "resistance_ohm_per_um": 1.053236741,
+                    "capacitance_pf_per_um": 0.00011035
+                },
+                "MET3": {
+                    "resistance_ohm_per_um": 1.053236741,
+                    "capacitance_pf_per_um": 0.00011035
+                },
+                "MET4": {
+                    "resistance_ohm_per_um": 1.053236741,
+                    "capacitance_pf_per_um": 0.00011035
+                },
+                "MET5": {
+                    "resistance_ohm_per_um": 1.053236741,
+                    "capacitance_pf_per_um": 0.000113
+                }
+            },
+            "vias": {
+                "CT": {"resistance_ohm": 30.0},
+                "VIA1": {"resistance_ohm": 2.0},
+                "VIA2": {"resistance_ohm": 2.0},
+                "VIA3": {"resistance_ohm": 2.0},
+                "VIA4": {"resistance_ohm": 2.0}
+            }
+        },
+        "placement_wire_rc": {
+            "corner": "MIN_m40/Cbest",
+            "resistance_ohm_per_um": 1.053236741,
+            "capacitance_pf_per_um": 0.00011035
+        }
+    }
+}

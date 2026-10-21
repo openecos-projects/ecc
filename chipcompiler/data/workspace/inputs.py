@@ -31,7 +31,9 @@ def persist_origin_inputs(
         shutil.copy(origin_def_path, target)
         workspace.design.origin_def = target
     else:
-        workspace.design.origin_def = origin_dir / f"{workspace.design.name}.def"
+        workspace.design.origin_def = (
+            origin_dir / f"{workspace.design.name}.def" if origin_def else None
+        )
 
     origin_verilog_path = Path(origin_verilog) if origin_verilog else None
     if origin_verilog_path and origin_verilog_path.exists():

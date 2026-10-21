@@ -30,6 +30,33 @@ def test_stale_checklist_cannot_make_incomplete_flow_ready(tmp_path):
     assert result["status"] == "blocked"
 
 
+def test_advisory_failures_leave_signoff_available_for_attention_review(tmp_path):
+    workspace = SimpleNamespace(
+        directory=tmp_path,
+        flow=SimpleNamespace(
+            steps=lambda: [
+                {"name": "Harden", "state": "Success"},
+                {"name": "antennaCheck", "state": "Incomplete"},
+                {"name": "emir", "state": "Incomplete"},
+            ]
+        ),
+    )
+    result = build_signoff_assessment(
+        workspace,
+        checklist={
+            "schema_version": 3,
+            "kind": "signoff_checklist",
+            "status": "attention",
+            "checklist": [
+                {"step": name, "state": "warning", "blocked": False}
+                for name in ("antennaCheck", "emir")
+            ],
+        },
+    )
+    assert result["status"] == "attention"
+    assert all(risk["severity"] == "warning" for risk in result["risks"])
+
+
 def test_malformed_checklist_is_reported_as_unavailable(tmp_path):
     home = tmp_path / "home"
     home.mkdir()

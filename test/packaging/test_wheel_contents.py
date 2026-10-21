@@ -22,3 +22,6 @@ def test_wheel_ships_all_doc_guides(tmp_path):
     for stem in ("config-ref", "user-guide", "tutorial"):
         for lang in ("en", "cn"):
             assert f"chipcompiler/docs/ecc-{stem}.{lang}.md" in names
+    assert "ecc_experience/api.py" in names
+    assert "ecc_experience/cli/commands.py" in names
+    assert not any(name.startswith("ecc_experience/cases/") for name in names)

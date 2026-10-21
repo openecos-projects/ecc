@@ -9,7 +9,10 @@ from chipcompiler.cli.command_handlers import project_doctor as doctor_handlers
 from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import (
     ProjectAddInput,
+    ProjectApplyInput,
+    ProjectBaselineInput,
     ProjectDoctorInput,
+    ProjectReconcileInput,
     ProjectSetInput,
     ProjectShowInput,
     ProjectUnsetInput,
@@ -24,6 +27,70 @@ project_app = create_app(help="Edit project declarations in ecc.toml")
 
 def _finish(subcommand: str, command_input, handler) -> None:
     execute_command("project", command_input, handler, render_key=f"project:{subcommand}")
+
+
+@project_app.command("apply", help="Atomically apply multiple Project settings")
+def apply_cmd(
+    *,
+    project: ProjectOption = None,
+    sets: Annotated[list[str] | None, typer.Option("--set")] = None,
+    unsets: Annotated[list[str] | None, typer.Option("--unset")] = None,
+    add_rtl: Annotated[list[str] | None, typer.Option("--add-rtl")] = None,
+    remove_rtl: Annotated[list[str] | None, typer.Option("--remove-rtl")] = None,
+    no_wait: Annotated[bool, typer.Option("--no-wait")] = False,
+    plain: PlainOption = False,
+) -> None:
+    _finish(
+        "apply",
+        ProjectApplyInput(
+            output=output_options(plain=plain),
+            project=project_options(project),
+            sets=tuple(sets or ()),
+            unsets=tuple(unsets or ()),
+            add_rtl=tuple(add_rtl or ()),
+            remove_rtl=tuple(remove_rtl or ()),
+            no_wait=no_wait,
+        ),
+        handlers.project_apply,
+    )
+
+
+@project_app.command("baseline", help="Select the Project QoR baseline")
+def baseline_cmd(
+    *,
+    workspace_id: Annotated[str, typer.Argument()],
+    project: ProjectOption = None,
+    reason: Annotated[str, typer.Option("--reason")] = "",
+    plain: PlainOption = False,
+) -> None:
+    _finish(
+        "baseline",
+        ProjectBaselineInput(
+            output=output_options(plain=plain),
+            project=project_options(project),
+            workspace_id=workspace_id,
+            reason=reason,
+        ),
+        handlers.project_baseline,
+    )
+
+
+@project_app.command("reconcile", help="Repair provable Project intermediate states")
+def reconcile_cmd(
+    *,
+    project: ProjectOption = None,
+    no_wait: Annotated[bool, typer.Option("--no-wait")] = False,
+    plain: PlainOption = False,
+) -> None:
+    _finish(
+        "reconcile",
+        ProjectReconcileInput(
+            output=output_options(plain=plain),
+            project=project_options(project),
+            no_wait=no_wait,
+        ),
+        handlers.project_reconcile,
+    )
 
 
 @project_app.command("set", help="Set one project declaration")
@@ -134,13 +201,12 @@ def doctor_cmd(
 ) -> None:
     """Check manifest ↔ workspace-directory consistency.
 
-    Reports three classes: entries whose derived fields
-    (start_step/end_step/status/parameter_patch) disagree with the
-    workspace directory, entries pointing at missing directories, and
-    workspace directories under the project root with no manifest entry.
+    Reports missing directories, unreadable workspaces, and workspace
+    directories under the project root with no manifest entry. Execution
+    state and parameters belong to workspace files, not manifest caches.
     Read-only by default and exits 1 when inconsistencies are found.
-    With --fix, derived fields are rebuilt from directory facts, dead
-    entries are removed, unregistered directories are registered, and
+    With --fix, dead entries are removed, unregistered directories are
+    registered, unreadable workspace registrations are preserved, and
     every repair is printed as a record; the exit code is 1 only when a
     repair failed.
     """

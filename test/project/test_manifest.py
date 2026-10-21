@@ -153,6 +153,56 @@ def test_register_workspace_rejects_reversed_range(tmp_path):
         )
 
 
+def test_register_workspace_resolves_emir_range_from_flow(tmp_path):
+    workspace = tmp_path / "ws_emir"
+    _write_workspace_facts(
+        workspace,
+        steps=[
+            {"name": "powerAnalysis", "state": "Unstart"},
+            {"name": "emir", "state": "Unstart"},
+        ],
+        parameters={},
+    )
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+    updated = mutate_project_manifest(
+        tmp_path,
+        {
+            "type": "register_workspace",
+            "workspace_id": "ws_emir",
+            "workspace_path": str(workspace),
+        },
+    )
+
+    assert updated == load_project_manifest(tmp_path)
+    entry = updated["workspaces"][0]
+    assert (entry["start_step"], entry["end_step"]) == ("PowerAnalysis", "EMIR")
+
+
+def test_register_workspace_resolves_antenna_range_from_flow(tmp_path):
+    workspace = tmp_path / "ws_antenna"
+    _write_workspace_facts(
+        workspace,
+        steps=[
+            {"name": "drc", "state": "Unstart"},
+            {"name": "antennaCheck", "state": "Unstart"},
+        ],
+        parameters={},
+    )
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+    updated = mutate_project_manifest(
+        tmp_path,
+        {
+            "type": "register_workspace",
+            "workspace_id": "ws_antenna",
+            "workspace_path": str(workspace),
+        },
+    )
+
+    assert updated == load_project_manifest(tmp_path)
+    entry = updated["workspaces"][0]
+    assert (entry["start_step"], entry["end_step"]) == ("DRC", "AntennaCheck")
+
+
 def test_power_analysis_bounds_the_flow_range_between_sta_and_lvs(tmp_path):
     create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
     manifest_path = tmp_path / "project.json"
@@ -637,7 +687,7 @@ def test_manifest_mutation_without_timestamp_keeps_audit_timestamp(tmp_path):
     assert updated["workspaces"][0]["updated_at"]
 
 
-def test_project_workspace_acquires_manifest_lock_before_workspace_lock(tmp_path, monkeypatch):
+def test_project_workspace_acquires_workspace_lock_before_manifest_lock(tmp_path, monkeypatch):
     create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
     events = []
 
@@ -665,4 +715,4 @@ def test_project_workspace_acquires_manifest_lock_before_workspace_lock(tmp_path
         command_id="create-1",
     )
 
-    assert events == ["manifest:acquire", "workspace:acquire"]
+    assert events == ["workspace:acquire", "manifest:acquire"]

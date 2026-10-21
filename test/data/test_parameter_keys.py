@@ -26,6 +26,12 @@ def test_normalize_key_mechanical_rule():
     assert normalize_key("die") == "die"
 
 
+def test_normalize_parameter_dict_preserves_internal_input_mode():
+    assert normalize_parameter_dict({"_input_mode": "postSynthesis"}) == {
+        "_input_mode": "postSynthesis"
+    }
+
+
 def test_normalize_keys_recurses_into_nested_dicts_and_lists():
     legacy = {
         "Die": {"Size": [100, 200], "Area": 0},

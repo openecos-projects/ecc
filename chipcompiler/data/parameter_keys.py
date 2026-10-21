@@ -24,7 +24,13 @@ _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 # would redirect config_override patches onto bogus keys (e.g. "RT" -> "rt",
 # "-thread_number" -> "thread_number") and rewrite JSON values such as
 # sta.signoff corner names, so their subtrees round-trip untouched.
-_RESERVED_PAYLOAD_KEYS = frozenset({"config_overrides", "workspace_param_overrides"})
+_RESERVED_PAYLOAD_KEYS = frozenset(
+    {"config_overrides", "workspace_param_overrides", "pdk_overrides"}
+)
+
+# Internal workspace controls are canonical identifiers too. They are kept
+# out of the user-facing schema, but must survive params.toml round-trips.
+_INTERNAL_PARAMETER_KEYS = frozenset({"_input_mode"})
 
 # Positional GUI geometry aliases and where they live in the canonical tree.
 # (alias, subtree, key, list index or None)
@@ -67,7 +73,7 @@ def _normalize_dict(data: dict, path: str) -> dict:
     result: dict = {}
     collisions = []
     for key, value in data.items():
-        canonical = normalize_key(key)
+        canonical = str(key) if str(key) in _INTERNAL_PARAMETER_KEYS else normalize_key(key)
         if canonical in _RESERVED_PAYLOAD_KEYS:
             # Literal tool-config identifiers must survive the round-trip.
             result[canonical] = deepcopy(value)
@@ -96,6 +102,7 @@ def _known_top_level_keys() -> frozenset:
         set(ICS55_PARAMETERS_TEMPLATE)
         | set(SG13G2_PARAMETERS_TEMPLATE)
         | set(_GEOMETRY_TO_PARAMETERS)
+        | set(_RESERVED_PAYLOAD_KEYS)
         | {"pdk_root", "pdk_config", "file_list", "die_area_mode"}
     )
 
