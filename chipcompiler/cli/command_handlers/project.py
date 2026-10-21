@@ -1087,5 +1087,9 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
     # Only manifest projects carry a project.json status to write back.
     project_dir = ctx.project_dir if ctx.project_state == "manifest" else None
     return run_workspace.execute_workspace_run(
-        command_input, ctx.run_dir, ctx.run_id, project_dir=project_dir
+        command_input,
+        ctx.run_dir,
+        ctx.run_id,
+        project_dir=project_dir,
+        ctx=ctx,
     )

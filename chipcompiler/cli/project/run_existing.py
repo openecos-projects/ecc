@@ -129,6 +129,7 @@ def run_existing_workspace(
             run_dir,
             run_name,
             project_dir=ctx.project_dir if ctx.project_state == "manifest" else None,
+            ctx=ctx,
         )
     return _resume_existing_workspace(
         command_input,
@@ -401,7 +402,10 @@ def _execute_existing_run(
                 ]
             )
 
-        from chipcompiler.cli.rendering.progress import preserve_cli_stdio
+        from chipcompiler.cli.rendering.progress import (
+            preserve_cli_stdio,
+            run_with_step_progress,
+        )
         from chipcompiler.engine import EngineFlow
         from chipcompiler.engine.rerun import bounded_resume_names, run_resume, selected_step_names
 
@@ -438,7 +442,13 @@ def _execute_existing_run(
                         engine_flow.create_step_workspaces(executable_steps=set(selected))
 
                     with preserve_cli_stdio():
-                        run_result = run_resume(engine_flow, through=through)
+                        run_result = run_with_step_progress(
+                            run_resume,
+                            engine_flow,
+                            ctx,
+                            ctx.project,
+                            through=through,
+                        )
                     flow_ok = run_result.ok
         except Exception as exc:
             from chipcompiler.project.runtime_processes import RuntimeProcessError

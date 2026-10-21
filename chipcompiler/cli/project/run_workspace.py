@@ -24,6 +24,7 @@ def execute_workspace_run(
     workspace_id: str | None = None,
     *,
     project_dir: str | None = None,
+    ctx=None,
 ) -> CommandResult:
     """Reconcile and execute a registered project workspace.
 
@@ -47,6 +48,7 @@ def execute_workspace_run(
                 workspace_id,
                 project_dir=project_dir,
                 run_log=run_log,
+                ctx=ctx,
             )
     except RuntimeProcessError as exc:
         from chipcompiler.cli.project.run_process import runtime_process_error_result
@@ -65,6 +67,7 @@ def _execute_workspace_run(
     *,
     project_dir: str | None,
     run_log,
+    ctx,
 ) -> CommandResult:
     from chipcompiler.data import load_workspace
     from chipcompiler.data.schema_migrations import UnsupportedSchemaVersionError
@@ -241,28 +244,48 @@ def _execute_workspace_run(
                 if preflight["missing_inputs"]:
                     return run_failed("step_input_missing", str(preflight["missing_inputs"]))
 
-                from chipcompiler.cli.rendering.progress import preserve_cli_stdio
+                from chipcompiler.cli.rendering.progress import (
+                    preserve_cli_stdio,
+                    run_with_step_progress,
+                )
 
                 try:
                     with preserve_cli_stdio():
                         if selected:
                             engine_flow.create_step_workspaces(executable_steps=set(selected))
                         if command_input.only is not None:
-                            result = rerun.run_only(
-                                engine_flow, command_input.only, force=command_input.force
+                            result = run_with_step_progress(
+                                rerun.run_only,
+                                engine_flow,
+                                ctx,
+                                getattr(ctx, "project", None),
+                                command_input.only,
+                                force=command_input.force,
                             )
                         elif command_input.from_step is not None:
-                            result = rerun.run_from(
+                            result = run_with_step_progress(
+                                rerun.run_from,
                                 engine_flow,
+                                ctx,
+                                getattr(ctx, "project", None),
                                 command_input.from_step,
                                 through=command_input.to_step,
                             )
                         elif reconcile_result.target:
-                            result = rerun.run_resume(
-                                engine_flow, through=reconcile_result.target[-1]
+                            result = run_with_step_progress(
+                                rerun.run_resume,
+                                engine_flow,
+                                ctx,
+                                getattr(ctx, "project", None),
+                                through=reconcile_result.target[-1],
                             )
                         else:
-                            result = rerun.run_resume(engine_flow)
+                            result = run_with_step_progress(
+                                rerun.run_resume,
+                                engine_flow,
+                                ctx,
+                                getattr(ctx, "project", None),
+                            )
                 except ValueError as exc:
                     return run_failed("step_unavailable", str(exc))
         except Exception as exc:
