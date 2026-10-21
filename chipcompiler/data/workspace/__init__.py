@@ -999,7 +999,7 @@ def create_workspace(
     spef: str | Path = "",
     golden_verilog: str | Path = "",
     pdk_overrides: dict | None = None,
-) -> Workspace:
+) -> Workspace | None:
     """
     Create a workspace for chip design flow.
 

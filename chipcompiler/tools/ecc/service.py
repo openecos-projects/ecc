@@ -45,7 +45,7 @@ def build_views(workspace: Workspace, step: EccStep) -> dict:
     info = {
         "image": step.output.image or "",
         "json": step.output.json or "",
-        "metrics": metrics.path,
+        "metrics": metrics.path if metrics is not None else "",
         "information": {},
     }
 
@@ -54,7 +54,7 @@ def build_views(workspace: Workspace, step: EccStep) -> dict:
 
 def build_metrics(workspace: Workspace, step: EccStep) -> dict:
     metrics = build_step_metrics(workspace=workspace, step=step)
-    info = {"metrics": metrics.path}
+    info = {"metrics": metrics.path if metrics is not None else ""}
 
     return info
 

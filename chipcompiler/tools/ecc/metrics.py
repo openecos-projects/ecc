@@ -3501,8 +3501,8 @@ def save_step_metrics(workspace: Workspace, step: WorkspaceStep, step_metrics: S
 
 
 def build_step_metrics(
-    workspace: Workspace, step: EccStep, subflow: EccSubFlow = None
-) -> StepMetrics:
+    workspace: Workspace, step: EccStep, subflow: EccSubFlow | None = None
+) -> StepMetrics | None:
     """
     Build and return a StepMetrics instance for the given workspace step.
     """
@@ -3552,36 +3552,11 @@ def build_step_metrics(
 
     sub_flow.update_step(
         step_name=EccSubFlowEnum.analysis.value,
-        state=StateEnum.Invalid if metrics is None else StateEnum.Success,
+        state=StateEnum.Success,
         info=info,
     )
 
     workspace.logger.info("\nmetrics - \n%s", dict_to_str(metrics.data))
-    return metrics
-
-
-def build_metrics_timing(workspace: Workspace, step: EccStep) -> dict:
-    metrics = {}
-
-    data = json_read(getattr(step.feature, "timing", "") or "")
-    max_WNS = None
-    if isinstance(data, dict) and len(data) > 0:
-        for slack_item in data.get("slack", []):
-            type = slack_item.get("delay_type", "")
-            metrics[f"{type}_TNS"] = slack_item.get("TNS", 0)
-            metrics[f"{type}_WNS"] = slack_item.get("WNS", 0)
-
-            if type == "max":
-                max_WNS = float(slack_item.get("WNS", 0))
-
-    # frequency
-    frequency = workspace.parameters.data.get("frequency_max", 0)
-    if frequency > 0 and max_WNS is not None:
-        clk_period = 1000.0 / frequency
-
-        real_frequency = 1000.0 / (clk_period - max_WNS) if max_WNS is not None else 0
-        metrics["Frequency [MHz]"] = round(real_frequency, 2)
-
     return metrics
 
 
@@ -3637,12 +3612,10 @@ def build_metrics_db(workspace: Workspace, step: EccStep) -> dict:
             if isinstance(values, dict):
                 _add_number_metric(metrics, metric_id, values.get(key))
 
-    metrics.update(build_metrics_timing(workspace=workspace, step=step))
-
     return metrics
 
 
-def build_metrics_floorplan(workspace: Workspace, step: EccStep) -> StepMetrics:
+def build_metrics_floorplan(workspace: Workspace, step: EccStep) -> StepMetrics | None:
     """
     Build and return floorplan metrics dictionary.
     """
@@ -3656,10 +3629,6 @@ def build_metrics_floorplan(workspace: Workspace, step: EccStep) -> StepMetrics:
 
     # step matrics
     json_path = getattr(step.feature, "step", "") or ""
-    data = json_read(json_path)
-    if len(data) > 0:
-        # Add floorplan specific metrics here
-        pass
 
     step_metrics.data = metrics
 
@@ -3675,7 +3644,7 @@ def build_metrics_floorplan(workspace: Workspace, step: EccStep) -> StepMetrics:
         return None
 
 
-def build_metrics_filler(workspace: Workspace, step: EccStep) -> StepMetrics:
+def build_metrics_filler(workspace: Workspace, step: EccStep) -> StepMetrics | None:
     """
     Build and return filler metrics dictionary.
     """
@@ -3689,10 +3658,6 @@ def build_metrics_filler(workspace: Workspace, step: EccStep) -> StepMetrics:
 
     # step matrics
     json_path = getattr(step.feature, "step", "") or ""
-    data = json_read(json_path)
-    if len(data) > 0:
-        # Add filler specific metrics here
-        pass
 
     step_metrics.data = metrics
 
@@ -3708,7 +3673,7 @@ def build_metrics_filler(workspace: Workspace, step: EccStep) -> StepMetrics:
         return None
 
 
-def build_metrics_drc(workspace: Workspace, step: EccStep) -> StepMetrics:
+def build_metrics_drc(workspace: Workspace, step: EccStep) -> StepMetrics | None:
     """
     Build and return DRC metrics dictionary.
     """
@@ -3742,7 +3707,7 @@ def build_metrics_drc(workspace: Workspace, step: EccStep) -> StepMetrics:
         return None
 
 
-def build_metrics_lvs(workspace: Workspace, step: EccStep) -> StepMetrics:
+def build_metrics_lvs(workspace: Workspace, step: EccStep) -> StepMetrics | None:
     """
     Build and return LVS metrics dictionary.
     """
@@ -3775,7 +3740,7 @@ def build_metrics_lvs(workspace: Workspace, step: EccStep) -> StepMetrics:
         return None
 
 
-def build_metrics_routing(workspace: Workspace, step: EccStep) -> StepMetrics:
+def build_metrics_routing(workspace: Workspace, step: EccStep) -> StepMetrics | None:
     """
     Build and return routing metrics dictionary.
     """
@@ -3854,7 +3819,7 @@ def build_metrics_routing(workspace: Workspace, step: EccStep) -> StepMetrics:
         return None
 
 
-def build_metrics_rcx(workspace: Workspace, step: EccStep) -> StepMetrics:
+def build_metrics_rcx(workspace: Workspace, step: EccStep) -> StepMetrics | None:
     """
     Build RCX metrics from its bounded feature facts.
     """
@@ -3912,7 +3877,7 @@ def build_metrics_rcx(workspace: Workspace, step: EccStep) -> StepMetrics:
         return None
 
 
-def build_metrics_sta(workspace: Workspace, step: EccStep) -> StepMetrics:
+def build_metrics_sta(workspace: Workspace, step: EccStep) -> StepMetrics | None:
     """
     Build STA multi-corner timing summary metrics.
     """
@@ -4057,7 +4022,7 @@ def build_metrics_sta(workspace: Workspace, step: EccStep) -> StepMetrics:
         return None
 
 
-def build_metrics_harden(workspace: Workspace, step: EccStep) -> StepMetrics:
+def build_metrics_harden(workspace: Workspace, step: EccStep) -> StepMetrics | None:
     """
     Build final harden package completeness metrics.
     """
@@ -4108,7 +4073,7 @@ def build_metrics_harden(workspace: Workspace, step: EccStep) -> StepMetrics:
         return None
 
 
-def build_metrics_legalization(workspace: Workspace, step: EccStep) -> StepMetrics:
+def build_metrics_legalization(workspace: Workspace, step: EccStep) -> StepMetrics | None:
     """
     Build and return legalization metrics dictionary.
     """
@@ -4139,7 +4104,7 @@ def build_metrics_legalization(workspace: Workspace, step: EccStep) -> StepMetri
         return None
 
 
-def build_metrics_cts(workspace: Workspace, step: EccStep) -> StepMetrics:
+def build_metrics_cts(workspace: Workspace, step: EccStep) -> StepMetrics | None:
     """
     Build and return CTS metrics dictionary.
     """
@@ -4209,7 +4174,7 @@ def build_metrics_cts(workspace: Workspace, step: EccStep) -> StepMetrics:
         return None
 
 
-def build_metrics_placement(workspace: Workspace, step: EccStep) -> StepMetrics:
+def build_metrics_placement(workspace: Workspace, step: EccStep) -> StepMetrics | None:
     """
     Build and return placement metrics dictionary.
     """
