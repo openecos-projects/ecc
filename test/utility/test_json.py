@@ -7,7 +7,13 @@ import pytest
 
 from chipcompiler.data import Workspace
 from chipcompiler.data.workspace.layout import EccStep
-from chipcompiler.utility.json import JsonReadError, json_read, json_read_strict, json_write
+from chipcompiler.utility.json import (
+    JsonReadError,
+    finite_number,
+    json_read,
+    json_read_strict,
+    json_write,
+)
 
 
 class Unserializable:
@@ -81,6 +87,23 @@ def test_json_write_accepts_gz_path_input(tmp_path):
 
 
 # --- Phase 2: Silent failure regression tests ---
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (3, 3),
+        (2.5, 2.5),
+        (True, None),
+        ("1", None),
+        (None, None),
+        (float("nan"), None),
+        (float("inf"), None),
+        (10**400, None),
+    ],
+)
+def test_finite_number_accepts_only_finite_int_and_float(value, expected):
+    assert finite_number(value) == expected
 
 
 class TestJsonReadStrict:

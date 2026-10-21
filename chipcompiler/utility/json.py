@@ -5,6 +5,7 @@ import logging
 import os
 import tempfile
 from contextlib import suppress
+from math import isfinite
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -295,3 +296,17 @@ def dict_to_str(d, indent=0):
     lines = []
     _render_dict_block(d, lines, base_indent=indent, depth=0, title=None, is_root=True)
     return "\n".join(lines)
+
+
+def finite_number(value: object) -> int | float | None:
+    """Return value when it is a finite int/float, else None.
+
+    bool is rejected (it is an int subclass), and an int too large for
+    isfinite() counts as not finite instead of raising OverflowError.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        return value if isfinite(value) else None
+    except OverflowError:
+        return None

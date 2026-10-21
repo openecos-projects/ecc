@@ -9,7 +9,14 @@ from .filelist import (
     resolve_path,
     validate_filelist,
 )
-from .json import JsonReadError, dict_to_str, json_read, json_read_strict, json_write
+from .json import (
+    JsonReadError,
+    dict_to_str,
+    finite_number,
+    json_read,
+    json_read_strict,
+    json_write,
+)
 from .log import (
     Logger,
     build_timestamped_log_file,
@@ -48,6 +55,7 @@ __all__ = [
     "JsonReadError",
     "json_write",
     "dict_to_str",
+    "finite_number",
     "Logger",
     "create_logger",
     "build_timestamped_log_file",
