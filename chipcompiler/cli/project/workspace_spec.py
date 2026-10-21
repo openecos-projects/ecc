@@ -9,8 +9,18 @@ from chipcompiler.engine.snapshot import read_engineering_snapshot_from_director
 
 def workspace_update_spec(workspace_path: str, cfg, flow_config: dict | None):
     snapshot = read_engineering_snapshot_from_directory(workspace_path)
-    spec = deepcopy(snapshot["workspaceSpec"])
-    bindings = deepcopy(snapshot["workspaceBindings"])
+    spec = deepcopy(snapshot.get("workspaceSpec"))
+    bindings = deepcopy(snapshot.get("workspaceBindings"))
+    if not isinstance(spec, dict) or not isinstance(bindings, dict):
+        # v6 snapshots predate the workspace-spec envelope; rebuild the
+        # structural view from the committed workspace instead.
+        from chipcompiler.engine.workspace_configuration import (
+            read_workspace_configuration_from_directory,
+        )
+
+        projection = read_workspace_configuration_from_directory(workspace_path)
+        spec = deepcopy(projection["workspaceSpec"])
+        bindings = deepcopy(projection["workspaceBindings"])
     # A Project refresh owns structural settings only. Existing Workspace
     # parameters are merged and marked as preserved by update_workspace_from_spec;
     # carrying the Snapshot's resolved defaults here would incorrectly turn
@@ -64,9 +74,12 @@ def workspace_update_spec(workspace_path: str, cfg, flow_config: dict | None):
         "root": resolve_pdk_root(cfg),
         **({"version": current_pdk["version"]} if current_pdk.get("version") else {}),
     }
-    flow = {"flowId": cfg.flow_preset}
+    current_flow = spec.get("flow") if isinstance(spec.get("flow"), dict) else {}
+    flow = {"flowId": cfg.flow_preset or current_flow.get("flowId") or "custom"}
     if isinstance(flow_config, dict) and flow_config.get("start_step"):
-        flow["fromStepId"] = flow_config["start_step"]
-        flow["throughStepId"] = flow_config.get("end_step") or flow_config["start_step"]
+        flow["fromStepId"] = normalize_flow_step(flow_config["start_step"])
+        flow["throughStepId"] = normalize_flow_step(
+            flow_config.get("end_step") or flow_config["start_step"]
+        )
     spec["flow"] = flow
     return spec, bindings
