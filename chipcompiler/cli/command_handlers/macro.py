@@ -204,9 +204,9 @@ def _workspace_import(args, ctx, schema, placements: list) -> CommandResult:
         _annotate_import(result, args.path, placements)
         return result
     from chipcompiler.engine import apply_workspace_parameters
-    from chipcompiler.engine.reconcile import _workspace_lock
     from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
     from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
     if ctx.manifest_error or ctx.project_state != "manifest" or ctx.run_id is None:
         return CommandResult.err(
@@ -218,7 +218,7 @@ def _workspace_import(args, ctx, schema, placements: list) -> CommandResult:
             ]
         )
     try:
-        with _workspace_lock(Path(ctx.run_dir), blocking=not args.no_wait):
+        with workspace_lock(Path(ctx.run_dir), blocking=not args.no_wait):
             current = read_engineering_snapshot_from_directory(ctx.run_dir)
             expected = args.expected_revision or current["workspaceRevision"]
             apply_workspace_parameters(

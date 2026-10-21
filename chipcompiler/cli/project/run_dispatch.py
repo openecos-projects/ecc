@@ -99,7 +99,7 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
     discarded once the replacement is fully constructed.
     """
     from chipcompiler.cli.core.records import error_record
-    from chipcompiler.engine.reconcile import _workspace_lock
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
     project_dir = ctx.project_dir
     backup_path = None
@@ -128,7 +128,7 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
         # re-acquires it on the recreated tree, so two runs never execute
         # against the same paths. The lock stays entered in *ws_locks* until
         # the replacement is built.
-        ws_locks.enter_context(_workspace_lock(Path(run_dir), blocking=not command_input.no_wait))
+        ws_locks.enter_context(workspace_lock(Path(run_dir), blocking=not command_input.no_wait))
         from chipcompiler.cli.project.revision import expected_revision_error
 
         conflict = expected_revision_error(

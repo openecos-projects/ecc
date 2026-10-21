@@ -74,10 +74,10 @@ def _execute_workspace_run(
     )
     from chipcompiler.engine import EngineFlow, rerun
     from chipcompiler.engine.reconcile import (
-        _workspace_lock,
         classify_workspace,
         reconcile_workspace_locked,
     )
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
     warnings: list[dict] = []
 
@@ -124,7 +124,7 @@ def _execute_workspace_run(
     # Everything from here holds the workspace lock: two runs of the same
     # workspace never execute concurrently, and an overwrite or migration
     # replacing the tree serializes against this execution.
-    with _workspace_lock(Path(workspace_path), blocking=not command_input.no_wait):
+    with workspace_lock(Path(workspace_path), blocking=not command_input.no_wait):
         from chipcompiler.cli.project.revision import expected_revision_error
 
         conflict = expected_revision_error(

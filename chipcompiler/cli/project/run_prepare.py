@@ -432,7 +432,7 @@ def execute_fresh_run(
         pdk_cli_overrides = {}
 
     from chipcompiler.cli.project import migrate_fs
-    from chipcompiler.engine.reconcile import _workspace_lock
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
     # Lock order is always migration → workspace, and the workspace lock
     # is taken BEFORE the target becomes discoverable (flow.json appears
@@ -452,7 +452,7 @@ def execute_fresh_run(
         with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
             if not caller_locks:
                 ws_locks.enter_context(
-                    _workspace_lock(Path(run_dir), blocking=not command_input.no_wait)
+                    workspace_lock(Path(run_dir), blocking=not command_input.no_wait)
                 )
             try:
                 workspace = create_workspace(

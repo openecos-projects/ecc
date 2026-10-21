@@ -5,7 +5,6 @@ import re
 import shutil
 from pathlib import Path
 
-from chipcompiler.engine.reconcile import _workspace_lock
 from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
 from chipcompiler.engine.workspace_lifecycle import (
     WorkspaceLifecycleError,
@@ -15,6 +14,7 @@ from chipcompiler.engine.workspace_lifecycle import (
 from chipcompiler.project.api import _project_manifest_mutator
 from chipcompiler.project.manifest import load_manifest
 from chipcompiler.project.manifest_write import manifest_lock, update_manifest_locked
+from chipcompiler.utility.workspace_lock import workspace_lock
 
 _COMMAND_ID = re.compile(r"[A-Za-z0-9._-]{1,128}\Z")
 _DELETE_STAGING_PREFIX = ".ecc-delete-"
@@ -33,7 +33,7 @@ def archive_managed_workspace(
     fingerprint = _workspace_command_fingerprint(
         "archive", {"project": str(project), "workspaceId": workspace_id}, {}, expected_revision
     )
-    with _workspace_lock(workspace, blocking=blocking):
+    with workspace_lock(workspace, blocking=blocking):
         snapshot = _check_revision(workspace, expected_revision)
         with manifest_lock(project, blocking=blocking):
             manifest = load_manifest(str(project))
@@ -85,7 +85,7 @@ def delete_managed_workspace(
         expected_revision,
     )
     staging = project / f".ecc-delete-{workspace_id}-{command_id}"
-    with _workspace_lock(workspace, blocking=blocking):
+    with workspace_lock(workspace, blocking=blocking):
         snapshot = _check_revision(workspace, expected_revision)
         if delete_directory:
             _validate_deletable_workspace(project, workspace, staging)
@@ -155,7 +155,7 @@ def reconcile_workspace_deletes(project_dir: str | Path, *, blocking: bool) -> t
         original = proof["original"]
         staging = proof["staging"]
         workspace_id = proof["workspace_id"]
-        with _workspace_lock(original, blocking=blocking):
+        with workspace_lock(original, blocking=blocking):
             with manifest_lock(project, blocking=blocking):
                 current = load_manifest(str(project))
                 entry = current.find_workspace(workspace_id)

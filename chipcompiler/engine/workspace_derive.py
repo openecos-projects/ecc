@@ -49,7 +49,7 @@ def derive_workspace(
     Returns the loaded derived workspace.
     """
     from chipcompiler.data import load_workspace
-    from chipcompiler.engine.reconcile import _workspace_lock
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
     source = Path(source_directory).expanduser().resolve()
     target = Path(target_directory).expanduser().resolve()
@@ -63,7 +63,7 @@ def derive_workspace(
         )
 
     locks = sorted((source, target), key=str)
-    with _workspace_lock(locks[0], blocking=blocking), _workspace_lock(locks[1], blocking=blocking):
+    with workspace_lock(locks[0], blocking=blocking), workspace_lock(locks[1], blocking=blocking):
         if target.exists():
             if command_id:
                 fingerprint = _workspace_command_fingerprint(

@@ -480,12 +480,12 @@ def param_apply(args, ctx: CommandContext) -> CommandResult:
     from pathlib import Path
 
     from chipcompiler.engine import apply_workspace_parameters
-    from chipcompiler.engine.reconcile import _workspace_lock
     from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
     from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
     try:
-        with _workspace_lock(Path(ctx.run_dir), blocking=not args.no_wait):
+        with workspace_lock(Path(ctx.run_dir), blocking=not args.no_wait):
             current = read_engineering_snapshot_from_directory(ctx.run_dir)
             expected = args.expected_revision or current["workspaceRevision"]
             updated = apply_workspace_parameters(

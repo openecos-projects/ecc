@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from chipcompiler.engine.interrupted_run import recover_interrupted_run
-from chipcompiler.engine.reconcile import _workspace_lock
 from chipcompiler.project.manifest import load_manifest
 from chipcompiler.project.manifest_write import manifest_lock, update_manifest_locked
 from chipcompiler.project.runtime_processes import (
@@ -15,6 +14,7 @@ from chipcompiler.project.runtime_processes import (
     signal_runtime_process,
     validate_runtime_entry,
 )
+from chipcompiler.utility.workspace_lock import workspace_lock
 
 
 def inspect_process(project_dir: str | Path, workspace_id: str, run_id: str | None) -> dict:
@@ -24,7 +24,7 @@ def inspect_process(project_dir: str | Path, workspace_id: str, run_id: str | No
     local = _entry_is_local(entry)
     live = identity_is_live(entry) if local else False
     try:
-        with _workspace_lock(workspace, blocking=False):
+        with workspace_lock(workspace, blocking=False):
             lock_busy = False
     except BlockingIOError:
         lock_busy = True
@@ -51,7 +51,7 @@ def reconcile_process(
     project = Path(project_dir).resolve()
     workspace = _workspace_path(project, workspace_id)
     with (
-        _workspace_lock(workspace, blocking=blocking),
+        workspace_lock(workspace, blocking=blocking),
         manifest_lock(project, blocking=blocking),
     ):
         manifest = load_manifest(str(project))

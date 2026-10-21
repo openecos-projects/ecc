@@ -118,10 +118,10 @@ def create_workspace_from_spec(
     preserved_parameters: Collection[str] = (),
 ):
     """Create a Workspace Spec target while serializing sibling creators."""
-    from chipcompiler.engine.reconcile import _workspace_lock
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
     target = Path(target_directory).expanduser().resolve()
-    with _workspace_lock(target):
+    with workspace_lock(target):
         return _create_workspace_from_spec(
             target,
             spec,
@@ -277,9 +277,9 @@ def update_workspace_from_spec(
     target = Path(target_directory).expanduser().resolve()
     if not target.is_dir():
         raise WorkspaceLifecycleError("workspace_missing", f"Workspace not found: {target}")
-    from chipcompiler.engine.reconcile import _workspace_lock
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
-    with _workspace_lock(target, blocking=blocking):
+    with workspace_lock(target, blocking=blocking):
         return _update_workspace_from_spec(
             target,
             expected_workspace_revision,

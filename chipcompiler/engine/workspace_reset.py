@@ -86,9 +86,9 @@ def reset_workspace_flow(
     blocking: bool = True,
 ):
     target = Path(target_directory).expanduser().resolve()
-    from chipcompiler.engine.reconcile import _workspace_lock
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
-    with _workspace_lock(target, blocking=blocking):
+    with workspace_lock(target, blocking=blocking):
         return _reset_workspace_flow(target, expected_workspace_revision, command_id=command_id)
 
 

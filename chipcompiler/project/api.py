@@ -173,8 +173,8 @@ def create_project_workspace(
     expected_project_id: str | None = None,
     now: str | None = None,
 ):
-    from chipcompiler.engine.reconcile import _workspace_lock
     from chipcompiler.engine.workspace_lifecycle import _create_workspace_from_spec
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
     project = Path(project_dir).expanduser().resolve()
     target = Path(target_directory).expanduser().resolve()
@@ -183,7 +183,7 @@ def create_project_workspace(
     except ValueError as exc:
         raise ManifestError("Workspace must be inside the Project root") from exc
     existed = target.exists()
-    with _workspace_lock(target), manifest_lock(project):
+    with workspace_lock(target), manifest_lock(project):
         manifest = load_project_manifest(project)
         if expected_project_id is not None and manifest["project_id"] != expected_project_id:
             raise ManifestError("Project identity does not match")

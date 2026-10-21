@@ -131,9 +131,9 @@ def reconcile_project_state(project_dir: str | Path, *, blocking: bool) -> Proje
         workspace = Path(entry.workspace_path).resolve()
         if not workspace.is_dir() or workspace.is_symlink():
             try:
-                from chipcompiler.engine.reconcile import _workspace_lock
+                from chipcompiler.utility.workspace_lock import workspace_lock
 
-                with _workspace_lock(workspace, blocking=blocking):
+                with workspace_lock(workspace, blocking=blocking):
                     if _recover_missing_workspace_refresh_exchange(workspace):
                         repairs.append(f"refresh_exchange:{entry.workspace_id}")
             except BlockingIOError:
@@ -188,16 +188,16 @@ def reconcile_project_state(project_dir: str | Path, *, blocking: bool) -> Proje
 
 
 def _reconcile_orphan_workspace(project: Path, candidate: Path, *, blocking: bool) -> str:
-    from chipcompiler.engine.reconcile import _workspace_lock
     from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
     from chipcompiler.engine.workspace_lifecycle import (
         WorkspaceLifecycleError,
         _workspace_command_fingerprint,
     )
     from chipcompiler.project.api import _project_manifest_mutator
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
     initial_stat = candidate.stat(follow_symlinks=False)
-    with _workspace_lock(candidate, blocking=blocking):
+    with workspace_lock(candidate, blocking=blocking):
         if candidate.is_symlink() or not candidate.is_dir():
             raise WorkspaceLifecycleError(
                 "workspace_orphan_unsafe", "Workspace path changed during reconcile"
@@ -322,7 +322,6 @@ def _reconcile_workspace_state(
         read_file_schema_version,
     )
     from chipcompiler.engine.interrupted_run import recover_interrupted_run
-    from chipcompiler.engine.reconcile import _workspace_lock
     from chipcompiler.engine.snapshot import (
         LEGACY_SNAPSHOT_SCHEMA_VERSION,
         SNAPSHOT_V3_SCHEMA_VERSION,
@@ -333,8 +332,9 @@ def _reconcile_workspace_state(
         identity_is_live,
         validate_runtime_entry,
     )
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
-    with _workspace_lock(workspace, blocking=blocking):
+    with workspace_lock(workspace, blocking=blocking):
         current = load_manifest(str(project))
         current_entry = current.find_workspace(workspace_id)
         if current_entry is None or Path(current_entry.workspace_path).resolve() != workspace:
