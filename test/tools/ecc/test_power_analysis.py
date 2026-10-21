@@ -223,9 +223,9 @@ def test_power_analysis_native_module_methods_forward_to_ecc(tmp_path):
     assert module.run_pw() is native.run_pw.return_value
     assert module.destroy_pw() is native.destroy_pw.return_value
     assert native.mock_calls[:4] == [
-        call.lib_init(lib_paths=["/pdk/lib.lib"]),
-        call.sdc_init("/ws/design.sdc"),
-        call.spef_init("/ws/design.spef"),
+        call.lib_init(lib_paths=[Path("/pdk/lib.lib")]),
+        call.sdc_init(Path("/ws/design.sdc")),
+        call.spef_init(Path("/ws/design.spef")),
         call.init_pw(config_dict={"-temp_directory_path": str(tmp_path)}),
     ]
     native.run_pw.assert_called_once_with()

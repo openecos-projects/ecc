@@ -166,7 +166,7 @@ def test_emir_save_failure_is_not_success(emir_case):
     ]
 
 
-def test_emir_wrapper_normalizes_paths_and_uses_ifp_supply_file(tmp_path):
+def test_emir_wrapper_forwards_paths_and_uses_ifp_supply_file(tmp_path):
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = Mock()
     module.ecc.init_emir.return_value = True
@@ -187,10 +187,10 @@ def test_emir_wrapper_normalizes_paths_and_uses_ifp_supply_file(tmp_path):
 
     assert module.ecc.method_calls == [
         call.init_emir(
-            temp_directory_path=str(tmp_path / "emir"),
-            instance_power_file_path=str(tmp_path / "instance_power.tsv"),
-            technology_file_path=str(tmp_path / "process.tech"),
-            ploc_file_path=str(tmp_path / "power.ploc"),
+            temp_directory_path=tmp_path / "emir",
+            instance_power_file_path=tmp_path / "instance_power.tsv",
+            technology_file_path=tmp_path / "process.tech",
+            ploc_file_path=tmp_path / "power.ploc",
         ),
         call.run_emir(),
         call.destroy_emir(),

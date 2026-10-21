@@ -226,7 +226,7 @@ def _run_placement_mode(
             )
             return False
 
-    ecc_module.feature_placement_map(json_path=step.feature.map)
+    ecc_module.feature_placement_map(json_path=step.feature.map or "")
 
     sub_flow.update_step(
         step_name=run_stage,
