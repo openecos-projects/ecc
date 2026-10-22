@@ -62,6 +62,16 @@ _ARTIFACT_ALLOWLIST = {
     "cli/command_handlers/chipview.py": "CLI reads the exported geometry manifest directly",
 }
 
+# Writers of home/flow.json. The ledger module is the one first-party writer;
+# the other three are recovery/migration paths that intentionally do not load
+# a Workspace (the plan's explicit exceptions).
+_FLOW_WRITE_OWNERS = {
+    "data/workspace/flow_ledger.py": "the schema-aware ledger writer",
+    "engine/reconcile.py": "recovery path without a loaded Workspace",
+    "engine/interrupted_run.py": "recovery path without a loaded Workspace",
+    "cli/project/migrate_fs.py": "filesystem migration without a loaded Workspace",
+}
+
 
 def _is_builder(relative_path: str) -> bool:
     return relative_path.startswith("tools/") and relative_path.endswith("/builder.py")
@@ -69,6 +79,23 @@ def _is_builder(relative_path: str) -> bool:
 
 def _tool_attribute(node: ast.AST) -> bool:
     return isinstance(node, ast.Attribute) and node.attr == "tool"
+
+
+def _writes_the_ledger(call: ast.Call) -> bool:
+    """Whether a ``json_write`` call targets the flow ledger."""
+    if not isinstance(call.func, ast.Name) or call.func.id != "json_write":
+        return False
+    for argument in [*call.args, *(keyword.value for keyword in call.keywords)]:
+        for child in ast.walk(argument):
+            if isinstance(child, ast.Constant) and child.value == "flow.json":
+                return True
+            if isinstance(child, ast.Attribute) and child.attr == "path":
+                target = child.value
+                if isinstance(target, ast.Attribute) and target.attr == "flow":
+                    return True
+                if isinstance(target, ast.Name) and target.id == "flow":
+                    return True
+    return False
 
 
 def _tool_literal(node: ast.AST) -> str | None:
@@ -99,6 +126,12 @@ def scan(root: Path) -> list[tuple[str, int, str, str]]:
                     and relative not in _ARTIFACT_ALLOWLIST
                 ):
                     violations.append((relative, node.lineno, "artifact-name", value))
+            if (
+                isinstance(node, ast.Call)
+                and _writes_the_ledger(node)
+                and relative not in _FLOW_WRITE_OWNERS
+            ):
+                violations.append((relative, node.lineno, "ledger-write", "flow.json"))
             if isinstance(node, ast.Compare):
                 operands = [node.left, *node.comparators]
                 for left, right in zip(operands[:-1], operands[1:], strict=True):
@@ -137,6 +170,24 @@ def test_guard_rejects_an_artifact_name_outside_a_builder(tmp_path):
     assert scan(tmp_path) == [("engine/consumer.py", 1, "artifact-name", "qor_hotspots.json")]
 
 
+def test_guard_rejects_a_direct_ledger_write_outside_the_owners(tmp_path):
+    _write(
+        tmp_path,
+        "tools/example/module.py",
+        "from chipcompiler.utility import json_write\n"
+        "def reset(workspace):\n"
+        "    json_write(workspace.flow.path, workspace.flow.data)\n",
+    )
+    _write(
+        tmp_path,
+        "engine/reconcile.py",
+        "from chipcompiler.utility import json_write\n"
+        'json_write(workspace_dir / "home" / "flow.json", data)\n',
+    )
+
+    assert scan(tmp_path) == [("tools/example/module.py", 3, "ledger-write", "flow.json")]
+
+
 def test_guard_rejects_a_tool_attribute_compared_with_a_string(tmp_path):
     _write(tmp_path, "engine/consumer.py", 'if step.tool == "ecc":\n    pass\n')
 
@@ -167,3 +218,10 @@ def test_allowlists_stay_explicit_and_reasoned():
     }
     assert all(reason for reason in _STEP_DIR_ALLOWLIST.values())
     assert all(reason for reason in _ARTIFACT_ALLOWLIST.values())
+    assert set(_FLOW_WRITE_OWNERS) == {
+        "data/workspace/flow_ledger.py",
+        "engine/reconcile.py",
+        "engine/interrupted_run.py",
+        "cli/project/migrate_fs.py",
+    }
+    assert all(reason for reason in _FLOW_WRITE_OWNERS.values())
