@@ -74,18 +74,28 @@ class SkippableStepEnum(StepBaseEnum):
         return True
 
 
+class FlowInputSource(StrEnum):
+    """Where a step's declared input comes from when no explicit input is set."""
+
+    #: The previous non-LEC, non-advisory step in ledger order.
+    PREVIOUS = "previous"
+    #: The step before the parallel checker batch anchored at ``filler``.
+    CHECKER_BATCH = "checker_batch"
+
+
 @dataclass(frozen=True)
 class FlowStepPolicy:
-    """The flow's knowledge about one step: category and input participation.
+    """The flow's knowledge about one step: category and input source.
 
     ``advisory`` steps keep their execution state but neither gate the flow nor
     become the source of physical design artifacts for downstream steps.
+    ``input_source`` declares the default edge; an explicit ledger
+    ``input_step`` still overrides it.
     """
 
     category: FlowStepCategory
+    input_source: FlowInputSource = FlowInputSource.PREVIOUS
     advisory: bool = False
-    #: The step may run concurrently with the checker batch after ``filler``.
-    checker_batch: bool = False
 
 
 # Every flow step is declared here; a step missing from this table fails the
@@ -105,8 +115,8 @@ FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
     StepEnum.LEGALIZATION.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.ROUTING.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.FILLER.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.LVS.value: FlowStepPolicy(FlowStepCategory.CHECKER, checker_batch=True),
-    StepEnum.DRC.value: FlowStepPolicy(FlowStepCategory.CHECKER, checker_batch=True),
+    StepEnum.LVS.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.CHECKER_BATCH),
+    StepEnum.DRC.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.CHECKER_BATCH),
     StepEnum.ANTENNA_CHECK.value: FlowStepPolicy(FlowStepCategory.PNR, advisory=True),
     SkippableStepEnum.POST_ROUTE_LEC.value: FlowStepPolicy(FlowStepCategory.CHECKER),
     StepEnum.RCX.value: FlowStepPolicy(FlowStepCategory.CHECKER),

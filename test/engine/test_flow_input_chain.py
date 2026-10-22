@@ -344,3 +344,43 @@ def test_an_unregistered_step_fails_loudly(tmp_path):
 
     with pytest.raises(FlowInputStepError, match="no flow policy registered"):
         _iterated_sources(_workspace(tmp_path), ledger)
+
+
+def _post_route_gate_source(workspace, ledger) -> str:
+    from chipcompiler.tools.ecc.lec_gates import _post_route_gate
+
+    workspace.flow.data = ledger
+    gate = _post_route_gate(workspace)
+    return _source_name(None, gate, _output_paths(workspace, ledger), workspace)
+
+
+def _checklist_prerequisite_sources(workspace, ledger) -> dict[str, str]:
+    import copy
+
+    from chipcompiler.data import EccStep
+
+    data = copy.deepcopy(ledger)
+    for step in data["steps"]:
+        step["checklist"] = {"status": "blocked"}
+    flow = EngineFlow(workspace)
+    flow.workspace.flow.data = data
+    prerequisite = {
+        step["name"]: flow._blocked_checklist_prerequisite(
+            EccStep(name=step["name"], tool=step["tool"])
+        )
+        for step in data["steps"]
+    }
+    return {name: source for name, source in prerequisite.items() if source is not None}
+
+
+def test_post_route_gate_and_checklist_gate_agree_with_the_chain(tmp_path, monkeypatch):
+    ledger = _real_ledger()
+    workspace = _workspace(tmp_path)
+    execution = _recorded_sources(workspace, ledger, monkeypatch)
+
+    assert _post_route_gate_source(workspace, ledger) == execution["postRouteLec"]
+
+    prerequisites = _checklist_prerequisite_sources(workspace, ledger)
+    assert prerequisites == {
+        name: source for name, source in execution.items() if source != "origin"
+    }

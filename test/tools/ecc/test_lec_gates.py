@@ -71,3 +71,13 @@ def test_latest_pnr_output_honors_the_info_category_fallback(tmp_path):
     assert latest_pnr_output(workspace, ".v.gz") == (
         tmp_path / "filler_ecc" / "output" / "design_filler.v.gz"
     )
+
+
+def test_latest_pnr_output_rejects_an_unregistered_step(tmp_path):
+    from chipcompiler.tools.ecc.lec_gates import latest_pnr_output
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="design"))
+    workspace.flow.data = {"steps": [{"name": "custom", "tool": "one"}]}
+
+    with pytest.raises(ValueError, match="no flow policy registered"):
+        latest_pnr_output(workspace, ".v.gz")

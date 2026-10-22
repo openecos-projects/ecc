@@ -16,6 +16,7 @@ before the batch.
 from chipcompiler.data.types import (
     ADVISORY_FLOW_STEPS,
     LEC_STEP_TOOLS,
+    FlowInputSource,
     FlowStepCategory,
     StepEnum,
     flow_step_policy,
@@ -76,13 +77,14 @@ def flow_category(record: dict) -> FlowStepCategory:
 def is_checker_batch_step(record: dict) -> bool:
     """Whether the step belongs to the parallel checker batch.
 
-    Only steps that declare a CHECKER category and opt into the batch run
-    concurrently; the batch is anchored at ``filler``. A ledger without
-    categories keeps the historical all-PNR chaining.
+    Only steps whose policy declares the batch input source run concurrently;
+    the batch is anchored at ``filler``. A ledger without categories keeps the
+    historical all-PNR chaining.
     """
     if ledger_category(record) != FlowStepCategory.CHECKER:
         return False
-    return flow_step_policy(step_name(record)).checker_batch
+    policy = flow_step_policy(step_name(record))
+    return policy.input_source is FlowInputSource.CHECKER_BATCH
 
 
 def is_lec_record(record: dict) -> bool:
