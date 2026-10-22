@@ -4,11 +4,13 @@ The guard scans first-party sources (``chipcompiler/``, excluding
 ``thirdparty/``) for three regressions:
 
 * a frozen ``<step>_<tool>`` directory literal outside its owner table,
-* a builder-owned artifact file name outside a builder or a listed consumer,
+* a builder-owned artifact file name outside its owning builder or a listed
+  consumer,
 * a direct ``.tool == "<literal>"`` comparison instead of ``ToolName``.
 
-Every allowlist entry names its reason. Adding one requires editing this file,
-so the list grows only deliberately and shrinks as consumers migrate.
+Every allowlist entry names its reason. The ceiling below is the set that
+existed when the guard shipped; entries may be removed as consumers migrate but
+the guard fails if one is added.
 """
 
 import ast
@@ -35,14 +37,20 @@ _STEP_DIRECTORY_LITERALS = frozenset(
     }
 )
 
-_ARTIFACT_NAMES = frozenset(
-    {
-        "qor_hotspots.json",
-        "sta_timing_issues.json",
-        "geometry.manifest",
-        "subflow.json",
-    }
-)
+_ARTIFACT_OWNERS = {
+    "qor_hotspots.json": {"tools/ecc/builder.py", "tools/yosys/builder.py"},
+    "sta_timing_issues.json": {"tools/ecc/builder.py"},
+    "geometry.manifest": {"tools/ecc/builder.py"},
+    "subflow.json": {
+        "tools/ecc/builder.py",
+        "tools/yosys/builder.py",
+        "tools/lec_dual/builder.py",
+        "tools/kepler_formal/builder.py",
+        "tools/yosys_lec/builder.py",
+    },
+}
+
+_ARTIFACT_NAMES = frozenset(_ARTIFACT_OWNERS)
 
 _TOOL_NAMES = frozenset(member.value for member in ToolName)
 # `lec_dual` is both a directory name and an engine/tool name; the engine
@@ -71,10 +79,6 @@ _FLOW_WRITE_OWNERS = {
     "engine/interrupted_run.py": "recovery path without a loaded Workspace",
     "cli/project/migrate_fs.py": "filesystem migration without a loaded Workspace",
 }
-
-
-def _is_builder(relative_path: str) -> bool:
-    return relative_path.startswith("tools/") and relative_path.endswith("/builder.py")
 
 
 def _tool_attribute(node: ast.AST) -> bool:
@@ -122,7 +126,7 @@ def scan(root: Path) -> list[tuple[str, int, str, str]]:
                             break
                 if (
                     value in _ARTIFACT_NAMES
-                    and not _is_builder(relative)
+                    and relative not in _ARTIFACT_OWNERS[value]
                     and relative not in _ARTIFACT_ALLOWLIST
                 ):
                     violations.append((relative, node.lineno, "artifact-name", value))
@@ -163,11 +167,15 @@ def test_guard_accepts_the_same_literal_in_the_owner_table(tmp_path):
     assert scan(tmp_path) == []
 
 
-def test_guard_rejects_an_artifact_name_outside_a_builder(tmp_path):
+def test_guard_rejects_an_artifact_name_outside_its_owner(tmp_path):
     _write(tmp_path, "engine/consumer.py", 'NAME = "qor_hotspots.json"\n')
     _write(tmp_path, "tools/ecc/builder.py", 'NAME = "qor_hotspots.json"\n')
+    _write(tmp_path, "tools/lec_dual/builder.py", 'NAME = "qor_hotspots.json"\n')
 
-    assert scan(tmp_path) == [("engine/consumer.py", 1, "artifact-name", "qor_hotspots.json")]
+    assert scan(tmp_path) == [
+        ("engine/consumer.py", 1, "artifact-name", "qor_hotspots.json"),
+        ("tools/lec_dual/builder.py", 1, "artifact-name", "qor_hotspots.json"),
+    ]
 
 
 def test_guard_rejects_a_direct_ledger_write_outside_the_owners(tmp_path):
@@ -210,18 +218,22 @@ def test_guard_excludes_thirdparty(tmp_path):
     assert scan(tmp_path) == []
 
 
-def test_allowlists_stay_explicit_and_reasoned():
-    assert set(_STEP_DIR_ALLOWLIST) == {"engine/signoff/report_data.py"}
-    assert set(_ARTIFACT_ALLOWLIST) == {
+_ALLOWLIST_CEILING = frozenset(
+    {
+        "engine/signoff/report_data.py",
         "engine/analysis.py",
         "cli/command_handlers/chipview.py",
-    }
-    assert all(reason for reason in _STEP_DIR_ALLOWLIST.values())
-    assert all(reason for reason in _ARTIFACT_ALLOWLIST.values())
-    assert set(_FLOW_WRITE_OWNERS) == {
         "data/workspace/flow_ledger.py",
         "engine/reconcile.py",
         "engine/interrupted_run.py",
         "cli/project/migrate_fs.py",
     }
+)
+
+
+def test_allowlists_only_shrink_from_the_shipped_ceiling():
+    current = set(_STEP_DIR_ALLOWLIST) | set(_ARTIFACT_ALLOWLIST) | set(_FLOW_WRITE_OWNERS)
+    assert current <= _ALLOWLIST_CEILING
+    assert all(reason for reason in _STEP_DIR_ALLOWLIST.values())
+    assert all(reason for reason in _ARTIFACT_ALLOWLIST.values())
     assert all(reason for reason in _FLOW_WRITE_OWNERS.values())

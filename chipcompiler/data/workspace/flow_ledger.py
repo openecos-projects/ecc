@@ -67,9 +67,19 @@ def save_ledger(flow) -> bool:
     if path is None:
         return False
     with _lock_for(path):
+        has_version = isinstance(flow.data, dict) and SCHEMA_VERSION_FIELD in flow.data
+        previous_version = flow.data.get(SCHEMA_VERSION_FIELD) if has_version else None
         if isinstance(flow.data, dict):
             flow.data[SCHEMA_VERSION_FIELD] = FLOW_JSON_SCHEMA_VERSION
-        return json_write(path, deepcopy(flow.data))
+        if json_write(path, deepcopy(flow.data)):
+            return True
+        if isinstance(flow.data, dict):
+            # Keep memory and disk describing the same document.
+            if has_version:
+                flow.data[SCHEMA_VERSION_FIELD] = previous_version
+            else:
+                flow.data.pop(SCHEMA_VERSION_FIELD, None)
+        return False
 
 
 def validate_transition(old_state: str | None, new_state: str, step_name: str, tool: str) -> None:
@@ -143,9 +153,13 @@ def set_flow_state(
 def clear_flow_states(flow, *, persist=None) -> bool:
     """Reset every step to Unstart and persist once."""
     write = persist if persist is not None else (lambda: save_ledger(flow))
+    previous_data = deepcopy(flow.data)
     for step in flow.data.get("steps", []):
         step["state"] = StateEnum.Unstart.value
         step["runtime"] = ""
         step["peak memory (mb)"] = 0
         step.pop("resource_observation", None)
-    return write()
+    if write():
+        return True
+    flow.data = previous_data
+    return False
