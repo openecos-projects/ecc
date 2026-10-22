@@ -4,18 +4,18 @@ Zero IO and zero chipcompiler-internal imports: this module is the
 dependency-free root of the data layer's type vocabulary.
 """
 
-from enum import Enum
+from enum import StrEnum
 from typing import Final
 
 
-class FlowStepCategory(str, Enum):
+class FlowStepCategory(StrEnum):
     """Input chaining behavior for persisted flow steps."""
 
     PNR = "PNR"
     CHECKER = "CHECKER"
 
 
-class StepBaseEnum(Enum):
+class StepBaseEnum(StrEnum):
     """Memberless base of the flow step enums: shared behavior.
 
     Python forbids inheriting an Enum that has members, so shared step
@@ -116,7 +116,7 @@ def default_flow_step_category(step: StepBaseEnum | str) -> FlowStepCategory:
 DEFAULT_SKIP_STEPS: Final = (SkippableStepEnum.LEC.value,)
 
 
-class LECEngineEnum(Enum):
+class LECEngineEnum(StrEnum):
     """Engines that can own the lec/postRouteLec steps.
 
     DUAL is a composite: it runs both physical engines on the same inputs
@@ -182,7 +182,7 @@ def step_from_value(name: str) -> StepBaseEnum:
     raise ValueError(f"unknown flow step: {name!r}; available steps: {legal}")
 
 
-class StateEnum(Enum):
+class StateEnum(StrEnum):
     """flow running state"""
 
     Invalid = "Invalid"  # ecc tools or config invalid
