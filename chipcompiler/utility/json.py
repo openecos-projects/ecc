@@ -11,33 +11,34 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def json_read(file_path: str | Path) -> dict:
-    """
-    Read a JSON file and return its content as a dictionary.
-
-    Returns {} on any error (missing file, parse error, I/O error).
-    Use json_read_strict() for mandatory configuration files where
-    failure must be distinguishable from valid empty JSON.
-    """
-    data = {}
-    path = Path(file_path)
-    if path.is_file() is False:
-        return data
-
+def _load_json(path: Path) -> object:
+    """Parse a JSON file, or return None (with a warning) when it cannot be read."""
+    if not path.is_file():
+        return None
     try:
         if path.suffix == ".gz":
             import gzip
 
             with gzip.open(path, "rt") as f:
-                data = json.load(f)
-        else:
-            with path.open() as f:
-                data = json.load(f)
+                return json.load(f)
+        with path.open() as f:
+            return json.load(f)
     except Exception:
         logger.warning("Failed to read JSON file: %s", path, exc_info=True)
-        return data
+        return None
 
-    return data
+
+def json_read(file_path: str | Path) -> dict:
+    """
+    Read a JSON file and return its content as a dictionary.
+
+    Returns {} on any error (missing file, parse error, I/O error) and when the
+    file holds something other than a JSON object.
+    Use json_read_strict() for mandatory configuration files where
+    failure must be distinguishable from valid empty JSON.
+    """
+    data = _load_json(Path(file_path))
+    return data if isinstance(data, dict) else {}
 
 
 class JsonReadError(Exception):

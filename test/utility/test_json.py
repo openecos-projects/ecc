@@ -69,6 +69,14 @@ def test_json_write_accepts_path_input(tmp_path):
     assert json.loads(path.read_text()) == {"value": 1}
 
 
+@pytest.mark.parametrize("content", ["[1, 2]", "null", "3", '"text"'])
+def test_json_read_returns_empty_dict_for_a_non_object_document(tmp_path, content):
+    path = tmp_path / "data.json"
+    path.write_text(content)
+
+    assert json_read(path) == {}
+
+
 def test_json_read_accepts_gz_path_input(tmp_path):
     path = tmp_path / "data.json.gz"
     with gzip.open(path, "wt") as f:
