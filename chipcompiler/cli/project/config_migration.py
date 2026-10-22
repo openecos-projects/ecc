@@ -8,6 +8,7 @@ from pathlib import Path
 from chipcompiler.cli.project.toml_edit import set_scoped_key
 from chipcompiler.project.manifest import CONFIG_FILENAME
 from chipcompiler.utility.file import write_text_atomic
+from chipcompiler.utility.json import JsonObject
 
 
 class ConfigMigrationError(ValueError):
@@ -25,7 +26,7 @@ def repair_manifest_project_config(project_dir: str, manifest) -> tuple[str, ...
     text = _read_existing(path)
     document = _parse_existing(path, text)
     base = manifest.base_design
-    parameters = base.get("parameters") if isinstance(base.get("parameters"), dict) else {}
+    parameters = JsonObject(base.get("parameters"))
 
     design_name = manifest.design_name
     top = _nonempty(base.get("top_module")) or _nonempty(parameters.get("top_module"))

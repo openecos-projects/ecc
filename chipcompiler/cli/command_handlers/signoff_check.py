@@ -11,6 +11,7 @@ from chipcompiler.cli.inspection.discovery import (
 )
 from chipcompiler.cli.inspection.evidence_summary import qor_score
 from chipcompiler.cli.inspection.project_checkers import checker_evidence
+from chipcompiler.utility import JsonObject
 
 _PROFILES = {
     "rtl2gds": (
@@ -311,7 +312,7 @@ def _artifact_gate(root: Path, label: str, checklist: str) -> dict:
     item = next((item for item in items if item.get("title") == label), None)
     if not isinstance(item, dict):
         return {"status": "unknown", "reason": "artifact_evidence_unavailable", "source": checklist}
-    source = item.get("source") if isinstance(item.get("source"), dict) else {}
+    source = JsonObject(item.get("source"))
     relative = source.get("path")
     if not isinstance(relative, str) or Path(relative).is_absolute():
         return {"status": "unknown", "reason": "artifact_path_invalid", "source": checklist}

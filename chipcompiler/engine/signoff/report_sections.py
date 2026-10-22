@@ -22,6 +22,7 @@ from chipcompiler.engine.signoff.report_extract import (
     format_duration,
     parse_runtime_seconds,
 )
+from chipcompiler.utility import JsonObject
 
 _AREA_STAGES = ["Harden", "Route", "Legal", "Place", "PostFloorplan"]
 
@@ -404,10 +405,8 @@ def _extract_power(q, params) -> PowerMetrics:
             ["Power", "STA", "Parameters"],
             ["temperature", "temperature_c", "TEMPERATURE", "TEMP", "temp", "operating_temp"],
         )[0],
-        corner=params.get("POWER_CORNER") if isinstance(params.get("POWER_CORNER"), str) else None,
-        activity_method=(
-            params.get("POWER_ACTIVITY") if isinstance(params.get("POWER_ACTIVITY"), str) else None
-        ),
+        corner=JsonObject(params).get_str("POWER_CORNER", None),
+        activity_method=JsonObject(params).get_str("POWER_ACTIVITY", None),
     )
 
 
@@ -466,13 +465,13 @@ def _extract_execution(flow) -> ExecutionMetrics:
     stages = []
     total_runtime_seconds = 0.0
     peak_memory_mb = None
-    steps = flow.get("steps") if isinstance(flow.get("steps"), list) else []
-    for raw_step in steps:
+    for raw_step in JsonObject(flow).get_list("steps"):
         if not _is_record(raw_step):
             continue
-        name = raw_step.get("name") if isinstance(raw_step.get("name"), str) else "Unknown"
-        tool = raw_step.get("tool") if isinstance(raw_step.get("tool"), str) else name
-        state = raw_step.get("state") if isinstance(raw_step.get("state"), str) else "Unknown"
+        fields = JsonObject(raw_step)
+        name = fields.get_str("name", "Unknown")
+        tool = fields.get_str("tool", name)
+        state = fields.get_str("state", "Unknown")
         runtime_seconds = parse_runtime_seconds(raw_step.get("runtime"))
         info = raw_step.get("info") if _is_record(raw_step.get("info")) else {}
         memory_mb = _parse_number(
