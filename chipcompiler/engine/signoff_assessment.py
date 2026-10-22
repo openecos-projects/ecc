@@ -179,7 +179,13 @@ def _group_for(item: dict) -> str:
     ):
         return "spef"
     if step in {"Route", "drc", "lvs", "filler"} or path.startswith(
-        ("route_ecc/", "drc_ecc/", "lvs_ecc/", "filler_ecc/", "final/design/")
+        (
+            f"{STEP_DIRECTORIES[StepEnum.ROUTING.value]}/",
+            f"{STEP_DIRECTORIES[StepEnum.DRC.value]}/",
+            f"{STEP_DIRECTORIES[StepEnum.LVS.value]}/",
+            f"{STEP_DIRECTORIES[StepEnum.FILLER.value]}/",
+            "final/design/",
+        )
     ):
         return "final_design"
     return "reports"

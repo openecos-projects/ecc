@@ -341,7 +341,7 @@ def _netlist_artifact_gate(root: Path) -> dict:
         return {
             "status": "unknown",
             "reason": "artifact_evidence_unavailable",
-            "source": "postRouteLec_kepler_formal/output",
+            "source": (f"{STEP_DIRECTORIES[SkippableStepEnum.POST_ROUTE_LEC.value]}/output"),
         }
     result = _read(candidates[0])
     relative = result.get("gate_verilog")
