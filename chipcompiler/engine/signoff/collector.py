@@ -158,13 +158,16 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         lec_gate = None
         if post_route_lec_index is not None:
             lec_gate_name = FlowInputResolver(flow_steps).input_step_name(post_route_lec_index)
-            lec_gate_step = next(step for step in flow_steps if step.get("name") == lec_gate_name)
-            lec_gate = (
-                workspace_dir
-                / step_directory_for_tool(lec_gate_name, str(lec_gate_step.get("tool") or ""))
-                / "output"
-                / f"{design}_{lec_gate_name}.v.gz"
-            )
+            if lec_gate_name is not None:
+                lec_gate_step = next(
+                    step for step in flow_steps if step.get("name") == lec_gate_name
+                )
+                lec_gate = (
+                    workspace_dir
+                    / step_directory_for_tool(lec_gate_name, str(lec_gate_step.get("tool") or ""))
+                    / "output"
+                    / f"{design}_{lec_gate_name}.v.gz"
+                )
         # A workspace whose ledger has no postRouteLec (skipped at creation)
         # never requires it, regardless of the artifacts on disk.
         require_lec = self.workspace.flow.has_step(

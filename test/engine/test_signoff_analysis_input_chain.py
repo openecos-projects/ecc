@@ -88,3 +88,29 @@ def test_refresh_workspace_analysis_chains_the_previous_step(tmp_path):
         "emir": "powerAnalysis",
         "Harden": "powerAnalysis",
     }
+
+
+def test_invalid_explicit_input_is_reported_as_an_issue(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(
+            name="gcd",
+            top_module="gcd",
+            origin_def=tmp_path / "origin.def",
+            origin_verilog=tmp_path / "origin.v",
+        ),
+    )
+    ledger = build_dynamic_flow_data({"start_step": "route", "end_step": "Harden"})
+    for step in ledger["steps"]:
+        step["state"] = StateEnum.Success.value
+    next(step for step in ledger["steps"] if step["name"] == "RCX")["input_step"] = "does_not_exist"
+    workspace.flow.data = ledger
+    workspace.flow.path = tmp_path / "flow.json"
+    collector = _RecordingCollector(workspace)
+
+    collector._refresh_workspace_analysis(tmp_path)
+
+    assert any(
+        step_name == "RCX" and "Could not construct" in reason
+        for step_name, _kind, reason in collector.issues
+    )

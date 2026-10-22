@@ -16,7 +16,7 @@ from chipcompiler.data import (
     StepEnum,
     ToolName,
 )
-from chipcompiler.data.workspace.flow_policy import FlowInputResolver
+from chipcompiler.data.workspace.flow_policy import FlowInputResolver, FlowInputStepError
 from chipcompiler.engine.signoff.models import SIGNOFF_REQUIRED_QOR_STEPS, SignoffPackageIssue
 from chipcompiler.tools.registry import load_builder
 
@@ -39,7 +39,9 @@ class CollectorAnalysisMixin:
             try:
                 input_source = resolver.input_source(index)
                 workspace_step = self._build_workspace_step(flow_step, input_source)
-            except (ImportError, OSError, TypeError, ValueError):
+            except (ImportError, OSError, TypeError, ValueError, FlowInputStepError):
+                # A malformed explicit input is reported as a stale/missing
+                # analysis issue; execution stays strict and raises.
                 workspace_step = None
             if workspace_step is None:
                 issues.append(
