@@ -1119,7 +1119,7 @@ def create_workspace(
     workspace.flow.path = home_dir / "flow.json"
     workspace.parameters.path = workspace_config_toml_path(home_dir.parent)
     if dynamic_flow_data:
-        from chipcompiler.utility import json_write
+        from .flow_ledger import save_ledger
 
         workspace.flow.data = dynamic_flow_data
         from ..workspace_config import flow_section_from_flow_config
@@ -1134,7 +1134,7 @@ def create_workspace(
             )
         if workspace.pdk.spef is not None:
             dynamic_flow_data["steps"][0]["info"]["spef"] = str(workspace.pdk.spef)
-        if not json_write(workspace.flow.path, workspace.flow.data):
+        if not save_ledger(workspace.flow):
             raise OSError(f"Failed to write initial flow.json: {workspace.flow.path}")
     elif isinstance(flow_config, dict) and (
         "skip_steps" in flow_config or "lec_engine" in flow_config

@@ -2,7 +2,6 @@
 
 import logging
 import os
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
@@ -24,8 +23,6 @@ from chipcompiler.data import (
     is_finished_step_state,
     log_flow,
 )
-from chipcompiler.data.schema_migrations import SCHEMA_VERSION_FIELD
-from chipcompiler.data.workspace.flow_data import FLOW_JSON_SCHEMA_VERSION
 from chipcompiler.data.workspace.flow_policy import FlowInputResolver, ledger_category
 from chipcompiler.engine import EngineDB
 from chipcompiler.engine.flow_completion import (
@@ -134,7 +131,6 @@ class EngineFlow:
         self.workspace = workspace
         self.workspace_steps = []
         self.engine_db = engine_db  # db engine for this flow
-        self._persistence_lock = threading.RLock()
 
         if self.workspace is not None:
             self.load()
@@ -228,17 +224,9 @@ class EngineFlow:
         """
         save flow to workspace json
         """
-        from chipcompiler.utility import json_write
+        from chipcompiler.data.workspace.flow_ledger import save_ledger
 
-        persistence_lock = getattr(self, "_persistence_lock", None)
-        if persistence_lock is None:
-            persistence_lock = threading.RLock()
-            self._persistence_lock = persistence_lock
-        with persistence_lock:
-            if isinstance(self.workspace.flow.data, dict):
-                self.workspace.flow.data[SCHEMA_VERSION_FIELD] = FLOW_JSON_SCHEMA_VERSION
-            data = deepcopy(self.workspace.flow.data)
-            return json_write(self.workspace.flow.path, data)
+        return save_ledger(self.workspace.flow)
 
     def get_step(self, name: str, tool: str):
         for step in self.workspace.flow.data.get("steps", []):

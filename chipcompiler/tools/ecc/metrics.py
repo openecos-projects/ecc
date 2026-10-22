@@ -2501,16 +2501,15 @@ def _qor_missing_metric_record(step: WorkspaceStep, metric_name: str) -> dict:
 
 
 def _workspace_step_completed(workspace: Workspace, step_name: str) -> bool:
-    flow_data = workspace.flow.data
-    flow_steps = flow_data.get("steps", []) if isinstance(flow_data, dict) else []
-    if not isinstance(flow_steps, list) or len(flow_steps) == 0:
-        return True
+    from chipcompiler.data import StateEnum
 
-    for flow_step in flow_steps:
-        if not isinstance(flow_step, dict) or flow_step.get("name") != step_name:
-            continue
-        return flow_step.get("state") == "Success"
-    return False
+    flow = getattr(workspace, "flow", None)
+    if flow is None or not flow.steps():
+        return True
+    flow_step = flow.get_step(step_name)
+    if flow_step is None:
+        return False
+    return flow_step.get("state") == StateEnum.Success.value
 
 
 def _harden_signoff_source(workspace: Workspace, source_step: str) -> dict:
