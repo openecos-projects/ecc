@@ -2,6 +2,7 @@
 
 from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace
 from chipcompiler.data.step import STEP_DIRECTORIES
+from chipcompiler.tools.ecc.emir_artifacts import publish_emir_reports
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.power_artifacts import workspace_instance_power_path
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
@@ -69,5 +70,16 @@ def run_emir(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
     ):
         sub_flow.update_step(EccSubFlowEnum.save_data.value, StateEnum.Imcomplete)
         return False
+    report_dir = step.report.dir
+    if report_dir is None:
+        workspace.logger.warning("EMIR report directory is not configured")
+    else:
+        try:
+            publish_emir_reports(
+                data_dir=step.data.steps[StepEnum.EMIR.value],
+                report_dir=report_dir,
+            )
+        except Exception as error:
+            workspace.logger.warning("Failed to publish EMIR reports: %s", error)
     sub_flow.update_step(EccSubFlowEnum.save_data.value, StateEnum.Success)
     return True
