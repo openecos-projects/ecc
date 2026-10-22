@@ -471,8 +471,17 @@ def test_kepler_formal_config_yaml_contains_only_plain_values(tmp_path):
         input_verilog=gate,
     )
 
-    document = yaml.safe_load(builder.build_lec_config_yaml(workspace, step))
+    rendered = builder.build_lec_config_yaml(workspace, step)
+    document = yaml.safe_load(rendered)
 
+    for enum_name in (
+        "StepEnum.",
+        "SkippableStepEnum.",
+        "StateEnum.",
+        "LECEngineEnum.",
+        "FlowStepCategory.",
+    ):
+        assert enum_name not in rendered
     assert document["verification"] == "lec"
     assert document["verilog_design2_top"] == "gcd"
     assert all(isinstance(path, str) for pair in document["input_paths"] for path in pair)

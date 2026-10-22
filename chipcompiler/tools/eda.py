@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 from chipcompiler.data import StepMetrics, ToolName, Workspace, WorkspaceStep, log_workspace_step
-from chipcompiler.tools.registry import load_tool, tool_spec
+from chipcompiler.tools.registry import checks_dependency, load_tool, tool_spec
 
 
 def load_eda_module(eda_tool: str, *, check_dependency: bool = True):
@@ -46,7 +46,7 @@ def create_step(
         )
 
     # check eda tool exist
-    eda_module = load_tool(eda, check_dependency=check_dependency)
+    eda_module = load_tool(eda, check_dependency=checks_dependency(eda, requested=check_dependency))
     if eda_module is None or not hasattr(eda_module, "build_step"):
         return None
 
@@ -124,7 +124,7 @@ def run_step(workspace: Workspace, step: WorkspaceStep, ecc_module=None) -> bool
     Run the given step using the provided EDA engine.
     """
     # check eda tool exist
-    eda_module = load_tool(step.tool)
+    eda_module = load_tool(step.tool, check_dependency=checks_dependency(step.tool))
     if eda_module is None:
         return False
 
@@ -159,7 +159,7 @@ def build_step_metrics(workspace: Workspace, step: WorkspaceStep) -> StepMetrics
     """
     build step metrics
     """
-    eda_module = load_tool(step.tool)
+    eda_module = load_tool(step.tool, check_dependency=checks_dependency(step.tool))
     build_metrics = getattr(eda_module, "build_step_metrics", None)
     if build_metrics is None:
         return None

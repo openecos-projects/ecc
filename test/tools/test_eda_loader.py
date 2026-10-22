@@ -1,6 +1,8 @@
 import sys
 from types import ModuleType, SimpleNamespace
 
+import pytest
+
 from chipcompiler.data import StepMetrics
 from chipcompiler.tools import eda
 
@@ -180,6 +182,45 @@ def test_load_tool_propagates_a_dependency_runtime_error(monkeypatch):
 
     with pytest.raises(RuntimeError, match="native dependency is not installed"):
         eda.load_tool("fake_raising")
+
+
+@pytest.mark.parametrize("tool", ["yosys", "kepler_formal", "lec_dual"])
+def test_load_tool_propagates_the_production_dependency_error(monkeypatch, tool):
+    import importlib
+
+    module = importlib.import_module(f"chipcompiler.tools.{tool}")
+
+    def raise_missing_dependency():
+        raise RuntimeError(f"{tool} dependency is not installed")
+
+    monkeypatch.setattr(module, "is_eda_exist", raise_missing_dependency)
+
+    with pytest.raises(RuntimeError, match=f"{tool} dependency"):
+        eda.load_tool(tool)
+
+
+def test_load_tool_does_not_attempt_an_unknown_import(monkeypatch):
+    import chipcompiler.tools.registry as registry
+
+    imported = []
+    monkeypatch.setattr(
+        registry.importlib,
+        "import_module",
+        lambda module_name: imported.append(module_name) or None,
+    )
+
+    assert eda.load_tool("does_not_exist") is None
+    assert imported == []
+
+
+def test_load_tool_checks_sizer_dependency_when_the_caller_asks(monkeypatch):
+    module = _install_tool_module(monkeypatch, "ecc_sizer", exists=False)
+    calls = []
+    module.is_eda_exist = lambda: calls.append(True) or False
+
+    assert eda.load_tool("sizer", check_dependency=True) is None
+    assert calls == [True]
+    assert eda.load_tool("sizer", check_dependency=False) is module
 
 
 def test_load_builder_raises_import_error_for_unknown_and_missing_modules(monkeypatch):

@@ -5,6 +5,7 @@ any step, tool, state or category value when the members are `StrEnum`.
 """
 
 import copy
+import json
 
 from chipcompiler.data import OriginDesign, Workspace
 from chipcompiler.engine.flow import EngineFlow
@@ -23,11 +24,14 @@ def test_flow_ledger_round_trip_preserves_every_value(tmp_path):
             for step, tool, state in build_flow_range("Synthesis", "Harden")
         ]
     }
-    assert flow.save()
-    before = copy.deepcopy(flow.workspace.flow.data)
+    before_steps = copy.deepcopy(flow.workspace.flow.data["steps"])
 
+    assert flow.save()
+
+    on_disk = json.loads(flow_path.read_text(encoding="utf-8"))
     reloaded = EngineFlow(workspace)
-    assert reloaded.workspace.flow.data == before
+    assert on_disk["steps"] == before_steps
+    assert reloaded.workspace.flow.data["steps"] == before_steps
     for step in reloaded.workspace.flow.data["steps"]:
         for key in ("name", "tool", "state", "category"):
             assert type(step[key]) is str

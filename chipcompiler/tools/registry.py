@@ -57,6 +57,17 @@ def tool_spec(name: object) -> ToolSpec | None:
         return None
 
 
+def checks_dependency(name: object, *, requested: bool = True) -> bool:
+    """Whether the loader should run a tool's dependency check.
+
+    The loader itself always honors its ``check_dependency`` argument; tools
+    whose binary is optional declare that here so call sites can opt out
+    without changing the loader's public contract.
+    """
+    spec = tool_spec(name)
+    return requested and not (spec is not None and spec.skip_dependency_check)
+
+
 def _module_identity(name: object) -> tuple[str, ToolSpec] | None:
     """The importable package for a tool name.
 
@@ -98,7 +109,7 @@ def load_tool(name: object, *, check_dependency: bool = True):
         logging.error("EDA tool '%s': module loaded but missing interface: %s", name, missing)
         return None
 
-    if check_dependency and not spec.skip_dependency_check and not eda_module.is_eda_exist():
+    if check_dependency and not eda_module.is_eda_exist():
         logging.error(
             "EDA tool '%s': dependency check failed (is_eda_exist returned False)",
             name,
