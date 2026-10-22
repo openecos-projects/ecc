@@ -57,6 +57,14 @@ from chipcompiler.utility import file_digest
 
 logger = logging.getLogger(__name__)
 
+#: Checker-batch memory policy: fallback step estimate, minimum estimate,
+#: available-memory reserve fraction, observed-peak multiplier and worker cap.
+_CHECKER_DEFAULT_STEP_MB = 1024.0
+_CHECKER_MIN_STEP_MB = 4096.0
+_CHECKER_MEMORY_RESERVE_FRACTION = 0.20
+_CHECKER_OBSERVED_MEMORY_FACTOR = 1.5
+_CHECKER_MAX_WORKERS = 4
+
 
 # ---------------------------------------------------------------------------
 # State machine transition guards
@@ -703,15 +711,15 @@ class EngineFlow:
         if available_mb <= 0:
             return 1
         estimates = [self._step_memory_estimate_mb(step) for step in steps]
-        estimate_mb = max(estimates, default=1024.0)
-        reserve_mb = max(1024.0, available_mb * 0.20)
+        estimate_mb = max(estimates, default=_CHECKER_DEFAULT_STEP_MB)
+        reserve_mb = max(_CHECKER_DEFAULT_STEP_MB, available_mb * _CHECKER_MEMORY_RESERVE_FRACTION)
         capacity = int(max(0.0, available_mb - reserve_mb) // estimate_mb)
-        return max(1, min(len(steps), capacity, 4))
+        return max(1, min(len(steps), capacity, _CHECKER_MAX_WORKERS))
 
     def _step_memory_estimate_mb(self, workspace_step: WorkspaceStep) -> float:
         flow_step = self.get_step(workspace_step.name, workspace_step.tool) or {}
         observed = float(flow_step.get("peak memory (mb)") or 0)
-        return max(4096.0, observed * 1.5)
+        return max(_CHECKER_MIN_STEP_MB, observed * _CHECKER_OBSERVED_MEMORY_FACTOR)
 
     def _blocked_checklist_prerequisite(self, workspace_step: WorkspaceStep) -> str | None:
         steps = self.workspace.flow.data.get("steps", [])

@@ -266,3 +266,56 @@ def test_read_rejects_artifact_index_beyond_limit(tmp_path):
 
     with pytest.raises(EngineeringSnapshotError, match="section: artifacts"):
         read_engineering_snapshot(workspace)
+
+
+def _snapshot_with_step_outputs(step_count, *, extra_reference=False):
+    steps = [
+        {
+            "step": f"step-{index}",
+            "tool": "ecc",
+            "state": "Success",
+            "verilog": {"path": f"step-{index}.v", "exists": True},
+            "def": None,
+        }
+        for index in range(step_count)
+    ]
+    if extra_reference:
+        steps[-1]["def"] = {"path": "extra.def", "exists": True}
+    return {
+        "stepOutputs": {
+            "directory": ".",
+            "design": "gcd",
+            "steps": steps,
+            "sdc": None,
+        }
+    }
+
+
+def test_step_output_limit_accepts_exactly_the_limit():
+    from chipcompiler.engine.snapshot import SNAPSHOT_STEP_LIMIT, _validate_step_outputs
+
+    _validate_step_outputs(_snapshot_with_step_outputs(SNAPSHOT_STEP_LIMIT), Path("."))
+
+
+def test_step_output_limit_rejects_one_over():
+    from chipcompiler.engine.snapshot import SNAPSHOT_STEP_LIMIT, _validate_step_outputs
+
+    with pytest.raises(EngineeringSnapshotError):
+        _validate_step_outputs(_snapshot_with_step_outputs(SNAPSHOT_STEP_LIMIT + 1), Path("."))
+
+
+def test_step_output_reference_limit_accepts_exactly_the_limit():
+    from chipcompiler.engine.snapshot import SNAPSHOT_REFERENCE_LIMIT, _validate_step_outputs
+
+    # One reference per step: exactly the reference limit.
+    _validate_step_outputs(_snapshot_with_step_outputs(SNAPSHOT_REFERENCE_LIMIT), Path("."))
+
+
+def test_step_output_reference_limit_rejects_one_over():
+    from chipcompiler.engine.snapshot import SNAPSHOT_REFERENCE_LIMIT, _validate_step_outputs
+
+    with pytest.raises(EngineeringSnapshotError):
+        _validate_step_outputs(
+            _snapshot_with_step_outputs(SNAPSHOT_REFERENCE_LIMIT, extra_reference=True),
+            Path("."),
+        )

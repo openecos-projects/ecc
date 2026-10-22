@@ -7,6 +7,7 @@ from pathlib import Path
 from rosettakit import tcl
 
 from chipcompiler.data import (
+    DEFAULT_ABC_LOAD,
     AnalysisPaths,
     ChecklistState,
     LogPaths,
@@ -152,7 +153,7 @@ def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:
     tie_high_cell = pdk.tie_high_cell if pdk.tie_high_cell else ""
     tie_high_port = pdk.tie_high_port if pdk.tie_high_port else ""
     abc_driver_cell = pdk.abc_driver_cell if pdk.abc_driver_cell else "BUFX4H7L"
-    abc_load = pdk.abc_load if pdk.abc_load else 0.015
+    abc_load = pdk.abc_load if pdk.abc_load else DEFAULT_ABC_LOAD
 
     lib_stdcell_paths = workspace.pdk.libs if workspace.pdk.libs else []
     workspace_lib_paths = _workspace_libs(workspace)
