@@ -218,11 +218,12 @@ def test_guard_excludes_thirdparty(tmp_path):
     assert scan(tmp_path) == []
 
 
-_ALLOWLIST_CEILING = frozenset(
+# Rule membership is part of the contract: an entry may move out of a list,
+# never into a different rule's list.
+_STEP_DIR_ALLOWLIST_CEILING = frozenset({"engine/signoff/report_data.py"})
+_ARTIFACT_ALLOWLIST_CEILING = frozenset({"engine/analysis.py", "cli/command_handlers/chipview.py"})
+_FLOW_WRITE_OWNERS_CEILING = frozenset(
     {
-        "engine/signoff/report_data.py",
-        "engine/analysis.py",
-        "cli/command_handlers/chipview.py",
         "data/workspace/flow_ledger.py",
         "engine/reconcile.py",
         "engine/interrupted_run.py",
@@ -231,9 +232,10 @@ _ALLOWLIST_CEILING = frozenset(
 )
 
 
-def test_allowlists_only_shrink_from_the_shipped_ceiling():
-    current = set(_STEP_DIR_ALLOWLIST) | set(_ARTIFACT_ALLOWLIST) | set(_FLOW_WRITE_OWNERS)
-    assert current <= _ALLOWLIST_CEILING
+def test_allowlists_only_shrink_from_the_shipped_ceilings():
+    assert set(_STEP_DIR_ALLOWLIST) <= _STEP_DIR_ALLOWLIST_CEILING
+    assert set(_ARTIFACT_ALLOWLIST) <= _ARTIFACT_ALLOWLIST_CEILING
+    assert set(_FLOW_WRITE_OWNERS) <= _FLOW_WRITE_OWNERS_CEILING
     assert all(reason for reason in _STEP_DIR_ALLOWLIST.values())
     assert all(reason for reason in _ARTIFACT_ALLOWLIST.values())
     assert all(reason for reason in _FLOW_WRITE_OWNERS.values())
