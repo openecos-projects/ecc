@@ -1,5 +1,7 @@
 """Build one workspace step from the input source the flow policy resolved."""
 
+from chipcompiler.tools.registry import load_builder
+
 
 def build_workspace_step_for_info(workspace, flow_step: dict, input_source):
     """Build the step for *flow_step*, wiring *input_source* (None = origin)."""
@@ -17,7 +19,7 @@ def build_workspace_step_for_info(workspace, flow_step: dict, input_source):
         input_verilog = input_source.output.verilog or ""
         input_db = input_source.output.db or ""
 
-    builder = load_tool_builder(tool)
+    builder = load_builder(tool)
     if builder is None or not hasattr(builder, "build_step"):
         return None
     return builder.build_step(
@@ -27,9 +29,3 @@ def build_workspace_step_for_info(workspace, flow_step: dict, input_source):
         input_verilog=input_verilog,
         input_db=input_db,
     )
-
-
-def load_tool_builder(tool: str):
-    from chipcompiler.tools.registry import load_builder
-
-    return load_builder(tool)

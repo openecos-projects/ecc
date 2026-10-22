@@ -10,6 +10,7 @@ in the regression guard's allowlist.
 
 import logging
 import threading
+from contextlib import contextmanager
 from copy import deepcopy
 
 from chipcompiler.data.schema_migrations import SCHEMA_VERSION_FIELD
@@ -52,6 +53,17 @@ def _lock_for(path) -> threading.RLock:
             lock = threading.RLock()
             _LOCKS[key] = lock
         return lock
+
+
+@contextmanager
+def ledger_lock(flow):
+    """Hold the shared per-path lock across a read-modify-write transaction."""
+    path = flow.path
+    if path is None:
+        yield
+        return
+    with _lock_for(path):
+        yield
 
 
 def save_ledger(flow) -> bool:
@@ -116,50 +128,52 @@ def set_flow_state(
     """
     write = persist if persist is not None else (lambda: save_ledger(flow))
     state_value = state.value if isinstance(state, StateEnum) else state
-    for step in flow.data.get("steps", []):
-        if step.get("name") != name or step.get("tool") != tool:
-            continue
-        old_state = step.get("state")
-        validate_transition(old_state, state_value, name, tool)
-        previous_step = deepcopy(step)
-        step["state"] = state_value
-        if state_value in {StateEnum.Ongoing.value, StateEnum.Unstart.value}:
-            step.pop("resource_observation", None)
-        if runtime is not None:
-            step["runtime"] = runtime
-        if peak_memory is not None:
-            step["peak memory (mb)"] = peak_memory
-        if clear_runtime_operation:
-            info = step.get("info", {})
-            info.pop("runtime_operation", None)
-            info.pop("execution", None)
+    with ledger_lock(flow):
+        for step in flow.data.get("steps", []):
+            if step.get("name") != name or step.get("tool") != tool:
+                continue
+            old_state = step.get("state")
+            validate_transition(old_state, state_value, name, tool)
+            previous_step = deepcopy(step)
+            step["state"] = state_value
+            if state_value in {StateEnum.Ongoing.value, StateEnum.Unstart.value}:
+                step.pop("resource_observation", None)
+            if runtime is not None:
+                step["runtime"] = runtime
+            if peak_memory is not None:
+                step["peak memory (mb)"] = peak_memory
+            if clear_runtime_operation:
+                info = step.get("info", {})
+                info.pop("runtime_operation", None)
+                info.pop("execution", None)
 
-        if flow.path is None:
+            if flow.path is None:
+                return True
+            if not write():
+                step.clear()
+                step.update(previous_step)
+                logger.error(
+                    "Failed to persist flow state for %s/%s (state=%s)",
+                    name,
+                    tool,
+                    state_value,
+                )
+                return False
             return True
-        if not write():
-            step.clear()
-            step.update(previous_step)
-            logger.error(
-                "Failed to persist flow state for %s/%s (state=%s)",
-                name,
-                tool,
-                state_value,
-            )
-            return False
-        return True
     return False
 
 
 def clear_flow_states(flow, *, persist=None) -> bool:
     """Reset every step to Unstart and persist once."""
     write = persist if persist is not None else (lambda: save_ledger(flow))
-    previous_data = deepcopy(flow.data)
-    for step in flow.data.get("steps", []):
-        step["state"] = StateEnum.Unstart.value
-        step["runtime"] = ""
-        step["peak memory (mb)"] = 0
-        step.pop("resource_observation", None)
-    if write():
-        return True
-    flow.data = previous_data
-    return False
+    with ledger_lock(flow):
+        previous_data = deepcopy(flow.data)
+        for step in flow.data.get("steps", []):
+            step["state"] = StateEnum.Unstart.value
+            step["runtime"] = ""
+            step["peak memory (mb)"] = 0
+            step.pop("resource_observation", None)
+        if write():
+            return True
+        flow.data = previous_data
+        return False

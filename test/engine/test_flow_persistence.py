@@ -72,3 +72,26 @@ def test_failed_ledger_write_does_not_leave_a_schema_version(tmp_path, monkeypat
 
     assert flow_ledger.save_ledger(workspace.flow) is False
     assert SCHEMA_VERSION_FIELD not in workspace.flow.data
+
+
+def test_state_transaction_holds_the_ledger_lock(tmp_path):
+    import chipcompiler.data.workspace.flow_ledger as flow_ledger
+    from chipcompiler.data import StateEnum
+
+    workspace = Workspace(directory=tmp_path)
+    (tmp_path / "home").mkdir()
+    workspace.flow.path = tmp_path / "home" / "flow.json"
+    workspace.flow.data = {"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Unstart"}]}
+    observed = []
+
+    def persist():
+        observed.append(flow_ledger._lock_for(workspace.flow.path)._is_owned())
+        return True
+
+    assert (
+        flow_ledger.set_flow_state(
+            workspace.flow, "Synthesis", "yosys", StateEnum.Ongoing, persist=persist
+        )
+        is True
+    )
+    assert observed == [True]
