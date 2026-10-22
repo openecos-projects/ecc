@@ -63,6 +63,7 @@ logger = logging.getLogger(__name__)
 #: available-memory reserve fraction, observed-peak multiplier and worker cap.
 _CHECKER_DEFAULT_STEP_MB = 1024.0
 _CHECKER_MIN_STEP_MB = 4096.0
+_CHECKER_MIN_RESERVE_MB = 1024.0
 _CHECKER_MEMORY_RESERVE_FRACTION = 0.20
 _CHECKER_OBSERVED_MEMORY_FACTOR = 1.5
 _CHECKER_MAX_WORKERS = 4
@@ -637,7 +638,7 @@ class EngineFlow:
             return 1
         estimates = [self._step_memory_estimate_mb(step) for step in steps]
         estimate_mb = max(estimates, default=_CHECKER_DEFAULT_STEP_MB)
-        reserve_mb = max(_CHECKER_DEFAULT_STEP_MB, available_mb * _CHECKER_MEMORY_RESERVE_FRACTION)
+        reserve_mb = max(_CHECKER_MIN_RESERVE_MB, available_mb * _CHECKER_MEMORY_RESERVE_FRACTION)
         capacity = int(max(0.0, available_mb - reserve_mb) // estimate_mb)
         return max(1, min(len(steps), capacity, _CHECKER_MAX_WORKERS))
 

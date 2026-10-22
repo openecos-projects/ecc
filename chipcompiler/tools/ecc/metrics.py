@@ -4,7 +4,16 @@ from csv import reader as csv_reader
 from math import ceil, isfinite
 from pathlib import Path
 
-from chipcompiler.data import EccStep, StateEnum, StepEnum, StepMetrics, Workspace, WorkspaceStep
+from chipcompiler.data import (
+    EccStep,
+    StateEnum,
+    StepEnum,
+    StepMetrics,
+    ToolName,
+    Workspace,
+    WorkspaceStep,
+)
+from chipcompiler.data.step import step_directory_for_tool
 from chipcompiler.tools.ecc.qor_detail_facts import database_fact_summary, lvs_detail_summary
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
@@ -2515,7 +2524,10 @@ def _workspace_step_completed(workspace: Workspace, step_name: str) -> bool:
 def _harden_signoff_source(workspace: Workspace, source_step: str) -> dict:
     workspace_dir = workspace.directory
     summary_path = (
-        Path(workspace_dir) / f"{source_step}_ecc" / "analysis" / "qor_summary.json"
+        Path(workspace_dir)
+        / step_directory_for_tool(source_step, ToolName.ECC)
+        / "analysis"
+        / "qor_summary.json"
         if workspace_dir is not None
         else None
     )
