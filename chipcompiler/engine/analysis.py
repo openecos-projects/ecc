@@ -15,7 +15,7 @@ from chipcompiler.data import LEC_STEP_TOOLS
 from chipcompiler.data.step import STEP_DIRECTORIES, flow_step_directory, step_storage_name
 from chipcompiler.engine.qor import collect_metric_records
 from chipcompiler.tools.ecc.power_artifacts import (
-    workspace_power_report_path,
+    workspace_power_report_source_path,
     workspace_power_summary_path,
 )
 from chipcompiler.tools.ecc.sta_qor import STA_REPORT_FILENAMES
@@ -32,6 +32,8 @@ _TIMING_PREVIEW_ISSUE_LIMIT = 5
 _HOTSPOT_PREVIEW_LIMIT = 5
 _HOTSPOT_SEVERITY_RANK = {"critical": 0, "warning": 1}
 _STA_CORNER_LIMIT = 32
+
+
 def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str, Any]:
     """Build the pure artifact index and the bounded metrics/timing/hotspot projections.
 
@@ -203,7 +205,7 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
         if step_id == "powerAnalysis":
             timing_files.extend(
                 (
-                    ("power_report", workspace_power_report_path(root)),
+                    ("power_report", workspace_power_report_source_path(root)),
                     ("power_summary", workspace_power_summary_path(root)),
                 )
             )

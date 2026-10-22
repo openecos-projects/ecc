@@ -138,7 +138,10 @@ def test_snapshot_indexes_power_analysis_artifacts(tmp_path):
     (root / "home").mkdir(parents=True)
     report = root / "powerAnalysis_ecc" / "data" / "pw" / "power_reporter" / "power.rpt"
     report.parent.mkdir(parents=True)
-    report.write_text("Total Dynamic Power = 1.0 mW\n", encoding="utf-8")
+    report.write_text("legacy power report\n", encoding="utf-8")
+    published_report = root / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt"
+    published_report.parent.mkdir(parents=True)
+    published_report.write_text("Total Dynamic Power = 1.0 mW\n", encoding="utf-8")
     summary = root / "powerAnalysis_ecc" / "feature" / "power_summary.json"
     summary.parent.mkdir(parents=True)
     summary.write_text('{"schema_version": 1}\n', encoding="utf-8")
@@ -159,7 +162,7 @@ def test_snapshot_indexes_power_analysis_artifacts(tmp_path):
         if artifact["kind"] in {"power_report", "power_summary"}
     ]
     assert [(artifact["kind"], artifact["reference"]) for artifact in power_artifacts] == [
-        ("power_report", "powerAnalysis_ecc/data/pw/power_reporter/power.rpt"),
+        ("power_report", "powerAnalysis_ecc/report/powerAnalysis.rpt"),
         ("power_summary", "powerAnalysis_ecc/feature/power_summary.json"),
     ]
     assert all(artifact["availability"] == "available" for artifact in power_artifacts)

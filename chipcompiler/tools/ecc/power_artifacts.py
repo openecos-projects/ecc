@@ -36,6 +36,22 @@ def workspace_power_report_path(workspace_dir: str | Path) -> Path:
     )
 
 
+def workspace_power_published_report_path(workspace_dir: str | Path) -> Path:
+    """Return the report published by the powerAnalysis step for a workspace."""
+    return (
+        Path(workspace_dir)
+        / STEP_DIRECTORIES[StepEnum.POWER_ANALYSIS.value]
+        / "report"
+        / f"{StepEnum.POWER_ANALYSIS.value}.rpt"
+    )
+
+
+def workspace_power_report_source_path(workspace_dir: str | Path) -> Path:
+    """Return the current power report, falling back to legacy iPW workspaces."""
+    published = workspace_power_published_report_path(workspace_dir)
+    return published if published.is_file() else workspace_power_report_path(workspace_dir)
+
+
 def workspace_power_summary_path(workspace_dir: str | Path) -> Path:
     """Return the canonical ECC power-summary path for a workspace."""
     return power_summary_path(

@@ -317,7 +317,8 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
             )
         ]
     elif step.name == StepEnum.POWER_ANALYSIS.value:
-        artifact = power_step_path(step.feature.dir)
+        feature_dir = getattr(step.feature, "dir", None) or _step_directory(step) / "feature"
+        artifact = power_step_path(feature_dir)
         state, summary = _file_state(artifact)
         report = _step_report_path(step)
         report_state, report_summary = _file_state(report)
