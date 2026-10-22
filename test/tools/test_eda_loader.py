@@ -184,6 +184,38 @@ def test_load_tool_propagates_a_dependency_runtime_error(monkeypatch):
         eda.load_tool("fake_raising")
 
 
+@pytest.mark.parametrize(
+    "tool,probe",
+    [
+        ("yosys", ("chipcompiler.tools.yosys.utility", "get_yosys_command", lambda: None)),
+        (
+            "kepler_formal",
+            (
+                "chipcompiler.tools.kepler_formal.utility",
+                "get_kepler_formal_command",
+                lambda: None,
+            ),
+        ),
+        (
+            "lec_dual",
+            (
+                "chipcompiler.tools.lec_dual.utility",
+                "engine_availability",
+                lambda engine: (False, f"{engine} missing"),
+            ),
+        ),
+    ],
+)
+def test_load_tool_propagates_a_real_missing_dependency(monkeypatch, tool, probe):
+    import importlib
+
+    module_path, attribute, replacement = probe
+    monkeypatch.setattr(importlib.import_module(module_path), attribute, replacement)
+
+    with pytest.raises(RuntimeError):
+        eda.load_tool(tool)
+
+
 @pytest.mark.parametrize("tool", ["yosys", "kepler_formal", "lec_dual"])
 def test_load_tool_propagates_the_production_dependency_error(monkeypatch, tool):
     import importlib
