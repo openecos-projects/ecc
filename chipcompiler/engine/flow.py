@@ -23,6 +23,7 @@ from chipcompiler.data import (
     is_finished_step_state,
     log_flow,
 )
+from chipcompiler.data.workspace.flow_ledger import validate_transition
 from chipcompiler.data.workspace.flow_policy import FlowInputResolver, ledger_category
 from chipcompiler.engine import EngineDB
 from chipcompiler.engine.flow_completion import (
@@ -61,51 +62,6 @@ _CHECKER_MIN_STEP_MB = 4096.0
 _CHECKER_MEMORY_RESERVE_FRACTION = 0.20
 _CHECKER_OBSERVED_MEMORY_FACTOR = 1.5
 _CHECKER_MAX_WORKERS = 4
-
-
-# ---------------------------------------------------------------------------
-# State machine transition guards
-# ---------------------------------------------------------------------------
-
-_VALID_TRANSITIONS: dict[str, set[str]] = {
-    StateEnum.Unstart.value: {
-        StateEnum.Ongoing.value,
-        StateEnum.Imcomplete.value,
-    },
-    StateEnum.Pending.value: {
-        StateEnum.Ongoing.value,
-        StateEnum.Imcomplete.value,
-    },
-    StateEnum.Ongoing.value: {
-        StateEnum.Success.value,
-        StateEnum.Imcomplete.value,
-        StateEnum.Invalid.value,
-    },
-    # Terminal states — no outgoing lifecycle transitions.
-    # Batch resets (clear_states, _invalidate_suffix) bypass set_state() and
-    # can assign any state directly, including Unstart for terminal states.
-    StateEnum.Success.value: set(),
-    StateEnum.Imcomplete.value: set(),
-    StateEnum.Invalid.value: set(),
-}
-
-
-def _validate_transition(old_state: str | None, new_state: str, step_name: str, tool: str) -> None:
-    """Raise ``ValueError`` on illegal lifecycle transitions.
-
-    This guard applies only to ``set_state()`` calls.  Batch reset operations
-    (``clear_states``, ``_invalidate_suffix``, ``_prepare_steps_for_rerun``)
-    assign ``step["state"]`` directly and bypass this check by design.
-    """
-    if old_state is None or old_state == new_state:
-        return
-    allowed = _VALID_TRANSITIONS.get(old_state, set())
-    if new_state not in allowed:
-        raise ValueError(
-            f"Illegal state transition for {step_name}/{tool}: "
-            f"{old_state} → {new_state}. "
-            f"Allowed transitions from {old_state}: {sorted(allowed) or 'none'}"
-        )
 
 
 _GEOMETRY_SNAPSHOT_STEPS = frozenset(
@@ -229,11 +185,7 @@ class EngineFlow:
         return save_ledger(self.workspace.flow)
 
     def get_step(self, name: str, tool: str):
-        for step in self.workspace.flow.data.get("steps", []):
-            if step.get("name") == name and step.get("tool") == tool:
-                return step
-
-        return None
+        return self.workspace.flow.get_step(name, tool)
 
     def get_workspace_step(self, name: str) -> WorkspaceStep | None:
         for workspace_step in self.workspace_steps:
@@ -260,50 +212,23 @@ class EngineFlow:
         *,
         clear_runtime_operation: bool = False,
     ) -> bool:
-        state_value = state.value if isinstance(state, StateEnum) else state
-        for step in self.workspace.flow.data.get("steps", []):
-            if step.get("name") == name and step.get("tool") == tool:
-                old_state = step.get("state")
-                _validate_transition(old_state, state_value, name, tool)
-                previous_step = deepcopy(step)
-                step["state"] = state_value
-                if state_value in {StateEnum.Ongoing.value, StateEnum.Unstart.value}:
-                    step.pop("resource_observation", None)
-                if runtime is not None:
-                    step["runtime"] = runtime
-                if peak_memory is not None:
-                    step["peak memory (mb)"] = peak_memory
-                if clear_runtime_operation:
-                    info = step.get("info", {})
-                    info.pop("runtime_operation", None)
-                    info.pop("execution", None)
+        from chipcompiler.data.workspace.flow_ledger import set_flow_state
 
-                if self.workspace.flow.path is None:
-                    return True
-                if not self.save():
-                    step.clear()
-                    step.update(previous_step)
-                    logger.error(
-                        "Failed to persist flow state for %s/%s (state=%s)",
-                        name,
-                        tool,
-                        state_value,
-                    )
-                    return False
-                return True
+        return set_flow_state(
+            self.workspace.flow,
+            name,
+            tool,
+            state,
+            runtime,
+            peak_memory,
+            clear_runtime_operation=clear_runtime_operation,
+            persist=self.save,
+        )
 
-        return False
+    def clear_states(self) -> bool:
+        from chipcompiler.data.workspace.flow_ledger import clear_flow_states
 
-    def clear_states(self):
-        from chipcompiler.data import StateEnum
-
-        for step in self.workspace.flow.data.get("steps", []):
-            step["state"] = StateEnum.Unstart.value
-            step["runtime"] = ""
-            step["peak memory (mb)"] = 0
-            step.pop("resource_observation", None)
-
-        self.save()
+        return clear_flow_states(self.workspace.flow, persist=self.save)
 
     def is_flow_success(self):
         """
@@ -797,7 +722,7 @@ class EngineFlow:
             if flow_step is None:
                 raise RuntimeError(f"cannot persist runtime operation marker for {step_tag}")
             previous_state = flow_step.get("state")
-            _validate_transition(
+            validate_transition(
                 previous_state,
                 StateEnum.Ongoing.value,
                 workspace_step.name,

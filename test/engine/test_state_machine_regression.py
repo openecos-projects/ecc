@@ -25,7 +25,8 @@ from chipcompiler.data import (
     Workspace,
 )
 from chipcompiler.data.workspace import Flow
-from chipcompiler.engine.flow import _VALID_TRANSITIONS, EngineFlow
+from chipcompiler.data.workspace.flow_ledger import _VALID_TRANSITIONS
+from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.tools.ecc.runner import EccDesignReadError
 from chipcompiler.utility import Logger
 

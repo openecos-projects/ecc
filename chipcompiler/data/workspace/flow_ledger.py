@@ -8,11 +8,37 @@ interrupted runs, filesystem migration) keep a low-level writer and are listed
 in the regression guard's allowlist.
 """
 
+import logging
 import threading
 from copy import deepcopy
 
 from chipcompiler.data.schema_migrations import SCHEMA_VERSION_FIELD
+from chipcompiler.data.types import StateEnum
 from chipcompiler.data.workspace.flow_data import FLOW_JSON_SCHEMA_VERSION
+
+logger = logging.getLogger(__name__)
+
+_VALID_TRANSITIONS: dict[str, set[str]] = {
+    StateEnum.Unstart.value: {
+        StateEnum.Ongoing.value,
+        StateEnum.Imcomplete.value,
+    },
+    StateEnum.Pending.value: {
+        StateEnum.Ongoing.value,
+        StateEnum.Imcomplete.value,
+    },
+    StateEnum.Ongoing.value: {
+        StateEnum.Success.value,
+        StateEnum.Imcomplete.value,
+        StateEnum.Invalid.value,
+    },
+    # Terminal states have no outgoing lifecycle transitions. Batch resets
+    # (clear_flow_states, suffix invalidation) assign Unstart directly and
+    # bypass this guard by design.
+    StateEnum.Success.value: set(),
+    StateEnum.Imcomplete.value: set(),
+    StateEnum.Invalid.value: set(),
+}
 
 _LOCKS: dict[str, threading.RLock] = {}
 _LOCKS_GUARD = threading.Lock()
@@ -44,3 +70,82 @@ def save_ledger(flow) -> bool:
         if isinstance(flow.data, dict):
             flow.data[SCHEMA_VERSION_FIELD] = FLOW_JSON_SCHEMA_VERSION
         return json_write(path, deepcopy(flow.data))
+
+
+def validate_transition(old_state: str | None, new_state: str, step_name: str, tool: str) -> None:
+    """Raise ``ValueError`` on illegal lifecycle transitions.
+
+    Applies only to :func:`set_flow_state`; batch resets bypass it by design.
+    """
+    if old_state is None or old_state == new_state:
+        return
+    allowed = _VALID_TRANSITIONS.get(old_state, set())
+    if new_state not in allowed:
+        raise ValueError(
+            f"Illegal state transition for {step_name}/{tool}: "
+            f"{old_state} → {new_state}. "
+            f"Allowed transitions from {old_state}: {sorted(allowed) or 'none'}"
+        )
+
+
+def set_flow_state(
+    flow,
+    name: str,
+    tool: str,
+    state: str | StateEnum,
+    runtime: str | None = None,
+    peak_memory: float | None = None,
+    *,
+    clear_runtime_operation: bool = False,
+    persist=None,
+) -> bool:
+    """Move one ledger step to *state*, rolling memory back if the save fails.
+
+    ``persist`` overrides the writer (the engine passes its own ``save`` so
+    callers can substitute persistence); it defaults to :func:`save_ledger`.
+    """
+    write = persist if persist is not None else (lambda: save_ledger(flow))
+    state_value = state.value if isinstance(state, StateEnum) else state
+    for step in flow.data.get("steps", []):
+        if step.get("name") != name or step.get("tool") != tool:
+            continue
+        old_state = step.get("state")
+        validate_transition(old_state, state_value, name, tool)
+        previous_step = deepcopy(step)
+        step["state"] = state_value
+        if state_value in {StateEnum.Ongoing.value, StateEnum.Unstart.value}:
+            step.pop("resource_observation", None)
+        if runtime is not None:
+            step["runtime"] = runtime
+        if peak_memory is not None:
+            step["peak memory (mb)"] = peak_memory
+        if clear_runtime_operation:
+            info = step.get("info", {})
+            info.pop("runtime_operation", None)
+            info.pop("execution", None)
+
+        if flow.path is None:
+            return True
+        if not write():
+            step.clear()
+            step.update(previous_step)
+            logger.error(
+                "Failed to persist flow state for %s/%s (state=%s)",
+                name,
+                tool,
+                state_value,
+            )
+            return False
+        return True
+    return False
+
+
+def clear_flow_states(flow, *, persist=None) -> bool:
+    """Reset every step to Unstart and persist once."""
+    write = persist if persist is not None else (lambda: save_ledger(flow))
+    for step in flow.data.get("steps", []):
+        step["state"] = StateEnum.Unstart.value
+        step["runtime"] = ""
+        step["peak memory (mb)"] = 0
+        step.pop("resource_observation", None)
+    return write()
