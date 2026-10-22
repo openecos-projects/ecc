@@ -240,20 +240,12 @@ class SubflowState:
     path: Path | None = None
     steps: list = field(default_factory=list)
 
-    def info(self) -> dict:
-        """The step-info record for this sub-flow; an unset path reads as ""."""
-        return {"path": self.path or ""}
-
 
 @dataclass
 class ChecklistState:
     path: Path | None = None
     # Holds either the checklist rows (list) or a loaded checklist mapping.
     checklist: list | dict = field(default_factory=list)
-
-    def info(self) -> dict:
-        """The step-info record for this checklist; an unset path reads as ""."""
-        return {"path": self.path or ""}
 
 
 # --- step hierarchy --------------------------------------------------------

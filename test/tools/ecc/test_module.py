@@ -11,7 +11,6 @@ from ecc_tools_bin import ecc_py
 from chipcompiler.data import OriginDesign, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.tools.ecc import metrics as ecc_metrics
 from chipcompiler.tools.ecc import plot as ecc_plot
-from chipcompiler.tools.ecc import service as ecc_service
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
 from chipcompiler.tools.ecc.metrics import (
     build_metrics_cts,
@@ -2371,59 +2370,6 @@ def test_split_floorplan_subflows_are_independent(tmp_path, step_name, expected)
     EccSubFlow(workspace, step)
 
     assert [item["name"] for item in step.subflow.steps] == expected
-
-
-def test_ecc_step_info_stringifies_path_payloads(tmp_path, monkeypatch):
-    workspace = Workspace(
-        directory=tmp_path,
-        design=OriginDesign(name="gcd", top_module="gcd"),
-        config={StepEnum.PLACEMENT.value: tmp_path / "config" / "pl.json"},
-    )
-    step = build_step(
-        workspace=workspace,
-        step_name=StepEnum.PLACEMENT.value,
-        input_def=tmp_path / "input.def",
-        input_verilog=tmp_path / "input.v",
-    )
-    monkeypatch.setattr(
-        ecc_service,
-        "build_step_metrics",
-        lambda workspace, step: SimpleNamespace(path=tmp_path / "metrics.json"),
-    )
-
-    assert ecc_service.get_step_info(workspace, step, "views") == {
-        "image": str(step.output.image),
-        "json": str(step.output.json),
-        "metrics": str(tmp_path / "metrics.json"),
-        "information": {},
-    }
-    assert ecc_service.get_step_info(workspace, step, "layout") == {
-        "image": str(step.output.image),
-        "json": str(step.output.json),
-    }
-    assert ecc_service.get_step_info(workspace, step, "metrics") == {
-        "metrics": str(tmp_path / "metrics.json"),
-    }
-    assert ecc_service.get_step_info(workspace, step, "subflow") == {"path": str(step.subflow.path)}
-    assert ecc_service.get_step_info(workspace, step, "config") == {
-        "config": str(workspace.config[StepEnum.PLACEMENT.value]),
-    }
-    assert ecc_service.get_step_info(workspace, step, "analysis") == {
-        "metrics": str(step.analysis.metrics),
-        "qor_metrics": str(step.analysis.qor_metrics),
-        "qor_summary": str(step.analysis.qor_summary),
-        "qor_hotspots": str(step.analysis.qor_hotspots),
-        "statis": str(step.analysis.statis_csv),
-        "data summary": str(step.feature.db),
-        "step feature": str(step.feature.step),
-        "step report": str(step.report.db),
-    }
-    assert ecc_service.get_step_info(workspace, step, "sta") == {
-        "report_root": str(step.report.dir),
-        "feature_root": str(step.feature.dir),
-        "qor_summary_root": str(step.feature.dir),
-        "timing_paths_root": str(step.feature.dir),
-    }
 
 
 def test_ecc_builder_uses_explicit_step_directory(tmp_path):

@@ -5,7 +5,6 @@ from .checklist import EccChecklist
 from .metrics import build_step_metrics
 from .module import ECCToolsModule
 from .runner import create_db_engine, run_step
-from .service import get_step_info
 from .subflow import EccSubFlow, EccSubFlowEnum
 from .utility import is_eda_exist
 
@@ -38,7 +37,6 @@ __all__ = [
     "ECCToolsModule",
     "ECCToolsPlot",
     "build_step_metrics",
-    "get_step_info",
     "EccSubFlow",
     "EccSubFlowEnum",
     "EccChecklist",
