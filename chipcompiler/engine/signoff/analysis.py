@@ -7,11 +7,11 @@ materialization stay in collector.py and discovery.py; shared helpers
 (``_step_dirs``, ``_read_json``) resolve through the composed collector.
 """
 
-import importlib
 from pathlib import Path
 
 from chipcompiler.data import ADVISORY_FLOW_STEPS, LEC_STEP_TOOLS, EccOutput, StateEnum, StepEnum
 from chipcompiler.engine.signoff.models import SIGNOFF_REQUIRED_QOR_STEPS, SignoffPackageIssue
+from chipcompiler.tools.registry import load_builder
 
 
 class CollectorAnalysisMixin:
@@ -74,15 +74,8 @@ class CollectorAnalysisMixin:
     def _build_workspace_step(self, flow_step: dict, previous_step):
         step_name = str(flow_step.get("name", ""))
         tool = str(flow_step.get("tool", ""))
-        module_alias = {
-            "klayout": "klayout_tool",
-            "dreamplace": "ecc_dreamplace",
-            "sizer": "ecc_sizer",
-        }
         try:
-            builder = importlib.import_module(
-                f"chipcompiler.tools.{module_alias.get(tool, tool)}.builder"
-            )
+            builder = load_builder(tool)
         except ImportError:
             return None
 

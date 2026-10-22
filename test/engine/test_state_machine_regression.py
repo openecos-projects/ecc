@@ -331,7 +331,7 @@ def test_design_read_failure_stops_flow_despite_stale_outputs(tmp_path, monkeypa
         EccStep(name=second_name, tool="ecc", directory=Path(ws.directory) / "placement_ecc"),
     ]
     tool_runs = []
-    monkeypatch.setattr("chipcompiler.tools.load_eda_module", lambda _tool: object())
+    monkeypatch.setattr("chipcompiler.tools.load_tool", lambda _tool: object())
     monkeypatch.setattr(
         "chipcompiler.tools.ecc.create_db_engine",
         lambda *_args: (_ for _ in ()).throw(EccDesignReadError("missing PDK master")),

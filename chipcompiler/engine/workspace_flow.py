@@ -104,15 +104,9 @@ def _lec_step_tools() -> frozenset[str]:
 
 
 def _load_tool_builder(tool: str):
-    import importlib
+    from chipcompiler.tools.registry import load_builder
 
-    module_alias = {
-        "klayout": "klayout_tool",
-        "dreamplace": "ecc_dreamplace",
-        "sizer": "ecc_sizer",
-    }
-    module_name = module_alias.get(tool, tool)
-    return importlib.import_module(f"chipcompiler.tools.{module_name}.builder")
+    return load_builder(tool)
 
 
 def init_db_engine_for_workspace_step(engine_flow, workspace_step):

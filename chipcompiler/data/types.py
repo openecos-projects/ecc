@@ -116,6 +116,20 @@ def default_flow_step_category(step: StepBaseEnum | str) -> FlowStepCategory:
 DEFAULT_SKIP_STEPS: Final = (SkippableStepEnum.LEC.value,)
 
 
+class ToolName(StrEnum):
+    """Tool names a flow step (or the image backend) can bind to."""
+
+    YOSYS = "yosys"
+    ECC = "ecc"
+    DREAMPLACE = "dreamplace"
+    SIZER = "sizer"
+    YOSYS_LEC = "yosys_lec"
+    KEPLER_FORMAL = "kepler_formal"
+    LEC_DUAL = "lec_dual"
+    # Not a flow-step tool: the layout-image backend behind save_layout_image.
+    KLAYOUT = "klayout"
+
+
 class LECEngineEnum(StrEnum):
     """Engines that can own the lec/postRouteLec steps.
 

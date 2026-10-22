@@ -69,7 +69,7 @@ def test_create_step_defers_unselected_optional_tool_when_module_is_unavailable(
     def fail_if_imported(*_args, **_kwargs):
         raise AssertionError("unselected optional tools must not be imported")
 
-    monkeypatch.setattr(eda, "load_eda_module", fail_if_imported)
+    monkeypatch.setattr(eda, "load_tool", fail_if_imported)
     workspace = SimpleNamespace(directory=tmp_path, design=SimpleNamespace(name="gcd"))
 
     step = eda.create_step(
@@ -90,7 +90,7 @@ def test_create_step_defers_unselected_optional_tool_when_module_is_unavailable(
 def test_create_step_does_not_defer_selected_optional_tool_when_module_is_unavailable(
     monkeypatch, tmp_path
 ):
-    monkeypatch.setattr(eda, "load_eda_module", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(eda, "load_tool", lambda *_args, **_kwargs: None)
     workspace = SimpleNamespace(directory=tmp_path, design=SimpleNamespace(name="gcd"))
 
     step = eda.create_step(
@@ -109,7 +109,7 @@ def test_create_step_defers_unselected_sizer_with_sizer_path_convention(monkeypa
     def fail_if_imported(*_args, **_kwargs):
         raise AssertionError("unselected optional tools must not be imported")
 
-    monkeypatch.setattr(eda, "load_eda_module", fail_if_imported)
+    monkeypatch.setattr(eda, "load_tool", fail_if_imported)
     workspace = SimpleNamespace(directory=tmp_path, design=SimpleNamespace(name="gcd"))
 
     step = eda.create_step(
@@ -126,3 +126,70 @@ def test_create_step_defers_unselected_sizer_with_sizer_path_convention(monkeypa
     assert step.output.verilog == (
         tmp_path / "timing_optimization_sizer" / "output" / "gcd_timing_optimization.v.gz"
     )
+
+
+def test_load_tool_rejects_unknown_names_without_importing_them(monkeypatch):
+    import sys
+
+    assert eda.load_tool("does_not_exist") is None
+    assert "chipcompiler.tools.does_not_exist" not in sys.modules
+
+
+def test_load_tool_returns_none_and_logs_when_the_import_fails(monkeypatch, caplog):
+    import chipcompiler.tools.registry as registry
+
+    def failing_import(_module_name):
+        raise ModuleNotFoundError("simulated missing package")
+
+    monkeypatch.setattr(registry.importlib, "import_module", failing_import)
+
+    assert eda.load_tool("ecc") is None
+    assert "Error load module ecc" in caplog.text
+
+
+def test_load_tool_returns_none_and_logs_on_a_contract_mismatch(monkeypatch, caplog):
+    from types import ModuleType
+
+    module = ModuleType("chipcompiler.tools.fake_incomplete")
+    module.is_eda_exist = lambda: True
+    module.build_step = lambda **kwargs: None
+    module.build_step_config = lambda workspace, step: None
+    module.run_step = lambda workspace, step, ecc_module=None: True
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+
+    assert eda.load_tool("fake_incomplete", check_dependency=False) is None
+    assert "missing interface" in caplog.text
+
+
+def test_load_tool_returns_none_and_logs_when_the_dependency_is_missing(monkeypatch, caplog):
+    _install_tool_module(monkeypatch, "fake_absent", exists=False)
+
+    assert eda.load_tool("fake_absent") is None
+    assert "dependency check failed" in caplog.text
+
+
+def test_load_tool_propagates_a_dependency_runtime_error(monkeypatch):
+    import pytest
+
+    module = _install_tool_module(monkeypatch, "fake_raising", exists=True)
+
+    def raise_missing_dependency():
+        raise RuntimeError("native dependency is not installed")
+
+    module.is_eda_exist = raise_missing_dependency
+
+    with pytest.raises(RuntimeError, match="native dependency is not installed"):
+        eda.load_tool("fake_raising")
+
+
+def test_load_builder_raises_import_error_for_unknown_and_missing_modules(monkeypatch):
+    import pytest
+
+    from chipcompiler.tools.registry import load_builder
+
+    _install_tool_module(monkeypatch, "fake_conforming", exists=True)
+
+    with pytest.raises(ImportError):
+        load_builder("does_not_exist")
+    with pytest.raises(ImportError):
+        load_builder("fake_conforming")

@@ -1,7 +1,5 @@
 """Canonical workspace-step input chaining for read-only projections."""
 
-import importlib
-
 
 def build_workspace_step_for_info(
     workspace, flow_step: dict, previous_step, *, pnr_step=None, created_steps=None
@@ -49,9 +47,6 @@ def step_category(flow_step: dict) -> str:
 
 
 def load_tool_builder(tool: str):
-    module_alias = {
-        "klayout": "klayout_tool",
-        "dreamplace": "ecc_dreamplace",
-        "sizer": "ecc_sizer",
-    }
-    return importlib.import_module(f"chipcompiler.tools.{module_alias.get(tool, tool)}.builder")
+    from chipcompiler.tools.registry import load_builder
+
+    return load_builder(tool)

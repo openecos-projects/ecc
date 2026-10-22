@@ -56,7 +56,7 @@ def test_engine_db_skips_synthesis_without_a_failure_warning(monkeypatch):
     db_engine = EngineDB(workspace=workspace)
     create_calls = []
 
-    monkeypatch.setattr("chipcompiler.tools.load_eda_module", lambda _name: object())
+    monkeypatch.setattr("chipcompiler.tools.load_tool", lambda _name: object())
     monkeypatch.setattr(
         "chipcompiler.tools.ecc.create_db_engine",
         lambda *_args: create_calls.append(True),
@@ -72,7 +72,7 @@ def test_engine_db_warns_when_a_physical_step_cannot_initialize(monkeypatch):
     workspace = SimpleNamespace(logger=logger)
     db_engine = EngineDB(workspace=workspace)
 
-    monkeypatch.setattr("chipcompiler.tools.load_eda_module", lambda _name: object())
+    monkeypatch.setattr("chipcompiler.tools.load_tool", lambda _name: object())
     monkeypatch.setattr("chipcompiler.tools.ecc.create_db_engine", lambda *_args: None)
 
     step = SimpleNamespace(name=StepEnum.FLOORPLAN.value)

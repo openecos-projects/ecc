@@ -1,52 +1,14 @@
 #!/usr/bin/env python
-import logging
 import os
 from pathlib import Path
 
 from chipcompiler.data import StepMetrics, Workspace, WorkspaceStep, log_workspace_step
+from chipcompiler.tools.registry import load_tool
 
 
 def load_eda_module(eda_tool: str, *, check_dependency: bool = True):
-    """
-    Load and return the EDA tool module based on the given eda tool name.
-    """
-
-    def check_module(eda_module):
-        from chipcompiler.tools.protocol import ToolModule
-
-        return isinstance(eda_module, ToolModule)
-
-    import importlib
-
-    module_alias = {
-        "klayout": "klayout_tool",
-        "dreamplace": "ecc_dreamplace",
-        "sizer": "ecc_sizer",
-    }
-    module_name = module_alias.get(eda_tool, eda_tool)
-
-    try:
-        eda_module = importlib.import_module(f"chipcompiler.tools.{module_name}")
-    except Exception as e:
-        logging.error(f"Error load module {eda_tool}: {e}")
-        return None
-
-    # check eda tool exist
-    if not check_module(eda_module):
-        from chipcompiler.tools.protocol import tool_module_functions
-
-        missing = [f for f in tool_module_functions() if not hasattr(eda_module, f)]
-        logging.error("EDA tool '%s': module loaded but missing interface: %s", eda_tool, missing)
-        return None
-
-    if check_dependency and not eda_module.is_eda_exist():
-        logging.error(
-            "EDA tool '%s': dependency check failed (is_eda_exist returned False)",
-            eda_tool,
-        )
-        return None
-
-    return eda_module
+    """Compatibility name for :func:`chipcompiler.tools.registry.load_tool`."""
+    return load_tool(eda_tool, check_dependency=check_dependency)
 
 
 def create_step(
@@ -83,7 +45,7 @@ def create_step(
         )
 
     # check eda tool exist
-    eda_module = load_eda_module(eda, check_dependency=check_dependency and eda != "sizer")
+    eda_module = load_tool(eda, check_dependency=check_dependency and eda != "sizer")
     if eda_module is None or not hasattr(eda_module, "build_step"):
         return None
 
@@ -167,7 +129,7 @@ def run_step(workspace: Workspace, step: WorkspaceStep, ecc_module=None) -> bool
     Run the given step using the provided EDA engine.
     """
     # check eda tool exist
-    eda_module = load_eda_module(step.tool, check_dependency=step.tool != "sizer")
+    eda_module = load_tool(step.tool, check_dependency=step.tool != "sizer")
     if eda_module is None:
         return False
 
@@ -189,7 +151,7 @@ def save_layout_image(workspace: Workspace, step: WorkspaceStep) -> bool:
         return True
 
     # check eda tool exist
-    eda_module = load_eda_module("klayout")
+    eda_module = load_tool("klayout")
     if eda_module is None:
         return False
 
@@ -202,7 +164,7 @@ def build_step_metrics(workspace: Workspace, step: WorkspaceStep) -> StepMetrics
     """
     build step metrics
     """
-    eda_module = load_eda_module(step.tool, check_dependency=step.tool != "sizer")
+    eda_module = load_tool(step.tool, check_dependency=step.tool != "sizer")
     build_metrics = getattr(eda_module, "build_step_metrics", None)
     if build_metrics is None:
         return None
