@@ -53,9 +53,6 @@ _ARTIFACT_OWNERS = {
 _ARTIFACT_NAMES = frozenset(_ARTIFACT_OWNERS)
 
 _TOOL_NAMES = frozenset(member.value for member in ToolName)
-# `lec_dual` is both a directory name and an engine/tool name; the engine
-# vocabularies own that spelling, so it is not a directory violation.
-_STEP_DIRECTORY_LITERALS = _STEP_DIRECTORY_LITERALS - _TOOL_NAMES
 
 # Directory literals: the table in data/step.py owns them; the design-report
 # display table is a contract vocabulary, not directory resolution.
@@ -86,19 +83,28 @@ def _tool_attribute(node: ast.AST) -> bool:
 
 
 def _writes_the_ledger(call: ast.Call) -> bool:
-    """Whether a ``json_write`` call targets the flow ledger."""
+    """Whether a ``json_write`` call targets the flow ledger.
+
+    Only the destination argument is inspected; a payload that mentions
+    ``flow.json`` is not a ledger write.
+    """
     if not isinstance(call.func, ast.Name) or call.func.id != "json_write":
         return False
-    for argument in [*call.args, *(keyword.value for keyword in call.keywords)]:
-        for child in ast.walk(argument):
-            if isinstance(child, ast.Constant) and child.value == "flow.json":
+    destination = call.args[0] if call.args else None
+    for keyword in call.keywords:
+        if keyword.arg in {"file_path", "path"}:
+            destination = keyword.value
+    if destination is None:
+        return False
+    for child in ast.walk(destination):
+        if isinstance(child, ast.Constant) and child.value == "flow.json":
+            return True
+        if isinstance(child, ast.Attribute) and child.attr == "path":
+            target = child.value
+            if isinstance(target, ast.Attribute) and target.attr == "flow":
                 return True
-            if isinstance(child, ast.Attribute) and child.attr == "path":
-                target = child.value
-                if isinstance(target, ast.Attribute) and target.attr == "flow":
-                    return True
-                if isinstance(target, ast.Name) and target.id == "flow":
-                    return True
+            if isinstance(target, ast.Name) and target.id == "flow":
+                return True
     return False
 
 
@@ -121,7 +127,10 @@ def scan(root: Path) -> list[tuple[str, int, str, str]]:
                 value = node.value
                 if relative not in {"data/step.py", *_STEP_DIR_ALLOWLIST}:
                     for name in _STEP_DIRECTORY_LITERALS:
-                        if value == name or value.startswith(f"{name}/"):
+                        # A bare tool spelling (`lec_dual`) belongs to the tool
+                        # vocabulary; its directory form is still controlled.
+                        is_tool_spelling = value == name and name in _TOOL_NAMES
+                        if not is_tool_spelling and (value == name or value.startswith(f"{name}/")):
                             violations.append((relative, node.lineno, "step-directory", value))
                             break
                 if (
@@ -200,6 +209,24 @@ def test_guard_rejects_a_tool_attribute_compared_with_a_string(tmp_path):
     _write(tmp_path, "engine/consumer.py", 'if step.tool == "ecc":\n    pass\n')
 
     assert scan(tmp_path) == [("engine/consumer.py", 1, "tool-comparison", "ecc")]
+
+
+def test_guard_rejects_a_tool_name_used_as_a_directory(tmp_path):
+    _write(tmp_path, "engine/consumer.py", 'DIR = "lec_dual/output"\n')
+    _write(tmp_path, "data/types.py", 'ENGINE = "lec_dual"\n')
+
+    assert scan(tmp_path) == [("engine/consumer.py", 1, "step-directory", "lec_dual/output")]
+
+
+def test_guard_ignores_a_payload_that_mentions_the_ledger(tmp_path):
+    _write(
+        tmp_path,
+        "engine/consumer.py",
+        "from chipcompiler.utility import json_write\n"
+        'json_write(report_path, {"source": "flow.json"})\n',
+    )
+
+    assert scan(tmp_path) == []
 
 
 def test_guard_ignores_unrelated_strings(tmp_path):
