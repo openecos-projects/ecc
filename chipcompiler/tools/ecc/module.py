@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, TypeAlias
 
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_run_outputs, publish_sta_artifacts
+from chipcompiler.utility.path import path_text
 
 # ecc-tools loggers terminate the host process on error by default; embedded in
 # Python they must raise instead so failures surface as Python exceptions.
