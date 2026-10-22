@@ -642,6 +642,41 @@ def test_workspace_spec_update_retain_backup_preserves_replaced_generation(
     assert retained_second["workspaceRevision"] == after["workspaceRevision"]
 
 
+def test_workspace_spec_create_and_update_materialize_step_directories(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
+    from chipcompiler.engine.snapshot import read_engineering_snapshot
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    created = create_workspace_from_spec(target, payload["workspaceSpec"], bindings)
+
+    expected_directories = [
+        "Synthesis_yosys",
+        "preFloorplan_ecc",
+        "macroPlacement_dreamplace",
+        "preplace_sizer",
+        "timing_optimization_sizer",
+        "route_ecc",
+        "Harden_ecc",
+    ]
+    for directory in expected_directories:
+        assert (target / directory).is_dir(), directory
+
+    updated_spec = deepcopy(payload["workspaceSpec"])
+    updated_spec["parameters"]["design.frequency_mhz"] = 250.0
+    updated = update_workspace_from_spec(
+        target,
+        read_engineering_snapshot(created)["workspaceRevision"],
+        updated_spec,
+        bindings,
+    )
+    for directory in expected_directories:
+        assert (target / directory).is_dir(), directory
+
+
 def test_workspace_spec_update_without_retain_backup_keeps_no_backup(
     tmp_path, minimal_ics55_pdk_factory
 ):

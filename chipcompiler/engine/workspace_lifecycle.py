@@ -245,6 +245,7 @@ def _create_workspace_from_spec(
 
         if not save_parameter(workspace.parameters):
             raise OSError(f"Failed to persist input mode: {workspace.parameters.path}")
+        _create_workspace_step_workspaces(workspace)
         snapshot = create_engineering_snapshot(workspace)
         write_workspace_command(
             target,
@@ -262,6 +263,32 @@ def _create_workspace_from_spec(
             Path(generated_filelist).unlink(missing_ok=True)
         if generated_pdk_config is not None:
             Path(generated_pdk_config).unlink(missing_ok=True)
+
+
+def _create_workspace_step_workspaces(workspace: Any) -> None:
+    """Materialize the workspace tree declared by the committed Flow.
+
+    ``create_workspace`` writes the workspace metadata and derived
+    configuration only. The canonical create/run path then asks the engine to
+    build every step workspace; spec-based create and update paths must do the
+    same or they leave a valid Flow ledger with no step directories.
+    """
+    from chipcompiler.engine import EngineFlow
+
+    engine_flow = EngineFlow(workspace=workspace)
+    if not engine_flow.has_init():
+        raise WorkspaceLifecycleError(
+            "workspace_create_failed", "Workspace has no committed Flow"
+        )
+    engine_flow.create_step_workspaces()
+    persisted_steps = workspace.flow.data.get("steps", [])
+    created_steps = getattr(engine_flow, "workspace_steps", None) or []
+    if len(created_steps) < len(persisted_steps):
+        missing = persisted_steps[len(created_steps)].get("name")
+        raise WorkspaceLifecycleError(
+            "workspace_create_failed",
+            f"step workspace creation failed at {missing}",
+        )
 
 
 def update_workspace_from_spec(
