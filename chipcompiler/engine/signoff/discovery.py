@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 from chipcompiler.data import SkippableStepEnum, StepEnum
+from chipcompiler.data.step import STEP_DIRECTORIES
 
 
 class CollectorDiscoveryMixin:
@@ -87,10 +88,11 @@ class CollectorDiscoveryMixin:
         return None, "Required file is missing or empty"
 
     def _design_from_outputs(self, workspace_dir: Path) -> str:
-        for pattern, suffix in (
-            ("Harden_ecc/output/*_Harden.gds", "_Harden.gds"),
-            ("filler_ecc/output/*_filler.v.gz", "_filler.v.gz"),
+        for step_name, suffix in (
+            (StepEnum.HARDEN.value, "_Harden.gds"),
+            (StepEnum.FILLER.value, "_filler.v.gz"),
         ):
+            pattern = f"{STEP_DIRECTORIES[step_name]}/output/*{suffix}"
             matches = sorted(workspace_dir.glob(pattern))
             if matches:
                 name = matches[0].name

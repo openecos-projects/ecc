@@ -23,7 +23,8 @@ from chipcompiler.data import (
     Workspace,
     workspace_checklist_path,
 )
-from chipcompiler.data.step import flow_step_directory
+from chipcompiler.data.step import STEP_DIRECTORIES, flow_step_directory, step_directory_for_tool
+from chipcompiler.data.workspace.flow_policy import FlowInputResolver
 from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
 from chipcompiler.engine.signoff.discovery import CollectorDiscoveryMixin
 from chipcompiler.engine.signoff.models import (
@@ -139,9 +140,31 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             or getattr(self.workspace.design, "golden_verilog", None)
             or getattr(self.workspace.design, "origin_verilog", None)
         )
-        filler_verilog = workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz"
-        # The canonical chain wires postRouteLec's gate input to the LVS output.
-        lec_gate = workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz"
+        filler_verilog = (
+            workspace_dir / STEP_DIRECTORIES[StepEnum.FILLER.value] / "output"
+        ) / f"{design}_filler.v.gz"
+        # The gate netlist follows the flow policy's input chain. A workspace
+        # whose ledger has no postRouteLec (skipped at creation) never requires
+        # it, so the gate is only resolved when the step is in the ledger.
+        flow_steps = self.workspace.flow.steps()
+        post_route_lec_index = next(
+            (
+                index
+                for index, step in enumerate(flow_steps)
+                if step.get("name") == SkippableStepEnum.POST_ROUTE_LEC.value
+            ),
+            None,
+        )
+        lec_gate = None
+        if post_route_lec_index is not None:
+            lec_gate_name = FlowInputResolver(flow_steps).input_step_name(post_route_lec_index)
+            lec_gate_step = next(step for step in flow_steps if step.get("name") == lec_gate_name)
+            lec_gate = (
+                workspace_dir
+                / step_directory_for_tool(lec_gate_name, str(lec_gate_step.get("tool") or ""))
+                / "output"
+                / f"{design}_{lec_gate_name}.v.gz"
+            )
         # A workspace whose ledger has no postRouteLec (skipped at creation)
         # never requires it, regardless of the artifacts on disk.
         require_lec = self.workspace.flow.has_step(
@@ -252,27 +275,28 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                     )
                 )
 
+        harden_output = workspace_dir / STEP_DIRECTORIES[StepEnum.HARDEN.value] / "output"
         add_file(
             role="harden.gds",
-            source=workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.gds",
+            source=harden_output / f"{design}_Harden.gds",
             destination=f"harden/{design}.gds",
             required=True,
         )
         add_file(
             role="harden.lef",
-            source=workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.lef",
+            source=harden_output / f"{design}_Harden.lef",
             destination=f"harden/{design}.lef",
             required=True,
         )
         add_file(
             role="harden.lib",
-            source=workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.lib",
+            source=harden_output / f"{design}_Harden.lib",
             destination=f"harden/{design}.lib",
             required=True,
         )
         add_file(
             role="harden.image",
-            source=workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.png",
+            source=harden_output / f"{design}_Harden.png",
             destination=f"harden/{design}.png",
         )
 
@@ -408,7 +432,6 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 # additive — a degraded run's missing sibling is recorded
                 # missing-optional, never fatal.
                 from chipcompiler.data import LECEngineEnum
-                from chipcompiler.data.step import step_directory_for_tool
 
                 for engine in LECEngineEnum.DUAL.spawn_engines:
                     engine_dir = workspace_dir / step_directory_for_tool(
@@ -483,21 +506,22 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             destination=f"final/design/{design}.v.gz",
             required=True,
         )
+        filler_output = workspace_dir / STEP_DIRECTORIES[StepEnum.FILLER.value] / "output"
         add_file(
             role="final.design.def",
-            source=workspace_dir / "filler_ecc" / "output" / f"{design}_filler.def.gz",
+            source=filler_output / f"{design}_filler.def.gz",
             destination=f"final/design/{design}.def.gz",
             required=True,
         )
         add_file(
             role="final.design.gds",
-            source=workspace_dir / "filler_ecc" / "output" / f"{design}_filler.gds",
+            source=filler_output / f"{design}_filler.gds",
             destination=f"final/design/{design}.gds",
             required=True,
         )
         add_file(
             role="final.design.image",
-            source=workspace_dir / "filler_ecc" / "output" / f"{design}_filler.png",
+            source=filler_output / f"{design}_filler.png",
             destination=f"final/design/{design}.png",
         )
 
@@ -509,13 +533,13 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 f"{top_module}_{item['rcx_corner']}_{self._temperature_token(item['temperature'])}C.spef"
             )
             report_dir = sta_artifact_directory(
-                workspace_dir / "sta_ecc" / "report",
+                workspace_dir / STEP_DIRECTORIES[StepEnum.STA.value] / "report",
                 item["lib_corner"],
                 item["temperature"],
                 item["rcx_corner"],
             )
             feature_dir = sta_artifact_directory(
-                workspace_dir / "sta_ecc" / "feature",
+                workspace_dir / STEP_DIRECTORIES[StepEnum.STA.value] / "feature",
                 item["lib_corner"],
                 item["temperature"],
                 item["rcx_corner"],
@@ -555,7 +579,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             destination="final/timing/power/power.rpt",
         )
 
-        rcx_output_dir = workspace_dir / "RCX_ecc" / "output"
+        rcx_output_dir = workspace_dir / STEP_DIRECTORIES[StepEnum.RCX.value] / "output"
         spef_paths = sorted(rcx_output_dir.glob("*.spef")) if rcx_output_dir.is_dir() else []
         if expected_spefs:
             for spef_name in sorted(expected_spefs):
@@ -586,7 +610,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 SignoffPackageIssue(
                     kind="resource",
                     label="RCX SPEF files",
-                    location="RCX_ecc/output",
+                    location=f"{STEP_DIRECTORIES[StepEnum.RCX.value]}/output",
                     reason="No SPEF files were found",
                     required=True,
                     destination="RCX SPEF files",
@@ -654,7 +678,9 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         if blocked_items or attention_items:
             warnings.append("home checklist requires attention; see final/reports/checklist.json")
 
-        qor_metrics = self._read_json(workspace_dir / "drc_ecc" / "analysis" / "qor_metrics.json")
+        qor_metrics = self._read_json(
+            workspace_dir / STEP_DIRECTORIES[StepEnum.DRC.value] / "analysis" / "qor_metrics.json"
+        )
         ok = len(blocked_items) == 0
         flow_success = all(state == StateEnum.Success.value for state in required_steps.values())
         summary = {

@@ -6,6 +6,8 @@ from the multi-corner records and the derived fmax / critical-path rules
 depend on that rollup.
 """
 
+from chipcompiler.data import StepEnum
+from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.engine.signoff.report_data import (
     ClockMetrics,
     CornerTimingRecord,
@@ -23,7 +25,7 @@ def _extract_corner_records(store, inputs) -> list[CornerTimingRecord]:
     """Merge STA corner payloads from stage stores and corner reports."""
     merged_corners: dict[str, dict] = {}
     corner_sources = []
-    for stage_name in ("STA", "sta_ecc", "Synth"):
+    for stage_name in ("STA", STEP_DIRECTORIES[StepEnum.STA.value], "Synth"):
         stage_data = store.stage(stage_name)
         corners = stage_data.get("corners") if _is_record(stage_data) else None
         if _is_record(corners):
