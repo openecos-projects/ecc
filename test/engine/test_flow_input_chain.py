@@ -301,3 +301,46 @@ def test_execution_rejects_a_missing_explicit_input(tmp_path, monkeypatch):
 
     with pytest.raises(FlowInputStepError):
         _recorded_sources(_workspace(tmp_path), ledger, monkeypatch)
+
+
+def test_checker_batch_stops_before_non_batchable_checkers(tmp_path, monkeypatch):
+    """Skipping the PNR separator must not pull RCX/sta into the batch."""
+    ledger = {
+        "steps": [
+            {"name": "route", "tool": "ecc", "category": "PNR"},
+            {"name": "filler", "tool": "ecc", "category": "PNR"},
+            {"name": "lvs", "tool": "ecc", "category": "CHECKER"},
+            {"name": "drc", "tool": "ecc", "category": "CHECKER"},
+            {"name": "RCX", "tool": "ecc", "category": "CHECKER"},
+            {"name": "sta", "tool": "ecc", "category": "CHECKER"},
+            {"name": "powerAnalysis", "tool": "ecc", "category": "CHECKER"},
+            {"name": "Harden", "tool": "ecc", "category": "PNR"},
+        ]
+    }
+
+    sources = _recorded_sources(_workspace(tmp_path), ledger, monkeypatch)
+
+    assert sources == {
+        "route": "origin",
+        "filler": "route",
+        "lvs": "filler",
+        "drc": "filler",
+        "RCX": "drc",
+        "sta": "RCX",
+        "powerAnalysis": "sta",
+        "Harden": "powerAnalysis",
+    }
+
+
+def test_an_unregistered_step_fails_loudly(tmp_path):
+    from chipcompiler.data.workspace.flow_policy import FlowInputStepError
+
+    ledger = {
+        "steps": [
+            {"name": "route", "tool": "ecc", "category": "PNR"},
+            {"name": "custom", "tool": "one", "category": "PNR"},
+        ]
+    }
+
+    with pytest.raises(FlowInputStepError, match="no flow policy registered"):
+        _iterated_sources(_workspace(tmp_path), ledger)

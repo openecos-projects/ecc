@@ -16,7 +16,7 @@ from chipcompiler.data import (
     Workspace,
 )
 from chipcompiler.data.step import STEP_DIRECTORIES, step_directory_for_tool
-from chipcompiler.data.workspace.flow_policy import FlowInputResolver, flow_category, step_name
+from chipcompiler.data.workspace.flow_policy import FlowInputResolver, ledger_category, step_name
 
 
 def latest_pnr_output(workspace: Workspace, suffix: str) -> Path | None:
@@ -28,7 +28,7 @@ def latest_pnr_output(workspace: Workspace, suffix: str) -> Path | None:
 
     candidate = None
     for flow_step in flow.steps():
-        if flow_category(flow_step) != FlowStepCategory.PNR:
+        if ledger_category(flow_step) != FlowStepCategory.PNR:
             continue
         tool = flow_step.get("tool")
         name = flow_step.get("name")

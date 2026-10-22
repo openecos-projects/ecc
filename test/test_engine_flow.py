@@ -918,8 +918,8 @@ class TestCreateStepFailureBreaksChain:
         flow_path = tmp_path / "flow.json"
         flow_data = {
             "steps": [
-                {"name": "SYNTHESIS", "tool": "yosys", "state": "Unstart"},
-                {"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"},
+                {"name": "Synthesis", "tool": "yosys", "state": "Unstart"},
+                {"name": "Floorplan", "tool": "ecc", "state": "Unstart"},
             ]
         }
         flow_path.write_text(json.dumps(flow_data), encoding="utf-8")
@@ -932,7 +932,7 @@ class TestCreateStepFailureBreaksChain:
 
         def fake_create_step(*args, **kwargs):
             call_count[0] += 1
-            if kwargs.get("step") == "FLOORPLAN":
+            if kwargs.get("step") == "Floorplan":
                 return None  # simulate tool not found
             return EccStep(name=kwargs["step"], directory=tmp_path, tool=kwargs.get("eda", ""))
 
@@ -941,13 +941,13 @@ class TestCreateStepFailureBreaksChain:
         monkeypatch.setattr(tools_mod, "create_step", fake_create_step)
         engine_flow.create_step_workspaces()
 
-        # Only SYNTHESIS should be created; FLOORPLAN fails and the chain stops.
+        # Only Synthesis should be created; Floorplan fails and the chain stops.
         assert len(engine_flow.workspace_steps) == 1
-        assert engine_flow.workspace_steps[0].name == "SYNTHESIS"
-        assert call_count[0] == 2  # SYNTHESIS + FLOORPLAN
+        assert engine_flow.workspace_steps[0].name == "Synthesis"
+        assert call_count[0] == 2  # Synthesis + Floorplan
 
-        # FLOORPLAN should be marked Incomplete in flow data
-        fp_step = next(s for s in workspace.flow.data["steps"] if s["name"] == "FLOORPLAN")
+        # Floorplan should be marked Incomplete in flow data
+        fp_step = next(s for s in workspace.flow.data["steps"] if s["name"] == "Floorplan")
         assert fp_step["state"] == StateEnum.Imcomplete.value
 
     def test_run_steps_returns_false_when_steps_skipped(self, monkeypatch, tmp_path):
@@ -955,8 +955,8 @@ class TestCreateStepFailureBreaksChain:
         flow_path = tmp_path / "flow.json"
         flow_data = {
             "steps": [
-                {"name": "SYNTHESIS", "tool": "yosys", "state": "Unstart"},
-                {"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"},
+                {"name": "Synthesis", "tool": "yosys", "state": "Unstart"},
+                {"name": "Floorplan", "tool": "ecc", "state": "Unstart"},
             ]
         }
         flow_path.write_text(json.dumps(flow_data), encoding="utf-8")

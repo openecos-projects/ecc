@@ -35,7 +35,7 @@ def _write_pnr_outputs(tmp_path, records):
         (output_dir / f"design_{record['name']}.v.gz").write_bytes(b"")
 
 
-def test_latest_pnr_output_skips_declared_and_default_checkers(tmp_path):
+def test_latest_pnr_output_skips_declared_checkers_and_advisory_steps(tmp_path):
     from chipcompiler.tools.ecc.lec_gates import latest_pnr_output
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="design"))
@@ -49,11 +49,11 @@ def test_latest_pnr_output_skips_declared_and_default_checkers(tmp_path):
     workspace.flow.data = {"steps": records}
     _write_pnr_outputs(tmp_path, records)
 
-    # `drc` declares CHECKER, `sta` carries no category and takes the
-    # step-name default (CHECKER), and `emir` is advisory, so all three are
-    # skipped even though they have outputs.
+    # `drc` declares CHECKER and `emir` is advisory, so both are skipped. A
+    # category-less ledger treats every step as PNR for chaining, so `sta` is
+    # the latest PNR output.
     assert latest_pnr_output(workspace, ".v.gz") == (
-        tmp_path / "filler_ecc" / "output" / "design_filler.v.gz"
+        tmp_path / "sta_ecc" / "output" / "design_sta.v.gz"
     )
 
 

@@ -18,6 +18,7 @@ from chipcompiler.data.types import (
     LEC_STEP_TOOLS,
     FlowStepCategory,
     StepEnum,
+    flow_step_policy,
 )
 
 
@@ -58,13 +59,30 @@ def ledger_category(record: dict) -> FlowStepCategory:
 
 
 def flow_category(record: dict) -> FlowStepCategory:
-    """The category for classification: declared, else the step-name default."""
+    """The category for classification: declared, else the step-name default.
+
+    Unlike the execution-chain resolver, a reporting projection tolerates
+    step names outside the flow vocabulary (the project matrix aligns custom
+    steps), so an unknown name reads as PNR here.
+    """
     declared = _declared_category(record)
     if declared is not None:
         return declared
     from chipcompiler.data.types import default_flow_step_category
 
     return default_flow_step_category(step_name(record))
+
+
+def is_checker_batch_step(record: dict) -> bool:
+    """Whether the step belongs to the parallel checker batch.
+
+    Only steps that declare a CHECKER category and opt into the batch run
+    concurrently; the batch is anchored at ``filler``. A ledger without
+    categories keeps the historical all-PNR chaining.
+    """
+    if ledger_category(record) != FlowStepCategory.CHECKER:
+        return False
+    return flow_step_policy(step_name(record)).checker_batch
 
 
 def is_lec_record(record: dict) -> bool:
@@ -82,10 +100,10 @@ def checker_batch_anchor(records: list[dict], index: int) -> str | None:
     (the engine starts the batch there). Checker steps elsewhere are ordinary
     steps and chain from their predecessor.
     """
-    if ledger_category(records[index]) != FlowStepCategory.CHECKER:
+    if not is_checker_batch_step(records[index]):
         return None
     run_start = index
-    while run_start > 0 and ledger_category(records[run_start - 1]) == FlowStepCategory.CHECKER:
+    while run_start > 0 and is_checker_batch_step(records[run_start - 1]):
         run_start -= 1
     if run_start == 0:
         return None
@@ -114,6 +132,10 @@ class FlowInputResolver:
 
     def _resolve(self, index: int, *, require_created: bool) -> tuple[str | None, bool]:
         record = self._records[index]
+        try:
+            flow_step_policy(step_name(record))
+        except ValueError as error:
+            raise FlowInputStepError(str(error)) from None
         explicit = explicit_input_step(record)
         if explicit is not None:
             positions = self._positions.get(explicit, [])

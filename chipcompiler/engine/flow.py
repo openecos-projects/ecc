@@ -24,7 +24,10 @@ from chipcompiler.data import (
     log_flow,
 )
 from chipcompiler.data.workspace.flow_ledger import validate_transition
-from chipcompiler.data.workspace.flow_policy import FlowInputResolver, ledger_category
+from chipcompiler.data.workspace.flow_policy import (
+    FlowInputResolver,
+    is_checker_batch_step,
+)
 from chipcompiler.engine import EngineDB
 from chipcompiler.engine.flow_completion import (
     finalize_interrupted_subflow as _finalize_interrupted_subflow,
@@ -606,7 +609,7 @@ class EngineFlow:
 
     def _is_checker_step(self, workspace_step: WorkspaceStep) -> bool:
         flow_step = self.get_step(workspace_step.name, workspace_step.tool) or {}
-        return ledger_category(flow_step) == FlowStepCategory.CHECKER
+        return is_checker_batch_step(flow_step)
 
     def _can_parallelize_checker_batch(self, workspace_step, index, observer) -> bool:
         from chipcompiler.engine import step_subprocess

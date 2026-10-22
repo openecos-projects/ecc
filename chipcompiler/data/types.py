@@ -84,15 +84,17 @@ class FlowStepPolicy:
 
     category: FlowStepCategory
     advisory: bool = False
+    #: The step may run concurrently with the checker batch after ``filler``.
+    checker_batch: bool = False
 
 
 # Every flow step is declared here; a step missing from this table fails the
-# exhaustiveness test instead of silently inheriting the PNR default. StepEnum
-# .FLOORPLAN is a shared configuration key, not a flow step, and is absent.
+# exhaustiveness test instead of silently inheriting the PNR default.
 FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
     StepEnum.RTL2GDS.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.INIT.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.SYNTHESIS.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.FLOORPLAN.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.PRE_FLOORPLAN.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.MACRO_PLACEMENT.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.POST_FLOORPLAN.value: FlowStepPolicy(FlowStepCategory.PNR),
@@ -103,8 +105,8 @@ FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
     StepEnum.LEGALIZATION.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.ROUTING.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.FILLER.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.LVS.value: FlowStepPolicy(FlowStepCategory.CHECKER),
-    StepEnum.DRC.value: FlowStepPolicy(FlowStepCategory.CHECKER),
+    StepEnum.LVS.value: FlowStepPolicy(FlowStepCategory.CHECKER, checker_batch=True),
+    StepEnum.DRC.value: FlowStepPolicy(FlowStepCategory.CHECKER, checker_batch=True),
     StepEnum.ANTENNA_CHECK.value: FlowStepPolicy(FlowStepCategory.PNR, advisory=True),
     SkippableStepEnum.POST_ROUTE_LEC.value: FlowStepPolicy(FlowStepCategory.CHECKER),
     StepEnum.RCX.value: FlowStepPolicy(FlowStepCategory.CHECKER),
@@ -128,7 +130,21 @@ FLOW_STEP_CATEGORIES: Final[dict[str, FlowStepCategory]] = {
 }
 
 
+def flow_step_policy(step: StepBaseEnum | str) -> FlowStepPolicy:
+    """The registered policy for a flow step; unknown names raise."""
+    value = step.value if isinstance(step, StepBaseEnum) else str(step)
+    try:
+        return FLOW_STEP_POLICIES[value]
+    except KeyError:
+        raise ValueError(f"no flow policy registered for step: {value!r}") from None
+
+
 def default_flow_step_category(step: StepBaseEnum | str) -> FlowStepCategory:
+    """The category for a declared step name, with a PNR fallback.
+
+    Ledger walks use :func:`flow_step_policy` instead, so a step added
+    without a policy fails loudly rather than silently inheriting PNR.
+    """
     value = step.value if isinstance(step, StepBaseEnum) else str(step)
     policy = FLOW_STEP_POLICIES.get(value)
     return policy.category if policy is not None else FlowStepCategory.PNR

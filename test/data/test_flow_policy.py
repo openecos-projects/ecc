@@ -10,10 +10,7 @@ from chipcompiler.data.types import (
 
 
 def _flow_step_values() -> set[str]:
-    # `FLOORPLAN` is a shared configuration key, not a flow step.
-    return {member.value for member in StepEnum if member is not StepEnum.FLOORPLAN} | {
-        member.value for member in SkippableStepEnum
-    }
+    return {member.value for member in StepEnum} | {member.value for member in SkippableStepEnum}
 
 
 def test_every_flow_step_has_a_policy():
