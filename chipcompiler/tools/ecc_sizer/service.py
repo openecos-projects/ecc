@@ -12,12 +12,13 @@ def get_step_info(workspace: Workspace, step: EccStep, id: str) -> dict:
         case "output":
             step_info = build_output(step)
         case "subflow":
-            step_info = build_subflow(step)
+            step_info = step.subflow.info()
         case "checklist":
-            step_info = build_checklist(step)
+            step_info = step.checklist.info()
         case "config" | "script":
             step_info = build_config(step)
 
+    step_info = stringify_paths(step_info)
     workspace.logger.log_section(f"[sizer] get step info, id = {id}")
     workspace.logger.info(f"{dict_to_str(step_info)}")
 
@@ -46,14 +47,6 @@ def build_output(step: EccStep) -> dict:
         "lib": stringify_paths(output.lib),
         "spef": stringify_paths(output.spef),
     }
-
-
-def build_subflow(step: EccStep) -> dict:
-    return {"path": stringify_paths(step.subflow.path or "")}
-
-
-def build_checklist(step: EccStep) -> dict:
-    return {"path": stringify_paths(step.checklist.path or "")}
 
 
 def build_config(step: EccStep) -> dict:

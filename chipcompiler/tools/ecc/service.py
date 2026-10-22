@@ -20,13 +20,13 @@ def get_step_info(workspace: Workspace, step: EccStep, id: str) -> dict:
         case "metrics":
             step_info = build_metrics(workspace=workspace, step=step)
         case "subflow":
-            step_info = build_subflow(workspace=workspace, step=step)
+            step_info = step.subflow.info()
         case "analysis":
             step_info = build_analysis(workspace=workspace, step=step)
         case "maps":
             step_info = build_maps(workspace=workspace, step=step)
         case "checklist":
-            step_info = build_checklist(workspace=workspace, step=step)
+            step_info = step.checklist.info()
         case "sta":
             step_info = build_sta(workspace=workspace, step=step)
         case "config":
@@ -61,12 +61,6 @@ def build_metrics(workspace: Workspace, step: EccStep) -> dict:
 
 def build_layout(workspace: Workspace, step: EccStep) -> dict:
     info = {"image": step.output.image or "", "json": step.output.json or ""}
-
-    return info
-
-
-def build_subflow(workspace: Workspace, step: EccStep) -> dict:
-    info = {"path": step.subflow.path or ""}
 
     return info
 
@@ -256,12 +250,6 @@ def build_maps_density(workspace: Workspace, step: EccStep) -> dict:
             "path": csv2png(json_density.get("pin", {}).get("allcell_pin_density", "")),
             "info": [],
         }
-
-    return info
-
-
-def build_checklist(workspace: Workspace, step: EccStep) -> dict:
-    info = {"path": step.checklist.path or ""}
 
     return info
 
