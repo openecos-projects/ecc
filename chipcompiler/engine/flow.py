@@ -609,11 +609,15 @@ class EngineFlow:
         return True
 
     def _is_checker_step(self, workspace_step: WorkspaceStep) -> bool:
-        flow_step = self.get_step(workspace_step.name, workspace_step.tool) or {}
+        flow_step = self.get_step(workspace_step.name, workspace_step.tool)
+        if flow_step is None:
+            return False
         return ledger_category(flow_step) == FlowStepCategory.CHECKER
 
     def _is_checker_batch_step(self, workspace_step: WorkspaceStep) -> bool:
-        flow_step = self.get_step(workspace_step.name, workspace_step.tool) or {}
+        flow_step = self.get_step(workspace_step.name, workspace_step.tool)
+        if flow_step is None:
+            return False
         return is_checker_batch_step(flow_step)
 
     def _can_parallelize_checker_batch(self, workspace_step, index, observer) -> bool:

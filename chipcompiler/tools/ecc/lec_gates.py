@@ -16,7 +16,6 @@ from chipcompiler.data import (
     Workspace,
 )
 from chipcompiler.data.step import STEP_DIRECTORIES, step_directory_for_tool
-from chipcompiler.data.types import flow_step_policy
 from chipcompiler.data.workspace.flow_policy import (
     FlowInputResolver,
     ledger_category,
@@ -34,10 +33,8 @@ def latest_pnr_output(workspace: Workspace, suffix: str) -> Path | None:
     candidate = None
     for flow_step in flow.steps():
         name = flow_step.get("name")
-        if name:
-            # A step outside the registered vocabulary must not silently read
-            # as a PNR artifact source.
-            flow_step_policy(name)
+        # The category reader validates the name against the policy table, so
+        # an unregistered step never silently reads as a PNR artifact source.
         if ledger_category(flow_step) != FlowStepCategory.PNR:
             continue
         tool = flow_step.get("tool")

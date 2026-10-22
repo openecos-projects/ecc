@@ -1235,3 +1235,14 @@ def test_checklist_gate_follows_the_input_chain(tmp_path):
     # `drc` belongs to the parallel batch: its input is `filler`, not the
     # previous ledger entry `lvs`.
     assert flow._blocked_checklist_prerequisite(EccStep(name="drc", tool="ecc")) == "filler"
+
+
+def test_unregistered_checker_step_fails_the_classification(tmp_path):
+    from chipcompiler.data import OriginDesign
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    flow = EngineFlow(workspace)
+    flow.workspace.flow.data = {"steps": [{"name": "custom", "tool": "one", "category": "CHECKER"}]}
+
+    with pytest.raises(ValueError, match="no flow policy registered"):
+        flow._is_checker_step(EccStep(name="custom", tool="one"))

@@ -54,8 +54,10 @@ def ledger_category(record: dict) -> FlowStepCategory:
     """The category the ledger declares: top level, then ``info.category``.
 
     A ledger without either predates the category field; execution treats its
-    steps as PNR so the historical chaining is preserved.
+    steps as PNR so the historical chaining is preserved. An unregistered step
+    name raises before any category is honored.
     """
+    flow_step_policy(step_name(record))
     return _declared_category(record) or FlowStepCategory.PNR
 
 
@@ -77,9 +79,15 @@ def is_checker_batch_step(record: dict) -> bool:
     the batch is anchored at ``filler``. A ledger without categories keeps the
     historical all-PNR chaining.
     """
-    if ledger_category(record) != FlowStepCategory.CHECKER:
+    try:
+        category = ledger_category(record)
+        policy = flow_step_policy(step_name(record))
+    except ValueError:
+        # Dispatch treats an unregistered step as non-batchable; the input
+        # chain resolver is where an unknown step fails loudly.
         return False
-    policy = flow_step_policy(step_name(record))
+    if category != FlowStepCategory.CHECKER:
+        return False
     return policy.input_source is FlowInputSource.CHECKER_BATCH
 
 
