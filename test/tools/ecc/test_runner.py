@@ -1051,9 +1051,13 @@ def test_run_filler_uses_mj_lifecycle(tmp_path, monkeypatch):
     )
     module = FakeFillerModule()
 
+    def save_data(**_kwargs):
+        module.calls.append(("save_data",))
+        return True
+
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
     monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **_kwargs: module)
-    monkeypatch.setattr(ecc_runner, "save_data", lambda **_kwargs: True)
+    monkeypatch.setattr(ecc_runner, "save_data", save_data)
     monkeypatch.setattr(ecc_runner, "run_analysis", lambda **_kwargs: None)
 
     assert ecc_runner.run_filler(workspace, step) is True
@@ -1068,6 +1072,7 @@ def test_run_filler_uses_mj_lifecycle(tmp_path, monkeypatch):
                 "layer_map_path": workspace.pdk.mapping_file or "",
             },
         ),
+        ("save_data",),
     ]
 
 

@@ -722,11 +722,11 @@ def run_filler(
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_filler.value, state=StateEnum.Success)
 
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
         ecc_module.gds_save(
             output_path=step.output.gds or "",
             layer_map_path=workspace.pdk.mapping_file or "",
         )
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
