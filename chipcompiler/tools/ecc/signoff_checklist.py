@@ -97,6 +97,14 @@ def _step_directory(step: WorkspaceStep) -> Path:
     return Path(".")
 
 
+def _step_report_path(step: WorkspaceStep) -> Path:
+    report_path = getattr(getattr(step, "report", None), "step", None)
+    if report_path:
+        return Path(report_path)
+    report_dir = getattr(getattr(step, "report", None), "dir", None)
+    return Path(report_dir or _step_directory(step) / "report") / f"{step.name}.rpt"
+
+
 def _file_state(path: Path | str | None) -> tuple[str, str]:
     if not path:
         return "unavailable", "No current output path is configured."
@@ -311,6 +319,8 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
     elif step.name == StepEnum.POWER_ANALYSIS.value:
         artifact = power_step_path(step.feature.dir)
         state, summary = _file_state(artifact)
+        report = _step_report_path(step)
+        report_state, report_summary = _file_state(report)
         return [
             _item(
                 item_id="artifact.poweranalysis.step",
@@ -327,6 +337,43 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
                 ),
                 source={"kind": "feature", "path": _path_text(workspace, artifact)},
                 evidence=[{"kind": "feature", "path": _path_text(workspace, artifact)}],
+            ),
+            _item(
+                item_id="artifact.poweranalysis.report",
+                step=step.name,
+                category="report",
+                owner="checklist",
+                policy="block",
+                state=report_state,
+                title="Power analysis report",
+                summary=(
+                    "Power analysis report is present and non-empty."
+                    if report_state == "pass"
+                    else "Power analysis report is missing or empty."
+                ),
+                source={"kind": "report", "path": _path_text(workspace, report)},
+                evidence=[{"kind": "report", "path": _path_text(workspace, report)}],
+            ),
+        ]
+    elif step.name == StepEnum.ANTENNA_CHECK.value:
+        report = _step_report_path(step)
+        state, summary = _file_state(report)
+        return [
+            _item(
+                item_id="artifact.antennacheck.report",
+                step=step.name,
+                category="report",
+                owner="checklist",
+                policy="warn",
+                state=state,
+                title="Antenna check report",
+                summary=(
+                    "Antenna check report is present and non-empty."
+                    if state == "pass"
+                    else "Antenna check report is missing or empty."
+                ),
+                source={"kind": "report", "path": _path_text(workspace, report)},
+                evidence=[{"kind": "report", "path": _path_text(workspace, report)}],
             )
         ]
     elif step.name == StepEnum.STA.value:

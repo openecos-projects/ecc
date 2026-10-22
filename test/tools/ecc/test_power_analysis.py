@@ -7,6 +7,7 @@ from chipcompiler.data import (
     EccAnalysis,
     EccData,
     EccFeature,
+    EccReport,
     EccStep,
     OriginDesign,
     StepEnum,
@@ -112,6 +113,10 @@ def test_power_analysis_uses_its_own_data_directory_and_native_lifecycle(tmp_pat
             steps={StepEnum.POWER_ANALYSIS.value: power_data_dir},
         ),
         feature=EccFeature(dir=tmp_path / "powerAnalysis_ecc" / "feature"),
+        report=EccReport(
+            dir=tmp_path / "powerAnalysis_ecc" / "report",
+            step=tmp_path / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt",
+        ),
         analysis=EccAnalysis(qor_metrics=analysis_dir / "qor_metrics.json"),
     )
     module = FakePowerModule()
@@ -149,6 +154,7 @@ def test_power_analysis_uses_its_own_data_directory_and_native_lifecycle(tmp_pat
         ("run_analysis",),
     ]
     assert (power_data_dir / "power_reporter" / STA_POWER_REPORT_FILENAME).is_file()
+    assert step.report.step.read_text(encoding="utf-8") == POWER_REPORT_TEXT
     assert read_sta_power_summary_json(step.feature.dir / STA_POWER_SUMMARY_FILENAME) is not None
     power_step = json.loads(
         (step.feature.dir / "powerAnalysis.step.json").read_text(encoding="utf-8")
@@ -170,6 +176,10 @@ def test_power_analysis_requires_native_power_report(tmp_path, monkeypatch):
             steps={StepEnum.POWER_ANALYSIS.value: power_data_dir},
         ),
         feature=EccFeature(dir=tmp_path / "powerAnalysis_ecc" / "feature"),
+        report=EccReport(
+            dir=tmp_path / "powerAnalysis_ecc" / "report",
+            step=tmp_path / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt",
+        ),
     )
     module = FakePowerModule()
     workspace, liberty, sdc, spef = _power_workspace(tmp_path, monkeypatch)
@@ -180,11 +190,15 @@ def test_power_analysis_requires_native_power_report(tmp_path, monkeypatch):
     stale_summary = step.feature.dir / STA_POWER_SUMMARY_FILENAME
     stale_summary.parent.mkdir(parents=True)
     stale_summary.write_text("{}\n")
+    stale_published_report = step.report.step
+    stale_published_report.parent.mkdir(parents=True)
+    stale_published_report.write_text("stale published power\n")
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
 
     assert ecc_runner.run_power_analysis(workspace, step, module) is False
     assert not stale_report.exists()
     assert not stale_summary.exists()
+    assert not stale_published_report.exists()
     assert module.calls == [
         (
             "update_step_paths",

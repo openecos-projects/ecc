@@ -26,6 +26,7 @@ from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.power_artifacts import (
     discard_power_artifacts,
     power_step_path,
+    publish_power_report,
     publish_power_summary,
 )
 from chipcompiler.tools.ecc.rcx_artifacts import (
@@ -1010,7 +1011,16 @@ def run_power_analysis(
         )
         return False
 
-    discard_power_artifacts(power_data_dir, power_feature_dir)
+    power_report_path = step.report.step
+    if power_report_path is None:
+        workspace.logger.error("Power analysis report path is not configured")
+        sub_flow.update_step(
+            step_name=EccSubFlowEnum.run_power_analysis.value,
+            state=StateEnum.Imcomplete,
+        )
+        return False
+
+    discard_power_artifacts(power_data_dir, power_feature_dir, power_report_path)
 
     if not ecc_module.init_pw(
         output_dir=power_data_dir,
@@ -1037,6 +1047,7 @@ def run_power_analysis(
         ecc_module.destroy_pw()
 
     try:
+        publish_power_report(power_data_dir, power_report_path)
         publish_power_summary(power_data_dir, power_feature_dir)
     except (FileNotFoundError, OSError, ValueError) as error:
         workspace.logger.error("Power analysis artifact publication failed: %s", error)

@@ -5,6 +5,7 @@ from chipcompiler.data import (
     ChecklistState,
     EccAnalysis,
     EccFeature,
+    EccReport,
     EccStep,
     OriginDesign,
     Parameters,
@@ -19,6 +20,7 @@ from chipcompiler.tools.ecc.metrics import _quality_gates, build_qor_summary_pay
 from chipcompiler.tools.ecc.signoff_checklist import (
     _flow_items,
     _lec_artifact_items,
+    _step_artifact_items,
     _workspace_items,
     rebuild_home_checklist,
     refresh_step_checklist,
@@ -651,9 +653,74 @@ def test_advisory_steps_have_nonblocking_detail_checklists(tmp_path):
     for name in (StepEnum.ANTENNA_CHECK.value, StepEnum.EMIR.value):
         step = WorkspaceStep(name=name, directory=tmp_path / f"{name}_ecc")
         assert refresh_step_checklist(workspace, step) is True
-        assert len(step.checklist.checklist) == 1
-        assert step.checklist.checklist[0]["state"] == "warning"
-        assert step.checklist.checklist[0]["blocked"] is False
+        items = {item["id"]: item for item in step.checklist.checklist}
+        assert items[f"flow.{name.lower()}.completed"]["state"] == "warning"
+        assert items[f"flow.{name.lower()}.completed"]["blocked"] is False
+        if name == StepEnum.ANTENNA_CHECK.value:
+            assert items["artifact.antennacheck.report"]["state"] == "failed"
+            assert items["artifact.antennacheck.report"]["blocked"] is False
+        else:
+            assert len(items) == 1
+
+
+def test_power_and_antenna_reports_are_checklist_artifacts(tmp_path):
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    power = EccStep(
+        name=StepEnum.POWER_ANALYSIS.value,
+        directory=tmp_path / "powerAnalysis_ecc",
+        feature=EccFeature(dir=tmp_path / "powerAnalysis_ecc" / "feature"),
+        report=EccReport(
+            dir=tmp_path / "powerAnalysis_ecc" / "report",
+            step=tmp_path / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt",
+        ),
+    )
+    power_step = power.feature.dir / "powerAnalysis.step.json"
+    power_step.parent.mkdir(parents=True)
+    power_step.write_text("{}\n", encoding="utf-8")
+    power.report.step.parent.mkdir(parents=True)
+    power.report.step.write_text("power\n", encoding="utf-8")
+    antenna = EccStep(
+        name=StepEnum.ANTENNA_CHECK.value,
+        directory=tmp_path / "antennaCheck_ecc",
+        report=EccReport(
+            dir=tmp_path / "antennaCheck_ecc" / "report",
+            step=tmp_path / "antennaCheck_ecc" / "report" / "antennaCheck.rpt",
+        ),
+    )
+    antenna.report.step.parent.mkdir(parents=True)
+    antenna.report.step.write_text("antenna\n", encoding="utf-8")
+
+    items = {
+        item["id"]: item
+        for item in (
+            *_step_artifact_items(workspace, power),
+            *_step_artifact_items(workspace, antenna),
+        )
+    }
+
+    assert items["artifact.poweranalysis.report"]["state"] == "pass"
+    assert items["artifact.antennacheck.report"]["state"] == "pass"
+
+
+def test_missing_published_power_report_blocks_checklist(tmp_path):
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    power = EccStep(
+        name=StepEnum.POWER_ANALYSIS.value,
+        directory=tmp_path / "powerAnalysis_ecc",
+        feature=EccFeature(dir=tmp_path / "powerAnalysis_ecc" / "feature"),
+        report=EccReport(
+            dir=tmp_path / "powerAnalysis_ecc" / "report",
+            step=tmp_path / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt",
+        ),
+    )
+    power_step = power.feature.dir / "powerAnalysis.step.json"
+    power_step.parent.mkdir(parents=True)
+    power_step.write_text("{}\n", encoding="utf-8")
+
+    items = {item["id"]: item for item in _step_artifact_items(workspace, power)}
+
+    assert items["artifact.poweranalysis.report"]["state"] == "failed"
+    assert items["artifact.poweranalysis.report"]["blocked"] is True
 
 
 def test_legacy_flows_do_not_gain_uncommitted_advisory_checks(tmp_path):

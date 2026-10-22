@@ -590,7 +590,7 @@ FF hold pass 只使用 `sta_ecc.json` 的 `MIN` Liberty 组，用于在 setup si
 
 - **drc**：`drc_ecc.json` 为空对象 `{}`——检查规则来自 tech LEF 的层定义与规则，无可调参数。
 - **lvs**：无配置文件，工具按默认流程比对版图与网表（输入输出经 `db_ecc.json` 链式传递）。
-- **antennaCheck**：使用与 DRC 相同的布线后版图数据库作为输入。ECC 生成原生 `antenna_check.rpt` 报告，并通过 `-step_json` 将 feature 路径传给 ecc-tools；ecc-tools 写出结构化的 `feature/antennaCheck.step.json`。该 JSON 使用 `schema_version: 1`，标识步骤为 `antennaCheck`，记录 `antenna_check.violation_count` 和诊断计数，并在 `violations` 数组中保存详细违例。ECC 判定步骤成功时，原生报告和结构化 JSON 必须同时存在。
+- **antennaCheck**：使用与 DRC 相同的布线后版图数据库作为输入。ECC 生成原生 `antenna_check.rpt` 报告并复制为 `antennaCheck_ecc/report/antennaCheck.rpt`，同时通过 `-step_json` 将 feature 路径传给 ecc-tools；ecc-tools 写出结构化的 `feature/antennaCheck.step.json`。该 JSON 使用 `schema_version: 1`，标识步骤为 `antennaCheck`，记录 `antenna_check.violation_count` 和诊断计数，并在 `violations` 数组中保存详细违例。ECC 判定步骤成功时，原生报告和结构化 JSON 必须同时存在；signoff checklist 以非阻塞报告项检查规范报告。
 
 原生接口可以这样指定输出路径：
 
@@ -667,9 +667,11 @@ IO 则用 0°C 库。项目或 workspace 显式设置的 `sta.liberty` 会替换
 功耗由独立的 `powerAnalysis` iPW 步骤产生，而不是由每个 STA corner
 产生。其原生输出为
 `powerAnalysis_ecc/data/pw/power_reporter/power.rpt` 和
-`powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`；ECC 从报告
-生成 `powerAnalysis_ecc/feature/powerAnalysis.step.json` 供 QoR 使用，并将数据放在
-其 `power_summary` 关键字下。旧的 `powerAnalysis_ecc/feature/power_summary.json`
+`powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`；ECC 将该报告原子复制为
+`powerAnalysis_ecc/report/powerAnalysis.rpt`，并从报告生成
+`powerAnalysis_ecc/feature/powerAnalysis.step.json` 供 QoR 使用，将数据放在
+其 `power_summary` 关键字下。signoff checklist 同时检查该规范报告。
+旧的 `powerAnalysis_ecc/feature/power_summary.json`
 保留作兼容回退。step 文件不再生成重复的顶层 `metrics` 对象。报告存在时，
 签核包会将其单独收录为 `final/timing/power/power.rpt`。
 

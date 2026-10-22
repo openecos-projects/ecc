@@ -602,7 +602,7 @@ Configuration file `route_ecc.json`; the `RT` group holds the router parameters.
 
 - **drc**: `drc_ecc.json` is an empty object `{}` — the check rules come from the tech LEF's layer definitions and rules; there is nothing to tune.
 - **lvs**: no configuration file; the tool compares layout against netlist with its default flow (inputs/outputs are chained via `db_ecc.json`).
-- **antennaCheck**: uses the same post-route physical database input as DRC. ECC writes the native `antenna_check.rpt` report and passes the feature path to ecc-tools through `-step_json`; ecc-tools writes the structured `feature/antennaCheck.step.json` file. The JSON uses `schema_version: 1`, identifies the step as `antennaCheck`, records `antenna_check.violation_count` and diagnostic counters, and includes detailed entries in `violations`. A successful ECC step requires both the native report and the structured JSON file.
+- **antennaCheck**: uses the same post-route physical database input as DRC. ECC writes the native `antenna_check.rpt` report, copies it to `antennaCheck_ecc/report/antennaCheck.rpt`, and passes the feature path to ecc-tools through `-step_json`; ecc-tools writes the structured `feature/antennaCheck.step.json` file. The JSON uses `schema_version: 1`, identifies the step as `antennaCheck`, records `antenna_check.violation_count` and diagnostic counters, and includes detailed entries in `violations`. A successful ECC step requires both the native report and the structured JSON file; the signoff checklist checks the canonical report as a non-blocking report item.
 
 The native interfaces accept the output path as follows:
 
@@ -682,9 +682,11 @@ For each corner, ecc-tools splits the reports by path type (`sta_ecc/report/<lib
 Power is produced by the separate `powerAnalysis` iPW step, not by each STA
 corner. Its native outputs are
 `powerAnalysis_ecc/data/pw/power_reporter/power.rpt` and
-`powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`; ECC derives
-`powerAnalysis_ecc/feature/powerAnalysis.step.json` from the report for QoR and
-stores the payload under its `power_summary` key. The legacy
+`powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`; ECC atomically
+copies the report to `powerAnalysis_ecc/report/powerAnalysis.rpt`, derives
+`powerAnalysis_ecc/feature/powerAnalysis.step.json` from the report for QoR, and
+stores the payload under its `power_summary` key. The signoff checklist also
+checks the canonical report. The legacy
 `powerAnalysis_ecc/feature/power_summary.json` is retained as a compatibility
 fallback. The step artifact has no
 duplicate top-level `metrics` object. When
