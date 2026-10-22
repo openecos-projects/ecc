@@ -1,8 +1,9 @@
 #!/usr/bin/env python
-"""Shared inner-flow tracking for LEC steps.
+"""Shared inner-flow (sub-flow) tracking for tool steps.
 
 Persistence, runtime/peak-memory accounting, and observer event forwarding
-are engine-neutral; each LEC engine subclasses this with its stage list.
+are tool-neutral; each tool subclasses ``SubFlow`` with its stage list, or
+overrides ``build_sub_flow`` when the stages depend on the step.
 """
 
 import time
@@ -10,10 +11,20 @@ import time
 from chipcompiler.data import StateEnum, Workspace, WorkspaceStep
 
 
-class LecSubFlow:
-    """Inner-flow tracker for an LEC step, parameterized by ``STAGES``."""
+def stage_template(name: str) -> dict:
+    return {
+        "name": name,
+        "state": StateEnum.Unstart.value,
+        "runtime": "",
+        "peak memory (mb)": 0,
+        "info": {},
+    }
 
-    STAGES = ("run lec", "analysis")
+
+class SubFlow:
+    """Inner-flow tracker for a step, parameterized by ``STAGES``."""
+
+    STAGES: tuple[str, ...] = ()
 
     def __init__(self, workspace: Workspace, workspace_step: WorkspaceStep):
         self.workspace = workspace
@@ -31,17 +42,12 @@ class LecSubFlow:
         else:
             self.build_sub_flow()
 
-    def build_sub_flow(self) -> list:
-        def subflow_template(step_name: str):
-            return {
-                "name": step_name,
-                "state": StateEnum.Unstart.value,
-                "runtime": "",
-                "peak memory (mb)": 0,
-                "info": {},
-            }
+    def stages(self) -> tuple[str, ...]:
+        """Stage names of this step; override when they depend on the step."""
+        return self.STAGES
 
-        self.workspace_step.subflow.steps = [subflow_template(name) for name in self.STAGES]
+    def build_sub_flow(self) -> list:
+        self.workspace_step.subflow.steps = [stage_template(name) for name in self.stages()]
         self.save()
         return self.workspace_step.subflow.steps
 
