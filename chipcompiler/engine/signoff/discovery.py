@@ -102,7 +102,7 @@ class CollectorDiscoveryMixin:
         """Resolve the netlist from the Yosys step's declared output contract."""
         synthesis_step = self._build_workspace_step(
             {"name": StepEnum.SYNTHESIS.value, "tool": "yosys"},
-            previous_step=None,
+            input_source=None,
         )
         output = getattr(synthesis_step, "output", None)
         verilog = getattr(output, "verilog", None)

@@ -4,6 +4,7 @@ Zero IO and zero chipcompiler-internal imports: this module is the
 dependency-free root of the data layer's type vocabulary.
 """
 
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
@@ -73,41 +74,64 @@ class SkippableStepEnum(StepBaseEnum):
         return True
 
 
-# Advisory analyses retain their execution state but neither gate the flow nor
-# become the source of physical design artifacts for downstream steps.
-ADVISORY_FLOW_STEPS: Final = frozenset({StepEnum.ANTENNA_CHECK.value, StepEnum.EMIR.value})
+@dataclass(frozen=True)
+class FlowStepPolicy:
+    """The flow's knowledge about one step: category and input participation.
 
+    ``advisory`` steps keep their execution state but neither gate the flow nor
+    become the source of physical design artifacts for downstream steps.
+    """
+
+    category: FlowStepCategory
+    advisory: bool = False
+
+
+# Every flow step is declared here; a step missing from this table fails the
+# exhaustiveness test instead of silently inheriting the PNR default. StepEnum
+# .FLOORPLAN is a shared configuration key, not a flow step, and is absent.
+FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
+    StepEnum.RTL2GDS.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.INIT.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.SYNTHESIS.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.PRE_FLOORPLAN.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.MACRO_PLACEMENT.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.POST_FLOORPLAN.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.PREPLACE.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.PLACEMENT.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.DIFF_SIZING.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.CTS.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.LEGALIZATION.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.ROUTING.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.FILLER.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.LVS.value: FlowStepPolicy(FlowStepCategory.CHECKER),
+    StepEnum.DRC.value: FlowStepPolicy(FlowStepCategory.CHECKER),
+    StepEnum.ANTENNA_CHECK.value: FlowStepPolicy(FlowStepCategory.PNR, advisory=True),
+    SkippableStepEnum.POST_ROUTE_LEC.value: FlowStepPolicy(FlowStepCategory.CHECKER),
+    StepEnum.RCX.value: FlowStepPolicy(FlowStepCategory.CHECKER),
+    StepEnum.STA.value: FlowStepPolicy(FlowStepCategory.CHECKER),
+    StepEnum.POWER_ANALYSIS.value: FlowStepPolicy(FlowStepCategory.CHECKER),
+    StepEnum.EMIR.value: FlowStepPolicy(FlowStepCategory.PNR, advisory=True),
+    StepEnum.HARDEN.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.SIGNOFF.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.GDS.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.ABSTRACT_LEF.value: FlowStepPolicy(FlowStepCategory.PNR),
+    SkippableStepEnum.LEC.value: FlowStepPolicy(FlowStepCategory.PNR),
+    SkippableStepEnum.TIMING_OPT.value: FlowStepPolicy(FlowStepCategory.PNR),
+}
+
+ADVISORY_FLOW_STEPS: Final = frozenset(
+    name for name, policy in FLOW_STEP_POLICIES.items() if policy.advisory
+)
 
 FLOW_STEP_CATEGORIES: Final[dict[str, FlowStepCategory]] = {
-    StepEnum.RTL2GDS.value: FlowStepCategory.PNR,
-    StepEnum.INIT.value: FlowStepCategory.PNR,
-    StepEnum.SYNTHESIS.value: FlowStepCategory.PNR,
-    StepEnum.PRE_FLOORPLAN.value: FlowStepCategory.PNR,
-    StepEnum.MACRO_PLACEMENT.value: FlowStepCategory.PNR,
-    StepEnum.POST_FLOORPLAN.value: FlowStepCategory.PNR,
-    StepEnum.PLACEMENT.value: FlowStepCategory.PNR,
-    StepEnum.CTS.value: FlowStepCategory.PNR,
-    StepEnum.LEGALIZATION.value: FlowStepCategory.PNR,
-    StepEnum.ROUTING.value: FlowStepCategory.PNR,
-    StepEnum.FILLER.value: FlowStepCategory.PNR,
-    StepEnum.LVS.value: FlowStepCategory.CHECKER,
-    StepEnum.DRC.value: FlowStepCategory.CHECKER,
-    SkippableStepEnum.POST_ROUTE_LEC.value: FlowStepCategory.CHECKER,
-    StepEnum.RCX.value: FlowStepCategory.CHECKER,
-    StepEnum.STA.value: FlowStepCategory.CHECKER,
-    StepEnum.POWER_ANALYSIS.value: FlowStepCategory.CHECKER,
-    StepEnum.HARDEN.value: FlowStepCategory.PNR,
-    StepEnum.SIGNOFF.value: FlowStepCategory.PNR,
-    StepEnum.GDS.value: FlowStepCategory.PNR,
-    StepEnum.ABSTRACT_LEF.value: FlowStepCategory.PNR,
-    SkippableStepEnum.LEC.value: FlowStepCategory.PNR,
-    SkippableStepEnum.TIMING_OPT.value: FlowStepCategory.PNR,
+    name: policy.category for name, policy in FLOW_STEP_POLICIES.items()
 }
 
 
 def default_flow_step_category(step: StepBaseEnum | str) -> FlowStepCategory:
     value = step.value if isinstance(step, StepBaseEnum) else str(step)
-    return FLOW_STEP_CATEGORIES.get(value, FlowStepCategory.PNR)
+    policy = FLOW_STEP_POLICIES.get(value)
+    return policy.category if policy is not None else FlowStepCategory.PNR
 
 
 # Projects that declare no skip policy skip the synthesis LEC: the

@@ -127,10 +127,10 @@ def test_category_ledger_reads_the_latest_pnr_step(tmp_path, monkeypatch):
         "lvs": "filler",
         "drc": "filler",
         "antennaCheck": "drc",
-        "postRouteLec": "filler",
-        "RCX": "filler",
-        "sta": "filler",
-        "powerAnalysis": "filler",
+        "postRouteLec": "drc",
+        "RCX": "drc",
+        "sta": "RCX",
+        "powerAnalysis": "sta",
         "emir": "powerAnalysis",
         "Harden": "powerAnalysis",
     }
@@ -165,10 +165,10 @@ def test_read_only_projection_matches_the_execution_chain_on_this_ledger(tmp_pat
         "lvs": "filler",
         "drc": "filler",
         "antennaCheck": "drc",
-        "postRouteLec": "filler",
-        "RCX": "filler",
-        "sta": "filler",
-        "powerAnalysis": "filler",
+        "postRouteLec": "drc",
+        "RCX": "drc",
+        "sta": "RCX",
+        "powerAnalysis": "sta",
         "emir": "powerAnalysis",
         "Harden": "powerAnalysis",
     }
@@ -217,26 +217,87 @@ def test_skipped_post_route_lec_keeps_the_same_sources(tmp_path, monkeypatch):
         "lvs": "filler",
         "drc": "filler",
         "antennaCheck": "drc",
-        "RCX": "filler",
-        "sta": "filler",
-        "powerAnalysis": "filler",
+        "RCX": "drc",
+        "sta": "RCX",
+        "powerAnalysis": "sta",
         "emir": "powerAnalysis",
         "Harden": "powerAnalysis",
     }
 
 
-@pytest.mark.parametrize("input_step", [None, "route", "does_not_exist"])
-def test_explicit_input_step_resolution(tmp_path, input_step):
+@pytest.mark.parametrize("input_step,expected", [(None, "drc"), ("route", "route")])
+def test_explicit_input_step_selects_the_named_step(tmp_path, input_step, expected):
     ledger = _real_ledger()
-    rcx = next(step for step in ledger["steps"] if step["name"] == "RCX")
     if input_step is not None:
-        rcx["input_step"] = input_step
+        next(step for step in ledger["steps"] if step["name"] == "RCX")["input_step"] = input_step
+
+    sources = _iterated_sources(_workspace(tmp_path), ledger)
+
+    assert sources["RCX"] == expected
+
+
+@pytest.mark.parametrize("input_step", ["does_not_exist", "sta"])
+def test_explicit_input_step_must_already_exist(tmp_path, input_step):
+    from chipcompiler.data.workspace.flow_policy import FlowInputStepError
+
+    ledger = _real_ledger()
+    next(step for step in ledger["steps"] if step["name"] == "RCX")["input_step"] = input_step
+
+    with pytest.raises(FlowInputStepError):
+        _iterated_sources(_workspace(tmp_path), ledger)
+
+
+def _signoff_sources(workspace, ledger):
+    from chipcompiler.data import StateEnum
+    from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
+
+    class _Collector(CollectorAnalysisMixin):
+        def __init__(self, workspace):
+            self.workspace = workspace
+            self.refreshed = []
+
+        def _refresh_step_analysis(self, step) -> None:
+            self.refreshed.append(step)
+
+        def _analysis_issue(self, step_name, *, required, reason, kind, label=None):
+            return None
+
+    for step in ledger["steps"]:
+        step["state"] = StateEnum.Success.value
+    workspace.flow.data = ledger
+    workspace.flow.path = workspace.directory / "home" / "flow.json"
+    collector = _Collector(workspace)
+    collector._refresh_workspace_analysis(workspace.directory)
+    outputs = _output_paths(workspace, ledger)
+    return {
+        step.name: _source_name(
+            step.input.def_,
+            getattr(step.input, "gate_verilog", None),
+            outputs,
+            workspace,
+        )
+        for step in collector.refreshed
+    }
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_every_consumer_resolves_the_same_input_sources(tmp_path, monkeypatch, legacy):
+    ledger = _legacy_ledger() if legacy else _real_ledger()
     workspace = _workspace(tmp_path)
+    execution = _recorded_sources(workspace, ledger, monkeypatch)
+    projection = _iterated_sources(workspace, ledger)
+    signoff = _signoff_sources(workspace, ledger)
 
-    sources = _iterated_sources(workspace, ledger)
+    assert projection == execution
+    # The signoff analysis skips LEC steps; for every other step it must agree.
+    assert signoff == {name: execution[name] for name in signoff}
 
-    # An explicit input names a created step; a missing one silently falls back
-    # to the origin today.
-    assert sources["RCX"] == {"route": "route", "does_not_exist": "origin"}.get(
-        input_step, "filler"
-    )
+
+def test_execution_rejects_a_missing_explicit_input(tmp_path, monkeypatch):
+    from chipcompiler.data.workspace.flow_policy import FlowInputStepError
+
+    ledger = _real_ledger()
+    next(step for step in ledger["steps"] if step["name"] == "RCX")["input_step"] = "does_not_exist"
+
+    with pytest.raises(FlowInputStepError):
+        _recorded_sources(_workspace(tmp_path), ledger, monkeypatch)

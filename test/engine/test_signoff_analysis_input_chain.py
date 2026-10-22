@@ -80,7 +80,7 @@ def test_refresh_workspace_analysis_chains_the_previous_step(tmp_path):
         "route": "origin",
         "filler": "route",
         "lvs": "filler",
-        "drc": "lvs",
+        "drc": "filler",
         "antennaCheck": "drc",
         "RCX": "drc",
         "sta": "RCX",

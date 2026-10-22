@@ -1176,3 +1176,62 @@ def test_engine_flow_post_success_failure_marks_incomplete_not_success(
     assert result == StateEnum.Imcomplete
     persisted = json.loads(flow_path.read_text(encoding="utf-8"))
     assert persisted["steps"][0]["state"] == StateEnum.Imcomplete.value
+
+
+def test_checker_batch_honors_the_info_category_fallback(monkeypatch, tmp_path):
+    import chipcompiler.tools as tools_api
+    from chipcompiler.data import OriginDesign
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    inputs = []
+    outputs = {
+        "route": EccOutput(def_=tmp_path / "route.def", verilog=tmp_path / "route.v"),
+        "filler": EccOutput(def_=tmp_path / "filler.def", verilog=tmp_path / "filler.v"),
+    }
+
+    def fake_create_step(workspace, step, eda, **kwargs):
+        inputs.append((step, kwargs["input_def"]))
+        return EccStep(name=step, tool=eda, output=outputs.get(step, EccOutput()))
+
+    monkeypatch.setattr(tools_api, "create_step", fake_create_step)
+    flow = EngineFlow(workspace)
+    flow.workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc"},
+            {"name": "filler", "tool": "ecc"},
+            {"name": "drc", "tool": "ecc", "info": {"category": "CHECKER"}},
+            {"name": "lvs", "tool": "ecc", "info": {"category": "CHECKER"}},
+        ]
+    }
+
+    flow.create_step_workspaces()
+
+    assert inputs[2:] == [
+        ("drc", outputs["filler"].def_),
+        ("lvs", outputs["filler"].def_),
+    ]
+
+
+def test_checklist_gate_follows_the_input_chain(tmp_path):
+    from chipcompiler.data import OriginDesign
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    flow = EngineFlow(workspace)
+    flow.workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc", "category": "PNR"},
+            {
+                "name": "filler",
+                "tool": "ecc",
+                "category": "PNR",
+                "checklist": {"status": "blocked"},
+            },
+            {"name": "lvs", "tool": "ecc", "category": "CHECKER"},
+            {"name": "drc", "tool": "ecc", "category": "CHECKER"},
+            {"name": "antennaCheck", "tool": "ecc", "category": "PNR"},
+        ]
+    }
+
+    # `drc` belongs to the parallel batch: its input is `filler`, not the
+    # previous ledger entry `lvs`.
+    assert flow._blocked_checklist_prerequisite(EccStep(name="drc", tool="ecc")) == "filler"

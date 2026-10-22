@@ -12,6 +12,7 @@ def test_post_route_lec_gate_matches_execution_chain(tmp_path, checker_category,
         {"name": "filler", "tool": "ecc"},
         {"name": "lvs", "tool": "ecc"},
         {"name": "drc", "tool": "ecc"},
+        {"name": "antennaCheck", "tool": "ecc"},
         {"name": "postRouteLec", "tool": "yosys_lec", "category": "CHECKER"},
     ]
     if checker_category:
@@ -23,7 +24,7 @@ def test_post_route_lec_gate_matches_execution_chain(tmp_path, checker_category,
 
     _golden, gate = post_route_lec_netlists(workspace)
 
-    source = explicit_input or ("filler" if checker_category else "drc")
+    source = explicit_input or "drc"
     assert gate == tmp_path / f"{source}_ecc" / "output" / f"design_{source}.v.gz"
 
 
@@ -34,7 +35,7 @@ def _write_pnr_outputs(tmp_path, records):
         (output_dir / f"design_{record['name']}.v.gz").write_bytes(b"")
 
 
-def test_latest_pnr_output_skips_checker_and_advisory_steps(tmp_path):
+def test_latest_pnr_output_skips_declared_and_default_checkers(tmp_path):
     from chipcompiler.tools.ecc.lec_gates import latest_pnr_output
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="design"))
@@ -48,14 +49,15 @@ def test_latest_pnr_output_skips_checker_and_advisory_steps(tmp_path):
     workspace.flow.data = {"steps": records}
     _write_pnr_outputs(tmp_path, records)
 
-    # `sta` carries no category and defaults to PNR; `drc` is CHECKER and
-    # `emir` is advisory, so both are skipped even though they have outputs.
+    # `drc` declares CHECKER, `sta` carries no category and takes the
+    # step-name default (CHECKER), and `emir` is advisory, so all three are
+    # skipped even though they have outputs.
     assert latest_pnr_output(workspace, ".v.gz") == (
-        tmp_path / "sta_ecc" / "output" / "design_sta.v.gz"
+        tmp_path / "filler_ecc" / "output" / "design_filler.v.gz"
     )
 
 
-def test_latest_pnr_output_ignores_the_info_category_fallback(tmp_path):
+def test_latest_pnr_output_honors_the_info_category_fallback(tmp_path):
     from chipcompiler.tools.ecc.lec_gates import latest_pnr_output
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="design"))
@@ -67,5 +69,5 @@ def test_latest_pnr_output_ignores_the_info_category_fallback(tmp_path):
     _write_pnr_outputs(tmp_path, records)
 
     assert latest_pnr_output(workspace, ".v.gz") == (
-        tmp_path / "drc_ecc" / "output" / "design_drc.v.gz"
+        tmp_path / "filler_ecc" / "output" / "design_filler.v.gz"
     )

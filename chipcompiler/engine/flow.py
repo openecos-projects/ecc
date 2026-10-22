@@ -26,6 +26,7 @@ from chipcompiler.data import (
 )
 from chipcompiler.data.schema_migrations import SCHEMA_VERSION_FIELD
 from chipcompiler.data.workspace.flow_data import FLOW_JSON_SCHEMA_VERSION
+from chipcompiler.data.workspace.flow_policy import FlowInputResolver, ledger_category
 from chipcompiler.engine import EngineDB
 from chipcompiler.engine.flow_completion import (
     finalize_interrupted_subflow as _finalize_interrupted_subflow,
@@ -423,15 +424,12 @@ class EngineFlow:
         initialize_config: whether step factories may regenerate tool configs.
         """
         self.workspace_steps = []
-        pre_step = None
-        pnr_step = None
-        created_steps = {}
+        records = self.workspace.flow.data.get("steps", [])
+        resolver = FlowInputResolver(records)
         synthesis_gate_verilog = ""
         synthesis_golden_verilog = ""
-        for step in self.workspace.flow.data.get("steps", []):
-            input_source = self._input_source_for_step(
-                step, pre_step=pre_step, pnr_step=pnr_step, created_steps=created_steps
-            )
+        for index, step in enumerate(records):
+            input_source = resolver.input_source(index)
             if input_source is None:
                 # use the origin def and verilog in workspace for the first step.
                 input_def = self.workspace.design.origin_def
@@ -450,11 +448,11 @@ class EngineFlow:
                 explicit_golden = step_info.get("golden_verilog") or None
                 if explicit_golden:
                     input_db = explicit_golden
-                elif pre_step is None and self.workspace.design.golden_verilog is not None:
+                elif input_source is None and self.workspace.design.golden_verilog is not None:
                     input_db = self.workspace.design.golden_verilog
                 elif step["name"] == SkippableStepEnum.POST_ROUTE_LEC.value:
                     input_db = synthesis_gate_verilog or self.workspace.design.origin_verilog
-                elif pre_step is not None and pre_step.name == StepEnum.SYNTHESIS.value:
+                elif input_source is not None and input_source.name == StepEnum.SYNTHESIS.value:
                     input_db = synthesis_golden_verilog or None
 
             # create workspace step
@@ -478,23 +476,15 @@ class EngineFlow:
                 ):
                     eda_step.output.spef = [Path(step_info["spef"])]
                 if (
-                    pre_step is not None
-                    and pre_step.name == StepEnum.RCX.value
+                    input_source is not None
+                    and input_source.name == StepEnum.RCX.value
                     and eda_step.name == StepEnum.STA.value
                     and isinstance(eda_step.output, EccOutput)
-                    and isinstance(pre_step.output, EccOutput)
+                    and isinstance(input_source.output, EccOutput)
                 ):
-                    eda_step.output.spef = pre_step.output.spef
+                    eda_step.output.spef = input_source.output.spef
                 self.workspace_steps.append(eda_step)
-                created_steps[eda_step.name] = eda_step
-                if (
-                    self._step_category(step) == FlowStepCategory.PNR.value
-                    and eda_step.tool not in LEC_STEP_TOOLS
-                    and eda_step.name not in ADVISORY_FLOW_STEPS
-                ):
-                    pnr_step = eda_step
-                if eda_step.tool not in LEC_STEP_TOOLS and eda_step.name not in ADVISORY_FLOW_STEPS:
-                    pre_step = eda_step
+                resolver.record(eda_step)
                 if eda_step.name == StepEnum.SYNTHESIS.value:
                     synthesis_gate_verilog = eda_step.output.verilog
                     synthesis_golden_verilog = getattr(eda_step.output, "golden_verilog", None)
@@ -507,27 +497,6 @@ class EngineFlow:
                     step.get("tool", "?"),
                 )
                 break
-
-    @staticmethod
-    def _step_category(step: dict) -> str:
-        return str(
-            step.get("category")
-            or (step.get("info") or {}).get("category")
-            or FlowStepCategory.PNR.value
-        ).upper()
-
-    @classmethod
-    def _input_step_name(cls, step: dict) -> str | None:
-        return step.get("input_step") or (step.get("info") or {}).get("input_step")
-
-    @classmethod
-    def _input_source_for_step(cls, step, *, pre_step, pnr_step, created_steps):
-        input_step_name = cls._input_step_name(step)
-        if input_step_name:
-            return created_steps.get(input_step_name)
-        if cls._step_category(step) == FlowStepCategory.CHECKER.value:
-            return pnr_step or pre_step
-        return pre_step
 
     def init_db_engine(self) -> bool:
         if len(self.workspace_steps) <= 0:
@@ -716,7 +685,7 @@ class EngineFlow:
 
     def _is_checker_step(self, workspace_step: WorkspaceStep) -> bool:
         flow_step = self.get_step(workspace_step.name, workspace_step.tool) or {}
-        return str(flow_step.get("category", "")).upper() == FlowStepCategory.CHECKER.value
+        return ledger_category(flow_step) == FlowStepCategory.CHECKER
 
     def _can_parallelize_checker_batch(self, workspace_step, index, observer) -> bool:
         from chipcompiler.engine import step_subprocess
@@ -757,17 +726,8 @@ class EngineFlow:
         )
         if current_index is None:
             return None
-        current = steps[current_index]
-        prerequisite_name = current.get("input_step") or (current.get("info") or {}).get(
-            "input_step"
-        )
-        prerequisite = None
-        if prerequisite_name:
-            prerequisite = next(
-                (step for step in steps if step.get("name") == prerequisite_name), None
-            )
-        elif current_index > 0:
-            prerequisite = steps[current_index - 1]
+        prerequisite_name = FlowInputResolver(steps).input_step_name(current_index)
+        prerequisite = next((step for step in steps if step.get("name") == prerequisite_name), None)
         checklist = prerequisite.get("checklist") if isinstance(prerequisite, dict) else None
         if isinstance(checklist, dict) and checklist.get("status") == "blocked":
             return str(prerequisite.get("name") or "previous step")

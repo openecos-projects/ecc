@@ -10,13 +10,13 @@ materialization stay in collector.py and discovery.py; shared helpers
 from pathlib import Path
 
 from chipcompiler.data import (
-    ADVISORY_FLOW_STEPS,
     LEC_STEP_TOOLS,
     EccOutput,
     StateEnum,
     StepEnum,
     ToolName,
 )
+from chipcompiler.data.workspace.flow_policy import FlowInputResolver
 from chipcompiler.engine.signoff.models import SIGNOFF_REQUIRED_QOR_STEPS, SignoffPackageIssue
 from chipcompiler.tools.registry import load_builder
 
@@ -27,16 +27,18 @@ class CollectorAnalysisMixin:
         if self.workspace.flow.path is None:
             self.workspace.flow.path = workspace_dir / "home" / "flow.json"
         issues: list[SignoffPackageIssue] = []
-        previous_step = None
+        records = self.workspace.flow.steps()
+        resolver = FlowInputResolver(records)
 
-        for flow_step in self.workspace.flow.steps():
+        for index, flow_step in enumerate(records):
             step_name = str(flow_step.get("name", ""))
             tool = str(flow_step.get("tool", ""))
             if not step_name or not tool:
                 continue
 
             try:
-                workspace_step = self._build_workspace_step(flow_step, previous_step)
+                input_source = resolver.input_source(index)
+                workspace_step = self._build_workspace_step(flow_step, input_source)
             except (ImportError, OSError, TypeError, ValueError):
                 workspace_step = None
             if workspace_step is None:
@@ -49,16 +51,15 @@ class CollectorAnalysisMixin:
                     )
                 )
                 continue
+            resolver.record(workspace_step)
 
             if (
-                previous_step is not None
-                and previous_step.name == StepEnum.RCX.value
+                input_source is not None
+                and input_source.name == StepEnum.RCX.value
                 and workspace_step.name == StepEnum.STA.value
             ):
-                workspace_step.output.spef = previous_step.output.spef
+                workspace_step.output.spef = input_source.output.spef
 
-            if tool not in LEC_STEP_TOOLS and step_name not in ADVISORY_FLOW_STEPS:
-                previous_step = workspace_step
             if flow_step.get("state") != StateEnum.Success.value:
                 continue
             if tool in LEC_STEP_TOOLS:
@@ -78,7 +79,7 @@ class CollectorAnalysisMixin:
 
         return issues
 
-    def _build_workspace_step(self, flow_step: dict, previous_step):
+    def _build_workspace_step(self, flow_step: dict, input_source):
         step_name = str(flow_step.get("name", ""))
         tool = str(flow_step.get("tool", ""))
         try:
@@ -90,14 +91,14 @@ class CollectorAnalysisMixin:
         if not callable(build_step):
             return None
 
-        if previous_step is None:
+        if input_source is None:
             input_def = self.workspace.design.origin_def
             input_verilog = self.workspace.design.origin_verilog
             input_db = None
         else:
-            input_def = previous_step.output.def_
-            input_verilog = previous_step.output.verilog
-            input_db = previous_step.output.db
+            input_def = input_source.output.def_
+            input_verilog = input_source.output.verilog
+            input_db = input_source.output.db
         workspace_step = build_step(
             workspace=self.workspace,
             step_name=step_name,

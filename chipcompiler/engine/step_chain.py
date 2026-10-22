@@ -1,23 +1,12 @@
-"""Canonical workspace-step input chaining for read-only projections."""
+"""Build one workspace step from the input source the flow policy resolved."""
 
 
-def build_workspace_step_for_info(
-    workspace, flow_step: dict, previous_step, *, pnr_step=None, created_steps=None
-):
-    """Build one step using the persisted chain and its explicit input edge."""
+def build_workspace_step_for_info(workspace, flow_step: dict, input_source):
+    """Build the step for *flow_step*, wiring *input_source* (None = origin)."""
     step_name = flow_step.get("name")
     tool = flow_step.get("tool")
     if not step_name or not tool:
         return None
-
-    created_steps = created_steps or {}
-    input_step_name = flow_step.get("input_step") or (flow_step.get("info") or {}).get("input_step")
-    if input_step_name:
-        input_source = created_steps.get(input_step_name)
-    elif step_category(flow_step) == "CHECKER":
-        input_source = pnr_step or previous_step
-    else:
-        input_source = previous_step
 
     if input_source is None:
         input_def = workspace.design.origin_def
@@ -38,12 +27,6 @@ def build_workspace_step_for_info(
         input_verilog=input_verilog,
         input_db=input_db,
     )
-
-
-def step_category(flow_step: dict) -> str:
-    return str(
-        flow_step.get("category") or (flow_step.get("info") or {}).get("category") or "PNR"
-    ).upper()
 
 
 def load_tool_builder(tool: str):
