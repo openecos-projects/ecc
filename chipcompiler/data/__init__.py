@@ -35,6 +35,7 @@ from .types import (
     ToolName,
     default_flow_step_category,
     is_finished_step_state,
+    is_sta_step,
     step_from_value,
 )
 from .workspace import (
@@ -144,6 +145,7 @@ __all__ = [
     "EccReport",
     "FINISHED_STEP_STATES",
     "is_finished_step_state",
+    "is_sta_step",
     "LogPaths",
     "ScriptPaths",
     "EccScript",

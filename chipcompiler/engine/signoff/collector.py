@@ -19,6 +19,7 @@ from chipcompiler.data import (
     SkippableStepEnum,
     StateEnum,
     StepEnum,
+    ToolName,
     Workspace,
     workspace_checklist_path,
 )
@@ -402,7 +403,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 destination="final/reports/postRouteLec/result.json",
                 required=True,
             )
-            if lec_tool == "lec_dual":
+            if lec_tool == ToolName.LEC_DUAL:
                 # The aggregate drives the gate; per-engine evidence is
                 # additive — a degraded run's missing sibling is recorded
                 # missing-optional, never fatal.
@@ -699,7 +700,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 "golden_verilog": lec_payload.get("golden_verilog", ""),
                 "gate_verilog": lec_payload.get("gate_verilog", ""),
             }
-            if lec_tool == "lec_dual":
+            if lec_tool == ToolName.LEC_DUAL:
                 # Dual packages evidence per engine; the summary must point
                 # at the paths that actually exist in the package.
                 from chipcompiler.data import LECEngineEnum

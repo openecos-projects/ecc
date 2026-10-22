@@ -17,6 +17,7 @@ from chipcompiler.data import (
     StateEnum,
     StepBaseEnum,
     StepEnum,
+    ToolName,
     Workspace,
     WorkspaceStep,
     default_flow_step_category,
@@ -323,7 +324,7 @@ class EngineFlow:
     def _is_placement_only_step(workspace_step: WorkspaceStep) -> bool:
         return (
             workspace_step.name == StepEnum.PLACEMENT.value
-            and workspace_step.tool == "dreamplace"
+            and workspace_step.tool == ToolName.DREAMPLACE
             and any(
                 item.get("name") == "run placement"
                 and item.get("info", {}).get("placement_only") is True
@@ -561,7 +562,10 @@ class EngineFlow:
         return self.engine_db.create_db_engine(step=workspace_step)
 
     def _uses_openroad_placement_db(self, workspace_step: WorkspaceStep) -> bool:
-        if workspace_step.name != StepEnum.PLACEMENT.value or workspace_step.tool != "dreamplace":
+        if (
+            workspace_step.name != StepEnum.PLACEMENT.value
+            or workspace_step.tool != ToolName.DREAMPLACE
+        ):
             return False
         config_path = self.workspace.config.get("dreamplace")
         if not config_path:
@@ -572,7 +576,10 @@ class EngineFlow:
 
     def clear_db_engine_after_step(self, workspace_step: WorkspaceStep, state: StateEnum) -> None:
         _ = state
-        if workspace_step.tool == "sizer":
+        from chipcompiler.tools.registry import tool_spec
+
+        spec = tool_spec(workspace_step.tool)
+        if spec is not None and spec.closes_db_after_step:
             engine_db = self.engine_db
             self.engine_db = None
             if engine_db is not None:

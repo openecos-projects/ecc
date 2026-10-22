@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from chipcompiler.data.types import SkippableStepEnum, StepEnum
+from chipcompiler.data.types import SkippableStepEnum, StepEnum, ToolName
 
 # Canonical workspace step-directory names.
 #
@@ -61,9 +61,9 @@ def step_directory_for_tool(step_name: str, tool: str | None) -> str:
     kepler_formal today, lec_dual for cross-checking); every other step
     has a single directory.
     """
-    if tool == "yosys_lec" and step_name in LEGACY_STEP_DIRECTORIES:
+    if tool == ToolName.YOSYS_LEC and step_name in LEGACY_STEP_DIRECTORIES:
         return LEGACY_STEP_DIRECTORIES[step_name]
-    if tool == "lec_dual" and step_name in DUAL_STEP_DIRECTORIES:
+    if tool == ToolName.LEC_DUAL and step_name in DUAL_STEP_DIRECTORIES:
         return DUAL_STEP_DIRECTORIES[step_name]
     return STEP_DIRECTORIES.get(step_name, f"{step_name}_{tool}")
 
@@ -121,7 +121,7 @@ def step_storage_name(step_name: str, tool_name: str) -> str:
     Sizer stores Timing Opt as ``timing_optimization_sizer`` instead of
     ``Timing optimization_sizer``. Other tools keep the flow step name.
     """
-    if tool_name.lower() == "sizer":
+    if tool_name.lower() == ToolName.SIZER:
         return "_".join(step_name.split()).lower()
     return step_name
 

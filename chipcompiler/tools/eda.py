@@ -2,8 +2,8 @@
 import os
 from pathlib import Path
 
-from chipcompiler.data import StepMetrics, Workspace, WorkspaceStep, log_workspace_step
-from chipcompiler.tools.registry import load_tool
+from chipcompiler.data import StepMetrics, ToolName, Workspace, WorkspaceStep, log_workspace_step
+from chipcompiler.tools.registry import load_tool, tool_spec
 
 
 def load_eda_module(eda_tool: str, *, check_dependency: bool = True):
@@ -31,7 +31,8 @@ def create_step(
     # Unselected optional tools only need a path-only step to preserve the
     # positional input chain; importing them can trigger expensive native
     # builds before the selected-step dependency check even runs.
-    if not check_dependency and eda in _DEFERRED_EDA_TOOLS:
+    spec = tool_spec(eda)
+    if not check_dependency and spec is not None and spec.deferred:
         return _build_deferred_step(
             workspace,
             step,
@@ -45,7 +46,7 @@ def create_step(
         )
 
     # check eda tool exist
-    eda_module = load_tool(eda, check_dependency=check_dependency and eda != "sizer")
+    eda_module = load_tool(eda, check_dependency=check_dependency)
     if eda_module is None or not hasattr(eda_module, "build_step"):
         return None
 
@@ -70,12 +71,6 @@ def create_step(
     return workspace_step
 
 
-# Optional tools whose unselected steps are built deferred (no EDA package
-# import). Each tool owns a dependency-free deferred builder in its builder
-# module; this set only names them.
-_DEFERRED_EDA_TOOLS = frozenset({"dreamplace", "sizer"})
-
-
 def _build_deferred_step(
     workspace: Workspace,
     step_name: str,
@@ -96,7 +91,7 @@ def _build_deferred_step(
     """
     from chipcompiler.tools.ecc import builder as ecc_builder
 
-    if eda == "sizer":
+    if eda == ToolName.SIZER:
         # The sizer builder module owns its step shape; importing it is safe
         # (rosettakit is imported lazily inside its functions).
         from chipcompiler.tools.ecc_sizer.builder import deferred_step
@@ -129,7 +124,7 @@ def run_step(workspace: Workspace, step: WorkspaceStep, ecc_module=None) -> bool
     Run the given step using the provided EDA engine.
     """
     # check eda tool exist
-    eda_module = load_tool(step.tool, check_dependency=step.tool != "sizer")
+    eda_module = load_tool(step.tool)
     if eda_module is None:
         return False
 
@@ -151,7 +146,7 @@ def save_layout_image(workspace: Workspace, step: WorkspaceStep) -> bool:
         return True
 
     # check eda tool exist
-    eda_module = load_tool("klayout")
+    eda_module = load_tool(ToolName.KLAYOUT)
     if eda_module is None:
         return False
 
@@ -164,7 +159,7 @@ def build_step_metrics(workspace: Workspace, step: WorkspaceStep) -> StepMetrics
     """
     build step metrics
     """
-    eda_module = load_tool(step.tool, check_dependency=step.tool != "sizer")
+    eda_module = load_tool(step.tool)
     build_metrics = getattr(eda_module, "build_step_metrics", None)
     if build_metrics is None:
         return None

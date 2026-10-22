@@ -182,6 +182,14 @@ DEFAULT_LEC_ENGINE: Final = LECEngineEnum.KEPLER_FORMAL
 _STEP_ENUMS: tuple[type[StepBaseEnum], ...] = (StepEnum, SkippableStepEnum)
 
 
+def is_sta_step(step: object) -> bool:
+    """Whether *step* is the ECC static-timing step (the only parallel one)."""
+    return (
+        getattr(step, "tool", None) == ToolName.ECC
+        and getattr(step, "name", None) == StepEnum.STA.value
+    )
+
+
 def step_from_value(name: str) -> StepBaseEnum:
     """The step enum member for a persisted step value, across both enums.
 

@@ -23,7 +23,7 @@ import sys
 import time
 from pathlib import Path
 
-from chipcompiler.data import EccOutput, StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data import EccOutput, StepEnum, Workspace, WorkspaceStep, is_sta_step
 from chipcompiler.engine.resource_observation import start_observation
 from chipcompiler.engine.step_execution import (
     StepExecutionResult,
@@ -99,7 +99,7 @@ def execute_step_subprocess(
     process.stdin.close()
 
     memory_reader = get_process_rss_mb
-    if workspace_step.tool == "ecc" and workspace_step.name == "sta":
+    if is_sta_step(workspace_step):
         from chipcompiler.tools.ecc.sta_parallel import get_sta_process_rss_mb
 
         memory_reader = get_sta_process_rss_mb

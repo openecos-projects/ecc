@@ -15,6 +15,7 @@ from contextlib import suppress
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from chipcompiler.data import is_sta_step
 from chipcompiler.engine.step_execution import get_process_rss_mb
 from chipcompiler.tools.ecc import runner
 from chipcompiler.tools.ecc.module import ECCToolsModule
@@ -24,7 +25,7 @@ from chipcompiler.utility.log import redirect_stdio_to_file
 
 
 def sta_workers(workspace, step) -> int:
-    if step.tool != "ecc" or step.name != "sta":
+    if not is_sta_step(step):
         return 1
     path = workspace.config.get("sta")
     if not path:

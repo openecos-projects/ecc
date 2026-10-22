@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass
 from threading import Event, Thread
 
-from chipcompiler.data import Workspace, WorkspaceStep
+from chipcompiler.data import Workspace, WorkspaceStep, is_sta_step
 from chipcompiler.engine.db import EngineDB
 from chipcompiler.engine.resource_observation import start_observation
 from chipcompiler.utility.log import capture_stdio_to_file, flush_cstdio
@@ -78,7 +78,7 @@ def execute_tool_step(
         start_memory_mb = get_process_rss_mb(pid)
         peak_memory[0] = start_memory_mb
         memory_tracker = track_current_process_memory
-        if workspace_step.tool == "ecc" and workspace_step.name == "sta":
+        if is_sta_step(workspace_step):
             from chipcompiler.tools.ecc.sta_parallel import track_sta_process_memory
 
             memory_tracker = track_sta_process_memory

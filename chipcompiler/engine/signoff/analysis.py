@@ -9,7 +9,14 @@ materialization stay in collector.py and discovery.py; shared helpers
 
 from pathlib import Path
 
-from chipcompiler.data import ADVISORY_FLOW_STEPS, LEC_STEP_TOOLS, EccOutput, StateEnum, StepEnum
+from chipcompiler.data import (
+    ADVISORY_FLOW_STEPS,
+    LEC_STEP_TOOLS,
+    EccOutput,
+    StateEnum,
+    StepEnum,
+    ToolName,
+)
 from chipcompiler.engine.signoff.models import SIGNOFF_REQUIRED_QOR_STEPS, SignoffPackageIssue
 from chipcompiler.tools.registry import load_builder
 
@@ -111,12 +118,12 @@ class CollectorAnalysisMixin:
         return workspace_step
 
     def _refresh_step_analysis(self, step) -> None:
-        if step.tool == "yosys":
+        if step.tool == ToolName.YOSYS:
             from chipcompiler.tools.yosys.checklist import YosysChecklist
             from chipcompiler.tools.yosys.metrics import build_step_metrics
 
             checker_class = YosysChecklist
-        elif step.tool == "dreamplace":
+        elif step.tool == ToolName.DREAMPLACE:
             from chipcompiler.tools.ecc.metrics import build_step_metrics
             from chipcompiler.tools.ecc_dreamplace.checklist import DreamplaceChecklist
 
