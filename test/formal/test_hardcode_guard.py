@@ -38,6 +38,8 @@ _STEP_DIRECTORY_LITERALS = frozenset(
 )
 
 _ARTIFACT_OWNERS = {
+    "qor_summary.json": {"tools/ecc/builder.py", "tools/yosys/builder.py"},
+    "qor_metrics.json": {"tools/ecc/builder.py", "tools/yosys/builder.py"},
     "qor_hotspots.json": {"tools/ecc/builder.py", "tools/yosys/builder.py"},
     "sta_timing_issues.json": {"tools/ecc/builder.py"},
     "geometry.manifest": {"tools/ecc/builder.py"},
@@ -48,6 +50,24 @@ _ARTIFACT_OWNERS = {
         "tools/kepler_formal/builder.py",
         "tools/yosys_lec/builder.py",
     },
+    "checklist.json": {
+        "data/checklist.py",
+        "tools/ecc/builder.py",
+        "tools/yosys/builder.py",
+        "tools/lec_dual/builder.py",
+        "tools/kepler_formal/builder.py",
+        "tools/yosys_lec/builder.py",
+    },
+    "run_lec_status.rpt": {
+        "tools/kepler_formal/builder.py",
+        "tools/yosys_lec/builder.py",
+    },
+    "equiv_status.rpt": {
+        "tools/kepler_formal/builder.py",
+        "tools/yosys_lec/builder.py",
+    },
+    "equiv_failed.il": {"tools/yosys_lec/builder.py"},
+    "equiv_failed.v": {"tools/yosys_lec/builder.py"},
 }
 
 _ARTIFACT_NAMES = frozenset(_ARTIFACT_OWNERS)
@@ -63,8 +83,21 @@ _STEP_DIR_ALLOWLIST = {
 # Artifact names: tools/*/builder.py produce them. Consumers that read the
 # files without a WorkspaceStep are listed with their reason.
 _ARTIFACT_ALLOWLIST = {
+    "cli/inspection/step_view.py": "CLI reads per-step analysis/checklist artifacts for display",
+    "cli/inspection/project_checkers.py": "CLI reads checker QoR metrics",
+    "cli/command_handlers/chipview.py": "CLI reads the exported geometry manifest",
+    "cli/command_handlers/signoff_check.py": "CLI reads the workspace checklist",
+    "cli/experiments/operations.py": "experiment records read exported checklists",
+    "engine/signoff/report_extract.py": "design-report extraction reads analysis/report artifacts",
+    "engine/signoff/report_checklist.py": "design-report renders the workspace checklist",
+    "engine/signoff/analysis.py": "signoff analysis reads QoR summaries",
+    "engine/signoff/collector.py": "signoff collector packages LEC/QoR artifacts",
     "engine/analysis.py": "snapshot artifact index reads builder-owned leaves without steps",
-    "cli/command_handlers/chipview.py": "CLI reads the exported geometry manifest directly",
+    "analysis/qor/loader.py": "QoR loader reads the analysis directory",
+    "tools/ecc/signoff_checklist.py": "ECC checklist aggregates its analysis artifacts",
+    "tools/ecc/sta_artifacts.py": "STA artifact publication names its own outputs",
+    "tools/ecc/sta_qor.py": "STA QoR reader names its own summary",
+    "tools/ecc/metrics.py": "ECC metrics reader names its own analysis files",
 }
 
 # Writers of home/flow.json. The ledger module is the one first-party writer;
@@ -178,11 +211,13 @@ def test_guard_accepts_the_same_literal_in_the_owner_table(tmp_path):
 
 def test_guard_rejects_an_artifact_name_outside_its_owner(tmp_path):
     _write(tmp_path, "engine/consumer.py", 'NAME = "qor_hotspots.json"\n')
+    _write(tmp_path, "engine/other.py", 'NAME = "qor_summary.json"\n')
     _write(tmp_path, "tools/ecc/builder.py", 'NAME = "qor_hotspots.json"\n')
     _write(tmp_path, "tools/lec_dual/builder.py", 'NAME = "qor_hotspots.json"\n')
 
     assert scan(tmp_path) == [
         ("engine/consumer.py", 1, "artifact-name", "qor_hotspots.json"),
+        ("engine/other.py", 1, "artifact-name", "qor_summary.json"),
         ("tools/lec_dual/builder.py", 1, "artifact-name", "qor_hotspots.json"),
     ]
 
@@ -248,7 +283,25 @@ def test_guard_excludes_thirdparty(tmp_path):
 # Rule membership is part of the contract: an entry may move out of a list,
 # never into a different rule's list.
 _STEP_DIR_ALLOWLIST_CEILING = frozenset({"engine/signoff/report_data.py"})
-_ARTIFACT_ALLOWLIST_CEILING = frozenset({"engine/analysis.py", "cli/command_handlers/chipview.py"})
+_ARTIFACT_ALLOWLIST_CEILING = frozenset(
+    {
+        "cli/inspection/step_view.py",
+        "cli/inspection/project_checkers.py",
+        "cli/command_handlers/chipview.py",
+        "cli/command_handlers/signoff_check.py",
+        "cli/experiments/operations.py",
+        "engine/signoff/report_extract.py",
+        "engine/signoff/report_checklist.py",
+        "engine/signoff/analysis.py",
+        "engine/signoff/collector.py",
+        "engine/analysis.py",
+        "analysis/qor/loader.py",
+        "tools/ecc/signoff_checklist.py",
+        "tools/ecc/sta_artifacts.py",
+        "tools/ecc/sta_qor.py",
+        "tools/ecc/metrics.py",
+    }
+)
 _FLOW_WRITE_OWNERS_CEILING = frozenset(
     {
         "data/workspace/flow_ledger.py",

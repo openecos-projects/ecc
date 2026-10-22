@@ -9,7 +9,6 @@ stays with the tool module, the flow policy or the step that needs it.
 
 import importlib
 import logging
-import sys
 from dataclasses import dataclass
 
 from chipcompiler.data.types import ToolName
@@ -48,13 +47,25 @@ TOOLS: dict[ToolName, ToolSpec] = {
 FLOW_TOOLS = frozenset(TOOLS) - {ToolName.KLAYOUT}
 IMAGE_TOOLS = frozenset({ToolName.KLAYOUT})
 
+#: Modules registered explicitly by tests; production names live in TOOLS.
+_INJECTED_TOOLS: dict[str, ToolSpec] = {}
+
+
+def register_injected_tool(name: str, module: str) -> None:
+    """Test seam: make an arbitrary module name loadable without editing TOOLS.
+
+    The plan requires fake tool modules to stay injectable; this keeps that
+    possible while the production table stays the only source of real names.
+    """
+    _INJECTED_TOOLS[name] = ToolSpec(module)
+
 
 def tool_spec(name: object) -> ToolSpec | None:
-    """The spec for a persisted/declared tool name, or None if unknown."""
+    """The spec for a persisted/declared/injected tool name, or None."""
     try:
         return TOOLS[ToolName(name)]
     except ValueError:
-        return None
+        return _INJECTED_TOOLS.get(str(name))
 
 
 def checks_dependency(name: object, *, requested: bool = True) -> bool:
@@ -69,18 +80,11 @@ def checks_dependency(name: object, *, requested: bool = True) -> bool:
 
 
 def _module_identity(name: object) -> tuple[str, ToolSpec] | None:
-    """The importable package for a tool name.
-
-    Unknown names are never imported. The one exception is an already-loaded
-    module registered under ``chipcompiler.tools.<name>``: the tool-contract
-    tests inject fakes that way.
-    """
+    """The importable package for a tool name; unknown names are never imported."""
     spec = tool_spec(name)
-    if spec is not None:
-        return spec.module, spec
-    if f"chipcompiler.tools.{name}" in sys.modules:
-        return str(name), ToolSpec(str(name))
-    return None
+    if spec is None:
+        return None
+    return spec.module, spec
 
 
 def load_tool(name: object, *, check_dependency: bool = True):

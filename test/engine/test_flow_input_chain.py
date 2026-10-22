@@ -117,7 +117,7 @@ def _iterated_sources(workspace, ledger):
     }
 
 
-def test_category_ledger_reads_the_latest_pnr_step(tmp_path, monkeypatch):
+def test_category_ledger_follows_the_previous_physical_step(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     sources = _recorded_sources(workspace, _real_ledger(), monkeypatch)
 
