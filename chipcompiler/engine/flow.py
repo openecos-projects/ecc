@@ -27,6 +27,7 @@ from chipcompiler.data.workspace.flow_ledger import validate_transition
 from chipcompiler.data.workspace.flow_policy import (
     FlowInputResolver,
     is_checker_batch_step,
+    ledger_category,
 )
 from chipcompiler.engine import EngineDB
 from chipcompiler.engine.flow_completion import (
@@ -540,7 +541,7 @@ class EngineFlow:
             workspace_step = self.workspace_steps[index]
             if self._can_parallelize_checker_batch(workspace_step, index, observer):
                 batch_end = index
-                while batch_end < len(self.workspace_steps) and self._is_checker_step(
+                while batch_end < len(self.workspace_steps) and self._is_checker_batch_step(
                     self.workspace_steps[batch_end]
                 ):
                     batch_end += 1
@@ -609,6 +610,10 @@ class EngineFlow:
 
     def _is_checker_step(self, workspace_step: WorkspaceStep) -> bool:
         flow_step = self.get_step(workspace_step.name, workspace_step.tool) or {}
+        return ledger_category(flow_step) == FlowStepCategory.CHECKER
+
+    def _is_checker_batch_step(self, workspace_step: WorkspaceStep) -> bool:
+        flow_step = self.get_step(workspace_step.name, workspace_step.tool) or {}
         return is_checker_batch_step(flow_step)
 
     def _can_parallelize_checker_batch(self, workspace_step, index, observer) -> bool:
@@ -616,7 +621,7 @@ class EngineFlow:
 
         return (
             index > 0
-            and self._is_checker_step(workspace_step)
+            and self._is_checker_batch_step(workspace_step)
             and self.workspace_steps[index - 1].name == StepEnum.FILLER.value
             and observer is None
             and step_subprocess.is_enabled()

@@ -60,18 +60,14 @@ def ledger_category(record: dict) -> FlowStepCategory:
 
 
 def flow_category(record: dict) -> FlowStepCategory:
-    """The category for classification: declared, else the step-name default.
+    """The category for classification: declared, else the registered policy.
 
-    Unlike the execution-chain resolver, a reporting projection tolerates
-    step names outside the flow vocabulary (the project matrix aligns custom
-    steps), so an unknown name reads as PNR here.
+    An unregistered step name raises rather than silently reading as PNR.
     """
     declared = _declared_category(record)
     if declared is not None:
         return declared
-    from chipcompiler.data.types import default_flow_step_category
-
-    return default_flow_step_category(step_name(record))
+    return flow_step_policy(step_name(record)).category
 
 
 def is_checker_batch_step(record: dict) -> bool:

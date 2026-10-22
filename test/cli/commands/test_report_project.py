@@ -261,7 +261,7 @@ def test_explicit_category_controls_checker_projection(matrix_project, capsys):
         80,
         steps=[
             {"name": "drc", "tool": "ecc", "state": "Success", "category": "PNR"},
-            {"name": "custom", "tool": "ecc", "state": "Success", "category": "CHECKER"},
+            {"name": "Harden", "tool": "ecc", "state": "Success", "category": "CHECKER"},
         ],
     )
     _metric_file(root, "drc", {"drc_count": 8})
@@ -274,14 +274,14 @@ def test_explicit_category_controls_checker_projection(matrix_project, capsys):
 
 def test_different_flows_align_by_step_and_tool(matrix_project, capsys):
     project, add = matrix_project
-    add("first", 80, steps=[{"name": "custom", "tool": "one", "state": "Success"}])
-    add("second", 90, steps=[{"name": "custom", "tool": "two", "state": "Success"}])
+    add("first", 80, steps=[{"name": "place", "tool": "one", "state": "Success"}])
+    add("second", 90, steps=[{"name": "place", "tool": "two", "state": "Success"}])
 
     report = _run(project, capsys)
 
     assert report["columns"] == [
-        {"step": "custom", "token": "custom", "tool": "one"},
-        {"step": "custom", "token": "custom", "tool": "two"},
+        {"step": "place", "token": "placement", "tool": "one"},
+        {"step": "place", "token": "placement", "tool": "two"},
     ]
     assert [row["workspace_id"] for row in report["workspaces"]] == ["second", "first"]
 
