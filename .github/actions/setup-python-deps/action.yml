@@ -27,10 +27,24 @@ runs:
     - name: Install hosted native build dependencies
       shell: bash
       run: |
-        dnf install -y epel-release dnf-plugins-core
+        set -euo pipefail
+        # EPEL mirror SSL/checksum flakes show up as hard CI reds on Alma; retry.
+        dnf_retry() {
+          local attempt=1
+          until "$@"; do
+            if [ "$attempt" -ge 4 ]; then
+              return 1
+            fi
+            echo "::warning::dnf failed (attempt ${attempt}); retrying in $((attempt * 15))s"
+            sleep $((attempt * 15))
+            attempt=$((attempt + 1))
+            dnf clean all || true
+          done
+        }
+        dnf_retry dnf install -y epel-release dnf-plugins-core
         dnf config-manager --set-enabled crb || true
         dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
-        dnf install -y \
+        dnf_retry dnf install -y \
           cmake ninja-build pkgconfig patchelf mold lld \
           boost-devel cairo-devel gflags-devel glog-devel \
           flex flex-devel bison eigen3-devel gtest-devel \

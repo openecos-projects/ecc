@@ -149,7 +149,11 @@ jobs:
 
       - name: Prune test fixture symlinks before log upload
         if: failure()
-        run: find pytest-tmp -type l -delete
+        run: |
+          if [ -d pytest-tmp ]; then
+            find pytest-tmp -type l -delete
+          fi
+
 
       - name: Upload integration flow logs on failure
         if: failure()
@@ -426,14 +430,6 @@ jobs:
           fallback-branch: emin/add-ci-pkgs
           github-token: ${{ github.token }}
 
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v19
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Cache Nix store
-        uses: DeterminateSystems/magic-nix-cache-action@v15
-
       - name: Add swap cushion
         shell: bash
         # The image already carries a 3 GiB /swapfile, and fallocate on an
@@ -454,6 +450,9 @@ jobs:
           swapon --show
           free -h
 
+      # Install Nix only after the design flow. aes diff_sizing/gpugr needs ~6.8 GiB
+      # MemAvailable on standard runners; Nix + magic-nix-cache beforehand left
+      # ~5.8 GiB and tripped "insufficient CPU routing memory budget".
       - name: Run design flows
         id: design-flow
         run: |
@@ -471,7 +470,18 @@ jobs:
             --design "${{ matrix.design }}" \
             --out-root "$RUNNER_TEMP/e2e"
 
+      - name: Install Nix
+        if: ${{ success() }}
+        uses: DeterminateSystems/nix-installer-action@v19
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache Nix store
+        if: ${{ success() }}
+        uses: DeterminateSystems/magic-nix-cache-action@v15
+
       - name: Lit check flow artifacts
+        if: ${{ success() }}
         run: |
           ECC_FLOW_WORKSPACES="$RUNNER_TEMP/e2e" \
             nix run -L .#signoff-lit -- designs --filter "${{ matrix.design }}"
