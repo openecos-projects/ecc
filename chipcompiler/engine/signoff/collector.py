@@ -160,9 +160,9 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             # The gate netlist is the postRouteLec step's resolved input, so
             # its name comes from the builder contract, not from a
             # design-prefixed guess.
-            from chipcompiler.tools.ecc.lec_gates import post_route_lec_netlists
-
             try:
+                from chipcompiler.tools.ecc.lec_gates import post_route_lec_netlists
+
                 _golden, lec_gate = post_route_lec_netlists(self.workspace)
             except (ImportError, OSError, TypeError, ValueError, FlowInputStepError) as error:
                 issues.append(
