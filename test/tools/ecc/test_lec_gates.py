@@ -25,3 +25,47 @@ def test_post_route_lec_gate_matches_execution_chain(tmp_path, checker_category,
 
     source = explicit_input or ("filler" if checker_category else "drc")
     assert gate == tmp_path / f"{source}_ecc" / "output" / f"design_{source}.v.gz"
+
+
+def _write_pnr_outputs(tmp_path, records):
+    for record in records:
+        output_dir = tmp_path / f"{record['name']}_{record['tool']}" / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / f"design_{record['name']}.v.gz").write_bytes(b"")
+
+
+def test_latest_pnr_output_skips_checker_and_advisory_steps(tmp_path):
+    from chipcompiler.tools.ecc.lec_gates import latest_pnr_output
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="design"))
+    records = [
+        {"name": "route", "tool": "ecc", "category": "PNR"},
+        {"name": "filler", "tool": "ecc", "category": "PNR"},
+        {"name": "drc", "tool": "ecc", "category": "CHECKER"},
+        {"name": "emir", "tool": "ecc", "category": "PNR"},
+        {"name": "sta", "tool": "ecc"},
+    ]
+    workspace.flow.data = {"steps": records}
+    _write_pnr_outputs(tmp_path, records)
+
+    # `sta` carries no category and defaults to PNR; `drc` is CHECKER and
+    # `emir` is advisory, so both are skipped even though they have outputs.
+    assert latest_pnr_output(workspace, ".v.gz") == (
+        tmp_path / "sta_ecc" / "output" / "design_sta.v.gz"
+    )
+
+
+def test_latest_pnr_output_ignores_the_info_category_fallback(tmp_path):
+    from chipcompiler.tools.ecc.lec_gates import latest_pnr_output
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="design"))
+    records = [
+        {"name": "filler", "tool": "ecc", "category": "PNR"},
+        {"name": "drc", "tool": "ecc", "info": {"category": "CHECKER"}},
+    ]
+    workspace.flow.data = {"steps": records}
+    _write_pnr_outputs(tmp_path, records)
+
+    assert latest_pnr_output(workspace, ".v.gz") == (
+        tmp_path / "drc_ecc" / "output" / "design_drc.v.gz"
+    )
