@@ -1,5 +1,6 @@
 """Handlers for project-level ``ecc.toml`` declarations."""
 
+import json
 import os
 import tomllib
 
@@ -24,7 +25,11 @@ def project_set(args, ctx: CommandContext) -> CommandResult:
     config_path, missing = _config_path_or_error(ctx)
     if missing is not None:
         return missing
-    error = _set_value(config_path, field, value)
+    if ctx.project_state == "manifest":
+        raw = json.dumps(value) if field.list_value else str(value)
+        error = _apply_manifest_change(ctx, sets=(f"{field.key}={raw}",))
+    else:
+        error = _set_value(config_path, field, value)
     if error is not None:
         return error
     return CommandResult.ok([_record(field.key, value, "set")])
@@ -105,11 +110,20 @@ def project_unset(args, ctx: CommandContext) -> CommandResult:
     except (OSError, UnicodeDecodeError) as exc:
         return CommandResult.err([_io_error(config_path, exc)])
     if changed is None:
+        if ctx.project_state == "manifest":
+            error = _apply_manifest_change(ctx, unsets=(field.key,))
+            if error is not None:
+                return error
         return CommandResult.ok([_record(field.key, None, "no_value")])
-    try:
-        write_text_atomic(config_path, changed)
-    except OSError as exc:
-        return CommandResult.err([_io_error(config_path, exc)])
+    if ctx.project_state == "manifest":
+        error = _apply_manifest_change(ctx, unsets=(field.key,))
+        if error is not None:
+            return error
+    else:
+        try:
+            write_text_atomic(config_path, changed)
+        except OSError as exc:
+            return CommandResult.err([_io_error(config_path, exc)])
     return CommandResult.ok([_record(field.key, None, "unset")])
 
 
@@ -194,10 +208,51 @@ def _change_rtl(args, ctx: CommandContext, *, add: bool) -> CommandResult:
     else:
         updated = [value for value in current if value not in values]
         status = "removed"
-    error = _set_value(config_path, field, updated)
+    if ctx.project_state == "manifest":
+        error = _apply_manifest_change(ctx, sets=(f"{field.key}={json.dumps(updated)}",))
+    else:
+        error = _set_value(config_path, field, updated)
     if error is not None:
         return error
     return CommandResult.ok([_record(field.key, updated, status)])
+
+
+def _apply_manifest_change(
+    ctx: CommandContext,
+    *,
+    sets: tuple[str, ...] = (),
+    unsets: tuple[str, ...] = (),
+) -> CommandResult | None:
+    """Apply one project edit to ``ecc.toml`` and ``project.json`` atomically.
+
+    Skip full project validation to preserve project-set behavior on partially
+    configured projects; the field value was already validated above.
+    """
+    from chipcompiler.cli.project.project_application import (
+        ProjectApplicationError,
+        apply_project,
+    )
+    from chipcompiler.project.manifest import ManifestError
+
+    try:
+        apply_project(
+            ctx.project_dir,
+            sets=sets,
+            unsets=unsets,
+            add_rtl=(),
+            remove_rtl=(),
+            validate=False,
+        )
+    except BlockingIOError:
+        return CommandResult.err([error_record("project_busy")], exit_code=20)
+    except (ManifestError, ProjectApplicationError) as exc:
+        code = getattr(exc, "code", "manifest_invalid")
+        fields = {"reason": str(exc)}
+        key = getattr(exc, "key", None)
+        if key:
+            fields["key"] = key
+        return CommandResult.err([error_record(code, **fields)])
+    return None
 
 
 def _set_value(config_path: str, field, value: object) -> CommandResult | None:

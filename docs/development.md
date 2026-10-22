@@ -649,6 +649,10 @@ required by doctor.
   type / `list_value`). Add a field there and the subcommands pick it up;
   `add`/`remove` are hard-restricted to `design.rtl`
   (`unsupported_project_collection` otherwise).
+- For manifest projects, `set`/`unset`/`add`/`remove` route through
+  `project_application.apply_project` so `ecc.toml` and
+  `project.json.base_design` update in one locked write. Legacy/virgin
+  projects still edit only `ecc.toml`.
 - `ecc workspace refresh` projects the current Project structure into an
   Engine workspace-update transaction. The transaction validates the expected
   revision, builds a staging Workspace, preserves Workspace-local parameter
@@ -770,7 +774,10 @@ workspace; editing only that generated JSON is not persistent. The default is
 an empty placeholder and will stop the step. Supply sources come from iFP's
 `postFloorplan_ecc/data/fp/pdn_generator/power.ploc`, passed as `ploc_file_path`
 without enabling `add_ploc_from_top_def`. These are ideal sources at PDN stripe
-intersections, not a package/pad model. Native outputs go to `emir_ecc/data/emir/`.
+intersections, not a package/pad model. Native outputs go to `emir_ecc/data/emir/`;
+after a successful save, every file under `data/emir/emir_reporter/` is published
+to `emir_ecc/report/`, where the GUI discovers step reports. Publication failure
+is logged without changing the save result.
 
 CI explicitly selects `test/fixtures/emir/ics55_synthetic.tech`. Its resistance
 and EM limits are invented test data, **not foundry data**. A successful CI run

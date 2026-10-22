@@ -789,7 +789,7 @@ $ ecc config floorplan  # step level
 
 ## 8.5. project / workspace — edit project declarations and refresh workspaces
 
-`ecc project` writes only the project-root `ecc.toml`; it does not touch already-created workspaces. The supported keys cover `[design]` `name`, `top`, `rtl`, `netlist`, `golden_netlist`, `def`, `sdc`, `spef`, `clock_port`, and `frequency_mhz`, plus `pdk.name`, `pdk.root`, and `flow.preset`:
+`ecc project` updates the project-root `ecc.toml` and, for manifest projects, keeps `project.json.base_design` in sync; it does not touch already-created workspace snapshots. Legacy/virgin projects write only `ecc.toml`. The supported keys cover `[design]` `name`, `top`, `rtl`, `netlist`, `golden_netlist`, `def`, `sdc`, `spef`, `clock_port`, and `frequency_mhz`, plus `pdk.name`, `pdk.root`, and `flow.preset`:
 
 ```bash
 ecc project set <KEY> <VALUES...>     # set one declaration (rtl takes a list and replaces it wholesale)
@@ -804,8 +804,9 @@ ecc project reconcile                 # repair provable project intermediate sta
 ecc project doctor [--fix]            # cross-check project.json against workspace directories; --fix repairs
 ```
 
-`project apply` batches the same edits as `set`/`unset`/`add`/`remove` so multi-field changes
-land in a single atomic manifest update (no half-applied combination on failure). `project
+For manifest projects, `project set`/`unset`/`add`/`remove` use the same atomic update path
+and immediately sync `project.json.base_design`. `project apply` batches multiple edits so
+they land in a single atomic manifest update (no half-applied combination on failure). `project
 baseline` records which declared workspace's saved QoR later runs compare against. `project
 doctor` (not to be confused with the environment `ecc doctor`, §4) reports missing
 directories, unreadable workspaces, and unregistered workspace directories. Execution

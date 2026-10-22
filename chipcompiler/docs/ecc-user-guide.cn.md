@@ -854,7 +854,7 @@ $ ecc config floorplan  # 步骤级
 
 ## 8.5. project / workspace — 编辑项目资源与刷新 workspace
 
-`ecc project` 只写项目根目录的 `ecc.toml`；它不修改已创建 workspace。支持的字段覆盖 `[design]` 的 `name`、`top`、`rtl`、`netlist`、`golden_netlist`、`def`、`sdc`、`spef`、`clock_port`、`frequency_mhz`，以及 `pdk.name`、`pdk.root` 和 `flow.preset`。
+`ecc project` 在 manifest 项目中会同步更新项目根目录的 `ecc.toml` 与 `project.json` 的 `base_design`；它不修改已创建 workspace 的快照。非 manifest（legacy/virgin）项目只写 `ecc.toml`。支持的字段覆盖 `[design]` 的 `name`、`top`、`rtl`、`netlist`、`golden_netlist`、`def`、`sdc`、`spef`、`clock_port`、`frequency_mhz`，以及 `pdk.name`、`pdk.root` 和 `flow.preset`。
 
 ```bash
 ecc project set design.def inputs/gcd.def
@@ -870,7 +870,8 @@ ecc project reconcile                 # 修复可证明的项目中间状态（�
 ecc project doctor [--fix]            # 交叉核对 project.json 与 workspace 目录；--fix 显式修复
 ```
 
-`project apply` 把 `set`/`unset`/`add`/`remove` 的修改打包成一次原子 manifest 更新
+`project set`/`unset`/`add`/`remove` 对 manifest 项目也走同一条原子更新路径，立即同步
+`project.json.base_design`；`project apply` 可把多项修改打包成一次原子 manifest 更新
 （失败时不会出现改了一半的组合）。`project baseline` 记录后续 run 以哪个已声明
 workspace 的已存 QoR 为对比基线。`project doctor`（不要与环境自检 `ecc doctor`
 混淆，见 §4）报告缺失的目录、无法读取的 workspace，以及未登记的 workspace 目录。

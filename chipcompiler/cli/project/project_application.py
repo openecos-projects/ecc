@@ -48,6 +48,7 @@ def apply_project(
     add_rtl: tuple[str, ...],
     remove_rtl: tuple[str, ...],
     blocking: bool = True,
+    validate: bool = True,
 ) -> tuple[str, ...]:
     project = Path(project_dir).expanduser().resolve()
     config_path = project / CONFIG_FILENAME
@@ -68,16 +69,15 @@ def apply_project(
             add_rtl=add_rtl,
             remove_rtl=remove_rtl,
         )
-        cfg = _validate_text(project, updated)
-        if updated == original:
-            return tuple(changed)
+        cfg = _validate_text(project, updated, validate=validate)
         try:
-            write_text_atomic(config_path, updated)
+            if updated != original:
+                write_text_atomic(str(config_path), updated)
             if not _update_summary_locked(project, cfg):
                 raise OSError("Project Manifest update failed")
         except BaseException as exc:
             try:
-                write_text_atomic(config_path, original)
+                write_text_atomic(str(config_path), original)
             except OSError as rollback_error:
                 raise ProjectApplicationError(
                     "project_rollback_failed",
@@ -702,7 +702,7 @@ def _parse_field_value(field, raw: str) -> object:
         raise ProjectApplicationError("invalid_project_value", str(exc), key=field.key) from exc
 
 
-def _validate_text(project: Path, text: str):
+def _validate_text(project: Path, text: str, *, validate: bool = True):
     descriptor, name = tempfile.mkstemp(prefix=".ecc.toml.validate-", dir=project)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as output:
@@ -711,9 +711,10 @@ def _validate_text(project: Path, text: str):
             os.fsync(output.fileno())
         cfg = load_project_config(name)
         # The temporary file is in the Project root, so relative paths resolve identically.
-        errors = validate_project_config(cfg)
-        if errors:
-            raise ProjectApplicationError("invalid_project_config", errors[0])
+        if validate:
+            errors = validate_project_config(cfg)
+            if errors:
+                raise ProjectApplicationError("invalid_project_config", errors[0])
         cfg.config_path = str(project / CONFIG_FILENAME)
         cfg.project_dir = str(project)
         return cfg
