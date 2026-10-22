@@ -4,9 +4,11 @@ import json
 import logging
 import os
 import tempfile
+from collections.abc import Iterator, Mapping
 from contextlib import suppress
 from math import isfinite
 from pathlib import Path
+from typing import Any, overload
 
 logger = logging.getLogger(__name__)
 
@@ -311,3 +313,54 @@ def finite_number(value: object) -> int | float | None:
         return value if isfinite(value) else None
     except OverflowError:
         return None
+
+
+class JsonObject(Mapping[str, Any]):
+    """Read-only view of a parsed JSON object with typed getters.
+
+    Each getter returns the value only when it has the requested type and
+    otherwise the default, so a missing key and a wrongly typed one read the
+    same. Nested objects come back as views over the same data, not copies.
+    """
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: object = None):
+        self._data: Mapping[str, Any] = data if isinstance(data, Mapping) else {}
+
+    def __getitem__(self, key: str) -> Any:
+        return self._data[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def __repr__(self) -> str:
+        return f"JsonObject({dict(self._data)!r})"
+
+    @overload
+    def get_str(self, key: str) -> str: ...
+    @overload
+    def get_str(self, key: str, default: str) -> str: ...
+    @overload
+    def get_str(self, key: str, default: None) -> str | None: ...
+    def get_str(self, key: str, default: str | None = "") -> str | None:
+        value = self._data.get(key)
+        return value if isinstance(value, str) else default
+
+    def get_number(self, key: str) -> int | float | None:
+        return finite_number(self._data.get(key))
+
+    def get_list(self, key: str) -> list:
+        value = self._data.get(key)
+        return value if isinstance(value, list) else []
+
+    def get_obj(self, key: str) -> "JsonObject":
+        return JsonObject(self._data.get(key))
+
+
+def json_read_object(file_path: str | Path) -> JsonObject:
+    """Read a JSON file as a JsonObject; empty on any error or non-object document."""
+    return JsonObject(_load_json(Path(file_path)))

@@ -10,10 +10,12 @@ from .filelist import (
     validate_filelist,
 )
 from .json import (
+    JsonObject,
     JsonReadError,
     dict_to_str,
     finite_number,
     json_read,
+    json_read_object,
     json_read_strict,
     json_write,
 )
@@ -52,7 +54,9 @@ __all__ = [
     "chmod_folder",
     "json_read",
     "json_read_strict",
+    "JsonObject",
     "JsonReadError",
+    "json_read_object",
     "json_write",
     "dict_to_str",
     "finite_number",
