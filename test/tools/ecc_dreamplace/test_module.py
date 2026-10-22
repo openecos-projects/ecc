@@ -323,13 +323,13 @@ def test_build_params_resolves_openroad_timing_inputs(tmp_path):
     assert params.timing_topology_refresh_interval == 15
     assert params.timing_topology_enable_overflow_threshold == 0.35
     assert params.design_inputs == {
-        "tech_lef": str(pdk_root / "tech.lef"),
-        "lef": [str(pdk_root / "cells.lef")],
-        "lib": [str(pdk_root / "cells.lib")],
-        "def": str(tmp_path / "input.def"),
-        "verilog": str(tmp_path / "input.v"),
-        "sdc": str(tmp_path / "gcd.sdc"),
-        "rc_tcl": str(rc_tcl),
+        "tech_lef": pdk_root / "tech.lef",
+        "lef": [pdk_root / "cells.lef"],
+        "lib": [pdk_root / "cells.lib"],
+        "def": tmp_path / "input.def",
+        "verilog": tmp_path / "input.v",
+        "sdc": tmp_path / "gcd.sdc",
+        "rc_tcl": rc_tcl,
     }
 
 
@@ -390,11 +390,11 @@ def test_build_params_resolves_ecc_timing_inputs(tmp_path):
 
     assert params.place_io_engine == "ecc"
     assert params.with_sta == 1
-    assert params.design_inputs["def"] == str(tmp_path / "input.def")
-    assert params.design_inputs["verilog"] == str(tmp_path / "input.v")
+    assert params.design_inputs["def"] == tmp_path / "input.def"
+    assert params.design_inputs["verilog"] == tmp_path / "input.v"
     assert "lib" in params.design_inputs
     assert "sdc" in params.design_inputs
-    assert Path(params.design_inputs["work_dir"]).parent == Path(module.result_dir)
+    assert params.design_inputs["work_dir"] == Path(module.result_dir) / "native_sta"
 
 
 def test_build_params_uses_empty_strings_for_missing_inputs(tmp_path):
