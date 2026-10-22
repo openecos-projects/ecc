@@ -150,7 +150,7 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
     # and project reconcile flags it as an inconsistent runtime process.
     # The overwrite branch entered the lock above the rename; entering it
     # again here is a same-thread reentrant no-op.
-    ws_locks.enter_context(_workspace_lock(Path(run_dir), blocking=not command_input.no_wait))
+    ws_locks.enter_context(workspace_lock(Path(run_dir), blocking=not command_input.no_wait))
 
     if command_input.expected_revision is not None and not os.path.lexists(run_dir):
         from chipcompiler.cli.project.revision import expected_revision_error
