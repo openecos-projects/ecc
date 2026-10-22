@@ -62,12 +62,12 @@ def ledger_category(record: dict) -> FlowStepCategory:
 def flow_category(record: dict) -> FlowStepCategory:
     """The category for classification: declared, else the registered policy.
 
-    An unregistered step name raises rather than silently reading as PNR.
+    An unregistered step name raises rather than silently reading as PNR,
+    even when the record carries an explicit category.
     """
+    policy = flow_step_policy(step_name(record))
     declared = _declared_category(record)
-    if declared is not None:
-        return declared
-    return flow_step_policy(step_name(record)).category
+    return declared if declared is not None else policy.category
 
 
 def is_checker_batch_step(record: dict) -> bool:

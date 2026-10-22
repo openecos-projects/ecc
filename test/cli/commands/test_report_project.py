@@ -543,3 +543,15 @@ def test_running_workspace_marks_score_as_provisional(matrix_project, capsys):
 
     assert row["flow_status"] == "ongoing"
     assert row["qor"]["provisional"] is True
+
+
+def test_unregistered_step_fails_the_project_matrix(matrix_project, capsys):
+    project, add = matrix_project
+    add(
+        "trial",
+        80,
+        steps=[{"name": "custom", "tool": "ecc", "state": "Success", "category": "CHECKER"}],
+    )
+
+    with pytest.raises(ValueError, match="no flow policy registered"):
+        _run(project, capsys)

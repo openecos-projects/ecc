@@ -373,8 +373,9 @@ def _checklist_prerequisite_sources(workspace, ledger) -> dict[str, str]:
     return {name: source for name, source in prerequisite.items() if source is not None}
 
 
-def test_post_route_gate_and_checklist_gate_agree_with_the_chain(tmp_path, monkeypatch):
-    ledger = _real_ledger()
+@pytest.mark.parametrize("legacy", [False, True])
+def test_post_route_gate_and_checklist_gate_agree_with_the_chain(tmp_path, monkeypatch, legacy):
+    ledger = _legacy_ledger() if legacy else _real_ledger()
     workspace = _workspace(tmp_path)
     execution = _recorded_sources(workspace, ledger, monkeypatch)
 
