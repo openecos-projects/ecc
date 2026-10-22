@@ -7,6 +7,7 @@ from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.project.config_fields import lookup_project_field, parse_project_field_values
 from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_scoped_key
+from chipcompiler.project.manifest import CONFIG_FILENAME
 from chipcompiler.utility.file import write_text_atomic
 
 
@@ -225,7 +226,7 @@ def _field_or_error(key: str):
 
 
 def _config_path_or_error(ctx: CommandContext):
-    path = os.path.join(ctx.project_dir, "ecc.toml")
+    path = os.path.join(ctx.project_dir, CONFIG_FILENAME)
     if os.path.isfile(path):
         return path, None
     return None, CommandResult.err([error_record("missing_config", path=path)])

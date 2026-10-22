@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-import time
 from enum import Enum
 
-from chipcompiler.data import StateEnum, StepEnum, Workspace, WorkspaceStep, step_from_value
+from chipcompiler.data import StepEnum, step_from_value
+from chipcompiler.tools.subflow import SubFlow
 
 
 class EccSubFlowEnum(Enum):
@@ -32,201 +32,101 @@ class EccSubFlowEnum(Enum):
     run_emir = "run EMIR"
 
 
-class EccSubFlow:
-    def __init__(self, workspace: Workspace, workspace_step: WorkspaceStep):
-        self.workspace = workspace
-        self.workspace_step = workspace_step
+# Stages of each ECC step, in execution order. Steps absent here have no sub-flow.
+_STAGES: dict[StepEnum, tuple[EccSubFlowEnum, ...]] = {
+    StepEnum.PRE_FLOORPLAN: (
+        EccSubFlowEnum.load_data,
+        EccSubFlowEnum.set_clock_net,
+        EccSubFlowEnum.init_floorplan,
+        EccSubFlowEnum.save_data,
+    ),
+    StepEnum.MACRO_PLACEMENT: (
+        EccSubFlowEnum.load_data,
+        EccSubFlowEnum.macro_place,
+        EccSubFlowEnum.save_data,
+    ),
+    StepEnum.POST_FLOORPLAN: (
+        EccSubFlowEnum.load_data,
+        EccSubFlowEnum.create_tracks,
+        EccSubFlowEnum.place_io_pins,
+        EccSubFlowEnum.tap_cell,
+        EccSubFlowEnum.PDN,
+        EccSubFlowEnum.save_data,
+        EccSubFlowEnum.analysis,
+    ),
+    StepEnum.PLACEMENT: (
+        EccSubFlowEnum.load_data,
+        EccSubFlowEnum.run_placement,
+        EccSubFlowEnum.save_data,
+        EccSubFlowEnum.analysis,
+    ),
+    StepEnum.DIFF_SIZING: (
+        EccSubFlowEnum.load_data,
+        EccSubFlowEnum.run_diff_sizing,
+        EccSubFlowEnum.save_data,
+    ),
+    StepEnum.CTS: (
+        EccSubFlowEnum.load_data,
+        EccSubFlowEnum.run_CTS,
+        EccSubFlowEnum.save_data,
+        EccSubFlowEnum.analysis,
+    ),
+    StepEnum.LEGALIZATION: (
+        EccSubFlowEnum.load_data,
+        EccSubFlowEnum.run_legalization,
+        EccSubFlowEnum.save_data,
+        EccSubFlowEnum.analysis,
+    ),
+    StepEnum.ROUTING: (
+        EccSubFlowEnum.load_data,
+        EccSubFlowEnum.run_routing,
+        EccSubFlowEnum.save_data,
+        EccSubFlowEnum.analysis,
+    ),
+    StepEnum.FILLER: (
+        EccSubFlowEnum.load_data,
+        EccSubFlowEnum.run_filler,
+        EccSubFlowEnum.save_data,
+        EccSubFlowEnum.analysis,
+    ),
+    StepEnum.DRC: (
+        EccSubFlowEnum.load_data,
+        EccSubFlowEnum.run_DRC,
+        EccSubFlowEnum.save_data,
+        EccSubFlowEnum.analysis,
+    ),
+    StepEnum.LVS: (
+        EccSubFlowEnum.load_data,
+        EccSubFlowEnum.run_LVS,
+        EccSubFlowEnum.save_data,
+        EccSubFlowEnum.analysis,
+    ),
+    StepEnum.ANTENNA_CHECK: (
+        EccSubFlowEnum.load_data,
+        EccSubFlowEnum.check_antenna,
+        EccSubFlowEnum.save_data,
+    ),
+    StepEnum.HARDEN: (EccSubFlowEnum.load_data, EccSubFlowEnum.run_harden),
+    StepEnum.RCX: (EccSubFlowEnum.load_data, EccSubFlowEnum.run_rcx),
+    StepEnum.STA: (EccSubFlowEnum.load_data, EccSubFlowEnum.run_sta),
+    StepEnum.POWER_ANALYSIS: (
+        EccSubFlowEnum.load_data,
+        EccSubFlowEnum.run_power_analysis,
+        EccSubFlowEnum.save_data,
+        EccSubFlowEnum.analysis,
+    ),
+    StepEnum.EMIR: (EccSubFlowEnum.load_data, EccSubFlowEnum.run_emir, EccSubFlowEnum.save_data),
+}
 
-        self.init_sub_flow()
 
-        # set start time
-        self.start_time = time.time()
-
-        # set start memory
-        self.start_memory = self.get_peak_memory()
-
-    def init_sub_flow(self):
-        from chipcompiler.utility import json_read
-
-        data = json_read(self.workspace_step.subflow.path or "")
-        if len(data) > 0:
-            self.workspace_step.subflow.steps = data.get("steps", [])
-        else:
-            self.build_sub_flow()
+class EccSubFlow(SubFlow):
+    def stages(self) -> tuple[str, ...]:
+        step = step_from_value(self.workspace_step.name)
+        return tuple(stage.value for stage in _STAGES.get(step, ()))
 
     def build_sub_flow(self) -> list:
+        # An already-populated sub-flow (for example from an earlier run in
+        # this process) is kept as is.
         if len(self.workspace_step.subflow.steps or []) > 0:
             return self.workspace_step.subflow.steps
-
-        def subflow_template(step_name: str):
-            return {
-                "name": step_name,  # step name
-                "state": StateEnum.Unstart.value,  # step state
-                "runtime": "",  # step run time
-                "peak memory (mb)": 0,  # step peak memory
-                "info": {},  # step additional infomation
-            }
-
-        steps = []
-
-        step = step_from_value(self.workspace_step.name)
-        match step:
-            case StepEnum.PRE_FLOORPLAN:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.set_clock_net.value))
-                steps.append(subflow_template(EccSubFlowEnum.init_floorplan.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-            case StepEnum.MACRO_PLACEMENT:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.macro_place.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-            case StepEnum.POST_FLOORPLAN:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.create_tracks.value))
-                steps.append(subflow_template(EccSubFlowEnum.place_io_pins.value))
-                steps.append(subflow_template(EccSubFlowEnum.tap_cell.value))
-                steps.append(subflow_template(EccSubFlowEnum.PDN.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
-            case StepEnum.PLACEMENT:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_placement.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
-            case StepEnum.DIFF_SIZING:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_diff_sizing.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-            case StepEnum.CTS:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_CTS.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
-            case StepEnum.LEGALIZATION:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_legalization.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
-            case StepEnum.ROUTING:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_routing.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
-            case StepEnum.FILLER:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_filler.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
-            case StepEnum.DRC:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_DRC.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
-            case StepEnum.LVS:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_LVS.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
-
-            case StepEnum.ANTENNA_CHECK:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.check_antenna.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-
-            case StepEnum.HARDEN:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_harden.value))
-
-            case StepEnum.RCX:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_rcx.value))
-
-            case StepEnum.STA:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_sta.value))
-
-            case StepEnum.POWER_ANALYSIS:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_power_analysis.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.analysis.value))
-
-            case StepEnum.EMIR:
-                steps.append(subflow_template(EccSubFlowEnum.load_data.value))
-                steps.append(subflow_template(EccSubFlowEnum.run_emir.value))
-                steps.append(subflow_template(EccSubFlowEnum.save_data.value))
-
-        self.workspace_step.subflow.steps = steps
-
-        self.save()
-
-    def save(self) -> bool:
-        from chipcompiler.utility import json_write
-
-        subflow = self.workspace_step.subflow
-        data = {
-            "path": str(subflow.path) if subflow.path else "",
-            "steps": subflow.steps,
-        }
-        return json_write(file_path=subflow.path or "", data=data)
-
-    def get_runtime(self):
-        # end time
-        end_time = time.time()
-        elapsed_time = end_time - self.start_time
-        runtime = (
-            f"{int(elapsed_time // 3600)}:"
-            f"{int((elapsed_time % 3600) // 60)}:{int(elapsed_time % 60)}"
-        )
-
-        # reset start time
-        self.start_time = end_time
-
-        return runtime
-
-    def get_peak_memory(self):
-        import os
-
-        # Get current process ID
-        pid = os.getpid()
-        peak_memory = 0
-
-        try:
-            # Read memory usage from /proc/{pid}/status
-            with open(f"/proc/{pid}/status") as f:
-                for line in f:
-                    if line.startswith("VmRSS:"):
-                        # VmRSS is in kB
-                        rss_kb = int(line.split()[1])
-                        # Convert to MB
-                        peak_memory = rss_kb / 1024
-                        break
-        except (OSError, ValueError):
-            # Ignore errors, return 0 if failed
-            pass
-
-        return peak_memory
-
-    def update_step(self, step_name: str, state: str | StateEnum, info: dict | None = None):
-        if info is None:
-            info = {}
-        state = state.value if isinstance(state, StateEnum) else state
-
-        runtime = self.get_runtime()
-        peak_memory = self.get_peak_memory() - self.start_memory
-        peak_memory = 0 if peak_memory < 0 else round(peak_memory, 3)
-
-        for step_dict in self.workspace_step.subflow.steps or []:
-            if step_dict.get("name") == step_name:
-                step_dict["state"] = state
-                step_dict["runtime"] = runtime
-                step_dict["peak memory (mb)"] = peak_memory
-                step_dict["info"] = info
-
-                self.save()
-
-                from chipcompiler.engine.subflow_events import publish_subflow_stage
-
-                publish_subflow_stage(self.workspace, self.workspace_step, step_dict)
-
-                break
+        return super().build_sub_flow()

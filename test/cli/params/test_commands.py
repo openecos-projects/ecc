@@ -1,6 +1,8 @@
 import json
 import os
 
+import pytest
+
 from chipcompiler.cli import main as cli_main
 from chipcompiler.data.parameter_schema import lookup_schema
 
@@ -750,3 +752,58 @@ class TestDesignFrequencySeeded:
         records = plain_records(capsys.readouterr().out)
         assert records[0]["value"] == "300.0"
         assert records[0]["source"] == "ecc.toml"
+
+
+class TestUnreadableProjectConfig:
+    """An ecc.toml entry that exists but cannot be read must fail loudly.
+
+    A directory or dangling link is PRESENT (lexists), so the commands report
+    it instead of treating the project as having no config at all.
+    """
+
+    @staticmethod
+    def _replace_config(project_dir, kind):
+        path = os.path.join(project_dir, "ecc.toml")
+        os.remove(path)
+        if kind == "dir":
+            os.mkdir(path)
+        else:
+            os.symlink(os.path.join(project_dir, "nowhere.toml"), path)
+
+    def test_missing_config_set_fails_and_unset_is_a_noop(
+        self, capsys, create_cli_project, plain_records
+    ):
+        project_dir = create_cli_project()
+        os.remove(os.path.join(project_dir, "ecc.toml"))
+
+        rc = cli_main.run(
+            ["param", "set", "place.target_density", "0.5", "--project", project_dir, "--plain"]
+        )
+        assert rc == 1
+        assert plain_records(capsys.readouterr().out)[0]["error"] == "missing_config"
+
+        rc = cli_main.run(
+            ["param", "unset", "place.target_density", "--project", project_dir, "--plain"]
+        )
+        assert rc == 0
+        assert plain_records(capsys.readouterr().out)[0]["status"] == "no_override"
+
+    @pytest.mark.parametrize("kind", ["dir", "dangling_link"])
+    @pytest.mark.parametrize(
+        ("command", "error"),
+        [
+            (["set", "place.target_density", "0.5"], "config_error"),
+            (["unset", "place.target_density"], "config_error"),
+            (["show", "place.target_density"], "invalid_param_config"),
+        ],
+    )
+    def test_unreadable_config_is_reported(
+        self, capsys, create_cli_project, plain_records, kind, command, error
+    ):
+        project_dir = create_cli_project()
+        self._replace_config(project_dir, kind)
+
+        rc = cli_main.run(["param", *command, "--project", project_dir, "--plain"])
+
+        assert rc == 1
+        assert plain_records(capsys.readouterr().out)[0]["error"] == error

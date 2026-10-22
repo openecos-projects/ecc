@@ -10,7 +10,7 @@ reports the checklist as unavailable instead.
 import dataclasses
 from pathlib import Path
 
-from chipcompiler.utility.json import json_read
+from chipcompiler.utility.json import JsonObject, json_read
 
 CHECKLIST_PATH = ("home", "checklist.json")
 
@@ -103,14 +103,11 @@ def build_checklist_report(workspace) -> ChecklistReport:
         )
 
     report.available = True
-    report.status = data.get("status") if isinstance(data.get("status"), str) else "ready"
-    report.generated_at = (
-        data.get("generated_at") if isinstance(data.get("generated_at"), str) else ""
-    )
-    report.checker_revision = (
-        data.get("checker_revision") if isinstance(data.get("checker_revision"), str) else ""
-    )
-    summary = data.get("summary") if isinstance(data.get("summary"), dict) else {}
+    fields = JsonObject(data)
+    report.status = fields.get_str("status", "ready")
+    report.generated_at = fields.get_str("generated_at")
+    report.checker_revision = fields.get_str("checker_revision")
+    summary = fields.get_obj("summary")
     report.summary = {
         key: summary.get(key, 0) for key in ("passed", "blocked", "attention", "unavailable")
     }

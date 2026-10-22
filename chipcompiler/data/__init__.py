@@ -55,7 +55,7 @@ from .workspace import (
     step_config_paths,
     sync_workspace_config_to_parameters,
     update_step_config,
-    workspace_config_path,
+    workspace_config_key_path,
     workspace_config_paths,
 )
 from .workspace.layout import (
@@ -152,7 +152,7 @@ __all__ = [
     "ChecklistState",
     "build_workspace_config_paths",
     "workspace_config_paths",
-    "workspace_config_path",
+    "workspace_config_key_path",
     "WorkspaceFileTransaction",
     "recover_workspace_file_transaction",
     "step_config_keys",

@@ -7,7 +7,6 @@ from .builder import (
 )
 from .metrics import build_step_metrics
 from .runner import run_step
-from .service import get_step_info
 from .utility import (
     find_sizer_root,
     get_sizer_command,
@@ -21,7 +20,6 @@ __all__ = [
     "build_step_config",
     "build_step_metrics",
     "build_step_space",
-    "get_step_info",
     "find_sizer_root",
     "get_sizer_command",
     "get_sizer_root",

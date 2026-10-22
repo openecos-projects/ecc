@@ -8,7 +8,7 @@ from pathlib import Path
 from threading import Event, Thread
 from uuid import uuid4
 
-from chipcompiler.project.runtime_processes import _boot_id, _host_id
+from chipcompiler.project.runtime_processes import boot_id, host_id
 
 _PROC = Path("/proc")
 _INTERVAL_SECONDS = 0.2
@@ -42,8 +42,8 @@ class ResourceObservation:
     def start(self) -> None:
         try:
             self.start_id, _parent, _rss = _stat(self.pid)
-            self.boot_id = _boot_id()
-            self.host_id = _host_id()
+            self.boot_id = boot_id()
+            self.host_id = host_id()
             self.sample()
             self.thread = Thread(target=self._monitor, daemon=True)
             self.thread.start()

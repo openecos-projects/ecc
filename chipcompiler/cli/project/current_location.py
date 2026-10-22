@@ -2,7 +2,12 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from chipcompiler.project.manifest import ManifestError, load_manifest
+from chipcompiler.project.manifest import (
+    CONFIG_FILENAME,
+    MANIFEST_FILENAME,
+    ManifestError,
+    load_manifest,
+)
 
 
 @dataclass(frozen=True)
@@ -12,7 +17,7 @@ class CurrentLocation:
 
 
 def _project_marker(root: Path) -> bool:
-    return any(os.path.lexists(root / name) for name in ("project.json", "ecc.toml"))
+    return any(os.path.lexists(root / name) for name in (MANIFEST_FILENAME, CONFIG_FILENAME))
 
 
 def _workspace_marker(root: Path) -> bool:
@@ -50,7 +55,7 @@ def resolve_current_location(
             if declared is not None:
                 return CurrentLocation(project, declared)
             if (
-                not os.path.lexists(root / "project.json")
+                not os.path.lexists(root / MANIFEST_FILENAME)
                 and _workspace_marker(current)
                 and current.is_relative_to(root.resolve())
                 and current != root.resolve()

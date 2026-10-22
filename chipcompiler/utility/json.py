@@ -4,39 +4,43 @@ import json
 import logging
 import os
 import tempfile
+from collections.abc import Iterator, Mapping
 from contextlib import suppress
+from math import isfinite
 from pathlib import Path
+from typing import Any, overload
 
 logger = logging.getLogger(__name__)
+
+
+def _load_json(path: Path) -> object:
+    """Parse a JSON file, or return None (with a warning) when it cannot be read."""
+    if not path.is_file():
+        return None
+    try:
+        if path.suffix == ".gz":
+            import gzip
+
+            with gzip.open(path, "rt") as f:
+                return json.load(f)
+        with path.open() as f:
+            return json.load(f)
+    except Exception:
+        logger.warning("Failed to read JSON file: %s", path, exc_info=True)
+        return None
 
 
 def json_read(file_path: str | Path) -> dict:
     """
     Read a JSON file and return its content as a dictionary.
 
-    Returns {} on any error (missing file, parse error, I/O error).
+    Returns {} on any error (missing file, parse error, I/O error) and when the
+    file holds something other than a JSON object.
     Use json_read_strict() for mandatory configuration files where
     failure must be distinguishable from valid empty JSON.
     """
-    data = {}
-    path = Path(file_path)
-    if path.is_file() is False:
-        return data
-
-    try:
-        if path.suffix == ".gz":
-            import gzip
-
-            with gzip.open(path, "rt") as f:
-                data = json.load(f)
-        else:
-            with path.open() as f:
-                data = json.load(f)
-    except Exception:
-        logger.warning("Failed to read JSON file: %s", path, exc_info=True)
-        return data
-
-    return data
+    data = _load_json(Path(file_path))
+    return data if isinstance(data, dict) else {}
 
 
 class JsonReadError(Exception):
@@ -295,3 +299,68 @@ def dict_to_str(d, indent=0):
     lines = []
     _render_dict_block(d, lines, base_indent=indent, depth=0, title=None, is_root=True)
     return "\n".join(lines)
+
+
+def finite_number(value: object) -> int | float | None:
+    """Return value when it is a finite int/float, else None.
+
+    bool is rejected (it is an int subclass), and an int too large for
+    isfinite() counts as not finite instead of raising OverflowError.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        return value if isfinite(value) else None
+    except OverflowError:
+        return None
+
+
+class JsonObject(Mapping[str, Any]):
+    """Read-only view of a parsed JSON object with typed getters.
+
+    Each getter returns the value only when it has the requested type and
+    otherwise the default, so a missing key and a wrongly typed one read the
+    same. Nested objects come back as views over the same data, not copies.
+    """
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: object = None):
+        self._data: Mapping[str, Any] = data if isinstance(data, Mapping) else {}
+
+    def __getitem__(self, key: str) -> Any:
+        return self._data[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def __repr__(self) -> str:
+        return f"JsonObject({dict(self._data)!r})"
+
+    @overload
+    def get_str(self, key: str) -> str: ...
+    @overload
+    def get_str(self, key: str, default: str) -> str: ...
+    @overload
+    def get_str(self, key: str, default: None) -> str | None: ...
+    def get_str(self, key: str, default: str | None = "") -> str | None:
+        value = self._data.get(key)
+        return value if isinstance(value, str) else default
+
+    def get_number(self, key: str) -> int | float | None:
+        return finite_number(self._data.get(key))
+
+    def get_list(self, key: str) -> list:
+        value = self._data.get(key)
+        return value if isinstance(value, list) else []
+
+    def get_obj(self, key: str) -> "JsonObject":
+        return JsonObject(self._data.get(key))
+
+
+def json_read_object(file_path: str | Path) -> JsonObject:
+    """Read a JSON file as a JsonObject; empty on any error or non-object document."""
+    return JsonObject(_load_json(Path(file_path)))

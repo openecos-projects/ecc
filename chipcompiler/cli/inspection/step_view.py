@@ -12,7 +12,7 @@ import json
 import os
 from dataclasses import dataclass
 
-from chipcompiler.utility.json import json_read
+from chipcompiler.utility.json import JsonObject, json_read
 
 SECTIONS = ("feature", "analysis", "checklist", "outputs")
 
@@ -207,13 +207,13 @@ def _analysis_records(entry: _StepEntry, workspace_dir: str) -> list[dict]:
     for metric in metrics_payload["metrics"]:
         if not isinstance(metric, dict):
             continue
-        source = metric.get("source") if isinstance(metric.get("source"), dict) else {}
+        source = JsonObject(metric.get("source"))
         source_ref = ""
         if source.get("path"):
             source_ref = f"{os.path.basename(directory)}/{source['path']}"
             if source.get("selector"):
                 source_ref = f"{source_ref}#{source['selector']}"
-        rating = metric.get("rating") if isinstance(metric.get("rating"), dict) else {}
+        rating = JsonObject(metric.get("rating"))
         records.append(
             {
                 "step": entry.token,

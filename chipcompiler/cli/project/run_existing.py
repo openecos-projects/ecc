@@ -301,9 +301,10 @@ def _execute_existing_run(
     # Execution ownership: the ledger revalidation, migration, reconcile,
     # and the engine run all hold the workspace lock, so two `ecc run`
     # processes can never execute the same workspace concurrently.
-    from chipcompiler.engine.reconcile import _workspace_lock, reconcile_workspace_locked
+    from chipcompiler.engine.reconcile import reconcile_workspace_locked
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
-    with _workspace_lock(Path(run_dir), blocking=not command_input.no_wait):
+    with workspace_lock(Path(run_dir), blocking=not command_input.no_wait):
         from chipcompiler.cli.project.revision import expected_revision_error
 
         conflict = expected_revision_error(

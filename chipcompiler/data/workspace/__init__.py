@@ -268,7 +268,7 @@ def migrate_workspace_config_filenames(workspace_dir: str | Path) -> None:
             legacy_path.rename(canonical_path)
 
 
-def workspace_config_path(workspace_dir: str | Path, config_key: str) -> Path | None:
+def workspace_config_key_path(workspace_dir: str | Path, config_key: str) -> Path | None:
     return workspace_config_paths(workspace_dir).get(config_key)
 
 
@@ -999,7 +999,7 @@ def create_workspace(
     spef: str | Path = "",
     golden_verilog: str | Path = "",
     pdk_overrides: dict | None = None,
-) -> Workspace:
+) -> Workspace | None:
     """
     Create a workspace for chip design flow.
 

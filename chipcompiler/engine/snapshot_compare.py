@@ -1,8 +1,7 @@
 """Pure comparison of committed Snapshot facts, not live workspace contents."""
 
-from math import isfinite
-
 from chipcompiler.analysis.qor.metric_registry import METRIC_REGISTRY
+from chipcompiler.utility import finite_number
 
 
 class SnapshotComparisonError(ValueError):
@@ -152,22 +151,13 @@ def _mapping_changes(baseline: dict, current: dict) -> list[dict]:
     return changes
 
 
-def _number(value: object) -> int | float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    try:
-        return value if isfinite(value) else None
-    except OverflowError:
-        return None
-
-
 def _numeric_pair(baseline: object, current: object, direction: str, reasons: list[str]) -> dict:
-    before = _number(baseline)
-    after = _number(current)
+    before = finite_number(baseline)
+    after = finite_number(current)
     reasons = list(reasons)
     if before is None or after is None:
         reasons.append("value_unavailable")
-    delta = _number(after - before) if before is not None and after is not None else None
+    delta = finite_number(after - before) if before is not None and after is not None else None
     if delta is None and before is not None and after is not None:
         reasons.append("delta_nonfinite")
     if direction not in {"higher_is_better", "lower_is_better"}:

@@ -705,49 +705,6 @@ def test_sizer_runtime_root_is_absent_without_env_or_discoverable_runtime(tmp_pa
     assert sizer_utility.is_sizer_runtime_exist() is False
 
 
-def test_sizer_step_info_surfaces_include_step_local_config(tmp_path, monkeypatch):
-    from chipcompiler.tools.ecc_sizer import builder as sizer_builder
-    from chipcompiler.tools.ecc_sizer import get_step_info
-
-    monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(_sizer_runtime(tmp_path)))
-
-    workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
-        workspace=workspace,
-        step_name=SkippableStepEnum.TIMING_OPT.value,
-        input_def="input.def",
-        input_verilog="input.v",
-    )
-    sizer_builder.build_step_space(step)
-    sizer_builder.build_step_config(workspace, step)
-
-    assert get_step_info(workspace, step, "input") == {
-        "def": str(step.input.def_),
-        "verilog": str(step.input.verilog),
-        "db": step.input.db,
-    }
-    output = step.output
-    assert get_step_info(workspace, step, "output") == {
-        "dir": str(output.dir),
-        "def": str(output.def_),
-        "verilog": str(output.verilog),
-        "gds": str(output.gds),
-        "db": str(output.db),
-        "image": str(output.image),
-        "json": str(output.json),
-        "lef": str(output.lef),
-        "lib": str(output.lib),
-        "spef": [str(p) for p in output.spef],
-    }
-    assert get_step_info(workspace, step, "subflow") == {"path": str(step.subflow.path)}
-    assert get_step_info(workspace, step, "checklist") == {"path": str(step.checklist.path)}
-    assert get_step_info(workspace, step, "config") == {
-        "sizer_env": str(step.script.sizer_env),
-        "sizer_cmd": str(step.script.sizer_cmd),
-    }
-    assert get_step_info(workspace, step, "unknown") == {}
-
-
 def test_sizer_build_step_config_rewrites_legacy_one_stage_subflow(tmp_path, monkeypatch):
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
 

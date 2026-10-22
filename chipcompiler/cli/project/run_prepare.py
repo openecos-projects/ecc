@@ -432,7 +432,7 @@ def execute_fresh_run(
         pdk_cli_overrides = {}
 
     from chipcompiler.cli.project import migrate_fs
-    from chipcompiler.engine.reconcile import _workspace_lock
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
     # Lock order is always migration → workspace, and the workspace lock
     # is taken BEFORE the target becomes discoverable (flow.json appears
@@ -452,7 +452,7 @@ def execute_fresh_run(
         with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
             if not caller_locks:
                 ws_locks.enter_context(
-                    _workspace_lock(Path(run_dir), blocking=not command_input.no_wait)
+                    workspace_lock(Path(run_dir), blocking=not command_input.no_wait)
                 )
             try:
                 workspace = create_workspace(
@@ -469,7 +469,8 @@ def execute_fresh_run(
                     spef=inputs.spef,
                     golden_verilog=inputs.golden_netlist,
                 )
-                workspace.__dict__["_ecc_project_dir"] = project_dir
+                if workspace is not None:
+                    workspace.__dict__["_ecc_project_dir"] = project_dir
             except Exception as exc:
                 return failed_workspace(str(exc))
             finally:
@@ -557,8 +558,8 @@ def execute_fresh_run(
                 snapshot = create_engineering_snapshot(workspace, workspace_id=run_name)
                 if command_input.command_id and not execute_flow:
                     from chipcompiler.engine.workspace_lifecycle import (
-                        _workspace_command_fingerprint,
-                        _write_workspace_command,
+                        workspace_command_fingerprint,
+                        write_workspace_command,
                     )
                     from chipcompiler.project.manifest import load_manifest
 
@@ -568,10 +569,10 @@ def execute_fresh_run(
                         "to": command_input.to_step,
                         "parameters": list(command_input.param_set),
                     }
-                    _write_workspace_command(
+                    write_workspace_command(
                         Path(run_dir),
                         command_input.command_id,
-                        _workspace_command_fingerprint(
+                        workspace_command_fingerprint(
                             "create" if backup_path is None else "refresh",
                             command_spec,
                             None,

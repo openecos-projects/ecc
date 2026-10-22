@@ -16,6 +16,7 @@ from chipcompiler.engine.signoff.report_extract import (
     _parse_corner_attributes,
     _parse_number,
 )
+from chipcompiler.utility import JsonObject
 
 
 def _extract_corner_records(store, inputs) -> list[CornerTimingRecord]:
@@ -37,11 +38,12 @@ def _extract_corner_records(store, inputs) -> list[CornerTimingRecord]:
     records = []
     for corner_name, corner_data in merged_corners.items():
         process, temperature, voltage, rc_corner = _parse_corner_attributes(corner_name)
-        setup_obj = corner_data.get("setup") if _is_record(corner_data.get("setup")) else {}
-        hold_obj = corner_data.get("hold") if _is_record(corner_data.get("hold")) else {}
-        summary_obj = corner_data.get("summary") if _is_record(corner_data.get("summary")) else {}
-        summary_setup = summary_obj.get("setup") if _is_record(summary_obj.get("setup")) else {}
-        summary_hold = summary_obj.get("hold") if _is_record(summary_obj.get("hold")) else {}
+        corner_fields = JsonObject(corner_data)
+        setup_obj = corner_fields.get_obj("setup")
+        hold_obj = corner_fields.get_obj("hold")
+        summary_obj = corner_fields.get_obj("summary")
+        summary_setup = summary_obj.get_obj("setup")
+        summary_hold = summary_obj.get_obj("hold")
 
         def pick(*candidates):
             for candidate in candidates:
@@ -72,18 +74,12 @@ def _extract_corner_records(store, inputs) -> list[CornerTimingRecord]:
         records.append(
             CornerTimingRecord(
                 corner=corner_name,
-                process_corner=(
-                    corner_data.get("process")
-                    if isinstance(corner_data.get("process"), str)
-                    else process
-                ),
+                process_corner=corner_fields.get_str("process", process),
                 voltage_v=pick(corner_data.get("voltage"), corner_data.get("voltage_v"), voltage),
                 temperature_c=pick(
                     corner_data.get("temperature"), corner_data.get("temperature_c"), temperature
                 ),
-                rc_corner=(
-                    corner_data.get("rc") if isinstance(corner_data.get("rc"), str) else rc_corner
-                ),
+                rc_corner=corner_fields.get_str("rc", rc_corner),
                 setup_wns_ns=corner_setup_wns,
                 setup_tns_ns=pick(
                     corner_data.get("setup_tns"),
