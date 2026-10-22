@@ -65,7 +65,11 @@ def step_directory_for_tool(step_name: str, tool: str | None) -> str:
         return LEGACY_STEP_DIRECTORIES[step_name]
     if tool == ToolName.LEC_DUAL and step_name in DUAL_STEP_DIRECTORIES:
         return DUAL_STEP_DIRECTORIES[step_name]
-    return STEP_DIRECTORIES.get(step_name, f"{step_name}_{tool}")
+    directory = STEP_DIRECTORIES.get(step_name)
+    if directory is not None:
+        return directory
+    # Tools with their own storage spelling (Sizer Timing Opt) own the stem.
+    return f"{step_storage_name(step_name, tool or '')}_{tool}"
 
 
 def all_step_directories() -> list[str]:
