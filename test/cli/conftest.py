@@ -179,6 +179,18 @@ def _stub_run_preflight(monkeypatch):
         "chipcompiler.cli.inspection.env_probe.probe_environment",
         lambda components, *, cfg=None, include_slang=True: [],
     )
+    monkeypatch.setattr(
+        "chipcompiler.cli.project.run_preflight.pdk_issues_for_config",
+        lambda cfg, step_names: [],
+    )
+    monkeypatch.setattr(
+        "chipcompiler.cli.project.run_preflight.pdk_issues",
+        lambda pdk, step_names: [],
+    )
+    monkeypatch.setattr(
+        "chipcompiler.cli.project.run_preflight.config_issues",
+        lambda workspace, selected_steps: [],
+    )
 
 
 @pytest.fixture(autouse=True)

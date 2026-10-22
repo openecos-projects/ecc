@@ -184,7 +184,13 @@ def _execute_workspace_run(
                 ]
             )
 
-        def run_failed(kind: str, reason: str | None = None) -> CommandResult:
+        def run_failed(
+            kind: str,
+            reason: str | None = None,
+            *,
+            details=(),
+            **fields,
+        ) -> CommandResult:
             return CommandResult.err(
                 [
                     {
@@ -192,8 +198,10 @@ def _execute_workspace_run(
                         "error": kind,
                         "workspace": workspace_path,
                         **({"reason": reason} if reason else {}),
+                        **fields,
                     }
                 ]
+                + list(details)
                 + warnings
             )
 
@@ -233,7 +241,10 @@ def _execute_workspace_run(
                 except ValueError as exc:
                     return run_failed("unknown_step", str(exc))
 
-                from chipcompiler.cli.project.run_preflight import build_run_preflight
+                from chipcompiler.cli.project.run_preflight import (
+                    build_run_preflight,
+                    preflight_failure,
+                )
 
                 preflight = build_run_preflight(
                     engine_flow,
@@ -241,8 +252,25 @@ def _execute_workspace_run(
                     only=command_input.only,
                     force=command_input.force,
                 )
-                if preflight["missing_inputs"]:
-                    return run_failed("step_input_missing", str(preflight["missing_inputs"]))
+                failure = preflight_failure(preflight)
+                if failure is not None:
+                    from chipcompiler.cli.core.output import disclosure_cmd
+
+                    return run_failed(
+                        failure["error"],
+                        failure["reason"],
+                        details=preflight["issues"],
+                        **(
+                            {"doctor": disclosure_cmd("ecc doctor", getattr(ctx, "project", None))}
+                            if failure["error"] == "env_not_ready"
+                            else {}
+                        ),
+                        **(
+                            {"missing_inputs": failure["missing_inputs"]}
+                            if "missing_inputs" in failure
+                            else {}
+                        ),
+                    )
 
                 from chipcompiler.cli.rendering.progress import (
                     preserve_cli_stdio,
