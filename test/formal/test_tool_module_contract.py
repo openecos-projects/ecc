@@ -146,9 +146,7 @@ def test_load_tool_rejects_module_missing_contract_member(monkeypatch):
     module = _conforming_fake_module()
     del module.build_step_space
     monkeypatch.setitem(sys.modules, module.__name__, module)
-    monkeypatch.setitem(
-        registry._INJECTED_TOOLS, "fake_conforming", registry.ToolSpec("fake_conforming")
-    )
+    monkeypatch.setattr(registry, "tool_spec", lambda _name: registry.ToolSpec("fake_conforming"))
 
     assert eda.load_tool("fake_conforming", check_dependency=False) is None
 
@@ -158,8 +156,6 @@ def test_load_tool_accepts_conforming_module(monkeypatch):
 
     module = _conforming_fake_module()
     monkeypatch.setitem(sys.modules, module.__name__, module)
-    monkeypatch.setitem(
-        registry._INJECTED_TOOLS, "fake_conforming", registry.ToolSpec("fake_conforming")
-    )
+    monkeypatch.setattr(registry, "tool_spec", lambda _name: registry.ToolSpec("fake_conforming"))
 
     assert eda.load_tool("fake_conforming", check_dependency=False) is module

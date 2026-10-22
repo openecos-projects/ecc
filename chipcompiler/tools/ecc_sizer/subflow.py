@@ -57,7 +57,9 @@ class SizerSubFlow(SubFlow):
             self.workspace_step.subflow.steps = [stage_template(name) for name in self.stages()]
             if not self._invalidate_owner_and_suffix():
                 self.workspace_step.subflow.steps = previous_stages
-                return self.workspace_step.subflow.steps
+                raise RuntimeError(
+                    f"Failed to persist the flow reset for {self.workspace_step.name}"
+                )
             # Stage reset deliberately touches only subflow.json; the step's own
         # ledger state is reset through the flow API by the caller.
         self.save()

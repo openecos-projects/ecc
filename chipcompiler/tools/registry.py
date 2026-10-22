@@ -47,25 +47,13 @@ TOOLS: dict[ToolName, ToolSpec] = {
 FLOW_TOOLS = frozenset(TOOLS) - {ToolName.KLAYOUT}
 IMAGE_TOOLS = frozenset({ToolName.KLAYOUT})
 
-#: Modules registered explicitly by tests; production names live in TOOLS.
-_INJECTED_TOOLS: dict[str, ToolSpec] = {}
-
-
-def register_injected_tool(name: str, module: str) -> None:
-    """Test seam: make an arbitrary module name loadable without editing TOOLS.
-
-    The plan requires fake tool modules to stay injectable; this keeps that
-    possible while the production table stays the only source of real names.
-    """
-    _INJECTED_TOOLS[name] = ToolSpec(module)
-
 
 def tool_spec(name: object) -> ToolSpec | None:
-    """The spec for a persisted/declared/injected tool name, or None."""
+    """The spec for a persisted/declared tool name, or None if unknown."""
     try:
         return TOOLS[ToolName(name)]
     except ValueError:
-        return _INJECTED_TOOLS.get(str(name))
+        return None
 
 
 def checks_dependency(name: object, *, requested: bool = True) -> bool:

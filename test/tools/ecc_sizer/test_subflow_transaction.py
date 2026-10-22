@@ -3,6 +3,8 @@
 import json
 from copy import deepcopy
 
+import pytest
+
 from chipcompiler.data import OriginDesign, Workspace
 from chipcompiler.data.schema_migrations import SCHEMA_VERSION_FIELD
 from chipcompiler.data.workspace.flow_data import FLOW_JSON_SCHEMA_VERSION
@@ -52,7 +54,9 @@ def test_failed_ledger_write_keeps_memory_and_disk_consistent(tmp_path, monkeypa
     before = deepcopy(workspace.flow.data)
 
     monkeypatch.setattr(sizer_subflow, "save_ledger", lambda _flow: False)
-    sizer_builder.build_sub_flow(workspace, step)
+
+    with pytest.raises(RuntimeError, match="Failed to persist the flow reset"):
+        sizer_builder.build_sub_flow(workspace, step)
 
     assert workspace.flow.data == before
     assert not workspace.flow.path.exists()
@@ -72,7 +76,9 @@ def test_failed_ledger_write_keeps_existing_files_and_stages(tmp_path, monkeypat
     before_subflow = json.loads(step.subflow.path.read_text())
 
     monkeypatch.setattr(sizer_subflow, "save_ledger", lambda _flow: False)
-    sizer_builder.build_sub_flow(workspace, step)
+
+    with pytest.raises(RuntimeError, match="Failed to persist the flow reset"):
+        sizer_builder.build_sub_flow(workspace, step)
 
     assert json.loads(workspace.flow.path.read_text()) == before_ledger
     assert workspace.flow.data == before_ledger

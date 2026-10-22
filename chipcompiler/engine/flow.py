@@ -5,7 +5,6 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
-from pathlib import Path
 
 from chipcompiler.data import (
     ADVISORY_FLOW_STEPS,
@@ -394,13 +393,9 @@ class EngineFlow:
             )
             # save workspace step
             if eda_step is not None:
-                step_info = step.get("info", {}) or {}
-                if (
-                    eda_step.name == StepEnum.STA.value
-                    and step_info.get("spef")
-                    and isinstance(eda_step.output, EccOutput)
-                ):
-                    eda_step.output.spef = [Path(step_info["spef"])]
+                from chipcompiler.engine.step_chain import apply_info_spef_override
+
+                apply_info_spef_override(step, eda_step)
                 if (
                     input_source is not None
                     and input_source.name == StepEnum.RCX.value

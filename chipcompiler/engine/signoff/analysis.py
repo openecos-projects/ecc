@@ -11,14 +11,13 @@ from pathlib import Path
 
 from chipcompiler.data import (
     LEC_STEP_TOOLS,
-    EccOutput,
     StateEnum,
     StepEnum,
     ToolName,
 )
 from chipcompiler.data.workspace.flow_policy import FlowInputResolver, FlowInputStepError
 from chipcompiler.engine.signoff.models import SIGNOFF_REQUIRED_QOR_STEPS, SignoffPackageIssue
-from chipcompiler.tools.registry import load_builder
+from chipcompiler.engine.step_chain import apply_info_spef_override, build_workspace_step_for_info
 
 
 class CollectorAnalysisMixin:
@@ -82,42 +81,12 @@ class CollectorAnalysisMixin:
         return issues
 
     def _build_workspace_step(self, flow_step: dict, input_source):
-        step_name = str(flow_step.get("name", ""))
-        tool = str(flow_step.get("tool", ""))
         try:
-            builder = load_builder(tool)
+            workspace_step = build_workspace_step_for_info(self.workspace, flow_step, input_source)
         except ImportError:
             return None
-
-        build_step = getattr(builder, "build_step", None)
-        if not callable(build_step):
-            return None
-
-        if input_source is None:
-            input_def = self.workspace.design.origin_def
-            input_verilog = self.workspace.design.origin_verilog
-            input_db = None
-        else:
-            input_def = input_source.output.def_
-            input_verilog = input_source.output.verilog
-            input_db = input_source.output.db
-        workspace_step = build_step(
-            workspace=self.workspace,
-            step_name=step_name,
-            input_def=input_def,
-            input_verilog=input_verilog,
-            input_db=input_db,
-        )
         if workspace_step is not None:
-            # Mirror the execution-side projection (engine/flow.py): a
-            # persisted info.spef overrides the STA step's chained SPEFs.
-            step_info = flow_step.get("info") or {}
-            if (
-                step_name == StepEnum.STA.value
-                and step_info.get("spef")
-                and isinstance(workspace_step.output, EccOutput)
-            ):
-                workspace_step.output.spef = [Path(step_info["spef"])]
+            apply_info_spef_override(flow_step, workspace_step)
         return workspace_step
 
     def _refresh_step_analysis(self, step) -> None:

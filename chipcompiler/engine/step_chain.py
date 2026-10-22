@@ -1,5 +1,8 @@
 """Build one workspace step from the input source the flow policy resolved."""
 
+from pathlib import Path
+
+from chipcompiler.data import EccOutput, StepEnum
 from chipcompiler.tools.registry import load_builder
 
 
@@ -29,3 +32,14 @@ def build_workspace_step_for_info(workspace, flow_step: dict, input_source):
         input_verilog=input_verilog,
         input_db=input_db,
     )
+
+
+def apply_info_spef_override(flow_step: dict, workspace_step) -> None:
+    """Apply a persisted ``info.spef`` override to an STA step's output."""
+    step_info = flow_step.get("info") or {}
+    if (
+        str(flow_step.get("name", "")) == StepEnum.STA.value
+        and step_info.get("spef")
+        and isinstance(workspace_step.output, EccOutput)
+    ):
+        workspace_step.output.spef = [Path(step_info["spef"])]

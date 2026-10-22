@@ -11,7 +11,8 @@ def _install_tool_module(monkeypatch, module_name, *, exists=True, build_metrics
     import chipcompiler.tools.registry as registry
 
     module = ModuleType(f"chipcompiler.tools.{module_name}")
-    monkeypatch.setitem(registry._INJECTED_TOOLS, module_name, registry.ToolSpec(module_name))
+    if module_name not in {spec.module for spec in registry.TOOLS.values()}:
+        monkeypatch.setattr(registry, "tool_spec", lambda _name: registry.ToolSpec(module_name))
     module.is_eda_exist = lambda: exists
     module.build_step = lambda **kwargs: None
     module.build_step_space = lambda step: None
@@ -158,9 +159,7 @@ def test_load_tool_returns_none_and_logs_on_a_contract_mismatch(monkeypatch, cap
     import chipcompiler.tools.registry as registry
 
     module = ModuleType("chipcompiler.tools.fake_incomplete")
-    monkeypatch.setitem(
-        registry._INJECTED_TOOLS, "fake_incomplete", registry.ToolSpec("fake_incomplete")
-    )
+    monkeypatch.setattr(registry, "tool_spec", lambda _name: registry.ToolSpec("fake_incomplete"))
     module.is_eda_exist = lambda: True
     module.build_step = lambda **kwargs: None
     module.build_step_config = lambda workspace, step: None
