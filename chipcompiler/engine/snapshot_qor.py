@@ -12,7 +12,7 @@ from chipcompiler.analysis.qor.schema import (
     SCALAR_STATUSES,
     TIERS,
 )
-from chipcompiler.utility import finite_number
+from chipcompiler.utility import JsonObject, finite_number
 
 QOR_SNAPSHOT_EXTENSION_SCHEMA_VERSION = 1
 _MAX_DIAGNOSES = 64
@@ -42,8 +42,7 @@ def build_qor_snapshot_extension(analysis: Any, artifacts: list[dict[str, Any]])
             ],
         }
 
-    feasibility = report.get("feasibility")
-    feasibility = feasibility if isinstance(feasibility, dict) else {}
+    feasibility = JsonObject(report.get("feasibility"))
     gates = []
     for gate in feasibility.get("gates", []):
         if not isinstance(gate, dict) or not isinstance(gate.get("id"), str):
@@ -57,20 +56,14 @@ def build_qor_snapshot_extension(analysis: Any, artifacts: list[dict[str, Any]])
                 "metrics": [
                     metric for metric in gate.get("metrics", [])[:32] if isinstance(metric, str)
                 ],
-                "availability": gate.get("availability")
-                if isinstance(gate.get("availability"), str)
-                else None,
+                "availability": JsonObject(gate).get_str("availability", None),
             }
         )
 
-    summary = report.get("scalar_summary")
-    summary = summary if isinstance(summary, dict) else {}
-    evidence = report.get("evidence")
-    evidence = evidence if isinstance(evidence, dict) else {}
-    inflation = report.get("inflation")
-    inflation = inflation if isinstance(inflation, dict) else {}
-    power = report.get("power")
-    power = power if isinstance(power, dict) else {}
+    summary = JsonObject(report.get("scalar_summary"))
+    evidence = JsonObject(report.get("evidence"))
+    inflation = JsonObject(report.get("inflation"))
+    power = JsonObject(report.get("power"))
 
     return {
         "schemaVersion": QOR_SNAPSHOT_EXTENSION_SCHEMA_VERSION,
@@ -102,10 +95,8 @@ def build_qor_snapshot_extension(analysis: Any, artifacts: list[dict[str, Any]])
         "power": {
             "totalUw": finite_number(power.get("total_uw")),
             "budgetUw": finite_number(power.get("budget_uw")),
-            "sourceKind": power.get("source_kind")
-            if isinstance(power.get("source_kind"), str)
-            else None,
-            "corner": power.get("corner") if isinstance(power.get("corner"), str) else None,
+            "sourceKind": power.get_str("source_kind", None),
+            "corner": power.get_str("corner", None),
         },
         "artifactIds": _artifact_ids(artifacts),
     }
@@ -368,12 +359,8 @@ def _diagnosis(value: object) -> dict[str, Any]:
                 "hypothesis": _text(item.get("hypothesis")),
                 "tier": _text(item.get("tier")),
                 "confidence": _text(item.get("confidence"), "LOW"),
-                "parameterKnob": item.get("parameter_knob")
-                if isinstance(item.get("parameter_knob"), str)
-                else None,
-                "validationProcedure": item.get("validation_procedure")
-                if isinstance(item.get("validation_procedure"), str)
-                else None,
+                "parameterKnob": JsonObject(item).get_str("parameter_knob", None),
+                "validationProcedure": JsonObject(item).get_str("validation_procedure", None),
             }
         )
     return {
@@ -389,9 +376,7 @@ def _diagnosis(value: object) -> dict[str, Any]:
         ],
         "interventions": interventions,
         "interventionConfidence": _text(value.get("intervention_confidence"), "LOW"),
-        "validationRequired": value.get("validation_required")
-        if isinstance(value.get("validation_required"), str)
-        else None,
+        "validationRequired": JsonObject(value).get_str("validation_required", None),
     }
 
 
