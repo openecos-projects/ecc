@@ -24,6 +24,7 @@ from chipcompiler.data import (
     workspace_checklist_path,
 )
 from chipcompiler.data.step import STEP_DIRECTORIES, flow_step_directory, step_directory_for_tool
+from chipcompiler.data.workspace.flow_policy import FlowInputStepError
 from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
 from chipcompiler.engine.signoff.discovery import CollectorDiscoveryMixin
 from chipcompiler.engine.signoff.models import (
@@ -161,7 +162,19 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             # design-prefixed guess.
             from chipcompiler.tools.ecc.lec_gates import post_route_lec_netlists
 
-            _golden, lec_gate = post_route_lec_netlists(self.workspace)
+            try:
+                _golden, lec_gate = post_route_lec_netlists(self.workspace)
+            except (ImportError, OSError, TypeError, ValueError, FlowInputStepError) as error:
+                issues.append(
+                    SignoffPackageIssue(
+                        kind="resource",
+                        label="final/reports/postRouteLec/result.json",
+                        location=SkippableStepEnum.POST_ROUTE_LEC.value,
+                        reason=f"Could not resolve the postRouteLec gate netlist: {error}",
+                        required=True,
+                        destination="final/reports/postRouteLec/result.json",
+                    )
+                )
         # A workspace whose ledger has no postRouteLec (skipped at creation)
         # never requires it, regardless of the artifacts on disk.
         require_lec = self.workspace.flow.has_step(

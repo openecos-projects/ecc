@@ -5,10 +5,8 @@ from pathlib import Path
 from chipcompiler.data import StepMetrics, ToolName, Workspace, WorkspaceStep, log_workspace_step
 from chipcompiler.tools.registry import checks_dependency, load_tool, tool_spec
 
-
-def load_eda_module(eda_tool: str, *, check_dependency: bool = True):
-    """Compatibility name for :func:`chipcompiler.tools.registry.load_tool`."""
-    return load_tool(eda_tool, check_dependency=check_dependency)
+# Compatibility name for callers of the former loader entry point.
+load_eda_module = load_tool
 
 
 def create_step(

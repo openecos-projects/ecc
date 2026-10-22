@@ -2,7 +2,7 @@ from copy import deepcopy
 from enum import Enum
 
 from chipcompiler.data import StateEnum, StepEnum
-from chipcompiler.data.workspace.flow_ledger import save_ledger
+from chipcompiler.data.workspace.flow_ledger import ledger_lock, save_ledger
 from chipcompiler.tools.subflow import SubFlow, stage_template
 
 
@@ -82,20 +82,23 @@ class SizerSubFlow(SubFlow):
         )
         if start is None:
             return True
-        previous_data = deepcopy(self.workspace.flow.data)
-        for step in steps[start:]:
-            if not isinstance(step, dict):
-                continue
-            step["state"] = StateEnum.Unstart.value
-            step["runtime"] = ""
-            step["peak memory (mb)"] = 0
-        if not save_ledger(self.workspace.flow):
-            self.workspace.flow.data = previous_data
-            logger = getattr(self.workspace, "logger", None)
-            if logger is not None:
-                logger.error("Failed to persist the flow reset for %s", self.workspace_step.name)
-            return False
-        return True
+        with ledger_lock(self.workspace.flow):
+            previous_data = deepcopy(self.workspace.flow.data)
+            for step in steps[start:]:
+                if not isinstance(step, dict):
+                    continue
+                step["state"] = StateEnum.Unstart.value
+                step["runtime"] = ""
+                step["peak memory (mb)"] = 0
+            if not save_ledger(self.workspace.flow):
+                self.workspace.flow.data = previous_data
+                logger = getattr(self.workspace, "logger", None)
+                if logger is not None:
+                    logger.error(
+                        "Failed to persist the flow reset for %s", self.workspace_step.name
+                    )
+                return False
+            return True
 
     def reset_stages(self) -> list[dict]:
         if self._current_stage_names() != list(self.stages()):
