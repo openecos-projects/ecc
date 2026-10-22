@@ -17,7 +17,7 @@ from chipcompiler.engine.snapshot_qor import (
     unavailable_qor_snapshot_extension,
     validate_qor_snapshot_extension,
 )
-from chipcompiler.utility import JsonReadError, json_read_strict, json_write
+from chipcompiler.utility import JsonObject, JsonReadError, json_read_strict, json_write
 
 LEGACY_SNAPSHOT_SCHEMA_VERSION = 2
 SNAPSHOT_V3_SCHEMA_VERSION = 3
@@ -428,15 +428,15 @@ def _checklist_projection(checklist: dict[str, Any]) -> dict[str, Any]:
 
 
 def _checklist_item(item: dict[str, Any]) -> dict[str, Any]:
-    blocked = item.get("blocked")
+    fields = JsonObject(item)
     return {
-        "id": item.get("id") if isinstance(item.get("id"), str) else "",
-        "title": item.get("title") if isinstance(item.get("title"), str) else "",
-        "state": item.get("state") if isinstance(item.get("state"), str) else "",
-        "blocked": blocked if isinstance(blocked, bool) else False,
-        "step": item.get("step") if isinstance(item.get("step"), str) else "",
-        "category": item.get("category") if isinstance(item.get("category"), str) else "",
-        "summary": item.get("summary") if isinstance(item.get("summary"), str) else "",
+        "id": fields.get_str("id"),
+        "title": fields.get_str("title"),
+        "state": fields.get_str("state"),
+        "blocked": item.get("blocked") is True,
+        "step": fields.get_str("step"),
+        "category": fields.get_str("category"),
+        "summary": fields.get_str("summary"),
     }
 
 
