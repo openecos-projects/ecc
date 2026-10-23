@@ -52,18 +52,16 @@ def post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | N
     golden = getattr(getattr(workspace, "design", None), "origin_verilog", None)
     gate = None
     workspace_dir = workspace.directory
-    flow = getattr(workspace, "flow", None)
-    if workspace_dir is not None:
-        gate = _post_route_gate(workspace)
-        if flow is not None and flow.has_step(StepEnum.SYNTHESIS):
-            golden = (
-                workspace_dir
-                / STEP_DIRECTORIES[StepEnum.SYNTHESIS.value]
-                / "output"
-                / f"{design}_Synthesis.v.gz"
-            )
-        else:
-            golden = getattr(workspace.design, "golden_verilog", None) or golden
+    gate = _post_route_gate(workspace)
+    if workspace.flow.has_step(StepEnum.SYNTHESIS):
+        golden = (
+            workspace_dir
+            / STEP_DIRECTORIES[StepEnum.SYNTHESIS.value]
+            / "output"
+            / f"{design}_Synthesis.v.gz"
+        )
+    else:
+        golden = getattr(workspace.design, "golden_verilog", None) or golden
     return golden, gate
 
 

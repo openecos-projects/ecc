@@ -109,15 +109,14 @@ def copy_lvs_outputs(workspace: Workspace, step: EccStep):
 def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
     workspace_dir = workspace.directory
     sta_config = _workspace_sta_config_path(workspace)
-    if workspace_dir is None or sta_config is None:
+    if sta_config is None:
         return []
     sta_data = json_read(sta_config)
     rcx_output_dir = workspace_dir / STEP_DIRECTORIES[StepEnum.RCX.value] / "output"
     # STA-entry workspaces declare their parasitics (design.spef) instead of
     # producing them with RCX: without an RCX step in the flow, every corner
     # reads the declared SPEF.
-    flow = getattr(workspace, "flow", None)
-    has_rcx = bool(flow is not None and flow.has_step(StepEnum.RCX))
+    has_rcx = workspace.flow.has_step(StepEnum.RCX)
     declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
 
     liberty_by_corner = {liberty.get("corner"): liberty for liberty in sta_data.get("liberty", [])}
