@@ -861,9 +861,9 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
     origin = tmp_path / "origin" / "gcd.v"
     origin.parent.mkdir()
     origin.write_text("module gcd; imported mapped netlist\nendmodule\n", encoding="utf-8")
-    gate = tmp_path / "lvs_ecc" / "output" / "gcd_lvs.v.gz"
+    gate = tmp_path / "filler_ecc" / "output" / "gcd_filler.v.gz"
     gate.parent.mkdir(parents=True)
-    gate.write_text("module gcd; lvs\nendmodule\n", encoding="utf-8")
+    gate.write_text("module gcd; filler\nendmodule\n", encoding="utf-8")
     result_json = tmp_path / "postRouteLec_yosys_lec" / "output" / "gcd_postRouteLec_result.json"
     result_json.parent.mkdir(parents=True)
     origin_digest = file_digest(origin)
