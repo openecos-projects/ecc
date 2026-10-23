@@ -127,7 +127,7 @@ def test_signoff_steps_read_the_filler_output(tmp_path, monkeypatch):
         "lvs": "filler",
         "drc": "filler",
         "antennaCheck": "filler",
-        "postRouteLec": "drc",
+        "postRouteLec": "filler",
         "RCX": "filler",
         "sta": "filler",
         "powerAnalysis": "filler",
@@ -146,7 +146,7 @@ def test_legacy_ledger_keeps_policy_sources_and_physical_chaining(tmp_path, monk
         "lvs": "filler",
         "drc": "filler",
         "antennaCheck": "filler",
-        "postRouteLec": "drc",
+        "postRouteLec": "filler",
         "RCX": "filler",
         "sta": "filler",
         "powerAnalysis": "filler",
@@ -165,7 +165,7 @@ def test_read_only_projection_matches_the_execution_chain_on_this_ledger(tmp_pat
         "lvs": "filler",
         "drc": "filler",
         "antennaCheck": "filler",
-        "postRouteLec": "drc",
+        "postRouteLec": "filler",
         "RCX": "filler",
         "sta": "filler",
         "powerAnalysis": "filler",
@@ -184,7 +184,7 @@ def test_read_only_projection_follows_the_previous_step_without_category(tmp_pat
         "lvs": "filler",
         "drc": "filler",
         "antennaCheck": "filler",
-        "postRouteLec": "drc",
+        "postRouteLec": "filler",
         "RCX": "filler",
         "sta": "filler",
         "powerAnalysis": "filler",
@@ -373,7 +373,7 @@ def _checklist_prerequisite_sources(workspace, ledger) -> dict[str, str]:
 
 
 @pytest.mark.parametrize("legacy", [False, True])
-def test_post_route_gate_and_checklist_gate_agree_with_the_chain(tmp_path, monkeypatch, legacy):
+def test_post_route_gate_and_checker_chain_gate_semantics(tmp_path, monkeypatch, legacy):
     ledger = _legacy_ledger() if legacy else _real_ledger()
     workspace = _workspace(tmp_path)
     execution = _recorded_sources(workspace, ledger, monkeypatch)
@@ -381,6 +381,4 @@ def test_post_route_gate_and_checklist_gate_agree_with_the_chain(tmp_path, monke
     assert _post_route_gate_source(workspace, ledger) == execution["postRouteLec"]
 
     prerequisites = _checklist_prerequisite_sources(workspace, ledger)
-    assert prerequisites == {
-        name: source for name, source in execution.items() if source != "origin"
-    }
+    assert prerequisites == {"filler": "route", "Harden": "emir"}

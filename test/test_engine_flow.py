@@ -42,6 +42,55 @@ def test_engine_flow_missing_path_is_not_initialized():
     assert engine_flow.has_init() is False
 
 
+def test_engine_flow_load_repairs_legacy_checker_categories(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    flow_path = home / "flow.json"
+    flow_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "steps": [
+                    {
+                        "name": StepEnum.ANTENNA_CHECK.value,
+                        "tool": "ecc",
+                        "category": "PNR",
+                        "state": "Unstart",
+                    },
+                    {
+                        "name": StepEnum.HARDEN.value,
+                        "tool": "ecc",
+                        "category": "PNR",
+                        "state": "Unstart",
+                    },
+                    {
+                        "name": StepEnum.EMIR.value,
+                        "tool": "ecc",
+                        "category": "PNR",
+                        "state": "Unstart",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    workspace = Workspace()
+    workspace.flow.path = flow_path
+
+    EngineFlow(workspace)
+
+    assert [step["category"] for step in workspace.flow.data["steps"]] == [
+        "CHECKER",
+        "PNR",
+        "CHECKER",
+    ]
+    assert [step["category"] for step in json.loads(flow_path.read_text())["steps"]] == [
+        "CHECKER",
+        "PNR",
+        "CHECKER",
+    ]
+
+
 def test_engine_flow_blocks_on_and_writes_compact_checklist_status(tmp_path):
     workspace = Workspace()
     workspace.flow.path = tmp_path / "flow.json"
@@ -69,6 +118,60 @@ def test_engine_flow_blocks_on_and_writes_compact_checklist_status(tmp_path):
         "failed_items": ["prerequisite:route"],
         "source": "home/flow.json",
     }
+
+
+@pytest.mark.parametrize("blocked_step", [StepEnum.FILLER.value, StepEnum.DRC.value])
+def test_checkers_run_past_blocked_checklist_and_gate_next_pnr_step(
+    tmp_path, monkeypatch, blocked_step
+):
+    workspace = Workspace()
+    workspace.flow.path = tmp_path / "flow.json"
+    engine_flow = EngineFlow(workspace)
+    names = [
+        StepEnum.FILLER.value,
+        StepEnum.LVS.value,
+        StepEnum.DRC.value,
+        StepEnum.ANTENNA_CHECK.value,
+        SkippableStepEnum.POST_ROUTE_LEC.value,
+        StepEnum.RCX.value,
+        StepEnum.STA.value,
+        StepEnum.POWER_ANALYSIS.value,
+        StepEnum.EMIR.value,
+        StepEnum.HARDEN.value,
+    ]
+    workspace.flow.data = {
+        "steps": [
+            {
+                "name": name,
+                "tool": "ecc",
+                "state": "Unstart",
+                **(
+                    {"checklist_status": {"status": "blocked", "blocked": True}}
+                    if name == blocked_step
+                    else {}
+                ),
+            }
+            for name in names
+        ]
+    }
+    engine_flow.workspace_steps = [SimpleNamespace(name=name, tool="ecc") for name in names]
+    executed = []
+
+    def run_step(step, **_kwargs):
+        blocked_by = engine_flow._blocked_checklist_prerequisite(step)
+        executed.append((step.name, blocked_by))
+        return StateEnum.Invalid if blocked_by is not None else StateEnum.Success
+
+    monkeypatch.setattr(engine_flow, "init_db_engine", lambda: True)
+    monkeypatch.setattr(engine_flow, "_can_parallelize_checker_batch", lambda *_args: False)
+    monkeypatch.setattr(engine_flow, "run_step", run_step)
+    monkeypatch.setattr(flow_module, "log_flow", lambda **_kwargs: None)
+
+    assert engine_flow.run_steps() is False
+    assert [name for name, _blocked_by in executed] == names
+    assert [blocked_by for name, blocked_by in executed if name == StepEnum.HARDEN.value] == [
+        blocked_step
+    ]
 
 
 def test_run_step_without_runtime_operation_marker_does_not_expand_function(monkeypatch, tmp_path):
@@ -1257,13 +1360,15 @@ def test_checklist_gate_follows_the_input_chain(tmp_path):
             },
             {"name": "lvs", "tool": "ecc", "category": "CHECKER"},
             {"name": "drc", "tool": "ecc", "category": "CHECKER"},
-            {"name": "antennaCheck", "tool": "ecc", "category": "PNR"},
+            {"name": "antennaCheck", "tool": "ecc", "category": "CHECKER"},
+            {"name": "Harden", "tool": "ecc", "category": "PNR"},
         ]
     }
 
-    # `drc` belongs to the parallel batch: its input is `filler`, not the
-    # previous ledger entry `lvs`.
-    assert flow._blocked_checklist_prerequisite(EccStep(name="drc", tool="ecc")) == "filler"
+    for checker in ("lvs", "drc", "antennaCheck"):
+        assert flow._blocked_checklist_prerequisite(EccStep(name=checker, tool="ecc")) is None
+
+    assert flow._blocked_checklist_prerequisite(EccStep(name="Harden", tool="ecc")) == "filler"
 
 
 def test_unregistered_checker_step_fails_the_classification(tmp_path):

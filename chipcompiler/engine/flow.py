@@ -22,9 +22,12 @@ from chipcompiler.data import (
     is_finished_step_state,
     log_flow,
 )
+from chipcompiler.data.workspace.flow_data import normalize_flow_step_categories
 from chipcompiler.data.workspace.flow_ledger import validate_transition
 from chipcompiler.data.workspace.flow_policy import (
     FlowInputResolver,
+    explicit_input_step,
+    flow_category,
     is_checker_batch_step,
     ledger_category,
 )
@@ -178,6 +181,8 @@ class EngineFlow:
             self.workspace.flow.data = {}
             return False
         self.workspace.flow.data = json_read(self.workspace.flow.path)
+        if normalize_flow_step_categories(self.workspace.flow.data):
+            self.save()
         return len(self.workspace.flow.data.get("steps", [])) > 0
 
     def save(self) -> bool:
@@ -655,13 +660,30 @@ class EngineFlow:
         )
         if current_index is None:
             return None
-        prerequisite_name = FlowInputResolver(steps).input_step_name(current_index)
-        prerequisite = next((step for step in steps if step.get("name") == prerequisite_name), None)
-        checklist = None
-        if isinstance(prerequisite, dict):
+        current = steps[current_index]
+        if flow_category(current) == FlowStepCategory.CHECKER:
+            return None
+
+        prerequisite_name = explicit_input_step(current)
+        if prerequisite_name is not None:
+            prerequisites = [
+                step
+                for step in steps
+                if isinstance(step, dict) and step.get("name") == prerequisite_name
+            ]
+        else:
+            prerequisites = []
+            for step in reversed(steps[:current_index]):
+                if not isinstance(step, dict):
+                    continue
+                prerequisites.append(step)
+                if flow_category(step) != FlowStepCategory.CHECKER:
+                    break
+
+        for prerequisite in prerequisites:
             checklist = prerequisite.get("checklist_status") or prerequisite.get("checklist")
-        if isinstance(checklist, dict) and checklist.get("status") == "blocked":
-            return str(prerequisite.get("name") or "previous step")
+            if isinstance(checklist, dict) and checklist.get("status") == "blocked":
+                return str(prerequisite.get("name") or "previous step")
         return None
 
     def _run_checker_batch(self, steps: list[WorkspaceStep], *, rerun: bool) -> list[StateEnum]:

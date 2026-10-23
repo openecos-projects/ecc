@@ -120,14 +120,16 @@ FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
     StepEnum.LVS.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.CHECKER_BATCH),
     StepEnum.DRC.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.CHECKER_BATCH),
     StepEnum.ANTENNA_CHECK.value: FlowStepPolicy(
-        FlowStepCategory.PNR, FlowInputSource.FILLER, advisory=True
+        FlowStepCategory.CHECKER, FlowInputSource.FILLER, advisory=True
     ),
-    SkippableStepEnum.POST_ROUTE_LEC.value: FlowStepPolicy(FlowStepCategory.CHECKER),
+    SkippableStepEnum.POST_ROUTE_LEC.value: FlowStepPolicy(
+        FlowStepCategory.CHECKER, FlowInputSource.FILLER
+    ),
     StepEnum.RCX.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
     StepEnum.STA.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
     StepEnum.POWER_ANALYSIS.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
     StepEnum.EMIR.value: FlowStepPolicy(
-        FlowStepCategory.PNR, FlowInputSource.FILLER, advisory=True
+        FlowStepCategory.CHECKER, FlowInputSource.FILLER, advisory=True
     ),
     StepEnum.HARDEN.value: FlowStepPolicy(FlowStepCategory.PNR, FlowInputSource.FILLER),
     StepEnum.SIGNOFF.value: FlowStepPolicy(FlowStepCategory.PNR),

@@ -87,7 +87,7 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
     if not skip:
         lec = steps["postRouteLec"]
         assert (lec.input.gate_verilog, lec.input.golden_verilog) == (
-            steps["drc"].output.verilog,
+            filler.output.verilog,
             workspace.design.origin_verilog,
         )
 
@@ -120,4 +120,4 @@ def test_loading_existing_workspace_preserves_legacy_post_route_order(tmp_path):
 
     flow = EngineFlow(workspace=workspace)
 
-    assert flow.workspace.flow.data == ledger
+    assert [step["name"] for step in flow.workspace.flow.data["steps"]] == names
