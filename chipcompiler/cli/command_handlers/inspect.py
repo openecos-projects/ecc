@@ -39,16 +39,14 @@ def _manifest_error_result(ctx: CommandContext) -> CommandResult:
     )
 
 
-def _resolve_readonly_run_dir(command_input, ctx: CommandContext):
+def _resolve_readonly_run_dir(command_input, ctx: CommandContext) -> str:
     """Return the manifest-selected workspace without loading it."""
     _ = command_input
-    return ctx.run_dir, None
+    return ctx.run_dir
 
 
 def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
-    run_dir, failure = _resolve_readonly_run_dir(command_input, ctx)
-    if failure is not None:
-        return failure
+    run_dir = _resolve_readonly_run_dir(command_input, ctx)
     if ctx.config_error:
         return _config_error_result(ctx, ctx.config_error)
     if ctx.manifest_error:
@@ -123,9 +121,7 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
 
 
 def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
-    run_dir, failure = _resolve_readonly_run_dir(command_input, ctx)
-    if failure is not None:
-        return failure
+    run_dir = _resolve_readonly_run_dir(command_input, ctx)
     if ctx.config_error:
         return _config_error_result(ctx, ctx.config_error)
     if ctx.manifest_error:
@@ -258,9 +254,7 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
 
 
 def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
-    run_dir, failure = _resolve_readonly_run_dir(command_input, ctx)
-    if failure is not None:
-        return failure
+    run_dir = _resolve_readonly_run_dir(command_input, ctx)
     if ctx.manifest_error:
         return _manifest_error_result(ctx)
 
