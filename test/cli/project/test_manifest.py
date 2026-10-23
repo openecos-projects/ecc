@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from chipcompiler.cli.project.manifest import (
+from chipcompiler.project.manifest import (
     ManifestError,
     assemble_config,
     classify_project,

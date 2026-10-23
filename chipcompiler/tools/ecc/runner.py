@@ -45,6 +45,8 @@ from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 from chipcompiler.tools.ecc.utility import is_eda_exist
 from chipcompiler.utility import json_read, json_write
 
+ECCToolsPlot: type | None = None
+
 _GEOMETRY_SNAPSHOT_STEPS = frozenset(
     {
         StepEnum.PRE_FLOORPLAN.value,

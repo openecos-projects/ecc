@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.update_check import (
@@ -107,11 +108,12 @@ def test_latest_nightly_skips_malformed_release_entries():
     assert latest_nightly(releases) == latest(
         tag="v0.1.0-nightly.20261013", rerun=1, ecc_version=None, ecc_commit=None
     )
-    assert latest_nightly(["not-a-dict"]) is None
+    invalid: Any = ["not-a-dict"]
+    assert latest_nightly(invalid) is None
 
 
 def test_latest_nightly_skips_non_string_tag_names():
-    releases = [
+    releases: Any = [
         {"tag_name": None, "prerelease": True},
         {"tag_name": 20261013, "prerelease": True},
     ]
@@ -128,6 +130,7 @@ def test_body_field_parsing_takes_first_match_and_skips_empty_values():
     )
 
     parsed = latest_nightly([release("v0.1.0-nightly.20261012", body)])
+    assert parsed is not None
 
     assert parsed.ecc_version == "0.1.0-alpha.13-nightly.20261012.g27084f4"
     assert parsed.ecc_commit == LATEST_COMMIT

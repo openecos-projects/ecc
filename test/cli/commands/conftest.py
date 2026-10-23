@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -106,7 +107,7 @@ def flow_mocks(monkeypatch):
     Returns a namespace with `capture` (the create_workspace kwargs) and
     `flow` (the DummyFlow class, for instance/state assertions).
     """
-    capture = {"create_kwargs": None}
+    capture: dict[str, Any] = {"create_kwargs": None}
     workspace_obj = SimpleNamespace(name="workspace", flow=SimpleNamespace(data={"steps": []}))
 
     DummyFlow.instances = []

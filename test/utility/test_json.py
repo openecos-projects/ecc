@@ -2,6 +2,7 @@ import gzip
 import json
 import os
 import stat
+from typing import Any
 
 import pytest
 
@@ -250,7 +251,7 @@ class TestFlowSetStatePersistence:
             json.dumps({"steps": [{"name": "SYNTHESIS", "tool": "yosys", "state": "Unstart"}]})
         )
 
-        workspace = type(
+        workspace: Any = type(
             "MockWorkspace",
             (),
             {
@@ -270,8 +271,8 @@ class TestFlowSetStatePersistence:
             },
         )()
 
-        flow = EngineFlow.__new__(EngineFlow)
-        flow.workspace = workspace
+        flow: Any = EngineFlow.__new__(EngineFlow)
+        vars(flow)["workspace"] = workspace
         flow.workspace_steps = []
 
         monkeypatch.setattr("chipcompiler.utility.json_write", lambda *a, **kw: False)

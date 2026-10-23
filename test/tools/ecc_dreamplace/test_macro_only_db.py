@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 from dreamplace.macroPlaceDB import MacroPlaceDB
@@ -22,7 +23,7 @@ def _macro_params(**overrides):
 
 
 def test_macro_only_uses_native_masks_instead_of_geometry_heuristics():
-    place_db = MacroPlaceDB(ecc_module=None)
+    place_db: Any = MacroPlaceDB(ecc_module=None)
     place_db.num_physical_nodes = 8
     place_db.num_terminals = 4
     place_db.num_terminal_NIs = 0
@@ -74,7 +75,7 @@ def test_macro_only_apply_delegates_unscaled_physical_coordinates_to_native_writ
 
     ecc_module = FakeEccModule()
     native_db = FakeNativePlaceDB()
-    place_db = MacroPlaceDB(ecc_module=ecc_module)
+    place_db: Any = MacroPlaceDB(ecc_module=ecc_module)
     place_db.pydb = native_db
     place_db.ecc_db = object()
     place_db.num_physical_nodes = 4
@@ -110,7 +111,7 @@ def test_normal_apply_keeps_dense_writeback():
             self.dense_calls.append((ecc_db, node_x.copy(), node_y.copy()))
 
     ecc_module = FakeEccModule()
-    place_db = MacroPlaceDB(ecc_module=ecc_module)
+    place_db: Any = MacroPlaceDB(ecc_module=ecc_module)
     place_db.pydb = FakeNativePlaceDB()
     place_db.ecc_db = object()
     place_db.rawdb = ECCPlaceIOBackend(
@@ -139,7 +140,7 @@ def test_normal_apply_keeps_dense_writeback():
 
 
 def test_macro_only_empty_candidate_set_skips_placement():
-    engine = PlacementEngine.__new__(PlacementEngine)
+    engine: Any = PlacementEngine.__new__(PlacementEngine)
     engine.params = SimpleNamespace(macro_only=1)
     engine.placedb = SimpleNamespace(
         pydb=SimpleNamespace(

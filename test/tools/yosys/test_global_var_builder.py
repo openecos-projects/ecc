@@ -46,12 +46,12 @@ def _build_workspace_and_step(tmp_path, *, rtl_name="top.v", create_rtl=True, fi
     )
 
     workspace = Workspace(
-        directory=str(tmp_path),
+        directory=tmp_path,
         design=OriginDesign(
             name="top",
             top_module="top",
-            origin_verilog=str(rtl_file),
-            input_filelist=str(filelist) if filelist is not None else "",
+            origin_verilog=rtl_file,
+            input_filelist=filelist,
         ),
         pdk=PDK(
             libs=[lib_a, lib_b],
@@ -64,12 +64,12 @@ def _build_workspace_and_step(tmp_path, *, rtl_name="top.v", create_rtl=True, fi
             abc_load=0.02,
         ),
         parameters=Parameters(data={"frequency_max": 100}),
-        config={"db": str(db_config)},
+        config={"db": db_config},
     )
 
     step = YosysStep(
         name="Synthesis",
-        directory=str(tmp_path / "Synthesis_yosys"),
+        directory=tmp_path / "Synthesis_yosys",
         input=StepInput(verilog=rtl_file),
         output=YosysOutput(
             verilog=tmp_path / "Synthesis_yosys" / "output" / "top.v.gz",
@@ -95,7 +95,7 @@ def test_yosys_builder_constructs_path_objects_and_creates_dirs(tmp_path):
     step = yosys_builder.build_step(
         workspace=workspace,
         step_name=StepEnum.SYNTHESIS.value,
-        input_def="",
+        input_def=None,
         input_verilog=rtl_file,
     )
 
@@ -122,7 +122,7 @@ def test_yosys_subflow_writes_path_payload_as_json_strings(tmp_path):
     step = yosys_builder.build_step(
         workspace=workspace,
         step_name=StepEnum.SYNTHESIS.value,
-        input_def="",
+        input_def=None,
         input_verilog=tmp_path / "top.v",
     )
     yosys_builder.build_step_space(step)

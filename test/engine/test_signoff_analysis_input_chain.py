@@ -6,6 +6,8 @@ execution chain and the read-only projections are pinned separately and are
 allowed to disagree on this ledger.
 """
 
+from typing import Any
+
 from chipcompiler.data import OriginDesign, StateEnum, StepEnum, Workspace
 from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
 from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
@@ -21,7 +23,15 @@ class _RecordingCollector(CollectorAnalysisMixin):
     def _refresh_step_analysis(self, step) -> None:
         self.refreshed.append(step)
 
-    def _analysis_issue(self, step_name, *, required, reason, kind, label=None):
+    def _analysis_issue(
+        self,
+        step_name: str,
+        *,
+        required: bool,
+        reason: str,
+        kind: str,
+        label: str | None = None,
+    ) -> Any:
         self.issues.append((step_name, kind, reason))
         return None
 

@@ -638,6 +638,7 @@ def test_workspace_spec_update_retain_backup_preserves_replaced_generation(
         retain_backup=True,
     )
     assert second.backup_directory == tmp_path / ".workspace.replace-backup-2"
+    assert second.backup_directory is not None
     retained_second = read_engineering_snapshot_from_directory(second.backup_directory)
     assert retained_second["workspaceRevision"] == after["workspaceRevision"]
 

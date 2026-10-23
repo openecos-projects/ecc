@@ -12,6 +12,7 @@ class TestSetPdkRoot:
 
         result = set_pdk_root(text, 'C:\\pdk "special"')
 
+        assert result is not None
         parsed = tomllib.loads(result)
         assert parsed["pdk"]["root"] == 'C:\\pdk "special"'
         assert parsed["pdk"]["name"] == "ics55"
@@ -189,6 +190,8 @@ class TestMultilineTomlValues:
 
         after = remove_scoped_key(text, "pdk", "root")
 
+        assert after is not None
+        assert after is not None
         assert tomllib.loads(after) == {"pdk": {"name": "ics55"}}
 
     def test_set_replaces_multiline_array(self, tmp_path, capsys, create_cli_project):
@@ -335,6 +338,7 @@ class TestSafeTomlSectionParsing:
 
         result = set_scoped_key(text, "params.place", "target_density", 0.7)
 
+        assert result is not None
         parsed = tomllib.loads(result)
         assert parsed["params"]["place"]["target_density"] == 0.7
         assert parsed["params"]["note"].strip() == "header-like text:\n[flow]"
@@ -347,6 +351,7 @@ class TestSafeTomlSectionParsing:
 
         result = set_scoped_key(text, "params.place", "target_density", 0.7)
 
+        assert result is not None
         parsed = tomllib.loads(result)
         assert parsed["params"]["place"]["target_density"] == 0.7
         assert result.count("[params") == 1
@@ -356,6 +361,7 @@ class TestSafeTomlSectionParsing:
 
         result = set_scoped_key(text, "params.place", "target_density", 0.7)
 
+        assert result is not None
         parsed = tomllib.loads(result)
         assert parsed["params"]["place"]["target_density"] == 0.7
         assert result.count("target_density") == 1
@@ -365,6 +371,7 @@ class TestSafeTomlSectionParsing:
 
         result = remove_scoped_key(text, "params.place", "target_density")
 
+        assert result is not None
         parsed = tomllib.loads(result)
         assert "target_density" not in parsed["params"]["place"]
         assert parsed["params"]["place"]["other"] == 1

@@ -72,7 +72,9 @@ def filter_flow_steps(steps: list, skip: Collection[str]) -> list:
     ]
 
 
-def substitute_lec_engine(steps: list, lec_engine: LECEngineEnum = DEFAULT_LEC_ENGINE) -> list:
+def substitute_lec_engine(
+    steps: list, lec_engine: LECEngineEnum | str = DEFAULT_LEC_ENGINE
+) -> list:
     """Replace the tool of a built chain's LEC entries with the engine.
 
     For callers that build a preset chain through the no-arg discovery
@@ -96,7 +98,7 @@ def substitute_lec_engine(steps: list, lec_engine: LECEngineEnum = DEFAULT_LEC_E
 
 
 def build_rtl2gds_flow(
-    *, skip: Collection[str] = (), lec_engine: LECEngineEnum = DEFAULT_LEC_ENGINE
+    *, skip: Collection[str] = (), lec_engine: LECEngineEnum | str = DEFAULT_LEC_ENGINE
 ) -> list:
     lec_tool = LECEngineEnum.from_value(lec_engine).value
     steps = []
@@ -180,7 +182,7 @@ def build_flow_range(
     to_step: str | StepBaseEnum,
     *,
     skip: Collection[str] = (),
-    lec_engine: LECEngineEnum = DEFAULT_LEC_ENGINE,
+    lec_engine: LECEngineEnum | str = DEFAULT_LEC_ENGINE,
 ) -> list:
     """Return the inclusive canonical RTL-to-GDS range requested by a workspace.
 
@@ -215,7 +217,7 @@ def build_syn_sta_flow() -> list:
     return steps
 
 
-def build_synthesis_lec_flow(*, lec_engine: LECEngineEnum = DEFAULT_LEC_ENGINE) -> list:
+def build_synthesis_lec_flow(*, lec_engine: LECEngineEnum | str = DEFAULT_LEC_ENGINE) -> list:
     lec_tool = LECEngineEnum.from_value(lec_engine).value
     steps = []
 

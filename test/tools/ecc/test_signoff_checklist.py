@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 from chipcompiler.data import (
     Checklist,
@@ -867,8 +868,8 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
     gate.write_text("module gcd; filler\nendmodule\n", encoding="utf-8")
     result_json = tmp_path / "postRouteLec_yosys_lec" / "output" / "gcd_postRouteLec_result.json"
     result_json.parent.mkdir(parents=True)
-    origin_digest = file_digest(origin)
-    gate_digest = file_digest(gate)
+    origin_digest: Any = file_digest(origin)
+    gate_digest: Any = file_digest(gate)
     result_json.write_text(
         json.dumps(
             {

@@ -82,6 +82,8 @@ class TestScalarSummary:
         critical = evaluate_scalar_summary(feasibility, dimensions, "timing_critical").score
         # All-evaluated-dimensions-near-100 keeps both high; timing_critical
         # weights its 100-score timing dimension higher than balanced does.
+        assert balanced is not None
+        assert critical is not None
         assert critical >= balanced
 
     def test_unknown_profile_falls_back_to_balanced(self):

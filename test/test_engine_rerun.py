@@ -1,6 +1,7 @@
 import copy
 import json
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -10,7 +11,7 @@ from chipcompiler.engine import rerun
 from chipcompiler.engine.flow import EngineFlow
 
 
-def _make_run_flow(tmp_path, steps, tools_by_name=None):
+def _make_run_flow(tmp_path, steps, tools_by_name=None) -> Any:
     """EngineFlow over a persisted flow.json plus aligned workspace steps."""
     tools_by_name = tools_by_name or {}
     home = tmp_path / "home"

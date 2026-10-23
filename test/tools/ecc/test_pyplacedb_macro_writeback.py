@@ -1,5 +1,6 @@
 from pathlib import Path
 from textwrap import dedent
+from typing import Any
 
 import numpy as np
 import pytest
@@ -358,7 +359,7 @@ def test_macro_placement_engine_smoke_commits_candidates_as_fixed(mixed_macro_pl
     params.global_place_stages[0]["iteration"] = 25
     params.stop_overflow = 1.0
 
-    engine = PlacementEngine(params)
+    engine: Any = PlacementEngine(params)
     engine.setup_rawdb(data_manager=ecc_module)
     halo_setup = {}
     setup_placedb = engine.setup_placedb
@@ -458,11 +459,12 @@ def test_macro_placement_engine_smoke_commits_candidates_as_fixed(mixed_macro_pl
     normal_params.global_place_stages[0]["iteration"] = 5
     normal_params.stop_overflow = 1.0
 
-    normal_engine = PlacementEngine(normal_params)
+    normal_engine: Any = PlacementEngine(normal_params)
     normal_engine.setup_rawdb(data_manager=ECCToolsModule())
     normal_result = normal_engine.run()
 
     assert normal_result["hpwl"] != float("inf")
+    assert normal_engine.placedb is not None
     fixed_names = {
         name.decode()
         for name in normal_engine.placedb.node_names[normal_engine.placedb.fixed_slice]

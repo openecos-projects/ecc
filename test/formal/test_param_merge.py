@@ -6,9 +6,10 @@ Proves override, preservation, list replacement, and nested merge properties.
 """
 
 from copy import deepcopy
+from typing import Any
 
 import pytest
-from z3 import And, ArithRef, Bool, BoolRef, If, Int, Not, Solver, unsat
+from z3 import And, ArithRef, Bool, If, Int, Not, Solver, unsat
 
 from chipcompiler.data import get_parameters
 from chipcompiler.data.parameter import update_parameters
@@ -26,8 +27,8 @@ def _build_merge_model(
     list[ArithRef],
     list[ArithRef],
     list[ArithRef],
-    list[BoolRef],
-    list[BoolRef],
+    list[Any],
+    list[Any],
     list[ArithRef],
     list[ArithRef],
 ]:
@@ -44,8 +45,8 @@ def _build_merge_model(
     source_val: list[ArithRef] = [Int(f"src_v_{k}") for k in range(num_keys)]
     target_val: list[ArithRef] = [Int(f"tgt_v_{k}") for k in range(num_keys)]
     result_val: list[ArithRef] = [Int(f"res_v_{k}") for k in range(num_keys)]
-    source_present: list[BoolRef] = [Bool(f"src_p_{k}") for k in range(num_keys)]
-    target_present: list[BoolRef] = [Bool(f"tgt_p_{k}") for k in range(num_keys)]
+    source_present: list[Any] = [Bool(f"src_p_{k}") for k in range(num_keys)]
+    target_present: list[Any] = [Bool(f"tgt_p_{k}") for k in range(num_keys)]
     source_type: list[ArithRef] = [Int(f"src_t_{k}") for k in range(num_keys)]
     target_type: list[ArithRef] = [Int(f"tgt_t_{k}") for k in range(num_keys)]
 
@@ -56,18 +57,18 @@ def _build_merge_model(
 
     # Encode update_parameters() logic per key:
     for k in range(num_keys):
-        both_present: BoolRef = And(source_present[k], target_present[k])
-        list_replace: BoolRef = And(both_present, source_type[k] == TYPE_LIST)
-        dict_merge: BoolRef = And(
+        both_present: Any = And(source_present[k], target_present[k])
+        list_replace: Any = And(both_present, source_type[k] == TYPE_LIST)
+        dict_merge: Any = And(
             both_present, source_type[k] == TYPE_DICT, target_type[k] == TYPE_DICT
         )
-        scalar_replace: BoolRef = And(
+        scalar_replace: Any = And(
             both_present,
             Not(source_type[k] == TYPE_LIST),
             Not(And(source_type[k] == TYPE_DICT, target_type[k] == TYPE_DICT)),
         )
-        source_only: BoolRef = And(source_present[k], Not(target_present[k]))
-        target_only: BoolRef = And(Not(source_present[k]), target_present[k])
+        source_only: Any = And(source_present[k], Not(target_present[k]))
+        target_only: Any = And(Not(source_present[k]), target_present[k])
 
         solver.add(
             If(

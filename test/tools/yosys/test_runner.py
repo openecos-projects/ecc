@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 from chipcompiler.data import LogPaths, ScriptPaths, StateEnum, StepInput, YosysData, YosysOutput
 from chipcompiler.tools.yosys import runner
 
 
-def _build_workspace_and_step(tmp_path: Path):
+def _build_workspace_and_step(tmp_path: Path) -> tuple[Any, Any, Path, Path, Path]:
     script_dir = tmp_path / "script"
     script_dir.mkdir()
 

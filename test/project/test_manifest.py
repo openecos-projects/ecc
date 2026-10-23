@@ -4,7 +4,6 @@ from contextlib import contextmanager
 import pytest
 
 import chipcompiler.project.api as project_api
-from chipcompiler.cli.project.manifest import load_manifest
 from chipcompiler.project import (
     create_project_manifest,
     discover_project_manifest,
@@ -13,7 +12,7 @@ from chipcompiler.project import (
     register_workspace_backup,
     repoint_generation_pointers,
 )
-from chipcompiler.project.manifest import ManifestError
+from chipcompiler.project.manifest import ManifestError, load_manifest
 from chipcompiler.project.manifest_refresh import refresh_workspace_derived_fields
 from chipcompiler.project.manifest_write import append_workspace_entry, write_back_workspace_status
 

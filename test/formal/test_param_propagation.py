@@ -182,7 +182,7 @@ def test_routability_runtime_flags_are_config_driven(tmp_path) -> None:
         },
     )
     workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
+        directory=Path(tmp_path / "workspace"),
         design=OriginDesign(name="gcd"),
         config={"dreamplace": config_path},
     )

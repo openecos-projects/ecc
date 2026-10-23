@@ -314,7 +314,7 @@ def test_signoff_contract_exit_code_matrix(monkeypatch, tmp_path, status, expect
     from types import SimpleNamespace
 
     import chipcompiler.cli.command_handlers.signoff_check as module
-    from chipcompiler.cli.core.types import CommandContext
+    from chipcompiler.cli.core.types import CommandContext, OutputMode
 
     home = tmp_path / "home"
     home.mkdir()
@@ -337,7 +337,7 @@ def test_signoff_contract_exit_code_matrix(monkeypatch, tmp_path, status, expect
     monkeypatch.setattr(module, "_metric_checker_gate", lambda root, *args: {"status": status})
     result = module.check(
         SimpleNamespace(profile="rtl2gds"),
-        CommandContext("", None, "", None, SimpleNamespace(value="json")),
+        CommandContext("", None, "", None, OutputMode.JSON),
     )
     assert result.exit_code == expected_code
     assert result.records[0]["status"] == status

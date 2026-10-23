@@ -50,6 +50,7 @@ def run_workspace_flow(
         parameters=parameters,
     )
 
+    assert workspace is not None
     engine_db = EngineDB(workspace=workspace) if with_engine_db else None
     engine_flow = EngineFlow(workspace=workspace, engine_db=engine_db)
     if not engine_flow.has_init():

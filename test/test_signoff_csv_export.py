@@ -7,6 +7,7 @@ keep this pytest only until the next cleanup.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -44,7 +45,8 @@ class TestLoadCsvSpec:
                 ],
             },
         )
-        spec = load_csv_spec(str(path))
+        spec: Any = load_csv_spec(str(path))
+        assert spec is not None
         assert spec.version == 1
         assert spec.metrics == (MetricSpec(id="drc_count", reference=0, op="=="),)
         assert spec.checklist[0].id == "quality.drc.clean"
@@ -70,7 +72,8 @@ class TestLoadCsvSpec:
             tmp_path,
             {"checklist": [{"id": "x", "require_state": None, "require_blocked": None}]},
         )
-        spec = load_csv_spec(str(path))
+        spec: Any = load_csv_spec(str(path))
+        assert spec is not None
         assert spec.checklist[0].require_state is None
         assert spec.checklist[0].require_blocked is None
 

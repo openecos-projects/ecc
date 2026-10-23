@@ -6,6 +6,7 @@ import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -133,11 +134,13 @@ def test_real_worker_tree_is_sampled_and_sampler_stops(tmp_path):
             time.sleep(0.01)
         assert ready.is_file()
         observation = start_observation(process.pid, isolated=True, step="route", tool="ecc")
+        assert observation is not None
         time.sleep(0.3)
         result = observation.finish()
         assert result["status"] in {"available", "partial"}
         assert result["peak_rss_bytes"] > 16_000_000
         assert result["sample_count"] >= 1
+        assert observation.thread is not None
         assert not observation.thread.is_alive()
     finally:
         if observation is not None:
@@ -151,12 +154,14 @@ def test_in_process_execution_persists_shared_scope(monkeypatch, tmp_path):
 
     monkeypatch.setenv("ECC_STEP_SUBPROCESS", "0")
     monkeypatch.setattr("chipcompiler.tools.run_step", lambda **_kwargs: True)
-    workspace = SimpleNamespace(logger=logging.getLogger("resource-test"))
-    step = SimpleNamespace(name="route", tool="ecc", log=SimpleNamespace(file=""))
+    workspace: Any = SimpleNamespace(logger=logging.getLogger("resource-test"))
+    step: Any = SimpleNamespace(name="route", tool="ecc", log=SimpleNamespace(file=""))
 
-    result = execute_tool_step(workspace, step, SimpleNamespace(engine=None))
+    engine_db: Any = SimpleNamespace(engine=None)
+    result = execute_tool_step(workspace, step, engine_db)
 
     assert result.error is None
+    assert result.resource_observation is not None
     assert result.resource_observation["scope"] == "shared_process_tree"
     assert result.resource_observation["status"] in {"partial", "unavailable"}
     json.dumps(result.resource_observation, allow_nan=False)
@@ -181,12 +186,13 @@ def test_failed_execution_persists_facts_and_rerun_gets_a_new_identity(monkeypat
     workspace = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {"steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]}
+    assert workspace.flow.path is not None
     workspace.flow.path.write_text(json.dumps(workspace.flow.data))
     (tmp_path / "home").mkdir()
     flow = EngineFlow(workspace)
     step = EccStep(name="route", directory=tmp_path, tool="ecc")
     flow.workspace_steps = [step]
-    flow.engine_db = SimpleNamespace(engine=None)
+    vars(flow)["engine_db"] = SimpleNamespace(engine=None)
 
     flow.run_step(step)
     first = json.loads(workspace.flow.path.read_text())["steps"][0]
@@ -218,6 +224,7 @@ def test_skipping_a_successful_step_does_not_create_a_new_measurement(monkeypatc
         ]
     }
     workspace.flow.path = tmp_path / "flow.json"
+    assert workspace.flow.path is not None
     workspace.flow.path.write_text(json.dumps(workspace.flow.data))
     (tmp_path / "home").mkdir()
     flow = EngineFlow(workspace)
@@ -252,6 +259,7 @@ def test_start_commit_failure_preserves_previous_resource_facts(monkeypatch, tmp
         ]
     }
     workspace.flow.path = tmp_path / "flow.json"
+    assert workspace.flow.path is not None
     workspace.flow.path.write_text(json.dumps(workspace.flow.data))
     (tmp_path / "home").mkdir()
     flow = EngineFlow(workspace)

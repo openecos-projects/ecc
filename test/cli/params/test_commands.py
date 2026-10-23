@@ -1,5 +1,6 @@
 import json
 import os
+from typing import Any
 
 import pytest
 
@@ -46,7 +47,9 @@ class TestParamShow:
         assert rc == 0
         record = plain_records(capsys.readouterr().out)[0]
         assert record["param"] == "place.target_density"
-        assert record["default"] == str(lookup_schema("place.target_density").default)
+        schema = lookup_schema("place.target_density")
+        assert schema is not None
+        assert record["default"] == str(schema.default)
         assert "source" in record
         assert "maps_to" in record
 
@@ -271,7 +274,7 @@ class TestRunSet:
 
         project_dir = create_cli_project()
         workspace_obj = SimpleNamespace(name="workspace")
-        capture = {"kwargs": None}
+        capture: dict[str, Any] = {"kwargs": None}
 
         def fake_create(**kwargs):
             capture["kwargs"] = kwargs
@@ -325,7 +328,7 @@ class TestRunSet:
         from types import SimpleNamespace
 
         project_dir = create_cli_project()
-        capture = {"kwargs": None}
+        capture: dict[str, Any] = {"kwargs": None}
 
         def fake_create(**kwargs):
             capture["kwargs"] = kwargs
@@ -650,7 +653,9 @@ class TestDiffFiltering:
         self, tmp_path, capsys, create_cli_project, plain_records
     ):
         project_dir = create_cli_project()
-        schema_default = lookup_schema("place.target_density").default
+        schema = lookup_schema("place.target_density")
+        assert schema is not None
+        schema_default = schema.default
         cli_main.run(
             ["param", "set", "place.target_density", str(schema_default), "--project", project_dir]
         )

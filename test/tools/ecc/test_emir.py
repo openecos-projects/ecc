@@ -71,6 +71,7 @@ def test_emir_technology_override_survives_workspace_refresh(tmp_path, minimal_i
         pdk_root=str(minimal_ics55_pdk_factory(tmp_path / "pdk")),
         parameters={"config_overrides": {"emir": override}},
     )
+    assert workspace is not None
     config_path = workspace.config[StepEnum.EMIR.value]
     assert json_read(config_path) == override
 

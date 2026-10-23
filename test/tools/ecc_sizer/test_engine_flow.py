@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 from chipcompiler.data import EccOutput, EccStep, SkippableStepEnum, StateEnum, StepEnum, Workspace
 from chipcompiler.data.workspace.flow_types import FlowDocument
@@ -17,7 +18,7 @@ def test_timing_opt_step_result_does_not_require_gds(tmp_path):
     output_def.write_text("def\n", encoding="utf-8")
     output_verilog.write_text("module gcd; endmodule\n", encoding="utf-8")
 
-    step = EccStep(
+    step: Any = EccStep(
         name=SkippableStepEnum.TIMING_OPT.value,
         tool="sizer",
         output=EccOutput(
@@ -39,7 +40,7 @@ def test_timing_opt_step_result_requires_declared_geometry_manifest(tmp_path):
     output_def.write_text("def\n", encoding="utf-8")
     output_verilog.write_text("module gcd; endmodule\n", encoding="utf-8")
 
-    step = EccStep(
+    step: Any = EccStep(
         name=SkippableStepEnum.TIMING_OPT.value,
         tool="sizer",
         output=EccOutput(
@@ -227,7 +228,7 @@ def test_legacy_one_stage_success_is_invalidated_before_skip(tmp_path, monkeypat
     workspace.flow.path.write_text(json.dumps(flow_data), encoding="utf-8")
     workspace.flow.data = flow_data
 
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),

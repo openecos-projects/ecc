@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -11,6 +12,10 @@ from chipcompiler.data import (
 )
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
 from chipcompiler.utility import json_write
+
+
+def _ecc_placeholder() -> Any:
+    return object()
 
 
 class FakeParams:
@@ -76,7 +81,7 @@ def test_run_accepts_only_the_defined_empty_macro_short_circuit(
     module = DreamplaceModule(
         workspace=workspace,
         step=step,
-        ecc_module=object(),
+        ecc_module=_ecc_placeholder(),
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
         output_def=tmp_path / "output.def",
@@ -104,7 +109,7 @@ def test_build_params_preserves_placement_timing_config(tmp_path):
         },
     )
     workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
+        directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
         config={"dreamplace": config_path},
     )
@@ -146,7 +151,7 @@ def test_build_params_uses_empty_string_for_unset_inputs(tmp_path):
     config_path = tmp_path / "dreamplace_ecc.json"
     config_path.write_text("{}", encoding="utf-8")
     workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
+        directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
         config={"dreamplace": config_path},
     )
@@ -200,7 +205,7 @@ def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreampla
     module = DreamplaceModule(
         workspace=workspace,
         step=step,
-        ecc_module=object(),
+        ecc_module=_ecc_placeholder(),
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
         output_def=tmp_path / "output.def",
@@ -351,7 +356,7 @@ def test_build_params_accepts_ecc_geometry_only_placement(tmp_path):
     module = DreamplaceModule(
         workspace=workspace,
         step=step,
-        ecc_module=object(),
+        ecc_module=_ecc_placeholder(),
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
         output_def=tmp_path / "output.def",
@@ -379,7 +384,7 @@ def test_build_params_resolves_ecc_timing_inputs(tmp_path):
     module = DreamplaceModule(
         workspace=workspace,
         step=step,
-        ecc_module=object(),
+        ecc_module=_ecc_placeholder(),
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
         output_def=tmp_path / "output.def",
@@ -401,7 +406,7 @@ def test_build_params_uses_empty_strings_for_missing_inputs(tmp_path):
     config_path = tmp_path / "dreamplace_ecc.json"
     json_write(config_path, {})
     workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
+        directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
         config={"dreamplace": config_path},
     )
@@ -443,7 +448,7 @@ def test_macro_placement_forces_selective_non_routable_placement_params(tmp_path
         },
     )
     workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
+        directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
         config={"dreamplace": config_path},
     )

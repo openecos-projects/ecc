@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 from chipcompiler.data import OriginDesign, StepEnum, Workspace
 from chipcompiler.tools.yosys.builder import build_step, build_step_space
@@ -10,7 +11,7 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
-    step = build_step(
+    step: Any = build_step(
         workspace=workspace,
         step_name=StepEnum.SYNTHESIS.value,
         input_def=None,
@@ -167,7 +168,7 @@ def test_synthesis_metrics_do_not_require_power_from_sta_report(tmp_path):
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
-    step = build_step(
+    step: Any = build_step(
         workspace=workspace,
         step_name=StepEnum.SYNTHESIS.value,
         input_def=None,
@@ -207,7 +208,7 @@ def test_synthesis_metrics_tolerate_unset_feature_dir(tmp_path):
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
-    step = build_step(
+    step: Any = build_step(
         workspace=workspace,
         step_name=StepEnum.SYNTHESIS.value,
         input_def=None,

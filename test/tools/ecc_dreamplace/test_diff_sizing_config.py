@@ -1,6 +1,7 @@
 """Independent S50 coefficients through public overrides and step resolution."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -48,7 +49,7 @@ def test_public_s50_coefficients_survive_step_resolution_without_changing_placem
     workspace = Workspace(
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(tech="tech.lef", lefs=["std.lef"]),
+        pdk=PDK(tech=Path("tech.lef"), lefs=[Path("std.lef")]),
         parameters=make_ics55_parameters(
             {
                 "dreamplace": placement_weights,

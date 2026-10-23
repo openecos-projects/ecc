@@ -5,12 +5,13 @@ Abstracts file paths to boolean flags (has_key, is_nonempty).
 z3 proves invariants over all possible step sequences exhaustively.
 """
 
+from typing import Any
+
 import pytest
 from z3 import (
     And,
     ArithRef,
     Bool,
-    BoolRef,
     If,
     Int,
     Not,
@@ -37,11 +38,11 @@ JSON_ONLY_STEPS: set[StepBaseEnum] = {SkippableStepEnum.LEC, SkippableStepEnum.P
 
 def _expected_output_keys(
     step_type_id: ArithRef,
-    has_def: BoolRef,
-    has_verilog: BoolRef,
-    has_gds: BoolRef,
-    has_json: BoolRef,
-) -> BoolRef:
+    has_def: Any,
+    has_verilog: Any,
+    has_gds: Any,
+    has_json: Any,
+) -> Any:
     """Encode: for a given step type, are the expected output keys present?
 
     Synthesis: requires has_verilog only.
@@ -51,12 +52,12 @@ def _expected_output_keys(
     synthesis_ids: list[int] = [STEP_TYPE_MAP[s] for s in SYNTHESIS_ONLY_STEPS]
     json_ids: list[int] = [STEP_TYPE_MAP[s] for s in JSON_ONLY_STEPS]
 
-    is_synthesis: BoolRef = Or(*[step_type_id == sid for sid in synthesis_ids])
-    is_json_only: BoolRef = Or(*[step_type_id == sid for sid in json_ids])
+    is_synthesis: Any = Or(*[step_type_id == sid for sid in synthesis_ids])
+    is_json_only: Any = Or(*[step_type_id == sid for sid in json_ids])
 
-    synthesis_ok: BoolRef = has_verilog
-    json_ok: BoolRef = has_json
-    other_ok: BoolRef = And(has_def, has_verilog, has_gds)
+    synthesis_ok: Any = has_verilog
+    json_ok: Any = has_json
+    other_ok: Any = And(has_def, has_verilog, has_gds)
 
     return If(is_synthesis, synthesis_ok, If(is_json_only, json_ok, other_ok))
 
@@ -70,10 +71,10 @@ def test_output_keys_present_for_all_step_types() -> None:
     pass with MISSING required keys.
     """
     step_type: ArithRef = Int("step_type")
-    has_def: BoolRef = Bool("has_def")
-    has_verilog: BoolRef = Bool("has_verilog")
-    has_gds: BoolRef = Bool("has_gds")
-    has_json: BoolRef = Bool("has_json")
+    has_def: Any = Bool("has_def")
+    has_verilog: Any = Bool("has_verilog")
+    has_gds: Any = Bool("has_gds")
+    has_json: Any = Bool("has_json")
 
     solver = Solver()
 
@@ -135,7 +136,7 @@ def test_chain_breaks_on_failure(num_steps: int) -> None:
     When step K fails to create, the loop breaks and steps K+1..N-1 are
     never created. z3 proves this invariant holds.
     """
-    created: list[BoolRef] = [Bool(f"created_{i}") for i in range(num_steps)]
+    created: list[Any] = [Bool(f"created_{i}") for i in range(num_steps)]
 
     solver = Solver()
 
@@ -148,7 +149,7 @@ def test_chain_breaks_on_failure(num_steps: int) -> None:
 
     # There exists a step K that was NOT created (failure during creation)
     # We use an existential over K by trying each concrete value
-    is_created_after_failure: list[BoolRef] = []
+    is_created_after_failure: list[Any] = []
     for k in range(num_steps):
         # If step k is not created, can any downstream step be created?
         for i in range(k + 1, num_steps):
@@ -204,10 +205,10 @@ def test_check_step_result_completeness() -> None:
     - Everything else -> def + verilog + gds
     """
     step_type: ArithRef = Int("step_type")
-    has_def: BoolRef = Bool("has_def")
-    has_verilog: BoolRef = Bool("has_verilog")
-    has_gds: BoolRef = Bool("has_gds")
-    has_json: BoolRef = Bool("has_json")
+    has_def: Any = Bool("has_def")
+    has_verilog: Any = Bool("has_verilog")
+    has_gds: Any = Bool("has_gds")
+    has_json: Any = Bool("has_json")
 
     solver = Solver()
     solver.add(And(step_type >= 0, step_type < STEP_TYPE_COUNT))
@@ -267,8 +268,8 @@ def test_no_stale_output_propagation(num_steps: int) -> None:
     scenario does not occur in normal operation. The test remains as
     documentation of the absence of taint tracking.
     """
-    succeeded: list[BoolRef] = [Bool(f"succ_{i}") for i in range(num_steps)]
-    tainted: list[BoolRef] = [Bool(f"taint_{i}") for i in range(num_steps)]
+    succeeded: list[Any] = [Bool(f"succ_{i}") for i in range(num_steps)]
+    tainted: list[Any] = [Bool(f"taint_{i}") for i in range(num_steps)]
 
     solver = Solver()
 

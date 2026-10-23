@@ -1,6 +1,7 @@
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -22,7 +23,7 @@ def test_sizer_success_legalize_failure_leaves_published_outputs_empty(tmp_path,
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
@@ -56,7 +57,7 @@ def test_sizer_save_data_failure_deletes_partial_outputs(tmp_path, monkeypatch):
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
@@ -92,7 +93,7 @@ def test_sizer_save_data_failure_deletes_feature_report_and_image(tmp_path, monk
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
@@ -131,7 +132,7 @@ def test_sizer_closes_engine_when_published_cleanup_fails(tmp_path, monkeypatch)
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
@@ -174,7 +175,7 @@ def test_sizer_does_not_legalize_when_staging_cleanup_fails(tmp_path, monkeypatc
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
@@ -219,7 +220,7 @@ def test_sizer_rerun_resets_previous_subflow_success(tmp_path, monkeypatch):
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
@@ -259,7 +260,7 @@ def test_sizer_rerun_does_not_legalize_stale_staging_when_sizer_writes_nothing(
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
@@ -298,7 +299,7 @@ def test_sizer_save_data_exception_deletes_partial_outputs(tmp_path, monkeypatch
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),

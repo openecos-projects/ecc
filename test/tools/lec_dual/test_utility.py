@@ -1,5 +1,7 @@
 """Verdict merge, result reading, and degraded availability for lec_dual."""
 
+from typing import Any
+
 import pytest
 
 from chipcompiler.data import LECEngineEnum
@@ -8,7 +10,9 @@ from chipcompiler.tools.lec_dual import utility
 from ._helpers import _write_netlists, write_engine_result
 
 
-def _outcome(engine, status, *, result="default", available=True, reason="", error=""):
+def _outcome(
+    engine, status, *, result: Any = "default", available=True, reason="", error=""
+) -> Any:
     if result == "default":
         result = {"status": status} if status is not None else None
     return utility.EngineOutcome(
@@ -48,8 +52,12 @@ def test_merge_carries_the_single_engine_contract_over_the_shared_inputs(tmp_pat
     from chipcompiler.utility import file_digest
 
     golden, gate = _write_netlists(tmp_path)
-    golden_sha, golden_size = file_digest(golden)
-    gate_sha, gate_size = file_digest(gate)
+    golden_digest = file_digest(golden)
+    gate_digest = file_digest(gate)
+    assert golden_digest is not None
+    assert gate_digest is not None
+    golden_sha, golden_size = golden_digest
+    gate_sha, gate_size = gate_digest
     outcomes = [
         _outcome(LECEngineEnum.YOSYS_LEC, "proven"),
         _outcome(LECEngineEnum.KEPLER_FORMAL, "proven"),

@@ -6,6 +6,8 @@ shape every real workspace has, with ``category``) and a legacy ledger without
 module does not assert that they agree.
 """
 
+from typing import Any
+
 import pytest
 
 from chipcompiler.data import OriginDesign, Workspace
@@ -32,7 +34,7 @@ def _workspace(tmp_path) -> Workspace:
 
 
 def _real_ledger(*, skip_steps=None) -> FlowDocument:
-    flow_config = {"start_step": "route", "end_step": "Harden"}
+    flow_config: dict[str, object] = {"start_step": "route", "end_step": "Harden"}
     if skip_steps is not None:
         flow_config["skip_steps"] = list(skip_steps)
     return build_dynamic_flow_data(flow_config)
@@ -264,7 +266,15 @@ def _signoff_sources(workspace, ledger):
         def _refresh_step_analysis(self, step) -> None:
             self.refreshed.append(step)
 
-        def _analysis_issue(self, step_name, *, required, reason, kind, label=None):
+        def _analysis_issue(
+            self,
+            step_name: str,
+            *,
+            required: bool,
+            reason: str,
+            kind: str,
+            label: str | None = None,
+        ) -> Any:
             return None
 
     for step in ledger.get("steps", []):

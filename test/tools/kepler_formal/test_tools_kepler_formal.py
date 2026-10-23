@@ -3,6 +3,7 @@ import gzip
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 from chipcompiler.data import (
     PDK,
@@ -26,6 +27,18 @@ from chipcompiler.utility import json_write
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 GCD_RTL = REPO_ROOT / "test" / "fixtures" / "gcd" / "gcd.v"
+
+
+def _kepler_step(*args: Any, **kwargs: Any) -> Any:
+    return KeplerFormalStep(*args, **kwargs)
+
+
+def _yosys_step(*args: Any, **kwargs: Any) -> Any:
+    return YosysStep(*args, **kwargs)
+
+
+def _engine_flow(workspace: Any = None) -> Any:
+    return EngineFlow(workspace=workspace)
 
 
 def _workspace(tmp_path: Path) -> Workspace:
@@ -68,7 +81,7 @@ def test_kepler_formal_build_step_derives_golden_and_creates_workspace(tmp_path)
     workspace = _workspace(tmp_path)
     gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
 
-    step = builder.build_step(
+    step: Any = builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.LEC.value,
         input_def=None,
@@ -93,7 +106,7 @@ def test_kepler_formal_build_step_config_writes_yaml(tmp_path):
     gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
     _write_netlist_pair(gate)
 
-    step = builder.build_step(
+    step: Any = builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.LEC.value,
         input_def=None,
@@ -118,7 +131,7 @@ def test_kepler_formal_runner_marks_success_from_proven_marker(tmp_path, monkeyp
     gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
     golden, gate_gz = _write_netlist_pair(gate, compressed=True)
 
-    step = builder.build_step(
+    step: Any = builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.LEC.value,
         input_def=None,
@@ -170,7 +183,7 @@ def test_kepler_formal_runner_marks_success_from_proven_marker(tmp_path, monkeyp
     assert "gate_compare.v" in config_text
     assert str(step.input.golden_verilog) in config_text
     assert Path(step.data.dir, "gate_compare.v").is_file()
-    assert EngineFlow(workspace=None).check_step_result(step) is True
+    assert _engine_flow(workspace=None).check_step_result(step) is True
 
 
 def test_kepler_formal_runner_writes_incomplete_on_difference(tmp_path, monkeypatch):
@@ -179,7 +192,7 @@ def test_kepler_formal_runner_writes_incomplete_on_difference(tmp_path, monkeypa
     workspace = _workspace(tmp_path)
     gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
     _write_netlist_pair(gate)
-    step = builder.build_step(
+    step: Any = builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.LEC.value,
         input_def=None,
@@ -211,7 +224,7 @@ def test_kepler_formal_runner_writes_incomplete_on_difference(tmp_path, monkeypa
     payload = json.loads(step.output.json.read_text())
     assert payload["status"] == "incomplete"
     assert "found a difference" in step.report.status.read_text()
-    assert EngineFlow(workspace=None).check_step_result(step) is False
+    assert _engine_flow(workspace=None).check_step_result(step) is False
 
 
 def test_kepler_formal_runner_writes_incomplete_on_error_or_missing_tool(tmp_path, monkeypatch):
@@ -220,7 +233,7 @@ def test_kepler_formal_runner_writes_incomplete_on_error_or_missing_tool(tmp_pat
     workspace = _workspace(tmp_path)
     gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
     _write_netlist_pair(gate)
-    step = builder.build_step(
+    step: Any = builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.LEC.value,
         input_def=None,
@@ -305,6 +318,7 @@ def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monke
             {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": StateEnum.Unstart.value},
         ]
     }
+    assert workspace.flow.path is not None
     json_write(workspace.flow.path, workspace.flow.data)
 
     def fake_create_step(
@@ -317,7 +331,7 @@ def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monke
         **kwargs,
     ):
         if eda == "yosys":
-            return YosysStep(
+            return _yosys_step(
                 name=step,
                 tool=eda,
                 input=SimpleNamespace(def_=input_def, verilog=input_verilog, db=input_db),
@@ -330,7 +344,7 @@ def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monke
                 ),
             )
         if eda == "kepler_formal":
-            return KeplerFormalStep(
+            return _kepler_step(
                 name=step,
                 tool=eda,
                 input=SimpleNamespace(gate_verilog=input_verilog, golden_verilog=input_db),
@@ -377,6 +391,7 @@ def test_engine_flow_wires_kepler_post_route_lec_against_synthesis_gate(tmp_path
             },
         ]
     }
+    assert workspace.flow.path is not None
     json_write(workspace.flow.path, workspace.flow.data)
 
     def fake_create_step(
@@ -389,14 +404,14 @@ def test_engine_flow_wires_kepler_post_route_lec_against_synthesis_gate(tmp_path
         **kwargs,
     ):
         if eda == "kepler_formal":
-            return KeplerFormalStep(
+            return _kepler_step(
                 name=step,
                 tool=eda,
                 input=SimpleNamespace(gate_verilog=input_verilog, golden_verilog=input_db),
                 output=OutputPaths(json=tmp_path / step / "output" / f"gcd_{step}_result.json"),
             )
         if eda == "yosys":
-            return YosysStep(
+            return _yosys_step(
                 name=step,
                 tool=eda,
                 input=SimpleNamespace(def_=input_def, verilog=input_verilog, db=input_db),
@@ -464,7 +479,7 @@ def test_kepler_formal_config_yaml_contains_only_plain_values(tmp_path):
     workspace = _workspace(tmp_path)
     gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
     _write_netlist_pair(gate)
-    step = builder.build_step(
+    step: Any = builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.LEC.value,
         input_def=None,

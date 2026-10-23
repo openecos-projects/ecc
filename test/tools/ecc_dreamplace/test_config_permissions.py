@@ -1,5 +1,6 @@
 import shutil
 import stat
+from pathlib import Path
 
 from chipcompiler.data import PDK, OriginDesign, StepEnum, Workspace
 from chipcompiler.data.workspace import init_workspace_config
@@ -13,9 +14,9 @@ def test_workspace_config_generation_leaves_config_root_writable_after_read_only
     make_ics55_parameters,
 ):
     workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
+        directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(tech="tech.lef", lefs=["std.lef"], buffers=[], fillers=[]),
+        pdk=PDK(tech=Path("tech.lef"), lefs=[Path("std.lef")], buffers=[], fillers=[]),
         parameters=make_ics55_parameters(),
     )
     config_dir = tmp_path / "workspace" / "config"
@@ -49,16 +50,16 @@ def test_dreamplace_config_generation_writes_generated_fields_to_copied_config(
     make_ics55_parameters,
 ):
     workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
+        directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(tech="tech.lef", lefs=["std.lef"]),
+        pdk=PDK(tech=Path("tech.lef"), lefs=[Path("std.lef")]),
         parameters=make_ics55_parameters(),
     )
     step = dreamplace_builder.build_step(
         workspace=workspace,
         step_name=StepEnum.PLACEMENT.value,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
     config_dir = tmp_path / "workspace" / "config"
 
@@ -98,9 +99,9 @@ def test_dreamplace_config_uses_empty_strings_for_missing_inputs(
     make_ics55_parameters,
 ):
     workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
+        directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(tech="tech.lef", lefs=["std.lef"]),
+        pdk=PDK(tech=Path("tech.lef"), lefs=[Path("std.lef")]),
         parameters=make_ics55_parameters(),
     )
     step = dreamplace_builder.build_step(
@@ -135,9 +136,9 @@ def test_workspace_config_generation_applies_flat_dreamplace_parameter_overrides
         "routability_opt_flag": 1,
     }
     workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
+        directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(tech="tech.lef", lefs=["std.lef"]),
+        pdk=PDK(tech=Path("tech.lef"), lefs=[Path("std.lef")]),
         parameters=make_ics55_parameters(overrides),
     )
 
@@ -159,9 +160,9 @@ def test_workspace_config_generation_nested_dreamplace_overrides_win_over_flat_k
         "dreamplace": {"routability_opt_flag": 0},
     }
     workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
+        directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(tech="tech.lef", lefs=["std.lef"]),
+        pdk=PDK(tech=Path("tech.lef"), lefs=[Path("std.lef")]),
         parameters=make_ics55_parameters(overrides),
     )
 
@@ -180,9 +181,9 @@ def test_dreamplace_step_config_refresh_reapplies_current_parameter_file(
 ):
     initial_overrides = {"target_density": 0.65}
     workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
+        directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(tech="tech.lef", lefs=["std.lef"]),
+        pdk=PDK(tech=Path("tech.lef"), lefs=[Path("std.lef")]),
         parameters=make_ics55_parameters(initial_overrides),
     )
     (tmp_path / "workspace" / "home").mkdir(parents=True)
@@ -190,8 +191,8 @@ def test_dreamplace_step_config_refresh_reapplies_current_parameter_file(
     step = dreamplace_builder.build_step(
         workspace=workspace,
         step_name=StepEnum.PLACEMENT.value,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
 
     init_workspace_config(workspace)

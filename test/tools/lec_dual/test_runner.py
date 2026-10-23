@@ -1,10 +1,11 @@
 """Dual runner: concurrency, converge-both, stale-evidence, degraded mode."""
 
 import threading
+from typing import Any
 
 from chipcompiler.data import LECEngineEnum
 from chipcompiler.tools.lec_dual import runner as runner_module
-from chipcompiler.utility import json_read
+from chipcompiler.utility import file_digest, json_read
 
 from ._helpers import (
     _aggregate_step,
@@ -13,6 +14,10 @@ from ._helpers import (
     _write_netlists,
     write_engine_result,
 )
+
+
+def _digest(value: Any) -> Any:
+    return file_digest(value)
 
 
 def _patch_engines(monkeypatch, tmp_path, runs, availability=None):
@@ -37,7 +42,7 @@ def _run(workspace, step):
 def test_dual_run_aggregates_both_engine_results(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     golden, gate = _write_netlists(tmp_path)
-    step = _aggregate_step(tmp_path, golden, gate)
+    step: Any = _aggregate_step(tmp_path, golden, gate)
 
     def proven_run(engine_step):
         write_engine_result(engine_step.output.json, proven=True)
@@ -51,20 +56,18 @@ def test_dual_run_aggregates_both_engine_results(tmp_path, monkeypatch):
 
     assert _run(workspace, step) is True
 
-    aggregate = json_read(step.output.json)
+    aggregate: Any = json_read(step.output.json)
     assert aggregate["status"] == "proven"
     assert aggregate["agreement"] is True
     assert set(aggregate["engines"]) == {"yosys_lec", "kepler_formal"}
     assert aggregate["engines"]["yosys_lec"]["status"] == "proven"
     # The top-level single-engine contract fields cover the shared inputs.
-    from chipcompiler.utility import file_digest
+    assert aggregate["golden_sha256"] == _digest(golden)[0]
+    assert aggregate["gate_sha256"] == _digest(gate)[0]
+    assert aggregate["golden_size_bytes"] == _digest(golden)[1]
+    assert aggregate["gate_size_bytes"] == _digest(gate)[1]
 
-    assert aggregate["golden_sha256"] == file_digest(golden)[0]
-    assert aggregate["gate_sha256"] == file_digest(gate)[0]
-    assert aggregate["golden_size_bytes"] == file_digest(golden)[1]
-    assert aggregate["gate_size_bytes"] == file_digest(gate)[1]
-
-    subflow = json_read(step.subflow.path)
+    subflow: Any = json_read(step.subflow.path)
     assert {stage["name"]: stage["state"] for stage in subflow["steps"]} == {
         "run lec (yosys_lec)": "Success",
         "run lec (kepler_formal)": "Success",
@@ -76,7 +79,7 @@ def test_dual_run_aggregates_both_engine_results(tmp_path, monkeypatch):
 def test_engines_run_concurrently(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     golden, gate = _write_netlists(tmp_path)
-    step = _aggregate_step(tmp_path, golden, gate)
+    step: Any = _aggregate_step(tmp_path, golden, gate)
 
     fast_done = threading.Event()
 
@@ -105,7 +108,7 @@ def test_engines_run_concurrently(tmp_path, monkeypatch):
 def test_one_engine_raising_still_waits_for_the_sibling(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     golden, gate = _write_netlists(tmp_path)
-    step = _aggregate_step(tmp_path, golden, gate)
+    step: Any = _aggregate_step(tmp_path, golden, gate)
 
     sibling_failed = threading.Event()
 
@@ -128,14 +131,14 @@ def test_one_engine_raising_still_waits_for_the_sibling(tmp_path, monkeypatch):
 
     assert _run(workspace, step) is False
 
-    aggregate = json_read(step.output.json)
+    aggregate: Any = json_read(step.output.json)
     assert aggregate["status"] == "incomplete"
     assert aggregate["agreement"] is None
     assert aggregate["engines"]["kepler_formal"]["status"] == "proven"
     assert aggregate["engines"]["yosys_lec"]["status"] == "incomplete"
     assert "yosys exploded" in aggregate["engines"]["yosys_lec"]["error"]
 
-    subflow = json_read(step.subflow.path)
+    subflow: Any = json_read(step.subflow.path)
     states = {stage["name"]: stage["state"] for stage in subflow["steps"]}
     assert states["run lec (yosys_lec)"] == "Incomplete"
     assert states["run lec (kepler_formal)"] == "Success"
@@ -147,7 +150,7 @@ def test_one_engine_raising_still_waits_for_the_sibling(tmp_path, monkeypatch):
 def test_stale_evidence_is_deleted_before_spawning(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     golden, gate = _write_netlists(tmp_path)
-    step = _aggregate_step(tmp_path, golden, gate)
+    step: Any = _aggregate_step(tmp_path, golden, gate)
 
     def silent_failure(engine_step):
         return False
@@ -168,7 +171,7 @@ def test_stale_evidence_is_deleted_before_spawning(tmp_path, monkeypatch):
 
     # A pre-existing aggregate never survives as readable prior result: the
     # aggregate present now is the fresh one from this run.
-    aggregate = json_read(step.output.json)
+    aggregate: Any = json_read(step.output.json)
     assert "planted" not in aggregate
     assert aggregate["status"] == "incomplete"
     assert aggregate["agreement"] is None
@@ -181,7 +184,7 @@ def test_stale_evidence_is_deleted_before_spawning(tmp_path, monkeypatch):
 def test_engine_failing_after_a_proven_result_never_proves_the_aggregate(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     golden, gate = _write_netlists(tmp_path)
-    step = _aggregate_step(tmp_path, golden, gate)
+    step: Any = _aggregate_step(tmp_path, golden, gate)
 
     def exploding_yosys(engine_step):
         write_engine_result(engine_step.output.json, proven=True)
@@ -199,7 +202,7 @@ def test_engine_failing_after_a_proven_result_never_proves_the_aggregate(tmp_pat
 
     assert _run(workspace, step) is False
 
-    aggregate = json_read(step.output.json)
+    aggregate: Any = json_read(step.output.json)
     # Both engines left a proven verdict file but neither run succeeded:
     # the conservative aggregate never reports proven...
     assert aggregate["status"] == "incomplete"
@@ -214,7 +217,7 @@ def test_stale_evidence_deletion_failure_stops_the_run(tmp_path, monkeypatch):
 
     workspace = _workspace(tmp_path)
     golden, gate = _write_netlists(tmp_path)
-    step = _aggregate_step(tmp_path, golden, gate)
+    step: Any = _aggregate_step(tmp_path, golden, gate)
 
     ran = []
 
@@ -239,7 +242,7 @@ def test_stale_evidence_deletion_failure_stops_the_run(tmp_path, monkeypatch):
     assert ran == []
     assert not step.output.json.exists()
     assert "failed to delete stale LEC evidence" in step.log.file.read_text()
-    subflow = json_read(step.subflow.path)
+    subflow: Any = json_read(step.subflow.path)
     states = {stage["name"]: stage["state"] for stage in subflow["steps"]}
     assert states["run lec (yosys_lec)"] == "Invalid"
     assert states["run lec (kepler_formal)"] == "Invalid"
@@ -248,7 +251,7 @@ def test_stale_evidence_deletion_failure_stops_the_run(tmp_path, monkeypatch):
 def test_degraded_mode_runs_the_available_engine(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     golden, gate = _write_netlists(tmp_path)
-    step = _aggregate_step(tmp_path, golden, gate)
+    step: Any = _aggregate_step(tmp_path, golden, gate)
 
     def proven_yosys(engine_step):
         write_engine_result(engine_step.output.json, proven=True)
@@ -274,7 +277,7 @@ def test_degraded_mode_runs_the_available_engine(tmp_path, monkeypatch):
     assert _run(workspace, step) is False
     assert ran == []
 
-    aggregate = json_read(step.output.json)
+    aggregate: Any = json_read(step.output.json)
     assert aggregate["status"] == "incomplete"
     assert aggregate["agreement"] is None
     assert aggregate["engines"]["yosys_lec"]["status"] == "proven"
@@ -283,7 +286,7 @@ def test_degraded_mode_runs_the_available_engine(tmp_path, monkeypatch):
         "reason": "kepler-formal is not installed",
     }
 
-    subflow = json_read(step.subflow.path)
+    subflow: Any = json_read(step.subflow.path)
     states = {stage["name"]: stage["state"] for stage in subflow["steps"]}
     assert states["run lec (yosys_lec)"] == "Success"
     assert states["run lec (kepler_formal)"] == "Invalid"
@@ -295,7 +298,7 @@ def test_degraded_mode_runs_the_available_engine(tmp_path, monkeypatch):
 def test_both_engines_unavailable_starts_no_run(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     golden, gate = _write_netlists(tmp_path)
-    step = _aggregate_step(tmp_path, golden, gate)
+    step: Any = _aggregate_step(tmp_path, golden, gate)
 
     ran = []
 
@@ -317,7 +320,7 @@ def test_both_engines_unavailable_starts_no_run(tmp_path, monkeypatch):
     assert ran == []
     # No evidence is produced for a step that never started.
     assert not step.output.json.exists()
-    subflow = json_read(step.subflow.path)
+    subflow: Any = json_read(step.subflow.path)
     states = {stage["name"]: stage["state"] for stage in subflow["steps"]}
     assert states["run lec (yosys_lec)"] == "Invalid"
     assert states["run lec (kepler_formal)"] == "Invalid"
@@ -353,7 +356,7 @@ def test_runner_rebuilds_engine_steps_at_run_time(tmp_path, monkeypatch):
     monkeypatch.setattr(runner_module, "lec_engine_module", lambda engine: fakes[engine])
     monkeypatch.setattr(runner_module, "engine_availability", lambda engine: (True, ""))
 
-    step = builder.build_step(
+    step: Any = builder.build_step(
         workspace=workspace,
         step_name="lec",
         input_def=None,

@@ -92,7 +92,7 @@ def _plain_verilog_filelist_paths(filelist: str) -> list[str] | None:
 def _yosys_source_config(workspace: Workspace, step: WorkspaceStep) -> tuple[bool, list[str], str]:
     """Classify RTL input as native-Verilog or Slang-required."""
     raw_filelist = workspace.design.input_filelist or workspace.parameters.data.get("file_list", "")
-    filelist = raw_filelist if isinstance(raw_filelist, str) else ""
+    filelist = str(raw_filelist) if isinstance(raw_filelist, (str, Path)) else ""
     if filelist and os.path.exists(filelist):
         plain_sources = _plain_verilog_filelist_paths(filelist)
         if plain_sources is not None:

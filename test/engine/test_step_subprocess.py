@@ -5,11 +5,16 @@ import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
 from chipcompiler.engine import step_subprocess
 from chipcompiler.engine.step_execution import execute_tool_step
+
+
+def _ns(**kwargs: object) -> Any:
+    return SimpleNamespace(**kwargs)
 
 
 @pytest.fixture(autouse=True)
@@ -22,11 +27,11 @@ def _no_parent_death_signal(monkeypatch):
 def _workspace_step(tmp_path, name="place", tool="ecc"):
     log_file = tmp_path / "log" / "step.log"
     log_file.parent.mkdir(parents=True, exist_ok=True)
-    return SimpleNamespace(
+    return _ns(
         name=name,
         tool=tool,
         directory=str(tmp_path),
-        log=SimpleNamespace(file=str(log_file)),
+        log=_ns(file=str(log_file)),
     )
 
 
@@ -38,9 +43,7 @@ def _workspace(tmp_path):
         data={"design": "example", "top_module": "example", "pdk": "ics55", "clock": "clk"},
     )
     assert save_parameter(parameters)
-    return SimpleNamespace(
-        directory=str(tmp_path), logger=logging.getLogger("ecc-test"), parameters=parameters
-    )
+    return _ns(directory=str(tmp_path), logger=logging.getLogger("ecc-test"), parameters=parameters)
 
 
 class _FakeStdin(io.BytesIO):
@@ -184,6 +187,7 @@ def test_worker_corrupt_parameters_prevent_success(monkeypatch, tmp_path):
 
     monkeypatch.setattr(step_subprocess.subprocess, "Popen", spawn)
     result = step_subprocess.execute_step_subprocess(workspace, step)
+    assert result.error is not None
     assert "parameters could not be reloaded" in result.error
 
 
@@ -292,7 +296,7 @@ def test_execute_tool_step_falls_back_in_process(monkeypatch, tmp_path):
         lambda **kwargs: ran.append(kwargs) or True,
     )
     step = _workspace_step(tmp_path)
-    engine_db = SimpleNamespace(engine=object(), initialization_error=None)
+    engine_db = _ns(engine=object(), initialization_error=None)
     result = execute_tool_step(_workspace(tmp_path), step, engine_db)
 
     assert dispatched == []
@@ -300,7 +304,8 @@ def test_execute_tool_step_falls_back_in_process(monkeypatch, tmp_path):
 
 
 class _FakeFlow:
-    engine_db = SimpleNamespace(initialization_error=None, engine=None)
+    engine_db = _ns(initialization_error=None, engine=None)
+    _step: Any = None
 
     def __init__(self, workspace):
         self.workspace = workspace
@@ -388,7 +393,7 @@ def test_worker_main_records_missing_step(monkeypatch, tmp_path):
     step = _workspace_step(tmp_path)
     result_path = tmp_path / "out" / "result.json"
     flow = _FakeFlow(_workspace(tmp_path))
-    flow._step = SimpleNamespace(name="other", tool="ecc")
+    flow._step = _ns(name="other", tool="ecc")
 
     _patch_worker_dependencies(monkeypatch, tmp_path, step, flow, lambda *a, **k: True)
     monkeypatch.setattr(sys, "stdin", _payload_stream(tmp_path, step, result_path))

@@ -24,6 +24,7 @@ def test_pdk_design_input_override_survives_source_removal(
         parameters=default_ics55_parameters,
         pdk_overrides={field: str(source)},
     )
+    assert workspace is not None
     source.unlink()
 
     loaded = load_workspace(str(directory))

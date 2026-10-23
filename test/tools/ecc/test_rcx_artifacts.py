@@ -6,9 +6,10 @@ import pytest
 
 from chipcompiler.data import EccData, EccOutput, EccStep, StepEnum, Workspace
 from chipcompiler.tools.ecc import rcx_artifacts
+from chipcompiler.utility import Logger
 
 
-class FakeLogger:
+class FakeLogger(Logger):
     def __init__(self):
         self.infos = []
         self.warnings = []

@@ -1,6 +1,7 @@
 import json
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -59,7 +60,9 @@ def test_flow_has_step_uses_cached_data_and_path(tmp_path):
     assert flow.has_step(StepEnum.SYNTHESIS)
     assert flow.has_step("Synthesis", "yosys")
     assert not flow.has_step(StepEnum.SYNTHESIS, "ecc")
-    assert flow.get_step(StepEnum.FLOORPLAN)["tool"] == "ecc"
+    floorplan = flow.get_step(StepEnum.FLOORPLAN)
+    assert floorplan is not None
+    assert floorplan["tool"] == "ecc"
     assert flow.get_step(StepEnum.PLACEMENT) is None
 
     path = tmp_path / "flow.json"
@@ -91,7 +94,7 @@ def _create_loaded_ics55_workspace(
     workspace_name,
     minimal_ics55_pdk_factory,
     default_ics55_parameters,
-):
+) -> tuple[Path, Any]:
     pdk_root = minimal_ics55_pdk_factory(tmp_path / f"{workspace_name}_pdk")
     rtl_path = tmp_path / f"{workspace_name}.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
@@ -125,6 +128,7 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
         parameters={**default_ics55_parameters, "max_fanout": 37},
         pdk_root=pdk_root,
     )
+    assert workspace is not None
 
     assert workspace is not None
     assert workspace.directory == workspace_dir.resolve()
@@ -167,7 +171,6 @@ def test_create_workspace_rejects_existing_non_empty_directory(tmp_path):
         pdk="ics55",
         parameters={},
     )
-
     assert workspace is None
 
 
@@ -330,6 +333,7 @@ def test_create_workspace_persists_dynamic_flow_steps(
             "steps": ["Placement", "CTS", "legal", "Route", "DRC"],
         },
     )
+    assert workspace is not None
 
     assert workspace is not None
     flow_data = json_read(workspace_dir / "home" / "flow.json")
@@ -383,6 +387,7 @@ def test_create_workspace_copies_external_lec_and_sta_inputs(
         pdk_root=pdk_root,
         flow_config={"start_step": "postlec", "end_step": "postlec"},
     )
+    assert workspace is not None
 
     assert workspace is not None
     flow_data = json_read(workspace_dir / "home" / "flow.json")
@@ -414,6 +419,7 @@ def test_load_workspace_keeps_golden_prefixed_primary_netlist(
     )
 
     loaded = load_workspace(str(workspace_dir))
+    assert loaded is not None
     assert loaded.design.origin_verilog == workspace_dir / "origin" / "golden_gcd.v"
     assert loaded.design.golden_verilog is None
 
@@ -440,6 +446,7 @@ def test_load_workspace_restores_golden_from_persisted_flow_info(
     )
 
     loaded = load_workspace(str(workspace_dir))
+    assert loaded is not None
     assert loaded.design.origin_verilog == workspace_dir / "origin" / "gcd.v"
     assert loaded.design.golden_verilog == workspace_dir / "origin" / "golden_gcd_golden.v"
 
@@ -464,6 +471,7 @@ def test_create_workspace_non_contiguous_flow_seeds_both_stores_contiguous(
             pdk_root=pdk_root,
             flow_config={"steps": ["Synth", "Place", "CTS"]},
         )
+    assert workspace is not None
 
     assert workspace is not None
     # Both stores carry the same contiguous first..last range.
@@ -632,6 +640,7 @@ def test_create_workspace_from_step_output_copies_only_origin_inputs_and_rebuild
             "end_step": "legalization",
         },
     )
+    assert workspace is not None
 
     assert workspace is not None
     assert (workspace_dir / "origin" / "gcd_Floorplan.def.gz").read_text() == "def from floorplan\n"
@@ -674,6 +683,7 @@ def test_build_flow_for_dynamic_workspace_initializes_step_metadata_files(
             "end_step": "CTS",
         },
     )
+    assert workspace is not None
 
     from chipcompiler.engine.workspace_flow import build_flow_for_workspace
 
@@ -721,6 +731,7 @@ def test_load_workspace_restores_path_fields_from_existing_json(
     )
 
     loaded = load_workspace(workspace_dir)
+    assert loaded is not None
 
     assert loaded is not None
     assert loaded.directory == workspace_dir.resolve()
@@ -855,6 +866,7 @@ def test_load_workspace_migrates_legacy_config_filenames(
         parameters=default_ics55_parameters,
         pdk_root=pdk_root,
     )
+    assert workspace is not None
 
     config_dir = workspace_dir / "config"
     legacy_filenames = workspace_data._LEGACY_WORKSPACE_CONFIG_FILENAMES
@@ -862,6 +874,7 @@ def test_load_workspace_migrates_legacy_config_filenames(
         workspace.config[config_key].rename(config_dir / legacy_filename)
 
     loaded = load_workspace(workspace_dir)
+    assert loaded is not None
 
     assert loaded is not None
     for config_key, legacy_filename in legacy_filenames.items():
@@ -1065,6 +1078,7 @@ def test_create_workspace_persists_pdk_root_in_parameters(
         parameters=default_ics55_parameters,
         pdk_root=str(pdk_root),
     )
+    assert workspace is not None
 
     assert workspace is not None
     resolved_root = pdk_root.resolve()
@@ -1093,6 +1107,7 @@ def test_load_workspace_restores_pdk_root_from_parameters(
     )
 
     loaded = load_workspace(str(workspace_dir))
+    assert loaded is not None
 
     assert loaded is not None
     resolved_root = pdk_root.resolve()
@@ -1148,6 +1163,7 @@ def test_load_workspace_external_pdk_recovers_origin_sdc_spef(
     spef_source.unlink()
 
     loaded = load_workspace(str(workspace_dir))
+    assert loaded is not None
 
     assert loaded is not None
     assert loaded.pdk.sdc == origin_sdc
@@ -1172,6 +1188,7 @@ def test_workspace_config_refresh_uses_updated_parameters(
     )
 
     workspace = load_workspace(str(workspace_dir))
+    assert workspace is not None
     parameter_path = workspace_dir / "home" / "params.toml"
     params = _read_parameters(parameter_path)
     params["max_fanout"] = 88
@@ -1202,6 +1219,7 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     )
 
     workspace = load_workspace(str(workspace_dir))
+    assert workspace is not None
     parameter_path = workspace_dir / "home" / "params.toml"
     params = _read_parameters(parameter_path)
     params["max_fanout"] = 91
@@ -1424,6 +1442,7 @@ def test_refresh_workspace_config_reapplies_direct_config_overrides(
         },
         pdk_root=str(pdk_root),
     )
+    assert workspace is not None
 
     cts = json_read(workspace.config[StepEnum.CTS.value])
     dreamplace = json_read(workspace.config["dreamplace"])
@@ -1471,6 +1490,7 @@ def test_refresh_workspace_config_expands_pdk_relative_sta_liberty_overrides(
         },
         pdk_root=str(pdk_root),
     )
+    assert workspace is not None
 
     expected = [str(pdk_root / path.lstrip("/")) for path in relative_liberty[0]["path"]]
     sta = json_read(workspace.config[StepEnum.STA.value])
@@ -1509,6 +1529,7 @@ def test_update_step_config_keeps_sta_liberty_expanded_after_override_replay(
         },
         pdk_root=str(pdk_root),
     )
+    assert workspace is not None
     expected = [str(pdk_root / path.lstrip("/")) for path in relative_liberty[0]["path"]]
 
     step = EccStep(
@@ -1587,6 +1608,7 @@ def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshe
     )
 
     workspace = load_workspace(str(workspace_dir))
+    assert workspace is not None
     routing = json_read(workspace.config["route"])
     routing["RT"]["-bottom_routing_layer"] = "MET4"
     routing["RT"]["-top_routing_layer"] = "MET7"
@@ -1672,6 +1694,7 @@ def test_sync_workspace_config_to_parameters_ignores_unmanaged_fields(
     )
 
     workspace = load_workspace(str(workspace_dir))
+    assert workspace is not None
     cts = json_read(workspace.config["CTS"])
     cts["skew_bound"] = 0.12
     json_write(workspace.config["CTS"], cts)
@@ -1700,6 +1723,7 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_runtime_st
         parameters=default_ics55_parameters,
         pdk_root=str(pdk_root),
     )
+    assert workspace is not None
 
     parameters_before = _read_parameters(workspace_dir / "home" / "params.toml")
     config_before = (workspace_dir / "config" / "filler_ecc.json").read_text()
@@ -1865,6 +1889,7 @@ def test_create_workspace_sg13g2_persists_pdk_root_in_parameters(
         parameters=default_sg13g2_parameters,
         pdk_root=str(pdk_root),
     )
+    assert workspace is not None
 
     assert workspace is not None
     resolved_root = pdk_root.resolve()
@@ -1893,6 +1918,7 @@ def test_load_workspace_sg13g2_restores_pdk_root_from_parameters(
     )
 
     loaded = load_workspace(str(workspace_dir))
+    assert loaded is not None
 
     assert loaded is not None
     resolved_root = pdk_root.resolve()
@@ -1918,6 +1944,7 @@ def test_create_workspace_with_pdk_overrides_str_branch(
         pdk_root=str(pdk_root),
         pdk_overrides={"dont_use": ["ICG*"]},
     )
+    assert workspace is not None
 
     assert workspace is not None
     assert workspace.pdk.dont_use == ["ICG*"]
@@ -1943,6 +1970,7 @@ def test_create_workspace_with_pdk_overrides_pdk_object_ignored(
         parameters=default_ics55_parameters,
         pdk_overrides={"dont_use": ["ICG*"]},
     )
+    assert workspace is not None
 
     assert workspace is not None
     assert workspace.pdk.dont_use == original_dont_use
@@ -1967,9 +1995,11 @@ def test_workspace_pdk_overrides_persisted_on_reload(
         pdk_root=str(pdk_root),
         pdk_overrides={"dont_use": ["ICG*"], "mapping_file": str(layer_map)},
     )
+    assert workspace is not None
     assert workspace.pdk.dont_use == ["ICG*"]
 
     loaded = load_workspace(str(workspace_dir))
+    assert loaded is not None
 
     assert loaded.pdk == workspace.pdk
 
