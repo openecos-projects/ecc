@@ -1348,6 +1348,9 @@ def test_checklist_gate_follows_the_input_chain(tmp_path):
     from chipcompiler.data import OriginDesign
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    flow_path = tmp_path / "home" / "flow.json"
+    flow_path.parent.mkdir()
+    workspace.flow.path = flow_path
     flow = EngineFlow(workspace)
     flow.workspace.flow.data = {
         "steps": [
@@ -1375,8 +1378,9 @@ def test_checklist_gate_blocks_the_step_after_a_synced_blocked_prerequisite(tmp_
     from chipcompiler.data import OriginDesign
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
-    workspace.flow.path = tmp_path / "home" / "flow.json"
-    workspace.flow.path.parent.mkdir()
+    flow_path = tmp_path / "home" / "flow.json"
+    flow_path.parent.mkdir()
+    workspace.flow.path = flow_path
     flow = EngineFlow(workspace)
     workspace.flow.data = {
         "steps": [
@@ -1434,8 +1438,9 @@ def test_run_step_runs_after_a_non_blocked_prerequisite(tmp_path, monkeypatch, s
     from chipcompiler.data import OriginDesign
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
-    workspace.flow.path = tmp_path / "home" / "flow.json"
-    workspace.flow.path.parent.mkdir()
+    flow_path = tmp_path / "home" / "flow.json"
+    flow_path.parent.mkdir()
+    workspace.flow.path = flow_path
     flow = EngineFlow(workspace)
     workspace.flow.data = {
         "steps": [
@@ -1450,7 +1455,7 @@ def test_run_step_runs_after_a_non_blocked_prerequisite(tmp_path, monkeypatch, s
         flow.save()
     step = EccStep(name="filler", directory=tmp_path, tool="ecc")
     flow.workspace_steps = [step]
-    flow.engine_db = SimpleNamespace(engine=None)
+    monkeypatch.setattr(flow, "engine_db", SimpleNamespace(engine=None))
     called = []
     monkeypatch.setattr(tools, "run_step", lambda **kwargs: called.append(kwargs["step"]) or True)
     monkeypatch.setattr(flow, "check_step_result", lambda **_kwargs: True)
@@ -1465,8 +1470,9 @@ def test_checklist_gate_allows_non_blocked_status(tmp_path, status):
     from chipcompiler.data import OriginDesign
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
-    workspace.flow.path = tmp_path / "home" / "flow.json"
-    workspace.flow.path.parent.mkdir()
+    flow_path = tmp_path / "home" / "flow.json"
+    flow_path.parent.mkdir()
+    workspace.flow.path = flow_path
     flow = EngineFlow(workspace)
     workspace.flow.data = {
         "steps": [
