@@ -479,14 +479,18 @@ def _refresh_emir_config(workspace: Workspace) -> None:
     config = json_read(config_path)
     if not isinstance(config, dict):
         raise FileNotFoundError(f"EMIR config missing or corrupt: {config_path}")
-    if config.get("technology_file_path"):
-        return
 
-    technology_path = _default_emir_technology_file()
+    technology_path = config_path.parent / "ics55_synthetic.tech"
+    configured = config.get("technology_file_path")
+    if configured:
+        configured_path = Path(str(configured)).expanduser()
+        if configured_path == technology_path:
+            return
+        if configured_path != _default_emir_technology_file().expanduser():
+            return
+
     if not technology_path.is_file():
-        raise FileNotFoundError(
-            f"Packaged EMIR technology file is missing: {technology_path}"
-        )
+        raise FileNotFoundError(f"Workspace EMIR technology file is missing: {technology_path}")
     config["technology_file_path"] = str(technology_path)
     json_write(config_path, config)
 

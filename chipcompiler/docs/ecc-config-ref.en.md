@@ -731,9 +731,11 @@ present, the signoff package includes the report once at
 ### 13.5 emir (iEMIR)
 
 `emir_ecc.json` contains one public field, `technology_file_path`. When the
-template value is empty, workspace refresh fills it with the packaged
-`chipcompiler/tools/ecc/configs/ics55_synthetic.tech`. Preflight for an `emir`
-selection requires the configured path to exist. Change it with:
+template value is empty, workspace refresh fills it with the workspace-local
+`config/ics55_synthetic.tech` copy created from the packaged resource. A legacy
+workspace whose default still points at the packaged file is migrated on
+refresh. Preflight for an `emir` selection requires the configured path to
+exist. Change it with:
 
 ```bash
 ecc param list --step emir
@@ -881,9 +883,9 @@ ecc param set emir.technology_file_path /path/to/process.tech
 ecc param set emir.technology_file_path /path/to/process.tech --workspace NAME
 ```
 
-When the field is empty, workspace refresh selects the packaged
-`ics55_synthetic.tech`; an explicitly configured path must exist before the
-step runs. EMIR is advisory, so record any incomplete analysis rather than
+When the field is empty, workspace refresh selects the workspace-local
+`config/ics55_synthetic.tech`; an explicitly configured path must exist before
+the step runs. EMIR is advisory, so record any incomplete analysis rather than
 assuming it blocks Harden.
 
 ## 16. Configuration inspection and modification cheat sheet

@@ -709,9 +709,9 @@ IO 则用 0°C 库。项目或 workspace 显式设置的 `sta.liberty` 会替换
 ### 13.5 emir（iEMIR）
 
 `emir_ecc.json` 只有一个公开字段 `technology_file_path`。模板值为空时，
-workspace 刷新会填入打包的
-`chipcompiler/tools/ecc/configs/ics55_synthetic.tech`。选择 `emir` 步骤时，
-预检要求配置的路径实际存在。修改方式：
+workspace 刷新会填入 workspace 内的 `config/ics55_synthetic.tech`（创建
+workspace 时从打包资源复制）。旧 workspace 中指向打包路径的默认值会在刷新时
+迁移到该副本。选择 `emir` 步骤时，预检要求配置的路径实际存在。修改方式：
 
 ```bash
 ecc param list --step emir
@@ -857,9 +857,9 @@ ecc param set emir.technology_file_path /path/to/process.tech
 ecc param set emir.technology_file_path /path/to/process.tech --workspace NAME
 ```
 
-字段为空时，workspace 刷新会选择打包的 `ics55_synthetic.tech`；显式配置的
-路径必须在步骤运行前存在。EMIR 是 advisory 步骤，应记录未完成的分析，
-而不是假定它会阻断 Harden。
+字段为空时，workspace 刷新会选择 workspace 内的
+`config/ics55_synthetic.tech`；显式配置的路径必须在步骤运行前存在。EMIR 是
+advisory 步骤，应记录未完成的分析，而不是假定它会阻断 Harden。
 
 ## 16. 配置查看与修改速查
 
