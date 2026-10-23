@@ -306,10 +306,10 @@ RTL 架构、频率或 corner 的探索可以另做，但要新建实验类别�
 复用可信已有 baseline 时可省掉新的基线运行。候选上限、总时间、单次时间、CPU/RAM/磁盘
 限额应在启动前写入台账。
 
-当前 sweep 为串行执行，提供 `--max-candidates` 前缀限制；当前代码还支持
-`ECC_SWEEP_TIMEOUT_SECONDS`，缺省为 86400 秒，作用于单次 subprocess。
-它不是总项目预算、内存限制或完整 EDA 子进程清理保证。超时后核对运行状态和当前任务启动的
-进程已退出，再恢复；总预算由 AI 大模型控制。线程/corner 并行参数用于资源管理，不等于 PPA 改善。
+当前 sweep 为串行执行，提供 `--max-candidates` 前缀限制。当前实现没有单候选 sweep 超时选项，
+也没有超时环境变量钩子。如确有需要，应在外部施加 wall-clock 限制；之后核对运行状态并确认
+当前任务启动的进程已退出，再恢复。总预算由 AI 大模型控制。线程/corner 并行参数用于资源管理，
+不等于 PPA 改善。
 
 ## 5. PPA 与 QoR 怎么读
 
@@ -392,7 +392,7 @@ workspace param 修改输出的 `from_step/invalidated_steps` 及持久化 flow 
 | `cts.skew_bound` | 当前 schema 为 str，物理量 ns | CTS skew/面积/功耗折中 | CTS |
 | `cts.max_fanout` | int，当前范围 1–200 | 时钟树结构 | CTS；还可能影响自动 SDC，需要看 invalidation |
 | `cts.routing_layer`、`cts.buffer_type` | JSON 列表 | 工艺允许的时钟层与缓冲单元 | CTS |
-| `timing_opt.hold_margin` | float，当前默认 0.1 ns；工具拒绝负值 | Sizer hold-only 预留裕量 | Timing optimization |
+| `timing_opt.hold_margin` | float，当前默认 0.04 ns；工具拒绝负值 | Sizer hold-only 预留裕量 | Timing optimization |
 | `route.bottom_layer`、`route.top_layer` | 工艺层字符串 | 路由容量、RC、via/线长 | 可能影响布局路由代理和 Sizer；以 invalidation 为准 |
 | `macro.placements` / `ecc macro` | 合法宏位置/方向 | 宏通道和关键线长 | macroPlacement |
 
@@ -561,18 +561,17 @@ ecc sweep create --project "$PPA_PROJECT" --name "$PPA_SWEEP" \
   --param floorplan.core_util=0.30 \
   --param place.target_density=0.15,0.20,0.25
 ecc sweep show --project "$PPA_PROJECT" --name "$PPA_SWEEP" --json
-ECC_SWEEP_TIMEOUT_SECONDS=3600 ecc sweep run --project "$PPA_PROJECT" \
-  --name "$PPA_SWEEP" --max-candidates 3 --json
+ecc sweep run --project "$PPA_PROJECT" --name "$PPA_SWEEP" --max-candidates 3
 ecc sweep verify --project "$PPA_PROJECT" --name "$PPA_SWEEP"
 ecc sweep compare --project "$PPA_PROJECT" --name "$PPA_SWEEP" --json
-ecc explore rank --project "$PPA_PROJECT" --name "$PPA_SWEEP" --json
+ecc explore rank --project "$PPA_PROJECT" --name "$PPA_SWEEP"
 ecc explore export --project "$PPA_PROJECT" --name "$PPA_SWEEP" \
   --format csv --output "$PPA_EVIDENCE/$PPA_SWEEP.csv"
 ecc explore export --project "$PPA_PROJECT" --name "$PPA_SWEEP" \
   --format json --output "$PPA_EVIDENCE/$PPA_SWEEP.json"
 ```
 
-3600 秒只是单次限时示例，需要根据 baseline 成本确定。参数值与物理合理性在执行前校验。
+候选数和外部时间预算应根据 baseline 成本确定。参数值与物理合理性在执行前校验。
 当前 sweep create 主要解析 `KEY=VALUE[,VALUE]` 并生成计划，**不等于逐项参数 schema
 和物理条件已验证**；真正 run 仍会对覆盖做校验。
 逗号用于分割取值，JSON 数组/对象含逗号时不适合该入口；使用流程 A 的 quoted
@@ -607,16 +606,21 @@ ecc report qor --project "$PPA_CAND_PROJECT" --workspace candidate_0001 \
 
 ### 10.3 sweep 状态与审计
 
-- candidate `passed` 需要完整成功 flow、通过 checklist、有效总体 QoR 和明确通过的 signoff。
-- signoff `7` 不会成为 passed；缺分数保持 null。blocked/failed/unknown 不允许 promote。
-- `sweep verify` 通过表示计划与结果结构、参数、状态、退出码和证据一致，
-  不表示所有 candidate 业务通过；合法 blocked/failed/unknown 记录也能通过完整性审计。
+- 记录为 `passed` 表示没有 step/checklist 处于 blocked，`ecc run` 退出 0，signoff 探测
+  退出 `0` 或 `7`，且存在 step 证据或 `ecc status` 成功；它本身不证明完整 flow、有效 QoR、
+  checklist 通过或完整 signoff。
+- signoff 退出 `7` 是证据而非自动失败；缺失分数保持 null。blocked/failed/unknown 不能在
+  候选模式下 promote。
+- `sweep verify` 通过只检查 plan fingerprint、结果成员唯一、候选参数完全一致、workspace
+  目录存在和缺失结果，不审计 step 状态、QoR、signoff、checklist 内容或字段类型，也不表示
+  所有候选都通过。合法的 blocked/failed/unknown 记录可以通过完整性校验。
 - `--max-candidates N` 是计划前 N 个候选，不是每次新增 N 个；运行 2/3 后 verify 报缺结果
   是预期现象。完成计划后再用完整性审计收尾。
-- 已有结果且 workspace 存在的候选会重新采集证据，但不自动重跑 EDA。
-  失败候选需要针对根因使用其公开 run/resume 或新建实验；不能靠重复 sweep run 修复设计。
-- 当前缓存会保留原候选 run 的 exit_code。若外部恢复了原失败候选，也不能只凭 sweep
-  再采集认为失败执行记录已被改写；推荐新候选/新 sweep，并保存恢复过程台账。
+- 只要候选已有任一记录状态且 workspace 存在，就会复用记录，不重跑 EDA，也不重新采集证据。
+  恢复不会改写缓存行；应对候选 workspace 使用公开 run/resume，或新建候选/sweep。
+- 候选模式 `explore promote` 只检查缓存行及 `passed` 状态。Pareto promote 才会重新核验当前
+  提交参数、完整 flow/checklist/signoff、零 checker 计数、metric registry 数值和 snapshot
+  稳定性。
 - sweep 的排序是 passed 优先，其后 blocked、failed、unknown，各类内 QoR 降序。
   它不实现面积/功耗/时序 Pareto，也不自动保证同一目标下的全局最优。
 
@@ -694,10 +698,11 @@ slack 改善使用 ns 差值，不对负 slack 用普通百分比掩盖仍未通
 
 ### 13.1 记录选择
 
-对 sweep 候选，只有确认 passed 且符合用户 PPA 目标，才执行：
+对 sweep 候选，候选模式 promote 只检查缓存的 `passed` 行；需要重新核验当前完整流程证据时，
+应使用 Pareto promote。两种显式选择前都要确认符合用户 PPA 目标：
 
 ```bash
-ecc explore promote --project "$PPA_PROJECT" --name "$PPA_SWEEP" --candidate candidate_0002 --json
+ecc explore promote --project "$PPA_PROJECT" --name "$PPA_SWEEP" --candidate candidate_0002
 ```
 
 candidate_0002 只是选择语法示例，不是本文已选出的 winner。
@@ -753,7 +758,8 @@ signoff export 是另一套交付检查和设计产物打包；缺必需证据�
 | diagnose failed/blocked | 6 | 保留 JSON，定位原因；不是 passed |
 | signoff check 硬门失败 | 6 | 修复根因，不 promote |
 | signoff check 必需证据无法评级 | 7 | UNKNOWN；补真实证据，不当 passed |
-| sweep verify 完整性失败 | 6 | 区分计划未完成、损坏字段、过期 passed 与缺文件 |
+| sweep verify 完整性失败 | 6 | 区分计划指纹、候选隶属/参数、workspace 与结果缺失 |
+| Pareto promote 没有经核验的前沿 | 7 | 检查 `excluded`；不要臆造 winner |
 | 参数/usage 错误 | 通常 1 或 2，按命令契约 | 修改请求参数；不计为已成功运行的候选 |
 | 超时 | 非零 timeout 码 | 核对当前任务子进程、预算与恢复边界 |
 
@@ -901,7 +907,8 @@ power、最终多 corner setup/hold、RC、route DRC/LVS 在前段一般没有�
 阶段筛选只评估已执行阶段所要求的真实条件；尚未执行的后段门禁保持未验证。
 前段完成后总体 QoR 可能 NOT_RATED/null，signoff 可能为 7，或因已有 blocker 返回 6；
 它们不表示前段 DSE 一定不能开展，但也不表示候选已完整 passed。
-当前 sweep 候选要求有效总体 QoR 与完整 signoff pass，不能把早期候选强行 promote。
+候选模式的 `passed` 行并不要求有效总体 QoR 或完整 signoff。不要把它当作完整交付 winner；
+需要按当前完整流程和 signoff 重新核验时，使用 Pareto promote。
 
 所有阶段约束在运行前记录，例如是否要求可用 DEF/Verilog、拥塞指标上限、宏合法性证据。
 阈值依据设计/工艺和实际 baseline 制定，本文不将“overflow=0”或某个 RUDY 数值设为所有
@@ -1038,9 +1045,10 @@ PDK/资源/override、SDC 及完整固定参数；这里不把新项目的默认
 | --- | --- | --- |
 | synthesis | `design.rtl` | 固定 RTL，不省综合 |
 | preFloorplan | `design.netlist` | 已核对综合网表，省综合 |
-| macroPlacement / postFloorplan / place | `design.def` + `design.netlist` | 相应前一步的配套物理检查点 |
-| CTS / legalization / Timing optimization / route | `design.def` + `design.netlist` | 相应前一步完成的配套检查点 |
+| macroPlacement / postFloorplan / preplace / place / diff_sizing | `design.def` + `design.netlist` | 相应前一步的配套物理检查点 |
+| CTS / legalization / Timing optimization / route / filler / lvs / drc / Harden | `design.def` + `design.netlist` | 相应前一步完成的配套检查点 |
 | sta | 上述两项 + `design.spef` | 真实 RCX 与对应设计；不是早期 placement 的替代输入 |
+| antennaCheck / powerAnalysis / emir | 无入口输入契约 | 从更早的有效检查点开始；依赖上游链式产物 |
 
 SDC 显式声明时也会校验；其他宏模型/物理库资源同样需完整。不能把任意 DEF 与另一候选
 网表拼在一起，或给 CTS 输入仅综合网表。输入应对应同一个 owner step、候选和完成状态。

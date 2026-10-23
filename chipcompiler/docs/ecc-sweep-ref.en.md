@@ -45,7 +45,8 @@ ecc explore promote --project /path/to/project --name density --candidate candid
 <project>/experiments/<name>/
 ├── sweep.json                  # frozen plan (§5)
 ├── results.json                # recorded per-candidate evidence (§7)
-├── winner.json                 # written by explore promote (§4.7)
+├── pareto.json                 # written by Pareto promotion (§4.9)
+├── winner.json                 # written only after an explicit selection (§4.8–4.9)
 └── candidates/
     └── candidate_0001/
         └── project/            # isolated project copy for this candidate
@@ -59,8 +60,11 @@ ecc explore promote --project /path/to/project --name density --candidate candid
 ## 4. Commands
 
 All commands accept `--project DIR` (default: the project discovered from the current
-directory). Output is JSON, except `sweep compare` which prints a table by default.
-Usage or validation errors exit `2` with the message on stderr.
+directory). `sweep create`, `sweep list`, `sweep show`, `sweep run`, `sweep verify`, and
+`explore rank`/`promote` emit JSON. `sweep compare` prints a table by default and JSON
+with `--json`; `explore export` prints the selected format unless `--output` is given.
+`sweep show` accepts `--json` for CLI compatibility but always prints JSON. Usage or
+validation errors exit `2` with the message on stderr.
 
 ### 4.1 sweep create
 
@@ -100,9 +104,10 @@ ecc sweep run --name NAME [--max-candidates N] [--project DIR]
 
 Executes the plan (see §6) and prints the recorded `results.json`. `--max-candidates N`
 (N ≥ 1) bounds the run to the first N candidates in plan order — useful for a smoke pass
-over a large grid. The command is resumable: candidates whose results are already
-recorded with an existing workspace directory are not re-executed, so an interrupted
-`run` continues where it stopped.
+over a large grid. The command is resumable: any candidate with a recorded status of
+`passed`, `blocked`, `failed`, or `unknown` and an existing workspace directory is
+reused without re-running the flow or recollecting evidence, so an interrupted `run`
+continues where it stopped.
 
 ### 4.5 sweep compare
 
@@ -138,7 +143,19 @@ Prints the recorded result rows as JSON, sorted by the §8 rules (passed first, 
 descending QoR). It is the machine-readable counterpart of `sweep compare` and re-ranks
 nothing: the recorded statuses and scores are used as-is.
 
-### 4.7 explore promote
+### 4.7 explore export
+
+```bash
+ecc explore export --name NAME [--format json|csv|markdown] [--output PATH] [--project DIR]
+```
+
+Exports the same ranked matrix used by `sweep compare`. The default format is `json`;
+`csv` and `markdown` emit the fixed columns shown in §4.5. Without `--output`, the
+formatted content is written to stdout. With `--output`, the content is written to that
+file and stdout receives a one-line JSON status containing `status`, `format`, and the
+resolved output path. An unsupported format is a usage error (exit `2`).
+
+### 4.8 explore promote: candidate mode
 
 ```bash
 ecc explore promote --name NAME --candidate CANDIDATE_ID [--project DIR]
@@ -150,6 +167,45 @@ time>}` — after checking that the candidate exists **and** its recorded status
 nothing. Promotion is a record, not an action: applying the winning parameters to the
 real project is an explicit follow-up (`ecc param set` / `ecc run --set`), and promoting
 does not mutate the project manifest or the baseline workspace.
+
+Candidate mode checks only that `results.json` contains a matching row for the candidate
+and that its recorded `status` is `passed`. It does not re-read the current flow,
+checklist, signoff report, metric evidence, or snapshot, so a stale cached row can still
+be promoted.
+
+### 4.9 explore promote: Pareto mode
+
+```bash
+ecc explore promote --name NAME --pareto \
+  --objective ID:UNIT:minimize|maximize [--objective ...] \
+  [--candidate CANDIDATE_ID | --weights W1[,W2,...]] [--project DIR]
+```
+
+Pareto mode accepts one to three distinct objectives. Each `ID` must belong to the ECC
+metric registry (or be `qor_score`), and its unit and direction must match the registry.
+After validating the requested objectives and selection arguments, the command writes
+`pareto.json` before returning an empty-front exit. It revalidates each candidate against
+current committed evidence rather than trusting the cached status:
+
+- the candidate workspace must match the sweep binding and lie inside the project;
+- committed parameters must equal the frozen candidate parameters;
+- the full flow, checklist, and signoff evidence must currently be `passed`, with zero
+  checker violations;
+- every objective must have one unambiguous current metric value from verified metric
+  evidence, and the engineering snapshot must not change while it is inspected.
+
+Candidates that fail any check are listed under `excluded` with a reason. The report is
+written with `front`, `ranking`, `objectives`, `excluded`, `safe_to_apply: false`, and a
+selection record.
+
+Without `--candidate` or `--weights`, Pareto mode exports the front only: it writes
+`pareto.json`, does not write `winner.json`, and exits `0` when the front is non-empty.
+An explicit `--candidate` must be a member of the verified front; `--weights` requires
+one finite, non-negative weight per objective with a positive sum and selects the lowest
+normalized weighted score with deterministic candidate-ID tie-breaking. Either explicit
+selection writes `winner.json` in addition to `pareto.json`. If the verified front is
+empty without an explicit selection, the command writes `pareto.json` and exits `7`. An
+invalid explicit candidate or weight vector exits `2` before either file is written.
 
 ## 5. Plan contract (`sweep.json`)
 
@@ -178,8 +234,9 @@ For each candidate (in plan order, bounded by `--max-candidates`):
    `*.lock`, and `ws_*` entries. The copied `project.json` is rewritten so
    `root_path` points at the copy and `workspaces` / `runtime_processes` are empty —
    the copy starts as a clean single-workspace project.
-2. If a previous result exists for the candidate and its workspace directory is present,
-   the recorded result is reused and nothing runs.
+2. If a previous result exists for the candidate with any of the four recorded statuses
+   and its workspace directory is present, the recorded result is reused and nothing
+   runs.
 3. Otherwise the candidate runs as a subprocess:
    `ecc run --project <copy> --workspace <copy>/<candidate-id> --set KEY=VALUE …`,
    using the frozen per-candidate parameters.
@@ -214,7 +271,9 @@ Status derivation, in priority order:
 4. **unknown** — no step evidence at all.
 
 The probes are read-only; `run` never re-runs EDA to fill evidence gaps. QoR and
-violation values are whatever the workspace already contains.
+violation values are whatever the workspace already contains. In particular, signoff
+exit `7` alone does not make a candidate non-passed; the step/status rule above still
+decides the recorded status.
 
 ## 8. Ranking rules
 
@@ -232,11 +291,18 @@ signoff decision (see the [QoR Reference](ecc-qor-ref.en.md) for what the score 
 | Code | Meaning |
 |---|---|
 | 0 | Success (including an empty compare/rank result — an unknown or not-yet-run sweep name compares as empty) |
-| 2 | Usage error or validation failure: unknown sweep name (`show`/`run`/`promote`), unknown or non-passed candidate (`promote`), duplicate name (`create`), malformed `--param` |
+| 2 | Usage error or validation failure: unknown sweep name, unknown or non-passed candidate in candidate promotion, invalid objective/weight/export settings, duplicate name, or malformed `--param` |
+| 6 | `sweep verify` found an integrity failure |
+| 7 | Pareto mode produced no verified front |
 
 The sweep commands have no `--plain`; JSON is the machine-readable form. Evidence
 packaging and integrity checks for shared results are a separate command group — see
 `ecc reproducible` in the [CLI User Guide §11.5](ecc-user-guide.en.md).
+
+`sweep verify` checks only the stored plan fingerprint, unique result membership against
+the plan, exact candidate-parameter equality, workspace-directory existence, and missing
+results. It does not revalidate step states, QoR values, signoff, checklist contents, or
+result field types. Use Pareto promotion for current full-flow evidence revalidation.
 
 ## 10. Relationship to other commands
 

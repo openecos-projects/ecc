@@ -1,13 +1,16 @@
 # Staged Floorplan Flow
 
-The `rtl2gds` preset persists floorplanning as three separate stages:
+The `rtl2gds` preset persists floorplanning as three separate stages within this
+surrounding sequence:
 
 ```mermaid
 flowchart LR
-    LEC[LEC] --> PRE[preFloorplan\necc]
+    SYN[Synthesis\nYosys] --> LEC[LEC\noptional; default skipped]
+    LEC --> PRE[preFloorplan\necc]
     PRE --> MACRO[macroPlacement\nDreamPlace]
     MACRO --> POST[postFloorplan\necc]
-    POST --> PLACE[placement\nDreamPlace]
+    POST --> PREPLACE[preplace\necc Sizer]
+    PREPLACE --> PLACE[placement\nDreamPlace]
 ```
 
 A normal `ecc run` executes the stages consecutively. They are separate so
@@ -18,9 +21,9 @@ The split does **not** add an automatic GUI pause protocol.
 
 | Persisted step | Tool | Workspace directory | What it does |
 | --- | --- | --- | --- |
-| `preFloorplan` | ecc | `preFloorplan_ecc/` | Builds the initial die/core plan with automatic macro placement enabled. It derives `config/floorplan_ecc_simple.json` from the shared floorplan configuration. |
-| `macroPlacement` | DreamPlace | `macroPlacement_dreamplace/` | Runs macro-only placement from the pre-floorplan database, then writes the Tcl macro-location handoff. |
-| `postFloorplan` | ecc | `postFloorplan_ecc/` | Loads the macro-location handoff in file mode and completes floorplanning: tracks, IO pins, tap/endcap cells, PDN, clock-net setup, outputs, and analysis. |
+| `preFloorplan` | ecc | `preFloorplan_ecc/` | Marks the clock net when `clock` is set, builds the initial die/core plan, and runs the simple floorplan. It derives `config/floorplan_ecc_simple.json` from the shared configuration, forces `macro_placer.mode = "auto"`, and clears `file_path`. |
+| `macroPlacement` | DreamPlace | `macroPlacement_dreamplace/` | Runs macro-only placement from the pre-floorplan database, then writes the Tcl macro-location handoff. Manual `macro.placements` skips DreamPlace and uses the Tcl rendered during configuration refresh. |
+| `postFloorplan` | ecc | `postFloorplan_ecc/` | Rewrites the shared `floorplan_ecc.json` to `macro_placer.mode = "file"` with `file_path` pointing at `macro_location.tcl`, then completes floorplanning: tracks, IO pins, tap/endcap cells, PDN, outputs, and analysis. |
 
 `Floorplan` remains the shared configuration key; it is not an executable flow
 step. Use the three persisted names above when selecting steps in an existing

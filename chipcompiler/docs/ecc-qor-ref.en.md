@@ -310,7 +310,7 @@ Intervention hypotheses are ordered by a three-tier lexicographic policy:
 2. **Tier 2 (quality limiters/bottlenecks)**: descending bottleneck severity, ahead of optimization opportunities;
 3. **Tier 3 (optimization opportunities)**: downsizing suggestions for over-provisioned margins.
 
-Example interventions and parameter knobs (the `parameter_knob` field): interconnect bottleneck → `route.dr_search_depth` (requires a trial reroute); area → floorplan utilization targets; robustness → CTS balancing and multi-corner skew targets.
+Example interventions and public parameter knobs (the `parameter_knob` field): interconnect bottleneck → `route.bottom_layer` / `route.top_layer` or `place.routability_opt` (requires a trial reroute); area → floorplan utilization targets; robustness → CTS balancing and multi-corner skew targets. These are hypotheses; `route.dr_search_depth` is not a public `ecc param` key.
 
 ## 8. User-Configurable Parameters
 
