@@ -25,9 +25,9 @@ import json
 import tomllib
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
-SCHEMA_VERSION_FIELD = "schema_version"
+SCHEMA_VERSION_FIELD: Final = "schema_version"
 SNAPSHOT_SCHEMA_VERSION_FIELD = "schemaVersion"
 
 PARAMS_TOML = "params.toml"

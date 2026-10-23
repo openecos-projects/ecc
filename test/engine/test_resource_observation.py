@@ -230,7 +230,7 @@ def test_skipping_a_successful_step_does_not_create_a_new_measurement(monkeypatc
 
     flow.run_step(step)
 
-    assert workspace.flow.data["steps"][0]["resource_observation"] == {
+    assert workspace.flow.data.get("steps", [])[0].get("resource_observation") == {
         "attempt_id": "previous-execution"
     }
 

@@ -1818,24 +1818,6 @@
                 }
             }
         ],
-        "./chipcompiler/engine/flow_completion.py": [
-            {
-                "code": "reportCallIssue",
-                "range": {
-                    "startColumn": 13,
-                    "endColumn": 40,
-                    "lineCount": 5
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 10,
-                    "endColumn": 28,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./chipcompiler/engine/interrupted_run.py": [
             {
                 "code": "reportOptionalMemberAccess",
@@ -4204,80 +4186,6 @@
                 "range": {
                     "startColumn": 21,
                     "endColumn": 38,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./test/engine/test_flow_completion_checklist.py": [
-            {
-                "code": "reportOptionalSubscript",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 17,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalSubscript",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 17,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalSubscript",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 17,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalSubscript",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 17,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalSubscript",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 17,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalSubscript",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 17,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalSubscript",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 17,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 47,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 51,
                     "lineCount": 1
                 }
             }
@@ -6912,22 +6820,6 @@
                 "range": {
                     "startColumn": 16,
                     "endColumn": 25,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalSubscript",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 17,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalSubscript",
-                "range": {
-                    "startColumn": 11,
-                    "endColumn": 17,
                     "lineCount": 1
                 }
             }

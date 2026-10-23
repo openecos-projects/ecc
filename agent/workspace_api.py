@@ -262,7 +262,7 @@ class FlowAgentRuntimeApi:
     ) -> bool:
         try:
             steps = _candidate_step_range(
-                workspace.flow.data["steps"],
+                workspace.flow.data.get("steps", []),
                 request.target_step,
                 request.end_step,
                 request.execution_scope,

@@ -31,6 +31,7 @@ from chipcompiler.data.workspace.flow_policy import (
     is_checker_batch_step,
     ledger_category,
 )
+from chipcompiler.data.workspace.flow_types import FlowStepEntry, load_flow_document
 from chipcompiler.engine import EngineDB
 from chipcompiler.engine.flow_completion import (
     finalize_interrupted_subflow as _finalize_interrupted_subflow,
@@ -129,7 +130,7 @@ class EngineFlow:
         info: dict | None = None,
         category: str | FlowStepCategory = FlowStepCategory.PNR,
         input_step: str | None = None,
-    ):
+    ) -> FlowStepEntry:
         step_value = step.value if isinstance(step, StepBaseEnum) else step
         state_value = state.value if isinstance(state, StateEnum) else state
         if (
@@ -138,7 +139,7 @@ class EngineFlow:
         ):
             category = FlowStepCategory.CHECKER
         category_value = category.value if isinstance(category, FlowStepCategory) else str(category)
-        result = {
+        result: FlowStepEntry = {
             "name": step_value,  # step name
             "tool": tool,  # eda tool name
             "category": category_value,
@@ -159,7 +160,7 @@ class EngineFlow:
         info: dict | None = None,
         category: str | FlowStepCategory = FlowStepCategory.PNR,
         input_step: str | None = None,
-    ):
+    ) -> None:
         steps = self.workspace.flow.data.get("steps", [])
         steps.append(
             self.init_flow_step(
@@ -175,13 +176,12 @@ class EngineFlow:
         """
         load flow config json from workspace
         """
-        from chipcompiler.utility import json_read
-
         if not self.workspace.flow.path:
             self.workspace.flow.data = {}
             return False
-        self.workspace.flow.data = json_read(self.workspace.flow.path)
-        if normalize_flow_step_categories(self.workspace.flow.data):
+        flow_data = load_flow_document(self.workspace.flow.path)
+        self.workspace.flow.data = flow_data
+        if normalize_flow_step_categories(flow_data):
             self.save()
         return len(self.workspace.flow.data.get("steps", [])) > 0
 
@@ -193,7 +193,7 @@ class EngineFlow:
 
         return save_ledger(self.workspace.flow)
 
-    def get_step(self, name: str, tool: str):
+    def get_step(self, name: str, tool: str) -> FlowStepEntry | None:
         return self.workspace.flow.get_step(name, tool)
 
     def get_workspace_step(self, name: str) -> WorkspaceStep | None:

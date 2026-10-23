@@ -16,6 +16,7 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
 )
+from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.tools.ecc.metrics import _quality_gates, build_qor_summary_payload
 from chipcompiler.tools.ecc.signoff_checklist import (
     _flow_items,
@@ -318,7 +319,7 @@ def test_step_checklist_references_v4_qor_gate_without_recomputing_it(tmp_path):
     (tmp_path / "home").mkdir()
     workspace.flow.data = {
         "steps": [
-            {"name": step.value, "state": StateEnum.Success.value}
+            FlowStepEntry(name=step.value, tool="ecc", state=StateEnum.Success.value)
             for step in (
                 StepEnum.ROUTING,
                 StepEnum.DRC,
@@ -379,7 +380,7 @@ def test_harden_checklist_blocks_on_failed_mpc_area_gate_and_keeps_route_evidenc
     (tmp_path / "home").mkdir()
     workspace.flow.data = {
         "steps": [
-            {"name": step.value, "state": StateEnum.Success.value}
+            FlowStepEntry(name=step.value, tool="ecc", state=StateEnum.Success.value)
             for step in (
                 StepEnum.ROUTING,
                 StepEnum.DRC,
@@ -566,7 +567,7 @@ def test_home_checklist_flow_completed_tracks_final_harden_state(tmp_path):
     workspace.flow.path = tmp_path / "home" / "flow.json"
     workspace.flow.data = {
         "steps": [
-            {"name": step.value, "tool": "ecc", "state": StateEnum.Success.value}
+            FlowStepEntry(name=step.value, tool="ecc", state=StateEnum.Success.value)
             for step in (
                 StepEnum.ROUTING,
                 StepEnum.DRC,
@@ -577,9 +578,9 @@ def test_home_checklist_flow_completed_tracks_final_harden_state(tmp_path):
                 StepEnum.STA,
             )
         ]
-        + [{"name": StepEnum.HARDEN.value, "tool": "ecc", "state": StateEnum.Ongoing.value}]
+        + [FlowStepEntry(name=StepEnum.HARDEN.value, tool="ecc", state=StateEnum.Ongoing.value)]
     }
-    workspace.flow.data["steps"][-3]["tool"] = "yosys_lec"
+    workspace.flow.data.get("steps", [])[-3]["tool"] = "yosys_lec"
     step = EccStep(
         name=StepEnum.HARDEN.value,
         directory=tmp_path / "Harden_ecc",
@@ -596,7 +597,7 @@ def test_home_checklist_flow_completed_tracks_final_harden_state(tmp_path):
     assert home_items["flow.harden.completed"]["state"] == "failed"
     assert "Ongoing" in home_items["flow.harden.completed"]["summary"]
 
-    workspace.flow.data["steps"][-1]["state"] = StateEnum.Success.value
+    workspace.flow.data.get("steps", [])[-1]["state"] = StateEnum.Success.value
     rebuild_home_checklist(workspace)
     home_items = {
         item["id"]: item
@@ -701,8 +702,8 @@ def test_advisory_flow_checks_are_attention_without_blocking(tmp_path):
         assert items[item_id]["state"] == "warning"
         assert items[item_id]["blocked"] is False
 
-    workspace.flow.data["steps"][0]["state"] = StateEnum.Success.value
-    workspace.flow.data["steps"][1]["state"] = StateEnum.Success.value
+    workspace.flow.data.get("steps", [])[0]["state"] = StateEnum.Success.value
+    workspace.flow.data.get("steps", [])[1]["state"] = StateEnum.Success.value
     items = {item["id"]: item for item in _flow_items(workspace)}
     assert items["flow.antennacheck.completed"]["state"] == "warning"
     assert items["flow.emir.completed"]["state"] == "warning"
@@ -825,8 +826,8 @@ def test_home_checklist_uses_origin_golden_when_flow_has_no_synthesis(tmp_path):
             )
         ]
     }
-    workspace.flow.data["steps"][5]["tool"] = "yosys_lec"
-    workspace.flow.data["steps"][5]["input_step"] = "lvs"
+    workspace.flow.data.get("steps", [])[5]["tool"] = "yosys_lec"
+    workspace.flow.data.get("steps", [])[5]["input_step"] = "lvs"
 
     items = {item["id"]: item for item in _flow_items(workspace)}
     assert "flow.postroutelec.completed" in items
@@ -921,7 +922,7 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
             )
         ]
     }
-    workspace.flow.data["steps"][2]["tool"] = "yosys_lec"
+    workspace.flow.data.get("steps", [])[2]["tool"] = "yosys_lec"
 
     home_items = {item["id"]: item for item in rebuild_home_checklist(workspace)["checklist"]}
     assert home_items["artifact.postroutelec.result"]["state"] == "pass"
@@ -979,7 +980,7 @@ def test_home_checklist_excludes_inactive_lec_engine_snapshots(tmp_path):
             )
         ]
     }
-    workspace.flow.data["steps"][2]["tool"] = "kepler_formal"
+    workspace.flow.data.get("steps", [])[2]["tool"] = "kepler_formal"
 
     home_items = {item["id"]: item for item in rebuild_home_checklist(workspace)["checklist"]}
     assert "artifact.postroutelec.result" not in home_items
@@ -1013,13 +1014,13 @@ def test_home_checklist_omits_post_route_lec_when_ledger_skips_it(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     (tmp_path / "home").mkdir()
     workspace.flow.path = tmp_path / "home" / "flow.json"
-    ledger_without_post_route_lec = [
-        {"name": step.value, "tool": "ecc", "state": StateEnum.Success.value}
+    ledger_without_post_route_lec: list[FlowStepEntry] = [
+        FlowStepEntry(name=step.value, tool="ecc", state=StateEnum.Success.value)
         for step in (StepEnum.ROUTING, StepEnum.DRC, StepEnum.LVS, StepEnum.FILLER)
     ] + [
-        {"name": StepEnum.RCX.value, "tool": "ecc", "state": StateEnum.Success.value},
-        {"name": StepEnum.STA.value, "tool": "ecc", "state": StateEnum.Success.value},
-        {"name": StepEnum.HARDEN.value, "tool": "ecc", "state": StateEnum.Success.value},
+        FlowStepEntry(name=StepEnum.RCX.value, tool="ecc", state=StateEnum.Success.value),
+        FlowStepEntry(name=StepEnum.STA.value, tool="ecc", state=StateEnum.Success.value),
+        FlowStepEntry(name=StepEnum.HARDEN.value, tool="ecc", state=StateEnum.Success.value),
     ]
     assert all(
         step["name"] != SkippableStepEnum.POST_ROUTE_LEC.value

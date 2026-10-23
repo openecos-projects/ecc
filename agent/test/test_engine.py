@@ -6,6 +6,7 @@ import pytest
 from agent.engine import AgentEngineFlow
 from chipcompiler.data import ChecklistState, EccOutput, EccStep, StateEnum, Workspace
 from chipcompiler.data.workspace import Flow
+from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.engine.flow_completion import sync_step_checklist, write_step_checklist
 
 
@@ -125,7 +126,7 @@ def test_agent_engine_runs_the_step_after_a_non_blocked_prerequisite(tmp_path, m
 def test_agent_incomplete_step_normalized_on_resume(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
-    persisted_steps = [
+    persisted_steps: list[FlowStepEntry] = [
         {
             "name": name,
             "tool": "ecc",

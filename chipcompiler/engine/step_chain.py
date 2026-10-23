@@ -3,10 +3,11 @@
 from pathlib import Path
 
 from chipcompiler.data import EccOutput, StepEnum
+from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.tools.registry import load_builder
 
 
-def build_workspace_step_for_info(workspace, flow_step: dict, input_source):
+def build_workspace_step_for_info(workspace, flow_step: FlowStepEntry, input_source):
     """Build the step for *flow_step*, wiring *input_source* (None = origin)."""
     step_name = flow_step.get("name")
     tool = flow_step.get("tool")
@@ -34,7 +35,7 @@ def build_workspace_step_for_info(workspace, flow_step: dict, input_source):
     )
 
 
-def apply_info_spef_override(flow_step: dict, workspace_step) -> None:
+def apply_info_spef_override(flow_step: FlowStepEntry, workspace_step) -> None:
     """Apply a persisted ``info.spef`` override to an STA step's output."""
     step_info = flow_step.get("info") or {}
     if (

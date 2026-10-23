@@ -46,7 +46,7 @@ def test_refresh_workspace_analysis_chains_the_previous_step(tmp_path):
         ),
     )
     ledger = build_dynamic_flow_data({"start_step": "route", "end_step": "Harden"})
-    for step in ledger["steps"]:
+    for step in ledger.get("steps", []):
         step["state"] = StateEnum.Success.value
     workspace.flow.data = ledger
     workspace.flow.path = tmp_path / "flow.json"
@@ -101,9 +101,11 @@ def test_invalid_explicit_input_is_reported_as_an_issue(tmp_path):
         ),
     )
     ledger = build_dynamic_flow_data({"start_step": "route", "end_step": "Harden"})
-    for step in ledger["steps"]:
+    for step in ledger.get("steps", []):
         step["state"] = StateEnum.Success.value
-    next(step for step in ledger["steps"] if step["name"] == "RCX")["input_step"] = "does_not_exist"
+    next(step for step in ledger.get("steps", []) if step["name"] == "RCX")["input_step"] = (
+        "does_not_exist"
+    )
     workspace.flow.data = ledger
     workspace.flow.path = tmp_path / "flow.json"
     collector = _RecordingCollector(workspace)

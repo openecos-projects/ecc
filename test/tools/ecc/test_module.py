@@ -2133,9 +2133,9 @@ def test_ecc_metrics_harden_summarizes_completed_signoff_sources(tmp_path):
     )
     workspace.flow.data = {
         "steps": [
-            {"name": StepEnum.DRC.value, "state": "Success"},
-            {"name": StepEnum.STA.value, "state": "Success"},
-            {"name": StepEnum.RCX.value, "state": "Success"},
+            {"name": StepEnum.DRC.value, "tool": "ecc", "state": "Success"},
+            {"name": StepEnum.STA.value, "tool": "ecc", "state": "Success"},
+            {"name": StepEnum.RCX.value, "tool": "ecc", "state": "Success"},
         ]
     }
     _write_harden_signoff_summary(tmp_path, StepEnum.DRC.value)
@@ -2212,9 +2212,9 @@ def test_ecc_metrics_harden_rejects_stale_signoff_summary(tmp_path):
     )
     workspace.flow.data = {
         "steps": [
-            {"name": StepEnum.DRC.value, "state": "Incomplete"},
-            {"name": StepEnum.STA.value, "state": "Success"},
-            {"name": StepEnum.RCX.value, "state": "Success"},
+            {"name": StepEnum.DRC.value, "tool": "ecc", "state": "Incomplete"},
+            {"name": StepEnum.STA.value, "tool": "ecc", "state": "Success"},
+            {"name": StepEnum.RCX.value, "tool": "ecc", "state": "Success"},
         ]
     }
     _write_harden_signoff_summary(tmp_path, StepEnum.DRC.value)

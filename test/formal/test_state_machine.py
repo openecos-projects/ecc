@@ -32,6 +32,7 @@ from chipcompiler.data import (
     WorkspaceStep,
 )
 from chipcompiler.data.workspace import Flow
+from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.utility import Logger
 
@@ -214,7 +215,7 @@ def _make_workspace(tmp_path: Path, num_steps: int = 3) -> Workspace:
 
     flow_path: str = os.path.join(home_dir, "flow.json")
 
-    steps: list[dict[str, object]] = []
+    steps: list[FlowStepEntry] = []
     for i in range(num_steps):
         steps.append(
             {

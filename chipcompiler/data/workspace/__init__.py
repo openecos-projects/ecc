@@ -51,6 +51,7 @@ from .flow_data import (
 from .flow_data import (
     build_dynamic_flow_data as build_dynamic_flow_data,
 )
+from .flow_types import FlowDocument, FlowStepEntry, load_flow_document
 from .layout import EccData, WorkspaceStepBase
 from .macro_location import refresh_generated_macro_location
 from .sdc import create_default_sdc as create_default_sdc
@@ -81,23 +82,19 @@ class Flow:
     """
 
     path: Path | None = None  # flow file path
-    data: dict = field(default_factory=dict)  # flow steps
+    data: FlowDocument = field(default_factory=lambda: FlowDocument())  # flow steps
 
-    def steps(self) -> list[dict]:
-        data = self.data if isinstance(self.data, dict) else {}
+    def steps(self) -> list[FlowStepEntry]:
+        data = self.data
         if not data and self.path is not None:
-            from chipcompiler.utility import json_read
-
-            loaded = json_read(self.path)
-            if isinstance(loaded, dict):
-                self.data = loaded
-                data = loaded
+            self.data = load_flow_document(self.path)
+            data = self.data
         raw_steps = data.get("steps", [])
         if not isinstance(raw_steps, list):
             return []
         return [step for step in raw_steps if isinstance(step, dict)]
 
-    def get_step(self, name: str | StepBaseEnum, tool: str | None = None) -> dict | None:
+    def get_step(self, name: str | StepBaseEnum, tool: str | None = None) -> FlowStepEntry | None:
         step_name = name.value if isinstance(name, StepBaseEnum) else name
         for step in self.steps():
             if step.get("name") != step_name:
@@ -1173,12 +1170,11 @@ def create_workspace(
         if flow_section:
             workspace.parameters.data["_flow"] = flow_section
 
-        if workspace.design.golden_verilog is not None:
-            dynamic_flow_data["steps"][0]["info"]["golden_verilog"] = str(
-                workspace.design.golden_verilog
-            )
-        if workspace.pdk.spef is not None:
-            dynamic_flow_data["steps"][0]["info"]["spef"] = str(workspace.pdk.spef)
+        steps = dynamic_flow_data.get("steps", [])
+        if steps and workspace.design.golden_verilog is not None:
+            steps[0].setdefault("info", {})["golden_verilog"] = str(workspace.design.golden_verilog)
+        if steps and workspace.pdk.spef is not None:
+            steps[0].setdefault("info", {})["spef"] = str(workspace.pdk.spef)
         if not save_ledger(workspace.flow):
             raise OSError(f"Failed to write initial flow.json: {workspace.flow.path}")
     elif isinstance(flow_config, dict) and (

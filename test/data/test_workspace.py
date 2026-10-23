@@ -23,6 +23,7 @@ from chipcompiler.data.workspace import (
     sync_workspace_config_to_parameters,
     update_step_config,
 )
+from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.data.workspace.layout import EccData, EccOutput, EccStep, StepInput
 from chipcompiler.utility import json_read, json_write
 
@@ -50,14 +51,11 @@ ROUTABILITY_FLAG_STRING_CASES = (
 
 
 def test_flow_has_step_uses_cached_data_and_path(tmp_path):
-    flow = Flow(
-        data={
-            "steps": [
-                {"name": StepEnum.SYNTHESIS.value, "tool": "yosys"},
-                {"name": StepEnum.FLOORPLAN.value, "tool": "ecc"},
-            ]
-        }
-    )
+    steps: list[FlowStepEntry] = [
+        {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": "Unstart"},
+        {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": "Unstart"},
+    ]
+    flow = Flow(data={"steps": steps})
     assert flow.has_step(StepEnum.SYNTHESIS)
     assert flow.has_step("Synthesis", "yosys")
     assert not flow.has_step(StepEnum.SYNTHESIS, "ecc")

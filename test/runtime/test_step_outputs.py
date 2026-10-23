@@ -5,9 +5,10 @@ from types import SimpleNamespace
 import pytest
 
 from chipcompiler.data.workspace import Flow
+from chipcompiler.data.workspace.flow_types import FlowDocument, FlowStepEntry
 from chipcompiler.engine.step_outputs import resolve_workspace_step_outputs
 
-_STEPS = [
+_STEPS: list[FlowStepEntry] = [
     {"name": "Synthesis", "tool": "yosys", "state": "Success"},
     {"name": "preFloorplan", "tool": "ecc", "state": "Success"},
     {"name": "macroPlacement", "tool": "dreamplace", "state": "Unstart"},
@@ -17,10 +18,10 @@ _STEPS = [
 ]
 
 
-def _workspace(directory: Path, steps=_STEPS) -> SimpleNamespace:
+def _workspace(directory: Path, steps: list[FlowStepEntry] = _STEPS) -> SimpleNamespace:
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "home").mkdir(exist_ok=True)
-    flow_data = {"steps": steps}
+    flow_data: FlowDocument = {"steps": steps}
     flow_path = directory / "home" / "flow.json"
     flow_path.write_text(json.dumps(flow_data))
     return SimpleNamespace(

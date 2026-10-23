@@ -42,7 +42,7 @@ def _wait_for_step_rendered(observer, workspace_step: WorkspaceStep, state: Stat
 class AgentEngineFlow(EngineFlow):
     def build_default_steps(self):
         super().build_default_steps()
-        steps = self.workspace.flow.data["steps"]
+        steps = self.workspace.flow.data.get("steps", [])
         if any(step["name"] == "DRC" for step in steps):
             return
         filler_index = next(index for index, step in enumerate(steps) if step["name"] == "filler")

@@ -82,7 +82,7 @@ def test_workspace_parameter_batch_commits_once_and_invalidates_from_earliest_st
     workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
     baseline_density = workspace.parameters.data["dreamplace"]["target_density"]
     flow = EngineFlow(workspace)
-    for step in flow.workspace.flow.data["steps"]:
+    for step in flow.workspace.flow.data.get("steps", []):
         step["state"] = "Success"
     assert flow.save()
     initial = read_engineering_snapshot(workspace)
@@ -294,7 +294,7 @@ def test_step_configuration_update_invalidates_only_target_suffix(
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
     workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
     flow = EngineFlow(workspace)
-    for step in flow.workspace.flow.data["steps"][:3]:
+    for step in flow.workspace.flow.data.get("steps", [])[:3]:
         step["state"] = "Success"
     assert flow.save()
     initial = read_engineering_snapshot(workspace)

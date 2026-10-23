@@ -28,6 +28,7 @@ from chipcompiler.data import (
     Workspace,
 )
 from chipcompiler.data.workspace.flow_policy import FlowInputResolver, FlowInputStepError
+from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.engine.signoff.models import SIGNOFF_REQUIRED_QOR_STEPS, SignoffPackageIssue
 from chipcompiler.engine.step_chain import apply_info_spef_override, build_workspace_step_for_info
 
@@ -97,7 +98,7 @@ class CollectorAnalysisMixin:
 
         return issues
 
-    def _build_workspace_step(self, flow_step: dict, input_source):
+    def _build_workspace_step(self, flow_step: FlowStepEntry, input_source):
         try:
             workspace_step = build_workspace_step_for_info(self.workspace, flow_step, input_source)
         except ImportError:

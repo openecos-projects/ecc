@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from chipcompiler.data import EccOutput, EccStep, SkippableStepEnum, StateEnum, StepEnum, Workspace
+from chipcompiler.data.workspace.flow_types import FlowDocument
 
 from ._sizer_helpers import _sizer_runtime, _subflow_states, _workspace
 
@@ -209,7 +210,7 @@ def test_legacy_one_stage_success_is_invalidated_before_skip(tmp_path, monkeypat
     workspace = _workspace(tmp_path)
     workspace.flow.path = Path(workspace.directory) / "home" / "flow.json"
     workspace.flow.path.parent.mkdir(parents=True, exist_ok=True)
-    flow_data = {
+    flow_data: FlowDocument = {
         "steps": [
             {
                 "name": SkippableStepEnum.TIMING_OPT.value,

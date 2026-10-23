@@ -4,10 +4,12 @@ import logging
 from copy import deepcopy
 from pathlib import Path
 
+from chipcompiler.data.workspace.flow_types import ChecklistStatus
+
 logger = logging.getLogger(__name__)
 
 
-def summarize_step_checklist(workspace_step) -> dict | None:
+def summarize_step_checklist(workspace_step) -> ChecklistStatus | None:
     """Return a compact checklist gate projection for flow.json."""
     path = getattr(getattr(workspace_step, "checklist", None), "path", None)
     if not path:
@@ -25,7 +27,7 @@ def summarize_step_checklist(workspace_step) -> dict | None:
             "failed_items": [],
             "source": _checklist_source(path),
         }
-    status = {
+    status_value = {
         "ready": "passed",
         "blocked": "blocked",
         "attention": "attention",
@@ -35,9 +37,9 @@ def summarize_step_checklist(workspace_step) -> dict | None:
         for item in data["checklist"]
         if isinstance(item, dict) and item.get("blocked") is True
     ]
-    result = {
-        "status": status,
-        "blocked": status == "blocked",
+    result: ChecklistStatus = {
+        "status": status_value,
+        "blocked": status_value == "blocked",
         "failed_items": failed_items,
         "source": _checklist_source(path),
     }
@@ -62,7 +64,7 @@ def _checklist_source(path: Path) -> str:
     return str(path)
 
 
-def sync_step_checklist(flow, workspace_step) -> dict | None:
+def sync_step_checklist(flow, workspace_step) -> ChecklistStatus | None:
     """Persist checklist projection before publishing step completion."""
     projection = summarize_step_checklist(workspace_step)
     if projection is None:
