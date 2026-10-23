@@ -275,8 +275,8 @@ def test_power_analysis_native_module_methods_forward_to_ecc(tmp_path):
     native.destroy_pw.assert_called_once_with()
 
 
-def test_run_step_dispatches_power_analysis(monkeypatch):
-    workspace = Workspace()
+def test_run_step_dispatches_power_analysis(monkeypatch, tmp_path):
+    workspace = Workspace(directory=tmp_path)
     step = EccStep(name=StepEnum.POWER_ANALYSIS.value)
     run_power_analysis = Mock(return_value=True)
     monkeypatch.setattr(ecc_runner, "is_eda_exist", lambda: True)

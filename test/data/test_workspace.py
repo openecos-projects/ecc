@@ -1528,7 +1528,7 @@ def test_update_step_config_keeps_sta_liberty_expanded_after_override_replay(
 
 def test_refresh_sta_config_does_not_overwrite_corrupt_json(tmp_path):
     sta_path = tmp_path / "sta_ecc.json"
-    workspace = Workspace(config={StepEnum.STA.value: sta_path})
+    workspace = Workspace(directory=tmp_path, config={StepEnum.STA.value: sta_path})
     workspace.pdk.root = tmp_path / "pdk"
     sta_path.write_text("{corrupt", encoding="utf-8")
 

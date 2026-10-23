@@ -48,7 +48,7 @@ def test_sizer_success_legalize_failure_leaves_published_outputs_empty(tmp_path,
     assert not Path(step.output.def_).exists()
     assert not Path(step.output.verilog).exists()
     assert sizer_builder.sizer_staging_def(step).is_file()
-    assert EngineFlow(Workspace()).check_step_result(step) is False
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is False
 
 
 def test_sizer_save_data_failure_deletes_partial_outputs(tmp_path, monkeypatch):

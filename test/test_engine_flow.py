@@ -36,8 +36,8 @@ class CompletionObserver:
         self.completed.append((state, error))
 
 
-def test_engine_flow_missing_path_is_not_initialized():
-    engine_flow = EngineFlow(Workspace())
+def test_engine_flow_missing_path_is_not_initialized(tmp_path):
+    engine_flow = EngineFlow(Workspace(directory=tmp_path))
 
     assert engine_flow.has_init() is False
 
@@ -177,7 +177,7 @@ def test_checkers_run_past_blocked_checklist_and_gate_next_pnr_step(
 def test_run_step_without_runtime_operation_marker_does_not_expand_function(monkeypatch, tmp_path):
     from chipcompiler.engine.execution import ExecutionObserver
 
-    workspace = Workspace()
+    workspace = Workspace(directory=tmp_path)
     workspace.flow.data = {
         "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
     }
@@ -194,7 +194,7 @@ def test_run_step_without_runtime_operation_marker_does_not_expand_function(monk
 
 
 def test_engine_flow_default_steps_include_synthesis_lec(tmp_path):
-    workspace = Workspace()
+    workspace = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
 
     engine_flow = EngineFlow(workspace)
@@ -213,7 +213,7 @@ def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
     monkeypatch,
     tmp_path,
 ):
-    workspace = Workspace()
+    workspace = Workspace(directory=tmp_path)
     workspace.flow.data = {
         "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
     }
@@ -262,7 +262,7 @@ def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
 
 
 def test_engine_flow_does_not_delay_short_step_before_return(monkeypatch, tmp_path):
-    workspace = Workspace()
+    workspace = Workspace(directory=tmp_path)
     workspace.flow.data = {
         "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
     }
@@ -357,7 +357,7 @@ def test_check_step_result_synthesis_uses_common_verilog(tmp_path):
     verilog = tmp_path / "gcd.v"
     verilog.write_text("module gcd; endmodule\n")
     step = YosysStep(name=StepEnum.SYNTHESIS.value, output=YosysOutput(verilog=verilog))
-    assert EngineFlow(Workspace()).check_step_result(step) is True
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is True
 
 
 def test_engine_flow_refreshes_home_checklist_after_harden_success(monkeypatch, tmp_path):
@@ -415,13 +415,13 @@ def test_check_step_result_harden_reads_ecc_only_lef_lib(tmp_path):
     lef.write_text("")
     lib.write_text("")
     step = EccStep(name=StepEnum.HARDEN.value, output=EccOutput(lef=lef, lib=lib))
-    assert EngineFlow(Workspace()).check_step_result(step) is True
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is True
     # missing lib -> not success
     step_missing = EccStep(
         name=StepEnum.HARDEN.value,
         output=EccOutput(lef=lef, lib=tmp_path / "missing.lib"),
     )
-    assert EngineFlow(Workspace()).check_step_result(step_missing) is False
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step_missing) is False
 
 
 def test_check_step_result_default_requires_def_verilog(tmp_path):
@@ -434,7 +434,7 @@ def test_check_step_result_default_requires_def_verilog(tmp_path):
             verilog=tmp_path / "gcd.v",
         ),
     )
-    assert EngineFlow(Workspace()).check_step_result(step) is True
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is True
 
 
 def test_check_step_result_placement_only_requires_def_and_verilog(tmp_path):
@@ -461,9 +461,9 @@ def test_check_step_result_placement_only_requires_def_and_verilog(tmp_path):
         ),
     )
 
-    assert EngineFlow(Workspace()).check_step_result(step) is True
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is True
     def_file.unlink()
-    assert EngineFlow(Workspace()).check_step_result(step) is False
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is False
 
 
 def test_check_step_result_timing_opt_does_not_require_gds(tmp_path):
@@ -474,7 +474,7 @@ def test_check_step_result_timing_opt_does_not_require_gds(tmp_path):
         output=EccOutput(def_=tmp_path / "gcd.def", verilog=tmp_path / "gcd.v"),
     )
     # gds intentionally absent; timing-opt result must still succeed.
-    assert EngineFlow(Workspace()).check_step_result(step) is True
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is True
 
 
 @pytest.mark.parametrize(
@@ -626,7 +626,7 @@ class TestCheckStepResultRcx:
             name=StepEnum.RCX.value,
             output=EccOutput(spef=[spef]),
         )
-        assert EngineFlow(Workspace()).check_step_result(step) is False
+        assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is False
 
     def test_rcx_succeeds_when_all_spef_exist(self, tmp_path):
         spef1 = tmp_path / "corner1.spef"
@@ -637,14 +637,14 @@ class TestCheckStepResultRcx:
             name=StepEnum.RCX.value,
             output=EccOutput(spef=[spef1, spef2]),
         )
-        assert EngineFlow(Workspace()).check_step_result(step) is True
+        assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is True
 
-    def test_rcx_fails_with_empty_spef_list(self):
+    def test_rcx_fails_with_empty_spef_list(self, tmp_path):
         step = EccStep(
             name=StepEnum.RCX.value,
             output=EccOutput(spef=[]),
         )
-        assert EngineFlow(Workspace()).check_step_result(step) is False
+        assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is False
 
     def test_rcx_fails_when_spef_is_zero_byte(self, tmp_path):
         spef = tmp_path / "corner1.spef"
@@ -653,7 +653,7 @@ class TestCheckStepResultRcx:
             name=StepEnum.RCX.value,
             output=EccOutput(spef=[spef]),
         )
-        assert EngineFlow(Workspace()).check_step_result(step) is False
+        assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is False
 
     def test_rcx_fails_when_one_of_two_spef_missing(self, tmp_path):
         spef1 = tmp_path / "corner1.spef"
@@ -663,18 +663,18 @@ class TestCheckStepResultRcx:
             name=StepEnum.RCX.value,
             output=EccOutput(spef=[spef1, spef2]),
         )
-        assert EngineFlow(Workspace()).check_step_result(step) is False
+        assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is False
 
-    def test_rcx_fails_when_output_is_not_ecc_output(self):
+    def test_rcx_fails_when_output_is_not_ecc_output(self, tmp_path):
         step = YosysStep(name=StepEnum.RCX.value, tool="yosys")
-        assert EngineFlow(Workspace()).check_step_result(step) is False
+        assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is False
 
 
 class TestStepExceptionForcesIncomplete:
     """Regression: tool exception should force Incomplete, never Success."""
 
     def test_exception_forces_incomplete(self, monkeypatch, tmp_path):
-        workspace = Workspace()
+        workspace = Workspace(directory=tmp_path)
         workspace.flow.data = {
             "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
         }
@@ -693,7 +693,7 @@ class TestStepExceptionForcesIncomplete:
         assert state == StateEnum.Imcomplete
 
     def test_native_output_precedes_failure_summary(self, monkeypatch, tmp_path):
-        workspace = Workspace()
+        workspace = Workspace(directory=tmp_path)
         workspace.flow.data = {
             "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart"}],
         }
@@ -727,7 +727,7 @@ class TestStepExceptionForcesIncomplete:
         )
 
     def test_no_exception_uses_file_check(self, monkeypatch, tmp_path):
-        workspace = Workspace()
+        workspace = Workspace(directory=tmp_path)
         workspace.flow.data = {
             "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
         }
@@ -745,7 +745,7 @@ class TestStepExceptionForcesIncomplete:
         assert state == StateEnum.Success
 
     def test_marker_persist_failure_does_not_start_tool(self, monkeypatch, tmp_path):
-        workspace = Workspace()
+        workspace = Workspace(directory=tmp_path)
         engine_flow = EngineFlow(workspace)
         workspace.flow.data = {
             "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart", "info": {}}],
@@ -778,7 +778,7 @@ class TestStepExceptionForcesIncomplete:
         }
 
     def test_terminal_persist_failure_keeps_recoverable_marker(self, monkeypatch, tmp_path):
-        workspace = Workspace()
+        workspace = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
         flow_data = {
             "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart", "info": {}}],
@@ -810,7 +810,7 @@ class TestStepExceptionForcesIncomplete:
         assert step["info"]["runtime_operation"]["operation_id"] == "operation-1"
 
     def test_fatal_completion_commit_restores_ongoing_flow_marker(self, monkeypatch, tmp_path):
-        workspace = Workspace()
+        workspace = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
         workspace.flow.data = {
             "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart", "info": {}}],
@@ -843,7 +843,7 @@ class TestStepExceptionForcesIncomplete:
         assert persisted["info"]["runtime_operation"]["operation_id"] == "operation-1"
 
     def test_result_check_system_exit_still_finalizes_step(self, monkeypatch, tmp_path):
-        workspace = Workspace()
+        workspace = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
         workspace.flow.data = {
             "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart", "info": {}}],
@@ -885,7 +885,7 @@ class TestStepExceptionForcesIncomplete:
 
     @pytest.mark.parametrize("exit_code", [0, 1])
     def test_system_exit_is_incomplete_and_preserves_error(self, monkeypatch, tmp_path, exit_code):
-        workspace = Workspace()
+        workspace = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
         flow_data = {
             "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart", "info": {}}],
@@ -946,7 +946,7 @@ class TestRunStepReturnContract:
 
     @staticmethod
     def _make_flow(tmp_path, name, tool, output):
-        workspace = Workspace()
+        workspace = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
         flow_data = {"steps": [{"name": name, "tool": tool, "state": "Unstart"}]}
         workspace.flow.path.write_text(json.dumps(flow_data), encoding="utf-8")
@@ -1256,7 +1256,7 @@ def test_engine_flow_post_success_failure_marks_incomplete_not_success(
     step to Incomplete — the terminal commit happens after the fallible
     work, so no forbidden Success -> Incomplete rollback is attempted and
     the original error is not masked."""
-    workspace = Workspace()
+    workspace = Workspace(directory=tmp_path)
     flow_path = tmp_path / "home" / "flow.json"
     flow_path.parent.mkdir(parents=True)
     flow_path.write_text(

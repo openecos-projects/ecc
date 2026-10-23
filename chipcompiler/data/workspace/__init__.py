@@ -113,7 +113,7 @@ class Workspace:
     Dataclass for workspace information
     """
 
-    directory: Path | None = None  # workspace directory
+    directory: Path  # workspace directory
     design: OriginDesign = field(default_factory=OriginDesign)  # original design info
     pdk: PDK = field(default_factory=PDK)  # pdk information
     parameters: Parameters = field(default_factory=Parameters)  # design parameters
@@ -1091,7 +1091,7 @@ def create_workspace(
         return None
 
     # create workspace instance
-    workspace = Workspace()
+    workspace = Workspace(directory=workspace_dir)
 
     # pdk
     if isinstance(pdk, PDK):
@@ -1125,7 +1125,6 @@ def create_workspace(
         workspace.design.top_module = workspace.parameters.data["top_module"]
 
     # update path
-    workspace.directory = workspace_dir
     workspace.config = build_workspace_config_paths(workspace)
 
     # create logger first (needed for copy operations)

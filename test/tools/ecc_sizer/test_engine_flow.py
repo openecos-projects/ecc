@@ -27,7 +27,7 @@ def test_timing_opt_step_result_does_not_require_gds(tmp_path):
         ),
     )
 
-    assert EngineFlow(Workspace()).check_step_result(step) is True
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is True
 
 
 def test_timing_opt_step_result_requires_declared_geometry_manifest(tmp_path):
@@ -50,10 +50,10 @@ def test_timing_opt_step_result_requires_declared_geometry_manifest(tmp_path):
         ),
     )
 
-    assert EngineFlow(Workspace()).check_step_result(step) is False
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is False
     geometry.mkdir()
     (geometry / "geometry.manifest").write_text("schema=ecc.geometry.v1\n")
-    assert EngineFlow(Workspace()).check_step_result(step) is True
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is True
 
 
 def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monkeypatch):

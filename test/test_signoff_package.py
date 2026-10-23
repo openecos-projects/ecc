@@ -216,8 +216,7 @@ def _make_engine_flow(
     design: str = "gcd",
     top_module: str = "gcd",
 ) -> EngineFlow:
-    workspace = Workspace()
-    workspace.directory = str(workspace_dir)
+    workspace = Workspace(directory=workspace_dir)
     workspace.design = OriginDesign(
         name=design,
         top_module=top_module,

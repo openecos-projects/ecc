@@ -229,7 +229,7 @@ def test_dreamplace_run_step_ignores_timing_opt(tmp_path, monkeypatch):
     monkeypatch.setattr(dreamplace_runner, "run_placement", lambda **kwargs: True)
     monkeypatch.setattr(dreamplace_runner, "run_legalization", lambda **kwargs: True)
 
-    workspace = Workspace(directory=str(tmp_path / "workspace"), design=OriginDesign(name="gcd"))
+    workspace = Workspace(directory=tmp_path / "workspace", design=OriginDesign(name="gcd"))
     step = EccStep(name=SkippableStepEnum.TIMING_OPT.value)
 
     assert dreamplace_runner.run_step(workspace, step) is False
@@ -283,7 +283,7 @@ def test_legalize_layout_rebuilds_from_sources_and_closes_on_failure(tmp_path, m
 def test_legalize_layout_returns_none_without_dreamplace_config(tmp_path, monkeypatch):
     from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
 
-    workspace = Workspace(directory=str(tmp_path / "workspace"), design=OriginDesign(name="gcd"))
+    workspace = Workspace(directory=tmp_path / "workspace", design=OriginDesign(name="gcd"))
     step = EccStep(name=SkippableStepEnum.TIMING_OPT.value)
     monkeypatch.setattr(dreamplace_runner, "is_eda_exist", lambda: True)
 

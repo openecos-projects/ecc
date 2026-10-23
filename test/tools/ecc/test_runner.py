@@ -162,6 +162,7 @@ def test_split_floorplan_runs_pre_and_post_phases_independently(monkeypatch, tmp
     macro_location = tmp_path / "macro_location.tcl"
     macro_location.write_text("# macro locations\n")
     workspace = Workspace(
+        directory=tmp_path,
         parameters=Parameters(data={"clock": "clk"}),
         config={
             StepEnum.FLOORPLAN.value: floorplan_config,
@@ -1044,7 +1045,7 @@ def test_run_filler_uses_mj_lifecycle(tmp_path, monkeypatch):
 
     filler_config = tmp_path / "config" / "filler_ecc.json"
     filler_data_dir = tmp_path / "filler_ecc" / "data" / "mj"
-    workspace = Workspace(config={StepEnum.FILLER.value: filler_config})
+    workspace = Workspace(directory=tmp_path, config={StepEnum.FILLER.value: filler_config})
     step = EccStep(
         name=StepEnum.FILLER.value,
         data=EccData(steps={StepEnum.FILLER.value: filler_data_dir}),

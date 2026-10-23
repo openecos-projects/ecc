@@ -3018,9 +3018,7 @@ def _last_successful_mpc_area_source(workspace: Workspace) -> tuple[float | None
     flow_step = candidates[-1]
     step_name = str(flow_step.get("name"))
     tool = str(flow_step.get("tool") or "ecc")
-    workspace_directory = getattr(workspace, "directory", None)
-    if not workspace_directory:
-        return None, None
+    workspace_directory = workspace.directory
 
     feature_path = (
         Path(workspace_directory) / f"{step_name}_{tool}" / "feature" / (f"{step_name}.db.json")
@@ -3038,11 +3036,9 @@ def _last_successful_mpc_area_source(workspace: Workspace) -> tuple[float | None
 
 
 def _relative_workspace_path(workspace: Workspace, path: Path) -> str:
-    workspace_directory = getattr(workspace, "directory", None)
-    if not workspace_directory:
-        return str(path)
+    workspace_directory = workspace.directory
     try:
-        return path.relative_to(Path(workspace_directory)).as_posix()
+        return path.relative_to(workspace_directory).as_posix()
     except ValueError:
         return str(path)
 

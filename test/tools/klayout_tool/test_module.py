@@ -37,7 +37,9 @@ def test_save_snapshot_image_passes_path_text_to_klayout(monkeypatch, tmp_path):
     sys.modules.pop("chipcompiler.tools.klayout_tool.image", None)
 
     klayout_module = importlib.import_module("chipcompiler.tools.klayout_tool.module")
-    module = klayout_module.KlayoutModule(workspace=Workspace(), step=WorkspaceStep())
+    module = klayout_module.KlayoutModule(
+        workspace=Workspace(directory=tmp_path), step=WorkspaceStep()
+    )
 
     gds_file = tmp_path / "design.gds"
     img_file = tmp_path / "design.png"

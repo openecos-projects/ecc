@@ -25,7 +25,7 @@ from chipcompiler.data.workspace.flow_policy import (
 
 def latest_pnr_output(workspace: Workspace, suffix: str) -> Path | None:
     """Return the latest PNR output matching *suffix* before checker steps."""
-    workspace_dir = Path(workspace.directory) if getattr(workspace, "directory", None) else None
+    workspace_dir = workspace.directory
     flow = getattr(workspace, "flow", None)
     if workspace_dir is None or flow is None:
         return None
@@ -55,7 +55,7 @@ def post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | N
     # golden netlist, else the origin RTL.
     golden = getattr(getattr(workspace, "design", None), "origin_verilog", None)
     gate = None
-    workspace_dir = Path(workspace.directory) if getattr(workspace, "directory", None) else None
+    workspace_dir = workspace.directory
     flow = getattr(workspace, "flow", None)
     if workspace_dir is not None:
         gate = _post_route_gate(workspace)

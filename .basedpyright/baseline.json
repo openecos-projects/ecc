@@ -1026,16 +1026,6 @@
                 }
             }
         ],
-        "./chipcompiler/cli/command_handlers/macro.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 43,
-                    "endColumn": 62,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./chipcompiler/cli/command_handlers/pdk.py": [
             {
                 "code": "reportArgumentType",
@@ -1690,14 +1680,6 @@
             {
                 "code": "reportArgumentType",
                 "range": {
-                    "startColumn": 26,
-                    "endColumn": 45,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
                     "startColumn": 87,
                     "endColumn": 94,
                     "lineCount": 1
@@ -1866,16 +1848,6 @@
                 "range": {
                     "startColumn": 43,
                     "endColumn": 51,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./chipcompiler/engine/rerun.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 16,
-                    "endColumn": 35,
                     "lineCount": 1
                 }
             }
@@ -2186,14 +2158,6 @@
             {
                 "code": "reportArgumentType",
                 "range": {
-                    "startColumn": 18,
-                    "endColumn": 37,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
                     "startColumn": 26,
                     "endColumn": 40,
                     "lineCount": 1
@@ -2214,24 +2178,6 @@
                 "range": {
                     "startColumn": 15,
                     "endColumn": 31,
-                    "lineCount": 1
-                }
-            }
-        ],
-        "./chipcompiler/tools/ecc/lec_gates.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 25,
-                    "endColumn": 44,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 25,
-                    "endColumn": 44,
                     "lineCount": 1
                 }
             }
@@ -2480,14 +2426,6 @@
                     "endColumn": 51,
                     "lineCount": 1
                 }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 31,
-                    "endColumn": 50,
-                    "lineCount": 1
-                }
             }
         ],
         "./chipcompiler/tools/ecc/sta_parallel.py": [
@@ -2606,16 +2544,6 @@
                 }
             }
         ],
-        "./chipcompiler/tools/ecc_sizer/builder.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 26,
-                    "endColumn": 45,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./chipcompiler/tools/ecc_sizer/checklist.py": [
             {
                 "code": "reportReturnType",
@@ -2677,14 +2605,6 @@
             }
         ],
         "./chipcompiler/tools/kepler_formal/builder.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 21,
-                    "endColumn": 40,
-                    "lineCount": 1
-                }
-            },
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -2772,16 +2692,6 @@
                 }
             }
         ],
-        "./chipcompiler/tools/lec_dual/builder.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 21,
-                    "endColumn": 40,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./chipcompiler/tools/lec_dual/engines.py": [
             {
                 "code": "reportReturnType",
@@ -2850,14 +2760,6 @@
             {
                 "code": "reportArgumentType",
                 "range": {
-                    "startColumn": 21,
-                    "endColumn": 40,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
                     "startColumn": 26,
                     "endColumn": 40,
                     "lineCount": 1
@@ -2875,14 +2777,6 @@
             }
         ],
         "./chipcompiler/tools/yosys_lec/builder.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 21,
-                    "endColumn": 40,
-                    "lineCount": 1
-                }
-            },
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -4572,22 +4466,6 @@
                 }
             },
             {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 24,
-                    "endColumn": 36,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 61,
-                    "endColumn": 73,
-                    "lineCount": 1
-                }
-            },
-            {
                 "code": "reportOptionalSubscript",
                 "range": {
                     "startColumn": 11,
@@ -4838,249 +4716,7 @@
                 }
             }
         ],
-        "./test/engine/test_workspace_configuration.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 27,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 27,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 52,
-                    "endColumn": 71,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 12,
-                    "endColumn": 31,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 27,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 14,
-                    "endColumn": 31,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 27,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 27,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalOperand",
-                "range": {
-                    "startColumn": 21,
-                    "endColumn": 40,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 12,
-                    "endColumn": 31,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalOperand",
-                "range": {
-                    "startColumn": 12,
-                    "endColumn": 31,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalOperand",
-                "range": {
-                    "startColumn": 21,
-                    "endColumn": 40,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 12,
-                    "endColumn": 31,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalOperand",
-                "range": {
-                    "startColumn": 12,
-                    "endColumn": 31,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 12,
-                    "endColumn": 31,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 27,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 12,
-                    "endColumn": 31,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 31,
-                    "endColumn": 50,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalOperand",
-                "range": {
-                    "startColumn": 21,
-                    "endColumn": 40,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportOptionalOperand",
-                "range": {
-                    "startColumn": 14,
-                    "endColumn": 33,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 64,
-                    "endColumn": 83,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 40,
-                    "endColumn": 59,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 27,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 12,
-                    "endColumn": 31,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 15,
-                    "endColumn": 34,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 27,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 27,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 29,
-                    "endColumn": 48,
-                    "lineCount": 1
-                }
-            }
-        ],
         "./test/engine/test_workspace_spec.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 30,
-                    "endColumn": 49,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 52,
-                    "endColumn": 71,
-                    "lineCount": 1
-                }
-            },
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -6300,22 +5936,6 @@
                 }
             },
             {
-                "code": "reportCallIssue",
-                "range": {
-                    "startColumn": 24,
-                    "endColumn": 68,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 37,
-                    "endColumn": 49,
-                    "lineCount": 1
-                }
-            },
-            {
                 "code": "reportArgumentType",
                 "range": {
                     "startColumn": 22,
@@ -6978,14 +6598,6 @@
                 "range": {
                     "startColumn": 31,
                     "endColumn": 42,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportAttributeAccessIssue",
-                "range": {
-                    "startColumn": 26,
-                    "endColumn": 44,
                     "lineCount": 1
                 }
             },
@@ -8654,14 +8266,6 @@
                     "endColumn": 48,
                     "lineCount": 1
                 }
-            },
-            {
-                "code": "reportOptionalOperand",
-                "range": {
-                    "startColumn": 36,
-                    "endColumn": 55,
-                    "lineCount": 1
-                }
             }
         ],
         "./test/tools/ecc_dreamplace/test_cooptimization_config.py": [
@@ -8934,24 +8538,8 @@
             {
                 "code": "reportArgumentType",
                 "range": {
-                    "startColumn": 36,
-                    "endColumn": 63,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
                     "startColumn": 12,
                     "endColumn": 23,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 36,
-                    "endColumn": 63,
                     "lineCount": 1
                 }
             },
@@ -8983,14 +8571,6 @@
             }
         ],
         "./test/tools/ecc_sizer/test_engine_flow.py": [
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 31,
-                    "endColumn": 50,
-                    "lineCount": 1
-                }
-            },
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -9347,14 +8927,6 @@
             }
         ],
         "./test/tools/ecc_sizer/test_preplace.py": [
-            {
-                "code": "reportOptionalOperand",
-                "range": {
-                    "startColumn": 5,
-                    "endColumn": 24,
-                    "lineCount": 1
-                }
-            },
             {
                 "code": "reportArgumentType",
                 "range": {
@@ -9916,14 +9488,6 @@
                 "range": {
                     "startColumn": 37,
                     "endColumn": 41,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportArgumentType",
-                "range": {
-                    "startColumn": 20,
-                    "endColumn": 39,
                     "lineCount": 1
                 }
             },
