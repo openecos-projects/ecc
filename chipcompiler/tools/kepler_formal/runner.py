@@ -29,10 +29,12 @@ def _miter_verdict_lines(miter_log: Path | str | None) -> list[str]:
 
 
 def _write_equiv_status(step: KeplerFormalStep) -> None:
+    try:
+        target = require_path(step.report.equiv_status, "equivalence status")
+    except MissingPathError:
+        return
     verdict_lines = _miter_verdict_lines(step.report.miter_log)
-    require_path(step.report.equiv_status, "equivalence status").write_text(
-        "\n".join(verdict_lines) + "\n", encoding="utf-8"
-    )
+    target.write_text("\n".join(verdict_lines) + "\n", encoding="utf-8")
 
 
 def _write_status_report(step: KeplerFormalStep, *, proven: bool, reason: str) -> None:
@@ -40,7 +42,11 @@ def _write_status_report(step: KeplerFormalStep, *, proven: bool, reason: str) -
         message = "kepler-formal LEC completed with proven equivalence."
     else:
         message = f"kepler-formal LEC did not prove equivalence: {reason}"
-    require_path(step.report.status, "status report").write_text(message + "\n", encoding="utf-8")
+    try:
+        target = require_path(step.report.status, "status report")
+    except MissingPathError:
+        return
+    target.write_text(message + "\n", encoding="utf-8")
 
 
 def _classify(log_text: str) -> tuple[bool, str]:

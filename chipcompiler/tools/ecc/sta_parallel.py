@@ -22,7 +22,7 @@ from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.sta_artifacts import copy_sta_artifact, discard_sta_outputs
 from chipcompiler.tools.ecc.sta_qor import sta_artifact_directory
 from chipcompiler.utility.log import redirect_stdio_to_file
-from chipcompiler.utility.path import PathArg
+from chipcompiler.utility.path import MissingPathError, PathArg, require_path
 
 
 def sta_workers(workspace, step) -> int:
@@ -250,7 +250,9 @@ class _ParallelTiming(ECCToolsModule):
             )
             for key in ("work_dir", "report_dir", "feature_dir"):
                 job[key].mkdir(parents=True)
-            log_path = Path(self.step.log.dir) / f"sta-corner-{index}.log"
+            log_path = (
+                require_path(self.step.log.dir, "STA log directory") / f"sta-corner-{index}.log"
+            )
             tasks.append((self.workspace.config.get("db", ""), snapshot, job, log_path))
         _run_processes(tasks, self.workers, lambda: _check_cancelled(self.workspace))
         for original, (_, _, job, _) in zip(self.jobs, tasks, strict=True):
@@ -272,7 +274,10 @@ def run_parallel_sta(workspace, step, ecc_module, workers):
                 destinations.append(path)
                 discard_sta_outputs(path)
     # A failed rerun must not expose old aggregate metrics as current evidence.
-    analysis = Path(step.analysis.dir)
+    try:
+        analysis = require_path(step.analysis.dir, "STA analysis directory")
+    except MissingPathError:
+        return False
     if analysis.is_dir():
         for path in analysis.iterdir():
             if path.is_file():
@@ -282,10 +287,16 @@ def run_parallel_sta(workspace, step, ecc_module, workers):
         module = runner.get_eda_instance(workspace, step, ecc_module)
         if module is None:
             return False
-        with TemporaryDirectory(prefix="agent-sta-", dir=step.data.dir) as directory:
-            proxy = _ParallelTiming(module, workspace, step, workers, len(items), Path(directory))
-            succeeded = runner.run_sta(workspace, step, proxy)
-            return succeeded
+        try:
+            data_dir = require_path(step.data.dir, "STA data directory")
+            with TemporaryDirectory(prefix="agent-sta-", dir=data_dir) as directory:
+                proxy = _ParallelTiming(
+                    module, workspace, step, workers, len(items), Path(directory)
+                )
+                succeeded = runner.run_sta(workspace, step, proxy)
+                return succeeded
+        except MissingPathError:
+            return False
     finally:
         if not succeeded:
             for path in destinations:

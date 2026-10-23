@@ -23,6 +23,8 @@ on:
       - 'agent/**'
       - 'ecc_experience/**'
       - 'test/**'
+      - 'scripts/**'
+      - 'docs/examples/**'
       - 'ecc.spec'
       - 'packaging/**'
       - 'hooks/**'
