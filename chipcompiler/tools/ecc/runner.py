@@ -82,8 +82,6 @@ def temperature_token(temperature) -> str:
 
 
 def _workspace_sta_config_path(workspace: Workspace) -> str | None:
-    if workspace.directory is None:
-        return None
     config_path = workspace_config_key_path(workspace.directory, StepEnum.STA.value)
     return os.fspath(config_path) if config_path is not None else None
 

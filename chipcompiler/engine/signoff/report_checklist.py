@@ -64,7 +64,7 @@ class ChecklistReport:
 
 
 def build_checklist_report(workspace) -> ChecklistReport:
-    workspace_root = Path(workspace.directory or "")
+    workspace_root = Path(workspace.directory)
     data = json_read(workspace_root.joinpath(*CHECKLIST_PATH))
     report = ChecklistReport(workspace=str(workspace_root))
     if (

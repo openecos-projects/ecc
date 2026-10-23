@@ -30,8 +30,6 @@ def _workspace_rcx_dir(path_text: str, workspace_dir: Path) -> Path:
 def resolve_rcx_dirs(workspace: Workspace, step: EccStep) -> tuple[Path | None, Path | None]:
     """Resolve the RCX extraction data and output directories for a step."""
     workspace_dir = workspace.directory
-    if workspace_dir is None:
-        return None, None
 
     data_dir_text = os.fspath(step.data.dir or "")
     output_dir_text = os.fspath(step.output.dir or "")

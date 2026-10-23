@@ -26,12 +26,8 @@ from chipcompiler.data.workspace.flow_policy import (
 def latest_pnr_output(workspace: Workspace, suffix: str) -> Path | None:
     """Return the latest PNR output matching *suffix* before checker steps."""
     workspace_dir = workspace.directory
-    flow = getattr(workspace, "flow", None)
-    if workspace_dir is None or flow is None:
-        return None
-
     candidate = None
-    for flow_step in flow.steps():
+    for flow_step in workspace.flow.steps():
         name = flow_step.get("name")
         # The category reader validates the name against the policy table, so
         # an unregistered step never silently reads as a PNR artifact source.

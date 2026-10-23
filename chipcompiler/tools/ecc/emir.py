@@ -14,8 +14,6 @@ def run_emir(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
     # the dispatcher back into this step module.
     from chipcompiler.tools.ecc import runner
 
-    if workspace.directory is None:
-        raise ValueError("EMIR requires a workspace directory")
     sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
     config = json_read(workspace.config[StepEnum.EMIR.value])
     technology_file = config["technology_file_path"]

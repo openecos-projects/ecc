@@ -301,8 +301,7 @@ def step_config_paths(
 
 def build_workspace_config_paths(workspace: Workspace) -> dict[str, Path]:
     """Build workspace-level config file paths."""
-    workspace_dir = Path(workspace.directory) if workspace.directory is not None else Path("")
-    return workspace_config_paths(workspace_dir)
+    return workspace_config_paths(workspace.directory)
 
 
 @dataclass(frozen=True)
@@ -679,8 +678,7 @@ def init_workspace_config(workspace: Workspace) -> None:
     ecc_config_dir = root_dir / "tools" / "ecc" / "configs"
     dreamplace_config = root_dir / "tools" / "ecc_dreamplace" / "configs" / "dreamplace_ecc.json"
 
-    if workspace.directory is not None:
-        migrate_workspace_config_filenames(workspace.directory)
+    migrate_workspace_config_filenames(workspace.directory)
 
     _copy_missing_files(ecc_config_dir, config_dir)
     if not workspace.config["dreamplace"].exists():

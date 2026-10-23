@@ -404,7 +404,7 @@ def _sta_corner_reports(workspace, workspace_root: Path) -> tuple[dict, dict | N
 
 def collect_workspace_report(workspace) -> DesignReportData:
     """Walk an ECC workspace (Workspace or duck-typed stand-in) and extract."""
-    workspace_root = Path(workspace.directory or "")
+    workspace_root = Path(workspace.directory)
     flow_data = workspace.flow.data if getattr(workspace, "flow", None) else {}
     flow = json_read(workspace_root / "home" / "flow.json") or flow_data
     parameters = getattr(getattr(workspace, "parameters", None), "data", None)

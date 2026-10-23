@@ -7,7 +7,7 @@ from chipcompiler.data import KeplerFormalStep, StateEnum, Workspace
 from chipcompiler.tools.kepler_formal.subflow import KeplerFormalSubFlow
 from chipcompiler.tools.kepler_formal.utility import get_kepler_formal_runtime
 from chipcompiler.tools.lec_result import write_step_result
-from chipcompiler.utility.path import require_path
+from chipcompiler.utility.path import MissingPathError, require_path
 
 # kepler-formal LEC exits 0 whether the designs are equivalent or not; the
 # verdict only appears in its stdout. Positive evidence is required for a
@@ -105,7 +105,7 @@ def run_step(workspace: Workspace, step: KeplerFormalStep, ecc_module=None) -> b
 
     try:
         _prepare_compare_netlists(workspace, step)
-    except OSError as exc:
+    except (OSError, MissingPathError) as exc:
         sub_flow.update_step(step_name="run lec", state=StateEnum.Invalid)
         Path(log_path).write_text(f"Error: preparing compare netlists: {exc}\n", encoding="utf-8")
         write_step_result(step, proven=False)

@@ -304,7 +304,7 @@ def _resolve_parameters(parameters: dict, warnings: list) -> tuple:
 
 
 def load_workspace_qor_inputs(workspace) -> QorInputs:
-    workspace_root = Path(workspace.directory or "")
+    workspace_root = Path(workspace.directory)
     design = getattr(getattr(workspace, "design", None), "name", "") or getattr(
         workspace, "name", ""
     )

@@ -167,7 +167,7 @@ def _design_name(workspace) -> str:
 
     from chipcompiler.utility.json import json_read
 
-    parameters = json_read(os.path.join(workspace.directory or "", "home", "parameters.json"))
+    parameters = json_read(os.path.join(workspace.directory, "home", "parameters.json"))
     return parameters.get("design") or parameters.get("Design") or "design"
 
 
