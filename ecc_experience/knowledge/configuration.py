@@ -62,8 +62,8 @@ def _flow_identity(facts: dict) -> list[dict[str, str]] | None:
     return result
 
 
-def _runtime_gaps(runtime: dict | None, steps: list[dict[str, str]]) -> list[str]:
-    if runtime is None:
+def _runtime_gaps(runtime: object, steps: list[dict[str, str]]) -> list[str]:
+    if not isinstance(runtime, dict):
         return ["runtime"]
     missing = []
     if not isinstance(runtime.get("sources"), dict) or not runtime["sources"]:

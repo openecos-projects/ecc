@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from typing import overload
 
 from chipcompiler.cli.core.exit_codes import (
     EXIT_GATE_FAILED,
@@ -685,6 +686,14 @@ def summarize_benchmark(
         )
 
     return _guard(operation)
+
+
+@overload
+def _read_json(path: str | None, option: str, expected: type[list]) -> list: ...
+
+
+@overload
+def _read_json(path: str | None, option: str, expected: type[dict]) -> dict: ...
 
 
 def _read_json(path: str | None, option: str, expected: type) -> object:

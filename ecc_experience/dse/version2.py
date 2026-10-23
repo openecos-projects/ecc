@@ -229,8 +229,11 @@ def validate_version2(payload: dict):
         if resolution is not None:
             if not isinstance(resolution, dict):
                 raise invalid("Frozen DSE patience resolution is invalid")
+            requested = resolution.get("requested")
+            if not isinstance(requested, (int, str)):
+                raise invalid("Frozen DSE patience request is invalid")
             resolved, expected_resolution = resolve_patience(
-                resolution.get("requested"),
+                requested,
                 strategy=payload["strategy"],
                 domain_size=math.prod(len(values) for values in space.values()),
                 screening_trials=count,
