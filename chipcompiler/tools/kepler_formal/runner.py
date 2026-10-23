@@ -28,16 +28,17 @@ def _miter_verdict_lines(miter_log: Path | str | None) -> list[str]:
     return [line.strip() for line in text.splitlines() if "Circuits are" in line]
 
 
-def _write_equiv_status(step: KeplerFormalStep) -> None:
+def _write_equiv_status(step: KeplerFormalStep) -> bool:
     try:
         target = require_path(step.report.equiv_status, "equivalence status")
     except MissingPathError:
-        return
+        return False
     verdict_lines = _miter_verdict_lines(step.report.miter_log)
     target.write_text("\n".join(verdict_lines) + "\n", encoding="utf-8")
+    return True
 
 
-def _write_status_report(step: KeplerFormalStep, *, proven: bool, reason: str) -> None:
+def _write_status_report(step: KeplerFormalStep, *, proven: bool, reason: str) -> bool:
     if proven:
         message = "kepler-formal LEC completed with proven equivalence."
     else:
@@ -45,8 +46,9 @@ def _write_status_report(step: KeplerFormalStep, *, proven: bool, reason: str) -
     try:
         target = require_path(step.report.status, "status report")
     except MissingPathError:
-        return
+        return False
     target.write_text(message + "\n", encoding="utf-8")
+    return True
 
 
 def _classify(log_text: str) -> tuple[bool, str]:
@@ -143,13 +145,16 @@ def run_step(workspace: Workspace, step: KeplerFormalStep, ecc_module=None) -> b
         sub_flow.update_step(step_name="run lec", state=StateEnum.Imcomplete)
         return False
 
-    _write_equiv_status(step)
     proven, reason = _classify(_read_text(log_path))
     if result.returncode != 0:
         proven = False
         reason = f"kepler-formal exited with code {result.returncode}"
+    if not _write_equiv_status(step) or not _write_status_report(
+        step, proven=proven, reason=reason
+    ):
+        sub_flow.update_step(step_name="run lec", state=StateEnum.Imcomplete)
+        return False
     write_step_result(step, proven=proven)
-    _write_status_report(step, proven=proven, reason=reason)
     if proven:
         sub_flow.update_step(step_name="run lec", state=StateEnum.Success)
         sub_flow.update_step(step_name="analysis", state=StateEnum.Success)
