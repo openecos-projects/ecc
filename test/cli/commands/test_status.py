@@ -82,6 +82,38 @@ class TestStatus:
         assert all("log_cmd" in r for r in step_records)
         assert all("metrics_cmd" not in r for r in step_records)
 
+    def test_status_json_is_a_run_summary_followed_by_step_records(
+        self, tmp_path, capsys, create_cli_project, create_flow_json
+    ):
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "default")
+        create_flow_json(
+            run_dir,
+            [
+                {
+                    "name": "Synthesis",
+                    "tool": "yosys",
+                    "state": "Success",
+                    "checklist_status": {"status": "blocked", "blocked": True},
+                },
+                {"name": "Floorplan", "tool": "ecc", "state": "Success"},
+            ],
+        )
+
+        rc = cli_main.run(["status", "--json", "--project", project_dir])
+
+        assert rc == 0
+        records = json.loads(capsys.readouterr().out)
+        assert isinstance(records, list)
+        assert records[0]["workspace_id"] == "default"
+        assert "step" not in records[0]
+        step_records = records[1:]
+        assert [record["step"] for record in step_records] == ["synthesis", "floorplan"]
+        assert step_records[0]["checklist_status"] == "blocked"
+        assert step_records[0]["checklist_blocked"] is True
+        assert "checklist_status" not in step_records[1]
+        assert "checklist_blocked" not in step_records[1]
+
     def test_status_normalizes_step_names(
         self, tmp_path, capsys, create_cli_project, create_flow_json
     ):

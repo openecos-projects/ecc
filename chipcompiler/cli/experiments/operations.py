@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from chipcompiler.cli.experiments.candidate_evidence import normalized_step_statuses
 from chipcompiler.cli.inspection.evidence_summary import (
     checklist_items,
     checklist_status,
@@ -632,18 +633,7 @@ def collect_candidate_evidence(project: Path, workspace: Path, exit_code: int) -
     flow = load_json(workspace / "home" / "flow.json", {}) or {}
     status_code, status_payload = _json_command(project, workspace, "status")
     signoff_code, signoff_payload = _json_command(project, workspace, "signoff check")
-    steps = flow.get("steps", []) if isinstance(flow, dict) else []
-    if not steps and isinstance(status_payload, dict):
-        steps = status_payload.get("steps", [])
-    step_statuses = [
-        {
-            "name": step.get("name"),
-            "status": step.get("status", "unknown"),
-            "checklist": step.get("checklist_status", "unknown"),
-        }
-        for step in steps
-        if isinstance(step, dict)
-    ]
+    step_statuses = normalized_step_statuses(flow, status_payload)
     blocked = any(
         step["status"] == "blocked" or step["checklist"] == "blocked" for step in step_statuses
     )
