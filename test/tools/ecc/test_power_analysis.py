@@ -162,6 +162,12 @@ def test_power_analysis_uses_its_own_data_directory_and_native_lifecycle(tmp_pat
     assert power_step["power_summary"]["internal_uw"] == 1000.0
     assert "metrics" not in power_step
     power_metrics = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
+    assert {record["id"] for record in power_metrics["metrics"]} == {
+        "power_analysis_internal_uw",
+        "power_analysis_switching_uw",
+        "power_analysis_dynamic_uw",
+        "power_analysis_leakage_uw",
+    }
     assert {record["source"]["path"] for record in power_metrics["metrics"]} == {
         "feature/powerAnalysis.step.json"
     }

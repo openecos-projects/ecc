@@ -64,15 +64,26 @@ def _artifacts(inputs, metric_ids):
 
 
 def _record(
-    bundle_features, inputs, feature_id, value, state, interpretation="", compatibility=None
+    bundle_features,
+    inputs,
+    feature_id,
+    value,
+    state,
+    interpretation="",
+    compatibility=None,
+    input_metric_ids=None,
 ):
+    metric_ids = (
+        input_metric_ids or feature_registry.FEATURE_REGISTRY[feature_id]["input_metric_ids"]
+    )
     bundle_features[feature_id] = feature_registry.make_record(
         feature_id,
         value,
         state,
-        _artifacts(inputs, feature_registry.FEATURE_REGISTRY[feature_id]["input_metric_ids"]),
+        _artifacts(inputs, metric_ids),
         interpretation=interpretation,
         compatibility=compatibility,
+        input_metric_ids=metric_ids,
     )
 
 
@@ -101,6 +112,28 @@ def compute_features(inputs) -> FeatureBundle:
         leak_frac,
         "PASS" if leak_frac is not None else "UNKNOWN",
         "Static leakage share of synthesized netlist power.",
+    )
+
+    power_metric_ids = ("power_analysis_dynamic_uw", "power_analysis_leakage_uw")
+    if not any(metric_id in inputs.metrics for metric_id in power_metric_ids):
+        # Workspaces written before powerAnalysis emitted its own metric ids
+        # stored the same values under the synthesis-prefixed legacy ids.
+        power_metric_ids = ("synthesis_power_dynamic_uw", "synthesis_power_leakage_uw")
+    power_records = [inputs.metrics.get(metric_id) for metric_id in power_metric_ids]
+    if all(record is not None and record.step == "powerAnalysis" for record in power_records):
+        dynamic, leak = (record.value for record in power_records)
+        power_leak_frac = _ratio(leak, dynamic + leak)
+    else:
+        power_metric_ids = None
+        power_leak_frac = None
+    _record(
+        f,
+        inputs,
+        "F_PWR_LEAK_FRAC",
+        power_leak_frac,
+        "PASS" if power_leak_frac is not None else "UNKNOWN",
+        "Static leakage share of signoff power analysis.",
+        input_metric_ids=power_metric_ids,
     )
 
     cell_area = inputs.value("synthesis_cell_area")

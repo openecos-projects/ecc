@@ -351,13 +351,14 @@ qor_power_budget_w = 0.5
 
 ### 9.2 引擎消费的指标目录
 
-综合：`synthesis_cell_area`、`synthesis_cell_count`、`synthesis_wire_count`、`synthesis_power_dynamic_uw`、`synthesis_power_leakage_uw`；
+综合：`synthesis_cell_area`、`synthesis_cell_count`、`synthesis_wire_count`；
 布图：`die_area`、`core_area`、`core_utilization`；
 布局：`place_hpwl`、`place_grwl`、`place_flute_wirelength`、`place_congestion_egr_overflow_max/total`、`place_rudy_utilization_max`、`place_lutrudy_utilization_max`；
 CTS：`cts_buffer_count`、`cts_inverter_count`、`clock_path_max_buffer/min_buffer`、`clock_wirelength`；
 布线：`route_wirelength`、`route_via_count`；
 RCX：`rcx_spef_file_count`、`rcx_expected/missing_corner_count`、`rcx_spef_parse_failure_count`、`rcx_worst_total/coupling_capacitance_ff`；
 STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup/hold_violation_count`、`sta_frequency_mhz`、`sta_corner_count`、`sta_expected/missing_corner_count`、`sta_worst_setup_corner`；
+功耗分析：`power_analysis_internal_uw`、`power_analysis_switching_uw`、`power_analysis_dynamic_uw`、`power_analysis_leakage_uw`（旧 workspace 的 `synthesis_power_*` 产物仍可兼容读取）；
 签核：`drc_count`、`lvs_count`、`harden_artifact_missing_count`。
 
 ### 9.3 派生特征目录
@@ -365,6 +366,7 @@ STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup
 | 特征 | 公式 | 认识论分类 |
 |---|---|---|
 | F_SYN_LEAK_FRAC | P_leak / (P_dyn + P_leak) | EXACT_TRANSFORMATION |
+| F_PWR_LEAK_FRAC | powerAnalysis 的 P_leak / (P_dyn + P_leak) | EXACT_TRANSFORMATION |
 | F_PLAN_DENSITY | synthesis_cell_area / core_area | DERIVED_ENGINEERING |
 | F_PL_I_PLACE | GRWL / HPWL | DERIVED_ENGINEERING |
 | F_PL_CONG_CONC | EGR_max / EGR_total | DERIVED_ENGINEERING |
@@ -436,7 +438,7 @@ Engineering Snapshot v6 的 artifact index 为每个分析文件携带 `required
     "timing":       {"key": "timing",       "value": 100.0, "state": "OPPORTUNITY", "features": ["…F_STA_HEADROOM 记录…"]},
     "interconnect": {"key": "interconnect", "value": 100.0, "state": "PASS",        "features": ["…六个特征记录…"]},
     "area":         {"key": "area",         "value": 100.0, "state": "PASS",        "features": ["…F_PLAN_DENSITY…"]},
-    "power":        {"key": "power",        "value": null,  "state": "UNKNOWN",     "features": ["…F_SYN_LEAK_FRAC…"]},
+    "power":        {"key": "power",        "value": null,  "state": "UNKNOWN",     "features": ["…F_PWR_LEAK_FRAC…"]},
     "robustness":   {"key": "robustness",   "value": 94.1,  "state": "PASS",        "features": ["…四个特征记录…"]}
   },
   "scalar_summary": {"score": 98.96, "status": "GREEN", "profile": "balanced",

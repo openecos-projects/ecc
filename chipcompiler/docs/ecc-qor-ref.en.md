@@ -351,13 +351,14 @@ When several steps emit the same metric id, selection prefers `project_role` (fi
 
 ### 9.2 Metric catalog consumed by the engine
 
-Synthesis: `synthesis_cell_area`, `synthesis_cell_count`, `synthesis_wire_count`, `synthesis_power_dynamic_uw`, `synthesis_power_leakage_uw`;
+Synthesis: `synthesis_cell_area`, `synthesis_cell_count`, `synthesis_wire_count`;
 Floorplan: `die_area`, `core_area`, `core_utilization`;
 Placement: `place_hpwl`, `place_grwl`, `place_flute_wirelength`, `place_congestion_egr_overflow_max/total`, `place_rudy_utilization_max`, `place_lutrudy_utilization_max`;
 CTS: `cts_buffer_count`, `cts_inverter_count`, `clock_path_max_buffer/min_buffer`, `clock_wirelength`;
 Routing: `route_wirelength`, `route_via_count`;
 RCX: `rcx_spef_file_count`, `rcx_expected/missing_corner_count`, `rcx_spef_parse_failure_count`, `rcx_worst_total/coupling_capacitance_ff`;
 STA: `sta_setup/hold_wns` (signed WS), `sta_setup/hold_tns`, `sta_setup/hold_violation_count`, `sta_frequency_mhz`, `sta_corner_count`, `sta_expected/missing_corner_count`, `sta_worst_setup_corner`;
+Power analysis: `power_analysis_internal_uw`, `power_analysis_switching_uw`, `power_analysis_dynamic_uw`, `power_analysis_leakage_uw` (legacy `synthesis_power_*` workspaces remain readable);
 Signoff: `drc_count`, `lvs_count`, `harden_artifact_missing_count`.
 
 ### 9.3 Derived feature catalog
@@ -365,6 +366,7 @@ Signoff: `drc_count`, `lvs_count`, `harden_artifact_missing_count`.
 | Feature | Formula | Epistemic class |
 |---|---|---|
 | F_SYN_LEAK_FRAC | P_leak / (P_dyn + P_leak) | EXACT_TRANSFORMATION |
+| F_PWR_LEAK_FRAC | powerAnalysis P_leak / (P_dyn + P_leak) | EXACT_TRANSFORMATION |
 | F_PLAN_DENSITY | synthesis_cell_area / core_area | DERIVED_ENGINEERING |
 | F_PL_I_PLACE | GRWL / HPWL | DERIVED_ENGINEERING |
 | F_PL_CONG_CONC | EGR_max / EGR_total | DERIVED_ENGINEERING |
@@ -436,7 +438,7 @@ The Engineering Snapshot v6 artifact index carries a `required` flag for every a
     "timing":       {"key": "timing",       "value": 100.0, "state": "OPPORTUNITY", "features": ["…F_STA_HEADROOM record…"]},
     "interconnect": {"key": "interconnect", "value": 100.0, "state": "PASS",        "features": ["…six feature records…"]},
     "area":         {"key": "area",         "value": 100.0, "state": "PASS",        "features": ["…F_PLAN_DENSITY…"]},
-    "power":        {"key": "power",        "value": null,  "state": "UNKNOWN",     "features": ["…F_SYN_LEAK_FRAC…"]},
+    "power":        {"key": "power",        "value": null,  "state": "UNKNOWN",     "features": ["…F_PWR_LEAK_FRAC…"]},
     "robustness":   {"key": "robustness",   "value": 94.1,  "state": "PASS",        "features": ["…four feature records…"]}
   },
   "scalar_summary": {"score": 98.96, "status": "GREEN", "profile": "balanced",

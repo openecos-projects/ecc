@@ -111,7 +111,7 @@ def _power(bundle, inputs):
         key="power",
         value=value,
         state=_quality_state(value),
-        features=[bundle.features["F_SYN_LEAK_FRAC"]],
+        features=[bundle.features["F_PWR_LEAK_FRAC"]],
     )
 
 

@@ -19,6 +19,8 @@ METRIC_REGISTRY = {
     "synthesis_wire_count": ("count", "trend_only"),
     "synthesis_power_dynamic_uw": ("uW", "lower_is_better"),
     "synthesis_power_leakage_uw": ("uW", "lower_is_better"),
+    "power_analysis_dynamic_uw": ("uW", "lower_is_better"),
+    "power_analysis_leakage_uw": ("uW", "lower_is_better"),
     "die_area": ("um^2", "lower_is_better"),
     "core_area": ("um^2", "lower_is_better"),
     "core_utilization": ("ratio", "target_range"),
@@ -70,6 +72,7 @@ SCORED_STEP_VALUES = (
     "lvs",
     "RCX",
     "sta",
+    "powerAnalysis",
     "Harden",
 )
 

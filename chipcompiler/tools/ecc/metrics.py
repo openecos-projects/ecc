@@ -592,6 +592,13 @@ QOR_METRIC_MAP = {
     },
 }
 
+_POWER_ANALYSIS_METRIC_NAMES = {
+    "Power internal [uW]": "power_analysis_internal_uw",
+    "Power switching [uW]": "power_analysis_switching_uw",
+    "Power dynamic [uW]": "power_analysis_dynamic_uw",
+    "Power leakage [uW]": "power_analysis_leakage_uw",
+}
+
 QOR_ANALYSIS_REVISION = "quality-gates-v4"
 
 QOR_HOTSPOT_METRIC_HINTS = {
@@ -633,10 +640,6 @@ QOR_EXPECTED_METRICS_BY_STEP = {
         "synthesis_cell_count",
         "synthesis_wire_count",
         "synthesis_port_count",
-        "synthesis_power_internal_uw",
-        "synthesis_power_switching_uw",
-        "synthesis_power_dynamic_uw",
-        "synthesis_power_leakage_uw",
     ],
     StepEnum.POST_FLOORPLAN.value: [
         "die_area",
@@ -707,6 +710,12 @@ QOR_EXPECTED_METRICS_BY_STEP = {
         "sta_missing_corner_count",
         "sta_setup_violation_count",
         "sta_hold_violation_count",
+    ],
+    StepEnum.POWER_ANALYSIS.value: [
+        "power_analysis_internal_uw",
+        "power_analysis_switching_uw",
+        "power_analysis_dynamic_uw",
+        "power_analysis_leakage_uw",
     ],
     StepEnum.HARDEN.value: [
         "harden_gds_exists",
@@ -1836,6 +1845,9 @@ def _metric_scope_and_roles(step: WorkspaceStep, metric_id: str) -> tuple[str, s
             else "final"
         )
         step_role = "primary"
+    elif step.name == StepEnum.POWER_ANALYSIS.value:
+        scope = "power_analysis"
+        step_role = "primary"
     elif step.name == StepEnum.HARDEN.value:
         scope = "final_delivery"
         project_role = "final"
@@ -2310,6 +2322,13 @@ def build_qor_metrics_payload(
         mapping = QOR_METRIC_MAP.get(legacy_name)
         if mapping is None:
             continue
+        power_analysis_name = _POWER_ANALYSIS_METRIC_NAMES.get(legacy_name)
+        if step.name == StepEnum.POWER_ANALYSIS.value and power_analysis_name is not None:
+            mapping = {
+                **mapping,
+                "name": power_analysis_name,
+                "display_name": mapping["display_name"].replace("Synthesis", "Power Analysis"),
+            }
 
         value = _qor_number(raw_value)
         if value is None:
