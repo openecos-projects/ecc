@@ -4,8 +4,9 @@ from types import SimpleNamespace
 import pytest
 
 from agent.engine import AgentEngineFlow
-from chipcompiler.data import EccOutput, EccStep, StateEnum, Workspace
+from chipcompiler.data import ChecklistState, EccOutput, EccStep, StateEnum, Workspace
 from chipcompiler.data.workspace import Flow
+from chipcompiler.engine.flow_completion import sync_step_checklist, write_step_checklist
 
 
 @pytest.mark.parametrize(
@@ -39,6 +40,84 @@ def test_agent_engine_requires_successful_tool_result(
 
     assert flow.run_step(step) is expected_state
     assert flow.check_state("route", "ecc", expected_state)
+
+
+def test_agent_engine_blocks_the_step_after_a_blocked_prerequisite(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    workspace = Workspace(directory=tmp_path, flow=Flow(path=home / "flow.json"))
+    flow = AgentEngineFlow(workspace)
+    workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc", "category": "PNR", "state": "Success"},
+            {"name": "filler", "tool": "ecc", "category": "PNR", "state": "Unstart"},
+        ]
+    }
+    checklist_path = tmp_path / "route_checklist.json"
+    checklist_path.write_text(
+        json.dumps({"status": "blocked", "checklist": [{"id": "route", "blocked": True}]}),
+        encoding="utf-8",
+    )
+    sync_step_checklist(
+        flow,
+        EccStep(
+            name="route",
+            tool="ecc",
+            directory=tmp_path,
+            checklist=ChecklistState(path=checklist_path),
+        ),
+    )
+    calls = []
+    monkeypatch.setattr(
+        "agent.engine.run_agent_step", lambda **kwargs: calls.append(kwargs) or True
+    )
+
+    assert flow.run_step(EccStep(name="filler", tool="ecc")) is StateEnum.Invalid
+    assert calls == []
+    assert flow.get_step("filler", "ecc") == {
+        "name": "filler",
+        "tool": "ecc",
+        "category": "PNR",
+        "state": "Unstart",
+        "checklist": [],
+        "checklist_status": {
+            "status": "blocked",
+            "blocked": True,
+            "failed_items": ["prerequisite:route"],
+            "source": "home/flow.json",
+        },
+    }
+    assert all(not isinstance(step.get("checklist"), dict) for step in workspace.flow.data["steps"])
+
+
+def test_agent_engine_runs_the_step_after_a_passed_prerequisite(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    workspace = Workspace(directory=tmp_path, flow=Flow(path=home / "flow.json"))
+    flow = AgentEngineFlow(workspace)
+    workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc", "category": "PNR", "state": "Success"},
+            {"name": "filler", "tool": "ecc", "category": "PNR", "state": "Unstart"},
+        ]
+    }
+    step = EccStep(name="filler", directory=tmp_path, tool="ecc")
+    flow.workspace_steps = [step]
+    flow.engine_db = SimpleNamespace(engine=None)
+    write_step_checklist(
+        flow,
+        flow.get_step("route", "ecc"),
+        items=[],
+        status={"status": "passed", "blocked": False},
+    )
+    called = []
+    monkeypatch.setattr(
+        "agent.engine.run_agent_step", lambda **kwargs: called.append(kwargs["step"]) or True
+    )
+    monkeypatch.setattr(flow, "check_step_result", lambda **_kwargs: True)
+
+    assert flow.run_step(step) is StateEnum.Success
+    assert called == [step]
 
 
 def test_agent_incomplete_step_normalized_on_resume(tmp_path, monkeypatch):

@@ -647,6 +647,28 @@ class EngineFlow:
         observed = float(flow_step.get("peak memory (mb)") or 0)
         return max(_CHECKER_MIN_STEP_MB, observed * _CHECKER_OBSERVED_MEMORY_FACTOR)
 
+    def _apply_checklist_gate(self, workspace_step: WorkspaceStep) -> str | None:
+        blocked_by = self._blocked_checklist_prerequisite(workspace_step)
+        if blocked_by is None:
+            return None
+        flow_step = self.get_step(workspace_step.name, workspace_step.tool)
+        if flow_step is not None:
+            flow_step.pop("checklist", None)
+            flow_step["checklist_status"] = {
+                "status": "blocked",
+                "blocked": True,
+                "failed_items": [f"prerequisite:{blocked_by}"],
+                "source": "home/flow.json",
+            }
+            self.save()
+        self.workspace.logger.warning(
+            "[FLOW] %s(%s) is blocked by checklist gate from %s",
+            workspace_step.name,
+            workspace_step.tool,
+            blocked_by,
+        )
+        return blocked_by
+
     def _blocked_checklist_prerequisite(self, workspace_step: WorkspaceStep) -> str | None:
         steps = self.workspace.flow.data.get("steps", [])
         current_index = next(
@@ -717,21 +739,7 @@ class EngineFlow:
 
         step_tag = f"{workspace_step.name}({workspace_step.tool})"
 
-        blocked_by = self._blocked_checklist_prerequisite(workspace_step)
-        if blocked_by is not None:
-            flow_step = self.get_step(workspace_step.name, workspace_step.tool)
-            if flow_step is not None:
-                flow_step.pop("checklist", None)
-                flow_step["checklist_status"] = {
-                    "status": "blocked",
-                    "blocked": True,
-                    "failed_items": [f"prerequisite:{blocked_by}"],
-                    "source": "home/flow.json",
-                }
-                self.save()
-            self.workspace.logger.warning(
-                "[FLOW] %s is blocked by checklist gate from %s", step_tag, blocked_by
-            )
+        if self._apply_checklist_gate(workspace_step) is not None:
             return StateEnum.Invalid
 
         if not rerun and self.check_state(
