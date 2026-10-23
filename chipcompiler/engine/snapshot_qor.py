@@ -19,6 +19,14 @@ _MAX_DIAGNOSES = 64
 _MAX_INTERVENTIONS = 4
 _MAX_ARTIFACT_IDS = 512
 _MAX_TEXT = 512
+#: Feature ids per QoR dimension (projection and validation).
+_MAX_DIMENSION_FEATURE_IDS = 32
+#: Feasibility gates per report (projection and validation).
+_MAX_FEASIBILITY_GATES = 32
+#: Metrics per feasibility gate (projection and validation).
+_MAX_GATE_METRICS = 32
+#: Trigger features per diagnosis (projection and validation).
+_MAX_TRIGGER_FEATURES = 32
 
 
 def build_qor_snapshot_extension(analysis: Any, artifacts: list[dict[str, Any]]) -> dict[str, Any]:
@@ -37,7 +45,7 @@ def build_qor_snapshot_extension(analysis: Any, artifacts: list[dict[str, Any]])
             "state": _text(dimension.get("state"), "UNKNOWN"),
             "featureIds": [
                 feature["feature_id"]
-                for feature in features[:32]
+                for feature in features[:_MAX_DIMENSION_FEATURE_IDS]
                 if isinstance(feature, dict) and isinstance(feature.get("feature_id"), str)
             ],
         }
@@ -54,7 +62,9 @@ def build_qor_snapshot_extension(analysis: Any, artifacts: list[dict[str, Any]])
                 "state": _text(gate.get("state"), "unavailable"),
                 "blocksTapeout": bool(gate.get("blocks_tapeout")),
                 "metrics": [
-                    metric for metric in gate.get("metrics", [])[:32] if isinstance(metric, str)
+                    metric
+                    for metric in gate.get("metrics", [])[:_MAX_GATE_METRICS]
+                    if isinstance(metric, str)
                 ],
                 "availability": JsonObject(gate).get_str("availability", None),
             }
@@ -75,7 +85,7 @@ def build_qor_snapshot_extension(analysis: Any, artifacts: list[dict[str, Any]])
         "qphys": dimensions,
         "feasibility": {
             "status": _text(feasibility.get("status"), "UNKNOWN"),
-            "gates": gates[:32],
+            "gates": gates[:_MAX_FEASIBILITY_GATES],
         },
         "evidence": {
             "index": finite_number(evidence.get("index")),
@@ -183,7 +193,7 @@ def validate_qor_snapshot_extension(value: object) -> bool:
         if not _bounded_number(dimension["value"], 0, 100, nullable=True):
             return False
         if dimension["state"] not in DIMENSION_STATES or not _bounded_strings(
-            dimension["featureIds"], 32
+            dimension["featureIds"], _MAX_DIMENSION_FEATURE_IDS
         ):
             return False
 
@@ -193,7 +203,7 @@ def validate_qor_snapshot_extension(value: object) -> bool:
     if (
         feasibility["status"] not in FEASIBILITY_STATUSES
         or not isinstance(feasibility["gates"], list)
-        or len(feasibility["gates"]) > 32
+        or len(feasibility["gates"]) > _MAX_FEASIBILITY_GATES
     ):
         return False
     for gate in feasibility["gates"]:
@@ -211,7 +221,7 @@ def validate_qor_snapshot_extension(value: object) -> bool:
             or not _bounded_text(gate["stage"])
             or gate["state"] not in GATE_STATES
             or not isinstance(gate["blocksTapeout"], bool)
-            or not _bounded_strings(gate["metrics"], 32)
+            or not _bounded_strings(gate["metrics"], _MAX_GATE_METRICS)
             or not _bounded_text(gate["availability"], nullable=True)
         ):
             return False
@@ -256,7 +266,7 @@ def validate_qor_snapshot_extension(value: object) -> bool:
             or not _bounded_text(diagnosis["state"])
             or not _bounded_number(diagnosis["severity"], 0, 1, nullable=False)
             or diagnosis["confidence"] not in CONFIDENCES
-            or not _bounded_strings(diagnosis["triggerFeatures"], 32)
+            or not _bounded_strings(diagnosis["triggerFeatures"], _MAX_TRIGGER_FEATURES)
             or not _bounded_strings(diagnosis["affectedDimensions"], 16)
             or not isinstance(diagnosis["interventions"], list)
             or len(diagnosis["interventions"]) > _MAX_INTERVENTIONS
@@ -369,7 +379,9 @@ def _diagnosis(value: object) -> dict[str, Any]:
         "severity": finite_number(value.get("severity")),
         "confidence": _text(value.get("diagnosis_confidence"), "LOW"),
         "triggerFeatures": [
-            item for item in value.get("trigger_features", [])[:32] if isinstance(item, str)
+            item
+            for item in value.get("trigger_features", [])[:_MAX_TRIGGER_FEATURES]
+            if isinstance(item, str)
         ],
         "affectedDimensions": [
             item for item in value.get("affected_dimensions", [])[:16] if isinstance(item, str)

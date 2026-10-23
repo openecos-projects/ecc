@@ -10,10 +10,16 @@ from pathlib import Path
 
 from chipcompiler.data import (
     ADVISORY_FLOW_STEPS,
-    LEC_STEP_TOOLS,
+    FlowStepCategory,
     SkippableStepEnum,
     StepEnum,
     Workspace,
+)
+from chipcompiler.data.step import STEP_DIRECTORIES, step_directory_for_tool
+from chipcompiler.data.workspace.flow_policy import (
+    FlowInputResolver,
+    ledger_category,
+    step_name,
 )
 
 
@@ -26,14 +32,15 @@ def latest_pnr_output(workspace: Workspace, suffix: str) -> Path | None:
 
     candidate = None
     for flow_step in flow.steps():
-        category = str(flow_step.get("category") or "PNR").upper()
-        if category != "PNR":
+        name = flow_step.get("name")
+        # The category reader validates the name against the policy table, so
+        # an unregistered step never silently reads as a PNR artifact source.
+        if ledger_category(flow_step) != FlowStepCategory.PNR:
             continue
         tool = flow_step.get("tool")
-        name = flow_step.get("name")
         if not tool or not name or name in ADVISORY_FLOW_STEPS:
             continue
-        output_dir = workspace_dir / f"{name}_{tool}" / "output"
+        output_dir = workspace_dir / step_directory_for_tool(name, tool) / "output"
         matches = sorted(output_dir.glob(f"*{suffix}"))
         if matches:
             candidate = matches[-1]
@@ -53,33 +60,29 @@ def post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | N
     if workspace_dir is not None:
         gate = _post_route_gate(workspace)
         if flow is not None and flow.has_step(StepEnum.SYNTHESIS):
-            golden = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
+            golden = (
+                workspace_dir
+                / STEP_DIRECTORIES[StepEnum.SYNTHESIS.value]
+                / "output"
+                / f"{design}_Synthesis.v.gz"
+            )
         else:
             golden = getattr(workspace.design, "golden_verilog", None) or golden
     return golden, gate
 
 
 def _post_route_gate(workspace: Workspace) -> Path | None:
-    from chipcompiler.engine.step_chain import build_workspace_step_for_info, step_category
+    from chipcompiler.engine.step_chain import build_workspace_step_for_info
 
-    previous = None
-    pnr = None
-    created = {}
-    for record in workspace.flow.steps():
-        step = build_workspace_step_for_info(
-            workspace, record, previous, pnr_step=pnr, created_steps=created
-        )
+    records = workspace.flow.steps()
+    resolver = FlowInputResolver(records)
+    for index, record in enumerate(records):
+        step = build_workspace_step_for_info(workspace, record, resolver.input_source(index))
         if step is None:
             continue
-        if record.get("name") == SkippableStepEnum.POST_ROUTE_LEC.value:
+        resolver.record(step)
+        if step_name(record) == SkippableStepEnum.POST_ROUTE_LEC.value:
             return getattr(step.input, "gate_verilog", None)
-        created[step.name] = step
-        if step.name in ADVISORY_FLOW_STEPS:
-            continue
-        if step_category(record) == "PNR" and step.tool not in LEC_STEP_TOOLS:
-            pnr = step
-        if step.tool not in LEC_STEP_TOOLS:
-            previous = step
     return None
 
 

@@ -25,7 +25,8 @@ from chipcompiler.data import (
     Workspace,
 )
 from chipcompiler.data.workspace import Flow
-from chipcompiler.engine.flow import _VALID_TRANSITIONS, EngineFlow
+from chipcompiler.data.workspace.flow_ledger import _VALID_TRANSITIONS
+from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.tools.ecc.runner import EccDesignReadError
 from chipcompiler.utility import Logger
 
@@ -331,7 +332,7 @@ def test_design_read_failure_stops_flow_despite_stale_outputs(tmp_path, monkeypa
         EccStep(name=second_name, tool="ecc", directory=Path(ws.directory) / "placement_ecc"),
     ]
     tool_runs = []
-    monkeypatch.setattr("chipcompiler.tools.load_eda_module", lambda _tool: object())
+    monkeypatch.setattr("chipcompiler.tools.load_tool", lambda _tool: object())
     monkeypatch.setattr(
         "chipcompiler.tools.ecc.create_db_engine",
         lambda *_args: (_ for _ in ()).throw(EccDesignReadError("missing PDK master")),
@@ -382,7 +383,7 @@ def test_advisory_step_failure_does_not_stop_flow(tmp_path, monkeypatch, advisor
         monkeypatch.setattr(
             flow, "_can_parallelize_checker_batch", lambda step, *_: step.name == advisory
         )
-        monkeypatch.setattr(flow, "_is_checker_step", lambda step: step.name == advisory)
+        monkeypatch.setattr(flow, "_is_checker_batch_step", lambda step: step.name == advisory)
         monkeypatch.setattr(
             flow, "_run_checker_batch", lambda steps, **kw: [run_step(step) for step in steps]
         )

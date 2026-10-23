@@ -454,3 +454,34 @@ def test_reconcile_treats_lec_engines_as_interchangeable():
     assert (
         compare_flows(_normalized_entries(prefix), _normalized_entries(target)) == "proper_prefix"
     )
+
+
+def test_kepler_formal_config_yaml_contains_only_plain_values(tmp_path):
+    import yaml
+
+    from chipcompiler.tools.kepler_formal import builder
+
+    workspace = _workspace(tmp_path)
+    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    _write_netlist_pair(gate)
+    step = builder.build_step(
+        workspace=workspace,
+        step_name=SkippableStepEnum.LEC.value,
+        input_def=None,
+        input_verilog=gate,
+    )
+
+    rendered = builder.build_lec_config_yaml(workspace, step)
+    document = yaml.safe_load(rendered)
+
+    for enum_name in (
+        "StepEnum.",
+        "SkippableStepEnum.",
+        "StateEnum.",
+        "LECEngineEnum.",
+        "FlowStepCategory.",
+    ):
+        assert enum_name not in rendered
+    assert document["verification"] == "lec"
+    assert document["verilog_design2_top"] == "gcd"
+    assert all(isinstance(path, str) for pair in document["input_paths"] for path in pair)

@@ -3,8 +3,10 @@ import pytest
 from chipcompiler.data.types import (
     DEFAULT_LEC_ENGINE,
     LEC_STEP_TOOLS,
+    FlowStepCategory,
     LECEngineEnum,
     SkippableStepEnum,
+    StateEnum,
     StepBaseEnum,
     StepEnum,
     step_from_value,
@@ -95,3 +97,32 @@ def test_spawn_engines_fans_out_only_for_dual():
     )
     assert LECEngineEnum.YOSYS_LEC.spawn_engines == (LECEngineEnum.YOSYS_LEC,)
     assert LECEngineEnum.KEPLER_FORMAL.spawn_engines == (LECEngineEnum.KEPLER_FORMAL,)
+
+
+def test_enum_members_render_and_compare_as_their_persisted_values():
+    # The persistence contract is the member value. Rendering is asserted on
+    # the production hierarchy because a wrong base order (`StrEnum` before
+    # `StepBaseEnum`) silently renders `ClassName.MEMBER` instead.
+    for member in (*StepEnum, *SkippableStepEnum, *LECEngineEnum):
+        assert str(member) == member.value
+        assert f"{member}" == member.value
+        assert member == member.value
+    assert str(FlowStepCategory.CHECKER) == FlowStepCategory.CHECKER.value
+    assert str(StateEnum.Success) == StateEnum.Success.value
+
+
+def test_step_hierarchy_survives_the_string_enum_base():
+    assert isinstance(StepEnum.STA, StepBaseEnum)
+    assert isinstance(SkippableStepEnum.LEC, StepBaseEnum)
+    assert isinstance(StepEnum.STA, str)
+    assert StepEnum.SYNTHESIS.is_skippable() is False
+    assert SkippableStepEnum.LEC.is_skippable() is True
+
+
+def test_yaml_safe_dump_rejects_enum_members():
+    import yaml
+
+    # YAML sinks in the codebase receive plain `str`; a member leaking into
+    # the config document fails loudly instead of writing an object tag.
+    with pytest.raises(yaml.representer.RepresenterError):
+        yaml.safe_dump({"step": StepEnum.STA})

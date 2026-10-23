@@ -140,16 +140,22 @@ def test_module_with_wrong_parameter_names_fails_contract():
         _assert_contract_conformance(module)
 
 
-def test_load_eda_module_rejects_module_missing_contract_member(monkeypatch):
+def test_load_tool_rejects_module_missing_contract_member(monkeypatch):
+    import chipcompiler.tools.registry as registry
+
     module = _conforming_fake_module()
     del module.build_step_space
     monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setattr(registry, "tool_spec", lambda _name: registry.ToolSpec("fake_conforming"))
 
-    assert eda.load_eda_module("fake_conforming", check_dependency=False) is None
+    assert eda.load_tool("fake_conforming", check_dependency=False) is None
 
 
-def test_load_eda_module_accepts_conforming_module(monkeypatch):
+def test_load_tool_accepts_conforming_module(monkeypatch):
+    import chipcompiler.tools.registry as registry
+
     module = _conforming_fake_module()
     monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setattr(registry, "tool_spec", lambda _name: registry.ToolSpec("fake_conforming"))
 
-    assert eda.load_eda_module("fake_conforming", check_dependency=False) is module
+    assert eda.load_tool("fake_conforming", check_dependency=False) is module

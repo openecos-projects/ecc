@@ -1,52 +1,12 @@
 #!/usr/bin/env python
-import logging
 import os
 from pathlib import Path
 
-from chipcompiler.data import StepMetrics, Workspace, WorkspaceStep, log_workspace_step
+from chipcompiler.data import StepMetrics, ToolName, Workspace, WorkspaceStep, log_workspace_step
+from chipcompiler.tools.registry import checks_dependency, load_tool, tool_spec
 
-
-def load_eda_module(eda_tool: str, *, check_dependency: bool = True):
-    """
-    Load and return the EDA tool module based on the given eda tool name.
-    """
-
-    def check_module(eda_module):
-        from chipcompiler.tools.protocol import ToolModule
-
-        return isinstance(eda_module, ToolModule)
-
-    import importlib
-
-    module_alias = {
-        "klayout": "klayout_tool",
-        "dreamplace": "ecc_dreamplace",
-        "sizer": "ecc_sizer",
-    }
-    module_name = module_alias.get(eda_tool, eda_tool)
-
-    try:
-        eda_module = importlib.import_module(f"chipcompiler.tools.{module_name}")
-    except Exception as e:
-        logging.error(f"Error load module {eda_tool}: {e}")
-        return None
-
-    # check eda tool exist
-    if not check_module(eda_module):
-        from chipcompiler.tools.protocol import tool_module_functions
-
-        missing = [f for f in tool_module_functions() if not hasattr(eda_module, f)]
-        logging.error("EDA tool '%s': module loaded but missing interface: %s", eda_tool, missing)
-        return None
-
-    if check_dependency and not eda_module.is_eda_exist():
-        logging.error(
-            "EDA tool '%s': dependency check failed (is_eda_exist returned False)",
-            eda_tool,
-        )
-        return None
-
-    return eda_module
+# Compatibility name for callers of the former loader entry point.
+load_eda_module = load_tool
 
 
 def create_step(
@@ -69,7 +29,8 @@ def create_step(
     # Unselected optional tools only need a path-only step to preserve the
     # positional input chain; importing them can trigger expensive native
     # builds before the selected-step dependency check even runs.
-    if not check_dependency and eda in _DEFERRED_EDA_TOOLS:
+    spec = tool_spec(eda)
+    if not check_dependency and spec is not None and spec.deferred:
         return _build_deferred_step(
             workspace,
             step,
@@ -83,7 +44,7 @@ def create_step(
         )
 
     # check eda tool exist
-    eda_module = load_eda_module(eda, check_dependency=check_dependency and eda != "sizer")
+    eda_module = load_tool(eda, check_dependency=checks_dependency(eda, requested=check_dependency))
     if eda_module is None or not hasattr(eda_module, "build_step"):
         return None
 
@@ -108,12 +69,6 @@ def create_step(
     return workspace_step
 
 
-# Optional tools whose unselected steps are built deferred (no EDA package
-# import). Each tool owns a dependency-free deferred builder in its builder
-# module; this set only names them.
-_DEFERRED_EDA_TOOLS = frozenset({"dreamplace", "sizer"})
-
-
 def _build_deferred_step(
     workspace: Workspace,
     step_name: str,
@@ -134,7 +89,7 @@ def _build_deferred_step(
     """
     from chipcompiler.tools.ecc import builder as ecc_builder
 
-    if eda == "sizer":
+    if eda == ToolName.SIZER:
         # The sizer builder module owns its step shape; importing it is safe
         # (rosettakit is imported lazily inside its functions).
         from chipcompiler.tools.ecc_sizer.builder import deferred_step
@@ -167,7 +122,7 @@ def run_step(workspace: Workspace, step: WorkspaceStep, ecc_module=None) -> bool
     Run the given step using the provided EDA engine.
     """
     # check eda tool exist
-    eda_module = load_eda_module(step.tool, check_dependency=step.tool != "sizer")
+    eda_module = load_tool(step.tool, check_dependency=checks_dependency(step.tool))
     if eda_module is None:
         return False
 
@@ -189,7 +144,7 @@ def save_layout_image(workspace: Workspace, step: WorkspaceStep) -> bool:
         return True
 
     # check eda tool exist
-    eda_module = load_eda_module("klayout")
+    eda_module = load_tool(ToolName.KLAYOUT)
     if eda_module is None:
         return False
 
@@ -202,7 +157,7 @@ def build_step_metrics(workspace: Workspace, step: WorkspaceStep) -> StepMetrics
     """
     build step metrics
     """
-    eda_module = load_eda_module(step.tool, check_dependency=step.tool != "sizer")
+    eda_module = load_tool(step.tool, check_dependency=checks_dependency(step.tool))
     build_metrics = getattr(eda_module, "build_step_metrics", None)
     if build_metrics is None:
         return None

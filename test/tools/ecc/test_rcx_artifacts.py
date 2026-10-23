@@ -268,3 +268,33 @@ def test_copy_rcx_spef_outputs_removes_backups_after_successful_republish(tmp_pa
     assert sorted(path.name for path in output_dir.iterdir()) == ["a.spef", "b.spef"]
     assert step.output.spef is spef_outputs
     assert step.output.spef == [output_dir / "a.spef", output_dir / "b.spef"]
+
+
+def test_resolve_rcx_dirs_anchors_step_directories_at_the_workspace(tmp_path):
+    workspace = Workspace(directory=tmp_path)
+    step = EccStep(
+        name=StepEnum.RCX.value,
+        tool="ecc",
+        data=EccData(dir=Path("/RCX_ecc/data")),
+        output=EccOutput(dir=Path("/RCX_ecc/output")),
+    )
+
+    data_dir, output_dir = rcx_artifacts.resolve_rcx_dirs(workspace, step)
+
+    assert data_dir == tmp_path / "RCX_ecc" / "data"
+    assert output_dir == tmp_path / "RCX_ecc" / "output"
+
+
+def test_resolve_rcx_dirs_keeps_the_legacy_lowercase_prefix(tmp_path):
+    workspace = Workspace(directory=tmp_path)
+    step = EccStep(
+        name=StepEnum.RCX.value,
+        tool="ecc",
+        data=EccData(dir=Path("/rcx_ecc/data")),
+        output=EccOutput(dir=Path("/rcx_ecc/output")),
+    )
+
+    data_dir, output_dir = rcx_artifacts.resolve_rcx_dirs(workspace, step)
+
+    assert data_dir == tmp_path / "rcx_ecc" / "data"
+    assert output_dir == tmp_path / "rcx_ecc" / "output"

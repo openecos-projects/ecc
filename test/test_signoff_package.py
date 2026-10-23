@@ -988,3 +988,40 @@ def test_collect_signoff_package_dual_without_aggregate_fails_the_gate(tmp_path)
         issue.destination == "final/reports/postRouteLec/result.json" and issue.required
         for issue in result.issues
     )
+
+
+def test_single_step_post_route_lec_ledger_reports_issues(tmp_path):
+    import json
+
+    from chipcompiler.data import OriginDesign, Workspace
+    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.engine.signoff import SignoffPackageOptions
+
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(
+            name="gcd",
+            top_module="gcd",
+            origin_def=tmp_path / "origin.def",
+            origin_verilog=tmp_path / "origin.v",
+        ),
+    )
+    workspace.flow.path = tmp_path / "home" / "flow.json"
+    workspace.flow.path.parent.mkdir(parents=True)
+    workspace.flow.data = {
+        "steps": [
+            {
+                "name": "postRouteLec",
+                "tool": "kepler_formal",
+                "state": "Success",
+                "category": "CHECKER",
+            }
+        ]
+    }
+    workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
+    engine_flow = EngineFlow(workspace)
+
+    result = engine_flow.collect_signoff_package(SignoffPackageOptions())
+
+    assert result.ok is False
+    assert result.missing_required

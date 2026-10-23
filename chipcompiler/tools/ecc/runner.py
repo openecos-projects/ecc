@@ -13,6 +13,7 @@ from chipcompiler.data import (
     WorkspaceStep,
     workspace_config_key_path,
 )
+from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.tools.ecc.drc_artifacts import save_drc_feature
 from chipcompiler.tools.ecc.metrics import (
@@ -107,7 +108,7 @@ def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
     if workspace_dir is None or sta_config is None:
         return []
     sta_data = json_read(sta_config)
-    rcx_output_dir = workspace_dir / f"{StepEnum.RCX.value}_ecc" / "output"
+    rcx_output_dir = workspace_dir / STEP_DIRECTORIES[StepEnum.RCX.value] / "output"
     # STA-entry workspaces declare their parasitics (design.spef) instead of
     # producing them with RCX: without an RCX step in the flow, every corner
     # reads the declared SPEF.

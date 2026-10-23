@@ -10,6 +10,7 @@ from chipcompiler.data import (
     StateEnum,
     StepBaseEnum,
     StepEnum,
+    ToolName,
 )
 
 # Step values a project is allowed to exclude from its ledger.
@@ -100,28 +101,28 @@ def build_rtl2gds_flow(
     lec_tool = LECEngineEnum.from_value(lec_engine).value
     steps = []
 
-    steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
+    steps.append((StepEnum.SYNTHESIS, ToolName.YOSYS.value, StateEnum.Unstart))
     steps.append((SkippableStepEnum.LEC, lec_tool, StateEnum.Unstart))
-    steps.append((StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart))
-    steps.append((StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.PREPLACE, "sizer", StateEnum.Unstart))
-    steps.append((StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart))
-    steps.append((StepEnum.DIFF_SIZING, "dreamplace", StateEnum.Unstart))
-    steps.append((StepEnum.CTS, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart))
-    steps.append((SkippableStepEnum.TIMING_OPT, "sizer", StateEnum.Unstart))
-    steps.append((StepEnum.ROUTING, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.FILLER, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.LVS, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.DRC, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.ANTENNA_CHECK, "ecc", StateEnum.Unstart))
+    steps.append((StepEnum.PRE_FLOORPLAN, ToolName.ECC.value, StateEnum.Unstart))
+    steps.append((StepEnum.MACRO_PLACEMENT, ToolName.DREAMPLACE.value, StateEnum.Unstart))
+    steps.append((StepEnum.POST_FLOORPLAN, ToolName.ECC.value, StateEnum.Unstart))
+    steps.append((StepEnum.PREPLACE, ToolName.SIZER.value, StateEnum.Unstart))
+    steps.append((StepEnum.PLACEMENT, ToolName.DREAMPLACE.value, StateEnum.Unstart))
+    steps.append((StepEnum.DIFF_SIZING, ToolName.DREAMPLACE.value, StateEnum.Unstart))
+    steps.append((StepEnum.CTS, ToolName.ECC.value, StateEnum.Unstart))
+    steps.append((StepEnum.LEGALIZATION, ToolName.DREAMPLACE.value, StateEnum.Unstart))
+    steps.append((SkippableStepEnum.TIMING_OPT, ToolName.SIZER.value, StateEnum.Unstart))
+    steps.append((StepEnum.ROUTING, ToolName.ECC.value, StateEnum.Unstart))
+    steps.append((StepEnum.FILLER, ToolName.ECC.value, StateEnum.Unstart))
+    steps.append((StepEnum.LVS, ToolName.ECC.value, StateEnum.Unstart))
+    steps.append((StepEnum.DRC, ToolName.ECC.value, StateEnum.Unstart))
+    steps.append((StepEnum.ANTENNA_CHECK, ToolName.ECC.value, StateEnum.Unstart))
     steps.append((SkippableStepEnum.POST_ROUTE_LEC, lec_tool, StateEnum.Unstart))
-    steps.append((StepEnum.RCX, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.STA, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.POWER_ANALYSIS, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.EMIR, "ecc", StateEnum.Unstart))
-    steps.append((StepEnum.HARDEN, "ecc", StateEnum.Unstart))
+    steps.append((StepEnum.RCX, ToolName.ECC.value, StateEnum.Unstart))
+    steps.append((StepEnum.STA, ToolName.ECC.value, StateEnum.Unstart))
+    steps.append((StepEnum.POWER_ANALYSIS, ToolName.ECC.value, StateEnum.Unstart))
+    steps.append((StepEnum.EMIR, ToolName.ECC.value, StateEnum.Unstart))
+    steps.append((StepEnum.HARDEN, ToolName.ECC.value, StateEnum.Unstart))
 
     return filter_flow_steps(steps, skip)
 
@@ -209,7 +210,7 @@ def build_flow_range(
 def build_syn_sta_flow() -> list:
     steps = []
 
-    steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
+    steps.append((StepEnum.SYNTHESIS, ToolName.YOSYS.value, StateEnum.Unstart))
 
     return steps
 
@@ -218,7 +219,7 @@ def build_synthesis_lec_flow(*, lec_engine: LECEngineEnum = DEFAULT_LEC_ENGINE) 
     lec_tool = LECEngineEnum.from_value(lec_engine).value
     steps = []
 
-    steps.append((StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart))
+    steps.append((StepEnum.SYNTHESIS, ToolName.YOSYS.value, StateEnum.Unstart))
     steps.append((SkippableStepEnum.LEC, lec_tool, StateEnum.Unstart))
 
     return steps

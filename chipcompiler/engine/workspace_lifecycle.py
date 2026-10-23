@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from chipcompiler.data import PDK, create_workspace, get_pdk, load_workspace
+from chipcompiler.data import DEFAULT_ABC_LOAD, PDK, create_workspace, get_pdk, load_workspace
 from chipcompiler.data.parameter_schema import (
     build_backend_overrides,
     build_config_overrides,
@@ -603,7 +603,7 @@ def _bound_pdk(spec: dict, binding: dict) -> tuple[PDK | str, str, dict | None]:
             libs=by_role.get("liberty", []),
             mapping_file=(by_role.get("mapping") or [None])[0],
             dont_use=overrides.get("dont_use", []),
-            abc_load=float(overrides.get("abc_load", 0.015)),
+            abc_load=float(overrides.get("abc_load", DEFAULT_ABC_LOAD)),
         ),
         "",
         None,

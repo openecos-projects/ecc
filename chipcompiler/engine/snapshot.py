@@ -32,6 +32,12 @@ SNAPSHOT_REBUILD_REQUIRED = "snapshot_rebuild_required"
 SNAPSHOT_IDENTITY_MISMATCH = "snapshot_identity_mismatch"
 SNAPSHOT_REVISION_MISMATCH = "snapshot_revision_mismatch"
 SNAPSHOT_ARTIFACT_LIMIT = 4096
+#: Bound on persisted step-output records carried by a snapshot.
+SNAPSHOT_STEP_LIMIT = 4096
+#: Bound on artifact references carried by persisted step outputs.
+SNAPSHOT_REFERENCE_LIMIT = 4096
+#: Hex characters of the sha256 digest used as an artifact id.
+ARTIFACT_ID_DIGEST_LENGTH = 32
 
 
 class EngineeringSnapshotError(RuntimeError):
@@ -556,7 +562,7 @@ def _validate_step_outputs(snapshot: dict[str, Any], workspace_root: Path) -> No
     ):
         raise EngineeringSnapshotError("invalid Engineering Snapshot section: stepOutputs")
     steps = step_outputs["steps"]
-    if len(steps) > 4096:
+    if len(steps) > SNAPSHOT_STEP_LIMIT:
         raise EngineeringSnapshotError("invalid Engineering Snapshot section: stepOutputs")
     references = 0
     for artifact in (step_outputs.get("sdc"),):
@@ -577,7 +583,7 @@ def _validate_step_outputs(snapshot: dict[str, Any], workspace_root: Path) -> No
             if artifact is not None:
                 references += 1
                 _validate_step_output_artifact(artifact, snapshot, workspace_root)
-    if references > 4096:
+    if references > SNAPSHOT_REFERENCE_LIMIT:
         raise EngineeringSnapshotError("invalid Engineering Snapshot section: stepOutputs")
 
 
@@ -675,4 +681,4 @@ def _workspace_metadata_id(workspace_root: Path) -> str | None:
 
 def _artifact_id(workspace_id: str, reference: str) -> str:
     digest = hashlib.sha256(f"{workspace_id}\0{reference}".encode()).hexdigest()
-    return f"artifact-{digest[:32]}"
+    return f"artifact-{digest[:ARTIFACT_ID_DIGEST_LENGTH]}"
