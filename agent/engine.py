@@ -9,6 +9,7 @@ from chipcompiler.data import StateEnum, WorkspaceStep
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.flow_completion import (
     normalize_legacy_terminal_state,
+    sync_step_checklist,
 )
 from chipcompiler.engine.flow_completion import (
     notify_flow_observer as _notify_flow_observer,
@@ -40,8 +41,6 @@ def _wait_for_step_rendered(observer, workspace_step: WorkspaceStep, state: Stat
 
 
 class AgentEngineFlow(EngineFlow):
-    added_steps: list[tuple[str, str, str]] = []
-
     def build_default_steps(self):
         super().build_default_steps()
         steps = self.workspace.flow.data.get("steps", [])
@@ -185,6 +184,7 @@ class AgentEngineFlow(EngineFlow):
             runtime=runtime,
             peak_memory=peak_memory_mb,
         )
+        sync_step_checklist(self, workspace_step)
         if state == StateEnum.Success:
             self._save_agent_step_facts(
                 workspace_step,

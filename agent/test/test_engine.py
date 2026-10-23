@@ -185,3 +185,54 @@ def test_agent_engine_skips_layout_snapshot_for_candidate_workspace(tmp_path, mo
     flow._save_agent_step_facts(step, StateEnum.Success, 1.0, 2.0, {})
 
     assert calls == ["metrics"]
+
+
+def test_agent_rerun_persists_ready_checklist_before_gating_successor(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    workspace = Workspace(directory=tmp_path, flow=Flow(path=home / "flow.json"))
+    flow = AgentEngineFlow(workspace)
+    workspace.flow.data = {
+        "steps": [
+            {
+                "name": "route",
+                "tool": "ecc",
+                "state": "Unstart",
+                "checklist_status": {"status": "blocked", "blocked": True},
+            },
+            {"name": "filler", "tool": "ecc", "state": "Unstart"},
+        ]
+    }
+    flow.save()
+    checklist = tmp_path / "route_checklist.json"
+    route = EccStep(
+        name="route",
+        directory=tmp_path,
+        tool="ecc",
+        checklist=ChecklistState(path=checklist),
+    )
+    filler = EccStep(name="filler", directory=tmp_path, tool="ecc")
+    flow.workspace_steps = [route, filler]
+    vars(flow)["engine_db"] = SimpleNamespace(engine=None)
+    monkeypatch.setattr(flow, "check_step_result", lambda **_kwargs: True)
+    monkeypatch.setattr(flow, "_save_agent_step_facts", lambda *_args, **_kwargs: None)
+
+    def run_step(*, step, **_kwargs):
+        if step is route:
+            checklist.write_text(
+                json.dumps(
+                    {
+                        "status": "ready",
+                        "checklist": [{"id": "route", "blocked": False}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+        return True
+
+    monkeypatch.setattr("agent.engine.run_agent_step", run_step)
+
+    assert flow.run_step(route, rerun=True) is StateEnum.Success
+    persisted = json.loads((home / "flow.json").read_text())
+    assert persisted["steps"][0]["checklist_status"]["status"] == "passed"
+    assert flow.run_step(filler, rerun=True) is StateEnum.Success

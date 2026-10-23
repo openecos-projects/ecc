@@ -48,6 +48,7 @@ def macro_remove(args, ctx: CommandContext) -> CommandResult:
     return _project_remove(args, ctx, schema)
 
 
+@command_handler
 def macro_import(args, ctx: CommandContext) -> CommandResult:
     schema = lookup_schema(MACRO_PARAM)
 
