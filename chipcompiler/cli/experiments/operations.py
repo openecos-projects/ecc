@@ -17,6 +17,15 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from chipcompiler.cli.inspection.evidence_summary import (
+    checklist_items,
+    checklist_status,
+    flow_status,
+    item_blocked,
+    qor_score,
+    step_status,
+)
+from chipcompiler.data import ADVISORY_FLOW_STEPS
 from chipcompiler.project.manifest import CONFIG_FILENAME, MANIFEST_FILENAME
 
 SCHEMA_VERSION = 1
@@ -86,31 +95,28 @@ def project_path(value: str | None) -> Path:
 
 def diagnose_workspace(project: Path, workspace_name: str) -> dict[str, Any]:
     workspace = workspace_path(project, workspace_name)
-    flow = load_json(workspace / "home" / "flow.json", {}) or {}
-    checklist = load_json(workspace / "home" / "checklist.json", {}) or {}
-    qor = load_json(workspace / "home" / "qor_report.json", {}) or {}
-    steps = flow.get("steps", []) if isinstance(flow, dict) else []
-    failed_steps = [
-        step.get("name", step.get("id", "unknown"))
-        for step in steps
-        if isinstance(step, dict)
-        and step.get("status", step.get("state")) in {"failed", "blocked", "error"}
-    ]
-    items = (
-        checklist.get("items", checklist.get("checklist", []))
-        if isinstance(checklist, dict)
-        else []
-    )
-    blocked_items = [
-        item.get("id", "unknown")
-        for item in items
-        if isinstance(item, dict)
-        and (
-            item.get("status") in {"blocked", "failed"}
-            or item.get("blocked") is True
-            or item.get("state") in {"blocked", "fail"}
-        )
-    ]
+    flow_value = load_json(workspace / "home" / "flow.json", {})
+    checklist_value = load_json(workspace / "home" / "checklist.json", {})
+    qor_value = load_json(workspace / "home" / "qor_report.json", {})
+    flow = flow_value if isinstance(flow_value, dict) else {}
+    checklist = checklist_value if isinstance(checklist_value, dict) else {}
+    qor = qor_value if isinstance(qor_value, dict) else {}
+    steps = flow.get("steps", [])
+    failed_steps = []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        state = step_status(step)
+        if state not in {"failed", "blocked", "error", "incomplete", "invalid"}:
+            continue
+        if state == "incomplete" and step.get("name") in ADVISORY_FLOW_STEPS:
+            continue
+        failed_steps.append(step.get("name", step.get("id", "unknown")))
+    flow_state = flow_status(flow)
+    items = checklist_items(checklist)
+    blocked_items = [item.get("id", "unknown") for item in items if item_blocked(item)]
+    checks_state = checklist_status(checklist)
+    score = qor_score(qor)
     missing = [
         str(path.relative_to(workspace))
         for path in (workspace / "home" / "flow.json", workspace / "home" / "checklist.json")
@@ -118,11 +124,11 @@ def diagnose_workspace(project: Path, workspace_name: str) -> dict[str, Any]:
     ]
     status = (
         "failed"
-        if failed_steps
+        if failed_steps or flow_state == "failed"
         else "blocked"
-        if blocked_items
+        if blocked_items or checks_state == "blocked"
         else "attention"
-        if missing or not qor
+        if missing or not qor or flow_state != "success" or checks_state != "passed"
         else "passed"
     )
     actions = []
@@ -138,15 +144,18 @@ def diagnose_workspace(project: Path, workspace_name: str) -> dict[str, Any]:
         "project": str(project),
         "workspace": str(workspace),
         "flow": {
-            "status": flow.get("status", flow.get("state", "unknown")),
+            "status": flow_state,
             "failed_steps": failed_steps,
         },
         "checklist": {
-            "status": "blocked" if blocked_items else "passed" if items else "unknown",
+            "status": checks_state,
             "blocked_count": len(blocked_items),
             "blocked_items": blocked_items,
         },
-        "qor": {"available": bool(qor), "score": qor.get("qor_score", qor.get("score", "unknown"))},
+        "qor": {
+            "available": bool(qor),
+            "score": score if score is not None else "unknown",
+        },
         "missing_artifacts": missing,
         "next_actions": actions,
     }
