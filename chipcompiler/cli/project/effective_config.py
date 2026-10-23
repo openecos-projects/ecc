@@ -14,11 +14,11 @@ cheap (no chipcompiler.data imports here).
 """
 
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeGuard
 
 from chipcompiler.cli.core.records import error_record, warning_record
 from chipcompiler.cli.core.types import CommandResult
-from chipcompiler.cli.project.manifest import (
+from chipcompiler.project.manifest import (
     PRESET_MANIFEST_RANGE,
     ManifestError,
     assemble_config,
@@ -107,7 +107,7 @@ def declared_lec_engine(cfg) -> str | None:
     return None
 
 
-def flow_config_selects_steps(flow_config) -> bool:
+def flow_config_selects_steps(flow_config: object) -> TypeGuard[dict]:
     """Whether a flow config names steps (a range or explicit selection).
 
     A policy-only config (just ``skip_steps``) selects nothing: it must
@@ -463,12 +463,16 @@ def layer_divergences(cfg, assembled: dict, entry) -> list[str]:
         and "design.frequency_mhz" not in cfg.params_overrides
         and "frequency_max" in canonical_params
     ):
-        coerced, type_err = _validate_schema_type(
-            canonical_params["frequency_max"],
-            lookup_schema("design.frequency_mhz"),
-        )
-        if type_err or coerced != cfg.design_frequency_mhz:
+        schema = lookup_schema("design.frequency_mhz")
+        if schema is None:
             keys.append("frequency_max")
+        else:
+            coerced, type_err = _validate_schema_type(
+                canonical_params["frequency_max"],
+                schema,
+            )
+            if type_err or coerced != cfg.design_frequency_mhz:
+                keys.append("frequency_max")
 
     # An explicit valid preset overrides the entry's declared range (GUI
     # range vocabulary on both sides); an unknown preset is left to

@@ -47,7 +47,7 @@ def workspace_lock(directory: str | Path, *, blocking: bool = True):
             _local.held = remaining
         if lock_file is not None:
             try:
-                if file_locked:
+                if file_locked and fcntl is not None:
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
             finally:
                 lock_file.close()

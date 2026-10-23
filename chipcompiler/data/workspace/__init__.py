@@ -123,6 +123,10 @@ class Workspace:
     # logger
     logger: Logger = field(default_factory=Logger)  # logger for this workspace
 
+    # Transient observer installed while a step runs; not part of the
+    # persisted workspace document.
+    _runtime_flow_observer: object | None = field(default=None, repr=False, compare=False)
+
 
 def step_group_to_dict(group: Any) -> dict:
     """Project a typed path group back to its legacy-key dict for logging.
@@ -412,7 +416,7 @@ def _reload_workspace_parameters(workspace: Workspace) -> None:
 def _apply_parameter_mappings_to_workspace_config(workspace: Workspace) -> None:
     from chipcompiler.utility import json_read, json_write
 
-    configs: dict[str, dict] = {}
+    configs: dict[Path, dict] = {}
     for mapping in PARAMETER_CONFIG_FIELD_MAPPINGS:
         if mapping.parameter_key not in workspace.parameters.data:
             continue
@@ -620,7 +624,7 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
     json_write(config_path, floorplan)
 
 
-def _ensure_writable(path: str):
+def _ensure_writable(path: str | Path):
     import os
     import stat
     from contextlib import suppress
@@ -639,7 +643,7 @@ def _ensure_writable(path: str):
                 os.chmod(target, os.stat(target).st_mode | stat.S_IWUSR)
 
 
-def _copy_missing_files(src_dir: str, dst_dir: str):
+def _copy_missing_files(src_dir: str | Path, dst_dir: str | Path):
     import os
     import shutil
 

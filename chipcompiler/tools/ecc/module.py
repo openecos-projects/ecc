@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import importlib
 import json
 import os
 import shutil
@@ -30,6 +31,15 @@ def _normalize_sta_output_modes(output_modes) -> tuple[str, ...]:
     return modes
 
 
+def _positive_int(value: object, default: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _place_timing_kwargs(inputs: dict[str, object]) -> dict[str, Any]:
     """Map a placement-timing input record onto _start_place_timing's keywords.
 
@@ -53,8 +63,8 @@ def _place_timing_kwargs(inputs: dict[str, object]) -> dict[str, Any]:
         "rcx_spef_path": first("rcx_spef_path"),
         "config": first("config", "sta_config"),
         "work_dir": first("work_dir"),
-        "thread_number": int(inputs.get("thread_number", 2) or 2),
-        "max_paths": int(inputs.get("max_paths", 20) or 20),
+        "thread_number": _positive_int(inputs.get("thread_number"), 2),
+        "max_paths": _positive_int(inputs.get("max_paths"), 20),
     }
 
 
@@ -65,7 +75,7 @@ class ECCToolsModule:
 
     def __init__(self):
         try:
-            from ecc_tools_bin import ecc_py as ecc
+            ecc = importlib.import_module("ecc_tools_bin.ecc_py")
         except ImportError as exc:
             ecc_bin_dir = Path(__file__).resolve().parent / "bin"
             candidates = sorted(p.name for p in ecc_bin_dir.glob("ecc_py*.so"))
@@ -76,7 +86,8 @@ class ECCToolsModule:
                 f"Available ecc_py binaries in {ecc_bin_dir}: {candidates}"
             ) from exc
 
-        self.ecc = ecc
+        self.ecc: Any = ecc
+        self.dir_workspace = ""
         self._place_timing_active = False
         self._place_timing_inputs = None
 

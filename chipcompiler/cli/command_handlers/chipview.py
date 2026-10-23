@@ -368,6 +368,7 @@ def chipview(command_input, ctx: CommandContext) -> CommandResult:
     )
     if error is not None:
         return CommandResult.err([error])
+    assert workspace_dir is not None
 
     workspace = Path(workspace_dir)
     resolved = _resolve_step_geometry(workspace, command_input.step)

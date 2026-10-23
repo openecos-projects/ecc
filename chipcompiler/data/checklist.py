@@ -250,10 +250,10 @@ class Checklist:
         self._refresh_summary(self.data)
         return {"total": len(self.data["checklist"]), **self.data["summary"]}
 
-    def save(self) -> None:
+    def save(self) -> bool:
         self.data["schema_version"] = CHECKLIST_SCHEMA_VERSION
         self.data["kind"] = "signoff_checklist"
         self.data["checker_revision"] = CHECKLIST_REVISION
         self.data["generated_at"] = self._timestamp()
         self._refresh_summary(self.data)
-        json_write(self.path, self.data)
+        return bool(json_write(self.path, self.data))

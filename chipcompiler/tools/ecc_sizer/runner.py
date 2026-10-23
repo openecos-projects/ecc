@@ -51,7 +51,7 @@ def _termination_reason(returncode: int) -> str:
     return f"signal={signame}({signum})"
 
 
-def _first_fatal_log_line(log_path: str) -> str:
+def _first_fatal_log_line(log_path: str | Path) -> str:
     """The first native fatal banner in the step log, or an empty string."""
     try:
         with open(log_path, errors="replace") as log_file:
@@ -70,7 +70,7 @@ def _run_sizer_pass(
     *,
     step: EccStep,
     output_dir: str | Path,
-    log_path: str,
+    log_path: str | Path,
     label: str,
 ) -> bool:
     """Run one Sizer pass and require it to produce fresh staging outputs."""

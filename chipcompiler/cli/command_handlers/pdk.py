@@ -145,7 +145,7 @@ def show(command_input, ctx: CommandContext) -> CommandResult:
     root, source = _resolve_root_source(cfg, ctx.project_dir)
 
     pdk_name = cfg.pdk_name if cfg is not None and cfg.pdk_name else "ics55"
-    records = [
+    records: list[dict[str, object]] = [
         {
             "pdk": "show",
             "name": pdk_name,

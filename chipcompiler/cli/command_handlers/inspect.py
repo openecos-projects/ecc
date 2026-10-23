@@ -53,7 +53,6 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
         return _manifest_error_result(ctx)
 
     from chipcompiler.cli.inspection.discovery import (
-        CORRUPT_FLOW_JSON,
         _safe_steps,
         get_run_status,
         read_flow_json,
@@ -75,7 +74,7 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
-    if flow_data is CORRUPT_FLOW_JSON:
+    if not isinstance(flow_data, dict):
         return CommandResult.err(
             [
                 {

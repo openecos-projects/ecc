@@ -67,9 +67,15 @@ def _prepare_compare_netlists(workspace: Workspace, step: KeplerFormalStep) -> t
     )
 
     golden = prepare_netlist(
-        step.input.golden_verilog, data_dir / "golden_compare.v", physical_cells
+        require_path(step.input.golden_verilog, "golden netlist"),
+        data_dir / "golden_compare.v",
+        physical_cells,
     )
-    gate = prepare_netlist(step.input.gate_verilog, data_dir / "gate_compare.v", physical_cells)
+    gate = prepare_netlist(
+        require_path(step.input.gate_verilog, "gate netlist"),
+        data_dir / "gate_compare.v",
+        physical_cells,
+    )
     write_step_config(workspace, step, golden_verilog=golden, gate_verilog=gate)
     return golden, gate
 

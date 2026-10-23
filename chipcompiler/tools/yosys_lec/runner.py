@@ -7,6 +7,7 @@ from chipcompiler.data import StateEnum, Workspace, YosysLecStep
 from chipcompiler.tools.lec_result import write_step_result
 from chipcompiler.tools.yosys.utility import get_yosys_runtime
 from chipcompiler.tools.yosys_lec.subflow import YosysLecSubFlow
+from chipcompiler.utility.path import require_path
 
 
 def _status_is_proven(path: Path | str | None) -> bool:
@@ -41,7 +42,7 @@ def run_step(workspace: Workspace, step: YosysLecStep, ecc_module=None) -> bool:
             write_step_result(step, proven=False)
             return False
 
-    cmd = yosys_cmd + ["-Q", "-c", Path(step.script.main).name]
+    cmd = yosys_cmd + ["-Q", "-c", require_path(step.script.main, "yosys-lec script").name]
     try:
         with open(log_path, "w", encoding="utf-8") as log_file:
             result = subprocess.run(

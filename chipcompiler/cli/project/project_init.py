@@ -271,7 +271,9 @@ def _load_mpc(command_input: InitInput) -> dict | None:
     for key, expected in (("resource_id", resource_id), ("version", version)):
         if key in spec and spec[key] != expected:
             raise ProjectInitError("mpc_invalid", f"MPC spec {key} does not match", spec_path)
-    index = int(command_input.mpc_design_index)
+    if command_input.mpc_design_index is None:
+        raise ProjectInitError("mpc_invalid", "MPC design index is required", spec_path)
+    index = command_input.mpc_design_index
     if index >= len(designs) or not isinstance(designs[index], dict):
         raise ProjectInitError("mpc_invalid", "MPC design index is invalid", spec_path)
     design = designs[index]

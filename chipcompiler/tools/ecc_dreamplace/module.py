@@ -34,7 +34,7 @@ class DreamplaceModule:
         self,
         workspace: Workspace,
         step: WorkspaceStep,
-        ecc_module: ECCToolsModule,
+        ecc_module: ECCToolsModule | None,
         input_def: Path | None,
         input_verilog: Path | None,
         output_def: Path | None,
@@ -307,7 +307,7 @@ class DreamplaceModule:
 
             if place_io_engine in {"openroad", "ecc"}:
                 if self.output_def:
-                    engine.write_back(self.output_def)
+                    engine.write_back(str(self.output_def))
                 if place_io_engine in {"openroad", "ecc"} and self.output_verilog:
                     engine.write_verilog(self.output_verilog)
 

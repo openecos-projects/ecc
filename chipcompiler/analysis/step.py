@@ -24,4 +24,4 @@ class StepMetricsBuilder:
         save step metrics to the step analysis metrics file.
         """
 
-        save_metrics(step_metrics)
+        return save_metrics(step_metrics)

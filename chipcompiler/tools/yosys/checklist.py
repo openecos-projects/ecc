@@ -56,9 +56,10 @@ class YosysChecklist:
                 state=CheckState.Unstart.value,
             )
 
-    def build_checklist(self) -> list | dict:
+    def build_checklist(self) -> list:
         refresh_step_checklist(self.workspace, self.workspace_step)
-        return self.workspace_step.checklist.checklist
+        items = self.workspace_step.checklist.checklist
+        return items if isinstance(items, list) else []
 
     def save(self) -> bool:
         checklist = Checklist(path=self.workspace_step.checklist.path or "")

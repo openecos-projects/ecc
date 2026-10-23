@@ -199,6 +199,7 @@ def resolve_command_workspace(workspace_arg, project, workspace_id, run_dir):
     path, error = resolve_workspace_path(workspace_arg, project, workspace_id, run_dir)
     if error is not None:
         return None, error
+    assert path is not None
     try:
         load_kwargs = (
             {"read_only": True}

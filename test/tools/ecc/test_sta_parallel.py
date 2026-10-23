@@ -6,6 +6,7 @@ import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -189,7 +190,7 @@ def test_full_corner_barrier_isolates_jobs_and_publishes_only_after_success(
     step = SimpleNamespace(log=SimpleNamespace(dir=tmp_path / "log"))
     module = SimpleNamespace(save_data=lambda _: None, is_db_data_exists=lambda _: True)
     proxy = sta._ParallelTiming(module, workspace, step, 2, 13, tmp_path / "temporary")
-    originals = [
+    originals: list[dict[str, Any]] = [
         dict(
             work_dir=tmp_path / "shared",
             report_dir=tmp_path / "report" / str(index),

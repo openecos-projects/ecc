@@ -303,8 +303,8 @@ class EngineFlow:
                     ecc_output
                     and os.path.exists(output.def_ or "")
                     and os.path.exists(output.verilog or "")
-                    and os.path.exists(workspace_step.report.step or "")
-                    and os.path.exists(workspace_step.feature.step or "")
+                    and os.path.exists(getattr(workspace_step.report, "step", None) or "")
+                    and os.path.exists(getattr(workspace_step.feature, "step", None) or "")
                 ):
                     success = True
             case StepEnum.RCX.value:
@@ -437,7 +437,7 @@ class EngineFlow:
                 return True
 
         # init engine step by last workpsace step data if all steps finished
-        workspace_step = None
+        workspace_step: WorkspaceStep | None = None
         for ws_step in self.workspace_steps:
             step = self.get_step(name=ws_step.name, tool=ws_step.tool)
             state = step.get("state") if step is not None else None
@@ -454,6 +454,8 @@ class EngineFlow:
         if workspace_step is not None and self._uses_openroad_placement_db(workspace_step):
             return True
 
+        if workspace_step is None:
+            return self.engine_db.ecc_module is not None
         return self.engine_db.create_db_engine(step=workspace_step)
 
     def _uses_openroad_placement_db(self, workspace_step: WorkspaceStep) -> bool:
@@ -754,7 +756,7 @@ class EngineFlow:
         flow_step = self.get_step(workspace_step.name, workspace_step.tool)
         execution_marker = getattr(observer, "execution", None)
         operation_marker = getattr(observer, "runtime_operation", None)
-        if execution_marker or operation_marker:
+        if isinstance(execution_marker, dict) or isinstance(operation_marker, dict):
             if flow_step is None:
                 raise RuntimeError(f"cannot persist runtime operation marker for {step_tag}")
             previous_state = flow_step.get("state")
@@ -767,9 +769,9 @@ class EngineFlow:
             previous_info = dict(flow_step.get("info", {}))
             info = flow_step.setdefault("info", {})
             previous_resources = flow_step.pop("resource_observation", None)
-            if execution_marker:
+            if isinstance(execution_marker, dict):
                 info["execution"] = {**execution_marker, "started_at": start_time}
-            else:
+            elif isinstance(operation_marker, dict):
                 info["runtime_operation"] = {
                     **operation_marker,
                     "started_at": start_time,

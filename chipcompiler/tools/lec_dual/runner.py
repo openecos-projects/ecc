@@ -13,11 +13,12 @@ from chipcompiler.tools.lec_dual.utility import (
     read_engine_result,
     write_aggregate_result,
 )
+from chipcompiler.utility.path import require_path
 
 _SPAWN_ENGINES = LECEngineEnum.DUAL.spawn_engines
 
 
-class _ObserverIsolatedWorkspace:
+class _ObserverIsolatedWorkspace(Workspace):
     """Delegate hiding the runtime flow observer from child engine threads.
 
     The observer is shared mutable workspace state owned by the outer step
@@ -31,13 +32,23 @@ class _ObserverIsolatedWorkspace:
     def __init__(self, delegate):
         object.__setattr__(self, "_delegate", delegate)
 
+    def __getattribute__(self, name):
+        if name == "_delegate":
+            return object.__getattribute__(self, name)
+        if name == "_runtime_flow_observer":
+            return None
+        return getattr(object.__getattribute__(self, "_delegate"), name)
+
     def __getattr__(self, name):
         if name == "_runtime_flow_observer":
             return None
-        return getattr(self._delegate, name)
+        return getattr(object.__getattribute__(self, "_delegate"), name)
 
     def __setattr__(self, name, value):
-        setattr(self._delegate, name, value)
+        if name == "_delegate":
+            object.__setattr__(self, name, value)
+        else:
+            setattr(object.__getattribute__(self, "_delegate"), name, value)
 
 
 def _delete_file(path) -> bool:
@@ -160,7 +171,7 @@ def run_step(workspace: Workspace, step: LecDualStep, ecc_module=None) -> bool:
         golden_verilog=step.input.golden_verilog,
         gate_verilog=step.input.gate_verilog,
     )
-    write_aggregate_result(step.output.json, payload)
+    write_aggregate_result(require_path(step.output.json, "LEC aggregate result"), payload)
     # Mirror the single-engine subflow contract: analysis succeeds only
     # with a proven verdict; anything less stays Unstart.
     if payload["status"] == "proven":

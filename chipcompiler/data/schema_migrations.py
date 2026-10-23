@@ -79,7 +79,7 @@ def _migrate_engineering_snapshot_to_v4(workspace_dir: Path) -> None:
     # Snapshot regeneration needs the loaded
     # workspace, not just the directory; it stays an explicit operation.
     from chipcompiler.data import load_workspace
-    from chipcompiler.engine import migrate_engineering_snapshot
+    from chipcompiler.engine.snapshot import migrate_engineering_snapshot
 
     migrate_engineering_snapshot(load_workspace(workspace_dir))
 

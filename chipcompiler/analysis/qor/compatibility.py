@@ -24,7 +24,7 @@ class Compatibility:
     net_mapping: dict = field(default_factory=dict)
 
     def to_contract(self) -> dict:
-        contract = {"status": self.status}
+        contract: dict[str, object] = {"status": self.status}
         if self.assumptions:
             contract["assumptions"] = self.assumptions
         if self.net_mapping:

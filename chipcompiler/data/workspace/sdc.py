@@ -108,7 +108,10 @@ def create_default_sdc(workspace: "Workspace") -> None:
 
     sdc_content += _SDC_TAIL.format(max_fanout=parameters.get("max_fanout", 32))
 
-    with open(workspace.pdk.sdc, "w") as file:
+    sdc_path = workspace.pdk.sdc
+    if sdc_path is None:
+        return
+    with open(sdc_path, "w") as file:
         file.write(sdc_content)
 
 

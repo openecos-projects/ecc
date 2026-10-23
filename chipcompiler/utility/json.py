@@ -82,7 +82,7 @@ def json_read_strict(file_path: str | Path) -> dict:
         raise JsonReadError(f"Failed to read {path}: {e}") from e
 
 
-def json_write(file_path: str | Path, data: object = None, indent=4) -> bool:
+def json_write(file_path: str | Path, data: object = None, indent: int | None = 4) -> bool:
     """
     Write a dictionary to a JSON file.
     """

@@ -139,14 +139,14 @@ class _IncrementalLogTail:
         self.head = None
         self.offset = 0
         self.partial = ""
-        self.started_at = None
-        self.last_line = None
-        self.last_update_at = None
+        self.started_at: float | None = None
+        self.last_line: str | None = None
+        self.last_update_at: float | None = None
 
-    def poll(self, now=None):
+    def poll(self, now: float | None = None):
         now = time.monotonic() if now is None else now
-        if self.started_at is None:
-            self.started_at = now
+        started_at = self.started_at if self.started_at is not None else now
+        self.started_at = started_at
 
         for line in self._read_new_lines():
             sanitized = sanitize_log_line(line)
@@ -155,10 +155,11 @@ class _IncrementalLogTail:
                 self.last_update_at = now
 
         if self.last_line is None:
-            elapsed = max(0, now - self.started_at)
+            elapsed = max(0, now - started_at)
             return f"running {self.step_name}, waiting for step log {int(elapsed)}s..."
 
-        elapsed = max(0, now - self.last_update_at)
+        last_update_at = self.last_update_at if self.last_update_at is not None else started_at
+        elapsed = max(0, now - last_update_at)
         if elapsed >= self.stale_after:
             return f"running {self.step_name}, last log {int(elapsed)}s ago: {self.last_line}"
 
@@ -177,7 +178,7 @@ class _IncrementalLogTail:
         change_id = (stat.st_mtime_ns, stat.st_ctime_ns)
         replaced = False
         if self.file_id == file_id and self.offset > 0:
-            head = self._head()
+            head = self._head() or b""
             if stat.st_size < self.offset:
                 replaced = True
             elif stat.st_size == self.offset:
@@ -627,6 +628,7 @@ def _stop_log_monitor(stop_event, monitor, timeout=2.0):
 def run_flow_with_progress(engine_flow, ctx, project, stderr):
     color = supports_color(stderr, ctx.output_mode)
     progress_stream = _stable_stream_from(stderr)
+    execution_state = "interrupted"
     try:
         renderer = RunProgressRenderer(progress_stream, color=color)
         workspace = engine_flow.workspace
@@ -639,7 +641,6 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
         started_callback = getattr(event_sink, "on_execution_started", None)
         if callable(started_callback):
             started_callback("run", ())
-        execution_state = "interrupted"
 
         for workspace_step in engine_flow.workspace_steps:
             step_token = normalize_step_name(workspace_step.name)

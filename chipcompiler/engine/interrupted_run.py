@@ -25,7 +25,8 @@ def recover_interrupted_run(
     for step in updated.get("steps", []):
         if not isinstance(step, dict) or step.get("state") != StateEnum.Ongoing.value:
             continue
-        info = step.get("info") if isinstance(step.get("info"), dict) else {}
+        raw_info = step.get("info")
+        info = raw_info if isinstance(raw_info, dict) else {}
         execution = info.get("execution")
         legacy = info.get("runtime_operation")
         eligible = False

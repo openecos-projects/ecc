@@ -17,6 +17,7 @@ from chipcompiler.data import (
     Workspace,
 )
 from chipcompiler.tools.lec_result import build_lec_step_space, derive_golden_path, optional_path
+from chipcompiler.utility.path import require_path
 
 
 def build_step(
@@ -131,4 +132,4 @@ def write_step_config(
             workspace, step, golden_verilog=golden_verilog, gate_verilog=gate_verilog
         )
     )
-    Path(step.data.config).write_text(config, encoding="utf-8")
+    require_path(step.data.config, "kepler-formal config").write_text(config, encoding="utf-8")

@@ -64,8 +64,13 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
     # ``load_workspace`` keeps the flow ledger lazy; use the accessor so
     # persisted steps are hydrated before validating the requested step.
     steps_accessor = getattr(workspace.flow, "steps", None)
-    flow_steps = (
+    raw_steps = (
         steps_accessor() if callable(steps_accessor) else workspace.flow.data.get("steps", [])
+    )
+    flow_steps = (
+        [step for step in raw_steps if isinstance(step, dict)]
+        if isinstance(raw_steps, list)
+        else []
     )
     flow_step_names = {
         normalize_flow_step(step.get("name", "")).casefold()
@@ -272,7 +277,12 @@ def _mutate_via_engine(ctx, workspace, schema, requested_value: object, status: 
     existing = next((item for item in overrides if item["key"] == schema.param), None)
     if status == "unset" and existing is None:
         return CommandResult.ok([_record(ctx, schema.param, None, "no_override")])
-    value = requested_value if status == "set" else existing["baseline"]
+    if status == "set":
+        value = requested_value
+    else:
+        if existing is None:
+            return CommandResult.ok([_record(ctx, schema.param, None, "no_override")])
+        value = existing["baseline"]
     step = workspace_param_step(schema)
     try:
         revision = read_engineering_snapshot(workspace)["workspaceRevision"]

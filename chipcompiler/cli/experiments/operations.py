@@ -245,7 +245,10 @@ def read_package(package: Path) -> Iterator[tuple[tarfile.TarFile, dict[str, Any
             member = archive.getmember("./manifest.json")
         except KeyError:
             raise ValueError("package does not contain manifest.json") from None
-        with archive.extractfile(member) as stream:
+        stream = archive.extractfile(member)
+        if stream is None:
+            raise ValueError("package manifest is not a regular file")
+        with stream:
             manifest = json.load(stream)
         if not isinstance(manifest, dict):
             raise ValueError("manifest must be a JSON object")
@@ -283,7 +286,11 @@ def verify_package(package: Path) -> dict[str, Any]:
                 errors.append(f"missing: {entry['path']}")
                 continue
             member = archive.getmember(name)
-            content = archive.extractfile(member).read()
+            stream = archive.extractfile(member)
+            if stream is None:
+                errors.append(f"unreadable: {entry['path']}")
+                continue
+            content = stream.read()
             digest = hashlib.sha256(content).hexdigest()
             if len(content) != entry["size"]:
                 errors.append(f"size: {entry['path']}")
@@ -312,8 +319,12 @@ def package_report(package: Path) -> dict[str, Any]:
         invalid_json: list[str] = []
         for member in archive.getmembers():
             if member.isfile() and member.name.endswith(".json"):
+                stream = archive.extractfile(member)
+                if stream is None:
+                    invalid_json.append(member.name)
+                    continue
                 try:
-                    payloads[member.name] = json.load(archive.extractfile(member))
+                    payloads[member.name] = json.load(stream)
                 except (json.JSONDecodeError, OSError):
                     invalid_json.append(member.name)
                     continue
@@ -488,12 +499,8 @@ def compare_sweep(project: Path, name: str) -> list[dict[str, Any]]:
     return sorted(
         rows,
         key=lambda row: (
-            order.get(row.get("status", "unknown"), 3),
-            -(
-                row.get("qor_score")
-                if isinstance(row.get("qor_score"), (int, float))
-                else float("-inf")
-            ),
+            order.get(str(row.get("status", "unknown")), 3),
+            -(score if isinstance(score := row.get("qor_score"), (int, float)) else float("-inf")),
         ),
     )
 
@@ -537,16 +544,16 @@ def export_sweep(rows: list[dict[str, Any]], fmt: str) -> str:
     )
     if fmt == "csv":
         stream = io.StringIO()
-        writer = csv.DictWriter(stream, fieldnames=columns)
-        writer.writeheader()
+        writer = csv.writer(stream)
+        writer.writerow(columns)
         for row in matrix:
             writer.writerow(
-                {
-                    **row,
-                    "parameters": ",".join(
-                        f"{key}={value}" for key, value in row["parameters"].items()
-                    ),
-                }
+                [
+                    ",".join(f"{key}={value}" for key, value in row["parameters"].items())
+                    if column == "parameters"
+                    else row[column]
+                    for column in columns
+                ]
             )
         return stream.getvalue()
     if fmt == "markdown":

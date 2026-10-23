@@ -46,5 +46,5 @@ def test_save_snapshot_image_passes_path_text_to_klayout(monkeypatch, tmp_path):
     gds_file.write_text("GDS", encoding="utf-8")
     module.save_snapshot_image(gds_file=gds_file, img_file=img_file, weight=800, height=600)
 
-    assert calls["load_layout"] == (str(gds_file), 0)
+    assert calls["load_layout"] == (str(gds_file), "")
     assert calls["save_image"] == (str(img_file), 800, 600)

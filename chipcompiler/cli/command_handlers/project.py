@@ -457,7 +457,8 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
     from chipcompiler.project import repoint_generation_pointers
 
     try:
-        repoint_generation_pointers(ctx.project_dir, ctx.run_id, backup_id)
+        if ctx.run_id is not None:
+            repoint_generation_pointers(ctx.project_dir, ctx.run_id, backup_id)
     except (OSError, ValueError) as exc:
         warnings.append(
             error_record(
@@ -846,6 +847,8 @@ def _run_project(
         cfg, flow_config, entry_warnings = resolved_cfg
         layer_warnings.extend(entry_warnings)
     else:
+        if cfg is None:
+            return CommandResult.err([error_record("missing_config")])
         # Virgin projects have no manifest layer; an ecc.toml skip policy
         # still rides on the flow config (policy-only when no range applies).
         from chipcompiler.cli.project.effective_config import (
@@ -866,7 +869,8 @@ def _run_project(
         )
         flow_config = _attach_lec_engine(flow_config, lec_engine)
 
-    assert cfg is not None
+    if cfg is None:
+        return CommandResult.err([error_record("missing_config")])
 
     flow_builders = rtl2gds_api.get_flow_builders()
     effective_preset = command_input.preset or cfg.flow_preset

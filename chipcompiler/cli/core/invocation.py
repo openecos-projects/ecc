@@ -1,7 +1,7 @@
+import copy
 import os
 import sys
 from collections.abc import Callable
-from dataclasses import replace
 from typing import Protocol, TypeVar
 
 import typer
@@ -130,6 +130,8 @@ def build_context(command_input: CommandInput) -> CommandContext:
     command_input = apply_location_defaults(command_input)
     project = command_input.project.project
     project_dir = resolve_project_dir(project)
+    run_dir = os.path.join(project_dir, "default")
+    run_id: str | None = None
 
     workspace_name = getattr(command_input, "workspace", None)
     workspace_path_selector = False
@@ -257,12 +259,17 @@ def apply_location_defaults(command_input: CommandInputT) -> CommandInputT:
     workspace = getattr(command_input, "workspace", None)
     project = command_input.project.project
     location = resolve_current_location(project, workspace, workspace_supported=workspace_supported)
-    changes = {}
+    changes: dict[str, object] = {}
     if location.project != project:
         changes["project"] = ProjectOptions(project=location.project)
     if workspace_supported and location.workspace != workspace:
         changes["workspace"] = location.workspace
-    return replace(command_input, **changes) if changes else command_input
+    if not changes:
+        return command_input
+    updated = copy.copy(command_input)
+    for name, value in changes.items():
+        object.__setattr__(updated, name, value)
+    return updated
 
 
 def _should_colorize():

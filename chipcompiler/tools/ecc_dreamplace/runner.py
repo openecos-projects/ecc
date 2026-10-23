@@ -211,6 +211,8 @@ def _run_placement_mode(
         return True
 
     if backend == "ecc":
+        if ecc_module is None:
+            return False
         # The placement provider owns its mutated DB. Re-read its committed
         # outputs before feature/save_data so the input DB cannot overwrite them.
         ecc_module.close()
@@ -226,6 +228,8 @@ def _run_placement_mode(
             )
             return False
 
+    if ecc_module is None:
+        return False
     ecc_module.feature_placement_map(json_path=step.feature.map or "")
 
     sub_flow.update_step(

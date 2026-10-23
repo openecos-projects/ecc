@@ -214,7 +214,7 @@ def _read_manifest_document(path: str):
     return document if isinstance(document, dict) else None
 
 
-def update_manifest(project_dir: str, mutator) -> bool:
+def update_manifest(project_dir: str | Path, mutator) -> bool:
     """Read-modify-write the manifest atomically (locked re-read + patch + replace).
 
     The whole read-modify-replace runs under ``.manifest.lock`` (flock):

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from enum import Enum
 
-from chipcompiler.data import StepEnum, step_from_value
+from chipcompiler.data import StepBaseEnum, StepEnum, step_from_value
 from chipcompiler.tools.subflow import SubFlow
 
 
@@ -33,7 +33,7 @@ class EccSubFlowEnum(Enum):
 
 
 # Stages of each ECC step, in execution order. Steps absent here have no sub-flow.
-_STAGES: dict[StepEnum, tuple[EccSubFlowEnum, ...]] = {
+_STAGES: dict[StepBaseEnum, tuple[EccSubFlowEnum, ...]] = {
     StepEnum.PRE_FLOORPLAN: (
         EccSubFlowEnum.load_data,
         EccSubFlowEnum.set_clock_net,

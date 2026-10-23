@@ -8,12 +8,21 @@ contracts. Shared through composition, so ``self`` is the composed
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from chipcompiler.data import SkippableStepEnum, StepEnum
+from chipcompiler.data import SkippableStepEnum, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.data.step import STEP_DIRECTORIES
+from chipcompiler.data.workspace.flow_types import FlowStepEntry
 
 
 class CollectorDiscoveryMixin:
+    if TYPE_CHECKING:
+        workspace: Workspace
+
+        def _build_workspace_step(
+            self, flow_step: FlowStepEntry, input_source: object
+        ) -> WorkspaceStep | None: ...
+
     def _read_json(self, path: Path) -> dict:
         try:
             with open(path, encoding="utf-8") as file:
@@ -103,7 +112,7 @@ class CollectorDiscoveryMixin:
     def _synthesis_output_verilog(self) -> Path | None:
         """Resolve the netlist from the Yosys step's declared output contract."""
         synthesis_step = self._build_workspace_step(
-            {"name": StepEnum.SYNTHESIS.value, "tool": "yosys"},
+            {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": ""},
             input_source=None,
         )
         output = getattr(synthesis_step, "output", None)
