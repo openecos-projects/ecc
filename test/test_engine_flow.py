@@ -1371,6 +1371,119 @@ def test_checklist_gate_follows_the_input_chain(tmp_path):
     assert flow._blocked_checklist_prerequisite(EccStep(name="Harden", tool="ecc")) == "filler"
 
 
+def test_checklist_gate_blocks_the_step_after_a_synced_blocked_prerequisite(tmp_path, monkeypatch):
+    from chipcompiler.data import OriginDesign
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    workspace.flow.path = tmp_path / "home" / "flow.json"
+    workspace.flow.path.parent.mkdir()
+    flow = EngineFlow(workspace)
+    workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc", "category": "PNR", "state": "Success"},
+            {
+                "name": "filler",
+                "tool": "ecc",
+                "category": "PNR",
+                "state": "Unstart",
+                "checklist": [{"id": "filler.preexisting", "state": "pass"}],
+            },
+        ]
+    }
+    checklist_path = tmp_path / "route_checklist.json"
+    checklist_path.write_text(
+        json.dumps({"status": "blocked", "checklist": [{"id": "route", "blocked": True}]}),
+        encoding="utf-8",
+    )
+    sync_step_checklist(
+        flow,
+        EccStep(
+            name="route",
+            tool="ecc",
+            directory=tmp_path,
+            checklist=ChecklistState(path=checklist_path),
+        ),
+    )
+    monkeypatch.setattr(
+        flow_module,
+        "execute_tool_step",
+        lambda **_kwargs: pytest.fail("blocked step must not run its tool"),
+    )
+
+    assert flow.run_step(EccStep(name="filler", tool="ecc")) is StateEnum.Invalid
+
+    entry = flow.get_step("filler", "ecc")
+    assert entry == {
+        "name": "filler",
+        "tool": "ecc",
+        "category": "PNR",
+        "state": "Unstart",
+        "checklist_status": {
+            "status": "blocked",
+            "blocked": True,
+            "failed_items": ["prerequisite:route"],
+            "source": "home/flow.json",
+        },
+    }
+    assert "checklist" not in entry
+    assert all(not isinstance(step.get("checklist"), dict) for step in workspace.flow.data["steps"])
+
+
+@pytest.mark.parametrize("status", ["passed", "attention", "unknown", None])
+def test_run_step_runs_after_a_non_blocked_prerequisite(tmp_path, monkeypatch, status):
+    from chipcompiler.data import OriginDesign
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    workspace.flow.path = tmp_path / "home" / "flow.json"
+    workspace.flow.path.parent.mkdir()
+    flow = EngineFlow(workspace)
+    workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc", "category": "PNR", "state": "Success"},
+            {"name": "filler", "tool": "ecc", "category": "PNR", "state": "Unstart"},
+        ]
+    }
+    if status is not None:
+        route = flow.get_step("route", "ecc")
+        assert route is not None
+        route["checklist_status"] = {"status": status, "blocked": False}
+        flow.save()
+    step = EccStep(name="filler", directory=tmp_path, tool="ecc")
+    flow.workspace_steps = [step]
+    flow.engine_db = SimpleNamespace(engine=None)
+    called = []
+    monkeypatch.setattr(tools, "run_step", lambda **kwargs: called.append(kwargs["step"]) or True)
+    monkeypatch.setattr(flow, "check_step_result", lambda **_kwargs: True)
+    monkeypatch.setattr(tools, "save_layout_image", lambda **_kwargs: True)
+
+    assert flow.run_step(step) == StateEnum.Success
+    assert called == [step]
+
+
+@pytest.mark.parametrize("status", ["passed", "attention", "unknown", None])
+def test_checklist_gate_allows_non_blocked_status(tmp_path, status):
+    from chipcompiler.data import OriginDesign
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    workspace.flow.path = tmp_path / "home" / "flow.json"
+    workspace.flow.path.parent.mkdir()
+    flow = EngineFlow(workspace)
+    workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc", "category": "PNR"},
+            {"name": "filler", "tool": "ecc", "category": "PNR"},
+        ]
+    }
+    if status is not None:
+        route = flow.get_step("route", "ecc")
+        assert route is not None
+        route["checklist_status"] = {"status": status, "blocked": False}
+        flow.save()
+
+    assert flow._blocked_checklist_prerequisite(EccStep(name="filler", tool="ecc")) is None
+
+
+
 def test_unregistered_checker_step_fails_the_classification(tmp_path):
     from chipcompiler.data import OriginDesign
 

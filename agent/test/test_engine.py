@@ -90,7 +90,8 @@ def test_agent_engine_blocks_the_step_after_a_blocked_prerequisite(tmp_path, mon
     assert all(not isinstance(step.get("checklist"), dict) for step in workspace.flow.data["steps"])
 
 
-def test_agent_engine_runs_the_step_after_a_passed_prerequisite(tmp_path, monkeypatch):
+@pytest.mark.parametrize("status", ["passed", "attention", "unknown", None])
+def test_agent_engine_runs_the_step_after_a_non_blocked_prerequisite(tmp_path, monkeypatch, status):
     home = tmp_path / "home"
     home.mkdir()
     workspace = Workspace(directory=tmp_path, flow=Flow(path=home / "flow.json"))
@@ -104,12 +105,13 @@ def test_agent_engine_runs_the_step_after_a_passed_prerequisite(tmp_path, monkey
     step = EccStep(name="filler", directory=tmp_path, tool="ecc")
     flow.workspace_steps = [step]
     flow.engine_db = SimpleNamespace(engine=None)
-    write_step_checklist(
-        flow,
-        flow.get_step("route", "ecc"),
-        items=[],
-        status={"status": "passed", "blocked": False},
-    )
+    if status is not None:
+        write_step_checklist(
+            flow,
+            flow.get_step("route", "ecc"),
+            items=[],
+            status={"status": status, "blocked": False},
+        )
     called = []
     monkeypatch.setattr(
         "agent.engine.run_agent_step", lambda **kwargs: called.append(kwargs["step"]) or True
