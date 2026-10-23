@@ -229,6 +229,9 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
     )
     if checklist_artifact["availability"] == "available":
         artifacts.append(checklist_artifact)
+    # One workspace path may have both a generic and a typed projection. Keep
+    # the later, more specific entry so the artifact-id contract stays unique.
+    artifacts = list({artifact["artifactId"]: artifact for artifact in artifacts}.values())
     return {
         "artifacts": artifacts,
         "metrics": metrics,

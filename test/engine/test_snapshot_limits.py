@@ -166,6 +166,8 @@ def test_snapshot_indexes_power_analysis_artifacts(tmp_path):
         ("power_summary", "powerAnalysis_ecc/feature/power_summary.json"),
     ]
     assert all(artifact["availability"] == "available" for artifact in power_artifacts)
+    artifact_ids = [artifact["artifactId"] for artifact in snapshot["artifacts"]]
+    assert len(artifact_ids) == len(set(artifact_ids))
 
 
 def test_snapshot_limits_sta_corner_artifacts_deterministically(tmp_path):
