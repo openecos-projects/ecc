@@ -9,6 +9,7 @@ from chipcompiler.data import EccOutput, EccStep, StateEnum, StepEnum, Workspace
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc_dreamplace.runner import legalize_layout
 from chipcompiler.tools.ecc_dreamplace.utility import is_eda_exist as is_dreamplace_exist
+from chipcompiler.utility.path import require_path
 
 from .builder import (
     build_hold_config,
@@ -191,7 +192,7 @@ def run_step(
     os.makedirs(output_dir, exist_ok=True)
     log_path = step.log.file or ""
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    os.makedirs(os.path.dirname(step.output.def_ or ""), exist_ok=True)
+    os.makedirs(require_path(step.output.def_, "sizer output DEF").parent, exist_ok=True)
     _delete_staging_outputs(step)
     sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Ongoing)
 
@@ -210,8 +211,13 @@ def run_step(
         sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Success)
         sub_flow.update_step(step_name=save_data_step, state=StateEnum.Ongoing)
         try:
-            shutil.copy2(sizer_staging_def(step), step.output.def_)
-            shutil.copy2(sizer_staging_verilog(step), step.output.verilog)
+            shutil.copy2(
+                sizer_staging_def(step), require_path(step.output.def_, "sizer output DEF")
+            )
+            shutil.copy2(
+                sizer_staging_verilog(step),
+                require_path(step.output.verilog, "sizer output verilog"),
+            )
         except OSError:
             logger.exception("Failed to publish preplace outputs for %s", step.name)
             _delete_published_outputs(step)

@@ -7,6 +7,7 @@ from chipcompiler.data import KeplerFormalStep, StateEnum, Workspace
 from chipcompiler.tools.kepler_formal.subflow import KeplerFormalSubFlow
 from chipcompiler.tools.kepler_formal.utility import get_kepler_formal_runtime
 from chipcompiler.tools.lec_result import write_step_result
+from chipcompiler.utility.path import require_path
 
 # kepler-formal LEC exits 0 whether the designs are equivalent or not; the
 # verdict only appears in its stdout. Positive evidence is required for a
@@ -29,7 +30,9 @@ def _miter_verdict_lines(miter_log: Path | str | None) -> list[str]:
 
 def _write_equiv_status(step: KeplerFormalStep) -> None:
     verdict_lines = _miter_verdict_lines(step.report.miter_log)
-    Path(step.report.equiv_status).write_text("\n".join(verdict_lines) + "\n", encoding="utf-8")
+    require_path(step.report.equiv_status, "equivalence status").write_text(
+        "\n".join(verdict_lines) + "\n", encoding="utf-8"
+    )
 
 
 def _write_status_report(step: KeplerFormalStep, *, proven: bool, reason: str) -> None:
@@ -37,7 +40,7 @@ def _write_status_report(step: KeplerFormalStep, *, proven: bool, reason: str) -
         message = "kepler-formal LEC completed with proven equivalence."
     else:
         message = f"kepler-formal LEC did not prove equivalence: {reason}"
-    Path(step.report.status).write_text(message + "\n", encoding="utf-8")
+    require_path(step.report.status, "status report").write_text(message + "\n", encoding="utf-8")
 
 
 def _classify(log_text: str) -> tuple[bool, str]:
@@ -59,7 +62,9 @@ def _prepare_compare_netlists(workspace: Workspace, step: KeplerFormalStep) -> t
     from chipcompiler.tools.kepler_formal.netlist_prep import physical_cell_names, prepare_netlist
 
     physical_cells = physical_cell_names(getattr(workspace, "pdk", None))
-    data_dir = Path(step.data.dir or step.directory)
+    data_dir = (
+        Path(step.data.dir) if step.data.dir else require_path(step.directory, "step directory")
+    )
 
     golden = prepare_netlist(
         step.input.golden_verilog, data_dir / "golden_compare.v", physical_cells
@@ -101,12 +106,15 @@ def run_step(workspace: Workspace, step: KeplerFormalStep, ecc_module=None) -> b
         _write_status_report(step, proven=False, reason=f"preparing netlists failed: {exc}")
         return False
 
-    cmd = kepler_cmd + ["--config", str(step.data.config)]
+    cmd = kepler_cmd + [
+        "--config",
+        str(require_path(step.data.config, "kepler-formal config")),
+    ]
     try:
         with open(log_path, "w", encoding="utf-8") as log_file:
             result = subprocess.run(
                 cmd,
-                cwd=str(step.directory),
+                cwd=str(require_path(step.directory, "step directory")),
                 env=kepler_env,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,

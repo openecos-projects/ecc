@@ -230,3 +230,42 @@ def test_run_step_marks_invalid_when_yosys_is_missing(tmp_path, monkeypatch):
     assert result is False
     assert ("run yosys", StateEnum.Invalid) in updates
     assert "yosys is not available" in log_file.read_text()
+
+
+def test_run_step_records_missing_step_directory_as_incomplete(tmp_path, monkeypatch):
+    from chipcompiler.data import (
+        LogPaths,
+        OriginDesign,
+        ScriptPaths,
+        StepInput,
+        Workspace,
+        YosysOutput,
+        YosysStep,
+    )
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    rtl = tmp_path / "top.v"
+    rtl.write_text("module top; endmodule\n", encoding="utf-8")
+    step = YosysStep(
+        name="Synthesis",
+        tool="yosys",
+        directory=None,
+        input=StepInput(verilog=rtl),
+        output=YosysOutput(verilog=tmp_path / "output.v"),
+        log=LogPaths(file=tmp_path / "yosys.log"),
+        script=ScriptPaths(dir=None),
+    )
+    updates = []
+
+    class FakeSubFlow:
+        def __init__(self, workspace, workspace_step):
+            pass
+
+        def update_step(self, *, step_name, state):
+            updates.append((step_name, state))
+
+    monkeypatch.setattr(runner, "get_yosys_runtime", lambda: (["yosys"], {}))
+    monkeypatch.setattr(runner, "YosysSubFlow", FakeSubFlow)
+
+    assert runner.run_step(workspace=workspace, step=step) is False
+    assert updates[-1] == ("run yosys", StateEnum.Imcomplete)

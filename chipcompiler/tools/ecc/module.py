@@ -3,20 +3,14 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Any, TypeAlias
+from typing import Any
 
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_run_outputs, publish_sta_artifacts
-from chipcompiler.utility.path import path_text
+from chipcompiler.utility.path import PathArg
 
 # ecc-tools loggers terminate the host process on error by default; embedded in
 # Python they must raise instead so failures surface as Python exceptions.
 os.environ.setdefault("ECC_LOGGER_THROW_ON_ERROR", "1")
-
-# Path arguments are handed to the native wrapper unchanged: ecc_py accepts any
-# os.PathLike (and, for the Optional ones, None). An unset step field must be
-# passed as "" by the caller, not None.
-PathArg: TypeAlias = str | os.PathLike[str]
-
 
 STA_OUTPUT_MODES = frozenset(("report", "structured"))
 
