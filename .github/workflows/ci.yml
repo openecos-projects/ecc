@@ -314,7 +314,7 @@ jobs:
 
   e2e-designs:
     name: List e2e designs
-    runs-on: ubuntu-latest
+    runs-on: ecc-nightly-runner-0
     outputs:
       designs: ${{ steps.list.outputs.designs }}
     steps:
@@ -329,11 +329,12 @@ jobs:
         run: |
           # xtea disabled everywhere for now: real run shows hold WNS < 0,
           # which would keep its strict signoff gates red until tuned.
-          # Keep aes (~50min) and memory-heavy BM64 out of PR validation;
-          # retain both for push, scheduled, and manual runs.
+          # Keep only the memory-heavy BM64 out of PR validation; retain it
+          # for push, scheduled, and manual runs. aes (~50min) runs on the
+          # faster self-hosted runner.
           excludes=(xtea)
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            excludes+=(aes BM64)
+            excludes+=(BM64)
           fi
           designs="$(find designs -mindepth 2 -maxdepth 2 -name ecc.toml -printf '%h\n' \
             | xargs -n1 basename | grep -vxFf <(printf '%s\n' "${excludes[@]}") \
@@ -347,9 +348,9 @@ jobs:
       fail-fast: false
       matrix:
         design: ${{ fromJSON(needs.e2e-designs.outputs.designs) }}
-    # Bare ubuntu-latest (not the manylinux container): also proves the
+    # Bare self-hosted runner (not the manylinux container): also proves the
     # manylinux-built bundle runs on a current distro.
-    runs-on: ubuntu-latest
+    runs-on: ecc-nightly-runner-0
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -434,26 +435,6 @@ jobs:
       - name: Cache Nix store
         uses: DeterminateSystems/magic-nix-cache-action@v15
 
-      - name: Add swap cushion
-        shell: bash
-        # The image already carries a 3 GiB /swapfile, and fallocate on an
-        # in-use swap file fails with ETXTBSY, so the cushion is a separate
-        # file. It absorbs a short overshoot instead of letting the kernel
-        # OOM-kill a native tool; a sustained overshoot still shows up as the
-        # job's timeout.
-        run: |
-          free -h
-          swapon --show
-          df -h /
-          sudo fallocate -l 4G /swapfile.ecc
-          sudo chmod 600 /swapfile.ecc
-          sudo mkswap /swapfile.ecc
-          sudo swapon /swapfile.ecc
-          # Keep swap as a safety net rather than a routine spill area.
-          sudo sysctl -w vm.swappiness=10
-          swapon --show
-          free -h
-
       - name: Run design flows
         id: design-flow
         run: |
@@ -512,7 +493,7 @@ jobs:
     continue-on-error: true
     if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run-experience && needs.e2e-designs.result == 'success' }}
     needs: [e2e-designs, e2e-packaged-flow]
-    runs-on: ubuntu-latest
+    runs-on: ecc-nightly-runner-0
     steps:
       - uses: actions/checkout@v4
 
