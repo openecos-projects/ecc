@@ -20,7 +20,7 @@ def test_placement_checklist_writes_current_empty_v3_snapshot(tmp_path):
         output=EccOutput(),
     )
 
-    assert DreamplacePlacementChecklist(_ns(), step).check() is True
+    assert DreamplacePlacementChecklist(_ns(directory=tmp_path), step).check() is True
 
     data = json.loads(checklist_path.read_text(encoding="utf-8"))
     assert data["schema_version"] == 3

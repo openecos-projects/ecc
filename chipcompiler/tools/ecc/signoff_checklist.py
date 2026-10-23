@@ -63,11 +63,8 @@ def _path_text(workspace: Workspace, path: Path | str | None) -> str:
     if not path:
         return ""
     value = Path(path)
-    workspace_directory = getattr(workspace, "directory", None)
-    if not workspace_directory:
-        return str(value)
     try:
-        return value.relative_to(Path(workspace_directory)).as_posix()
+        return value.relative_to(workspace.directory).as_posix()
     except ValueError:
         return str(value)
 
@@ -564,8 +561,7 @@ def refresh_step_checklist(workspace: Workspace, step: WorkspaceStep) -> bool:
     if step.name in ADVISORY_FLOW_STEPS:
         items.extend(item for item in _flow_items(workspace) if item["step"] == step.name)
     step.checklist.checklist = checklist.replace(items)
-    if getattr(workspace, "directory", None):
-        rebuild_home_checklist(workspace)
+    rebuild_home_checklist(workspace)
     return not any(item["blocked"] for item in step.checklist.checklist)
 
 

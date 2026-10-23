@@ -47,7 +47,9 @@ def run_step(workspace: Workspace, step: YosysLecStep, ecc_module=None) -> bool:
         with open(log_path, "w", encoding="utf-8") as log_file:
             result = subprocess.run(
                 cmd,
-                cwd=str(step.script.dir or step.directory),
+                cwd=str(
+                    step.script.dir or require_path(step.directory, "yosys-lec step directory")
+                ),
                 env=yosys_env,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,

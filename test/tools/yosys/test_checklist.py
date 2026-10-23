@@ -33,7 +33,7 @@ def test_synthesis_checklist_records_current_mapped_netlist(tmp_path):
         output=YosysOutput(verilog=netlist),
     )
 
-    assert YosysSynthesisChecklist(_ns(), step).check() is True
+    assert YosysSynthesisChecklist(_ns(directory=tmp_path), step).check() is True
 
     data = json.loads(checklist_path.read_text(encoding="utf-8"))
     assert data["schema_version"] == 3
@@ -50,8 +50,8 @@ def test_synthesis_checklist_records_current_mapped_netlist(tmp_path):
             "summary": "Current output is present and non-empty.",
             "source": {
                 "kind": "output",
-                "path": str(netlist),
+                "path": str(netlist.relative_to(tmp_path)),
             },
-            "evidence": [{"kind": "output", "path": str(netlist)}],
+            "evidence": [{"kind": "output", "path": str(netlist.relative_to(tmp_path))}],
         }
     ]
