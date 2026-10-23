@@ -430,7 +430,14 @@ def _checklist_projection(checklist: dict[str, Any]) -> dict[str, Any]:
         return {"items": []}
     if len(items) > 512:
         raise EngineeringSnapshotError("Signoff checklist exceeds 512 items")
-    return {"items": [_checklist_item(item) for item in items if isinstance(item, dict)]}
+    projection = {"items": [_checklist_item(item) for item in items if isinstance(item, dict)]}
+    status = checklist.get("status")
+    if status in {"ready", "attention", "blocked"}:
+        projection["status"] = status
+    requirements_status = checklist.get("requirements_status")
+    if requirements_status in {"none", "present"}:
+        projection["requirementsStatus"] = requirements_status
+    return projection
 
 
 def _checklist_item(item: dict[str, Any]) -> dict[str, Any]:

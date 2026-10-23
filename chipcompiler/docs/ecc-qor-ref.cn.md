@@ -380,6 +380,30 @@ STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup
 
 每个特征记录携带：值（或 null）、公式串、认识论分类、状态、输入指标 id、溯源工件（path + selector）、兼容性契约、解释文本——从顶层诊断可直接回溯到原始报告 selector。
 
+### 9.4 步骤证据与展示契约
+
+QoR 相关文件分工如下，GUI 只消费 ECC 已经得出的结论，不重新解释或重算门禁。
+
+| 文件 | 生产者 / 版本 | 用途与权威边界 |
+|---|---|---|
+| `<step_dir>/analysis/qor_metrics.json` | 各步骤；schema 3 | 原始指标记录、单位和 provenance。步骤分析必需。 |
+| `<step_dir>/analysis/qor_summary.json` | 各步骤；**schema 4**（当前写入版本） | 步骤级 QoR 结论：`analysis_revision`、`analysis_status`（`valid` / `incomplete`）、`quality_status`（`pass` / `blocked` / `incomplete`）、`gates[]`、`missing_metrics[]`。步骤分析必需。 |
+| `<step_dir>/analysis/qor_hotspots.json` | 各步骤；schema 3 | 可选的热点索引；缺失不表示步骤失败。 |
+| `<workspace>/home/qor_report.json` | ECC QoR 引擎；schema 3，`scoring_engine: "qor-v3"` | 工作区评分与七条 feasibility gate 的**唯一权威**。GUI 不重新计分。 |
+| `sta_ecc/feature/<corner>/<view>/qor_summary.json` | STA 时序工具；timing schema 1 形状 | 逐 corner setup/hold 原始摘要，供 workspace QoR 归约；文件名与步骤级 `analysis/qor_summary.json` 相同但契约不同。 |
+| `sta_ecc/analysis/sta_timing_issues.json` | STA；schema 1 | STA 步骤分析的必需证据，用于展示 timing issue 明细。 |
+| `<workspace>/home/checklist.json` | signoff checklist；schema 3 | 工作区签核检查的聚合权威。`requirements_status` 区分 `none`（没有要求）与 `present`（有要求）；`status` 为 `ready` / `attention` / `blocked`。 |
+| `<step_dir>/checklist.json` | 步骤完成时刷新；schema 3 | 该步骤的证据快照。聚合时优先使用它，只有快照缺失时才从 `qor_summary.json` 回填 QoR gate 项。 |
+| `<workspace>/home/flow.json` | flow 引擎 | 只保存 compact `checklist_status`：`status`、`blocked`、`failed_items`、`summary`、`requirements_status`、`revision`、`updated_at`、`source`。不再复制完整 checklist items。 |
+
+`analysis_status` 与 `quality_status` 表达不同事实，不能合并：
+
+- `analysis_status: incomplete` 表示覆盖率不完整，例如缺少非关键指标；不等于质量失败。
+- `quality_status: blocked` 表示当前 gate 明确失败；`incomplete` 表示 gate 因证据不可用而无法判定。
+- `gates[].state` 只使用 `pass` / `failed` / `unavailable`；旧 schema 3 的 `status` / `hard_gates` 仅作兼容读取。
+
+Engineering Snapshot v6 的 artifact index 为每个分析文件携带 `required` 标志；GUI 按该标志决定缺失是否导致步骤 `incomplete`。QoR metrics/summary、STA timing issues 为必需，hotspot 索引为可选。对没有 QoR 工件、只发布 checklist/report 的步骤，Antenna Check 与 EMIR 是 advisory，Post-route LEC 是 required evidence。
+
 ## 10. JSON 报告契约（home/qor_report.json）
 
 ### 10.1 结构（节选，真实字段名）

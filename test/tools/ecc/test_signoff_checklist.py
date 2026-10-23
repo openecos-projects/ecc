@@ -611,6 +611,72 @@ def test_home_checklist_flow_completed_tracks_final_harden_state(tmp_path):
     )
 
 
+def test_home_checklist_prefers_step_gate_items_and_backfills_missing_snapshots(tmp_path):
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    (tmp_path / "home").mkdir()
+    workspace.flow.path = tmp_path / "home" / "flow.json"
+    workspace.flow.data = {
+        "steps": [{"name": StepEnum.DRC.value, "tool": "ecc", "state": StateEnum.Success.value}]
+    }
+    summary_path = tmp_path / "drc_ecc" / "analysis" / "qor_summary.json"
+    summary_path.parent.mkdir(parents=True)
+    summary_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 4,
+                "analysis_revision": "quality-gates-v4",
+                "gates": [
+                    {
+                        "id": "qor.drc.clean",
+                        "title": "Final DRC clean",
+                        "state": "failed",
+                        "blocking": True,
+                        "metrics": [
+                            {"id": "drc_count", "actual": 2, "operator": "==", "expected": 0}
+                        ],
+                        "evidence": [],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    step_checklist = tmp_path / "drc_ecc" / "checklist.json"
+    step_checklist.write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "kind": "signoff_checklist",
+                "status": "blocked",
+                "requirements_status": "present",
+                "checklist": [
+                    {
+                        "id": "quality.drc.clean",
+                        "step": StepEnum.DRC.value,
+                        "category": "quality_gate",
+                        "owner": "qor",
+                        "policy": "block",
+                        "state": "failed",
+                        "blocked": True,
+                        "title": "Final DRC clean",
+                        "summary": "drc_count=2",
+                        "source": {"kind": "qor_gate", "path": "drc_ecc/analysis/qor_summary.json"},
+                        "evidence": [],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with_snapshot = rebuild_home_checklist(workspace)
+    assert sum(item["id"] == "quality.drc.clean" for item in with_snapshot["checklist"]) == 1
+
+    step_checklist.unlink()
+    backfilled = rebuild_home_checklist(workspace)
+    assert sum(item["id"] == "quality.drc.clean" for item in backfilled["checklist"]) == 1
+
+
 def test_advisory_flow_checks_are_attention_without_blocking(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     workspace.flow.data = {

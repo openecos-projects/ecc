@@ -277,9 +277,7 @@ def _create_workspace_step_workspaces(workspace: Any) -> None:
 
     engine_flow = EngineFlow(workspace=workspace)
     if not engine_flow.has_init():
-        raise WorkspaceLifecycleError(
-            "workspace_create_failed", "Workspace has no committed Flow"
-        )
+        raise WorkspaceLifecycleError("workspace_create_failed", "Workspace has no committed Flow")
     engine_flow.create_step_workspaces()
     persisted_steps = workspace.flow.data.get("steps", [])
     created_steps = getattr(engine_flow, "workspace_steps", None) or []

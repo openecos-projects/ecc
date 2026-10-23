@@ -42,6 +42,35 @@ def test_engine_flow_missing_path_is_not_initialized():
     assert engine_flow.has_init() is False
 
 
+def test_engine_flow_blocks_on_and_writes_compact_checklist_status(tmp_path):
+    workspace = Workspace()
+    workspace.flow.path = tmp_path / "flow.json"
+    engine_flow = EngineFlow(workspace)
+    workspace.flow.data = {
+        "steps": [
+            {
+                "name": "route",
+                "tool": "ecc",
+                "state": "Success",
+                "checklist_status": {"status": "blocked", "blocked": True},
+            },
+            {"name": "filler", "tool": "ecc", "state": "Unstart"},
+        ]
+    }
+    filler = EccStep(name="filler", directory=tmp_path, tool="ecc")
+
+    assert engine_flow.run_step(filler) == StateEnum.Invalid
+
+    flow_step = engine_flow.get_step("filler", "ecc")
+    assert "checklist" not in flow_step
+    assert flow_step["checklist_status"] == {
+        "status": "blocked",
+        "blocked": True,
+        "failed_items": ["prerequisite:route"],
+        "source": "home/flow.json",
+    }
+
+
 def test_run_step_without_runtime_operation_marker_does_not_expand_function(monkeypatch, tmp_path):
     from chipcompiler.engine.execution import ExecutionObserver
 

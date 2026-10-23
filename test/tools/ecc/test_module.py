@@ -2083,6 +2083,26 @@ def _write_harden_signoff_summary(tmp_path, step_name, *, status="pass", hard_ga
     )
 
 
+def _write_harden_signoff_v4_summary(tmp_path, step_name, *, gates):
+    summary_path = tmp_path / f"{step_name}_ecc" / "analysis" / "qor_summary.json"
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 4,
+                "analysis_revision": "quality-gates-v4",
+                "analysis_status": "valid",
+                "quality_status": (
+                    "blocked" if any(gate["state"] == "failed" for gate in gates) else "pass"
+                ),
+                "gates": gates,
+                "missing_metrics": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def _write_harden_output_artifacts(step):
     for output_key, contents in (
         ("gds", "gds"),
@@ -2141,6 +2161,48 @@ def test_ecc_metrics_harden_summarizes_completed_signoff_sources(tmp_path):
     assert summary["schema_version"] == 4
     assert summary["quality_status"] == "pass"
     assert summary["gates"] == []
+
+
+def test_ecc_metrics_harden_reads_v4_signoff_summary(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    workspace.flow.data = {"steps": [{"name": StepEnum.DRC.value, "state": "Success"}]}
+    _write_harden_signoff_v4_summary(
+        tmp_path,
+        StepEnum.DRC.value,
+        gates=[
+            {
+                "id": "qor.drc.clean",
+                "title": "Final DRC clean",
+                "state": "failed",
+                "blocking": True,
+                "metrics": [{"id": "drc_count", "actual": 2, "operator": "==", "expected": 0}],
+                "evidence": [],
+            }
+        ],
+    )
+
+    source = ecc_metrics._harden_signoff_source(workspace, StepEnum.DRC.value)
+
+    assert source == {
+        "step": StepEnum.DRC.value,
+        "flow_completed": True,
+        "available": True,
+        "status": "blocked",
+        "hard_gates": [
+            {
+                "id": "qor.drc.clean",
+                "title": "Final DRC clean",
+                "state": "failed",
+                "blocking": True,
+                "metrics": [{"id": "drc_count", "actual": 2, "operator": "==", "expected": 0}],
+                "evidence": [],
+            }
+        ],
+    }
+    assert not ecc_metrics._harden_source_passed(source, ("qor.drc.clean",))
 
 
 def test_ecc_metrics_harden_rejects_stale_signoff_summary(tmp_path):

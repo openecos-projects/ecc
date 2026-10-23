@@ -170,7 +170,5 @@ def test_antenna_wrapper_passes_step_json_path_to_native_api():
     assert module.check_antenna(step_json="/workspace/feature/antennaCheck.step.json") is True
 
     assert module.ecc.method_calls == [
-        call.check_antenna(
-            config_dict={"-step_json": "/workspace/feature/antennaCheck.step.json"}
-        )
+        call.check_antenna(config_dict={"-step_json": "/workspace/feature/antennaCheck.step.json"})
     ]

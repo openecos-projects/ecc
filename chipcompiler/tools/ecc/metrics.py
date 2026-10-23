@@ -4,6 +4,11 @@ from csv import reader as csv_reader
 from math import ceil, isfinite
 from pathlib import Path
 
+from chipcompiler.analysis.qor.summary_contract import (
+    is_supported_summary,
+    summary_gates,
+    summary_quality_status,
+)
 from chipcompiler.data import (
     EccStep,
     StateEnum,
@@ -2536,17 +2541,13 @@ def _harden_signoff_source(workspace: Workspace, source_step: str) -> dict:
         else None
     )
     summary = json_read(summary_path) if summary_path is not None else None
-    available = (
-        isinstance(summary, dict)
-        and summary.get("schema_version") == 3
-        and isinstance(summary.get("status"), str)
-    )
-    hard_gates = summary.get("hard_gates", []) if available else []
+    available = is_supported_summary(summary) and summary_quality_status(summary) is not None
+    hard_gates = summary_gates(summary) if available else []
     return {
         "step": source_step,
         "flow_completed": _workspace_step_completed(workspace, source_step),
         "available": available,
-        "status": summary.get("status") if available else None,
+        "status": summary_quality_status(summary) if available else None,
         "hard_gates": hard_gates if isinstance(hard_gates, list) else [],
     }
 
@@ -2564,7 +2565,7 @@ def _harden_source_passed(source: dict, required_hard_gates: tuple[str, ...]) ->
         for gate in source["hard_gates"]
         if isinstance(gate, dict) and isinstance(gate.get("id"), str)
     }
-    return all(gates.get(gate_id, {}).get("passed") is True for gate_id in required_hard_gates)
+    return all(gates.get(gate_id, {}).get("state") == "pass" for gate_id in required_hard_gates)
 
 
 def _harden_source_reason(source: dict, label: str) -> str:
@@ -3659,9 +3660,6 @@ def build_metrics_floorplan(workspace: Workspace, step: EccStep) -> StepMetrics 
     # db summary matrics
     metrics.update(build_metrics_db(workspace, step))
 
-    # step matrics
-    json_path = getattr(step.feature, "step", "") or ""
-
     return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
@@ -3676,9 +3674,6 @@ def build_metrics_filler(workspace: Workspace, step: EccStep) -> StepMetrics | N
 
     # db summary matrics
     metrics.update(build_metrics_db(workspace, step))
-
-    # step matrics
-    json_path = getattr(step.feature, "step", "") or ""
 
     return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
@@ -4036,10 +4031,6 @@ def build_metrics_legalization(workspace: Workspace, step: EccStep) -> StepMetri
     metrics.update(build_metrics_db(workspace, step))
 
     # Current legalization feature output only carries run facts.  Movement
-    # totals are no longer emitted by the tool, so do not synthesize a stale
-    # V3 metric requirement from an absent legacy field.
-    json_path = getattr(step.feature, "step", "") or ""
-
     return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
@@ -4117,8 +4108,6 @@ def build_metrics_placement(workspace: Workspace, step: EccStep) -> StepMetrics 
     # Placement congestion and wirelength are emitted through place.map.json.
     # The old place.step.json overflow/bin fields are not part of the current
     # DreamPlace feature contract.
-    json_path = getattr(step.feature, "step", "") or ""
-
     map_data = json_read(getattr(step.feature, "map", None) or "")
     if isinstance(map_data, dict):
         metrics["place_map_metrics"] = _place_map_metrics(

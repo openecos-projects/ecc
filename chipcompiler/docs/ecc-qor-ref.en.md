@@ -380,6 +380,30 @@ Signoff: `drc_count`, `lvs_count`, `harden_artifact_missing_count`.
 
 Every feature record carries: value (or null), formula string, epistemic class, state, input metric ids, provenance artifacts (path + selector), the compatibility contract, and an interpretation — top-level diagnoses trace all the way back to raw report selectors.
 
+### 9.4 Step Evidence and Display Contracts
+
+QoR-related files have separate responsibilities. The GUI consumes conclusions already produced by ECC; it does not reinterpret or rescore gates.
+
+| File | Producer / version | Purpose and authority |
+|---|---|---|
+| `<step_dir>/analysis/qor_metrics.json` | every step; schema 3 | Raw metric records, units, and provenance. Required for step analysis. |
+| `<step_dir>/analysis/qor_summary.json` | every step; **schema 4** (current writer) | Step-level QoR verdict: `analysis_revision`, `analysis_status` (`valid` / `incomplete`), `quality_status` (`pass` / `blocked` / `incomplete`), `gates[]`, and `missing_metrics[]`. Required for step analysis. |
+| `<step_dir>/analysis/qor_hotspots.json` | every step; schema 3 | Optional hotspot index; absence is not a step failure. |
+| `<workspace>/home/qor_report.json` | ECC QoR engine; schema 3, `scoring_engine: "qor-v3"` | Sole authority for workspace scoring and the seven feasibility gates. The GUI never rescores. |
+| `sta_ecc/feature/<corner>/<view>/qor_summary.json` | STA timing tool; timing schema-1 shape | Per-corner raw setup/hold summaries reduced into workspace QoR. It shares a filename with the step-level `analysis/qor_summary.json` but has a different contract. |
+| `sta_ecc/analysis/sta_timing_issues.json` | STA; schema 1 | Required STA step evidence for timing-issue details. |
+| `<workspace>/home/checklist.json` | signoff checklist; schema 3 | Aggregated signoff authority. `requirements_status` distinguishes `none` (no requirements) from `present` (requirements exist); `status` is `ready` / `attention` / `blocked`. |
+| `<step_dir>/checklist.json` | refreshed on step completion; schema 3 | Evidence snapshot for that step. Aggregation prefers it and only backfills QoR gate items from `qor_summary.json` when the snapshot is absent. |
+| `<workspace>/home/flow.json` | flow engine | Stores only the compact `checklist_status`: `status`, `blocked`, `failed_items`, `summary`, `requirements_status`, `revision`, `updated_at`, and `source`. Full checklist items are no longer copied here. |
+
+`analysis_status` and `quality_status` describe different facts and must not be merged:
+
+- `analysis_status: incomplete` means coverage is incomplete, for example a non-critical metric is missing; it is not a quality failure.
+- `quality_status: blocked` means a current gate failed; `incomplete` means a gate cannot be decided because evidence is unavailable.
+- `gates[].state` uses only `pass` / `failed` / `unavailable`; legacy schema-3 `status` / `hard_gates` are read for compatibility only.
+
+The Engineering Snapshot v6 artifact index carries a `required` flag for every analysis file, and the GUI uses that flag to decide whether absence makes a step `incomplete`. QoR metrics/summary and STA timing issues are required; the hotspot index is optional. For report-only steps without QoR artifacts, Antenna Check and EMIR are advisory while Post-route LEC is required evidence.
+
 ## 10. JSON Report Contract (home/qor_report.json)
 
 ### 10.1 Structure (abridged; real field names)

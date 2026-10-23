@@ -22,9 +22,9 @@ from chipcompiler.tools.ecc.sta_qor import STA_REPORT_FILENAMES
 from chipcompiler.utility import JsonReadError, json_read_strict
 
 _ANALYSIS_FILES = (
-    ("qor_metrics", "qor_metrics.json"),
-    ("qor_summary", "qor_summary.json"),
-    ("qor_hotspots", "qor_hotspots.json"),
+    ("qor_metrics", "qor_metrics.json", True),
+    ("qor_summary", "qor_summary.json", True),
+    ("qor_hotspots", "qor_hotspots.json", False),
 )
 _TIMING_ISSUES_KIND = "sta_timing_issues"
 _TIMING_ISSUES_FILENAME = "sta_timing_issues.json"
@@ -65,13 +65,14 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
                 step_id, f"{step_storage_name(step_id, tool_id)}_{tool_id}"
             )
         analysis_dir = step_dir / "analysis"
-        for kind, filename in _ANALYSIS_FILES:
+        for kind, filename, required in _ANALYSIS_FILES:
             artifacts.append(
                 _artifact_ref(
                     analysis_dir / filename,
                     workspace_id=workspace_id,
                     step_id=step_id,
                     kind=kind,
+                    required=required,
                     root=root,
                 )
             )
@@ -93,6 +94,7 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
                     workspace_id=workspace_id,
                     step_id=step_id,
                     kind=_TIMING_ISSUES_KIND,
+                    required=True,
                     root=root,
                 )
             )
@@ -322,6 +324,7 @@ def _artifact_ref(
     workspace_id: str,
     step_id: str,
     kind: str,
+    required: bool | None = None,
     root: Path,
 ) -> dict[str, Any]:
     reference = path.relative_to(root).as_posix()
@@ -333,6 +336,8 @@ def _artifact_ref(
         "reference": reference,
         "availability": "missing",
     }
+    if required is not None:
+        artifact["required"] = required
     try:
         if path.is_file() and not _has_symlink(path, root):
             artifact["availability"] = "available"

@@ -667,7 +667,7 @@ def test_workspace_spec_create_and_update_materialize_step_directories(
 
     updated_spec = deepcopy(payload["workspaceSpec"])
     updated_spec["parameters"]["design.frequency_mhz"] = 250.0
-    updated = update_workspace_from_spec(
+    update_workspace_from_spec(
         target,
         read_engineering_snapshot(created)["workspaceRevision"],
         updated_spec,

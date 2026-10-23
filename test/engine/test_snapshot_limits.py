@@ -239,6 +239,41 @@ def test_checklist_projection_cap_is_a_producer_error(tmp_path):
     assert not (root / "home" / "engineering-snapshot.json").exists()
 
 
+def test_checklist_projection_exposes_requirement_state(tmp_path):
+    root = tmp_path / "workspace"
+    (root / "home").mkdir(parents=True)
+    (root / "home" / "checklist.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "kind": "signoff_checklist",
+                "status": "attention",
+                "requirements_status": "present",
+                "checklist": [
+                    {
+                        "id": "sta.hold",
+                        "title": "STA hold",
+                        "state": "warning",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    workspace = SimpleNamespace(
+        directory=root,
+        flow=SimpleNamespace(data={"steps": []}),
+        home=SimpleNamespace(data={}),
+        parameters=SimpleNamespace(data={"design": "gcd"}),
+        design=SimpleNamespace(name="gcd"),
+    )
+
+    snapshot = create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
+
+    assert snapshot["checklist"]["status"] == "attention"
+    assert snapshot["checklist"]["requirementsStatus"] == "present"
+
+
 def test_artifact_index_cap_is_a_producer_error(tmp_path):
     root = tmp_path / "workspace"
     (root / "home").mkdir(parents=True)

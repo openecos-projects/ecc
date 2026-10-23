@@ -657,7 +657,9 @@ class EngineFlow:
             return None
         prerequisite_name = FlowInputResolver(steps).input_step_name(current_index)
         prerequisite = next((step for step in steps if step.get("name") == prerequisite_name), None)
-        checklist = prerequisite.get("checklist") if isinstance(prerequisite, dict) else None
+        checklist = None
+        if isinstance(prerequisite, dict):
+            checklist = prerequisite.get("checklist_status") or prerequisite.get("checklist")
         if isinstance(checklist, dict) and checklist.get("status") == "blocked":
             return str(prerequisite.get("name") or "previous step")
         return None
@@ -697,7 +699,8 @@ class EngineFlow:
         if blocked_by is not None:
             flow_step = self.get_step(workspace_step.name, workspace_step.tool)
             if flow_step is not None:
-                flow_step["checklist"] = {
+                flow_step.pop("checklist", None)
+                flow_step["checklist_status"] = {
                     "status": "blocked",
                     "blocked": True,
                     "failed_items": [f"prerequisite:{blocked_by}"],

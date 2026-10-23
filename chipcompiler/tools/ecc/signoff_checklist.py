@@ -8,6 +8,8 @@ to assemble a signoff package.
 import re
 from pathlib import Path
 
+from chipcompiler.analysis.qor.gate_catalog import QOR_STEP_GATE_IDS
+from chipcompiler.analysis.qor.summary_contract import summary_gates
 from chipcompiler.data import (
     ADVISORY_FLOW_STEPS,
     Checklist,
@@ -38,23 +40,6 @@ from chipcompiler.tools.ecc.sta_qor import (
 )
 from chipcompiler.utility import json_read
 from chipcompiler.utility.filelist import resolve_initial_rtl
-
-_QUALITY_GATES_BY_STEP = {
-    StepEnum.DRC.value: ("qor.drc.clean",),
-    StepEnum.LVS.value: ("qor.lvs.clean",),
-    StepEnum.RCX.value: (
-        "qor.rcx.corner_coverage",
-        "qor.rcx.spef_parse_health",
-    ),
-    StepEnum.STA.value: (
-        "qor.sta.setup_closed",
-        "qor.sta.hold_closed",
-    ),
-    StepEnum.HARDEN.value: (
-        "qor.mpc.minimum_area",
-        "qor.mpc.maximum_area",
-    ),
-}
 
 _REQUIRED_FLOW_STEPS = (
     StepEnum.ROUTING.value,
@@ -181,8 +166,10 @@ def _gate_summary(gate: dict) -> str:
     return "; ".join(facts) or "QoR gate has no current metric evidence."
 
 
-def _expected_quality_gate_ids(workspace: Workspace, step_name: str) -> tuple[str, ...]:
-    gate_ids = _QUALITY_GATES_BY_STEP.get(step_name, ())
+def _expected_quality_gate_ids(
+    workspace: Workspace, step_name: str, catalog_gate_ids=None
+) -> tuple[str, ...]:
+    gate_ids = catalog_gate_ids or QOR_STEP_GATE_IDS.get(step_name, ())
     if step_name != StepEnum.HARDEN.value:
         return gate_ids
 
@@ -197,21 +184,16 @@ def _quality_gate_items_from_summary(
     step_name: str,
     step_directory: Path,
     summary_path: Path,
+    gate_ids=None,
 ) -> list[dict]:
-    expected_gate_ids = _expected_quality_gate_ids(workspace, step_name)
+    expected_gate_ids = _expected_quality_gate_ids(workspace, step_name, gate_ids)
     if not expected_gate_ids:
         return []
     step_directory_text = _path_text(workspace, step_directory)
     summary = json_read(summary_path)
-    gates = (
-        {
-            gate.get("id"): gate
-            for gate in summary.get("gates", [])
-            if isinstance(gate, dict) and isinstance(gate.get("id"), str)
-        }
-        if isinstance(summary, dict) and summary.get("schema_version") == 4
-        else {}
-    )
+    gates = {
+        gate.get("id"): gate for gate in summary_gates(summary) if isinstance(gate.get("id"), str)
+    }
     result = []
     for gate_id in expected_gate_ids:
         gate = gates.get(gate_id)
@@ -727,6 +709,7 @@ def rebuild_home_checklist(
         return {}
     workspace_dir = Path(workspace_directory)
     items = []
+    loaded_step_checklists = set()
     # LEC artifacts live under the engine the flow recorded (yosys_lec
     # historically, kepler_formal today, lec_dual for cross-checking).
     # Checklist snapshots of every INACTIVE LEC engine are stale evidence —
@@ -744,6 +727,7 @@ def rebuild_home_checklist(
             continue
         data = json_read(workspace_dir / directory / "checklist.json")
         if data.get("schema_version") == 3 and data.get("kind") == "signoff_checklist":
+            loaded_step_checklists.add(directory)
             items.extend(item for item in data.get("checklist", []) if isinstance(item, dict))
     if _requires_post_route_lec(workspace):
         design = getattr(getattr(workspace, "design", None), "name", "") or ""
@@ -759,14 +743,17 @@ def rebuild_home_checklist(
                 workspace, SkippableStepEnum.POST_ROUTE_LEC.value, result_json, golden, gate
             )
         )
-    for step_name in _QUALITY_GATES_BY_STEP:
+    for step_name, gate_ids in QOR_STEP_GATE_IDS.items():
         step_directory = workspace_dir / STEP_DIRECTORIES[step_name]
+        if step_directory.name in loaded_step_checklists:
+            continue
         items.extend(
             _quality_gate_items_from_summary(
                 workspace,
                 step_name,
                 step_directory,
                 step_directory / "analysis" / "qor_summary.json",
+                gate_ids=gate_ids,
             )
         )
     items.extend(_flow_items(workspace))

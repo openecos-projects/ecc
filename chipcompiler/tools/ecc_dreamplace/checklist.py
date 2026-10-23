@@ -183,6 +183,7 @@ class DreamplaceChecklist:
 
         return data
 
+
 class DreamplacePlacementChecklist(DreamplaceChecklist):
     def cell_overlap_success(self) -> bool:
         text = self.log_text()

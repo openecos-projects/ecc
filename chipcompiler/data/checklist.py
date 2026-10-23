@@ -81,6 +81,7 @@ class Checklist:
                 "attention": 0,
                 "unavailable": 0,
             },
+            "requirements_status": "none",
             "checklist": [],
         }
 
@@ -153,6 +154,7 @@ class Checklist:
             else:
                 summary["attention"] += 1
         data["summary"] = summary
+        data["requirements_status"] = "none" if not items else "present"
         data["status"] = (
             "blocked"
             if summary["blocked"]
