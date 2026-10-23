@@ -142,4 +142,14 @@ extraPaths = ["test/lit"]
 
 [tool.ty]
 environment.python-version = "3.11"
-src.include = [ "chipcompiler/**/*.py", "ecc_experience/**/*.py", "test/**/*.py" ]
+src.include = [
+  "chipcompiler",
+  "test",
+  "agent",
+  "ecc_experience",
+  "scripts",
+  "packaging",
+  "hooks",
+  "docs/examples",
+]
+src.exclude = ["chipcompiler/thirdparty"]

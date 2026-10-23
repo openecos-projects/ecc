@@ -575,6 +575,15 @@ jobs:
             exit 1
           fi
 
+      - name: Ty cross-check (non-blocking)
+        run: |
+          {
+            echo "basedpyright is the gate; ty is a cross-check."
+            echo '```'
+            .github/scripts/type-check-compare.sh
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
   nix-build:
     name: Nix Build (flake checks)
     runs-on: ubuntu-latest

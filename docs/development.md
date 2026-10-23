@@ -86,9 +86,10 @@ environment.
 uv run ruff format chipcompiler/ test/ ecc_experience/
 uv run ruff check chipcompiler/ test/ ecc_experience/
 
-# Type check
-uv run ty check
+# Type check (basedpyright is the gate; ty is a cross-check)
 uv run basedpyright
+uv run ty check
+.github/scripts/type-check-compare.sh
 uv run mypy chipcompiler/
 
 # Legacy formatters
