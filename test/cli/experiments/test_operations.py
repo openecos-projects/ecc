@@ -116,6 +116,7 @@ def test_collect_candidate_evidence_keeps_incomplete_steps_out_of_passed(tmp_pat
 
     evidence = operations.collect_candidate_evidence(tmp_path, workspace, 0)
 
+    assert evidence["status"] == "unknown"
     assert evidence["step_statuses"] == [
         {"name": "sta", "status": "incomplete", "checklist": "unknown"}
     ]

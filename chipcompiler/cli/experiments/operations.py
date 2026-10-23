@@ -643,6 +643,8 @@ def collect_candidate_evidence(project: Path, workspace: Path, exit_code: int) -
         if blocked
         else "failed"
         if failed
+        else "unknown"
+        if any(step["status"] not in {"success", "passed"} for step in step_statuses)
         else "passed"
         if step_statuses or status_code == 0
         else "unknown"
