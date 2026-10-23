@@ -90,7 +90,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
 
 
 class EngineFlow:
-    def __init__(self, workspace: Workspace, engine_db: EngineDB = None):
+    def __init__(self, workspace: Workspace, engine_db: EngineDB | None = None):
         self.workspace = workspace
         self.workspace_steps = []
         self.engine_db = engine_db  # db engine for this flow
@@ -216,8 +216,8 @@ class EngineFlow:
         name: str,
         tool: str,
         state: str | StateEnum,
-        runtime: str = None,
-        peak_memory: float = None,
+        runtime: str | None = None,
+        peak_memory: float | None = None,
         *,
         clear_runtime_operation: bool = False,
     ) -> bool:
@@ -724,7 +724,7 @@ class EngineFlow:
 
     def run_step(
         self,
-        workspace_step: WorkspaceStep | str,
+        workspace_step: WorkspaceStep,
         *,
         rerun: bool = False,
         observer=None,
@@ -732,11 +732,6 @@ class EngineFlow:
         """
         run single step
         """
-        if isinstance(workspace_step, str):
-            workspace_step = self.get_workspace_step(workspace_step)
-        if workspace_step is None:
-            return StateEnum.Invalid
-
         step_tag = f"{workspace_step.name}({workspace_step.tool})"
 
         if self._apply_checklist_gate(workspace_step) is not None:

@@ -21,6 +21,7 @@ from chipcompiler.data.types import (
     StepEnum,
     flow_step_policy,
 )
+from chipcompiler.data.workspace.layout import WorkspaceStepBase
 
 
 class FlowInputStepError(Exception):
@@ -139,9 +140,9 @@ class FlowInputResolver:
         self._positions: dict[str, list[int]] = {}
         for index, record in enumerate(self._records):
             self._positions.setdefault(step_name(record), []).append(index)
-        self._created: dict[str, object] = {}
+        self._created: dict[str, WorkspaceStepBase] = {}
 
-    def record(self, step) -> None:
+    def record(self, step: WorkspaceStepBase) -> None:
         self._created[step.name] = step
 
     def created_step(self, name: str):
@@ -193,7 +194,7 @@ class FlowInputResolver:
         name, _explicit = self._resolve(index, require_created=False)
         return name
 
-    def input_source(self, index: int):
+    def input_source(self, index: int) -> WorkspaceStepBase | None:
         """The created step whose outputs feed step *index*, or None for origin.
 
         Raises :class:`FlowInputStepError` when an explicit ``input_step`` is

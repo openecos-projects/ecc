@@ -51,18 +51,11 @@ class AgentEngineFlow(EngineFlow):
 
     def run_step(
         self,
-        workspace_step: WorkspaceStep | str,
+        workspace_step: WorkspaceStep,
         *,
         rerun: bool = False,
         observer=None,
     ) -> StateEnum:
-        if isinstance(workspace_step, str):
-            resolved_step = self.get_workspace_step(workspace_step)
-        else:
-            resolved_step = workspace_step
-        if resolved_step is None:
-            return StateEnum.Invalid
-        workspace_step = resolved_step
         step_tag = f"{workspace_step.name}({workspace_step.tool})"
         if self._apply_checklist_gate(workspace_step) is not None:
             return StateEnum.Invalid

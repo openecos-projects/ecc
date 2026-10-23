@@ -325,11 +325,7 @@ def test_run_steps_stops_on_failure(tmp_path: Path, fail_index: int) -> None:
         )
         flow.workspace_steps.append(ws_step)
 
-    def mock_run_step(workspace_step: WorkspaceStep | str, *, rerun: bool = False) -> StateEnum:
-        if isinstance(workspace_step, str):
-            resolved = flow.get_workspace_step(workspace_step)
-            assert resolved is not None, f"Step '{workspace_step}' not found"
-            workspace_step = resolved
+    def mock_run_step(workspace_step: WorkspaceStep, *, rerun: bool = False) -> StateEnum:
         idx: int = int(workspace_step.name.split("_")[1])
         executed.append(idx)
 

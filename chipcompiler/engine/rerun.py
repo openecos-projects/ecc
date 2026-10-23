@@ -38,9 +38,9 @@ class StepRunResult(NamedTuple):
 def selected_step_names(
     flow: "EngineFlow",
     *,
-    from_step: str = None,
+    from_step: str | None = None,
     through: str | None = None,
-    only: str = None,
+    only: str | None = None,
     force: bool = False,
 ) -> list[str]:
     """Resolve a run selector to the persisted step names it would execute."""
@@ -144,6 +144,8 @@ def run_only(
     # actual WorkspaceStep through the persisted canonical name, not the raw
     # selector (for example, ``synthesis`` maps to persisted ``Synthesis``).
     workspace_step = flow.get_workspace_step(steps[index]["name"])
+    if workspace_step is None:
+        raise RuntimeError(f"step {steps[index]['name']!r} has no workspace step")
     (output_dir,) = _validated_output_dirs(flow.workspace, [workspace_step])
     _invalidate_suffix(flow, index)
     return _run_selected(flow, [(workspace_step, output_dir)], event_sink=event_sink)
