@@ -1018,6 +1018,11 @@ def _operation_from_payload(
         for value in (operation_id, run_session_id, workspace_id, kind, origin)
     ):
         return None
+    assert isinstance(operation_id, str)
+    assert isinstance(run_session_id, str)
+    assert isinstance(workspace_id, str)
+    assert isinstance(kind, str)
+    assert isinstance(origin, str)
     return RuntimeOperation(
         operation_id=operation_id,
         run_session_id=run_session_id,

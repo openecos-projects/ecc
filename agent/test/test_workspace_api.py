@@ -1106,7 +1106,7 @@ class _Flow:
         self.workspace.flow.path.write_text(json.dumps(self.workspace.flow.data), encoding="utf-8")
         return True
 
-    def run_step(self, step, *, rerun, observer=None):
+    def run_step(self, step, *, rerun, observer=None) -> StateEnum:
         self.run_calls.append((step.name, rerun))
         if step.name == "place":
             config = json.loads(

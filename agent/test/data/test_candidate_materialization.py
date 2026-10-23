@@ -410,6 +410,7 @@ def test_reapply_keeps_receipt_when_tool_rewrites_equivalent_json(tmp_path):
 
     reapplied = reapply_materialized_candidate_config(workspace, "place")
 
+    assert reapplied is not None
     assert reapplied["receipt_sha256"] == original["receipt_sha256"]
     assert reapplied["snapshots"] == original["snapshots"]
 
@@ -425,6 +426,7 @@ def test_reapply_keeps_original_receipt_when_config_is_already_materialized(tmp_
 
     reapplied = reapply_materialized_candidate_config(workspace, "place")
 
+    assert reapplied is not None
     assert reapplied == original
     assert reapplied["configs"][0]["before_sha256"] != reapplied["configs"][0]["after_sha256"]
 
@@ -498,7 +500,9 @@ def test_reapply_after_refresh_restores_only_matching_target_and_updates_hashes(
 
     receipt = reapply_materialized_candidate_config(workspace, target_step)
 
+    assert receipt is not None
     restored = _read_json(config_path)
+    assert restored is not None
     current = restored
     for key in path:
         current = current[key]

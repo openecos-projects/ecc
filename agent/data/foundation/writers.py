@@ -90,6 +90,8 @@ def write_parquet(
                 coerce_rows_to_schema(current_batch, active_schema),
                 schema=active_schema,
             )
+            if writer is None:
+                raise RuntimeError("Parquet writer was not initialized")
             writer.write_table(table)
             row_count += len(current_batch)
             return

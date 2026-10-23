@@ -98,7 +98,11 @@ def prepare_floorplan_mode(workspace, request) -> None:
     builder = config.get("die_builder")
     if not isinstance(builder, dict) or builder.get("mode") not in _MODES:
         raise ValueError("floorplan die_builder mode is invalid")
-    mode = request.floorplan_mode if request.floorplan_mode is not None else inherited["mode"]
+    mode = request.floorplan_mode
+    if mode is None:
+        if inherited is None:
+            return
+        mode = inherited["mode"]
     if mode not in _MODES:
         raise ValueError("floorplan mode is invalid")
     size = None
@@ -144,6 +148,8 @@ def drop_pinned_die_size(workspace) -> None:
     die.pop("area", None)
     from chipcompiler.data.parameter import save_parameter
 
+    if parameters is None:
+        raise RuntimeApiError("command_failed", "candidate parameters are unavailable")
     if not save_parameter(parameters):
         raise RuntimeApiError("command_failed", "candidate params.toml could not be updated")
 

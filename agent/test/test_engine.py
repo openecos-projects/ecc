@@ -29,7 +29,7 @@ def test_agent_engine_requires_successful_tool_result(
     workspace.flow.data = {"steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]}
     step = EccStep(name="route", directory=tmp_path, tool="ecc")
     flow.workspace_steps = [step]
-    flow.engine_db = SimpleNamespace(engine=None)
+    vars(flow)["engine_db"] = SimpleNamespace(engine=None)
     monkeypatch.setattr(flow, "check_step_result", lambda **_kwargs: True)
 
     def run_step(**_kwargs):
@@ -105,7 +105,7 @@ def test_agent_engine_runs_the_step_after_a_non_blocked_prerequisite(tmp_path, m
     }
     step = EccStep(name="filler", directory=tmp_path, tool="ecc")
     flow.workspace_steps = [step]
-    flow.engine_db = SimpleNamespace(engine=None)
+    vars(flow)["engine_db"] = SimpleNamespace(engine=None)
     if status is not None:
         write_step_checklist(
             flow,
@@ -156,7 +156,7 @@ def test_agent_incomplete_step_normalized_on_resume(tmp_path, monkeypatch):
                 output=EccOutput(verilog=directory / "design.v"),
             )
         )
-    flow.engine_db = SimpleNamespace(engine=None)
+    vars(flow)["engine_db"] = SimpleNamespace(engine=None)
     monkeypatch.setattr("agent.engine.run_agent_step", lambda **_kwargs: True)
     monkeypatch.setattr(flow, "check_step_result", lambda **_kwargs: True)
 

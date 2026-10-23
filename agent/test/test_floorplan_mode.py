@@ -2,6 +2,7 @@ import json
 import shutil
 from dataclasses import replace
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -82,7 +83,7 @@ def test_mode_is_reapplied_after_config_rebuild_and_reload(tmp_path, mode):
     rebuilt = json.loads(config.read_text())
     rebuilt["die_builder"]["mode"] = "die_size" if mode == "die_util" else "die_util"
     config.write_text(json.dumps(rebuilt))
-    reloaded = SimpleNamespace(directory=workspace.directory, config=workspace.config)
+    reloaded: Any = SimpleNamespace(directory=workspace.directory, config=workspace.config)
     apply_floorplan_mode(reloaded, "Floorplan")
     assert json.loads(config.read_text())["die_builder"] == {
         "mode": mode,
@@ -90,6 +91,7 @@ def test_mode_is_reapplied_after_config_rebuild_and_reload(tmp_path, mode):
         "die_util": {"utilization": 0.5, "aspect_ratio": 1.0},
     }
     receipt = read_floorplan_mode(reloaded)
+    assert receipt is not None
     assert receipt["mode"] == mode
     assert receipt["previous_mode"] == "die_size"
 
@@ -174,9 +176,13 @@ def test_mode_inheritance_switchback_and_context_binding(tmp_path):
         patch=[{"knob_id": "floorplan.core_util", "value": 0.7}],
     )
     prepare_floorplan_mode(second, request)
-    assert read_floorplan_mode(second)["mode"] == "die_util"
-    assert read_floorplan_mode(second)["candidate_id"] == "candidate-2"
-    assert validate_floorplan_mode_resume(second, request)["patch"] == request.patch
+    second_mode = read_floorplan_mode(second)
+    assert second_mode is not None
+    assert second_mode["mode"] == "die_util"
+    assert second_mode["candidate_id"] == "candidate-2"
+    resume = validate_floorplan_mode_resume(second, request)
+    assert resume is not None
+    assert resume["patch"] == request.patch
     with pytest.raises(ValueError, match="context"):
         validate_floorplan_mode_resume(second, replace(request, seed=18))
     prepare_floorplan_mode(second, replace(request, floorplan_mode="die_size"))
@@ -233,7 +239,7 @@ def test_parameter_patch_survives_native_refresh_in_selected_mode(
     from chipcompiler.data.workspace import _refresh_floorplan_config
 
     root = tmp_path / ".agent/candidates/candidate-1"
-    workspace = parameter_workspace(root)
+    workspace: Any = parameter_workspace(root)
     workspace.pdk.tap_cell = ""
     workspace.pdk.end_cap = ""
     workspace.parameters = load_parameter(workspace.parameters.path)
@@ -267,7 +273,8 @@ def test_parameter_patch_survives_native_refresh_in_selected_mode(
     monkeypatch.setattr(
         tools, "run_with_parameter_observation", lambda _ws, _step, _mat, run: run()
     )
-    assert tools.run_step(workspace, SimpleNamespace(name="Floorplan", tool="ecc"))
+    step: Any = SimpleNamespace(name="Floorplan", tool="ecc")
+    assert tools.run_step(workspace, step)
     assert observed[0]["mode"] == mode
     assert observed[0]["die_util"][field] == value
     assert workspace.parameters.data["die"]["size"] == [100, 200]

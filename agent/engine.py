@@ -40,6 +40,8 @@ def _wait_for_step_rendered(observer, workspace_step: WorkspaceStep, state: Stat
 
 
 class AgentEngineFlow(EngineFlow):
+    added_steps: list[tuple[str, str, str]] = []
+
     def build_default_steps(self):
         super().build_default_steps()
         steps = self.workspace.flow.data.get("steps", [])
@@ -78,12 +80,15 @@ class AgentEngineFlow(EngineFlow):
             workspace_step
         )
         result = False
+        engine_db = self.engine_db
+        if engine_db is None:
+            raise RuntimeError("agent engine database is not initialized")
         previous_observer = getattr(self.workspace, "_runtime_flow_observer", None)
         if observer is not None:
             self.workspace._runtime_flow_observer = observer
         try:
             result = run_agent_step(
-                workspace=self.workspace, step=workspace_step, ecc_module=self.engine_db.engine
+                workspace=self.workspace, step=workspace_step, ecc_module=engine_db.engine
             )
             self.workspace.logger.info("[STEP] %s finished result=%s", step_tag, result)
         except Exception:

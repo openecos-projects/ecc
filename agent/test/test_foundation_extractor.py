@@ -5,6 +5,7 @@ import json
 import logging
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -28,7 +29,7 @@ def _read_jsonl(path: Path) -> list[dict]:
     ]
 
 
-def _write_json(path: Path, payload: dict) -> None:
+def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -1749,7 +1750,7 @@ def test_provenance_rows_do_not_materialize_large_table_iterables(tmp_path: Path
             self.iterated = True
             yield from self.rows
 
-    tables = {
+    tables: dict[str, Any] = {
         "run_stage_patch_maps": OneShotRows(
             [
                 {
@@ -1824,6 +1825,7 @@ def test_build_table_rows_reuses_dynamic_rows_for_provenance(tmp_path: Path, mon
         extractor._collect_def_data(stages),
     )
     route_stage = next((stage for stage in stages if stage.name == "route"), None)
+    assert route_stage is not None
     labels = extractor._write_labels(
         parse_route_native_demand_capacity_artifacts(route_stage.directory, canonical_grid)[
             "labels"

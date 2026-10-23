@@ -86,8 +86,12 @@ def run_candidate_steps_isolated(flow, steps, *, observer) -> None:
             "command_failed", f"candidate worker process failed to start: {exc}"
         ) from exc
 
-    process.stdin.write(json.dumps(payload).encode("utf-8"))
-    process.stdin.close()
+    worker_stdin = process.stdin
+    if worker_stdin is None:
+        process.kill()
+        raise RuntimeApiError("command_failed", "candidate worker stdin is unavailable")
+    worker_stdin.write(json.dumps(payload).encode("utf-8"))
+    worker_stdin.close()
     step_by_name = {str(step.name): step for step in steps}
     emitted: set[str] = set()
     try:
