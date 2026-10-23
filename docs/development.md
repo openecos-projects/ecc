@@ -88,7 +88,7 @@ uv run ruff check chipcompiler/ test/ ecc_experience/
 
 # Type check
 uv run ty check
-uv run pyright chipcompiler/
+uv run basedpyright
 uv run mypy chipcompiler/
 
 # Legacy formatters

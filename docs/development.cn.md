@@ -80,7 +80,7 @@ uv run ruff check chipcompiler/ test/
 
 # 类型检查
 uv run ty check
-uv run pyright chipcompiler/
+uv run basedpyright
 uv run mypy chipcompiler/
 
 # 旧格式化工具

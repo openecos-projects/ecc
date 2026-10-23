@@ -3,7 +3,8 @@
 Discovery-based: packages under ``chipcompiler/tools/`` are imported and
 checked against :class:`chipcompiler.tools.protocol.ToolModule` — presence
 via ``isinstance``, plus the contract functions' parameter names and
-``run_step``'s ``bool`` return annotation. CI runs no pyright, so the
+``run_step``'s ``bool`` return annotation. The type checker does not
+enforce the structural protocol, so the
 signature surface is asserted here. A newly added tool package that does
 not satisfy the contract fails this test; there is no pass list to forget.
 

@@ -566,8 +566,14 @@ jobs:
       - name: Ruff lint
         run: uv run --no-sync ruff check --output-format=github chipcompiler test agent ecc_experience
 
-      # - name: Pyright
-      #   run: uv run pyright chipcompiler
+      - name: Basedpyright
+        run: |
+          uv run --no-sync basedpyright --baselinemode=auto
+          git diff --exit-code .basedpyright/baseline.json
+          if grep -q reportMissingImports .basedpyright/baseline.json; then
+            echo "::error::basedpyright baseline must not contain reportMissingImports"
+            exit 1
+          fi
 
   nix-build:
     name: Nix Build (flake checks)
