@@ -42,8 +42,8 @@ def run_step(workspace: Workspace, step: YosysLecStep, ecc_module=None) -> bool:
             write_step_result(step, proven=False)
             return False
 
-    cmd = yosys_cmd + ["-Q", "-c", require_path(step.script.main, "yosys-lec script").name]
     try:
+        cmd = yosys_cmd + ["-Q", "-c", require_path(step.script.main, "yosys-lec script").name]
         with open(log_path, "w", encoding="utf-8") as log_file:
             result = subprocess.run(
                 cmd,

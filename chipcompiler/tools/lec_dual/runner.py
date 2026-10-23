@@ -13,7 +13,7 @@ from chipcompiler.tools.lec_dual.utility import (
     read_engine_result,
     write_aggregate_result,
 )
-from chipcompiler.utility.path import require_path
+from chipcompiler.utility.path import MissingPathError, require_path
 
 _SPAWN_ENGINES = LECEngineEnum.DUAL.spawn_engines
 
@@ -171,7 +171,11 @@ def run_step(workspace: Workspace, step: LecDualStep, ecc_module=None) -> bool:
         golden_verilog=step.input.golden_verilog,
         gate_verilog=step.input.gate_verilog,
     )
-    write_aggregate_result(require_path(step.output.json, "LEC aggregate result"), payload)
+    try:
+        write_aggregate_result(require_path(step.output.json, "LEC aggregate result"), payload)
+    except MissingPathError:
+        sub_flow.update_step(step_name="analysis", state=StateEnum.Imcomplete)
+        return False
     # Mirror the single-engine subflow contract: analysis succeeds only
     # with a proven verdict; anything less stays Unstart.
     if payload["status"] == "proven":

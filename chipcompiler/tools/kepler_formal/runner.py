@@ -112,11 +112,11 @@ def run_step(workspace: Workspace, step: KeplerFormalStep, ecc_module=None) -> b
         _write_status_report(step, proven=False, reason=f"preparing netlists failed: {exc}")
         return False
 
-    cmd = kepler_cmd + [
-        "--config",
-        str(require_path(step.data.config, "kepler-formal config")),
-    ]
     try:
+        cmd = kepler_cmd + [
+            "--config",
+            str(require_path(step.data.config, "kepler-formal config")),
+        ]
         with open(log_path, "w", encoding="utf-8") as log_file:
             result = subprocess.run(
                 cmd,
