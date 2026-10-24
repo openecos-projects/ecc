@@ -3,7 +3,8 @@
 #
 # basedpyright is the gate; ty is a non-blocking cross-check. The two tools
 # report different rule sets, so this compares where each sees noise, not
-# whether the diagnostics are identical.
+# whether the diagnostics are identical. The lint container does not ship jq,
+# so the small diagnostic projections are extracted with grep/awk.
 
 set -euo pipefail
 
@@ -17,23 +18,27 @@ trap 'rm -rf "$tmp"' EXIT
 # the raw diagnostics.
 printf '{"files": {}}' > "$tmp/empty-baseline.json"
 uv run --no-sync basedpyright --outputjson \
-  --baselinefile "$tmp/empty-baseline.json" > "$tmp/basedpyright.json" 2>/dev/null || true
-uv run --no-sync ty check --output-format gitlab > "$tmp/ty.json" 2>/dev/null || true
+  --baselinefile "$tmp/empty-baseline.json" > "$tmp/basedpyright.json" 2> "$tmp/basedpyright.err" || true
+uv run --no-sync ty check --output-format gitlab > "$tmp/ty.json" 2> "$tmp/ty.err" || true
 
-jq -e . "$tmp/basedpyright.json" >/dev/null 2>&1 || {
+if ! grep -q '"generalDiagnostics"' "$tmp/basedpyright.json" 2>/dev/null; then
   echo "cannot parse basedpyright output" >&2
+  cat "$tmp/basedpyright.err" >&2
   exit 1
-}
-jq -e . "$tmp/ty.json" >/dev/null 2>&1 || {
+fi
+if ! grep -q '"location"' "$tmp/ty.json" 2>/dev/null; then
   echo "cannot parse ty output" >&2
+  cat "$tmp/ty.err" >&2
   exit 1
-}
+fi
 
-jq -r --arg prefix "$ROOT/" \
-  '.generalDiagnostics[].file | ltrimstr($prefix) | split("/")[0]' \
-  "$tmp/basedpyright.json" \
+{ grep -o '"file"[[:space:]]*:[[:space:]]*"[^"]*"' "$tmp/basedpyright.json" || true; } \
+  | sed -e 's/.*"file"[[:space:]]*:[[:space:]]*"//' -e 's/"$//' \
+  | awk -v prefix="$ROOT/" '{ sub("^" prefix, ""); split($0, parts, "/"); print parts[1] }' \
   | sort | uniq -c | awk '{print $2, $1}' | sort > "$tmp/basedpyright.tsv"
-jq -r '.[].location.path | split("/")[0]' "$tmp/ty.json" \
+{ grep -o '"path"[[:space:]]*:[[:space:]]*"[^"]*"' "$tmp/ty.json" || true; } \
+  | sed -e 's/.*"path"[[:space:]]*:[[:space:]]*"//' -e 's/"$//' \
+  | awk '{ split($0, parts, "/"); print parts[1] }' \
   | sort | uniq -c | awk '{print $2, $1}' | sort > "$tmp/ty.tsv"
 
 join -a1 -a2 -e 0 -o 0,1.2,2.2 "$tmp/basedpyright.tsv" "$tmp/ty.tsv" \

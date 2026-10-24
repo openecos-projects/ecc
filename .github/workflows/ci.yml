@@ -578,6 +578,7 @@ jobs:
           fi
 
       - name: Ty cross-check (non-blocking)
+        continue-on-error: true
         run: |
           {
             echo "basedpyright is the gate; ty is a cross-check."
