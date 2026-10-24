@@ -207,7 +207,7 @@ def _inspect_and_register(
     locked so an import never binds metadata read from a replaced directory.
     """
     from chipcompiler.cli.project import migrate_fs
-    from chipcompiler.engine.reconcile import _workspace_lock
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
     inspect_existing_workspace(
         workspace_path,
@@ -220,7 +220,7 @@ def _inspect_and_register(
         if project_lock_held
         else migrate_fs.project_migrate_lock(project_dir, exclusive=False)
     )
-    with project_lock, _workspace_lock(Path(workspace_path), blocking=blocking):
+    with project_lock, workspace_lock(Path(workspace_path), blocking=blocking):
         metadata = inspect_existing_workspace(
             workspace_path,
             expected_design=expected_design,

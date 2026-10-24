@@ -1073,7 +1073,7 @@ def test_run_filler_uses_mj_lifecycle(tmp_path, monkeypatch):
             "gds_save",
             {
                 "output_path": step.output.gds or "",
-                "layer_map_path": workspace.pdk.mapping_file,
+                "layer_map_path": workspace.pdk.mapping_file or "",
             },
         ),
     ]

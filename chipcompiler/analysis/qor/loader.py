@@ -21,7 +21,7 @@ from chipcompiler.tools.ecc.sta_qor import (
     read_sta_power_summary_json,
     read_sta_qor_summary,
 )
-from chipcompiler.utility.json import json_read
+from chipcompiler.utility.json import JsonObject, json_read
 
 _ROLE_PRIORITY = {"final": 0, "gate": 1, "trend": 2, "none": 3}
 
@@ -138,15 +138,16 @@ def _select_metrics(step_payloads: list) -> dict:
             role = raw.get("project_role")
             if role not in _ROLE_PRIORITY or role == "none":
                 continue
+            fields = JsonObject(raw)
             record = MetricRecord(
                 metric_id=metric_id,
                 value=float(value),
-                unit=raw.get("unit") if isinstance(raw.get("unit"), str) else "",
+                unit=fields.get_str("unit"),
                 step=step_value,
                 project_role=role,
-                corner=raw.get("corner") if isinstance(raw.get("corner"), str) else None,
-                source=raw.get("source") if isinstance(raw.get("source"), dict) else {},
-                scope=raw.get("scope") if isinstance(raw.get("scope"), str) else None,
+                corner=fields.get_str("corner", None),
+                source=dict(fields.get_obj("source")),
+                scope=fields.get_str("scope", None),
                 endpoint_population=(
                     float(raw["endpoint_population"])
                     if isinstance(raw.get("endpoint_population"), (int, float))

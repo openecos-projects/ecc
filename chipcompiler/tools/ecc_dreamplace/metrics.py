@@ -8,8 +8,8 @@ from chipcompiler.tools.ecc.subflow import EccSubFlow
 
 
 def build_step_metrics(
-    workspace: Workspace, step: EccStep, subflow: EccSubFlow = None
-) -> StepMetrics:
+    workspace: Workspace, step: EccStep, subflow: EccSubFlow | None = None
+) -> StepMetrics | None:
     """
     Build and return a StepMetrics instance for the given workspace step.
     """

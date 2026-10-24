@@ -698,7 +698,7 @@ def test_project_workspace_acquires_workspace_lock_before_manifest_lock(tmp_path
 
     monkeypatch.setattr(project_api, "manifest_lock", lambda _project: marked_lock("manifest"))
     monkeypatch.setattr(
-        "chipcompiler.engine.reconcile._workspace_lock",
+        "chipcompiler.utility.workspace_lock.workspace_lock",
         lambda _target: marked_lock("workspace"),
     )
     monkeypatch.setattr(

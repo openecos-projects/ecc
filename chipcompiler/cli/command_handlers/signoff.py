@@ -66,14 +66,14 @@ def export(command_input, ctx: CommandContext) -> CommandResult:
         return CommandResult.err([error_record("invalid_additional_files", reason=str(exc))])
 
     try:
-        from chipcompiler.engine.reconcile import _workspace_lock
         from chipcompiler.engine.signoff_export import (
             SignoffExportError,
             export_signoff_package_archive,
         )
         from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+        from chipcompiler.utility.workspace_lock import workspace_lock
 
-        with _workspace_lock(Path(ctx.run_dir), blocking=not command_input.no_wait):
+        with workspace_lock(Path(ctx.run_dir), blocking=not command_input.no_wait):
             workspace, failure = resolve_loaded_workspace(command_input, ctx)
             if failure is not None:
                 return failure

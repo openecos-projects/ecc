@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 from chipcompiler.data import SkippableStepEnum, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.module import ECCToolsModule
-from chipcompiler.utility.path import optional_path, path_text
+from chipcompiler.utility.path import optional_path
 
 _LEGALIZE_OWNERS = frozenset(
     {
@@ -102,11 +102,11 @@ class DreamplaceModule:
         from dreamplace.flows.flow_config import apply_flow_defaults
 
         apply_flow_defaults(params)
-        # DREAMPlace's Params.def_input/verilog_input feed a std::string C++
-        # option (place_io) and are json.dump-ed by Params.dump, so normalize to
-        # str at this native boundary (path_text: None -> "").
-        params.def_input = path_text(self.input_def)
-        params.verilog_input = path_text(self.input_verilog)
+        # Params normalizes path-like values to str on assignment (they are also
+        # json.dump-ed by Params.dump), so hand over Path | None as-is; None
+        # keeps the "unset" spelling the C++ options expect.
+        params.def_input = self.input_def or ""
+        params.verilog_input = self.input_verilog or ""
         params.result_dir = self.result_dir
         params.base_design_name = self.workspace.design.name
 
@@ -152,14 +152,14 @@ class DreamplaceModule:
 
         return params
 
-    def _resolve_pdk_path(self, value) -> str:
+    def _resolve_pdk_path(self, value) -> Path | str:
         if not value:
             return ""
         path = Path(value)
         if path.is_absolute():
-            return str(path)
+            return path
         pdk_root = getattr(self.workspace.pdk, "root", None)
-        return str((Path(pdk_root) / path) if pdk_root else path)
+        return (Path(pdk_root) / path) if pdk_root else path
 
     @staticmethod
     def _timing_active(params) -> bool:
@@ -181,12 +181,12 @@ class DreamplaceModule:
 
         return {
             **existing,
-            "tech_lef": path_text(getattr(self.workspace.pdk, "tech", None)),
-            "lef": [str(path) for path in getattr(self.workspace.pdk, "lefs", [])],
-            "lib": [str(path) for path in getattr(self.workspace.pdk, "libs", [])],
-            "def": path_text(self.input_def),
-            "verilog": path_text(self.input_verilog),
-            "sdc": path_text(getattr(self.workspace.pdk, "sdc", None)),
+            "tech_lef": getattr(self.workspace.pdk, "tech", None) or "",
+            "lef": list(getattr(self.workspace.pdk, "lefs", None) or []),
+            "lib": list(getattr(self.workspace.pdk, "libs", None) or []),
+            "def": self.input_def or "",
+            "verilog": self.input_verilog or "",
+            "sdc": getattr(self.workspace.pdk, "sdc", None) or "",
             "rc_tcl": rc_tcl,
         }
 
@@ -204,17 +204,17 @@ class DreamplaceModule:
             existing.pop("spef_path", None)
         return {
             **existing,
-            "tech_lef": path_text(getattr(self.workspace.pdk, "tech", None)),
-            "lef": [str(path) for path in getattr(self.workspace.pdk, "lefs", [])],
-            "lib": [str(path) for path in getattr(self.workspace.pdk, "libs", [])],
-            "def": path_text(self.input_def),
-            "verilog": path_text(self.input_verilog),
-            "sdc": path_text(getattr(self.workspace.pdk, "sdc", None)),
-            "spef": "" if gr_timing else path_text(getattr(self.workspace.pdk, "spef", None)),
-            "sta_config": path_text(sta_config),
-            "rcx_config": path_text(rcx_config),
+            "tech_lef": getattr(self.workspace.pdk, "tech", None) or "",
+            "lef": list(getattr(self.workspace.pdk, "lefs", None) or []),
+            "lib": list(getattr(self.workspace.pdk, "libs", None) or []),
+            "def": self.input_def or "",
+            "verilog": self.input_verilog or "",
+            "sdc": getattr(self.workspace.pdk, "sdc", None) or "",
+            "spef": ("" if gr_timing else (getattr(self.workspace.pdk, "spef", None) or "")),
+            "sta_config": sta_config or "",
+            "rcx_config": rcx_config or "",
             "rcx_pdk": str(getattr(self.workspace.pdk, "name", "") or ""),
-            "work_dir": str(Path(self.result_dir) / "native_sta"),
+            "work_dir": Path(self.result_dir) / "native_sta",
             "thread_number": int(getattr(params, "num_threads", 2) or 2),
             "max_paths": 20,
         }
@@ -307,9 +307,9 @@ class DreamplaceModule:
 
             if place_io_engine in {"openroad", "ecc"}:
                 if self.output_def:
-                    engine.write_back(str(self.output_def))
+                    engine.write_back(self.output_def)
                 if place_io_engine in {"openroad", "ecc"} and self.output_verilog:
-                    engine.write_verilog(str(self.output_verilog))
+                    engine.write_verilog(self.output_verilog)
 
             return True
 

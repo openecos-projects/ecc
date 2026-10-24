@@ -1,7 +1,8 @@
 from typing import Any, TypedDict
 
-from chipcompiler.data import ADVISORY_FLOW_STEPS
+from chipcompiler.data import ADVISORY_FLOW_STEPS, StepEnum
 from chipcompiler.data.checklist import workspace_checklist_path
+from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.engine.snapshot_limits import (
     CHECKLIST_READ_MAX_BYTES,
     read_bounded_json_object,
@@ -165,14 +166,26 @@ def _group_for(item: dict) -> str:
         return "config"
     if category == "provenance" or path.startswith(("origin/", "initial/")):
         return "initial"
-    if step == "Harden" or path.startswith(("Harden_ecc/", "harden/")):
+    if step == "Harden" or path.startswith(
+        (f"{STEP_DIRECTORIES[StepEnum.HARDEN.value]}/", "harden/")
+    ):
         return "harden"
-    if step == "sta" or path.startswith(("sta_ecc/", "final/timing/sta/")):
+    if step == "sta" or path.startswith(
+        (f"{STEP_DIRECTORIES[StepEnum.STA.value]}/", "final/timing/sta/")
+    ):
         return "sta"
-    if step == "RCX" or path.startswith(("RCX_ecc/", "final/timing/spef/")):
+    if step == "RCX" or path.startswith(
+        (f"{STEP_DIRECTORIES[StepEnum.RCX.value]}/", "final/timing/spef/")
+    ):
         return "spef"
     if step in {"Route", "drc", "lvs", "filler"} or path.startswith(
-        ("route_ecc/", "drc_ecc/", "lvs_ecc/", "filler_ecc/", "final/design/")
+        (
+            f"{STEP_DIRECTORIES[StepEnum.ROUTING.value]}/",
+            f"{STEP_DIRECTORIES[StepEnum.DRC.value]}/",
+            f"{STEP_DIRECTORIES[StepEnum.LVS.value]}/",
+            f"{STEP_DIRECTORIES[StepEnum.FILLER.value]}/",
+            "final/design/",
+        )
     ):
         return "final_design"
     return "reports"

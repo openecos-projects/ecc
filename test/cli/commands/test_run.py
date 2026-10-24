@@ -39,7 +39,7 @@ class TestRun:
             or {"workspaceId": kwargs["workspace_id"], "workspaceRevision": 1},
         )
         monkeypatch.setattr(
-            "chipcompiler.engine.workspace_lifecycle._write_workspace_command",
+            "chipcompiler.engine.workspace_lifecycle.write_workspace_command",
             lambda *_args, **_kwargs: None,
         )
 

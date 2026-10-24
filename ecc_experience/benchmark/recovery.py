@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from chipcompiler.project.runtime_processes import _boot_id, _host_id
+from chipcompiler.project.runtime_processes import boot_id, host_id
 from chipcompiler.utility.workspace_lock import workspace_lock
 from ecc_experience.benchmark.execute import _exit_code, _record, campaign_identity, read_run_state
 from ecc_experience.benchmark.ledger import read_campaign_ledger
@@ -91,8 +91,8 @@ def recover_campaign(manifest_path: str | Path, *, trial_id: str) -> dict:
                 worker = receipt.get("worker")
                 if (
                     not isinstance(worker, dict)
-                    or worker.get("host_id") != _host_id()
-                    or worker.get("boot_id") != _boot_id()
+                    or worker.get("host_id") != host_id()
+                    or worker.get("boot_id") != boot_id()
                 ):
                     raise _busy("Command completion belongs to a different host or boot")
                 completed.append(

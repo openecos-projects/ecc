@@ -11,13 +11,18 @@ import os
 import shutil
 from pathlib import Path
 
-from chipcompiler.data import EccStep, Workspace
+from chipcompiler.data import EccStep, StepEnum, ToolName, Workspace
+from chipcompiler.data.step import STEP_DIRECTORIES
 
 
 def _workspace_rcx_dir(path_text: str, workspace_dir: Path) -> Path:
     if path_text.startswith("/"):
         relative_path = path_text[1:]
-        if relative_path.split("/", 1)[0] in ("RCX_ecc", "rcx_ecc"):
+        workspace_names = {
+            STEP_DIRECTORIES[StepEnum.RCX.value],
+            f"{StepEnum.RCX.value.lower()}_{ToolName.ECC.value}",
+        }
+        if relative_path.split("/", 1)[0] in workspace_names:
             return workspace_dir / relative_path
     return Path(path_text)
 

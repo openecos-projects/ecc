@@ -1,6 +1,8 @@
 #!/usr/bin/env python
-from chipcompiler.tools.lec_subflow import LecSubFlow
+from chipcompiler.tools.subflow import SubFlow
 
 
-class KeplerFormalSubFlow(LecSubFlow):
+class KeplerFormalSubFlow(SubFlow):
     """kepler-formal LEC inner flow (run lec, analysis)."""
+
+    STAGES = ("run lec", "analysis")

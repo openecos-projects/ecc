@@ -925,15 +925,15 @@ def test_workspace_config_paths_match_build_workspace_config_paths(tmp_path):
 def test_workspace_config_path_handles_known_and_unknown_keys(tmp_path):
     workspace_dir = tmp_path / "workspace"
 
-    assert data_api.workspace_config_path(str(workspace_dir), "db") == (
+    assert data_api.workspace_config_key_path(str(workspace_dir), "db") == (
         workspace_dir / "config" / "db_ecc.json"
     )
-    assert data_api.workspace_config_path(workspace_dir, StepEnum.FILLER.value) == (
+    assert data_api.workspace_config_key_path(workspace_dir, StepEnum.FILLER.value) == (
         workspace_dir / "config" / "filler_ecc.json"
     )
-    assert data_api.workspace_config_path(workspace_dir, StepEnum.PLACEMENT.value) is None
-    assert data_api.workspace_config_path(workspace_dir, StepEnum.LEGALIZATION.value) is None
-    assert data_api.workspace_config_path(workspace_dir, "unknown") is None
+    assert data_api.workspace_config_key_path(workspace_dir, StepEnum.PLACEMENT.value) is None
+    assert data_api.workspace_config_key_path(workspace_dir, StepEnum.LEGALIZATION.value) is None
+    assert data_api.workspace_config_key_path(workspace_dir, "unknown") is None
 
 
 def test_step_config_keys_return_workspace_config_keys():

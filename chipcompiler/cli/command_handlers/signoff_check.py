@@ -11,6 +11,9 @@ from chipcompiler.cli.inspection.discovery import (
 )
 from chipcompiler.cli.inspection.evidence_summary import qor_score
 from chipcompiler.cli.inspection.project_checkers import checker_evidence
+from chipcompiler.data import SkippableStepEnum, StepEnum
+from chipcompiler.data.step import STEP_DIRECTORIES
+from chipcompiler.utility import JsonObject
 
 _PROFILES = {
     "rtl2gds": (
@@ -72,7 +75,9 @@ def check(command_input, ctx: CommandContext) -> CommandResult:
         "sta_setup_clean": _metric_checker_gate(root, "sta", "sta_setup_violation_count"),
         "sta_hold_clean": _metric_checker_gate(root, "sta", "sta_hold_violation_count"),
         "lec_proven": _lec_gate(root),
-        "final_gds_available": _artifact_gate(root, "Harden GDS", "Harden_ecc/checklist.json"),
+        "final_gds_available": _artifact_gate(
+            root, "Harden GDS", f"{STEP_DIRECTORIES[StepEnum.HARDEN.value]}/checklist.json"
+        ),
         "final_netlist_available": _netlist_artifact_gate(root),
     }
     status = _overall(gates, _REQUIRED_GATES[command_input.profile])
@@ -151,7 +156,7 @@ def _checklist_gate(review: dict) -> dict:
 
 
 def _checker_gate(root: Path, checker: str) -> dict:
-    step_directory = {"drc": "drc_ecc", "lvs": "lvs_ecc", "sta": "sta_ecc"}[checker]
+    step_directory = STEP_DIRECTORIES[checker]
     source_path = root / step_directory / "checklist.json"
     data = _read(source_path)
     if not data:
@@ -249,7 +254,7 @@ def _sta_gate(root: Path, analysis: str) -> dict:
     result = _checker_gate(root, "sta")
     if result["status"] == "unknown":
         return result
-    data = _read(root / "sta_ecc" / "checklist.json")
+    data = _read(root / STEP_DIRECTORIES[StepEnum.STA.value] / "checklist.json")
     items = data.get("checklist", []) if isinstance(data, dict) else []
     matching = [
         item
@@ -257,7 +262,7 @@ def _sta_gate(root: Path, analysis: str) -> dict:
         if isinstance(item, dict)
         and analysis in f"{item.get('id', '')} {item.get('title', '')}".lower()
     ]
-    source = "sta_ecc/checklist.json"
+    source = f"{STEP_DIRECTORIES[StepEnum.STA.value]}/checklist.json"
     if not matching:
         return {
             "status": "unknown",
@@ -276,7 +281,7 @@ def _sta_gate(root: Path, analysis: str) -> dict:
 
 
 def _lec_gate(root: Path) -> dict:
-    result_path = root / "postRouteLec_kepler_formal" / "output"
+    result_path = root / STEP_DIRECTORIES[SkippableStepEnum.POST_ROUTE_LEC.value] / "output"
     candidates = list(result_path.glob("*_result.json")) if result_path.is_dir() else []
     if len(candidates) != 1:
         return {
@@ -311,7 +316,7 @@ def _artifact_gate(root: Path, label: str, checklist: str) -> dict:
     item = next((item for item in items if item.get("title") == label), None)
     if not isinstance(item, dict):
         return {"status": "unknown", "reason": "artifact_evidence_unavailable", "source": checklist}
-    source = item.get("source") if isinstance(item.get("source"), dict) else {}
+    source = JsonObject(item.get("source"))
     relative = source.get("path")
     if not isinstance(relative, str) or Path(relative).is_absolute():
         return {"status": "unknown", "reason": "artifact_path_invalid", "source": checklist}
@@ -330,13 +335,13 @@ def _artifact_gate(root: Path, label: str, checklist: str) -> dict:
 
 
 def _netlist_artifact_gate(root: Path) -> dict:
-    result_path = root / "postRouteLec_kepler_formal" / "output"
+    result_path = root / STEP_DIRECTORIES[SkippableStepEnum.POST_ROUTE_LEC.value] / "output"
     candidates = list(result_path.glob("*_result.json")) if result_path.is_dir() else []
     if len(candidates) != 1:
         return {
             "status": "unknown",
             "reason": "artifact_evidence_unavailable",
-            "source": "postRouteLec_kepler_formal/output",
+            "source": (f"{STEP_DIRECTORIES[SkippableStepEnum.POST_ROUTE_LEC.value]}/output"),
         }
     result = _read(candidates[0])
     relative = result.get("gate_verilog")

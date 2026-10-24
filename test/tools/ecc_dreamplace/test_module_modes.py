@@ -13,7 +13,6 @@ from chipcompiler.data import (
     Workspace,
 )
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
-from chipcompiler.tools.ecc_dreamplace.service import get_step_info
 from chipcompiler.utility import json_write
 
 from .test_module import FakeParams
@@ -122,23 +121,6 @@ def test_geometry_legalization_clears_inherited_padding(
 
     assert module.run_legalization() is True
     assert seen == [(0, expected_padding)]
-
-
-def test_dreamplace_step_info_stringifies_path_config(tmp_path):
-    workspace = Workspace(
-        directory=tmp_path,
-        design=OriginDesign(name="gcd"),
-        config={"dreamplace": tmp_path / "config" / "dreamplace_ecc.json"},
-    )
-    workspace.logger = SimpleNamespace(
-        log_section=lambda *args, **kwargs: None,
-        info=lambda *args, **kwargs: None,
-    )
-    step = EccStep(name=StepEnum.PLACEMENT.value)
-
-    assert get_step_info(workspace, step, "config") == {
-        "config": str(workspace.config["dreamplace"]),
-    }
 
 
 def _module_for_owner(tmp_path, step_name: str) -> DreamplaceModule:

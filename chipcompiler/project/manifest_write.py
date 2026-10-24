@@ -49,7 +49,7 @@ DEFAULT_OBJECTIVES = {
 }
 
 
-def _now_iso() -> str:
+def now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
@@ -106,7 +106,7 @@ def build_manifest_document(
     skip_steps: list[str] | None = None,
 ) -> dict:
     """Assemble a schema-v1 manifest for a virgin project's first run."""
-    now = _now_iso()
+    now = now_iso()
     document = build_project_document(
         project_dir,
         design_name=design_name,
@@ -142,7 +142,7 @@ def build_project_document(
     mpc: dict | None = None,
 ) -> dict[str, Any]:
     """Assemble a schema-v1 Project Manifest without a Workspace."""
-    timestamp = now or _now_iso()
+    timestamp = now or now_iso()
     project_name = name or os.path.basename(os.path.normpath(project_dir)) or "project"
     return {
         "schema_version": 1,
@@ -307,7 +307,7 @@ def write_back_workspace_status(project_dir: str, workspace_id: str, status: str
         for entry in document.get("workspaces", []):
             if isinstance(entry, dict) and entry.get("workspace_id") == workspace_id:
                 entry["status"] = status
-                entry["updated_at"] = _now_iso()
+                entry["updated_at"] = now_iso()
 
     return update_manifest(project_dir, mutate)
 
@@ -328,7 +328,7 @@ def remove_workspace_registration(project_dir: str, workspace_id: str) -> bool:
                 for entry in workspaces
                 if not (isinstance(entry, dict) and entry.get("workspace_id") == workspace_id)
             ]
-            document["updated_at"] = _now_iso()
+            document["updated_at"] = now_iso()
 
     return update_manifest(project_dir, mutate)
 
@@ -376,7 +376,7 @@ def append_workspace_entry(
     or ``failed``. ``conflict_id``/``conflict_path`` distinguish whether the
     workspace id or the canonical path matched a different entry.
     """
-    timestamp = now or _now_iso()
+    timestamp = now or now_iso()
     outcome = "registered"
 
     def mutate(document: dict) -> None:
@@ -462,7 +462,7 @@ def pre_register_workspace(
         if isinstance(flow_config, dict) and "skip_steps" in flow_config
         else None
     )
-    now = _now_iso()
+    now = now_iso()
     manifest_path = os.path.join(project_dir, MANIFEST_FILENAME)
     if not os.path.lexists(manifest_path):
         document = build_manifest_document(

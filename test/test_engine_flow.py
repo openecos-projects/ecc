@@ -918,8 +918,8 @@ class TestCreateStepFailureBreaksChain:
         flow_path = tmp_path / "flow.json"
         flow_data = {
             "steps": [
-                {"name": "SYNTHESIS", "tool": "yosys", "state": "Unstart"},
-                {"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"},
+                {"name": "Synthesis", "tool": "yosys", "state": "Unstart"},
+                {"name": "Floorplan", "tool": "ecc", "state": "Unstart"},
             ]
         }
         flow_path.write_text(json.dumps(flow_data), encoding="utf-8")
@@ -932,7 +932,7 @@ class TestCreateStepFailureBreaksChain:
 
         def fake_create_step(*args, **kwargs):
             call_count[0] += 1
-            if kwargs.get("step") == "FLOORPLAN":
+            if kwargs.get("step") == "Floorplan":
                 return None  # simulate tool not found
             return EccStep(name=kwargs["step"], directory=tmp_path, tool=kwargs.get("eda", ""))
 
@@ -941,13 +941,13 @@ class TestCreateStepFailureBreaksChain:
         monkeypatch.setattr(tools_mod, "create_step", fake_create_step)
         engine_flow.create_step_workspaces()
 
-        # Only SYNTHESIS should be created; FLOORPLAN fails and the chain stops.
+        # Only Synthesis should be created; Floorplan fails and the chain stops.
         assert len(engine_flow.workspace_steps) == 1
-        assert engine_flow.workspace_steps[0].name == "SYNTHESIS"
-        assert call_count[0] == 2  # SYNTHESIS + FLOORPLAN
+        assert engine_flow.workspace_steps[0].name == "Synthesis"
+        assert call_count[0] == 2  # Synthesis + Floorplan
 
-        # FLOORPLAN should be marked Incomplete in flow data
-        fp_step = next(s for s in workspace.flow.data["steps"] if s["name"] == "FLOORPLAN")
+        # Floorplan should be marked Incomplete in flow data
+        fp_step = next(s for s in workspace.flow.data["steps"] if s["name"] == "Floorplan")
         assert fp_step["state"] == StateEnum.Imcomplete.value
 
     def test_run_steps_returns_false_when_steps_skipped(self, monkeypatch, tmp_path):
@@ -955,8 +955,8 @@ class TestCreateStepFailureBreaksChain:
         flow_path = tmp_path / "flow.json"
         flow_data = {
             "steps": [
-                {"name": "SYNTHESIS", "tool": "yosys", "state": "Unstart"},
-                {"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"},
+                {"name": "Synthesis", "tool": "yosys", "state": "Unstart"},
+                {"name": "Floorplan", "tool": "ecc", "state": "Unstart"},
             ]
         }
         flow_path.write_text(json.dumps(flow_data), encoding="utf-8")
@@ -1176,3 +1176,73 @@ def test_engine_flow_post_success_failure_marks_incomplete_not_success(
     assert result == StateEnum.Imcomplete
     persisted = json.loads(flow_path.read_text(encoding="utf-8"))
     assert persisted["steps"][0]["state"] == StateEnum.Imcomplete.value
+
+
+def test_checker_batch_honors_the_info_category_fallback(monkeypatch, tmp_path):
+    import chipcompiler.tools as tools_api
+    from chipcompiler.data import OriginDesign
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    inputs = []
+    outputs = {
+        "route": EccOutput(def_=tmp_path / "route.def", verilog=tmp_path / "route.v"),
+        "filler": EccOutput(def_=tmp_path / "filler.def", verilog=tmp_path / "filler.v"),
+    }
+
+    def fake_create_step(workspace, step, eda, **kwargs):
+        inputs.append((step, kwargs["input_def"]))
+        return EccStep(name=step, tool=eda, output=outputs.get(step, EccOutput()))
+
+    monkeypatch.setattr(tools_api, "create_step", fake_create_step)
+    flow = EngineFlow(workspace)
+    flow.workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc"},
+            {"name": "filler", "tool": "ecc"},
+            {"name": "drc", "tool": "ecc", "info": {"category": "CHECKER"}},
+            {"name": "lvs", "tool": "ecc", "info": {"category": "CHECKER"}},
+        ]
+    }
+
+    flow.create_step_workspaces()
+
+    assert inputs[2:] == [
+        ("drc", outputs["filler"].def_),
+        ("lvs", outputs["filler"].def_),
+    ]
+
+
+def test_checklist_gate_follows_the_input_chain(tmp_path):
+    from chipcompiler.data import OriginDesign
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    flow = EngineFlow(workspace)
+    flow.workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc", "category": "PNR"},
+            {
+                "name": "filler",
+                "tool": "ecc",
+                "category": "PNR",
+                "checklist": {"status": "blocked"},
+            },
+            {"name": "lvs", "tool": "ecc", "category": "CHECKER"},
+            {"name": "drc", "tool": "ecc", "category": "CHECKER"},
+            {"name": "antennaCheck", "tool": "ecc", "category": "PNR"},
+        ]
+    }
+
+    # `drc` belongs to the parallel batch: its input is `filler`, not the
+    # previous ledger entry `lvs`.
+    assert flow._blocked_checklist_prerequisite(EccStep(name="drc", tool="ecc")) == "filler"
+
+
+def test_unregistered_checker_step_fails_the_classification(tmp_path):
+    from chipcompiler.data import OriginDesign
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    flow = EngineFlow(workspace)
+    flow.workspace.flow.data = {"steps": [{"name": "custom", "tool": "one", "category": "CHECKER"}]}
+
+    with pytest.raises(ValueError, match="no flow policy registered"):
+        flow._is_checker_step(EccStep(name="custom", tool="one"))

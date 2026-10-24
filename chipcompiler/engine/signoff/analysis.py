@@ -7,11 +7,17 @@ materialization stay in collector.py and discovery.py; shared helpers
 (``_step_dirs``, ``_read_json``) resolve through the composed collector.
 """
 
-import importlib
 from pathlib import Path
 
-from chipcompiler.data import ADVISORY_FLOW_STEPS, LEC_STEP_TOOLS, EccOutput, StateEnum, StepEnum
+from chipcompiler.data import (
+    LEC_STEP_TOOLS,
+    StateEnum,
+    StepEnum,
+    ToolName,
+)
+from chipcompiler.data.workspace.flow_policy import FlowInputResolver, FlowInputStepError
 from chipcompiler.engine.signoff.models import SIGNOFF_REQUIRED_QOR_STEPS, SignoffPackageIssue
+from chipcompiler.engine.step_chain import apply_info_spef_override, build_workspace_step_for_info
 
 
 class CollectorAnalysisMixin:
@@ -20,17 +26,21 @@ class CollectorAnalysisMixin:
         if self.workspace.flow.path is None:
             self.workspace.flow.path = workspace_dir / "home" / "flow.json"
         issues: list[SignoffPackageIssue] = []
-        previous_step = None
+        records = self.workspace.flow.steps()
+        resolver = FlowInputResolver(records)
 
-        for flow_step in self.workspace.flow.steps():
+        for index, flow_step in enumerate(records):
             step_name = str(flow_step.get("name", ""))
             tool = str(flow_step.get("tool", ""))
             if not step_name or not tool:
                 continue
 
             try:
-                workspace_step = self._build_workspace_step(flow_step, previous_step)
-            except (ImportError, OSError, TypeError, ValueError):
+                input_source = resolver.input_source(index)
+                workspace_step = self._build_workspace_step(flow_step, input_source)
+            except (ImportError, OSError, TypeError, ValueError, FlowInputStepError):
+                # A malformed explicit input is reported as a stale/missing
+                # analysis issue; execution stays strict and raises.
                 workspace_step = None
             if workspace_step is None:
                 issues.append(
@@ -42,16 +52,15 @@ class CollectorAnalysisMixin:
                     )
                 )
                 continue
+            resolver.record(workspace_step)
 
             if (
-                previous_step is not None
-                and previous_step.name == StepEnum.RCX.value
+                input_source is not None
+                and input_source.name == StepEnum.RCX.value
                 and workspace_step.name == StepEnum.STA.value
             ):
-                workspace_step.output.spef = previous_step.output.spef
+                workspace_step.output.spef = input_source.output.spef
 
-            if tool not in LEC_STEP_TOOLS and step_name not in ADVISORY_FLOW_STEPS:
-                previous_step = workspace_step
             if flow_step.get("state") != StateEnum.Success.value:
                 continue
             if tool in LEC_STEP_TOOLS:
@@ -71,59 +80,22 @@ class CollectorAnalysisMixin:
 
         return issues
 
-    def _build_workspace_step(self, flow_step: dict, previous_step):
-        step_name = str(flow_step.get("name", ""))
-        tool = str(flow_step.get("tool", ""))
-        module_alias = {
-            "klayout": "klayout_tool",
-            "dreamplace": "ecc_dreamplace",
-            "sizer": "ecc_sizer",
-        }
+    def _build_workspace_step(self, flow_step: dict, input_source):
         try:
-            builder = importlib.import_module(
-                f"chipcompiler.tools.{module_alias.get(tool, tool)}.builder"
-            )
+            workspace_step = build_workspace_step_for_info(self.workspace, flow_step, input_source)
         except ImportError:
             return None
-
-        build_step = getattr(builder, "build_step", None)
-        if not callable(build_step):
-            return None
-
-        if previous_step is None:
-            input_def = self.workspace.design.origin_def
-            input_verilog = self.workspace.design.origin_verilog
-            input_db = None
-        else:
-            input_def = previous_step.output.def_
-            input_verilog = previous_step.output.verilog
-            input_db = previous_step.output.db
-        workspace_step = build_step(
-            workspace=self.workspace,
-            step_name=step_name,
-            input_def=input_def,
-            input_verilog=input_verilog,
-            input_db=input_db,
-        )
         if workspace_step is not None:
-            # Mirror the execution-side projection (engine/flow.py): a
-            # persisted info.spef overrides the STA step's chained SPEFs.
-            step_info = flow_step.get("info") or {}
-            if (
-                step_name == StepEnum.STA.value
-                and step_info.get("spef")
-                and isinstance(workspace_step.output, EccOutput)
-            ):
-                workspace_step.output.spef = [Path(step_info["spef"])]
+            apply_info_spef_override(flow_step, workspace_step)
         return workspace_step
 
     def _refresh_step_analysis(self, step) -> None:
-        if step.tool == "yosys":
+        if step.tool == ToolName.YOSYS:
             from chipcompiler.tools.yosys.checklist import YosysChecklist
             from chipcompiler.tools.yosys.metrics import build_step_metrics
 
             checker_class = YosysChecklist
-        elif step.tool == "dreamplace":
+        elif step.tool == ToolName.DREAMPLACE:
             from chipcompiler.tools.ecc.metrics import build_step_metrics
             from chipcompiler.tools.ecc_dreamplace.checklist import DreamplaceChecklist
 

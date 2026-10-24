@@ -285,7 +285,7 @@ def test_run_timing_publishes_nothing_when_structured_artifact_missing(tmp_path)
     assert not feature_dir.exists()
 
 
-def test_run_timing_stringifies_path_arguments(tmp_path):
+def test_run_timing_forwards_path_arguments(tmp_path):
     module = make_module()
 
     module.run_timing(
@@ -300,13 +300,13 @@ def test_run_timing_stringifies_path_arguments(tmp_path):
     )
 
     assert module.ecc.calls == [
-        ("lib_init", {"lib_paths": ["/pdk/lib.lib"]}),
-        ("sdc_init", "/ws/design.sdc"),
-        ("spef_init", "/ws/design.spef"),
+        ("lib_init", {"lib_paths": [Path("/pdk/lib.lib")]}),
+        ("sdc_init", Path("/ws/design.sdc")),
+        ("spef_init", Path("/ws/design.spef")),
         (
             "init_sta",
             {
-                "config": "/ws/config/sta_ecc.json",
+                "config": Path("/ws/config/sta_ecc.json"),
                 "config_dict": {
                     "-temp_directory_path": str(tmp_path / "sta_work"),
                     "-output_timing_reports": "1",

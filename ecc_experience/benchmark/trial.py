@@ -4,6 +4,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from chipcompiler.project.manifest import CONFIG_FILENAME
 from ecc_experience.adapters.process_context import process_context
 from ecc_experience.benchmark.evidence import collect_trial
 from ecc_experience.benchmark.preparation import PreparedDesign, runtime_identity
@@ -99,7 +100,7 @@ def execute_trial(
             if record["exit_code"] != 0:
                 break
             if command[0] == "init":
-                (project / "ecc.toml").unlink()
+                (project / CONFIG_FILENAME).unlink()
         record["execution_status"] = "complete" if record["exit_code"] == 0 else "failed"
         record["status"] = "fail"
         if record["exit_code"] == 124:

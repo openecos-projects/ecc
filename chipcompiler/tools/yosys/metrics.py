@@ -11,7 +11,7 @@ from chipcompiler.tools.ecc.sta_qor import (
 from chipcompiler.utility import dict_to_str, json_read
 
 
-def build_step_metrics(workspace: Workspace, step: YosysStep) -> StepMetrics:
+def build_step_metrics(workspace: Workspace, step: YosysStep) -> StepMetrics | None:
     """
     Build and persist synthesis metrics from Yosys stat JSON.
     Args:

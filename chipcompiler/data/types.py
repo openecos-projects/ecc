@@ -4,18 +4,19 @@ Zero IO and zero chipcompiler-internal imports: this module is the
 dependency-free root of the data layer's type vocabulary.
 """
 
-from enum import Enum
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import Final
 
 
-class FlowStepCategory(str, Enum):
+class FlowStepCategory(StrEnum):
     """Input chaining behavior for persisted flow steps."""
 
     PNR = "PNR"
     CHECKER = "CHECKER"
 
 
-class StepBaseEnum(Enum):
+class StepBaseEnum(StrEnum):
     """Memberless base of the flow step enums: shared behavior.
 
     Python forbids inheriting an Enum that has members, so shared step
@@ -73,41 +74,90 @@ class SkippableStepEnum(StepBaseEnum):
         return True
 
 
-# Advisory analyses retain their execution state but neither gate the flow nor
-# become the source of physical design artifacts for downstream steps.
-ADVISORY_FLOW_STEPS: Final = frozenset({StepEnum.ANTENNA_CHECK.value, StepEnum.EMIR.value})
+class FlowInputSource(StrEnum):
+    """Where a step's declared input comes from when no explicit input is set."""
 
+    #: The previous non-LEC, non-advisory step in ledger order.
+    PREVIOUS = "previous"
+    #: The step before the parallel checker batch anchored at ``filler``.
+    CHECKER_BATCH = "checker_batch"
+
+
+@dataclass(frozen=True)
+class FlowStepPolicy:
+    """The flow's knowledge about one step: category and input source.
+
+    ``advisory`` steps keep their execution state but neither gate the flow nor
+    become the source of physical design artifacts for downstream steps.
+    ``input_source`` declares the default edge; an explicit ledger
+    ``input_step`` still overrides it.
+    """
+
+    category: FlowStepCategory
+    input_source: FlowInputSource = FlowInputSource.PREVIOUS
+    advisory: bool = False
+
+
+# Every flow step is declared here; a step missing from this table fails the
+# exhaustiveness test instead of silently inheriting the PNR default.
+FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
+    StepEnum.RTL2GDS.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.INIT.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.SYNTHESIS.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.FLOORPLAN.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.PRE_FLOORPLAN.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.MACRO_PLACEMENT.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.POST_FLOORPLAN.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.PREPLACE.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.PLACEMENT.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.DIFF_SIZING.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.CTS.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.LEGALIZATION.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.ROUTING.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.FILLER.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.LVS.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.CHECKER_BATCH),
+    StepEnum.DRC.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.CHECKER_BATCH),
+    StepEnum.ANTENNA_CHECK.value: FlowStepPolicy(FlowStepCategory.PNR, advisory=True),
+    SkippableStepEnum.POST_ROUTE_LEC.value: FlowStepPolicy(FlowStepCategory.CHECKER),
+    StepEnum.RCX.value: FlowStepPolicy(FlowStepCategory.CHECKER),
+    StepEnum.STA.value: FlowStepPolicy(FlowStepCategory.CHECKER),
+    StepEnum.POWER_ANALYSIS.value: FlowStepPolicy(FlowStepCategory.CHECKER),
+    StepEnum.EMIR.value: FlowStepPolicy(FlowStepCategory.PNR, advisory=True),
+    StepEnum.HARDEN.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.SIGNOFF.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.GDS.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.ABSTRACT_LEF.value: FlowStepPolicy(FlowStepCategory.PNR),
+    SkippableStepEnum.LEC.value: FlowStepPolicy(FlowStepCategory.PNR),
+    SkippableStepEnum.TIMING_OPT.value: FlowStepPolicy(FlowStepCategory.PNR),
+}
+
+ADVISORY_FLOW_STEPS: Final = frozenset(
+    name for name, policy in FLOW_STEP_POLICIES.items() if policy.advisory
+)
 
 FLOW_STEP_CATEGORIES: Final[dict[str, FlowStepCategory]] = {
-    StepEnum.RTL2GDS.value: FlowStepCategory.PNR,
-    StepEnum.INIT.value: FlowStepCategory.PNR,
-    StepEnum.SYNTHESIS.value: FlowStepCategory.PNR,
-    StepEnum.PRE_FLOORPLAN.value: FlowStepCategory.PNR,
-    StepEnum.MACRO_PLACEMENT.value: FlowStepCategory.PNR,
-    StepEnum.POST_FLOORPLAN.value: FlowStepCategory.PNR,
-    StepEnum.PLACEMENT.value: FlowStepCategory.PNR,
-    StepEnum.CTS.value: FlowStepCategory.PNR,
-    StepEnum.LEGALIZATION.value: FlowStepCategory.PNR,
-    StepEnum.ROUTING.value: FlowStepCategory.PNR,
-    StepEnum.FILLER.value: FlowStepCategory.PNR,
-    StepEnum.LVS.value: FlowStepCategory.CHECKER,
-    StepEnum.DRC.value: FlowStepCategory.CHECKER,
-    SkippableStepEnum.POST_ROUTE_LEC.value: FlowStepCategory.CHECKER,
-    StepEnum.RCX.value: FlowStepCategory.CHECKER,
-    StepEnum.STA.value: FlowStepCategory.CHECKER,
-    StepEnum.POWER_ANALYSIS.value: FlowStepCategory.CHECKER,
-    StepEnum.HARDEN.value: FlowStepCategory.PNR,
-    StepEnum.SIGNOFF.value: FlowStepCategory.PNR,
-    StepEnum.GDS.value: FlowStepCategory.PNR,
-    StepEnum.ABSTRACT_LEF.value: FlowStepCategory.PNR,
-    SkippableStepEnum.LEC.value: FlowStepCategory.PNR,
-    SkippableStepEnum.TIMING_OPT.value: FlowStepCategory.PNR,
+    name: policy.category for name, policy in FLOW_STEP_POLICIES.items()
 }
 
 
-def default_flow_step_category(step: StepBaseEnum | str) -> FlowStepCategory:
+def flow_step_policy(step: StepBaseEnum | str) -> FlowStepPolicy:
+    """The registered policy for a flow step; unknown names raise."""
     value = step.value if isinstance(step, StepBaseEnum) else str(step)
-    return FLOW_STEP_CATEGORIES.get(value, FlowStepCategory.PNR)
+    try:
+        return FLOW_STEP_POLICIES[value]
+    except KeyError:
+        raise ValueError(f"no flow policy registered for step: {value!r}") from None
+
+
+def default_flow_step_category(step: StepBaseEnum | str) -> FlowStepCategory:
+    """The category for a declared step name, with a PNR fallback.
+
+    Ledger walks use :func:`flow_step_policy` instead, so a step added
+    without a policy fails loudly rather than silently inheriting PNR.
+    """
+    value = step.value if isinstance(step, StepBaseEnum) else str(step)
+    policy = FLOW_STEP_POLICIES.get(value)
+    return policy.category if policy is not None else FlowStepCategory.PNR
 
 
 # Projects that declare no skip policy skip the synthesis LEC: the
@@ -116,7 +166,21 @@ def default_flow_step_category(step: StepBaseEnum | str) -> FlowStepCategory:
 DEFAULT_SKIP_STEPS: Final = (SkippableStepEnum.LEC.value,)
 
 
-class LECEngineEnum(Enum):
+class ToolName(StrEnum):
+    """Tool names a flow step (or the image backend) can bind to."""
+
+    YOSYS = "yosys"
+    ECC = "ecc"
+    DREAMPLACE = "dreamplace"
+    SIZER = "sizer"
+    YOSYS_LEC = "yosys_lec"
+    KEPLER_FORMAL = "kepler_formal"
+    LEC_DUAL = "lec_dual"
+    # Not a flow-step tool: the layout-image backend behind save_layout_image.
+    KLAYOUT = "klayout"
+
+
+class LECEngineEnum(StrEnum):
     """Engines that can own the lec/postRouteLec steps.
 
     DUAL is a composite: it runs both physical engines on the same inputs
@@ -168,6 +232,14 @@ DEFAULT_LEC_ENGINE: Final = LECEngineEnum.KEPLER_FORMAL
 _STEP_ENUMS: tuple[type[StepBaseEnum], ...] = (StepEnum, SkippableStepEnum)
 
 
+def is_sta_step(step: object) -> bool:
+    """Whether *step* is the ECC static-timing step (the only parallel one)."""
+    return (
+        getattr(step, "tool", None) == ToolName.ECC
+        and getattr(step, "name", None) == StepEnum.STA.value
+    )
+
+
 def step_from_value(name: str) -> StepBaseEnum:
     """The step enum member for a persisted step value, across both enums.
 
@@ -182,7 +254,7 @@ def step_from_value(name: str) -> StepBaseEnum:
     raise ValueError(f"unknown flow step: {name!r}; available steps: {legal}")
 
 
-class StateEnum(Enum):
+class StateEnum(StrEnum):
     """flow running state"""
 
     Invalid = "Invalid"  # ecc tools or config invalid

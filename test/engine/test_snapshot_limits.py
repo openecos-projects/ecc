@@ -266,3 +266,69 @@ def test_read_rejects_artifact_index_beyond_limit(tmp_path):
 
     with pytest.raises(EngineeringSnapshotError, match="section: artifacts"):
         read_engineering_snapshot(workspace)
+
+
+def _snapshot_with_step_outputs(step_count, *, references_per_step=0, extra_reference=False):
+    steps = []
+    for index in range(step_count):
+        step = {
+            "step": f"step-{index}",
+            "tool": "ecc",
+            "state": "Success",
+            "verilog": None,
+            "def": None,
+        }
+        if references_per_step >= 1:
+            step["verilog"] = {"path": f"step-{index}.v", "exists": True}
+        if references_per_step >= 2:
+            step["def"] = {"path": f"step-{index}.def", "exists": True}
+        steps.append(step)
+    return {
+        "stepOutputs": {
+            "directory": ".",
+            "design": "gcd",
+            "steps": steps,
+            "sdc": {"path": "gcd.sdc", "exists": True} if extra_reference else None,
+        }
+    }
+
+
+def test_step_output_limit_accepts_exactly_the_limit():
+    from chipcompiler.engine.snapshot import SNAPSHOT_STEP_LIMIT, _validate_step_outputs
+
+    # No artifact references: only the step-count policy is exercised.
+    _validate_step_outputs(_snapshot_with_step_outputs(SNAPSHOT_STEP_LIMIT), Path("."))
+
+
+def test_step_output_limit_rejects_one_over():
+    from chipcompiler.engine.snapshot import SNAPSHOT_STEP_LIMIT, _validate_step_outputs
+
+    with pytest.raises(EngineeringSnapshotError):
+        _validate_step_outputs(_snapshot_with_step_outputs(SNAPSHOT_STEP_LIMIT + 1), Path("."))
+
+
+def test_step_output_reference_limit_accepts_exactly_the_limit():
+    from chipcompiler.engine.snapshot import SNAPSHOT_REFERENCE_LIMIT, _validate_step_outputs
+
+    # 2048 steps * 2 references = exactly the reference limit, below the
+    # independent step limit.
+    _validate_step_outputs(
+        _snapshot_with_step_outputs(SNAPSHOT_REFERENCE_LIMIT // 2, references_per_step=2),
+        Path("."),
+    )
+
+
+def test_step_output_reference_limit_rejects_one_over():
+    from chipcompiler.engine.snapshot import SNAPSHOT_REFERENCE_LIMIT, _validate_step_outputs
+
+    # The same step count plus one top-level SDC reference is one over the
+    # reference limit while the step count stays below its own limit.
+    with pytest.raises(EngineeringSnapshotError):
+        _validate_step_outputs(
+            _snapshot_with_step_outputs(
+                SNAPSHOT_REFERENCE_LIMIT // 2,
+                references_per_step=2,
+                extra_reference=True,
+            ),
+            Path("."),
+        )

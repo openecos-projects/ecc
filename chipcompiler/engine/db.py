@@ -47,9 +47,9 @@ class EngineDB:
             return False
 
         # check eda tool exist
-        from chipcompiler.tools import load_eda_module
+        from chipcompiler.tools import load_tool
 
-        eda_module = load_eda_module("ecc")
+        eda_module = load_tool("ecc")
         if eda_module is None:
             return False
 

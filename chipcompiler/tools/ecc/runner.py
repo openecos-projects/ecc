@@ -11,8 +11,9 @@ from chipcompiler.data import (
     StepMetrics,
     Workspace,
     WorkspaceStep,
-    workspace_config_path,
+    workspace_config_key_path,
 )
+from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.tools.ecc.drc_artifacts import save_drc_feature
 from chipcompiler.tools.ecc.metrics import (
@@ -77,7 +78,7 @@ def temperature_token(temperature) -> str:
 def _workspace_sta_config_path(workspace: Workspace) -> str | None:
     if workspace.directory is None:
         return None
-    config_path = workspace_config_path(workspace.directory, StepEnum.STA.value)
+    config_path = workspace_config_key_path(workspace.directory, StepEnum.STA.value)
     return os.fspath(config_path) if config_path is not None else None
 
 
@@ -107,7 +108,7 @@ def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
     if workspace_dir is None or sta_config is None:
         return []
     sta_data = json_read(sta_config)
-    rcx_output_dir = workspace_dir / f"{StepEnum.RCX.value}_ecc" / "output"
+    rcx_output_dir = workspace_dir / STEP_DIRECTORIES[StepEnum.RCX.value] / "output"
     # STA-entry workspaces declare their parasitics (design.spef) instead of
     # producing them with RCX: without an RCX step in the flow, every corner
     # reads the declared SPEF.
@@ -184,9 +185,9 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
         keep = False
         try:
             ecc_module.init_config(
-                db_config=workspace.config.get("db"),
-                output_dir=step.data.dir,
-                feature_dir=step.feature.dir,
+                db_config=workspace.config.get("db") or "",
+                output_dir=step.data.dir or "",
+                feature_dir=step.feature.dir or "",
             )
 
             db_path = step.input.db or ""
@@ -228,12 +229,12 @@ def create_db_engine(workspace: Workspace, step: WorkspaceStep) -> ECCToolsModul
         keep = False
         try:
             ecc_module.init_config(
-                db_config=workspace.config.get("db"),
-                output_dir=step.data.dir,
-                feature_dir=step.feature.dir,
+                db_config=workspace.config.get("db") or "",
+                output_dir=step.data.dir or "",
+                feature_dir=step.feature.dir or "",
             )
 
-            ecc_module.init_techlef(workspace.pdk.tech)
+            ecc_module.init_techlef(workspace.pdk.tech or "")
             ecc_module.init_lefs(workspace.pdk.lefs)
 
             def_path = _existing_input_path(step.input.def_)
@@ -362,7 +363,7 @@ def run_sta_without_spef(
                 feature_dir=step.feature.dir or "",
             )
 
-        ecc_module.init_techlef(workspace.pdk.tech)
+        ecc_module.init_techlef(workspace.pdk.tech or "")
         ecc_module.init_lefs(workspace.pdk.lefs)
         ecc_module.read_verilog(
             verilog=netlist_path,
@@ -741,7 +742,7 @@ def run_filler(
         reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
         ecc_module.gds_save(
             output_path=step.output.gds or "",
-            layer_map_path=workspace.pdk.mapping_file,
+            layer_map_path=workspace.pdk.mapping_file or "",
         )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
@@ -869,7 +870,7 @@ def run_harden(
             config=sta_config,
             output_dir=(step.data.steps or {}).get(StepEnum.STA.value, ""),
             lib_paths=signoff_item["liberty_files"],
-            sdc_path=workspace.pdk.sdc,
+            sdc_path=workspace.pdk.sdc or "",
             spef_path=signoff_item["spef_file"],
             design_name=workspace.design.name,
         )

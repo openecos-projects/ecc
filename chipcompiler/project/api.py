@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from chipcompiler.project.manifest import (
+    MANIFEST_FILENAME,
     ManifestError,
     load_manifest,
     validate_manifest_range,
@@ -49,7 +50,7 @@ def discover_project_manifest(directory: str | Path) -> tuple[Path, dict] | None
     if not current.is_dir():
         current = current.parent
     for project in (current, *current.parents):
-        if (project / "project.json").exists() or (project / "project.json").is_symlink():
+        if (project / MANIFEST_FILENAME).exists() or (project / MANIFEST_FILENAME).is_symlink():
             return project, load_project_manifest(project)
     return None
 
@@ -73,11 +74,11 @@ def create_project_manifest(
         mpc=mpc,
     )
     if not write_manifest_if_absent(str(project), document):
-        raise ManifestError(f"Project Manifest already exists: {project / 'project.json'}")
+        raise ManifestError(f"Project Manifest already exists: {project / MANIFEST_FILENAME}")
     try:
         return load_project_manifest(project)
     except Exception:
-        (project / "project.json").unlink(missing_ok=True)
+        (project / MANIFEST_FILENAME).unlink(missing_ok=True)
         raise
 
 
@@ -85,7 +86,7 @@ def mutate_project_manifest(project_dir: str | Path, mutation: dict) -> dict:
     project = Path(project_dir).expanduser().resolve()
     load_project_manifest(project)
 
-    apply = _project_manifest_mutator(project, mutation)
+    apply = project_manifest_mutator(project, mutation)
 
     if not update_manifest(str(project), apply):
         raise ManifestError("Project Manifest update failed")
@@ -141,7 +142,7 @@ def repoint_generation_pointers(
     )
 
 
-def _project_manifest_mutator(project: Path, mutation: dict):
+def project_manifest_mutator(project: Path, mutation: dict):
     def apply(document: dict) -> None:
         kind = mutation.get("type")
         if kind == "register_workspace":
@@ -173,8 +174,8 @@ def create_project_workspace(
     expected_project_id: str | None = None,
     now: str | None = None,
 ):
-    from chipcompiler.engine.reconcile import _workspace_lock
     from chipcompiler.engine.workspace_lifecycle import _create_workspace_from_spec
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
     project = Path(project_dir).expanduser().resolve()
     target = Path(target_directory).expanduser().resolve()
@@ -183,7 +184,7 @@ def create_project_workspace(
     except ValueError as exc:
         raise ManifestError("Workspace must be inside the Project root") from exc
     existed = target.exists()
-    with _workspace_lock(target), manifest_lock(project):
+    with workspace_lock(target), manifest_lock(project):
         manifest = load_project_manifest(project)
         if expected_project_id is not None and manifest["project_id"] != expected_project_id:
             raise ManifestError("Project identity does not match")
@@ -205,7 +206,7 @@ def create_project_workspace(
                 "updated_at": now,
                 "parameter_patch": derived.get("parameter_patch", {}),
             }
-            if not update_manifest_locked(project, _project_manifest_mutator(project, mutation)):
+            if not update_manifest_locked(project, project_manifest_mutator(project, mutation)):
                 raise ManifestError("Project Manifest update failed")
         except Exception:
             if not existed:

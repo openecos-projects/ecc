@@ -14,6 +14,7 @@ from chipcompiler.cli.core.inputs import (
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
+from chipcompiler.project.manifest import CONFIG_FILENAME
 
 
 def init(command_input: InitInput, ctx: CommandContext) -> CommandResult:
@@ -87,7 +88,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             [
                 error_record(
                     "missing_config",
-                    path=os.path.join(ctx.project_dir, "ecc.toml"),
+                    path=os.path.join(ctx.project_dir, CONFIG_FILENAME),
                     inspect=disclosure_cmd("ecc check", project),
                 )
             ]
@@ -471,7 +472,7 @@ def import_workspace(command_input: WorkspaceImportInput, ctx: CommandContext) -
             [
                 error_record(
                     "missing_config",
-                    path=os.path.join(ctx.project_dir, "ecc.toml"),
+                    path=os.path.join(ctx.project_dir, CONFIG_FILENAME),
                 )
             ]
         )
@@ -559,7 +560,7 @@ def derive_workspace(command_input, ctx: CommandContext) -> CommandResult:
     from chipcompiler.cli.project.run_prepare import invalid_workspace_name
     from chipcompiler.engine.workspace_derive import derive_workspace as derive
     from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
-    from chipcompiler.project.api import _project_manifest_mutator
+    from chipcompiler.project.api import project_manifest_mutator
     from chipcompiler.project.manifest import load_manifest
     from chipcompiler.project.manifest_write import manifest_lock, update_manifest_locked
 
@@ -598,7 +599,7 @@ def derive_workspace(command_input, ctx: CommandContext) -> CommandResult:
                     **({"source_step": command_input.from_step} if command_input.from_step else {}),
                 },
             }
-            if not update_manifest_locked(project, _project_manifest_mutator(project, mutation)):
+            if not update_manifest_locked(project, project_manifest_mutator(project, mutation)):
                 raise OSError("Project Manifest update failed")
     except BlockingIOError:
         return CommandResult.err([error_record("workspace_busy")], exit_code=20)
@@ -803,7 +804,7 @@ def _run_project(
                 {
                     "kind": "error",
                     "error": "missing_config",
-                    "path": os.path.join(project_dir, "ecc.toml"),
+                    "path": os.path.join(project_dir, CONFIG_FILENAME),
                 }
             ]
         )

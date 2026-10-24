@@ -9,8 +9,8 @@ from chipcompiler.engine import create_workspace_from_spec, update_workspace_fro
 from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
 from chipcompiler.engine.workspace_derive import derive_workspace
 from chipcompiler.engine.workspace_lifecycle import (
-    _workspace_command_fingerprint,
-    _write_workspace_command,
+    workspace_command_fingerprint,
+    write_workspace_command,
 )
 from chipcompiler.project import load_project_manifest, mutate_project_manifest
 
@@ -53,10 +53,10 @@ def test_reconcile_registers_a_proven_create_orphan(tmp_path, minimal_ics55_pdk_
     snapshot = read_engineering_snapshot_from_directory(target)
     request = {"workspace": "created", "from": None, "to": None, "parameters": []}
     command_id = "create-crash-1"
-    _write_workspace_command(
+    write_workspace_command(
         target,
         command_id,
-        _workspace_command_fingerprint("create", request, None, None),
+        workspace_command_fingerprint("create", request, None, None),
         snapshot["workspaceId"],
         snapshot["workspaceRevision"],
         metadata={

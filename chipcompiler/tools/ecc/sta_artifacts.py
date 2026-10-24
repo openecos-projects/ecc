@@ -6,6 +6,7 @@ iSTA writes timing reports to ``<work_dir>/timing_reporter`` and the SDF to
 them to the per-corner report/feature directories.
 """
 
+import os
 import shutil
 from pathlib import Path
 
@@ -52,9 +53,9 @@ def discard_sta_run_outputs(work_dir, report_dir, feature_dir, modes) -> None:
 
 
 def publish_sta_artifacts(
-    work_dir: str | Path,
-    report_dir: str | Path,
-    feature_dir: str | Path,
+    work_dir: str | os.PathLike[str],
+    report_dir: str | os.PathLike[str],
+    feature_dir: str | os.PathLike[str],
     modes: tuple[str, ...],
 ) -> None:
     """Validate iSTA outputs under work_dir and copy them to the corner directories."""

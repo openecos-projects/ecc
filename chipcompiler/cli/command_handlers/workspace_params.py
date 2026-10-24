@@ -199,10 +199,10 @@ def _mutate(
 ) -> CommandResult:
     from chipcompiler.data import refresh_workspace_config, save_parameter
     from chipcompiler.engine import EngineFlow, rerun
-    from chipcompiler.engine.reconcile import _workspace_lock
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
     try:
-        with _workspace_lock(Path(ctx.run_dir)):
+        with workspace_lock(Path(ctx.run_dir)):
             workspace, workspace_error = _load_workspace(ctx)
             if workspace_error is not None:
                 return workspace_error

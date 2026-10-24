@@ -11,6 +11,10 @@ from chipcompiler.utility.path import optional_path, path_list
 logger = logging.getLogger(__name__)
 
 
+#: Default ABC output load (fF) when the PDK does not declare one.
+DEFAULT_ABC_LOAD = 0.015
+
+
 @dataclass
 class PDK:
     """
@@ -40,7 +44,7 @@ class PDK:
     tie_low_port: str = ""
     dont_use: list[str] = field(default_factory=list[str])  # don't use cell list
     abc_driver_cell: str = ""  # ABC driving cell
-    abc_load: float = 0.015  # ABC output load (fF)
+    abc_load: float = DEFAULT_ABC_LOAD  # ABC output load (fF)
     sdc_load: float = 0.0  # output load (pF) for generated SDC; 0 omits set_load
 
     def __post_init__(self) -> None:
@@ -222,7 +226,7 @@ def _pdk_from_external_config(data: dict, pdk_name: str = "") -> PDK:
         tie_low_port=str(data.get("tie_low_port", "")),
         dont_use=data.get("dont_use", []),
         abc_driver_cell=str(data.get("abc_driver_cell", "")),
-        abc_load=float(data.get("abc_load", 0.015)),
+        abc_load=float(data.get("abc_load", DEFAULT_ABC_LOAD)),
         sdc_load=float(data.get("sdc_load", 0.0)),
     )
 

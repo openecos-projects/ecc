@@ -5,6 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from chipcompiler.project.manifest import CONFIG_FILENAME
 from chipcompiler.project.manifest import load_manifest as load_project
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
 from ecc_experience.benchmark.manifest import (
@@ -184,7 +185,7 @@ def create_campaign(spec: str | Path, output: str | Path) -> dict:
                             code="experience_campaign_creation_failed",
                         )
                     if arguments[0] == "init":
-                        (project / "ecc.toml").unlink()
+                        (project / CONFIG_FILENAME).unlink()
                 current = read_workspace_observation(workspace)
                 if (current.source.snapshot_digest, current.inputs) != (
                     observation.source.snapshot_digest,

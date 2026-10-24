@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from chipcompiler.data import PDK, create_workspace, get_pdk, load_workspace
+from chipcompiler.data import DEFAULT_ABC_LOAD, PDK, create_workspace, get_pdk, load_workspace
 from chipcompiler.data.parameter_schema import (
     build_backend_overrides,
     build_config_overrides,
@@ -118,10 +118,10 @@ def create_workspace_from_spec(
     preserved_parameters: Collection[str] = (),
 ):
     """Create a Workspace Spec target while serializing sibling creators."""
-    from chipcompiler.engine.reconcile import _workspace_lock
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
     target = Path(target_directory).expanduser().resolve()
-    with _workspace_lock(target):
+    with workspace_lock(target):
         return _create_workspace_from_spec(
             target,
             spec,
@@ -141,9 +141,9 @@ def _create_workspace_from_spec(
     config_override_parameters: Collection[str] | None = None,
 ):
     target = Path(target_directory).expanduser().resolve()
-    fingerprint = _workspace_command_fingerprint("create", spec, bindings)
+    fingerprint = workspace_command_fingerprint("create", spec, bindings)
     if target.exists():
-        if command_id and _command_retry_matches(target, command_id, fingerprint):
+        if command_id and command_retry_matches(target, command_id, fingerprint):
             return _load_committed_workspace(target)
         raise WorkspaceLifecycleError("workspace_exists", f"Workspace already exists: {target}")
     validation = validate_workspace_spec(
@@ -246,7 +246,7 @@ def _create_workspace_from_spec(
         if not save_parameter(workspace.parameters):
             raise OSError(f"Failed to persist input mode: {workspace.parameters.path}")
         snapshot = create_engineering_snapshot(workspace)
-        _write_workspace_command(
+        write_workspace_command(
             target,
             command_id,
             fingerprint,
@@ -277,9 +277,9 @@ def update_workspace_from_spec(
     target = Path(target_directory).expanduser().resolve()
     if not target.is_dir():
         raise WorkspaceLifecycleError("workspace_missing", f"Workspace not found: {target}")
-    from chipcompiler.engine.reconcile import _workspace_lock
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
-    with _workspace_lock(target, blocking=blocking):
+    with workspace_lock(target, blocking=blocking):
         return _update_workspace_from_spec(
             target,
             expected_workspace_revision,
@@ -309,10 +309,10 @@ def _update_workspace_from_spec(
     # Crash recovery: a hard-killed update can strand its staging sibling; the
     # workspace lock held by the caller guarantees any leftover is orphaned.
     _sweep_staging_siblings(target)
-    fingerprint = _workspace_command_fingerprint(
+    fingerprint = workspace_command_fingerprint(
         "update", spec, bindings, expected_workspace_revision
     )
-    if command_id and _command_retry_matches(target, command_id, fingerprint):
+    if command_id and command_retry_matches(target, command_id, fingerprint):
         # An idempotent retry re-reads the committed generation; the backup
         # retained by the original run is neither recreated nor re-reported.
         return WorkspaceUpdateResult(workspace=_load_committed_workspace(target))
@@ -367,7 +367,7 @@ def _update_workspace_from_spec(
             cause="workspace.updated",
         )
         _copy_workspace_commands(target, staging)
-        _write_workspace_command(
+        write_workspace_command(
             staging,
             command_id,
             fingerprint,
@@ -383,11 +383,11 @@ def _update_workspace_from_spec(
             },
         )
         _rewrite_workspace_paths(staging, target)
-        _exchange_directories(target, staging)
+        exchange_directories(target, staging)
         try:
             workspace = _load_committed_workspace(target)
         except Exception:
-            _exchange_directories(target, staging)
+            exchange_directories(target, staging)
             raise
         if retain_backup:
             # The exchange moved the OLD tree onto the staging path and the
@@ -603,7 +603,7 @@ def _bound_pdk(spec: dict, binding: dict) -> tuple[PDK | str, str, dict | None]:
             libs=by_role.get("liberty", []),
             mapping_file=(by_role.get("mapping") or [None])[0],
             dont_use=overrides.get("dont_use", []),
-            abc_load=float(overrides.get("abc_load", 0.015)),
+            abc_load=float(overrides.get("abc_load", DEFAULT_ABC_LOAD)),
         ),
         "",
         None,
@@ -649,7 +649,7 @@ def _remove_refresh_staging(staging: Path) -> None:
         Path(f"{staging}.lock").unlink(missing_ok=True)
 
 
-def _workspace_command_fingerprint(
+def workspace_command_fingerprint(
     kind: str,
     spec: object,
     bindings: object,
@@ -679,7 +679,7 @@ def _workspace_commands(path: Path) -> dict[str, Any]:
     return payload
 
 
-def _command_retry_matches(path: Path, command_id: str, fingerprint: str) -> bool:
+def command_retry_matches(path: Path, command_id: str, fingerprint: str) -> bool:
     record = _workspace_commands(path)["commands"].get(command_id)
     if record is None:
         return False
@@ -690,7 +690,7 @@ def _command_retry_matches(path: Path, command_id: str, fingerprint: str) -> boo
     return True
 
 
-def _write_workspace_command(
+def write_workspace_command(
     path: Path,
     command_id: str,
     fingerprint: str,
@@ -748,7 +748,7 @@ def _replace_string_prefix(value: Any, source: str, target: str) -> Any:
     return value
 
 
-def _exchange_directories(left: Path, right: Path) -> None:
+def exchange_directories(left: Path, right: Path) -> None:
     libc = ctypes.CDLL(None, use_errno=True)
     renameat2 = getattr(libc, "renameat2", None)
     if os.name == "posix" and renameat2 is not None:

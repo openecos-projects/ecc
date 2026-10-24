@@ -11,7 +11,6 @@ from ecc_tools_bin import ecc_py
 from chipcompiler.data import OriginDesign, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.tools.ecc import metrics as ecc_metrics
 from chipcompiler.tools.ecc import plot as ecc_plot
-from chipcompiler.tools.ecc import service as ecc_service
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
 from chipcompiler.tools.ecc.metrics import (
     build_metrics_cts,
@@ -109,17 +108,6 @@ class FakeEcc:
             return True
 
         return record_call
-
-
-def _assert_no_path_values(value):
-    if isinstance(value, Path):
-        raise AssertionError(f"native ECC boundary received Path: {value!r}")
-    if isinstance(value, dict):
-        for item in value.values():
-            _assert_no_path_values(item)
-    elif isinstance(value, (list, tuple, set)):
-        for item in value:
-            _assert_no_path_values(item)
 
 
 def test_ecc_tools_module_imports_installed_native_extension():
@@ -243,7 +231,7 @@ def test_geometry_snapshot_save_passes_output_directory():
     assert module.geometry_snapshot_save(Path("/tmp/geometry")) is True
 
     assert module.ecc.calls == [
-        ("geometry_snapshot_save", (), {"output_dir": "/tmp/geometry"}),
+        ("geometry_snapshot_save", (), {"output_dir": Path("/tmp/geometry")}),
     ]
 
 
@@ -254,7 +242,7 @@ def test_geometry_snapshot_save_includes_drc_only_when_requested():
     assert module.geometry_snapshot_save(Path("/tmp/geometry"), include_drc=True) is True
 
     assert module.ecc.calls == [
-        ("geometry_snapshot_save", (), {"output_dir": "/tmp/geometry", "include_drc": True}),
+        ("geometry_snapshot_save", (), {"output_dir": Path("/tmp/geometry"), "include_drc": True}),
     ]
 
 
@@ -273,7 +261,7 @@ def test_geometry_snapshot_save_passes_thumbnail_path():
         (
             "geometry_snapshot_save",
             (),
-            {"output_dir": "/tmp/geometry", "thumbnail_path": "/tmp/geometry.png"},
+            {"output_dir": Path("/tmp/geometry"), "thumbnail_path": Path("/tmp/geometry.png")},
         ),
     ]
 
@@ -293,13 +281,13 @@ def test_geometry_edit_session_wrappers_forward_instance_name():
         (
             "geometry_session_snapshot_save",
             (),
-            {"output_dir": "/tmp/session-geometry"},
+            {"output_dir": Path("/tmp/session-geometry")},
         ),
         ("reset_geometry_session", (), {}),
     ]
 
 
-def test_ecc_binding_wrappers_stringify_path_arguments():
+def test_ecc_binding_wrappers_forward_path_arguments():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
@@ -326,34 +314,34 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
         (
             "db_init",
             {
-                "config_path": "/ws/config/db.json",
-                "output_path": "/ws/output",
-                "feature_path": "/ws/feature",
+                "config_path": Path("/ws/config/db.json"),
+                "output_path": Path("/ws/output"),
+                "feature_path": Path("/ws/feature"),
             },
         ),
         (
             "db_init",
             {
-                "output_path": "/ws/output",
-                "feature_path": "/ws/feature",
+                "output_path": Path("/ws/output"),
+                "feature_path": Path("/ws/feature"),
             },
         ),
-        ("tech_lef_init", "/pdk/tech.lef"),
-        ("lef_init", {"lef_paths": ["/pdk/std.lef"]}),
-        ("idb_init", "/ws/config/db.json"),
+        ("tech_lef_init", Path("/pdk/tech.lef")),
+        ("lef_init", {"lef_paths": [Path("/pdk/std.lef")]}),
+        ("idb_init", Path("/ws/config/db.json")),
         (
             "db_init",
             {
-                "config_path": "/ws/config/db.json",
-                "output_path": "/ws/out",
-                "lib_paths": ["/pdk/lib.lib"],
-                "sdc_path": "/ws/design.sdc",
+                "config_path": Path("/ws/config/db.json"),
+                "output_path": Path("/ws/out"),
+                "lib_paths": [Path("/pdk/lib.lib")],
+                "sdc_path": Path("/ws/design.sdc"),
             },
         ),
     ]
 
 
-def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
+def test_ecc_runtime_wrappers_forward_path_arguments(tmp_path):
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
     timing_output = tmp_path / "output" / "gcd.lib"
@@ -413,13 +401,12 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.run_lvs()
     module.destroy_lvs()
 
-    _assert_no_path_values(module.ecc.calls)
     assert (
         "gds_save",
         (),
         {
-            "gds_name": "/ws/output/gcd.gds.gz",
-            "layer_map_path": "/pdk/ics55.layermap",
+            "gds_name": Path("/ws/output/gcd.gds.gz"),
+            "layer_map_path": Path("/pdk/ics55.layermap"),
         },
     ) in module.ecc.calls
     assert timing_output.read_text(encoding="utf-8") == module.ecc.generated_timing_lib_contents
@@ -443,7 +430,7 @@ def test_gds_save_requires_layer_map():
     module.ecc = FakeEcc()
 
     with pytest.raises(ValueError, match="set pdk.mapping_file"):
-        module.gds_save(Path("/ws/output/gcd.gds.gz"), None)
+        module.gds_save(Path("/ws/output/gcd.gds.gz"), "")
 
     assert module.ecc.calls == []
 
@@ -2383,59 +2370,6 @@ def test_split_floorplan_subflows_are_independent(tmp_path, step_name, expected)
     EccSubFlow(workspace, step)
 
     assert [item["name"] for item in step.subflow.steps] == expected
-
-
-def test_ecc_step_info_stringifies_path_payloads(tmp_path, monkeypatch):
-    workspace = Workspace(
-        directory=tmp_path,
-        design=OriginDesign(name="gcd", top_module="gcd"),
-        config={StepEnum.PLACEMENT.value: tmp_path / "config" / "pl.json"},
-    )
-    step = build_step(
-        workspace=workspace,
-        step_name=StepEnum.PLACEMENT.value,
-        input_def=tmp_path / "input.def",
-        input_verilog=tmp_path / "input.v",
-    )
-    monkeypatch.setattr(
-        ecc_service,
-        "build_step_metrics",
-        lambda workspace, step: SimpleNamespace(path=tmp_path / "metrics.json"),
-    )
-
-    assert ecc_service.get_step_info(workspace, step, "views") == {
-        "image": str(step.output.image),
-        "json": str(step.output.json),
-        "metrics": str(tmp_path / "metrics.json"),
-        "information": {},
-    }
-    assert ecc_service.get_step_info(workspace, step, "layout") == {
-        "image": str(step.output.image),
-        "json": str(step.output.json),
-    }
-    assert ecc_service.get_step_info(workspace, step, "metrics") == {
-        "metrics": str(tmp_path / "metrics.json"),
-    }
-    assert ecc_service.get_step_info(workspace, step, "subflow") == {"path": str(step.subflow.path)}
-    assert ecc_service.get_step_info(workspace, step, "config") == {
-        "config": str(workspace.config[StepEnum.PLACEMENT.value]),
-    }
-    assert ecc_service.get_step_info(workspace, step, "analysis") == {
-        "metrics": str(step.analysis.metrics),
-        "qor_metrics": str(step.analysis.qor_metrics),
-        "qor_summary": str(step.analysis.qor_summary),
-        "qor_hotspots": str(step.analysis.qor_hotspots),
-        "statis": str(step.analysis.statis_csv),
-        "data summary": str(step.feature.db),
-        "step feature": str(step.feature.step),
-        "step report": str(step.report.db),
-    }
-    assert ecc_service.get_step_info(workspace, step, "sta") == {
-        "report_root": str(step.report.dir),
-        "feature_root": str(step.feature.dir),
-        "qor_summary_root": str(step.feature.dir),
-        "timing_paths_root": str(step.feature.dir),
-    }
 
 
 def test_ecc_builder_uses_explicit_step_directory(tmp_path):
