@@ -80,7 +80,6 @@ def test_agent_engine_blocks_the_step_after_a_blocked_prerequisite(tmp_path, mon
         "tool": "ecc",
         "category": "PNR",
         "state": "Unstart",
-        "checklist": [],
         "checklist_status": {
             "status": "blocked",
             "blocked": True,
