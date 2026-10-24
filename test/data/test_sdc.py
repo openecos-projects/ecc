@@ -12,6 +12,7 @@ from chipcompiler.data.workspace.sdc import create_default_sdc, refresh_generate
 def test_generated_sdc_refresh_uses_current_parameters_and_load(tmp_path, clock):
     path = tmp_path / "constraints.sdc"
     workspace = Workspace(
+        directory=tmp_path,
         pdk=PDK(name="custom", sdc=path, sdc_load=0.4),
         parameters=Parameters(data={"clock": clock, "frequency_max": 100, "max_fanout": 16}),
     )
