@@ -177,49 +177,61 @@ def test_create_workspace_rejects_existing_non_empty_directory(tmp_path):
 EXPECTED_ICS55_DEFAULT_SDC = """\
 # ECC-generated SDC file
 
-set clk_name          clk
-set clk_port_name     clk
-set clk_freq_mhz      100
-set clk_period        [expr 1000.0 / $clk_freq_mhz]
+# -------------------------------------------------
+# SDC version & units
+# -------------------------------------------------
+set sdc_version 2.1
+set_units -time ns -resistance kOhm -capacitance pF -voltage V -current mA
 
 # -------------------------------------------------
 # Clock definition
 # -------------------------------------------------
+set clk_name      clk
+set clk_port_name clk
+set clk_freq_mhz  100
+set clk_period    [expr {1000.0 / $clk_freq_mhz}]
+
 set clk_port [get_ports $clk_port_name]
 create_clock -name $clk_name -period $clk_period $clk_port
-set_propagated_clock [get_clocks $clk_name]
+set_propagated_clock [all_clocks]
+
+set_clock_latency -source 0.5 [get_clocks $clk_name]
 
 # -------------------------------------------------
 # IO Delay
 # -------------------------------------------------
-set clk_input          [get_ports $clk_port_name]
-set all_inputs_wo_clk  [remove_from_collection [all_inputs] $clk_input]
-
-set_input_delay  0  -clock [get_clocks $clk_name] $all_inputs_wo_clk
-set_output_delay 0 -clock [get_clocks $clk_name] [all_outputs]
+set data_inputs [remove_from_collection [all_inputs] $clk_port]
+set_input_delay -max 3.0 -clock [get_clocks $clk_name] $data_inputs
+set_input_delay -min 1.0 -clock [get_clocks $clk_name] $data_inputs
+set_output_delay -max 1.0 -clock [get_clocks $clk_name] [all_outputs]
 
 # -------------------------------------------------
 # Output load (pF) - ics55 pdk
 # -------------------------------------------------
-set_load 0.001 [all_outputs]
+set_load 0.2 [all_outputs]
 
 # -------------------------------------------------
 # Clock uncertainty & transition
 # -------------------------------------------------
-set clk_setup_uncertainty [expr $clk_period * 0.015]            ;# 1.5% of period
-set clk_hold_uncertainty  [expr $clk_period * 0.005]            ;# 0.5% of period
-set clk_transition        [expr min(0.15, $clk_period * 0.03)]  ;# 3%, cap 0.15ns
-set input_transition      [expr min(0.20, $clk_period * 0.05)]  ;# 5%, cap 0.20ns
-
-set_clock_uncertainty -setup $clk_setup_uncertainty [get_clocks $clk_name]
-set_clock_uncertainty -hold  $clk_hold_uncertainty  [get_clocks $clk_name]
-set_clock_transition  $clk_transition   [get_clocks $clk_name]
-set_input_transition  $input_transition $all_inputs_wo_clk
+set_clock_uncertainty -setup 0.20 [all_clocks]
+set_clock_uncertainty -hold  0.25 [get_clocks $clk_name]
+set_clock_transition        0.15 [get_clocks $clk_name]
+set_input_transition        0.20 $data_inputs
 
 # -------------------------------------------------
 # Design-level constraints
 # -------------------------------------------------
-set_max_fanout 32 [current_design]
+set_max_fanout      32   [current_design]
+set_max_transition [expr {$clk_period * 0.17}] -clock_path [get_clocks $clk_name]
+set_max_transition [expr {$clk_period * 0.34}] -data_path [get_clocks $clk_name]
+set_max_capacitance 0.15 [current_design]
+
+# -------------------------------------------------
+# Timing derate (OCV)
+# -------------------------------------------------
+set_timing_derate -early 0.95 -clock -delay_corner [all_delay_corners]
+set_timing_derate -late  1.10 -clock -delay_corner [all_delay_corners]
+set_timing_derate -late  1.10 -data  -delay_corner [all_delay_corners]
 """
 
 
@@ -247,45 +259,57 @@ def test_create_workspace_generates_default_sdc_from_parameters(
 EXPECTED_ICS55_VIRTUAL_CLOCK_SDC = """\
 # ECC-generated SDC file
 
-set clk_name          __VIRTUAL_CLK__
-set clk_freq_mhz      100
-set clk_period        [expr 1000.0 / $clk_freq_mhz]
+# -------------------------------------------------
+# SDC version & units
+# -------------------------------------------------
+set sdc_version 2.1
+set_units -time ns -resistance kOhm -capacitance pF -voltage V -current mA
 
 # -------------------------------------------------
 # Clock definition
 # -------------------------------------------------
+set clk_name      __VIRTUAL_CLK__
+set clk_freq_mhz  100
+set clk_period    [expr {1000.0 / $clk_freq_mhz}]
+
 create_clock -name $clk_name -period $clk_period
+set_clock_latency -source 0.5 [get_clocks $clk_name]
 
 # -------------------------------------------------
 # IO Delay
 # -------------------------------------------------
-set all_inputs_wo_clk  [all_inputs]
-
-set_input_delay  0  -clock [get_clocks $clk_name] $all_inputs_wo_clk
-set_output_delay 0 -clock [get_clocks $clk_name] [all_outputs]
+set data_inputs [all_inputs]
+set_input_delay -max 3.0 -clock [get_clocks $clk_name] $data_inputs
+set_input_delay -min 1.0 -clock [get_clocks $clk_name] $data_inputs
+set_output_delay -max 1.0 -clock [get_clocks $clk_name] [all_outputs]
 
 # -------------------------------------------------
 # Output load (pF) - ics55 pdk
 # -------------------------------------------------
-set_load 0.001 [all_outputs]
+set_load 0.2 [all_outputs]
 
 # -------------------------------------------------
 # Clock uncertainty & transition
 # -------------------------------------------------
-set clk_setup_uncertainty [expr $clk_period * 0.015]            ;# 1.5% of period
-set clk_hold_uncertainty  [expr $clk_period * 0.005]            ;# 0.5% of period
-set clk_transition        [expr min(0.15, $clk_period * 0.03)]  ;# 3%, cap 0.15ns
-set input_transition      [expr min(0.20, $clk_period * 0.05)]  ;# 5%, cap 0.20ns
-
-set_clock_uncertainty -setup $clk_setup_uncertainty [get_clocks $clk_name]
-set_clock_uncertainty -hold  $clk_hold_uncertainty  [get_clocks $clk_name]
-set_clock_transition  $clk_transition   [get_clocks $clk_name]
-set_input_transition  $input_transition $all_inputs_wo_clk
+set_clock_uncertainty -setup 0.20 [all_clocks]
+set_clock_uncertainty -hold  0.25 [get_clocks $clk_name]
+set_clock_transition        0.15 [get_clocks $clk_name]
+set_input_transition        0.20 $data_inputs
 
 # -------------------------------------------------
 # Design-level constraints
 # -------------------------------------------------
-set_max_fanout 32 [current_design]
+set_max_fanout      32   [current_design]
+set_max_transition [expr {$clk_period * 0.17}] -clock_path [get_clocks $clk_name]
+set_max_transition [expr {$clk_period * 0.34}] -data_path [get_clocks $clk_name]
+set_max_capacitance 0.15 [current_design]
+
+# -------------------------------------------------
+# Timing derate (OCV)
+# -------------------------------------------------
+set_timing_derate -early 0.95 -clock -delay_corner [all_delay_corners]
+set_timing_derate -late  1.10 -clock -delay_corner [all_delay_corners]
+set_timing_derate -late  1.10 -data  -delay_corner [all_delay_corners]
 """
 
 
@@ -1331,7 +1355,7 @@ def test_refresh_workspace_config_updates_generated_sdc_frequency(
 
     refresh_workspace_config(workspace)
 
-    assert "set clk_freq_mhz      250.0" in workspace.pdk.sdc.read_text(encoding="utf-8")
+    assert "set clk_freq_mhz  250.0" in workspace.pdk.sdc.read_text(encoding="utf-8")
 
 
 def test_refresh_workspace_config_preserves_external_sdc(

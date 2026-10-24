@@ -11,50 +11,56 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from chipcompiler.data import Workspace
 
-_SDC_HEAD_CLOCK = """\
+_SDC_HEADER = """\
 # ECC-generated SDC file
 
-set clk_name          {clock}
-set clk_port_name     {clock}
-set clk_freq_mhz      {freq_mhz}
-set clk_period        [expr 1000.0 / $clk_freq_mhz]
+# -------------------------------------------------
+# SDC version & units
+# -------------------------------------------------
+set sdc_version 2.1
+set_units -time ns -resistance kOhm -capacitance pF -voltage V -current mA
 
 # -------------------------------------------------
 # Clock definition
 # -------------------------------------------------
+"""
+
+_SDC_HEAD_CLOCK = """\
+set clk_name      {clock}
+set clk_port_name {clock}
+set clk_freq_mhz  {freq_mhz}
+set clk_period    [expr {{1000.0 / $clk_freq_mhz}}]
+
 set clk_port [get_ports $clk_port_name]
 create_clock -name $clk_name -period $clk_period $clk_port
-set_propagated_clock [get_clocks $clk_name]
+set_propagated_clock [all_clocks]
+
+set_clock_latency -source 0.5 [get_clocks $clk_name]
 
 # -------------------------------------------------
 # IO Delay
 # -------------------------------------------------
-set clk_input          [get_ports $clk_port_name]
-set all_inputs_wo_clk  [remove_from_collection [all_inputs] $clk_input]
-
-set_input_delay  0  -clock [get_clocks $clk_name] $all_inputs_wo_clk
-set_output_delay 0 -clock [get_clocks $clk_name] [all_outputs]
+set data_inputs [remove_from_collection [all_inputs] $clk_port]
+set_input_delay -max 3.0 -clock [get_clocks $clk_name] $data_inputs
+set_input_delay -min 1.0 -clock [get_clocks $clk_name] $data_inputs
+set_output_delay -max 1.0 -clock [get_clocks $clk_name] [all_outputs]
 """
 
 _SDC_HEAD_VIRTUAL_CLOCK = """\
-# ECC-generated SDC file
+set clk_name      __VIRTUAL_CLK__
+set clk_freq_mhz  {freq_mhz}
+set clk_period    [expr {{1000.0 / $clk_freq_mhz}}]
 
-set clk_name          __VIRTUAL_CLK__
-set clk_freq_mhz      {freq_mhz}
-set clk_period        [expr 1000.0 / $clk_freq_mhz]
-
-# -------------------------------------------------
-# Clock definition
-# -------------------------------------------------
 create_clock -name $clk_name -period $clk_period
+set_clock_latency -source 0.5 [get_clocks $clk_name]
 
 # -------------------------------------------------
 # IO Delay
 # -------------------------------------------------
-set all_inputs_wo_clk  [all_inputs]
-
-set_input_delay  0  -clock [get_clocks $clk_name] $all_inputs_wo_clk
-set_output_delay 0 -clock [get_clocks $clk_name] [all_outputs]
+set data_inputs [all_inputs]
+set_input_delay -max 3.0 -clock [get_clocks $clk_name] $data_inputs
+set_input_delay -min 1.0 -clock [get_clocks $clk_name] $data_inputs
+set_output_delay -max 1.0 -clock [get_clocks $clk_name] [all_outputs]
 """
 
 _SDC_OUTPUT_LOAD = """
@@ -68,20 +74,25 @@ _SDC_TAIL = """
 # -------------------------------------------------
 # Clock uncertainty & transition
 # -------------------------------------------------
-set clk_setup_uncertainty [expr $clk_period * 0.015]            ;# 1.5% of period
-set clk_hold_uncertainty  [expr $clk_period * 0.005]            ;# 0.5% of period
-set clk_transition        [expr min(0.15, $clk_period * 0.03)]  ;# 3%, cap 0.15ns
-set input_transition      [expr min(0.20, $clk_period * 0.05)]  ;# 5%, cap 0.20ns
-
-set_clock_uncertainty -setup $clk_setup_uncertainty [get_clocks $clk_name]
-set_clock_uncertainty -hold  $clk_hold_uncertainty  [get_clocks $clk_name]
-set_clock_transition  $clk_transition   [get_clocks $clk_name]
-set_input_transition  $input_transition $all_inputs_wo_clk
+set_clock_uncertainty -setup 0.20 [all_clocks]
+set_clock_uncertainty -hold  0.25 [get_clocks $clk_name]
+set_clock_transition        0.15 [get_clocks $clk_name]
+set_input_transition        0.20 $data_inputs
 
 # -------------------------------------------------
 # Design-level constraints
 # -------------------------------------------------
-set_max_fanout {max_fanout} [current_design]
+set_max_fanout      {max_fanout}   [current_design]
+set_max_transition [expr {{$clk_period * 0.17}}] -clock_path [get_clocks $clk_name]
+set_max_transition [expr {{$clk_period * 0.34}}] -data_path [get_clocks $clk_name]
+set_max_capacitance 0.15 [current_design]
+
+# -------------------------------------------------
+# Timing derate (OCV)
+# -------------------------------------------------
+set_timing_derate -early 0.95 -clock -delay_corner [all_delay_corners]
+set_timing_derate -late  1.10 -clock -delay_corner [all_delay_corners]
+set_timing_derate -late  1.10 -data  -delay_corner [all_delay_corners]
 """
 
 
@@ -95,11 +106,12 @@ def create_default_sdc(workspace: "Workspace") -> None:
     parameters = workspace.parameters.data
     freq_mhz = parameters.get("frequency_max", 100)
 
+    sdc_content = _SDC_HEADER
     clock = parameters.get("clock", "")
     if clock:
-        sdc_content = _SDC_HEAD_CLOCK.format(clock=clock, freq_mhz=freq_mhz)
+        sdc_content += _SDC_HEAD_CLOCK.format(clock=clock, freq_mhz=freq_mhz)
     else:
-        sdc_content = _SDC_HEAD_VIRTUAL_CLOCK.format(freq_mhz=freq_mhz)
+        sdc_content += _SDC_HEAD_VIRTUAL_CLOCK.format(freq_mhz=freq_mhz)
 
     if workspace.pdk.sdc_load > 0:
         sdc_content += _SDC_OUTPUT_LOAD.format(
