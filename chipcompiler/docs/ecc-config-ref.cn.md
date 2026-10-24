@@ -474,6 +474,53 @@ buffering-only `diff_opt` 的兼容别名。
 输入 master 的 logits 进入 `discrete_gradient_topk`，设为 3 则执行 3 个连续 sizing
 step 后再投影到合法 cell 并切换到离散 sizing。
 
+`place.timing_action_gradient_mode` 选择独立 sizing 的梯度路径：默认
+`lut_action`，使用四方向 LUT action backward，并为每个被选中的实例提交一个
+合法的 size/VT neighbor；`off` 可回退到原路径。该模式目前要求
+`diff_sizing_continuous_steps=0`，使用 real-size 坐标，并以 S50 stage 的迭代数作为
+离散 action 轮数。该模式要求活动的 ECC-Tools 扩展导出与 cap table 同序的
+`flat_lib_pin_names`；只修改源文件不够，必须重新编译并加载与当前 Python
+版本匹配的扩展。该默认只作用于独立 `diff_sizing`；`diff_opt` 仍保持原路径。
+由于默认已开启，若要设置 `diff_sizing_continuous_steps>0`，需显式把
+`timing_action_gradient_mode` 设为 `off`。
+
+独立 `diff_sizing` 的 RC 来源由 `place.diff_sizing_timing_rc_mode` 控制，
+默认 `gr`，可选 `placement` 或 `gr`。`placement` 使用 placement 寄生参数，
+不创建 GR session，也不执行 RRR/terminal GR STA；`gr` 保持原有冻结 GR
+snapshot + RRR3 路径。显式设置 `place.timing_rc_mode` 也会作为该步骤的
+兼容入口，专用参数优先。
+
+`place.diff_sizing_optimization_flows` 可把一个 `diff_sizing` 步骤组织成
+有序的 action phase 链，每项格式为：
+
+```text
+[action, rounds, [wns, tns, slew, cap], selection_percent]
+```
+
+`action` 为 `quad`、`up` 或 `down`：`quad` 在四个方向中选一个，`up` 只在
+`size_up`/`vt_speedup` 中二选一，`down` 只在 `size_down`/`vt_slowdown` 中二选一。
+`selection_percent` 是每轮参与选择的 sizeable instance 百分比，范围 `(0, 100]`；
+例如 `1` 表示 1%，`0.1` 表示 0.1%。每个 phase 使用自己的轮数和系数，phase
+按列表顺序执行；stage iteration 会自动等于各 phase 轮数之和。设为 `null`
+（默认）时保持单个 `quad` phase。
+
+例如：
+
+```toml
+[params.place]
+diff_sizing_optimization_flows = [
+  ["up", 10, [500, 5, 1, 1], 1],
+  ["down", 1, [500, 5, 1, 1], 0.1],
+  ["quad", 10, [500, 5, 1, 1], 1],
+]
+```
+
+`place.timing_action_score_objective` 控制局部 LUT action 分数微分的对象，默认
+`loss`，即沿用 `place.diff_sizing_coefficients` 的加权目标；默认
+`timing_objective_lane=timing_slew_cap`，因此 WNS/TNS 与 cap/slew 权重都会
+进入目标；如需只比较 WNS/TNS，可设为 `timing_only`。`tns` 或 `wns` 可改为只对
+单一指标求导。该参数只影响 action 排序分数，不改变最终提交后的真实 STA 评估。
+
 `place.timing_coeff_growth_factor` 控制每次 GP density-weight 更新时，WNS/TNS
 系数共同乘上的倍率，默认 `1.01`，逐次增长；设为 `1.0` 表示不增长，设为 `0.99` 则逐次衰减。
 倍率必须为正的有限数值，累计增长最多为 placement 起始 WNS/TNS 系数的
@@ -484,10 +531,11 @@ step 后再投影到合法 cell 并切换到离散 sizing。
 `[params.place] timing_coeff_growth_factor = 1.0` 配置；已有 workspace 使用
 `ecc param set place.timing_coeff_growth_factor 1.0 --workspace NAME`。
 
-`place.timing_aggregation_mode` 控制 AAT/RAT 传播的聚合方式：默认 `smooth`
-使用 LSE，`hard` 使用 max/min。`place.timing_aggregation_tau_ps` 是正的
-平滑温度，默认 2.0 ps；越小越接近硬 max/min，越大梯度分配越平滑。
-这两个参数不改变最终 endpoint WNS 的硬 min 和 TNS 的负 slack 求和。
+`place.timing_aggregation_mode` 控制 AAT/RAT 传播以及 endpoint rise/fall 和
+timing-check 候选的聚合方式：默认 `smooth` 使用 LSE，`hard` 使用 max/min。
+`place.timing_aggregation_tau_ps` 是正的平滑温度，默认 2.0 ps；越小越接近硬
+max/min，越大梯度分配越平滑。`smooth` 下 endpoint WNS/TNS 使用聚合后的
+soft slack，并继续对 endpoint slack 做负值截断后求和；`hard` 保持硬 min/max。
 `place.timing_metric_scope` 控制哪些 max timing check 进入 placement 的
 WNS/TNS。默认 `setup_plus_recovery` 同时包含普通 setup 和异步 recovery；
 `setup_only` 用于显式对照并排除只有 recovery 的端点。两种模式下 STA

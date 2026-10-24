@@ -56,7 +56,7 @@ SCHEMAS = (
         "place.timing_objective_lane",
         "dreamplace",
         ("timing_objective_lane",),
-        "timing_only",
+        "timing_slew_cap",
         applies="placement",
         description="timing objective terms, timing_only | timing_slew_cap",
     ),

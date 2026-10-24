@@ -29,6 +29,7 @@ def test_diff_opt_parser_preserves_configured_flows_and_uses_placement_parasitic
     assert config["flow_kind"] == "placement"
     assert config["timing_rc_mode"] == "placement"
     assert config["timing_objective_lane"] == "timing_slew_cap"
+    assert config["timing_action_gradient_mode"] == "off"
     assert config["diff_optimization_flows"] == flows
 
 

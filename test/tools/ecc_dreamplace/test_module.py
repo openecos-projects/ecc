@@ -187,6 +187,7 @@ def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreampla
         "real_size_execution_mode": params.real_size_execution_mode,
         "real_size_warmup_steps": params.real_size_warmup_steps,
         "diff_sizing_continuous_steps": params.diff_sizing_continuous_steps,
+        "diff_sizing_timing_rc_mode": params.diff_sizing_timing_rc_mode,
         "timing_wns_coeff": params.timing_wns_coeff,
         "timing_tns_coeff": params.timing_tns_coeff,
         "timing_slew_weight": params.timing_slew_weight,
@@ -208,14 +209,16 @@ def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreampla
         "routability_opt_flag": params.routability_opt_flag,
         "with_sta": params.with_sta,
         "timing_objective_lane": params.timing_objective_lane,
+        "timing_action_gradient_mode": params.timing_action_gradient_mode,
     } == {
         "flow_kind": "sizing",
         "timing_rc_mode": "gr",
         "placement_sizing_mode": "size_only",
-        "sizing_parameterization": "logits",
+        "sizing_parameterization": "real_size",
         "real_size_execution_mode": "continuous_only",
         "real_size_warmup_steps": 0,
         "diff_sizing_continuous_steps": 0,
+        "diff_sizing_timing_rc_mode": "gr",
         "timing_wns_coeff": dreamplace_default_config["diff_sizing_coefficients"]["wns"],
         "timing_tns_coeff": dreamplace_default_config["diff_sizing_coefficients"]["tns"],
         "timing_slew_weight": dreamplace_default_config["diff_sizing_coefficients"]["slew"],
@@ -237,6 +240,7 @@ def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreampla
         "routability_opt_flag": 0,
         "with_sta": 1,
         "timing_objective_lane": "timing_slew_cap",
+        "timing_action_gradient_mode": "lut_action",
     }
     assert {
         key: params.global_place_stages[0][key]

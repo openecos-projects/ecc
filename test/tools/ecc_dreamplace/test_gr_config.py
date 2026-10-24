@@ -138,6 +138,7 @@ def test_gr_sizing_resolves_diff_sizing_continuous_steps(
         "enable_net_weighting": 0,
         "pin2pin_net_weighting": 0,
         "diff_sizing_continuous_steps": steps,
+        "timing_action_gradient_mode": "off",
     }
 
     resolved = resolve_flow_config(config, explicit_keys=tuple(config))
@@ -158,6 +159,70 @@ def test_gr_sizing_resolves_diff_sizing_continuous_steps(
         "real_size_warmup_steps": steps,
         "continuous_size_dynamics_mode": dynamics,
     }
+
+
+def test_gr_sizing_lut_action_uses_real_size_discrete_owner(
+    dreamplace_default_config,
+):
+    from dreamplace.flows.flow_config import resolve_flow_config
+
+    config = {
+        **dreamplace_default_config,
+        "flow_kind": "sizing",
+        "timing_rc_mode": "gr",
+        "place_io_engine": "ecc",
+        "timing_opt_enabled": 0,
+        "routability_opt_flag": 0,
+        "l_shape_routability_flag": 0,
+        "adjust_gpugr_area_flag": 0,
+        "gpugr_final_eval_flag": 0,
+        "enable_net_weighting": 0,
+        "pin2pin_net_weighting": 0,
+        "diff_sizing_continuous_steps": 0,
+        "timing_action_gradient_mode": "lut_action",
+    }
+
+    resolved = resolve_flow_config(config, explicit_keys=tuple(config))
+
+    assert {
+        key: resolved[key]
+        for key in (
+            "sizing_parameterization",
+            "real_size_execution_mode",
+            "real_size_warmup_steps",
+            "continuous_size_dynamics_mode",
+        )
+    } == {
+        "sizing_parameterization": "real_size",
+        "real_size_execution_mode": "continuous_only",
+        "real_size_warmup_steps": 0,
+        "continuous_size_dynamics_mode": "none",
+    }
+
+
+def test_gr_sizing_lut_action_rejects_continuous_warmup(
+    dreamplace_default_config,
+):
+    from dreamplace.flows.flow_config import resolve_flow_config
+
+    config = {
+        **dreamplace_default_config,
+        "flow_kind": "sizing",
+        "timing_rc_mode": "gr",
+        "place_io_engine": "ecc",
+        "timing_opt_enabled": 0,
+        "routability_opt_flag": 0,
+        "l_shape_routability_flag": 0,
+        "adjust_gpugr_area_flag": 0,
+        "gpugr_final_eval_flag": 0,
+        "enable_net_weighting": 0,
+        "pin2pin_net_weighting": 0,
+        "diff_sizing_continuous_steps": 3,
+        "timing_action_gradient_mode": "lut_action",
+    }
+
+    with pytest.raises(ValueError, match="diff_sizing_continuous_steps=0"):
+        resolve_flow_config(config, explicit_keys=tuple(config))
 
 
 @pytest.mark.parametrize("steps", [-1, 1001, 1.5, True])

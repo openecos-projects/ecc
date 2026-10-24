@@ -491,6 +491,62 @@ start directly from the input masters with logits and `discrete_gradient_topk`;
 set it to 3 to run three continuous sizing steps before switching to discrete
 sizing.
 
+`place.timing_action_gradient_mode` selects the standalone sizing gradient:
+`lut_action` is the default and runs the four-action LUT backward, committing
+one legal size/VT neighbor per selected instance; `off` restores the legacy
+path. The action path currently requires
+`diff_sizing_continuous_steps=0`; it uses real-size coordinates and the S50
+stage iteration count as its discrete round budget. It also requires the
+active ECC-Tools extension to export `flat_lib_pin_names` in cap-table order;
+changing the source alone is insufficient, and the extension must be rebuilt
+and loaded for the active Python version. This default applies only to
+standalone `diff_sizing`; `diff_opt` keeps its original path.
+Because the action path is now the default, setting
+`diff_sizing_continuous_steps>0` requires explicitly setting
+`timing_action_gradient_mode=off`.
+
+Standalone `diff_sizing` RC selection is controlled by
+`place.diff_sizing_timing_rc_mode`, which defaults to `gr` and accepts
+`placement` or `gr`. `placement` uses placement parasitics, creates no GR
+session, and skips RRR/terminal GR STA; `gr` keeps the frozen GR snapshot plus
+RRR3 path. An explicit `place.timing_rc_mode` is also accepted as a
+compatibility input, with the dedicated parameter taking precedence.
+
+`place.diff_sizing_optimization_flows` organizes one `diff_sizing` step into
+an ordered chain of action phases. Each entry is:
+
+```text
+[action, rounds, [wns, tns, slew, cap], selection_percent]
+```
+
+`action` is `quad`, `up`, or `down`. `quad` chooses one of the four directions;
+`up` chooses between `size_up` and `vt_speedup`; `down` chooses between
+`size_down` and `vt_slowdown`. `selection_percent` is the per-round percentage
+of sizeable instances, in `(0, 100]` (for example, `1` means 1% and `0.1`
+means 0.1%). Each phase uses its own round budget and coefficients, and phases
+run in list order. The stage iteration is set to the sum of phase rounds. The
+default `null` keeps one `quad` phase.
+
+Example:
+
+```toml
+[params.place]
+diff_sizing_optimization_flows = [
+  ["up", 10, [500, 5, 1, 1], 1],
+  ["down", 1, [500, 5, 1, 1], 0.1],
+  ["quad", 10, [500, 5, 1, 1], 1],
+]
+```
+
+`place.timing_action_score_objective` selects what the local LUT action score
+differentiates. The default `loss` uses the weighted objective from
+`place.diff_sizing_coefficients`; with the default
+`timing_objective_lane=timing_slew_cap`, the WNS/TNS and cap/slew weights all
+enter the objective. Use `timing_only` to compare WNS/TNS alone. `tns` or `wns`
+differentiates only that
+single metric. The parameter affects action ranking only, not the terminal STA
+evaluation after commit.
+
 `place.timing_coeff_growth_factor` multiplies both WNS/TNS coefficients at each
 GP density-weight update. The default `1.01` increases the coefficients;
 `1.0` disables growth and `0.99` decays them. The factor must be
@@ -505,12 +561,14 @@ skips this schedule. For a fresh workspace, configure it with
 existing workspace, use
 `ecc param set place.timing_coeff_growth_factor 1.0 --workspace NAME`.
 
-`place.timing_aggregation_mode` selects AAT/RAT propagation aggregation:
-`smooth` (default) uses LSE, and `hard` uses max/min.
-`place.timing_aggregation_tau_ps` is its positive temperature, defaulting to
-2.0 ps; smaller values approach hard max/min, while larger values spread
-gradients more evenly. Endpoint WNS still uses hard min, and TNS still sums
-negative slacks. For example, set the following in `ecc.toml`:
+`place.timing_aggregation_mode` selects aggregation for AAT/RAT propagation and
+for endpoint rise/fall and timing-check candidates: `smooth` (default) uses LSE,
+and `hard` uses max/min. `place.timing_aggregation_tau_ps` is its positive
+temperature, defaulting to 2.0 ps; smaller values approach hard max/min, while
+larger values spread gradients more evenly. With `smooth`, endpoint WNS/TNS use
+the aggregated soft slack, then clamp endpoint slack at zero before summing TNS;
+`hard` preserves hard min/max semantics. For example, set the following in
+`ecc.toml`:
 
 `place.timing_metric_scope` controls which max timing checks enter the
 placement WNS/TNS metric. The default `setup_plus_recovery` includes ordinary
