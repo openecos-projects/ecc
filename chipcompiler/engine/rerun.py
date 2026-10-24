@@ -74,7 +74,12 @@ def bounded_resume_names(flow: "EngineFlow", through: str) -> list[str]:
     return []
 
 
-def run_resume(flow: "EngineFlow", *, through: str | None = None) -> StepRunResult:
+def run_resume(
+    flow: "EngineFlow",
+    *,
+    through: str | None = None,
+    event_sink=None,
+) -> StepRunResult:
     """Resume from the first non-finished step, re-executing the persisted suffix.
 
     *through* bounds the resume to the reconciled target's last step: a
@@ -83,11 +88,17 @@ def run_resume(flow: "EngineFlow", *, through: str | None = None) -> StepRunResu
     """
     for step in flow.workspace.flow.data.get("steps", []):
         if not is_finished_step_state(step.get("state")):
-            return run_from(flow, step["name"], through=through)
+            return run_from(flow, step["name"], through=through, event_sink=event_sink)
     return StepRunResult(ok=True, executed=())
 
 
-def run_from(flow: "EngineFlow", name: str, *, through: str | None = None) -> StepRunResult:
+def run_from(
+    flow: "EngineFlow",
+    name: str,
+    *,
+    through: str | None = None,
+    event_sink=None,
+) -> StepRunResult:
     """Re-execute the named step and every following step in persisted order
     (at most through the *through* step when given)."""
     steps = flow.workspace.flow.data.get("steps", [])
@@ -102,7 +113,11 @@ def run_from(flow: "EngineFlow", name: str, *, through: str | None = None) -> St
     # states become stale because their input chain changed. Their outputs are
     # deliberately retained until the user chooses to run them.
     _invalidate_suffix(flow, index)
-    return _run_selected(flow, list(zip(suffix, output_dirs, strict=True)))
+    return _run_selected(
+        flow,
+        list(zip(suffix, output_dirs, strict=True)),
+        event_sink=event_sink,
+    )
 
 
 def invalidate_from(flow: "EngineFlow", name: str) -> list[str]:
@@ -112,7 +127,13 @@ def invalidate_from(flow: "EngineFlow", name: str) -> list[str]:
     return [step["name"] for step in flow.workspace.flow.data.get("steps", [])[index:]]
 
 
-def run_only(flow: "EngineFlow", name: str, *, force: bool = False) -> StepRunResult:
+def run_only(
+    flow: "EngineFlow",
+    name: str,
+    *,
+    force: bool = False,
+    event_sink=None,
+) -> StepRunResult:
     """Run exactly one persisted step; a finished step is re-run only with force."""
     steps = flow.workspace.flow.data.get("steps", [])
     index = _require_step_index(flow, name)
@@ -125,7 +146,7 @@ def run_only(flow: "EngineFlow", name: str, *, force: bool = False) -> StepRunRe
     workspace_step = flow.get_workspace_step(steps[index]["name"])
     (output_dir,) = _validated_output_dirs(flow.workspace, [workspace_step])
     _invalidate_suffix(flow, index)
-    return _run_selected(flow, [(workspace_step, output_dir)])
+    return _run_selected(flow, [(workspace_step, output_dir)], event_sink=event_sink)
 
 
 def _require_step_index(flow: "EngineFlow", name: str) -> int:
@@ -180,7 +201,12 @@ def _invalidate_suffix(flow: "EngineFlow", index: int, last_index: int | None = 
         raise ValueError("failed to persist step invalidation; refusing to modify outputs")
 
 
-def _run_selected(flow: "EngineFlow", selected: list[tuple[WorkspaceStep, Path]]) -> StepRunResult:
+def _run_selected(
+    flow: "EngineFlow",
+    selected: list[tuple[WorkspaceStep, Path]],
+    *,
+    event_sink=None,
+) -> StepRunResult:
     """Run selected steps through the shared Engine execution contract."""
     # a new selection must not inherit a DB positioned by an earlier run
     if flow.engine_db is not None:
@@ -217,6 +243,7 @@ def _run_selected(flow: "EngineFlow", selected: list[tuple[WorkspaceStep, Path]]
     result = execute(
         PreparedFlow(),
         ExecutionPlan(intent="rerun", step_ids=tuple(output_dirs)),
+        event_sink=event_sink,
     )
     executed = result.executed_steps or _successful_prefix(
         flow,

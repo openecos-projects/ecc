@@ -136,6 +136,10 @@ def test_version_metadata_missing_uses_unknown(monkeypatch, capsys):
         raise metadata.PackageNotFoundError(distribution)
 
     monkeypatch.setattr("chipcompiler.cli.core.version_info.metadata.version", missing_version)
+    monkeypatch.setattr(
+        "chipcompiler.cli.core.version_info.build_identity",
+        lambda: (None, None),
+    )
     monkeypatch.setattr("chipcompiler.__version__", "source-fallback")
     monkeypatch.setattr(
         "chipcompiler.cli.app.tool_versions",

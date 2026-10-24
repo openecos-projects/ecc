@@ -16,6 +16,49 @@ from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.utility import json_read, json_write
 
 
+def test_emir_default_technology_path_uses_workspace_config_copy(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    fixtures = Path(__file__).resolve().parents[2] / "fixtures"
+    workspace = create_workspace(
+        directory=tmp_path / "workspace",
+        origin_def="",
+        origin_verilog=fixtures / "gcd/gcd.v",
+        pdk="ics55",
+        pdk_root=str(minimal_ics55_pdk_factory(tmp_path / "pdk")),
+        parameters={},
+    )
+
+    config_path = workspace.config[StepEnum.EMIR.value]
+    technology_path = Path(json_read(config_path)["technology_file_path"])
+
+    assert technology_path == config_path.parent / "ics55_synthetic.tech"
+    assert technology_path.is_file()
+
+
+def test_emir_legacy_packaged_technology_path_migrates_to_workspace_copy(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    fixtures = Path(__file__).resolve().parents[2] / "fixtures"
+    workspace = create_workspace(
+        directory=tmp_path / "workspace",
+        origin_def="",
+        origin_verilog=fixtures / "gcd/gcd.v",
+        pdk="ics55",
+        pdk_root=str(minimal_ics55_pdk_factory(tmp_path / "pdk")),
+        parameters={},
+    )
+    config_path = workspace.config[StepEnum.EMIR.value]
+    packaged_path = Path(builder.__file__).parent / "configs" / "ics55_synthetic.tech"
+    assert json_write(config_path, {"technology_file_path": str(packaged_path)})
+
+    refresh_workspace_config(workspace)
+
+    technology_path = Path(json_read(config_path)["technology_file_path"])
+    assert technology_path == config_path.parent / "ics55_synthetic.tech"
+    assert technology_path.is_file()
+
+
 def test_emir_technology_override_survives_workspace_refresh(tmp_path, minimal_ics55_pdk_factory):
     fixtures = Path(__file__).resolve().parents[2] / "fixtures"
     technology_path = fixtures / "emir/ics55_synthetic.tech"
@@ -62,8 +105,17 @@ def emir_case(tmp_path, monkeypatch):
     return workspace, step, module, save_data
 
 
+def write_native_emir_reports(step, *files: str) -> None:
+    reporter_dir = step.data.steps[StepEnum.EMIR.value] / "emir_reporter"
+    for relative_path in files:
+        report_path = reporter_dir / relative_path
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(relative_path)
+
+
 def test_emir_dispatch_loads_ipw_power_and_preserves_downstream_outputs(emir_case):
     workspace, step, module, save_data = emir_case
+    write_native_emir_reports(step, "ir.rpt")
 
     assert runner.run_step(workspace, step, module) is True
 
@@ -163,6 +215,34 @@ def test_emir_save_failure_is_not_success(emir_case):
         ("load data", "Success"),
         ("run EMIR", "Success"),
         ("save data", "Incomplete"),
+    ]
+
+
+def test_emir_publishes_native_reports_after_save(emir_case):
+    workspace, step, _module, _save_data = emir_case
+    write_native_emir_reports(step, "ir.rpt", "gcd.em.worst", "nested/res_network.rpt")
+
+    assert runner.run_step(workspace, step, _module) is True
+
+    assert (step.report.dir / "ir.rpt").read_text() == "ir.rpt"
+    assert (step.report.dir / "gcd.em.worst").read_text() == "gcd.em.worst"
+    assert (step.report.dir / "nested" / "res_network.rpt").read_text() == "nested/res_network.rpt"
+    assert [(item["name"], item["state"]) for item in step.subflow.steps] == [
+        ("load data", "Success"),
+        ("run EMIR", "Success"),
+        ("save data", "Success"),
+    ]
+
+
+def test_emir_missing_native_reports_does_not_change_save_result(emir_case):
+    workspace, step, _module, _save_data = emir_case
+
+    assert runner.run_step(workspace, step, _module) is True
+
+    assert [(item["name"], item["state"]) for item in step.subflow.steps] == [
+        ("load data", "Success"),
+        ("run EMIR", "Success"),
+        ("save data", "Success"),
     ]
 
 

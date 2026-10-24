@@ -460,7 +460,7 @@ config_param(
 
 #### 扩展项目声明（`ecc project *` / `ecc workspace refresh`）
 
-- `ecc project set/unset/add/remove/show` 的可编辑键在 `cli/project/config_fields.py::PROJECT_FIELDS` 声明（`key` / TOML 表 / 字段名 / 类型 / `list_value`）。加一个字段五个子命令自动生效；`add`/`remove` 硬性只支持 `design.rtl`（其余键报 `unsupported_project_collection`）。
+- `ecc project set/unset/add/remove/show` 的可编辑键在 `cli/project/config_fields.py::PROJECT_FIELDS` 声明（`key` / TOML 表 / 字段名 / 类型 / `list_value`）。加一个字段五个子命令自动生效；`add`/`remove` 硬性只支持 `design.rtl`（其余键报 `unsupported_project_collection`）。manifest 项目中的 `set`/`unset`/`add`/`remove` 经 `project_application.apply_project` 在一次加锁写入中同步 `ecc.toml` 与 `project.json.base_design`；legacy/virgin 项目仍只写 `ecc.toml`。
 - `ecc workspace refresh` 把当前 Project 结构投影到 Engine 的 Workspace update transaction。事务校验 expected revision，在 staging 中构造新 Workspace，保留 Workspace 局部参数覆盖，然后交换目录并只增加一次 revision。它仍执行新建 Workspace 的环境预检（`ecc.toml` 的 `preset: rtl2gds` 要求全套工具就绪，即使并不真正执行步骤）；非 manifest 项目报 `workspace_refresh_requires_managed_workspace`。事务开始前会把 `config/*.json` 与上次派生记录 `home/config-derived-manifest.json` 比对；检测到差异时以 `derived_configs_modified` 拒绝，除非给出 `--force`。
 - 目录发布会优先使用 Linux `renameat2` 的 exchange/no-replace 操作。NFS 等文件系统可能以 `EINVAL` 拒绝这些 flag；此时 refresh 在锁内使用三次 rename 完成交换，并保留 Snapshot/command ledger 证据供崩溃后的 `project reconcile` 恢复。旧布局迁移也会在 migration lock 内通过已绑定的目录 fd 重新检查目标后使用普通 rename。目标冲突始终 fail closed，绝不静默覆盖。
 - workspace 局部 `param set/unset/list/diff --workspace NAME` 经 `cli/command_handlers/workspace_params.py` 修改 `home/params.toml`（记录到 `workspace_param_overrides`，经 `chipcompiler.engine.rerun` 失效后缀步骤）；项目级 `param` 走 `cli/command_handlers/param.py`。
@@ -520,6 +520,12 @@ Harden 绕过 emir，因此 advisory 步骤失败不会导致后续步骤缺少�
 新顺序适用于新建的预设流程及规范步骤范围；已有工作区的执行记录和显式
 自定义流程仍保留原顺序。
 
+这条流程中除 `postRouteLec` 外，LVS、DRC、`antennaCheck`、RCX、STA、
+`powerAnalysis`、EMIR 和 Harden 均加载 `filler` 的 DEF、Verilog 和数据库
+作为物理设计输入。各 checker 自己生成的 DEF、Verilog 和数据库只是证据或
+报告快照，不会成为后续物理设计源。`postRouteLec` 是例外：它比较综合 golden
+网表和 filler gate 网表。
+
 `antennaCheck` 调用 iMJ 的 `init_mj → check_antenna → destroy_mj`，只检查，
 不插入二极管、不自动修复。原生报告为
 `antennaCheck_ecc/data/mj/antenna_checker/antenna_check.rpt`，原样复制到
@@ -529,14 +535,16 @@ Harden 绕过 emir，因此 advisory 步骤失败不会导致后续步骤缺少�
 天线检查通过：LEF 缺少天线规则或引脚 gate-area 信息时可能没有实际检查覆盖。
 请结合原生日志查看报告。不需要单独的天线检查 JSON 配置。
 
-EMIR 使用 `powerAnalysis_ecc/data/pw/power_reporter/instance_power.tsv` 和前一步的
+EMIR 使用 `powerAnalysis_ecc/data/pw/power_reporter/instance_power.tsv` 和 `filler`
 物理数据库。运行前，通过 `ecc param set emir.technology_file_path /绝对路径/process.tech`
 或 `ecc.toml` 的 `[emir]` 配置真实工艺文件。此值会在创建或刷新工作区时写入
 `config/emir_ecc.json`；仅修改生成的 JSON 不会持久保留。
 默认空值只是占位，未填写时该步骤会停止。
 电源激励使用 iFP 输出的 `postFloorplan_ecc/data/fp/pdn_generator/power.ploc`，
 通过 `ploc_file_path` 传入，不同时启用 `add_ploc_from_top_def`。这些是电源条带
-交点上的理想电源假设，不代表实际封装或 pad。原生结果输出到 `emir_ecc/data/emir/`。
+交点上的理想电源假设，不代表实际封装或 pad。原生结果输出到 `emir_ecc/data/emir/`；
+保存成功后，`data/emir/emir_reporter/` 下的全部报告会发布到 `emir_ecc/report/`，
+GUI 从该目录读取并展示步骤报告；发布失败只记录告警，不改变保存结果。
 
 CI 显式使用 `test/fixtures/emir/ics55_synthetic.tech`；其中电阻和 EM 限值均为
 模拟测试数据，不是工艺厂数据。运行成功只验证流程与数据交接，IR/EM 数值不能

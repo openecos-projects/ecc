@@ -89,10 +89,12 @@ def test_default_flow_data_marks_checker_steps():
     assert {name for name, category in categories.items() if category == "CHECKER"} == {
         "lvs",
         "drc",
+        "antennaCheck",
         "postRouteLec",
         "RCX",
         "sta",
         "powerAnalysis",
+        "emir",
     }
 
 

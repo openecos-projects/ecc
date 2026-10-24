@@ -117,7 +117,7 @@ def _iterated_sources(workspace, ledger):
     }
 
 
-def test_category_ledger_follows_the_previous_physical_step(tmp_path, monkeypatch):
+def test_signoff_steps_read_the_filler_output(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     sources = _recorded_sources(workspace, _real_ledger(), monkeypatch)
 
@@ -126,17 +126,17 @@ def test_category_ledger_follows_the_previous_physical_step(tmp_path, monkeypatc
         "filler": "route",
         "lvs": "filler",
         "drc": "filler",
-        "antennaCheck": "drc",
-        "postRouteLec": "drc",
-        "RCX": "drc",
-        "sta": "RCX",
-        "powerAnalysis": "sta",
-        "emir": "powerAnalysis",
-        "Harden": "powerAnalysis",
+        "antennaCheck": "filler",
+        "postRouteLec": "filler",
+        "RCX": "filler",
+        "sta": "filler",
+        "powerAnalysis": "filler",
+        "emir": "filler",
+        "Harden": "filler",
     }
 
 
-def test_legacy_ledger_without_category_chains_every_step(tmp_path, monkeypatch):
+def test_legacy_ledger_keeps_policy_sources_and_physical_chaining(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     sources = _recorded_sources(workspace, _legacy_ledger(), monkeypatch)
 
@@ -144,14 +144,14 @@ def test_legacy_ledger_without_category_chains_every_step(tmp_path, monkeypatch)
         "route": "origin",
         "filler": "route",
         "lvs": "filler",
-        "drc": "lvs",
-        "antennaCheck": "drc",
-        "postRouteLec": "drc",
-        "RCX": "drc",
-        "sta": "RCX",
-        "powerAnalysis": "sta",
-        "emir": "powerAnalysis",
-        "Harden": "powerAnalysis",
+        "drc": "filler",
+        "antennaCheck": "filler",
+        "postRouteLec": "filler",
+        "RCX": "filler",
+        "sta": "filler",
+        "powerAnalysis": "filler",
+        "emir": "filler",
+        "Harden": "filler",
     }
 
 
@@ -164,13 +164,13 @@ def test_read_only_projection_matches_the_execution_chain_on_this_ledger(tmp_pat
         "filler": "route",
         "lvs": "filler",
         "drc": "filler",
-        "antennaCheck": "drc",
-        "postRouteLec": "drc",
-        "RCX": "drc",
-        "sta": "RCX",
-        "powerAnalysis": "sta",
-        "emir": "powerAnalysis",
-        "Harden": "powerAnalysis",
+        "antennaCheck": "filler",
+        "postRouteLec": "filler",
+        "RCX": "filler",
+        "sta": "filler",
+        "powerAnalysis": "filler",
+        "emir": "filler",
+        "Harden": "filler",
     }
 
 
@@ -182,14 +182,14 @@ def test_read_only_projection_follows_the_previous_step_without_category(tmp_pat
         "route": "origin",
         "filler": "route",
         "lvs": "filler",
-        "drc": "lvs",
-        "antennaCheck": "drc",
-        "postRouteLec": "drc",
-        "RCX": "drc",
-        "sta": "RCX",
-        "powerAnalysis": "sta",
-        "emir": "powerAnalysis",
-        "Harden": "powerAnalysis",
+        "drc": "filler",
+        "antennaCheck": "filler",
+        "postRouteLec": "filler",
+        "RCX": "filler",
+        "sta": "filler",
+        "powerAnalysis": "filler",
+        "emir": "filler",
+        "Harden": "filler",
     }
 
 
@@ -216,16 +216,16 @@ def test_skipped_post_route_lec_keeps_the_same_sources(tmp_path, monkeypatch):
         "filler": "route",
         "lvs": "filler",
         "drc": "filler",
-        "antennaCheck": "drc",
-        "RCX": "drc",
-        "sta": "RCX",
-        "powerAnalysis": "sta",
-        "emir": "powerAnalysis",
-        "Harden": "powerAnalysis",
+        "antennaCheck": "filler",
+        "RCX": "filler",
+        "sta": "filler",
+        "powerAnalysis": "filler",
+        "emir": "filler",
+        "Harden": "filler",
     }
 
 
-@pytest.mark.parametrize("input_step,expected", [(None, "drc"), ("route", "route")])
+@pytest.mark.parametrize("input_step,expected", [(None, "filler"), ("route", "route")])
 def test_explicit_input_step_selects_the_named_step(tmp_path, input_step, expected):
     ledger = _real_ledger()
     if input_step is not None:
@@ -303,8 +303,7 @@ def test_execution_rejects_a_missing_explicit_input(tmp_path, monkeypatch):
         _recorded_sources(_workspace(tmp_path), ledger, monkeypatch)
 
 
-def test_checker_batch_stops_before_non_batchable_checkers(tmp_path, monkeypatch):
-    """Skipping the PNR separator must not pull RCX/sta into the batch."""
+def test_checker_batch_and_filler_sources_are_independent_policies(tmp_path, monkeypatch):
     ledger = {
         "steps": [
             {"name": "route", "tool": "ecc", "category": "PNR"},
@@ -325,10 +324,10 @@ def test_checker_batch_stops_before_non_batchable_checkers(tmp_path, monkeypatch
         "filler": "route",
         "lvs": "filler",
         "drc": "filler",
-        "RCX": "drc",
-        "sta": "RCX",
-        "powerAnalysis": "sta",
-        "Harden": "powerAnalysis",
+        "RCX": "filler",
+        "sta": "filler",
+        "powerAnalysis": "filler",
+        "Harden": "filler",
     }
 
 
@@ -374,7 +373,7 @@ def _checklist_prerequisite_sources(workspace, ledger) -> dict[str, str]:
 
 
 @pytest.mark.parametrize("legacy", [False, True])
-def test_post_route_gate_and_checklist_gate_agree_with_the_chain(tmp_path, monkeypatch, legacy):
+def test_post_route_gate_and_checker_chain_gate_semantics(tmp_path, monkeypatch, legacy):
     ledger = _legacy_ledger() if legacy else _real_ledger()
     workspace = _workspace(tmp_path)
     execution = _recorded_sources(workspace, ledger, monkeypatch)
@@ -382,6 +381,4 @@ def test_post_route_gate_and_checklist_gate_agree_with_the_chain(tmp_path, monke
     assert _post_route_gate_source(workspace, ledger) == execution["postRouteLec"]
 
     prerequisites = _checklist_prerequisite_sources(workspace, ledger)
-    assert prerequisites == {
-        name: source for name, source in execution.items() if source != "origin"
-    }
+    assert prerequisites == {"filler": "route", "Harden": "emir"}

@@ -138,7 +138,10 @@ def test_snapshot_indexes_power_analysis_artifacts(tmp_path):
     (root / "home").mkdir(parents=True)
     report = root / "powerAnalysis_ecc" / "data" / "pw" / "power_reporter" / "power.rpt"
     report.parent.mkdir(parents=True)
-    report.write_text("Total Dynamic Power = 1.0 mW\n", encoding="utf-8")
+    report.write_text("legacy power report\n", encoding="utf-8")
+    published_report = root / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt"
+    published_report.parent.mkdir(parents=True)
+    published_report.write_text("Total Dynamic Power = 1.0 mW\n", encoding="utf-8")
     summary = root / "powerAnalysis_ecc" / "feature" / "power_summary.json"
     summary.parent.mkdir(parents=True)
     summary.write_text('{"schema_version": 1}\n', encoding="utf-8")
@@ -159,10 +162,12 @@ def test_snapshot_indexes_power_analysis_artifacts(tmp_path):
         if artifact["kind"] in {"power_report", "power_summary"}
     ]
     assert [(artifact["kind"], artifact["reference"]) for artifact in power_artifacts] == [
-        ("power_report", "powerAnalysis_ecc/data/pw/power_reporter/power.rpt"),
+        ("power_report", "powerAnalysis_ecc/report/powerAnalysis.rpt"),
         ("power_summary", "powerAnalysis_ecc/feature/power_summary.json"),
     ]
     assert all(artifact["availability"] == "available" for artifact in power_artifacts)
+    artifact_ids = [artifact["artifactId"] for artifact in snapshot["artifacts"]]
+    assert len(artifact_ids) == len(set(artifact_ids))
 
 
 def test_snapshot_limits_sta_corner_artifacts_deterministically(tmp_path):
@@ -232,6 +237,41 @@ def test_checklist_projection_cap_is_a_producer_error(tmp_path):
         create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
 
     assert not (root / "home" / "engineering-snapshot.json").exists()
+
+
+def test_checklist_projection_exposes_requirement_state(tmp_path):
+    root = tmp_path / "workspace"
+    (root / "home").mkdir(parents=True)
+    (root / "home" / "checklist.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "kind": "signoff_checklist",
+                "status": "attention",
+                "requirements_status": "present",
+                "checklist": [
+                    {
+                        "id": "sta.hold",
+                        "title": "STA hold",
+                        "state": "warning",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    workspace = SimpleNamespace(
+        directory=root,
+        flow=SimpleNamespace(data={"steps": []}),
+        home=SimpleNamespace(data={}),
+        parameters=SimpleNamespace(data={"design": "gcd"}),
+        design=SimpleNamespace(name="gcd"),
+    )
+
+    snapshot = create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
+
+    assert snapshot["checklist"]["status"] == "attention"
+    assert snapshot["checklist"]["requirementsStatus"] == "present"
 
 
 def test_artifact_index_cap_is_a_producer_error(tmp_path):

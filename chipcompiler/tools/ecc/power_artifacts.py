@@ -1,5 +1,6 @@
 """iPW power-report publication and workspace lookup helpers."""
 
+import shutil
 from pathlib import Path
 
 from chipcompiler.data import StepEnum
@@ -35,6 +36,22 @@ def workspace_power_report_path(workspace_dir: str | Path) -> Path:
     )
 
 
+def workspace_power_published_report_path(workspace_dir: str | Path) -> Path:
+    """Return the report published by the powerAnalysis step for a workspace."""
+    return (
+        Path(workspace_dir)
+        / STEP_DIRECTORIES[StepEnum.POWER_ANALYSIS.value]
+        / "report"
+        / f"{StepEnum.POWER_ANALYSIS.value}.rpt"
+    )
+
+
+def workspace_power_report_source_path(workspace_dir: str | Path) -> Path:
+    """Return the current power report, falling back to legacy iPW workspaces."""
+    published = workspace_power_published_report_path(workspace_dir)
+    return published if published.is_file() else workspace_power_report_path(workspace_dir)
+
+
 def workspace_power_summary_path(workspace_dir: str | Path) -> Path:
     """Return the canonical ECC power-summary path for a workspace."""
     return power_summary_path(
@@ -47,11 +64,31 @@ def workspace_instance_power_path(workspace_dir: str | Path) -> Path:
     return workspace_power_report_path(workspace_dir).with_name("instance_power.tsv")
 
 
-def discard_power_artifacts(data_dir: str | Path, feature_dir: str | Path) -> None:
+def discard_power_artifacts(
+    data_dir: str | Path,
+    feature_dir: str | Path,
+    report_path: str | Path | None = None,
+) -> None:
     """Invalidate raw and derived power artifacts before an iPW rerun."""
     power_report_path(data_dir).unlink(missing_ok=True)
     power_summary_path(feature_dir).unlink(missing_ok=True)
     power_step_path(feature_dir).unlink(missing_ok=True)
+    if report_path:
+        Path(report_path).unlink(missing_ok=True)
+
+
+def publish_power_report(data_dir: str | Path, report_path: str | Path) -> Path:
+    """Atomically copy iPW's native report to the step report path."""
+    source_path = power_report_path(data_dir)
+    if not source_path.is_file():
+        raise FileNotFoundError(f"iPW power report does not exist: {source_path}")
+
+    target_path = Path(report_path)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = target_path.with_name(f".{target_path.name}.tmp")
+    shutil.copy2(source_path, temporary_path)
+    temporary_path.replace(target_path)
+    return target_path
 
 
 def publish_power_summary(data_dir: str | Path, feature_dir: str | Path) -> Path:
@@ -74,11 +111,6 @@ def publish_power_summary(data_dir: str | Path, feature_dir: str | Path) -> Path
         "schema_version": 1,
         "step": StepEnum.POWER_ANALYSIS.value,
         "power_summary": payload,
-        "metrics": {
-            key: value
-            for key, value in payload.items()
-            if key != "schema_version" and isinstance(value, (int, float))
-        },
     }
     if not json_write(step_path, step_payload):
         raise OSError(f"Failed to write merged power step artifact: {step_path}")

@@ -22,9 +22,12 @@ from chipcompiler.data import (
     is_finished_step_state,
     log_flow,
 )
+from chipcompiler.data.workspace.flow_data import normalize_flow_step_categories
 from chipcompiler.data.workspace.flow_ledger import validate_transition
 from chipcompiler.data.workspace.flow_policy import (
     FlowInputResolver,
+    explicit_input_step,
+    flow_category,
     is_checker_batch_step,
     ledger_category,
 )
@@ -178,6 +181,8 @@ class EngineFlow:
             self.workspace.flow.data = {}
             return False
         self.workspace.flow.data = json_read(self.workspace.flow.path)
+        if normalize_flow_step_categories(self.workspace.flow.data):
+            self.save()
         return len(self.workspace.flow.data.get("steps", [])) > 0
 
     def save(self) -> bool:
@@ -396,14 +401,14 @@ class EngineFlow:
                 from chipcompiler.engine.step_chain import apply_info_spef_override
 
                 apply_info_spef_override(step, eda_step)
+                rcx_step = resolver.created_step(StepEnum.RCX.value)
                 if (
-                    input_source is not None
-                    and input_source.name == StepEnum.RCX.value
+                    rcx_step is not None
                     and eda_step.name == StepEnum.STA.value
                     and isinstance(eda_step.output, EccOutput)
-                    and isinstance(input_source.output, EccOutput)
+                    and isinstance(rcx_step.output, EccOutput)
                 ):
-                    eda_step.output.spef = input_source.output.spef
+                    eda_step.output.spef = rcx_step.output.spef
                 self.workspace_steps.append(eda_step)
                 resolver.record(eda_step)
                 if eda_step.name == StepEnum.SYNTHESIS.value:
@@ -655,11 +660,30 @@ class EngineFlow:
         )
         if current_index is None:
             return None
-        prerequisite_name = FlowInputResolver(steps).input_step_name(current_index)
-        prerequisite = next((step for step in steps if step.get("name") == prerequisite_name), None)
-        checklist = prerequisite.get("checklist") if isinstance(prerequisite, dict) else None
-        if isinstance(checklist, dict) and checklist.get("status") == "blocked":
-            return str(prerequisite.get("name") or "previous step")
+        current = steps[current_index]
+        if flow_category(current) == FlowStepCategory.CHECKER:
+            return None
+
+        prerequisite_name = explicit_input_step(current)
+        if prerequisite_name is not None:
+            prerequisites = [
+                step
+                for step in steps
+                if isinstance(step, dict) and step.get("name") == prerequisite_name
+            ]
+        else:
+            prerequisites = []
+            for step in reversed(steps[:current_index]):
+                if not isinstance(step, dict):
+                    continue
+                prerequisites.append(step)
+                if flow_category(step) != FlowStepCategory.CHECKER:
+                    break
+
+        for prerequisite in prerequisites:
+            checklist = prerequisite.get("checklist_status") or prerequisite.get("checklist")
+            if isinstance(checklist, dict) and checklist.get("status") == "blocked":
+                return str(prerequisite.get("name") or "previous step")
         return None
 
     def _run_checker_batch(self, steps: list[WorkspaceStep], *, rerun: bool) -> list[StateEnum]:
@@ -697,7 +721,8 @@ class EngineFlow:
         if blocked_by is not None:
             flow_step = self.get_step(workspace_step.name, workspace_step.tool)
             if flow_step is not None:
-                flow_step["checklist"] = {
+                flow_step.pop("checklist", None)
+                flow_step["checklist_status"] = {
                     "status": "blocked",
                     "blocked": True,
                     "failed_items": [f"prerequisite:{blocked_by}"],

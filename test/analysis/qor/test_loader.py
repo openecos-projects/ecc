@@ -307,14 +307,18 @@ class TestCornerLoading:
                 workspace.directory,
                 "powerAnalysis_ecc",
                 "feature",
-                "power_summary.json",
+                "powerAnalysis.step.json",
             ),
             {
                 "schema_version": 1,
-                "dynamic_uw": 8.0,
-                "leakage_uw": 1.0,
-                "internal_uw": 2.0,
-                "switching_uw": 6.0,
+                "step": "powerAnalysis",
+                "power_summary": {
+                    "schema_version": 1,
+                    "dynamic_uw": 8.0,
+                    "leakage_uw": 1.0,
+                    "internal_uw": 2.0,
+                    "switching_uw": 6.0,
+                },
             },
         )
         # A current workspace must not fall back to the old STA location.
@@ -333,6 +337,34 @@ class TestCornerLoading:
                 "leakage_uw": 10.0,
                 "internal_uw": 20.0,
                 "switching_uw": 70.0,
+            },
+        )
+
+        inputs = load_workspace_qor_inputs(workspace)
+
+        assert inputs.power_total_uw == 9.0
+        assert inputs.power_source_path.endswith(
+            "powerAnalysis_ecc/feature/powerAnalysis.step.json"
+        )
+        assert inputs.power_source_kind == "signoff"
+        assert inputs.power_corner == "powerAnalysis"
+
+    def test_power_analysis_legacy_summary_is_used_when_step_artifact_is_missing(self, tmp_path):
+        steps = {**_FULL_FLOW, "powerAnalysis": SUCCESS}
+        workspace = _make_workspace(tmp_path, steps)
+        _write(
+            os.path.join(
+                workspace.directory,
+                "powerAnalysis_ecc",
+                "feature",
+                "power_summary.json",
+            ),
+            {
+                "schema_version": 1,
+                "dynamic_uw": 8.0,
+                "leakage_uw": 1.0,
+                "internal_uw": 2.0,
+                "switching_uw": 6.0,
             },
         )
 

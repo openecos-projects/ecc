@@ -40,7 +40,6 @@ REQUIRED_DISTRIBUTION_METADATA = (
 
 ECC_PACKAGE_RESOURCES = (
     "chipcompiler/tools/ecc/configs",
-    "chipcompiler/tools/yosys/configs",
     "chipcompiler/tools/yosys/scripts",
     "chipcompiler/tools/ecc_dreamplace/configs/dreamplace_ecc.json",
 )
@@ -48,12 +47,6 @@ ECC_PACKAGE_RESOURCES = (
 DREAMPLACE_THIRDPARTY_FILES = (
     "thirdparty/flute/lut.ICCAD2015/POWV9.dat",
     "thirdparty/flute/lut.ICCAD2015/POST9.dat",
-    "thirdparty/NCTUgr.ICCAD2012/NCTUgr",
-    "thirdparty/NCTUgr.ICCAD2012/PORT9.dat",
-    "thirdparty/NCTUgr.ICCAD2012/POST9.dat",
-    "thirdparty/NCTUgr.ICCAD2012/POWV9.dat",
-    "thirdparty/NCTUgr.ICCAD2012/DAC12.set",
-    "thirdparty/NCTUgr.ICCAD2012/ICCAD12.set",
 )
 
 DOC_GUIDES = (
@@ -90,7 +83,6 @@ HIDDENIMPORTS = [
     "click",
     "typer",
     "chipcompiler",
-    "chipcompiler._build_info",
     "chipcompiler.cli",
     "chipcompiler.data",
     "chipcompiler.engine",
@@ -99,7 +91,6 @@ HIDDENIMPORTS = [
     "chipcompiler.tools.ecc.builder",
     "chipcompiler.tools.ecc.runner",
     "chipcompiler.tools.ecc.module",
-    "chipcompiler.tools.ecc.bin.ecc_py",
     "chipcompiler.tools.ecc_dreamplace",
     "chipcompiler.tools.ecc_dreamplace.builder",
     "chipcompiler.tools.ecc_dreamplace.runner",
@@ -320,6 +311,8 @@ binaries = filter_collected_payloads(binaries)
 
 hiddenimports = []
 hiddenimports.extend(HIDDENIMPORTS)
+if (ECC_DIR / "chipcompiler" / "_build_info.py").is_file():
+    hiddenimports.append("chipcompiler._build_info")
 hiddenimports.extend(rich_unicode_data_hiddenimports())
 hiddenimports.extend(ecc_hiddenimports)
 hiddenimports.extend(experience_hiddenimports)

@@ -13,11 +13,12 @@ from pathlib import Path
 from chipcompiler.analysis.qor.metric_registry import SCORED_STEP_VALUES
 from chipcompiler.data import StateEnum, StepEnum
 from chipcompiler.data.step import STEP_DIRECTORIES
-from chipcompiler.tools.ecc.power_artifacts import workspace_power_summary_path
+from chipcompiler.tools.ecc.power_artifacts import power_step_path, workspace_power_summary_path
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
     STA_POWER_SUMMARY_FILENAME,
     configured_sta_artifact_directories,
+    read_power_step_summary_json,
     read_sta_power_summary_json,
     read_sta_qor_summary,
 )
@@ -199,9 +200,21 @@ def _corner_slack(workspace, workspace_root: Path, flow_states: dict) -> tuple[l
 
 
 def _power_summary(workspace, workspace_root: Path, flow_states: dict):
-    """Select the worst available signoff power, with synthesis fallback."""
+    """Select signoff power from the current step artifact, with fallbacks."""
     power_state = flow_states.get(StepEnum.POWER_ANALYSIS.value)
     if power_state == StateEnum.Success.value:
+        feature_dir = workspace_root / STEP_DIRECTORIES[StepEnum.POWER_ANALYSIS.value] / "feature"
+        path = power_step_path(feature_dir)
+        summary = read_power_step_summary_json(path)
+        if summary is not None:
+            return (
+                summary.dynamic_uw + summary.leakage_uw,
+                path,
+                "signoff",
+                StepEnum.POWER_ANALYSIS.value,
+            )
+
+        # Keep pre-step-artifact workspaces readable while they are migrated.
         path = workspace_power_summary_path(workspace_root)
         summary = read_sta_power_summary_json(path)
         if summary is not None:

@@ -2,6 +2,7 @@ import logging
 import os
 import time
 import traceback
+from pathlib import Path
 from threading import Event, Thread
 
 from chipcompiler.data import StateEnum, WorkspaceStep
@@ -15,9 +16,13 @@ from chipcompiler.engine.flow_completion import (
 from chipcompiler.engine.step_execution import get_process_rss_mb, track_current_process_memory
 from chipcompiler.utility.log import redirect_stdio_to_file, stdio_redirect_lock
 
-from .plot import _is_candidate_workspace
 from .sta_parallel import track_sta_process_memory
 from .tools import run_step as run_agent_step
+
+
+def _is_candidate_workspace(workspace) -> bool:
+    root = Path(workspace.directory).resolve()
+    return root.parent.name == "candidates" and root.parent.parent.name == ".agent"
 
 
 def _wait_for_step_rendered(observer, workspace_step: WorkspaceStep, state: StateEnum) -> bool:

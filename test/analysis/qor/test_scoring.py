@@ -43,6 +43,14 @@ class TestScalarSummary:
         # Excellent other dimensions cannot mask the failure.
         assert dimensions["area"].value == pytest.approx(100.0)
 
+    def test_zero_area_quality_does_not_veto_clean_physical_feasibility(self):
+        metrics = gcd_metrics()
+        metrics["core_utilization"].value = 1.0
+        summary, dimensions = _summary(make_inputs(metrics, tclk_ns=20.0))
+        assert dimensions["area"].value == pytest.approx(0.0)
+        assert summary.score == pytest.approx(82.35, abs=0.01)
+        assert summary.status == "YELLOW"
+
     def test_not_verified_is_not_rated(self):
         states = {
             step: "Success" for step in ("Synthesis", "postFloorplan", "place", "CTS", "route")

@@ -162,7 +162,7 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
     assert summary["missing_metrics"] == []
 
 
-def test_synthesis_metrics_list_power_missing_when_sta_report_absent(tmp_path):
+def test_synthesis_metrics_do_not_require_power_from_sta_report(tmp_path):
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
@@ -197,15 +197,9 @@ def test_synthesis_metrics_list_power_missing_when_sta_report_absent(tmp_path):
     assert "synthesis_power_leakage_uw" not in records
 
     summary = json.loads(step.analysis.qor_summary.read_text(encoding="utf-8"))
-    assert summary["analysis_status"] == "incomplete"
+    assert summary["analysis_status"] == "valid"
     assert summary["quality_status"] == "pass"
-    missing_ids = {record["metric_id"] for record in summary["missing_metrics"]}
-    assert missing_ids == {
-        "synthesis_power_internal_uw",
-        "synthesis_power_switching_uw",
-        "synthesis_power_dynamic_uw",
-        "synthesis_power_leakage_uw",
-    }
+    assert summary["missing_metrics"] == []
 
 
 def test_synthesis_metrics_tolerate_unset_feature_dir(tmp_path):

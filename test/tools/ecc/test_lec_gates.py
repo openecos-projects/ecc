@@ -24,7 +24,7 @@ def test_post_route_lec_gate_matches_execution_chain(tmp_path, checker_category,
 
     _golden, gate = post_route_lec_netlists(workspace)
 
-    source = explicit_input or "drc"
+    source = explicit_input or "filler"
     assert gate == tmp_path / f"{source}_ecc" / "output" / f"design_{source}.v.gz"
 
 

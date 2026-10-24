@@ -6,7 +6,12 @@ selection, plus an optional declared skip policy) into the initial
 (reconcile, config validation) slices from. Pure computation: no IO.
 """
 
-from chipcompiler.data.types import StateEnum, StepBaseEnum, default_flow_step_category
+from chipcompiler.data.types import (
+    FlowStepCategory,
+    StateEnum,
+    StepBaseEnum,
+    default_flow_step_category,
+)
 
 from ..schema_migrations import FLOW_JSON, SCHEMA_VERSION_FIELD, SUPPORTED_SCHEMA_VERSIONS
 
@@ -118,3 +123,17 @@ def _flow_step_template(name: str, tool: str, state: str) -> dict:
         "peak memory (mb)": 0,
         "info": {},
     }
+
+
+def normalize_flow_step_categories(flow_data: dict) -> bool:
+    """Repair default categories persisted before a step classification changed."""
+    changed = False
+    for step in flow_data.get("steps", []):
+        if not isinstance(step, dict) or not isinstance(step.get("name"), str):
+            continue
+        category = str(step.get("category") or FlowStepCategory.PNR.value).upper()
+        canonical = default_flow_step_category(step["name"])
+        if category == FlowStepCategory.PNR.value and canonical == FlowStepCategory.CHECKER:
+            step["category"] = canonical.value
+            changed = True
+    return changed

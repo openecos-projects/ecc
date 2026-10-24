@@ -313,7 +313,12 @@ def _artifact_gate(root: Path, label: str, checklist: str) -> dict:
     checklist_path = root / checklist
     data = _read(checklist_path)
     items = data.get("checklist", []) if isinstance(data, dict) else []
-    item = next((item for item in items if item.get("title") == label), None)
+    if not isinstance(items, list):
+        items = []
+    item = next(
+        (item for item in items if isinstance(item, dict) and item.get("title") == label),
+        None,
+    )
     if not isinstance(item, dict):
         return {"status": "unknown", "reason": "artifact_evidence_unavailable", "source": checklist}
     source = JsonObject(item.get("source"))

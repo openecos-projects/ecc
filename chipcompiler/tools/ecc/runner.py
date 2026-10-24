@@ -25,6 +25,8 @@ from chipcompiler.tools.ecc.metrics import (
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.power_artifacts import (
     discard_power_artifacts,
+    power_step_path,
+    publish_power_report,
     publish_power_summary,
 )
 from chipcompiler.tools.ecc.rcx_artifacts import (
@@ -35,7 +37,9 @@ from chipcompiler.tools.ecc.rcx_artifacts import (
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_outputs
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
+    read_power_step_summary_json,
     sta_artifact_directory,
+    sta_power_summary_payload,
 )
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 from chipcompiler.tools.ecc.utility import is_eda_exist
@@ -409,9 +413,6 @@ def save_data(
         return False
     ecc_module.def_save(def_path=step.output.def_ or "")
     ecc_module.verilog_save(output_verilog=step.output.verilog or "")
-    if step.output.db and not ecc_module.save_data(path=step.output.db):
-        workspace.logger.error("Failed to save ECC native database for %s", step.name)
-        return False
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
         geometry_manifest = step.output.geometry_manifest
@@ -451,8 +452,8 @@ def save_data(
 
         margin = workspace.parameters.data.get("core", {}).get("margin", [0, 0])
 
-        aspect_ratio = die_bounding_width / die_bounding_height if die_bounding_height > 0 else 1
-
+        # Preserve the requested aspect ratio: site-aligned geometry is an
+        # output, not a new input for the next floorplan stage.
         update_param = {
             "core": {
                 "size": [core_bounding_width, core_bounding_height],
@@ -461,7 +462,6 @@ def save_data(
                     f"({margin[0]} , {margin[1]}) "
                     f"({core_bounding_width + margin[0]} , {core_bounding_height + margin[1]})"
                 ),
-                "aspect_ratio": aspect_ratio,
             },
         }
         # In die_util mode the realized die dimensions are outputs of the
@@ -535,29 +535,12 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
     return state
 
 
-def _plotter_class():
-    # Resolved through the module global so agent.tools can substitute its
-    # plotter (ecc_runner.ECCToolsPlot = AgentECCToolsPlot). The default import
-    # stays deferred because ECCToolsPlot pulls in matplotlib, which must stay
-    # off the package import path (test/utility/test_plot_lazy.py).
-    override = globals().get("ECCToolsPlot")
-    if override is not None:
-        return override
-    from chipcompiler.tools.ecc.plot import ECCToolsPlot
-
-    return ECCToolsPlot
-
-
 def run_analysis(workspace: Workspace, step: EccStep, subflow: EccSubFlow):
     if not workspace.parameters.data.get("run_analysis", True):
         return
 
     # save metrics
     build_step_metrics(workspace=workspace, step=step, subflow=subflow)
-
-    # plot layout image
-    ploter = _plotter_class()(workspace=workspace, step=step)
-    ploter.plot()
 
     # do checklist
     checklist = EccChecklist(workspace=workspace, workspace_step=step)
@@ -739,11 +722,11 @@ def run_filler(
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_filler.value, state=StateEnum.Success)
 
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
         ecc_module.gds_save(
             output_path=step.output.gds or "",
             layer_map_path=workspace.pdk.mapping_file or "",
         )
+        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
@@ -1027,7 +1010,16 @@ def run_power_analysis(
         )
         return False
 
-    discard_power_artifacts(power_data_dir, power_feature_dir)
+    power_report_path = step.report.step
+    if power_report_path is None:
+        workspace.logger.error("Power analysis report path is not configured")
+        sub_flow.update_step(
+            step_name=EccSubFlowEnum.run_power_analysis.value,
+            state=StateEnum.Imcomplete,
+        )
+        return False
+
+    discard_power_artifacts(power_data_dir, power_feature_dir, power_report_path)
 
     if not ecc_module.init_pw(
         output_dir=power_data_dir,
@@ -1054,6 +1046,7 @@ def run_power_analysis(
         ecc_module.destroy_pw()
 
     try:
+        publish_power_report(power_data_dir, power_report_path)
         publish_power_summary(power_data_dir, power_feature_dir)
     except (FileNotFoundError, OSError, ValueError) as error:
         workspace.logger.error("Power analysis artifact publication failed: %s", error)
@@ -1063,7 +1056,11 @@ def run_power_analysis(
         )
         return False
 
-    power_payload = json_read(Path(power_feature_dir) / "power_summary.json") or {}
+    power_summary = read_power_step_summary_json(power_step_path(power_feature_dir))
+    if power_summary is None:
+        workspace.logger.error("Merged power analysis step artifact is invalid")
+        return False
+    power_payload = sta_power_summary_payload(power_summary)
     power_metrics = StepMetrics(
         data={
             "Power internal [uW]": power_payload.get("internal_uw"),
