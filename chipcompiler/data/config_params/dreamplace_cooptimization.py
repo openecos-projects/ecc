@@ -605,8 +605,9 @@ SCHEMAS = (
         0.2,
         applies="placement",
         description=(
-            "target ratio between weighted preconditioned L-shape gradient norm and "
-            "preconditioned base wirelength+density gradient norm"
+            "target ratio between raw L-shape gradient norm and raw wirelength "
+            "gradient norm before the shared preconditioner; the printed L-shape "
+            "ratio uses this same definition"
         ),
     ),
     config_param(
