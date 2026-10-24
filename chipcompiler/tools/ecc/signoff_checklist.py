@@ -8,6 +8,8 @@ to assemble a signoff package.
 import re
 from pathlib import Path
 
+from chipcompiler.analysis.qor.gate_catalog import QOR_STEP_GATE_IDS
+from chipcompiler.analysis.qor.summary_contract import summary_gates
 from chipcompiler.data import (
     ADVISORY_FLOW_STEPS,
     Checklist,
@@ -38,23 +40,6 @@ from chipcompiler.tools.ecc.sta_qor import (
 )
 from chipcompiler.utility import json_read
 from chipcompiler.utility.filelist import resolve_initial_rtl
-
-_QUALITY_GATES_BY_STEP = {
-    StepEnum.DRC.value: ("qor.drc.clean",),
-    StepEnum.LVS.value: ("qor.lvs.clean",),
-    StepEnum.RCX.value: (
-        "qor.rcx.corner_coverage",
-        "qor.rcx.spef_parse_health",
-    ),
-    StepEnum.STA.value: (
-        "qor.sta.setup_closed",
-        "qor.sta.hold_closed",
-    ),
-    StepEnum.HARDEN.value: (
-        "qor.mpc.minimum_area",
-        "qor.mpc.maximum_area",
-    ),
-}
 
 _REQUIRED_FLOW_STEPS = (
     StepEnum.ROUTING.value,
@@ -95,6 +80,14 @@ def _step_directory(step: WorkspaceStep) -> Path:
     if checklist_path:
         return Path(checklist_path).parent
     return Path(".")
+
+
+def _step_report_path(step: WorkspaceStep) -> Path:
+    report_path = getattr(getattr(step, "report", None), "step", None)
+    if report_path:
+        return Path(report_path)
+    report_dir = getattr(getattr(step, "report", None), "dir", None)
+    return Path(report_dir or _step_directory(step) / "report") / f"{step.name}.rpt"
 
 
 def _file_state(path: Path | str | None) -> tuple[str, str]:
@@ -173,8 +166,10 @@ def _gate_summary(gate: dict) -> str:
     return "; ".join(facts) or "QoR gate has no current metric evidence."
 
 
-def _expected_quality_gate_ids(workspace: Workspace, step_name: str) -> tuple[str, ...]:
-    gate_ids = _QUALITY_GATES_BY_STEP.get(step_name, ())
+def _expected_quality_gate_ids(
+    workspace: Workspace, step_name: str, catalog_gate_ids=None
+) -> tuple[str, ...]:
+    gate_ids = catalog_gate_ids or QOR_STEP_GATE_IDS.get(step_name, ())
     if step_name != StepEnum.HARDEN.value:
         return gate_ids
 
@@ -189,21 +184,16 @@ def _quality_gate_items_from_summary(
     step_name: str,
     step_directory: Path,
     summary_path: Path,
+    gate_ids=None,
 ) -> list[dict]:
-    expected_gate_ids = _expected_quality_gate_ids(workspace, step_name)
+    expected_gate_ids = _expected_quality_gate_ids(workspace, step_name, gate_ids)
     if not expected_gate_ids:
         return []
     step_directory_text = _path_text(workspace, step_directory)
     summary = json_read(summary_path)
-    gates = (
-        {
-            gate.get("id"): gate
-            for gate in summary.get("gates", [])
-            if isinstance(gate, dict) and isinstance(gate.get("id"), str)
-        }
-        if isinstance(summary, dict) and summary.get("schema_version") == 4
-        else {}
-    )
+    gates = {
+        gate.get("id"): gate for gate in summary_gates(summary) if isinstance(gate.get("id"), str)
+    }
     result = []
     for gate_id in expected_gate_ids:
         gate = gates.get(gate_id)
@@ -309,8 +299,11 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
             )
         ]
     elif step.name == StepEnum.POWER_ANALYSIS.value:
-        artifact = power_step_path(step.feature.dir)
+        feature_dir = getattr(step.feature, "dir", None) or _step_directory(step) / "feature"
+        artifact = power_step_path(feature_dir)
         state, summary = _file_state(artifact)
+        report = _step_report_path(step)
+        report_state, report_summary = _file_state(report)
         return [
             _item(
                 item_id="artifact.poweranalysis.step",
@@ -327,6 +320,43 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
                 ),
                 source={"kind": "feature", "path": _path_text(workspace, artifact)},
                 evidence=[{"kind": "feature", "path": _path_text(workspace, artifact)}],
+            ),
+            _item(
+                item_id="artifact.poweranalysis.report",
+                step=step.name,
+                category="report",
+                owner="checklist",
+                policy="block",
+                state=report_state,
+                title="Power analysis report",
+                summary=(
+                    "Power analysis report is present and non-empty."
+                    if report_state == "pass"
+                    else "Power analysis report is missing or empty."
+                ),
+                source={"kind": "report", "path": _path_text(workspace, report)},
+                evidence=[{"kind": "report", "path": _path_text(workspace, report)}],
+            ),
+        ]
+    elif step.name == StepEnum.ANTENNA_CHECK.value:
+        report = _step_report_path(step)
+        state, summary = _file_state(report)
+        return [
+            _item(
+                item_id="artifact.antennacheck.report",
+                step=step.name,
+                category="report",
+                owner="checklist",
+                policy="warn",
+                state=state,
+                title="Antenna check report",
+                summary=(
+                    "Antenna check report is present and non-empty."
+                    if state == "pass"
+                    else "Antenna check report is missing or empty."
+                ),
+                source={"kind": "report", "path": _path_text(workspace, report)},
+                evidence=[{"kind": "report", "path": _path_text(workspace, report)}],
             )
         ]
     elif step.name == StepEnum.STA.value:
@@ -679,6 +709,7 @@ def rebuild_home_checklist(
         return {}
     workspace_dir = Path(workspace_directory)
     items = []
+    loaded_step_checklists = set()
     # LEC artifacts live under the engine the flow recorded (yosys_lec
     # historically, kepler_formal today, lec_dual for cross-checking).
     # Checklist snapshots of every INACTIVE LEC engine are stale evidence —
@@ -696,6 +727,7 @@ def rebuild_home_checklist(
             continue
         data = json_read(workspace_dir / directory / "checklist.json")
         if data.get("schema_version") == 3 and data.get("kind") == "signoff_checklist":
+            loaded_step_checklists.add(directory)
             items.extend(item for item in data.get("checklist", []) if isinstance(item, dict))
     if _requires_post_route_lec(workspace):
         design = getattr(getattr(workspace, "design", None), "name", "") or ""
@@ -711,14 +743,17 @@ def rebuild_home_checklist(
                 workspace, SkippableStepEnum.POST_ROUTE_LEC.value, result_json, golden, gate
             )
         )
-    for step_name in _QUALITY_GATES_BY_STEP:
+    for step_name, gate_ids in QOR_STEP_GATE_IDS.items():
         step_directory = workspace_dir / STEP_DIRECTORIES[step_name]
+        if step_directory.name in loaded_step_checklists:
+            continue
         items.extend(
             _quality_gate_items_from_summary(
                 workspace,
                 step_name,
                 step_directory,
                 step_directory / "analysis" / "qor_summary.json",
+                gate_ids=gate_ids,
             )
         )
     items.extend(_flow_items(workspace))

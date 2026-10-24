@@ -154,7 +154,11 @@ def _make_signoff_workspace(
     )
     _write(
         workspace_dir / "powerAnalysis_ecc" / "data" / "pw" / "power_reporter" / "power.rpt",
-        "power.rpt\n",
+        "native power.rpt\n",
+    )
+    _write(
+        workspace_dir / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt",
+        "published power.rpt\n",
     )
 
     _write_json(
@@ -285,6 +289,9 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
         f"final/timing/sta/MAX_125/RCworst/report/{report_name}" for report_name in STA_REPORT_NAMES
     }.issubset(destinations)
     assert "final/timing/power/power.rpt" in destinations
+    assert (package_dir / "final" / "timing" / "power" / "power.rpt").read_text() == (
+        "published power.rpt\n"
+    )
     assert {
         "final/timing/sta/MAX_125/RCworst/feature/qor_summary.json",
         "final/timing/sta/MAX_125/RCworst/feature/timing_paths.json",
@@ -535,10 +542,10 @@ def test_collect_signoff_package_ignores_leftover_synthesis_for_floorplan_start(
 
 
 def test_collect_signoff_package_tolerates_missing_power_analysis_report(tmp_path):
-    # The power report remains optional for a package, as it was when STA
-    # produced it, but its source is now iPW's dedicated output.
+    # The power report remains optional for a package.
     workspace_dir = _make_signoff_workspace(tmp_path)
     (workspace_dir / "powerAnalysis_ecc" / "data" / "pw" / "power_reporter" / "power.rpt").unlink()
+    (workspace_dir / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt").unlink()
     engine_flow = _make_engine_flow(workspace_dir)
 
     result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
@@ -547,6 +554,21 @@ def test_collect_signoff_package_tolerates_missing_power_analysis_report(tmp_pat
     manifest = json.loads((Path(result.package_dir) / "manifest.json").read_text())
     destinations = {item["destination"] for item in manifest["files"]}
     assert "final/timing/power/power.rpt" not in destinations
+
+
+def test_collect_signoff_package_uses_legacy_power_report_when_unpublished(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    (workspace_dir / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt").unlink()
+
+    result = _make_engine_flow(workspace_dir).collect_signoff_package(
+        SignoffPackageOptions(archive=True)
+    )
+
+    assert result.ok is True
+    package_dir = Path(result.package_dir)
+    assert (package_dir / "final" / "timing" / "power" / "power.rpt").read_text() == (
+        "native power.rpt\n"
+    )
 
 
 def test_collect_signoff_package_uses_top_module_for_rcx_spef(tmp_path):

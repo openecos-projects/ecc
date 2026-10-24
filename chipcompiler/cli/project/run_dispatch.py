@@ -144,6 +144,14 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
         # constructed the old tree stays on disk and recoverable.
         os.replace(run_dir, backup_path)
 
+    # Every fresh run holds the workspace lock from before the target is
+    # created through engine execution (see execute_fresh_run): a live run
+    # must hold the sibling lock, or `ecc process inspect` reports it dead
+    # and project reconcile flags it as an inconsistent runtime process.
+    # The overwrite branch entered the lock above the rename; entering it
+    # again here is a same-thread reentrant no-op.
+    ws_locks.enter_context(workspace_lock(Path(run_dir), blocking=not command_input.no_wait))
+
     if command_input.expected_revision is not None and not os.path.lexists(run_dir):
         from chipcompiler.cli.project.revision import expected_revision_error
 

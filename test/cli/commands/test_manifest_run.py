@@ -69,6 +69,34 @@ class TestVirginFirstRun:
         assert "max_fanout" not in manifest["base_design"]["parameters"]
         assert manifest["base_design"]["parameters"]["frequency_max"] == 100.0
 
+    def test_virgin_run_holds_workspace_lock_through_flow_execution(
+        self, tmp_path, capsys, create_cli_project, flow_mocks, monkeypatch
+    ):
+        import fcntl
+
+        import chipcompiler.engine as engine_module
+
+        project_dir = create_cli_project()
+        lock_probe = {"busy": None}
+        original_execute = engine_module.execute
+
+        def probing_execute(flow, plan, **kwargs):
+            lock_path = os.path.join(project_dir, "default.lock")
+            with open(lock_path, "a") as handle:
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    lock_probe["busy"] = False
+                except BlockingIOError:
+                    lock_probe["busy"] = True
+            return original_execute(flow, plan, **kwargs)
+
+        monkeypatch.setattr(engine_module, "execute", probing_execute)
+
+        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
+
+        assert rc == 0
+        assert lock_probe["busy"] is True
+
     def test_virgin_run_failure_does_not_write_manifest_flow_status(
         self, tmp_path, capsys, create_cli_project, flow_mocks
     ):

@@ -32,7 +32,7 @@ from chipcompiler.engine.signoff.models import (
     SignoffPackageOptions,
     SignoffPackageResult,
 )
-from chipcompiler.tools.ecc.power_artifacts import workspace_power_report_path
+from chipcompiler.tools.ecc.power_artifacts import workspace_power_report_source_path
 from chipcompiler.tools.ecc.sta_qor import (
     STA_QOR_SUMMARY_FILENAME,
     STA_REPORT_FILENAMES,
@@ -585,7 +585,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
 
         add_file(
             role="final.power_report",
-            source=workspace_power_report_path(workspace_dir),
+            source=workspace_power_report_source_path(workspace_dir),
             destination="final/timing/power/power.rpt",
         )
 

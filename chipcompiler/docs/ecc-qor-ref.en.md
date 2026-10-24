@@ -10,7 +10,7 @@ This manual documents ECC's current QoR scheme (**ECC-QoR V3**, report `schema_v
 
 ```mermaid
 graph LR
-    A["Per-step artifacts<br/>qor_metrics.json / qor_summary.json<br/>power_summary.json"] --> B["ECC QoR V3 engine<br/>(single scorer)"]
+    A["Per-step artifacts<br/>qor_metrics.json / qor_summary.json<br/>powerAnalysis.step.json"] --> B["ECC QoR V3 engine<br/>(single scorer)"]
     B --> C["home/qor_report.json<br/>auto-refreshed after each step"]
     C --> D["ECOS Studio<br/>(renderer: 5-dim breakdown / gates / diagnoses)"]
     B --> E["ecc report qor<br/>text report → signoff/*.txt"]
@@ -167,10 +167,11 @@ $$
 Two-sided target-interval calibration of the placed core utilization `core_utilization` (under-utilization wastes silicon; over-utilization risks routability):
 
 $$
-Q_A=100\cdot\psi_{target}(U_{core};\;0.45,\;0.70,\;0.85)
+Q_A=100\cdot\psi_{target}(U_{core};\;0.45,\;0.70,\;1.00)
 $$
 
-- U ∈ [0.45, 0.70] scores full marks; U < 0.45 decays as U/0.45; U ∈ (0.70, 0.85] decays as (0.85−U)/0.15 to 0.
+- U ∈ [0.45, 0.70] scores full marks; U < 0.45 decays as U/0.45; U ∈ (0.70, 1.00] decays as (1.00−U)/0.30 to 0. For example, U=0.85 receives 50 points and U=0.925 receives 25 points.
+- The continuous area score is independent from signoff gating. A low or zero Q_A does not by itself make `feasibility.status` `PHYSICAL_FAIL`; MPC minimum/maximum-area checklist gates can still block signoff export when configured.
 - Note this is the **placed** core utilization, not the planning density (synthesis area / core area — that is an early indicator `F_PLAN_DENSITY` and is never scored).
 
 ### 3.4 Q_P — Power Quality
@@ -309,7 +310,7 @@ Intervention hypotheses are ordered by a three-tier lexicographic policy:
 2. **Tier 2 (quality limiters/bottlenecks)**: descending bottleneck severity, ahead of optimization opportunities;
 3. **Tier 3 (optimization opportunities)**: downsizing suggestions for over-provisioned margins.
 
-Example interventions and parameter knobs (the `parameter_knob` field): interconnect bottleneck → `route.dr_search_depth` (requires a trial reroute); area → floorplan utilization targets; robustness → CTS balancing and multi-corner skew targets.
+Example interventions and public parameter knobs (the `parameter_knob` field): interconnect bottleneck → `route.bottom_layer` / `route.top_layer` or `place.routability_opt` (requires a trial reroute); area → floorplan utilization targets; robustness → CTS balancing and multi-corner skew targets. These are hypotheses; `route.dr_search_depth` is not a public `ecc param` key.
 
 ## 8. User-Configurable Parameters
 
@@ -342,7 +343,7 @@ qor_power_budget_w = 0.5
 |---|---|---|
 | Per-step metrics | `<step_dir>/analysis/qor_metrics.json` (schema_version 3, emitted by every step — **unchanged**) | metric values and provenance |
 | Per-corner timing | `sta_ecc/feature/<corner>/Cworst/qor_summary.json` | signed setup/hold WS, TNS, NVP; PVT dispersion |
-| Power | `powerAnalysis_ecc/feature/power_summary.json` (falls back to `Synthesis_yosys/feature/post_synthesis/power_summary.json`) | P_total |
+| Power | `powerAnalysis_ecc/feature/powerAnalysis.step.json` (`power_summary`, with legacy `power_summary.json` fallback; then `Synthesis_yosys/feature/post_synthesis/power_summary.json`) | P_total |
 | Step states | `home/flow.json` | only steps whose state is `Success` are analyzed (stale artifacts after invalidation never score) |
 | Parameters | `home/params.toml` | profile / budget / frequency |
 
@@ -350,13 +351,14 @@ When several steps emit the same metric id, selection prefers `project_role` (fi
 
 ### 9.2 Metric catalog consumed by the engine
 
-Synthesis: `synthesis_cell_area`, `synthesis_cell_count`, `synthesis_wire_count`, `synthesis_power_dynamic_uw`, `synthesis_power_leakage_uw`;
+Synthesis: `synthesis_cell_area`, `synthesis_cell_count`, `synthesis_wire_count`;
 Floorplan: `die_area`, `core_area`, `core_utilization`;
 Placement: `place_hpwl`, `place_grwl`, `place_flute_wirelength`, `place_congestion_egr_overflow_max/total`, `place_rudy_utilization_max`, `place_lutrudy_utilization_max`;
 CTS: `cts_buffer_count`, `cts_inverter_count`, `clock_path_max_buffer/min_buffer`, `clock_wirelength`;
 Routing: `route_wirelength`, `route_via_count`;
 RCX: `rcx_spef_file_count`, `rcx_expected/missing_corner_count`, `rcx_spef_parse_failure_count`, `rcx_worst_total/coupling_capacitance_ff`;
 STA: `sta_setup/hold_wns` (signed WS), `sta_setup/hold_tns`, `sta_setup/hold_violation_count`, `sta_frequency_mhz`, `sta_corner_count`, `sta_expected/missing_corner_count`, `sta_worst_setup_corner`;
+Power analysis: `power_analysis_internal_uw`, `power_analysis_switching_uw`, `power_analysis_dynamic_uw`, `power_analysis_leakage_uw` (legacy `synthesis_power_*` workspaces remain readable);
 Signoff: `drc_count`, `lvs_count`, `harden_artifact_missing_count`.
 
 ### 9.3 Derived feature catalog
@@ -364,6 +366,7 @@ Signoff: `drc_count`, `lvs_count`, `harden_artifact_missing_count`.
 | Feature | Formula | Epistemic class |
 |---|---|---|
 | F_SYN_LEAK_FRAC | P_leak / (P_dyn + P_leak) | EXACT_TRANSFORMATION |
+| F_PWR_LEAK_FRAC | powerAnalysis P_leak / (P_dyn + P_leak) | EXACT_TRANSFORMATION |
 | F_PLAN_DENSITY | synthesis_cell_area / core_area | DERIVED_ENGINEERING |
 | F_PL_I_PLACE | GRWL / HPWL | DERIVED_ENGINEERING |
 | F_PL_CONG_CONC | EGR_max / EGR_total | DERIVED_ENGINEERING |
@@ -378,6 +381,30 @@ Signoff: `drc_count`, `lvs_count`, `harden_artifact_missing_count`.
 | S_CONG | max(RUDY/1, EGR_max/20, EGR_total/100) | CALIBRATED_HEURISTIC |
 
 Every feature record carries: value (or null), formula string, epistemic class, state, input metric ids, provenance artifacts (path + selector), the compatibility contract, and an interpretation — top-level diagnoses trace all the way back to raw report selectors.
+
+### 9.4 Step Evidence and Display Contracts
+
+QoR-related files have separate responsibilities. The GUI consumes conclusions already produced by ECC; it does not reinterpret or rescore gates.
+
+| File | Producer / version | Purpose and authority |
+|---|---|---|
+| `<step_dir>/analysis/qor_metrics.json` | every step; schema 3 | Raw metric records, units, and provenance. Required for step analysis. |
+| `<step_dir>/analysis/qor_summary.json` | every step; **schema 4** (current writer) | Step-level QoR verdict: `analysis_revision`, `analysis_status` (`valid` / `incomplete`), `quality_status` (`pass` / `blocked` / `incomplete`), `gates[]`, and `missing_metrics[]`. Required for step analysis. |
+| `<step_dir>/analysis/qor_hotspots.json` | every step; schema 3 | Optional hotspot index; absence is not a step failure. |
+| `<workspace>/home/qor_report.json` | ECC QoR engine; schema 3, `scoring_engine: "qor-v3"` | Sole authority for workspace scoring and the seven feasibility gates. The GUI never rescores. |
+| `sta_ecc/feature/<corner>/<view>/qor_summary.json` | STA timing tool; timing schema-1 shape | Per-corner raw setup/hold summaries reduced into workspace QoR. It shares a filename with the step-level `analysis/qor_summary.json` but has a different contract. |
+| `sta_ecc/analysis/sta_timing_issues.json` | STA; schema 1 | Required STA step evidence for timing-issue details. |
+| `<workspace>/home/checklist.json` | signoff checklist; schema 3 | Aggregated signoff authority. `requirements_status` distinguishes `none` (no requirements) from `present` (requirements exist); `status` is `ready` / `attention` / `blocked`. |
+| `<step_dir>/checklist.json` | refreshed on step completion; schema 3 | Evidence snapshot for that step. Aggregation prefers it and only backfills QoR gate items from `qor_summary.json` when the snapshot is absent. |
+| `<workspace>/home/flow.json` | flow engine | Stores only the compact `checklist_status`: `status`, `blocked`, `failed_items`, `summary`, `requirements_status`, `revision`, `updated_at`, and `source`. Full checklist items are no longer copied here. |
+
+`analysis_status` and `quality_status` describe different facts and must not be merged:
+
+- `analysis_status: incomplete` means coverage is incomplete, for example a non-critical metric is missing; it is not a quality failure.
+- `quality_status: blocked` means a current gate failed; `incomplete` means a gate cannot be decided because evidence is unavailable.
+- `gates[].state` uses only `pass` / `failed` / `unavailable`; legacy schema-3 `status` / `hard_gates` are read for compatibility only.
+
+The Engineering Snapshot v6 artifact index carries a `required` flag for every analysis file, and the GUI uses that flag to decide whether absence makes a step `incomplete`. QoR metrics/summary and STA timing issues are required; the hotspot index is optional. For report-only steps without QoR artifacts, Antenna Check and EMIR are advisory while Post-route LEC is required evidence.
 
 ## 10. JSON Report Contract (home/qor_report.json)
 
@@ -411,7 +438,7 @@ Every feature record carries: value (or null), formula string, epistemic class, 
     "timing":       {"key": "timing",       "value": 100.0, "state": "OPPORTUNITY", "features": ["…F_STA_HEADROOM record…"]},
     "interconnect": {"key": "interconnect", "value": 100.0, "state": "PASS",        "features": ["…six feature records…"]},
     "area":         {"key": "area",         "value": 100.0, "state": "PASS",        "features": ["…F_PLAN_DENSITY…"]},
-    "power":        {"key": "power",        "value": null,  "state": "UNKNOWN",     "features": ["…F_SYN_LEAK_FRAC…"]},
+    "power":        {"key": "power",        "value": null,  "state": "UNKNOWN",     "features": ["…F_PWR_LEAK_FRAC…"]},
     "robustness":   {"key": "robustness",   "value": 94.1,  "state": "PASS",        "features": ["…four feature records…"]}
   },
   "scalar_summary": {"score": 98.96, "status": "GREEN", "profile": "balanced",

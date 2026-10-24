@@ -450,10 +450,13 @@ ecc project set flow.preset rtl2gds
 ecc workspace refresh baseline
 ```
 
-`ecc project` edits only `ecc.toml`: the field registry covers the `[design]`
-inputs (`name`, `top`, `rtl`, `netlist`, `golden_netlist`, `def`, `sdc`,
-`spef`, `clock_port`, `frequency_mhz`), `[pdk] name/root`, and `[flow] preset`.
-`ecc param` continues to own all `[params.*]` and `[pdk.overrides]` fields.
+`ecc project` edits `ecc.toml` and, for manifest projects, atomically syncs
+`project.json.base_design`; existing workspace snapshots are unchanged. Legacy
+and virgin projects write only `ecc.toml`. The field registry covers the
+`[design]` inputs (`name`, `top`, `rtl`, `netlist`, `golden_netlist`, `def`,
+`sdc`, `spef`, `clock_port`, `frequency_mhz`), `[pdk] name/root`, and
+`[flow] preset`. `ecc param` continues to own all `[params.*]` and
+`[pdk.overrides]` fields.
 `ecc workspace refresh NAME` accepts only a workspace declared in
 `project.json`, recreates it with the existing overwrite safeguards, records
 status `not_started`, and never executes the flow. If any generated

@@ -81,12 +81,12 @@ def test_refresh_workspace_analysis_chains_the_previous_step(tmp_path):
         "filler": "route",
         "lvs": "filler",
         "drc": "filler",
-        "antennaCheck": "drc",
-        "RCX": "drc",
-        "sta": "RCX",
-        "powerAnalysis": "sta",
-        "emir": "powerAnalysis",
-        "Harden": "powerAnalysis",
+        "antennaCheck": "filler",
+        "RCX": "filler",
+        "sta": "filler",
+        "powerAnalysis": "filler",
+        "emir": "filler",
+        "Harden": "filler",
     }
 
 

@@ -4,6 +4,11 @@ from csv import reader as csv_reader
 from math import ceil, isfinite
 from pathlib import Path
 
+from chipcompiler.analysis.qor.summary_contract import (
+    is_supported_summary,
+    summary_gates,
+    summary_quality_status,
+)
 from chipcompiler.data import (
     EccStep,
     StateEnum,
@@ -587,6 +592,13 @@ QOR_METRIC_MAP = {
     },
 }
 
+_POWER_ANALYSIS_METRIC_NAMES = {
+    "Power internal [uW]": "power_analysis_internal_uw",
+    "Power switching [uW]": "power_analysis_switching_uw",
+    "Power dynamic [uW]": "power_analysis_dynamic_uw",
+    "Power leakage [uW]": "power_analysis_leakage_uw",
+}
+
 QOR_ANALYSIS_REVISION = "quality-gates-v4"
 
 QOR_HOTSPOT_METRIC_HINTS = {
@@ -628,10 +640,6 @@ QOR_EXPECTED_METRICS_BY_STEP = {
         "synthesis_cell_count",
         "synthesis_wire_count",
         "synthesis_port_count",
-        "synthesis_power_internal_uw",
-        "synthesis_power_switching_uw",
-        "synthesis_power_dynamic_uw",
-        "synthesis_power_leakage_uw",
     ],
     StepEnum.POST_FLOORPLAN.value: [
         "die_area",
@@ -702,6 +710,12 @@ QOR_EXPECTED_METRICS_BY_STEP = {
         "sta_missing_corner_count",
         "sta_setup_violation_count",
         "sta_hold_violation_count",
+    ],
+    StepEnum.POWER_ANALYSIS.value: [
+        "power_analysis_internal_uw",
+        "power_analysis_switching_uw",
+        "power_analysis_dynamic_uw",
+        "power_analysis_leakage_uw",
     ],
     StepEnum.HARDEN.value: [
         "harden_gds_exists",
@@ -1831,6 +1845,9 @@ def _metric_scope_and_roles(step: WorkspaceStep, metric_id: str) -> tuple[str, s
             else "final"
         )
         step_role = "primary"
+    elif step.name == StepEnum.POWER_ANALYSIS.value:
+        scope = "power_analysis"
+        step_role = "primary"
     elif step.name == StepEnum.HARDEN.value:
         scope = "final_delivery"
         project_role = "final"
@@ -2060,17 +2077,21 @@ def _metric_feature_source(
         }.get(metric_id, "")
     elif metric_id.startswith("synthesis_power_"):
         feature_dir = getattr(step.feature, "dir", None)
-        feature_path = (
-            Path(feature_dir) / POST_SYNTHESIS_STA_CORNER / STA_POWER_SUMMARY_FILENAME
-            if feature_dir
-            else None
-        )
         selector = {
             "synthesis_power_internal_uw": "/internal_uw",
             "synthesis_power_switching_uw": "/switching_uw",
             "synthesis_power_dynamic_uw": "/dynamic_uw",
             "synthesis_power_leakage_uw": "/leakage_uw",
         }.get(metric_id, "")
+        if step.name == StepEnum.POWER_ANALYSIS.value:
+            feature_path = Path(feature_dir) / "powerAnalysis.step.json" if feature_dir else None
+            selector = f"/power_summary{selector}"
+        else:
+            feature_path = (
+                Path(feature_dir) / POST_SYNTHESIS_STA_CORNER / STA_POWER_SUMMARY_FILENAME
+                if feature_dir
+                else None
+            )
     elif metric_id.startswith("synthesis_"):
         feature_path = getattr(step.feature, "stat", None)
         selector = {
@@ -2301,6 +2322,13 @@ def build_qor_metrics_payload(
         mapping = QOR_METRIC_MAP.get(legacy_name)
         if mapping is None:
             continue
+        power_analysis_name = _POWER_ANALYSIS_METRIC_NAMES.get(legacy_name)
+        if step.name == StepEnum.POWER_ANALYSIS.value and power_analysis_name is not None:
+            mapping = {
+                **mapping,
+                "name": power_analysis_name,
+                "display_name": mapping["display_name"].replace("Synthesis", "Power Analysis"),
+            }
 
         value = _qor_number(raw_value)
         if value is None:
@@ -2532,17 +2560,13 @@ def _harden_signoff_source(workspace: Workspace, source_step: str) -> dict:
         else None
     )
     summary = json_read(summary_path) if summary_path is not None else None
-    available = (
-        isinstance(summary, dict)
-        and summary.get("schema_version") == 3
-        and isinstance(summary.get("status"), str)
-    )
-    hard_gates = summary.get("hard_gates", []) if available else []
+    available = is_supported_summary(summary) and summary_quality_status(summary) is not None
+    hard_gates = summary_gates(summary) if available else []
     return {
         "step": source_step,
         "flow_completed": _workspace_step_completed(workspace, source_step),
         "available": available,
-        "status": summary.get("status") if available else None,
+        "status": summary_quality_status(summary) if available else None,
         "hard_gates": hard_gates if isinstance(hard_gates, list) else [],
     }
 
@@ -2560,7 +2584,7 @@ def _harden_source_passed(source: dict, required_hard_gates: tuple[str, ...]) ->
         for gate in source["hard_gates"]
         if isinstance(gate, dict) and isinstance(gate.get("id"), str)
     }
-    return all(gates.get(gate_id, {}).get("passed") is True for gate_id in required_hard_gates)
+    return all(gates.get(gate_id, {}).get("state") == "pass" for gate_id in required_hard_gates)
 
 
 def _harden_source_reason(source: dict, label: str) -> str:
@@ -3631,14 +3655,12 @@ def _finish_step_metrics(
     step: EccStep,
     step_metrics: StepMetrics,
     metrics: dict,
-    image_path: str,
 ) -> StepMetrics | None:
-    """Attach the collected metrics and report image, then persist them.
+    """Attach the collected metrics, then persist them.
 
     Returns None when the metrics could not be saved.
     """
     step_metrics.data = metrics
-    step_metrics.report.append((image_path, f"{step.name} step metrics:\n"))
 
     if save_step_metrics(workspace, step, step_metrics):
         return step_metrics
@@ -3657,12 +3679,7 @@ def build_metrics_floorplan(workspace: Workspace, step: EccStep) -> StepMetrics 
     # db summary matrics
     metrics.update(build_metrics_db(workspace, step))
 
-    # step matrics
-    json_path = getattr(step.feature, "step", "") or ""
-
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(json_path).replace(".json", ".png")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_filler(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -3677,12 +3694,7 @@ def build_metrics_filler(workspace: Workspace, step: EccStep) -> StepMetrics | N
     # db summary matrics
     metrics.update(build_metrics_db(workspace, step))
 
-    # step matrics
-    json_path = getattr(step.feature, "step", "") or ""
-
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(json_path).replace(".json", ".png")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_drc(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -3705,9 +3717,7 @@ def build_metrics_drc(workspace: Workspace, step: EccStep) -> StepMetrics | None
         if isinstance(drc, dict):
             _add_number_metric(metrics, "drc_num", drc.get("number"))
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(json_path).replace(".json", ".png")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_lvs(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -3729,9 +3739,7 @@ def build_metrics_lvs(workspace: Workspace, step: EccStep) -> StepMetrics | None
         violations = data.get("violations", [])
         metrics["lvs_count"] = len(violations) if isinstance(violations, list) else 0
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(json_path).replace(".json", ".png")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_routing(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -3799,9 +3807,7 @@ def build_metrics_routing(workspace: Workspace, step: EccStep) -> StepMetrics | 
                 dr.get("total_via_num"),
             )
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(json_path).replace(".json", ".png")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_rcx(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -3850,9 +3856,7 @@ def build_metrics_rcx(workspace: Workspace, step: EccStep) -> StepMetrics | None
             "rc_corners": signoff_metrics.get("rc_corners", []),
         }
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(step.output.image or "")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_sta(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -3988,9 +3992,7 @@ def build_metrics_sta(workspace: Workspace, step: EccStep) -> StepMetrics | None
     ):
         return None
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(step.output.image or "")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_harden(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -4032,9 +4034,7 @@ def build_metrics_harden(workspace: Workspace, step: EccStep) -> StepMetrics | N
     ):
         return None
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(step.output.image or "")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_legalization(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -4050,13 +4050,7 @@ def build_metrics_legalization(workspace: Workspace, step: EccStep) -> StepMetri
     metrics.update(build_metrics_db(workspace, step))
 
     # Current legalization feature output only carries run facts.  Movement
-    # totals are no longer emitted by the tool, so do not synthesize a stale
-    # V3 metric requirement from an absent legacy field.
-    json_path = getattr(step.feature, "step", "") or ""
-
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(json_path).replace(".json", ".png")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_cts(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -4115,9 +4109,7 @@ def build_metrics_cts(workspace: Workspace, step: EccStep) -> StepMetrics | None
                 ),
             }
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(json_path).replace(".json", ".png")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
 def build_metrics_placement(workspace: Workspace, step: EccStep) -> StepMetrics | None:
@@ -4135,8 +4127,6 @@ def build_metrics_placement(workspace: Workspace, step: EccStep) -> StepMetrics 
     # Placement congestion and wirelength are emitted through place.map.json.
     # The old place.step.json overflow/bin fields are not part of the current
     # DreamPlace feature contract.
-    json_path = getattr(step.feature, "step", "") or ""
-
     map_data = json_read(getattr(step.feature, "map", None) or "")
     if isinstance(map_data, dict):
         metrics["place_map_metrics"] = _place_map_metrics(
@@ -4176,6 +4166,4 @@ def build_metrics_placement(workspace: Workspace, step: EccStep) -> StepMetrics 
             utilization.get("lutrudy", {}).get("max", {}).get("union"),
         )
 
-    return _finish_step_metrics(
-        workspace, step, step_metrics, metrics, str(json_path).replace(".json", ".png")
-    )
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)

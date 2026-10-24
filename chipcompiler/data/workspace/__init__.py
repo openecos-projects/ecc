@@ -451,6 +451,50 @@ def _load_default_floorplan_config() -> dict:
     return json_read(root_dir / "tools" / "ecc" / "configs" / "floorplan_ecc.json")
 
 
+def _default_emir_technology_file() -> Path:
+    import sys
+
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if bundle_root:
+        return (
+            Path(bundle_root)
+            / "chipcompiler"
+            / "tools"
+            / "ecc"
+            / "configs"
+            / "ics55_synthetic.tech"
+        )
+
+    root_dir = Path(__file__).resolve().parent.parent.parent
+    return root_dir / "tools" / "ecc" / "configs" / "ics55_synthetic.tech"
+
+
+def _refresh_emir_config(workspace: Workspace) -> None:
+    from chipcompiler.utility import json_read, json_write
+
+    config_path = workspace.config.get(StepEnum.EMIR.value)
+    if not config_path:
+        return
+
+    config = json_read(config_path)
+    if not isinstance(config, dict):
+        raise FileNotFoundError(f"EMIR config missing or corrupt: {config_path}")
+
+    technology_path = config_path.parent / "ics55_synthetic.tech"
+    configured = config.get("technology_file_path")
+    if configured:
+        configured_path = Path(str(configured)).expanduser()
+        if configured_path == technology_path:
+            return
+        if configured_path != _default_emir_technology_file().expanduser():
+            return
+
+    if not technology_path.is_file():
+        raise FileNotFoundError(f"Workspace EMIR technology file is missing: {technology_path}")
+    config["technology_file_path"] = str(technology_path)
+    json_write(config_path, config)
+
+
 def _has_new_floorplan_schema(config: dict) -> bool:
     die_builder = config.get("die_builder")
     macro_placer = config.get("macro_placer")
@@ -708,6 +752,7 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     _refresh_floorplan_config(workspace)
 
     _apply_parameter_mappings_to_workspace_config(workspace)
+    _refresh_emir_config(workspace)
 
     # rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
     # rcx["pdk"] = "ics55" if workspace.pdk.name == "ics55" else ""

@@ -25,9 +25,14 @@ def antenna_case(tmp_path, monkeypatch):
     module.init_mj.return_value = True
     module.destroy_mj.return_value = True
 
-    def check_antenna():
+    def check_antenna(*, step_json):
         native_report.parent.mkdir(parents=True, exist_ok=True)
         native_report.write_text("Total Violations: 3\n", encoding="utf-8")
+        step_json.parent.mkdir(parents=True, exist_ok=True)
+        step_json.write_text(
+            '{"schema_version": 1, "step": "antennaCheck", "violations": []}\n',
+            encoding="utf-8",
+        )
         return True
 
     module.check_antenna.side_effect = check_antenna
@@ -45,10 +50,11 @@ def test_antenna_dispatch_publishes_report_and_continues_with_violations(antenna
     assert module.method_calls == [
         call.update_step_paths(output_dir=step.data.dir, feature_dir=step.feature.dir),
         call.init_mj(output_dir=workspace.directory / "antennaCheck_ecc" / "data" / "mj"),
-        call.check_antenna(),
+        call.check_antenna(step_json=step.feature.step),
         call.destroy_mj(),
     ]
     assert step.report.step.read_bytes() == native_report.read_bytes() == b"Total Violations: 3\n"
+    assert json_read(step.feature.step)["step"] == "antennaCheck"
     save_data.assert_called_once_with(
         workspace=workspace, step=step, ecc_module=module, feature_step=False
     )
@@ -153,4 +159,16 @@ def test_antenna_wrapper_returns_native_result(result):
 
     assert module.check_antenna() is result
 
-    assert module.ecc.method_calls == [call.check_antenna()]
+    assert module.ecc.method_calls == [call.check_antenna(config_dict={})]
+
+
+def test_antenna_wrapper_passes_step_json_path_to_native_api():
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = Mock()
+    module.ecc.check_antenna.return_value = True
+
+    assert module.check_antenna(step_json="/workspace/feature/antennaCheck.step.json") is True
+
+    assert module.ecc.method_calls == [
+        call.check_antenna(config_dict={"-step_json": "/workspace/feature/antennaCheck.step.json"})
+    ]

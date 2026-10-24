@@ -1,6 +1,6 @@
 import pytest
 
-from chipcompiler.analysis.qor.calibration import TAU_AREA_FAIL, psi_cost
+from chipcompiler.analysis.qor.calibration import TAU_AREA_HARD_MAX, psi_cost
 from chipcompiler.analysis.qor.dimensions import evaluate_dimensions
 from chipcompiler.analysis.qor.features import compute_features
 from chipcompiler.analysis.qor.loader import CornerSlack
@@ -77,9 +77,16 @@ class TestAreaQuality:
         _, dims = _dimensions(make_inputs(gcd_metrics(), tclk_ns=20.0))
         assert dims["area"].value == pytest.approx(100.0)
 
-    def test_over_utilization_fails_at_fail_bound(self):
+    def test_over_utilization_keeps_continuous_score_past_warning_bound(self):
         metrics = gcd_metrics()
-        metrics["core_utilization"].value = TAU_AREA_FAIL
+        metrics["core_utilization"].value = 0.85
+        _, dims = _dimensions(make_inputs(metrics))
+        assert dims["area"].value == pytest.approx(50.0)
+        assert dims["area"].state == "FAIL"
+
+    def test_area_score_reaches_zero_only_at_hard_utilization_bound(self):
+        metrics = gcd_metrics()
+        metrics["core_utilization"].value = TAU_AREA_HARD_MAX
         _, dims = _dimensions(make_inputs(metrics))
         assert dims["area"].value == pytest.approx(0.0)
         assert dims["area"].state == "FAIL"

@@ -7,7 +7,7 @@ import pytest
 from chipcompiler.cli.experiments.operations import read_package
 
 
-@pytest.mark.parametrize("manifest", [None, b"{broken", b'{"schema_version": 1}'])
+@pytest.mark.parametrize("manifest", [None, b"{broken", b'{"schema_version": 1}', b"[]", b"null"])
 def test_package_reader_closes_archive_on_success_and_invalid_manifest(
     tmp_path, monkeypatch, manifest
 ):
@@ -26,7 +26,7 @@ def test_package_reader_closes_archive_on_success_and_invalid_manifest(
         return archive
 
     monkeypatch.setattr(tarfile, "open", tracked_open)
-    if manifest is None or manifest == b"{broken":
+    if manifest is None or manifest in {b"{broken", b"[]", b"null"}:
         with pytest.raises((ValueError, json.JSONDecodeError)), read_package(package):
             pytest.fail("invalid manifest was accepted")
     else:

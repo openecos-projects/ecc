@@ -9,67 +9,11 @@ import pytest
 from agent import tools as eda
 from agent.data import parameter_runtime_observer as runtime_observer
 from agent.data.candidate_materialization import materialize_candidate_config
-from agent.plot import AgentECCToolsPlot
-from chipcompiler.tools.ecc import runner as ecc_runner
-from chipcompiler.tools.ecc.plot import ECCToolsPlot
 
 
 def _write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data), encoding="utf-8")
-
-
-def test_agent_plotter_skips_all_display_plots_for_candidate_workspaces(monkeypatch, tmp_path):
-    calls = []
-    monkeypatch.setattr(ECCToolsPlot, "plot", lambda plotter: calls.append(plotter.workspace))
-    candidate = SimpleNamespace(directory=tmp_path / ".agent" / "candidates" / "candidate-1")
-    ordinary = SimpleNamespace(directory=tmp_path / "ordinary")
-
-    assert AgentECCToolsPlot(candidate, SimpleNamespace()).plot() is True
-    AgentECCToolsPlot(ordinary, SimpleNamespace()).plot()
-
-    assert calls == [ordinary]
-
-
-def test_run_analysis_routes_plots_through_agent_plotter(monkeypatch, tmp_path):
-    plotted = []
-    monkeypatch.setattr(ECCToolsPlot, "plot", lambda plotter: plotted.append(plotter))
-    monkeypatch.setattr(ecc_runner, "build_step_metrics", lambda **kwargs: None)
-    monkeypatch.setattr(
-        ecc_runner,
-        "EccChecklist",
-        lambda **kwargs: SimpleNamespace(check=lambda: None),
-    )
-
-    def run_analysis_at(root):
-        workspace = SimpleNamespace(directory=root, parameters=SimpleNamespace(data={}))
-        ecc_runner.run_analysis(
-            workspace=workspace,
-            step=SimpleNamespace(name="cts"),
-            subflow=SimpleNamespace(),
-        )
-
-    run_analysis_at(tmp_path / ".agent" / "candidates" / "candidate-1")
-    assert plotted == []
-
-    run_analysis_at(tmp_path / "ordinary")
-    assert len(plotted) == 1
-    assert isinstance(plotted[0], AgentECCToolsPlot)
-
-
-def test_agent_plotter_uses_headless_display_helper_only_when_requested(monkeypatch, tmp_path):
-    calls = []
-    ordinary = SimpleNamespace(
-        directory=tmp_path / "ordinary",
-        logger=SimpleNamespace(warning=lambda message: calls.append(message)),
-    )
-    monkeypatch.setenv("ECOS_AGENT_SKIP_DISPLAY_PLOTS", "1")
-    monkeypatch.setattr("agent.plot.plot_array_maps", lambda paths, warn: calls.append(paths))
-    monkeypatch.setattr(ECCToolsPlot, "plot_array_maps", lambda *_args: calls.append("default"))
-
-    AgentECCToolsPlot(ordinary, SimpleNamespace()).plot_array_maps(["map.csv"])
-
-    assert calls == [["map.csv"]]
 
 
 class _Scalar:

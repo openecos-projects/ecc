@@ -363,6 +363,211 @@ class RunProgressRenderer:
         self._stream.flush()
 
 
+def _flow_step_runtime(workspace, step_name):
+    flow = getattr(workspace, "flow", None)
+    data = getattr(flow, "data", {})
+    for step in data.get("steps", []) if isinstance(data, dict) else []:
+        if isinstance(step, dict) and step.get("name") == step_name:
+            return str(step.get("runtime") or "")
+    return ""
+
+
+def _render_step_completion(
+    renderer,
+    workspace,
+    step,
+    state,
+    project,
+    run_id,
+    color,
+    *,
+    runtime=None,
+    log_path=None,
+):
+    step_token = normalize_step_name(step.name)
+    if log_path is None:
+        log_path = getattr(getattr(step, "log", None), "file", "") or ""
+    status = normalize_state(getattr(state, "value", str(state)))
+    if runtime is None:
+        runtime = _flow_step_runtime(workspace, step.name) or "0:00:00"
+
+    rel_log = ""
+    if log_path:
+        try:
+            rel_log = os.path.relpath(log_path, workspace.directory)
+        except ValueError:
+            rel_log = log_path
+
+    inspect = disclosure_cmd(f"ecc log {step_token}", project, run_id)
+    success = getattr(state, "value", state) == StateEnum.Success.value
+    renderer.finish_step(step_token, step.tool, status, runtime, rel_log, inspect, success)
+    if not success:
+        _maybe_render_failure_context(
+            renderer,
+            log_path,
+            rel_log,
+            step_token,
+            project,
+            run_id,
+            color,
+        )
+    return success
+
+
+class RunProgressEventSink:
+    """Render rerun step events while preserving the engineering event sink."""
+
+    def __init__(
+        self,
+        renderer,
+        workspace,
+        *,
+        project,
+        run_id,
+        color=False,
+        isolated=False,
+        delegate=None,
+    ):
+        self._renderer = renderer
+        self._workspace = workspace
+        self._project = project
+        self._run_id = run_id
+        self._color = color
+        self._isolated = isolated
+        self._delegate = delegate
+        self._stop_event = None
+        self._monitor = None
+        self.fatal_observer = bool(getattr(delegate, "fatal_observer", False))
+
+    @property
+    def execution(self):
+        return getattr(self._delegate, "execution", None)
+
+    @property
+    def runtime_operation(self):
+        return getattr(self._delegate, "runtime_operation", None)
+
+    def on_execution_started(self, intent, step_ids):
+        self._renderer.start_run(self._run_id or "default", self._workspace.directory)
+        self._delegate_call("on_execution_started", intent, step_ids)
+
+    def on_step_started(self, step):
+        self._stop_monitor()
+        step_token = normalize_step_name(step.name)
+        self._renderer.start_step(step_token, step.tool)
+        self._renderer.running("starting step...")
+        log_path = getattr(getattr(step, "log", None), "file", "") or ""
+        self._stop_event, self._monitor = _start_log_monitor(
+            self._renderer,
+            log_path,
+            step_token,
+            isolated=self._isolated,
+        )
+        try:
+            self._delegate_call("on_step_started", step)
+        except BaseException:
+            self._stop_monitor()
+            raise
+
+    def on_step_completed(self, step, state, error=None):
+        self._stop_monitor()
+        self._renderer.clear()
+        self._delegate_call("on_step_completed", step, state, error)
+        _render_step_completion(
+            self._renderer,
+            self._workspace,
+            step,
+            state,
+            self._project,
+            self._run_id,
+            self._color,
+        )
+
+    def on_execution_finished(self, state, error):
+        self._stop_monitor()
+        self._renderer.clear()
+        self._delegate_call("on_execution_finished", state, error)
+
+    def on_step_skipped(self, step):
+        self._delegate_call("on_step_skipped", step)
+
+    def on_subflow_stage(self, step, subflow_step):
+        self._delegate_call("on_subflow_stage", step, subflow_step)
+
+    def on_step_diagnostic(self, step, diagnostic):
+        self._delegate_call("on_step_diagnostic", step, diagnostic)
+
+    def on_rerun_prepared(self, *args, **kwargs):
+        self._delegate_call("on_rerun_prepared", *args, **kwargs)
+
+    def wait_for_step_rendered(self, step, state):
+        result = self._delegate_call("wait_for_step_rendered", step, state)
+        return True if result is None else bool(result)
+
+    def raise_if_cancelled(self):
+        return self._delegate_call("raise_if_cancelled")
+
+    def close(self):
+        self._stop_monitor()
+        self._renderer.clear()
+
+    def _stop_monitor(self):
+        if self._stop_event is not None and self._monitor is not None:
+            _stop_log_monitor(self._stop_event, self._monitor)
+        self._stop_event = None
+        self._monitor = None
+
+    def _delegate_call(self, name, *args, **kwargs):
+        callback = getattr(self._delegate, name, None)
+        if callable(callback):
+            return callback(*args, **kwargs)
+        return None
+
+
+@contextlib.contextmanager
+def run_progress_event_sink(engine_flow, ctx, project, stderr):
+    """Attach terminal step rendering to an existing flow execution."""
+    progress_stream = _stable_stream_from(stderr)
+    sink = None
+    try:
+        renderer = RunProgressRenderer(
+            progress_stream,
+            color=supports_color(stderr, ctx.output_mode),
+        )
+        sink = RunProgressEventSink(
+            renderer,
+            engine_flow.workspace,
+            project=project,
+            run_id=ctx.run_id,
+            color=supports_color(stderr, ctx.output_mode),
+            isolated=progress_stream is not stderr,
+            delegate=event_sink_for_workspace(engine_flow.workspace),
+        )
+        yield sink
+    finally:
+        if sink is not None:
+            sink.close()
+        if progress_stream is not stderr:
+            progress_stream.close()
+
+
+def run_with_step_progress(
+    runner,
+    engine_flow,
+    ctx,
+    project,
+    *args,
+    stderr=None,
+    **kwargs,
+):
+    """Invoke a rerun entry point with terminal progress when available."""
+    stderr = sys.stderr if stderr is None else stderr
+    if ctx is None or not should_enable_run_progress(ctx, stderr):
+        return runner(engine_flow, *args, **kwargs)
+    with run_progress_event_sink(engine_flow, ctx, project, stderr) as sink:
+        return runner(engine_flow, *args, event_sink=sink, **kwargs)
+
+
 def _monitor_log_progress(
     renderer,
     log_path,
@@ -497,25 +702,19 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
             minutes = int((elapsed % 3600) // 60)
             seconds = int(elapsed % 60)
             runtime = f"{hours}:{minutes:02d}:{seconds:02d}"
-
-            status = normalize_state(state.value)
-
-            rel_log = ""
-            if log_path:
-                try:
-                    rel_log = os.path.relpath(log_path, engine_flow.workspace.directory)
-                except ValueError:
-                    rel_log = log_path
-
-            inspect = disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id)
-
-            is_success = state == StateEnum.Success
-            renderer.finish_step(step_token, tool, status, runtime, rel_log, inspect, is_success)
+            is_success = _render_step_completion(
+                renderer,
+                engine_flow.workspace,
+                workspace_step,
+                state,
+                project,
+                ctx.run_id,
+                color,
+                runtime=runtime,
+                log_path=log_path,
+            )
 
             if not is_success:
-                _maybe_render_failure_context(
-                    renderer, log_path, rel_log, step_token, project, ctx.run_id, color
-                )
                 execution_state = StateEnum.Imcomplete.value
                 return False
 

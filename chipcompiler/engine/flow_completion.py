@@ -23,7 +23,7 @@ def summarize_step_checklist(workspace_step) -> dict | None:
             "status": "unknown",
             "blocked": False,
             "failed_items": [],
-            "source": str(path),
+            "source": _checklist_source(path),
         }
     status = {
         "ready": "passed",
@@ -39,14 +39,27 @@ def summarize_step_checklist(workspace_step) -> dict | None:
         "status": status,
         "blocked": status == "blocked",
         "failed_items": failed_items,
-        "items": [item for item in data["checklist"] if isinstance(item, dict)],
-        "source": str(path),
+        "source": _checklist_source(path),
     }
     if isinstance(data.get("summary"), dict):
         result["summary"] = dict(data["summary"])
+    if data.get("requirements_status") in {"none", "present"}:
+        result["requirements_status"] = data["requirements_status"]
+    if isinstance(data.get("checker_revision"), str):
+        result["revision"] = data["checker_revision"]
     if isinstance(data.get("generated_at"), str):
         result["updated_at"] = data["generated_at"]
     return result
+
+
+def _checklist_source(path: Path) -> str:
+    workspace_root = path.parent.parent
+    if (workspace_root / "home").is_dir():
+        try:
+            return path.relative_to(workspace_root).as_posix()
+        except ValueError:
+            pass
+    return str(path)
 
 
 def sync_step_checklist(flow, workspace_step) -> dict | None:
@@ -57,7 +70,7 @@ def sync_step_checklist(flow, workspace_step) -> dict | None:
     current = flow.get_step(workspace_step.name, workspace_step.tool)
     if current is None:
         return projection
-    current["checklist"] = projection.pop("items", [])
+    current.pop("checklist", None)
     current["checklist_status"] = projection
     if not flow.save():
         raise RuntimeError(

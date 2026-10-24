@@ -81,6 +81,8 @@ class FlowInputSource(StrEnum):
     PREVIOUS = "previous"
     #: The step before the parallel checker batch anchored at ``filler``.
     CHECKER_BATCH = "checker_batch"
+    #: The output of ``filler`` for physical signoff analyses.
+    FILLER = "filler"
 
 
 @dataclass(frozen=True)
@@ -117,13 +119,19 @@ FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
     StepEnum.FILLER.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.LVS.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.CHECKER_BATCH),
     StepEnum.DRC.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.CHECKER_BATCH),
-    StepEnum.ANTENNA_CHECK.value: FlowStepPolicy(FlowStepCategory.PNR, advisory=True),
-    SkippableStepEnum.POST_ROUTE_LEC.value: FlowStepPolicy(FlowStepCategory.CHECKER),
-    StepEnum.RCX.value: FlowStepPolicy(FlowStepCategory.CHECKER),
-    StepEnum.STA.value: FlowStepPolicy(FlowStepCategory.CHECKER),
-    StepEnum.POWER_ANALYSIS.value: FlowStepPolicy(FlowStepCategory.CHECKER),
-    StepEnum.EMIR.value: FlowStepPolicy(FlowStepCategory.PNR, advisory=True),
-    StepEnum.HARDEN.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.ANTENNA_CHECK.value: FlowStepPolicy(
+        FlowStepCategory.CHECKER, FlowInputSource.FILLER, advisory=True
+    ),
+    SkippableStepEnum.POST_ROUTE_LEC.value: FlowStepPolicy(
+        FlowStepCategory.CHECKER, FlowInputSource.FILLER
+    ),
+    StepEnum.RCX.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
+    StepEnum.STA.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
+    StepEnum.POWER_ANALYSIS.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
+    StepEnum.EMIR.value: FlowStepPolicy(
+        FlowStepCategory.CHECKER, FlowInputSource.FILLER, advisory=True
+    ),
+    StepEnum.HARDEN.value: FlowStepPolicy(FlowStepCategory.PNR, FlowInputSource.FILLER),
     StepEnum.SIGNOFF.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.GDS.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.ABSTRACT_LEF.value: FlowStepPolicy(FlowStepCategory.PNR),

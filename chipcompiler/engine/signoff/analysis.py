@@ -1,6 +1,6 @@
 """Analysis refresh and validation checks for the signoff package collector.
 
-Split from the collector core: these mixin methods rebuild current V3
+Split from the collector core: these mixin methods rebuild current
 analysis and checklist snapshots for completed steps and turn stale or
 missing evidence into package issues. Artifact discovery, lookup, and
 materialization stay in collector.py and discovery.py; shared helpers
@@ -9,6 +9,15 @@ materialization stay in collector.py and discovery.py; shared helpers
 
 from pathlib import Path
 
+from chipcompiler.analysis.qor.summary_contract import (
+    gate_reason,
+    is_supported_summary,
+    summary_analysis_revision,
+    summary_blocking_issues,
+    summary_gates,
+    summary_missing_metrics,
+    summary_quality_status,
+)
 from chipcompiler.data import (
     LEC_STEP_TOOLS,
     StateEnum,
@@ -22,7 +31,7 @@ from chipcompiler.engine.step_chain import apply_info_spef_override, build_works
 
 class CollectorAnalysisMixin:
     def _refresh_workspace_analysis(self, workspace_dir: Path) -> list[SignoffPackageIssue]:
-        """Rebuild current V3 analysis and checklist snapshots for completed steps."""
+        """Rebuild current analysis and checklist snapshots for completed steps."""
         if self.workspace.flow.path is None:
             self.workspace.flow.path = workspace_dir / "home" / "flow.json"
         issues: list[SignoffPackageIssue] = []
@@ -54,12 +63,9 @@ class CollectorAnalysisMixin:
                 continue
             resolver.record(workspace_step)
 
-            if (
-                input_source is not None
-                and input_source.name == StepEnum.RCX.value
-                and workspace_step.name == StepEnum.STA.value
-            ):
-                workspace_step.output.spef = input_source.output.spef
+            rcx_step = resolver.created_step(StepEnum.RCX.value)
+            if rcx_step is not None and workspace_step.name == StepEnum.STA.value:
+                workspace_step.output.spef = rcx_step.output.spef
 
             if flow_step.get("state") != StateEnum.Success.value:
                 continue
@@ -125,20 +131,21 @@ class CollectorAnalysisMixin:
             summary_path = workspace_dir / step_dir / "analysis" / "qor_summary.json"
             summary = self._read_json(summary_path)
             required = step_name in SIGNOFF_REQUIRED_QOR_STEPS
-            if summary.get("schema_version") != 3:
+            if not is_supported_summary(summary):
                 issues.append(
                     self._analysis_issue(
                         step_name=step_name,
                         required=required,
                         reason=(
-                            "qor_summary.json is missing or does not use the current V3 contract"
+                            "qor_summary.json is missing or does not use a supported "
+                            "QoR summary contract"
                         ),
                         kind="freshness",
                     )
                 )
                 continue
 
-            if not summary.get("analysis_revision"):
+            if not summary_analysis_revision(summary):
                 issues.append(
                     self._analysis_issue(
                         step_name=step_name,
@@ -148,10 +155,7 @@ class CollectorAnalysisMixin:
                     )
                 )
 
-            blocking_issues = summary.get("blocking_issues", [])
-            for blocking_issue in blocking_issues if isinstance(blocking_issues, list) else []:
-                if not isinstance(blocking_issue, dict):
-                    continue
+            for blocking_issue in summary_blocking_issues(summary):
                 metric_id = str(blocking_issue.get("metric_id", "QoR blocking issue"))
                 reason = str(blocking_issue.get("reason", "Current QoR analysis blocked signoff."))
                 value = blocking_issue.get("value")
@@ -167,29 +171,36 @@ class CollectorAnalysisMixin:
                     )
                 )
 
-            hard_gates = summary.get("hard_gates", [])
-            for gate in hard_gates if isinstance(hard_gates, list) else []:
-                if not isinstance(gate, dict) or gate.get("passed") is not False:
+            gates = summary_gates(summary)
+            failed_gates = [gate for gate in gates if gate.get("state") == "failed"]
+            for gate in failed_gates:
+                if gate.get("blocking") is False:
                     continue
                 gate_id = str(gate.get("id", "QoR hard gate"))
-                reason = (
-                    f"{gate.get('metric', gate_id)} actual={gate.get('actual')} "
-                    f"does not satisfy {gate.get('threshold')}"
-                )
                 issues.append(
                     self._analysis_issue(
                         step_name=step_name,
                         required=required,
                         label=gate_id,
-                        reason=reason,
+                        reason=gate_reason(gate),
                         kind="analysis",
                     )
                 )
 
-            missing_metrics = summary.get("missing_metrics", [])
-            for missing_metric in missing_metrics if isinstance(missing_metrics, list) else []:
-                if not isinstance(missing_metric, dict):
-                    continue
+            quality_status = summary_quality_status(summary)
+            if quality_status in {"blocked", "incomplete"} and not failed_gates:
+                issues.append(
+                    self._analysis_issue(
+                        step_name=step_name,
+                        required=required,
+                        reason=(
+                            f"QoR quality status is {quality_status} without a failed gate record."
+                        ),
+                        kind="analysis",
+                    )
+                )
+
+            for missing_metric in summary_missing_metrics(summary):
                 issues.append(
                     self._analysis_issue(
                         step_name=step_name,

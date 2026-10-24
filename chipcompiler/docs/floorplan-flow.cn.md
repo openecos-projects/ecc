@@ -1,13 +1,15 @@
 # 分阶段 Floorplan 流程
 
-`rtl2gds` 预设将 floorplan 持久化为三个独立阶段：
+`rtl2gds` 预设将 floorplan 持久化为三个独立阶段，其前后流程顺序如下：
 
 ```mermaid
 flowchart LR
-    LEC[LEC] --> PRE[preFloorplan\necc]
+    SYN[Synthesis\nYosys] --> LEC[LEC\n可选；默认跳过]
+    LEC --> PRE[preFloorplan\necc]
     PRE --> MACRO[macroPlacement\nDreamPlace]
     MACRO --> POST[postFloorplan\necc]
-    POST --> PLACE[placement\nDreamPlace]
+    POST --> PREPLACE[preplace\necc Sizer]
+    PREPLACE --> PLACE[placement\nDreamPlace]
 ```
 
 普通的 `ecc run` 会顺序执行这三个阶段。拆分后，每个阶段都有独立的产物、
@@ -17,9 +19,9 @@ flowchart LR
 
 | 持久化步骤名 | 工具 | workspace 目录 | 工作内容 |
 | --- | --- | --- | --- |
-| `preFloorplan` | ecc | `preFloorplan_ecc/` | 建立初始 die/core 规划，并启用自动宏摆放。它从共享 floorplan 配置生成 `config/floorplan_ecc_simple.json`。 |
-| `macroPlacement` | DreamPlace | `macroPlacement_dreamplace/` | 基于 pre-floorplan 数据库运行仅宏单元摆放，然后写出 Tcl 宏位置交接文件。 |
-| `postFloorplan` | ecc | `postFloorplan_ecc/` | 以文件模式读取宏位置交接文件，完成 tracks、IO pin、tap/endcap、PDN、时钟网络设置、输出和分析。 |
+| `preFloorplan` | ecc | `preFloorplan_ecc/` | 设置 `clock` 时先标记时钟网络，再建立初始 die/core 规划并执行 simple floorplan。它从共享配置生成 `config/floorplan_ecc_simple.json`，强制 `macro_placer.mode = "auto"` 并清空 `file_path`。 |
+| `macroPlacement` | DreamPlace | `macroPlacement_dreamplace/` | 基于 pre-floorplan 数据库运行仅宏单元摆放，然后写出 Tcl 宏位置交接文件。若设置了手工 `macro.placements`，则跳过 DreamPlace，使用配置刷新时渲染的 Tcl。 |
+| `postFloorplan` | ecc | `postFloorplan_ecc/` | 把共享 `floorplan_ecc.json` 改写为 `macro_placer.mode = "file"`，并令 `file_path` 指向 `macro_location.tcl`；随后完成 tracks、IO pin、tap/endcap、PDN、输出和分析。 |
 
 `Floorplan` 仍只是共享配置键，不是可执行的 flow 步骤。在已有 workspace 上选择
 步骤时，请使用上表中的三个持久化名称。

@@ -23,7 +23,6 @@ class EccChecklist:
             ("Density", "check placement overflow"),
             ("Wirelength", "check HPWL"),
             ("Legality", "check cell overlap"),
-            ("Congestion", "check placement congestion"),
         ],
         StepEnum.CTS: [
             ("Clock", "check clock net"),

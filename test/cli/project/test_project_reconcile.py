@@ -1,5 +1,6 @@
 import json
 import shutil
+import uuid
 from copy import deepcopy
 from pathlib import Path
 
@@ -121,6 +122,37 @@ def test_reconcile_cleans_a_proven_post_exchange_refresh_staging(
     assert "refresh_exchange:baseline" in report.repairs
     assert not staging.exists()
     assert read_engineering_snapshot_from_directory(workspace)["workspaceRevision"] == 2
+
+
+def test_reconcile_reports_a_live_unlocked_runtime_process_as_busy(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    project, spec, bindings = _project_and_spec(tmp_path, minimal_ics55_pdk_factory)
+    workspace = project / "live"
+    create_workspace_from_spec(workspace, spec, bindings, "create-1")
+    _register(project, "live")
+    from chipcompiler.project.runtime_processes import (
+        build_runtime_entry,
+        register_runtime_process,
+    )
+
+    run_id = str(uuid.uuid4())
+    entry = build_runtime_entry(
+        project,
+        workspace,
+        run_id=run_id,
+        runtime_id="external:test",
+        log_path=f"log/{run_id}.log",
+    )
+    register_runtime_process(project, "live", entry)
+
+    report = reconcile_project_state(project, blocking=True)
+
+    assert report.errors == ()
+    assert "live" in report.busy
+    assert not any(repair.startswith("runtime:") for repair in report.repairs)
+    processes = load_project_manifest(project).get("runtime_processes", {})
+    assert processes.get("live") == entry
 
 
 def test_reconcile_rolls_forward_a_portable_refresh_with_missing_target(

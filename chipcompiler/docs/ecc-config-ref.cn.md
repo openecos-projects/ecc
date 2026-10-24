@@ -23,7 +23,7 @@ runtime 将其作为最大并行 corner 数，内存余量不足时减少并行�
 │   ├── params.toml        # schema_version 2；参数中枢（见 §1）
 │   ├── flow.json          # schema_version 1；步骤状态
 │   └── config-derived-manifest.json # 上次配置派生后的文件哈希
-├── config/                # ← 本文档的主角：10 个 JSON + Tcl 宏位置交接文件
+├── config/                # ← 本文档的主角：11 个 JSON + Tcl 交接文件 + 打包的 EMIR 工艺文件
 │   ├── db_ecc.json        # 数据库构建（读入 LEF/DEF/网表/LIB/SDC，每个 ecc 步骤共用）
 │   ├── floorplan_ecc.json # 布局规划
 │   ├── cts_ecc.json       # 时钟树综合
@@ -34,13 +34,15 @@ runtime 将其作为最大并行 corner 数，内存余量不足时减少并行�
 │   ├── sta_ecc.json       # 静态时序分析（多 corner）
 │   ├── sizer_ecc.json     # ECC Sizer hold pass 选项
 │   ├── dreamplace_ecc.json# DreamPlace 布局/合法化（placement 与 legalization 共用）
-│   └── macro_location.tcl # 宏摆放 Tcl 交接文件（见 §1.5；由 macroPlacement 或 macro.placements 参数写出）
+│   ├── emir_ecc.json      # iEMIR 工艺文件选择
+│   ├── macro_location.tcl # 宏摆放 Tcl 交接文件（见 §1.5；由 macroPlacement 或 macro.placements 参数写出）
+│   └── ics55_synthetic.tech # 为 EMIR 复制的打包默认工艺文件
 ├── Synthesis_yosys/
 │   └── data/global_var.tcl  # 综合步骤的"配置"（Tcl 变量，非 JSON）
-├── lec_kepler_formal/         # 综合级 LEC（Tcl 脚本驱动）
+├── lec_kepler_formal/         # 综合级 LEC（默认引擎；data/lec_config.yaml）
 ├── timing_optimization_sizer/
 │   └── script/<design>.{env_file,cmd_file}  # 自动生成的 Sizer 配置
-└── postRouteLec_kepler_formal/  # 布线后 LEC 步骤（Tcl 脚本驱动）
+└── postRouteLec_kepler_formal/  # 布线后 LEC 步骤（默认引擎；YAML 配置）
 ```
 
 > 历史变化：旧版本的 `flow_ecc.json`（配置路径聚合器）与 `fixfanout_ecc.json`（高扇出修复，独立步骤）已随 ecc-tools 更新移除。`cts.max_fanout` 现在同时写入自动生成 SDC 的 `set_max_fanout` 约束和 CTS 的 `max_fanout` 字段。
@@ -54,7 +56,7 @@ graph LR
     A["ecc.toml [params]<br/>/ ecc run --set"] -->|"规范参数 + 每步骤直配 schema"| B["home/params.toml<br/>(params + config_overrides)"]
     C["PDK 描述<br/>(data/pdk.py)"] -->|"buffers / tap / endcap<br/>site / liberty corners"| B
     B -->|"参数→字段映射<br/>PARAMETER_CONFIG_FIELD_MAPPINGS"| D["config/*.json"]
-    E["模板 tools/ecc/configs/*.json"] -->|复制缺省文件| D
+    E["模板 tools/ecc/configs/*"] -->|复制缺失的缺省文件| D
     F["步骤调度（每步运行前）"] -->|"重写输入输出路径<br/>等 step 相关字段"| D
 ```
 
@@ -74,21 +76,26 @@ graph LR
 | 步骤 | db_ecc | 专属配置 | 说明 |
 |---|---|---|---|
 | synthesis | — | `global_var.tcl`（Tcl） | Yosys 用 Tcl 变量驱动，不走 JSON |
-| lec | — | 无（Tcl） | 综合级 Yosys LEC；比较综合网表与 golden 网表；未证明时步骤失败并终止后续流程 |
+| lec | — | 引擎生成配置 | 综合级 LEC；当前默认引擎为 `kepler_formal`（YAML），`yosys_lec` 使用 Tcl，`lec_dual` 同时运行两者；未证明时步骤失败并终止后续流程 |
 | preFloorplan | ✓ | `floorplan_ecc.json` | 自动宏布局 |
 | macroPlacement | — | `dreamplace_ecc.json` + `macro_location.tcl` | 写入 Tcl 宏摆放交接文件（设置了 `macro.placements` 时跳过 DreamPlace，见 §1.5） |
 | postFloorplan | ✓ | `floorplan_ecc.json` + `macro_location.tcl` | 读取 Tcl 宏摆放交接文件 |
+| preplace | ✓ | 无 | Sizer 的布局前准备读取 `db_ecc.json` |
 | placement | — | `dreamplace_ecc.json` | 与 legalization 共用一个文件 |
+| diff_sizing | — | `dreamplace_ecc.json` | 独立可微 sizing 与 DreamPlace 布局共用该配置 |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | 每步重写 `def_input`/`result_dir` 等 |
 | timing optimization | ✓ | `sizer_ecc.json` + `dreamplace_ecc.json` | Sizer 使用 ECC 配置和生成的脚本，随后做内部 DreamPlace 合法化；见 §6 |
 | routing | ✓ | `route_ecc.json` | |
 | filler | ✓ | `filler_ecc.json` | |
+| lvs | — | 无 | 工具默认行为 |
+| drc | ✓ | `drc_ecc.json`（空） | 规则来自 tech LEF |
+| antennaCheck | ✓ | 无 | 读取 `db_ecc.json`；advisory 步骤，分析未完成不会单独中断 flow |
+| postroutelec | — | 引擎生成配置 | 对 `filler` 网表做布线后 LEC；引擎选择与证据契约同 `lec`，见 §11 |
 | rcx | ✓ | `rcx_ecc.json` | corner 由 PDK 决定（见 §12） |
 | sta | ✓ | `sta_ecc.json` + `rcx_ecc.json` | 读 rcx 配置以对齐 SPEF |
-| lvs | — | 无 | 工具默认行为 |
-| postroutelec | — | 无（Tcl） | Yosys LEC，见 §11 |
-| drc | ✓ | `drc_ecc.json`（空） | 规则来自 tech LEF |
+| powerAnalysis | — | 无显式步骤配置 | 运行器内部复用 `db_ecc.json`，不在 `_STEP_CONFIG_KEYS` 中 |
+| emir | ✓ | `emir_ecc.json` | iEMIR 工艺文件；advisory 步骤，见 §13.5 |
 | harden | — | 无专属配置 | 工具内部复用 `db_ecc.json` 定位输入输出，但不在 `_STEP_CONFIG_KEYS` 中；`ecc config harden` 会明确显示该步骤没有配置 |
 
 ## 1. 参数传递链（用户可调参数）
@@ -154,7 +161,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 |---|---|
 | `[design]` | `name` / `top` / `clock_port` / `frequency_mhz`，与项目级 `ecc.toml [design]` 同词汇 |
 | `[pdk]` | `name` / `root` / `config`；`config` 以 workspace 相对路径存储，加载时还原为绝对路径 |
-| `[flow]` | `preset = "rtl2gds"`，或 `start` + `end` 成对出现（只接受持久化规范步骤名）；缺省时由 `home/flow.json` 的首末步骤推导 |
+| `[flow]` | `preset = "rtl2gds"`，或 `start` + `end` 成对出现（只接受持久化规范步骤名），另可声明 `skip_steps` 与 `lec_engine`；目标缺省时由 `home/flow.json` 的首末步骤推导 |
 | `[params]` | 规范扁平参数（snake_case）；嵌套值渲染为子表（如 `[params.die]`、`[params.floorplan.phy_placer.well_tap]`） |
 
 **身份参数在运行时仍使用规范扁平键，但 v2 不再在文件中保存两份**：`design`、`top_module`、`clock`、`frequency_max`、`pdk`、`pdk_root`、`pdk_config` 以 `[design]`/`[pdk]` 的人读词汇持久化；加载时重建为程序消费的 `[params]` 扁平键。旧版 v1 文件仍接受读取，并在可写 workspace 打开时迁移去重。这样 `[design]`/`[pdk]`/`[flow]` 保持与 `ecc.toml` 同词汇，步骤参数、`config_overrides` 与回填结果仍由运行时扁平参数中枢提供。
@@ -274,7 +281,7 @@ IO cell。Sizer 要求 Liberty 单元有对应的 LEF master，即使设计没�
 
 ## 4. floorplan（ecc-tools）
 
-配置 `floorplan_ecc.json` 由 `preFloorplan` 和 `postFloorplan` 共享。`preFloorplan` 执行 load data → init simple floorplan → save data，并使用自动宏摆放；`macroPlacement` 执行仅宏单元摆放，并通过 `tcl_save` 写入 `config/macro_location.tcl` 形成交接检查点（设置了 `macro.placements` 参数时跳过 DreamPlace，交接文件改由参数渲染，见 §1.5）；`postFloorplan` 以 `file` 模式读取该文件，再执行 load data → create tracks → place IO pins → tap cells → PDN → set clock net → save data → analysis。
+配置 `floorplan_ecc.json` 由 `preFloorplan` 和 `postFloorplan` 共享。`preFloorplan` 在配置了 `clock` 时先标记时钟网络，再派生 `floorplan_ecc_simple.json`（`macro_placer.mode = "auto"`、`file_path` 为空），然后执行 load data → init simple floorplan → save data。`macroPlacement` 执行仅宏单元摆放，并通过 `tcl_save` 写入 `config/macro_location.tcl` 形成交接检查点（设置了 `macro.placements` 参数时跳过 DreamPlace，交接文件改由配置刷新渲染，见 §1.5）。`postFloorplan` 把共享配置改为 `macro_placer.mode = "file"` 并指向该文件，再执行 load data → init/run floorplan → create tracks → place IO pins → tap cells → PDN → save data → analysis。
 
 ### ifp（iFP 布图引擎）
 
@@ -331,9 +338,9 @@ IO cell。Sizer 要求 Liberty 单元有对应的 LEF master，即使设计没�
 | `stripe`（MET4/MET5） | 宽 1.0、间距 16.0、偏移 0.5 | 电源条带：层/宽度/间距（pitch）/偏移（µm） |
 | `connect_layers` | MET1–MET4、MET4–MET5 | 相邻层电源过孔连接对 |
 
-## 5. macro placement / placement / legalization（DreamPlace）
+## 5. macro placement / placement / diff_sizing / legalization（DreamPlace）
 
-三步共用 `config/dreamplace_ecc.json`；每次步骤运行前重写 `def_input`、`verilog_input`、`result_dir`。`macroPlacement` 使用 `macroPlacement_dreamplace/data/macro`；placement 读取 post-floorplan 输出并使用 `place_dreamplace/data/pl`；legalization 读取 CTS 输出并使用 `legalization_dreamplace/data/pl`。参数即上游 DreamPlace 的 JSON 参数集，分组解释如下（默认值 = 模板值；`*` = 用户参数映射点）。
+这些步骤共用 `config/dreamplace_ecc.json`；每次步骤运行前重写 `def_input`、`verilog_input`、`result_dir`。`macroPlacement` 使用 `macroPlacement_dreamplace/data/macro`；placement 读取 post-floorplan 输出并使用 `place_dreamplace/data/pl`；`diff_sizing` 复用 placement 配置；legalization 读取 CTS 输出并使用 `legalization_dreamplace/data/pl`。参数即上游 DreamPlace 的 JSON 参数集，分组解释如下（默认值 = 模板值；`*` = 用户参数映射点）。
 
 ### 输入输出
 
@@ -353,12 +360,12 @@ IO cell。Sizer 要求 Liberty 单元有对应的 LEF master，即使设计没�
 |---|---|---|
 | `global_place_flag` | 1 | 执行全局布局 |
 | `legalize_flag` | 1 | 执行合法化 |
-| `detailed_place_flag` | 0 | 执行详细布局（本流程未启用） |
-| `enable_fillers` | 1 | 布局阶段允许虚拟 filler 占位（密度计算） |
+| `detailed_place_flag` | 1 | 执行详细布局 |
+| `enable_fillers` | 0 | 独立布局阶段不插入 filler |
 | `routability_opt_flag` | 1 `*place.routability_opt` | 绕线拥塞驱动的布局优化 |
-| `timing_opt_flag` / `timing_eval_flag` | 0 | 时序驱动布局（本流程未启用，需 sizer/STA 配合） |
+| `timing_opt_flag` / `timing_eval_flag` | 0 / 1 | 旧版时序优化开关关闭；启用时序评估 |
 | `macro_place_flag` | 0 | 专用 `macroPlacement` 步骤会启用该开关 |
-| `plot_flag` / `get_congestion_map` / `evaluate_pl` | 1 / 1 / 0 | 出图 / 拥塞图导出 / 布局评估 |
+| `plot_flag` / `get_congestion_map` / `evaluate_pl` | 1 / 0 / 0 | 出图 / 拥塞图导出 / 布局评估 |
 | `dump_global_place_solution_flag` / `dump_legalize_solution_flag` | 0 | 导出中间解 |
 
 ### 全局布局核心（★ 主要调优区）
@@ -440,16 +447,16 @@ timing_aggregation_tau_ps = 2.0
 | `target_density` | 0.4 `*place.target_density`（模板 0.4） | 目标布局密度（越低越松、越利绕线） |
 | `stop_overflow` | 0.1 `*place.target_overflow` | 溢出收敛阈值，达标即停 |
 | `overflow_reference_mode` | `initial` | overflow 面积归一化模式：`initial` 固定 GP 起始面积；`ordinary` 保留原 PR 的面积发布行为，有联合面积时使用 native + virtual，否则沿用 PlaceDB 面积。均不含 filler；归一化值也用于 gamma 和基于 overflow 的调度 |
-| `density_weight` | 0.00085 | 密度项初始权重（自动调整的起点） |
+| `density_weight` | 8e-05 | 密度项初始权重（自动调整的起点） |
 | `timing_coeff_growth_factor` | 1.0 `*place.timing_coeff_growth_factor` | GP density-weight 更新时 WNS/TNS 系数的共同倍率；1.0 停止增长，`size_only` 不应用 |
 | `timing_grad_balance_target_ratio` | 0.2 `*place.timing_grad_balance_target_ratio` | direct-loss placement 初始 timing / wirelength 梯度 L1 范数比例目标；0.0 关闭 |
 | `timing_aggregation_mode` | `smooth` `*place.timing_aggregation_mode` | AAT/RAT 传播聚合方式：`hard` 或 `smooth`（LSE） |
 | `timing_aggregation_tau_ps` | 2.0 `*place.timing_aggregation_tau_ps` | `smooth` 模式的正平滑温度，单位 ps |
-| `num_bins_x/y` | 32/32 | 密度网格划分数 |
+| `num_bins_x/y` | 256/256 | 密度网格划分数 |
 | `global_place_stages[]` | 见下 | 多阶段全局布局表（可多段） |
 | `global_place_stages[].iteration` | 3000 | 本阶段迭代上限，收敛时可提前停止 |
-| `global_place_stages[].learning_rate` | 1.0 | 学习率 |
-| `global_place_stages[].learning_rate_decay` | 0.99 | 学习率衰减 |
+| `global_place_stages[].learning_rate` | 0.01 | 学习率 |
+| `global_place_stages[].learning_rate_decay` | 1.0 | 学习率衰减 |
 | `global_place_stages[].wirelength` | `weighted_average` | 线长模型 |
 | `global_place_stages[].optimizer` | `nesterov` | 优化器 |
 | `global_place_stages[].Llambda_density_weight_iteration` / `Lsub_iteration` | 1 / 1 | 密度权重自适应步长 |
@@ -474,7 +481,7 @@ timing_aggregation_tau_ps = 2.0
 | `gpugr_backend` | `auto` | 设备和扩展均支持 CUDA 时使用 CUDA，否则使用并行 CPU `cpu_pr_mt`，线程数由 `num_threads` 控制 |
 | `gpugr_area_adjust_rrr_iters` | 0 | inflation 只运行 pattern routing，CPU 后端要求为 0 |
 | `gpugr_area_adjust_congestion_mode` | `max_hv` | 水平和垂直 overflow 按最大值聚合 |
-| `l_shape_routability_flag` / `l_shape_update_interval` | 0 / 30 | 启用 L-shape 目标 / 拓扑与方向更新间隔 |
+| `l_shape_routability_flag` / `l_shape_update_interval` | 1 / 30 | 启用 L-shape 目标 / 拓扑与方向更新间隔 |
 | `area_adjust_stop_ratio` / `route_area_adjust_stop_ratio` / `pin_area_adjust_stop_ratio` | 0.01 / 0.01 / 0.05 | 各类面积调整停止比例 |
 | `unit_horizontal_capacity` / `unit_vertical_capacity` / `unit_pin_capacity` | 1.5625 / 1.45 / 0.058 | 单位绕线/引脚容量 |
 | `max_route_opt_adjust_rate` / `route_opt_adjust_exponent` | 2.0 / 2.0 | 绕线面积调整倍率上限/指数 |
@@ -500,15 +507,20 @@ GPUGR 默认继承 workspace 的 `bottom_layer`/`top_layer`。
 | `macro_halo_x/y` / `macro_pin_halo_x/y` | 0 | 宏/宏引脚 halo |
 | `macro_overlap_flag` / `macro_overlap_weight` / `macro_overlap_mult_weight` | 0 / 8e-6 / 1 | 宏重叠处理 |
 
-### 时序驱动（本流程默认关闭）
+### 时序驱动
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `with_sta` / `enable_net_weighting` / `differentiable_timing_obj` | 0 | 内嵌 STA / 网络加权 / 可微时序目标 |
-| `pin2pin_max/min_weight` / `pin2pin_accumulate_weight` / `pin2pin_weight` / `pin2pin_net_weighting` | 1 / 1 / 0.1 / 2.5e-5 / 0 | 引脚间时序权重参数 |
+| `with_sta` / `enable_net_weighting` / `differentiable_timing_obj` | 1 / 0 / 1 | 内嵌 STA / 网络加权 / 可微时序目标 |
+| `pin2pin_max/min_weight` / `pin2pin_accumulate_weight` / `pin2pin_weight` / `pin2pin_net_weighting` | 50 / 10 / 0.2 / 0.0005 / 0 | 引脚间时序权重参数 |
 | `net_weighting_scheme` | `lilith` | 网络加权方案 |
 | `max_net_weight` | `inf` | 网络权重上限 |
 | `momentum_decay_factor` / `start_iter` | 0.5 / 0 | 动量衰减 / 起始迭代 |
+
+模板启用了基于 STA 的时序评估（`with_sta=1`、`differentiable_timing_obj=1`、
+`timing_eval_flag=1`），但旧版 `timing_opt_flag` 仍为 `0`。时序优化应视为
+需要显式启用的能力；请使用上文已审核的 `place.*` 时序参数，不要假设旧开关
+控制全部时序行为。
 
 ### 运行时与数值
 
@@ -590,6 +602,17 @@ FF hold pass 只使用 `sta_ecc.json` 的 `MIN` Liberty 组，用于在 setup si
 
 - **drc**：`drc_ecc.json` 为空对象 `{}`——检查规则来自 tech LEF 的层定义与规则，无可调参数。
 - **lvs**：无配置文件，工具按默认流程比对版图与网表（输入输出经 `db_ecc.json` 链式传递）。
+- **antennaCheck**：使用与 DRC 相同的布线后版图数据库作为输入。ECC 生成原生 `antenna_check.rpt` 报告并复制为 `antennaCheck_ecc/report/antennaCheck.rpt`，同时通过 `-step_json` 将 feature 路径传给 ecc-tools；ecc-tools 写出结构化的 `feature/antennaCheck.step.json`。该 JSON 使用 `schema_version: 1`，标识步骤为 `antennaCheck`，记录 `antenna_check.violation_count` 和诊断计数，并在 `violations` 数组中保存详细违例。ECC 判定步骤成功时，原生报告和结构化 JSON 必须同时存在；signoff checklist 以非阻塞报告项检查规范报告。
+
+原生接口可以这样指定输出路径：
+
+```python
+ecc.check_antenna(config_dict={"-step_json": "/path/to/antennaCheck.step.json"})
+```
+
+```tcl
+check_antenna -step_json /path/to/antennaCheck.step.json
+```
 
 两者的子阶段均为 load data → run DRC/LVS → save data → analysis。
 
@@ -601,18 +624,37 @@ FF hold pass 只使用 `sta_ecc.json` 的 `MIN` Liberty 组，用于在 setup si
 |---|---|---|
 | `-min_filler_width` | 1 | 允许填充的最小 filler 宽度（site 数；间隙小于该值不填充） |
 
-## 11. postroutelec（Yosys LEC）
+## 11. lec / postroutelec（可选引擎的 LEC）
 
-无 JSON 配置，由 `script/run_lec.tcl` 驱动（读 liberty → 双方网表规范化 → 等价性证明）。放在 LVS 之后、DRC 之前：
+这两个步骤没有经过审核的 JSON schema，也没有 `ecc param` 字段。项目
+`ecc.toml` 的 `[flow] lec_engine` 选择引擎：代码默认值为 `kepler_formal`，
+`yosys_lec` 是 Yosys/Tcl 实现，`lec_dual`（别名 `dual`）并行运行两者并汇总判定。
+所选引擎记录在 workspace flow ledger 中，并决定步骤目录与生成的配置：
+
+| `lec_engine` | 默认步骤目录 | 生成的配置 | 报告 |
+|---|---|---|---|
+| `kepler_formal`（默认） | `lec_kepler_formal/`、`postRouteLec_kepler_formal/` | `data/lec_config.yaml`、`script/run_lec.yaml` | `report/equiv_status.rpt`、`report/run_lec_status.rpt`、`report/miter_log.txt` |
+| `yosys_lec` | `lec_yosys_lec/`、`postRouteLec_yosys_lec/` | `data/lec_config.tcl`、`script/run_lec.tcl` | `report/equiv_status.rpt`、`report/run_lec_status.rpt`，以及失败网表证据 |
+| `lec_dual` | `lec_dual/`、`postRouteLec_dual/`，另含两个引擎目录 | 各引擎配置 | 汇总结果及各引擎报告 |
+
+两个步骤共用与引擎无关的结果契约 `output/<设计>_<步骤>_result.json`：`status` 为 `proven` 或 `incomplete`，并记录双方网表的路径、SHA-256、大小与报告路径。只有这些身份信息仍与当前文件一致时证明才有效；未证明或过期的结果会使步骤失败。
 
 | 项 | 内容 |
 |---|---|
-| 输入（golden） | 综合映射网表（如 `Synthesis_yosys/output/gcd_Synthesis.v.gz`） |
-| 输入（gate） | 上一步（LVS）输出网表（`lvs_ecc/output/gcd_lvs.v.gz`，链式取 `pre_step.output.verilog`） |
-| 输出 | `output/<设计>_postRouteLec_result.json`：`status`（`proven` / 失败）+ 双方 `sha256` + 报告路径；`report/equiv_status.rpt`、`report/run_lec_status.rpt` |
-| 签核 | `status=proven` 计入签核清单（LEC 结果进签核包 `final/reports/postRouteLec/`） |
+| `lec` 输入 | 综合映射网表为 gate；声明的 `design.golden_netlist`（或解析后的步骤接线）为 golden。它紧跟 synthesis，且**默认被跳过**（`[flow] skip_steps` 默认为 `["lec"]`）。 |
+| `postRouteLec` 输入 | 综合映射网表为 golden，`filler` 输出网表为 gate（`filler_ecc/output/<设计>_filler.v.gz`）。它位于 `antennaCheck` 之后、`RCX` 之前；post-route LEC 是唯一不按 checker 结果继续传递的例外。 |
+| 签核 | 当前有效的 `status=proven` 计入签核清单；布线后 LEC 结果进入签核包的 `final/reports/postRouteLec/`。 |
 
-完整 `rtl2gds` preset 的链路中 `lec` 紧跟 synthesis，但**默认被跳过**（`[flow] skip_steps` 默认为 `["lec"]`；设为 `[]` 才会执行）。另有 `synthesis_lec` preset（仅 synthesis + lec 两步）可单独做综合级等价检查；该 preset 需要显式 `skip_steps = []`。
+启用综合级 LEC 并可选地固定引擎：
+
+```toml
+[flow]
+preset = "rtl2gds"
+skip_steps = []
+lec_engine = "kepler_formal"  # yosys_lec | lec_dual（或 dual）
+```
+
+另有 `synthesis_lec` preset（synthesis + `lec`）可单独做综合级等价检查；它同样需要 `skip_steps = []`。
 
 ## 12. rcx（ecc-tools）
 
@@ -656,13 +698,35 @@ IO 则用 0°C 库。项目或 workspace 显式设置的 `sta.liberty` 会替换
 功耗由独立的 `powerAnalysis` iPW 步骤产生，而不是由每个 STA corner
 产生。其原生输出为
 `powerAnalysis_ecc/data/pw/power_reporter/power.rpt` 和
-`powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`；ECC 从报告
-生成 `powerAnalysis_ecc/feature/power_summary.json` 供 QoR 使用。报告存在时，
+`powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`；ECC 将该报告原子复制为
+`powerAnalysis_ecc/report/powerAnalysis.rpt`，并从报告生成
+`powerAnalysis_ecc/feature/powerAnalysis.step.json` 供 QoR 使用，将数据放在
+其 `power_summary` 关键字下。signoff checklist 同时检查该规范报告。
+旧的 `powerAnalysis_ecc/feature/power_summary.json`
+保留作兼容回退。step 文件不再生成重复的顶层 `metrics` 对象。报告存在时，
 签核包会将其单独收录为 `final/timing/power/power.rpt`。
+
+### 13.5 emir（iEMIR）
+
+`emir_ecc.json` 只有一个公开字段 `technology_file_path`。模板值为空时，
+workspace 刷新会填入 workspace 内的 `config/ics55_synthetic.tech`（创建
+workspace 时从打包资源复制）。旧 workspace 中指向打包路径的默认值会在刷新时
+迁移到该副本。选择 `emir` 步骤时，预检要求配置的路径实际存在。修改方式：
+
+```bash
+ecc param list --step emir
+ecc param set emir.technology_file_path /path/to/process.tech --workspace NAME
+```
+
+iEMIR 读取前序流程产生的已布线数据库、post-floorplan 的 PDN 位置文件
+（`postFloorplan_ecc/data/fp/pdn_generator/power.ploc`）以及 `powerAnalysis`
+生成的逐实例功耗。子阶段为 load data → run EMIR → save data。原生报告位于
+`emir_ecc/data/emir/emir_reporter/`，并会复制到 `emir_ecc/report/`。
+`emir` 是 advisory 步骤：分析未完成会被记录，但不会单独阻断后续流程。
 
 ## 14. harden（ecc-tools）
 
-无专属配置文件：复用 `db_ecc.json` 定位输入（STA 输出的 DEF/网表）与输出（`Harden_ecc/output`）。子阶段仅 load data → run harden。产物为 `<设计>_Harden.gds/.lef/.lib/.png`（版图 / 抽象 LEF / 时序 LIB / 版图快照）。
+无专属配置文件：复用 `db_ecc.json` 定位输入（`filler` 输出的 DEF/网表）与输出（`Harden_ecc/output`）。子阶段仅 load data → run harden。当前产物为 `<设计>_Harden.gds`、`<设计>_Harden.lef` 与 `<设计>_Harden.lib`（版图 / 抽象 LEF / 时序 LIB）。Harden 不发布 geometry snapshot，也不生成 PNG；若旧 workspace 中仍留有历史 `<设计>_Harden.png`，签核包仍可能将其收录。
 
 ## 15. 各步骤的 ECC CLI 配置命令
 
@@ -739,15 +803,16 @@ ecc param set route.RT.-thread_number VALUE
 
 `route_ecc.json` 的临时目录由步骤调度生成，不能通过 CLI 设置。
 
-### 15.7 lec、drc、lvs 与 postroutelec
+### 15.7 lec、drc、lvs、postroutelec 与 powerAnalysis
 
-这四个步骤没有可由 `ecc param` 修改的步骤配置：`drc_ecc.json` 为空，综合级 LEC、LVS 和 post-route LEC 分别由 Tcl 脚本、工具默认流程和 Tcl 脚本驱动。可用下列命令确认实际配置文件：
+这些步骤没有可由 `ecc param` 修改的步骤配置：`drc_ecc.json` 为空，LEC 使用 `[flow] lec_engine` 选择的引擎生成配置（见 §11），LVS 走工具默认流程，`powerAnalysis` 没有显式步骤配置（运行器内部复用 `db_ecc.json`）。可用下列命令确认实际配置文件：
 
 ```bash
 ecc config lec
 ecc config drc
 ecc config lvs
 ecc config postroutelec
+ecc config poweranalysis
 ```
 
 ### 15.8 filler
@@ -782,6 +847,20 @@ ecc param set sta.max_paths VALUE
 
 harden 没有专属 `ecc param` schema；它只复用流程生成的 `db_ecc.json` 输入输出。使用 `ecc config harden` 可确认该步骤没有配置文件。
 
+### 15.12 emir
+
+`emir_ecc.json` 当前唯一经过审核的字段是工艺文件：
+
+```bash
+ecc param list --step emir
+ecc param set emir.technology_file_path /path/to/process.tech
+ecc param set emir.technology_file_path /path/to/process.tech --workspace NAME
+```
+
+字段为空时，workspace 刷新会选择 workspace 内的
+`config/ics55_synthetic.tech`；显式配置的路径必须在步骤运行前存在。EMIR 是
+advisory 步骤，应记录未完成的分析，而不是假定它会阻断 Harden。
+
 ## 16. 配置查看与修改速查
 
 ```bash
@@ -811,4 +890,4 @@ ecc run --set place.target_density=0.55  # 一次性覆盖：仅新建（含 --o
 
 调参之前，先用 `ecc param list --all`、`ecc param show` 或当前版本的 `--help` 确认哪些字段是公开的，再按字段所属的 scope 用 `ecc param set` / `ecc param unset` 修改。一般不要直接编辑 `home/params.toml`、生成的 JSON/Tcl 或内部模板。唯一的例外是 QoR 参考中列出的 `qor_profile` 和 `qor_power_budget_w`：它们是 workspace 参数，不在 CLI schema 里，但仍要遵守 QoR 文档中的语义和复验要求。`run --set` 只对新 workspace 生效，并且要记录到候选实验的来源信息（provenance）里；在已有 workspace 上改参数时，先确认哪些步骤会失效、需要重跑哪些范围。
 
-文档里提到、但当前公开 schema 中没有的字段，不等于可以直接使用的接口。尤其不要绕过 CLI 去写内部的 `flow.skip_steps`、QoR profile/预算或未经审核的 DreamPlace 字段。如果遇到能力缺口（capability gap），如实记录版本、命令输出和影响即可，不要假装配置成功。修改 frequency、corner、约束或验证覆盖都会改变实验的语义：这类实验要建独立候选，不能和原始结果直接对比。
+文档里提到、但当前公开 schema 中没有的字段，不等于可以直接使用的接口。流程策略应通过项目 `ecc.toml` 的 `[flow]` 键配置（`preset`、可选的 `start`/`end`、`skip_steps`、`lec_engine`），不要手改已持久化的 workspace `home/params.toml` 或 `home/flow.json`；同样不要手写 QoR profile/预算或未经审核的 DreamPlace 字段。如果遇到能力缺口（capability gap），如实记录版本、命令输出和影响即可，不要假装配置成功。修改 frequency、corner、约束或验证覆盖都会改变实验的语义：这类实验要建独立候选，不能和原始结果直接对比。
