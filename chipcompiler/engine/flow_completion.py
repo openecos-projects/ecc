@@ -3,8 +3,9 @@
 import logging
 from copy import deepcopy
 from pathlib import Path
+from typing import Literal
 
-from chipcompiler.data.workspace.flow_types import ChecklistStatus
+from chipcompiler.data.workspace.flow_types import ChecklistStatus, FlowStepEntry
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +28,16 @@ def summarize_step_checklist(workspace_step) -> ChecklistStatus | None:
             "failed_items": [],
             "source": _checklist_source(path),
         }
-    status_value = {
-        "ready": "passed",
-        "blocked": "blocked",
-        "attention": "attention",
-    }.get(data.get("status"), "unknown")
+    raw_status = data.get("status")
+    status_value: Literal["passed", "blocked", "attention", "unknown"]
+    if raw_status == "ready":
+        status_value = "passed"
+    elif raw_status == "blocked":
+        status_value = "blocked"
+    elif raw_status == "attention":
+        status_value = "attention"
+    else:
+        status_value = "unknown"
     failed_items = [
         item.get("id") or item.get("title", "")
         for item in data["checklist"]
@@ -155,7 +161,7 @@ def notify_step_completed(
     workspace_step,
     state,
     error,
-    previous_step: dict | None,
+    previous_step: FlowStepEntry | None,
 ) -> None:
     """Publish completion and restore Ongoing state when a fatal commit fails."""
     try:

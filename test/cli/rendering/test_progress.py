@@ -1400,7 +1400,7 @@ class TestFailureContextIntegration:
 
 class TestRunWithStepProgress:
     def _flow(self, tmp_path):
-        workspace = _make_ws(str(tmp_path))
+        workspace: Any = _make_ws(str(tmp_path))
         workspace.flow.data = {
             "steps": [
                 {
@@ -1418,7 +1418,7 @@ class TestRunWithStepProgress:
         monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: delegate)
         seen = []
 
-        def runner(engine_flow, *, event_sink=None):
+        def runner(engine_flow, *, event_sink: Any = None):
             seen.append(event_sink)
             event_sink.on_execution_started("rerun", ("Synthesis",))
             event_sink.on_step_started(step)
@@ -1454,7 +1454,7 @@ class TestRunWithStepProgress:
         flow, step = self._flow(tmp_path)
         monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: None)
 
-        def runner(engine_flow, *, event_sink=None):
+        def runner(engine_flow, *, event_sink: Any = None):
             event_sink.on_execution_started("rerun", ("Synthesis",))
             event_sink.on_step_started(step)
             event_sink.on_step_completed(step, StateEnum.Imcomplete)

@@ -2,6 +2,7 @@ import json
 import os
 import uuid
 from pathlib import Path
+from typing import Any
 
 from chipcompiler.cli import main as cli_main
 
@@ -77,7 +78,7 @@ class TestVirginFirstRun:
         import chipcompiler.engine as engine_module
 
         project_dir = create_cli_project()
-        lock_probe = {"busy": None}
+        lock_probe: dict[str, Any] = {"busy": None}
         original_execute = engine_module.execute
 
         def probing_execute(flow, plan, **kwargs):

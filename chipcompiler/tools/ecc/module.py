@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_run_outputs, publish_sta_artifacts
-from chipcompiler.utility.path import PathArg
+from chipcompiler.utility.path import PathArg, path_text
 
 # ecc-tools loggers terminate the host process on error by default; embedded in
 # Python they must raise instead so failures surface as Python exceptions.
@@ -732,7 +732,7 @@ class ECCToolsModule:
     def run_filler(self, config: PathArg) -> bool:
         return self.ecc.insert_filler(config=config)
 
-    def check_antenna(self, step_json: PathArg = None) -> bool:
+    def check_antenna(self, step_json: PathArg | None = None) -> bool:
         config_dict = {}
         if step_json:
             config_dict["-step_json"] = path_text(step_json)

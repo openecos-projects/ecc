@@ -374,19 +374,14 @@ def _checklist_prerequisite_sources(workspace, ledger) -> dict[str, str]:
     import copy
 
     from chipcompiler.data import EccStep
-    from chipcompiler.engine.flow_completion import write_step_checklist
 
     workspace.flow.path = workspace.directory / "home" / "flow.json"
     workspace.flow.path.parent.mkdir(exist_ok=True)
     flow = EngineFlow(workspace)
     flow.workspace.flow.data = copy.deepcopy(ledger)
-    for step in flow.workspace.flow.data.get("steps", []):
-        write_step_checklist(
-            flow,
-            step,
-            items=[],
-            status={"status": "blocked", "blocked": True},
-        )
+    for step in flow.workspace.flow.steps():
+        step["checklist_status"] = {"status": "blocked", "blocked": True}
+    flow.save()
     prerequisite = {
         step["name"]: flow._blocked_checklist_prerequisite(
             EccStep(name=step["name"], tool=step["tool"])

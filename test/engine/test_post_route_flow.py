@@ -34,6 +34,7 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
         ]
     }
     workspace.flow.path = tmp_path / "flow.json"
+    assert workspace.flow.path is not None
     json_write(workspace.flow.path, workspace.flow.data)
 
     def create_step(workspace, step, eda, input_def, input_verilog, input_db=None, **kwargs):
@@ -82,10 +83,17 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
 
     projected = {entry["name"]: step for entry, step in iter_workspace_steps(workspace)}
     for name in ("lvs", "drc", "RCX", "sta", "powerAnalysis", "emir", "Harden"):
-        assert projected[name].input.def_ == steps[name].input.def_
-    assert steps["sta"].output.spef == steps["RCX"].output.spef
+        projected_step = projected[name]
+        assert projected_step is not None
+        ledger_step = steps[name]
+        assert ledger_step is not None
+        assert projected_step.input.def_ == ledger_step.input.def_
+    sta_step = steps["sta"]
+    assert sta_step is not None
+    assert sta_step.output.spef == steps["RCX"].output.spef
     if not skip:
         lec = steps["postRouteLec"]
+        assert lec is not None
         assert (lec.input.gate_verilog, lec.input.golden_verilog) == (
             filler.output.verilog,
             workspace.design.origin_verilog,
@@ -116,8 +124,9 @@ def test_loading_existing_workspace_preserves_legacy_post_route_order(tmp_path):
     }
     workspace = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
+    assert workspace.flow.path is not None
     json_write(workspace.flow.path, ledger)
 
     flow = EngineFlow(workspace=workspace)
 
-    assert [step["name"] for step in flow.workspace.flow.data["steps"]] == names
+    assert [step["name"] for step in flow.workspace.flow.steps()] == names

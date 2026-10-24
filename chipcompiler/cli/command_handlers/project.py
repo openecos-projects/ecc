@@ -244,7 +244,7 @@ def _preflight_failures(
     if not failures:
         return None
 
-    def field(item, name, default=""):
+    def field(item, name, default: object = ""):
         return item.get(name, default) if isinstance(item, dict) else getattr(item, name, default)
 
     records = [

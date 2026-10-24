@@ -7,7 +7,7 @@ from agent.engine import AgentEngineFlow
 from chipcompiler.data import ChecklistState, EccOutput, EccStep, StateEnum, Workspace
 from chipcompiler.data.workspace import Flow
 from chipcompiler.data.workspace.flow_types import FlowStepEntry
-from chipcompiler.engine.flow_completion import sync_step_checklist, write_step_checklist
+from chipcompiler.engine.flow_completion import sync_step_checklist
 
 
 @pytest.mark.parametrize(
@@ -107,12 +107,10 @@ def test_agent_engine_runs_the_step_after_a_non_blocked_prerequisite(tmp_path, m
     flow.workspace_steps = [step]
     vars(flow)["engine_db"] = SimpleNamespace(engine=None)
     if status is not None:
-        write_step_checklist(
-            flow,
-            flow.get_step("route", "ecc"),
-            items=[],
-            status={"status": status, "blocked": False},
-        )
+        route = flow.get_step("route", "ecc")
+        assert route is not None
+        route["checklist_status"] = {"status": status, "blocked": False}
+        flow.save()
     called = []
     monkeypatch.setattr(
         "agent.engine.run_agent_step", lambda **kwargs: called.append(kwargs["step"]) or True

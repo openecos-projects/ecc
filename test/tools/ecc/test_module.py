@@ -5,6 +5,7 @@ import importlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -2184,7 +2185,7 @@ def test_ecc_metrics_harden_summarizes_completed_signoff_sources(tmp_path):
 
 
 def test_ecc_metrics_harden_reads_v4_signoff_summary(tmp_path):
-    workspace = Workspace(
+    workspace: Any = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
     )

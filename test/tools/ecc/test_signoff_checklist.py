@@ -733,7 +733,7 @@ def test_advisory_steps_have_nonblocking_detail_checklists(tmp_path):
 
 def test_power_and_antenna_reports_are_checklist_artifacts(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
-    power = EccStep(
+    power: Any = EccStep(
         name=StepEnum.POWER_ANALYSIS.value,
         directory=tmp_path / "powerAnalysis_ecc",
         feature=EccFeature(dir=tmp_path / "powerAnalysis_ecc" / "feature"),
@@ -747,7 +747,7 @@ def test_power_and_antenna_reports_are_checklist_artifacts(tmp_path):
     power_step.write_text("{}\n", encoding="utf-8")
     power.report.step.parent.mkdir(parents=True)
     power.report.step.write_text("power\n", encoding="utf-8")
-    antenna = EccStep(
+    antenna: Any = EccStep(
         name=StepEnum.ANTENNA_CHECK.value,
         directory=tmp_path / "antennaCheck_ecc",
         report=EccReport(
@@ -772,7 +772,7 @@ def test_power_and_antenna_reports_are_checklist_artifacts(tmp_path):
 
 def test_missing_published_power_report_blocks_checklist(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
-    power = EccStep(
+    power: Any = EccStep(
         name=StepEnum.POWER_ANALYSIS.value,
         directory=tmp_path / "powerAnalysis_ecc",
         feature=EccFeature(dir=tmp_path / "powerAnalysis_ecc" / "feature"),

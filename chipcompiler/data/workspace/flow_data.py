@@ -126,7 +126,7 @@ def _flow_step_template(name: str, tool: str, state: str) -> FlowStepEntry:
     }
 
 
-def normalize_flow_step_categories(flow_data: dict) -> bool:
+def normalize_flow_step_categories(flow_data: FlowDocument) -> bool:
     """Repair default categories persisted before a step classification changed."""
     changed = False
     for step in flow_data.get("steps", []):

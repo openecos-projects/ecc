@@ -12,6 +12,8 @@ class ChecklistStatus(TypedDict, total=False):
     failed_items: list[str]
     source: str
     summary: dict
+    requirements_status: Literal["none", "present"]
+    revision: str
     updated_at: str
 
 

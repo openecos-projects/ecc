@@ -428,7 +428,7 @@ class TestRunResume:
             def on_execution_finished(self, state, error):
                 calls.append(("execution_finished", state, error))
 
-        def run_step(workspace_step, *, rerun=False, observer=None):
+        def run_step(workspace_step, *, rerun=False, observer: Any = None):
             flow.set_state(workspace_step.name, workspace_step.tool, StateEnum.Ongoing)
             observer.on_step_started(workspace_step)
             flow.set_state(workspace_step.name, workspace_step.tool, StateEnum.Success)
