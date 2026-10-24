@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_run_outputs, publish_sta_artifacts
-from chipcompiler.utility.path import PathArg, path_text
+from chipcompiler.utility.path import PathArg, path_list, path_text
 
 # ecc-tools loggers terminate the host process on error by default; embedded in
 # Python they must raise instead so failures surface as Python exceptions.
@@ -345,7 +345,7 @@ class ECCToolsModule:
         self.ecc.db_init(
             config_path=db_config,
             output_path=output_dir,
-            lib_paths=lib_paths,
+            lib_paths=path_list(lib_paths),
             sdc_path=sdc_path,
         )
 
