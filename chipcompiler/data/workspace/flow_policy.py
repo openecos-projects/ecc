@@ -13,6 +13,8 @@ read ``filler`` directly, and the parallel checker batch immediately after
 ``filler`` also reads that anchor.
 """
 
+from collections.abc import Mapping, Sequence
+
 from chipcompiler.data.types import (
     ADVISORY_FLOW_STEPS,
     LEC_STEP_TOOLS,
@@ -21,27 +23,35 @@ from chipcompiler.data.types import (
     StepEnum,
     flow_step_policy,
 )
+from chipcompiler.data.workspace.layout import WorkspaceStepBase
 
 
 class FlowInputStepError(Exception):
     """A ledger step names an input that is missing or not created yet."""
 
 
-def step_name(record: dict) -> str:
+def step_name(record: Mapping[str, object]) -> str:
     return str(record.get("name") or "")
 
 
-def step_tool(record: dict) -> str:
+def step_tool(record: Mapping[str, object]) -> str:
     return str(record.get("tool") or "")
 
 
-def explicit_input_step(record: dict) -> str | None:
+def explicit_input_step(record: Mapping[str, object]) -> str | None:
     """The step explicitly declared as this step's input, if any."""
-    return record.get("input_step") or (record.get("info") or {}).get("input_step")
+    value = record.get("input_step")
+    if not value:
+        info = record.get("info")
+        value = info.get("input_step") if isinstance(info, Mapping) else None
+    return str(value) if value else None
 
 
-def _declared_category(record: dict) -> FlowStepCategory | None:
-    value = record.get("category") or (record.get("info") or {}).get("category")
+def _declared_category(record: Mapping[str, object]) -> FlowStepCategory | None:
+    value = record.get("category")
+    if not value:
+        info = record.get("info")
+        value = info.get("category") if isinstance(info, Mapping) else None
     if not value:
         return None
     try:
@@ -50,7 +60,7 @@ def _declared_category(record: dict) -> FlowStepCategory | None:
         return None
 
 
-def ledger_category(record: dict) -> FlowStepCategory:
+def ledger_category(record: Mapping[str, object]) -> FlowStepCategory:
     """The category the ledger declares: top level, then ``info.category``.
 
     A ledger without either predates the category field; execution treats its
@@ -61,7 +71,7 @@ def ledger_category(record: dict) -> FlowStepCategory:
     return _declared_category(record) or FlowStepCategory.PNR
 
 
-def flow_category(record: dict) -> FlowStepCategory:
+def flow_category(record: Mapping[str, object]) -> FlowStepCategory:
     """The category for classification: declared, else the registered policy.
 
     An unregistered step name raises rather than silently reading as PNR,
@@ -72,7 +82,7 @@ def flow_category(record: dict) -> FlowStepCategory:
     return declared if declared is not None else policy.category
 
 
-def is_checker_batch_step(record: dict) -> bool:
+def is_checker_batch_step(record: Mapping[str, object]) -> bool:
     """Whether the step belongs to the parallel checker batch.
 
     Only steps whose policy declares the batch input source run concurrently;
@@ -91,15 +101,15 @@ def is_checker_batch_step(record: dict) -> bool:
     return policy.input_source is FlowInputSource.CHECKER_BATCH
 
 
-def is_lec_record(record: dict) -> bool:
+def is_lec_record(record: Mapping[str, object]) -> bool:
     return step_tool(record) in LEC_STEP_TOOLS
 
 
-def is_advisory_record(record: dict) -> bool:
+def is_advisory_record(record: Mapping[str, object]) -> bool:
     return step_name(record) in ADVISORY_FLOW_STEPS
 
 
-def checker_batch_anchor(records: list[dict], index: int) -> str | None:
+def checker_batch_anchor(records: Sequence[Mapping[str, object]], index: int) -> str | None:
     """The step a parallel checker batch reads: the step before the batch.
 
     A batch is a maximal run of CHECKER steps immediately after ``filler``
@@ -134,14 +144,14 @@ class FlowInputResolver:
     created steps by name so later steps can reference them.
     """
 
-    def __init__(self, records: list[dict] | None):
+    def __init__(self, records: Sequence[Mapping[str, object]] | None):
         self._records = [record for record in records or [] if isinstance(record, dict)]
         self._positions: dict[str, list[int]] = {}
         for index, record in enumerate(self._records):
             self._positions.setdefault(step_name(record), []).append(index)
-        self._created: dict[str, object] = {}
+        self._created: dict[str, WorkspaceStepBase] = {}
 
-    def record(self, step) -> None:
+    def record(self, step: WorkspaceStepBase) -> None:
         self._created[step.name] = step
 
     def created_step(self, name: str):
@@ -193,7 +203,7 @@ class FlowInputResolver:
         name, _explicit = self._resolve(index, require_created=False)
         return name
 
-    def input_source(self, index: int):
+    def input_source(self, index: int) -> WorkspaceStepBase | None:
         """The created step whose outputs feed step *index*, or None for origin.
 
         Raises :class:`FlowInputStepError` when an explicit ``input_step`` is

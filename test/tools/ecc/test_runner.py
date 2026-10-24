@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -85,6 +86,14 @@ class FakeSynthesisStaModule:
         self.calls.append(("run_timing", kwargs))
 
 
+def _fake_logger() -> Any:
+    return FakeLogger()
+
+
+def _fake_subflow() -> Any:
+    return FakeSubFlow()
+
+
 class FakeLogger:
     def __init__(self):
         self.infos = []
@@ -121,7 +130,7 @@ def test_run_analysis_switch(parameters, expected_calls, tmp_path, monkeypatch):
     monkeypatch.setattr(ecc_runner, "build_step_metrics", metrics)
     monkeypatch.setattr(ecc_runner, "EccChecklist", checklist)
 
-    ecc_runner.run_analysis(workspace=workspace, step=step, subflow=FakeSubFlow())
+    ecc_runner.run_analysis(workspace=workspace, step=step, subflow=_fake_subflow())
 
     assert metrics.call_count == expected_calls
     assert checklist.call_count == expected_calls
@@ -162,6 +171,7 @@ def test_split_floorplan_runs_pre_and_post_phases_independently(monkeypatch, tmp
     macro_location = tmp_path / "macro_location.tcl"
     macro_location.write_text("# macro locations\n")
     workspace = Workspace(
+        directory=tmp_path,
         parameters=Parameters(data={"clock": "clk"}),
         config={
             StepEnum.FLOORPLAN.value: floorplan_config,
@@ -297,12 +307,16 @@ class SnapshotSaveEccModule:
         return True
 
 
+def _snapshot_module(**kwargs: Any) -> Any:
+    return SnapshotSaveEccModule(**kwargs)
+
+
 def test_create_db_engine_accepts_path_inputs_for_first_ecc_step(tmp_path, monkeypatch):
     design_def = tmp_path / "origin" / "gcd.def"
     design_def.parent.mkdir()
     design_def.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
 
-    workspace = Workspace(
+    workspace: Any = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(tech=tmp_path / "tech.lef", lefs=[tmp_path / "std.lef"]),
@@ -324,7 +338,7 @@ def test_create_db_engine_accepts_path_inputs_for_first_ecc_step(tmp_path, monke
     monkeypatch.setattr(ecc_runner, "is_eda_exist", lambda: True)
     monkeypatch.setattr(ecc_runner, "ECCToolsModule", FakeEccModule)
 
-    module = ecc_runner.create_db_engine(workspace, step)
+    module: Any = ecc_runner.create_db_engine(workspace, step)
 
     assert module is FakeEccModule.instances[-1]
     assert ("read_def", str(design_def)) in module.calls
@@ -337,7 +351,7 @@ def test_create_db_engine_uses_def_input_for_lvs_even_when_db_exists(tmp_path, m
     design_def.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
     design_verilog.write_text("module gcd; endmodule\n")
 
-    workspace = Workspace(
+    workspace: Any = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(tech=tmp_path / "tech.lef", lefs=[tmp_path / "std.lef"]),
@@ -360,7 +374,7 @@ def test_create_db_engine_uses_def_input_for_lvs_even_when_db_exists(tmp_path, m
     monkeypatch.setattr(ecc_runner, "ECCToolsModule", FakeEccModule)
     monkeypatch.setattr(FakeEccModule, "is_db_data_exists", lambda self, path: True)
 
-    module = ecc_runner.create_db_engine(workspace, step)
+    module: Any = ecc_runner.create_db_engine(workspace, step)
 
     assert module is FakeEccModule.instances[-1]
     assert not any(call[0] == "load_data" for call in module.calls)
@@ -378,7 +392,7 @@ def test_create_db_engine_reads_replaced_step_input_despite_db(tmp_path, monkeyp
     staging_def.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
     staging_verilog.write_text("module gcd; endmodule\n")
 
-    workspace = Workspace(
+    workspace: Any = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(tech=tmp_path / "tech.lef", lefs=[tmp_path / "std.lef"]),
@@ -400,7 +414,7 @@ def test_create_db_engine_reads_replaced_step_input_despite_db(tmp_path, monkeyp
     monkeypatch.setattr(FakeEccModule, "is_db_data_exists", lambda self, path: True)
     monkeypatch.setattr(FakeEccModule, "load_data", lambda self, path: True)
 
-    module = ecc_runner.create_db_engine(workspace, step)
+    module: Any = ecc_runner.create_db_engine(workspace, step)
 
     assert module is FakeEccModule.instances[-1]
     assert not any(call[0] == "is_db_data_exists" for call in module.calls)
@@ -413,7 +427,7 @@ def test_create_db_engine_raises_and_closes_when_def_master_resolution_fails(tmp
     design_def = tmp_path / "origin" / "gcd.def"
     design_def.parent.mkdir()
     design_def.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
-    workspace = Workspace(
+    workspace: Any = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(tech=tmp_path / "tech.lef", lefs=[tmp_path / "std.lef"]),
@@ -447,7 +461,7 @@ def test_create_db_engine_raises_when_verilog_master_resolution_fails(tmp_path, 
     design_verilog = tmp_path / "origin" / "gcd.v"
     design_verilog.parent.mkdir()
     design_verilog.write_text("module gcd; endmodule\n")
-    workspace = Workspace(
+    workspace: Any = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(tech=tmp_path / "tech.lef", lefs=[tmp_path / "std.lef"]),
@@ -483,12 +497,12 @@ def test_create_db_engine_without_input_db_does_not_retry_load_design(tmp_path, 
     design_def.parent.mkdir()
     design_def.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
 
-    workspace = Workspace(
+    workspace: Any = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(tech=tmp_path / "tech.lef", lefs=[tmp_path / "std.lef"]),
         config={"db": tmp_path / "config" / "db_ecc.json"},
-        logger=FakeLogger(),
+        logger=_fake_logger(),
     )
     step = EccStep(
         name=SkippableStepEnum.TIMING_OPT.value,
@@ -550,7 +564,7 @@ def test_run_cts_merges_structured_timing_into_step_feature(tmp_path, monkeypatc
         "worst_max_insertion_latency_ns": 0.28,
         "target_unmet_count": 0,
     }
-    module = FakeCtsModule(timing_quality)
+    module: Any = FakeCtsModule(timing_quality)
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
     monkeypatch.setattr(ecc_runner, "save_data", lambda **kwargs: True)
     monkeypatch.setattr(ecc_runner, "run_analysis", lambda **kwargs: None)
@@ -583,7 +597,7 @@ def test_run_cts_stops_when_native_run_fails(tmp_path, monkeypatch):
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
     )
-    module = FakeCtsModule({}, run_ok=False)
+    module: Any = FakeCtsModule({}, run_ok=False)
     sub_flow = Mock()
     save = Mock(return_value=True)
     analysis = Mock()
@@ -612,7 +626,7 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
 
-    logger = FakeLogger()
+    logger: Any = FakeLogger()
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
@@ -674,7 +688,7 @@ def test_run_sta_without_spef_warns_when_sdc_is_missing(tmp_path):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
 
-    logger = FakeLogger()
+    logger: Any = FakeLogger()
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
@@ -702,7 +716,7 @@ def test_run_sta_without_spef_removes_stale_power_report_on_failure(tmp_path):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
 
-    logger = FakeLogger()
+    logger: Any = FakeLogger()
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
@@ -785,10 +799,10 @@ def _make_rcx_step(tmp_path):
 
 
 def test_run_rcx_propagates_init_failure(tmp_path, monkeypatch):
-    workspace = Workspace(directory=tmp_path, logger=FakeLogger())
+    workspace = Workspace(directory=tmp_path, logger=_fake_logger())
     step = _make_rcx_step(tmp_path)
-    module = FakeRcxModule(init_ok=False)
-    sub_flow = FakeSubFlow()
+    module: Any = FakeRcxModule(init_ok=False)
+    sub_flow = _fake_subflow()
     monkeypatch.setattr(ecc_runner, "EccSubFlow", lambda **kwargs: sub_flow)
 
     assert ecc_runner.run_rcx(workspace, step, module) is False
@@ -804,10 +818,10 @@ def test_run_rcx_propagates_init_failure(tmp_path, monkeypatch):
 
 
 def test_run_rcx_propagates_native_run_failure(tmp_path, monkeypatch):
-    workspace = Workspace(directory=tmp_path, logger=FakeLogger())
+    workspace = Workspace(directory=tmp_path, logger=_fake_logger())
     step = _make_rcx_step(tmp_path)
-    module = FakeRcxModule(run_ok=False)
-    sub_flow = FakeSubFlow()
+    module: Any = FakeRcxModule(run_ok=False)
+    sub_flow = _fake_subflow()
     monkeypatch.setattr(ecc_runner, "EccSubFlow", lambda **kwargs: sub_flow)
 
     assert ecc_runner.run_rcx(workspace, step, module) is False
@@ -823,11 +837,11 @@ def test_run_rcx_propagates_native_run_failure(tmp_path, monkeypatch):
 
 
 def test_run_rcx_publishes_fresh_spef_and_releases_extractor_once(tmp_path, monkeypatch):
-    workspace = Workspace(directory=tmp_path, logger=FakeLogger())
+    workspace = Workspace(directory=tmp_path, logger=_fake_logger())
     step = _make_rcx_step(tmp_path)
     spef_writer = tmp_path / "RCX_ecc" / "data" / "spef_writer"
     spef_writer.mkdir(parents=True)
-    module = FakeRcxModule()
+    module: Any = FakeRcxModule()
 
     def run_native_extraction():
         module.calls.append(("run_rcx",))
@@ -835,7 +849,7 @@ def test_run_rcx_publishes_fresh_spef_and_releases_extractor_once(tmp_path, monk
         return True
 
     module.run_rcx = run_native_extraction
-    sub_flow = FakeSubFlow()
+    sub_flow = _fake_subflow()
     monkeypatch.setattr(ecc_runner, "EccSubFlow", lambda **kwargs: sub_flow)
     monkeypatch.setattr(ecc_runner, "save_data", lambda **kwargs: True)
     monkeypatch.setattr(ecc_runner, "save_rcx_spef_feature_facts", lambda **kwargs: True)
@@ -855,14 +869,14 @@ def test_run_rcx_publishes_fresh_spef_and_releases_extractor_once(tmp_path, monk
 
 
 def test_run_rcx_wipes_stale_spef_and_fails_when_extraction_produces_nothing(tmp_path, monkeypatch):
-    workspace = Workspace(directory=tmp_path, logger=FakeLogger())
+    workspace = Workspace(directory=tmp_path, logger=_fake_logger())
     step = _make_rcx_step(tmp_path)
     spef_writer = tmp_path / "RCX_ecc" / "data" / "spef_writer"
     spef_writer.mkdir(parents=True)
     stale_spef = spef_writer / "stale.spef"
     stale_spef.write_text("*SPEF\nstale\n", encoding="utf-8")
-    module = FakeRcxModule()
-    sub_flow = FakeSubFlow()
+    module: Any = FakeRcxModule()
+    sub_flow = _fake_subflow()
     monkeypatch.setattr(ecc_runner, "EccSubFlow", lambda **kwargs: sub_flow)
 
     assert ecc_runner.run_rcx(workspace, step, module) is False
@@ -876,10 +890,10 @@ def test_run_rcx_wipes_stale_spef_and_fails_when_extraction_produces_nothing(tmp
 
 
 def test_run_rcx_fails_when_spef_writer_dir_is_missing(tmp_path, monkeypatch):
-    workspace = Workspace(directory=tmp_path, logger=FakeLogger())
+    workspace = Workspace(directory=tmp_path, logger=_fake_logger())
     step = _make_rcx_step(tmp_path)
-    module = FakeRcxModule()
-    sub_flow = FakeSubFlow()
+    module: Any = FakeRcxModule()
+    sub_flow = _fake_subflow()
     monkeypatch.setattr(ecc_runner, "EccSubFlow", lambda **kwargs: sub_flow)
 
     assert ecc_runner.run_rcx(workspace, step, module) is False
@@ -927,7 +941,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
     incorrect_sta_config = tmp_path / "shared-config" / "sta_ecc.json"
     incorrect_sta_config.parent.mkdir()
     incorrect_sta_config.write_text("{}", encoding="utf-8")
-    logger = FakeLogger()
+    logger: Any = FakeLogger()
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
@@ -1004,7 +1018,7 @@ def test_run_sta_returns_false_when_sdc_is_missing(tmp_path, monkeypatch):
         json.dumps({"output": str(tmp_path / "RCX_ecc" / "data")}),
         encoding="utf-8",
     )
-    logger = FakeLogger()
+    logger: Any = FakeLogger()
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
@@ -1044,7 +1058,7 @@ def test_run_filler_uses_mj_lifecycle(tmp_path, monkeypatch):
 
     filler_config = tmp_path / "config" / "filler_ecc.json"
     filler_data_dir = tmp_path / "filler_ecc" / "data" / "mj"
-    workspace = Workspace(config={StepEnum.FILLER.value: filler_config})
+    workspace = Workspace(directory=tmp_path, config={StepEnum.FILLER.value: filler_config})
     step = EccStep(
         name=StepEnum.FILLER.value,
         data=EccData(steps={StepEnum.FILLER.value: filler_data_dir}),
@@ -1107,7 +1121,7 @@ def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path, step_nam
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
     step = build_step(workspace, step_name, None, None)
-    module = SnapshotSaveEccModule(write_snapshot=True)
+    module: Any = SnapshotSaveEccModule(write_snapshot=True)
 
     assert ecc_runner.save_data(workspace, step, module, feature_step=False) is True
     assert module.geometry_output == step.output.geometry
@@ -1129,7 +1143,7 @@ def test_save_data_preserves_core_utilization_parameter(tmp_path, monkeypatch):
         ),
     )
     step = build_step(workspace, StepEnum.ROUTING.value, None, None)
-    module = SnapshotSaveEccModule(write_snapshot=True)
+    module: Any = SnapshotSaveEccModule(write_snapshot=True)
     monkeypatch.setattr(
         ecc_runner,
         "json_read",
@@ -1162,7 +1176,7 @@ def test_save_data_fails_when_geometry_snapshot_cannot_be_written(tmp_path):
         ecc_runner.save_data(
             workspace,
             step,
-            SnapshotSaveEccModule(write_snapshot=False),
+            _snapshot_module(write_snapshot=False),
             feature_step=False,
         )
         is False

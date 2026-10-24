@@ -100,8 +100,12 @@ def _select_baseline(design: str, rows: list[dict], baselines: dict[str, str]) -
 def _pair(design: str, baseline: dict, candidate: dict) -> dict:
     baseline_score = _score(baseline)
     candidate_score = _score(candidate)
-    available = _valid(baseline) and _valid(candidate) and baseline_score is not None
-    delta = candidate_score - baseline_score if available else None
+    available = _valid(baseline) and _valid(candidate)
+    delta = (
+        candidate_score - baseline_score
+        if available and candidate_score is not None and baseline_score is not None
+        else None
+    )
     return {
         "design": design,
         "baseline_trial": baseline.get("trial_id"),

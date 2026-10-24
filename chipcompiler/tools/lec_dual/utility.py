@@ -106,10 +106,14 @@ def merge_outcomes(
     golden = netlist_fields(golden_verilog)
     gate = netlist_fields(gate_verilog)
     proven = bool(outcomes) and all(outcome.status == "proven" for outcome in outcomes)
-    if any(outcome.result is None for outcome in outcomes):
-        agreement = None
+    statuses: list[str] = []
+    for outcome in outcomes:
+        if outcome.result is None:
+            agreement = None
+            break
+        statuses.append(str(outcome.result.get("status")))
     else:
-        agreement = len({str(outcome.result.get("status")) for outcome in outcomes}) == 1
+        agreement = len(set(statuses)) == 1
     payload = {
         "status": "proven" if proven else "incomplete",
         "golden_verilog": golden["path"],

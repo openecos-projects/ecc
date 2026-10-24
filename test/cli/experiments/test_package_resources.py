@@ -32,6 +32,6 @@ def test_package_reader_closes_archive_on_success_and_invalid_manifest(
     else:
         with read_package(package) as (archive, document):
             assert document == {"schema_version": 1}
-            assert not archive.closed
+            assert not getattr(archive, "closed", False)
     assert len(opened) == 1
-    assert opened[0].closed
+    assert getattr(opened[0], "closed", False)

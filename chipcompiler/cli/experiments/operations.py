@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from chipcompiler.cli.experiments.candidate_evidence import normalized_step_statuses
 from chipcompiler.cli.inspection.evidence_summary import (
     checklist_items,
     checklist_status,
@@ -244,7 +245,10 @@ def read_package(package: Path) -> Iterator[tuple[tarfile.TarFile, dict[str, Any
             member = archive.getmember("./manifest.json")
         except KeyError:
             raise ValueError("package does not contain manifest.json") from None
-        with archive.extractfile(member) as stream:
+        stream = archive.extractfile(member)
+        if stream is None:
+            raise ValueError("package manifest is not a regular file")
+        with stream:
             manifest = json.load(stream)
         if not isinstance(manifest, dict):
             raise ValueError("manifest must be a JSON object")
@@ -282,7 +286,11 @@ def verify_package(package: Path) -> dict[str, Any]:
                 errors.append(f"missing: {entry['path']}")
                 continue
             member = archive.getmember(name)
-            content = archive.extractfile(member).read()
+            stream = archive.extractfile(member)
+            if stream is None:
+                errors.append(f"unreadable: {entry['path']}")
+                continue
+            content = stream.read()
             digest = hashlib.sha256(content).hexdigest()
             if len(content) != entry["size"]:
                 errors.append(f"size: {entry['path']}")
@@ -311,8 +319,12 @@ def package_report(package: Path) -> dict[str, Any]:
         invalid_json: list[str] = []
         for member in archive.getmembers():
             if member.isfile() and member.name.endswith(".json"):
+                stream = archive.extractfile(member)
+                if stream is None:
+                    invalid_json.append(member.name)
+                    continue
                 try:
-                    payloads[member.name] = json.load(archive.extractfile(member))
+                    payloads[member.name] = json.load(stream)
                 except (json.JSONDecodeError, OSError):
                     invalid_json.append(member.name)
                     continue
@@ -487,12 +499,8 @@ def compare_sweep(project: Path, name: str) -> list[dict[str, Any]]:
     return sorted(
         rows,
         key=lambda row: (
-            order.get(row.get("status", "unknown"), 3),
-            -(
-                row.get("qor_score")
-                if isinstance(row.get("qor_score"), (int, float))
-                else float("-inf")
-            ),
+            order.get(str(row.get("status", "unknown")), 3),
+            -(score if isinstance(score := row.get("qor_score"), (int, float)) else float("-inf")),
         ),
     )
 
@@ -536,16 +544,16 @@ def export_sweep(rows: list[dict[str, Any]], fmt: str) -> str:
     )
     if fmt == "csv":
         stream = io.StringIO()
-        writer = csv.DictWriter(stream, fieldnames=columns)
-        writer.writeheader()
+        writer = csv.writer(stream)
+        writer.writerow(columns)
         for row in matrix:
             writer.writerow(
-                {
-                    **row,
-                    "parameters": ",".join(
-                        f"{key}={value}" for key, value in row["parameters"].items()
-                    ),
-                }
+                [
+                    ",".join(f"{key}={value}" for key, value in row["parameters"].items())
+                    if column == "parameters"
+                    else row[column]
+                    for column in columns
+                ]
             )
         return stream.getvalue()
     if fmt == "markdown":
@@ -632,18 +640,7 @@ def collect_candidate_evidence(project: Path, workspace: Path, exit_code: int) -
     flow = load_json(workspace / "home" / "flow.json", {}) or {}
     status_code, status_payload = _json_command(project, workspace, "status")
     signoff_code, signoff_payload = _json_command(project, workspace, "signoff check")
-    steps = flow.get("steps", []) if isinstance(flow, dict) else []
-    if not steps and isinstance(status_payload, dict):
-        steps = status_payload.get("steps", [])
-    step_statuses = [
-        {
-            "name": step.get("name"),
-            "status": step.get("status", "unknown"),
-            "checklist": step.get("checklist_status", "unknown"),
-        }
-        for step in steps
-        if isinstance(step, dict)
-    ]
+    step_statuses = normalized_step_statuses(flow, status_payload)
     blocked = any(
         step["status"] == "blocked" or step["checklist"] == "blocked" for step in step_statuses
     )
@@ -653,6 +650,8 @@ def collect_candidate_evidence(project: Path, workspace: Path, exit_code: int) -
         if blocked
         else "failed"
         if failed
+        else "unknown"
+        if any(step["status"] not in {"success", "passed"} for step in step_statuses)
         else "passed"
         if step_statuses or status_code == 0
         else "unknown"

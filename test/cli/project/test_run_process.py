@@ -57,6 +57,7 @@ def test_no_wait_run_waits_for_project_registration_transaction(tmp_path):
                 text=True,
                 start_new_session=True,
             )
+            assert child.stdout is not None
             assert child.stdout.readline() == "ready\n"
             with pytest.raises(subprocess.TimeoutExpired):
                 child.wait(timeout=1)

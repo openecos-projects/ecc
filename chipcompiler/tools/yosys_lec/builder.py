@@ -18,6 +18,7 @@ from chipcompiler.data import (
     YosysLecStep,
 )
 from chipcompiler.tools.lec_result import build_lec_step_space, derive_golden_path, optional_path
+from chipcompiler.utility.path import require_path
 
 
 def build_step(
@@ -119,10 +120,10 @@ def build_step_config(workspace: Workspace, step: YosysLecStep) -> None:
     config.set_list("model_files", [str(path) for path in model_files if path])
     config.set("blacklist_file", tcl.word(blacklist))
     config.set("use_undef", "true" if use_undef else "false")
-    _write_file(step.data.config, config.build())
+    _write_file(require_path(step.data.config, "LEC config"), config.build())
 
     script_src = Path(__file__).resolve().parent / "scripts" / "run_lec.tcl"
-    shutil.copy2(script_src, step.script.main)
+    shutil.copy2(script_src, require_path(step.script.main, "LEC script"))
 
     from chipcompiler.tools.yosys_lec.subflow import YosysLecSubFlow
 

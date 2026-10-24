@@ -10,6 +10,7 @@ from chipcompiler.cli.command_handlers.chipview import (
     _read_flow_steps,
     _resolve_step_geometry,
 )
+from chipcompiler.cli.core.errors import CommandError, command_handler
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.inspection.discovery import resolve_workspace_path
@@ -32,29 +33,31 @@ def _gds_candidates(output_dir: Path) -> list[Path]:
 
 
 def _available_gds_steps(workspace: Path) -> list[str]:
-    steps, error = _read_flow_steps(workspace)
-    if error:
+    try:
+        steps = _read_flow_steps(workspace)
+    except CommandError:
         return []
     available: list[str] = []
-    for flow_step in steps or []:
+    for flow_step in steps:
         name = str(flow_step.get("name", "")).strip()
         tool = str(flow_step.get("tool", "")).strip()
         if not name or not tool:
             continue
-        directory = _resolve_step_geometry(workspace, name)[0]
-        if directory and _gds_candidates(directory["output"]):
+        try:
+            directory = _resolve_step_geometry(workspace, name)
+        except CommandError:
+            continue
+        if _gds_candidates(directory["output"]):
             available.append(name)
     return available
 
 
-def _resolve_gds(workspace: Path, step: str):
-    resolved, step_error = _resolve_step_geometry(workspace, step)
-    if step_error is not None:
-        return None, step_error
+def _resolve_gds(workspace: Path, step: str) -> dict:
+    resolved = _resolve_step_geometry(workspace, step)
     candidates = _gds_candidates(resolved["output"])
     if not candidates:
         available = _available_gds_steps(workspace)
-        return None, CommandResult.err(
+        raise CommandError(
             [
                 error_record(
                     "gds_view_unavailable",
@@ -69,7 +72,7 @@ def _resolve_gds(workspace: Path, step: str):
             ]
         )
     if len(candidates) > 1:
-        return None, CommandResult.err(
+        raise CommandError(
             [
                 error_record(
                     "gds_view_ambiguous",
@@ -81,9 +84,10 @@ def _resolve_gds(workspace: Path, step: str):
                 )
             ]
         )
-    return {**resolved, "gds": candidates[0]}, None
+    return {**resolved, "gds": candidates[0]}
 
 
+@command_handler
 def gds_view(command_input, ctx: CommandContext) -> CommandResult:
     if sys.platform != "linux":
         return CommandResult.err(
@@ -104,11 +108,10 @@ def gds_view(command_input, ctx: CommandContext) -> CommandResult:
     )
     if error is not None:
         return CommandResult.err([error])
+    assert workspace_dir is not None
 
     workspace = Path(workspace_dir)
-    resolved, resolve_error = _resolve_gds(workspace, command_input.step)
-    if resolve_error is not None:
-        return resolve_error
+    resolved = _resolve_gds(workspace, command_input.step)
     if not _display_available():
         return CommandResult.err(
             [

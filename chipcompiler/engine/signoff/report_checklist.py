@@ -64,7 +64,7 @@ class ChecklistReport:
 
 
 def build_checklist_report(workspace) -> ChecklistReport:
-    workspace_root = Path(workspace.directory or "")
+    workspace_root = Path(workspace.directory)
     data = json_read(workspace_root.joinpath(*CHECKLIST_PATH))
     report = ChecklistReport(workspace=str(workspace_root))
     if (
@@ -79,8 +79,12 @@ def build_checklist_report(workspace) -> ChecklistReport:
     for raw in data["checklist"]:
         if not isinstance(raw, dict):
             continue
-        state = raw.get("state") if raw.get("state") in STATE_MARKS else "unavailable"
-        policy = raw.get("policy") if raw.get("policy") in ("block", "warn") else "warn"
+        raw_state = raw.get("state")
+        state = (
+            raw_state if isinstance(raw_state, str) and raw_state in STATE_MARKS else "unavailable"
+        )
+        raw_policy = raw.get("policy")
+        policy = raw_policy if raw_policy in ("block", "warn") else "warn"
         evidence = raw.get("evidence")
         items.append(
             ChecklistItemView(

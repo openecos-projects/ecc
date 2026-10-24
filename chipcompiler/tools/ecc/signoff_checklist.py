@@ -63,11 +63,8 @@ def _path_text(workspace: Workspace, path: Path | str | None) -> str:
     if not path:
         return ""
     value = Path(path)
-    workspace_directory = getattr(workspace, "directory", None)
-    if not workspace_directory:
-        return str(value)
     try:
-        return value.relative_to(Path(workspace_directory)).as_posix()
+        return value.relative_to(workspace.directory).as_posix()
     except ValueError:
         return str(value)
 
@@ -564,8 +561,7 @@ def refresh_step_checklist(workspace: Workspace, step: WorkspaceStep) -> bool:
     if step.name in ADVISORY_FLOW_STEPS:
         items.extend(item for item in _flow_items(workspace) if item["step"] == step.name)
     step.checklist.checklist = checklist.replace(items)
-    if getattr(workspace, "directory", None):
-        rebuild_home_checklist(workspace)
+    rebuild_home_checklist(workspace)
     return not any(item["blocked"] for item in step.checklist.checklist)
 
 
@@ -704,10 +700,7 @@ def rebuild_home_checklist(
     workspace: Workspace, resource_issues=None, *, persist: bool = True
 ) -> dict:
     """Replace the aggregate workspace checklist from current step snapshots."""
-    workspace_directory = getattr(workspace, "directory", None)
-    if not workspace_directory:
-        return {}
-    workspace_dir = Path(workspace_directory)
+    workspace_dir = Path(workspace.directory)
     items = []
     loaded_step_checklists = set()
     # LEC artifacts live under the engine the flow recorded (yosys_lec
@@ -769,6 +762,8 @@ def rebuild_home_checklist(
     from chipcompiler.data import workspace_checklist_path
 
     checklist_path = workspace_checklist_path(workspace_dir)
+    if persist:
+        checklist_path.parent.mkdir(parents=True, exist_ok=True)
     from chipcompiler.tools.ecc.checklist_render import render_checklist
 
     return render_checklist(checklist_path, deduplicated.values(), persist=persist)

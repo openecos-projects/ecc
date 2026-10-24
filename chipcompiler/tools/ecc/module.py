@@ -1,22 +1,17 @@
 #!/usr/bin/env python
+import importlib
 import json
 import os
 import shutil
 from pathlib import Path
-from typing import Any, TypeAlias
+from typing import Any
 
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_run_outputs, publish_sta_artifacts
-from chipcompiler.utility.path import path_text
+from chipcompiler.utility.path import PathArg, path_list, path_text
 
 # ecc-tools loggers terminate the host process on error by default; embedded in
 # Python they must raise instead so failures surface as Python exceptions.
 os.environ.setdefault("ECC_LOGGER_THROW_ON_ERROR", "1")
-
-# Path arguments are handed to the native wrapper unchanged: ecc_py accepts any
-# os.PathLike (and, for the Optional ones, None). An unset step field must be
-# passed as "" by the caller, not None.
-PathArg: TypeAlias = str | os.PathLike[str]
-
 
 STA_OUTPUT_MODES = frozenset(("report", "structured"))
 
@@ -34,6 +29,15 @@ def _normalize_sta_output_modes(output_modes) -> tuple[str, ...]:
     if invalid_modes:
         raise ValueError(f"Unsupported STA output modes: {sorted(invalid_modes)}")
     return modes
+
+
+def _positive_int(value: object, default: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _place_timing_kwargs(inputs: dict[str, object]) -> dict[str, Any]:
@@ -59,8 +63,8 @@ def _place_timing_kwargs(inputs: dict[str, object]) -> dict[str, Any]:
         "rcx_spef_path": first("rcx_spef_path"),
         "config": first("config", "sta_config"),
         "work_dir": first("work_dir"),
-        "thread_number": int(inputs.get("thread_number", 2) or 2),
-        "max_paths": int(inputs.get("max_paths", 20) or 20),
+        "thread_number": _positive_int(inputs.get("thread_number"), 2),
+        "max_paths": _positive_int(inputs.get("max_paths"), 20),
     }
 
 
@@ -71,7 +75,7 @@ class ECCToolsModule:
 
     def __init__(self):
         try:
-            from ecc_tools_bin import ecc_py as ecc
+            ecc = importlib.import_module("ecc_tools_bin.ecc_py")
         except ImportError as exc:
             ecc_bin_dir = Path(__file__).resolve().parent / "bin"
             candidates = sorted(p.name for p in ecc_bin_dir.glob("ecc_py*.so"))
@@ -82,7 +86,8 @@ class ECCToolsModule:
                 f"Available ecc_py binaries in {ecc_bin_dir}: {candidates}"
             ) from exc
 
-        self.ecc = ecc
+        self.ecc: Any = ecc
+        self.dir_workspace = ""
         self._place_timing_active = False
         self._place_timing_inputs = None
 
@@ -340,7 +345,7 @@ class ECCToolsModule:
         self.ecc.db_init(
             config_path=db_config,
             output_path=output_dir,
-            lib_paths=lib_paths,
+            lib_paths=path_list(lib_paths),
             sdc_path=sdc_path,
         )
 
@@ -727,7 +732,7 @@ class ECCToolsModule:
     def run_filler(self, config: PathArg) -> bool:
         return self.ecc.insert_filler(config=config)
 
-    def check_antenna(self, step_json: PathArg = None) -> bool:
+    def check_antenna(self, step_json: PathArg | None = None) -> bool:
         config_dict = {}
         if step_json:
             config_dict["-step_json"] = path_text(step_json)

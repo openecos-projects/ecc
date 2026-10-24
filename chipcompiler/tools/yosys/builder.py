@@ -23,6 +23,7 @@ from chipcompiler.data import (
     YosysStep,
 )
 from chipcompiler.utility import json_read
+from chipcompiler.utility.path import require_path
 
 
 def _abspath(path: Path | str | None) -> str:
@@ -90,7 +91,8 @@ def _plain_verilog_filelist_paths(filelist: str) -> list[str] | None:
 
 def _yosys_source_config(workspace: Workspace, step: WorkspaceStep) -> tuple[bool, list[str], str]:
     """Classify RTL input as native-Verilog or Slang-required."""
-    filelist = workspace.design.input_filelist or workspace.parameters.data.get("file_list", "")
+    raw_filelist = workspace.design.input_filelist or workspace.parameters.data.get("file_list", "")
+    filelist = str(raw_filelist) if isinstance(raw_filelist, (str, Path)) else ""
     if filelist and os.path.exists(filelist):
         plain_sources = _plain_verilog_filelist_paths(filelist)
         if plain_sources is not None:
@@ -310,7 +312,9 @@ def build_step_space(step: YosysStep) -> None:
     """
     Create the workspace directories for the given step.
     """
-    step_directory = Path(step.directory)
+    if step.directory is None:
+        raise ValueError("Yosys step directory is not configured")
+    step_directory = step.directory
     step_directory.mkdir(parents=True, exist_ok=True)
     Path(step.output.dir or step_directory / "output").mkdir(parents=True, exist_ok=True)
     Path(step.data.dir or step_directory / "data").mkdir(parents=True, exist_ok=True)
@@ -340,7 +344,9 @@ def build_step_config(workspace: Workspace, step: YosysStep):
 
     current_dir = Path(__file__).resolve().parent
     scripts_dir = current_dir / "scripts"
-    script_dir = Path(step.script.dir) if step.script.dir else Path(step.directory or "")
+    script_dir = (
+        Path(step.script.dir) if step.script.dir else require_path(step.directory, "step directory")
+    )
 
     for file in ["yosys_synthesis.tcl", "init_tech.tcl"]:
         src = scripts_dir / file
@@ -358,7 +364,7 @@ def build_step_config(workspace: Workspace, step: YosysStep):
 
     try:
         tcl_content = generate_global_var_tcl(workspace, step)
-        data_dir = step.data.dir or Path(step.directory or "") / "data"
+        data_dir = step.data.dir or require_path(step.directory, "step directory") / "data"
         global_var_path = data_dir / "global_var.tcl"
         with global_var_path.open("w") as f:
             f.write(tcl_content)

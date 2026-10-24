@@ -4,6 +4,7 @@ import os
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 from chipcompiler.data import SkippableStepEnum, StateEnum, StepEnum
 
@@ -22,7 +23,7 @@ def test_sizer_runner_invokes_generated_command_and_checks_outputs(tmp_path, mon
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
@@ -89,7 +90,7 @@ def test_sizer_runner_runs_ff_hold_pass_before_legalization(tmp_path, monkeypatc
         json.dumps({"liberty": [{"corner": "MIN", "path": [str(min_lib)]}]}),
         encoding="utf-8",
     )
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
@@ -145,7 +146,7 @@ def test_sizer_runner_rejects_ff_hold_pass_without_new_outputs(tmp_path, monkeyp
         json.dumps({"liberty": [{"corner": "MIN", "path": ["ff.lib"]}]}),
         encoding="utf-8",
     )
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
@@ -181,7 +182,7 @@ def test_sizer_runner_marks_subflow_invalid_when_tool_or_config_missing(tmp_path
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
@@ -210,7 +211,7 @@ def test_sizer_runner_does_not_run_sizer_when_dreamplace_is_missing(tmp_path, mo
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
@@ -243,7 +244,7 @@ def test_sizer_runner_marks_subflow_incomplete_when_outputs_are_missing(
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
@@ -275,7 +276,7 @@ def test_sizer_runner_marks_subflow_incomplete_when_tool_is_signal_terminated(
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
@@ -320,7 +321,7 @@ def test_sizer_runner_reports_plain_exit_code_without_signal_or_fatal_line(
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
@@ -356,7 +357,7 @@ def test_sizer_runner_inherits_captured_stdio_instead_of_truncating_step_log(
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
@@ -395,7 +396,7 @@ def test_public_sizer_run_marks_invalid_when_tool_missing(tmp_path, monkeypatch)
     monkeypatch.setenv("PATH", str(empty_path))
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),
@@ -420,7 +421,7 @@ def test_public_sizer_run_marks_invalid_when_runtime_missing(tmp_path, monkeypat
     monkeypatch.setenv("PATH", str(bin_dir))
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=Path("input.def"),

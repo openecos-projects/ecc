@@ -1,5 +1,20 @@
 #!/usr/bin/env python
+import os
 from pathlib import Path
+from typing import TypeAlias
+
+PathArg: TypeAlias = str | os.PathLike[str]
+
+
+class MissingPathError(ValueError):
+    """A required workspace path is absent."""
+
+
+def require_path(value: PathArg | None, what: str) -> Path:
+    """Return *value* as a Path, raising MissingPathError when it is unset."""
+    if value is None or value == "":
+        raise MissingPathError(f"{what} path is not set")
+    return Path(value)
 
 
 def optional_path(path: str | Path | None) -> Path | None:

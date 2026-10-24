@@ -2,6 +2,7 @@ import hashlib
 import json
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
@@ -426,7 +427,7 @@ def test_version2_equal_budget_receipt_and_warm_seed_filters(
     repository = warm_start.ExperienceStore(store)
     read_case = warm_start.ExperienceStore.read
     baseline = repository.read(frozen["baseline_case_id"])
-    configurations = {
+    configurations: dict[str, Any] = {
         "compatible": {"floorplan.core_util": 0.35},
         "outside": {"floorplan.core_util": 0.9},
         "other_knob": {"floorplan.core_util": 0.35, "place.target_density": 0.4},
@@ -435,7 +436,8 @@ def test_version2_equal_budget_receipt_and_warm_seed_filters(
     for parameters in configurations.values():
         parameters["sta.liberty"] = ["/technology/timing.lib"]
     configurations["other_library"]["sta.liberty"] = ["/other-technology/timing.lib"]
-    baseline.facts["workspaceSpec"]["parameters"]["sta.liberty"] = ["/technology/timing.lib"]
+    baseline_facts: Any = baseline.facts
+    baseline_facts["workspaceSpec"]["parameters"]["sta.liberty"] = ["/technology/timing.lib"]
 
     def observed_case(repository, case_id):
         if case_id == frozen["baseline_case_id"]:

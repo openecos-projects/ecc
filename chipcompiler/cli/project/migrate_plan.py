@@ -18,15 +18,15 @@ from datetime import UTC, datetime
 
 from typing_extensions import deprecated
 
-from chipcompiler.cli.project.manifest import (
+from chipcompiler.project.manifest import (
+    MANIFEST_FILENAME,
     base_design_from_config,
     find_manifest,
 )
-from chipcompiler.cli.project.manifest_write import (
+from chipcompiler.project.manifest_write import (
     build_manifest_document,
     manifest_workspace_entry,
 )
-from chipcompiler.project.manifest import MANIFEST_FILENAME
 
 # Canonical step name -> GUI display name (manifest vocabulary).
 CANONICAL_TO_DISPLAY = {

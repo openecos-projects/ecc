@@ -55,6 +55,7 @@ class ExplodingEccModule:
 class FakeLegalizeModule:
     def __init__(self):
         self.closed = False
+        self.seen = []
 
     def close(self):
         self.closed = True

@@ -78,9 +78,10 @@ wheel 和 sdist 产物写入 `dist/`。
 uv run ruff format chipcompiler/ test/
 uv run ruff check chipcompiler/ test/
 
-# 类型检查
+# 类型检查（basedpyright 是门禁，ty 用于交叉对比）
+uv run basedpyright
 uv run ty check
-uv run pyright chipcompiler/
+.github/scripts/type-check-compare.sh
 uv run mypy chipcompiler/
 
 # 旧格式化工具

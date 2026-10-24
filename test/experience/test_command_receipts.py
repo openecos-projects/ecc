@@ -22,7 +22,9 @@ def test_durable_public_command_writes_completion_and_does_not_repeat(tmp_path):
         on_prepared=prepared.append,
     )
     request = load_request(Path(prepared[0]["request"]))
+    assert request is not None
     receipt = read_receipt(request, prepared[0]["request_fingerprint"])
+    assert receipt is not None
     assert result.exit_code == 0, result.stderr.read_text()
     assert receipt["status"] == "complete"
     assert receipt["process_tree_quiescent"] is True
@@ -57,10 +59,12 @@ def test_receipt_waits_for_orphan_in_separate_session(tmp_path):
         while not request.receipt.exists() and time.monotonic() < deadline:
             time.sleep(0.01)
         receipt = read_receipt(request, request.fingerprint)
+        assert receipt is not None
         assert receipt["status"] == "running"
         assert not marker.exists()
         assert process.wait(timeout=10) == 0
         receipt = read_receipt(request, request.fingerprint)
+        assert receipt is not None
         assert marker.read_text() == "done"
         assert receipt["process_tree_quiescent"] is True
         assert receipt["orphan_exit_codes"] == [0]

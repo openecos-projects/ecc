@@ -22,6 +22,7 @@ def test_adaptive_replay_is_deterministic_and_observation_driven():
     history, decisions = [], []
     for index in range(10):
         proposed, decision = propose(plan, history)
+        assert proposed is not None
         assert (proposed, decision) == propose(deepcopy(plan), deepcopy(history))
         assert proposed["parameters"] not in [trial["parameters"] for trial in history]
         decisions.append(decision)
@@ -49,12 +50,14 @@ def test_warm_seed_provenance_grid_order_and_space_exhaustion():
     }
     plan["warm_start"]["seeds"] = [seed]
     proposed, decision = propose(plan, [])
+    assert proposed is not None
     assert proposed["parameters"] == seed["parameters"]
     assert decision["provenance"] == seed
     plan["strategy"] = "grid"
     history = []
     for _index in range(16):
         proposed, _decision = propose(plan, history)
+        assert proposed is not None
         history.append({**proposed, "status": "failed", "objective_values": None})
     assert len({str(trial["parameters"]) for trial in history}) == 16
     assert propose(plan, history)[0] is None

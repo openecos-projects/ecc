@@ -15,7 +15,7 @@ def _flow(root: Path) -> tuple[list[dict], str]:
     result = read_workspace_artifact(
         root, root / "home" / "flow.json", ENGINEERING_SNAPSHOT_MAX_BYTES
     )
-    if result.status != "available":
+    if result.status != "available" or result.data is None:
         return [], result.status
     steps = result.data.get("steps")
     if not isinstance(steps, list) or any(
@@ -46,7 +46,7 @@ def _qor(root: Path, steps: list[dict], flow_status: str) -> dict:
         "source": str(source),
         "provisional": flow_status == "ongoing",
     }
-    if result.status != "available":
+    if result.status != "available" or result.data is None:
         return record
     report = result.data
     try:

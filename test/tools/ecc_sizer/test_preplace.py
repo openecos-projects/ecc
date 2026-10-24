@@ -1,4 +1,6 @@
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -15,7 +17,9 @@ def test_preplace_publishes_native_pair_without_legalization(
     monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(_sizer_runtime(tmp_path)))
     workspace = _workspace(tmp_path)
     (workspace.directory / "home").mkdir(parents=True, exist_ok=True)
-    step = builder.build_step(workspace, StepEnum.PREPLACE.value, "input.def", "input.v")
+    step: Any = builder.build_step(
+        workspace, StepEnum.PREPLACE.value, Path("input.def"), Path("input.v")
+    )
     builder.build_step_space(step)
     builder.build_step_config(workspace, step)
     command = step.script.sizer_cmd.read_text()

@@ -76,6 +76,7 @@ def test_bind_and_reapply_cts_from_legalization_uses_checkpoint_outputs(tmp_path
 
     applied = reapply_candidate_input_binding(workspace, flow, "CTS")
 
+    assert applied is not None
     assert applied["inputs"]["def"]["sha256"] == _sha256(legalization.output["def"])
     assert cts.input == legalization.output
 

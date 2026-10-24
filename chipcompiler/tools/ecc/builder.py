@@ -163,6 +163,8 @@ def build_step_space(step: WorkspaceStep) -> None:
     """
     Create the workspace directories for the given step.
     """
+    if step.directory is None:
+        raise ValueError(f"{step.name} step directory is not configured")
     step_directory = Path(step.directory)
 
     step_directory.mkdir(parents=True, exist_ok=True)

@@ -1,11 +1,14 @@
+import io
 import sys
 import tarfile
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.inspection.discovery import resolve_loaded_workspace, workspace_display
+from chipcompiler.engine.signoff_export import SignoffExportError
 
 _MAX_ADDITIONAL_TOTAL = 64 * 1024 * 1024
 _MAX_ADDITIONAL_FILE = 16 * 1024 * 1024
@@ -66,10 +69,7 @@ def export(command_input, ctx: CommandContext) -> CommandResult:
         return CommandResult.err([error_record("invalid_additional_files", reason=str(exc))])
 
     try:
-        from chipcompiler.engine.signoff_export import (
-            SignoffExportError,
-            export_signoff_package_archive,
-        )
+        from chipcompiler.engine.signoff_export import export_signoff_package_archive
         from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
         from chipcompiler.utility.workspace_lock import workspace_lock
 
@@ -137,7 +137,9 @@ def _read_additional_files(source: str | None) -> list[dict[str, str]] | None:
         return None
     if source != "-":
         raise ValueError("--additional-files only accepts '-' for a stdin tar stream")
-    stream = getattr(sys.stdin, "buffer", sys.stdin)
+    stream: Any = getattr(sys.stdin, "buffer", sys.stdin)
+    if isinstance(stream, io.TextIOBase):
+        raise ValueError("--additional-files requires a binary stdin stream")
     result: list[dict[str, str]] = []
     names: set[str] = set()
     total = 0

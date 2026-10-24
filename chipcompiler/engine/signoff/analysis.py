@@ -8,6 +8,7 @@ materialization stay in collector.py and discovery.py; shared helpers
 """
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from chipcompiler.analysis.qor.summary_contract import (
     gate_reason,
@@ -20,16 +21,26 @@ from chipcompiler.analysis.qor.summary_contract import (
 )
 from chipcompiler.data import (
     LEC_STEP_TOOLS,
+    EccOutput,
     StateEnum,
     StepEnum,
     ToolName,
+    Workspace,
 )
 from chipcompiler.data.workspace.flow_policy import FlowInputResolver, FlowInputStepError
+from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.engine.signoff.models import SIGNOFF_REQUIRED_QOR_STEPS, SignoffPackageIssue
 from chipcompiler.engine.step_chain import apply_info_spef_override, build_workspace_step_for_info
 
 
 class CollectorAnalysisMixin:
+    if TYPE_CHECKING:
+        workspace: Workspace
+
+        def _step_dirs(self) -> dict[str, str]: ...
+
+        def _read_json(self, path: Path) -> dict: ...
+
     def _refresh_workspace_analysis(self, workspace_dir: Path) -> list[SignoffPackageIssue]:
         """Rebuild current analysis and checklist snapshots for completed steps."""
         if self.workspace.flow.path is None:
@@ -44,6 +55,7 @@ class CollectorAnalysisMixin:
             if not step_name or not tool:
                 continue
 
+            input_source = None
             try:
                 input_source = resolver.input_source(index)
                 workspace_step = self._build_workspace_step(flow_step, input_source)
@@ -64,7 +76,12 @@ class CollectorAnalysisMixin:
             resolver.record(workspace_step)
 
             rcx_step = resolver.created_step(StepEnum.RCX.value)
-            if rcx_step is not None and workspace_step.name == StepEnum.STA.value:
+            if (
+                rcx_step is not None
+                and workspace_step.name == StepEnum.STA.value
+                and isinstance(rcx_step.output, EccOutput)
+                and isinstance(workspace_step.output, EccOutput)
+            ):
                 workspace_step.output.spef = rcx_step.output.spef
 
             if flow_step.get("state") != StateEnum.Success.value:
@@ -86,7 +103,7 @@ class CollectorAnalysisMixin:
 
         return issues
 
-    def _build_workspace_step(self, flow_step: dict, input_source):
+    def _build_workspace_step(self, flow_step: FlowStepEntry, input_source):
         try:
             workspace_step = build_workspace_step_for_info(self.workspace, flow_step, input_source)
         except ImportError:

@@ -41,6 +41,8 @@ def _canonical_metric_category(record: Any) -> Any:
     if not isinstance(record, dict):
         return record
     category = record.get("category")
+    if not isinstance(category, str):
+        return record
     mapped = _LEGACY_METRIC_CATEGORIES.get(category, category)
     if mapped != category and mapped in METRIC_CATEGORIES:
         return {**record, "category": mapped}

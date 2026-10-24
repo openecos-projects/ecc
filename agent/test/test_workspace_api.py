@@ -2,6 +2,7 @@ import json
 import threading
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -304,7 +305,7 @@ def test_agent_flow_defaults_to_full_rtl2gds_flow(monkeypatch):
         lambda: [("rtl2gds", "ecc", "Unstart")],
     )
 
-    flow = build_agent_flow_for_workspace(SimpleNamespace())
+    flow: Any = build_agent_flow_for_workspace(SimpleNamespace())
 
     assert flow.added_steps == [("rtl2gds", "ecc", "Unstart")]
 
@@ -1106,7 +1107,7 @@ class _Flow:
         self.workspace.flow.path.write_text(json.dumps(self.workspace.flow.data), encoding="utf-8")
         return True
 
-    def run_step(self, step, *, rerun, observer=None):
+    def run_step(self, step, *, rerun, observer=None) -> StateEnum:
         self.run_calls.append((step.name, rerun))
         if step.name == "place":
             config = json.loads(

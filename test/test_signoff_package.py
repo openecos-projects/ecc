@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any
 
 from chipcompiler.data import OriginDesign, Parameters, StateEnum, Workspace
 from chipcompiler.engine import EngineFlow
@@ -112,8 +113,8 @@ def _make_signoff_workspace(
     _write(workspace_dir / "RCX_ecc" / "output" / f"{top_module}_RCworst_125C.spef")
     golden = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
     gate = workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz"
-    golden_digest = file_digest(golden)
-    gate_digest = file_digest(gate)
+    golden_digest: Any = file_digest(golden)
+    gate_digest: Any = file_digest(gate)
     _write_json(
         workspace_dir / "postRouteLec_yosys_lec" / "output" / f"{design}_postRouteLec_result.json",
         {
@@ -216,8 +217,7 @@ def _make_engine_flow(
     design: str = "gcd",
     top_module: str = "gcd",
 ) -> EngineFlow:
-    workspace = Workspace()
-    workspace.directory = str(workspace_dir)
+    workspace = Workspace(directory=workspace_dir)
     workspace.design = OriginDesign(
         name=design,
         top_module=top_module,
@@ -230,9 +230,10 @@ def _make_engine_flow(
         "sta": workspace_dir / "config" / "sta_ecc.json",
     }
     workspace.flow.path = workspace_dir / "home" / "flow.json"
+    assert workspace.flow.path is not None
     workspace.flow.data = json.loads(workspace.flow.path.read_text(encoding="utf-8"))
     workspace.parameters = Parameters(
-        path=str(workspace_dir / "home" / "params.toml"),
+        path=workspace_dir / "home" / "params.toml",
         data={"design": design, "top_module": top_module, "pdk": "ics55"},
     )
     return EngineFlow(workspace=workspace)
@@ -357,8 +358,8 @@ def test_collect_signoff_package_rejects_lec_proof_bound_to_copied_netlists(tmp_
     current_gate = workspace_dir / "lvs_ecc" / "output" / "gcd_lvs.v.gz"
     _write(old_golden, current_golden.read_text())
     _write(old_gate, current_gate.read_text())
-    golden_digest = file_digest(old_golden)
-    gate_digest = file_digest(old_gate)
+    golden_digest: Any = file_digest(old_golden)
+    gate_digest: Any = file_digest(old_gate)
     _write_json(
         workspace_dir / "postRouteLec_yosys_lec" / "output" / "gcd_postRouteLec_result.json",
         {
@@ -467,8 +468,8 @@ def _rewrite_flow_without_synthesis(workspace_dir: Path, first_step: dict) -> No
 
 
 def _bind_post_route_lec(workspace_dir: Path, golden: Path, gate: Path) -> None:
-    golden_digest = file_digest(golden)
-    gate_digest = file_digest(gate)
+    golden_digest: Any = file_digest(golden)
+    gate_digest: Any = file_digest(gate)
     _write_json(
         workspace_dir / "postRouteLec_yosys_lec" / "output" / "gcd_postRouteLec_result.json",
         {
@@ -1029,6 +1030,7 @@ def test_single_step_post_route_lec_ledger_reports_issues(tmp_path):
         ),
     )
     workspace.flow.path = tmp_path / "home" / "flow.json"
+    assert workspace.flow.path is not None
     workspace.flow.path.parent.mkdir(parents=True)
     workspace.flow.data = {
         "steps": [

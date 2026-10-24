@@ -149,6 +149,7 @@ def test_captured_evidence_damage_is_not_hidden_by_idempotence(workspace_factory
     store = tmp_path / "store"
     result = collect(root, store)
     copied = next(item for item in result.case.evidence if item.stored_path)
+    assert copied.stored_path is not None
     path = ExperienceStore(store).case_directory(result.case.case_id) / copied.stored_path
     path.write_text("corrupt")
     assert verify(result.case.case_id, store).integrity == "fail"

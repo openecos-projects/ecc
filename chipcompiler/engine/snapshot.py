@@ -370,7 +370,7 @@ def _build_snapshot(
         "signoffAssessment": build_signoff_assessment(workspace, checklist=checklist),
         "timingPreview": projections["timingPreview"],
         "hotspotPreview": projections["hotspotPreview"],
-        "checklist": _checklist_projection(checklist),
+        "checklist": _checklist_projection(checklist or {}),
         "artifacts": artifacts,
     }
     if schema_version != SNAPSHOT_SCHEMA_VERSION:

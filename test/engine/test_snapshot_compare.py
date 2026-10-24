@@ -20,7 +20,7 @@ def _snapshot(metrics=None):
     }
 
 
-def _metric(metric_id="synthesis_cell_area", value=100, **overrides):
+def _metric(metric_id="synthesis_cell_area", value: float = 100, **overrides):
     return {
         "id": metric_id,
         "value": value,

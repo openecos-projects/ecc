@@ -7,9 +7,10 @@ import json
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import Any
 
 
-def run(binary: Path, args: list[str], *, json_option: bool = True) -> tuple[int, object]:
+def run(binary: Path, args: list[str], *, json_option: bool = True) -> tuple[int, dict[str, Any]]:
     command = [str(binary), *args]
     if json_option:
         command.append("--json")
@@ -17,7 +18,10 @@ def run(binary: Path, args: list[str], *, json_option: bool = True) -> tuple[int
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        raise RuntimeError(f"{' '.join(args)} did not emit JSON: {result.stdout[-500:]} stderr={result.stderr[-500:]}" ) from exc
+        raise RuntimeError(
+            f"{' '.join(args)} did not emit JSON: "
+            f"{result.stdout[-500:]} stderr={result.stderr[-500:]}"
+        ) from exc
     return result.returncode, payload
 
 
@@ -39,7 +43,20 @@ def main() -> int:
         (workspace / "home" / "checklist.json").write_text('{"items":[]}\n')
         (workspace / "home" / "qor_report.json").write_text('{"qor_score":1.0}\n')
         package = Path(directory) / "evidence.tar.gz"
-        code, exported = run(args.binary, ["reproducible", "export", "--project", str(project), "--workspace", "smoke", "--output", str(package)], json_option=False)
+        code, exported = run(
+            args.binary,
+            [
+                "reproducible",
+                "export",
+                "--project",
+                str(project),
+                "--workspace",
+                "smoke",
+                "--output",
+                str(package),
+            ],
+            json_option=False,
+        )
         if code != 0 or exported.get("status") != "success":
             raise RuntimeError(f"export failed: {exported}")
         code, verified = run(args.binary, ["reproducible", "verify", "--package", str(package)])
@@ -48,10 +65,25 @@ def main() -> int:
         code, report = run(args.binary, ["reproducible", "report", "--package", str(package)])
         if code != 0 or report.get("verification", {}).get("status") != "pass":
             raise RuntimeError(f"report failed: {report}")
-        code, diagnosis = run(args.binary, ["diagnose", "run", "--project", str(project), "--workspace", "smoke"])
+        code, diagnosis = run(
+            args.binary, ["diagnose", "run", "--project", str(project), "--workspace", "smoke"]
+        )
         if code != 0 or diagnosis.get("status") not in {"passed", "attention"}:
             raise RuntimeError(f"diagnose failed: {diagnosis}")
-        code, plan = run(args.binary, ["sweep", "create", "--project", str(project), "--name", "smoke", "--param", "place.target_density=0.60,0.65"], json_option=False)
+        code, plan = run(
+            args.binary,
+            [
+                "sweep",
+                "create",
+                "--project",
+                str(project),
+                "--name",
+                "smoke",
+                "--param",
+                "place.target_density=0.60,0.65",
+            ],
+            json_option=False,
+        )
         if code != 0 or not plan.get("plan_fingerprint"):
             raise RuntimeError(f"sweep plan failed: {plan}")
     if args.e2e_out and args.e2e_out.is_dir():
@@ -60,10 +92,25 @@ def main() -> int:
             workspace = workspaces[0].parent.parent
             project = workspace.parent.parent
             package = args.e2e_out / "reproducible-e2e.tar.gz"
-            code, _ = run(args.binary, ["status", "--project", str(project), "--workspace", str(workspace)])
+            code, _ = run(
+                args.binary, ["status", "--project", str(project), "--workspace", str(workspace)]
+            )
             if code != 0:
                 raise RuntimeError(f"real E2E status failed for {workspace}")
-            code, exported = run(args.binary, ["reproducible", "export", "--project", str(project), "--workspace", str(workspace), "--output", str(package)], json_option=False)
+            code, exported = run(
+                args.binary,
+                [
+                    "reproducible",
+                    "export",
+                    "--project",
+                    str(project),
+                    "--workspace",
+                    str(workspace),
+                    "--output",
+                    str(package),
+                ],
+                json_option=False,
+            )
             if code != 0 or exported.get("status") != "success":
                 raise RuntimeError(f"real E2E export failed: {exported}")
             code, verified = run(args.binary, ["reproducible", "verify", "--package", str(package)])

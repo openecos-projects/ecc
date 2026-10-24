@@ -388,7 +388,7 @@ class FoundationExtractor:
                 summary,
                 options=options,
                 table_registry=table_registry,
-                table_rows=table_rows,
+                table_rows={name: list(rows) for name, rows in table_rows.items()},
             ),
         )
         self._quality["tables"] = {
@@ -1529,6 +1529,8 @@ class FoundationExtractor:
                 null_reason["pin_summary_pin_layers"] = (
                     "lef_not_parsed_in_m1" if lef_macro is None else "missing_lef_pin_layers"
                 )
+            width = size.get("width") if isinstance(size, dict) else None
+            height = size.get("height") if isinstance(size, dict) else None
             record = {
                 "id": idx,
                 "name": name,
@@ -1555,12 +1557,13 @@ class FoundationExtractor:
                     else "heuristic_name_rule",
                 },
                 "physical_properties": {
-                    "width": size.get("width") if isinstance(size, dict) else None,
-                    "height": size.get("height") if isinstance(size, dict) else None,
-                    "area": (size.get("width") * size.get("height"))
-                    if isinstance(size, dict)
-                    and size.get("width") is not None
-                    and size.get("height") is not None
+                    "width": width,
+                    "height": height,
+                    "area": (float(width) * float(height))
+                    if isinstance(width, (int, float))
+                    and not isinstance(width, bool)
+                    and isinstance(height, (int, float))
+                    and not isinstance(height, bool)
                     else None,
                     "size_source": "lef_macro_size" if isinstance(size, dict) else "missing",
                     "observed_bbox_stats": None,
@@ -1646,8 +1649,14 @@ class FoundationExtractor:
                     if stage_sources.get(stage) or usage_counts.get(stage)
                 ]
             )
-            bottom_direction = layer_direction_by_name.get(layer_stack.get("bottom_layer"))
-            top_direction = layer_direction_by_name.get(layer_stack.get("top_layer"))
+            bottom_layer = layer_stack.get("bottom_layer")
+            top_layer = layer_stack.get("top_layer")
+            bottom_direction = (
+                layer_direction_by_name.get(bottom_layer) if isinstance(bottom_layer, str) else None
+            )
+            top_direction = (
+                layer_direction_by_name.get(top_layer) if isinstance(top_layer, str) else None
+            )
             route_only_usage = bool(usage_counts)
             null_reason = {"source_refs_liberty": "liberty_reserved_not_parsed"}
             if geometry["geometry_status"] in {"name_only", "missing"}:
@@ -1922,7 +1931,7 @@ class FoundationExtractor:
         canonical_grid: dict | None = None,
         stage_maps: dict[str, dict[str, list[list[float]]]] | None = None,
     ) -> list[dict[str, Any]]:
-        if self._should_use_def_instance_fast_path(stage, parsed_def):
+        if parsed_def is not None and self._should_use_def_instance_fast_path(stage, parsed_def):
             records = self._instance_records_from_def(
                 stage, parsed_def, canonical_grid or {}, stage_maps or {}
             )
@@ -2881,7 +2890,7 @@ class FoundationExtractor:
     def _build_stage_index(self, stages: list[StageInfo]) -> dict[str, Any]:
         index = {"stages": []}
         for stage in stages:
-            entry = {
+            entry: dict[str, object] = {
                 "name": stage.name,
                 "tool": stage.tool,
                 "state": stage.state,
@@ -5445,7 +5454,11 @@ def _attach_connectivity_summaries(records: list[dict[str, Any]], parsed_def: De
     for key, record in by_key.items():
         pins = pins_by_instance.get(str(key), [])
         connected_nets = sorted({str(pin.get("net")) for pin in pins if pin.get("net")})
-        hpwls = [net_hpwl[net] for net in connected_nets if net_hpwl.get(net) is not None]
+        hpwls: list[float] = []
+        for net in connected_nets:
+            value = net_hpwl.get(net)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                hpwls.append(float(value))
         has_center = isinstance(record.get("physical_state", {}).get("center"), dict)
         record["connectivity_summary"] = {
             "pin_count": len(pins),
@@ -5900,7 +5913,7 @@ def _pin_geometry(
                         {str(shape["layer"]) for shape in absolute_shapes if shape.get("layer")}
                     ),
                     "shape_count": len(absolute_shapes),
-                    "area": sum(_bbox_area(box) for box in boxes),
+                    "area": sum(_bbox_area_or_zero(box) for box in boxes),
                     "local_shapes": [
                         {
                             "shape_id": idx,
@@ -5983,7 +5996,7 @@ def _pin_geometry(
                     {str(shape["layer"]) for shape in absolute_shapes if shape.get("layer")}
                 ),
                 "shape_count": len(absolute_shapes),
-                "area": sum(_bbox_area(box) for box in boxes),
+                "area": sum(_bbox_area_or_zero(box) for box in boxes),
                 "local_shapes": [
                     {
                         **{k: v for k, v in shape.items() if k != "source"},
@@ -6429,7 +6442,8 @@ def _attach_pin_progressive_metadata(stages: list[StageInfo], pins_dir: Path) ->
                     )
                     previous_parent_center = (
                         previous.get("parent_instance", {}).get("center")
-                        if isinstance(previous.get("parent_instance"), dict)
+                        if previous is not None
+                        and isinstance(previous.get("parent_instance"), dict)
                         else None
                     )
                     if isinstance(current_parent_center, dict) and isinstance(
@@ -7558,14 +7572,14 @@ def _patch_shape_density(
         for shape in shapes:
             for patch in _overlapping_patch_candidates(lookup, patches, shape):
                 row, col, bbox = int(patch["row"]), int(patch["col"]), patch["bbox"]
-                patch_area = _bbox_area(bbox)
+                patch_area = _bbox_area_or_zero(bbox)
                 if patch_area <= 0:
                     continue
                 matrix[row][col] += _bbox_overlap_area(shape, bbox) / patch_area
         return matrix
     for patch in patches:
         row, col, bbox = int(patch["row"]), int(patch["col"]), patch["bbox"]
-        patch_area = _bbox_area(bbox)
+        patch_area = _bbox_area_or_zero(bbox)
         if patch_area <= 0:
             continue
         matrix[row][col] = sum(_bbox_overlap_area(shape, bbox) for shape in shapes) / patch_area
@@ -7735,7 +7749,7 @@ def _patch_cell_density(
     matrix = _empty_matrix(rows, cols)
     for patch in patches:
         row, col, bbox = int(patch["row"]), int(patch["col"]), patch["bbox"]
-        patch_area = _bbox_area(bbox)
+        patch_area = _bbox_area_or_zero(bbox)
         if patch_area <= 0:
             continue
         matrix[row][col] = sum(_bbox_overlap_area(cell, bbox) for cell in cells) / patch_area
@@ -7764,7 +7778,7 @@ def _patch_net_density(
         )
     for patch in patches:
         row, col, bbox = int(patch["row"]), int(patch["col"]), patch["bbox"]
-        patch_area = _bbox_area(bbox)
+        patch_area = _bbox_area_or_zero(bbox)
         if patch_area <= 0:
             continue
         matrix[row][col] = sum(_bbox_overlap_area(net, bbox) for net in nets) / patch_area
@@ -7777,7 +7791,7 @@ def _patch_rudy(
     matrix = _empty_matrix(rows, cols)
     for patch in patches:
         row, col, bbox = int(patch["row"]), int(patch["col"]), patch["bbox"]
-        patch_area = _bbox_area(bbox)
+        patch_area = _bbox_area_or_zero(bbox)
         if patch_area <= 0:
             continue
         value = 0.0
@@ -7813,7 +7827,7 @@ def _patch_margin(
         row, col, bbox = int(patch["row"]), int(patch["col"]), patch["bbox"]
         if _bbox_overlap_area(bbox, core) <= 0:
             continue
-        patch_area = _bbox_area(bbox)
+        patch_area = _bbox_area_or_zero(bbox)
         if (
             patch_area > 0
             and sum(_bbox_overlap_area(macro, bbox) for macro in macros) > 0.5 * patch_area
@@ -7854,6 +7868,10 @@ def _bbox_area(bbox: dict[str, Any] | None) -> float | None:
     return max(0.0, float(bbox["urx"]) - float(bbox["llx"])) * max(
         0.0, float(bbox["ury"]) - float(bbox["lly"])
     )
+
+
+def _bbox_area_or_zero(bbox: dict[str, Any] | None) -> float:
+    return _bbox_area(bbox) or 0.0
 
 
 def _bbox_overlap_area(a: dict[str, Any], b: dict[str, Any]) -> float:
@@ -8383,20 +8401,12 @@ def _timing_path_patch_ids(record: dict[str, Any]) -> set[int]:
 def _timing_for_scoped_patch_paths(
     scoped_paths: list[dict[str, Any]], patch_id: int | None = None, stage: str | None = None
 ) -> dict[str, Any]:
-    slacks = [
-        float(
-            item.get("path_timing", {}).get("slack")
-            if isinstance(item.get("path_timing"), dict)
-            else item.get("slack")
-        )
-        for item in scoped_paths
-        if (
-            item.get("path_timing", {}).get("slack")
-            if isinstance(item.get("path_timing"), dict)
-            else item.get("slack")
-        )
-        is not None
-    ]
+    slacks: list[float] = []
+    for item in scoped_paths:
+        timing = item.get("path_timing")
+        value = timing.get("slack") if isinstance(timing, dict) else item.get("slack")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            slacks.append(float(value))
     endpoint_count = sum(
         1
         for item in scoped_paths
@@ -8682,11 +8692,15 @@ def _top_patch_view_items(
         density = (
             record.get("local_density") if isinstance(record.get("local_density"), dict) else {}
         )
+        native_data = native if isinstance(native, dict) else {}
+        drc_data: dict = drc if isinstance(drc, dict) else {}
+        timing_data: dict = timing if isinstance(timing, dict) else {}
+        density_data: dict = density if isinstance(density, dict) else {}
         score = _first_numeric(
-            native.get("union_demand_capacity") if isinstance(native, dict) else None,
-            drc.get("count"),
-            _negative_or_none(timing.get("worst_slack_min")),
-            density.get("cell_density"),
+            native_data.get("union_demand_capacity"),
+            drc_data.get("count"),
+            _negative_or_none(timing_data.get("worst_slack_min")),
+            density_data.get("cell_density"),
         )
         if score is None:
             continue
@@ -9691,11 +9705,13 @@ def _build_net_record(
         for role in ("driver", "sink", "bidirectional", "unknown")
     }
     hpwl = _hpwl_from_points(centers)
-    bbox = (
-        _bbox_union([*bboxes, *([_bbox_from_points(centers)] if centers else [])])
-        if bboxes
-        else _bbox_from_points(centers)
-    )
+    valid_bboxes: list[dict[str, Any]] = [dict(bbox) for bbox in bboxes if isinstance(bbox, dict)]
+    center_bbox = _bbox_from_points(centers)
+    all_bboxes = [
+        *valid_bboxes,
+        *([center_bbox] if center_bbox is not None else []),
+    ]
+    bbox = _bbox_union(all_bboxes) if all_bboxes else None
     route_wires = [wire for wire in net.wires if not wire.special]
     identity = _net_identity(net)
     null_reason: dict[str, str] = {}
@@ -11212,7 +11228,7 @@ def _resolve_via_transition_layers(
 def _infer_routing_transition_layers_from_via_name(via_name: str) -> tuple[str, str] | None:
     metals = re.findall(r"MET\d+", via_name.upper())
     if len(metals) >= 2:
-        unique = sorted(set(metals), key=lambda item: int(re.search(r"\d+", item).group(0)))
+        unique = sorted(set(metals), key=lambda item: int(re.sub(r"\D", "", item) or 0))
         if len(unique) >= 2:
             return unique[0], unique[-1]
     match = re.search(r"VIA(\d+)", via_name.upper())
@@ -11509,7 +11525,8 @@ def _routing_graph_timing_context(
         else {}
     )
     available = bool(source_ctx.get("available"))
-    path_refs = source_ctx.get("path_refs") if isinstance(source_ctx.get("path_refs"), list) else []
+    raw_path_refs = source_ctx.get("path_refs")
+    path_refs = raw_path_refs if isinstance(raw_path_refs, list) else []
     timing_path_count = int(source_ctx.get("timing_path_count") or len(path_refs) or 0)
     context = {
         "available": available,
@@ -11794,14 +11811,14 @@ def _via_layer_stack(
 ) -> dict[str, Any]:
     routing_layers = [layer for layer in layers if _layer_type(layer) == "routing"]
     cut_layers = [layer for layer in layers if _layer_type(layer) == "cut"]
-    routing_layers = sorted(
-        routing_layers,
-        key=lambda layer: (
-            layer_order_by_name.get(layer)
-            if layer_order_by_name.get(layer) is not None
-            else _layer_order_from_name(layer) or 10_000
-        ),
-    )
+
+    def layer_sort_key(layer: str) -> int:
+        order = layer_order_by_name.get(layer)
+        if isinstance(order, int) and not isinstance(order, bool):
+            return order
+        return _layer_order_from_name(layer) or 10_000
+
+    routing_layers = sorted(routing_layers, key=layer_sort_key)
     return {
         "layers": layers,
         "bottom_layer": routing_layers[0] if routing_layers else None,

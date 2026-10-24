@@ -2,6 +2,7 @@ import inspect
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 from rosettakit.errors import ValidationError
@@ -18,11 +19,11 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime_root))
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
 
     sizer_builder.build_step_space(step)
@@ -101,11 +102,11 @@ def test_sizer_config_emits_configured_placement_wire_rc(tmp_path, monkeypatch):
         json.dumps({"liberty": [{"corner": "MIN", "path": ["ff.lib"]}]}),
         encoding="utf-8",
     )
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
     sizer_builder.build_step_space(step)
     sizer_builder.build_step_config(workspace, step)
@@ -128,11 +129,11 @@ def test_sizer_config_rejects_partial_placement_wire_rc(tmp_path):
         json.dumps({"hold_stage": {"placement_wire_resistance_ohm_per_um": 1.0}}),
         encoding="utf-8",
     )
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
 
     with pytest.raises(ValueError, match="must be configured together"):
@@ -172,11 +173,11 @@ def test_sizer_config_emits_global_routing_layer_rc_file(tmp_path, monkeypatch):
         json.dumps({"liberty": [{"corner": "MIN", "path": ["ff.lib"]}]}),
         encoding="utf-8",
     )
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
     sizer_builder.build_step_space(step)
     sizer_builder.build_step_config(workspace, step)
@@ -220,11 +221,11 @@ def test_sizer_step_config_writes_ff_hold_pass_from_sta_contract(
         ),
         encoding="utf-8",
     )
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=step_name,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
     sizer_builder.build_step_space(step)
     sizer_builder.build_step_config(workspace, step)
@@ -269,11 +270,11 @@ def test_sizer_hold_pass_reads_hold_margin_from_ecc_config(tmp_path, monkeypatch
     workspace.config["sizer"] = tmp_path / "sizer_ecc.json"
     workspace.config["sizer"].write_text(json.dumps({"hold_margin": 0.25}), encoding="utf-8")
 
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
     sizer_builder.build_step_space(step)
     sizer_builder.build_step_config(workspace, step)
@@ -292,11 +293,11 @@ def test_sizer_hold_pass_rejects_negative_hold_margin(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     workspace.config["sizer"] = tmp_path / "sizer_ecc.json"
     workspace.config["sizer"].write_text(json.dumps({"hold_margin": -0.1}), encoding="utf-8")
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
     sizer_builder.build_step_space(step)
 
@@ -332,11 +333,11 @@ def test_sizer_metrics_write_qor_files_from_db_summary(tmp_path):
     from chipcompiler.tools.ecc_sizer import metrics as sizer_metrics
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
     sizer_builder.build_step_space(step)
     sizer_builder.build_sub_flow(workspace, step)
@@ -388,17 +389,17 @@ def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
     monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime_root))
 
     workspace = _workspace(tmp_path)
-    workspace.pdk.tech = str(tmp_path / "tech_lef" / "tech.lef")
+    workspace.pdk.tech = tmp_path / "tech_lef" / "tech.lef"
     workspace.pdk.lefs = [tmp_path / "lef_dir" / "std_cell.lef"]
     workspace.pdk.libs = [tmp_path / "lib_dir" / "slow_corner.lib"]
-    workspace.pdk.sdc = str(tmp_path / "constraints" / "main_clock.sdc")
-    workspace.pdk.spef = str(tmp_path / "rcx" / "route_parasitic.spef")
+    workspace.pdk.sdc = tmp_path / "constraints" / "main_clock.sdc"
+    workspace.pdk.spef = tmp_path / "rcx" / "route_parasitic.spef"
 
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
-        input_def=str(tmp_path / "inputs" / "input_def.def"),
-        input_verilog=str(tmp_path / "inputs" / "input_rtl.v"),
+        input_def=tmp_path / "inputs" / "input_def.def",
+        input_verilog=tmp_path / "inputs" / "input_rtl.v",
     )
 
     sizer_builder.build_step_space(step)
@@ -436,7 +437,7 @@ def test_sizer_cmd_omits_missing_input_paths(tmp_path):
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=None,
@@ -457,11 +458,11 @@ def test_sizer_config_rejects_whitespace_paths_unsupported_by_runtime(tmp_path, 
     monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(_sizer_runtime(tmp_path)))
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
-        input_def=str(tmp_path / "inputs" / "input def.def"),
-        input_verilog="input.v",
+        input_def=tmp_path / "inputs" / "input def.def",
+        input_verilog=Path("input.v"),
     )
 
     sizer_builder.build_step_space(step)
@@ -487,13 +488,13 @@ def test_sizer_config_omits_empty_optional_paths(tmp_path, monkeypatch):
     monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(_sizer_runtime(tmp_path)))
 
     workspace = _workspace(tmp_path)
-    workspace.pdk.sdc = ""
-    workspace.pdk.spef = ""
-    step = sizer_builder.build_step(
+    workspace.pdk.sdc = None
+    workspace.pdk.spef = None
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
-        input_def="",
-        input_verilog="",
+        input_def=Path(""),
+        input_verilog=Path(""),
     )
 
     sizer_builder.build_step_space(step)
@@ -512,11 +513,11 @@ def test_sizer_step_declares_db_geometry_and_keeps_standard_dirs(tmp_path):
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
 
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
 
     assert isinstance(step.output.db, Path)
@@ -551,9 +552,9 @@ def test_sizer_step_keeps_caller_input_paths(tmp_path):
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
 
     workspace = _workspace(tmp_path)
-    input_def = f"{workspace.directory}/Timing optimization_sizer_inputs/input.def"
-    input_verilog = f"{workspace.directory}/Timing optimization_sizer_inputs/input.v"
-    step = sizer_builder.build_step(
+    input_def = Path(f"{workspace.directory}/Timing optimization_sizer_inputs/input.def")
+    input_verilog = Path(f"{workspace.directory}/Timing optimization_sizer_inputs/input.v")
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
         input_def=input_def,
@@ -562,29 +563,29 @@ def test_sizer_step_keeps_caller_input_paths(tmp_path):
 
     assert step.input.def_ == Path(input_def)
     assert step.input.verilog == Path(input_verilog)
-    assert str(step.input.def_) == input_def
-    assert str(step.input.verilog) == input_verilog
+    assert str(step.input.def_) == str(input_def)
+    assert str(step.input.verilog) == str(input_verilog)
 
 
 def test_sizer_step_keeps_caller_output_paths_that_share_old_prefix(tmp_path):
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
 
     workspace = _workspace(tmp_path)
-    output_def = f"{workspace.directory}/Timing optimization_sizer_outputs/output.def"
-    output_verilog = f"{workspace.directory}/Timing optimization_sizer_outputs/output.v"
-    step = sizer_builder.build_step(
+    output_def = Path(f"{workspace.directory}/Timing optimization_sizer_outputs/output.def")
+    output_verilog = Path(f"{workspace.directory}/Timing optimization_sizer_outputs/output.v")
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
         output_def=output_def,
         output_verilog=output_verilog,
     )
 
     assert step.output.def_ == Path(output_def)
     assert step.output.verilog == Path(output_verilog)
-    assert str(step.output.def_) == output_def
-    assert str(step.output.verilog) == output_verilog
+    assert str(step.output.def_) == str(output_def)
+    assert str(step.output.verilog) == str(output_verilog)
 
 
 def test_sizer_command_resolves_from_env_root_before_path(tmp_path, monkeypatch):
@@ -710,11 +711,11 @@ def test_sizer_build_step_config_rewrites_legacy_one_stage_subflow(tmp_path, mon
 
     monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(_sizer_runtime(tmp_path)))
     workspace = _workspace(tmp_path)
-    step = sizer_builder.build_step(
+    step: Any = sizer_builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.TIMING_OPT.value,
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
     sizer_builder.build_step_space(step)
     assert step.subflow.path is not None

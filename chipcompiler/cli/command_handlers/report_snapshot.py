@@ -14,6 +14,7 @@ def snapshot(command_input: ReportSnapshotInput, ctx: CommandContext) -> Command
     )
     if failure is not None:
         return CommandResult.err([failure])
+    assert workspace_dir is not None
     try:
         saved = save_engineering_snapshot(workspace_dir, command_input.output_path)
     except EngineeringSnapshotError as exc:

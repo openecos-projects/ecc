@@ -197,5 +197,5 @@ def test_batch_profile_survives_public_params_and_geometry_mode_isolation(tmp_pa
     placer = object.__new__(NonLinearPlace)
     torch.nn.Module.__init__(placer)
     placer.size_params = torch.nn.ModuleDict()
-    placer.vt_params = torch.nn.ModuleDict()
+    vars(placer)["vt_params"] = torch.nn.ModuleDict()
     placer._validate_sizing_mode(params)

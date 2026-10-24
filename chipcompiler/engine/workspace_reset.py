@@ -138,7 +138,7 @@ def _reset_step_subflow(workspace_step: Any) -> None:
 
     subflow = getattr(workspace_step, "subflow", None)
     path = getattr(subflow, "path", None)
-    if not path:
+    if not path or subflow is None:
         return
     subflow_path = Path(path)
     data = json_read(subflow_path)
@@ -158,7 +158,7 @@ def _reset_step_checklist(workspace_step: Any) -> None:
 
     checklist = getattr(workspace_step, "checklist", None)
     path = getattr(checklist, "path", None)
-    if not path:
+    if not path or checklist is None:
         return
     Checklist(Path(path)).replace([])
     checklist.checklist = []

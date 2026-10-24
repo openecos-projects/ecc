@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 from chipcompiler.engine.flow_completion import summarize_step_checklist
 
@@ -24,7 +25,7 @@ def test_summarize_step_checklist_maps_ready_to_passed(tmp_path):
         )
     )
 
-    result = summarize_step_checklist(_step(path))
+    result: Any = summarize_step_checklist(_step(path))
 
     assert result["status"] == "passed"
     assert result["blocked"] is False
@@ -47,7 +48,7 @@ def test_summarize_step_checklist_preserves_blocked_items(tmp_path):
         )
     )
 
-    result = summarize_step_checklist(_step(path))
+    result: Any = summarize_step_checklist(_step(path))
 
     assert result == {
         "status": "blocked",
@@ -70,7 +71,7 @@ def test_summarize_step_checklist_marks_no_requirements_explicitly(tmp_path):
         )
     )
 
-    result = summarize_step_checklist(_step(path))
+    result: Any = summarize_step_checklist(_step(path))
 
     assert result["status"] == "passed"
     assert result["requirements_status"] == "none"
@@ -78,7 +79,7 @@ def test_summarize_step_checklist_marks_no_requirements_explicitly(tmp_path):
 
 
 def test_summarize_step_checklist_is_unknown_for_legacy_missing_file(tmp_path):
-    result = summarize_step_checklist(_step(tmp_path / "missing.json"))
+    result: Any = summarize_step_checklist(_step(tmp_path / "missing.json"))
 
     assert result["status"] == "unknown"
     assert result["blocked"] is False
@@ -112,10 +113,11 @@ def test_sync_step_checklist_persists_projection(tmp_path):
             return True
 
     flow = Flow()
-    result = sync_step_checklist(flow, step)
+    result: Any = sync_step_checklist(flow, step)
 
     assert result["status"] == "blocked"
-    assert "checklist" not in flow.step
-    assert flow.step["checklist_status"]["blocked"] is True
-    assert flow.step["checklist_status"]["failed_items"] == ["drc"]
+    step_data: Any = flow.step
+    assert "checklist" not in step_data
+    assert step_data["checklist_status"]["blocked"] is True
+    assert step_data["checklist_status"]["failed_items"] == ["drc"]
     assert flow.saved is True

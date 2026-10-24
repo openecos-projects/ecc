@@ -7,7 +7,7 @@ from threading import Event, Thread
 from chipcompiler.data import Workspace, WorkspaceStep, is_sta_step
 from chipcompiler.engine.db import EngineDB
 from chipcompiler.engine.resource_observation import start_observation
-from chipcompiler.utility.log import capture_stdio_to_file, flush_cstdio
+from chipcompiler.utility.log import Logger, capture_stdio_to_file, flush_cstdio
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +149,7 @@ def execute_tool_step(
 
 
 def record_tool_failure(
-    tool_logger: logging.Logger,
+    tool_logger: logging.Logger | Logger,
     step_tag: str,
     error: BaseException,
 ) -> str:

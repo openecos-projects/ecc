@@ -8,6 +8,7 @@ from chipcompiler.tools.yosys.checklist import YosysChecklist
 from chipcompiler.tools.yosys.metrics import build_step_metrics
 from chipcompiler.tools.yosys.subflow import YosysSubFlow
 from chipcompiler.tools.yosys.utility import check_slang_support, get_yosys_runtime
+from chipcompiler.utility.path import require_path
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ def run_step(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
         return False
 
     try:
-        cwd_dir = str(step.script.dir or step.directory)
+        cwd_dir = str(step.script.dir or require_path(step.directory, "step directory"))
 
         cmd = yosys_cmd + ["yosys_synthesis.tcl"]
 

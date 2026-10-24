@@ -1,6 +1,11 @@
 from types import SimpleNamespace
+from typing import Any
 
 from chipcompiler.data.workspace.sdc import refresh_generated_sdc
+
+
+def _ns(**kwargs: object) -> Any:
+    return SimpleNamespace(**kwargs)
 
 
 def test_external_generated_sdc_retains_electrical_constraints(tmp_path):
@@ -12,9 +17,9 @@ def test_external_generated_sdc_retains_electrical_constraints(tmp_path):
         "set_load 0.001 [all_outputs]\n"
     )
     path.write_text(content)
-    workspace = SimpleNamespace(
-        pdk=SimpleNamespace(sdc=path),
-        parameters=SimpleNamespace(data={"clock": "clk", "frequency_max": 100}),
+    workspace = _ns(
+        pdk=_ns(sdc=path),
+        parameters=_ns(data={"clock": "clk", "frequency_max": 100}),
     )
     refresh_generated_sdc(workspace)
     assert path.read_text() == content
@@ -23,9 +28,9 @@ def test_external_generated_sdc_retains_electrical_constraints(tmp_path):
 def test_clock_only_workspace_refresh_keeps_its_constraint_mode(tmp_path):
     path = tmp_path / "constraints.sdc"
     path.write_text("# ECC-generated clock-only SDC\nset clk_freq_mhz 100\n")
-    workspace = SimpleNamespace(
-        pdk=SimpleNamespace(sdc=path),
-        parameters=SimpleNamespace(data={"clock": "clk", "frequency_max": 200}),
+    workspace = _ns(
+        pdk=_ns(sdc=path),
+        parameters=_ns(data={"clock": "clk", "frequency_max": 200}),
     )
 
     refresh_generated_sdc(workspace)

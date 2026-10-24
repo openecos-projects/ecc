@@ -14,6 +14,7 @@ from chipcompiler.data.types import (
 )
 
 from ..schema_migrations import FLOW_JSON, SCHEMA_VERSION_FIELD, SUPPORTED_SCHEMA_VERSIONS
+from .flow_types import FlowDocument, FlowStepEntry
 
 #: The schema_version written into home/flow.json ledgers.
 FLOW_JSON_SCHEMA_VERSION = SUPPORTED_SCHEMA_VERSIONS[FLOW_JSON]
@@ -32,7 +33,7 @@ def _canonical_rtl2gds_flow_entries() -> list[tuple[str, str, str]]:
     ]
 
 
-def build_dynamic_flow_data(flow_config: dict | None) -> dict:
+def build_dynamic_flow_data(flow_config: dict | None) -> FlowDocument:
     """Build initial flow.json data from GUI-provided flow_config.
 
     A non-contiguous explicit selection degrades to the contiguous
@@ -113,7 +114,7 @@ def _normalize_flow_step_name(value) -> str:
     return normalize_flow_step(value)
 
 
-def _flow_step_template(name: str, tool: str, state: str) -> dict:
+def _flow_step_template(name: str, tool: str, state: str) -> FlowStepEntry:
     return {
         "name": name,
         "tool": tool,
@@ -125,7 +126,7 @@ def _flow_step_template(name: str, tool: str, state: str) -> dict:
     }
 
 
-def normalize_flow_step_categories(flow_data: dict) -> bool:
+def normalize_flow_step_categories(flow_data: FlowDocument) -> bool:
     """Repair default categories persisted before a step classification changed."""
     changed = False
     for step in flow_data.get("steps", []):

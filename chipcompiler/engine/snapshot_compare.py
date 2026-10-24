@@ -163,7 +163,7 @@ def _numeric_pair(baseline: object, current: object, direction: str, reasons: li
     if direction not in {"higher_is_better", "lower_is_better"}:
         reasons.append("direction_unknown")
     trend = "unknown"
-    if not reasons:
+    if not reasons and delta is not None:
         if delta == 0:
             trend = "unchanged"
         elif (delta > 0) == (direction == "higher_is_better"):

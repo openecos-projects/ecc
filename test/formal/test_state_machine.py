@@ -8,12 +8,12 @@ z3 provides exhaustive proof (UNSAT = safe) or concrete counterexample (SAT = bu
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 from z3 import (
     And,
     ArithRef,
-    BoolRef,
     Int,
     Not,
     Or,
@@ -32,6 +32,7 @@ from chipcompiler.data import (
     WorkspaceStep,
 )
 from chipcompiler.data.workspace import Flow
+from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.utility import Logger
 
@@ -72,9 +73,9 @@ TERMINAL_STATES: set[StateEnum] = {
 }
 
 
-def _valid_transition_constraint(s_old: ArithRef, s_new: ArithRef) -> BoolRef | bool:
+def _valid_transition_constraint(s_old: ArithRef, s_new: ArithRef) -> Any:
     """Build z3 constraint: V(s_old, s_new) is True iff transition is in VALID_TRANSITIONS."""
-    clauses: list[BoolRef] = []
+    clauses: list[Any] = []
     for src, targets in VALID_TRANSITIONS.items():
         src_id = STATE_MAP[src]
         for tgt in targets:
@@ -85,7 +86,7 @@ def _valid_transition_constraint(s_old: ArithRef, s_new: ArithRef) -> BoolRef | 
     return Or(*clauses)
 
 
-def _code_transition_constraint(s_old: ArithRef, s_new: ArithRef) -> BoolRef:
+def _code_transition_constraint(s_old: ArithRef, s_new: ArithRef) -> Any:
     """Build z3 constraint: T(s_old, s_new) models what set_state() actually allows.
 
     With transition guards, set_state() only allows transitions in _VALID_TRANSITIONS.
@@ -114,7 +115,7 @@ def test_no_invalid_transition_allowed() -> None:
 
     result = solver.check()
     if result == sat:
-        model = solver.model()
+        model: Any = solver.model()
         old_val: int = model[s_old].as_long()
         new_val: int = model[s_new].as_long()
         reverse_map: dict[int, StateEnum] = {v: k for k, v in STATE_MAP.items()}
@@ -158,7 +159,7 @@ def test_success_unreachable_without_ongoing(bound: int) -> None:
 
     result = solver.check()
     if result == sat:
-        model = solver.model()
+        model: Any = solver.model()
         reverse_map: dict[int, StateEnum] = {v: k for k, v in STATE_MAP.items()}
         trace: list[str] = []
         for i in range(bound + 1):
@@ -183,7 +184,7 @@ def test_is_flow_success_iff_all_success(num_steps: int) -> None:
     for s in step_states:
         solver.add(And(s >= 0, s < STATE_COUNT))
 
-    all_success: BoolRef = And(*[s == success_id for s in step_states])
+    all_success: Any = And(*[s == success_id for s in step_states])
 
     # Part A: no assignment makes all_success True when any step is not Success
     solver.push()
@@ -214,7 +215,7 @@ def _make_workspace(tmp_path: Path, num_steps: int = 3) -> Workspace:
 
     flow_path: str = os.path.join(home_dir, "flow.json")
 
-    steps: list[dict[str, object]] = []
+    steps: list[FlowStepEntry] = []
     for i in range(num_steps):
         steps.append(
             {
@@ -231,9 +232,9 @@ def _make_workspace(tmp_path: Path, num_steps: int = 3) -> Workspace:
         json.dump({"steps": steps}, f)
 
     return Workspace(
-        directory=ws_dir,
+        directory=Path(ws_dir),
         design=OriginDesign(name="test", top_module="test"),
-        flow=Flow(path=flow_path, data={"steps": steps}),
+        flow=Flow(path=Path(flow_path), data={"steps": steps}),
         logger=Logger(),
     )
 
@@ -259,17 +260,20 @@ def test_clear_states_resets_all(tmp_path: Path) -> None:
     # Set terminal states directly (simulating batch reset or prior persistence)
     for i, state in [(2, StateEnum.Imcomplete), (3, StateEnum.Invalid), (4, StateEnum.Pending)]:
         step = flow.get_step(name=f"step_{i}", tool="mock")
+        assert step is not None
         step["state"] = state.value
     flow.save()
 
     for i in range(5):
         step = flow.get_step(name=f"step_{i}", tool="mock")
+        assert step is not None
         assert step["state"] != StateEnum.Unstart.value
 
     flow.clear_states()
 
     for i in range(5):
         step = flow.get_step(name=f"step_{i}", tool="mock")
+        assert step is not None
         assert step["state"] == StateEnum.Unstart.value, (
             f"step_{i} should be Unstart after clear_states(), got {step['state']}"
         )
@@ -315,7 +319,7 @@ def test_run_steps_stops_on_failure(tmp_path: Path, fail_index: int) -> None:
         ws_step = EccStep(
             name=f"step_{i}",
             tool="mock",
-            directory=step_dir,
+            directory=Path(step_dir),
             output=EccOutput(
                 verilog=Path(output_dir) / "design.v",
                 def_=Path(output_dir) / "design.def",
@@ -325,11 +329,7 @@ def test_run_steps_stops_on_failure(tmp_path: Path, fail_index: int) -> None:
         )
         flow.workspace_steps.append(ws_step)
 
-    def mock_run_step(workspace_step: WorkspaceStep | str, *, rerun: bool = False) -> StateEnum:
-        if isinstance(workspace_step, str):
-            resolved = flow.get_workspace_step(workspace_step)
-            assert resolved is not None, f"Step '{workspace_step}' not found"
-            workspace_step = resolved
+    def mock_run_step(workspace_step: WorkspaceStep, *, rerun: bool = False) -> StateEnum:
         idx: int = int(workspace_step.name.split("_")[1])
         executed.append(idx)
 

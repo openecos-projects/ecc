@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock, call
 
 from chipcompiler.data import (
@@ -31,7 +32,7 @@ Cell Leakage Power   =    4.0000 uW
 """
 
 
-class FakePowerModule(ECCToolsModule):
+class FakePowerModule:
     def __init__(self):
         self.calls = []
         self.output_dir = None
@@ -60,6 +61,7 @@ class FakePowerModule(ECCToolsModule):
     def run_pw(self):
         self.calls.append(("run_pw",))
         if self.emit_report:
+            assert self.output_dir is not None
             power_report_dir = self.output_dir / "power_reporter"
             power_report_dir.mkdir(parents=True)
             (power_report_dir / STA_POWER_REPORT_FILENAME).write_text(POWER_REPORT_TEXT)
@@ -105,7 +107,7 @@ def test_power_analysis_uses_its_own_data_directory_and_native_lifecycle(tmp_pat
     power_data_dir = tmp_path / "powerAnalysis_ecc" / "data" / "pw"
     analysis_dir = tmp_path / "powerAnalysis_ecc" / "analysis"
     analysis_dir.mkdir(parents=True)
-    step = EccStep(
+    step: Any = EccStep(
         name=StepEnum.POWER_ANALYSIS.value,
         directory=tmp_path / "powerAnalysis_ecc",
         data=EccData(
@@ -119,7 +121,7 @@ def test_power_analysis_uses_its_own_data_directory_and_native_lifecycle(tmp_pat
         ),
         analysis=EccAnalysis(qor_metrics=analysis_dir / "qor_metrics.json"),
     )
-    module = FakePowerModule()
+    module: Any = FakePowerModule()
     workspace, liberty, sdc, spef = _power_workspace(tmp_path, monkeypatch)
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
     monkeypatch.setattr(
@@ -175,7 +177,7 @@ def test_power_analysis_uses_its_own_data_directory_and_native_lifecycle(tmp_pat
 
 def test_power_analysis_requires_native_power_report(tmp_path, monkeypatch):
     power_data_dir = tmp_path / "powerAnalysis_ecc" / "data" / "pw"
-    step = EccStep(
+    step: Any = EccStep(
         name=StepEnum.POWER_ANALYSIS.value,
         data=EccData(
             dir=tmp_path / "powerAnalysis_ecc" / "data",
@@ -187,7 +189,7 @@ def test_power_analysis_requires_native_power_report(tmp_path, monkeypatch):
             step=tmp_path / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt",
         ),
     )
-    module = FakePowerModule()
+    module: Any = FakePowerModule()
     workspace, liberty, sdc, spef = _power_workspace(tmp_path, monkeypatch)
     module.emit_report = False
     stale_report = power_data_dir / "power_reporter" / STA_POWER_REPORT_FILENAME
@@ -226,7 +228,7 @@ def test_power_analysis_requires_native_power_report(tmp_path, monkeypatch):
 
 def test_power_analysis_requires_configured_spef(tmp_path, monkeypatch):
     power_data_dir = tmp_path / "powerAnalysis_ecc" / "data" / "pw"
-    step = EccStep(
+    step: Any = EccStep(
         name=StepEnum.POWER_ANALYSIS.value,
         data=EccData(
             dir=tmp_path / "powerAnalysis_ecc" / "data",
@@ -234,7 +236,7 @@ def test_power_analysis_requires_configured_spef(tmp_path, monkeypatch):
         ),
         feature=EccFeature(dir=tmp_path / "powerAnalysis_ecc" / "feature"),
     )
-    module = FakePowerModule()
+    module: Any = FakePowerModule()
     workspace, _liberty, _sdc, spef = _power_workspace(tmp_path, monkeypatch)
     spef.unlink()
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
@@ -275,9 +277,9 @@ def test_power_analysis_native_module_methods_forward_to_ecc(tmp_path):
     native.destroy_pw.assert_called_once_with()
 
 
-def test_run_step_dispatches_power_analysis(monkeypatch):
-    workspace = Workspace()
-    step = EccStep(name=StepEnum.POWER_ANALYSIS.value)
+def test_run_step_dispatches_power_analysis(monkeypatch, tmp_path):
+    workspace = Workspace(directory=tmp_path)
+    step: Any = EccStep(name=StepEnum.POWER_ANALYSIS.value)
     run_power_analysis = Mock(return_value=True)
     monkeypatch.setattr(ecc_runner, "is_eda_exist", lambda: True)
     monkeypatch.setattr(ecc_runner, "run_power_analysis", run_power_analysis)
@@ -287,7 +289,7 @@ def test_run_step_dispatches_power_analysis(monkeypatch):
 
 
 def test_power_analysis_subflow_and_directory_contract(tmp_path):
-    step = EccStep(
+    step: Any = EccStep(
         name=StepEnum.POWER_ANALYSIS.value,
         subflow=Mock(path=tmp_path / "subflow.json", steps=[]),
     )

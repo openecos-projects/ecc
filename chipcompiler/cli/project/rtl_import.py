@@ -38,6 +38,7 @@ def import_project_rtl(
     rtl_root = root / "rtl"
     rtl_root.mkdir(exist_ok=True)
     copied: list[tuple[Path, Path]] = []
+    source_list: Path | None = None
     if filelist:
         source_list = Path(filelist).expanduser().resolve()
         if not source_list.is_file():
@@ -79,6 +80,7 @@ def import_project_rtl(
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
     if filelist:
+        assert source_list is not None
         _write_filelist(copied[0][1], source_list, copied[1:])
 
     text = config_path.read_text(encoding="utf-8")

@@ -1,10 +1,15 @@
 import sys
 from types import ModuleType, SimpleNamespace
+from typing import Any
 
 import pytest
 
 from chipcompiler.data import StepMetrics
 from chipcompiler.tools import eda
+
+
+def _ns(**kwargs: object) -> Any:
+    return SimpleNamespace(**kwargs)
 
 
 def _install_tool_module(monkeypatch, module_name, *, exists=True, build_metrics=None):
@@ -13,13 +18,14 @@ def _install_tool_module(monkeypatch, module_name, *, exists=True, build_metrics
     module = ModuleType(f"chipcompiler.tools.{module_name}")
     if module_name not in {spec.module for spec in registry.TOOLS.values()}:
         monkeypatch.setattr(registry, "tool_spec", lambda _name: registry.ToolSpec(module_name))
-    module.is_eda_exist = lambda: exists
-    module.build_step = lambda **kwargs: None
-    module.build_step_space = lambda step: None
-    module.build_step_config = lambda workspace, step: None
-    module.run_step = lambda workspace, step, ecc_module=None: True
-    module.build_step_metrics = build_metrics or (
-        lambda workspace, step: StepMetrics(path="metrics.json", data={"tool": step.tool})
+    module.__dict__.update(
+        is_eda_exist=lambda: exists,
+        build_step=lambda **kwargs: None,
+        build_step_space=lambda step: None,
+        build_step_config=lambda workspace, step: None,
+        run_step=lambda workspace, step, ecc_module=None: True,
+        build_step_metrics=build_metrics
+        or (lambda workspace, step: StepMetrics(path="metrics.json", data={"tool": step.tool})),
     )
     monkeypatch.setitem(sys.modules, module.__name__, module)
     return module
@@ -34,8 +40,8 @@ def test_build_step_metrics_dispatches_to_tool_metrics_builder(monkeypatch):
         return StepMetrics(path="analysis/fake_metrics.json", data={"cell_number": 42})
 
     _install_tool_module(monkeypatch, "fake_eda", build_metrics=build_metrics)
-    workspace = SimpleNamespace(name="workspace")
-    step = SimpleNamespace(tool="fake_eda")
+    workspace = _ns(name="workspace")
+    step = _ns(tool="fake_eda")
 
     metrics = eda.build_step_metrics(workspace, step)
 
@@ -46,7 +52,7 @@ def test_build_step_metrics_dispatches_to_tool_metrics_builder(monkeypatch):
 def test_build_step_metrics_returns_none_when_tool_dependency_missing(monkeypatch):
     _install_tool_module(monkeypatch, "missing_eda", exists=False)
 
-    metrics = eda.build_step_metrics(SimpleNamespace(), SimpleNamespace(tool="missing_eda"))
+    metrics = eda.build_step_metrics(_ns(), _ns(tool="missing_eda"))
 
     assert metrics is None
 
@@ -60,8 +66,8 @@ def test_build_step_metrics_loads_sizer_without_binary_dependency(monkeypatch):
         return StepMetrics(path="analysis/qor_metrics.json", data={"die_area": 1})
 
     _install_tool_module(monkeypatch, "ecc_sizer", exists=False, build_metrics=build_metrics)
-    workspace = SimpleNamespace(name="workspace")
-    step = SimpleNamespace(tool="sizer")
+    workspace = _ns(name="workspace")
+    step = _ns(tool="sizer")
 
     metrics = eda.build_step_metrics(workspace, step)
 
@@ -76,7 +82,7 @@ def test_create_step_defers_unselected_optional_tool_when_module_is_unavailable(
         raise AssertionError("unselected optional tools must not be imported")
 
     monkeypatch.setattr(eda, "load_tool", fail_if_imported)
-    workspace = SimpleNamespace(directory=tmp_path, design=SimpleNamespace(name="gcd"))
+    workspace = _ns(directory=tmp_path, design=_ns(name="gcd"))
 
     step = eda.create_step(
         workspace=workspace,
@@ -97,7 +103,7 @@ def test_create_step_does_not_defer_selected_optional_tool_when_module_is_unavai
     monkeypatch, tmp_path
 ):
     monkeypatch.setattr(eda, "load_tool", lambda *_args, **_kwargs: None)
-    workspace = SimpleNamespace(directory=tmp_path, design=SimpleNamespace(name="gcd"))
+    workspace = _ns(directory=tmp_path, design=_ns(name="gcd"))
 
     step = eda.create_step(
         workspace=workspace,
@@ -116,7 +122,7 @@ def test_create_step_defers_unselected_sizer_with_sizer_path_convention(monkeypa
         raise AssertionError("unselected optional tools must not be imported")
 
     monkeypatch.setattr(eda, "load_tool", fail_if_imported)
-    workspace = SimpleNamespace(directory=tmp_path, design=SimpleNamespace(name="gcd"))
+    workspace = _ns(directory=tmp_path, design=_ns(name="gcd"))
 
     step = eda.create_step(
         workspace=workspace,
@@ -160,10 +166,12 @@ def test_load_tool_returns_none_and_logs_on_a_contract_mismatch(monkeypatch, cap
 
     module = ModuleType("chipcompiler.tools.fake_incomplete")
     monkeypatch.setattr(registry, "tool_spec", lambda _name: registry.ToolSpec("fake_incomplete"))
-    module.is_eda_exist = lambda: True
-    module.build_step = lambda **kwargs: None
-    module.build_step_config = lambda workspace, step: None
-    module.run_step = lambda workspace, step, ecc_module=None: True
+    module.__dict__.update(
+        is_eda_exist=lambda: True,
+        build_step=lambda **kwargs: None,
+        build_step_config=lambda workspace, step: None,
+        run_step=lambda workspace, step, ecc_module=None: True,
+    )
     monkeypatch.setitem(sys.modules, module.__name__, module)
 
     assert eda.load_tool("fake_incomplete", check_dependency=False) is None
@@ -185,7 +193,7 @@ def test_load_tool_propagates_a_dependency_runtime_error(monkeypatch):
     def raise_missing_dependency():
         raise RuntimeError("native dependency is not installed")
 
-    module.is_eda_exist = raise_missing_dependency
+    module.__dict__["is_eda_exist"] = raise_missing_dependency
 
     with pytest.raises(RuntimeError, match="native dependency is not installed"):
         eda.load_tool("fake_raising")
@@ -255,7 +263,7 @@ def test_load_tool_does_not_attempt_an_unknown_import(monkeypatch):
 def test_load_tool_checks_sizer_dependency_when_the_caller_asks(monkeypatch):
     module = _install_tool_module(monkeypatch, "ecc_sizer", exists=False)
     calls = []
-    module.is_eda_exist = lambda: calls.append(True) or False
+    module.__dict__["is_eda_exist"] = lambda: calls.append(True) or False
 
     assert eda.load_tool("sizer", check_dependency=True) is None
     assert calls == [True]

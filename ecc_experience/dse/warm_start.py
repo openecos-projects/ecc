@@ -31,7 +31,10 @@ def freeze_warm_start(plan: dict, limit: int) -> dict:
     specification = facts.get("workspaceSpec")
     if not isinstance(specification, dict) or not isinstance(specification.get("parameters"), dict):
         raise invalid("Warm-start baseline configuration is unavailable")
-    configured = specification["parameters"]
+    configured_value = specification["parameters"]
+    if not isinstance(configured_value, dict):
+        raise invalid("Warm-start baseline configuration is unavailable")
+    configured = configured_value
     seeds, used = [], []
     for item in matched["matches"]:
         candidate = repository.read(item["case_id"])
@@ -40,7 +43,10 @@ def freeze_warm_start(plan: dict, limit: int) -> dict:
             candidate_specification.get("parameters"), dict
         ):
             continue
-        observed = candidate_specification["parameters"]
+        observed_value = candidate_specification["parameters"]
+        if not isinstance(observed_value, dict):
+            continue
+        observed = observed_value
         if configuration_differences(configured, observed) - set(plan["space"]):
             continue
         parameters = {}

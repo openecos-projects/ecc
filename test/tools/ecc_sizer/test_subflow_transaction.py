@@ -2,6 +2,8 @@
 
 import json
 from copy import deepcopy
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -12,9 +14,10 @@ from chipcompiler.tools.ecc_sizer import builder as sizer_builder
 from chipcompiler.tools.ecc_sizer import subflow as sizer_subflow
 
 
-def _workspace(tmp_path) -> Workspace:
+def _workspace(tmp_path) -> Any:
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
     workspace.flow.path = tmp_path / "home" / "flow.json"
+    assert workspace.flow.path is not None
     workspace.flow.path.parent.mkdir(parents=True)
     workspace.flow.data = {
         "steps": [
@@ -25,12 +28,12 @@ def _workspace(tmp_path) -> Workspace:
     return workspace
 
 
-def _sizer_step(workspace):
+def _sizer_step(workspace) -> Any:
     step = sizer_builder.build_step(
         workspace=workspace,
         step_name="Timing optimization",
-        input_def="input.def",
-        input_verilog="input.v",
+        input_def=Path("input.def"),
+        input_verilog=Path("input.v"),
     )
     sizer_builder.build_step_space(step)
     return step

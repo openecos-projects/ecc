@@ -79,18 +79,16 @@ def save_ledger(flow) -> bool:
     if path is None:
         return False
     with _lock_for(path):
-        has_version = isinstance(flow.data, dict) and SCHEMA_VERSION_FIELD in flow.data
-        previous_version = flow.data.get(SCHEMA_VERSION_FIELD) if has_version else None
-        if isinstance(flow.data, dict):
-            flow.data[SCHEMA_VERSION_FIELD] = FLOW_JSON_SCHEMA_VERSION
+        has_version = SCHEMA_VERSION_FIELD in flow.data
+        previous_version = flow.data.get(SCHEMA_VERSION_FIELD)
+        flow.data[SCHEMA_VERSION_FIELD] = FLOW_JSON_SCHEMA_VERSION
         if json_write(path, deepcopy(flow.data)):
             return True
-        if isinstance(flow.data, dict):
-            # Keep memory and disk describing the same document.
-            if has_version:
-                flow.data[SCHEMA_VERSION_FIELD] = previous_version
-            else:
-                flow.data.pop(SCHEMA_VERSION_FIELD, None)
+        # Keep memory and disk describing the same document.
+        if has_version and previous_version is not None:
+            flow.data[SCHEMA_VERSION_FIELD] = previous_version
+        else:
+            flow.data.pop(SCHEMA_VERSION_FIELD, None)
         return False
 
 
@@ -129,7 +127,8 @@ def set_flow_state(
     write = persist if persist is not None else (lambda: save_ledger(flow))
     state_value = state.value if isinstance(state, StateEnum) else state
     with ledger_lock(flow):
-        for step in flow.data.get("steps", []):
+        steps = flow.data.get("steps", [])
+        for index, step in enumerate(steps):
             if step.get("name") != name or step.get("tool") != tool:
                 continue
             old_state = step.get("state")
@@ -150,8 +149,7 @@ def set_flow_state(
             if flow.path is None:
                 return True
             if not write():
-                step.clear()
-                step.update(previous_step)
+                steps[index] = previous_step
                 logger.error(
                     "Failed to persist flow state for %s/%s (state=%s)",
                     name,

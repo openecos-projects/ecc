@@ -9,6 +9,7 @@ from chipcompiler.data import StateEnum, WorkspaceStep
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.flow_completion import (
     normalize_legacy_terminal_state,
+    sync_step_checklist,
 )
 from chipcompiler.engine.flow_completion import (
     notify_flow_observer as _notify_flow_observer,
@@ -42,7 +43,7 @@ def _wait_for_step_rendered(observer, workspace_step: WorkspaceStep, state: Stat
 class AgentEngineFlow(EngineFlow):
     def build_default_steps(self):
         super().build_default_steps()
-        steps = self.workspace.flow.data["steps"]
+        steps = self.workspace.flow.data.get("steps", [])
         if any(step["name"] == "DRC" for step in steps):
             return
         filler_index = next(index for index, step in enumerate(steps) if step["name"] == "filler")
@@ -51,16 +52,14 @@ class AgentEngineFlow(EngineFlow):
 
     def run_step(
         self,
-        workspace_step: WorkspaceStep | str,
+        workspace_step: WorkspaceStep,
         *,
         rerun: bool = False,
         observer=None,
     ) -> StateEnum:
-        if isinstance(workspace_step, str):
-            workspace_step = self.get_workspace_step(workspace_step)
-        if workspace_step is None:
-            return StateEnum.Invalid
         step_tag = f"{workspace_step.name}({workspace_step.tool})"
+        if self._apply_checklist_gate(workspace_step) is not None:
+            return StateEnum.Invalid
         if not rerun and self.check_state(
             name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Success
         ):
@@ -80,12 +79,15 @@ class AgentEngineFlow(EngineFlow):
             workspace_step
         )
         result = False
+        engine_db = self.engine_db
+        if engine_db is None:
+            raise RuntimeError("agent engine database is not initialized")
         previous_observer = getattr(self.workspace, "_runtime_flow_observer", None)
         if observer is not None:
             self.workspace._runtime_flow_observer = observer
         try:
             result = run_agent_step(
-                workspace=self.workspace, step=workspace_step, ecc_module=self.engine_db.engine
+                workspace=self.workspace, step=workspace_step, ecc_module=engine_db.engine
             )
             self.workspace.logger.info("[STEP] %s finished result=%s", step_tag, result)
         except Exception:
@@ -182,6 +184,7 @@ class AgentEngineFlow(EngineFlow):
             runtime=runtime,
             peak_memory=peak_memory_mb,
         )
+        sync_step_checklist(self, workspace_step)
         if state == StateEnum.Success:
             self._save_agent_step_facts(
                 workspace_step,

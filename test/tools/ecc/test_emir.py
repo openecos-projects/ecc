@@ -29,6 +29,7 @@ def test_emir_default_technology_path_uses_workspace_config_copy(
         parameters={},
     )
 
+    assert workspace is not None
     config_path = workspace.config[StepEnum.EMIR.value]
     technology_path = Path(json_read(config_path)["technology_file_path"])
 
@@ -48,6 +49,7 @@ def test_emir_legacy_packaged_technology_path_migrates_to_workspace_copy(
         pdk_root=str(minimal_ics55_pdk_factory(tmp_path / "pdk")),
         parameters={},
     )
+    assert workspace is not None
     config_path = workspace.config[StepEnum.EMIR.value]
     packaged_path = Path(builder.__file__).parent / "configs" / "ics55_synthetic.tech"
     assert json_write(config_path, {"technology_file_path": str(packaged_path)})
@@ -71,6 +73,7 @@ def test_emir_technology_override_survives_workspace_refresh(tmp_path, minimal_i
         pdk_root=str(minimal_ics55_pdk_factory(tmp_path / "pdk")),
         parameters={"config_overrides": {"emir": override}},
     )
+    assert workspace is not None
     config_path = workspace.config[StepEnum.EMIR.value]
     assert json_read(config_path) == override
 

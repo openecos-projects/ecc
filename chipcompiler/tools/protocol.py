@@ -4,7 +4,7 @@ A tool module is a package under ``chipcompiler/tools/`` exposing the five
 module-level functions below. The protocol is structural: modules satisfy
 it with zero annotation changes, and the formal conformance test
 (``test/formal/test_tool_module_contract.py``) is the executable teeth —
-CI runs no pyright over these boundaries.
+the type checker does not enforce the structural protocol.
 """
 
 import inspect

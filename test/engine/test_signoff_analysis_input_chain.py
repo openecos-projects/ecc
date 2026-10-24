@@ -6,6 +6,8 @@ execution chain and the read-only projections are pinned separately and are
 allowed to disagree on this ledger.
 """
 
+from typing import Any
+
 from chipcompiler.data import OriginDesign, StateEnum, StepEnum, Workspace
 from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
 from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
@@ -21,7 +23,15 @@ class _RecordingCollector(CollectorAnalysisMixin):
     def _refresh_step_analysis(self, step) -> None:
         self.refreshed.append(step)
 
-    def _analysis_issue(self, step_name, *, required, reason, kind, label=None):
+    def _analysis_issue(
+        self,
+        step_name: str,
+        *,
+        required: bool,
+        reason: str,
+        kind: str,
+        label: str | None = None,
+    ) -> Any:
         self.issues.append((step_name, kind, reason))
         return None
 
@@ -46,7 +56,7 @@ def test_refresh_workspace_analysis_chains_the_previous_step(tmp_path):
         ),
     )
     ledger = build_dynamic_flow_data({"start_step": "route", "end_step": "Harden"})
-    for step in ledger["steps"]:
+    for step in ledger.get("steps", []):
         step["state"] = StateEnum.Success.value
     workspace.flow.data = ledger
     workspace.flow.path = tmp_path / "flow.json"
@@ -101,9 +111,11 @@ def test_invalid_explicit_input_is_reported_as_an_issue(tmp_path):
         ),
     )
     ledger = build_dynamic_flow_data({"start_step": "route", "end_step": "Harden"})
-    for step in ledger["steps"]:
+    for step in ledger.get("steps", []):
         step["state"] = StateEnum.Success.value
-    next(step for step in ledger["steps"] if step["name"] == "RCX")["input_step"] = "does_not_exist"
+    next(step for step in ledger.get("steps", []) if step["name"] == "RCX")["input_step"] = (
+        "does_not_exist"
+    )
     workspace.flow.data = ledger
     workspace.flow.path = tmp_path / "flow.json"
     collector = _RecordingCollector(workspace)

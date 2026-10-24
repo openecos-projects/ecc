@@ -1,6 +1,7 @@
 import pytest
 
 from chipcompiler.data import OriginDesign, Workspace
+from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.tools.ecc.lec_gates import post_route_lec_netlists
 
 
@@ -8,12 +9,12 @@ from chipcompiler.tools.ecc.lec_gates import post_route_lec_netlists
 @pytest.mark.parametrize("explicit_input", [None, "lvs"])
 def test_post_route_lec_gate_matches_execution_chain(tmp_path, checker_category, explicit_input):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="design"))
-    records = [
-        {"name": "filler", "tool": "ecc"},
-        {"name": "lvs", "tool": "ecc"},
-        {"name": "drc", "tool": "ecc"},
-        {"name": "antennaCheck", "tool": "ecc"},
-        {"name": "postRouteLec", "tool": "yosys_lec", "category": "CHECKER"},
+    records: list[FlowStepEntry] = [
+        {"state": "Unstart", "name": "filler", "tool": "ecc"},
+        {"state": "Unstart", "name": "lvs", "tool": "ecc"},
+        {"state": "Unstart", "name": "drc", "tool": "ecc"},
+        {"state": "Unstart", "name": "antennaCheck", "tool": "ecc"},
+        {"state": "Unstart", "name": "postRouteLec", "tool": "yosys_lec", "category": "CHECKER"},
     ]
     if checker_category:
         for record in records[1:3]:
@@ -39,12 +40,12 @@ def test_latest_pnr_output_skips_declared_checkers_and_advisory_steps(tmp_path):
     from chipcompiler.tools.ecc.lec_gates import latest_pnr_output
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="design"))
-    records = [
-        {"name": "route", "tool": "ecc", "category": "PNR"},
-        {"name": "filler", "tool": "ecc", "category": "PNR"},
-        {"name": "drc", "tool": "ecc", "category": "CHECKER"},
-        {"name": "emir", "tool": "ecc", "category": "PNR"},
-        {"name": "sta", "tool": "ecc"},
+    records: list[FlowStepEntry] = [
+        {"state": "Unstart", "name": "route", "tool": "ecc", "category": "PNR"},
+        {"state": "Unstart", "name": "filler", "tool": "ecc", "category": "PNR"},
+        {"state": "Unstart", "name": "drc", "tool": "ecc", "category": "CHECKER"},
+        {"state": "Unstart", "name": "emir", "tool": "ecc", "category": "PNR"},
+        {"state": "Unstart", "name": "sta", "tool": "ecc"},
     ]
     workspace.flow.data = {"steps": records}
     _write_pnr_outputs(tmp_path, records)
@@ -61,9 +62,9 @@ def test_latest_pnr_output_honors_the_info_category_fallback(tmp_path):
     from chipcompiler.tools.ecc.lec_gates import latest_pnr_output
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="design"))
-    records = [
-        {"name": "filler", "tool": "ecc", "category": "PNR"},
-        {"name": "drc", "tool": "ecc", "info": {"category": "CHECKER"}},
+    records: list[FlowStepEntry] = [
+        {"state": "Unstart", "name": "filler", "tool": "ecc", "category": "PNR"},
+        {"state": "Unstart", "name": "drc", "tool": "ecc", "info": {"category": "CHECKER"}},
     ]
     workspace.flow.data = {"steps": records}
     _write_pnr_outputs(tmp_path, records)
@@ -77,7 +78,7 @@ def test_latest_pnr_output_rejects_an_unregistered_step(tmp_path):
     from chipcompiler.tools.ecc.lec_gates import latest_pnr_output
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="design"))
-    workspace.flow.data = {"steps": [{"name": "custom", "tool": "one"}]}
+    workspace.flow.data = {"steps": [FlowStepEntry(name="custom", tool="one", state="Unstart")]}
 
     with pytest.raises(ValueError, match="no flow policy registered"):
         latest_pnr_output(workspace, ".v.gz")

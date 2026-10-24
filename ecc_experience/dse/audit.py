@@ -88,12 +88,18 @@ def audit_trial(plan: dict, trial: dict, rung: dict | None) -> dict:
         accepted = acceptance(case, store.case_directory(case_id))
         if accepted["status"] != "pass" or accepted["qor_score"] != trial.get("qor_score"):
             raise invalid("DSE full validation does not match immutable signoff and QoR")
+    raw_steps = flow.get("steps", [])
+    steps = (
+        [step for step in raw_steps if isinstance(step, dict)]
+        if isinstance(raw_steps, list)
+        else []
+    )
     return {
         "status": checked.status,
         "case_id": case_id,
         "resources": [
-            {"step": step["name"], "observation": step.get("resource_observation")}
-            for step in flow.get("steps", [])
+            {"step": step.get("name", ""), "observation": step.get("resource_observation")}
+            for step in steps
         ],
         "feedback_eligible": checked.status == "pass",
     }

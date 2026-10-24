@@ -22,6 +22,7 @@ from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.sta_artifacts import copy_sta_artifact, discard_sta_outputs
 from chipcompiler.tools.ecc.sta_qor import sta_artifact_directory
 from chipcompiler.utility.log import redirect_stdio_to_file
+from chipcompiler.utility.path import MissingPathError, PathArg, require_path
 
 
 def sta_workers(workspace, step) -> int:
@@ -78,7 +79,10 @@ def _arm_parent_death_signal(parent_pid=None):
 
     # A caller can be killed without running its Python cleanup.
     if parent_pid is None:
-        parent_pid = multiprocessing.parent_process().pid
+        parent = multiprocessing.parent_process()
+        if parent is None or parent.pid is None:
+            return
+        parent_pid = parent.pid
     libc = ctypes.CDLL(None, use_errno=True)
     if libc.prctl(1, signal.SIGKILL, 0, 0, 0) != 0:  # PR_SET_PDEATHSIG
         error = ctypes.get_errno()
@@ -186,7 +190,7 @@ def _run_processes(jobs, workers, check_cancelled):
             process.close()
 
 
-class _ParallelTiming:
+class _ParallelTiming(ECCToolsModule):
     def __init__(self, module, workspace, step, workers, count, root):
         self.module = module
         self.workspace = workspace
@@ -199,9 +203,36 @@ class _ParallelTiming:
     def __getattr__(self, name):
         return getattr(self.module, name)
 
-    def run_timing(self, **job):
+    def run_timing(
+        self,
+        config: PathArg = "",
+        work_dir: PathArg = "",
+        report_dir: PathArg = "",
+        feature_dir: PathArg = "",
+        lib_paths: list[Path] | list[str] | None = None,
+        sdc_path: PathArg = "",
+        spef_path: PathArg = "",
+        output_modes: tuple[str, ...] = ("report", "structured"),
+        max_paths_per_analysis: int = 20,
+        max_paths: int = 1000,
+        corner: str = "",
+    ) -> None:
         # The last call is the barrier: generic run_sta cannot mark success early.
-        self.jobs.append(job)
+        self.jobs.append(
+            {
+                "config": config,
+                "work_dir": work_dir,
+                "report_dir": report_dir,
+                "feature_dir": feature_dir,
+                "lib_paths": lib_paths if lib_paths is not None else [],
+                "sdc_path": sdc_path,
+                "spef_path": spef_path,
+                "output_modes": output_modes,
+                "max_paths_per_analysis": max_paths_per_analysis,
+                "max_paths": max_paths,
+                "corner": corner,
+            }
+        )
         if len(self.jobs) != self.count:
             return
         snapshot = self.root / "snapshot"
@@ -219,7 +250,9 @@ class _ParallelTiming:
             )
             for key in ("work_dir", "report_dir", "feature_dir"):
                 job[key].mkdir(parents=True)
-            log_path = Path(self.step.log.dir) / f"sta-corner-{index}.log"
+            log_path = (
+                require_path(self.step.log.dir, "STA log directory") / f"sta-corner-{index}.log"
+            )
             tasks.append((self.workspace.config.get("db", ""), snapshot, job, log_path))
         _run_processes(tasks, self.workers, lambda: _check_cancelled(self.workspace))
         for original, (_, _, job, _) in zip(self.jobs, tasks, strict=True):
@@ -241,7 +274,10 @@ def run_parallel_sta(workspace, step, ecc_module, workers):
                 destinations.append(path)
                 discard_sta_outputs(path)
     # A failed rerun must not expose old aggregate metrics as current evidence.
-    analysis = Path(step.analysis.dir)
+    try:
+        analysis = require_path(step.analysis.dir, "STA analysis directory")
+    except MissingPathError:
+        return False
     if analysis.is_dir():
         for path in analysis.iterdir():
             if path.is_file():
@@ -251,10 +287,16 @@ def run_parallel_sta(workspace, step, ecc_module, workers):
         module = runner.get_eda_instance(workspace, step, ecc_module)
         if module is None:
             return False
-        with TemporaryDirectory(prefix="agent-sta-", dir=step.data.dir) as directory:
-            proxy = _ParallelTiming(module, workspace, step, workers, len(items), Path(directory))
-            succeeded = runner.run_sta(workspace, step, proxy)
-            return succeeded
+        try:
+            data_dir = require_path(step.data.dir, "STA data directory")
+            with TemporaryDirectory(prefix="agent-sta-", dir=data_dir) as directory:
+                proxy = _ParallelTiming(
+                    module, workspace, step, workers, len(items), Path(directory)
+                )
+                succeeded = runner.run_sta(workspace, step, proxy)
+                return succeeded
+        except MissingPathError:
+            return False
     finally:
         if not succeeded:
             for path in destinations:

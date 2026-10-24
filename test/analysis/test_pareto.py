@@ -6,11 +6,11 @@ from chipcompiler.analysis.pareto import Objective, rank_points
 def test_tradeoffs_dominance_and_equal_points_have_stable_fronts():
     objectives = [Objective("area", "um^2", "minimize"), Objective("speed", "MHz", "maximize")]
     points = {
-        "large-fast": [20, 200],
-        "small-slow": [10, 100],
-        "dominated": [21, 100],
-        "equal": [10, 100],
-        "balanced": [15, 150],
+        "large-fast": [20.0, 200.0],
+        "small-slow": [10.0, 100.0],
+        "dominated": [21.0, 100.0],
+        "equal": [10.0, 100.0],
+        "balanced": [15.0, 150.0],
     }
 
     ranked = rank_points(points, objectives)

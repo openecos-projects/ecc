@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 from chipcompiler.data import (
     EccData,
@@ -64,7 +65,7 @@ def test_run_lvs_loads_netlist_into_reused_engine(tmp_path, monkeypatch):
     design_verilog.parent.mkdir(parents=True)
     design_verilog.write_bytes(b"gzip netlist")
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
-    module = FakeLvsModule()
+    module: Any = FakeLvsModule()
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
     monkeypatch.setattr(ecc_runner, "save_data", lambda **_kwargs: True)
     monkeypatch.setattr(ecc_runner, "copy_lvs_outputs", lambda **_kwargs: None)
@@ -85,13 +86,13 @@ def test_run_lvs_stops_before_native_init_when_netlist_load_fails(tmp_path, monk
     design_verilog = tmp_path / "drc" / "gcd.v.gz"
     design_verilog.parent.mkdir(parents=True)
     design_verilog.write_bytes(b"gzip netlist")
-    logger = FakeLogger()
+    logger: Any = FakeLogger()
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
         logger=logger,
     )
-    module = FakeLvsModule(netlist_loaded=False)
+    module: Any = FakeLvsModule(netlist_loaded=False)
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
 
     assert ecc_runner.run_lvs(workspace, _lvs_step(tmp_path, design_verilog), module) is False

@@ -10,7 +10,7 @@ from PyInstaller.utils.hooks import get_module_file_attribute
 
 binaries = []
 
-chipcompiler_dir = Path(get_module_file_attribute("chipcompiler")).parent
+chipcompiler_dir = Path(get_module_file_attribute("chipcompiler") or "").parent
 ecc_bin_dir = chipcompiler_dir / "tools" / "ecc" / "bin"
 
 if ecc_bin_dir.exists():

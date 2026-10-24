@@ -554,6 +554,8 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 item["temperature"],
                 item["rcx_corner"],
             )
+            if report_dir is None or feature_dir is None:
+                continue
             report_dest = (
                 f"final/timing/sta/{item['lib_corner']}_"
                 f"{self._temperature_token(item['temperature'])}/"
@@ -865,20 +867,30 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             target = package_dir / destination
             target.parent.mkdir(parents=True, exist_ok=True)
             if content is None:
+                if source is None:
+                    return
                 shutil.copy2(source, target)
             else:
                 target.write_text(content, encoding="utf-8")
             size_bytes = target.stat().st_size
             digest = file_digest(target)
             sha256 = digest[0] if digest else None
+        elif content is not None:
+            size_bytes = len(content.encode())
+            sha256 = None
+        elif source is not None:
+            size_bytes = source.stat().st_size
+            sha256 = None
         else:
-            size_bytes = len(content.encode()) if content is not None else source.stat().st_size
+            size_bytes = 0
             sha256 = None
         copied.append(
             {
                 "role": role,
                 "required": required,
-                "source": self._source_path(workspace_dir, source),
+                "source": (
+                    self._source_path(workspace_dir, source) if source is not None else destination
+                ),
                 "destination": destination,
                 "size_bytes": size_bytes,
                 "sha256": sha256,

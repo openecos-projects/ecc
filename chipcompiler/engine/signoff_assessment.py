@@ -36,10 +36,15 @@ def build_signoff_assessment(
     flow = getattr(workspace, "flow", None)
     steps_fn = getattr(flow, "steps", None)
     if callable(steps_fn):
-        steps = steps_fn()
+        raw_steps = steps_fn()
     else:
         flow_data = getattr(flow, "data", None)
-        steps = flow_data.get("steps", []) if isinstance(flow_data, dict) else []
+        raw_steps = flow_data.get("steps", []) if isinstance(flow_data, dict) else []
+    steps = (
+        [step for step in raw_steps if isinstance(step, dict)]
+        if isinstance(raw_steps, list)
+        else []
+    )
     if steps and any(
         step.get("name") not in ADVISORY_FLOW_STEPS
         and str(step.get("state", "")) not in {"Success", "Skipped"}

@@ -23,6 +23,8 @@ on:
       - 'agent/**'
       - 'ecc_experience/**'
       - 'test/**'
+      - 'scripts/**'
+      - 'docs/examples/**'
       - 'ecc.spec'
       - 'packaging/**'
       - 'hooks/**'
@@ -566,8 +568,24 @@ jobs:
       - name: Ruff lint
         run: uv run --no-sync ruff check --output-format=github chipcompiler test agent ecc_experience
 
-      # - name: Pyright
-      #   run: uv run pyright chipcompiler
+      - name: Basedpyright
+        run: |
+          uv run --no-sync basedpyright --baselinemode=auto
+          git diff --exit-code .basedpyright/baseline.json
+          if grep -q reportMissingImports .basedpyright/baseline.json; then
+            echo "::error::basedpyright baseline must not contain reportMissingImports"
+            exit 1
+          fi
+
+      - name: Ty cross-check (non-blocking)
+        continue-on-error: true
+        run: |
+          {
+            echo "basedpyright is the gate; ty is a cross-check."
+            echo '```'
+            .github/scripts/type-check-compare.sh
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
   nix-build:
     name: Nix Build (flake checks)

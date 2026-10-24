@@ -6,6 +6,7 @@ import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -659,13 +660,17 @@ def _make_step(name, tool, log_file=""):
 def _make_flow(ws, steps, run_step_fn, init_db_engine_fn=None, check_state_fn=None):
     if init_db_engine_fn is None:
 
-        def init_db_engine_fn(self):
+        def _init_db_engine(self):
             return None
+
+        init_db_engine_fn = _init_db_engine
 
     if check_state_fn is None:
 
-        def check_state_fn(self, name, tool, state):
+        def _check_state(self, name, tool, state):
             return False
+
+        check_state_fn = _check_state
 
     return type(
         "EF",
@@ -1126,7 +1131,7 @@ class TestRunFlowWithProgress:
         )
         monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: sink)
 
-        def fake_run_step(self, step, *, rerun=False, observer=None):
+        def fake_run_step(self, step, *, rerun=False, observer: Any = None):
             assert rerun is False
             observer.on_step_completed(step, StateEnum.Success)
             return StateEnum.Success
@@ -1156,7 +1161,7 @@ class TestRunFlowWithProgress:
         )
         monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: sink)
 
-        def fake_run_step(self, step, *, rerun=False, observer=None):
+        def fake_run_step(self, step, *, rerun=False, observer: Any = None):
             state = StateEnum.Success if step.name == "Synthesis" else StateEnum.Imcomplete
             observer.on_step_completed(step, state)
             return state
@@ -1395,7 +1400,7 @@ class TestFailureContextIntegration:
 
 class TestRunWithStepProgress:
     def _flow(self, tmp_path):
-        workspace = _make_ws(str(tmp_path))
+        workspace: Any = _make_ws(str(tmp_path))
         workspace.flow.data = {
             "steps": [
                 {
@@ -1413,7 +1418,7 @@ class TestRunWithStepProgress:
         monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: delegate)
         seen = []
 
-        def runner(engine_flow, *, event_sink=None):
+        def runner(engine_flow, *, event_sink: Any = None):
             seen.append(event_sink)
             event_sink.on_execution_started("rerun", ("Synthesis",))
             event_sink.on_step_started(step)
@@ -1449,7 +1454,7 @@ class TestRunWithStepProgress:
         flow, step = self._flow(tmp_path)
         monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: None)
 
-        def runner(engine_flow, *, event_sink=None):
+        def runner(engine_flow, *, event_sink: Any = None):
             event_sink.on_execution_started("rerun", ("Synthesis",))
             event_sink.on_step_started(step)
             event_sink.on_step_completed(step, StateEnum.Imcomplete)

@@ -62,7 +62,8 @@ def check(command_input, ctx: CommandContext) -> CommandResult:
     workspace, failure = resolve_loaded_workspace(command_input, ctx)
     if failure is not None:
         return failure
-    root = Path(workspace.directory or "")
+    assert workspace is not None
+    root = Path(workspace.directory)
     from chipcompiler.engine.signoff_export import inspect_signoff_package
 
     review = inspect_signoff_package(workspace)

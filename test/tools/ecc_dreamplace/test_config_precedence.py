@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from chipcompiler.data import PDK, OriginDesign, StepEnum, Workspace
@@ -28,7 +30,7 @@ def test_step_config_keeps_cli_overrides_above_nested_workspace_settings(
     workspace = Workspace(
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(tech="tech.lef", lefs=["std.lef"]),
+        pdk=PDK(tech=Path("tech.lef"), lefs=[Path("std.lef")]),
         parameters=make_ics55_parameters(
             {
                 "dreamplace": {

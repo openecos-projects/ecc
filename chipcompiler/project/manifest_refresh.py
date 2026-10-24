@@ -46,11 +46,10 @@ def flow_range_from_ledger(flow_data: object) -> tuple[str, str] | None:
     """(start, end) manifest step names from a parsed flow.json ledger."""
     if not isinstance(flow_data, dict):
         return None
-    names = [
-        step.get("name")
-        for step in flow_data.get("steps", [])
-        if isinstance(step, dict) and isinstance(step.get("name"), str)
-    ]
+    names: list[str] = []
+    for step in flow_data.get("steps", []):
+        if isinstance(step, dict) and isinstance(name := step.get("name"), str):
+            names.append(name)
     if not names:
         return None
     return (
@@ -113,7 +112,7 @@ def derive_workspace_fields(workspace_dir: str | Path, base_parameters: dict | N
 
     flow_data = read_flow_json(str(workspace_dir))
     start_step, end_step = flow_range_from_ledger(flow_data) or ("Synth", "Harden")
-    derived = {
+    derived: dict[str, object] = {
         "start_step": start_step,
         "end_step": end_step,
         "status": manifest_status_of(flow_data),

@@ -87,15 +87,19 @@ def _api(tmp_path, monkeypatch, *, fail_once=False, split_topology=False):
         def get_workspace_step(self, name):
             return next((step for step in self.workspace_steps if step.name == name), None)
 
-        def run_step(self, step, *, rerun, observer=None):
+        def run_step(self, step, *, rerun, observer=None) -> StateEnum:
             if step.name == floorplan_step:
                 success = tools.run_step(self.workspace, step)
-                state = StateEnum.Success if success else StateEnum.Incomplete
-                self.get_step(step.name, step.tool)["state"] = state.value
+                state = StateEnum.Success if success else StateEnum.Imcomplete
+                entry = self.get_step(step.name, step.tool)
+                assert entry is not None
+                entry["state"] = state.value
                 self.save()
                 return state
             result = super().run_step(step, rerun=rerun, observer=observer)
-            self.get_step(step.name, step.tool)["state"] = "Success"
+            entry = self.get_step(step.name, step.tool)
+            assert entry is not None
+            entry["state"] = "Success"
             self.save()
             return result
 
@@ -221,7 +225,9 @@ def test_mode_only_baseline_clones_switches_and_preserves_source(tmp_path, monke
     )
     _wait_for_terminal(api.ecc_api.operations, operation["operationId"])
     assert consumed == ["die_util", "die_size"]
-    assert read_floorplan_mode(api.ecc_api._load_workspace(first))["mode"] == "die_util"
+    first_mode = read_floorplan_mode(api.ecc_api._load_workspace(first))
+    assert first_mode is not None
+    assert first_mode["mode"] == "die_util"
 
 
 def test_failed_mode_baseline_resumes_without_changing_mode(tmp_path, monkeypatch):

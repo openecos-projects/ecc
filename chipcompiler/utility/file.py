@@ -7,7 +7,7 @@ from contextlib import suppress
 from pathlib import Path
 
 
-def write_text_atomic(path: str, text: str) -> None:
+def write_text_atomic(path: str | Path, text: str) -> None:
     """Replace the file at `path` with `text` via a sibling temp file + os.replace.
 
     A plain `open(path, "w")` truncates first, so an interruption or write

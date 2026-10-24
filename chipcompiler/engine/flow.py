@@ -31,6 +31,7 @@ from chipcompiler.data.workspace.flow_policy import (
     is_checker_batch_step,
     ledger_category,
 )
+from chipcompiler.data.workspace.flow_types import FlowStepEntry, load_flow_document
 from chipcompiler.engine import EngineDB
 from chipcompiler.engine.flow_completion import (
     finalize_interrupted_subflow as _finalize_interrupted_subflow,
@@ -90,7 +91,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
 
 
 class EngineFlow:
-    def __init__(self, workspace: Workspace, engine_db: EngineDB = None):
+    def __init__(self, workspace: Workspace, engine_db: EngineDB | None = None):
         self.workspace = workspace
         self.workspace_steps = []
         self.engine_db = engine_db  # db engine for this flow
@@ -129,7 +130,7 @@ class EngineFlow:
         info: dict | None = None,
         category: str | FlowStepCategory = FlowStepCategory.PNR,
         input_step: str | None = None,
-    ):
+    ) -> FlowStepEntry:
         step_value = step.value if isinstance(step, StepBaseEnum) else step
         state_value = state.value if isinstance(state, StateEnum) else state
         if (
@@ -138,7 +139,7 @@ class EngineFlow:
         ):
             category = FlowStepCategory.CHECKER
         category_value = category.value if isinstance(category, FlowStepCategory) else str(category)
-        result = {
+        result: FlowStepEntry = {
             "name": step_value,  # step name
             "tool": tool,  # eda tool name
             "category": category_value,
@@ -159,7 +160,7 @@ class EngineFlow:
         info: dict | None = None,
         category: str | FlowStepCategory = FlowStepCategory.PNR,
         input_step: str | None = None,
-    ):
+    ) -> None:
         steps = self.workspace.flow.data.get("steps", [])
         steps.append(
             self.init_flow_step(
@@ -175,13 +176,12 @@ class EngineFlow:
         """
         load flow config json from workspace
         """
-        from chipcompiler.utility import json_read
-
         if not self.workspace.flow.path:
             self.workspace.flow.data = {}
             return False
-        self.workspace.flow.data = json_read(self.workspace.flow.path)
-        if normalize_flow_step_categories(self.workspace.flow.data):
+        flow_data = load_flow_document(self.workspace.flow.path)
+        self.workspace.flow.data = flow_data
+        if normalize_flow_step_categories(flow_data):
             self.save()
         return len(self.workspace.flow.data.get("steps", [])) > 0
 
@@ -193,7 +193,7 @@ class EngineFlow:
 
         return save_ledger(self.workspace.flow)
 
-    def get_step(self, name: str, tool: str):
+    def get_step(self, name: str, tool: str) -> FlowStepEntry | None:
         return self.workspace.flow.get_step(name, tool)
 
     def get_workspace_step(self, name: str) -> WorkspaceStep | None:
@@ -216,8 +216,8 @@ class EngineFlow:
         name: str,
         tool: str,
         state: str | StateEnum,
-        runtime: str = None,
-        peak_memory: float = None,
+        runtime: str | None = None,
+        peak_memory: float | None = None,
         *,
         clear_runtime_operation: bool = False,
     ) -> bool:
@@ -303,8 +303,8 @@ class EngineFlow:
                     ecc_output
                     and os.path.exists(output.def_ or "")
                     and os.path.exists(output.verilog or "")
-                    and os.path.exists(workspace_step.report.step or "")
-                    and os.path.exists(workspace_step.feature.step or "")
+                    and os.path.exists(getattr(workspace_step.report, "step", None) or "")
+                    and os.path.exists(getattr(workspace_step.feature, "step", None) or "")
                 ):
                     success = True
             case StepEnum.RCX.value:
@@ -437,7 +437,7 @@ class EngineFlow:
                 return True
 
         # init engine step by last workpsace step data if all steps finished
-        workspace_step = None
+        workspace_step: WorkspaceStep | None = None
         for ws_step in self.workspace_steps:
             step = self.get_step(name=ws_step.name, tool=ws_step.tool)
             state = step.get("state") if step is not None else None
@@ -454,6 +454,8 @@ class EngineFlow:
         if workspace_step is not None and self._uses_openroad_placement_db(workspace_step):
             return True
 
+        if workspace_step is None:
+            return self.engine_db.ecc_module is not None
         return self.engine_db.create_db_engine(step=workspace_step)
 
     def _uses_openroad_placement_db(self, workspace_step: WorkspaceStep) -> bool:
@@ -647,6 +649,28 @@ class EngineFlow:
         observed = float(flow_step.get("peak memory (mb)") or 0)
         return max(_CHECKER_MIN_STEP_MB, observed * _CHECKER_OBSERVED_MEMORY_FACTOR)
 
+    def _apply_checklist_gate(self, workspace_step: WorkspaceStep) -> str | None:
+        blocked_by = self._blocked_checklist_prerequisite(workspace_step)
+        if blocked_by is None:
+            return None
+        flow_step = self.get_step(workspace_step.name, workspace_step.tool)
+        if flow_step is not None:
+            flow_step.pop("checklist", None)
+            flow_step["checklist_status"] = {
+                "status": "blocked",
+                "blocked": True,
+                "failed_items": [f"prerequisite:{blocked_by}"],
+                "source": "home/flow.json",
+            }
+            self.save()
+        self.workspace.logger.warning(
+            "[FLOW] %s(%s) is blocked by checklist gate from %s",
+            workspace_step.name,
+            workspace_step.tool,
+            blocked_by,
+        )
+        return blocked_by
+
     def _blocked_checklist_prerequisite(self, workspace_step: WorkspaceStep) -> str | None:
         steps = self.workspace.flow.data.get("steps", [])
         current_index = next(
@@ -702,7 +726,7 @@ class EngineFlow:
 
     def run_step(
         self,
-        workspace_step: WorkspaceStep | str,
+        workspace_step: WorkspaceStep,
         *,
         rerun: bool = False,
         observer=None,
@@ -710,28 +734,9 @@ class EngineFlow:
         """
         run single step
         """
-        if isinstance(workspace_step, str):
-            workspace_step = self.get_workspace_step(workspace_step)
-        if workspace_step is None:
-            return StateEnum.Invalid
-
         step_tag = f"{workspace_step.name}({workspace_step.tool})"
 
-        blocked_by = self._blocked_checklist_prerequisite(workspace_step)
-        if blocked_by is not None:
-            flow_step = self.get_step(workspace_step.name, workspace_step.tool)
-            if flow_step is not None:
-                flow_step.pop("checklist", None)
-                flow_step["checklist_status"] = {
-                    "status": "blocked",
-                    "blocked": True,
-                    "failed_items": [f"prerequisite:{blocked_by}"],
-                    "source": "home/flow.json",
-                }
-                self.save()
-            self.workspace.logger.warning(
-                "[FLOW] %s is blocked by checklist gate from %s", step_tag, blocked_by
-            )
+        if self._apply_checklist_gate(workspace_step) is not None:
             return StateEnum.Invalid
 
         if not rerun and self.check_state(
@@ -751,7 +756,7 @@ class EngineFlow:
         flow_step = self.get_step(workspace_step.name, workspace_step.tool)
         execution_marker = getattr(observer, "execution", None)
         operation_marker = getattr(observer, "runtime_operation", None)
-        if execution_marker or operation_marker:
+        if isinstance(execution_marker, dict) or isinstance(operation_marker, dict):
             if flow_step is None:
                 raise RuntimeError(f"cannot persist runtime operation marker for {step_tag}")
             previous_state = flow_step.get("state")
@@ -764,9 +769,9 @@ class EngineFlow:
             previous_info = dict(flow_step.get("info", {}))
             info = flow_step.setdefault("info", {})
             previous_resources = flow_step.pop("resource_observation", None)
-            if execution_marker:
+            if isinstance(execution_marker, dict):
                 info["execution"] = {**execution_marker, "started_at": start_time}
-            else:
+            elif isinstance(operation_marker, dict):
                 info["runtime_operation"] = {
                     **operation_marker,
                     "started_at": start_time,

@@ -1,4 +1,5 @@
 import os
+from typing import Any
 
 from chipcompiler.cli import main as cli_main
 
@@ -224,7 +225,9 @@ def test_pdk_verify_fails_closed_for_incomplete_contents(monkeypatch):
         ),
     )
 
-    result = pdk.verify(None, None)
+    command_input: Any = None
+    ctx: Any = None
+    result = pdk.verify(command_input, ctx)
 
     assert result.exit_code == 1
     assert result.records[1]["pdk"] == "verify"

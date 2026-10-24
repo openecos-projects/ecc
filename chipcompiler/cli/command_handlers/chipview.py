@@ -10,6 +10,7 @@ import sys
 import time
 from pathlib import Path
 
+from chipcompiler.cli.core.errors import CommandError, command_handler
 from chipcompiler.cli.core.output import normalize_step_name
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
@@ -50,18 +51,34 @@ _OPTIONAL_NUMBERS = (
 _STARTUP_CHECK_SECONDS = 0.8
 
 
-def _read_flow_steps(workspace_dir: Path) -> tuple[list[dict] | None, str | None]:
+def _read_flow_steps(workspace_dir: Path) -> list[dict]:
     flow_path = workspace_dir / "home" / "flow.json"
     if not flow_path.is_file():
-        return None, f"flow ledger is missing: {flow_path}"
+        raise CommandError(
+            [
+                error_record(
+                    "chipview_flow_unavailable",
+                    reason=f"flow ledger is missing: {flow_path}",
+                )
+            ]
+        )
     try:
         payload = json.loads(flow_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return None, f"flow ledger cannot be read: {exc}"
+        raise CommandError(
+            [error_record("chipview_flow_unavailable", reason=f"flow ledger cannot be read: {exc}")]
+        ) from exc
     steps = payload.get("steps") if isinstance(payload, dict) else None
     if not isinstance(steps, list):
-        return None, f"flow ledger has no steps list: {flow_path}"
-    return [step for step in steps if isinstance(step, dict)], None
+        raise CommandError(
+            [
+                error_record(
+                    "chipview_flow_unavailable",
+                    reason=f"flow ledger has no steps list: {flow_path}",
+                )
+            ]
+        )
+    return [step for step in steps if isinstance(step, dict)]
 
 
 def _step_matches(requested: str, name: str, tool: str, directory: str) -> bool:
@@ -79,12 +96,10 @@ def _step_matches(requested: str, name: str, tool: str, directory: str) -> bool:
     return requested_lower in candidates
 
 
-def _resolve_step_geometry(workspace_dir: Path, requested: str):
-    steps, error = _read_flow_steps(workspace_dir)
-    if error:
-        return None, error_record("chipview_flow_unavailable", reason=error)
+def _resolve_step_geometry(workspace_dir: Path, requested: str) -> dict:
+    steps = _read_flow_steps(workspace_dir)
 
-    for flow_step in steps or []:
+    for flow_step in steps:
         name = str(flow_step.get("name", "")).strip()
         tool = str(flow_step.get("tool", "")).strip()
         if not name or not tool:
@@ -102,16 +117,18 @@ def _resolve_step_geometry(workspace_dir: Path, requested: str):
             "manifest": output_dir / "geometry" / "geometry.manifest",
             "drc_statis": step_dir / "analysis" / "drc_statis.csv",
             "map_root": step_dir / "feature",
-        }, None
+        }
 
-    available = [
-        f"{step.get('name')} ({step.get('tool')})" for step in steps or [] if step.get("name")
-    ]
-    return None, error_record(
-        "chipview_step_not_found",
-        step=requested,
-        available=", ".join(available) or "(none)",
-        reason="the requested step is not present in the workspace flow ledger",
+    available = [f"{step.get('name')} ({step.get('tool')})" for step in steps if step.get("name")]
+    raise CommandError(
+        [
+            error_record(
+                "chipview_step_not_found",
+                step=requested,
+                available=", ".join(available) or "(none)",
+                reason="the requested step is not present in the workspace flow ledger",
+            )
+        ]
     )
 
 
@@ -137,36 +154,48 @@ def _manifest_failure(manifest: Path, reason: str) -> CommandResult:
     )
 
 
-def _validate_manifest(manifest: Path, *, require_drc: bool = False) -> CommandResult | None:
+def _validate_manifest(manifest: Path, *, require_drc: bool = False) -> None:
     if not manifest.is_file():
-        return _manifest_failure(manifest, "geometry manifest is missing")
+        raise CommandError.from_result(_manifest_failure(manifest, "geometry manifest is missing"))
     try:
         values = _parse_manifest(manifest)
     except (OSError, UnicodeDecodeError) as exc:
-        return _manifest_failure(manifest, f"manifest cannot be read: {exc}")
+        raise CommandError.from_result(
+            _manifest_failure(manifest, f"manifest cannot be read: {exc}")
+        ) from exc
     if not values:
-        return _manifest_failure(manifest, "manifest has no key/value entries")
+        raise CommandError.from_result(
+            _manifest_failure(manifest, "manifest has no key/value entries")
+        )
     schema = values.get("schema_version")
     if schema != str(_GEOMETRY_SCHEMA_VERSION):
-        return _manifest_failure(
-            manifest,
-            f"unsupported schema_version {schema!r}; expected {_GEOMETRY_SCHEMA_VERSION}",
+        raise CommandError.from_result(
+            _manifest_failure(
+                manifest,
+                f"unsupported schema_version {schema!r}; expected {_GEOMETRY_SCHEMA_VERSION}",
+            )
         )
     if require_drc and not values.get("drc"):
-        return _manifest_failure(manifest, "manifest is missing drc")
+        raise CommandError.from_result(_manifest_failure(manifest, "manifest is missing drc"))
     for key in (*_REQUIRED_NUMBERS, *_OPTIONAL_NUMBERS):
         value = values.get(key)
         if value is None and key in _REQUIRED_NUMBERS:
-            return _manifest_failure(manifest, f"manifest is missing {key}")
+            raise CommandError.from_result(
+                _manifest_failure(manifest, f"manifest is missing {key}")
+            )
         if value is not None and (not value.isdigit()):
-            return _manifest_failure(manifest, f"manifest {key} is not a non-negative integer")
+            raise CommandError.from_result(
+                _manifest_failure(manifest, f"manifest {key} is not a non-negative integer")
+            )
 
     geometry_dir = manifest.parent.resolve()
     for key in (*_REQUIRED_FILES, *_OPTIONAL_FILES):
         value = values.get(key)
         if not value:
             if key in _REQUIRED_FILES:
-                return _manifest_failure(manifest, f"manifest is missing {key}")
+                raise CommandError.from_result(
+                    _manifest_failure(manifest, f"manifest is missing {key}")
+                )
             continue
         candidate = Path(value)
         if not candidate.is_absolute():
@@ -175,10 +204,13 @@ def _validate_manifest(manifest: Path, *, require_drc: bool = False) -> CommandR
         try:
             candidate.relative_to(geometry_dir)
         except ValueError:
-            return _manifest_failure(manifest, f"manifest {key} points outside geometry directory")
+            raise CommandError.from_result(
+                _manifest_failure(manifest, f"manifest {key} points outside geometry directory")
+            ) from None
         if not candidate.is_file():
-            return _manifest_failure(manifest, f"manifest {key} file does not exist: {candidate}")
-    return None
+            raise CommandError.from_result(
+                _manifest_failure(manifest, f"manifest {key} file does not exist: {candidate}")
+            )
 
 
 def _viewer_candidates(env: dict[str, str]) -> list[tuple[Path, str]]:
@@ -197,7 +229,7 @@ def _viewer_candidates(env: dict[str, str]) -> list[tuple[Path, str]]:
     return candidates
 
 
-def _resolve_viewer(env: dict[str, str]):
+def _resolve_viewer(env: dict[str, str]) -> tuple[Path, str]:
     candidates = _viewer_candidates(env)
     for path, source in candidates:
         if path.is_file() and os.access(path, os.X_OK):
@@ -207,20 +239,31 @@ def _resolve_viewer(env: dict[str, str]):
     )
     appimage = env.get("APPIMAGE", "").strip()
     appimage_detail = f" detected AppImage: {appimage}" if appimage else ""
-    return None, (
-        "chip-viewer-native was not found or is not executable."
-        f"{appimage_detail} Expected: {expected}."
-        " Run this command from ECOS Studio's built-in terminal,"
-        " or set ECOS_CHIP_VIEWER_BIN to an executable chip-viewer-native path."
+    raise CommandError(
+        [
+            error_record(
+                "chipview_viewer_unavailable",
+                reason=(
+                    "chip-viewer-native was not found or is not executable."
+                    f"{appimage_detail} Expected: {expected}."
+                    " Run this command from ECOS Studio's built-in terminal,"
+                    " or set ECOS_CHIP_VIEWER_BIN to an executable chip-viewer-native path."
+                ),
+                remediation=(
+                    "open the AppImage first and use its built-in terminal, or set "
+                    "ECOS_CHIP_VIEWER_BIN"
+                ),
+            )
+        ]
     )
 
 
-def _display_failure() -> CommandResult | None:
+def _require_display() -> None:
     if sys.platform != "linux" or any(
         os.environ.get(key) for key in ("DISPLAY", "WAYLAND_DISPLAY", "WAYLAND_SOCKET")
     ):
-        return None
-    return CommandResult.err(
+        return
+    raise CommandError(
         [
             error_record(
                 "chipview_display_unavailable",
@@ -240,7 +283,7 @@ def _tail(path: Path, limit: int = 4000) -> str:
         return ""
 
 
-def _launch_viewer(viewer: Path, args: list[str], workspace_dir: Path):
+def _launch_viewer(viewer: Path, args: list[str], workspace_dir: Path) -> dict:
     log_dir = workspace_dir / ".chip-viewer" / "logs"
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -249,7 +292,7 @@ def _launch_viewer(viewer: Path, args: list[str], workspace_dir: Path):
         stdout = stdout_path.open("ab")
         stderr = stderr_path.open("ab")
     except OSError as exc:
-        return None, error_record("chipview_log_unavailable", reason=str(exc))
+        raise CommandError([error_record("chipview_log_unavailable", reason=str(exc))]) from exc
 
     viewer_env = dict(os.environ)
     for key in ("ELECTRON_NO_ATTACH_CONSOLE", "ELECTRON_RUN_AS_NODE", "NODE_OPTIONS"):
@@ -267,12 +310,16 @@ def _launch_viewer(viewer: Path, args: list[str], workspace_dir: Path):
     except OSError as exc:
         stdout.close()
         stderr.close()
-        return None, error_record(
-            "chipview_launch_failed",
-            reason=str(exc),
-            viewer=str(viewer),
-            stderr_log=str(stderr_path),
-        )
+        raise CommandError(
+            [
+                error_record(
+                    "chipview_launch_failed",
+                    reason=str(exc),
+                    viewer=str(viewer),
+                    stderr_log=str(stderr_path),
+                )
+            ]
+        ) from exc
     finally:
         stdout.close()
         stderr.close()
@@ -282,21 +329,26 @@ def _launch_viewer(viewer: Path, args: list[str], workspace_dir: Path):
         code = process.poll()
         if code is not None:
             detail = _tail(stderr_path)
-            return None, error_record(
-                "chipview_launch_failed",
-                reason=f"Viewer exited during startup with code {code}",
-                viewer=str(viewer),
-                stderr_log=str(stderr_path),
-                stderr_tail=detail,
+            raise CommandError(
+                [
+                    error_record(
+                        "chipview_launch_failed",
+                        reason=f"Viewer exited during startup with code {code}",
+                        viewer=str(viewer),
+                        stderr_log=str(stderr_path),
+                        stderr_tail=detail,
+                    )
+                ]
             )
         time.sleep(0.05)
     return {
         "pid": process.pid,
         "stdout_log": str(stdout_path),
         "stderr_log": str(stderr_path),
-    }, None
+    }
 
 
+@command_handler
 def chipview(command_input, ctx: CommandContext) -> CommandResult:
     if sys.platform != "linux":
         return CommandResult.err(
@@ -316,38 +368,20 @@ def chipview(command_input, ctx: CommandContext) -> CommandResult:
     )
     if error is not None:
         return CommandResult.err([error])
+    assert workspace_dir is not None
 
     workspace = Path(workspace_dir)
-    resolved, step_error = _resolve_step_geometry(workspace, command_input.step)
-    if step_error is not None:
-        return CommandResult.err([step_error])
+    resolved = _resolve_step_geometry(workspace, command_input.step)
     manifest = resolved["manifest"]
-    manifest_failure = _validate_manifest(
+    _validate_manifest(
         manifest,
         require_drc=resolved["name"].lower().startswith("drc"),
     )
-    if manifest_failure is not None:
-        return manifest_failure
 
     env = dict(os.environ)
     viewer, viewer_source = _resolve_viewer(env)
-    if viewer is None:
-        return CommandResult.err(
-            [
-                error_record(
-                    "chipview_viewer_unavailable",
-                    reason=viewer_source,
-                    remediation=(
-                        "open the AppImage first and use its built-in terminal, or set "
-                        "ECOS_CHIP_VIEWER_BIN"
-                    ),
-                )
-            ]
-        )
 
-    display_failure = _display_failure()
-    if display_failure is not None:
-        return display_failure
+    _require_display()
 
     args = ["--manifest", str(manifest), "--mode", "view"]
     if resolved["drc_statis"].is_file() and resolved["name"].lower().startswith("drc"):
@@ -355,9 +389,7 @@ def chipview(command_input, ctx: CommandContext) -> CommandResult:
     if resolved["map_root"].is_dir():
         args.extend(["--map-root", str(resolved["map_root"])])
 
-    launch, launch_error = _launch_viewer(viewer, args, workspace)
-    if launch_error is not None:
-        return CommandResult.err([launch_error])
+    launch = _launch_viewer(viewer, args, workspace)
     return CommandResult.ok(
         [
             {

@@ -331,9 +331,10 @@ def _bounded_number(
 ) -> bool:
     if value is None:
         return nullable
-    if finite_number(value) is None:
+    number = finite_number(value)
+    if number is None:
         return False
-    return (low is None or value >= low) and (high is None or value <= high)
+    return (low is None or number >= low) and (high is None or number <= high)
 
 
 def _bounded_text(

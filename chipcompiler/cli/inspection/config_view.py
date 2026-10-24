@@ -259,7 +259,6 @@ def build_step_config_items(
 ) -> tuple[list[dict], int]:
     from chipcompiler.cli.core.output import normalize_step_name
     from chipcompiler.cli.inspection.discovery import (
-        CORRUPT_FLOW_JSON,
         _safe_steps,
         discover_step_dirs,
         read_flow_json,
@@ -274,7 +273,7 @@ def build_step_config_items(
     flow_data = read_flow_json(run_dir)
     if flow_data is None:
         return [{"kind": "error", "status": "unknown_step", "step": requested_step_token}], 1
-    if flow_data is CORRUPT_FLOW_JSON:
+    if not isinstance(flow_data, dict):
         return [{"kind": "error", "status": "invalid_flow_json"}], 1
 
     step_dirs = discover_step_dirs(run_dir)

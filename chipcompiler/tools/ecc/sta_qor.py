@@ -409,4 +409,7 @@ def read_power_step_summary_json(path: Path) -> StaPowerSummary | None:
     ):
         return None
 
-    return _power_summary_from_payload(data.get("power_summary"), path)
+    power_summary = data.get("power_summary")
+    if not isinstance(power_summary, dict):
+        return None
+    return _power_summary_from_payload(power_summary, path)

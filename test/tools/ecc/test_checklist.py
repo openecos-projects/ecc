@@ -84,7 +84,7 @@ def test_sta_checklist_references_v4_quality_gates_and_current_artifacts(tmp_pat
         },
     )
     checklist_path = tmp_path / "sta_ecc" / "checklist.json"
-    workspace = Workspace(config={StepEnum.STA.value: _sta_config(tmp_path)})
+    workspace = Workspace(directory=tmp_path, config={StepEnum.STA.value: _sta_config(tmp_path)})
     step = EccStep(
         name=StepEnum.STA.value,
         checklist=ChecklistState(path=checklist_path),
@@ -105,9 +105,9 @@ def test_sta_checklist_references_v4_quality_gates_and_current_artifacts(tmp_pat
     assert items["artifact.sta.corner_summaries"]["state"] == "pass"
     assert items["artifact.sta.timing_paths"]["state"] == "pass"
     assert {entry["path"] for entry in items["report.sta.timing_reports"]["evidence"]} == {
-        str(report_root / "qor_summary.rpt"),
+        str((report_root / "qor_summary.rpt").relative_to(tmp_path)),
         *(
-            str(report_root / f"timing_max_{path_type}.rpt")
+            str((report_root / f"timing_max_{path_type}.rpt").relative_to(tmp_path))
             for path_type in ("in2out", "in2reg", "reg2out", "reg2reg")
         ),
     }
@@ -132,7 +132,7 @@ def test_sta_checklist_blocks_missing_current_sta_reports(tmp_path):
         },
     )
     checklist_path = tmp_path / "sta_ecc" / "checklist.json"
-    workspace = Workspace(config={StepEnum.STA.value: _sta_config(tmp_path)})
+    workspace = Workspace(directory=tmp_path, config={StepEnum.STA.value: _sta_config(tmp_path)})
     step = EccStep(
         name=StepEnum.STA.value,
         checklist=ChecklistState(path=checklist_path),
@@ -156,7 +156,7 @@ def test_sta_checklist_blocks_missing_current_sta_reports(tmp_path):
 
 def test_sta_checklist_blocks_missing_v4_gate_summary(tmp_path):
     checklist_path = tmp_path / "sta_ecc" / "checklist.json"
-    workspace = Workspace()
+    workspace = Workspace(directory=tmp_path)
     step = EccStep(
         name=StepEnum.STA.value,
         checklist=ChecklistState(path=checklist_path),
@@ -174,7 +174,7 @@ def test_sta_checklist_blocks_missing_v4_gate_summary(tmp_path):
 
 
 def test_sta_summary_paths_do_not_fallback_to_obsolete_output(tmp_path):
-    workspace = Workspace()
+    workspace = Workspace(directory=tmp_path)
     feature_root = tmp_path / "feature"
     output_path = tmp_path / "output" / "MAX_125" / "RCworst" / "qor_summary.json"
     _write(output_path, {"schema_version": 1})
@@ -189,7 +189,7 @@ def test_collect_rcx_spef_paths_appends_discovered_spefs_to_live_output_list(tmp
     output_dir = tmp_path / "rcx_ecc" / "output"
     _write(output_dir / "discovered.spef", "* spef\n")
 
-    workspace = Workspace(design=OriginDesign(name="gcd", top_module="gcd"))
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
     workspace_step = EccStep(
         name=StepEnum.RCX.value,
         output=EccOutput(spef=[], dir=output_dir),

@@ -836,9 +836,9 @@ def _route_layer_metrics(route: dict, source_file) -> dict:
         key=_route_layer_sort_key,
     )
 
-    records = []
+    records: list[dict[str, object]] = []
     for layer in layers:
-        record = {"layer": layer}
+        record: dict[str, object] = {"layer": layer}
         layer_index = _qor_number(layer)
         if layer_index is not None:
             record["layer_index"] = layer_index
@@ -874,7 +874,8 @@ def _map_csv_statistics(source_file) -> dict:
         "source_file": str(path) if path is not None else "",
         "available": path is not None and path.is_file(),
     }
-    if not statistics["available"]:
+    if path is None or not path.is_file():
+        statistics["available"] = False
         return statistics
 
     values = []
@@ -1046,6 +1047,8 @@ def _sta_path_group_metrics(summaries, corner_contexts: dict[str, dict] | None =
 
 
 def _sta_timing_issue_source_file(step: WorkspaceStep, path: Path) -> str:
+    if step.directory is None:
+        return str(path)
     try:
         return path.relative_to(step.directory).as_posix()
     except (TypeError, ValueError):
@@ -1491,6 +1494,8 @@ def save_cts_timing_feature_facts(step: WorkspaceStep, timing_quality: dict) -> 
     if not isinstance(timing_quality, dict):
         return False
     feature_path = getattr(step.feature, "step", None)
+    if feature_path is None:
+        return False
     feature = json_read(feature_path)
     cts = feature.get("CTS") if isinstance(feature, dict) else None
     cts = cts if isinstance(cts, dict) else {}
@@ -1746,7 +1751,7 @@ def _sta_qor_source_file(step: WorkspaceStep) -> str | None:
 
 
 def _relative_step_path(step: WorkspaceStep, path) -> str | None:
-    if path is None or path == "":
+    if path is None or path == "" or step.directory is None:
         return None
     try:
         candidate = Path(path)
@@ -1987,6 +1992,8 @@ def _run_feature_qor_records(step: WorkspaceStep) -> list[dict]:
     if source_path is None:
         return []
 
+    if feature_path is None:
+        return []
     feature = json_read(feature_path)
     run = feature.get("run") if isinstance(feature, dict) else None
     if not isinstance(run, dict):
@@ -2028,6 +2035,8 @@ def _timing_constraint_context(step: WorkspaceStep) -> dict | None:
     if source_path is None:
         return None
 
+    if feature_path is None:
+        return None
     feature = json_read(feature_path)
     constraints = feature.get("constraints") if isinstance(feature, dict) else None
     sdc = constraints.get("sdc") if isinstance(constraints, dict) else None
@@ -2476,6 +2485,8 @@ def _qor_blocking_issue(record: dict) -> dict | None:
         return None
 
     metric_name = record.get("id")
+    if not isinstance(metric_name, str):
+        return None
     operator, threshold = ("not_applicable", None)
     value = record.get("value")
     return {
@@ -2507,7 +2518,7 @@ def _qor_missing_metrics(step: WorkspaceStep, records: list[dict]) -> list[str]:
 
 def _qor_missing_metric_record(step: WorkspaceStep, metric_name: str) -> dict:
     source = _metric_feature_source(step, metric_name)
-    if not _is_feature_source(source):
+    if source is None or not _is_feature_source(source):
         diagnosis = f"No current feature source is configured for required metric {metric_name}."
         availability = "source_unconfigured"
     else:
@@ -2550,16 +2561,13 @@ def _workspace_step_completed(workspace: Workspace, step_name: str) -> bool:
 
 
 def _harden_signoff_source(workspace: Workspace, source_step: str) -> dict:
-    workspace_dir = workspace.directory
     summary_path = (
-        Path(workspace_dir)
+        workspace.directory
         / step_directory_for_tool(source_step, ToolName.ECC)
         / "analysis"
         / "qor_summary.json"
-        if workspace_dir is not None
-        else None
     )
-    summary = json_read(summary_path) if summary_path is not None else None
+    summary = json_read(summary_path)
     available = is_supported_summary(summary) and summary_quality_status(summary) is not None
     hard_gates = summary_gates(summary) if available else []
     return {
@@ -3018,9 +3026,7 @@ def _last_successful_mpc_area_source(workspace: Workspace) -> tuple[float | None
     flow_step = candidates[-1]
     step_name = str(flow_step.get("name"))
     tool = str(flow_step.get("tool") or "ecc")
-    workspace_directory = getattr(workspace, "directory", None)
-    if not workspace_directory:
-        return None, None
+    workspace_directory = workspace.directory
 
     feature_path = (
         Path(workspace_directory) / f"{step_name}_{tool}" / "feature" / (f"{step_name}.db.json")
@@ -3038,11 +3044,9 @@ def _last_successful_mpc_area_source(workspace: Workspace) -> tuple[float | None
 
 
 def _relative_workspace_path(workspace: Workspace, path: Path) -> str:
-    workspace_directory = getattr(workspace, "directory", None)
-    if not workspace_directory:
-        return str(path)
+    workspace_directory = workspace.directory
     try:
-        return path.relative_to(Path(workspace_directory)).as_posix()
+        return path.relative_to(workspace_directory).as_posix()
     except ValueError:
         return str(path)
 
@@ -3228,15 +3232,21 @@ def _quality_gates(
         )
         setup_passed = (
             setup_available
+            and isinstance(setup, dict)
             and setup.get("status") == "pass"
+            and setup_wns is not None
             and setup_wns >= 0
+            and setup_tns is not None
             and setup_tns >= 0
             and setup_nvp == 0
         )
         hold_passed = (
             hold_available
+            and isinstance(hold, dict)
             and hold.get("status") == "pass"
+            and hold_wns is not None
             and hold_wns >= 0
+            and hold_tns is not None
             and hold_tns >= 0
             and hold_nvp == 0
         )
@@ -3344,6 +3354,8 @@ def build_qor_summary_payload(
 
 def _qor_hotspot_record(record: dict) -> dict | None:
     metric_name = record.get("id")
+    if not isinstance(metric_name, str):
+        return None
     hint = QOR_HOTSPOT_METRIC_HINTS.get(metric_name)
     if hint is None:
         return None
@@ -3903,16 +3915,16 @@ def build_metrics_sta(workspace: Workspace, step: EccStep) -> StepMetrics | None
     hold_violation_count = 0
 
     for summary in summaries:
-        if setup_wns is None or summary.setup_wns < setup_wns:
+        if summary.setup_wns is not None and (setup_wns is None or summary.setup_wns < setup_wns):
             setup_wns = summary.setup_wns
             setup_corner = summary.corner
-        if setup_tns is None or summary.setup_tns < setup_tns:
+        if summary.setup_tns is not None and (setup_tns is None or summary.setup_tns < setup_tns):
             setup_tns = summary.setup_tns
             setup_tns_corner = summary.corner
-        if hold_wns is None or summary.hold_wns < hold_wns:
+        if summary.hold_wns is not None and (hold_wns is None or summary.hold_wns < hold_wns):
             hold_wns = summary.hold_wns
             hold_corner = summary.corner
-        if hold_tns is None or summary.hold_tns < hold_tns:
+        if summary.hold_tns is not None and (hold_tns is None or summary.hold_tns < hold_tns):
             hold_tns = summary.hold_tns
             hold_tns_corner = summary.corner
         if summary.frequency_mhz is not None and (
@@ -3920,8 +3932,8 @@ def build_metrics_sta(workspace: Workspace, step: EccStep) -> StepMetrics | None
         ):
             frequency = summary.frequency_mhz
             frequency_corner = summary.corner
-        setup_violation_count += summary.setup_nvp
-        hold_violation_count += summary.hold_nvp
+        setup_violation_count += summary.setup_nvp or 0
+        hold_violation_count += summary.hold_nvp or 0
 
     _add_number_metric(metrics, "max_WNS", setup_wns)
     _add_number_metric(metrics, "max_TNS", setup_tns)

@@ -48,7 +48,7 @@ def test_macro_placement_step_runs_and_saves_outputs(monkeypatch, tmp_path):
 
     assert (
         dreamplace_runner.run_macro_placement(
-            Workspace(config={"macro_location": macro_location}), step
+            Workspace(directory=tmp_path, config={"macro_location": macro_location}), step
         )
         is True
     )
@@ -101,7 +101,7 @@ def test_macro_placement_stops_when_tcl_handoff_fails(monkeypatch, tmp_path):
 
     assert (
         dreamplace_runner.run_macro_placement(
-            Workspace(config={"macro_location": macro_location}), step
+            Workspace(directory=tmp_path, config={"macro_location": macro_location}), step
         )
         is False
     )
@@ -131,6 +131,7 @@ def test_macro_placement_skips_dreamplace_when_manual_placements_set(monkeypatch
     module = FakeEccModule()
     step = EccStep(name=StepEnum.MACRO_PLACEMENT.value)
     workspace = Workspace(
+        directory=tmp_path,
         config={"macro_location": macro_location},
         parameters=Parameters(
             data={
@@ -168,11 +169,13 @@ def test_macro_placement_skips_dreamplace_when_manual_placements_set(monkeypatch
     ]
 
 
-def test_run_step_dispatches_macro_placement(monkeypatch):
+def test_run_step_dispatches_macro_placement(monkeypatch, tmp_path):
     monkeypatch.setattr(dreamplace_runner, "is_eda_exist", lambda: True)
     monkeypatch.setattr(dreamplace_runner, "run_macro_placement", lambda **_kwargs: True)
 
     assert (
-        dreamplace_runner.run_step(Workspace(), EccStep(name=StepEnum.MACRO_PLACEMENT.value))
+        dreamplace_runner.run_step(
+            Workspace(directory=tmp_path), EccStep(name=StepEnum.MACRO_PLACEMENT.value)
+        )
         is True
     )

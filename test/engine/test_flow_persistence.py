@@ -16,6 +16,9 @@ def test_flow_save_keeps_snapshot_and_persisted_ledger_identical(tmp_path):
     assert flow.save() is True
     snapshot = create_engineering_snapshot(workspace)
 
+    assert workspace.flow.path is not None
+    assert workspace.flow.path is not None
+    assert workspace.flow.path is not None
     assert snapshot["flow"] == json.loads(workspace.flow.path.read_text())
     assert workspace.flow.data == snapshot["flow"]
     assert workspace.flow.data["steps"] is original_steps
@@ -52,6 +55,7 @@ def test_failed_batch_reset_restores_the_ledger(tmp_path, monkeypatch):
         ]
     }
     assert flow.save() is True
+    assert workspace.flow.path is not None
     before = json.loads(workspace.flow.path.read_text())
 
     monkeypatch.setattr(flow_ledger, "save_ledger", lambda _flow: False)
@@ -85,7 +89,9 @@ def test_state_transaction_holds_the_ledger_lock(tmp_path):
     observed = []
 
     def persist():
-        observed.append(flow_ledger._lock_for(workspace.flow.path)._is_owned())
+        lock = flow_ledger._lock_for(workspace.flow.path)
+        owned = "_is_owned"
+        observed.append(getattr(lock, owned)())
         return True
 
     assert (

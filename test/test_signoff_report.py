@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 from chipcompiler.engine.signoff import SignoffPackageCollector, generate_text_report
 from chipcompiler.engine.signoff.report import (
@@ -425,6 +426,7 @@ class TestCollectWorkspaceReport:
         monkeypatch.setattr(
             "chipcompiler.engine.signoff.collector.generate_text_report", fake_generate
         )
-        workspace = _make_workspace(tmp_path)
+        workspace: Any = _make_workspace(tmp_path)
+        assert workspace is not None
         assert SignoffPackageCollector(workspace).text_report() == "REPORT"
         assert seen["workspace"] is workspace

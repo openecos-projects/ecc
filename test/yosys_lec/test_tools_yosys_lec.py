@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 from chipcompiler.data import (
     PDK,
@@ -21,6 +22,18 @@ from chipcompiler.utility import json_write
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GCD_RTL = REPO_ROOT / "test" / "fixtures" / "gcd" / "gcd.v"
+
+
+def _lec_step(*args: Any, **kwargs: Any) -> Any:
+    return YosysLecStep(*args, **kwargs)
+
+
+def _yosys_step(*args: Any, **kwargs: Any) -> Any:
+    return YosysStep(*args, **kwargs)
+
+
+def _engine_flow(workspace: Any = None) -> Any:
+    return EngineFlow(workspace=workspace)
 
 
 def _workspace(tmp_path: Path, *, use_undef: bool = True) -> Workspace:
@@ -56,7 +69,7 @@ def test_yosys_build_step_exposes_rtl_derived_golden_path(tmp_path):
     from chipcompiler.tools.yosys import builder
 
     workspace = _workspace(tmp_path)
-    step = builder.build_step(
+    step: Any = builder.build_step(
         workspace=workspace,
         step_name=StepEnum.SYNTHESIS.value,
         input_def=None,
@@ -74,8 +87,8 @@ def test_yosys_global_var_tcl_includes_golden_netlist_path(tmp_path):
 
     workspace = _workspace(tmp_path)
     workspace.design.input_filelist = None
-    workspace.config = {"db": str(tmp_path / "missing_db.json")}
-    step = builder.build_step(
+    workspace.config = {"db": tmp_path / "missing_db.json"}
+    step: Any = builder.build_step(
         workspace=workspace,
         step_name=StepEnum.SYNTHESIS.value,
         input_def=None,
@@ -95,7 +108,7 @@ def test_lec_builder_derives_golden_from_gate_netlist_and_creates_workspace(tmp_
     workspace = _workspace(tmp_path)
     gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
 
-    step = builder.build_step(
+    step: Any = builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.LEC.value,
         input_def=None,
@@ -119,7 +132,7 @@ def test_lec_builder_accepts_explicit_golden_netlist(tmp_path):
     golden = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
     gate = tmp_path / "route_ecc" / "output" / "gcd_route.v"
 
-    step = builder.build_step(
+    step: Any = builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.POST_ROUTE_LEC.value,
         input_def=None,
@@ -139,7 +152,7 @@ def test_lec_build_step_config_writes_models_and_repo_local_script(tmp_path):
     gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
     _write_gcd_netlist_pair(gate)
 
-    step = builder.build_step(
+    step: Any = builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.LEC.value,
         input_def=None,
@@ -168,7 +181,7 @@ def test_lec_runner_marks_success_from_yosys_status(tmp_path, monkeypatch):
     gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
     _write_gcd_netlist_pair(gate)
 
-    step = builder.build_step(
+    step: Any = builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.LEC.value,
         input_def=None,
@@ -209,7 +222,7 @@ def test_lec_runner_writes_incomplete_result_on_failure(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
     _write_gcd_netlist_pair(gate)
-    step = builder.build_step(
+    step: Any = builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.LEC.value,
         input_def=None,
@@ -235,7 +248,7 @@ def test_lec_runner_writes_incomplete_result_on_failure(tmp_path, monkeypatch):
     assert runner.run_step(workspace=workspace, step=step) is False
     payload = json.loads(step.output.json.read_text())
     assert payload["status"] == "incomplete"
-    assert EngineFlow(workspace=None).check_step_result(step) is False
+    assert _engine_flow(workspace=None).check_step_result(step) is False
 
 
 def test_engine_flow_accepts_lec_result_json(tmp_path):
@@ -245,8 +258,8 @@ def test_engine_flow_accepts_lec_result_json(tmp_path):
     gate = tmp_path / "gate.v"
     golden.write_text("module golden; endmodule\n")
     gate.write_text("module gate; endmodule\n")
-    golden_digest = file_digest(golden)
-    gate_digest = file_digest(gate)
+    golden_digest: Any = file_digest(golden)
+    gate_digest: Any = file_digest(gate)
     result_json = tmp_path / "lec_result.json"
     result_json.write_text(
         json.dumps(
@@ -261,17 +274,17 @@ def test_engine_flow_accepts_lec_result_json(tmp_path):
             }
         )
     )
-    step = YosysLecStep(
+    step = _lec_step(
         name=SkippableStepEnum.LEC.value,
         input=SimpleNamespace(golden_verilog=golden, gate_verilog=gate),
         output=OutputPaths(json=result_json),
     )
 
-    assert EngineFlow(workspace=None).check_step_result(step) is True
+    assert _engine_flow(workspace=None).check_step_result(step) is True
     incomplete = tmp_path / "lec_incomplete.json"
     incomplete.write_text('{"status": "incomplete"}\n')
-    failed = YosysLecStep(name=SkippableStepEnum.LEC.value, output=OutputPaths(json=incomplete))
-    assert EngineFlow(workspace=None).check_step_result(failed) is False
+    failed = _lec_step(name=SkippableStepEnum.LEC.value, output=OutputPaths(json=incomplete))
+    assert _engine_flow(workspace=None).check_step_result(failed) is False
 
 
 def test_engine_flow_rejects_stale_lec_result_when_netlist_changes(tmp_path):
@@ -281,8 +294,8 @@ def test_engine_flow_rejects_stale_lec_result_when_netlist_changes(tmp_path):
     gate = tmp_path / "gate.v"
     golden.write_text("module golden; endmodule\n")
     gate.write_text("module gate; endmodule\n")
-    golden_digest = file_digest(golden)
-    gate_digest = file_digest(gate)
+    golden_digest: Any = file_digest(golden)
+    gate_digest: Any = file_digest(gate)
     result_json = tmp_path / "lec_result.json"
     result_json.write_text(
         json.dumps(
@@ -297,15 +310,15 @@ def test_engine_flow_rejects_stale_lec_result_when_netlist_changes(tmp_path):
             }
         )
     )
-    step = YosysLecStep(
+    step = _lec_step(
         name=SkippableStepEnum.LEC.value,
         input=SimpleNamespace(golden_verilog=golden, gate_verilog=gate),
         output=OutputPaths(json=result_json),
     )
-    assert EngineFlow(workspace=None).check_step_result(step) is True
+    assert _engine_flow(workspace=None).check_step_result(step) is True
 
     gate.write_text("module gate; /* changed */ endmodule\n")
-    assert EngineFlow(workspace=None).check_step_result(step) is False
+    assert _engine_flow(workspace=None).check_step_result(step) is False
 
 
 def test_engine_flow_rejects_legacy_proven_json_without_digests(tmp_path):
@@ -323,12 +336,12 @@ def test_engine_flow_rejects_legacy_proven_json_without_digests(tmp_path):
             }
         )
     )
-    step = YosysLecStep(
+    step = _lec_step(
         name=SkippableStepEnum.LEC.value,
         input=SimpleNamespace(golden_verilog=golden, gate_verilog=gate),
         output=OutputPaths(json=result_json),
     )
-    assert EngineFlow(workspace=None).check_step_result(step) is False
+    assert _engine_flow(workspace=None).check_step_result(step) is False
 
 
 def test_engine_flow_rejects_legacy_proven_json_without_sizes(tmp_path):
@@ -338,8 +351,8 @@ def test_engine_flow_rejects_legacy_proven_json_without_sizes(tmp_path):
     gate = tmp_path / "gate.v"
     golden.write_text("module golden; endmodule\n")
     gate.write_text("module gate; endmodule\n")
-    golden_digest = file_digest(golden)
-    gate_digest = file_digest(gate)
+    golden_digest: Any = file_digest(golden)
+    gate_digest: Any = file_digest(gate)
     result_json = tmp_path / "lec_result.json"
     result_json.write_text(
         json.dumps(
@@ -352,12 +365,12 @@ def test_engine_flow_rejects_legacy_proven_json_without_sizes(tmp_path):
             }
         )
     )
-    step = YosysLecStep(
+    step = _lec_step(
         name=SkippableStepEnum.LEC.value,
         input=SimpleNamespace(golden_verilog=golden, gate_verilog=gate),
         output=OutputPaths(json=result_json),
     )
-    assert EngineFlow(workspace=None).check_step_result(step) is False
+    assert _engine_flow(workspace=None).check_step_result(step) is False
 
 
 def test_engine_flow_rejects_bool_size_fields(tmp_path):
@@ -367,8 +380,8 @@ def test_engine_flow_rejects_bool_size_fields(tmp_path):
     gate = tmp_path / "gate.v"
     golden.write_text("m")
     gate.write_text("module gate; endmodule\n")
-    golden_digest = file_digest(golden)
-    gate_digest = file_digest(gate)
+    golden_digest: Any = file_digest(golden)
+    gate_digest: Any = file_digest(gate)
     result_json = tmp_path / "lec_result.json"
     result_json.write_text(
         json.dumps(
@@ -383,12 +396,12 @@ def test_engine_flow_rejects_bool_size_fields(tmp_path):
             }
         )
     )
-    step = YosysLecStep(
+    step = _lec_step(
         name=SkippableStepEnum.LEC.value,
         input=SimpleNamespace(golden_verilog=golden, gate_verilog=gate),
         output=OutputPaths(json=result_json),
     )
-    assert EngineFlow(workspace=None).check_step_result(step) is False
+    assert _engine_flow(workspace=None).check_step_result(step) is False
 
 
 def test_lec_runner_writes_incomplete_result_when_yosys_raises(tmp_path, monkeypatch):
@@ -397,7 +410,7 @@ def test_lec_runner_writes_incomplete_result_when_yosys_raises(tmp_path, monkeyp
     workspace = _workspace(tmp_path)
     gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
     _write_gcd_netlist_pair(gate)
-    step = builder.build_step(
+    step: Any = builder.build_step(
         workspace=workspace,
         step_name=SkippableStepEnum.LEC.value,
         input_def=None,
@@ -470,6 +483,7 @@ def test_engine_flow_wires_synthesis_lec_without_changing_physical_chain(tmp_pat
             {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": StateEnum.Unstart.value},
         ]
     }
+    assert workspace.flow.path is not None
     json_write(workspace.flow.path, workspace.flow.data)
 
     def fake_create_step(
@@ -482,7 +496,7 @@ def test_engine_flow_wires_synthesis_lec_without_changing_physical_chain(tmp_pat
         **kwargs,
     ):
         if eda == "yosys":
-            return YosysStep(
+            return _yosys_step(
                 name=step,
                 tool=eda,
                 input=SimpleNamespace(def_=input_def, verilog=input_verilog, db=input_db),
@@ -495,7 +509,7 @@ def test_engine_flow_wires_synthesis_lec_without_changing_physical_chain(tmp_pat
                 ),
             )
         if eda == "yosys_lec":
-            return YosysLecStep(
+            return _lec_step(
                 name=step,
                 tool=eda,
                 input=SimpleNamespace(
@@ -546,6 +560,7 @@ def test_engine_flow_wires_post_route_lec_against_synthesis_gate(tmp_path, monke
             {"name": StepEnum.RCX.value, "tool": "ecc", "state": StateEnum.Unstart.value},
         ]
     }
+    assert workspace.flow.path is not None
     json_write(workspace.flow.path, workspace.flow.data)
 
     def fake_create_step(
@@ -558,7 +573,7 @@ def test_engine_flow_wires_post_route_lec_against_synthesis_gate(tmp_path, monke
         **kwargs,
     ):
         if eda == "yosys_lec":
-            return YosysLecStep(
+            return _lec_step(
                 name=step,
                 tool=eda,
                 input=SimpleNamespace(
@@ -569,7 +584,7 @@ def test_engine_flow_wires_post_route_lec_against_synthesis_gate(tmp_path, monke
                 output=OutputPaths(json=tmp_path / step / "output" / f"gcd_{step}_result.json"),
             )
         if eda == "yosys":
-            return YosysStep(
+            return _yosys_step(
                 name=step,
                 tool=eda,
                 input=SimpleNamespace(def_=input_def, verilog=input_verilog, db=input_db),
@@ -622,6 +637,7 @@ def test_engine_flow_wires_post_route_lec_to_origin_without_synthesis(tmp_path, 
             },
         ]
     }
+    assert workspace.flow.path is not None
     json_write(workspace.flow.path, workspace.flow.data)
 
     def fake_create_step(
@@ -634,7 +650,7 @@ def test_engine_flow_wires_post_route_lec_to_origin_without_synthesis(tmp_path, 
         **kwargs,
     ):
         if eda == "yosys_lec":
-            return YosysLecStep(
+            return _lec_step(
                 name=step,
                 tool=eda,
                 input=SimpleNamespace(
