@@ -452,8 +452,8 @@ def save_data(
 
         margin = workspace.parameters.data.get("core", {}).get("margin", [0, 0])
 
-        aspect_ratio = die_bounding_width / die_bounding_height if die_bounding_height > 0 else 1
-
+        # Preserve the requested aspect ratio: site-aligned geometry is an
+        # output, not a new input for the next floorplan stage.
         update_param = {
             "core": {
                 "size": [core_bounding_width, core_bounding_height],
@@ -462,7 +462,6 @@ def save_data(
                     f"({margin[0]} , {margin[1]}) "
                     f"({core_bounding_width + margin[0]} , {core_bounding_height + margin[1]})"
                 ),
-                "aspect_ratio": aspect_ratio,
             },
         }
         # In die_util mode the realized die dimensions are outputs of the
