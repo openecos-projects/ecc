@@ -228,9 +228,9 @@ set_max_capacitance 0.15 [current_design]
 # -------------------------------------------------
 # Timing derate (OCV)
 # -------------------------------------------------
-set_timing_derate -early 0.95 -clock -delay_corner [all_delay_corners]
-set_timing_derate -late  1.10 -clock -delay_corner [all_delay_corners]
-set_timing_derate -late  1.10 -data  -delay_corner [all_delay_corners]
+# set_timing_derate -early 0.95 -clock -delay_corner [all_delay_corners]
+# set_timing_derate -late  1.10 -clock -delay_corner [all_delay_corners]
+# set_timing_derate -late  1.10 -data  -delay_corner [all_delay_corners]
 """
 
 
@@ -306,9 +306,9 @@ set_max_capacitance 0.15 [current_design]
 # -------------------------------------------------
 # Timing derate (OCV)
 # -------------------------------------------------
-set_timing_derate -early 0.95 -clock -delay_corner [all_delay_corners]
-set_timing_derate -late  1.10 -clock -delay_corner [all_delay_corners]
-set_timing_derate -late  1.10 -data  -delay_corner [all_delay_corners]
+# set_timing_derate -early 0.95 -clock -delay_corner [all_delay_corners]
+# set_timing_derate -late  1.10 -clock -delay_corner [all_delay_corners]
+# set_timing_derate -late  1.10 -data  -delay_corner [all_delay_corners]
 """
 
 
