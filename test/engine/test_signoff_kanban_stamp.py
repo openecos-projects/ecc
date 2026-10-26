@@ -7,12 +7,7 @@ from pathlib import Path
 
 
 def _load_kanban_module():
-    path = (
-        Path(__file__).resolve().parents[2]
-        / "nix"
-        / "scripts"
-        / "generate-signoff-kanban.py"
-    )
+    path = Path(__file__).resolve().parents[2] / "nix" / "scripts" / "generate-signoff-kanban.py"
     spec = importlib.util.spec_from_file_location("generate_signoff_kanban", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

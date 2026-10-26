@@ -107,9 +107,7 @@ def test_classify_signoff_readiness(checklist, expected):
 
 
 def test_unavailable_checklist_is_miss():
-    assert (
-        classify_signoff_readiness(None, checklist_unavailable=True) == "MISS"
-    )
+    assert classify_signoff_readiness(None, checklist_unavailable=True) == "MISS"
 
 
 def test_assessment_exposes_readiness_field(tmp_path: Path):

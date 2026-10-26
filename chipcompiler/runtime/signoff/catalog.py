@@ -260,12 +260,8 @@ SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
         "CTS max insertion latency",
     ),
     _performance("performance.cts.buffer_count", StepEnum.CTS.value, "CTS buffer count"),
-    _performance(
-        "performance.cts.clock_wirelength", StepEnum.CTS.value, "CTS clock wirelength"
-    ),
-    _performance(
-        "performance.cts.tree_max_level", StepEnum.CTS.value, "CTS clock tree max level"
-    ),
+    _performance("performance.cts.clock_wirelength", StepEnum.CTS.value, "CTS clock wirelength"),
+    _performance("performance.cts.tree_max_level", StepEnum.CTS.value, "CTS clock tree max level"),
     _performance("performance.place.hpwl", StepEnum.PLACEMENT.value, "Place HPWL"),
     _performance(
         "performance.place.congestion_overflow",
@@ -284,9 +280,7 @@ SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
     _performance("performance.host.throughput", "host", "速度"),
     _performance("performance.host.peak_memory", "host", "内存峰值"),
     _performance("performance.host.avg_memory", "host", "内存平均"),
-    _performance(
-        "performance.host.compile_peak_memory", "host", "编译内存峰值"
-    ),
+    _performance("performance.host.compile_peak_memory", "host", "编译内存峰值"),
 )
 
 CATALOG_BY_ID: dict[str, SignoffItemSpec] = {item.id: item for item in SIGNOFF_ITEM_CATALOG}
