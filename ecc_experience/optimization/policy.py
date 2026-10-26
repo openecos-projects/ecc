@@ -418,6 +418,27 @@ def configuration_differences(
     return changed
 
 
+def reviewed_configuration_differences(
+    baseline: dict,
+    observed: dict,
+    parameters: dict,
+    *,
+    require_effects: bool = True,
+) -> set[str]:
+    """Compare an observed config with a reviewed parameter request.
+
+    ``param apply`` records the explicit overrides, while derived controls are
+    materialized only when the flow resolves its effective config at run time.
+    Pre-run checks may therefore accept the explicitly requested state. Final
+    checks require the materialized effects as well.
+    """
+    requested = {**baseline, **parameters}
+    effective = {**requested, **reviewed_parameter_effects(parameters)}
+    if not require_effects and not configuration_differences(requested, observed):
+        return set()
+    return configuration_differences(effective, observed)
+
+
 def _portable_workspace_paths(value, root: str | Path | None):
     """Replace absolute paths rooted at a workspace with a stable placeholder."""
     if root is None:

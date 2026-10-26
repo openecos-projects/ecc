@@ -71,7 +71,12 @@ def _trial(
     save()
     for command in commands:
         if command[0] == "run":
-            check_trial_configuration(workspace, baseline, candidate["parameters"])
+            check_trial_configuration(
+                workspace,
+                baseline,
+                candidate["parameters"],
+                require_effects=False,
+            )
         command_record = {"arguments": command, "status": "running"}
         record["commands"].append(command_record)
         save()

@@ -78,7 +78,7 @@ def fake_execution(monkeypatch):
     monkeypatch.setattr(execute.CliRunner, "invoke", invoke)
     monkeypatch.setattr(execute, "inspect_workspace", inspect)
     monkeypatch.setattr(execute, "validate_trial", validate)
-    monkeypatch.setattr(execute, "check_trial_configuration", lambda *_args: None)
+    monkeypatch.setattr(execute, "check_trial_configuration", lambda *_args, **_kwargs: None)
     return commands
 
 

@@ -141,7 +141,12 @@ def execute_trial(
                 baseline = check_source(plan)
         for index, arguments in enumerate(commands):
             if arguments[0] == "run":
-                check_trial_configuration(workspace, baseline, candidate["parameters"])
+                check_trial_configuration(
+                    workspace,
+                    baseline,
+                    candidate["parameters"],
+                    require_effects=False,
+                )
             expected = [*arguments, "--project", str(root), "--plain"]
             if index < len(record["commands"]):
                 command = record["commands"][index]

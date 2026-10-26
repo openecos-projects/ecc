@@ -5,6 +5,7 @@ from chipcompiler.data.workspace_parameters import workspace_param_step
 from ecc_experience.dse.plan import validate_parameter_boundary
 from ecc_experience.models import ExperienceError
 from ecc_experience.optimization.policy import (
+    reviewed_configuration_differences,
     reviewed_parameter_effects,
     validate_reviewed_space_combinations,
     validate_reviewed_values,
@@ -209,6 +210,49 @@ def test_timing_carrier_expands_only_its_reviewed_derived_controls():
             },
             {},
         )
+
+
+def test_trial_configuration_accepts_only_explicit_or_materialized_carrier_effects():
+    baseline = {
+        "floorplan.core_util": 0.4,
+        "place.timing_placement_carrier": "direct_loss",
+        "place.diff_timing_driven_placement": 1,
+        "place.differentiable_timing_obj": 1,
+        "place.enable_net_weighting": 0,
+        "place.net_weighting_scheme": "lilith",
+        "place.pin2pin_net_weighting": 0,
+    }
+    parameters = {
+        "floorplan.core_util": 0.44,
+        "place.timing_placement_carrier": "pin2pin",
+        "place.timing_aggregation_mode": "hard",
+    }
+    explicitly_applied = {**baseline, **parameters}
+    materialized = {**explicitly_applied, **reviewed_parameter_effects(parameters)}
+
+    assert not reviewed_configuration_differences(
+        baseline, explicitly_applied, parameters, require_effects=False
+    )
+    assert not reviewed_configuration_differences(
+        baseline, materialized, parameters, require_effects=False
+    )
+    assert reviewed_configuration_differences(baseline, explicitly_applied, parameters) == {
+        "place.diff_timing_driven_placement",
+        "place.differentiable_timing_obj",
+        "place.enable_net_weighting",
+        "place.net_weighting_scheme",
+        "place.pin2pin_net_weighting",
+    }
+    assert not reviewed_configuration_differences(baseline, materialized, parameters)
+
+    partial = {**explicitly_applied, "place.enable_net_weighting": 1}
+    assert "place.diff_timing_driven_placement" in reviewed_configuration_differences(
+        baseline, partial, parameters, require_effects=False
+    )
+    unrelated = {**materialized, "floorplan.core_util": 0.41}
+    assert reviewed_configuration_differences(
+        baseline, unrelated, parameters, require_effects=False
+    ) == {"floorplan.core_util"}
 
 
 def test_noop_placement_padding_is_not_a_supported_dse_axis():
