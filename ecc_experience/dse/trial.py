@@ -24,6 +24,7 @@ from ecc_experience.dse.plan import (
 )
 from ecc_experience.models import ExperienceError, WorkspaceObservation
 from ecc_experience.optimization.evidence import check_trial_configuration, inspect_workspace
+from ecc_experience.optimization.policy import reviewed_parameter_effects
 from ecc_experience.optimization.process import CliRunner
 
 
@@ -58,6 +59,13 @@ def check_source(plan: dict) -> WorkspaceObservation:
     ):
         raise ExperienceError("DSE declared inputs changed", code="experience_source_changed")
     return observation
+
+
+def requested_observation(baseline: WorkspaceObservation, parameters: dict) -> WorkspaceObservation:
+    """Build the effective configuration authorized for a DSE candidate."""
+    facts = deepcopy(baseline.facts)
+    facts["workspaceSpec"]["parameters"].update(reviewed_parameter_effects(parameters))
+    return replace(baseline, facts=facts)
 
 
 def execute_trial(
@@ -209,9 +217,7 @@ def execute_trial(
         else:
             with source_lock:
                 check_source(plan)
-        facts = deepcopy(baseline.facts)
-        facts["workspaceSpec"]["parameters"].update(candidate["parameters"])
-        requested = replace(baseline, facts=facts)
+        requested = requested_observation(baseline, candidate["parameters"])
         context = {
             "schema": "ecc-experience-execution-context/1",
             "attempt_id": run_id,

@@ -8,6 +8,7 @@ import pytest
 from typer.testing import CliRunner
 
 from chipcompiler.cli.app import app
+from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
 from ecc_experience.api import dse_plan, dse_run
 from ecc_experience.dse import execute, plan, trial
 from ecc_experience.files import digest
@@ -234,6 +235,27 @@ def test_dse_keeps_stage_acceptance_separate_and_reserves_full_and_fresh(
         for item in workspace.rglob("*")
         if item.is_file()
     } == before
+
+
+def test_dse_requested_observation_includes_reviewed_carrier_effects(dse_project):
+    workspace, _store, _path = dse_project
+    baseline = read_workspace_observation(workspace)
+    requested = trial.requested_observation(
+        baseline,
+        {
+            "place.timing_placement_carrier": "pin2pin",
+            "place.timing_aggregation_mode": "hard",
+        },
+    )
+
+    parameters = requested.facts["workspaceSpec"]["parameters"]
+    assert parameters["place.timing_placement_carrier"] == "pin2pin"
+    assert parameters["place.diff_timing_driven_placement"] == 0
+    assert parameters["place.differentiable_timing_obj"] == 0
+    assert parameters["place.enable_net_weighting"] == 1
+    assert parameters["place.pin2pin_net_weighting"] == 1
+    assert parameters["place.net_weighting_scheme"] == "pin2pin"
+    assert "place.timing_placement_carrier" not in baseline.facts["workspaceSpec"]["parameters"]
 
 
 @pytest.fixture
