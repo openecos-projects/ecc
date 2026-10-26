@@ -122,7 +122,7 @@ def _quality_optional(gate_id: str, step: str, title: str) -> SignoffItemSpec:
 
 
 def _performance(item_id: str, step: str, title: str) -> SignoffItemSpec:
-    """Numeric PPA / iSTA slots. Optional until QoR gates bind predicates."""
+    """Numeric PPA / iSTA catalog slots (unbound placeholders; not checklist-wired)."""
     return SignoffItemSpec(
         id=item_id,
         step=step,
@@ -243,7 +243,7 @@ SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
         title="Configuration sta",
         fail_readiness="MISS",
     ),
-    # Performance — STA/power + SDC/CTS/place/route/synthesis + host.
+    # Performance placeholders (not checklist-wired). Numbers: qor_perf_support.
     # Reading on the board = "<value> <unit>".
     _performance("performance.sta.setup_wns", StepEnum.STA.value, "STA setup WNS"),
     _performance("performance.sta.setup_tns", StepEnum.STA.value, "STA setup TNS"),

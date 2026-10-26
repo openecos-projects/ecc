@@ -40,16 +40,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifact
-          # Regenerate catalog topology board
           PYTHONPATH=. python .github/scripts/generate-signoff-kanban.py \
             --out artifact/signoff-kanban.md
-          # Ship checked-in live samples too (fixture PASS/WARN swimlanes)
-          for f in .github/signoff-board/signoff-kanban.live-*.md; do
-            if [[ -f "$f" ]]; then
-              cp "$f" artifact/
-            fi
-          done
-          # Also keep README for consumers
           cp .github/signoff-board/README.md artifact/ 2>/dev/null || true
           ls -la artifact
 

@@ -197,10 +197,12 @@ task_plan.md
 # Lit suite exec root (ephemeral)
 ci-artifacts/
 
-<<<<<<< HEAD
 # Build identity stamped by CI before packaging (ephemeral)
 chipcompiler/_build_info.py
-=======
+
 # Lit suite execution trees
 test/lit/**/Output/
->>>>>>> bde0b6d1 (chore: ignore lit project Output trees)
+
+# Signoff kanban markdown is generated (do not check in cases)
+.github/signoff-board/signoff-kanban.md
+.github/signoff-board/signoff-kanban.live-*.md

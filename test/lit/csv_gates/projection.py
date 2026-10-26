@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+from chipcompiler.engine.signoff_readiness import classify_signoff_readiness
 from csv_gates.compare import evaluate_checklist_gate, evaluate_metric_gate
 from csv_gates.spec import CsvExportSpec, load_csv_spec
 
@@ -74,7 +75,9 @@ def projection_lines(
         )
     if not seen:
         lines.append("checklist: empty")
-    lines.append(f"readiness: {_readiness_from_checklist_rows(list(checklist_rows.values()))}")
+    lines.append(
+        f"readiness: {classify_signoff_readiness(_checklist_payload_from_csv_rows(list(checklist_rows.values())))}"
+    )
     lines.append("section: gates")
     if spec and spec.metrics:
         for item in spec.metrics:
@@ -100,30 +103,42 @@ def _truthy(value: str | None) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes"}
 
 
-def _readiness_from_checklist_rows(rows: list[dict]) -> str:
-    """Map checklist CSV rows to milestone readiness (fixture-friendly, no PDK)."""
-    if not rows:
-        return "PASS"
-    saw_failed = False
-    saw_unavailable = False
-    saw_attention = False
+def _checklist_payload_from_csv_rows(rows: list[dict]) -> dict:
+    """Shape CSV checklist rows for ``classify_signoff_readiness`` (no second classifier)."""
+    items: list[dict] = []
     for row in rows:
+        item_id = str(row.get("id") or "").strip()
+        if not item_id:
+            continue
         state = str(row.get("state") or "").strip().lower()
-        # CSV may use fail / failed
         if state == "fail":
             state = "failed"
+        elif state == "passed":
+            state = "pass"
         present = str(row.get("present") or "true").strip().lower()
-        blocked = _truthy(row.get("blocked"))
-        if present == "false" or state in {"", "unavailable", "missing"}:
-            saw_unavailable = True
-        elif blocked and state == "failed":
-            saw_failed = True
-        elif state == "failed" or state not in {"pass", "passed"}:
-            saw_attention = True
-    if saw_failed:
-        return "ERROR"
-    if saw_unavailable:
-        return "MISS"
-    if saw_attention:
-        return "WARN"
-    return "PASS"
+        if present == "false" and state in {"", "pass"}:
+            state = "unavailable"
+        if not state:
+            state = "unavailable"
+        category = "quality" if item_id.startswith("quality.") else "artifact"
+        owner = "qor" if category == "quality" else "checklist"
+        items.append(
+            {
+                "id": item_id,
+                "state": state,
+                "blocked": _truthy(row.get("blocked")),
+                "category": category,
+                "owner": owner,
+            }
+        )
+    status = "ready"
+    if any(item["blocked"] and item["state"] in {"failed", "unavailable"} for item in items):
+        status = "blocked"
+    elif any(item["state"] not in {"pass"} for item in items):
+        status = "attention"
+    return {
+        "schema_version": 3,
+        "kind": "signoff_checklist",
+        "status": status,
+        "checklist": items,
+    }
