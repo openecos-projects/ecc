@@ -70,6 +70,33 @@ def test_pyinstaller_payload_filter_excludes_oversized_paths():
     assert filter_collected_payloads(payloads) == [payloads[-1]]
 
 
+def test_pyinstaller_payload_filter_excludes_stale_xplace_build_artifacts():
+    payloads = [
+        (
+            "/repo/chipcompiler/thirdparty/ecc-dreamplace/thirdparty/xplace/"
+            "build_cpu_pr_py311_20261026_r4/thirdparty/flute/libflute.so",
+            "chipcompiler/thirdparty/ecc-dreamplace/thirdparty/xplace/"
+            "build_cpu_pr_py311_20261026_r4/thirdparty/flute",
+            "BINARY",
+        ),
+        (
+            "/repo/chipcompiler/thirdparty/ecc-dreamplace/thirdparty/xplace/"
+            "cpp_to_py/cpybin.orphan-py313/libxplace_common.so",
+            "chipcompiler/thirdparty/ecc-dreamplace/thirdparty/xplace/"
+            "cpp_to_py/cpybin.orphan-py313",
+            "BINARY",
+        ),
+        (
+            "/repo/chipcompiler/thirdparty/ecc-dreamplace/thirdparty/xplace/"
+            "cpp_to_py/cpybin/gpugr.cpython-311-x86_64-linux-gnu.so",
+            "chipcompiler/thirdparty/ecc-dreamplace/thirdparty/xplace/cpp_to_py/cpybin",
+            "BINARY",
+        ),
+    ]
+
+    assert filter_collected_payloads(payloads) == [payloads[-1]]
+
+
 def test_pyinstaller_payload_filter_keeps_torch_runtime_binaries():
     payloads = [
         (

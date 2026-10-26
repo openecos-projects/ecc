@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 EXCLUDED_PAYLOAD_PREFIXES = (
@@ -6,6 +7,11 @@ EXCLUDED_PAYLOAD_PREFIXES = (
     "chipcompiler/thirdparty/ecc-dreamplace/test",
     "chipcompiler/thirdparty/ecc-dreamplace/docs",
     "chipcompiler/thirdparty/ecc-dreamplace/build",
+    "chipcompiler/thirdparty/ecc-dreamplace/xplace-build",
+    "chipcompiler/thirdparty/ecc-dreamplace/xplace_gpugr-prefix",
+    "chipcompiler/thirdparty/ecc-dreamplace/thirdparty/xplace/build",
+    "chipcompiler/thirdparty/ecc-dreamplace/thirdparty/xplace/build_cpu_pr",
+    "chipcompiler/thirdparty/ecc-dreamplace/thirdparty/xplace/cpp_to_py/cpybin.orphan",
     "thirdparty/ecc-dreamplace/test",
     "thirdparty/ecc-dreamplace/docs",
     "thirdparty/ecc-dreamplace/build",
@@ -46,9 +52,7 @@ def collect_package_extension_binaries(search_locations, pattern, destination):
 
 def payload_path_matches(path, prefix):
     normalized = str(path).replace("\\", "/")
-    return (
-        normalized == prefix or normalized.startswith(f"{prefix}/") or f"/{prefix}/" in normalized
-    )
+    return re.search(rf"(?:^|/){re.escape(prefix)}(?:$|[/._-])", normalized) is not None
 
 
 def payload_is_excluded(item):
