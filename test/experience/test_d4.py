@@ -129,6 +129,19 @@ def test_d4_insufficient_sample_stays_unknown(tmp_path):
     assert "insufficient_independent_designs" in report["reasons"]
 
 
+def test_d4_equal_budget_ignores_per_design_trial_timeout(tmp_path):
+    spec = _write_spec(tmp_path)
+    plan_path = tmp_path / "design-0-0-grid-plan.json"
+    plan = json.loads(plan_path.read_text())
+    plan["limits"]["trial_timeout_seconds"] = 90
+    plan_path.write_text(json.dumps(plan))
+
+    report = d4_evaluate(spec, tmp_path / "report.json")
+
+    assert report["status"] == "pass"
+    assert report["summary"]["equal_budget"] is True
+
+
 def test_d4_rejects_same_input_warm_start_as_a_distinct_strategy(tmp_path):
     spec = _write_spec(tmp_path)
     plan_path = tmp_path / "design-0-0-adaptive_warm-plan.json"

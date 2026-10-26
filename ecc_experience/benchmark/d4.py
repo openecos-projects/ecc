@@ -250,20 +250,7 @@ def _load_run(base: Path, entry: dict) -> dict:
         "config_files": sorted(surface["files"]),
         "plan": plan,
         "result": result,
-        "budget_signature": digest(
-            {
-                "limits": plan.get("limits"),
-                "screening_trials": plan.get("screening_trials"),
-                "execution": plan.get("execution"),
-                "rungs": [
-                    {
-                        "through_step": rung.get("through_step"),
-                        "promote_count": rung.get("promote_count"),
-                    }
-                    for rung in plan.get("rungs", [])
-                ],
-            }
-        ),
+        "budget_signature": _budget_signature(plan),
         "scope_signature": digest(
             {
                 "input_content_fingerprint": plan.get("input_content_fingerprint"),
@@ -275,6 +262,32 @@ def _load_run(base: Path, entry: dict) -> dict:
         ),
         "strategy_matches_plan": _strategy_matches(entry["strategy"], plan, result),
     }
+
+
+def _budget_signature(plan: dict) -> str:
+    # A per-trial timeout is a hang guard, not allocated search budget. Larger
+    # designs may need a different safety limit while every strategy still gets
+    # the same trial count, wall-clock envelope, concurrency and rungs.
+    limits = plan.get("limits")
+    limits = (
+        {key: value for key, value in limits.items() if key != "trial_timeout_seconds"}
+        if isinstance(limits, dict)
+        else limits
+    )
+    return digest(
+        {
+            "limits": limits,
+            "screening_trials": plan.get("screening_trials"),
+            "execution": plan.get("execution"),
+            "rungs": [
+                {
+                    "through_step": rung.get("through_step"),
+                    "promote_count": rung.get("promote_count"),
+                }
+                for rung in plan.get("rungs", [])
+            ],
+        }
+    )
 
 
 def _strategy_matches(strategy: str, plan: dict, result: dict) -> bool:

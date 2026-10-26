@@ -1965,6 +1965,8 @@ D4 消费已完成的四组 plan/result，不负责补跑缺失实验。spec 至
 strategy、seed、order、host 信息以及 plan/result 路径；strategy 必须是
 grid/adaptive/adaptive_warm/model_assisted。报告强制等预算、同 input/process/runtime/目标、
 匹配 seed、平衡顺序和完整 full/fresh；建议门槛为 6 个 design、3 个 family、每组 2 个 seed。
+等预算由 `max_trials`、`max_seconds`、并发和 rung 定义；`trial_timeout_seconds` 是防止
+单个 trial 挂死的安全阀，可按设计规模不同，不计入等预算签名，但超时 run 仍失败。
 
 只有所有冻结 seed 都是跨设计 seed（`warm_start.status=cross_design`）且 release 使用显式
 family 隔离（`family_isolation=explicit_groups`）时，`adaptive_warm` 才是独立策略。
