@@ -2015,14 +2015,26 @@ JSON 物化不等于运行时消费或 QoR 效果。DSE 不会把该证据写成
   `place.l_shape_overflow_threshold`、`place.timing_aggregation_tau_ps`、
   `place.timing_grad_balance_target_ratio`、`place.timing_opt_max_windows`：经审核的
   DreamPlace 标量旋钮。
+- `place.overflow_reference_mode`（`initial`/`ordinary`）、
+  `place.timing_placement_carrier`（`direct_loss`/`pin2pin`/
+  `gradient_net_weight`）、`place.timing_aggregation_mode`（`hard`/`smooth`）：经
+  DreamPlace 参数与 flow 测试覆盖的枚举轴；`place.timing_topology_refresh_interval`
+  的 DSE 审核范围是 `[0, 100]`，`place.timing_topology_enable_overflow_threshold`
+  是 `[0, 1]`。它们都物化到 `dreamplace_ecc.json`，不得跳过参数与回执直接改文件。
+  `pin2pin` carrier 必须显式搭配 `place.timing_aggregation_mode=hard`，因为
+  DreamPlace critical-path 提取不支持 smooth 聚合；包含 `pin2pin` 的空间会被规划期
+  校验拒绝，除非 aggregation 轴被限定为 `hard`。
 - `timing_opt.hold_margin`、`timing_opt.hold_rc_mode`、
   `timing_opt.placement_wire_resistance_ohm_per_um`、
   `timing_opt.placement_wire_capacitance_pf_per_um`：Sizer `hold_stage` 配置，只能在
   `Timing optimization` 边界或其后的 rung 搜索，不能混入 `postFloorplan`/`place` 早期 rung。
 
 首批 pilot 空间为 `floorplan.core_util × place.target_density × place.target_overflow ×
-place.density_weight`，边界使用 `place`；每轴限制 3–5 个量化值，至少使用 2 个 design 和
-2 个 seed，并保留 2 个 full/fresh 验证预算。第二个 rung 可以增加一个放置分辨率或时序轴
+place.density_weight`，边界使用 `place`；需要区分放置策略时，可再加入已审核的
+`place.overflow_reference_mode`、`place.timing_placement_carrier`、
+`place.timing_aggregation_mode`、`place.timing_topology_refresh_interval` 或
+`place.timing_topology_enable_overflow_threshold`。每轴限制 3–5 个量化值，至少使用
+2 个 design 和 2 个 seed，并保留 2 个 full/fresh 验证预算。第二个 rung 可以增加一个放置分辨率或时序轴
 （例如 `place.num_bins_x × place.gamma`），前提是配置确实不同且目标仍可测。只有目标在所选
 边界可测、参数在此前已经生效时才允许进入 rung。Sizer `timing_opt.*` 轴只能在
 `Timing optimization` 或其后的 rung 评估。JSON 对象型字段（如

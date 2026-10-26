@@ -23,6 +23,11 @@ SUPPORTED_PARAMETERS = frozenset(
         "floorplan.aspect_ratio",
         "place.target_density",
         "place.target_overflow",
+        "place.overflow_reference_mode",
+        "place.timing_placement_carrier",
+        "place.timing_topology_refresh_interval",
+        "place.timing_topology_enable_overflow_threshold",
+        "place.timing_aggregation_mode",
         "place.cell_padding_x",
         "place.routability_opt",
         "place.density_weight",
@@ -78,6 +83,8 @@ REVIEWED_NUMERIC_RANGES = {
     "place.with_sta": (0.0, 1.0),
     "place.diff_timing_driven_placement": (0.0, 1.0),
     "place.timing_aggregation_tau_ps": (0.01, 1000.0),
+    "place.timing_topology_enable_overflow_threshold": (0.0, 1.0),
+    "place.timing_topology_refresh_interval": (0.0, 100.0),
     "place.timing_grad_balance_target_ratio": (0.0, 1.0),
     "place.timing_opt_enabled": (0.0, 1.0),
     "place.timing_opt_buffering_enabled": (0.0, 1.0),
@@ -86,6 +93,9 @@ REVIEWED_NUMERIC_RANGES = {
     "timing_opt.placement_wire_resistance_ohm_per_um": (0.0, 1000.0),
     "timing_opt.placement_wire_capacitance_pf_per_um": (0.0, 1.0),
 }
+
+_PIN2PIN_CARRIER = "place.timing_placement_carrier"
+_TIMING_AGGREGATION_MODE = "place.timing_aggregation_mode"
 
 
 class OptimizationLimits(BaseModel):
@@ -116,7 +126,9 @@ def invalid_plan(reason: str) -> ExperienceError:
     return ExperienceError(reason, code="experience_plan_invalid")
 
 
-def validate_reviewed_values(parameters: dict, baseline: dict) -> None:
+def validate_reviewed_values(
+    parameters: dict, baseline: dict, *, check_combinations: bool = True
+) -> None:
     weight = parameters.get("place.density_weight")
     if weight is not None and (
         isinstance(weight, bool)
@@ -136,6 +148,12 @@ def validate_reviewed_values(parameters: dict, baseline: dict) -> None:
             or not lower <= value <= upper
         ):
             raise invalid_plan(f"Reviewed parameter {key} is outside [{lower}, {upper}]")
+    if (
+        check_combinations
+        and parameters.get(_PIN2PIN_CARRIER) == "pin2pin"
+        and parameters.get(_TIMING_AGGREGATION_MODE) != "hard"
+    ):
+        raise invalid_plan("pin2pin timing placement requires explicit hard timing aggregation")
     if not {"route.bottom_layer", "route.top_layer"}.intersection(parameters):
         return
     specification = baseline.get("workspaceSpec", {})
@@ -153,6 +171,18 @@ def validate_reviewed_values(parameters: dict, baseline: dict) -> None:
         selected[key] = int(str(value).removeprefix("MET"))
     if selected["route.bottom_layer"] > selected["route.top_layer"]:
         raise invalid_plan("Bottom routing layer must not exceed the top layer")
+
+
+def validate_reviewed_space_combinations(space: dict[str, list]) -> None:
+    """Reject search spaces that necessarily contain an incompatible reviewed pair."""
+    carrier_values = space.get(_PIN2PIN_CARRIER)
+    if carrier_values is None or "pin2pin" not in carrier_values:
+        return
+    aggregation_values = space.get(_TIMING_AGGREGATION_MODE)
+    if aggregation_values is None or any(value != "hard" for value in aggregation_values):
+        raise invalid_plan(
+            "pin2pin timing placement requires an explicit hard-only timing aggregation axis"
+        )
 
 
 def parse_limits(value: object) -> OptimizationLimits:

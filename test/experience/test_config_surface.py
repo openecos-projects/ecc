@@ -109,6 +109,67 @@ def test_config_receipt_verifies_the_values_in_each_iteration_config(tmp_path):
     assert receipt["mismatches"] == []
 
 
+def test_config_receipt_covers_expanded_dreamplace_and_sizer_axes(tmp_path):
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "dreamplace_ecc.json").write_text(
+        json.dumps(
+            {
+                "overflow_reference_mode": "ordinary",
+                "timing_placement_carrier": "pin2pin",
+                "timing_topology_refresh_interval": 10,
+                "timing_topology_enable_overflow_threshold": 0.2,
+                "timing_aggregation_mode": "hard",
+            }
+        )
+    )
+    (config / "sizer_ecc.json").write_text(
+        json.dumps(
+            {
+                "hold_stage": {
+                    "hold_margin": 0.06,
+                    "rc_mode": "placement",
+                    "placement_wire_rc": {
+                        "resistance_ohm_per_um": 1.2,
+                        "capacitance_pf_per_um": 0.00009,
+                    },
+                }
+            }
+        )
+    )
+    parameters = {
+        "place.overflow_reference_mode": "ordinary",
+        "place.timing_placement_carrier": "pin2pin",
+        "place.timing_topology_refresh_interval": 10,
+        "place.timing_topology_enable_overflow_threshold": 0.2,
+        "place.timing_aggregation_mode": "hard",
+        "timing_opt.hold_margin": 0.06,
+        "timing_opt.hold_rc_mode": "placement",
+        "timing_opt.placement_wire_resistance_ohm_per_um": 1.2,
+        "timing_opt.placement_wire_capacitance_pf_per_um": 0.00009,
+    }
+
+    receipt = verify_applied_config(tmp_path, parameters)
+
+    assert receipt["status"] == "applied"
+    assert receipt["files"] == ["dreamplace_ecc.json", "sizer_ecc.json"]
+    assert len(receipt["checks"]) == 9
+    assert {item["json_path"][-1] for item in receipt["checks"]} == {
+        "overflow_reference_mode",
+        "timing_placement_carrier",
+        "timing_topology_refresh_interval",
+        "timing_topology_enable_overflow_threshold",
+        "timing_aggregation_mode",
+        "hold_margin",
+        "rc_mode",
+        "resistance_ohm_per_um",
+        "capacitance_pf_per_um",
+    }
+    evidence = parameter_evidence_from_config_receipt(receipt, parameters)
+    assert evidence is not None
+    assert {item["knob_id"] for item in evidence["applied_parameters"]} == set(parameters)
+
+
 def test_config_receipt_reports_a_value_that_did_not_land(tmp_path):
     config = tmp_path / "config"
     config.mkdir()

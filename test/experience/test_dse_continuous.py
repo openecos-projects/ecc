@@ -29,6 +29,57 @@ def test_range_axes_are_quantized_to_replayable_values():
     assert integer == [1, 10, 100]
 
 
+def test_expanded_dreamplace_axes_quantize_to_replayable_config_values():
+    space = expand_space(
+        {
+            "place.overflow_reference_mode": Axis(values=["ordinary"]),
+            "place.timing_placement_carrier": Axis(values=["direct_loss", "gradient_net_weight"]),
+            "place.timing_topology_refresh_interval": Axis(kind="range", min=0, max=20, step=5),
+            "place.timing_topology_enable_overflow_threshold": Axis(
+                kind="range", min=0.2, max=0.4, points=3
+            ),
+            "place.timing_aggregation_mode": Axis(values=["hard", "smooth"]),
+        }
+    )
+
+    assert {
+        key: value
+        for key, value in space.items()
+        if key != "place.timing_topology_enable_overflow_threshold"
+    } == {
+        "place.overflow_reference_mode": ["ordinary"],
+        "place.timing_placement_carrier": [
+            "direct_loss",
+            "gradient_net_weight",
+        ],
+        "place.timing_topology_refresh_interval": [0, 5, 10, 15, 20],
+        "place.timing_aggregation_mode": ["hard", "smooth"],
+    }
+    assert space["place.timing_topology_enable_overflow_threshold"] == pytest.approx(
+        [0.2, 0.3, 0.4]
+    )
+
+
+def test_pin2pin_space_requires_explicit_hard_aggregation():
+    valid = expand_space(
+        {
+            "place.timing_placement_carrier": Axis(values=["pin2pin"]),
+            "place.timing_aggregation_mode": Axis(values=["hard"]),
+        }
+    )
+    assert valid["place.timing_placement_carrier"] == ["pin2pin"]
+
+    with pytest.raises(ExperienceError, match="explicit hard-only"):
+        expand_space({"place.timing_placement_carrier": Axis(values=["pin2pin"])})
+    with pytest.raises(ExperienceError, match="explicit hard-only"):
+        expand_space(
+            {
+                "place.timing_placement_carrier": Axis(values=["pin2pin", "direct_loss"]),
+                "place.timing_aggregation_mode": Axis(values=["hard", "smooth"]),
+            }
+        )
+
+
 @pytest.mark.parametrize(
     "axis",
     [

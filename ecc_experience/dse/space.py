@@ -11,7 +11,10 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from chipcompiler.data.parameter_schema import lookup_schema, parse_cli_overrides
 from ecc_experience.dse.config_surface import validate_config_surface
 from ecc_experience.dse.plan import STAGE_PARAMETERS, invalid
-from ecc_experience.optimization.policy import validate_reviewed_values
+from ecc_experience.optimization.policy import (
+    validate_reviewed_space_combinations,
+    validate_reviewed_values,
+)
 
 
 class Axis(BaseModel):
@@ -30,7 +33,7 @@ def literal(value: object) -> str:
     return value if isinstance(value, str) else json.dumps(value, allow_nan=False)
 
 
-def candidate(parameters: dict, identity: str) -> dict:
+def candidate(parameters: dict, identity: str, *, check_combinations: bool = True) -> dict:
     try:
         sets = [f"{key}={literal(value)}" for key, value in sorted(parameters.items())]
     except (TypeError, ValueError) as exc:
@@ -38,7 +41,7 @@ def candidate(parameters: dict, identity: str) -> dict:
     parsed, errors = parse_cli_overrides(sets)
     if errors:
         raise invalid("; ".join(errors))
-    validate_reviewed_values(parsed, {})
+    validate_reviewed_values(parsed, {}, check_combinations=check_combinations)
     validate_config_surface(parsed)
     return {"candidate_id": identity, "parameters": parsed, "sets": sets}
 
@@ -49,10 +52,14 @@ def expand_space(space: dict[str, Axis]) -> dict[str, list]:
     result = {}
     for key, axis in sorted(space.items()):
         values = _axis_values(key, axis)
-        normalized = [candidate({key: value}, "validation")["parameters"][key] for value in values]
+        normalized = [
+            candidate({key: value}, "validation", check_combinations=False)["parameters"][key]
+            for value in values
+        ]
         if len({literal(value) for value in normalized}) != len(normalized):
             raise invalid("Axis values must be unique after ECC type normalization")
         result[key] = normalized
+    validate_reviewed_space_combinations(result)
     if math.prod(len(values) for values in result.values()) > 100000:
         raise invalid("Discrete search space exceeds 100000 configurations")
     return result

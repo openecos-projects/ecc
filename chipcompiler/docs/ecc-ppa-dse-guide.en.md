@@ -455,13 +455,25 @@ and the persisted flow determine execution.
 | `place.target_overflow` | float; 0–1 | Placement stopping threshold | place |
 | `place.routability_opt` | int; 0/1 | Congestion-driven placement | place |
 | `place.cell_padding_x` | int; database units (dbu) | Pin access/congestion tradeoff | place |
+| `place.overflow_reference_mode` | enum `initial`/`ordinary` | Overflow normalization mode | place |
+| `place.timing_placement_carrier` | enum `direct_loss`/`pin2pin`/`gradient_net_weight` | Timing-driven placement carrier | place |
+| `place.timing_topology_refresh_interval` | int; reviewed DSE range 0–100 | Timing-topology refresh cadence | place |
+| `place.timing_topology_enable_overflow_threshold` | float; 0–1 | Overflow gate for timing-topology updates | place |
+| `place.timing_aggregation_mode` | enum `hard`/`smooth` | AAT/RAT aggregation mode | place |
 | `place.random_seed`, `place.deterministic_flag` | Check schema types and conditions | Reproduction; seed validation when needed | place |
 | `cts.skew_bound` | Current schema: str; physical quantity: ns | CTS skew/area/power tradeoff | CTS |
 | `cts.max_fanout` | int; current range 1–200 | Clock-tree structure | CTS; may also affect generated SDC, so inspect invalidation |
 | `cts.routing_layer`, `cts.buffer_type` | JSON lists | Supported clock layers/buffer cells | CTS |
 | `timing_opt.hold_margin` | float; current default 0.04 ns; negatives rejected by tool | Sizer hold-only margin | Timing optimization |
+| `timing_opt.hold_rc_mode` | enum `global_routing`/`placement` | Sizer hold-pass parasitic model | Timing optimization |
+| `timing_opt.placement_wire_resistance_ohm_per_um`, `timing_opt.placement_wire_capacitance_pf_per_um` | float | Unit wire RC for placement mode | Timing optimization |
 | `route.bottom_layer`, `route.top_layer` | Process-layer strings | Routing capacity, RC, vias/wirelength | May affect placement routing proxies and Sizer; inspect invalidation |
 | `macro.placements` / `ecc macro` | Legal macro positions/orientations | Macro channels and critical wires | macroPlacement |
+
+`place.timing_placement_carrier=pin2pin` requires an explicit
+`place.timing_aggregation_mode=hard`; critical-path extraction does not support
+smooth aggregation. DSE rejects this incompatible combination when freezing a
+search space.
 
 floorplan.core_util, place.target_density, and final core_utilization are distinct.
 Density does not directly determine die area. A higher target_density is not itself

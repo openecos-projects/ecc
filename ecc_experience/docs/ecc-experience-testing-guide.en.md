@@ -2360,6 +2360,19 @@ readback is not misclassified as an unauthorized change.
   `place.l_shape_overflow_threshold`, `place.timing_aggregation_tau_ps`,
   `place.timing_grad_balance_target_ratio`, `place.timing_opt_max_windows`:
   reviewed scalar DreamPlace knobs.
+- `place.overflow_reference_mode` (`initial`/`ordinary`),
+  `place.timing_placement_carrier` (`direct_loss`/`pin2pin`/
+  `gradient_net_weight`) and `place.timing_aggregation_mode` (`hard`/`smooth`)
+  are enumerated axes covered by DreamPlace parameter and flow tests. The
+  reviewed DSE ranges are `[0, 100]` for
+  `place.timing_topology_refresh_interval` and `[0, 1]` for
+  `place.timing_topology_enable_overflow_threshold`. All of these materialize
+  in `dreamplace_ecc.json`; do not bypass parameters and receipts by editing
+  that file directly.
+  The `pin2pin` carrier requires an explicit
+  `place.timing_aggregation_mode=hard`, because DreamPlace critical-path
+  extraction does not support smooth aggregation. A frozen space containing
+  `pin2pin` is rejected unless its aggregation axis is hard-only.
 - `timing_opt.hold_margin`, `timing_opt.hold_rc_mode`,
   `timing_opt.placement_wire_resistance_ohm_per_um`,
   `timing_opt.placement_wire_capacitance_pf_per_um`: Sizer `hold_stage`
@@ -2368,7 +2381,11 @@ readback is not misclassified as an unauthorized change.
 
 The first pilot space is
 `floorplan.core_util × place.target_density × place.target_overflow ×
-place.density_weight` at a `place` boundary. Limit each axis to 3–5 quantized
+place.density_weight` at a `place` boundary. To distinguish placement policies,
+add reviewed axes such as `place.overflow_reference_mode`,
+`place.timing_placement_carrier`, `place.timing_aggregation_mode`,
+`place.timing_topology_refresh_interval` or
+`place.timing_topology_enable_overflow_threshold`. Limit each axis to 3–5 quantized
 values, use at least two designs and two seeds, and reserve two full/fresh
 validation trials. A second rung may add one placement-resolution or timing-axis
 knob (`place.num_bins_x × place.gamma`, for example) when it produces a distinct

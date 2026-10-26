@@ -30,6 +30,7 @@ SCHEMAS = (
         ("timing_placement_carrier",),
         "direct_loss",
         applies="placement",
+        choices=("direct_loss", "pin2pin", "gradient_net_weight"),
         description=(
             "coordinate timing method; explicit direct_loss or pin2pin selects "
             "mutually exclusive GP controls; "
@@ -42,6 +43,7 @@ SCHEMAS = (
         ("timing_topology_refresh_interval",),
         15,
         applies="placement",
+        range=(0, 100),
         description="GP steps between full timing topology refreshes",
     ),
     config_param(
@@ -50,6 +52,7 @@ SCHEMAS = (
         ("timing_topology_enable_overflow_threshold",),
         0.35,
         applies="placement",
+        range=(0.0, 1.0),
         description="density overflow below which timing topology updates activate",
     ),
     config_param(

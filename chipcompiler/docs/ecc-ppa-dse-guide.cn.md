@@ -388,13 +388,24 @@ workspace param 修改输出的 `from_step/invalidated_steps` 及持久化 flow 
 | `place.target_overflow` | float，0–1 | 布局收敛阈值 | place |
 | `place.routability_opt` | int，0/1 | 拥塞驱动布局 | place |
 | `place.cell_padding_x` | int，数据库单位 dbu | pin access/拥塞折中 | place |
+| `place.overflow_reference_mode` | 枚举 `initial`/`ordinary` | overflow 归一化口径 | place |
+| `place.timing_placement_carrier` | 枚举 `direct_loss`/`pin2pin`/`gradient_net_weight` | 时序驱动布局计算通道 | place |
+| `place.timing_topology_refresh_interval` | int，DSE 审核范围 0–100 | 时序拓扑刷新频率 | place |
+| `place.timing_topology_enable_overflow_threshold` | float，0–1 | 时序拓扑更新启用阈值 | place |
+| `place.timing_aggregation_mode` | 枚举 `hard`/`smooth` | AAT/RAT 聚合方式 | place |
 | `place.random_seed`、`place.deterministic_flag` | 需按 schema 查看类型与条件 | 复现控制，必要时 seed 复验 | place |
 | `cts.skew_bound` | 当前 schema 为 str，物理量 ns | CTS skew/面积/功耗折中 | CTS |
 | `cts.max_fanout` | int，当前范围 1–200 | 时钟树结构 | CTS；还可能影响自动 SDC，需要看 invalidation |
 | `cts.routing_layer`、`cts.buffer_type` | JSON 列表 | 工艺允许的时钟层与缓冲单元 | CTS |
 | `timing_opt.hold_margin` | float，当前默认 0.04 ns；工具拒绝负值 | Sizer hold-only 预留裕量 | Timing optimization |
+| `timing_opt.hold_rc_mode` | 枚举 `global_routing`/`placement` | Sizer hold pass 的寄生模型 | Timing optimization |
+| `timing_opt.placement_wire_resistance_ohm_per_um`、`timing_opt.placement_wire_capacitance_pf_per_um` | float | placement RC 模式下单位线 RC | Timing optimization |
 | `route.bottom_layer`、`route.top_layer` | 工艺层字符串 | 路由容量、RC、via/线长 | 可能影响布局路由代理和 Sizer；以 invalidation 为准 |
 | `macro.placements` / `ecc macro` | 合法宏位置/方向 | 宏通道和关键线长 | macroPlacement |
+
+`place.timing_placement_carrier=pin2pin` 必须同时显式设置
+`place.timing_aggregation_mode=hard`；critical-path 提取不支持 smooth 聚合。DSE 会在
+冻结搜索空间时拒绝该不兼容组合。
 
 floorplan.core_util、place.target_density 与最终 core_utilization 是三个不同概念。
 密度不直接决定 die 面积；提高 target_density 不能被直接记为面积减少。

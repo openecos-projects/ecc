@@ -101,6 +101,46 @@ def test_placement_bin_and_routability_knobs_are_reviewed():
         validate_reviewed_values({"place.pin_stretch_ratio": 0.5}, {})
 
 
+def test_timing_placement_search_axes_are_reviewed_and_bounded():
+    parameters, errors = parse_cli_overrides(
+        [
+            "place.overflow_reference_mode=ordinary",
+            "place.timing_placement_carrier=pin2pin",
+            "place.timing_topology_refresh_interval=10",
+            "place.timing_topology_enable_overflow_threshold=0.2",
+            "place.timing_aggregation_mode=hard",
+        ]
+    )
+
+    assert errors == []
+    assert parameters == {
+        "place.overflow_reference_mode": "ordinary",
+        "place.timing_placement_carrier": "pin2pin",
+        "place.timing_topology_refresh_interval": 10,
+        "place.timing_topology_enable_overflow_threshold": 0.2,
+        "place.timing_aggregation_mode": "hard",
+    }
+    validate_reviewed_values(parameters, {})
+    validate_parameter_boundary(list(parameters), ["postFloorplan", "place"])
+    with pytest.raises(ExperienceError, match="outside"):
+        validate_reviewed_values({"place.timing_topology_refresh_interval": 101}, {})
+    with pytest.raises(ExperienceError, match="outside"):
+        validate_reviewed_values({"place.timing_topology_enable_overflow_threshold": 1.1}, {})
+    with pytest.raises(ExperienceError, match="explicit hard timing aggregation"):
+        validate_reviewed_values({"place.timing_placement_carrier": "pin2pin"}, {})
+    with pytest.raises(ExperienceError, match="explicit hard timing aggregation"):
+        validate_reviewed_values(
+            {
+                "place.timing_placement_carrier": "pin2pin",
+                "place.timing_aggregation_mode": "smooth",
+            },
+            {},
+        )
+    parsed, errors = parse_cli_overrides(["place.timing_placement_carrier=unknown"])
+    assert parsed == {}
+    assert "not in allowed choices" in errors[0]
+
+
 def test_noop_placement_padding_is_not_a_supported_dse_axis():
     from ecc_experience.optimization.policy import SUPPORTED_PARAMETERS
 
