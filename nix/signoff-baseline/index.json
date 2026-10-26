@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "kind": "signoff_baseline_index",
+  "description": "Multi-version signoff snapshots kept in-repo (durable vs CI artifacts).",
+  "versions": [
+    {
+      "id": "v2026-09-synth",
+      "label": "synth catalog baseline",
+      "path": "versions/v2026-09-synth.json"
+    },
+    {
+      "id": "v2026-10-host",
+      "label": "host performance slots baseline",
+      "path": "versions/v2026-10-host.json"
+    },
+    {
+      "id": "v2026-10-runtime",
+      "label": "runtime.signoff helpers baseline",
+      "path": "versions/v2026-10-runtime.json"
+    }
+  ]
+}

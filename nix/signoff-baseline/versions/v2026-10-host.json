@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "kind": "signoff_baseline_snapshot",
+  "id": "v2026-10-host",
+  "recorded_at": "2026-10-21T00:00:00Z",
+  "git_commit": null,
+  "readiness": "WARN",
+  "status": "attention",
+  "metrics": {
+    "drc_count": 0,
+    "sta_setup_wns": 0.01,
+    "sta_hold_wns": 0.01,
+    "sta_setup_tns": 0.0
+  },
+  "notes": "Host latency/throughput/memory catalog slots present; optional gaps → WARN."
+}

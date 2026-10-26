@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "kind": "signoff_baseline_snapshot",
+  "id": "v2026-10-runtime",
+  "recorded_at": "2026-10-26T00:00:00Z",
+  "git_commit": null,
+  "readiness": "PASS",
+  "status": "ready",
+  "metrics": {
+    "drc_count": 0,
+    "sta_setup_wns": 0.0,
+    "sta_hold_wns": 0.0,
+    "sta_setup_tns": 0.0
+  },
+  "notes": "runtime.signoff catalog/readiness/qor_perf_support; boards generated in CI only."
+}

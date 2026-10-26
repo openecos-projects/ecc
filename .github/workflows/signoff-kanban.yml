@@ -4,16 +4,21 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - 'chipcompiler/engine/signoff/**'
+      - 'chipcompiler/runtime/signoff/**'
       - 'nix/scripts/generate-signoff-kanban.py'
+      - 'nix/scripts/signoff_baseline.py'
+      - 'nix/signoff-baseline/**'
       - '.github/signoff-board/**'
       - '.github/workflows/signoff-kanban.yml'
   push:
     branches:
+      - agency/signoff-synth
       - feat/signoff-release-kanban
     paths:
-      - 'chipcompiler/engine/signoff/**'
+      - 'chipcompiler/runtime/signoff/**'
       - 'nix/scripts/generate-signoff-kanban.py'
+      - 'nix/scripts/signoff_baseline.py'
+      - 'nix/signoff-baseline/**'
       - '.github/signoff-board/**'
       - '.github/workflows/signoff-kanban.yml'
 
@@ -36,18 +41,34 @@ jobs:
       - name: Install minimal import deps
         run: pip install -q typing_extensions
 
-      - name: Generate + package board artifact
+      - name: Verify in-repo multi-version baseline
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. python nix/scripts/signoff_baseline.py verify
+          PYTHONPATH=. python nix/scripts/signoff_baseline.py list
+          PYTHONPATH=. python nix/scripts/signoff_baseline.py diff \
+            --from v2026-09-synth --to v2026-10-runtime
+
+      - name: Generate board + baseline matrix
         run: |
           set -euo pipefail
           mkdir -p artifact
           PYTHONPATH=. python nix/scripts/generate-signoff-kanban.py \
-            --out artifact/signoff-kanban.md
+            --out artifact/signoff-kanban.md \
+            --commit "${GITHUB_SHA}" \
+            --commit-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}" \
+            --snapshot-sha256 "$(git rev-parse HEAD | sha256sum | awk '{print $1}')"
+          PYTHONPATH=. python nix/scripts/signoff_baseline.py export-matrix \
+            --out artifact/signoff-baseline-matrix.json
+          # Durable copy lives in nix/signoff-baseline/; artifact is a convenience mirror.
+          cp -a nix/signoff-baseline artifact/signoff-baseline
           cp .github/signoff-board/README.md artifact/ 2>/dev/null || true
           ls -la artifact
 
-      - name: Upload board artifact
+      - name: Upload board + baseline mirror
         uses: actions/upload-artifact@v4
         with:
           name: signoff-release-kanban
           path: artifact/
           if-no-files-found: error
+          retention-days: 90
