@@ -476,6 +476,9 @@ smooth aggregation. DSE rejects this incompatible combination when freezing a
 search space. `gradient_net_weight` is also rejected when the baseline already
 enables `buffering_segment_strategy=discrete_net_gradient` (or the candidate-mode
 equivalent), so the conflict is caught at planning time rather than mid-trial.
+Explicit `direct_loss`/`pin2pin` also derive timing and net-weighting controls
+under the public contract; trial audit authorizes that exact set and rejects
+conflicting explicit overrides.
 
 floorplan.core_util, place.target_density, and final core_utilization are distinct.
 Density does not directly determine die area. A higher target_density is not itself

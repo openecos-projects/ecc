@@ -2375,7 +2375,9 @@ readback is not misclassified as an unauthorized change.
   `pin2pin` is rejected unless its aggregation axis is hard-only.
   `gradient_net_weight` is also rejected when the baseline enables
   `discrete_net_gradient` buffering, so incompatibility is caught during
-  planning.
+  planning. Timing and net-weighting controls derived from explicit
+  `direct_loss`/`pin2pin` are included in the trial's expected configuration;
+  conflicting explicit overrides are rejected during planning.
 - `timing_opt.hold_margin`, `timing_opt.hold_rc_mode`,
   `timing_opt.placement_wire_resistance_ohm_per_um`,
   `timing_opt.placement_wire_capacitance_pf_per_um`: Sizer `hold_stage`

@@ -94,10 +94,30 @@ REVIEWED_NUMERIC_RANGES = {
     "timing_opt.placement_wire_capacitance_pf_per_um": (0.0, 1.0),
 }
 
-_PIN2PIN_CARRIER = "place.timing_placement_carrier"
+_TIMING_PLACEMENT_CARRIER = "place.timing_placement_carrier"
 _TIMING_AGGREGATION_MODE = "place.timing_aggregation_mode"
 _GRADIENT_NET_WEIGHT_CARRIER = "gradient_net_weight"
 _DISCRETE_NET_GRADIENT = "discrete_net_gradient"
+_TIMING_CARRIER_DERIVED_PARAMETERS = {
+    "direct_loss": {
+        "place.with_sta": 1,
+        "place.timing_eval_flag": 1,
+        "place.diff_timing_driven_placement": 1,
+        "place.differentiable_timing_obj": 1,
+        "place.enable_net_weighting": 0,
+        "place.pin2pin_net_weighting": 0,
+        "place.net_weighting_scheme": "lilith",
+    },
+    "pin2pin": {
+        "place.with_sta": 1,
+        "place.timing_eval_flag": 1,
+        "place.diff_timing_driven_placement": 0,
+        "place.differentiable_timing_obj": 0,
+        "place.enable_net_weighting": 1,
+        "place.pin2pin_net_weighting": 1,
+        "place.net_weighting_scheme": "pin2pin",
+    },
+}
 
 
 def _uses_discrete_net_gradient(parameters: dict) -> bool:
@@ -110,6 +130,12 @@ def _baseline_parameters(baseline: dict) -> dict:
     specification = baseline.get("workspaceSpec", {})
     parameters = specification.get("parameters", {}) if isinstance(specification, dict) else {}
     return parameters if isinstance(parameters, dict) else {}
+
+
+def reviewed_parameter_effects(parameters: dict) -> dict:
+    """Expand reviewed parameters to the controls their public contract sets."""
+    carrier = parameters.get(_TIMING_PLACEMENT_CARRIER)
+    return {**parameters, **_TIMING_CARRIER_DERIVED_PARAMETERS.get(carrier, {})}
 
 
 class OptimizationLimits(BaseModel):
@@ -164,20 +190,24 @@ def validate_reviewed_values(
             raise invalid_plan(f"Reviewed parameter {key} is outside [{lower}, {upper}]")
     if (
         check_combinations
-        and parameters.get(_PIN2PIN_CARRIER) == "pin2pin"
+        and parameters.get(_TIMING_PLACEMENT_CARRIER) == "pin2pin"
         and parameters.get(_TIMING_AGGREGATION_MODE) != "hard"
     ):
         raise invalid_plan("pin2pin timing placement requires explicit hard timing aggregation")
     effective = {**_baseline_parameters(baseline), **parameters}
     if (
         check_combinations
-        and effective.get(_PIN2PIN_CARRIER) == _GRADIENT_NET_WEIGHT_CARRIER
+        and effective.get(_TIMING_PLACEMENT_CARRIER) == _GRADIENT_NET_WEIGHT_CARRIER
         and _uses_discrete_net_gradient(effective)
     ):
         raise invalid_plan(
             "gradient_net_weight timing placement is incompatible with "
             "discrete_net_gradient buffering"
         )
+    carrier = parameters.get(_TIMING_PLACEMENT_CARRIER)
+    for key, value in _TIMING_CARRIER_DERIVED_PARAMETERS.get(carrier, {}).items():
+        if key in parameters and parameters[key] != value:
+            raise invalid_plan(f"{carrier} timing placement requires {key}={value!r}")
     if not {"route.bottom_layer", "route.top_layer"}.intersection(parameters):
         return
     specification = baseline.get("workspaceSpec", {})
@@ -201,7 +231,7 @@ def validate_reviewed_space_combinations(
     space: dict[str, list], baseline: dict | None = None
 ) -> None:
     """Reject search spaces that necessarily contain an incompatible reviewed pair."""
-    carrier_values = space.get(_PIN2PIN_CARRIER)
+    carrier_values = space.get(_TIMING_PLACEMENT_CARRIER)
     if carrier_values is None:
         return
     if "pin2pin" in carrier_values:

@@ -2026,6 +2026,8 @@ JSON 物化不等于运行时消费或 QoR 效果。DSE 不会把该证据写成
   DreamPlace critical-path 提取不支持 smooth 聚合；包含 `pin2pin` 的空间会被规划期
   校验拒绝，除非 aggregation 轴被限定为 `hard`。`gradient_net_weight` 不能与基线
   已启用的 `discrete_net_gradient` buffering 策略共存，规划期会按基线策略拒绝。
+  显式 `direct_loss`/`pin2pin` 派生的 timing 与 net-weighting 控制项会进入 trial
+  expected configuration；若同时显式覆盖为冲突值，规划期直接拒绝。
 - `timing_opt.hold_margin`、`timing_opt.hold_rc_mode`、
   `timing_opt.placement_wire_resistance_ohm_per_um`、
   `timing_opt.placement_wire_capacitance_pf_per_um`：Sizer `hold_stage` 配置，只能在

@@ -407,7 +407,9 @@ workspace param 修改输出的 `from_step/invalidated_steps` 及持久化 flow 
 `place.timing_aggregation_mode=hard`；critical-path 提取不支持 smooth 聚合。DSE 会在
 冻结搜索空间时拒绝该不兼容组合。`gradient_net_weight` 不能与基线已经启用的
 `buffering_segment_strategy=discrete_net_gradient`（或 candidate 模式下的对应策略）
-组合；DSE 同样在规划期拒绝，避免 trial 启动后才报错。
+组合；DSE 同样在规划期拒绝，避免 trial 启动后才报错。显式 `direct_loss`/`pin2pin`
+还会按公开契约派生 timing 与 net-weighting 控制项；trial 审计授权这组确定值，并拒绝
+与派生值冲突的显式覆盖。
 
 floorplan.core_util、place.target_density 与最终 core_utilization 是三个不同概念。
 密度不直接决定 die 面积；提高 target_density 不能被直接记为面积减少。

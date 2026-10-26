@@ -5,6 +5,7 @@ from chipcompiler.data.workspace_parameters import workspace_param_step
 from ecc_experience.dse.plan import validate_parameter_boundary
 from ecc_experience.models import ExperienceError
 from ecc_experience.optimization.policy import (
+    reviewed_parameter_effects,
     validate_reviewed_space_combinations,
     validate_reviewed_values,
 )
@@ -169,6 +170,45 @@ def test_gradient_carrier_rejects_discrete_net_gradient_baseline():
     validate_reviewed_space_combinations(
         {"place.timing_placement_carrier": ["gradient_net_weight"]}
     )
+
+
+def test_timing_carrier_expands_only_its_reviewed_derived_controls():
+    pin2pin = reviewed_parameter_effects(
+        {
+            "place.timing_placement_carrier": "pin2pin",
+            "place.timing_aggregation_mode": "hard",
+        }
+    )
+    assert {
+        key: pin2pin[key]
+        for key in (
+            "place.diff_timing_driven_placement",
+            "place.differentiable_timing_obj",
+            "place.enable_net_weighting",
+            "place.net_weighting_scheme",
+            "place.pin2pin_net_weighting",
+        )
+    } == {
+        "place.diff_timing_driven_placement": 0,
+        "place.differentiable_timing_obj": 0,
+        "place.enable_net_weighting": 1,
+        "place.net_weighting_scheme": "pin2pin",
+        "place.pin2pin_net_weighting": 1,
+    }
+    direct = reviewed_parameter_effects({"place.timing_placement_carrier": "direct_loss"})
+    assert direct["place.net_weighting_scheme"] == "lilith"
+    assert direct["place.enable_net_weighting"] == 0
+    assert "place.net_weighting_scheme" not in reviewed_parameter_effects({})
+
+    with pytest.raises(ExperienceError, match="requires place.with_sta"):
+        validate_reviewed_values(
+            {
+                "place.timing_placement_carrier": "pin2pin",
+                "place.timing_aggregation_mode": "hard",
+                "place.with_sta": 0,
+            },
+            {},
+        )
 
 
 def test_noop_placement_padding_is_not_a_supported_dse_axis():

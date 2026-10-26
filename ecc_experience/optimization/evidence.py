@@ -12,7 +12,10 @@ from ecc_experience.knowledge.recommend import _input_fingerprint, _sanitize
 from ecc_experience.knowledge.store import ExperienceStore
 from ecc_experience.knowledge.verify import verify_case
 from ecc_experience.models import ExperienceError, WorkspaceObservation, parameter_evidence_level
-from ecc_experience.optimization.policy import configuration_differences
+from ecc_experience.optimization.policy import (
+    configuration_differences,
+    reviewed_parameter_effects,
+)
 from ecc_experience.optimization.process import CliRunner
 
 
@@ -66,7 +69,10 @@ def check_trial_configuration(
         raise ExperienceError(
             "Trial design, PDK or flow differs from baseline", code="experience_source_changed"
         )
-    expected = {**_sanitize(baseline_spec["parameters"]), **parameters}
+    expected = {
+        **_sanitize(baseline_spec["parameters"]),
+        **reviewed_parameter_effects(parameters),
+    }
     if configuration_differences(expected, _sanitize(trial_spec["parameters"])):
         raise ExperienceError(
             "Trial parameters differ from the authorized configuration",
