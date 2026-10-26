@@ -75,9 +75,8 @@ def projection_lines(
         )
     if not seen:
         lines.append("checklist: empty")
-    lines.append(
-        f"readiness: {classify_signoff_readiness(_checklist_payload_from_csv_rows(list(checklist_rows.values())))}"
-    )
+    checklist_payload = _checklist_payload_from_csv_rows(list(checklist_rows.values()))
+    lines.append(f"readiness: {classify_signoff_readiness(checklist_payload)}")
     lines.append("section: gates")
     if spec and spec.metrics:
         for item in spec.metrics:
