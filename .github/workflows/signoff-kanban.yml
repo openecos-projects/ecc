@@ -39,7 +39,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install minimal import deps
-        run: pip install -q typing_extensions
+        run: pip install -q typing_extensions tomli tomli_w tomli tomli_w
 
       - name: Verify in-repo multi-version baseline
         run: |
