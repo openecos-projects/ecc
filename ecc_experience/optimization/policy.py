@@ -96,6 +96,20 @@ REVIEWED_NUMERIC_RANGES = {
 
 _PIN2PIN_CARRIER = "place.timing_placement_carrier"
 _TIMING_AGGREGATION_MODE = "place.timing_aggregation_mode"
+_GRADIENT_NET_WEIGHT_CARRIER = "gradient_net_weight"
+_DISCRETE_NET_GRADIENT = "discrete_net_gradient"
+
+
+def _uses_discrete_net_gradient(parameters: dict) -> bool:
+    mode = parameters.get("place.buffering_mode", "segment")
+    strategy = "candidate" if mode == "candidate" else "segment"
+    return parameters.get(f"place.buffering_{strategy}_strategy") == _DISCRETE_NET_GRADIENT
+
+
+def _baseline_parameters(baseline: dict) -> dict:
+    specification = baseline.get("workspaceSpec", {})
+    parameters = specification.get("parameters", {}) if isinstance(specification, dict) else {}
+    return parameters if isinstance(parameters, dict) else {}
 
 
 class OptimizationLimits(BaseModel):
@@ -154,6 +168,16 @@ def validate_reviewed_values(
         and parameters.get(_TIMING_AGGREGATION_MODE) != "hard"
     ):
         raise invalid_plan("pin2pin timing placement requires explicit hard timing aggregation")
+    effective = {**_baseline_parameters(baseline), **parameters}
+    if (
+        check_combinations
+        and effective.get(_PIN2PIN_CARRIER) == _GRADIENT_NET_WEIGHT_CARRIER
+        and _uses_discrete_net_gradient(effective)
+    ):
+        raise invalid_plan(
+            "gradient_net_weight timing placement is incompatible with "
+            "discrete_net_gradient buffering"
+        )
     if not {"route.bottom_layer", "route.top_layer"}.intersection(parameters):
         return
     specification = baseline.get("workspaceSpec", {})
@@ -173,15 +197,27 @@ def validate_reviewed_values(
         raise invalid_plan("Bottom routing layer must not exceed the top layer")
 
 
-def validate_reviewed_space_combinations(space: dict[str, list]) -> None:
+def validate_reviewed_space_combinations(
+    space: dict[str, list], baseline: dict | None = None
+) -> None:
     """Reject search spaces that necessarily contain an incompatible reviewed pair."""
     carrier_values = space.get(_PIN2PIN_CARRIER)
-    if carrier_values is None or "pin2pin" not in carrier_values:
+    if carrier_values is None:
         return
-    aggregation_values = space.get(_TIMING_AGGREGATION_MODE)
-    if aggregation_values is None or any(value != "hard" for value in aggregation_values):
+    if "pin2pin" in carrier_values:
+        aggregation_values = space.get(_TIMING_AGGREGATION_MODE)
+        if aggregation_values is None or any(value != "hard" for value in aggregation_values):
+            raise invalid_plan(
+                "pin2pin timing placement requires an explicit hard-only timing aggregation axis"
+            )
+    if (
+        _GRADIENT_NET_WEIGHT_CARRIER in carrier_values
+        and baseline is not None
+        and _uses_discrete_net_gradient(_baseline_parameters(baseline))
+    ):
         raise invalid_plan(
-            "pin2pin timing placement requires an explicit hard-only timing aggregation axis"
+            "gradient_net_weight timing placement is incompatible with the frozen "
+            "discrete_net_gradient buffering baseline"
         )
 
 

@@ -473,7 +473,9 @@ and the persisted flow determine execution.
 `place.timing_placement_carrier=pin2pin` requires an explicit
 `place.timing_aggregation_mode=hard`; critical-path extraction does not support
 smooth aggregation. DSE rejects this incompatible combination when freezing a
-search space.
+search space. `gradient_net_weight` is also rejected when the baseline already
+enables `buffering_segment_strategy=discrete_net_gradient` (or the candidate-mode
+equivalent), so the conflict is caught at planning time rather than mid-trial.
 
 floorplan.core_util, place.target_density, and final core_utilization are distinct.
 Density does not directly determine die area. A higher target_density is not itself

@@ -162,7 +162,10 @@ def execute_trial(
                 record["commands"].append(command)
             save()
             is_derive = arguments[:2] == ["workspace", "derive"]
-            with derive_lock if is_derive and derive_lock is not None else nullcontext():
+            with (
+                derive_lock if is_derive and derive_lock is not None else nullcontext(),
+                source_lock if is_derive and source_lock is not None else nullcontext(),
+            ):
                 if runner.durable_receipts:
 
                     def prepared(metadata, target=command):

@@ -120,6 +120,36 @@ def test_parallel_trials_serialize_workspace_derive(
     )
 
 
+def test_parallel_derive_holds_the_source_lock(
+    dse_project, simulated_cli, version2_spec, monkeypatch
+):
+    workspace, store, path = dse_project
+    _parallel_spec(version2_spec)
+    dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
+    original_execute = execute2.execute_trial
+    source_locks = []
+
+    def capture(*args, **kwargs):
+        source_locks.append(kwargs.get("source_lock"))
+        return original_execute(*args, **kwargs)
+
+    monkeypatch.setattr(execute2, "execute_trial", capture)
+    original_invoke = trial.CliRunner.invoke
+    derive_source_locks = []
+
+    def observed(self, arguments, **kwargs):
+        if arguments[:2] == ["workspace", "derive"]:
+            derive_source_locks.append(source_locks[0].locked())
+        return original_invoke(self, arguments, **kwargs)
+
+    monkeypatch.setattr(trial.CliRunner, "invoke", observed)
+    result = dse_run(path, path.parent / "source-locked-derives")
+
+    assert result["status"] == "complete", result
+    assert derive_source_locks
+    assert all(derive_source_locks)
+
+
 def test_resume_preserves_declared_concurrency(dse_project, simulated_cli, version2_spec):
     workspace, store, path = dse_project
     _parallel_spec(version2_spec)

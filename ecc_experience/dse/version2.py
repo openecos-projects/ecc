@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
 from ecc_experience.dse.config_surface import (
     describe_config_surface,
     validate_config_surface,
@@ -25,6 +26,7 @@ from ecc_experience.dse.warm_start import freeze_warm_start
 from ecc_experience.files import digest, file_digest, read_json
 from ecc_experience.knowledge.features import case_features
 from ecc_experience.optimization.plan import write_plan
+from ecc_experience.optimization.policy import validate_reviewed_space_combinations
 
 _SUPPORTED_RUNG_BOUNDARIES = frozenset(
     {
@@ -160,6 +162,9 @@ def plan_version2(project, workspace, store, output, *, spec) -> dict:
             else None,
             baseline_case_id=settings.baseline_case_id,
         )
+    validate_reviewed_space_combinations(
+        space, read_workspace_observation(base["baseline_workspace"]).facts
+    )
     base.pop("plan", None)
     if any(
         destination.resolve().is_relative_to(Path(base[key]))

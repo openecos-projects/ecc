@@ -1972,8 +1972,8 @@ fingerprint; baseline inputs and actual project configuration remain protected.
 Control shared-host load when comparing strategies. Every trial in a parallel
 batch requires an independent workspace and run ID. Never resume the same DSE
 output directory in two coordinators concurrently. The coordinator serializes
-the shared-source derive phase and keeps the public lock wait enabled; only
-`param apply` and `run` overlap across trials.
+the shared-source derive phase under the source lock and keeps the public lock
+wait enabled; only `param apply` and `run` overlap across trials.
 
 A v2 spec can set `baseline_case_id` to bind a verified controlled-execution case
 in the store. It must describe the exact `--workspace` directory, current
@@ -2373,6 +2373,9 @@ readback is not misclassified as an unauthorized change.
   `place.timing_aggregation_mode=hard`, because DreamPlace critical-path
   extraction does not support smooth aggregation. A frozen space containing
   `pin2pin` is rejected unless its aggregation axis is hard-only.
+  `gradient_net_weight` is also rejected when the baseline enables
+  `discrete_net_gradient` buffering, so incompatibility is caught during
+  planning.
 - `timing_opt.hold_margin`, `timing_opt.hold_rc_mode`,
   `timing_opt.placement_wire_resistance_ohm_per_um`,
   `timing_opt.placement_wire_capacitance_pf_per_um`: Sizer `hold_stage`

@@ -4,7 +4,10 @@ from chipcompiler.data.parameter_schema import lookup_schema, parse_cli_override
 from chipcompiler.data.workspace_parameters import workspace_param_step
 from ecc_experience.dse.plan import validate_parameter_boundary
 from ecc_experience.models import ExperienceError
-from ecc_experience.optimization.policy import validate_reviewed_values
+from ecc_experience.optimization.policy import (
+    validate_reviewed_space_combinations,
+    validate_reviewed_values,
+)
 
 
 def test_density_weight_uses_existing_public_workspace_parameter_contract():
@@ -139,6 +142,33 @@ def test_timing_placement_search_axes_are_reviewed_and_bounded():
     parsed, errors = parse_cli_overrides(["place.timing_placement_carrier=unknown"])
     assert parsed == {}
     assert "not in allowed choices" in errors[0]
+
+
+def test_gradient_carrier_rejects_discrete_net_gradient_baseline():
+    baseline = {
+        "workspaceSpec": {
+            "parameters": {"place.buffering_segment_strategy": "discrete_net_gradient"}
+        }
+    }
+    carrier = {"place.timing_placement_carrier": "gradient_net_weight"}
+
+    validate_reviewed_values({"place.timing_placement_carrier": "direct_loss"}, baseline)
+    with pytest.raises(ExperienceError, match="discrete_net_gradient buffering"):
+        validate_reviewed_values(carrier, baseline)
+    with pytest.raises(ExperienceError, match="frozen discrete_net_gradient"):
+        validate_reviewed_space_combinations(
+            {
+                "place.timing_placement_carrier": [
+                    "direct_loss",
+                    "gradient_net_weight",
+                ]
+            },
+            baseline,
+        )
+
+    validate_reviewed_space_combinations(
+        {"place.timing_placement_carrier": ["gradient_net_weight"]}
+    )
 
 
 def test_noop_placement_padding_is_not_a_supported_dse_axis():
