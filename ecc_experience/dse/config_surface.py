@@ -81,6 +81,20 @@ _LEGACY_TARGETS: Final[dict[tuple[str, ...], tuple[str, tuple[tuple[str, ...], .
     ),
 }
 
+# Several public keys still exist for one tool field. The value read back from
+# a workspace can therefore contain both keys even when the candidate changed
+# only the supported one. Comparison and warm-start matching must collapse the
+# aliases or a valid trial looks like it changed an unauthorized parameter.
+_PARAMETER_ALIASES: Final[dict[str, str]] = {
+    "place.stop_overflow": "place.target_overflow",
+    "place.routability_opt_flag": "place.routability_opt",
+    "place.inflation_s5b1_enabled": "place.timing_opt_enabled",
+    "place.inflation_s5b1_buffering_enabled": "place.timing_opt_buffering_enabled",
+    "place.inflation_s5b1_max_windows": "place.timing_opt_max_windows",
+    "place.inflation_s5b1_overflow_milestones": "place.timing_opt_overflow_milestones",
+    "place.inflation_sizing_rounds": "place.timing_opt_sizing_rounds",
+}
+
 
 def describe_config_surface(parameters: dict | list[str]) -> dict:
     """Return the reviewed config-file targets for the given parameter keys."""
@@ -114,6 +128,21 @@ def describe_config_surface(parameters: dict | list[str]) -> dict:
 
 def config_files(parameters: dict | list[str]) -> list[str]:
     return sorted(describe_config_surface(parameters)["files"])
+
+
+def canonicalize_parameters(parameters: dict) -> dict:
+    """Collapse documented aliases to the supported key for comparison."""
+    canonical: dict = {}
+    aliases: dict[str, object] = {}
+    for key, value in parameters.items():
+        target = _PARAMETER_ALIASES.get(key)
+        if target is None:
+            canonical[key] = value
+        else:
+            aliases[target] = value
+    for key, value in aliases.items():
+        canonical.setdefault(key, value)
+    return canonical
 
 
 def validate_config_surface(parameters: dict | list[str]) -> dict:

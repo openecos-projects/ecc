@@ -1987,6 +1987,9 @@ no-op 参数当成有效实验轴。
 执行 `param apply` 后，durable trial 会读取目标文件/路径并在 trial 证据中记录
 `config_receipt`。数值不一致会使 trial 失败；文件缺失或不可读则记录为 `unavailable`，
 D4 会把该状态列为原因，而不是静默认为参数已生效。
+写入同一工具字段的别名（`place.stop_overflow` 与 `place.target_overflow`、
+`place.routability_opt_flag` 与 `place.routability_opt`，以及 `inflation_s5b1_*`
+时序别名）在配置比较和 warm-start 匹配前会归一化，避免合法回读被误判为越权修改。
 
 - `floorplan.core_util`：floorplan core 利用率。
 - `place.target_density`、`place.target_overflow`、`place.density_weight`、

@@ -2326,6 +2326,11 @@ After `param apply`, a durable trial reads the expected file/path and records a
 `config_receipt` in the trial evidence. A mismatch fails the trial; an
 unreadable or absent file is retained as `unavailable`, and D4 reports it as a
 reason rather than silently treating the parameter as applied.
+Aliases that write the same tool field (`place.stop_overflow` with
+`place.target_overflow`, `place.routability_opt_flag` with
+`place.routability_opt`, and the `inflation_s5b1_*` timing aliases) are
+canonicalized before comparison and warm-start matching, so a legitimate
+readback is not misclassified as an unauthorized change.
 
 - `floorplan.core_util`: floorplan core utilization.
 - `place.target_density`, `place.target_overflow`, `place.density_weight`,

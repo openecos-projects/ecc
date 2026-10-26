@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from chipcompiler.cli.inspection.evidence_summary import qor_score
 from chipcompiler.data.parameter_schema import lookup_schema, parse_cli_overrides
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
+from ecc_experience.dse.config_surface import canonicalize_parameters
 from ecc_experience.files import digest, read_json
 from ecc_experience.knowledge.recommend import _input_fingerprint, _sanitize
 from ecc_experience.knowledge.release import verify_release
@@ -309,8 +310,8 @@ def configuration_differences(
     baseline_root: str | Path | None = None,
     candidate_root: str | Path | None = None,
 ) -> set[str]:
-    baseline = _portable_workspace_paths(baseline, baseline_root)
-    candidate = _portable_workspace_paths(candidate, candidate_root)
+    baseline = canonicalize_parameters(_portable_workspace_paths(baseline, baseline_root))
+    candidate = canonicalize_parameters(_portable_workspace_paths(candidate, candidate_root))
     changed = set()
     missing = object()
     for key in set(baseline) | set(candidate):

@@ -3,6 +3,7 @@ import json
 import pytest
 
 from ecc_experience.dse.config_surface import (
+    canonicalize_parameters,
     config_files,
     describe_config_surface,
     validate_config_surface,
@@ -132,3 +133,40 @@ def test_config_receipt_does_not_claim_an_unreadable_file_was_applied(tmp_path):
 
     assert receipt["status"] == "unavailable"
     assert "dreamplace_ecc.json" in receipt["reason"]
+
+
+def test_parameter_aliases_collapse_to_the_supported_key():
+    canonical = canonicalize_parameters(
+        {
+            "place.target_overflow": 0.08,
+            "place.stop_overflow": 0.08,
+            "place.timing_opt_max_windows": 3,
+            "place.inflation_s5b1_max_windows": 3,
+            "place.density_weight": 0.0001,
+        }
+    )
+
+    assert canonical == {
+        "place.target_overflow": 0.08,
+        "place.timing_opt_max_windows": 3,
+        "place.density_weight": 0.0001,
+    }
+
+
+def test_alias_readback_does_not_look_like_an_unauthorized_change():
+    from ecc_experience.optimization.policy import configuration_differences
+
+    baseline = {
+        "place.target_overflow": 0.1,
+        "place.stop_overflow": 0.1,
+        "place.routability_opt": 1,
+        "place.routability_opt_flag": 1,
+    }
+    observed = {
+        "place.target_overflow": 0.08,
+        "place.stop_overflow": 0.08,
+        "place.routability_opt": 1,
+        "place.routability_opt_flag": 1,
+    }
+
+    assert configuration_differences(baseline, observed) == {"place.target_overflow"}
