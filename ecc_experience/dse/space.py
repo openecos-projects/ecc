@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from chipcompiler.data.parameter_schema import lookup_schema, parse_cli_overrides
+from ecc_experience.dse.config_surface import validate_config_surface
 from ecc_experience.dse.plan import STAGE_PARAMETERS, invalid
 from ecc_experience.optimization.policy import validate_reviewed_values
 
@@ -38,6 +39,7 @@ def candidate(parameters: dict, identity: str) -> dict:
     if errors:
         raise invalid("; ".join(errors))
     validate_reviewed_values(parsed, {})
+    validate_config_surface(parsed)
     return {"candidate_id": identity, "parameters": parsed, "sets": sets}
 
 

@@ -76,3 +76,32 @@ def test_placement_and_sizer_ranges_are_reviewed_and_stage_bounded():
         validate_reviewed_values({"place.gp_noise_ratio": 1.0}, {})
     with pytest.raises(ExperienceError, match="outside"):
         validate_reviewed_values({"timing_opt.hold_margin": -0.1}, {})
+
+
+def test_placement_bin_and_routability_knobs_are_reviewed():
+    parameters, errors = parse_cli_overrides(
+        [
+            "place.num_bins_x=512",
+            "place.num_bins_y=512",
+            "place.max_route_opt_adjust_rate=2.5",
+            "place.max_pin_opt_adjust_rate=2.0",
+            "place.pin_stretch_ratio=1.5",
+            "place.timing_rc_mode=gr",
+            "place.with_sta=1",
+            "place.diff_timing_driven_placement=1",
+        ]
+    )
+    assert errors == []
+    assert parameters["place.num_bins_x"] == 512
+    assert parameters["place.timing_rc_mode"] == "gr"
+    validate_reviewed_values(parameters, {})
+    with pytest.raises(ExperienceError, match="outside"):
+        validate_reviewed_values({"place.num_bins_x": 4096}, {})
+    with pytest.raises(ExperienceError, match="outside"):
+        validate_reviewed_values({"place.pin_stretch_ratio": 0.5}, {})
+
+
+def test_noop_placement_padding_is_not_a_supported_dse_axis():
+    from ecc_experience.optimization.policy import SUPPORTED_PARAMETERS
+
+    assert "place.global_right_padding" not in SUPPORTED_PARAMETERS

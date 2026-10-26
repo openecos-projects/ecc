@@ -6,6 +6,7 @@ from pathlib import Path
 from statistics import median
 
 from ecc_experience.dse.audit import audit_history
+from ecc_experience.dse.config_surface import describe_config_surface
 from ecc_experience.files import digest, read_json
 from ecc_experience.models import ExperienceError
 from ecc_experience.optimization.plan import write_plan
@@ -64,6 +65,20 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
             for row in rows
         ):
             reasons.append(f"model_evidence_unavailable:{design}")
+        warm_rows = [row for row in rows if row["strategy"] == "adaptive_warm"]
+        if any(row["warm_start"]["status"] != "cross_design" for row in warm_rows):
+            reasons.append(f"warm_start_not_cross_design:{design}")
+        if any(row["warm_start"]["family_isolation"] != "explicit_groups" for row in warm_rows):
+            reasons.append(f"warm_start_family_isolation_missing:{design}")
+        receipt_statuses = {
+            status
+            for row in rows
+            for status in _config_receipt_statuses(row["result"].get("trials", []))
+        }
+        if "mismatch" in receipt_statuses:
+            reasons.append(f"config_receipt_mismatch:{design}")
+        if "unavailable" in receipt_statuses:
+            reasons.append(f"config_receipt_unavailable:{design}")
 
     metrics = [_metrics(row) for row in runs]
     strategy_summary = _strategy_summary(metrics)
@@ -105,6 +120,28 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
                 if row["host_load"] is not None
             ],
             "resource_coverage": resource_coverage,
+            "config_file_counts": dict(
+                sorted(Counter(file for row in metrics for file in row["config_files"]).items())
+            ),
+            "config_files_by_strategy": {
+                strategy: sorted(
+                    {
+                        file
+                        for row in metrics
+                        if row["strategy"] == strategy
+                        for file in row["config_files"]
+                    }
+                )
+                for strategy in STRATEGIES
+            },
+            "config_receipt_statuses": dict(
+                sorted(
+                    sum(
+                        (Counter(row["config_receipt_statuses"]) for row in metrics),
+                        Counter(),
+                    ).items()
+                )
+            ),
             "warm_start_modes": dict(
                 sorted(Counter(row["warm_start"]["status"] for row in metrics).items())
             ),
@@ -125,6 +162,8 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
             "not a sum and not a hard memory bound",
             "A completed D4 report does not replace full and fresh validation for a "
             "selected design",
+            "adaptive_warm must use cross-design seeds with explicit family isolation; "
+            "same-input seeds are reported as same_input and do not qualify",
             "No recommendation is written to a workspace and no model is promoted automatically",
         ],
     }
@@ -189,6 +228,7 @@ def _load_run(base: Path, entry: dict) -> dict:
         raise invalid("D4 run plan and result are not a frozen version 2 pair")
     resources = _resource_evidence(plan, result)
     warm_start = _warm_start_evidence(plan)
+    surface = plan.get("config_surface") or describe_config_surface(plan.get("space", {}))
     return {
         "design": entry["design"],
         "family": entry["family"],
@@ -206,6 +246,8 @@ def _load_run(base: Path, entry: dict) -> dict:
         else None,
         "resources": resources,
         "warm_start": warm_start,
+        "config_surface": surface,
+        "config_files": sorted(surface["files"]),
         "plan": plan,
         "result": result,
         "budget_signature": digest(
@@ -594,6 +636,9 @@ def _metrics(run: dict) -> dict:
         else None,
         "host_load_source": run["host_load_source"],
         "warm_start": run["warm_start"],
+        "config_files": run["config_files"],
+        "config_surface": run["config_surface"],
+        "config_receipt_statuses": _config_receipt_statuses(trials),
         "resource_coverage": resources["coverage"],
         "resource_scope": resources["scope_counts"],
         "resources": _compact_resources(resources),
@@ -605,6 +650,15 @@ def _metrics(run: dict) -> dict:
 
 def _validation_status(value: object) -> str:
     return value.get("status", "unknown") if isinstance(value, dict) else "unknown"
+
+
+def _config_receipt_statuses(trials: list[dict]) -> dict:
+    receipts = [
+        trial["config_receipt"]
+        for trial in trials
+        if isinstance(trial, dict) and isinstance(trial.get("config_receipt"), dict)
+    ]
+    return dict(sorted(Counter(receipt.get("status", "unknown") for receipt in receipts).items()))
 
 
 def _validation_signoff(value: object) -> dict:

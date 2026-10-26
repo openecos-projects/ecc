@@ -125,6 +125,10 @@ def simulated_cli(dse_project, monkeypatch):
             path = target / "home/engineering-snapshot.json"
             payload = json.loads(path.read_text())
             from chipcompiler.data.parameter_schema import parse_cli_overrides
+            from ecc_experience.dse.config_surface import (
+                describe_config_surface,
+                expected_config_values,
+            )
 
             pairs = [
                 arguments[index + 1] for index, item in enumerate(arguments) if item == "--set"
@@ -133,6 +137,20 @@ def simulated_cli(dse_project, monkeypatch):
             assert not errors
             payload["workspaceSpec"]["parameters"].update(parsed)
             path.write_text(json.dumps(payload))
+            for entry in describe_config_surface(parsed)["entries"]:
+                config_path = target / "config" / entry["config_file"]
+                if not config_path.is_file():
+                    continue
+                config = json.loads(config_path.read_text())
+                values = expected_config_values(
+                    entry["parameter"], parsed[entry["parameter"]], entry["json_paths"]
+                )
+                for json_path, value in zip(entry["json_paths"], values, strict=True):
+                    current = config
+                    for key in json_path[:-1]:
+                        current = current[key]
+                    current[json_path[-1]] = value
+                config_path.write_text(json.dumps(config))
         elif arguments[0] == "run":
             target = root / arguments[arguments.index("--workspace") + 1]
             run_id = arguments[arguments.index("--run-id") + 1]
@@ -255,6 +273,7 @@ def test_version2_adaptive_full_fresh_report_and_idempotent_resume(
     workspace, store, path = dse_project
     frozen = dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
     assert frozen["schema"] == "ecc-experience-stage-dse-plan/2"
+    assert frozen["config_surface"]["files"] == {"floorplan_ecc.json": ["floorplan.core_util"]}
     output = path.parent / "output"
     result = dse_run(path, output)
     assert (result["status"], result["exit_code"]) == ("complete", 0), result
@@ -267,6 +286,8 @@ def test_version2_adaptive_full_fresh_report_and_idempotent_resume(
     assert len(report["feedback_case_ids"]) == 2
     assert report["budget"]["executed_trials"] == 5
     assert len(report["pareto_front"]) == 3
+    assert report["config_files"] == ["floorplan_ecc.json"]
+    assert report["config_file_counts"] == {"floorplan_ecc.json": 5}
     assert report["safe_to_apply"] is False
 
 

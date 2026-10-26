@@ -10,6 +10,7 @@ from ecc_experience.adapters.chipcompiler_reader import read_workspace_observati
 from ecc_experience.adapters.process_context import process_context
 from ecc_experience.benchmark.evidence import collect_trial
 from ecc_experience.benchmark.preparation import runtime_identity
+from ecc_experience.dse.config_surface import verify_applied_config
 from ecc_experience.dse.evidence import stage_acceptance
 from ecc_experience.dse.plan import (
     DseLimits,
@@ -149,6 +150,7 @@ def execute_trial(
                 save()
                 if command["exit_code"] != 0:
                     break
+                _check_config_receipt(record, candidate, workspace, arguments, runner, update)
                 continue
             command = {"arguments": arguments, "status": "running"}
             with lock:
@@ -174,6 +176,7 @@ def execute_trial(
             save()
             if result.exit_code != 0:
                 break
+            _check_config_receipt(record, candidate, workspace, arguments, runner, update)
         if record["exit_code"] == 124:
             update(status="timeout")
             return
@@ -263,3 +266,15 @@ def _concurrency_environment(value: dict | None) -> dict[str, str] | None:
         if item is not None:
             environment[variable] = str(item)
     return environment or None
+
+
+def _check_config_receipt(record, candidate, workspace, arguments, runner, update) -> None:
+    if not runner.durable_receipts or arguments[0] != "param":
+        return
+    existing = record.get("config_receipt")
+    if isinstance(existing, dict) and existing.get("status") == "applied":
+        return
+    receipt = verify_applied_config(workspace, candidate["parameters"])
+    update(config_receipt=receipt)
+    if receipt["status"] == "mismatch":
+        raise invalid(f"Applied parameters did not reach the iteration config: {receipt['reason']}")

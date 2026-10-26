@@ -13,6 +13,7 @@ from ecc_experience.adapters.chipcompiler_reader import read_workspace_observati
 from ecc_experience.adapters.process_context import process_context
 from ecc_experience.benchmark.preparation import runtime_identity
 from ecc_experience.collection.collect import collect_committed_case
+from ecc_experience.dse.config_surface import validate_config_surface
 from ecc_experience.files import digest, read_json
 from ecc_experience.knowledge.features import case_features
 from ecc_experience.knowledge.release import verify_release
@@ -161,6 +162,7 @@ def plan_dse(
         if errors:
             raise invalid("; ".join(errors))
         validate_reviewed_values(parsed, baseline.facts)
+        validate_config_surface(parsed)
         candidates.append(
             {"candidate_id": f"candidate-{index:04d}", "parameters": parsed, "sets": pairs}
         )
@@ -241,6 +243,7 @@ def read_dse_plan(path: str | Path) -> tuple[dict, DseLimits]:
         if errors or parsed != candidate["parameters"]:
             raise invalid("DSE candidate values do not match validated parameter arguments")
         validate_reviewed_values(parsed, {})
+        validate_config_surface(parsed)
     if payload.get("direction") not in {"minimize", "maximize"}:
         raise invalid("Invalid DSE objective direction")
     return payload, limits

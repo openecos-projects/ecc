@@ -1947,6 +1947,13 @@ strategy、seed、order、host 信息以及 plan/result 路径；strategy 必须
 grid/adaptive/adaptive_warm/model_assisted。报告强制等预算、同 input/process/runtime/目标、
 匹配 seed、平衡顺序和完整 full/fresh；建议门槛为 6 个 design、3 个 family、每组 2 个 seed。
 
+只有所有冻结 seed 都是跨设计 seed（`warm_start.status=cross_design`）且 release 使用显式
+family 隔离（`family_isolation=explicit_groups`）时，`adaptive_warm` 才是独立策略。
+同输入 seed 会标记为 `same_input` 并产生 `warm_start_not_cross_design:<design>`；缺少
+分组会产生 `warm_start_family_isolation_missing:<design>`。报告同时给出
+`config_file_counts` 和 `config_files_by_strategy`，用于确认各策略确实探索了预期的工具
+配置文件，而不是只重复一个参数。
+
 ```bash
 ecc experience dse d4 --spec ./inputs/d4.json --output ./reports/d4.json --json
 ecc experience index build --store "$ECC_TEST_STORE" --json
@@ -1969,9 +1976,26 @@ DSE 不直接、任意地编辑迭代 workspace 的 `config/dreamplace_ecc.json`
 可重放校验。搜索配置时必须使用公开参数键，由 `params.toml` 的
 `workspace_param_overrides` / `config_overrides` 原子写入，并在每个 trial 记录应用回执：
 
+每个冻结的 v2 plan 和 report 都嵌入 `config_surface`，逐轴记录目标文件、JSON 路径，
+以及数值通过 `workspace_param_apply` 和 `params.toml` 回执进入的事实。它只是 provenance，
+不是第二条写入路径：DSE 命令不会直接写 workspace JSON。`floorplan.core_util` 映射到
+`floorplan_ecc.json:die_builder.die_util.utilization`；`place.target_density` 等旧式
+扁平键映射到对应 DreamPlace JSON 字段。没有已知工具文件目标的参数会被拒绝，避免把
+no-op 参数当成有效实验轴。
+因此 `place.global_right_padding` 不是 DSE 轴：当前版本只把它保留为兼容参数，它没有对应
+的 DreamPlace JSON 字段。
+执行 `param apply` 后，durable trial 会读取目标文件/路径并在 trial 证据中记录
+`config_receipt`。数值不一致会使 trial 失败；文件缺失或不可读则记录为 `unavailable`，
+D4 会把该状态列为原因，而不是静默认为参数已生效。
+
 - `floorplan.core_util`：floorplan core 利用率。
 - `place.target_density`、`place.target_overflow`、`place.density_weight`、
   `place.cell_padding_x`、`place.routability_opt`：DreamPlace 基础放置配置。
+- `place.num_bins_x`、`place.num_bins_y`、`place.timing_rc_mode`、
+  `place.diff_timing_driven_placement`、`place.with_sta`、
+  `place.max_pin_opt_adjust_rate`、`place.max_route_opt_adjust_rate`、
+  `place.pin_stretch_ratio`：写入 `dreamplace_ecc.json` 的放置分辨率、时序和
+  routability 调整旋钮。
 - `place.gamma`、`place.gp_noise_ratio`、`place.node_area_adjust_overflow`、
   `place.max_num_area_adjust`、`place.two_stage_density_scaler`、
   `place.l_shape_overflow_threshold`、`place.timing_aggregation_tau_ps`、
@@ -1982,8 +2006,11 @@ DSE 不直接、任意地编辑迭代 workspace 的 `config/dreamplace_ecc.json`
   `timing_opt.placement_wire_capacitance_pf_per_um`：Sizer `hold_stage` 配置，只能在
   `Timing optimization` 边界或其后的 rung 搜索，不能混入 `postFloorplan`/`place` 早期 rung。
 
-首批建议空间为 `floorplan.core_util × place.target_density × place.target_overflow ×
-place.density_weight`，边界使用 `place`；每轴限制 3–5 个量化值，并保留 2 个 full/fresh
-验证预算。只有目标在所选边界可测、参数在此前已经生效时才允许进入 rung。JSON 对象型字段
-（如 `place.diff_sizing_coefficients`、完整 Sizer `global_routing_rc`）暂不直接作为搜索轴，
-必须走显式 schema、范围和回执评审。
+首批 pilot 空间为 `floorplan.core_util × place.target_density × place.target_overflow ×
+place.density_weight`，边界使用 `place`；每轴限制 3–5 个量化值，至少使用 2 个 design 和
+2 个 seed，并保留 2 个 full/fresh 验证预算。第二个 rung 可以增加一个放置分辨率或时序轴
+（例如 `place.num_bins_x × place.gamma`），前提是配置确实不同且目标仍可测。只有目标在所选
+边界可测、参数在此前已经生效时才允许进入 rung。Sizer `timing_opt.*` 轴只能在
+`Timing optimization` 或其后的 rung 评估。JSON 对象型字段（如
+`place.diff_sizing_coefficients`、`place.global_place_stages`、完整 Sizer
+`global_routing_rc`）暂不直接作为搜索轴，必须走显式 schema、范围和回执评审。

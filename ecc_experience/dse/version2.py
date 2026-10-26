@@ -7,6 +7,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from ecc_experience.dse.config_surface import (
+    describe_config_surface,
+    validate_config_surface,
+)
 from ecc_experience.dse.multiobjective import resolve_objectives
 from ecc_experience.dse.patience import resolve_patience
 from ecc_experience.dse.plan import (
@@ -92,6 +96,7 @@ def plan_version2(project, workspace, store, output, *, spec) -> dict:
     ) and settings.warm_start is None:
         raise invalid("Cross-design warm-start options require a frozen release")
     space = expand_space(settings.space)
+    config_surface = validate_config_surface(space)
     grid_size = math.prod(len(values) for values in space.values())
     raw_patience = settings.limits.get("patience", 3)
     if raw_patience == "auto":
@@ -202,6 +207,7 @@ def plan_version2(project, workspace, store, output, *, spec) -> dict:
         "schema": "ecc-experience-stage-dse-plan/2",
         "strategy": settings.strategy,
         "space": space,
+        "config_surface": config_surface,
         "algorithm": {
             "name": "categorical_tpe" if settings.strategy == "adaptive" else "grid",
             "version": 1,
@@ -247,6 +253,7 @@ def validate_version2(payload: dict):
         "parameter_boundary",
         "execution",
         "axis_quantization",
+        "config_surface",
     }
     base = {key: value for key, value in payload.items() if key not in extensions}
     base["schema"] = "ecc-experience-stage-dse-plan/1"
@@ -334,6 +341,9 @@ def validate_version2(payload: dict):
             raise invalid("Grid candidates differ from frozen space")
         if payload["strategy"] == "adaptive" and payload["candidates"]:
             raise invalid("Adaptive candidates are generated from recorded observations")
+        surface = payload.get("config_surface")
+        if surface is not None and surface != describe_config_surface(space):
+            raise invalid("Frozen DSE config surface differs from the search space")
         if (
             count > math.prod(len(values) for values in space.values())
             or rungs[0]["promote_count"] > count

@@ -14,7 +14,11 @@ STRATEGIES = ("grid", "adaptive", "adaptive_warm", "model_assisted")
 
 
 def _plan(strategy, design, family):
-    warm = [{"case_id": "candidate"}] if strategy == "adaptive_warm" else []
+    warm = (
+        [{"case_id": "candidate", "confidence": "experimental"}]
+        if strategy == "adaptive_warm"
+        else []
+    )
     return {
         "schema": "ecc-experience-stage-dse-plan/2",
         "plan_fingerprint": f"plan-{strategy}-{design}-{family}",
@@ -27,7 +31,11 @@ def _plan(strategy, design, family):
         "limits": {"max_trials": 4, "max_seconds": 60, "trial_timeout_seconds": 30},
         "screening_trials": 2,
         "rungs": [{"through_step": "floorplan", "promote_count": 1}],
-        "warm_start": {"seeds": warm},
+        "warm_start": {
+            "seeds": warm,
+            "experimental_cross_design": bool(warm),
+            "family_isolation": "explicit_groups" if warm else "not_checked",
+        },
     }
 
 
@@ -119,6 +127,30 @@ def test_d4_insufficient_sample_stays_unknown(tmp_path):
     assert report["generalization_status"] == "unproven"
     assert report["promotion_allowed"] is False
     assert "insufficient_independent_designs" in report["reasons"]
+
+
+def test_d4_rejects_same_input_warm_start_as_a_distinct_strategy(tmp_path):
+    spec = _write_spec(tmp_path)
+    plan_path = tmp_path / "design-0-0-adaptive_warm-plan.json"
+    plan = json.loads(plan_path.read_text())
+    plan["warm_start"]["seeds"][0]["confidence"] = "observed_only"
+    plan["warm_start"]["experimental_cross_design"] = False
+    plan["warm_start"]["family_isolation"] = "not_checked"
+    plan_path.write_text(json.dumps(plan))
+
+    report = d4_evaluate(spec, tmp_path / "report.json")
+
+    assert report["status"] == "unknown"
+    assert "warm_start_not_cross_design:design-0" in report["reasons"]
+    assert "warm_start_family_isolation_missing:design-0" in report["reasons"]
+
+
+def test_d4_reports_the_iteration_config_files_each_strategy_explored(tmp_path):
+    report = d4_evaluate(_write_spec(tmp_path), tmp_path / "report.json")
+
+    assert report["summary"]["config_file_counts"] == {"floorplan_ecc.json": 48}
+    assert report["summary"]["config_files_by_strategy"]["grid"] == ["floorplan_ecc.json"]
+    assert report["runs"][0]["config_files"] == ["floorplan_ecc.json"]
 
 
 def test_d4_cli_returns_unknown_exit_code_without_enough_designs(tmp_path):

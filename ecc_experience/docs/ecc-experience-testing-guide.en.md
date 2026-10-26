@@ -2273,6 +2273,16 @@ The report requires equal budgets, matched input/process/runtime/objectives,
 matched seeds, balanced order and complete full/fresh validation. The advisory
 gate is six designs, three families and two seeds per strategy.
 
+`adaptive_warm` is only a distinct strategy when every frozen seed is a
+cross-design seed (`warm_start.status=cross_design`) and the release used
+explicit family isolation (`family_isolation=explicit_groups`). A same-input
+seed is reported as `same_input` and produces
+`warm_start_not_cross_design:<design>`; missing groups produce
+`warm_start_family_isolation_missing:<design>`. The report also lists
+`config_file_counts` and `config_files_by_strategy` so a reader can confirm
+that the strategies explored the intended tool configuration files rather than
+only replaying one parameter.
+
 ```bash
 ecc experience dse d4 --spec ./inputs/d4.json --output ./reports/d4.json --json
 ecc experience index build --store "$ECC_TEST_STORE" --json
@@ -2302,10 +2312,30 @@ search uses public parameter keys, writes them atomically through
 `params.toml` `workspace_param_overrides` / `config_overrides`, and records an
 application receipt for every trial:
 
+Every frozen v2 plan and report embeds `config_surface`. It lists, for each
+axis, the target file, JSON path(s), and the fact that the value arrived through
+`workspace_param_apply` with a `params.toml` receipt. This is provenance, not a
+second write path: no DSE command writes a workspace JSON file directly.
+`floorplan.core_util` maps to
+`floorplan_ecc.json:die_builder.die_util.utilization`; legacy flat keys such as
+`place.target_density` map to their DreamPlace JSON fields. A parameter with no
+known tool-file target is rejected instead of being explored as a no-op.
+`place.global_right_padding` is therefore not a DSE axis: it is retained only as
+a compatibility parameter and has no DreamPlace JSON field in this version.
+After `param apply`, a durable trial reads the expected file/path and records a
+`config_receipt` in the trial evidence. A mismatch fails the trial; an
+unreadable or absent file is retained as `unavailable`, and D4 reports it as a
+reason rather than silently treating the parameter as applied.
+
 - `floorplan.core_util`: floorplan core utilization.
 - `place.target_density`, `place.target_overflow`, `place.density_weight`,
   `place.cell_padding_x`, `place.routability_opt`: baseline DreamPlace placement
   configuration.
+- `place.num_bins_x`, `place.num_bins_y`, `place.timing_rc_mode`,
+  `place.diff_timing_driven_placement`, `place.with_sta`,
+  `place.max_pin_opt_adjust_rate`, `place.max_route_opt_adjust_rate`,
+  `place.pin_stretch_ratio`: placement-resolution, timing and
+  routability-adjustment knobs written to `dreamplace_ecc.json`.
 - `place.gamma`, `place.gp_noise_ratio`, `place.node_area_adjust_overflow`,
   `place.max_num_area_adjust`, `place.two_stage_density_scaler`,
   `place.l_shape_overflow_threshold`, `place.timing_aggregation_tau_ps`,
@@ -2317,10 +2347,16 @@ application receipt for every trial:
   configuration, allowed only at a `Timing optimization` boundary or a later
   rung, never mixed into early `postFloorplan`/`place` rungs.
 
-The first recommended space is `floorplan.core_util × place.target_density ×
-place.target_overflow × place.density_weight` at a `place` boundary. Limit each
-axis to 3–5 quantized values and reserve two full/fresh validation trials. A rung
-admits a parameter only when its objective is measurable at that boundary and
-the parameter takes effect before it. JSON-object fields such as
-`place.diff_sizing_coefficients` and the complete Sizer `global_routing_rc` are
-not direct axes until an explicit schema, range and receipt review exists.
+The first pilot space is
+`floorplan.core_util × place.target_density × place.target_overflow ×
+place.density_weight` at a `place` boundary. Limit each axis to 3–5 quantized
+values, use at least two designs and two seeds, and reserve two full/fresh
+validation trials. A second rung may add one placement-resolution or timing-axis
+knob (`place.num_bins_x × place.gamma`, for example) when it produces a distinct
+configuration and the objective remains measurable. A rung admits a parameter
+only when its objective is measurable at that boundary and the parameter takes
+effect before it. Evaluate Sizer `timing_opt.*` axes only at `Timing
+optimization` or a later rung. JSON-object fields such as
+`place.diff_sizing_coefficients`, `place.global_place_stages` and the complete
+Sizer `global_routing_rc` are not direct axes until an explicit schema, range
+and receipt review exists.

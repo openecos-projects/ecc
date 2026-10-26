@@ -7,6 +7,7 @@ from collections import Counter
 from pathlib import Path
 
 from ecc_experience.dse.audit import audit_history
+from ecc_experience.dse.config_surface import config_files, describe_config_surface
 from ecc_experience.dse.multiobjective import rank_trials
 from ecc_experience.dse.plan import invalid
 from ecc_experience.files import file_digest, read_json
@@ -29,6 +30,7 @@ def summarize_version2(plan: dict, payload: dict) -> dict:
     audited = audit_history(plan, payload)
     rows = []
     feedback = set()
+    surface = plan.get("config_surface") or describe_config_surface(plan["space"])
     records = [(str(index), trial) for index, trial in enumerate(payload["trials"])]
     records.extend(
         (field, payload[field])
@@ -52,6 +54,8 @@ def summarize_version2(plan: dict, payload: dict) -> dict:
                 "status": trial["status"],
                 "reason": trial.get("reason"),
                 "parameters": trial["parameters"],
+                "config_files": config_files(trial["parameters"]),
+                "config_receipt": trial.get("config_receipt"),
                 "workspace": trial["workspace"],
                 "run_id": trial["run_id"],
                 "case_id": trial.get("case_id"),
@@ -89,6 +93,18 @@ def summarize_version2(plan: dict, payload: dict) -> dict:
             },
         ),
         "objectives": plan["objectives"],
+        "config_surface": surface,
+        "config_files": sorted(surface["files"]),
+        "config_file_counts": dict(
+            sorted(Counter(file for row in rows for file in row["config_files"]).items())
+        ),
+        "config_receipt_statuses": dict(
+            sorted(
+                Counter(
+                    (row["config_receipt"] or {}).get("status", "not_checked") for row in rows
+                ).items()
+            )
+        ),
         "warm_start": plan["warm_start"],
         "promotions": payload["promotions"],
         "selection": payload["selection"],
