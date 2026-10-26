@@ -85,7 +85,6 @@ set_input_transition        0.20 $data_inputs
 set_max_fanout      {max_fanout}   [current_design]
 set_max_transition [expr {{$clk_period * 0.17}}] -clock_path [get_clocks $clk_name]
 set_max_transition [expr {{$clk_period * 0.34}}] -data_path [get_clocks $clk_name]
-set_max_capacitance 0.15 [current_design]
 
 # -------------------------------------------------
 # Timing derate (OCV)
