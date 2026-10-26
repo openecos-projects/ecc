@@ -120,6 +120,8 @@ def summarize_version2(plan: dict, payload: dict) -> dict:
             "resource_scope": "per_step_observations_not_summed_memory",
         },
         "baseline": payload.get("baseline_evidence"),
+        "baseline_comparison": payload.get("baseline_comparison"),
+        "comparison_status": payload.get("comparison_status"),
         "score_delta": payload.get("score_delta"),
         "improved": payload.get("improved"),
         "stop_reason": payload.get("stop_reason"),
@@ -168,6 +170,7 @@ def report_version2(plan: dict, result, output) -> dict:
             f"Strategy: {summary['strategy']}; selection: {summary['selection']}",
             f"Patience: {summary['patience_resolution']}",
             f"Measured QoR delta: {summary['score_delta']}; improved: {summary['improved']}",
+            f"Baseline comparison: {_render_baseline_comparison(summary['baseline_comparison'])}",
             "",
             "| Candidate | Rung / mode | Status | Objectives | Seconds | Verified |",
             "| --- | --- | --- | --- | --- | --- |",
@@ -203,3 +206,11 @@ def report_version2(plan: dict, result, output) -> dict:
         if staging.exists():
             shutil.rmtree(staging)
     return summary
+
+
+def _render_baseline_comparison(compared: dict | None) -> str:
+    if not isinstance(compared, dict):
+        return "unavailable (legacy result has no baseline comparison record)"
+    reasons = compared.get("reasons")
+    reason = ", ".join(reasons) if isinstance(reasons, list) and reasons else "none"
+    return f"{compared.get('status')} ({reason})"

@@ -13,24 +13,57 @@ from ecc_experience.knowledge.verify import verify_case
 from ecc_experience.study.evidence import acceptance
 
 
-def baseline_score(plan: dict, observed: dict) -> float | None:
+def baseline_comparison(plan: dict, observed: dict) -> dict:
+    """Explain whether the frozen baseline can support a measured QoR delta."""
     store = ExperienceStore(plan["store"])
     case = store.read(plan["baseline_case_id"])
     context = case.facts.get("experienceExecutionContext")
-    if not isinstance(context, dict) or context.get("runtime") != plan["runtime"]:
-        return None
+    reasons = []
+    runtime_match = None
+    if (
+        not isinstance(context, dict)
+        or not isinstance(context.get("runtime"), dict)
+        or not context["runtime"]
+    ):
+        reasons.append("baseline_execution_context_unknown")
+    else:
+        runtime_match = context["runtime"] == plan["runtime"]
+        if not runtime_match:
+            reasons.append("baseline_runtime_mismatch")
+    if observed.get("status") != "passed":
+        reasons.append("baseline_workspace_not_passed")
     accepted = acceptance(case, store.case_directory(case.case_id))
-    if observed["status"] != "passed" or accepted["status"] != "pass":
-        return None
-    if accepted.get("advisory_only") and (
-        observed.get("advisory_only") is not True
-        or observed.get("signoff_status") != "unknown"
-        or observed.get("signoff_exit_code") != 7
+    if accepted["status"] != "pass":
+        reasons.append("baseline_acceptance_not_pass")
+    if (
+        runtime_match is True
+        and accepted.get("advisory_only")
+        and (
+            observed.get("advisory_only") is not True
+            or observed.get("signoff_status") != "unknown"
+            or observed.get("signoff_exit_code") != 7
+        )
     ):
         raise invalid("DSE baseline advisory evidence is inconsistent")
-    if accepted["qor_score"] != observed.get("qor_score"):
+    if accepted["qor_score"] is None or observed.get("qor_score") is None:
+        reasons.append("baseline_qor_unavailable")
+    elif runtime_match is True and accepted["qor_score"] != observed.get("qor_score"):
         raise invalid("DSE baseline score differs from immutable evidence")
-    return accepted["qor_score"]
+    return {
+        "status": "unavailable" if reasons else "comparable",
+        "reasons": reasons,
+        "case_id": case.case_id,
+        "runtime_match": runtime_match,
+        "case_acceptance": accepted["status"],
+        "case_qor_score": accepted["qor_score"],
+        "workspace_status": observed.get("status"),
+        "workspace_qor_score": observed.get("qor_score"),
+    }
+
+
+def baseline_score(plan: dict, observed: dict) -> float | None:
+    compared = baseline_comparison(plan, observed)
+    return compared["case_qor_score"] if compared["status"] == "comparable" else None
 
 
 def audit_trial(plan: dict, trial: dict, rung: dict | None) -> dict:
@@ -237,7 +270,13 @@ def audit_history(plan: dict, result: dict) -> dict:
     if result["status"] == "complete":
         if len(validations) != 2 or any(trial["status"] != "passed" for trial in validations):
             raise invalid("DSE completion requires full and independent fresh acceptance")
-        score = baseline_score(plan, result["baseline_evidence"])
+        compared = baseline_comparison(plan, result["baseline_evidence"])
+        if (
+            result.get("baseline_comparison") is not None
+            and result["baseline_comparison"] != compared
+        ):
+            raise invalid("DSE baseline comparison differs from verified evidence")
+        score = compared["case_qor_score"] if compared["status"] == "comparable" else None
         delta = result["fresh_validation"]["qor_score"] - score if score is not None else None
         if result.get("score_delta") != delta or result.get("improved") != (
             delta > 0 if delta is not None else None

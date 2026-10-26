@@ -1985,8 +1985,20 @@ An imported or directly collected legacy baseline without a stable attempt
 identity can still support stage search, but cannot establish QoR improvement or
 provide warm-start seeds. A trusted baseline case must match the frozen current
 runtime before contributing comparisons or warm_start. After changing ECC, tools
-or PDK, rerun and verify the baseline before referencing its case ID. Historical
-release candidates still require current stage, full and fresh validation.
+or PDK, rerun and verify the baseline before referencing its case ID. Changing
+Experience source also changes the frozen runtime identity, so a fresh case from
+an older build cannot establish QoR improvement for a new build. First complete
+one explicit DSE round with full and fresh validation, then use that round's fresh
+workspace as the next `--workspace` and its case ID as `baseline_case_id`. This
+chaining is explicit: `dse run` never adds hidden EDA, and Experience remains
+optional for other ECC users. Result and report `baseline_comparison` records
+reasons such as `baseline_runtime_mismatch`,
+`baseline_execution_context_unknown`, `baseline_acceptance_not_pass` or
+`baseline_qor_unavailable`. An unqualified baseline keeps `score_delta` null and
+`comparison_status` at `insufficient_evidence` while stage search and full/fresh
+validation can still complete independently. Inspect the reason without rerunning
+EDA with `jq '.baseline_comparison' ./runs/<run>/result.json`. Historical release
+candidates still require current stage, full and fresh validation.
 Reviewed place.density_weight is available to stage DSE. Routing layer knobs are
 available to existing complete-flow optimization only, with the ics55 catalog and
 bottom≤top checks; they cannot enter an early prefix before route.

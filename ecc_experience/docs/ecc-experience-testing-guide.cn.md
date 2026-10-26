@@ -1724,7 +1724,17 @@ v2 spec 可显式设置 `baseline_case_id`，绑定 store 中已验证的受控�
 普通导入或直接 collect 的旧基线没有稳定 attempt 身份时，仍可进行阶段搜索，但不会宣称
 QoR 改进，也不会生成经验种子。可信 baseline case 的运行时身份必须与当前冻结运行时一致，
 才参与改进比较和 warm_start；更新 ECC、工具或 PDK 后应重新执行基线并验证，再引用其
-case_id。历史 release 只提供有来源的候选，不能替代本轮的阶段、full 与 fresh 验证。
+case_id。修改 Experience 自身源码也会改变冻结运行时身份，因此不能用旧运行时产生的
+fresh case 证明新构建的 QoR 改进。此时先按普通 DSE 流程显式完成一轮 full 与 fresh，
+再把该轮 fresh 的 workspace 作为下一轮 `--workspace`、case_id 作为
+`baseline_case_id`；这是显式串联，不会在 `dse run` 中偷偷追加 EDA，也不要求所有 ECC
+用户启用 Experience。结果和报告中的 `baseline_comparison` 会列出
+`baseline_runtime_mismatch`、`baseline_execution_context_unknown`、
+`baseline_acceptance_not_pass` 或 `baseline_qor_unavailable` 等原因；只要基线不合格，
+`score_delta` 保持 `null`、`comparison_status` 保持 `insufficient_evidence`，阶段搜索
+和 full/fresh 验收仍可独立完成。用
+`jq '.baseline_comparison' ./runs/<run>/result.json` 可在不重跑 EDA 的情况下审查原因。
+历史 release 只提供有来源的候选，不能替代本轮的阶段、full 与 fresh 验证。
 已审核的 place.density_weight 可用于阶段 DSE；route.bottom_layer/top_layer 仅用于现有
 完整流程优化，限 ics55 公开层目录且 bottom≤top，不能用于尚未包含 route 的前段 DSE。
 

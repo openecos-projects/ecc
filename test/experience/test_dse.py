@@ -303,6 +303,9 @@ def test_version2_adaptive_full_fresh_report_and_idempotent_resume(
     output = path.parent / "output"
     result = dse_run(path, output)
     assert (result["status"], result["exit_code"]) == ("complete", 0), result
+    assert result["baseline_comparison"]["status"] == "unavailable"
+    assert "baseline_execution_context_unknown" in result["baseline_comparison"]["reasons"]
+    assert result["comparison_status"] == "insufficient_evidence"
     assert len(result["trials"]) == 3
     assert result["trials"][0]["decision"]["reason"] == "space_center"
     before = len(simulated_cli)
@@ -314,6 +317,8 @@ def test_version2_adaptive_full_fresh_report_and_idempotent_resume(
     assert len(report["pareto_front"]) == 3
     assert report["config_files"] == ["floorplan_ecc.json"]
     assert report["config_file_counts"] == {"floorplan_ecc.json": 5}
+    assert report["baseline_comparison"] == result["baseline_comparison"]
+    assert "baseline_execution_context_unknown" in (path.parent / "report/summary.md").read_text()
     assert report["safe_to_apply"] is False
 
 

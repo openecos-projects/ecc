@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from chipcompiler.utility.workspace_lock import workspace_lock
-from ecc_experience.dse.audit import audit_history, baseline_score
+from ecc_experience.dse.audit import audit_history, baseline_comparison
 from ecc_experience.dse.multiobjective import measure_objectives, rank_trials
 from ecc_experience.dse.optimizer import propose
 from ecc_experience.dse.plan import invalid
@@ -503,7 +503,8 @@ def _run(plan, limits, destination, *, resume, select, model_release, max_concur
                     )
                     return result
             baseline, fresh = result["baseline_evidence"], result["fresh_validation"]
-            score = baseline_score(plan, baseline)
+            compared = baseline_comparison(plan, baseline)
+            score = compared["case_qor_score"] if compared["status"] == "comparable" else None
             comparable = score is not None and fresh.get("qor_score") is not None
             delta = fresh["qor_score"] - score if comparable else None
             result.update(
@@ -512,6 +513,7 @@ def _run(plan, limits, destination, *, resume, select, model_release, max_concur
                 score_delta=delta,
                 improved=delta > 0 if delta is not None else None,
                 comparison_status="available" if comparable else "insufficient_evidence",
+                baseline_comparison=compared,
             )
             audit_history(plan, result)
             check_source(plan)

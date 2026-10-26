@@ -38,7 +38,8 @@ def test_resealed_plan_still_obeys_runtime_boundaries(dse_project, version2_spec
 
 
 @pytest.mark.parametrize(
-    "corruption", ["missing_fresh", "validation_mode", "delta", "front", "shape"]
+    "corruption",
+    ["missing_fresh", "validation_mode", "delta", "comparison", "front", "shape"],
 )
 def test_completed_result_cannot_hide_missing_or_changed_evidence(
     dse_project, version2_spec, simulated_cli, corruption
@@ -54,6 +55,8 @@ def test_completed_result_cannot_hide_missing_or_changed_evidence(
         result["full_validation"]["mode"] = "screen"
     elif corruption == "delta":
         result["score_delta"] = 1000
+    elif corruption == "comparison":
+        result["baseline_comparison"]["reasons"] = []
     elif corruption == "front":
         result["pareto_front"] = []
     else:
@@ -63,6 +66,40 @@ def test_completed_result_cannot_hide_missing_or_changed_evidence(
     with pytest.raises(ExperienceError):
         dse_run(path, output, resume=True)
     assert len(simulated_cli) == calls
+
+
+def test_baseline_comparison_reports_runtime_mismatch(dse_project, version2_spec, monkeypatch):
+    from ecc_experience.dse.audit import baseline_comparison
+    from ecc_experience.knowledge.store import ExperienceStore
+
+    workspace, store, path = dse_project
+    frozen = dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
+    repository = ExperienceStore(store)
+    baseline = repository.read(frozen["baseline_case_id"])
+    observed = {
+        "status": "passed",
+        "qor_score": baseline.facts["qorSnapshotExtension"]["score"],
+    }
+    read_case = ExperienceStore.read
+
+    def read_old_runtime(self, case_id):
+        selected = read_case(self, case_id)
+        if case_id != frozen["baseline_case_id"]:
+            return selected
+        context = {
+            "schema": "ecc-experience-execution-context/1",
+            "attempt_id": selected.source.attempt_id,
+            "runtime": {"ecc": "older-runtime"},
+        }
+        return selected.model_copy(
+            update={"facts": {**selected.facts, "experienceExecutionContext": context}}
+        )
+
+    monkeypatch.setattr(ExperienceStore, "read", read_old_runtime)
+    compared = baseline_comparison(frozen, observed)
+    assert compared["status"] == "unavailable"
+    assert compared["runtime_match"] is False
+    assert "baseline_runtime_mismatch" in compared["reasons"]
 
 
 def test_resume_does_not_replenish_per_trial_time(dse_project, version2_spec, monkeypatch):
