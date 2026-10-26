@@ -369,12 +369,15 @@ def test_version2_rungs_pareto_manual_selection_and_replay(
         {"through_step": "place", "promote_count": 1},
     ]
     settings["limits"]["max_trials"] = 7
+    settings["execution"] = {"max_concurrent": 2}
     version2_spec.write_text(json.dumps(settings))
     dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
     output = path.parent / "output"
     result = dse_run(path, output)
     assert (result["status"], result["exit_code"]) == ("selection_required", 7), result
+    assert result["max_concurrent"] == 2
     assert len(result["trials"]) == 5
+    assert all(trial["candidate_id"] for trial in result["trials"])
     assert len([command for command in simulated_cli if command[0] == "run"]) == 5
     chosen = result["pareto_front"][0]
     result = dse_run(path, output, resume=True, select=chosen)

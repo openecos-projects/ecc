@@ -166,6 +166,13 @@ def _run(plan, limits, destination, *, resume, select, model_release, max_concur
             "objective": {key: main[key] for key in ("id", "unit", "scope", "corner")},
         }
 
+    def trial_record(candidate_id, rung_index, decision=None):
+        return {
+            "candidate_id": candidate_id,
+            "rung": rung_index,
+            "decision": decision,
+        }
+
     def model_for_rung(rung_index):
         if not model_release:
             return None
@@ -224,7 +231,7 @@ def _run(plan, limits, destination, *, resume, select, model_release, max_concur
                 (
                     trial
                     for trial in result["trials"]
-                    if trial["candidate_id"] == candidate["candidate_id"]
+                    if trial.get("candidate_id") == candidate["candidate_id"]
                     and trial["rung"] == rung_index
                 ),
                 None,
@@ -232,7 +239,9 @@ def _run(plan, limits, destination, *, resume, select, model_release, max_concur
         if existing is not None and existing.get("status") not in {None, "running"}:
             return existing
         record: dict = (
-            existing if existing is not None else {"rung": rung_index, "decision": decision}
+            existing
+            if existing is not None
+            else trial_record(candidate["candidate_id"], rung_index, decision)
         )
         if existing is None:
             with result_lock:
@@ -353,7 +362,7 @@ def _run(plan, limits, destination, *, resume, select, model_release, max_concur
                         break
                     candidates[proposed["candidate_id"]] = proposed
                     reserved.append(proposed["parameters"])
-                    record = {"rung": 0, "decision": decision}
+                    record = trial_record(proposed["candidate_id"], 0, decision)
                     with result_lock:
                         result["trials"].append(record)
                         rung_zero.append(record)
@@ -407,13 +416,14 @@ def _run(plan, limits, destination, *, resume, select, model_release, max_concur
                             (
                                 trial
                                 for trial in result["trials"]
-                                if trial["rung"] == index + 1 and trial["candidate_id"] == identity
+                                if trial["rung"] == index + 1
+                                and trial.get("candidate_id") == identity
                             ),
                             None,
                         )
                         if existing is not None and existing.get("status") != "running":
                             continue
-                        record = existing or {"rung": index + 1, "decision": None}
+                        record = existing or trial_record(identity, index + 1)
                         if existing is None:
                             with result_lock:
                                 result["trials"].append(record)
