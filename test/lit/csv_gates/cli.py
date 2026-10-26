@@ -1,4 +1,16 @@
-"""CLI: export signoff CSV + gate projection + run manifest."""
+"""CLI: export signoff CSV + gate projection + run manifest.
+
+In:
+    --workspace / --out-dir / --spec — workspace root, output root, gate YAML
+Out:
+    csv/*.csv, reports/metrics.check.txt, reports/run_manifest.json; exit 0|1|2
+Entry:
+    export-signoff-csv.sh  nix/scripts/export-signoff-csv.sh
+See:
+    build_csv_bundle()   test/lit/csv_gates/bundle.py
+    projection_lines()   test/lit/csv_gates/projection.py
+    build_run_manifest() test/lit/csv_gates/manifest.py
+"""
 
 from __future__ import annotations
 
@@ -13,6 +25,19 @@ from csv_gates.spec import CsvSpecError, load_csv_spec
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Export CSV bundle, FileCheck projection, and run manifest.
+
+    In:
+        argv — CLI args; requires --workspace, --out-dir, --spec
+    Out:
+        int — 0 ok, 1 workspace/csv failure, 2 import/spec error
+    Entry:
+        nix/scripts/export-signoff-csv.sh
+    See:
+        build_csv_bundle()   test/lit/csv_gates/bundle.py
+        projection_lines()   test/lit/csv_gates/projection.py
+        build_run_manifest() test/lit/csv_gates/manifest.py
+    """
     parser = argparse.ArgumentParser(description="Export signoff CSV + gate projection")
     parser.add_argument("--workspace", required=True, help="Workspace directory")
     parser.add_argument("--out-dir", required=True, help="Output directory")

@@ -1,4 +1,16 @@
-"""FileCheck projection text from exported CSV + spec gates."""
+"""FileCheck projection text from exported CSV + spec gates.
+
+In:
+    csv_dir / design / spec — exported tables + gate profile
+Out:
+    list[str] — FileCheck lines (metrics, checklist, readiness, gates)
+Entry:
+    main()  test/lit/csv_gates/cli.py
+See:
+    classify_signoff_readiness()  chipcompiler/runtime/signoff/readiness.py
+    build_csv_bundle()            test/lit/csv_gates/bundle.py
+    evaluate_metric_gate()        test/lit/csv_gates/compare.py
+"""
 
 from __future__ import annotations
 
@@ -25,7 +37,22 @@ def projection_lines(
     metrics_rows: dict[str, dict] | None = None,
     checklist_rows: dict[str, dict] | None = None,
 ) -> list[str]:
-    """Build FileCheck text from CSV files and/or in-memory rows."""
+    """Build FileCheck text from CSV files and/or in-memory rows.
+
+    In:
+        csv_dir — directory with qor_metrics.csv / checklist.csv (optional)
+        design — design name stamped on the projection
+        spec — CsvExportSpec gate profile (optional; may load export_spec.yml)
+        metrics_rows / checklist_rows — optional in-memory overrides
+    Out:
+        list[str] — projection lines including readiness: and gate …
+    Entry:
+        main()  test/lit/csv_gates/cli.py
+    See:
+        classify_signoff_readiness()  chipcompiler/runtime/signoff/readiness.py
+        evaluate_metric_gate()        test/lit/csv_gates/compare.py
+        evaluate_checklist_gate()     test/lit/csv_gates/compare.py
+    """
     csv_dir = Path(csv_dir) if csv_dir is not None else None
     if spec is None and csv_dir is not None:
         spec_path = csv_dir / "export_spec.yml"

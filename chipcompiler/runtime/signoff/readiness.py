@@ -2,6 +2,16 @@
 
 Maps checklist / assessment into PASS | WARN | MISS | ERROR without changing
 the legacy ready / attention / blocked status fields.
+
+In:
+    schema-v3 signoff_checklist dict and/or assessment status
+Out:
+    Readiness — PASS | WARN | MISS | ERROR
+Entry:
+    build_signoff_assessment()  chipcompiler/engine/signoff_assessment.py
+See:
+    projection_lines()          test/lit/csv_gates/projection.py
+    SIGNOFF_ITEM_CATALOG        chipcompiler/runtime/signoff/catalog.py
 """
 
 from __future__ import annotations
@@ -27,6 +37,18 @@ def classify_signoff_readiness(
     Checklist marks missing files as ``state=failed`` with ``owner=checklist``;
     QoR gate failures use ``owner=qor``. Both are blocked, but only the latter is
     ERROR in the milestone vocabulary.
+
+    In:
+        checklist — schema-v3 signoff_checklist object, or None
+        assessment_status — legacy ready|attention|blocked, optional
+        checklist_unavailable — force MISS when checklist cannot be read
+    Out:
+        Readiness — PASS | WARN | MISS | ERROR
+    Entry:
+        attach_readiness()          chipcompiler/runtime/signoff/readiness.py
+        build_signoff_assessment()  chipcompiler/engine/signoff_assessment.py
+    See:
+        projection_lines()          test/lit/csv_gates/projection.py
     """
     if checklist_unavailable:
         return "MISS"
@@ -87,7 +109,19 @@ def attach_readiness(
     assessment: dict[str, Any],
     checklist: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return assessment with a ``readiness`` field."""
+    """Stamp ``readiness`` (and ``items`` if absent) onto an assessment dict.
+
+    In:
+        assessment — mutable assessment mapping from engine
+        checklist — schema-v3 checklist used for classify + item_summaries
+    Out:
+        dict — shallow copy of assessment with readiness (+ items)
+    Entry:
+        build_signoff_assessment()  chipcompiler/engine/signoff_assessment.py
+    See:
+        classify_signoff_readiness() chipcompiler/runtime/signoff/readiness.py
+        item_summaries()             chipcompiler/runtime/signoff/readiness.py
+    """
     unavailable = assessment.get("status") == "blocked" and any(
         risk.get("title") == "Signoff checklist unavailable"
         for risk in assessment.get("risks", [])
@@ -108,6 +142,15 @@ def attach_readiness(
 
 
 def item_summaries(checklist: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Flatten checklist rows for assessment ``items``.
+
+    In:
+        checklist — schema-v3 signoff_checklist, or None
+    Out:
+        list[dict] — id/state/blocked/policy/owner/title/step/category
+    See:
+        attach_readiness()  chipcompiler/runtime/signoff/readiness.py
+    """
     if not isinstance(checklist, dict) or not isinstance(checklist.get("checklist"), list):
         return []
     rows = []

@@ -4,6 +4,17 @@
 Homepage is a navigable tour (how to read → map → readiness → categories →
 per-metric). CSV / FileCheck gates stay a util under test/lit/csv_gates.
 
+In:
+    --assessment (optional JSON) / --out / --commit* stamps
+Out:
+    markdown board file; stdout path; exit 0
+Entry:
+    main()  nix/scripts/generate-signoff-kanban.py
+    .github/workflows (Signoff release kanban)
+See:
+    SIGNOFF_ITEM_CATALOG  chipcompiler/runtime/signoff/catalog.py
+    signoff_baseline.py   nix/scripts/signoff_baseline.py
+
 Usage:
   PYTHONPATH=. python nix/scripts/generate-signoff-kanban.py \\
       [--assessment path.json] [--out signoff-kanban.md]
@@ -64,6 +75,16 @@ def _repo_root() -> Path:
 
 
 def _load_catalog():
+    """Import SIGNOFF_ITEM_CATALOG from the tool tree.
+
+    In:
+        (repo root via _repo_root)
+    Out:
+        list — catalog specs for render_markdown
+    See:
+        SIGNOFF_ITEM_CATALOG  chipcompiler/runtime/signoff/catalog.py
+        main()                nix/scripts/generate-signoff-kanban.py
+    """
     root = _repo_root()
     sys.path.insert(0, str(root))
     from chipcompiler.runtime.signoff.catalog import SIGNOFF_ITEM_CATALOG
@@ -408,8 +429,8 @@ def _append_version_footer(
         "",
         "## Version",
         "",
-        f"| Field | Value |",
-        f"| --- | --- |",
+        "| Field | Value |",
+        "| --- | --- |",
         f"| Git commit | [`{commit[:12]}`]({commit_url}) |",
         f"| Git commit (full) | `{commit}` |",
         f"| Snapshot SHA-256 | `{snapshot_sha256}` |",
@@ -425,6 +446,19 @@ def _append_version_footer(
 
 
 def main() -> int:
+    """CI/local entry: load catalog (+ optional assessment) → write board.
+
+    In:
+        CLI — --assessment, --out, --commit, --commit-url, --snapshot-sha256
+    Out:
+        int — 0 after writing markdown
+    Entry:
+        .github workflow job Diagramize signoff metrics
+    See:
+        _load_catalog()     nix/scripts/generate-signoff-kanban.py
+        render_markdown()   nix/scripts/generate-signoff-kanban.py
+        SIGNOFF_ITEM_CATALOG  chipcompiler/runtime/signoff/catalog.py
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--assessment", default="", help="optional assessment JSON")
     parser.add_argument("--out", default="signoff-kanban.md", help="output markdown")

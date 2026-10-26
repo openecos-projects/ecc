@@ -1,3 +1,19 @@
+"""Build a signoff assessment dict from workspace checklist.
+
+In:
+    workspace — loaded Workspace (flow + home/checklist.json)
+    checklist — optional preloaded schema-v3 signoff_checklist
+Out:
+    dict — status/risks/review_groups + readiness (via attach_readiness)
+Entry:
+    snapshot assembly  chipcompiler/engine/snapshot.py
+    signoff export     chipcompiler/engine/signoff_export.py
+See:
+    attach_readiness()          chipcompiler/runtime/signoff/readiness.py
+    classify_signoff_readiness() chipcompiler/runtime/signoff/readiness.py
+    SIGNOFF_ITEM_CATALOG        chipcompiler/runtime/signoff/catalog.py
+"""
+
 from typing import Any, TypedDict
 
 from chipcompiler.data import ADVISORY_FLOW_STEPS, StepEnum
@@ -34,6 +50,20 @@ def build_signoff_assessment(
     *,
     checklist: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Assemble assessment + readiness for one workspace.
+
+    In:
+        workspace — Workspace with directory/flow
+        checklist — optional schema-v3 checklist; else read home/checklist.json
+    Out:
+        dict — assessment including readiness field
+    Entry:
+        chipcompiler/engine/snapshot.py (signoffAssessment)
+        chipcompiler/engine/signoff_export.py
+    See:
+        attach_readiness()  chipcompiler/runtime/signoff/readiness.py
+        build_checklist()   chipcompiler/tools/ecc/signoff_checklist.py
+    """
     flow = getattr(workspace, "flow", None)
     steps_fn = getattr(flow, "steps", None)
     if callable(steps_fn):

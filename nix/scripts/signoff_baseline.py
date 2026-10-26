@@ -1,10 +1,22 @@
 #!/usr/bin/env python3
 """Load / verify / diff in-repo signoff baseline versions (durable vs artifacts).
 
+In:
+    nix/signoff-baseline/index.json + versions/*.json
+Out:
+    list / verify status / diff / matrix JSON on stdout or --out
+Entry:
+    main()  nix/scripts/signoff_baseline.py
+    .github workflow (Verify in-repo multi-version baseline)
+See:
+    check_metric()          chipcompiler/runtime/signoff/qor_perf_support.py
+    generate-signoff-kanban.py  nix/scripts/generate-signoff-kanban.py
+
 Usage:
   PYTHONPATH=. python nix/scripts/signoff_baseline.py list
   PYTHONPATH=. python nix/scripts/signoff_baseline.py verify
-  PYTHONPATH=. python nix/scripts/signoff_baseline.py diff --from v2026-09-synth --to v2026-10-runtime
+  PYTHONPATH=. python nix/scripts/signoff_baseline.py diff \\
+      --from v2026-09-synth --to v2026-10-runtime
   PYTHONPATH=. python nix/scripts/signoff_baseline.py export-matrix --out matrix.json
 """
 

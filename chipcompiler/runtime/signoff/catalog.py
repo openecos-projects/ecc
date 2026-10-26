@@ -1,8 +1,19 @@
-"""Signoff checklist item catalog — framework substrate for every concrete item.
+"""Signoff checklist item catalog — identity / policy / readiness impact.
 
-Builders in ``signoff_checklist`` fill state/summary/evidence; this module owns
-identity, policy, owner, and readiness impact. Dynamic ``package.*`` rows are
-the only unbounded family (collector issues).
+Builders fill state/summary/evidence; this module owns the slot table.
+Dynamic ``package.*`` rows are the only unbounded family (collector issues).
+
+In:
+    (none — static table + lookup helpers)
+Out:
+    SIGNOFF_ITEM_CATALOG — frozen SignoffItemSpec rows
+    lookup_item / required_item_ids / catalog_defaults — query helpers
+Entry:
+    build_checklist()           chipcompiler/tools/ecc/signoff_checklist.py
+    build_signoff_assessment()  chipcompiler/engine/signoff_assessment.py
+See:
+    classify_signoff_readiness() chipcompiler/runtime/signoff/readiness.py
+    generate-signoff-kanban.py   nix/scripts/generate-signoff-kanban.py
 """
 
 from __future__ import annotations
@@ -289,6 +300,16 @@ PACKAGE_ID_PREFIX = "package."
 
 
 def lookup_item(item_id: str) -> SignoffItemSpec | None:
+    """Resolve one catalog slot (incl. dynamic ``package.*``).
+
+    In:
+        item_id — checklist item id
+    Out:
+        SignoffItemSpec | None — catalog row, or None if unknown
+    See:
+        required_item_ids()         chipcompiler/runtime/signoff/catalog.py
+        build_checklist()           chipcompiler/tools/ecc/signoff_checklist.py
+    """
     spec = CATALOG_BY_ID.get(item_id)
     if spec is not None:
         return spec
@@ -307,6 +328,16 @@ def lookup_item(item_id: str) -> SignoffItemSpec | None:
 
 
 def required_item_ids(*, include_post_route_lec: bool = True) -> tuple[str, ...]:
+    """Ids that must appear for a full blocking package.
+
+    In:
+        include_post_route_lec — when True, keep optional postRouteLec slots
+    Out:
+        tuple[str, ...] — ordered required item ids
+    See:
+        lookup_item()               chipcompiler/runtime/signoff/catalog.py
+        SIGNOFF_ITEM_CATALOG        chipcompiler/runtime/signoff/catalog.py
+    """
     ids = []
     lec_when_required = {
         "artifact.postroutelec.result",
@@ -324,6 +355,15 @@ def required_item_ids(*, include_post_route_lec: bool = True) -> tuple[str, ...]
 
 
 def catalog_defaults(item_id: str) -> dict[str, str]:
+    """Default step/category/owner/policy/title for a known id.
+
+    In:
+        item_id — catalog id
+    Out:
+        dict — empty if unknown; else step/category/owner/policy/title
+    See:
+        lookup_item()  chipcompiler/runtime/signoff/catalog.py
+    """
     spec = CATALOG_BY_ID.get(item_id)
     if spec is None:
         return {}

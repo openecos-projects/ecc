@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 # CI/lit wrapper → export-signoff-csv.py (test/lit/csv_gates).
+#
+# In:  --workspace DIR --out-dir DIR --spec FILE
+#      Env: ECC_REPO_ROOT, PYTHON, ECC_SIGNOFF_CSV_SPEC, ECC_SIGNOFF_RUN_ID
+# Out: csv + reports under --out-dir (via Python CLI); process exit status
+# Entry: test/lit FileCheck flows; .github CI steps that export signoff CSV
+# See:  main()            test/lit/csv_gates/cli.py
+#       projection_lines() test/lit/csv_gates/projection.py
+#
 # Usage: export-signoff-csv.sh --workspace DIR --out-dir DIR --spec FILE
-# Env: ECC_REPO_ROOT, PYTHON, ECC_SIGNOFF_CSV_SPEC, ECC_SIGNOFF_RUN_ID
 
 set -euo pipefail
 
