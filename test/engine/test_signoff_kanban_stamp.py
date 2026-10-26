@@ -9,7 +9,7 @@ from pathlib import Path
 def _load_kanban_module():
     path = (
         Path(__file__).resolve().parents[2]
-        / ".github"
+        / "nix"
         / "scripts"
         / "generate-signoff-kanban.py"
     )

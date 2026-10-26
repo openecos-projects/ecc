@@ -24,7 +24,7 @@ Projection emits a `readiness:` line derived from checklist rows (no PDK).
 Two lit cases share one FileCheck contract (`checks/status_success.check`):
 
 1. **CLI** — `ecc run --project … --from/--to Synthesis` then `ecc status --project`
-2. **RPC** — `ecc rpc serve --stdio` lifecycle via `test/rpc_check.py`, then the same status check
+2. **RPC** — `ecc rpc serve --stdio` lifecycle via `nix/scripts/rpc_check.py`, then the same status check
 
 Drivers live under `nix/scripts/` (product scenarios, not PR-body glue):
 

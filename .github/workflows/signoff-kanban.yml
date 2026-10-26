@@ -5,7 +5,7 @@ on:
   pull_request:
     paths:
       - 'chipcompiler/engine/signoff/**'
-      - '.github/scripts/generate-signoff-kanban.py'
+      - 'nix/scripts/generate-signoff-kanban.py'
       - '.github/signoff-board/**'
       - '.github/workflows/signoff-kanban.yml'
   push:
@@ -13,7 +13,7 @@ on:
       - feat/signoff-release-kanban
     paths:
       - 'chipcompiler/engine/signoff/**'
-      - '.github/scripts/generate-signoff-kanban.py'
+      - 'nix/scripts/generate-signoff-kanban.py'
       - '.github/signoff-board/**'
       - '.github/workflows/signoff-kanban.yml'
 
@@ -40,7 +40,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifact
-          PYTHONPATH=. python .github/scripts/generate-signoff-kanban.py \
+          PYTHONPATH=. python nix/scripts/generate-signoff-kanban.py \
             --out artifact/signoff-kanban.md
           cp .github/signoff-board/README.md artifact/ 2>/dev/null || true
           ls -la artifact

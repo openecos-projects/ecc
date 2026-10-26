@@ -59,7 +59,7 @@ case "$mode" in
     pdk_root="${CHIPCOMPILER_ICS55_PDK_ROOT:?CHIPCOMPILER_ICS55_PDK_ROOT is required}"
     py="${PYTHON:-$root/.venv/bin/python}"
     test -x "$py"
-    "$py" "$root/test/rpc_check.py" \
+    "$py" "$root/nix/scripts/rpc_check.py" \
       --ecc "$ecc" \
       --project "$project" \
       --workspace default \
