@@ -625,55 +625,67 @@ def test_warm_start_cross_design_requires_applied_evidence_and_records_provenanc
         return observed_cases[case_id]
 
     monkeypatch.setattr(warm_start.ExperienceStore, "read", read_case)
-    monkeypatch.setattr(
-        warm_start,
-        "match_cases",
-        lambda *_args, **_kwargs: {
-            "matches": [
-                {
-                    "case_id": "applied",
-                    "distance": 0.2,
-                    "compatibility": "selected_process_tool_analysis_match",
-                    "parameters": {"values": {"floorplan.core_util": 0.35}},
-                    "match_quality": "compatible_design",
-                    "confidence": "experimental",
-                    "feature_coverage": 0.9,
-                    "parameter_evidence_level": "applied",
-                },
-                {
-                    "case_id": "materialized",
-                    "distance": 0.15,
-                    "compatibility": "selected_process_tool_analysis_match",
-                    "parameters": {"values": {"floorplan.core_util": 0.3}},
-                    "match_quality": "compatible_design",
-                    "confidence": "experimental",
-                    "feature_coverage": 0.9,
-                    "parameter_evidence_level": "materialized",
-                },
-                {
-                    "case_id": "configured",
-                    "distance": 0.1,
-                    "compatibility": "selected_process_tool_analysis_match",
-                    "parameters": {"values": {"floorplan.core_util": 0.4}},
-                    "match_quality": "compatible_design",
-                    "confidence": "experimental",
-                    "feature_coverage": 0.9,
-                    "parameter_evidence_level": "configured",
-                },
-                {
-                    "case_id": "same_input",
-                    "distance": 0.0,
-                    "compatibility": "selected_process_tool_analysis_match",
-                    "parameters": {"values": {"floorplan.core_util": 0.3}},
-                    "match_quality": "exact_input",
-                    "same_input_content": True,
-                    "confidence": "observed_only",
-                    "feature_coverage": 1.0,
-                    "parameter_evidence_level": "applied",
-                },
-            ]
+    matches = [
+        *[
+            {
+                "case_id": f"configured-near-{index}",
+                "distance": 0.01 * index,
+                "compatibility": "selected_process_tool_analysis_match",
+                "parameters": {"values": {"floorplan.core_util": 0.4}},
+                "match_quality": "compatible_design",
+                "confidence": "experimental",
+                "feature_coverage": 0.9,
+                "parameter_evidence_level": "configured",
+            }
+            for index in range(1, 4)
+        ],
+        {
+            "case_id": "applied",
+            "distance": 0.2,
+            "compatibility": "selected_process_tool_analysis_match",
+            "parameters": {"values": {"floorplan.core_util": 0.35}},
+            "match_quality": "compatible_design",
+            "confidence": "experimental",
+            "feature_coverage": 0.9,
+            "parameter_evidence_level": "applied",
         },
-    )
+        {
+            "case_id": "materialized",
+            "distance": 0.15,
+            "compatibility": "selected_process_tool_analysis_match",
+            "parameters": {"values": {"floorplan.core_util": 0.3}},
+            "match_quality": "compatible_design",
+            "confidence": "experimental",
+            "feature_coverage": 0.9,
+            "parameter_evidence_level": "materialized",
+        },
+        {
+            "case_id": "configured",
+            "distance": 0.1,
+            "compatibility": "selected_process_tool_analysis_match",
+            "parameters": {"values": {"floorplan.core_util": 0.4}},
+            "match_quality": "compatible_design",
+            "confidence": "experimental",
+            "feature_coverage": 0.9,
+            "parameter_evidence_level": "configured",
+        },
+        {
+            "case_id": "same_input",
+            "distance": 0.0,
+            "compatibility": "selected_process_tool_analysis_match",
+            "parameters": {"values": {"floorplan.core_util": 0.3}},
+            "match_quality": "exact_input",
+            "same_input_content": True,
+            "confidence": "observed_only",
+            "feature_coverage": 1.0,
+            "parameter_evidence_level": "applied",
+        },
+    ]
+
+    def fake_match(*_args, **kwargs):
+        return {"matches": matches[: kwargs["limit"]]}
+
+    monkeypatch.setattr(warm_start, "match_cases", fake_match)
     frozen["release"] = "release.json"
     frozen["release_id"] = "release-test"
     frozen["warm_start"]["experimental_cross_design"] = True

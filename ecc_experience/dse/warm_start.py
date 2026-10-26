@@ -21,12 +21,13 @@ def freeze_warm_start(plan: dict, limit: int) -> dict:
             "status": "insufficient_evidence",
         }
     experimental = frozen.get("experimental_cross_design", False)
+    retrieval_limit = min(100, max(limit * 10, 20))
     matched = match_cases(
         plan["baseline_case_id"],
         plan["store"],
         release=plan["release"],
         through_step=plan["rungs"][0]["through_step"],
-        limit=limit,
+        limit=retrieval_limit,
         experimental_cross_design=experimental,
         cross_design_only=experimental,
         groups=frozen.get("groups"),
@@ -100,6 +101,8 @@ def freeze_warm_start(plan: dict, limit: int) -> dict:
                 "provenance": provenance,
             }
         )
+        if len(seeds) >= limit:
+            break
     return {
         **frozen,
         "seeds": seeds,
