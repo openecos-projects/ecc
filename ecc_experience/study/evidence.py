@@ -8,15 +8,41 @@ from ecc_experience.knowledge.verify import verify_case
 from ecc_experience.models import ExperienceCase, ExperienceError
 
 
-def acceptance(case: ExperienceCase, directory: Path) -> dict:
+def _source_finding(finding) -> bool:
+    # Store-integrity checks run before source checks. Once integrity passes, a
+    # failing digest can only describe the live source that produced the case.
+    return finding.check in {"source", "file_digest"}
+
+
+def _acceptance_finding(finding) -> bool:
+    # Identity findings are advisory for acceptance, matching verify_case.
+    return not finding.check.startswith("identity_")
+
+
+def acceptance(case: ExperienceCase, directory: Path, *, require_source_fresh: bool = True) -> dict:
     verification = verify_case(case, directory)
     if verification.status == "fail":
-        return {
-            "status": "fail",
-            "verification": "fail",
-            "qor_score": None,
-            "reason": "Case verification failed",
-        }
+        counted = [item for item in verification.findings if _acceptance_finding(item)]
+        source_only = verification.integrity == "pass" and all(
+            finding.status != "fail" or _source_finding(finding) for finding in counted
+        )
+        if require_source_fresh or not source_only:
+            return {
+                "status": "fail",
+                "verification": "fail",
+                "qor_score": None,
+                "reason": "Case verification failed",
+            }
+    verification_status = verification.status
+    if not require_source_fresh:
+        non_source = [
+            item.status
+            for item in verification.findings
+            if _acceptance_finding(item) and not _source_finding(item)
+        ]
+        verification_status = (
+            "fail" if "fail" in non_source else "unknown" if "unknown" in non_source else "pass"
+        )
     facts: dict = case.facts
     if not all(
         isinstance(facts.get(key), dict)
@@ -47,7 +73,7 @@ def acceptance(case: ExperienceCase, directory: Path) -> dict:
     advisory_only = False
     signoff_status = "unknown"
     if (
-        verification.status == "fail"
+        verification_status == "fail"
         or any(step.get("state") in {"Error", "Failed"} for step in steps)
         or any(item.get("blocked") is True or item.get("state") == "fail" for item in checklist)
         or any(
@@ -59,7 +85,7 @@ def acceptance(case: ExperienceCase, directory: Path) -> dict:
         status = "fail"
     elif _strict_pass(
         case,
-        verification.status,
+        verification_status,
         steps,
         checklist,
         facts.get("signoffAssessment"),
@@ -70,7 +96,7 @@ def acceptance(case: ExperienceCase, directory: Path) -> dict:
         signoff_status = "pass"
     elif _advisory_only_pass(
         case,
-        verification.status,
+        verification_status,
         steps,
         checklist,
         facts.get("signoffAssessment"),
@@ -81,7 +107,7 @@ def acceptance(case: ExperienceCase, directory: Path) -> dict:
         advisory_only = True
     return {
         "status": status,
-        "verification": verification.status,
+        "verification": verification_status,
         "qor_score": score if type(score) in {float, int} and math.isfinite(score) else None,
         "scope": "current_ecc_full_flow_checklist_signoff_qor",
         "signoff_status": signoff_status if status == "pass" else "unknown",

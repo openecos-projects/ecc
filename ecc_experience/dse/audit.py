@@ -13,7 +13,7 @@ from ecc_experience.knowledge.verify import verify_case
 from ecc_experience.study.evidence import acceptance
 
 
-def baseline_comparison(plan: dict, observed: dict) -> dict:
+def baseline_comparison(plan: dict, observed: dict, *, require_source_fresh: bool = True) -> dict:
     """Explain whether the frozen baseline can support a measured QoR delta."""
     store = ExperienceStore(plan["store"])
     case = store.read(plan["baseline_case_id"])
@@ -32,7 +32,11 @@ def baseline_comparison(plan: dict, observed: dict) -> dict:
             reasons.append("baseline_runtime_mismatch")
     if observed.get("status") != "passed":
         reasons.append("baseline_workspace_not_passed")
-    accepted = acceptance(case, store.case_directory(case.case_id))
+    accepted = acceptance(
+        case,
+        store.case_directory(case.case_id),
+        require_source_fresh=require_source_fresh,
+    )
     if accepted["status"] != "pass":
         reasons.append("baseline_acceptance_not_pass")
     if (
@@ -270,7 +274,9 @@ def audit_history(plan: dict, result: dict) -> dict:
     if result["status"] == "complete":
         if len(validations) != 2 or any(trial["status"] != "passed" for trial in validations):
             raise invalid("DSE completion requires full and independent fresh acceptance")
-        compared = baseline_comparison(plan, result["baseline_evidence"])
+        compared = baseline_comparison(
+            plan, result["baseline_evidence"], require_source_fresh=False
+        )
         if (
             result.get("baseline_comparison") is not None
             and result["baseline_comparison"] != compared

@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -8,7 +9,9 @@ from ecc_experience.knowledge.store import ExperienceStore
 from ecc_experience.study.evidence import acceptance
 
 
-def collect_case(workspace_factory, tmp_path, name, *, policy="warn", risk_state="warning"):
+def collect_case(
+    workspace_factory, tmp_path, name, *, policy="warn", risk_state="warning", return_case=False
+):
     workspace = workspace_factory(name)
     source = workspace / "input.v"
     source.write_text("module sample; endmodule")
@@ -82,7 +85,10 @@ def collect_case(workspace_factory, tmp_path, name, *, policy="warn", risk_state
             },
         },
     ).case
-    return acceptance(case, repository.case_directory(case.case_id))
+    result = acceptance(case, repository.case_directory(case.case_id))
+    if return_case:
+        return result, case, repository
+    return result
 
 
 def test_acceptance_allows_explicit_advisory_only(tmp_path, workspace_factory):
@@ -104,3 +110,46 @@ def test_acceptance_rejects_non_advisory_attention(tmp_path, workspace_factory, 
     result = collect_case(workspace_factory, tmp_path, "non-advisory", **changes)
     assert result["status"] == expected
     assert result["advisory_only"] is False
+
+
+def test_historical_acceptance_ignores_changed_live_source_but_current_run_does_not(
+    tmp_path, workspace_factory
+):
+    _result, case, repository = collect_case(
+        workspace_factory, tmp_path, "historical", return_case=True
+    )
+    root = Path(case.source.workspace_root)
+    sources = [
+        root / item.reference
+        for item in case.evidence
+        if item.status == "available" and (root / item.reference).is_file()
+    ]
+    assert sources
+    for source in sources:
+        source.write_text("changed after collection")
+
+    current = acceptance(case, repository.case_directory(case.case_id))
+    historical = acceptance(
+        case, repository.case_directory(case.case_id), require_source_fresh=False
+    )
+
+    assert current["status"] == "fail"
+    assert current["verification"] == "fail"
+    assert historical["status"] == "pass"
+    assert historical["verification"] == "pass"
+    assert historical["qor_score"] == 90.0
+
+
+def test_historical_acceptance_still_rejects_corrupted_case_evidence(tmp_path, workspace_factory):
+    _result, case, repository = collect_case(
+        workspace_factory, tmp_path, "corrupted", return_case=True
+    )
+    evidence = next(item for item in case.evidence if item.stored_path is not None)
+    (repository.case_directory(case.case_id) / evidence.stored_path).write_text("tampered")
+
+    historical = acceptance(
+        case, repository.case_directory(case.case_id), require_source_fresh=False
+    )
+
+    assert historical["status"] == "fail"
+    assert historical["verification"] == "fail"

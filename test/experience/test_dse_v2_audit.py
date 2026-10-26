@@ -1,6 +1,7 @@
 import json
 import time
 import tomllib
+from pathlib import Path
 
 import pytest
 
@@ -100,6 +101,58 @@ def test_baseline_comparison_reports_runtime_mismatch(dse_project, version2_spec
     assert compared["status"] == "unavailable"
     assert compared["runtime_match"] is False
     assert "baseline_runtime_mismatch" in compared["reasons"]
+
+
+def test_historical_baseline_comparison_ignores_changed_live_source(
+    dse_project, version2_spec, monkeypatch
+):
+    from ecc_experience.dse.audit import baseline_comparison
+    from ecc_experience.knowledge.store import ExperienceStore
+
+    workspace, store, path = dse_project
+    frozen = dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
+    baseline = ExperienceStore(store).read(frozen["baseline_case_id"])
+    attempt = "baseline-attempt"
+    baseline = baseline.model_copy(
+        update={
+            "source": baseline.source.model_copy(update={"attempt_id": attempt}),
+            "facts": {
+                **baseline.facts,
+                "experienceExecutionContext": {
+                    "schema": "ecc-experience-execution-context/1",
+                    "attempt_id": attempt,
+                    "runtime": frozen["runtime"],
+                },
+            },
+        }
+    )
+    read_case = ExperienceStore.read
+
+    def read_baseline(self, case_id):
+        return baseline if case_id == frozen["baseline_case_id"] else read_case(self, case_id)
+
+    monkeypatch.setattr(ExperienceStore, "read", read_baseline)
+    root = Path(baseline.source.workspace_root)
+    sources = [
+        root / item.reference
+        for item in baseline.evidence
+        if item.status == "available" and (root / item.reference).is_file()
+    ]
+    assert sources
+    for source in sources:
+        source.write_text("changed after collection")
+    observed = {
+        "status": "passed",
+        "qor_score": baseline.facts["qorSnapshotExtension"]["score"],
+    }
+
+    current = baseline_comparison(frozen, observed)
+    historical = baseline_comparison(frozen, observed, require_source_fresh=False)
+
+    assert current["case_acceptance"] == "fail"
+    assert "baseline_acceptance_not_pass" in current["reasons"]
+    assert historical["case_acceptance"] == "pass"
+    assert "baseline_acceptance_not_pass" not in historical["reasons"]
 
 
 def test_resume_does_not_replenish_per_trial_time(dse_project, version2_spec, monkeypatch):
