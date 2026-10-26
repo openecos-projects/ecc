@@ -1,4 +1,5 @@
 import time
+from contextlib import nullcontext
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
@@ -68,6 +69,7 @@ def execute_trial(
     resume: bool = False,
     store_lock=None,
     source_lock=None,
+    derive_lock=None,
     concurrency: dict | None = None,
     state_lock=None,
 ) -> None:
@@ -112,7 +114,7 @@ def execute_trial(
             budget_started_at=time.time(),
         )
     save()
-    commands = [["workspace", "derive", plan["source_workspace_id"], workspace_id, "--no-wait"]]
+    commands = [["workspace", "derive", plan["source_workspace_id"], workspace_id]]
     commands.append(
         [
             "param",
@@ -156,15 +158,17 @@ def execute_trial(
             with lock:
                 record["commands"].append(command)
             save()
-            if runner.durable_receipts:
+            is_derive = arguments[:2] == ["workspace", "derive"]
+            with derive_lock if is_derive and derive_lock is not None else nullcontext():
+                if runner.durable_receipts:
 
-                def prepared(metadata, target=command):
-                    target.update(metadata)
-                    save()
+                    def prepared(metadata, target=command):
+                        target.update(metadata)
+                        save()
 
-                result = runner.invoke(expected, deadline=deadline, on_prepared=prepared)
-            else:
-                result = runner.invoke(expected, deadline=deadline)
+                    result = runner.invoke(expected, deadline=deadline, on_prepared=prepared)
+                else:
+                    result = runner.invoke(expected, deadline=deadline)
             with lock:
                 command.update(
                     status="complete",

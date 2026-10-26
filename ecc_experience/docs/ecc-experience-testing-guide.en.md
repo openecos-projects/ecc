@@ -1965,7 +1965,9 @@ Dynamic project runtime_processes are excluded from the static configuration
 fingerprint; baseline inputs and actual project configuration remain protected.
 Control shared-host load when comparing strategies. Every trial in a parallel
 batch requires an independent workspace and run ID. Never resume the same DSE
-output directory in two coordinators concurrently.
+output directory in two coordinators concurrently. The coordinator serializes
+the shared-source derive phase and keeps the public lock wait enabled; only
+`param apply` and `run` overlap across trials.
 
 A v2 spec can set `baseline_case_id` to bind a verified controlled-execution case
 in the store. It must describe the exact `--workspace` directory, current

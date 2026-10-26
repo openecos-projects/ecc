@@ -1,11 +1,13 @@
 import json
+import threading
+import time
 
 import pytest
 from typer.testing import CliRunner
 
 from chipcompiler.cli.app import app
 from ecc_experience.api import dse_plan, dse_run
-from ecc_experience.dse import execute2
+from ecc_experience.dse import execute2, trial
 from ecc_experience.models import ExperienceError
 from test.experience import test_dse as fixtures
 
@@ -77,6 +79,43 @@ def test_parallel_batch_passes_observed_concurrency_to_trial_runner(
     assert result["status"] == "complete"
     assert {"current_flows": 2, "max_concurrent": 2} in observed
     assert {"current_flows": 1, "max_concurrent": 1} in observed
+
+
+def test_parallel_trials_serialize_workspace_derive(
+    dse_project, simulated_cli, version2_spec, monkeypatch
+):
+    workspace, store, path = dse_project
+    _parallel_spec(version2_spec)
+    dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
+    original = trial.CliRunner.invoke
+    guard = threading.Lock()
+    active = 0
+    peak = 0
+
+    def observed(self, arguments, **kwargs):
+        nonlocal active, peak
+        if arguments[:2] != ["workspace", "derive"]:
+            return original(self, arguments, **kwargs)
+        with guard:
+            active += 1
+            peak = max(peak, active)
+        try:
+            time.sleep(0.05)
+            return original(self, arguments, **kwargs)
+        finally:
+            with guard:
+                active -= 1
+
+    monkeypatch.setattr(trial.CliRunner, "invoke", observed)
+    result = dse_run(path, path.parent / "serialized-derive")
+
+    assert result["status"] == "complete", result
+    assert peak == 1
+    assert all(
+        "--no-wait" not in arguments
+        for arguments in simulated_cli
+        if arguments[:2] == ["workspace", "derive"]
+    )
 
 
 def test_resume_preserves_declared_concurrency(dse_project, simulated_cli, version2_spec):

@@ -1895,6 +1895,8 @@ ecc experience dse run --plan ./inputs/plans/model.json --output ./runs/model \
 
 每个 trial 必须有独立 workspace、run_id 和 command receipt。并行 batch 只能基于已完成历史
 提议候选，批内候选互不可见；预算按已启动 trial 计数。resume 不得改变并发数或模型 release。
+共享源 workspace 的 derive 阶段由协调器串行化，并保留公开 CLI 的锁等待；只有
+`param apply` 与 `run` 在不同 trial 间重叠执行。
 实际 batch 并发数写入该次运行的资源观测；只有 scope 与 outcome 均匹配的成功 held-out 样本
 才能参与预算覆盖率验证。
 连续轴使用 `kind=range`、`min/max`、`scale=linear|log`，内部量化到可重放网格；int 轴只接受

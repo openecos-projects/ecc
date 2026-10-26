@@ -144,6 +144,7 @@ def _run(plan, limits, destination, *, resume, select, model_release, max_concur
     result_lock = threading.RLock()
     store_lock = threading.Lock()
     source_lock = threading.Lock()
+    derive_lock = threading.Lock()
 
     def save():
         with result_lock:
@@ -253,6 +254,7 @@ def _run(plan, limits, destination, *, resume, select, model_release, max_concur
             resume=resuming,
             store_lock=store_lock,
             source_lock=source_lock,
+            derive_lock=derive_lock,
             concurrency=concurrency,
             state_lock=result_lock,
         )
@@ -476,6 +478,7 @@ def _run(plan, limits, destination, *, resume, select, model_release, max_concur
                     mode=mode,
                     resume=existing is not None,
                     source_lock=source_lock,
+                    derive_lock=derive_lock,
                     concurrency={"current_flows": 1, "max_concurrent": 1},
                     state_lock=result_lock,
                 )
