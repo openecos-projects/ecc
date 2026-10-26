@@ -1643,8 +1643,11 @@ checklist、signoff、QoR 的基线，再从冻结案例检查阶段指标。参
 `patience_resolution`；显式整数始终覆盖自动策略。该规则按候选配置数量计算，不按 benchmark
 批次中的 design 数量计算。每个参数轴采用 `values` 或含正 `step` 的闭区间 `range`；上界不在格点时不额外补点。数组参数可在
 values 中逐项给完整数组。总空间不超过 100000 个离散配置。目标为 1–3 个不同 ID，必须
-匹配 metric registry 的单位和方向；用 step/scope/corner 消除歧义。每个 rung 的第一目标
-来自该 rung 的最后一步；其余目标可来自其前缀。末级目标等于计划 objectives。
+匹配受支持的 DSE 目标 registry 的单位和方向；用 step/scope/corner 消除歧义。除通用
+QoR registry 外，DSE 还接受 Sizer `Timing optimization` 产出的 `std_cell_area`
+（`um^2`，minimize）作为阶段目标；它只用于 DSE 排序，不改变 QoR 评分或模型晋级，最终
+仍由独立 full/fresh QoR 决定。每个 rung 的第一目标来自该 rung 的最后一步；其余目标可
+来自其前缀。末级目标等于计划 objectives。
 
 ```bash
 ecc experience dse plan --project ./project --workspace baseline_current \
@@ -1661,9 +1664,10 @@ ecc experience dse report --plan ./dse-plan-v2.json --result ./dse-v2/result.jso
 
 每个 trial 从基线独立派生，按首步至 rung 边界重跑，不复用旧前缀。较晚生效的参数在早期
 rung 只是 configured，不声称已被工具消费。前缀 checklist、证据及全部目标有效后，才按
-非支配排序与拥挤距离进入下一 rung。支持 postFloorplan、place、CTS，按实际 flow 名称
-与顺序配置。每个后续 rung 的执行和独立 full/fresh 均占 trial 名额；总上限还受时间、
-单次超时和 patience 约束。预算保守预留后续晋级数和两次最终验证，不能用复验槽继续探索。
+非支配排序与拥挤距离进入下一 rung。支持 postFloorplan、place、CTS、legalization 和
+Timing optimization，按实际 flow 名称与顺序配置。每个后续 rung 的执行和独立 full/fresh
+均占 trial 名额；总上限还受时间、单次超时和 patience 约束。预算保守预留后续晋级数和两次
+最终验证，不能用复验槽继续探索。
 
 单目标会选实测最优点；多目标默认停在 `selection_required`，退出 7，先阅读报告中的
 Pareto 前沿，再显式选择一个点：

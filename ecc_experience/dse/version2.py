@@ -11,7 +11,7 @@ from ecc_experience.dse.config_surface import (
     describe_config_surface,
     validate_config_surface,
 )
-from ecc_experience.dse.multiobjective import resolve_objectives
+from ecc_experience.dse.multiobjective import DSE_OBJECTIVE_METRICS, resolve_objectives
 from ecc_experience.dse.patience import resolve_patience
 from ecc_experience.dse.plan import (
     _Plan,
@@ -25,6 +25,20 @@ from ecc_experience.dse.warm_start import freeze_warm_start
 from ecc_experience.files import digest, file_digest, read_json
 from ecc_experience.knowledge.features import case_features
 from ecc_experience.optimization.plan import write_plan
+
+_SUPPORTED_RUNG_BOUNDARIES = frozenset(
+    {
+        "postfloorplan",
+        "place",
+        "cts",
+        "legalization",
+        "timingoptimization",
+    }
+)
+
+
+def _step_key(value: str) -> str:
+    return value.casefold().replace(" ", "")
 
 
 class ObjectiveSpec(BaseModel):
@@ -157,13 +171,10 @@ def plan_version2(project, workspace, store, output, *, spec) -> dict:
     rungs = []
     last_index = -1
     for rung in settings.rungs:
-        if rung.through_step not in names or rung.through_step.casefold() not in {
-            "postfloorplan",
-            "place",
-            "cts",
-            "legalization",
-            "timingoptimization",
-        }:
+        if (
+            rung.through_step not in names
+            or _step_key(rung.through_step) not in _SUPPORTED_RUNG_BOUNDARIES
+        ):
             raise invalid(
                 "Rungs must name existing postFloorplan, place, CTS, legalization or "
                 "Timing optimization steps"
@@ -356,18 +367,12 @@ def validate_version2(payload: dict):
             or rungs[-1]["objectives"] != payload["objectives"]
         ):
             raise invalid("Frozen DSE objectives, rung order or budgets are inconsistent")
-        from chipcompiler.analysis.qor.metric_registry import METRIC_REGISTRY
-
         features = case_features(payload["baseline_case_id"], payload["store"])
         names = [step["step"] for step in features["steps"]]
         previous = -1
         for rung in rungs:
             boundary = rung["through_step"]
-            if boundary not in names or boundary.casefold() not in {
-                "postfloorplan",
-                "place",
-                "cts",
-            }:
+            if boundary not in names or _step_key(boundary) not in _SUPPORTED_RUNG_BOUNDARIES:
                 raise invalid("Unsupported rung boundary")
             index = names.index(boundary)
             if index <= previous:
@@ -387,8 +392,11 @@ def validate_version2(payload: dict):
                     if objective["direction"] == "minimize"
                     else "higher_is_better"
                 )
-                if METRIC_REGISTRY.get(objective["id"]) != (objective["unit"], polarity):
-                    raise invalid("Frozen objective differs from the metric registry")
+                if DSE_OBJECTIVE_METRICS.get(objective["id"]) != (
+                    objective["unit"],
+                    polarity,
+                ):
+                    raise invalid("Frozen objective differs from the supported DSE metric registry")
         validate_parameter_boundary(list(space), names[: previous + 1])
         warm = payload["warm_start"]
         if (

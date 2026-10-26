@@ -1880,7 +1880,11 @@ number of designs in a benchmark batch. Each axis uses `values` or a closed `ran
 off-grid upper bound is not added. Array parameters use complete arrays in values.
 The discrete space is bounded at 100000 configurations. Provide one to three
 distinct objective IDs with registry units/polarity and use step/scope/corner to
-remove ambiguity. Each rung's first objective must measure its final step; other
+remove ambiguity. In addition to the general QoR registry, DSE accepts
+`std_cell_area` (`um^2`, minimize) emitted by the Sizer `Timing optimization`
+step as a stage objective. It is used only for DSE ranking; it does not change
+QoR scoring or model promotion, and independent full/fresh QoR remains the final
+authority. Each rung's first objective must measure its final step; other
 objectives may reference its prefix. The final rung uses the plan objectives.
 
 ```bash
@@ -1902,10 +1906,11 @@ Every trial derives independently from the baseline and reruns from the first
 step through its rung boundary. Later-stage parameters are only configured in
 early rungs, without claiming tool consumption. Prefix checklist, evidence and
 all objectives must pass before non-dominated sorting and crowding distance select
-the next rung. Use actual ordered postFloorplan, place and CTS names from the
-source flow. Later-rung executions and two independent full/fresh validations
-consume trial slots. Total time, per-trial timeout and patience also apply.
-Planning conservatively reserves all later promotions and both final validations.
+the next rung. Supported boundaries are postFloorplan, place, CTS, legalization
+and Timing optimization, using the exact ordered names from the source flow.
+Later-rung executions and two independent full/fresh validations consume trial
+slots. Total time, per-trial timeout and patience also apply. Planning
+conservatively reserves all later promotions and both final validations.
 
 Single-objective runs select the measured best point. Multi-objective runs stop
 with `selection_required` and exit 7. Read the Pareto report, then explicitly choose

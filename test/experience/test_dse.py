@@ -391,6 +391,61 @@ def test_version2_rungs_pareto_manual_selection_and_replay(
         dse_run(path, output, resume=True)
 
 
+def test_version2_accepts_timing_optimization_rung_for_sizer_configuration(
+    dse_project, version2_spec
+):
+    workspace, store, path = dse_project
+    snapshot_path = workspace / "home/engineering-snapshot.json"
+    snapshot = json.loads(snapshot_path.read_text())
+    snapshot["flow"]["steps"].insert(
+        2,
+        {
+            "name": "Timing optimization",
+            "tool": "sizer",
+            "state": "Success",
+            "checklist_status": {"status": "passed", "blocked": False},
+        },
+    )
+    reference = "timing_optimization_sizer/analysis/qor_metrics.json"
+    report_path = workspace / reference
+    report_path.parent.mkdir(parents=True)
+    report_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "step": "Timing optimization",
+                "tool": "sizer",
+                "status": "success",
+                "integrity": {"status": "pass"},
+                "metrics": [{"id": "std_cell_area", "value": 100, "unit": "um^2"}],
+            }
+        )
+    )
+    snapshot["artifacts"].append(
+        {
+            "artifactId": "artifact-"
+            + hashlib.sha256(f"{snapshot['workspaceId']}\0{reference}".encode()).hexdigest()[:32],
+            "reference": reference,
+            "kind": "qor_metrics",
+            "stepId": "Timing optimization",
+            "availability": "available",
+        }
+    )
+    snapshot_path.write_text(json.dumps(snapshot))
+    (workspace / "home/flow.json").write_text(json.dumps(snapshot["flow"]))
+    settings = json.loads(version2_spec.read_text())
+    settings["space"] = {"timing_opt.hold_margin": {"range": [0.02, 0.06], "step": 0.02}}
+    settings["objectives"] = [{"metric": "std_cell_area", "unit": "um^2", "direction": "minimize"}]
+    settings["rungs"] = [{"through_step": "Timing optimization", "promote_count": 1}]
+    version2_spec.write_text(json.dumps(settings))
+
+    frozen = dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
+
+    assert frozen["through_step"] == "Timing optimization"
+    assert frozen["rungs"][0]["through_step"] == "Timing optimization"
+    assert frozen["config_surface"]["files"] == {"sizer_ecc.json": ["timing_opt.hold_margin"]}
+
+
 def test_version2_resume_replays_completed_history_without_rerunning(
     dse_project, simulated_cli, version2_spec, monkeypatch
 ):

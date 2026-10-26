@@ -5,15 +5,22 @@ from chipcompiler.analysis.qor.metric_registry import METRIC_REGISTRY
 from ecc_experience.dse.plan import invalid
 from ecc_experience.knowledge.features import case_features
 
+DSE_OBJECTIVE_METRICS = {
+    **METRIC_REGISTRY,
+    "std_cell_area": ("um^2", "lower_is_better"),
+}
+
 
 def resolve_objectives(specs: list[dict], features: dict) -> list[dict]:
     selected = []
     for spec in specs:
         metric = spec["metric"]
-        registered = METRIC_REGISTRY.get(metric)
+        registered = DSE_OBJECTIVE_METRICS.get(metric)
         polarity = "lower_is_better" if spec["direction"] == "minimize" else "higher_is_better"
         if registered is None or registered != (spec["unit"], polarity):
-            raise invalid("Objective ID, unit and direction must match the metric registry")
+            raise invalid(
+                "Objective ID, unit and direction must match the supported DSE metric registry"
+            )
         step = spec.get("step") or features["steps"][-1]["step"]
         matching = [
             item
