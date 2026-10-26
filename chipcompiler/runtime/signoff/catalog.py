@@ -243,7 +243,7 @@ SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
         title="Configuration sta",
         fail_readiness="MISS",
     ),
-    # Performance placeholders (not checklist-wired). Numbers: qor_perf_support.
+    # Performance placeholders (not checklist-wired). Numbers: runtime.signoff.qor_perf_support.
     # Reading on the board = "<value> <unit>".
     _performance("performance.sta.setup_wns", StepEnum.STA.value, "STA setup WNS"),
     _performance("performance.sta.setup_tns", StepEnum.STA.value, "STA setup TNS"),

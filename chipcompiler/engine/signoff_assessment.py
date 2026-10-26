@@ -3,11 +3,11 @@ from typing import Any, TypedDict
 from chipcompiler.data import ADVISORY_FLOW_STEPS, StepEnum
 from chipcompiler.data.checklist import workspace_checklist_path
 from chipcompiler.data.step import STEP_DIRECTORIES
-from chipcompiler.engine.signoff_readiness import attach_readiness
 from chipcompiler.engine.snapshot_limits import (
     CHECKLIST_READ_MAX_BYTES,
     read_bounded_json_object,
 )
+from chipcompiler.runtime.signoff.readiness import attach_readiness
 
 _REVIEW_GROUPS: tuple[tuple[str, str], ...] = (
     ("initial", "Initial"),

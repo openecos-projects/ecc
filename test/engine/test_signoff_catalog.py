@@ -1,6 +1,6 @@
 """Catalog is the source of truth for signoff checklist item identity."""
 
-from chipcompiler.engine.signoff.catalog import (
+from chipcompiler.runtime.signoff.catalog import (
     CATALOG_BY_ID,
     SIGNOFF_ITEM_CATALOG,
     lookup_item,

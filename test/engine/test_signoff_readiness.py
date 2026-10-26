@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from chipcompiler.engine.signoff_assessment import build_signoff_assessment
-from chipcompiler.engine.signoff_readiness import classify_signoff_readiness
+from chipcompiler.runtime.signoff.readiness import classify_signoff_readiness
 
 
 def _checklist(*items: dict, status: str | None = None) -> dict:

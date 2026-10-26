@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from chipcompiler.engine.signoff_readiness import classify_signoff_readiness
+from chipcompiler.runtime.signoff.readiness import classify_signoff_readiness
 from csv_gates.compare import evaluate_checklist_gate, evaluate_metric_gate
 from csv_gates.spec import CsvExportSpec, load_csv_spec
 

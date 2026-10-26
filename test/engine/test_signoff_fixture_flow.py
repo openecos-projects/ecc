@@ -41,7 +41,7 @@ def test_fixture_workspace_pass_and_export_archive(tmp_path: Path):
     assessment = build_signoff_assessment(flow.workspace)
     assert assessment["status"] == "ready"
     assert assessment["readiness"] == "PASS"
-    from chipcompiler.engine.signoff.catalog import lookup_item
+    from chipcompiler.runtime.signoff.catalog import lookup_item
 
     produced = {item["id"] for item in assessment.get("items") or []}
     assert produced

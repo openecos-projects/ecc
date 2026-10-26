@@ -20,13 +20,13 @@ from chipcompiler.data import (
     WorkspaceStep,
 )
 from chipcompiler.data.step import STEP_DIRECTORIES, all_step_directories, flow_step_directory
-from chipcompiler.engine.signoff.catalog import (
+from chipcompiler.runtime.signoff.catalog import (
     CONFIG_FILENAMES as _CONFIG_FILENAMES,
 )
-from chipcompiler.engine.signoff.catalog import (
+from chipcompiler.runtime.signoff.catalog import (
     REQUIRED_FLOW_STEPS as _REQUIRED_FLOW_STEPS,
 )
-from chipcompiler.engine.signoff.catalog import (
+from chipcompiler.runtime.signoff.catalog import (
     catalog_defaults,
 )
 from chipcompiler.tools.ecc.lec_gates import (

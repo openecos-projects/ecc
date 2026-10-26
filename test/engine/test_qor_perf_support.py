@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from chipcompiler.engine.signoff.qor_perf_support import (
+from chipcompiler.runtime.signoff.qor_perf_support import (
     analysis_qor_summary_path,
     check_metric,
     load_metric_values,

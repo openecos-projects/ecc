@@ -1,7 +1,6 @@
 """Signoff package collection and design-summary reporting.
 
-Public surface is lazy so ``chipcompiler.engine.signoff.catalog`` (checklist SoT)
-imports without pulling the collector or tool modules.
+Catalog / readiness live under ``chipcompiler.runtime.signoff``.
 """
 
 from __future__ import annotations
@@ -9,7 +8,6 @@ from __future__ import annotations
 from typing import Any
 
 __all__ = [
-    "SIGNOFF_ITEM_CATALOG",
     "SIGNOFF_REQUIRED_QOR_STEPS",
     "SignoffPackageCollector",
     "SignoffPackageIssue",
@@ -19,7 +17,6 @@ __all__ = [
 ]
 
 _EXPORTS: dict[str, tuple[str, str]] = {
-    "SIGNOFF_ITEM_CATALOG": (".catalog", "SIGNOFF_ITEM_CATALOG"),
     "SIGNOFF_REQUIRED_QOR_STEPS": (".models", "SIGNOFF_REQUIRED_QOR_STEPS"),
     "SignoffPackageCollector": (".collector", "SignoffPackageCollector"),
     "SignoffPackageIssue": (".models", "SignoffPackageIssue"),
