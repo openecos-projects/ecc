@@ -249,7 +249,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          SIZER_REVISION: b62dbfa6b0b57c446b7b272b41def4b502b93cb3
+          SIZER_REVISION: 6e355600bb1fe67fa2a80753c8912d662b7ab7a7
         run: |
           set -euo pipefail
 
