@@ -114,7 +114,10 @@ def plan_dse(
         raise invalid("Direction must be minimize or maximize")
     keys = [item.split("=", 1)[0] for item in parameters]
     if len(set(keys)) != len(keys) or not set(keys) <= STAGE_PARAMETERS:
-        raise invalid("Parameters must be unique reviewed floorplan, placement or CTS keys")
+        raise invalid(
+            "Parameters must be unique reviewed floorplan, placement, CTS or "
+            "timing-optimization keys"
+        )
     try:
         grid = parse_parameters(parameters)
     except ValueError as exc:
@@ -128,14 +131,18 @@ def plan_dse(
     baseline = bind_baseline(captured.case, baseline_case_id, store)
     features = case_features(baseline.case_id, store, through_step=through_step)
     names = [item["step"] for item in features["steps"]]
-    if through_step.casefold() not in {
+    if through_step.casefold().replace(" ", "") not in {
         "postfloorplan",
         "floorplan",
         "place",
         "cts",
         "legalization",
+        "timingoptimization",
     }:
-        raise invalid("DSE currently supports early floorplan, placement and CTS boundaries")
+        raise invalid(
+            "DSE supports floorplan, placement, CTS, legalization and Timing "
+            "optimization boundaries"
+        )
     validate_parameter_boundary(keys, names)
     selected = [
         item
@@ -258,14 +265,16 @@ def project_configuration(root: Path) -> str:
 
 def validate_parameter_boundary(keys: list[str], names: list[str]) -> None:
     aliases = {item.casefold().replace(" ", "") for item in names}
-    if not names or names[-1].casefold() not in {
+    boundary = names[-1].casefold().replace(" ", "") if names else ""
+    if boundary not in {
         "postfloorplan",
         "floorplan",
         "place",
         "cts",
         "legalization",
+        "timingoptimization",
     }:
-        raise invalid("Unsupported early PNR boundary")
+        raise invalid("Unsupported PNR boundary")
     for key in keys:
         schema = lookup_schema(key)
         if schema is None:

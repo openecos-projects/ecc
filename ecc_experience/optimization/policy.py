@@ -26,6 +26,23 @@ SUPPORTED_PARAMETERS = frozenset(
         "place.cell_padding_x",
         "place.routability_opt",
         "place.density_weight",
+        "place.bndry_padding_x",
+        "place.bndry_padding_y",
+        "place.gamma",
+        "place.gp_noise_ratio",
+        "place.max_num_area_adjust",
+        "place.node_area_adjust_overflow",
+        "place.two_stage_density_scaler",
+        "place.l_shape_overflow_threshold",
+        "place.timing_aggregation_tau_ps",
+        "place.timing_grad_balance_target_ratio",
+        "place.timing_opt_enabled",
+        "place.timing_opt_buffering_enabled",
+        "place.timing_opt_max_windows",
+        "timing_opt.hold_margin",
+        "timing_opt.hold_rc_mode",
+        "timing_opt.placement_wire_resistance_ohm_per_um",
+        "timing_opt.placement_wire_capacitance_pf_per_um",
         "route.bottom_layer",
         "route.top_layer",
         "cts.max_fanout",
@@ -35,6 +52,25 @@ SUPPORTED_PARAMETERS = frozenset(
         "cts.max_cap",
     }
 )
+
+REVIEWED_NUMERIC_RANGES = {
+    "place.bndry_padding_x": (0.0, 1000.0),
+    "place.bndry_padding_y": (0.0, 1000.0),
+    "place.gamma": (1.0, 64.0),
+    "place.gp_noise_ratio": (0.0, 0.5),
+    "place.max_num_area_adjust": (0.0, 20.0),
+    "place.node_area_adjust_overflow": (0.0, 1.0),
+    "place.two_stage_density_scaler": (1.0, 100000.0),
+    "place.l_shape_overflow_threshold": (0.0, 1.0),
+    "place.timing_aggregation_tau_ps": (0.01, 1000.0),
+    "place.timing_grad_balance_target_ratio": (0.0, 1.0),
+    "place.timing_opt_enabled": (0.0, 1.0),
+    "place.timing_opt_buffering_enabled": (0.0, 1.0),
+    "place.timing_opt_max_windows": (0.0, 100.0),
+    "timing_opt.hold_margin": (0.0, 10.0),
+    "timing_opt.placement_wire_resistance_ohm_per_um": (0.0, 1000.0),
+    "timing_opt.placement_wire_capacitance_pf_per_um": (0.0, 1.0),
+}
 
 
 class OptimizationLimits(BaseModel):
@@ -74,6 +110,17 @@ def validate_reviewed_values(parameters: dict, baseline: dict) -> None:
         or weight < 0
     ):
         raise invalid_plan("Placement density weight must be finite and non-negative")
+    for key, (lower, upper) in REVIEWED_NUMERIC_RANGES.items():
+        if key not in parameters:
+            continue
+        value = parameters[key]
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or not lower <= value <= upper
+        ):
+            raise invalid_plan(f"Reviewed parameter {key} is outside [{lower}, {upper}]")
     if not {"route.bottom_layer", "route.top_layer"}.intersection(parameters):
         return
     specification = baseline.get("workspaceSpec", {})

@@ -2225,14 +2225,21 @@ A v2 spec can explicitly enable cross-design warm-start from a frozen release:
 }
 ```
 
-Without the flag, warm-start still accepts same-input seeds only. With it, a
-`compatible_design` match is frozen only when parameter evidence is `applied`;
-configured matches never consume trial budget. Every seed provenance records the
+Without the flag, warm-start still accepts same-input seeds only. With it, only
+true cross-design seeds are accepted: same-input matches are excluded, and a
+`compatible_design` match is frozen only when parameter evidence is `applied`.
+Configured matches never consume trial budget. Every seed provenance records the
 release, release ID, case, distance, feature coverage and confidence. The groups
 file path and SHA256 are frozen and rechecked before execution, so a changed
 family map rejects the plan. Cross-design seeds still consume trial budget and
 still require full plus fresh validation; resume cannot change the opt-in or
 groups. The seed does not establish cross-design benefit.
+
+D4 records observed host load, peak RSS, measurement scope and coverage in
+`summary.resource_coverage` and each run; `summary.warm_start_modes` separates
+`not_requested`, `same_input`, `mixed` and `cross_design`. Missing or shared
+process-tree observations must stay `unknown/partial`; they are never zero-filled
+or presented as isolated per-step attribution.
 
 ### 22.3 Dataset v2, family holdouts and model promotion
 
@@ -2244,7 +2251,12 @@ evaluation, validation matrices and splits reject input or family overlap
 between training and held-out data. Model release v2 embeds validation status,
 MAE/RMSE, rank accuracy, interval coverage, independent-design and family
 counts, and thresholds. `safe_to_apply=false` and `auto_apply=false` are never
-relaxed.
+relaxed. Evaluation reports and releases also carry
+`validation.calibration`: held-out inputs are grouped, an interval half-width is
+fitted from the absolute-error quantile of the other groups, and cross-validated
+coverage is reported. DSE/advice intervals prefer that calibration; with fewer
+than two held-out groups it stays `insufficient_evidence`, falls back to the
+training residual and labels the interval basis.
 
 Only at least three independent designs, two families and frozen metric
 thresholds can yield `validated_for_declared_scope`. That status still applies
@@ -2280,3 +2292,35 @@ selected case. A missing, damaged or incomplete index falls back to a full scan;
 safety filters and `safe_to_apply=false` are never relaxed. GUI/Agent surfaces
 must use the public CLI/API, must not read private store files directly, and must
 not write recommendations into workspace parameters automatically.
+
+### 22.5 DreamPlace and Sizer configuration search surface
+
+DSE never edits an iteration workspace's `config/dreamplace_ecc.json` or
+`config/sizer_ecc.json` arbitrarily. Direct edits bypass the parameter receipt,
+case fingerprint and replay checks after a workspace refresh. Configuration
+search uses public parameter keys, writes them atomically through
+`params.toml` `workspace_param_overrides` / `config_overrides`, and records an
+application receipt for every trial:
+
+- `floorplan.core_util`: floorplan core utilization.
+- `place.target_density`, `place.target_overflow`, `place.density_weight`,
+  `place.cell_padding_x`, `place.routability_opt`: baseline DreamPlace placement
+  configuration.
+- `place.gamma`, `place.gp_noise_ratio`, `place.node_area_adjust_overflow`,
+  `place.max_num_area_adjust`, `place.two_stage_density_scaler`,
+  `place.l_shape_overflow_threshold`, `place.timing_aggregation_tau_ps`,
+  `place.timing_grad_balance_target_ratio`, `place.timing_opt_max_windows`:
+  reviewed scalar DreamPlace knobs.
+- `timing_opt.hold_margin`, `timing_opt.hold_rc_mode`,
+  `timing_opt.placement_wire_resistance_ohm_per_um`,
+  `timing_opt.placement_wire_capacitance_pf_per_um`: Sizer `hold_stage`
+  configuration, allowed only at a `Timing optimization` boundary or a later
+  rung, never mixed into early `postFloorplan`/`place` rungs.
+
+The first recommended space is `floorplan.core_util × place.target_density ×
+place.target_overflow × place.density_weight` at a `place` boundary. Limit each
+axis to 3–5 quantized values and reserve two full/fresh validation trials. A rung
+admits a parameter only when its objective is measurable at that boundary and
+the parameter takes effect before it. JSON-object fields such as
+`place.diff_sizing_coefficients` and the complete Sizer `global_routing_rc` are
+not direct axes until an explicit schema, range and receipt review exists.

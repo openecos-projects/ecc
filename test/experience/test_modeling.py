@@ -163,6 +163,8 @@ def test_model_validation_matrix_aggregates_designs_and_families(modeling_files)
         model_path, matrix, root / "matrix-report.json", min_independent_designs=2
     )
     assert report["status"] == "pass"
+    assert report["calibration"]["status"] == "available"
+    assert report["calibration"]["cross_validated_group_count"] == 2
     assert report["summary"] == {
         "row_count": 4,
         "independent_input_count": 2,
@@ -174,6 +176,10 @@ def test_model_validation_matrix_aggregates_designs_and_families(modeling_files)
 
     published = publish_model(model_path, root / "matrix-report.json", root / "matrix-release.json")
     assert published["generalization_status"] == "validated_for_declared_scope"
+    assert (
+        read_model_release(root / "matrix-release.json")["validation"]["calibration"]
+        == report["calibration"]
+    )
 
 
 def test_model_registry_promote_status_and_rollback(modeling_files):

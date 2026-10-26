@@ -156,8 +156,13 @@ def plan_version2(project, workspace, store, output, *, spec) -> dict:
             "postfloorplan",
             "place",
             "cts",
+            "legalization",
+            "timingoptimization",
         }:
-            raise invalid("Rungs must name existing postFloorplan, place or CTS steps")
+            raise invalid(
+                "Rungs must name existing postFloorplan, place, CTS, legalization or "
+                "Timing optimization steps"
+            )
         index = names.index(rung.through_step)
         if index <= last_index:
             raise invalid("Rungs must follow the source flow order")

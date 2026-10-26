@@ -35,3 +35,44 @@ def test_routing_parameters_require_supported_profile_and_ordered_layers():
         validate_reviewed_values({"route.top_layer": "MET5"}, {})
     with pytest.raises(ExperienceError, match="not active"):
         validate_parameter_boundary(["route.top_layer"], ["postFloorplan", "place", "CTS"])
+
+
+def test_reviewed_config_parameters_use_public_workspace_targets():
+    expected = {
+        "place.gamma": ("place", ("dreamplace", "gamma")),
+        "place.node_area_adjust_overflow": (
+            "place",
+            ("dreamplace", "node_area_adjust_overflow"),
+        ),
+        "place.timing_opt_max_windows": ("place", ("dreamplace", "timing_opt_max_windows")),
+        "timing_opt.hold_margin": ("Timing optimization", ("sizer", "hold_stage", "hold_margin")),
+        "timing_opt.placement_wire_resistance_ohm_per_um": (
+            "Timing optimization",
+            ("sizer", "hold_stage", "placement_wire_rc", "resistance_ohm_per_um"),
+        ),
+    }
+    for key, (step, target) in expected.items():
+        schema = lookup_schema(key)
+        assert workspace_param_step(schema) == step
+        assert (schema.config_target.config_key, *schema.config_target.json_path) == target
+
+
+def test_placement_and_sizer_ranges_are_reviewed_and_stage_bounded():
+    parameters, errors = parse_cli_overrides(
+        [
+            "place.gamma=8",
+            "place.gp_noise_ratio=0.02",
+            "place.timing_aggregation_tau_ps=4",
+            "timing_opt.hold_margin=0.08",
+        ]
+    )
+    assert errors == []
+    validate_reviewed_values(parameters, {})
+    names = ["Synthesis", "postFloorplan", "place", "CTS", "legalization", "Timing optimization"]
+    validate_parameter_boundary(list(parameters), names)
+    with pytest.raises(ExperienceError, match="not active"):
+        validate_parameter_boundary(["timing_opt.hold_margin"], names[:-1])
+    with pytest.raises(ExperienceError, match="outside"):
+        validate_reviewed_values({"place.gp_noise_ratio": 1.0}, {})
+    with pytest.raises(ExperienceError, match="outside"):
+        validate_reviewed_values({"timing_opt.hold_margin": -0.1}, {})

@@ -7,7 +7,7 @@ import numpy as np
 
 from ecc_experience.files import digest, file_digest, read_json
 from ecc_experience.modeling.dataset import read_dataset
-from ecc_experience.modeling.model import predict_features, read_model
+from ecc_experience.modeling.model import calibrate_residuals, predict_features, read_model
 from ecc_experience.models import ExperienceError
 from ecc_experience.optimization.plan import write_plan
 
@@ -26,6 +26,7 @@ def validate_matrix(
     min_interval_coverage: float = 0.5,
     min_rank_accuracy: float = 0.5,
     family_holdout: bool = False,
+    calibration_target_coverage: float = 0.9,
 ) -> dict:
     if (
         min_independent_designs < 1
@@ -34,6 +35,7 @@ def validate_matrix(
         or max_mae < 0
         or not 0 <= min_interval_coverage <= 1
         or not 0 <= min_rank_accuracy <= 1
+        or not 0 < calibration_target_coverage <= 1
     ):
         raise invalid("Invalid validation thresholds")
     model_path = Path(model).expanduser().absolute()
@@ -112,7 +114,13 @@ def validate_matrix(
         raise invalid("Validation matrix contains no rows")
     if len(rows) > 10000:
         raise invalid("Validation matrix exceeds 10000 rows")
-    metrics = _metrics(rows, model_payload)
+    calibration = calibrate_residuals(
+        [row["actual"] - row["prediction"] for row in rows],
+        [row["design"] for row in rows],
+        target_coverage=calibration_target_coverage,
+        base_scale=float(model_payload["training_summary"]["residual_std"]),
+    )
+    metrics = _metrics(rows, model_payload, calibration)
     independent = len(seen_inputs - set(model_payload["training_input_fingerprints"]))
     families = {entry["family"] for entry in payload["datasets"]}
     thresholds = {
@@ -122,6 +130,7 @@ def validate_matrix(
         "min_interval_coverage": min_interval_coverage,
         "min_rank_accuracy": min_rank_accuracy,
         "family_holdout": family_holdout,
+        "calibration_target_coverage": calibration_target_coverage,
     }
     known = (
         len(seen_designs) >= min_independent_designs
@@ -146,6 +155,7 @@ def validate_matrix(
         "matrix": str(matrix_path),
         "matrix_sha256": file_digest(matrix_path)[0],
         "metrics": metrics,
+        "calibration": calibration,
         "summary": {
             "row_count": len(rows),
             "independent_input_count": independent,
@@ -193,11 +203,15 @@ def read_matrix(path: str | Path) -> dict:
     return payload
 
 
-def _metrics(rows: list[dict], model: dict) -> dict:
+def _metrics(rows: list[dict], model: dict, calibration: dict | None = None) -> dict:
     actual = np.array([row["actual"] for row in rows], dtype=float)
     predicted = np.array([row["prediction"] for row in rows], dtype=float)
     errors = actual - predicted
-    residual = max(float(model["training_summary"]["residual_std"]), 1e-12)
+    residual = (
+        float(calibration["interval_half_width"])
+        if calibration is not None and calibration.get("status") == "available"
+        else max(float(model["training_summary"]["residual_std"]), 1e-12)
+    )
     designs = np.array([row["design"] for row in rows])
     pairs = 0
     correct = 0.0
@@ -216,7 +230,11 @@ def _metrics(rows: list[dict], model: dict) -> dict:
         "rmse": float(np.sqrt(np.mean(errors**2))),
         "rank_accuracy": correct / pairs if pairs else None,
         "rank_pair_count": pairs,
-        "interval_coverage": float(np.mean(np.abs(errors) <= 2 * residual)),
+        "interval_coverage": (
+            float(calibration["cross_validated_coverage"])
+            if calibration is not None
+            else float(np.mean(np.abs(errors) <= 2 * residual))
+        ),
     }
 
 

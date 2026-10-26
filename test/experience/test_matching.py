@@ -159,6 +159,29 @@ def test_cross_design_requires_opt_in_and_family_groups_are_explicit(matching_ca
     )
 
 
+def test_cross_design_only_excludes_same_input_from_the_match_limit(matching_cases):
+    create, store, release = matching_cases
+    query = create("query")
+    same = create("same")
+    cross = create("cross", rtl="different design content")
+    create_release([same.case_id, cross.case_id], store.root, release)
+
+    result = match_cases(
+        query.case_id,
+        store.root,
+        release=release,
+        through_step="Synthesis",
+        experimental_cross_design=True,
+        cross_design_only=True,
+        limit=1,
+    )
+
+    assert [item["case_id"] for item in result["matches"]] == [cross.case_id]
+    assert result["matches"][0]["confidence"] == "experimental"
+    excluded = next(item for item in result["excluded"] if item["case_id"] == same.case_id)
+    assert "same_input_content" in excluded["reasons"]
+
+
 def test_match_cli_uses_explicit_frozen_release(matching_cases):
     create, store, release = matching_cases
     query, candidate = create("query"), create("candidate")

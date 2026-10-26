@@ -1912,12 +1912,17 @@ v2 spec 可在冻结 release 上显式启用跨设计 warm-start：
 }
 ```
 
-未开启 `warm_start_experimental_cross_design` 时仍只接受同输入 seed。开启后，
-`compatible_design` 匹配只有在参数回执证明 `applied` 时才冻结为 seed；configured 匹配
-不会消耗 trial 预算。每个 seed 的 provenance 固定记录 release、release ID、case、distance、
+未开启 `warm_start_experimental_cross_design` 时仍只接受同输入 seed。开启后只接受真正的
+跨设计 seed：同输入匹配会被排除，`compatible_design` 还必须由参数回执证明 `applied`；
+configured 匹配不会消耗 trial 预算。每个 seed 的 provenance 固定记录 release、release ID、case、distance、
 feature coverage 和 confidence；`warm_start_groups` 的路径与 SHA256 一并冻结，执行前重算，
 分组文件变化会使计划拒绝执行。跨设计 seed 仍占 trial 预算，仍需完整 full+fresh，且不证明
 跨设计收益；resume 不得改变该开关或分组。
+
+D4 在 `summary.resource_coverage` 和逐 run 结果中记录实际 case 的 host load、峰值 RSS、
+measurement scope 与覆盖率；`summary.warm_start_modes` 区分 `not_requested`、`same_input`、
+`mixed` 和 `cross_design`。资源缺失或 shared process-tree 观测必须保持
+`unknown/partial`，不得填零，也不得把 `partial` 当作隔离的逐步资源归因。
 
 ### 22.3 Dataset v2、family 留出和模型晋级
 
@@ -1926,7 +1931,10 @@ feature coverage 和 confidence；`warm_start_groups` 的路径与 SHA256 一并
 parameter evidence、resource scope 和 feature coverage；重复 input 只算重复观测，不增加独立
 设计数。v2 评价、validation matrix 和 split 都拒绝 training 与 held-out 的 input 或 family
 重叠。模型 release v2 内嵌 validation status、MAE/RMSE、排序正确率、区间覆盖、独立设计数、
-family 数和阈值；`safe_to_apply=false`、`auto_apply=false` 不得放宽。
+family 数和阈值；`safe_to_apply=false`、`auto_apply=false` 不得放宽。评价报告和 release
+同时携带 `validation.calibration`：按 held-out input 分组，用其他组的绝对误差分位数拟合
+校准区间宽度，并报告交叉验证覆盖率。DSE/advice 的预测区间优先使用该校准；单个 held-out
+组不足以校准时保持 `insufficient_evidence`，回退训练残差并显式标注区间依据。
 
 只有至少 3 个独立设计、2 个 family 且指标达到冻结阈值才可能
 `validated_for_declared_scope`。该状态仍只适用于声明 scope，后续必须真实 DSE + full/fresh。
@@ -1953,3 +1961,29 @@ ecc experience index status --store "$ECC_TEST_STORE" --json
 可用它保守排除 process/stage 明确不兼容的候选，但仍逐条读取并 verify 入选 case；索引缺失、
 损坏或条目不全时回退全量扫描，安全过滤和 `safe_to_apply=false` 不得放宽。GUI/Agent 只能
 通过公开 CLI/API 读取这些结果，不直接读取 store 私有文件，也不自动把建议写入工程参数。
+
+### 22.5 DreamPlace/Sizer 配置搜索面
+
+DSE 不直接、任意地编辑迭代 workspace 的 `config/dreamplace_ecc.json` 和
+`config/sizer_ecc.json`。直接改文件无法进入参数回执、case fingerprint 或 refresh 后的
+可重放校验。搜索配置时必须使用公开参数键，由 `params.toml` 的
+`workspace_param_overrides` / `config_overrides` 原子写入，并在每个 trial 记录应用回执：
+
+- `floorplan.core_util`：floorplan core 利用率。
+- `place.target_density`、`place.target_overflow`、`place.density_weight`、
+  `place.cell_padding_x`、`place.routability_opt`：DreamPlace 基础放置配置。
+- `place.gamma`、`place.gp_noise_ratio`、`place.node_area_adjust_overflow`、
+  `place.max_num_area_adjust`、`place.two_stage_density_scaler`、
+  `place.l_shape_overflow_threshold`、`place.timing_aggregation_tau_ps`、
+  `place.timing_grad_balance_target_ratio`、`place.timing_opt_max_windows`：经审核的
+  DreamPlace 标量旋钮。
+- `timing_opt.hold_margin`、`timing_opt.hold_rc_mode`、
+  `timing_opt.placement_wire_resistance_ohm_per_um`、
+  `timing_opt.placement_wire_capacitance_pf_per_um`：Sizer `hold_stage` 配置，只能在
+  `Timing optimization` 边界或其后的 rung 搜索，不能混入 `postFloorplan`/`place` 早期 rung。
+
+首批建议空间为 `floorplan.core_util × place.target_density × place.target_overflow ×
+place.density_weight`，边界使用 `place`；每轴限制 3–5 个量化值，并保留 2 个 full/fresh
+验证预算。只有目标在所选边界可测、参数在此前已经生效时才允许进入 rung。JSON 对象型字段
+（如 `place.diff_sizing_coefficients`、完整 Sizer `global_routing_rc`）暂不直接作为搜索轴，
+必须走显式 schema、范围和回执评审。

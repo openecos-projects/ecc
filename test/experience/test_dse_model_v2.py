@@ -100,6 +100,12 @@ def test_v2_model_pre_screen_records_predictions_without_bypassing_measured_flow
         for item in result["trials"]
         if item["status"] == "stage_passed"
     )
+    assert all(
+        item["model_prediction"]["prediction"]["interval"]["basis"]
+        == "held_out_grouped_calibration"
+        for item in result["trials"]
+        if item["status"] == "stage_passed"
+    )
     assert result["full_validation"]["status"] == result["fresh_validation"]["status"] == "passed"
 
 

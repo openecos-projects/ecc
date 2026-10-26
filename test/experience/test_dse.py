@@ -536,6 +536,17 @@ def test_warm_start_cross_design_requires_applied_evidence_and_records_provenanc
                     "feature_coverage": 0.9,
                     "parameter_evidence_level": "configured",
                 },
+                {
+                    "case_id": "same_input",
+                    "distance": 0.0,
+                    "compatibility": "selected_process_tool_analysis_match",
+                    "parameters": {"values": {"floorplan.core_util": 0.3}},
+                    "match_quality": "exact_input",
+                    "same_input_content": True,
+                    "confidence": "observed_only",
+                    "feature_coverage": 1.0,
+                    "parameter_evidence_level": "applied",
+                },
             ]
         },
     )

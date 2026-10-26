@@ -3,7 +3,9 @@
 from collections import Counter, defaultdict
 from math import comb, isfinite
 from pathlib import Path
+from statistics import median
 
+from ecc_experience.dse.audit import audit_history
 from ecc_experience.files import digest, read_json
 from ecc_experience.models import ExperienceError
 from ecc_experience.optimization.plan import write_plan
@@ -68,6 +70,7 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
     comparisons = [_compare(strategy, metrics, runs) for strategy in STRATEGIES[1:]]
     order_balanced = _order_balanced(runs)
     passed = not reasons
+    resource_coverage = _resource_summary(metrics)
     result = {
         "schema": D4_REPORT_SCHEMA,
         "spec": str(spec_path),
@@ -90,14 +93,21 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
             "host_classes": sorted({run["host_class"] for run in runs if run["host_class"]}),
             "host_loads": [
                 {
-                    "design": run["design"],
-                    "strategy": run["strategy"],
-                    "seed": run["seed"],
-                    "load": run["host_load"],
+                    "design": row["design"],
+                    "strategy": row["strategy"],
+                    "seed": row["seed"],
+                    "load": row["host_load"],
+                    "source": row["host_load_source"],
+                    "load_average": row["observed_load_average"],
+                    "max_load_1m": row["observed_max_load_1m"],
                 }
-                for run in runs
-                if run["host_load"] is not None
+                for row in metrics
+                if row["host_load"] is not None
             ],
+            "resource_coverage": resource_coverage,
+            "warm_start_modes": dict(
+                sorted(Counter(row["warm_start"]["status"] for row in metrics).items())
+            ),
         },
         "strategies": strategy_summary,
         "comparisons": comparisons,
@@ -109,6 +119,10 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
         "limitations": [
             "D4 compares observed runs on the declared designs, families, seeds and budget",
             "Equal plan budgets do not guarantee equal host load or external interference",
+            "Resource evidence is read from immutable trial cases; shared process-tree "
+            "observations are partial and are not isolated per-step attribution",
+            "peak_rss_bytes is the maximum sampled RSS across a trial's step observations, "
+            "not a sum and not a hard memory bound",
             "A completed D4 report does not replace full and fresh validation for a "
             "selected design",
             "No recommendation is written to a workspace and no model is promoted automatically",
@@ -173,6 +187,8 @@ def _load_run(base: Path, entry: dict) -> dict:
         or result.get("plan_fingerprint") != plan.get("plan_fingerprint")
     ):
         raise invalid("D4 run plan and result are not a frozen version 2 pair")
+    resources = _resource_evidence(plan, result)
+    warm_start = _warm_start_evidence(plan)
     return {
         "design": entry["design"],
         "family": entry["family"],
@@ -181,6 +197,15 @@ def _load_run(base: Path, entry: dict) -> dict:
         "order": entry.get("order"),
         "host_class": entry.get("host_class"),
         "host_load": entry.get("host_load"),
+        "observed_load_average": resources["load_average"]["median"],
+        "observed_max_load_1m": resources["load_1m"]["max"],
+        "host_load_source": "spec"
+        if entry.get("host_load") is not None
+        else "case_observation"
+        if resources["load_1m"]["count"]
+        else None,
+        "resources": resources,
+        "warm_start": warm_start,
         "plan": plan,
         "result": result,
         "budget_signature": digest(
@@ -223,6 +248,287 @@ def _strategy_matches(strategy: str, plan: dict, result: dict) -> bool:
     return False
 
 
+def _warm_start_evidence(plan: dict) -> dict:
+    warm = plan.get("warm_start")
+    warm = warm if isinstance(warm, dict) else {}
+    seeds = warm.get("seeds")
+    seeds = seeds if isinstance(seeds, list) else []
+    cross_design = sum(
+        isinstance(seed, dict) and seed.get("confidence") == "experimental" for seed in seeds
+    )
+    status = (
+        "not_requested"
+        if not seeds
+        else "cross_design"
+        if cross_design == len(seeds)
+        else "mixed"
+        if cross_design
+        else "same_input"
+    )
+    return {
+        "status": status,
+        "experimental_cross_design": warm.get("experimental_cross_design") is True,
+        "seed_count": len(seeds),
+        "cross_design_seed_count": cross_design,
+        "family_isolation": warm.get("family_isolation", "not_checked"),
+        "release_id": plan.get("release_id"),
+    }
+
+
+def _resource_evidence(plan: dict, result: dict) -> dict:
+    if not isinstance(plan.get("store"), str) or not plan["store"]:
+        return _summarize_resources(
+            [],
+            source="none",
+            reason="D4 plan has no experience store; resource evidence is unavailable",
+        )
+    try:
+        audited = audit_history(plan, result)
+    except (ExperienceError, OSError, KeyError, TypeError, ValueError) as exc:
+        return _summarize_resources(
+            [], source="case_observation", reason=f"Resource audit failed: {exc}"
+        )
+    evidence = audited["evidence"]
+    records = []
+    for index, trial in enumerate(result.get("trials", [])):
+        checked = evidence.get(str(index), {})
+        records.append(_resource_record(trial, checked))
+    for field in ("full_validation", "fresh_validation"):
+        trial = result.get(field)
+        if isinstance(trial, dict):
+            records.append(_resource_record(trial, evidence.get(field, {})))
+    return _summarize_resources(records, source="case_observation")
+
+
+def _resource_record(trial: dict, checked: dict) -> dict:
+    resources = checked.get("resources", [])
+    observations = []
+    for item in resources if isinstance(resources, list) else []:
+        observation = item.get("observation") if isinstance(item, dict) else None
+        if isinstance(observation, dict):
+            observations.append({"step": item.get("step"), "observation": observation})
+    return {
+        "candidate_id": trial.get("candidate_id"),
+        "mode": trial.get("mode"),
+        "status": trial.get("status"),
+        "case_id": checked.get("case_id") or trial.get("case_id"),
+        "verification": checked.get("status", "unknown"),
+        "observations": observations,
+    }
+
+
+def _summarize_resources(records: list[dict], *, source: str, reason: str | None = None) -> dict:
+    observations = [
+        item["observation"] for record in records for item in record.get("observations", [])
+    ]
+    peaks = [
+        value
+        for value in (observation.get("peak_rss_bytes") for observation in observations)
+        if _number(value)
+    ]
+    loads = []
+    for observation in observations:
+        host = observation.get("host")
+        load = host.get("load_average") if isinstance(host, dict) else None
+        if isinstance(load, list) and len(load) >= 1 and all(_number(value) for value in load[:3]):
+            loads.append([float(value) for value in load[:3]])
+    scopes = Counter(
+        str(
+            observation.get("scope") or observation.get("measurement", {}).get("scope") or "unknown"
+        )
+        for observation in observations
+        if isinstance(observation.get("measurement"), dict) or observation.get("scope")
+    )
+    measurement_statuses = Counter(
+        str(observation.get("measurement", {}).get("status", observation.get("status", "unknown")))
+        for observation in observations
+    )
+    outcomes = Counter(
+        str(observation.get("outcome", {}).get("status", "unknown"))
+        if isinstance(observation.get("outcome"), dict)
+        else str(observation.get("outcome", "unknown"))
+        for observation in observations
+    )
+    hosts = []
+    seen_hosts = set()
+    for observation in observations:
+        host = observation.get("host")
+        if not isinstance(host, dict):
+            continue
+        marker = digest(host)
+        if marker in seen_hosts:
+            continue
+        seen_hosts.add(marker)
+        hosts.append(host)
+    host_ids = sorted(
+        {
+            observation["host_id"]
+            for observation in observations
+            if isinstance(observation.get("host_id"), str) and observation["host_id"]
+        }
+    )
+    load_1m = _numeric_summary([load[0] for load in loads])
+    load_average = {
+        "min": [min(load[index] for load in loads) for index in range(3)] if loads else None,
+        "median": [median(load[index] for load in loads) for index in range(3)] if loads else None,
+        "max": [max(load[index] for load in loads) for index in range(3)] if loads else None,
+        "count": len(loads),
+    }
+    with_rss = sum(_number(observation.get("peak_rss_bytes")) for observation in observations)
+    with_load = sum(
+        isinstance(observation.get("host"), dict)
+        and isinstance(observation["host"].get("load_average"), list)
+        for observation in observations
+    )
+    records_with_observations = sum(bool(record.get("observations")) for record in records)
+    observation_count = len(observations)
+    status = (
+        "unknown"
+        if not observations
+        else "available"
+        if all(value == "available" for value in measurement_statuses)
+        and with_rss == observation_count
+        and with_load == observation_count
+        else "partial"
+    )
+    if reason is None and status == "partial":
+        reason = "One or more step measurements are partial or shared"
+    return {
+        "status": status,
+        "source": source,
+        "reason": reason,
+        "record_count": len(records),
+        "records_with_observations": records_with_observations,
+        "observation_count": observation_count,
+        "sample_count": sum(
+            observation.get("sample_count", 0)
+            for observation in observations
+            if type(observation.get("sample_count")) is int
+        ),
+        "peak_rss_bytes": max(peaks) if peaks else None,
+        "peak_rss_scope": "max_of_step_observations",
+        "load_1m": load_1m,
+        "load_average": load_average,
+        "hosts": hosts,
+        "host_ids": host_ids,
+        "scope_counts": dict(sorted(scopes.items())),
+        "measurement_status_counts": dict(sorted(measurement_statuses.items())),
+        "outcome_counts": dict(sorted(outcomes.items())),
+        "coverage": {
+            "record_ratio": records_with_observations / len(records) if records else 0.0,
+            "rss_observation_ratio": with_rss / observation_count if observation_count else 0.0,
+            "host_load_observation_ratio": with_load / observation_count
+            if observation_count
+            else 0.0,
+        },
+        "limitations": [
+            "Peak RSS is sampled and may miss short peaks or double-count shared pages",
+            "Shared process-tree observations cannot be attributed to one step",
+        ],
+    }
+
+
+def _resource_summary(metrics: list[dict]) -> dict:
+    runs = [row for row in metrics if row["resources"]["observation_count"]]
+    statuses = {row["resources"]["status"] for row in metrics}
+    status = (
+        "available"
+        if statuses == {"available"}
+        else "partial"
+        if any(row["resources"]["observation_count"] for row in metrics)
+        else "unknown"
+    )
+    return {
+        "status": status,
+        "run_count": len(metrics),
+        "runs_with_observations": len(runs),
+        "run_ratio": len(runs) / len(metrics) if metrics else 0.0,
+        "record_count": sum(row["resources"]["record_count"] for row in metrics),
+        "records_with_observations": sum(
+            row["resources"]["records_with_observations"] for row in metrics
+        ),
+        "observation_count": sum(row["resources"]["observation_count"] for row in metrics),
+        "sample_count": sum(row["resources"]["sample_count"] for row in metrics),
+        "peak_rss_bytes": _numeric_summary(
+            [row["peak_rss_bytes"] for row in metrics if _number(row["peak_rss_bytes"])]
+        ),
+        "host_load_1m": _numeric_summary(
+            [
+                row["observed_load_average"][0]
+                for row in metrics
+                if isinstance(row["observed_load_average"], list) and row["observed_load_average"]
+            ]
+        ),
+        "scope_counts": dict(
+            sorted(
+                sum(
+                    (Counter(row["resources"]["scope_counts"]) for row in metrics),
+                    Counter(),
+                ).items()
+            )
+        ),
+        "measurement_status_counts": dict(
+            sorted(
+                sum(
+                    (Counter(row["resources"]["measurement_status_counts"]) for row in metrics),
+                    Counter(),
+                ).items()
+            )
+        ),
+        "runs": [
+            {
+                "design": row["design"],
+                "strategy": row["strategy"],
+                "seed": row["seed"],
+                "status": row["resources"]["status"],
+                "budget_coverage": row["budget_coverage"],
+                "observations": row["resources"]["observation_count"],
+                "record_ratio": row["resources"]["coverage"]["record_ratio"],
+                "peak_rss_bytes": row["peak_rss_bytes"],
+                "host_load_1m": row["observed_load_average"][0]
+                if isinstance(row["observed_load_average"], list)
+                else None,
+                "max_load_1m": row["observed_max_load_1m"],
+                "scopes": row["resources"]["scope_counts"],
+            }
+            for row in metrics
+        ],
+    }
+
+
+def _numeric_summary(values: list[float]) -> dict:
+    ordered = sorted(float(value) for value in values)
+    return {
+        "min": ordered[0] if ordered else None,
+        "p50": ordered[len(ordered) // 2] if ordered else None,
+        "p90": ordered[min(len(ordered) - 1, int((len(ordered) - 1) * 0.9))] if ordered else None,
+        "max": ordered[-1] if ordered else None,
+        "count": len(ordered),
+    }
+
+
+def _compact_resources(resources: dict) -> dict:
+    return {
+        key: resources[key]
+        for key in (
+            "status",
+            "source",
+            "reason",
+            "record_count",
+            "records_with_observations",
+            "observation_count",
+            "sample_count",
+            "peak_rss_bytes",
+            "peak_rss_scope",
+            "scope_counts",
+            "measurement_status_counts",
+            "outcome_counts",
+            "coverage",
+            "limitations",
+        )
+    }
+
+
 def _metrics(run: dict) -> dict:
     plan = run["plan"]
     result = run["result"]
@@ -248,22 +554,9 @@ def _metrics(run: dict) -> dict:
     final_qor = fresh.get("qor_score") if isinstance(fresh, dict) else None
     if not isinstance(final_qor, (int, float)) or isinstance(final_qor, bool):
         final_qor = None
-    peak_rss = None
-    for trial in trials:
-        resources = trial.get("resources")
-        if isinstance(resources, list):
-            values = [
-                item.get("observation", {}).get("peak_rss_bytes")
-                for item in resources
-                if isinstance(item, dict) and isinstance(item.get("observation"), dict)
-            ]
-            values = [
-                value
-                for value in values
-                if isinstance(value, (int, float)) and not isinstance(value, bool)
-            ]
-            if values:
-                peak_rss = max(values)
+    resources = run["resources"]
+    peak_rss = resources["peak_rss_bytes"]
+    observed_load = resources["load_average"]["median"]
     objective = plan.get("objectives", [{}])[0]
     return {
         "design": run["design"],
@@ -293,7 +586,19 @@ def _metrics(run: dict) -> dict:
             and result["fresh_validation"].get("status") == "passed"
         ),
         "peak_rss_bytes": peak_rss,
-        "budget_coverage": "available" if peak_rss is not None else "unknown",
+        "budget_coverage": resources["status"],
+        "host_load": run["host_load"]
+        if run["host_load"] is not None
+        else observed_load[0]
+        if isinstance(observed_load, list)
+        else None,
+        "host_load_source": run["host_load_source"],
+        "warm_start": run["warm_start"],
+        "resource_coverage": resources["coverage"],
+        "resource_scope": resources["scope_counts"],
+        "resources": _compact_resources(resources),
+        "observed_load_average": observed_load,
+        "observed_max_load_1m": resources["load_1m"]["max"],
         "model_metrics": _model_metrics(result),
     }
 
@@ -336,6 +641,7 @@ def _model_metrics(result: dict) -> dict:
                 "status": validation.get("status", "unknown"),
                 "metrics": validation.get("metrics"),
                 "summary": validation.get("summary"),
+                "calibration": validation.get("calibration"),
             }
         except (ExperienceError, OSError, KeyError, TypeError, ValueError) as exc:
             metrics["validation"] = {"status": "unknown", "reason": str(exc)}

@@ -3,7 +3,12 @@ import json
 import pytest
 
 from ecc_experience.files import canonical_bytes, digest
-from ecc_experience.modeling.model import evaluate_model, publish_model, train_model
+from ecc_experience.modeling.model import (
+    calibrate_residuals,
+    evaluate_model,
+    publish_model,
+    train_model,
+)
 from ecc_experience.modeling.predict import read_model_release
 from ecc_experience.models import ExperienceError
 
@@ -92,3 +97,23 @@ def test_v2_release_carries_verified_metrics_and_scope(tmp_path):
     assert payload["validation"]["summary"]["independent_input_count"] == 4
     loaded = read_model_release(release)
     assert loaded["validation"]["status"] == "pass"
+    assert loaded["validation"]["calibration"] == report["calibration"]
+    assert report["calibration"]["method"] == "grouped_conformal_absolute_error"
+    assert report["calibration"]["status"] == "available"
+    assert report["calibration"]["cross_validated_group_count"] == 4
+
+
+def test_calibration_uses_grouped_held_out_quantiles():
+    calibration = calibrate_residuals(
+        [0.0, 1.0, 2.0, 4.0],
+        ["design-a", "design-a", "design-b", "design-c"],
+        target_coverage=0.9,
+        base_scale=0.5,
+    )
+
+    assert calibration["status"] == "available"
+    assert calibration["interval_half_width"] == 4.0
+    assert calibration["group_count"] == 3
+    assert 0.0 <= calibration["cross_validated_coverage"] <= 1.0
+    assert calibration["base_residual_std"] == 0.5
+    assert "future design" in calibration["limitations"][0]

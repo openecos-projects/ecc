@@ -36,10 +36,16 @@ def read_model_release(path: str | Path) -> dict:
     }
     if schema == RELEASE_SCHEMA:
         validation = payload.get("validation")
+        base_keys = {
+            "status",
+            "metrics",
+            "summary",
+            "thresholds",
+            "generalization_status",
+        }
         if (
             not isinstance(validation, dict)
-            or set(validation)
-            != {"status", "metrics", "summary", "thresholds", "generalization_status"}
+            or (set(validation) != base_keys and set(validation) != base_keys | {"calibration"})
             or validation["status"] != "pass"
             or not isinstance(validation["metrics"], dict)
             or not isinstance(validation["summary"], dict)
@@ -57,6 +63,30 @@ def read_model_release(path: str | Path) -> dict:
             <= set(validation["thresholds"])
         ):
             raise invalid("The model release validation summary is invalid")
+        if "calibration" in validation:
+            calibration = validation["calibration"]
+            if (
+                not isinstance(calibration, dict)
+                or set(calibration)
+                != {
+                    "method",
+                    "status",
+                    "target_coverage",
+                    "interval_half_width",
+                    "base_residual_std",
+                    "sample_count",
+                    "group_count",
+                    "cross_validated_coverage",
+                    "cross_validated_group_count",
+                    "limitations",
+                }
+                or calibration["method"] != "grouped_conformal_absolute_error"
+                or calibration["status"] not in {"available", "insufficient_evidence"}
+                or not 0 < calibration["target_coverage"] <= 1
+                or calibration["interval_half_width"] <= 0
+                or not 0 <= calibration["cross_validated_coverage"] <= 1
+            ):
+                raise invalid("The model release calibration is invalid")
         identity["validation"] = validation
     if payload.get("release_id") != f"model-release-{digest(identity)}":
         raise invalid("Model release identity mismatch")
@@ -93,7 +123,8 @@ def predict_case(
     if boundary != model["through_step"]:
         raise invalid("Prediction boundary is incompatible with the model feature scope")
     features = extract_features(case, repository.case_directory(case_id), boundary)
-    prediction = predict_features(model, features)
+    calibration = release.get("validation", {}).get("calibration")
+    prediction = predict_features(model, features, calibration=calibration)
     result = {
         "schema": PREDICTION_SCHEMA,
         "model_release_id": release["release_id"],
@@ -125,6 +156,7 @@ def advise_dataset(
         raise invalid("Advice limit must be between 1 and 1000")
     release = read_model_release(model_release)
     model = release["model"]
+    calibration = release.get("validation", {}).get("calibration")
     data = read_dataset(dataset)
     if (
         data["feature_schema"] != model["feature_schema"]
@@ -144,7 +176,7 @@ def advise_dataset(
                 "case_id": row["case_id"],
                 "parameters": row.get("parameters", {}),
                 "input_content_fingerprint": row.get("input_content_fingerprint"),
-                "prediction": predict_features(model, row["features"]),
+                "prediction": predict_features(model, row["features"], calibration=calibration),
             }
         )
     reverse = not model["target"].startswith("resource:")

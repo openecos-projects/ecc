@@ -4,6 +4,11 @@ from typer.testing import CliRunner
 
 from chipcompiler.cli.app import app
 from ecc_experience.api import d4_evaluate
+from ecc_experience.benchmark.d4 import (
+    _resource_evidence,
+    _summarize_resources,
+    _warm_start_evidence,
+)
 
 STRATEGIES = ("grid", "adaptive", "adaptive_warm", "model_assisted")
 
@@ -133,3 +138,79 @@ def test_d4_cli_returns_unknown_exit_code_without_enough_designs(tmp_path):
 
     assert result.exit_code == 7, result.output
     assert json.loads(result.stdout)[0]["status"] == "unknown"
+
+
+def test_d4_resource_summary_keeps_partial_scope_and_maximum_trial_rss():
+    observation = {
+        "peak_rss_bytes": 2048,
+        "sample_count": 10,
+        "scope": "shared_process_tree",
+        "measurement": {"scope": "shared_process_tree", "status": "partial"},
+        "host": {"load_average": [12.0, 8.0, 4.0], "logical_cores": 32},
+        "host_id": "host-a",
+        "outcome": {"status": "success"},
+    }
+    summary = _summarize_resources(
+        [
+            {
+                "candidate_id": "candidate-1",
+                "case_id": "case-1",
+                "observations": [
+                    {"step": "Synthesis", "observation": {**observation, "peak_rss_bytes": 1024}},
+                    {"step": "place", "observation": observation},
+                ],
+            }
+        ],
+        source="case_observation",
+    )
+
+    assert summary["status"] == "partial"
+    assert summary["peak_rss_bytes"] == 2048
+    assert summary["peak_rss_scope"] == "max_of_step_observations"
+    assert summary["load_1m"]["p50"] == 12.0
+    assert summary["scope_counts"] == {"shared_process_tree": 2}
+    assert summary["measurement_status_counts"] == {"partial": 2}
+    assert summary["coverage"]["rss_observation_ratio"] == 1.0
+
+
+def test_d4_resource_evidence_does_not_trust_result_only_resources():
+    plan = {"schema": "ecc-experience-stage-dse-plan/2"}
+    result = {
+        "trials": [
+            {
+                "candidate_id": "candidate-1",
+                "resources": [{"observation": {"peak_rss_bytes": 123}}],
+            }
+        ]
+    }
+
+    evidence = _resource_evidence(plan, result)
+
+    assert evidence["status"] == "unknown"
+    assert evidence["source"] == "none"
+    assert evidence["peak_rss_bytes"] is None
+
+
+def test_d4_warm_start_evidence_distinguishes_cross_design_seeds():
+    evidence = _warm_start_evidence(
+        {
+            "release_id": "release-a",
+            "warm_start": {
+                "experimental_cross_design": True,
+                "family_isolation": "explicit_groups",
+                "seeds": [
+                    {"case_id": "case-a", "confidence": "experimental"},
+                    {"case_id": "case-b", "confidence": "experimental"},
+                ],
+            },
+        }
+    )
+
+    assert evidence == {
+        "status": "cross_design",
+        "experimental_cross_design": True,
+        "seed_count": 2,
+        "cross_design_seed_count": 2,
+        "family_isolation": "explicit_groups",
+        "release_id": "release-a",
+    }

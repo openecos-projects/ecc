@@ -174,6 +174,7 @@ def evaluate_model(
     min_families: int = 2,
     max_mae: float = 10.0,
     min_interval_coverage: float = 0.5,
+    calibration_target_coverage: float = 0.9,
 ) -> dict:
     model_path = Path(model).expanduser().absolute()
     data_path = Path(dataset).expanduser().absolute()
@@ -216,8 +217,13 @@ def evaluate_model(
     residuals = [
         target - prediction for target, prediction in zip(targets, predictions, strict=True)
     ]
-    residual_std = max(float(payload["training_summary"]["residual_std"]), 1e-12)
-    coverage = sum(abs(error) <= 2 * residual_std for error in residuals) / len(residuals)
+    calibration = calibrate_residuals(
+        residuals,
+        [row.get("input_content_fingerprint") or row["case_id"] for row in data["rows"]],
+        target_coverage=calibration_target_coverage,
+        base_scale=float(payload["training_summary"]["residual_std"]),
+    )
+    coverage = calibration["cross_validated_coverage"]
     pairs = [
         (
             (targets[left], predictions[left]),
@@ -241,6 +247,7 @@ def evaluate_model(
         "min_families": min_families,
         "max_mae": max_mae,
         "min_interval_coverage": min_interval_coverage,
+        "calibration_target_coverage": calibration_target_coverage,
     }
     known = len(independent) >= min_independent_designs and len(families) >= min_families
     mae = float(np.mean(np.abs(residuals)))
@@ -267,6 +274,7 @@ def evaluate_model(
             "family_count": len(families),
         },
         "thresholds": thresholds,
+        "calibration": calibration,
         "status": status,
     }
     result = {
@@ -292,6 +300,8 @@ def evaluate_model(
             "target scope",
             "A passing report does not establish causal parameter effects or future "
             "design certainty",
+            "Interval calibration uses held-out groups; cross-validated coverage is not a "
+            "guarantee for new designs",
             "The model must be followed by real ECC DSE and fresh validation",
         ],
     }
@@ -338,6 +348,7 @@ def publish_model(model: str | Path, evaluation: str | Path, output: str | Path)
             min_families=report["thresholds"]["min_families"],
             max_mae=report["thresholds"]["max_mae"],
             min_interval_coverage=report["thresholds"]["min_interval_coverage"],
+            calibration_target_coverage=report["thresholds"]["calibration_target_coverage"],
         )
     else:
         from ecc_experience.modeling.validation import validate_matrix
@@ -351,6 +362,7 @@ def publish_model(model: str | Path, evaluation: str | Path, output: str | Path)
             min_interval_coverage=report["thresholds"]["min_interval_coverage"],
             min_rank_accuracy=report["thresholds"]["min_rank_accuracy"],
             family_holdout=report["thresholds"]["family_holdout"],
+            calibration_target_coverage=report["thresholds"]["calibration_target_coverage"],
         )
     if current["evaluation_fingerprint"] != report["evaluation_fingerprint"]:
         raise ExperienceError("Model evaluation evidence changed", code="experience_source_changed")
@@ -367,6 +379,7 @@ def publish_model(model: str | Path, evaluation: str | Path, output: str | Path)
         "metrics": report["metrics"],
         "summary": report["summary"],
         "thresholds": report["thresholds"],
+        "calibration": report["calibration"],
         "generalization_status": report.get(
             "generalization_status", "validated_for_declared_scope"
         ),
@@ -496,20 +509,97 @@ def validate_model(payload: dict) -> None:
         raise invalid("Model auto-apply policy is invalid")
 
 
-def predict_features(model: dict, features: dict[str, float]) -> dict:
+def calibrate_residuals(
+    residuals: list[float],
+    groups: list[str],
+    *,
+    target_coverage: float = 0.9,
+    base_scale: float | None = None,
+) -> dict:
+    if (
+        not residuals
+        or len(residuals) != len(groups)
+        or not all(math.isfinite(value) for value in residuals)
+        or not 0 < target_coverage <= 1
+    ):
+        raise invalid("Calibration residuals or target coverage are invalid")
+    absolute = [abs(value) for value in residuals]
+    grouped: dict[str, list[float]] = {}
+    for group, value in zip(groups, absolute, strict=True):
+        grouped.setdefault(str(group), []).append(value)
+    half_width = _quantile_absolute(absolute, target_coverage)
+    if len(grouped) >= 2:
+        covered = []
+        for group, values in grouped.items():
+            training = [value for key, items in grouped.items() if key != group for value in items]
+            width = _quantile_absolute(training, target_coverage)
+            covered.extend(value <= width for value in values)
+        cross_validated = sum(covered) / len(covered)
+        cross_status = "available"
+    else:
+        cross_validated = sum(value <= half_width for value in absolute) / len(absolute)
+        cross_status = "insufficient_evidence"
+    return {
+        "method": "grouped_conformal_absolute_error",
+        "status": cross_status,
+        "target_coverage": target_coverage,
+        "interval_half_width": half_width,
+        "base_residual_std": max(float(base_scale or 0.0), 1e-12),
+        "sample_count": len(absolute),
+        "group_count": len(grouped),
+        "cross_validated_coverage": cross_validated,
+        "cross_validated_group_count": len(grouped),
+        "limitations": [
+            "Calibration requires independent held-out groups and cannot guarantee future design "
+            "coverage",
+            "Symmetric absolute-error intervals do not model asymmetric or failure tails",
+        ],
+    }
+
+
+def _quantile_absolute(values: list[float], coverage: float) -> float:
+    ordered = sorted(values)
+    index = min(len(ordered) - 1, max(0, math.ceil(coverage * len(ordered)) - 1))
+    return max(float(ordered[index]), 1e-12)
+
+
+def predict_features(
+    model: dict, features: dict[str, float], *, calibration: dict | None = None
+) -> dict:
     values = np.array([float(features.get(key, 0.0)) for key in model["columns"]], dtype=float)
     means = np.array(model["means"], dtype=float)
     scales = np.array(model["scales"], dtype=float)
     coefficients = np.array(model["coefficients"], dtype=float)
     prediction = float(np.array([1.0, *((values - means) / scales)]) @ coefficients)
-    residual = max(float(model["training_summary"]["residual_std"]), 1e-12)
+    training_residual = max(float(model["training_summary"]["residual_std"]), 1e-12)
     if model["target"] == "feasibility":
         prediction = min(1.0, max(0.0, prediction))
+    if calibration is not None and calibration.get("status") == "available":
+        residual = max(float(calibration["interval_half_width"]), 1e-12)
+        coverage = float(calibration["cross_validated_coverage"])
+        interval = {
+            "basis": "held_out_grouped_calibration",
+            "target_coverage": calibration["target_coverage"],
+            "cross_validated_coverage": coverage,
+        }
+    else:
+        residual = training_residual
+        coverage = None
+        interval = {"basis": "training_residual", "target_coverage": None}
     return {
         "prediction": prediction,
         "lower_bound": prediction - 2 * residual,
         "upper_bound": prediction + 2 * residual,
-        "confidence": "high" if residual == 0 else "medium",
+        "confidence": (
+            "high"
+            if coverage is not None and coverage >= 0.9
+            else "medium"
+            if coverage is not None and coverage >= 0.5
+            else "low"
+            if coverage is not None
+            else "medium"
+        ),
+        "interval": interval,
     }
 
 

@@ -25,8 +25,11 @@ def match_cases(
     through_step: str,
     limit: int = 10,
     experimental_cross_design: bool = False,
+    cross_design_only: bool = False,
     groups: str | Path | None = None,
 ) -> dict:
+    if cross_design_only and not experimental_cross_design:
+        raise ExperienceError("Cross-design-only matching requires the experimental opt-in")
     if type(limit) is not int or not 1 <= limit <= 100:
         raise ExperienceError("Match limit must be between 1 and 100")
     query = case_features(case_id, store, through_step=through_step)
@@ -92,6 +95,8 @@ def match_cases(
         )
         if not same_inputs and not experimental_cross_design:
             reasons.append("cross_design_not_enabled")
+        if same_inputs and cross_design_only:
+            reasons.append("same_input_content")
         if not same_inputs and (
             query.get("schema_version") == 1 or candidate.get("schema_version") == 1
         ):

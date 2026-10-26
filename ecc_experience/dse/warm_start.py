@@ -28,6 +28,7 @@ def freeze_warm_start(plan: dict, limit: int) -> dict:
         through_step=plan["rungs"][0]["through_step"],
         limit=limit,
         experimental_cross_design=experimental,
+        cross_design_only=experimental,
         groups=frozen.get("groups"),
     )
     facts: dict = baseline.facts
@@ -44,7 +45,7 @@ def freeze_warm_start(plan: dict, limit: int) -> dict:
             or item.get("same_input_content") is False
         )
         evidence_level = item.get("parameter_evidence_level", "unknown")
-        if experimental and compatible_design and evidence_level != "applied":
+        if experimental and (not compatible_design or evidence_level != "applied"):
             continue
         candidate = repository.read(item["case_id"])
         candidate_specification = candidate.facts.get("workspaceSpec")
