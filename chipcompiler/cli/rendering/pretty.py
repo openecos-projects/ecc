@@ -412,8 +412,6 @@ def render_signoff_inspect_text(records, file=None):
     summary = records[0]
     print("[signoff]", file=target)
     print(f"  status    : {summary['status']}", file=target)
-    if summary.get("readiness"):
-        print(f"  readiness : {summary['readiness']}", file=target)
     print(f"  workspace : {summary['workspace']}", file=target)
     print(f"  export    : {summary['export']}", file=target)
     print(f"  report    : {summary['report']}", file=target)

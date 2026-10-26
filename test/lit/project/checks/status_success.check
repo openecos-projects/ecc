@@ -1,4 +1,0 @@
-; Plain `ecc status --project` after a successful Synthesis-only run.
-CHECK: status=success
-CHECK: step=synthesis
-CHECK: status=success

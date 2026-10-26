@@ -35,7 +35,6 @@ def workspace_stub(monkeypatch):
 
 REVIEW = {
     "status": "attention",
-    "readiness": "WARN",
     "groups": [
         {
             "id": "harden",
@@ -128,7 +127,6 @@ class TestSignoffInspect:
         summary = records[0]
         assert summary["signoff"] == "inspect"
         assert summary["status"] == "attention"
-        assert summary["readiness"] == "WARN"
         groups = [r for r in records if "group" in r]
         assert [g["group"] for g in groups] == ["harden", "sta"]
         items = [r for r in records if "item" in r]
@@ -141,16 +139,12 @@ class TestSignoffInspect:
     ):
         project_dir = create_cli_project()
         os.makedirs(os.path.join(project_dir, "default"))
-        _patch_inspect(
-            monkeypatch, {"status": "blocked", "readiness": "ERROR", "groups": [], "risks": []}
-        )
+        _patch_inspect(monkeypatch, {"status": "blocked", "groups": [], "risks": []})
 
         rc = cli_main.run(["signoff", "inspect", "--project", project_dir, "--plain"])
 
         assert rc == 0
-        record = plain_records(capsys.readouterr().out)[0]
-        assert record["status"] == "blocked"
-        assert record["readiness"] == "ERROR"
+        assert plain_records(capsys.readouterr().out)[0]["status"] == "blocked"
 
     def test_inspect_text_rendering(
         self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub
