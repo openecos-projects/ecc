@@ -5,6 +5,7 @@ from chipcompiler.engine.snapshot_qor import unavailable_qor_snapshot_extension
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
 from ecc_experience.api import collect, recommend, release_create
 from ecc_experience.collection.collect import collect_committed_case
+from ecc_experience.knowledge.index import build_index
 from ecc_experience.knowledge.store import ExperienceStore
 
 
@@ -75,6 +76,33 @@ def test_recommend_does_not_guess_without_input_fingerprint(workspace_factory, t
 
     assert result["status"] == "insufficient_evidence"
     assert result["recommendations"] == []
+
+
+def test_recommend_uses_derived_index_without_changing_the_recommendation(
+    workspace_factory, tmp_path
+):
+    workspace = workspace_factory()
+    input_file = tmp_path / "design.v"
+    input_file.write_text("module sample; endmodule")
+    snapshot_path = workspace / "home/engineering-snapshot.json"
+    snapshot = json.loads(snapshot_path.read_text())
+    snapshot["workspaceSpec"] = {
+        "design": {"topModule": "sample"},
+        "inputs": [{"inputId": "rtl", "role": "rtl"}],
+        "parameters": {"place.density": 0.7},
+    }
+    snapshot["workspaceBindings"] = {"inputs": {"rtl": str(input_file)}}
+    snapshot_path.write_text(json.dumps(snapshot))
+    store = tmp_path / "store"
+    case = collect(workspace, store).case
+    baseline = recommend(workspace, store)
+
+    build_index(store)
+    indexed = recommend(workspace, store)
+
+    assert indexed["index"]["status"] == "used"
+    assert indexed["recommendations"] == baseline["recommendations"]
+    assert indexed["recommendations"][0]["case_id"] == case.case_id
 
 
 def test_recommend_uses_only_cases_from_verified_release(workspace_factory, tmp_path):

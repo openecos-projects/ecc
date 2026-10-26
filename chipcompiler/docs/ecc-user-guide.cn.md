@@ -279,10 +279,11 @@ eval "$(ecc --show-completion)"     # 自动探测当前 shell
 | `ecc diagnose run` | 工作区诊断与恢复建议 | §11.5 |
 | `ecc experience normalize / collect / list / show / verify / features / summary / match` | 构建经验库清单，采集/查询/校验案例，读取阶段特征，汇总质量并匹配冻结 release | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#6-每次运行后保存什么) |
 | `ecc experience export / import / enable / status / disable / drain` | 交换经验包，管理非侵入式执行事实记录 | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#105-备份和交换经验案例) |
-| `ecc experience recommend / plan / optimize / evaluate` | 保守推荐、编写/执行有界计划并比较案例 | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#101-受控执行经验计划) |
+| `ecc experience recommend / plan / optimize / evaluate / budget` | 保守推荐、编写/执行有界或显式跨设计计划、比较案例并估算分 scope 资源预算 | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#101-受控执行经验计划) |
 | `ecc experience campaign create / report / matrix / readiness / archive / effect / validate / run / recover / init / record / status / summary / quality / benchmark` | 创建、运行、恢复、审计、比较并归档串行经验 campaign | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#串行-baseline-批次) |
 | `ecc experience release create / verify / from-manifest` | 冻结并校验有证据支撑的经验 release | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#102-比较与发布案例) |
-| `ecc experience dse plan / run / report / compare` | 冻结、执行、汇总并比较分阶段 PNR 设计空间探索 | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#20-dse-v2自适应多目标与逐级筛选) |
+| `ecc experience dse plan / run / report / compare / d4` | 冻结、执行、汇总、比较并评价四策略分阶段 PNR 设计空间探索 | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#20-dse-v2自适应多目标与逐级筛选) |
+| `ecc experience index build / status` | 重建并检查本地派生 store 索引 | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#224-d4-四策略报告与派生索引) |
 | `ecc experience study evaluate / publish` | 评估隔离的留出实验并发布已校验反馈 | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#留出评价与-k1-经验发布) |
 | `ecc experience dataset build / split` | 构建可审计泄漏的数据集并划分训练/验证/测试组 | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#161-构建-dataset) |
 | `ecc experience model train / evaluate / publish / predict / advise / validate / promote / rollback / registry / seed-sweep` | 训练、校验、发布、查询、验证、晋级并回滚可解释模型 | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#162-训练和检查模型) |

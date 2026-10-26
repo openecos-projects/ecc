@@ -129,7 +129,11 @@ def _read_store(repository: ExperienceStore) -> tuple[dict, list[dict], list[dic
                             "quality_class": row["quality_class"],
                             "release_eligible": row["release_eligible"],
                             "negative_eligible": row["quality_class"] == "blocked"
-                            and all(finding["check"] == "qor" for finding in row["findings"]),
+                            and all(
+                                finding["check"] == "qor"
+                                or finding["check"].startswith("identity_")
+                                for finding in row["findings"]
+                            ),
                             "findings": row["findings"],
                             "finding_counts": row["finding_counts"],
                             "changed_during_read": False,

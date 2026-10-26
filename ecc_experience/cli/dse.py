@@ -39,6 +39,7 @@ class DseInput:
     spec: str | None = None
     resume: bool = False
     select: str | None = None
+    max_concurrent: int | None = None
     other_plan: str | None = None
     other_result: str | None = None
 
@@ -77,6 +78,7 @@ def _run(command: DseInput, _context: CommandContext) -> CommandResult:
             command.plan_path or "",
             command.output_path,
             model_release=command.model_release,
+            max_concurrent=command.max_concurrent,
             resume=command.resume,
             select=command.select,
         )
@@ -161,6 +163,7 @@ def run_cmd(
     model_release: Annotated[str | None, typer.Option("--model-release")] = None,
     resume: Annotated[bool, typer.Option("--resume")] = False,
     select: Annotated[str | None, typer.Option("--select")] = None,
+    max_concurrent: Annotated[int | None, typer.Option("--max-concurrent", min=1, max=16)] = None,
     plain: PlainOption = False,
     json_output: JsonOption = False,
 ) -> None:
@@ -172,6 +175,7 @@ def run_cmd(
         model_release=model_release,
         resume=resume,
         select=select,
+        max_concurrent=max_concurrent,
     )
     execute_command("experience", command, _run)
 
@@ -252,6 +256,38 @@ def compare_cmd(
             result_path=result,
             other_plan=other_plan,
             other_result=other_result,
+        ),
+        handle,
+    )
+
+
+@dse_app.command("d4", help="Evaluate equal-budget grid/adaptive/warm/model DSE evidence")
+def d4_cmd(
+    *,
+    spec: Annotated[str, typer.Option("--spec", help="D4 run matrix JSON")],
+    output: Annotated[str, typer.Option("--output")],
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    def handle(command: DseInput, _context: CommandContext) -> CommandResult:
+        def operation():
+            from ecc_experience.api import d4_evaluate
+
+            report = d4_evaluate(command.spec or "", command.output_path)
+            return CommandResult(
+                records=({"experience": "dse_d4", **report},),
+                exit_code=report["exit_code"],
+            )
+
+        return _guard(operation)
+
+    execute_command(
+        "experience",
+        DseInput(
+            output=output_options(plain=plain, json_output=json_output),
+            project=project_options(None),
+            output_path=output,
+            spec=spec,
         ),
         handle,
     )

@@ -22,6 +22,12 @@ def baseline_score(plan: dict, observed: dict) -> float | None:
     accepted = acceptance(case, store.case_directory(case.case_id))
     if observed["status"] != "passed" or accepted["status"] != "pass":
         return None
+    if accepted.get("advisory_only") and (
+        observed.get("advisory_only") is not True
+        or observed.get("signoff_status") != "unknown"
+        or observed.get("signoff_exit_code") != 7
+    ):
+        raise invalid("DSE baseline advisory evidence is inconsistent")
     if accepted["qor_score"] != observed.get("qor_score"):
         raise invalid("DSE baseline score differs from immutable evidence")
     return accepted["qor_score"]
@@ -88,6 +94,15 @@ def audit_trial(plan: dict, trial: dict, rung: dict | None) -> dict:
         accepted = acceptance(case, store.case_directory(case_id))
         if accepted["status"] != "pass" or accepted["qor_score"] != trial.get("qor_score"):
             raise invalid("DSE full validation does not match immutable signoff and QoR")
+        if accepted.get("advisory_only"):
+            if (
+                trial.get("advisory_only") is not True
+                or trial.get("signoff_status") != "unknown"
+                or trial.get("signoff_exit_code") != 7
+            ):
+                raise invalid("DSE advisory validation evidence is inconsistent")
+        elif trial.get("advisory_only") is True:
+            raise invalid("DSE advisory claim lacks immutable warning evidence")
     return {
         "status": checked.status,
         "case_id": case_id,
@@ -111,6 +126,11 @@ def audit_history(plan: dict, result: dict) -> dict:
     evidence = {}
     seen = set()
     previous_rung = 0
+    rung_zero_trials = [trial for trial in result["trials"] if trial.get("rung") == 0]
+    batch_size = result.get("max_concurrent", 1)
+    if type(batch_size) is not int or batch_size < 1:
+        raise invalid("DSE result has an invalid execution concurrency")
+    previous_zero_count = 0
     for index, trial in enumerate(result["trials"]):
         rung_index = trial.get("rung")
         if (
@@ -125,7 +145,19 @@ def audit_history(plan: dict, result: dict) -> dict:
             raise invalid("Duplicate DSE candidate within rung")
         seen.add(identity)
         if rung_index == 0:
-            proposed, decision = propose(plan, history)
+            batch_start = (previous_zero_count // batch_size) * batch_size
+            frozen_history = rung_zero_trials[:batch_start]
+            excluded = [
+                item["parameters"]
+                for item in rung_zero_trials[batch_start:previous_zero_count]
+                if "parameters" in item
+            ]
+            proposed, decision = propose(
+                plan,
+                frozen_history,
+                excluded=excluded,
+                candidate_index=previous_zero_count + 1,
+            )
             if (
                 proposed is None
                 or trial.get("candidate_id") != proposed["candidate_id"]
@@ -135,6 +167,7 @@ def audit_history(plan: dict, result: dict) -> dict:
                 raise invalid("DSE optimizer history does not replay")
             candidates[proposed["candidate_id"]] = proposed
             history.append(trial)
+            previous_zero_count += 1
         elif (
             trial.get("candidate_id") not in candidates
             or trial["parameters"] != candidates[trial["candidate_id"]]["parameters"]

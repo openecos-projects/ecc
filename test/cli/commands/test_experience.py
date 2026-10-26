@@ -84,8 +84,29 @@ def test_optimize_uses_current_project_and_preserves_structured_failure(tmp_path
 
 def test_plan_passes_explicit_execution_limits(legacy_project, tmp_path, monkeypatch):
     project, workspace = legacy_project
+    calls = []
 
-    def plan(_workspace, _store, _output, *, limit, release, optimization):
+    def plan(
+        _workspace,
+        _store,
+        _output,
+        *,
+        limit,
+        release,
+        optimization,
+        experimental_cross_design,
+        through_step,
+        groups,
+        query_case_id,
+    ):
+        calls.append(
+            {
+                "cross_design": experimental_cross_design,
+                "through_step": through_step,
+                "groups": groups,
+                "query_case_id": query_case_id,
+            }
+        )
         return {"optimization": optimization.model_dump()}
 
     monkeypatch.setattr("ecc_experience.api.plan", plan)
@@ -110,6 +131,13 @@ def test_plan_passes_explicit_execution_limits(legacy_project, tmp_path, monkeyp
             "60",
             "--trial-timeout",
             "30",
+            "--experimental-cross-design",
+            "--through-step",
+            "Synthesis",
+            "--groups",
+            "groups.json",
+            "--query-case-id",
+            "case-1",
             "--json",
         ],
     )
@@ -118,6 +146,14 @@ def test_plan_passes_explicit_execution_limits(legacy_project, tmp_path, monkeyp
     limits = json.loads(result.stdout)[0]["optimization"]
     assert limits["allow_parameters"] == ["place.target_density"]
     assert limits["max_trials"] == 2
+    assert calls == [
+        {
+            "cross_design": True,
+            "through_step": "Synthesis",
+            "groups": "groups.json",
+            "query_case_id": "case-1",
+        }
+    ]
 
 
 @pytest.fixture

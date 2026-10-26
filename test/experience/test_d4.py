@@ -1,0 +1,135 @@
+import json
+
+from typer.testing import CliRunner
+
+from chipcompiler.cli.app import app
+from ecc_experience.api import d4_evaluate
+
+STRATEGIES = ("grid", "adaptive", "adaptive_warm", "model_assisted")
+
+
+def _plan(strategy, design, family):
+    warm = [{"case_id": "candidate"}] if strategy == "adaptive_warm" else []
+    return {
+        "schema": "ecc-experience-stage-dse-plan/2",
+        "plan_fingerprint": f"plan-{strategy}-{design}-{family}",
+        "strategy": "grid" if strategy == "grid" else "adaptive",
+        "input_content_fingerprint": f"input-{design}",
+        "process": {"status": "available", "fingerprint": "process"},
+        "runtime": {"ecc": "test"},
+        "objectives": [{"id": "qor", "direction": "minimize"}],
+        "space": {"floorplan.core_util": [0.3, 0.4]},
+        "limits": {"max_trials": 4, "max_seconds": 60, "trial_timeout_seconds": 30},
+        "screening_trials": 2,
+        "rungs": [{"through_step": "floorplan", "promote_count": 1}],
+        "warm_start": {"seeds": warm},
+    }
+
+
+def _result(plan, strategy, score):
+    return {
+        "schema": "ecc-experience-stage-dse-result/2",
+        "plan_fingerprint": plan["plan_fingerprint"],
+        "status": "complete",
+        "elapsed_seconds": 20.0,
+        "model": {
+            "status": "available" if strategy == "model_assisted" else "not_requested",
+            "requested": "release.json" if strategy == "model_assisted" else None,
+            "release_id": "release-model" if strategy == "model_assisted" else None,
+            "model_id": "model-a" if strategy == "model_assisted" else None,
+            "policy": "measured_objective_tie_break_only",
+            "used_for_selection": False,
+        },
+        "trials": [
+            {
+                "candidate_id": f"candidate-{index}",
+                "parameters": {"floorplan.core_util": 0.3 + index / 10},
+                "mode": "screen",
+                "status": "stage_passed",
+                "exit_code": 0,
+                "commands": [],
+                "elapsed_seconds": 5.0,
+            }
+            for index in range(2)
+        ],
+        "full_validation": {"status": "passed", "qor_score": score},
+        "fresh_validation": {"status": "passed", "qor_score": score},
+        "selection": {"candidate": "candidate-0", "rule": "single_objective"},
+    }
+
+
+def _write_spec(tmp_path, *, designs=6, seeds=2):
+    runs = []
+    families = ("arithmetic", "memory", "control")
+    for design_index in range(designs):
+        design = f"design-{design_index}"
+        family = families[design_index % len(families)]
+        for seed in range(seeds):
+            for order, strategy in enumerate(STRATEGIES):
+                plan = _plan(strategy, design, family)
+                plan_path = tmp_path / f"{design}-{seed}-{strategy}-plan.json"
+                result_path = tmp_path / f"{design}-{seed}-{strategy}-result.json"
+                plan_path.write_text(json.dumps(plan))
+                scores = {
+                    "grid": 93.0,
+                    "adaptive": 92.0,
+                    "adaptive_warm": 91.0,
+                    "model_assisted": 90.0,
+                }
+                result_path.write_text(json.dumps(_result(plan, strategy, scores[strategy])))
+                runs.append(
+                    {
+                        "design": design,
+                        "family": family,
+                        "strategy": strategy,
+                        "seed": seed,
+                        "order": (len(STRATEGIES) - 1 - order if seed % 2 else order),
+                        "host_class": "test-host",
+                        "plan": plan_path.name,
+                        "result": result_path.name,
+                    }
+                )
+    spec = tmp_path / "d4.json"
+    spec.write_text(json.dumps({"schema": "ecc-experience-d4-spec/1", "runs": runs}))
+    return spec
+
+
+def test_d4_requires_multi_design_family_and_seed_evidence(tmp_path):
+    report = d4_evaluate(_write_spec(tmp_path), tmp_path / "report.json")
+
+    assert report["status"] == "pass"
+    assert report["generalization_status"] == "validated_for_declared_scope"
+    assert report["summary"]["design_count"] == 6
+    assert report["summary"]["family_count"] == 3
+    assert report["summary"]["seed_count"] == 2
+    assert report["safe_to_apply"] is False
+    assert report["promotion_allowed"] is True
+
+
+def test_d4_insufficient_sample_stays_unknown(tmp_path):
+    report = d4_evaluate(_write_spec(tmp_path, designs=5), tmp_path / "report.json")
+
+    assert report["status"] == "unknown"
+    assert report["exit_code"] == 7
+    assert report["generalization_status"] == "unproven"
+    assert report["promotion_allowed"] is False
+    assert "insufficient_independent_designs" in report["reasons"]
+
+
+def test_d4_cli_returns_unknown_exit_code_without_enough_designs(tmp_path):
+    result = CliRunner().invoke(
+        app,
+        [
+            "experience",
+            "dse",
+            "d4",
+            "--spec",
+            str(_write_spec(tmp_path, designs=5)),
+            "--output",
+            str(tmp_path / "report.json"),
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 7, result.output
+    assert json.loads(result.stdout)[0]["status"] == "unknown"

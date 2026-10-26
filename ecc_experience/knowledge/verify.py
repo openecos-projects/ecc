@@ -70,6 +70,7 @@ def verify_case(case: ExperienceCase, directory: Path) -> Verification:
                 reason="Legacy workspace has no committed snapshot",
             )
         )
+    _identity_findings(case, findings)
     qor = case.facts.get("qorSnapshotExtension")
     if not isinstance(qor, dict) or qor.get("score") is None:
         findings.append(Finding(status="unknown", check="qor", reason="QoR score unavailable"))
@@ -89,6 +90,58 @@ def verify_case(case: ExperienceCase, directory: Path) -> Verification:
                 reason="Source has no stable attempt identity",
             )
         )
-    statuses = {item.status for item in findings}
+    statuses = {item.status for item in findings if not item.check.startswith("identity_")}
     status = "fail" if "fail" in statuses else "unknown" if "unknown" in statuses else "pass"
     return Verification(case_id=case.case_id, status=status, integrity=integrity, findings=findings)
+
+
+def _identity_findings(case: ExperienceCase, findings: list[Finding]) -> None:
+    if case.schema_version == 1:
+        findings.append(
+            Finding(
+                status="unknown",
+                check="identity_schema",
+                reason="Schema v1 case has no normalized design, constraint or closure identity",
+            )
+        )
+        return
+    checks = (
+        (
+            "identity_design",
+            case.design is not None
+            and case.design.closure == "complete"
+            and bool(case.design.fingerprint),
+            "Design input closure is partial or unknown" if case.design else "Design is missing",
+        ),
+        (
+            "identity_constraints",
+            case.constraints is not None
+            and case.constraints.timing_constraints_status == "available"
+            and bool(case.constraints.fingerprint),
+            "Timing constraints are partial or unknown"
+            if case.constraints
+            else "Constraints are missing",
+        ),
+        (
+            "identity_process",
+            case.process is not None and case.process.status == "available",
+            "Selected process identity is partial or unknown"
+            if case.process
+            else "Process identity is missing",
+        ),
+        (
+            "identity_toolchain",
+            case.toolchain is not None and case.toolchain.status == "available",
+            "Runtime toolchain identity is unavailable"
+            if case.toolchain
+            else "Toolchain is missing",
+        ),
+    )
+    for check, passed, reason in checks:
+        findings.append(
+            Finding(
+                status="pass" if passed else "unknown",
+                check=check,
+                reason=None if passed else reason,
+            )
+        )

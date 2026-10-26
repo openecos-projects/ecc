@@ -263,6 +263,37 @@ def test_default_additions_keep_old_workspace_compatible():
     }
 
 
+def test_configuration_differences_ignores_only_workspace_local_paths():
+    from ecc_experience.optimization.policy import configuration_differences
+
+    baseline = {
+        "emir.technology_file_path": "/tmp/design/baseline/config/tech",
+        "sta.liberty": ["/technology/timing.lib"],
+    }
+    candidate = {
+        "emir.technology_file_path": "/tmp/design/warmseed/config/tech",
+        "sta.liberty": ["/technology/timing.lib"],
+    }
+
+    assert (
+        configuration_differences(
+            baseline,
+            candidate,
+            baseline_root="/tmp/design/baseline",
+            candidate_root="/tmp/design/warmseed",
+        )
+        == set()
+    )
+
+    candidate["sta.liberty"] = ["/other-technology/timing.lib"]
+    assert configuration_differences(
+        baseline,
+        candidate,
+        baseline_root="/tmp/design/baseline",
+        candidate_root="/tmp/design/warmseed",
+    ) == {"sta.liberty"}
+
+
 def test_baseline_unknown_does_not_block_execution(
     optimization_project, tmp_path, fake_execution, monkeypatch
 ):

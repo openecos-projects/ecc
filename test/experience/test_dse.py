@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import json
 import shutil
@@ -482,6 +483,80 @@ def test_version2_equal_budget_receipt_and_warm_seed_filters(
     )
     seeds = warm_start.freeze_warm_start(frozen, 3)
     assert [seed["case_id"] for seed in seeds["seeds"]] == ["compatible"]
+
+
+def test_warm_start_cross_design_requires_applied_evidence_and_records_provenance(
+    dse_project, version2_spec, monkeypatch
+):
+    from ecc_experience.dse import warm_start
+
+    workspace, store, path = dse_project
+    frozen = dse_plan(workspace.parent, workspace, store, path, spec=version2_spec)
+    repository = warm_start.ExperienceStore(store)
+    baseline = repository.read(frozen["baseline_case_id"])
+    baseline_facts = copy.deepcopy(baseline.facts)
+    baseline_facts["experienceExecutionContext"] = {"runtime": frozen["runtime"]}
+    baseline = baseline.model_copy(update={"facts": baseline_facts})
+
+    def observed(core_util):
+        facts = copy.deepcopy(baseline_facts)
+        facts["workspaceSpec"]["parameters"]["floorplan.core_util"] = core_util
+        return baseline.model_copy(update={"facts": facts})
+
+    observed_cases = {"applied": observed(0.35), "configured": observed(0.4)}
+
+    def read_case(_repository, case_id):
+        if case_id == baseline.case_id:
+            return baseline
+        return observed_cases[case_id]
+
+    monkeypatch.setattr(warm_start.ExperienceStore, "read", read_case)
+    monkeypatch.setattr(
+        warm_start,
+        "match_cases",
+        lambda *_args, **_kwargs: {
+            "matches": [
+                {
+                    "case_id": "applied",
+                    "distance": 0.2,
+                    "compatibility": "selected_process_tool_analysis_match",
+                    "parameters": {"values": {"floorplan.core_util": 0.35}},
+                    "match_quality": "compatible_design",
+                    "confidence": "experimental",
+                    "feature_coverage": 0.9,
+                    "parameter_evidence_level": "applied",
+                },
+                {
+                    "case_id": "configured",
+                    "distance": 0.1,
+                    "compatibility": "selected_process_tool_analysis_match",
+                    "parameters": {"values": {"floorplan.core_util": 0.4}},
+                    "match_quality": "compatible_design",
+                    "confidence": "experimental",
+                    "feature_coverage": 0.9,
+                    "parameter_evidence_level": "configured",
+                },
+            ]
+        },
+    )
+    frozen["release"] = "release.json"
+    frozen["release_id"] = "release-test"
+    frozen["warm_start"]["experimental_cross_design"] = True
+
+    result = warm_start.freeze_warm_start(frozen, 3)
+
+    assert [seed["case_id"] for seed in result["seeds"]] == ["applied"]
+    seed = result["seeds"][0]
+    assert seed["confidence"] == "experimental"
+    assert seed["feature_coverage"] == 0.9
+    assert seed["provenance"] == {
+        "release": "release.json",
+        "release_id": "release-test",
+        "case_id": "applied",
+        "distance": 0.2,
+        "feature_coverage": 0.9,
+        "confidence": "experimental",
+    }
 
 
 def test_dse_summary_exports_only_verified_feedback(dse_project, simulated_cli):

@@ -1,11 +1,19 @@
 """Explain frozen-release matches without inferring unsupported generalization."""
 
-import math
 from pathlib import Path
 
 from ecc_experience.files import read_json
+from ecc_experience.knowledge.budget import resource_budget
 from ecc_experience.knowledge.features import case_features
+from ecc_experience.knowledge.index import filter_case_ids
 from ecc_experience.knowledge.release import verify_release
+from ecc_experience.knowledge.similarity import (
+    MIN_FEATURE_COVERAGE,
+    SIMILARITY_SCHEMA,
+    feature_distance,
+    parameter_ranges,
+    stage_features,
+)
 from ecc_experience.models import ExperienceError
 
 
@@ -25,8 +33,10 @@ def match_cases(
     frozen = verify_release(release, store)
     families = read_groups(groups) if groups else {}
     result = {
-        "schema": "ecc-experience-matches/1",
+        "schema": "ecc-experience-similar-designs/1",
+        "feature_schema": SIMILARITY_SCHEMA,
         "status": "insufficient_evidence",
+        "match_quality": "insufficient_evidence",
         "query_case_id": case_id,
         "through_step": through_step,
         "release_id": frozen["release_id"],
@@ -34,6 +44,7 @@ def match_cases(
         "experimental_cross_design": experimental_cross_design,
         "family_isolation": "explicit_groups" if groups else "not_checked",
         "safe_to_apply": False,
+        "parameter_ranges": {},
         "matches": [],
         "excluded": [],
         "limitations": [
@@ -41,13 +52,29 @@ def match_cases(
             "Cross-design distance is experimental and has no calibrated benefit confidence",
             "Selected PDK hashes and observed tool versions do not prove full dependency closure",
             "Missing execution, process or analysis identities exclude a candidate",
+            "A feature match is similarity, not a causal parameter effect",
         ],
     }
     if frozen["status"] != "pass" or query["status"] == "fail":
         result["reason"] = "Release or query evidence did not pass verification"
         return result
+    records = frozen["cases"]
+    ordered_ids, index = filter_case_ids(
+        store,
+        [record["case_id"] for record in records],
+        process_fingerprint=query.get("process_fingerprint"),
+        through_step=through_step,
+    )
+    selected = set(ordered_ids)
+    records = [
+        record
+        for record in records
+        if record["case_id"] in selected or record["case_id"] == case_id
+    ]
+    result["index"] = index
     query_stage = query["steps"][-1]
-    for record in frozen["cases"]:
+    query_features = stage_features(query)
+    for record in records:
         candidate_id = record["case_id"]
         if candidate_id == case_id:
             result["excluded"].append({"case_id": candidate_id, "reasons": ["query_case_itself"]})
@@ -65,14 +92,20 @@ def match_cases(
         )
         if not same_inputs and not experimental_cross_design:
             reasons.append("cross_design_not_enabled")
+        if not same_inputs and (
+            query.get("schema_version") == 1 or candidate.get("schema_version") == 1
+        ):
+            reasons.append("cross_design_identity_v1")
         if groups:
             if not families.get(case_id) or not families.get(candidate_id):
                 reasons.append("family_unknown")
             elif families[case_id] == families[candidate_id]:
                 reasons.append("same_evaluation_group")
-        distance, common = feature_distance(query_stage, stage)
+        distance, coverage, common = feature_distance(query_features, stage_features(candidate))
         if distance is None:
             reasons.append("no_comparable_structural_features")
+        elif coverage < MIN_FEATURE_COVERAGE:
+            reasons.append("insufficient_feature_coverage")
         if reasons:
             result["excluded"].append({"case_id": candidate_id, "reasons": reasons})
             continue
@@ -80,20 +113,56 @@ def match_cases(
             {
                 "case_id": candidate_id,
                 "confidence": "observed_only" if same_inputs else "experimental",
+                "confidence_class": "observed" if same_inputs else "experimental",
+                "match_quality": "exact_input" if same_inputs else "compatible_design",
                 "same_input_content": same_inputs,
                 "distance": distance,
+                "feature_coverage": coverage,
+                "feature_schema": SIMILARITY_SCHEMA,
                 "common_features": common,
                 "parameters": candidate["parameters"],
+                "parameter_evidence_level": candidate["parameters"].get("level", "unknown"),
                 "safe_to_apply": False,
                 "compatibility": "selected_process_tool_analysis_match",
+                "provenance": [
+                    {
+                        "release_id": frozen["release_id"],
+                        "case_id": candidate_id,
+                        "distance": distance,
+                        "feature_coverage": coverage,
+                        "confidence": "observed" if same_inputs else "experimental",
+                    }
+                ],
             }
         )
     result["matches"].sort(key=lambda item: (item["distance"], item["case_id"]))
     result["matches"] = result["matches"][:limit]
     if result["matches"]:
         result["status"] = "matches_available"
+        result["match_quality"] = (
+            "exact_input"
+            if all(item["match_quality"] == "exact_input" for item in result["matches"])
+            else "compatible_design"
+        )
+        result["confidence"] = (
+            "observed" if result["match_quality"] == "exact_input" else "experimental"
+        )
+        result["parameter_ranges"] = parameter_ranges(result["matches"])
     else:
         result["reason"] = "No compatible observed stage configuration in the frozen release"
+    try:
+        result["resource_budget"] = resource_budget(
+            case_id,
+            store,
+            release=release,
+            through_step=through_step,
+        )
+    except ExperienceError as exc:
+        result["resource_budget"] = {
+            "schema": "resource-budget/1",
+            "status": "unknown",
+            "reason": str(exc),
+        }
     return result
 
 
@@ -121,35 +190,12 @@ def compatibility_reasons(query: dict, candidate: dict, left: dict, right: dict)
     return reasons
 
 
-def feature_distance(left: dict, right: dict) -> tuple[float | None, list[dict]]:
-    def measured(stage: dict) -> dict:
-        return {
-            (item["id"], item["unit"], item["scope"], item["corner"]): item["value"]
-            for item in stage["metrics"]
-            if item["status"] == "available"
-            and item["unit"] in {"count", "um^2"}
-            and item["value"] >= 0
-            and item["category"] == "area_cost"
-        }
-
-    first, second = measured(left), measured(right)
-    common = sorted(first.keys() & second.keys(), key=str)
-    if not common:
-        return None, []
-    values = [
-        {
-            "id": key[0],
-            "unit": key[1],
-            "scope": key[2],
-            "corner": key[3],
-            "query": first[key],
-            "candidate": second[key],
-        }
-        for key in common
-    ]
-    return sum(abs(math.log1p(first[key]) - math.log1p(second[key])) for key in common) / len(
-        common
-    ), values
+def feature_distance_legacy(left: dict, right: dict) -> tuple[float | None, list[dict]]:
+    """Compatibility helper for callers that still hold one stage directly."""
+    distance, _coverage, common = feature_distance(
+        stage_features({"steps": [left]}), stage_features({"steps": [right]})
+    )
+    return distance, common
 
 
 def read_groups(path: str | Path) -> dict[str, str]:

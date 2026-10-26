@@ -9,7 +9,11 @@ from ecc_experience.files import digest
 from ecc_experience.knowledge.configuration import configuration_identity
 from ecc_experience.knowledge.store import ExperienceStore
 from ecc_experience.knowledge.verify import verify_case
-from ecc_experience.models import ExperienceCase, ExperienceError, Verification
+from ecc_experience.models import (
+    ExperienceCase,
+    ExperienceError,
+    Verification,
+)
 
 SUMMARY_SCHEMA = "ecc-experience-store-summary/1"
 _QUALITY_CLASSES = (
@@ -121,7 +125,9 @@ def summarize_case(case: ExperienceCase, verification: Verification) -> dict:
         "design_band": _design_band(cell_count),
         "pdk_family": pdk_family if isinstance(pdk_family, str) else None,
         "process_fingerprint": case.process_fingerprint,
-        "parameter_evidence": case.parameter_evidence,
+        "parameter_evidence": case.parameter_evidence.model_dump()
+        if not isinstance(case.parameter_evidence, str)
+        else case.parameter_evidence,
         "parameter_digest": digest(parameters) if parameters else None,
         "input_content_fingerprint": input_fingerprint,
         "dedupe_key": configuration["key"],

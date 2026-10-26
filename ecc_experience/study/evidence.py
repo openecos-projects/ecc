@@ -44,6 +44,8 @@ def acceptance(case: ExperienceCase, directory: Path) -> dict:
     feasibility = qor.get("feasibility", {})
     score = qor.get("score")
     status = "unknown"
+    advisory_only = False
+    signoff_status = "unknown"
     if (
         verification.status == "fail"
         or any(step.get("state") in {"Error", "Failed"} for step in steps)
@@ -55,8 +57,41 @@ def acceptance(case: ExperienceCase, directory: Path) -> dict:
         )
     ):
         status = "fail"
-    elif (
-        verification.status == "pass"
+    elif _strict_pass(
+        case,
+        verification.status,
+        steps,
+        checklist,
+        facts.get("signoffAssessment"),
+        feasibility,
+        qor,
+    ):
+        status = "pass"
+        signoff_status = "pass"
+    elif _advisory_only_pass(
+        case,
+        verification.status,
+        steps,
+        checklist,
+        facts.get("signoffAssessment"),
+        feasibility,
+        qor,
+    ):
+        status = "pass"
+        advisory_only = True
+    return {
+        "status": status,
+        "verification": verification.status,
+        "qor_score": score if type(score) in {float, int} and math.isfinite(score) else None,
+        "scope": "current_ecc_full_flow_checklist_signoff_qor",
+        "signoff_status": signoff_status if status == "pass" else "unknown",
+        "advisory_only": advisory_only,
+    }
+
+
+def _strict_pass(case, verification, steps, checklist, signoff, feasibility, qor) -> bool:
+    return bool(
+        verification == "pass"
         and case.source.attempt_id
         and steps
         and all(
@@ -69,20 +104,74 @@ def acceptance(case: ExperienceCase, directory: Path) -> dict:
         and all(
             item.get("state") == "pass" and item.get("blocked") is not True for item in checklist
         )
-        and facts.get("signoffAssessment", {}).get("status") == "ready"
-        and isinstance(feasibility, dict)
-        and feasibility.get("status") == "PASS"
-        and qor.get("status") == "available"
-        and type(score) in {float, int}
-        and math.isfinite(score)
+        and isinstance(signoff, dict)
+        and signoff.get("status") == "ready"
+        and _feasibility_passed(feasibility)
+        and _qor_passed(qor)
+    )
+
+
+def _advisory_only_pass(case, verification, steps, checklist, signoff, feasibility, qor) -> bool:
+    if not (
+        verification == "pass"
+        and case.source.attempt_id
+        and steps
+        and all(
+            step.get("state") == "Success"
+            and isinstance(step.get("checklist_status"), dict)
+            and step["checklist_status"].get("status") in {"passed", "attention"}
+            and step["checklist_status"].get("blocked") is not True
+            and not step["checklist_status"].get("failed_items")
+            for step in steps
+        )
+        and checklist
+        and all(
+            item.get("state") in {"pass", "warning", "attention"}
+            and item.get("blocked") is not True
+            for item in checklist
+        )
+        and isinstance(signoff, dict)
+        and signoff.get("status") == "attention"
+        and _feasibility_passed(feasibility)
+        and _qor_passed(qor)
     ):
-        status = "pass"
-    return {
-        "status": status,
-        "verification": verification.status,
-        "qor_score": score if type(score) in {float, int} and math.isfinite(score) else None,
-        "scope": "current_ecc_full_flow_checklist_signoff_qor",
-    }
+        return False
+    risks = signoff.get("risks")
+    if not isinstance(risks, list) or not risks:
+        return False
+    details = []
+    for risk in risks:
+        if not isinstance(risk, dict) or risk.get("severity") != "warning":
+            return False
+        items = risk.get("details")
+        if not isinstance(items, list) or not items:
+            return False
+        details.extend(items)
+    return bool(details) and all(
+        isinstance(item, dict)
+        and item.get("policy") == "warn"
+        and item.get("blocked") is not True
+        and item.get("state") in {"warning", "attention"}
+        for item in details
+    )
+
+
+def _feasibility_passed(feasibility) -> bool:
+    return bool(
+        isinstance(feasibility, dict)
+        and feasibility.get("status") == "PASS"
+        and all(
+            isinstance(gate, dict) and gate.get("state") == "passed"
+            for gate in feasibility.get("gates", [])
+        )
+    )
+
+
+def _qor_passed(qor) -> bool:
+    score = qor.get("score")
+    return bool(
+        qor.get("status") == "available" and type(score) in {float, int} and math.isfinite(score)
+    )
 
 
 def pair_compatibility(

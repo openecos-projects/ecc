@@ -19,19 +19,27 @@ def history_facts(history: list[dict]) -> list[dict]:
     ]
 
 
-def propose(plan: dict, history: list[dict]) -> tuple[dict | None, dict]:
+def propose(
+    plan: dict,
+    history: list[dict],
+    *,
+    excluded: list[dict] | None = None,
+    candidate_index: int | None = None,
+) -> tuple[dict | None, dict]:
     facts = history_facts(history)
     identity = digest(facts)
     algorithm = plan["algorithm"]
     seed = int(digest({"algorithm": algorithm, "history": identity}), 16)
     generator = random.Random(seed)
     used = [trial["parameters"] for trial in history]
+    reserved = excluded or []
     space = plan["space"]
     keys = sorted(space)
     available = [
         dict(zip(keys, values, strict=True))
         for values in itertools.product(*(space[key] for key in keys))
         if dict(zip(keys, values, strict=True)) not in used
+        and dict(zip(keys, values, strict=True)) not in reserved
     ]
     decision = {"algorithm": algorithm, "history_sha256": identity, "source": "grid"}
     if not available:
@@ -41,13 +49,25 @@ def propose(plan: dict, history: list[dict]) -> tuple[dict | None, dict]:
         selected = available[0]
     else:
         seeds = plan["warm_start"]["seeds"]
-        selected_seed = next((item for item in seeds if item["parameters"] not in used), None)
+        selected_seed = next(
+            (
+                item
+                for item in seeds
+                if item["parameters"] not in used and item["parameters"] not in reserved
+            ),
+            None,
+        )
         if selected_seed:
             selected = selected_seed["parameters"]
             decision.update(source="warm_start", provenance=selected_seed)
         elif not history:
-            selected = {key: values[len(values) // 2] for key, values in space.items()}
-            decision.update(source="adaptive", reason="space_center")
+            center = {key: values[len(values) // 2] for key, values in space.items()}
+            if center in available:
+                selected = center
+                decision.update(source="adaptive", reason="space_center")
+            else:
+                selected = available[0]
+                decision.update(source="adaptive", reason="space_center_reserved")
         else:
             ranking = rank_trials(history, plan["rungs"][0]["objectives"])
             good_count = min(len(ranking), max(1, math.ceil(len(history) * 0.25)))
@@ -81,5 +101,6 @@ def propose(plan: dict, history: list[dict]) -> tuple[dict | None, dict]:
                     good_trials=sorted(good_ids),
                     pool_size=len(pool),
                 )
-    proposed = candidate(selected, f"candidate-{len(history) + 1:04d}")
+    index = candidate_index if candidate_index is not None else len(history) + 1
+    proposed = candidate(selected, f"candidate-{index:04d}")
     return proposed, {**decision, "candidate": proposed}

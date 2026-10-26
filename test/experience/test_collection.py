@@ -243,4 +243,5 @@ def test_input_fingerprint_uses_content_not_name_or_path(workspace_factory, tmp_
     input_file.write_text("module sample; wire changed; endmodule")
     third = collect(root, tmp_path / "store").case
     assert second.input_content_fingerprint != third.input_content_fingerprint
-    assert third.design_fingerprint is None
+    assert third.design_fingerprint is not None
+    assert third.design is not None and third.design.fingerprint == third.design_fingerprint

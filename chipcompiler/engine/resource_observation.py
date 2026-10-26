@@ -12,6 +12,12 @@ from chipcompiler.project.runtime_processes import boot_id, host_id
 
 _PROC = Path("/proc")
 _INTERVAL_SECONDS = 0.2
+_CONCURRENCY_ENV = {
+    "current_flows": "ECC_EXPERIENCE_CURRENT_FLOWS",
+    "max_concurrent": "ECC_EXPERIENCE_MAX_CONCURRENT",
+    "trial_threads": "ECC_EXPERIENCE_TRIAL_THREADS",
+}
+_OUTCOMES = {"success", "failed", "oom", "timeout", "cancelled", "unknown"}
 
 
 def _stat(pid: int) -> tuple[str, int, int]:
@@ -21,7 +27,15 @@ def _stat(pid: int) -> tuple[str, int, int]:
 
 
 class ResourceObservation:
-    def __init__(self, pid: int, *, isolated: bool, step: str, tool: str):
+    def __init__(
+        self,
+        pid: int,
+        *,
+        isolated: bool,
+        step: str,
+        tool: str,
+        concurrency: dict | None = None,
+    ):
         self.pid = pid
         self.isolated = isolated
         self.step = step
@@ -38,6 +52,9 @@ class ResourceObservation:
         self.error = None
         self.stop_event = Event()
         self.thread = None
+        self.concurrency = _concurrency_facts(concurrency)
+        self.outcome = "unknown"
+        self.host = _host_facts()
 
     def start(self) -> None:
         try:
@@ -97,8 +114,12 @@ class ResourceObservation:
             except (OSError, ValueError, IndexError, RuntimeError) as exc:
                 self.error = str(exc) or type(exc).__name__
 
-    def finish(self) -> dict:
+    def finish(self, *, outcome: str | None = None) -> dict:
         self.stop_event.set()
+        if outcome is not None:
+            if outcome not in _OUTCOMES:
+                raise ValueError(f"unsupported resource outcome: {outcome}")
+            self.outcome = outcome
         if self.thread is not None and self.thread.ident is not None:
             self.thread.join(timeout=2)
             if self.thread.is_alive():
@@ -137,6 +158,23 @@ class ResourceObservation:
             "method": "linux_proc_stat_rss_sum",
             "scope": "isolated_worker_process_tree" if self.isolated else "shared_process_tree",
             "frozen": bool(getattr(sys, "frozen", False)),
+            "host": self.host,
+            "concurrency": {
+                "current_flows": _positive_int(self.concurrency.get("current_flows", 1)),
+                "max_concurrent": _positive_int(self.concurrency.get("max_concurrent", 1)),
+                "trial_threads": self.concurrency.get("trial_threads"),
+            },
+            "measurement": {
+                "method": "linux_proc_stat_rss_sum",
+                "interval_seconds": _INTERVAL_SECONDS,
+                "sample_count": self.samples,
+                "missed_processes": self.missed_processes,
+                "scope": "isolated_worker_process_tree" if self.isolated else "shared_process_tree",
+                "status": status,
+            },
+            "outcome": {
+                "status": self.outcome,
+            },
             "status": status,
             "reason": reason,
             "limitations": [
@@ -147,7 +185,85 @@ class ResourceObservation:
         }
 
 
-def start_observation(pid: int, *, isolated: bool, step: str, tool: str) -> ResourceObservation:
-    observation = ResourceObservation(pid, isolated=isolated, step=step, tool=tool)
+def start_observation(
+    pid: int,
+    *,
+    isolated: bool,
+    step: str,
+    tool: str,
+    concurrency: dict | None = None,
+) -> ResourceObservation:
+    observation = ResourceObservation(
+        pid, isolated=isolated, step=step, tool=tool, concurrency=concurrency
+    )
     observation.start()
     return observation
+
+
+def _host_facts() -> dict:
+    cpu_model = None
+    physical = set()
+    try:
+        physical_id = core_id = None
+        for line in (
+            Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="replace").splitlines()
+        ):
+            key, separator, value = line.partition(":")
+            if not separator:
+                continue
+            key = key.strip()
+            value = value.strip()
+            if key == "model name" and cpu_model is None:
+                cpu_model = value
+            elif key == "physical id":
+                physical_id = value
+            elif key == "core id":
+                core_id = value
+                if physical_id is not None:
+                    physical.add((physical_id, core_id))
+    except OSError:
+        pass
+    total_memory = None
+    try:
+        for line in Path("/proc/meminfo").read_text(encoding="ascii").splitlines():
+            if line.startswith("MemTotal:"):
+                total_memory = int(line.split()[1]) * 1024
+                break
+    except (OSError, ValueError, IndexError):
+        pass
+    try:
+        load = list(os.getloadavg())
+    except (OSError, AttributeError):
+        load = None
+    return {
+        "cpu_model": cpu_model,
+        "physical_cores": len(physical) or None,
+        "logical_cores": os.cpu_count(),
+        "total_memory_bytes": total_memory,
+        "load_average": load,
+        "frozen": bool(getattr(sys, "frozen", False)),
+    }
+
+
+def _concurrency_facts(explicit: dict | None) -> dict:
+    values: dict[str, object] = {}
+    for key, variable in _CONCURRENCY_ENV.items():
+        value = os.environ.get(variable)
+        if value is not None and value.strip():
+            values[key] = value
+    if explicit:
+        values.update(explicit)
+    return {
+        "current_flows": _positive_int(values.get("current_flows", 1)),
+        "max_concurrent": _positive_int(values.get("max_concurrent", 1)),
+        "trial_threads": values.get("trial_threads"),
+    }
+
+
+def _positive_int(value: object) -> int:
+    if isinstance(value, str):
+        try:
+            value = int(value)
+        except ValueError:
+            return 1
+    return value if type(value) is int and value >= 1 else 1

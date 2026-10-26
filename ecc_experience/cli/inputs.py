@@ -42,6 +42,21 @@ class MatchInput:
 
 
 @dataclass(frozen=True)
+class BudgetInput:
+    output: OutputOptions
+    store: str
+    case_id: str
+    through_step: str
+    release: str | None = None
+    host_class: str | None = None
+    concurrency: int | None = None
+    min_samples: int = 8
+    coverage_target: float = 0.8
+    safety_margin: float = 1.2
+    project: ProjectOptions = ProjectOptions()
+
+
+@dataclass(frozen=True)
 class RecordingInput:
     output: OutputOptions
     project: ProjectOptions
@@ -123,6 +138,10 @@ class PlanInput:
     limit: int = 10
     release: str | None = None
     optimization: dict | None = None
+    experimental_cross_design: bool = False
+    through_step: str | None = None
+    groups: str | None = None
+    query_case_id: str | None = None
 
 
 @dataclass(frozen=True)

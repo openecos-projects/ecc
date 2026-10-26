@@ -15,8 +15,12 @@ release, and budgeted optimize. campaign quality/recover, neutral step resource
 observations, stage features, frozen-release match, bounded stage dse and isolated
 study evaluate/publish are implemented. P4 dataset build, an explainable ridge
 baseline, held-out leakage checks, evaluate/publish, predict and advise are
-implemented. Complex search, parallel scheduling and shared services remain
-outside this delivery. Experience export/import supports explicit selection,
+implemented. The current delivery also includes identity v2, bounded input
+closure and parameter receipts, experimental cross-design matching, resource
+budgets, DSE v2 parallel execution and continuous axes, model pre-screening,
+dataset/feature schema v2, four-strategy D4 evaluation and a derived store
+index. Shared training services remain outside this delivery. Experience
+export/import supports explicit selection,
 offline integrity checks, and idempotent merging.**
 Check the installed runtime's help and output contracts before using any capability.
 
@@ -307,9 +311,10 @@ wheel. Read-only recommendation, reviewable plans, comparison, releases, and bou
 full-flow optimization and serial baseline campaigns are also implemented. Stage
 features, strict matching, bounded stage DSE, held-out evaluation and isolated
 feedback publication are available in the final sections of this manual.
-Cross-design transfer is unproven and parallel scheduling remains unavailable. P4 can
-model explicitly recorded resource fields, but that is not an independent process-tree
-measurement or a calibrated RAM/CPU prediction. Check installed help.
+Cross-design transfer remains unproven; v2 provides bounded parallel scheduling and an
+explicit experimental cross-design opt-in, while default retrieval stays conservative.
+P4 can model explicitly recorded resource fields, but that is not an independent
+process-tree measurement or a calibrated RAM/CPU prediction. Check installed help.
 
 ```bash
 EXPERIENCE_STORE=/absolute/path/to/experience-store
@@ -656,6 +661,27 @@ always declares `manual_review`, `requires_new_workspace=true`, and `auto_apply=
 is a reviewable execution suggestion: it does not edit parameters, copy workspaces, or
 start a flow. Old plans without explicit optimization limits and an allowed parameter
 list remain review-only and cannot be executed by optimize.
+
+To consume cross-design evidence explicitly, bind a verified release and opt in:
+
+```bash
+ecc experience plan \
+  --project "$PROJECT" --workspace "$WORKSPACE" \
+  --store "$EXPERIENCE_STORE" --release "$OUTPUT_ROOT/experience-release.json" \
+  --experimental-cross-design --through-step Synthesis \
+  --groups "$OUTPUT_ROOT/families.json" \
+  --output "$OUTPUT_ROOT/cross-design-plan.json" --json
+```
+
+The plan selects a committed query case whose input-content fingerprint matches
+the current workspace; `--query-case-id` can select it explicitly. The added
+`cross_design` block preserves the release, cases, distance, feature coverage,
+confidence, exclusion reasons and provenance. Only cross-design matches whose
+parameter evidence is `applied` become reviewable `candidates`; `configured`
+matches remain `clues` and cannot be executed by optimize. Without calibration,
+the status stays experimental and `safe_to_apply=false`. Every candidate still
+requires a workspace derived from the current baseline and full plus fresh
+validation; process, tool, SDC and frequency filters are never relaxed.
 
 ### 10.1 Execute a bounded experience plan
 
@@ -1697,10 +1723,14 @@ cross-design quality, convergence speed and PPA gains require independent measur
 
 ## 18. Establish a Comparable Baseline Before Scaling Up
 
-A completed flow is a usable baseline only when `signoff check` passes, QoR is
-available, and the committed snapshot agrees with the persisted configuration.
-Do not calculate improvement against a blocked baseline. Retain its failures as
-evidence, with unknown comparison fields.
+A completed flow is a usable baseline only when `signoff check` has no blocking
+failure, QoR is available, and the committed snapshot agrees with the persisted
+configuration. A signoff result may still exit 7 when every non-passing item is
+an explicit non-blocking advisory (`policy=warn`, `blocked=false`) and every
+required physical gate passes. DSE records that case as accepted only with
+`signoff_status=unknown`, `signoff_exit_code=7` and `advisory_only=true`; it is
+not a physical signoff claim. Do not calculate improvement against a blocked
+baseline. Retain its failures as evidence, with unknown comparison fields.
 
 Step workers can persist realized geometry in `home/params.toml`. The parent
 reloads those parameters before analysis and snapshot publication, including
@@ -1904,8 +1934,8 @@ same-input matching. Only in-space configurations with unchanged other parameter
 are accepted. Plans freeze release/case/distance/configuration provenance. Seeds
 consume normal trial slots. No matches retain insufficient_evidence and fall back
 to the center point. Cross-design filters are not automatically relaxed, and v2
-does not replace measurements with model predictions; model-assisted runs remain
-available through v1 `--model-release`.
+does not replace measurements with model predictions. A v2 `--model-release`
+records predictions and only breaks ties between equal measured objectives.
 
 Reports export summary.json/summary.md and pareto.json with all trials, decisions,
 promotions, parameters, objectives, measured QoR, failures and per-step resource
@@ -1926,13 +1956,16 @@ Receipts retain failure denominators, actual executions, duration, fronts and
 measured scores. Equal caps do not imply equal actual cost; reused execution
 evidence is rejected. Single-design receipts do not establish generalization or
 benefit; D4 family-held-out and effectiveness gates remain required.
-Execution remains serial. Parallel trials, continuous spaces, automatic
-cross-design seeds and v2 model prescreening remain outside this implementation.
+Parallel trials are bounded by the frozen `execution.max_concurrent`; each batch
+proposes only from completed history. Continuous axes quantize to replayable
+grids, and v2 model predictions only break measured-objective ties. Automatic
+cross-design seeds remain disabled by default and require an explicit frozen
+release, experimental opt-in, applied receipts and optional family groups.
 Dynamic project runtime_processes are excluded from the static configuration
 fingerprint; baseline inputs and actual project configuration remain protected.
-Run grid/adaptive comparisons sequentially to reduce shared-host load effects.
-Each still requires independent workspaces and run IDs. Never resume the same
-DSE output directory in two coordinators concurrently.
+Control shared-host load when comparing strategies. Every trial in a parallel
+batch requires an independent workspace and run ID. Never resume the same DSE
+output directory in two coordinators concurrently.
 
 A v2 spec can set `baseline_case_id` to bind a verified controlled-execution case
 in the store. It must describe the exact `--workspace` directory, current
@@ -1950,7 +1983,7 @@ Reviewed place.density_weight is available to stage DSE. Routing layer knobs are
 available to existing complete-flow optimization only, with the ics55 catalog and
 bottom≤top checks; they cannot enter an early prefix before route.
 
-## 21. Measured grid, adaptive and warm-start comparisons
+## 21. Measured grid, adaptive, warm-start and model-assisted comparisons
 
 Use the existing commands to compare strategies with auditable evidence and cost
 definitions before evaluating effectiveness across designs. One successful run
@@ -1959,7 +1992,7 @@ on one design does not establish a better strategy.
 ### 21.1 Freeze the comparison conditions
 
 First obtain a trusted complete baseline from the current runtime, retaining its
-workspace, case_id, QoR, signoff and resources. All three plans must reference the
+workspace, case_id, QoR, signoff and resources. All four plans must reference the
 same baseline. An observation without a verifiable attempt cannot establish an
 improvement baseline. Freeze ECC, tools, PDK, RTL/SDC, parameter defaults,
 objective units, domain, rungs, caps and seed. Generate every plan and freeze the
@@ -1970,6 +2003,7 @@ warm release before starting any group.
 | grid | grid | Omitted |
 | adaptive | adaptive | Omitted |
 | warm | adaptive | Explicit frozen release JSON path |
+| model | adaptive | Frozen release path plus `--model-release` on `dse run` |
 
 Share space/objectives/rungs/limits/seed/baseline_case_id, with separate plan and
 run output paths. Follow section 19: inputs/specs, inputs/plans, store, runs,
@@ -1992,7 +2026,11 @@ Choose objectives and domains from the design spec. GCD utilization values or
 area thresholds are examples, never defaults for other designs. A single
 objective can use the CLI's deterministic best-point rule. For multiple
 objectives, define the front-selection policy before inspecting results, then
-use explicit `--resume --select`. Apply the same policy to every group.
+use explicit `--resume --select`. Apply the same policy to every group. The
+model group must use `dse run --model-release` and retain prediction, interval,
+model ID and fallback evidence. The model may only break ties within a measured
+objective; it cannot replace measurements, bypass a stage gate or replace
+full/fresh validation.
 
 ### 21.2 Reach the same acceptance stage in every group
 
@@ -2011,7 +2049,7 @@ ecc experience dse compare --plan ./inputs/plans/grid.json \
   --other-result ./runs/adaptive/result.json --output ./reports/grid-vs-adaptive.json --json
 ```
 
-Also generate grid-vs-warm and adaptive-vs-warm. This command validates and
+Also generate grid-vs-warm, grid-vs-model and any required pairwise receipts. This command validates and
 reports observations. Do not relabel observed_only / benefit_not_established
 as proven benefit.
 
@@ -2114,3 +2152,131 @@ concurrent software tests, fixed order and one seed limit timing conclusions.
 GCD candidates, caps and outcomes are examples rather than defaults for other
 designs. The experiment validates the stopping mechanism, not cross-design
 benefit or the statistical quality of the automatic policy.
+
+## 22. Experience v2: identity, holdouts, D4 and indexing
+
+This section is the acceptance baseline for new collection, model evaluation and
+larger stores. v1 cases remain readable and verifiable; never rewrite them in
+place as v2. New collection writes schema v2 and only appends fields; old field
+and exit-code semantics remain unchanged.
+
+### 22.1 Identity and retrieval evidence
+
+A new case must expose `design/constraints/process/toolchain` status.
+`design.closure=complete` requires the real input closure; a top RTL alone or an
+unreadable include is not complete. Constraints record SDC, clocks and corners;
+process records only selected tech/LEF/liberty/mapping/RC content; toolchain
+binds sources, tools and native packages from this run. A parameter is `applied`
+only when a receipt proves tool consumption; otherwise retain
+`configured/unknown`.
+
+```bash
+ecc experience collect --workspace "$ECC_TEST_BASELINE" --store "$ECC_TEST_STORE" --json
+ecc experience verify "$ECC_TEST_CASE_ID" --store "$ECC_TEST_STORE" --json
+ecc experience features "$ECC_TEST_CASE_ID" --store "$ECC_TEST_STORE" \
+  --through-step Synthesis --json
+ecc experience match "$ECC_TEST_CASE_ID" --store "$ECC_TEST_STORE" \
+  --release "$ECC_TEST_RELEASE" --through-step Synthesis \
+  --experimental-cross-design --json
+ecc experience budget "$ECC_TEST_CASE_ID" --store "$ECC_TEST_STORE" \
+  --through-step Synthesis --min-samples 8 --json
+```
+
+`match` uses `ecc-experience-similar-designs/1` and must expose `confidence`,
+`feature_coverage`, exclusion reasons and `safe_to_apply=false`. Uncalibrated
+cross-design matches remain `experimental`; exact-input matches remain
+`observed_only`. `budget` uses `resource-budget/1` and separates
+host/concurrency/scope. Insufficient samples return unknown, never a zero p90.
+
+### 22.2 DSE v2 concurrency, continuous axes and model fallback
+
+A v2 spec may freeze `execution.max_concurrent`; a run may lower it but not raise
+it:
+
+```json
+{"execution": {"max_concurrent": 2}}
+```
+
+```bash
+ecc experience dse run --plan ./inputs/plans/model.json --output ./runs/model \
+  --max-concurrent 2 --model-release ./inputs/releases/model.json --json
+```
+
+Every trial needs an independent workspace, run_id and command receipt. A
+parallel batch proposes from completed history only; candidates in the same
+batch are invisible to each other, and budget counts started trials. Resume may
+not change concurrency or the model release. Observed batch concurrency is
+persisted in resource observations; only successful held-out samples with
+matching scope and outcome contribute to budget coverage validation. Continuous axes use
+`kind=range`, `min/max` and `scale=linear|log`, quantized to a replayable grid;
+integer axes accept representable integers only. Model pre-screening records
+prediction, interval, model ID and tie-break provenance. Missing or incompatible
+models fall back to `measured_objective`. `status=complete` still means only
+full+fresh acceptance, not benefit.
+
+A v2 spec can explicitly enable cross-design warm-start from a frozen release:
+
+```json
+{
+  "warm_start": "releases/experience-release.json",
+  "warm_start_experimental_cross_design": true,
+  "warm_start_groups": "families.json",
+  "warm_start_limit": 3
+}
+```
+
+Without the flag, warm-start still accepts same-input seeds only. With it, a
+`compatible_design` match is frozen only when parameter evidence is `applied`;
+configured matches never consume trial budget. Every seed provenance records the
+release, release ID, case, distance, feature coverage and confidence. The groups
+file path and SHA256 are frozen and rechecked before execution, so a changed
+family map rejects the plan. Cross-design seeds still consume trial budget and
+still require full plus fresh validation; resume cannot change the opt-in or
+groups. The seed does not establish cross-design benefit.
+
+### 22.3 Dataset v2, family holdouts and model promotion
+
+New datasets use `ecc-experience-model-dataset/2` and
+`ecc-experience-model-features/2`. Every row carries design/constraints/process/
+toolchain fingerprints, parameter evidence, resource scope and feature coverage.
+Repeated inputs count as repeated observations, not independent designs. v2
+evaluation, validation matrices and splits reject input or family overlap
+between training and held-out data. Model release v2 embeds validation status,
+MAE/RMSE, rank accuracy, interval coverage, independent-design and family
+counts, and thresholds. `safe_to_apply=false` and `auto_apply=false` are never
+relaxed.
+
+Only at least three independent designs, two families and frozen metric
+thresholds can yield `validated_for_declared_scope`. That status still applies
+only to the declared scope and requires real DSE plus full/fresh validation.
+Without independent multi-design evidence, keep `unproven` and do not publish a
+stronger recommendation or promote a model automatically.
+
+### 22.4 D4 four-strategy reports and the derived index
+
+D4 consumes completed plan/result pairs; it does not rerun missing experiments.
+The spec identifies design, family, strategy, seed, order, host data and
+plan/result paths. Strategy is one of grid/adaptive/adaptive_warm/model_assisted.
+The report requires equal budgets, matched input/process/runtime/objectives,
+matched seeds, balanced order and complete full/fresh validation. The advisory
+gate is six designs, three families and two seeds per strategy.
+
+```bash
+ecc experience dse d4 --spec ./inputs/d4.json --output ./reports/d4.json --json
+ecc experience index build --store "$ECC_TEST_STORE" --json
+ecc experience index status --store "$ECC_TEST_STORE" --json
+```
+
+Insufficient samples, budgets, order balance or run completeness produce
+`unknown` and `generalization_status=unproven` while preserving all results and
+reasons. Only passing evidence with statistically significant positive gain
+over grid sets `promotion_allowed=true`; nothing is applied or promoted
+automatically.
+
+`index/cases.json` is a rebuildable derived cache, not case identity or a source
+of truth. `recommend/match` may use it to conservatively exclude candidates with
+an explicitly incompatible process/stage, but still read and verify every
+selected case. A missing, damaged or incomplete index falls back to a full scan;
+safety filters and `safe_to_apply=false` are never relaxed. GUI/Agent surfaces
+must use the public CLI/API, must not read private store files directly, and must
+not write recommendations into workspace parameters automatically.

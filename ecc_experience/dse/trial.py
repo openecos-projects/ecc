@@ -2,6 +2,7 @@ import time
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
+from threading import RLock
 from uuid import uuid4
 
 from chipcompiler.project.manifest import load_manifest
@@ -64,7 +65,18 @@ def execute_trial(
     *,
     mode: str,
     resume: bool = False,
+    store_lock=None,
+    source_lock=None,
+    concurrency: dict | None = None,
+    state_lock=None,
 ) -> None:
+    lock = state_lock or RLock()
+
+    def update(values: dict | None = None, **keywords) -> None:
+        merged = {**(values or {}), **keywords}
+        with lock:
+            record.update(merged)
+
     started = time.monotonic()
     elapsed = record.get("elapsed_seconds", 0.0) if resume else 0.0
     if resume and record.get("budget_started_at") is not None:
@@ -84,7 +96,7 @@ def execute_trial(
     ):
         raise invalid("DSE recovery record does not match its frozen candidate")
     if not resume:
-        record.update(
+        update(
             trial_id=workspace_id,
             candidate_id=candidate["candidate_id"],
             mode=mode,
@@ -114,8 +126,13 @@ def execute_trial(
     if mode == "screen":
         run.extend(["--from", plan["first_step"], "--to", plan["through_step"]])
     commands.append(run)
+    runner.set_environment(_concurrency_environment(concurrency))
     try:
-        baseline = check_source(plan)
+        if source_lock is None:
+            baseline = check_source(plan)
+        else:
+            with source_lock:
+                baseline = check_source(plan)
         for index, arguments in enumerate(commands):
             if arguments[0] == "run":
                 check_trial_configuration(workspace, baseline, candidate["parameters"])
@@ -128,13 +145,14 @@ def execute_trial(
                     from ecc_experience.dse.receipts import recover_command
 
                     recover_command(command, expected, runner.output)
-                record["exit_code"] = command["exit_code"]
+                update(exit_code=command["exit_code"])
                 save()
                 if command["exit_code"] != 0:
                     break
                 continue
             command = {"arguments": arguments, "status": "running"}
-            record["commands"].append(command)
+            with lock:
+                record["commands"].append(command)
             save()
             if runner.durable_receipts:
 
@@ -145,18 +163,19 @@ def execute_trial(
                 result = runner.invoke(expected, deadline=deadline, on_prepared=prepared)
             else:
                 result = runner.invoke(expected, deadline=deadline)
-            command.update(
-                status="complete",
-                exit_code=result.exit_code,
-                stdout=str(result.stdout),
-                stderr=str(result.stderr),
-            )
-            record["exit_code"] = result.exit_code
+            with lock:
+                command.update(
+                    status="complete",
+                    exit_code=result.exit_code,
+                    stdout=str(result.stdout),
+                    stderr=str(result.stderr),
+                )
+                record["exit_code"] = result.exit_code
             save()
             if result.exit_code != 0:
                 break
         if record["exit_code"] == 124:
-            record["status"] = "timeout"
+            update(status="timeout")
             return
         marker = f"ECC run {run_id} started\n".encode()
         log = workspace / "log" / f"{run_id}.log"
@@ -165,9 +184,13 @@ def execute_trial(
             with log.open("rb") as stream:
                 executed = stream.read(len(marker)) == marker
         if not executed:
-            record.update(status="failed", reason="run_not_started")
+            update(status="failed", reason="run_not_started")
             return
-        check_source(plan)
+        if source_lock is None:
+            check_source(plan)
+        else:
+            with source_lock:
+                check_source(plan)
         facts = deepcopy(baseline.facts)
         facts["workspaceSpec"]["parameters"].update(candidate["parameters"])
         requested = replace(baseline, facts=facts)
@@ -178,13 +201,19 @@ def execute_trial(
             "process": plan["process"],
             "scope": "dse_runtime_and_selected_pdk_content_checked_before_and_after",
         }
-        record["collection_status"] = "pending"
-        collected = collect_trial(
-            workspace, plan["store"], requested, run_id, execution_context=context
-        )
-        record.update(collected, collection_status="collected")
+        update(collection_status="pending")
+        if store_lock is None:
+            collected = collect_trial(
+                workspace, plan["store"], requested, run_id, execution_context=context
+            )
+        else:
+            with store_lock:
+                collected = collect_trial(
+                    workspace, plan["store"], requested, run_id, execution_context=context
+                )
+        update(**collected, collection_status="collected")
         if mode == "screen":
-            record.update(
+            update(
                 stage_acceptance(
                     record["case_id"], plan["store"], plan, exit_code=record["exit_code"]
                 )
@@ -193,27 +222,44 @@ def execute_trial(
             evidence = inspect_workspace(
                 root, workspace, runner, deadline, exit_code=record["exit_code"]
             )
-            record.update(evidence, validation_scope="full_flow")
+            update(**evidence, validation_scope="full_flow")
             if record["status"] == "passed" and record["verification"]["status"] != "pass":
-                record.update(status="unknown", reason="case_verification_not_passed")
+                update(status="unknown", reason="case_verification_not_passed")
             if 124 in (evidence["workspace_status_exit_code"], evidence["signoff_exit_code"]):
-                record.update(status="timeout", exit_code=124)
+                update(status="timeout", exit_code=124)
     except KeyboardInterrupt:
-        record.update(status="cancelled", exit_code=130, reason="user_interrupt")
+        update(status="cancelled", exit_code=130, reason="user_interrupt")
         raise
     except (ExperienceError, OSError) as exc:
         if isinstance(exc, ExperienceError) and exc.code == "experience_workspace_busy":
-            record.update(status="running", reason=str(exc))
+            update(status="running", reason=str(exc))
             raise
-        record.update(status="failed", reason=str(exc), exit_code=record["exit_code"] or 1)
+        update(status="failed", reason=str(exc), exit_code=record["exit_code"] or 1)
         if record["collection_status"] == "pending":
-            record["collection_status"] = "failed"
+            update(collection_status="failed")
         if isinstance(exc, ExperienceError) and exc.code == "experience_source_changed":
-            record["exit_code"] = 21
+            update(exit_code=21)
             raise
     finally:
-        record["elapsed_seconds"] = round(elapsed + time.monotonic() - started, 3)
-        for command in record["commands"]:
-            if command["status"] == "running":
-                command.update(status="interrupted", exit_code=record["exit_code"])
+        runner.clear_environment()
+        with lock:
+            record["elapsed_seconds"] = round(elapsed + time.monotonic() - started, 3)
+            for command in record["commands"]:
+                if command["status"] == "running":
+                    command.update(status="interrupted", exit_code=record["exit_code"])
         save()
+
+
+def _concurrency_environment(value: dict | None) -> dict[str, str] | None:
+    if not isinstance(value, dict):
+        return None
+    environment = {}
+    for key, variable in (
+        ("current_flows", "ECC_EXPERIENCE_CURRENT_FLOWS"),
+        ("max_concurrent", "ECC_EXPERIENCE_MAX_CONCURRENT"),
+        ("trial_threads", "ECC_EXPERIENCE_TRIAL_THREADS"),
+    ):
+        item = value.get(key)
+        if item is not None:
+            environment[variable] = str(item)
+    return environment or None

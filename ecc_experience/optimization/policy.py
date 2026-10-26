@@ -188,14 +188,22 @@ def eligible_candidates(
             candidate_spec.get(key) != specification.get(key) for key in ("design", "pdk", "flow")
         ):
             reason = "incompatible_design_process_or_flow"
-        elif configuration_differences(baseline_parameters, parameters) - set(
-            limits.allow_parameters
-        ):
+        elif configuration_differences(
+            baseline_parameters,
+            parameters,
+            baseline_root=baseline.source.workspace_root,
+            candidate_root=case.source.workspace_root,
+        ) - set(limits.allow_parameters):
             reason = "changes_outside_allowlist"
         if reason is not None:
             skipped.append({"case_id": case.case_id, "reason": reason})
             continue
-        differences = configuration_differences(baseline_parameters, parameters)
+        differences = configuration_differences(
+            baseline_parameters,
+            parameters,
+            baseline_root=baseline.source.workspace_root,
+            candidate_root=case.source.workspace_root,
+        )
         changes = {}
         for key in limits.allow_parameters:
             if key not in differences:
@@ -233,7 +241,15 @@ def eligible_candidates(
     return selected, skipped
 
 
-def configuration_differences(baseline: dict, candidate: dict) -> set[str]:
+def configuration_differences(
+    baseline: dict,
+    candidate: dict,
+    *,
+    baseline_root: str | Path | None = None,
+    candidate_root: str | Path | None = None,
+) -> set[str]:
+    baseline = _portable_workspace_paths(baseline, baseline_root)
+    candidate = _portable_workspace_paths(candidate, candidate_root)
     changed = set()
     missing = object()
     for key in set(baseline) | set(candidate):
@@ -242,6 +258,25 @@ def configuration_differences(baseline: dict, candidate: dict) -> set[str]:
         if baseline.get(key, default) != candidate.get(key, default):
             changed.add(key)
     return changed
+
+
+def _portable_workspace_paths(value, root: str | Path | None):
+    """Replace absolute paths rooted at a workspace with a stable placeholder."""
+    if root is None:
+        return value
+    workspace = Path(root).expanduser().resolve()
+    if isinstance(value, dict):
+        return {key: _portable_workspace_paths(item, workspace) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_portable_workspace_paths(item, workspace) for item in value]
+    if not isinstance(value, str) or not Path(value).is_absolute():
+        return value
+    try:
+        relative = Path(value).resolve().relative_to(workspace)
+    except (OSError, ValueError):
+        return value
+    suffix = relative.as_posix()
+    return "<workspace>" if suffix == "." else f"<workspace>/{suffix}"
 
 
 def _literal(value: object) -> str:

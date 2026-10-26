@@ -76,6 +76,12 @@ def test_model_lifecycle_publishes_scope_checked_release_and_advice(modeling_fil
     advice_path = root / "advice.json"
 
     model = train_model(training, model_path)
+    assert model["training_summary"]["interval_basis"] == "leave_one_input_out"
+    assert model["training_summary"]["cross_validation_folds"] == 6
+    assert (
+        model["training_summary"]["residual_std"]
+        >= model["training_summary"]["in_sample_residual_std"]
+    )
     report = evaluate_model(model_path, heldout, evaluation_path, max_mae=10.0)
     assert report["status"] == "pass"
     assert report["generalization_status"] == "validated_for_declared_scope"
@@ -326,4 +332,14 @@ def test_dataset_build_reads_verified_release(workspace_factory, tmp_path):
         through_step="Synthesis",
     )
     assert result["summary"]["row_count"] == 1
-    assert json.loads(output.read_text())["rows"][0]["target"] == 88.0
+    payload = json.loads(output.read_text())
+    assert payload["schema"] == "ecc-experience-model-dataset/2"
+    assert payload["feature_schema"] == "ecc-experience-model-features/2"
+    assert payload["rows"][0]["target"] == 88.0
+    assert payload["rows"][0]["process_fingerprint"] == "ics55-process"
+    assert payload["rows"][0]["feature_coverage"] == {
+        "stage": "Synthesis",
+        "identity_fields": 3,
+        "required_identity_fields": 4,
+    }
+    assert "constraints.clock_period_count" in payload["rows"][0]["features"]

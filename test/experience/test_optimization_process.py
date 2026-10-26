@@ -49,3 +49,29 @@ def test_expired_budget_never_spawns(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "Popen", fail_spawn)
     runner = CliRunner(tmp_path, time.monotonic() - 1)
     assert runner.invoke(["run"], deadline=time.monotonic()).exit_code == 124
+
+
+def test_runner_passes_thread_local_environment_to_child(tmp_path, monkeypatch):
+    captured = {}
+
+    class Process:
+        returncode = 0
+
+        def wait(self, timeout=None):
+            return 0
+
+        def poll(self):
+            return 0
+
+    def spawn(_command, **kwargs):
+        captured.update(kwargs["env"])
+        return Process()
+
+    monkeypatch.setattr(subprocess, "Popen", spawn)
+    runner = CliRunner(tmp_path, time.monotonic() + 5)
+    runner.set_environment({"ECC_EXPERIENCE_MAX_CONCURRENT": "4"})
+
+    assert runner.invoke(["test"], deadline=time.monotonic() + 1).exit_code == 0
+    assert captured["ECC_EXPERIENCE_MAX_CONCURRENT"] == "4"
+    runner.clear_environment()
+    assert not hasattr(runner._environment, "values")

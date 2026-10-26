@@ -5,11 +5,12 @@ from pathlib import Path
 from typing import Any
 
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
-from ecc_experience.files import digest
+from ecc_experience.adapters.input_closure import content_fingerprint
+from ecc_experience.knowledge.index import filter_case_ids
 from ecc_experience.knowledge.release import verify_release
 from ecc_experience.knowledge.store import ExperienceStore
 from ecc_experience.knowledge.verify import verify_case
-from ecc_experience.models import ExperienceError, InputDigest
+from ecc_experience.models import ExperienceError, InputDigest, parameter_evidence_level
 
 
 def recommend(
@@ -53,9 +54,16 @@ def recommend(
     if not repository.root.is_dir():
         result["reason"] = "Experience store does not exist"
         return result
-    for case_id in reversed(repository.list_ids()):
-        if allowed_case_ids is not None and case_id not in allowed_case_ids:
-            continue
+    ordered = list(reversed(repository.list_ids()))
+    if allowed_case_ids is not None:
+        ordered = [case_id for case_id in ordered if case_id in allowed_case_ids]
+    ordered, index = filter_case_ids(
+        repository.root,
+        ordered,
+        input_fingerprint=fingerprint,
+    )
+    result["index"] = index
+    for case_id in ordered:
         case = repository.read(case_id)
         if case.input_content_fingerprint != fingerprint:
             continue
@@ -65,7 +73,10 @@ def recommend(
             "collected_at": case.collected_at,
             "verification_status": verification.status,
             "integrity": verification.integrity,
-            "parameter_evidence": case.parameter_evidence,
+            "parameter_evidence": case.parameter_evidence.model_dump()
+            if not isinstance(case.parameter_evidence, str)
+            else case.parameter_evidence,
+            "parameter_evidence_level": parameter_evidence_level(case),
             "limitations": case.limitations,
             "qor": _qor_summary(case.facts),
             "release": str(Path(release).expanduser().resolve()) if release else None,
@@ -97,19 +108,7 @@ def recommend(
 
 
 def _input_fingerprint(facts: dict, inputs: list[InputDigest]) -> str | None:
-    specification = facts.get("workspaceSpec", {})
-    if (
-        not isinstance(specification, dict)
-        or not inputs
-        or not all(item.sha256 is not None for item in inputs)
-    ):
-        return None
-    return digest(
-        {
-            "top": specification.get("design", {}).get("topModule"),
-            "inputs": [item.model_dump() for item in inputs],
-        }
-    )
+    return content_fingerprint(facts, inputs)
 
 
 def _configured_parameters(facts: dict) -> dict | None:

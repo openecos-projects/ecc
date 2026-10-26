@@ -63,7 +63,10 @@ def validate_matrix(
             raise invalid("Each matrix design must contain exactly one input fingerprint")
         if len(rows) + len(data["rows"]) > 10000:
             raise invalid("Validation matrix exceeds 10000 rows")
-        if family_holdout and entry["family"] in model_payload["training_groups"]:
+        strict_family_holdout = data["schema"] == "ecc-experience-model-dataset/2"
+        if (family_holdout or strict_family_holdout) and entry["family"] in model_payload[
+            "training_groups"
+        ]:
             raise ExperienceError(
                 "Training and held-out families overlap", code="experience_model_leakage"
             )

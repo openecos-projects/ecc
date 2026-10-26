@@ -28,6 +28,8 @@ def evidence():
 def test_candidate_uses_workspace_schema(evidence):
     assert candidate_evidence(**evidence) == {
         "status": "passed",
+        "signoff_status": "pass",
+        "advisory_only": False,
         "step_statuses": [{"name": "sta", "status": "success", "checklist": "passed"}],
         "qor_score": 93.6,
         "violation_count": 0,
@@ -94,3 +96,104 @@ def test_checker_count_sums_distinct_gates(evidence):
     assert candidate_evidence(**evidence)["violation_count"] == 6
     evidence["signoff_payload"][4]["violation_count"] = None
     assert candidate_evidence(**evidence)["violation_count"] == "unknown"
+
+
+def test_advisory_warnings_do_not_mask_unknown_signoff_without_gate_evidence(evidence):
+    evidence["checklist"] = {
+        "status": "attention",
+        "checklist": [
+            {
+                "id": "flow.emir.completed",
+                "step": "emir",
+                "policy": "warn",
+                "state": "warning",
+                "blocked": False,
+            }
+        ],
+    }
+    evidence.update(
+        signoff_code=7,
+        signoff_payload=[{"signoff": "check", "status": "unknown"}],
+    )
+
+    assert candidate_evidence(**evidence)["status"] == "unknown"
+
+
+def test_advisory_only_attention_is_accepted_with_explicit_unknown_signoff(evidence):
+    evidence["checklist"] = {
+        "status": "attention",
+        "checklist": [
+            {
+                "id": "flow.emir.completed",
+                "step": "emir",
+                "policy": "warn",
+                "state": "warning",
+                "blocked": False,
+            }
+        ],
+    }
+    evidence.update(
+        signoff_code=7,
+        signoff_payload=[
+            {"signoff": "check", "status": "unknown"},
+            *[
+                {"gate": gate, "required": True, "status": "pass"}
+                for gate in (
+                    "flow_complete",
+                    "qor_available",
+                    "drc_clean",
+                    "lvs_clean",
+                    "sta_setup_clean",
+                    "sta_hold_clean",
+                )
+            ],
+            {
+                "gate": "checklist_ready",
+                "required": True,
+                "status": "unknown",
+                "reason": "checklist_attention",
+                "failed_items": [],
+                "stale": False,
+                "provisional": False,
+            },
+        ],
+    )
+
+    result = candidate_evidence(**evidence)
+
+    assert result["status"] == "passed"
+    assert result["signoff_status"] == "unknown"
+    assert result["signoff_exit_code"] == 7
+    assert result["advisory_only"] is True
+
+
+@pytest.mark.parametrize(
+    ("checklist_item", "expected"),
+    [
+        ({"policy": "block", "state": "warning", "blocked": False}, "unknown"),
+        ({"policy": "warn", "state": "warning", "blocked": True}, "blocked"),
+    ],
+)
+def test_non_advisory_or_blocked_attention_is_not_accepted(evidence, checklist_item, expected):
+    evidence["checklist"] = {
+        "status": "attention",
+        "checklist": [{"id": "attention", "blocked": False, **checklist_item}],
+    }
+    evidence.update(
+        signoff_code=7,
+        signoff_payload=[
+            {"signoff": "check", "status": "unknown"},
+            {"gate": "flow_complete", "required": True, "status": "pass"},
+            {
+                "gate": "checklist_ready",
+                "required": True,
+                "status": "unknown",
+                "reason": "checklist_attention",
+                "failed_items": [],
+                "stale": False,
+                "provisional": False,
+            },
+        ],
+    )
+
+    assert candidate_evidence(**evidence)["status"] == expected

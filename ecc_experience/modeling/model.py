@@ -12,7 +12,8 @@ from ecc_experience.models import ExperienceError
 from ecc_experience.optimization.plan import write_plan
 
 MODEL_SCHEMA = "ecc-experience-model/1"
-RELEASE_SCHEMA = "ecc-experience-model-release/1"
+RELEASE_SCHEMA_V1 = "ecc-experience-model-release/1"
+RELEASE_SCHEMA = "ecc-experience-model-release/2"
 EVALUATION_SCHEMA = "ecc-experience-model-evaluation/1"
 
 
@@ -33,16 +34,17 @@ def train_model(dataset: str | Path, output: str | Path, *, ridge: float = 1.0) 
         dtype=float,
     )
     targets = np.array([float(row["target"]) for row in rows], dtype=float)
-    means = matrix.mean(axis=0)
-    scales = matrix.std(axis=0)
-    scales[scales == 0] = 1.0
-    normalized = (matrix - means) / scales
-    design = np.column_stack([np.ones(len(rows)), normalized])
-    penalty = np.eye(design.shape[1]) * float(ridge)
-    penalty[0, 0] = 0.0
-    coefficients = np.linalg.solve(design.T @ design + penalty, design.T @ targets)
-    predictions = design @ coefficients
+    means, scales, coefficients = _fit_ridge(matrix, targets, ridge)
+    predictions = _predict_ridge(matrix, means, scales, coefficients)
     residuals = targets - predictions
+    leave_one_out_errors = _leave_one_input_out_errors(
+        matrix, targets, [row.get("input_content_fingerprint") for row in rows], ridge
+    )
+    residual_std = (
+        float(np.std(leave_one_out_errors))
+        if leave_one_out_errors is not None
+        else float(np.std(residuals))
+    )
     model_identity = {
         "schema": MODEL_SCHEMA,
         "model_type": "ridge-1",
@@ -87,7 +89,22 @@ def train_model(dataset: str | Path, output: str | Path, *, ridge: float = 1.0) 
             "group_count": len(model_identity["training_groups"]),
             "mae": float(np.mean(np.abs(residuals))),
             "rmse": float(np.sqrt(np.mean(residuals**2))),
-            "residual_std": float(np.std(residuals)),
+            "residual_std": residual_std,
+            "in_sample_residual_std": float(np.std(residuals)),
+            "interval_basis": (
+                "leave_one_input_out" if leave_one_out_errors is not None else "training_residual"
+            ),
+            "cross_validation_folds": (
+                len(
+                    {
+                        item
+                        for item in [row.get("input_content_fingerprint") for row in rows]
+                        if item
+                    }
+                )
+                if leave_one_out_errors is not None
+                else 0
+            ),
         },
         "policy": {"auto_apply": False, "requires_real_dse_validation": True},
         "limitations": [
@@ -100,6 +117,52 @@ def train_model(dataset: str | Path, output: str | Path, *, ridge: float = 1.0) 
     validate_model(result)
     _write_new(Path(output).expanduser().absolute(), result)
     return result
+
+
+def _fit_ridge(
+    matrix: np.ndarray, targets: np.ndarray, ridge: float
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    means = matrix.mean(axis=0)
+    scales = matrix.std(axis=0)
+    scales[scales == 0] = 1.0
+    normalized = (matrix - means) / scales
+    design = np.column_stack([np.ones(len(targets)), normalized])
+    penalty = np.eye(design.shape[1]) * float(ridge)
+    penalty[0, 0] = 0.0
+    coefficients = np.linalg.solve(design.T @ design + penalty, design.T @ targets)
+    return means, scales, coefficients
+
+
+def _predict_ridge(
+    matrix: np.ndarray,
+    means: np.ndarray,
+    scales: np.ndarray,
+    coefficients: np.ndarray,
+) -> np.ndarray:
+    normalized = (matrix - means) / scales
+    design = np.column_stack([np.ones(len(matrix)), normalized])
+    return design @ coefficients
+
+
+def _leave_one_input_out_errors(
+    matrix: np.ndarray,
+    targets: np.ndarray,
+    fingerprints: list[str | None],
+    ridge: float,
+) -> list[float] | None:
+    groups = sorted({item for item in fingerprints if item})
+    if len(groups) < 2:
+        return None
+    errors: list[float] = []
+    for held_out in groups:
+        training = [index for index, item in enumerate(fingerprints) if item != held_out]
+        testing = [index for index, item in enumerate(fingerprints) if item == held_out]
+        if not testing:
+            continue
+        means, scales, coefficients = _fit_ridge(matrix[training], targets[training], ridge)
+        predictions = _predict_ridge(matrix[testing], means, scales, coefficients)
+        errors.extend((targets[testing] - predictions).tolist())
+    return errors or None
 
 
 def evaluate_model(
@@ -135,6 +198,14 @@ def evaluate_model(
             "Training and held-out input fingerprints overlap",
             code="experience_model_leakage",
         )
+    families = {row["group"] for row in data["rows"] if row.get("group")}
+    if data["schema"] == "ecc-experience-model-dataset/2":
+        family_overlap = sorted(set(payload["training_groups"]) & families)
+        if family_overlap:
+            raise ExperienceError(
+                "Training and held-out families overlap: " + ", ".join(family_overlap),
+                code="experience_model_leakage",
+            )
     if not _compatible_scope(payload, data):
         raise ExperienceError(
             "Held-out process or runtime scope is incompatible",
@@ -165,7 +236,6 @@ def evaluate_model(
         for row in data["rows"]
         if row.get("input_content_fingerprint")
     }
-    families = {row["group"] for row in data["rows"] if row.get("group")}
     thresholds = {
         "min_independent_designs": min_independent_designs,
         "min_families": min_families,
@@ -292,11 +362,21 @@ def publish_model(model: str | Path, evaluation: str | Path, output: str | Path)
     ):
         raise invalid("Model release output must be a new file")
     model_payload = read_model(model_path)
+    validation = {
+        "status": report["status"],
+        "metrics": report["metrics"],
+        "summary": report["summary"],
+        "thresholds": report["thresholds"],
+        "generalization_status": report.get(
+            "generalization_status", "validated_for_declared_scope"
+        ),
+    }
     release_identity = {
         "schema": RELEASE_SCHEMA,
         "model_id": model_payload["model_id"],
         "model": model_payload,
         "evaluation_fingerprint": report["evaluation_fingerprint"],
+        "validation": validation,
         "scope": "validated_observations_only",
     }
     result = {
@@ -321,7 +401,7 @@ def publish_model(model: str | Path, evaluation: str | Path, output: str | Path)
 
 def read_model(path: str | Path) -> dict:
     payload = read_json(Path(path).expanduser(), 64 * 1024 * 1024)
-    if payload.get("schema") == RELEASE_SCHEMA:
+    if payload.get("schema") in {RELEASE_SCHEMA_V1, RELEASE_SCHEMA}:
         payload = payload.get("model", {})
     validate_model(payload)
     return payload

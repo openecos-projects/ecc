@@ -139,6 +139,8 @@ def execute_tool_step(
     peak_memory_mb = peak_memory[0] - start_memory_mb
     peak_memory_mb = 0 if peak_memory_mb < 0 else round(peak_memory_mb, 3)
     elapsed = time.time() - start_time
+    if resource_observation is not None:
+        resource_observation["outcome"]["status"] = "failed" if step_error else "success"
     return StepExecutionResult(
         error=step_error,
         elapsed_seconds=elapsed,

@@ -15,6 +15,7 @@ from ecc_experience.collection.drain import drain as drain_recording
 from ecc_experience.dse.execute import run_dse
 from ecc_experience.dse.plan import plan_dse
 from ecc_experience.dse.report import report_dse
+from ecc_experience.knowledge.budget import resource_budget
 from ecc_experience.knowledge.features import case_features
 from ecc_experience.knowledge.matching import match_cases
 from ecc_experience.knowledge.normalize import normalize_stores
@@ -238,6 +239,31 @@ def match(
     )
 
 
+def budget(
+    case_id: str,
+    store: str | Path,
+    *,
+    through_step: str,
+    release: str | Path | None = None,
+    host_class: str | None = None,
+    concurrency: int | None = None,
+    min_samples: int = 8,
+    coverage_target: float = 0.8,
+    safety_margin: float = 1.2,
+) -> dict:
+    return resource_budget(
+        case_id,
+        store,
+        through_step=through_step,
+        release=release,
+        host_class=host_class,
+        concurrency=concurrency,
+        min_samples=min_samples,
+        coverage_target=coverage_target,
+        safety_margin=safety_margin,
+    )
+
+
 def verify(case_id: str, store: str | Path) -> Verification:
     repository = ExperienceStore(store)
     return verify_case(repository.read(case_id), repository.case_directory(case_id))
@@ -245,6 +271,18 @@ def verify(case_id: str, store: str | Path) -> Verification:
 
 def summary(store: str | Path, output: str | Path | None = None) -> dict:
     return summarize_store(store, output)
+
+
+def index_build(store: str | Path) -> dict:
+    from ecc_experience.knowledge.index import build_index
+
+    return build_index(store)
+
+
+def index_status(store: str | Path) -> dict:
+    from ecc_experience.knowledge.index import index_status as read_index_status
+
+    return read_index_status(store)
 
 
 def normalize(stores: Sequence[str | Path], output: str | Path) -> dict:
@@ -330,6 +368,12 @@ def campaign_effect(
     from ecc_experience.benchmark.effect import compare
 
     return compare(report, output, baselines)
+
+
+def d4_evaluate(spec: str | Path, output: str | Path) -> dict:
+    from ecc_experience.benchmark.d4 import evaluate_d4
+
+    return evaluate_d4(spec, output)
 
 
 def validate_benchmark_spec(spec: str | Path) -> dict:
@@ -461,10 +505,18 @@ def dse_run(
     output: str | Path,
     *,
     model_release: str | Path | None = None,
+    max_concurrent: int | None = None,
     resume: bool = False,
     select: str | None = None,
 ) -> dict:
-    return run_dse(plan, output, model_release=model_release, resume=resume, select=select)
+    return run_dse(
+        plan,
+        output,
+        model_release=model_release,
+        max_concurrent=max_concurrent,
+        resume=resume,
+        select=select,
+    )
 
 
 def plan(
@@ -475,10 +527,24 @@ def plan(
     limit: int = 10,
     release: str | Path | None = None,
     optimization: OptimizationLimits | None = None,
+    experimental_cross_design: bool = False,
+    through_step: str | None = None,
+    groups: str | Path | None = None,
+    query_case_id: str | None = None,
 ) -> dict:
     return write_plan(
         output,
-        build_plan(workspace, store, limit=limit, release=release, optimization=optimization),
+        build_plan(
+            workspace,
+            store,
+            limit=limit,
+            release=release,
+            optimization=optimization,
+            experimental_cross_design=experimental_cross_design,
+            through_step=through_step,
+            groups=groups,
+            query_case_id=query_case_id,
+        ),
     )
 
 

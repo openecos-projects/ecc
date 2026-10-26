@@ -11,6 +11,7 @@ from ecc_experience.cli import handlers
 from ecc_experience.cli.campaign_utilities import register_commands
 from ecc_experience.cli.dse import dse_app
 from ecc_experience.cli.inputs import (
+    BudgetInput,
     CampaignInput,
     CollectInput,
     EvaluationInput,
@@ -42,6 +43,8 @@ experience_app.add_typer(dse_app, name="dse")
 experience_app.add_typer(study_app, name="study")
 experience_app.add_typer(dataset_app, name="dataset")
 experience_app.add_typer(model_app, name="model")
+index_app = create_app(help="Build and inspect the derived local store index")
+experience_app.add_typer(index_app, name="index")
 
 
 @experience_app.command("collect", help="Collect a read-only observation from a workspace")
@@ -127,6 +130,32 @@ def features_cmd(
     execute_command("experience", command_input, handlers.features)
 
 
+@index_app.command("build", help="Rebuild the derived case index from verified store content")
+def index_build_cmd(
+    *,
+    store: StoreOption,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = StoreInput(
+        output=output_options(plain=plain, json_output=json_output), store=store
+    )
+    execute_command("experience", command_input, handlers.index_build)
+
+
+@index_app.command("status", help="Inspect whether the derived index is usable")
+def index_status_cmd(
+    *,
+    store: StoreOption,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = StoreInput(
+        output=output_options(plain=plain, json_output=json_output), store=store
+    )
+    execute_command("experience", command_input, handlers.index_status)
+
+
 @experience_app.command(
     "summary", help="Summarize case quality, deduplication and resource observations"
 )
@@ -173,6 +202,36 @@ def match_cmd(
         groups=groups,
     )
     execute_command("experience", command_input, handlers.match)
+
+
+@experience_app.command("budget", help="Estimate scoped stage time and peak RSS budgets")
+def budget_cmd(
+    case_id: CaseArgument,
+    *,
+    store: StoreOption,
+    through_step: Annotated[str, typer.Option("--through-step", help="Measured flow step")],
+    release: Annotated[str | None, typer.Option("--release")] = None,
+    host_class: Annotated[str | None, typer.Option("--host-class")] = None,
+    concurrency: Annotated[int | None, typer.Option("--concurrency", min=1)] = None,
+    min_samples: Annotated[int, typer.Option("--min-samples", min=1)] = 8,
+    coverage_target: Annotated[float, typer.Option("--coverage-target", min=0.01, max=1.0)] = 0.8,
+    safety_margin: Annotated[float, typer.Option("--safety-margin", min=1.0)] = 1.2,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    command_input = BudgetInput(
+        output=output_options(plain=plain, json_output=json_output),
+        store=store,
+        case_id=case_id,
+        through_step=through_step,
+        release=release,
+        host_class=host_class,
+        concurrency=concurrency,
+        min_samples=min_samples,
+        coverage_target=coverage_target,
+        safety_margin=safety_margin,
+    )
+    execute_command("experience", command_input, handlers.budget)
 
 
 @experience_app.command(
@@ -312,6 +371,25 @@ def plan_cmd(
     release: Annotated[
         str | None, typer.Option("--release", help="Verified experience release JSON")
     ] = None,
+    experimental_cross_design: Annotated[
+        bool,
+        typer.Option(
+            "--experimental-cross-design",
+            help="Consume explicit experimental cross-design matches from the frozen release",
+        ),
+    ] = False,
+    through_step: Annotated[
+        str | None,
+        typer.Option("--through-step", help="Last visible stage for cross-design matching"),
+    ] = None,
+    groups: Annotated[
+        str | None,
+        typer.Option("--groups", help="Explicit case-to-family groups JSON for isolation"),
+    ] = None,
+    query_case_id: Annotated[
+        str | None,
+        typer.Option("--query-case-id", help="Committed case representing this workspace"),
+    ] = None,
     allow_parameters: Annotated[
         list[str] | None,
         typer.Option("--allow-param", help="Authorize a reviewed PNR parameter; repeatable"),
@@ -340,6 +418,10 @@ def plan_cmd(
         output_path=output,
         limit=limit,
         release=release,
+        experimental_cross_design=experimental_cross_design,
+        through_step=through_step,
+        groups=groups,
+        query_case_id=query_case_id,
         optimization={
             "allow_parameters": allow_parameters,
             "max_trials": max_trials,

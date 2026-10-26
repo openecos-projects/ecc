@@ -13,6 +13,7 @@ from ecc_experience.cli.inputs import (
     BenchmarkPlanInput,
     BenchmarkSpecInput,
     BenchmarkSummaryInput,
+    BudgetInput,
     CampaignAnalysisInput,
     CampaignInput,
     CollectInput,
@@ -74,6 +75,8 @@ def _guard(operation: Callable[[], CommandResult]) -> CommandResult:
             "experience_model_registry_invalid": EXIT_USAGE_ERROR,
             "experience_model_registry_empty": EXIT_GATE_UNKNOWN,
             "experience_benchmark_invalid": EXIT_USAGE_ERROR,
+            "experience_budget_invalid": EXIT_USAGE_ERROR,
+            "experience_index_invalid": EXIT_USAGE_ERROR,
         }
         return CommandResult.err([error_record(exc.code, reason=str(exc))], codes.get(exc.code, 1))
     except OSError as exc:
@@ -122,6 +125,26 @@ def features(command_input: StoreInput, _ctx: CommandContext) -> CommandResult:
     return _guard(operation)
 
 
+def index_build(command_input: StoreInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import index_build as build
+
+        result = build(command_input.store)
+        return CommandResult.ok([{"experience": "index_build", **result}])
+
+    return _guard(operation)
+
+
+def index_status(command_input: StoreInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import index_status as read_status
+
+        result = read_status(command_input.store)
+        return CommandResult.ok([{"experience": "index_status", **result}])
+
+    return _guard(operation)
+
+
 def match(command_input: MatchInput, _ctx: CommandContext) -> CommandResult:
     def operation() -> CommandResult:
         from ecc_experience.api import match as match_cases
@@ -136,6 +159,26 @@ def match(command_input: MatchInput, _ctx: CommandContext) -> CommandResult:
             groups=command_input.groups,
         )
         return CommandResult.ok([{"experience": "match", **result}])
+
+    return _guard(operation)
+
+
+def budget(command_input: BudgetInput, _ctx: CommandContext) -> CommandResult:
+    def operation() -> CommandResult:
+        from ecc_experience.api import budget as resource_budget
+
+        result = resource_budget(
+            command_input.case_id,
+            command_input.store,
+            through_step=command_input.through_step,
+            release=command_input.release,
+            host_class=command_input.host_class,
+            concurrency=command_input.concurrency,
+            min_samples=command_input.min_samples,
+            coverage_target=command_input.coverage_target,
+            safety_margin=command_input.safety_margin,
+        )
+        return CommandResult.ok([{"experience": "budget", **result}])
 
     return _guard(operation)
 
@@ -175,6 +218,10 @@ def plan(command_input: PlanInput, ctx: CommandContext) -> CommandResult:
             optimization=parse_limits(command_input.optimization)
             if command_input.optimization is not None
             else None,
+            experimental_cross_design=command_input.experimental_cross_design,
+            through_step=command_input.through_step,
+            groups=command_input.groups,
+            query_case_id=command_input.query_case_id,
         )
         return CommandResult.ok([{"experience": "plan", **result}])
 

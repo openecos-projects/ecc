@@ -9,6 +9,7 @@ from pathlib import Path
 from ecc_experience.files import digest
 from ecc_experience.modeling.dataset import read_dataset
 from ecc_experience.modeling.validation import MATRIX_SCHEMA, invalid
+from ecc_experience.models import ExperienceError
 from ecc_experience.optimization.plan import write_plan
 
 
@@ -62,6 +63,18 @@ def split_dataset(
         "test": ordered[validation_count : validation_count + test_count],
         "training": ordered[validation_count + test_count :],
     }
+    if data["schema"] == "ecc-experience-model-dataset/2":
+        family_partition = {}
+        for name, keys in assignments.items():
+            for key in keys:
+                for row in groups[key]:
+                    family = row["group"]
+                    previous = family_partition.setdefault(family, name)
+                    if previous != name:
+                        raise ExperienceError(
+                            "Split would leak one family across partitions",
+                            code="experience_model_leakage",
+                        )
     destination = Path(output).expanduser().absolute()
     if destination.exists() or destination.is_symlink():
         raise invalid("Split output must be a new directory")

@@ -18,7 +18,7 @@ from ecc_experience.dse.plan import (
 )
 from ecc_experience.dse.space import Axis, candidate, expand_space, grid_candidates
 from ecc_experience.dse.warm_start import freeze_warm_start
-from ecc_experience.files import digest, read_json
+from ecc_experience.files import digest, file_digest, read_json
 from ecc_experience.knowledge.features import case_features
 from ecc_experience.optimization.plan import write_plan
 
@@ -40,6 +40,11 @@ class RungSpec(BaseModel):
     objectives: list[ObjectiveSpec] | None = Field(default=None, min_length=1, max_length=3)
 
 
+class ExecutionSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    max_concurrent: int = Field(default=1, ge=1, le=16)
+
+
 class DseSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     schema_version: Literal[2]
@@ -49,8 +54,11 @@ class DseSpec(BaseModel):
     objectives: list[ObjectiveSpec] = Field(min_length=1, max_length=3)
     rungs: list[RungSpec] = Field(min_length=1, max_length=3)
     limits: dict
+    execution: ExecutionSpec = Field(default_factory=ExecutionSpec)
     warm_start: str | None = None
     warm_start_limit: int = Field(default=3, ge=1, le=20)
+    warm_start_experimental_cross_design: bool = False
+    warm_start_groups: str | None = None
     baseline_case_id: str | None = None
 
 
@@ -79,9 +87,19 @@ def plan_version2(project, workspace, store, output, *, spec) -> dict:
         settings = DseSpec.model_validate(read_json(Path(spec).expanduser()))
     except ValidationError as exc:
         raise invalid(str(exc)) from exc
+    if (
+        settings.warm_start_experimental_cross_design or settings.warm_start_groups
+    ) and settings.warm_start is None:
+        raise invalid("Cross-design warm-start options require a frozen release")
     space = expand_space(settings.space)
     grid_size = math.prod(len(values) for values in space.values())
-    requested_patience = settings.limits.get("patience", 3)
+    raw_patience = settings.limits.get("patience", 3)
+    if raw_patience == "auto":
+        requested_patience: int | str = "auto"
+    elif type(raw_patience) is int:
+        requested_patience = raw_patience
+    else:
+        raise invalid("DSE patience must be an integer or auto")
     planning_limits = {**settings.limits, "patience": requested_patience}
     if requested_patience == "auto":
         planning_limits["patience"] = 1
@@ -163,6 +181,17 @@ def plan_version2(project, workspace, store, output, *, spec) -> dict:
     )
     if objectives != rungs[-1]["objectives"]:
         raise invalid("Final rung objectives must equal the plan objectives")
+    warm_start_groups = (
+        (Path(spec).expanduser().resolve().parent / settings.warm_start_groups).resolve()
+        if settings.warm_start_groups
+        else None
+    )
+    groups_digest = None
+    if warm_start_groups is not None:
+        try:
+            groups_digest = file_digest(warm_start_groups)[0]
+        except OSError as exc:
+            raise invalid("Warm-start groups are unavailable") from exc
     payload = {
         **base,
         "schema": "ecc-experience-stage-dse-plan/2",
@@ -183,8 +212,14 @@ def plan_version2(project, workspace, store, output, *, spec) -> dict:
             "limit": settings.warm_start_limit,
             "seeds": [],
             "status": "not_requested",
+            "experimental_cross_design": settings.warm_start_experimental_cross_design,
+            "groups": str(warm_start_groups) if warm_start_groups else None,
+            "groups_sha256": groups_digest,
+            "family_isolation": "explicit_groups" if warm_start_groups else "not_checked",
         },
         "parameter_boundary": base["through_step"],
+        "execution": settings.execution.model_dump(),
+        "axis_quantization": _axis_quantization(settings.space, space),
     }
     payload["warm_start"] = freeze_warm_start(payload, settings.warm_start_limit)
     payload["plan_fingerprint"] = digest(
@@ -205,6 +240,8 @@ def validate_version2(payload: dict):
         "patience_resolution",
         "warm_start",
         "parameter_boundary",
+        "execution",
+        "axis_quantization",
     }
     base = {key: value for key, value in payload.items() if key not in extensions}
     base["schema"] = "ecc-experience-stage-dse-plan/1"
@@ -223,14 +260,54 @@ def validate_version2(payload: dict):
             or not 0 <= payload["algorithm"]["seed"] <= 2**32 - 1
         ):
             raise invalid("Unsupported DSE strategy or algorithm")
+        if "axis_quantization" in payload:
+            quantization = payload["axis_quantization"]
+            if not isinstance(quantization, dict) or not set(quantization) <= set(space):
+                raise invalid("Frozen DSE axis quantization is invalid")
+            for key, item in quantization.items():
+                if (
+                    not isinstance(item, dict)
+                    or set(item)
+                    != {
+                        "kind",
+                        "requested",
+                        "scale",
+                        "step",
+                        "points",
+                        "quantized",
+                        "candidate_count",
+                    }
+                    or item["kind"] != "range"
+                    or item["scale"] not in {"linear", "log"}
+                    or item["quantized"] != space[key]
+                    or type(item["candidate_count"]) is not int
+                    or item["candidate_count"] != len(space[key])
+                ):
+                    raise invalid("Frozen DSE axis quantization differs from the search space")
         limits = parse_limits(payload["limits"])
+        execution = payload.get("execution", {"max_concurrent": 1})
+        if (
+            not isinstance(execution, dict)
+            or set(execution) != {"max_concurrent"}
+            or type(execution["max_concurrent"]) is not int
+            or not 1 <= execution["max_concurrent"] <= 16
+            or execution["max_concurrent"] > limits.max_trials
+        ):
+            raise invalid("Frozen DSE execution concurrency is invalid")
         count = payload["screening_trials"]
         resolution = payload.get("patience_resolution")
         if resolution is not None:
             if not isinstance(resolution, dict):
                 raise invalid("Frozen DSE patience resolution is invalid")
+            requested = resolution.get("requested")
+            if requested == "auto":
+                requested_patience_value: int | str = "auto"
+            elif type(requested) is int:
+                requested_patience_value = requested
+            else:
+                raise invalid("Frozen DSE patience request is invalid")
             resolved, expected_resolution = resolve_patience(
-                resolution.get("requested"),
+                requested_patience_value,
                 strategy=payload["strategy"],
                 domain_size=math.prod(len(values) for values in space.values()),
                 screening_trials=count,
@@ -300,24 +377,73 @@ def validate_version2(payload: dict):
         validate_parameter_boundary(list(space), names[: previous + 1])
         warm = payload["warm_start"]
         if (
-            set(warm) != {"release", "limit", "seeds", "status"}
+            set(warm)
+            != {
+                "release",
+                "limit",
+                "seeds",
+                "status",
+                "experimental_cross_design",
+                "groups",
+                "groups_sha256",
+                "family_isolation",
+            }
             or warm["release"] != payload["release"]
             or type(warm["limit"]) is not int
             or not 1 <= warm["limit"] <= 20
             or not isinstance(warm["seeds"], list)
             or len(warm["seeds"]) > warm["limit"]
             or warm["status"] not in {"not_requested", "matches_available", "insufficient_evidence"}
+            or type(warm["experimental_cross_design"]) is not bool
+            or warm["family_isolation"] not in {"explicit_groups", "not_checked"}
+            or (warm["groups"] is None) != (warm["groups_sha256"] is None)
+            or (warm["family_isolation"] == "explicit_groups") != (warm["groups"] is not None)
         ):
             raise invalid("Invalid frozen warm-start provenance")
+        if warm["groups"] is not None:
+            try:
+                groups_digest = file_digest(Path(warm["groups"]))[0]
+            except OSError as exc:
+                raise invalid("Frozen warm-start groups are unavailable") from exc
+            if groups_digest != warm["groups_sha256"]:
+                raise invalid("Frozen warm-start groups changed")
         for seed in warm["seeds"]:
             if (
-                set(seed) != {"case_id", "distance", "parameters", "compatibility"}
+                set(seed)
+                != {
+                    "case_id",
+                    "distance",
+                    "parameters",
+                    "compatibility",
+                    "confidence",
+                    "feature_coverage",
+                    "release",
+                    "release_id",
+                    "provenance",
+                }
                 or not isinstance(seed["case_id"], str)
                 or not seed["case_id"]
                 or type(seed["distance"]) not in (int, float)
                 or not math.isfinite(seed["distance"])
                 or seed["distance"] < 0
                 or seed["compatibility"] != "selected_process_tool_analysis_match"
+                or seed["confidence"]
+                not in {"observed_only", "observed", "calibrated", "experimental"}
+                or type(seed["feature_coverage"]) not in (int, float)
+                or not math.isfinite(seed["feature_coverage"])
+                or not 0 <= seed["feature_coverage"] <= 1
+                or seed["release"] != warm["release"]
+                or not (seed["release_id"] is None or isinstance(seed["release_id"], str))
+                or not isinstance(seed["provenance"], dict)
+                or set(seed["provenance"])
+                != {
+                    "release",
+                    "release_id",
+                    "case_id",
+                    "distance",
+                    "feature_coverage",
+                    "confidence",
+                }
                 or set(seed["parameters"]) != set(space)
                 or any(value not in space[key] for key, value in seed["parameters"].items())
             ):
@@ -329,3 +455,21 @@ def validate_version2(payload: dict):
     except (KeyError, TypeError, ValidationError) as exc:
         raise invalid("Invalid version 2 DSE plan") from exc
     return limits
+
+
+def _axis_quantization(spec: dict[str, Axis], expanded: dict[str, list]) -> dict:
+    result = {}
+    for key, axis in sorted(spec.items()):
+        if axis.values is not None:
+            continue
+        requested = axis.range if axis.range is not None else [axis.min, axis.max]
+        result[key] = {
+            "kind": "range",
+            "requested": requested,
+            "scale": axis.scale,
+            "step": axis.step,
+            "points": axis.points,
+            "quantized": expanded[key],
+            "candidate_count": len(expanded[key]),
+        }
+    return result

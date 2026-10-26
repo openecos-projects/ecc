@@ -172,6 +172,24 @@ def test_frozen_execution_is_explicitly_shared(monkeypatch):
     assert result["scope"] == "shared_process_tree"
 
 
+def test_concurrency_environment_and_outcome_are_persisted(monkeypatch):
+    monkeypatch.setenv("ECC_EXPERIENCE_CURRENT_FLOWS", "3")
+    monkeypatch.setenv("ECC_EXPERIENCE_MAX_CONCURRENT", "4")
+    monkeypatch.setenv("ECC_EXPERIENCE_TRIAL_THREADS", "8")
+    observation = start_observation(os.getpid(), isolated=False, step="place", tool="ecc")
+
+    result = observation.finish(outcome="success")
+
+    assert result["concurrency"] == {
+        "current_flows": 3,
+        "max_concurrent": 4,
+        "trial_threads": "8",
+    }
+    assert result["outcome"] == {"status": "success"}
+    with pytest.raises(ValueError, match="unsupported resource outcome"):
+        observation.finish(outcome="invented")
+
+
 def test_failed_execution_persists_facts_and_rerun_gets_a_new_identity(monkeypatch, tmp_path):
     from chipcompiler.data import EccStep, StateEnum, Workspace
     from chipcompiler.engine.flow import EngineFlow

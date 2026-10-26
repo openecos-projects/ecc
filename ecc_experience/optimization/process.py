@@ -50,6 +50,18 @@ class CliRunner:
         self.deadline = deadline
         self.sequence = 0
         self.durable_receipts = durable_receipts
+        self._sequence_lock = threading.Lock()
+        self._environment = threading.local()
+
+    def set_environment(self, values: dict[str, str] | None) -> None:
+        if values:
+            self._environment.values = {key: str(value) for key, value in values.items()}
+        else:
+            self.clear_environment()
+
+    def clear_environment(self) -> None:
+        if hasattr(self._environment, "values"):
+            del self._environment.values
 
     def invoke(
         self,
@@ -58,8 +70,10 @@ class CliRunner:
         deadline: float,
         on_prepared: Callable[[dict], None] | None = None,
     ) -> Invocation:
-        self.sequence += 1
-        prefix = self.output / f"command-{self.sequence:04d}"
+        with self._sequence_lock:
+            self.sequence += 1
+            sequence = self.sequence
+        prefix = self.output / f"command-{sequence:04d}"
         stdout = prefix.with_suffix(".stdout.log")
         stderr = prefix.with_suffix(".stderr.log")
         timeout = min(self.deadline, deadline) - time.monotonic()
@@ -70,11 +84,13 @@ class CliRunner:
             on_prepared({**request.metadata(), "stdout": str(stdout), "stderr": str(stderr)})
         command = ["_experience-command-worker", str(request.path)] if request else arguments
         with stdout.open("xb") as output_stream, stderr.open("xb") as error_stream:
+            environment = getattr(self._environment, "values", None)
             process = subprocess.Popen(
                 [*cli_prefix(), *command],
                 stdout=output_stream,
                 stderr=error_stream,
                 start_new_session=True,
+                env={**os.environ, **environment} if environment else None,
             )
             try:
                 exit_code = process.wait(timeout=timeout)

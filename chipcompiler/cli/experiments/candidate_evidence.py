@@ -52,6 +52,41 @@ def _violation_count(payload: dict | list | str | int | float | None) -> int | s
     return sum(counts.values()) if set(counts) == required else "unknown"
 
 
+def _advisory_only(checklist: dict, signoff_payload: object, signoff_status: str) -> bool:
+    if checklist_status(checklist) != "attention" or signoff_status != "unknown":
+        return False
+    items = checklist_items(checklist)
+    attention = [
+        item for item in items if item.get("state", item.get("status")) not in {"pass", "passed"}
+    ]
+    if not attention or any(
+        item.get("policy") != "warn" or item.get("blocked") is True for item in attention
+    ):
+        return False
+    if not isinstance(signoff_payload, list):
+        return False
+    gates = {
+        record.get("gate"): record
+        for record in signoff_payload
+        if isinstance(record, dict) and isinstance(record.get("gate"), str)
+    }
+    checklist_gate = gates.get("checklist_ready")
+    if (
+        not isinstance(checklist_gate, dict)
+        or checklist_gate.get("status") != "unknown"
+        or checklist_gate.get("reason") != "checklist_attention"
+        or checklist_gate.get("failed_items")
+        or checklist_gate.get("stale") is True
+        or checklist_gate.get("provisional") is True
+    ):
+        return False
+    return all(
+        record.get("status") == "pass"
+        for name, record in gates.items()
+        if name != "checklist_ready" and record.get("required") is True
+    )
+
+
 def candidate_evidence(
     flow: dict,
     checklist: dict,
@@ -76,6 +111,8 @@ def candidate_evidence(
     state = flow_status(flow)
     score = qor_score(qor)
     checks = checklist_status(checklist)
+    signoff_status = _signoff_status(signoff_payload)
+    advisory_only = signoff_code == 7 and _advisory_only(checklist, signoff_payload, signoff_status)
     blocked = (
         state == "blocked"
         or checks == "blocked"
@@ -89,10 +126,10 @@ def candidate_evidence(
     elif signoff_code not in {0, 7}:
         status = "failed"
     elif (
-        signoff_code == 7
-        or _signoff_status(signoff_payload) != "pass"
+        (signoff_code == 7 and not advisory_only)
+        or (signoff_status != "pass" and not advisory_only)
         or state not in {"success", "passed"}
-        or checks != "passed"
+        or (checks != "passed" and not (advisory_only and checks == "attention"))
         or score is None
         or not step_statuses
         or any(step["status"] not in {"success", "passed"} for step in step_statuses)
@@ -102,6 +139,8 @@ def candidate_evidence(
         status = "passed"
     return {
         "status": status,
+        "signoff_status": signoff_status,
+        "advisory_only": advisory_only,
         "step_statuses": step_statuses,
         "qor_score": score,
         "violation_count": _violation_count(signoff_payload),

@@ -16,6 +16,7 @@ def run_dse(
     output: str | Path,
     *,
     model_release: str | Path | None = None,
+    max_concurrent: int | None = None,
     resume: bool = False,
     select: str | None = None,
 ) -> dict:
@@ -23,11 +24,17 @@ def run_dse(
     if plan["schema"] == "ecc-experience-stage-dse-plan/2":
         from ecc_experience.dse.execute2 import run_version2
 
-        if model_release is not None:
-            raise invalid(
-                "Version 2 uses measured objectives; model-assisted plans remain version 1"
-            )
-        return run_version2(plan, limits, output, resume=resume, select=select)
+        return run_version2(
+            plan,
+            limits,
+            output,
+            resume=resume,
+            select=select,
+            model_release=model_release,
+            max_concurrent=max_concurrent,
+        )
+    if max_concurrent is not None:
+        raise invalid("--max-concurrent requires a version 2 DSE plan")
     if resume or select:
         raise invalid("Resume and explicit Pareto selection require a version 2 plan")
     check_source(plan)

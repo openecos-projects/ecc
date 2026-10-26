@@ -5,7 +5,11 @@ from pathlib import Path
 from ecc_experience.files import digest, read_json
 from ecc_experience.knowledge.store import ExperienceStore
 from ecc_experience.modeling.dataset import extract_features, read_dataset
-from ecc_experience.modeling.model import RELEASE_SCHEMA, predict_features
+from ecc_experience.modeling.model import (
+    RELEASE_SCHEMA,
+    RELEASE_SCHEMA_V1,
+    predict_features,
+)
 from ecc_experience.models import ExperienceError
 from ecc_experience.optimization.plan import write_plan
 
@@ -16,7 +20,8 @@ ADVICE_SCHEMA = "ecc-experience-model-advice/1"
 def read_model_release(path: str | Path) -> dict:
     source = Path(path).expanduser().absolute()
     payload = read_json(source, 64 * 1024 * 1024)
-    if payload.get("schema") != RELEASE_SCHEMA:
+    schema = payload.get("schema")
+    if schema not in {RELEASE_SCHEMA_V1, RELEASE_SCHEMA}:
         raise invalid("The model release schema is unsupported")
     model = payload.get("model")
     if not isinstance(model, dict):
@@ -29,6 +34,30 @@ def read_model_release(path: str | Path) -> dict:
         "evaluation_fingerprint": payload.get("evaluation_fingerprint"),
         "scope": payload.get("scope"),
     }
+    if schema == RELEASE_SCHEMA:
+        validation = payload.get("validation")
+        if (
+            not isinstance(validation, dict)
+            or set(validation)
+            != {"status", "metrics", "summary", "thresholds", "generalization_status"}
+            or validation["status"] != "pass"
+            or not isinstance(validation["metrics"], dict)
+            or not isinstance(validation["summary"], dict)
+            or not isinstance(validation["thresholds"], dict)
+            or not {"mae", "rmse", "rank_accuracy", "interval_coverage"}
+            <= set(validation["metrics"])
+            or not {"row_count", "independent_input_count", "family_count"}
+            <= set(validation["summary"])
+            or not {
+                "min_independent_designs",
+                "min_families",
+                "max_mae",
+                "min_interval_coverage",
+            }
+            <= set(validation["thresholds"])
+        ):
+            raise invalid("The model release validation summary is invalid")
+        identity["validation"] = validation
     if payload.get("release_id") != f"model-release-{digest(identity)}":
         raise invalid("Model release identity mismatch")
     policy = payload.get("policy")

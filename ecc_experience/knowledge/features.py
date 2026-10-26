@@ -7,7 +7,7 @@ from ecc_experience.files import SMALL_EVIDENCE_LIMIT, read_json, safe_child
 from ecc_experience.knowledge.recommend import _sanitize
 from ecc_experience.knowledge.store import ExperienceStore
 from ecc_experience.knowledge.verify import verify_integrity
-from ecc_experience.models import ExperienceCase, ExperienceError
+from ecc_experience.models import ExperienceCase, ExperienceError, parameter_evidence_level
 
 FEATURE_SCHEMA = "ecc-experience-features/1"
 
@@ -30,6 +30,7 @@ def extract_features(
         steps = steps[: names.index(through_step) + 1]
     result = {
         "schema": FEATURE_SCHEMA,
+        "schema_version": case.schema_version,
         "case_id": case.case_id,
         "snapshot_digest": case.source.snapshot_digest,
         "through_step": through_step,
@@ -37,9 +38,16 @@ def extract_features(
         "status": "unknown",
         "steps": [],
         "parameters": {
-            "level": case.parameter_evidence,
+            "level": parameter_evidence_level(case),
             "values": _sanitize(specification.get("parameters", {})),
-            "scope": "committed_configuration_not_historical_tool_consumption",
+            "evidence": (
+                case.parameter_evidence.model_dump()
+                if not isinstance(case.parameter_evidence, str)
+                else case.parameter_evidence
+            ),
+            "scope": "committed_configuration_and_validated_tool_receipts"
+            if parameter_evidence_level(case) == "applied"
+            else "committed_configuration_not_historical_tool_consumption",
         },
         "process": _sanitize(specification.get("pdk", {})),
         "process_fingerprint": case.process_fingerprint,

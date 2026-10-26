@@ -106,6 +106,7 @@ def execute_step_subprocess(
     start_memory_mb = memory_reader(process.pid)
     peak_memory_mb = start_memory_mb
     step_error = None
+    cancelled = False
     emitted = 0
     resources = start_observation(
         process.pid, isolated=True, step=workspace_step.name, tool=workspace_step.tool
@@ -114,6 +115,7 @@ def execute_step_subprocess(
         while process.poll() is None:
             cancel_error = _cancel_error(observer)
             if cancel_error is not None:
+                cancelled = True
                 step_error = f"{step_tag} cancelled: {cancel_error}"
                 break
             peak_memory_mb = max(peak_memory_mb, memory_reader(process.pid))
@@ -146,6 +148,10 @@ def execute_step_subprocess(
             workspace.parameters = parameters
         except (OSError, ValueError) as exc:
             step_error = step_error or f"{step_tag} worker parameters could not be reloaded: {exc}"
+    if resource_observation is not None:
+        resource_observation["outcome"]["status"] = (
+            "cancelled" if cancelled else "failed" if step_error else "success"
+        )
     return _result(
         start_time,
         peak_memory_mb - start_memory_mb,

@@ -151,7 +151,16 @@ def _observation(case_id: str | None, repository: ExperienceStore, profile: str)
         result.update(status="fail", integrity="fail")
         result["findings"] = [{"status": "fail", "check": "case", "reason": str(exc)}]
         return result
-    findings = [item for item in verification.findings if item.status != "pass"]
+    identity_findings = [
+        item
+        for item in verification.findings
+        if item.check.startswith("identity_") and item.status != "pass"
+    ]
+    findings = [
+        item
+        for item in verification.findings
+        if item.status != "pass" and not item.check.startswith("identity_")
+    ]
     coverage = _coverage(case, profile)
     for key, available in coverage.items():
         if not available:
@@ -191,6 +200,7 @@ def _observation(case_id: str | None, repository: ExperienceStore, profile: str)
         input_content_fingerprint=case.input_content_fingerprint,
         coverage=coverage,
         findings=[item.model_dump(exclude_none=True) for item in findings],
+        identity_findings=[item.model_dump(exclude_none=True) for item in identity_findings],
         artifact_counts=dict(Counter(item.status for item in case.evidence)),
         steps=_steps(case),
         qor={key: qor[key] for key in ("score", "status", "profile", "scoringEngine") if key in qor}
@@ -213,7 +223,8 @@ def _coverage(case: ExperienceCase, profile: str) -> dict:
         "inputs": bool(case.input_content_fingerprint)
         and bool(case.inputs)
         and all(item.status == "available" and item.sha256 for item in case.inputs),
-        "parameters": case.parameter_evidence == "configured",
+        "parameters": getattr(case.parameter_evidence, "level", case.parameter_evidence)
+        in {"configured", "applied"},
         "process": isinstance(pdk, dict) and pdk.get("familyId") == profile,
         "qor": isinstance(qor, dict) and qor.get("status") == "available" and _finite_number(score),
     }

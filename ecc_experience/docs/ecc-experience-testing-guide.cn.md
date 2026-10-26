@@ -12,8 +12,10 @@ enable/status/disable、提交后 attempt outbox 和 drain 恢复，以及 campa
 recommend、plan、evaluate、release 和受预算约束的 optimize。campaign quality/recover、
 独立 step 资源观测、阶段 features、冻结 release 匹配 match、有界阶段 dse 以及
 study evaluate/publish 留出评价闭环已实现。P4 的 dataset build、可解释 ridge 基线模型、
-留出泄漏检查、evaluate/publish、predict 和 advise 已实现；复杂搜索、并发调度和共享服务
-不在当前交付范围。经验包 export/import 提供显式选择、
+留出泄漏检查、evaluate/publish、predict 和 advise 已实现。当前版本还提供 identity v2、
+输入闭包与参数回执、跨设计 experimental 匹配、资源预算、DSE v2 并行/连续轴/模型预筛、
+dataset/feature schema v2、D4 四策略评价和派生 store index；共享训练服务仍不在交付范围。
+经验包 export/import 提供显式选择、
 离线完整性检查和幂等导入。**执行前必须以安装版本的
 帮助和输出契约确认能力，不能照猜测调用。
 
@@ -275,8 +277,9 @@ P0 显式采集、查询和校验已经实现。P1 的自动记录只保存提�
 outbox；它不修改参数、不阻塞工程提交，也不把经验写进源码或 wheel。只读推荐、
 计划、比较、release、有预算的完整流程优化及串行 baseline campaign 已实现；
 阶段特征、严格匹配、有界阶段 DSE、留出评价和隔离反馈发布也已实现，详见本手册末尾。
-跨设计迁移未证明，默认检索仍保守；并发调度未实现。P4 模型可对明确记录的资源字段
-建模，但不等于独立进程树测量或已校准的 RAM/CPU 预测。逐项按安装版本帮助确认能力。
+跨设计迁移仍未证明；v2 提供有界并行调度和显式实验性跨设计开关，默认检索仍保守。
+P4 模型可对明确记录的资源字段建模，但不等于独立进程树测量或已校准的 RAM/CPU 预测。
+逐项按安装版本帮助确认能力。
 
 ```bash
 EXPERIENCE_STORE=/absolute/path/to/experience-store
@@ -578,6 +581,25 @@ plan 绑定查询 workspace、输入指纹、案例和 fingerprint，并固定�
 release（如果提供）、`manual_review`、`requires_new_workspace=true`、`auto_apply=false`。它是可审阅的
 执行建议，不会修改参数、复制 workspace 或启动 flow。没有显式优化预算和参数
 白名单的旧计划继续只用于人工审阅，不能直接交给 optimize 执行。
+
+需要显式消费跨设计证据时，plan 必须绑定已校验 release，并显式开启实验开关：
+
+```bash
+ecc experience plan \
+  --project "$PROJECT" --workspace "$WORKSPACE" \
+  --store "$EXPERIENCE_STORE" --release "$OUTPUT_ROOT/experience-release.json" \
+  --experimental-cross-design --through-step Synthesis \
+  --groups "$OUTPUT_ROOT/families.json" \
+  --output "$OUTPUT_ROOT/cross-design-plan.json" --json
+```
+
+plan 会从 store 选择与当前输入内容指纹一致的已提交 query case；也可用
+`--query-case-id` 明确指定。输出新增 `cross_design`，保留 match 的 release、case、
+distance、feature coverage、confidence、排除原因和 provenance。只有参数证据为
+`applied` 的跨设计匹配进入可审阅 `candidates`；`configured` 匹配只进入 `clues`，
+表示待验证线索，不能被 optimize 当作可执行配置。没有校准证据时 status 保持
+experimental、`safe_to_apply=false`；任何 candidate 仍必须从当前 baseline 派生新
+workspace，并完成 full+fresh，不自动放宽工艺、工具、SDC 或频率过滤。
 
 ### 10.1 受控执行经验计划
 
@@ -1497,8 +1519,11 @@ design 的 trial，报告实测 QoR 差值、参数变化、signoff，以及 sco
 
 ## 18. 扩大测试前先建立可比基线
 
-完整 flow 只有在 `signoff check` 通过、QoR 可用且已提交 snapshot 与持久化配置一致时，
-才可作为调优基线。blocked 基线保留为失败证据，比较字段保持 unknown，不能据此计算收益。
+完整 flow 只有在 `signoff check` 无阻塞失败、QoR 可用且已提交 snapshot 与持久化配置
+一致时，才可作为调优基线。若 signoff 退出 7，但全部非通过项都是显式非阻塞 advisory
+（`policy=warn`、`blocked=false`）且所有必需物理 gate 通过，DSE 才可接受该案例；记录中
+必须保留 `signoff_status=unknown`、`signoff_exit_code=7` 与 `advisory_only=true`，不得把它
+表述为物理签核通过。blocked 基线保留为失败证据，比较字段保持 unknown，不能据此计算收益。
 
 step worker 可能将实际几何写回 `home/params.toml`；父进程在分析和发布 snapshot 前重新
 读取这些参数，已结束但报告失败的 worker 也执行同步。参数文件缺失或损坏会阻止该 step
@@ -1660,8 +1685,9 @@ v2 的 `--resume` 重放已保存的决策与案例；已完成的 trial 不重�
 历史种子须显式给 `warm_start` 为冻结知识 release JSON 的路径（相对 spec 文件），沿用
 match 的工艺、工具、analysis/SDC 兼容检查和默认同输入过滤，只采用空间内且其他参数
 不变的配置。计划保存 release/case/distance/configuration 来源，种子同样占名额；没有匹配
-时保留 insufficient_evidence，并回退中心点。此版本不自动放宽到跨设计，也不加载模型
-预测替代实测；模型辅助入口仍使用 v1 的 `--model-release`。
+时保留 insufficient_evidence，并回退中心点。默认不放宽到跨设计；显式开启实验开关后仍
+执行相同兼容过滤，并要求 applied 回执，configured 仅作为线索。模型预测不替代实测；
+v2 可用 `--model-release` 记录预测并在实测目标平局时辅助排序。
 
 `dse report` 导出 summary.json/summary.md、pareto.json，包含全部尝试、决策、rung 晋级、
 参数、目标、实测 QoR、失败原因和每步资源口径。只有完整且验收通过的 full/fresh 案例进入
@@ -1678,10 +1704,13 @@ ecc experience dse compare --plan ./grid-plan.json --result ./grid/result.json \
 
 收据包含失败分母、实际执行数、时间、前沿和实测分数，不把相同预算上限当作相同实际成本，
 不重复使用同一执行证据，也不从单个设计推断泛化收益。D4 的多家族留出与效果门槛保留。
-当前运行仍串行；并行 trial、连续空间、跨设计自动种子和 v2 模型预筛未纳入本次能力。
+并行 trial 受冻结的 `execution.max_concurrent` 约束，每个 batch 只基于已完成历史提议；
+连续轴量化到可重放网格；v2 模型只记录预测并用于实测目标平局。跨设计 seed 默认不启用，
+只有显式 experiment 开关、冻结 release 和 applied 回执同时满足时才会冻结，并可附带
+family groups 隔离。
 项目的动态 runtime_processes 不参与静态配置指纹，基线输入和实际项目配置仍受冻结源校验
-保护。grid/adaptive 对照建议顺序运行，减少共享主机负载干扰；两个结果仍使用独立
-workspace 和 run_id，不在两个进程中同时恢复同一个 DSE 输出目录。
+保护。对照时仍应控制共享主机负载；并行 batch 中的每个 trial 使用独立 workspace 和 run_id，
+不在两个进程中同时恢复同一个 DSE 输出目录。
 
 v2 spec 可显式设置 `baseline_case_id`，绑定 store 中已验证的受控执行案例。该 case 必须
 对应 `--workspace` 的同一目录、当前 snapshot、参数和输入指纹；不能用另一个 workspace 的
@@ -1695,7 +1724,7 @@ case_id。历史 release 只提供有来源的候选，不能替代本轮的阶�
 已审核的 place.density_weight 可用于阶段 DSE；route.bottom_layer/top_layer 仅用于现有
 完整流程优化，限 ics55 公开层目录且 bottom≤top，不能用于尚未包含 route 的前段 DSE。
 
-## 21. grid、adaptive 与 warm-start 的实测对照
+## 21. grid、adaptive、warm-start 与 model-assisted 的实测对照
 
 本节指导用户和 AI 使用现有命令完成策略对照。先验证机制、证据与成本口径，再进行
 多设计效果评估。一个设计的一次成功运行不能证明策略更优。
@@ -1703,7 +1732,7 @@ case_id。历史 release 只提供有来源的候选，不能替代本轮的阶�
 ### 21.1 冻结对照条件
 
 先完成一份当前版本的可信完整基线，保留 workspace、case_id、QoR、签核结果及资源。
-三个计划必须引用同一基线；只有观察记录、没有可验证 attempt 的旧案例不能作为收益基线。
+四个计划必须引用同一基线；只有观察记录、没有可验证 attempt 的旧案例不能作为收益基线。
 固定 ECC、工具、PDK、RTL/SDC、参数默认值、目标单位、搜索域、rung、预算和随机种子。
 在启动任何一组试验之前生成全部 plan，并冻结 warm 组的知识 release。
 
@@ -1712,8 +1741,9 @@ case_id。历史 release 只提供有来源的候选，不能替代本轮的阶�
 | grid | grid | 不设置 |
 | adaptive | adaptive | 不设置 |
 | warm | adaptive | 显式冻结的 release JSON 路径 |
+| model | adaptive | 显式冻结的 release JSON 路径，运行 plan 时追加 `--model-release` |
 
-三组共用 space/objectives/rungs/limits/seed/baseline_case_id；每组使用不同的 plan 文件和
+四组共用 space/objectives/rungs/limits/seed/baseline_case_id；每组使用不同的 plan 文件和
 run 输出目录。目录组织沿用第 19 节：inputs/specs、inputs/plans、store、runs、reports、
 logs、artifacts/releases。知识包使用公开 `experience export/import` 迁移，不手改案例。
 本轮新案例不加入 frozen release，避免将先执行组的结果泄漏给后执行组。
@@ -1727,16 +1757,18 @@ density ratio；7 点全枚举时该次也只剩一个可选点，不能据此�
 
 目标与搜索域来自设计 spec，不将 GCD 的利用率或面积阈值作为其他设计默认值。单目标可
 复用 CLI 的确定性最优点规则。多目标必须在看到结果前规定前沿选点策略，再显式
-`--resume --select`，且三组采用相同策略，不能事后挑选有利点。
+`--resume --select`，且四组采用相同策略，不能事后挑选有利点。model 组必须通过
+`dse run --model-release` 记录 prediction、置信区间、模型 ID 和 fallback；模型只用于
+同目标平局排序，不能替代实测目标、跳过 stage gate 或 full/fresh。
 
 ### 21.2 每组执行到相同验收阶段
 
-先分别运行第 20 节的 `experience dse plan --spec`，再顺序执行三组 `dse run`，等待每组
+先分别运行第 20 节的 `experience dse plan --spec`，再顺序执行四组 `dse run`，等待每组
 full 和 fresh 结束；最后分别执行 `dse report`。阶段成功与 selection_required 都不能计作
-全流程成功。三组必须使用独立派生 workspace 与 run_id，不能共用一次 full/fresh 来节省
+全流程成功。四组必须使用独立派生 workspace 与 run_id，不能共用一次 full/fresh 来节省
 对照成本。失败、超时和未知也进入分母，不删除失败组后重新计算成功率。
 
-对完整结果执行三组两两比较，示例：
+对完整结果执行两两比较，示例：
 
 ```bash
 ecc experience dse compare --plan ./inputs/plans/grid.json \
@@ -1744,7 +1776,7 @@ ecc experience dse compare --plan ./inputs/plans/grid.json \
   --other-result ./runs/adaptive/result.json --output ./reports/grid-vs-adaptive.json --json
 ```
 
-同样生成 grid-vs-warm 与 adaptive-vs-warm 收据。比较命令只验证和输出观测结果，不能将
+同样生成 grid-vs-warm、grid-vs-model 及其他必要两两收据。比较命令只验证和输出观测结果，不能将
 observed_only / benefit_not_established 改写为已证明收益。
 
 ### 21.3 必须汇总的结果
@@ -1817,3 +1849,107 @@ grid 每次都改善，未触发早停；adaptive 的停滞计数为 [0,1,0,1,2,
 adaptive 均未执行 density-ratio 提议，因此也没有验证 TPE 学习选点的效果。共享主机、
 并发软件测试、固定运行顺序和单 seed 限制了耗时结论。GCD 的候选、预算和结果仅为示例；
 本次只验证早停机制，不证明跨设计收益或自动策略的统计选择质量。
+
+## 22. Experience v2：身份、留出验证、D4 与索引
+
+本节是新采集、模型评价和较大 store 的验收基线。v1 case 仍可读取和 verify；不得原地
+改写为 v2。新采集写 schema v2，字段只追加，旧字段和退出码语义保持不变。
+
+### 22.1 身份与检索证据
+
+新 case 至少检查 `design/constraints/process/toolchain` 四项状态。`design.closure=complete`
+要求真实输入闭包；只有顶层 RTL 或不可读 include 不能标 complete。`constraints` 记录 SDC、
+clock 和 corner；`process` 只声明实际选中的 tech/LEF/liberty/mapping/RC 内容；
+`toolchain` 绑定本次运行的 source、工具和 native package。参数只有在 receipt 明确证明工具
+消费时才为 `applied`，否则保持 `configured/unknown`。
+
+```bash
+ecc experience collect --workspace "$ECC_TEST_BASELINE" --store "$ECC_TEST_STORE" --json
+ecc experience verify "$ECC_TEST_CASE_ID" --store "$ECC_TEST_STORE" --json
+ecc experience features "$ECC_TEST_CASE_ID" --store "$ECC_TEST_STORE" \
+  --through-step Synthesis --json
+ecc experience match "$ECC_TEST_CASE_ID" --store "$ECC_TEST_STORE" \
+  --release "$ECC_TEST_RELEASE" --through-step Synthesis \
+  --experimental-cross-design --json
+ecc experience budget "$ECC_TEST_CASE_ID" --store "$ECC_TEST_STORE" \
+  --through-step Synthesis --min-samples 8 --json
+```
+
+`match` 输出固定为 `ecc-experience-similar-designs/1`，必须同时展示 `confidence`、
+`feature_coverage`、排除原因和 `safe_to_apply=false`。跨设计匹配没有校准收益时只能是
+`experimental`；同输入匹配也只能是 `observed_only`。`budget` 输出
+`resource-budget/1`，区分 host/concurrency/scope；样本不足时返回 unknown，不把 p90 填零。
+
+### 22.2 DSE v2 并行、连续轴与模型回退
+
+v2 spec 可冻结 `execution.max_concurrent`，运行时可下调但不能上调：
+
+```json
+{"execution": {"max_concurrent": 2}}
+```
+
+```bash
+ecc experience dse run --plan ./inputs/plans/model.json --output ./runs/model \
+  --max-concurrent 2 --model-release ./inputs/releases/model.json --json
+```
+
+每个 trial 必须有独立 workspace、run_id 和 command receipt。并行 batch 只能基于已完成历史
+提议候选，批内候选互不可见；预算按已启动 trial 计数。resume 不得改变并发数或模型 release。
+实际 batch 并发数写入该次运行的资源观测；只有 scope 与 outcome 均匹配的成功 held-out 样本
+才能参与预算覆盖率验证。
+连续轴使用 `kind=range`、`min/max`、`scale=linear|log`，内部量化到可重放网格；int 轴只接受
+可表示整数。模型预筛只用于记录 prediction/CI/model ID 和同目标平局，缺失或不兼容时回退
+`measured_objective`；`status=complete` 仍只表示 full+fresh 通过，不表示收益。
+
+v2 spec 可在冻结 release 上显式启用跨设计 warm-start：
+
+```json
+{
+  "warm_start": "releases/experience-release.json",
+  "warm_start_experimental_cross_design": true,
+  "warm_start_groups": "families.json",
+  "warm_start_limit": 3
+}
+```
+
+未开启 `warm_start_experimental_cross_design` 时仍只接受同输入 seed。开启后，
+`compatible_design` 匹配只有在参数回执证明 `applied` 时才冻结为 seed；configured 匹配
+不会消耗 trial 预算。每个 seed 的 provenance 固定记录 release、release ID、case、distance、
+feature coverage 和 confidence；`warm_start_groups` 的路径与 SHA256 一并冻结，执行前重算，
+分组文件变化会使计划拒绝执行。跨设计 seed 仍占 trial 预算，仍需完整 full+fresh，且不证明
+跨设计收益；resume 不得改变该开关或分组。
+
+### 22.3 Dataset v2、family 留出和模型晋级
+
+新建 dataset 使用 `ecc-experience-model-dataset/2` 和
+`ecc-experience-model-features/2`。每行携带 design/constraints/process/toolchain 指纹、
+parameter evidence、resource scope 和 feature coverage；重复 input 只算重复观测，不增加独立
+设计数。v2 评价、validation matrix 和 split 都拒绝 training 与 held-out 的 input 或 family
+重叠。模型 release v2 内嵌 validation status、MAE/RMSE、排序正确率、区间覆盖、独立设计数、
+family 数和阈值；`safe_to_apply=false`、`auto_apply=false` 不得放宽。
+
+只有至少 3 个独立设计、2 个 family 且指标达到冻结阈值才可能
+`validated_for_declared_scope`。该状态仍只适用于声明 scope，后续必须真实 DSE + full/fresh。
+没有独立多设计证据时保持 `unproven`，不得发布更强推荐或自动晋级模型。
+
+### 22.4 D4 四策略报告与派生索引
+
+D4 消费已完成的四组 plan/result，不负责补跑缺失实验。spec 至少包含 design、family、
+strategy、seed、order、host 信息以及 plan/result 路径；strategy 必须是
+grid/adaptive/adaptive_warm/model_assisted。报告强制等预算、同 input/process/runtime/目标、
+匹配 seed、平衡顺序和完整 full/fresh；建议门槛为 6 个 design、3 个 family、每组 2 个 seed。
+
+```bash
+ecc experience dse d4 --spec ./inputs/d4.json --output ./reports/d4.json --json
+ecc experience index build --store "$ECC_TEST_STORE" --json
+ecc experience index status --store "$ECC_TEST_STORE" --json
+```
+
+样本、预算、顺序或运行完整性不足时，D4 返回 `unknown`、`generalization_status=unproven`，
+保留完整结果和原因。只有证据通过且相对 grid 有统计显著正收益时才设置
+`promotion_allowed=true`，仍不会自动 apply 或晋级。
+
+`index/cases.json` 是可重建的派生缓存，不属于 case 身份，也不是事实源。`recommend/match`
+可用它保守排除 process/stage 明确不兼容的候选，但仍逐条读取并 verify 入选 case；索引缺失、
+损坏或条目不全时回退全量扫描，安全过滤和 `safe_to_apply=false` 不得放宽。GUI/Agent 只能
+通过公开 CLI/API 读取这些结果，不直接读取 store 私有文件，也不自动把建议写入工程参数。

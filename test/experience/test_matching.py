@@ -7,7 +7,9 @@ from typer.testing import CliRunner
 from chipcompiler.cli.app import app
 from ecc_experience.adapters import process_context as process_adapter
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
+from ecc_experience.api import plan as create_plan
 from ecc_experience.collection.collect import collect_committed_case
+from ecc_experience.knowledge.index import build_index
 from ecc_experience.knowledge.matching import match_cases
 from ecc_experience.knowledge.release import create_release
 from ecc_experience.knowledge.store import ExperienceStore
@@ -178,6 +180,110 @@ def test_match_cli_uses_explicit_frozen_release(matching_cases):
     )
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)[0]["status"] == "matches_available"
+
+
+def test_index_prefilter_matches_full_scan_and_damage_falls_back(matching_cases):
+    create, store, release = matching_cases
+    query, candidate = create("query"), create("candidate")
+    create_release([candidate.case_id], store.root, release)
+    arguments = {"release": release, "through_step": "Synthesis"}
+
+    baseline = match_cases(query.case_id, store.root, **arguments)
+    build_index(store.root)
+    indexed = match_cases(query.case_id, store.root, **arguments)
+    assert indexed["index"]["status"] == "used"
+    assert indexed["matches"] == baseline["matches"]
+    assert indexed["excluded"] == baseline["excluded"]
+
+    (store.root / "index/cases.json").write_text("{")
+    fallback = match_cases(query.case_id, store.root, **arguments)
+    assert fallback["index"]["status"] == "invalid"
+    assert fallback["matches"] == baseline["matches"]
+    assert fallback["excluded"] == baseline["excluded"]
+
+
+def test_optimization_plan_keeps_configured_cross_design_as_review_clue(matching_cases, tmp_path):
+    create, store, release = matching_cases
+    query = create("plan-query")
+    candidate = create("plan-candidate", rtl="different design content")
+    create_release([candidate.case_id], store.root, release)
+
+    payload = create_plan(
+        query.source.workspace_root,
+        store.root,
+        tmp_path / "cross-plan.json",
+        release=release,
+        experimental_cross_design=True,
+        through_step="Synthesis",
+    )
+
+    assert payload["status"] == "insufficient_evidence"
+    assert payload["candidates"] == []
+    assert payload["cross_design"]["status"] == "matches_available"
+    assert payload["cross_design"]["query_case_id"] == query.case_id
+    assert payload["cross_design"]["matches"][0]["case_id"] == candidate.case_id
+    assert payload["cross_design"]["clues"][0]["parameter_evidence_level"] == "configured"
+    assert payload["cross_design"]["safe_to_apply"] is False
+
+
+def test_optimization_plan_consumes_only_applied_cross_design_matches(
+    matching_cases, tmp_path, monkeypatch
+):
+    from ecc_experience.optimization import plan as plan_module
+
+    create, store, release = matching_cases
+    query = create("applied-plan-query")
+    candidate = create("applied-plan-candidate", rtl="different design content")
+    create_release([candidate.case_id], store.root, release)
+    provenance = [
+        {
+            "release_id": "release-test",
+            "case_id": candidate.case_id,
+            "distance": 0.1,
+            "feature_coverage": 0.9,
+            "confidence": "experimental",
+        }
+    ]
+    monkeypatch.setattr(
+        plan_module,
+        "match_cases",
+        lambda *_args, **_kwargs: {
+            "status": "matches_available",
+            "confidence": "experimental",
+            "release_id": "release-test",
+            "matches": [
+                {
+                    "case_id": candidate.case_id,
+                    "match_quality": "compatible_design",
+                    "confidence": "experimental",
+                    "distance": 0.1,
+                    "feature_coverage": 0.9,
+                    "parameter_evidence_level": "applied",
+                    "parameters": {
+                        "level": "applied",
+                        "values": {"place.target_density": 0.4},
+                    },
+                    "provenance": provenance,
+                }
+            ],
+        },
+    )
+
+    payload = create_plan(
+        query.source.workspace_root,
+        store.root,
+        tmp_path / "applied-plan.json",
+        release=release,
+        experimental_cross_design=True,
+        through_step="Synthesis",
+    )
+
+    assert payload["status"] == "recommendations_available"
+    candidate_record = payload["candidates"][0]
+    assert candidate_record["source"] == "compatible_design"
+    assert candidate_record["parameters"] == {"place.target_density": 0.4}
+    assert candidate_record["provenance"] == provenance
+    assert candidate_record["safe_to_apply"] is False
 
 
 def test_process_content_changes_are_detected_without_path_identity(tmp_path):

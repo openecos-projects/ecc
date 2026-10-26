@@ -10,6 +10,8 @@ from chipcompiler.engine.snapshot import (
     read_engineering_snapshot_from_directory,
 )
 from chipcompiler.utility.workspace_lock import workspace_lock
+from ecc_experience.adapters.input_closure import capture_input_closure
+from ecc_experience.adapters.parameter_receipts import capture_parameter_evidence
 from ecc_experience.files import (
     SMALL_EVIDENCE_LIMIT,
     canonical_bytes,
@@ -64,7 +66,7 @@ def _capture(
     ), content
 
 
-def _input_digests(facts: dict) -> list[InputDigest]:
+def _input_digests(facts: dict, root: Path | None = None) -> list[InputDigest]:
     specification = facts.get("workspaceSpec", {})
     binding_data = facts.get("workspaceBindings", {})
     if not isinstance(specification, dict) or not isinstance(binding_data, dict):
@@ -83,9 +85,12 @@ def _input_digests(facts: dict) -> list[InputDigest]:
         if not isinstance(input_id, str) or not isinstance(roles.get(input_id, "unknown"), str):
             raise ExperienceError("Invalid input identity or role")
         checksum = None
-        if isinstance(reference, str) and Path(reference).is_absolute():
+        if isinstance(reference, str) and reference:
+            path = Path(reference).expanduser()
+            if not path.is_absolute() and root is not None:
+                path = root / path
             with suppress(OSError):
-                checksum, _ = file_digest(Path(reference))
+                checksum, _ = file_digest(path)
         inputs.append(
             InputDigest(
                 input_id=input_id,
@@ -102,7 +107,7 @@ def _read_locked(root: Path) -> WorkspaceObservation:
     limitations = [
         "No stable execution attempt ID; observations are not independent execution samples",
         "Artifact digests are captured at collection, not bound to the original commit",
-        "Input closure, includes and PDK contents are not verified; fingerprints are partial",
+        "Strict input identity requires a complete, bounded filelist/include closure",
         "Configured parameters do not prove tool consumption",
         "Legacy memory values retain their original scope; no new resource measurement is inferred",
     ]
@@ -188,6 +193,24 @@ def _read_locked(root: Path) -> WorkspaceObservation:
         evidence.append(record)
         if record.stored_path is not None and content is not None:
             copies[record.stored_path] = content
+    closure = capture_input_closure(root, facts, _input_digests(facts, root))
+    receipt = capture_parameter_evidence(root, facts)
+    limitations.extend(closure.limitations)
+    limitations.extend(receipt.limitations)
+    captured_references = {item.reference for item in evidence}
+    for path in receipt.files:
+        try:
+            relative = path.relative_to(root)
+        except ValueError:
+            continue
+        reference = relative.as_posix()
+        if reference in captured_references:
+            continue
+        record, content = _capture(root, reference, "available")
+        evidence.append(record)
+        captured_references.add(reference)
+        if record.stored_path is not None and content is not None:
+            copies[record.stored_path] = content
     flow_path = safe_child(root, "home/flow.json")
     if flow_path.exists() and read_json(flow_path) != facts["flow"]:
         raise ExperienceError(
@@ -209,7 +232,17 @@ def _read_locked(root: Path) -> WorkspaceObservation:
         raise ExperienceError(
             "Snapshot revision changed during capture", code="experience_source_changed"
         )
-    return WorkspaceObservation(source, facts, _input_digests(facts), evidence, copies, limitations)
+    return WorkspaceObservation(
+        source,
+        facts,
+        closure.inputs,
+        evidence,
+        copies,
+        limitations,
+        design=closure.design,
+        constraints=closure.constraints,
+        parameter_evidence=receipt.evidence,
+    )
 
 
 def read_workspace_observation(directory: str | Path) -> WorkspaceObservation:
