@@ -17,6 +17,7 @@ STRATEGIES = ("grid", "adaptive", "adaptive_warm", "model_assisted")
 MIN_DESIGNS = 6
 MIN_FAMILIES = 3
 MIN_SEEDS = 2
+BUDGET_LIMIT_KEYS = ("max_seconds", "max_trials")
 
 
 def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
@@ -265,14 +266,15 @@ def _load_run(base: Path, entry: dict) -> dict:
 
 
 def _budget_signature(plan: dict) -> str:
-    # A per-trial timeout is a hang guard, not allocated search budget. Larger
+    # Patience is an algorithm stopping rule and trial timeout is a hang guard.
+    # Neither changes the shared trial count or wall-clock envelope. Larger
     # designs may need a different safety limit while every strategy still gets
-    # the same trial count, wall-clock envelope, concurrency and rungs.
+    # the same allocated budget, concurrency and rungs.
     limits = plan.get("limits")
     limits = (
-        {key: value for key, value in limits.items() if key != "trial_timeout_seconds"}
+        {key: limits[key] for key in BUDGET_LIMIT_KEYS if key in limits}
         if isinstance(limits, dict)
-        else limits
+        else {}
     )
     return digest(
         {

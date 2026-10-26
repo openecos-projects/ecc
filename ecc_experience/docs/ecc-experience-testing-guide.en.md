@@ -2295,8 +2295,9 @@ The report requires equal budgets, matched input/process/runtime/objectives,
 matched seeds, balanced order and complete full/fresh validation. The advisory
 gate is six designs, three families and two seeds per strategy.
 Equal budget is defined by `max_trials`, `max_seconds`, concurrency and rungs.
-`trial_timeout_seconds` is a per-trial hang guard that may vary with design size,
-so it is excluded from the budget signature; a timed-out run still fails.
+`patience` is an algorithm stopping rule and `trial_timeout_seconds` is a
+per-trial hang guard; both may vary by strategy or design size and are excluded
+from the budget signature. A timed-out run still fails.
 
 `adaptive_warm` is only a distinct strategy when every frozen seed is a
 cross-design seed (`warm_start.status=cross_design`) and the release used

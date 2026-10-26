@@ -129,10 +129,11 @@ def test_d4_insufficient_sample_stays_unknown(tmp_path):
     assert "insufficient_independent_designs" in report["reasons"]
 
 
-def test_d4_equal_budget_ignores_per_design_trial_timeout(tmp_path):
+def test_d4_equal_budget_ignores_algorithm_patience_and_trial_timeout(tmp_path):
     spec = _write_spec(tmp_path)
     plan_path = tmp_path / "design-0-0-grid-plan.json"
     plan = json.loads(plan_path.read_text())
+    plan["limits"]["patience"] = 1
     plan["limits"]["trial_timeout_seconds"] = 90
     plan_path.write_text(json.dumps(plan))
 
