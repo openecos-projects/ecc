@@ -424,16 +424,6 @@ def render_signoff_inspect_text(records, file=None):
             if group.get("available") is not None:
                 counts = f"  ({group['available']}/{group['expected']})"
             print(f"    {group['group']:14s} {group['status']:9s}{counts}", file=target)
-    items = [r for r in records[1:] if "item" in r]
-    if items:
-        print(file=target)
-        print("  items:", file=target)
-        for item in items:
-            blocked = " blocked" if str(item.get("blocked", "")).lower() in {"true", "1"} else ""
-            print(
-                f"    {item['item']:40s} {item.get('state', ''):12s}{blocked}",
-                file=target,
-            )
     risks = [r for r in records[1:] if "risk" in r]
     if risks:
         print(file=target)
