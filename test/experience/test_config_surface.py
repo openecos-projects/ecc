@@ -6,6 +6,7 @@ from ecc_experience.dse.config_surface import (
     canonicalize_parameters,
     config_files,
     describe_config_surface,
+    parameter_evidence_from_config_receipt,
     validate_config_surface,
     verify_applied_config,
 )
@@ -133,6 +134,37 @@ def test_config_receipt_does_not_claim_an_unreadable_file_was_applied(tmp_path):
 
     assert receipt["status"] == "unavailable"
     assert "dreamplace_ecc.json" in receipt["reason"]
+
+
+def test_config_receipt_becomes_materialization_evidence_not_runtime_effectiveness(tmp_path):
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "dreamplace_ecc.json").write_text(
+        json.dumps({"target_density": 0.55, "stop_overflow": 0.08})
+    )
+    parameters = {"place.target_density": 0.55, "place.target_overflow": 0.08}
+    receipt = verify_applied_config(tmp_path, parameters)
+
+    evidence = parameter_evidence_from_config_receipt(
+        receipt, parameters, candidate_id="candidate-0001", stage="place"
+    )
+
+    assert evidence is not None
+    assert evidence["level"] == "materialized"
+    assert evidence["receipt_status"] == "valid"
+    assert len(evidence["receipt_sha256"]) == 64
+    assert {item["knob_id"] for item in evidence["applied_parameters"]} == set(parameters)
+    assert all(item["status"] == "unknown" for item in evidence["applied_parameters"])
+    assert "not runtime consumption" in evidence["limitations"][0]
+
+
+def test_unapplied_config_receipt_does_not_create_evidence(tmp_path):
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "dreamplace_ecc.json").write_text(json.dumps({"target_density": 0.4}))
+    receipt = verify_applied_config(tmp_path, {"place.target_density": 0.55})
+
+    assert parameter_evidence_from_config_receipt(receipt, {"place.target_density": 0.55}) is None
 
 
 def test_parameter_aliases_collapse_to_the_supported_key():

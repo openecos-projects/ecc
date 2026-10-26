@@ -20,6 +20,7 @@ def collect_trial(
     run_id: str,
     *,
     execution_context: dict | None = None,
+    parameter_evidence: dict | None = None,
 ) -> dict:
     observation = read_workspace_observation(workspace)
     if (
@@ -62,7 +63,13 @@ def collect_trial(
                             "source_sha256": file_digest(safe_child(workspace, reference))[0],
                         }
     result = validate_trial(
-        workspace, store, baseline, updates, run_id, execution_context=execution_context
+        workspace,
+        store,
+        baseline,
+        updates,
+        run_id,
+        execution_context=execution_context,
+        parameter_evidence=parameter_evidence,
     )
     return {**result, "runtime_parameter_updates": evidence}
 

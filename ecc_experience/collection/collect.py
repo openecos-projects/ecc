@@ -38,6 +38,7 @@ def collect_committed_case(
     attempt_id: str | None = None,
     expected_snapshot_digest: str | None = None,
     execution_context: dict | None = None,
+    parameter_evidence: dict | None = None,
 ) -> CollectionResult:
     workspace = Path(directory).expanduser().resolve()
     if store.root.is_relative_to(workspace) or workspace.is_relative_to(store.root):
@@ -103,10 +104,16 @@ def collect_committed_case(
         **design_memory,
     )
     constraints = ConstraintIdentity(**(observation.constraints or {}))
-    parameter_evidence = observation.parameter_evidence or {
-        "level": "configured" if isinstance(spec, dict) and spec.get("parameters") else "unknown",
-        "receipt_status": "not_applicable",
-    }
+    parameter_evidence = (
+        parameter_evidence
+        or observation.parameter_evidence
+        or {
+            "level": "configured"
+            if isinstance(spec, dict) and spec.get("parameters")
+            else "unknown",
+            "receipt_status": "not_applicable",
+        }
+    )
     case = ExperienceCase(
         schema_version=2,
         case_id="",

@@ -101,14 +101,16 @@ class ParameterApplication(Model):
 
 
 class ParameterEvidence(Model):
-    level: Literal["applied", "configured", "unknown"]
+    level: Literal["applied", "materialized", "configured", "unknown"]
     receipt_sha256: str | None = None
     receipt_status: Literal["missing", "valid", "invalid", "not_applicable"] = "missing"
     applied_parameters: list[ParameterApplication] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
 
 
-ParameterEvidenceValue: TypeAlias = Literal["configured", "unknown"] | ParameterEvidence
+ParameterEvidenceValue: TypeAlias = (
+    Literal["applied", "materialized", "configured", "unknown"] | ParameterEvidence
+)
 
 
 class FailureIdentity(Model):
@@ -182,6 +184,8 @@ class CaseContents:
     copies: dict[str, bytes]
 
 
-def parameter_evidence_level(case: ExperienceCase) -> Literal["applied", "configured", "unknown"]:
+def parameter_evidence_level(
+    case: ExperienceCase,
+) -> Literal["applied", "materialized", "configured", "unknown"]:
     value = case.parameter_evidence
     return value if isinstance(value, str) else value.level

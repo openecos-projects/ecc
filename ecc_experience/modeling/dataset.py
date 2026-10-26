@@ -130,7 +130,7 @@ def build_dataset(
             ),
             "parameter_evidence": {
                 level: sum(row["parameter_evidence_level"] == level for row in rows)
-                for level in ("applied", "configured", "unknown")
+                for level in ("applied", "materialized", "configured", "unknown")
             },
         },
         "excluded": excluded,
@@ -207,7 +207,12 @@ def validate_dataset(payload: dict) -> None:
             ):
                 if key not in row:
                     raise invalid(f"Dataset v2 row is missing {key}")
-            if row["parameter_evidence_level"] not in {"applied", "configured", "unknown"}:
+            if row["parameter_evidence_level"] not in {
+                "applied",
+                "materialized",
+                "configured",
+                "unknown",
+            }:
                 raise invalid("Dataset v2 parameter evidence level is invalid")
             if not isinstance(row["resource_scope"], dict):
                 raise invalid("Dataset v2 resource scope is invalid")

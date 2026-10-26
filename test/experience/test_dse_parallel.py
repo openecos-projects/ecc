@@ -36,6 +36,8 @@ def test_version2_parallel_batches_keep_independent_attempts_and_replay(
     assert first["status"] == second["status"] == "complete", first
     assert first["max_concurrent"] == second["max_concurrent"] == 2
     assert first["execution_batches"] == second["execution_batches"] == 2
+    assert all(item["parameter_evidence"] == "materialized" for item in first["trials"])
+    assert all(item["config_receipt"]["status"] == "applied" for item in first["trials"])
     assert [item["candidate_id"] for item in first["trials"]] == [
         item["candidate_id"] for item in second["trials"]
     ]

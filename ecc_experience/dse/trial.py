@@ -11,7 +11,10 @@ from ecc_experience.adapters.chipcompiler_reader import read_workspace_observati
 from ecc_experience.adapters.process_context import process_context
 from ecc_experience.benchmark.evidence import collect_trial
 from ecc_experience.benchmark.preparation import runtime_identity
-from ecc_experience.dse.config_surface import verify_applied_config
+from ecc_experience.dse.config_surface import (
+    parameter_evidence_from_config_receipt,
+    verify_applied_config,
+)
 from ecc_experience.dse.evidence import stage_acceptance
 from ecc_experience.dse.plan import (
     DseLimits,
@@ -209,14 +212,30 @@ def execute_trial(
             "scope": "dse_runtime_and_selected_pdk_content_checked_before_and_after",
         }
         update(collection_status="pending")
+        parameter_evidence = parameter_evidence_from_config_receipt(
+            record.get("config_receipt"),
+            candidate["parameters"],
+            candidate_id=candidate["candidate_id"],
+            stage=plan["through_step"],
+        )
         if store_lock is None:
             collected = collect_trial(
-                workspace, plan["store"], requested, run_id, execution_context=context
+                workspace,
+                plan["store"],
+                requested,
+                run_id,
+                execution_context=context,
+                parameter_evidence=parameter_evidence,
             )
         else:
             with store_lock:
                 collected = collect_trial(
-                    workspace, plan["store"], requested, run_id, execution_context=context
+                    workspace,
+                    plan["store"],
+                    requested,
+                    run_id,
+                    execution_context=context,
+                    parameter_evidence=parameter_evidence,
                 )
         update(**collected, collection_status="collected")
         if mode == "screen":

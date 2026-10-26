@@ -1960,7 +1960,8 @@ Parallel trials are bounded by the frozen `execution.max_concurrent`; each batch
 proposes only from completed history. Continuous axes quantize to replayable
 grids, and v2 model predictions only break measured-objective ties. Automatic
 cross-design seeds remain disabled by default and require an explicit frozen
-release, experimental opt-in, applied receipts and optional family groups.
+release, experimental opt-in, applied or materialized receipts and optional
+family groups.
 Dynamic project runtime_processes are excluded from the static configuration
 fingerprint; baseline inputs and actual project configuration remain protected.
 Control shared-host load when comparing strategies. Every trial in a parallel
@@ -2169,8 +2170,9 @@ A new case must expose `design/constraints/process/toolchain` status.
 unreadable include is not complete. Constraints record SDC, clocks and corners;
 process records only selected tech/LEF/liberty/mapping/RC content; toolchain
 binds sources, tools and native packages from this run. A parameter is `applied`
-only when a receipt proves tool consumption; otherwise retain
-`configured/unknown`.
+only when a native receipt proves tool consumption. `materialized` means a frozen
+DSE iteration-config receipt proved the value reached the tool JSON file, but does
+not prove runtime consumption. Otherwise retain `configured/unknown`.
 
 ```bash
 ecc experience collect --workspace "$ECC_TEST_BASELINE" --store "$ECC_TEST_STORE" --json
@@ -2229,7 +2231,8 @@ A v2 spec can explicitly enable cross-design warm-start from a frozen release:
 
 Without the flag, warm-start still accepts same-input seeds only. With it, only
 true cross-design seeds are accepted: same-input matches are excluded, and a
-`compatible_design` match is frozen only when parameter evidence is `applied`.
+`compatible_design` match is frozen only when parameter evidence is `applied` or
+`materialized`.
 Configured matches never consume trial budget. Every seed provenance records the
 release, release ID, case, distance, feature coverage and confidence. The groups
 file path and SHA256 are frozen and rechecked before execution, so a changed
@@ -2328,6 +2331,10 @@ After `param apply`, a durable trial reads the expected file/path and records a
 `config_receipt` in the trial evidence. A mismatch fails the trial; an
 unreadable or absent file is retained as `unavailable`, and D4 reports it as a
 reason rather than silently treating the parameter as applied.
+When that receipt is `applied`, the collected case records `materialized`
+parameter evidence with the receipt digest and an explicit limitation that JSON
+materialization is not runtime consumption or a QoR effect. DSE never labels
+this evidence `applied`; native tool receipts remain a separate, stronger claim.
 Aliases that write the same tool field (`place.stop_overflow` with
 `place.target_overflow`, `place.routability_opt_flag` with
 `place.routability_opt`, and the `inflation_s5b1_*` timing aliases) are

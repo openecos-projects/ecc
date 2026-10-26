@@ -1686,7 +1686,7 @@ v2 的 `--resume` 重放已保存的决策与案例；已完成的 trial 不重�
 match 的工艺、工具、analysis/SDC 兼容检查和默认同输入过滤，只采用空间内且其他参数
 不变的配置。计划保存 release/case/distance/configuration 来源，种子同样占名额；没有匹配
 时保留 insufficient_evidence，并回退中心点。默认不放宽到跨设计；显式开启实验开关后仍
-执行相同兼容过滤，并要求 applied 回执，configured 仅作为线索。模型预测不替代实测；
+执行相同兼容过滤，并要求 applied 或 materialized 回执，configured 仅作为线索。模型预测不替代实测；
 v2 可用 `--model-release` 记录预测并在实测目标平局时辅助排序。
 
 `dse report` 导出 summary.json/summary.md、pareto.json，包含全部尝试、决策、rung 晋级、
@@ -1860,8 +1860,9 @@ adaptive 均未执行 density-ratio 提议，因此也没有验证 TPE 学习选
 新 case 至少检查 `design/constraints/process/toolchain` 四项状态。`design.closure=complete`
 要求真实输入闭包；只有顶层 RTL 或不可读 include 不能标 complete。`constraints` 记录 SDC、
 clock 和 corner；`process` 只声明实际选中的 tech/LEF/liberty/mapping/RC 内容；
-`toolchain` 绑定本次运行的 source、工具和 native package。参数只有在 receipt 明确证明工具
-消费时才为 `applied`，否则保持 `configured/unknown`。
+`toolchain` 绑定本次运行的 source、工具和 native package。参数只有在原生 receipt 明确
+证明工具消费时才为 `applied`；`materialized` 表示冻结的 DSE 迭代配置回执已证明数值到达
+工具 JSON，但不证明运行时消费；其余保持 `configured/unknown`。
 
 ```bash
 ecc experience collect --workspace "$ECC_TEST_BASELINE" --store "$ECC_TEST_STORE" --json
@@ -1915,8 +1916,9 @@ v2 spec 可在冻结 release 上显式启用跨设计 warm-start：
 ```
 
 未开启 `warm_start_experimental_cross_design` 时仍只接受同输入 seed。开启后只接受真正的
-跨设计 seed：同输入匹配会被排除，`compatible_design` 还必须由参数回执证明 `applied`；
-configured 匹配不会消耗 trial 预算。每个 seed 的 provenance 固定记录 release、release ID、case、distance、
+跨设计 seed：同输入匹配会被排除，`compatible_design` 还必须由参数回执证明
+`applied`（原生工具消费）或 `materialized`（DSE 配置物化）；configured 匹配不会消耗 trial 预算。
+每个 seed 的 provenance 固定记录 release、release ID、case、distance、
 feature coverage 和 confidence；`warm_start_groups` 的路径与 SHA256 一并冻结，执行前重算，
 分组文件变化会使计划拒绝执行。跨设计 seed 仍占 trial 预算，仍需完整 full+fresh，且不证明
 跨设计收益；resume 不得改变该开关或分组。
@@ -1989,6 +1991,9 @@ no-op 参数当成有效实验轴。
 执行 `param apply` 后，durable trial 会读取目标文件/路径并在 trial 证据中记录
 `config_receipt`。数值不一致会使 trial 失败；文件缺失或不可读则记录为 `unavailable`，
 D4 会把该状态列为原因，而不是静默认为参数已生效。
+当回执为 `applied` 时，收集到的 case 记录 `materialized` 参数证据、回执摘要和明确限制：
+JSON 物化不等于运行时消费或 QoR 效果。DSE 不会把该证据写成更强的 `applied`；原生工具
+回执仍是独立的更强证明。
 写入同一工具字段的别名（`place.stop_overflow` 与 `place.target_overflow`、
 `place.routability_opt_flag` 与 `place.routability_opt`，以及 `inflation_s5b1_*`
 时序别名）在配置比较和 warm-start 匹配前会归一化，避免合法回读被误判为越权修改。

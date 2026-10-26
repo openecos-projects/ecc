@@ -77,6 +77,10 @@ def dse_project(workspace_factory, tmp_path, monkeypatch):
     snapshot["qorSnapshotExtension"].pop("reason")
     snapshot_path.write_text(json.dumps(snapshot))
     (workspace / "home/flow.json").write_text(json.dumps(snapshot["flow"]))
+    (workspace / "config").mkdir()
+    (workspace / "config/floorplan_ecc.json").write_text(
+        json.dumps({"die_builder": {"die_util": {"utilization": 0.3}}})
+    )
     (tmp_path / "project.json").write_text(
         json.dumps(
             {
@@ -524,7 +528,11 @@ def test_warm_start_cross_design_requires_applied_evidence_and_records_provenanc
         facts["workspaceSpec"]["parameters"]["floorplan.core_util"] = core_util
         return baseline.model_copy(update={"facts": facts})
 
-    observed_cases = {"applied": observed(0.35), "configured": observed(0.4)}
+    observed_cases = {
+        "applied": observed(0.35),
+        "materialized": observed(0.3),
+        "configured": observed(0.4),
+    }
 
     def read_case(_repository, case_id):
         if case_id == baseline.case_id:
@@ -546,6 +554,16 @@ def test_warm_start_cross_design_requires_applied_evidence_and_records_provenanc
                     "confidence": "experimental",
                     "feature_coverage": 0.9,
                     "parameter_evidence_level": "applied",
+                },
+                {
+                    "case_id": "materialized",
+                    "distance": 0.15,
+                    "compatibility": "selected_process_tool_analysis_match",
+                    "parameters": {"values": {"floorplan.core_util": 0.3}},
+                    "match_quality": "compatible_design",
+                    "confidence": "experimental",
+                    "feature_coverage": 0.9,
+                    "parameter_evidence_level": "materialized",
                 },
                 {
                     "case_id": "configured",
@@ -577,7 +595,7 @@ def test_warm_start_cross_design_requires_applied_evidence_and_records_provenanc
 
     result = warm_start.freeze_warm_start(frozen, 3)
 
-    assert [seed["case_id"] for seed in result["seeds"]] == ["applied"]
+    assert [seed["case_id"] for seed in result["seeds"]] == ["applied", "materialized"]
     seed = result["seeds"][0]
     assert seed["confidence"] == "experimental"
     assert seed["feature_coverage"] == 0.9

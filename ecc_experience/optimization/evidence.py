@@ -11,7 +11,7 @@ from ecc_experience.files import SMALL_EVIDENCE_LIMIT, read_json
 from ecc_experience.knowledge.recommend import _input_fingerprint, _sanitize
 from ecc_experience.knowledge.store import ExperienceStore
 from ecc_experience.knowledge.verify import verify_case
-from ecc_experience.models import ExperienceError, WorkspaceObservation
+from ecc_experience.models import ExperienceError, WorkspaceObservation, parameter_evidence_level
 from ecc_experience.optimization.policy import configuration_differences
 from ecc_experience.optimization.process import CliRunner
 
@@ -83,6 +83,7 @@ def validate_trial(
     run_id: str,
     *,
     execution_context: dict | None = None,
+    parameter_evidence: dict | None = None,
 ) -> dict:
     observation = check_trial_configuration(workspace, baseline, parameters)
     baseline_qor = baseline.facts.get("qorSnapshotExtension", {})
@@ -99,11 +100,12 @@ def validate_trial(
         attempt_id=run_id,
         expected_snapshot_digest=observation.source.snapshot_digest,
         execution_context=execution_context,
+        parameter_evidence=parameter_evidence,
     )
     verification = verify_case(collected.case, repository.case_directory(collected.case.case_id))
     return {
         "case_id": collected.case.case_id,
         "verification": verification.model_dump(),
         "snapshot_digest": observation.source.snapshot_digest,
-        "parameter_evidence": "configured",
+        "parameter_evidence": parameter_evidence_level(collected.case),
     }

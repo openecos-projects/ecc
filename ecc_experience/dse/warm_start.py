@@ -45,7 +45,9 @@ def freeze_warm_start(plan: dict, limit: int) -> dict:
             or item.get("same_input_content") is False
         )
         evidence_level = item.get("parameter_evidence_level", "unknown")
-        if experimental and (not compatible_design or evidence_level != "applied"):
+        if experimental and (
+            not compatible_design or evidence_level not in {"applied", "materialized"}
+        ):
             continue
         candidate = repository.read(item["case_id"])
         candidate_specification = candidate.facts.get("workspaceSpec")

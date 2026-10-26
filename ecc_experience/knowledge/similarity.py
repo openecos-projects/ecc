@@ -72,7 +72,7 @@ def feature_distance(
 def parameter_ranges(matches: list[dict]) -> dict[str, dict]:
     grouped: dict[str, list[float]] = {}
     for match in matches:
-        if match.get("parameter_evidence_level") != "applied":
+        if match.get("parameter_evidence_level") not in {"applied", "materialized"}:
             continue
         parameters = match.get("parameters", {}).get("values", {})
         if not isinstance(parameters, dict):

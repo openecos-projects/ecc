@@ -12,6 +12,14 @@ from ecc_experience.models import ExperienceCase, ExperienceError, parameter_evi
 FEATURE_SCHEMA = "ecc-experience-features/1"
 
 
+def _parameter_scope(level: str) -> str:
+    if level == "applied":
+        return "committed_configuration_and_validated_tool_receipts"
+    if level == "materialized":
+        return "committed_configuration_and_dse_iteration_config_receipt"
+    return "committed_configuration_not_historical_tool_consumption"
+
+
 def case_features(case_id: str, store: str | Path, *, through_step: str | None = None) -> dict:
     repository = ExperienceStore(store)
     case = repository.read(case_id)
@@ -45,9 +53,7 @@ def extract_features(
                 if not isinstance(case.parameter_evidence, str)
                 else case.parameter_evidence
             ),
-            "scope": "committed_configuration_and_validated_tool_receipts"
-            if parameter_evidence_level(case) == "applied"
-            else "committed_configuration_not_historical_tool_consumption",
+            "scope": _parameter_scope(parameter_evidence_level(case)),
         },
         "process": _sanitize(specification.get("pdk", {})),
         "process_fingerprint": case.process_fingerprint,

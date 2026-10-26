@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Final
 
 from chipcompiler.data.parameter_schema import lookup_schema
+from ecc_experience.files import digest
 from ecc_experience.models import ExperienceError
 
 SURFACE_SCHEMA: Final = "ecc-experience-dse-config-surface/1"
@@ -268,3 +269,57 @@ def _same_value(expected: object, observed: object) -> bool:
     ):
         return math.isclose(float(expected), float(observed), rel_tol=1e-9, abs_tol=1e-12)
     return expected == observed
+
+
+def parameter_evidence_from_config_receipt(
+    receipt: object,
+    parameters: dict,
+    *,
+    candidate_id: str | None = None,
+    stage: str | None = None,
+) -> dict | None:
+    """Convert a DSE iteration-config receipt into materialization evidence.
+
+    This proves that a reviewed parameter reached the tool configuration file.
+    It deliberately does not claim that the tool consumed the value or that the
+    value caused any QoR change.
+    """
+    if not isinstance(receipt, dict) or receipt.get("status") != "applied":
+        return None
+    checks = receipt.get("checks")
+    if not isinstance(checks, list) or not checks:
+        return None
+    if any(
+        not isinstance(check, dict)
+        or check.get("match") is not True
+        or not isinstance(check.get("parameter"), str)
+        for check in checks
+    ):
+        return None
+    applications = []
+    for parameter in sorted(parameters):
+        selected = [check for check in checks if check["parameter"] == parameter]
+        if not selected:
+            return None
+        observed = [check.get("observed") for check in selected]
+        applications.append(
+            {
+                "knob_id": parameter,
+                "value": parameters[parameter],
+                "actual_value": observed[0] if len(observed) == 1 else observed,
+                "unit": None,
+                "status": "unknown",
+                "candidate_id": candidate_id,
+                "stage": stage,
+            }
+        )
+    return {
+        "level": "materialized",
+        "receipt_sha256": digest(receipt),
+        "receipt_status": "valid",
+        "applied_parameters": applications,
+        "limitations": [
+            "DSE config receipt proves parameter materialization into the iteration "
+            "tool configuration, not runtime consumption or a QoR effect"
+        ],
+    }
