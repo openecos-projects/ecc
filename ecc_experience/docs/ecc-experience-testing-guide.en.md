@@ -2550,3 +2550,9 @@ the new Cartesian combination count. If that count exceeds the current common
 `minimum_equal_max_trials` records the required equal budget. The proposal is
 always `safe_to_apply=false` and requires every strategy, seed and validation
 slot to be frozen again; a partial grid must not be presented as full coverage.
+If an `adaptive_warm` run lacks a `cross_design` status, explicit family
+isolation or a verified release, the planner reports
+`cross_design_warm_evidence_invalid` and `refresh_cross_design_warm_start`
+instead of allowing that design into confirmation-ready state. Regenerate the
+release from an independent seed design, re-freeze the plan and rerun it under
+the same budget.

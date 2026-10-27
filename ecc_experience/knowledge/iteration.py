@@ -57,6 +57,7 @@ def plan_next_benchmark(manifest_path: str | Path, output: str | Path) -> dict[s
             },
         )
     coverage_actions = _coverage_actions(len(designs), len(families), len(seeds))
+    warm_actions = _warm_start_actions(runs)
     model_actions = _model_actions(manifest.get("model_evidence", {}))
     exploration_ids = sorted(set(missing_ids) | set(invalid_ids))
     limits = _per_run_limits(runs)
@@ -69,7 +70,7 @@ def plan_next_benchmark(manifest_path: str | Path, output: str | Path) -> dict[s
     confirmation_runs = (
         new_designs * len(STRATEGIES) * MIN_SEEDS + len(designs) * len(STRATEGIES) * seed_gap
     )
-    actions = [*coverage_actions, *search_actions, *model_actions]
+    actions = [*coverage_actions, *warm_actions, *search_actions, *model_actions]
     action_required = bool(actions or exploration_ids) or any(
         row["priority"] in {"high", "medium"} for row in priorities
     )
@@ -234,6 +235,11 @@ def _design_priorities(
         )
         model_rows = [row for row in rows if row["strategy"] == "model_assisted"]
         model_available = any(_model_status(row) == "available" for row in model_rows)
+        warm_gaps = {
+            _run_id(row): _warm_start_issue(row)
+            for row in rows
+            if row["strategy"] == "adaptive_warm" and _warm_start_issue(row) is not None
+        }
         separation_status = separation_by_design.get(design, "unknown")
         reasons = []
         if missing:
@@ -246,6 +252,14 @@ def _design_priorities(
             reasons.append({"code": "resource_evidence_incomplete", "run_ids": resource_gaps})
         if model_rows and not model_available:
             reasons.append({"code": "model_evidence_unavailable"})
+        if warm_gaps:
+            reasons.append(
+                {
+                    "code": "cross_design_warm_evidence_invalid",
+                    "run_ids": sorted(warm_gaps),
+                    "issues": dict(sorted(warm_gaps.items())),
+                }
+            )
         if separation_status == "converged":
             reasons.append({"code": "strategies_converged"})
         elif separation_status == "unstable":
@@ -253,7 +267,12 @@ def _design_priorities(
         elif separation_status == "unknown" and not missing:
             reasons.append({"code": "strategy_separation_unknown"})
         codes = {reason["code"] for reason in reasons}
-        if codes & {"strategy_missing", "run_invalid", "model_evidence_unavailable"}:
+        if codes & {
+            "strategy_missing",
+            "run_invalid",
+            "model_evidence_unavailable",
+            "cross_design_warm_evidence_invalid",
+        }:
             priority = "high"
         elif codes & {
             "quality_gap",
@@ -294,6 +313,8 @@ def _next_action(codes: set[str]) -> str:
         return "complete_strategy_matrix"
     if "run_invalid" in codes:
         return "rerun_invalid_runs"
+    if "cross_design_warm_evidence_invalid" in codes:
+        return "refresh_cross_design_warm_start"
     if "model_evidence_unavailable" in codes:
         return "collect_model_evidence"
     if codes & {"quality_gap", "resource_evidence_incomplete"}:
@@ -303,6 +324,49 @@ def _next_action(codes: set[str]) -> str:
     if "strategy_separation_unstable" in codes:
         return "repeat_matched_seeds"
     return "add_independent_confirmation"
+
+
+def _warm_start_issue(row: dict[str, Any]) -> str | None:
+    warm = row.get("warm_start")
+    if not isinstance(warm, dict):
+        return "warm_start_evidence_missing"
+    if warm.get("status") != "cross_design":
+        return f"warm_start_not_cross_design:{warm.get('status', 'unknown')}"
+    if warm.get("family_isolation") != "explicit_groups":
+        return "warm_start_family_isolation_missing"
+    if warm.get("cross_design_verified") is not True:
+        return "warm_start_cross_design_unverified"
+    return None
+
+
+def _warm_start_actions(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    actions = []
+    for design in sorted({row["design"] for row in runs}):
+        rows = [
+            row for row in runs if row["design"] == design and row["strategy"] == "adaptive_warm"
+        ]
+        issues = {
+            _run_id(row): _warm_start_issue(row)
+            for row in rows
+            if _warm_start_issue(row) is not None
+        }
+        if not issues:
+            continue
+        actions.append(
+            {
+                "code": "cross_design_warm_start",
+                "priority": "high",
+                "design": design,
+                "run_ids": sorted(issues),
+                "issues": dict(sorted(issues.items())),
+                "reason": (
+                    "Regenerate the warm release from an independent seed design with explicit "
+                    "family isolation, re-freeze the plan, and rerun under the same budget; a "
+                    "same-design or unverified seed does not qualify"
+                ),
+            }
+        )
+    return actions
 
 
 def _search_plan(search: Any, runs: list[dict[str, Any]]) -> dict[str, Any]:

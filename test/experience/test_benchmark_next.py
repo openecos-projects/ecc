@@ -22,8 +22,9 @@ def _run(
     model="not_requested",
     resource=True,
     feature=True,
+    warm_start=None,
 ):
-    return {
+    row = {
         "design": design,
         "family": family,
         "strategy": strategy,
@@ -42,6 +43,13 @@ def _run(
         "model": {"status": model},
         "budget": {"limits": {"max_seconds": 60, "max_trials": 4}},
     }
+    if strategy == "adaptive_warm":
+        row["warm_start"] = warm_start or {
+            "status": "cross_design",
+            "family_isolation": "explicit_groups",
+            "cross_design_verified": True,
+        }
+    return row
 
 
 def _manifest():
@@ -196,6 +204,47 @@ def test_next_round_proposes_config_axes_and_cartesian_trial_budget(tmp_path):
     )
     assert proposal["proposed_axes"]["place.target_density"] == [0.2, 0.25, 0.3]
     assert proposal["minimum_equal_max_trials"] == 27
+
+
+def test_next_round_requires_verified_cross_design_warm_start(tmp_path):
+    runs = [
+        _run("design-a", "grid"),
+        _run("design-a", "adaptive"),
+        _run(
+            "design-a",
+            "adaptive_warm",
+            warm_start={
+                "status": "same_design",
+                "family_isolation": "explicit_groups",
+                "cross_design_verified": False,
+            },
+        ),
+        _run("design-a", "model_assisted", model="available"),
+    ]
+    manifest = {
+        "schema": CAMPAIGN_MANIFEST_SCHEMA,
+        "campaign_id": "campaign-warm",
+        "budget": {"equal_budget": True},
+        "runs": runs,
+    }
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest))
+
+    result = plan_next_benchmark(path, tmp_path / "next.json")
+
+    priority = result["priorities"][0]
+    assert priority["priority"] == "high"
+    assert priority["next_action"] == "refresh_cross_design_warm_start"
+    assert priority["reasons"][0] == {
+        "code": "cross_design_warm_evidence_invalid",
+        "run_ids": ["design-a:adaptive_warm:1"],
+        "issues": {
+            "design-a:adaptive_warm:1": "warm_start_not_cross_design:same_design",
+        },
+    }
+    action = next(item for item in result["actions"] if item["code"] == "cross_design_warm_start")
+    assert action["priority"] == "high"
+    assert action["run_ids"] == ["design-a:adaptive_warm:1"]
 
 
 def test_next_round_is_ready_only_when_gates_and_evidence_are_complete(tmp_path):

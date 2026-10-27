@@ -2161,3 +2161,7 @@ manifest、delta 和源报告 SHA256，不覆盖上一版 release。
 `max_trials`，`search_plan.budget.decision=increase_equal_max_trials`，同时给出
 `minimum_equal_max_trials`。该提案固定 `safe_to_apply=false` 且要求全部策略、seed 和
 验证槽重新冻结；不能只跑部分网格后宣称覆盖完整空间。
+`adaptive_warm` 若缺少 `cross_design`、显式 family isolation 或已验证的 release，
+planner 会报告 `cross_design_warm_evidence_invalid` 并给出
+`refresh_cross_design_warm_start`，不会让该设计进入 confirmation-ready。修复时需从独立
+seed design 重新生成 release、重冻计划，并在同一预算下重跑。
