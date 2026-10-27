@@ -1953,7 +1953,8 @@ parameter evidence、resource scope 和 feature coverage；重复 input 只算�
 family 数和阈值；`safe_to_apply=false`、`auto_apply=false` 不得放宽。评价报告和 release
 同时携带 `validation.calibration`：按 held-out input 分组，用其他组的绝对误差分位数拟合
 校准区间宽度，并报告交叉验证覆盖率。DSE/advice 的预测区间优先使用该校准；单个 held-out
-组不足以校准时保持 `insufficient_evidence`，回退训练残差并显式标注区间依据。
+组不足以校准时保持 `insufficient_evidence`，回退训练残差并显式标注区间依据。校准得到的
+`interval_half_width` 已经是目标覆盖率分位数，预测时必须直接使用，不能再乘以 2。
 
 只有至少 3 个独立设计、2 个 family 且指标达到冻结阈值才可能
 `validated_for_declared_scope`。该状态仍只适用于声明 scope，后续必须真实 DSE + full/fresh。

@@ -575,21 +575,24 @@ def predict_features(
     if model["target"] == "feasibility":
         prediction = min(1.0, max(0.0, prediction))
     if calibration is not None and calibration.get("status") == "available":
-        residual = max(float(calibration["interval_half_width"]), 1e-12)
+        half_width = max(float(calibration["interval_half_width"]), 1e-12)
         coverage = float(calibration["cross_validated_coverage"])
         interval = {
             "basis": "held_out_grouped_calibration",
             "target_coverage": calibration["target_coverage"],
             "cross_validated_coverage": coverage,
         }
+        lower_bound = prediction - half_width
+        upper_bound = prediction + half_width
     else:
-        residual = training_residual
         coverage = None
         interval = {"basis": "training_residual", "target_coverage": None}
+        lower_bound = prediction - 2 * training_residual
+        upper_bound = prediction + 2 * training_residual
     return {
         "prediction": prediction,
-        "lower_bound": prediction - 2 * residual,
-        "upper_bound": prediction + 2 * residual,
+        "lower_bound": lower_bound,
+        "upper_bound": upper_bound,
         "confidence": (
             "high"
             if coverage is not None and coverage >= 0.9

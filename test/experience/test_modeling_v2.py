@@ -6,6 +6,7 @@ from ecc_experience.files import canonical_bytes, digest
 from ecc_experience.modeling.model import (
     calibrate_residuals,
     evaluate_model,
+    predict_features,
     publish_model,
     train_model,
 )
@@ -117,3 +118,30 @@ def test_calibration_uses_grouped_held_out_quantiles():
     assert 0.0 <= calibration["cross_validated_coverage"] <= 1.0
     assert calibration["base_residual_std"] == 0.5
     assert "future design" in calibration["limitations"][0]
+
+
+def test_prediction_uses_calibrated_half_width_without_double_scaling():
+    model = {
+        "columns": ["constant"],
+        "means": [0.0],
+        "scales": [1.0],
+        "coefficients": [0.0, 10.0],
+        "target": "final_qor",
+        "training_summary": {"residual_std": 1.0},
+    }
+    calibration = {
+        "status": "available",
+        "target_coverage": 0.9,
+        "interval_half_width": 4.0,
+        "cross_validated_coverage": 0.9,
+    }
+
+    calibrated = predict_features(model, {"constant": 1.0}, calibration=calibration)
+    fallback = predict_features(model, {"constant": 1.0})
+
+    assert calibrated["lower_bound"] == 6.0
+    assert calibrated["upper_bound"] == 14.0
+    assert calibrated["interval"]["basis"] == "held_out_grouped_calibration"
+    assert fallback["lower_bound"] == 8.0
+    assert fallback["upper_bound"] == 12.0
+    assert fallback["interval"]["basis"] == "training_residual"

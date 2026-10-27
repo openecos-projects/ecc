@@ -2278,7 +2278,9 @@ relaxed. Evaluation reports and releases also carry
 fitted from the absolute-error quantile of the other groups, and cross-validated
 coverage is reported. DSE/advice intervals prefer that calibration; with fewer
 than two held-out groups it stays `insufficient_evidence`, falls back to the
-training residual and labels the interval basis.
+training residual and labels the interval basis. A calibrated
+`interval_half_width` is already the target-coverage quantile and is applied
+directly; it must not be multiplied by two again.
 
 Only at least three independent designs, two families and frozen metric
 thresholds can yield `validated_for_declared_scope`. That status still applies
