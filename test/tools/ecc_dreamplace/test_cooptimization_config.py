@@ -47,10 +47,7 @@ def test_default_placement_recipe_preserves_tested_optimization_policy(dreamplac
     assert effective["overflow_reference_mode"] == "initial"
     assert profile["overflow_reference_mode"] == "ordinary"
     assert dreamplace_default_config["inflation_density_weight_scale"] == 0.001
-    assert (
-        dreamplace_default_config["inflation_filler_consumption_mode"]
-        == "filler_first"
-    )
+    assert dreamplace_default_config["inflation_filler_consumption_mode"] == "filler_first"
 
 
 @pytest.mark.parametrize(

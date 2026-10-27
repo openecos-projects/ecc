@@ -131,12 +131,16 @@ def worker(batch: Path, name: str):
         )
 
     try:
-        imports = {
-            package: importlib.util.find_spec(package).origin
+        specs = {
+            package: importlib.util.find_spec(package)
             for package in ("chipcompiler", "dreamplace", "ecc_tools_bin")
         }
+        imports = {package: spec.origin if spec else None for package, spec in specs.items()}
         require(
-            all(Path(path).is_relative_to(batch / "runtime") for path in imports.values()),
+            all(
+                path is not None and Path(path).is_relative_to(batch / "runtime")
+                for path in imports.values()
+            ),
             f"Worker imported live sources: {imports}",
         )
         write(out / "imports.json", imports)

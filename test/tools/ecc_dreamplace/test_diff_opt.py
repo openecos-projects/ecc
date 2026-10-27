@@ -1,6 +1,7 @@
 """Configuration and step-boundary tests for the placement-parasitic diff_opt flow."""
 
 import json
+from typing import Any
 
 import pytest
 
@@ -157,10 +158,11 @@ def test_diff_opt_module_uses_placement_rc_and_own_result_directory(
         design=OriginDesign(name="gcd"),
         config={"dreamplace": config_path},
     )
+    ecc_module: Any = object()
     module = DreamplaceModule(
         workspace,
         step,
-        object(),
+        ecc_module,
         tmp_path / "input.def",
         tmp_path / "input.v",
         tmp_path / "output.def",

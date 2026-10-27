@@ -203,9 +203,7 @@ def migrate_engineering_snapshot(
         SNAPSHOT_V3_SCHEMA_VERSION,
         SNAPSHOT_V4_SCHEMA_VERSION,
     }:
-        raise EngineeringSnapshotError(
-            "Snapshot migration requires schemaVersion 2, 3, or 4"
-        )
+        raise EngineeringSnapshotError("Snapshot migration requires schemaVersion 2, 3, or 4")
     if (
         expected_workspace_revision is not None
         and current["workspaceRevision"] != expected_workspace_revision
@@ -562,9 +560,7 @@ def _validate_snapshot_sections(
         # snapshots written by the bounded v6 contract stay readable.
         for key in ("workspaceSpec", "workspaceBindings", "stepOutputs"):
             if key in snapshot and not isinstance(snapshot[key], dict):
-                raise EngineeringSnapshotError(
-                    f"invalid Engineering Snapshot section: {key}"
-                )
+                raise EngineeringSnapshotError(f"invalid Engineering Snapshot section: {key}")
         if "stepOutputs" in snapshot:
             if not isinstance(snapshot.get("workspaceBindings"), dict):
                 raise EngineeringSnapshotError(

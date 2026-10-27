@@ -4,18 +4,22 @@ import math
 from copy import copy, deepcopy
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
+from typing import Any
 
 from chipcompiler.data import Workspace, WorkspaceStep
 from chipcompiler.utility import json_write
+from chipcompiler.utility.path import require_path
 
 from .discrete_timing_config import apply_discrete_timing_defaults
 from .timing_coefficients import resolve_timing_coefficients
 
 
-def _json_safe(value):
+def _json_safe(value: Any) -> Any:
     """Normalize terminal diagnostics before writing JSON artifacts."""
 
     if is_dataclass(value):
+        if isinstance(value, type):
+            return str(value)
         return _json_safe(asdict(value))
     if isinstance(value, dict):
         return {str(key): _json_safe(item) for key, item in value.items()}
@@ -71,7 +75,7 @@ def apply_diff_buffering_defaults(params: dict) -> dict:
 def prepare_drive_table(workspace: Workspace, step: WorkspaceStep, params: dict) -> dict:
     from dreamplace.flows.buffer_drive_table import build_drive_strength_table
 
-    directory = Path(step.data.workdir_for(step.name))
+    directory = require_path(step.data.workdir_for(step.name), "DreamPlace diff-buffering workdir")
     table_path = directory / "buffer_drive_strength.json"
     table = build_drive_strength_table(
         workspace.pdk.name,
@@ -122,7 +126,8 @@ def finalize_diff_buffering(
     placer = NonLinearPlace(params, engine.placedb, None)
     engine.placer = placer
     engine.rsmt, engine.hpwl, engine.metrics = placer(params, engine.placedb)
-    if not placer.op_collections.legality_check_op(placer.pos[0]):
+    legality_check = placer.op_collections.legality_check_op
+    if legality_check is None or not legality_check(placer.pos[0]):
         raise RuntimeError(f"{flow_kind} terminal placement is not legal")
     _, _, engine.metrics = placer.run_sta_only(params, engine.placedb)
     timing = engine.metrics["timing_stage_summary"]["sta"]
@@ -150,6 +155,7 @@ def finalize_diff_buffering(
         },
     }
     summary = _json_safe(summary)
+    assert isinstance(summary, dict)
     json_write(Path(engine.params.result_dir) / f"{summary_stem}_summary.json", summary)
     engine.last_run_result = summary
     return summary

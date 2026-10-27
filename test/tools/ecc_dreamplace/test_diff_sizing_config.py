@@ -152,29 +152,21 @@ def test_public_terminal_gr_sta_flag_parse_and_resolve(enabled):
     resolved, errors = resolve_parameters(cli_overrides=cli)
     assert errors == []
     actual = next(
-        item.value
-        for item in resolved
-        if item.param == "place.diff_sizing_terminal_gr_sta_enabled"
+        item.value for item in resolved if item.param == "place.diff_sizing_terminal_gr_sta_enabled"
     )
     assert actual == enabled
 
 
 def test_public_action_gradient_mode_parses_and_resolves():
     expected = {"place.timing_action_gradient_mode": "lut_action"}
-    cli, errors = parse_cli_overrides(
-        ["place.timing_action_gradient_mode=lut_action"]
-    )
+    cli, errors = parse_cli_overrides(["place.timing_action_gradient_mode=lut_action"])
     assert (cli, errors) == (expected, [])
-    toml, errors = parse_toml_params(
-        {"place": {"timing_action_gradient_mode": "lut_action"}}
-    )
+    toml, errors = parse_toml_params({"place": {"timing_action_gradient_mode": "lut_action"}})
     assert (toml, errors) == (expected, [])
     resolved, errors = resolve_parameters(cli_overrides=cli)
     assert errors == []
     actual = next(
-        item.value
-        for item in resolved
-        if item.param == "place.timing_action_gradient_mode"
+        item.value for item in resolved if item.param == "place.timing_action_gradient_mode"
     )
     assert actual == "lut_action"
 
@@ -182,20 +174,14 @@ def test_public_action_gradient_mode_parses_and_resolves():
 @pytest.mark.parametrize("objective", ["loss", "tns", "wns"])
 def test_public_action_score_objective_parses_and_resolves(objective):
     expected = {"place.timing_action_score_objective": objective}
-    cli, errors = parse_cli_overrides(
-        [f"place.timing_action_score_objective={objective}"]
-    )
+    cli, errors = parse_cli_overrides([f"place.timing_action_score_objective={objective}"])
     assert (cli, errors) == (expected, [])
-    toml, errors = parse_toml_params(
-        {"place": {"timing_action_score_objective": objective}}
-    )
+    toml, errors = parse_toml_params({"place": {"timing_action_score_objective": objective}})
     assert (toml, errors) == (expected, [])
     resolved, errors = resolve_parameters(cli_overrides=cli)
     assert errors == []
     actual = next(
-        item.value
-        for item in resolved
-        if item.param == "place.timing_action_score_objective"
+        item.value for item in resolved if item.param == "place.timing_action_score_objective"
     )
     assert actual == objective
 
@@ -203,20 +189,14 @@ def test_public_action_score_objective_parses_and_resolves(objective):
 @pytest.mark.parametrize("rc_mode", ["placement", "gr"])
 def test_public_diff_sizing_timing_rc_mode_parses_and_resolves(rc_mode):
     expected = {"place.diff_sizing_timing_rc_mode": rc_mode}
-    cli, errors = parse_cli_overrides(
-        [f"place.diff_sizing_timing_rc_mode={rc_mode}"]
-    )
+    cli, errors = parse_cli_overrides([f"place.diff_sizing_timing_rc_mode={rc_mode}"])
     assert (cli, errors) == (expected, [])
-    toml, errors = parse_toml_params(
-        {"place": {"diff_sizing_timing_rc_mode": rc_mode}}
-    )
+    toml, errors = parse_toml_params({"place": {"diff_sizing_timing_rc_mode": rc_mode}})
     assert (toml, errors) == (expected, [])
     resolved, errors = resolve_parameters(cli_overrides=cli)
     assert errors == []
     actual = next(
-        item.value
-        for item in resolved
-        if item.param == "place.diff_sizing_timing_rc_mode"
+        item.value for item in resolved if item.param == "place.diff_sizing_timing_rc_mode"
     )
     assert actual == rc_mode
 
@@ -250,20 +230,14 @@ def test_public_diff_sizing_optimization_flows_parse_and_resolve():
         ["quad", 10, [500, 5, 1, 1], 1],
     ]
     expected = {"place.diff_sizing_optimization_flows": flows}
-    cli, errors = parse_cli_overrides(
-        ["place.diff_sizing_optimization_flows=" + json.dumps(flows)]
-    )
+    cli, errors = parse_cli_overrides(["place.diff_sizing_optimization_flows=" + json.dumps(flows)])
     assert (cli, errors) == (expected, [])
-    toml, errors = parse_toml_params(
-        {"place": {"diff_sizing_optimization_flows": flows}}
-    )
+    toml, errors = parse_toml_params({"place": {"diff_sizing_optimization_flows": flows}})
     assert (toml, errors) == (expected, [])
     resolved, errors = resolve_parameters(cli_overrides=cli)
     assert errors == []
     actual = next(
-        item.value
-        for item in resolved
-        if item.param == "place.diff_sizing_optimization_flows"
+        item.value for item in resolved if item.param == "place.diff_sizing_optimization_flows"
     )
     assert actual == flows
 
@@ -297,9 +271,7 @@ def test_diff_sizing_optimization_flows_require_action_mode(
             dreamplace_default_config
             | {
                 "timing_action_gradient_mode": "off",
-                "diff_sizing_optimization_flows": [
-                    ["up", 1, [500, 5, 1, 1], 1]
-                ],
+                "diff_sizing_optimization_flows": [["up", 1, [500, 5, 1, 1], 1]],
             }
         )
 
@@ -312,9 +284,7 @@ def test_diff_sizing_optimization_flows_require_action_mode(
         [["up", 1, [500, 5, 1, 1], 0]],
     ],
 )
-def test_diff_sizing_optimization_flows_reject_invalid_phases(
-    dreamplace_default_config, flows
-):
+def test_diff_sizing_optimization_flows_reject_invalid_phases(dreamplace_default_config, flows):
     with pytest.raises(ValueError):
         builder._apply_diff_sizing_defaults(
             dreamplace_default_config | {"diff_sizing_optimization_flows": flows}
@@ -334,19 +304,15 @@ def test_public_lut_action_mode_survives_step_resolution(
 ):
     from dreamplace.Params import Params
 
-    cli, errors = parse_cli_overrides(
-        ["place.timing_action_gradient_mode=lut_action", *extra_args]
-    )
+    cli, errors = parse_cli_overrides(["place.timing_action_gradient_mode=lut_action", *extra_args])
     assert errors == []
     resolved, errors = resolve_parameters(cli_overrides=cli)
     assert errors == []
     workspace = Workspace(
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(tech="tech.lef", lefs=["std.lef"]),
-        parameters=make_ics55_parameters(
-            {"config_overrides": build_config_overrides(resolved)}
-        ),
+        pdk=PDK(tech=Path("tech.lef"), lefs=[Path("std.lef")]),
+        parameters=make_ics55_parameters({"config_overrides": build_config_overrides(resolved)}),
     )
     step = builder.build_step(
         workspace,
@@ -360,9 +326,7 @@ def test_public_lut_action_mode_survives_step_resolution(
     saved = json_read(builder.step_config_path(workspace, step))
     assert saved["timing_action_gradient_mode"] == "lut_action"
     assert saved["timing_rc_mode"] == expected_rc_mode
-    assert saved["gr_sizing_rrr_iters"] == (
-        3 if expected_rc_mode == "gr" else 0
-    )
+    assert saved["gr_sizing_rrr_iters"] == (3 if expected_rc_mode == "gr" else 0)
     assert {
         key: saved[key]
         for key in (
@@ -384,9 +348,7 @@ def test_public_lut_action_mode_survives_step_resolution(
     assert sizing.timing_action_gradient_mode == "lut_action"
     assert sizing.timing_action_score_objective == "loss"
     assert sizing.timing_rc_mode == expected_rc_mode
-    assert sizing.gr_sizing_rrr_iters == (
-        3 if expected_rc_mode == "gr" else 0
-    )
+    assert sizing.gr_sizing_rrr_iters == (3 if expected_rc_mode == "gr" else 0)
     assert sizing.sizing_parameterization == "real_size"
     assert sizing.continuous_size_dynamics_mode == "none"
 
@@ -449,13 +411,9 @@ def test_diff_sizing_lut_action_keeps_real_size_materialization(
         "timing_action_score_objective": "loss",
     }
     with pytest.raises(ValueError, match="diff_sizing_continuous_steps=0"):
-        builder._apply_diff_sizing_defaults(
-            config | {"diff_sizing_continuous_steps": 3}
-        )
+        builder._apply_diff_sizing_defaults(config | {"diff_sizing_continuous_steps": 3})
     with pytest.raises(ValueError, match="timing_action_score_objective"):
-        builder._apply_diff_sizing_defaults(
-            config | {"timing_action_score_objective": "slack"}
-        )
+        builder._apply_diff_sizing_defaults(config | {"timing_action_score_objective": "slack"})
 
 
 @pytest.mark.parametrize(

@@ -21,6 +21,8 @@ def workspace_update_spec(workspace_path: str, cfg, flow_config: dict | None):
         projection = read_workspace_configuration_from_directory(workspace_path)
         spec = deepcopy(projection["workspaceSpec"])
         bindings = deepcopy(projection["workspaceBindings"])
+    if not isinstance(spec, dict) or not isinstance(bindings, dict):
+        raise ValueError(f"workspace has no workspace spec: {workspace_path}")
     # A Project refresh owns structural settings only. Existing Workspace
     # parameters are merged and marked as preserved by update_workspace_from_spec;
     # carrying the Snapshot's resolved defaults here would incorrectly turn
@@ -60,7 +62,9 @@ def workspace_update_spec(workspace_path: str, cfg, flow_config: dict | None):
     spec["inputs"] = input_specs
     bindings["inputs"] = input_bindings
 
-    current_pdk = spec.get("pdk") if isinstance(spec.get("pdk"), dict) else {}
+    current_pdk = spec.get("pdk")
+    if not isinstance(current_pdk, dict):
+        current_pdk = {}
     spec["pdk"] = {
         "familyId": cfg.pdk_name,
         "mode": "default",
@@ -74,7 +78,9 @@ def workspace_update_spec(workspace_path: str, cfg, flow_config: dict | None):
         "root": resolve_pdk_root(cfg),
         **({"version": current_pdk["version"]} if current_pdk.get("version") else {}),
     }
-    current_flow = spec.get("flow") if isinstance(spec.get("flow"), dict) else {}
+    current_flow = spec.get("flow")
+    if not isinstance(current_flow, dict):
+        current_flow = {}
     flow = {"flowId": cfg.flow_preset or current_flow.get("flowId") or "custom"}
     if isinstance(flow_config, dict) and flow_config.get("start_step"):
         flow["fromStepId"] = normalize_flow_step(flow_config["start_step"])

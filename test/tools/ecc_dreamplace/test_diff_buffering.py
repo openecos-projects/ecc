@@ -1,7 +1,9 @@
 """Config isolation and the native refresh/legalization boundary of diff buffering."""
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -46,8 +48,8 @@ def test_buffering_step_resolves_independently_of_placement(
         design=OriginDesign(name="gcd"),
         pdk=PDK(
             name="ics55",
-            tech="tech.lef",
-            lefs=["std.lef"],
+            tech=Path("tech.lef"),
+            lefs=[Path("std.lef")],
             buffers=list(EXPECTED_DRIVE_TYPE_MASTERS),
         ),
         parameters=make_ics55_parameters({"config_overrides": build_config_overrides(resolved)}),
@@ -99,8 +101,8 @@ def test_buffering_step_resolves_independently_of_placement(
 
 
 def test_placement_candidate_mode_expands_internal_lane_settings(monkeypatch):
-    workspace = SimpleNamespace()
-    step = SimpleNamespace(name=StepEnum.PLACEMENT.value)
+    workspace: Any = SimpleNamespace()
+    step: Any = SimpleNamespace(name=StepEnum.PLACEMENT.value)
     monkeypatch.setattr(
         builder,
         "prepare_diff_opt_drive_table",

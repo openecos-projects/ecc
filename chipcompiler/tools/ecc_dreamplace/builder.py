@@ -88,9 +88,15 @@ def _apply_placement_buffering_profile(
 
 def step_config_path(workspace: Workspace, step: WorkspaceStep) -> Path:
     if step.name == StepEnum.DIFF_OPT.value:
-        return Path(step.data.workdir_for(step.name)) / "dreamplace_diff_opt.json"
+        return (
+            require_path(step.data.workdir_for(step.name), "DreamPlace diff-opt workdir")
+            / "dreamplace_diff_opt.json"
+        )
     if step.name == StepEnum.DIFF_BUFFERING.value:
-        return Path(step.data.workdir_for(step.name)) / "dreamplace_diff_buffering.json"
+        return (
+            require_path(step.data.workdir_for(step.name), "DreamPlace diff-buffering workdir")
+            / "dreamplace_diff_buffering.json"
+        )
     if step.name == StepEnum.DIFF_SIZING.value:
         return (
             require_path(step.data.workdir_for(step.name), "DreamPlace diff-sizing workdir")
@@ -113,9 +119,7 @@ def _resolve_diff_sizing_rc_mode(result: dict, explicit_keys) -> str:
         mode = "gr"
     mode = str(mode or "gr")
     if mode not in {"placement", "gr"}:
-        raise ValueError(
-            "diff_sizing_timing_rc_mode must be one of: placement, gr"
-        )
+        raise ValueError("diff_sizing_timing_rc_mode must be one of: placement, gr")
     return mode
 
 
@@ -132,39 +136,25 @@ def _apply_diff_sizing_defaults(params: dict, *, explicit_keys=None) -> dict:
         or not 0 <= continuous_steps <= 1000
     ):
         raise ValueError("diff_sizing_continuous_steps must be an integer in [0, 1000]")
-    action_mode = str(
-        result.get("timing_action_gradient_mode", "lut_action") or "lut_action"
-    )
+    action_mode = str(result.get("timing_action_gradient_mode", "lut_action") or "lut_action")
     if action_mode not in {"off", "lut_action"}:
-        raise ValueError(
-            "timing_action_gradient_mode must be one of: off, lut_action"
-        )
-    score_objective = str(
-        result.get("timing_action_score_objective", "loss") or "loss"
-    )
+        raise ValueError("timing_action_gradient_mode must be one of: off, lut_action")
+    score_objective = str(result.get("timing_action_score_objective", "loss") or "loss")
     if score_objective not in {"loss", "tns", "wns"}:
-        raise ValueError(
-            "timing_action_score_objective must be one of: loss, tns, wns"
-        )
+        raise ValueError("timing_action_score_objective must be one of: loss, tns, wns")
     if action_mode == "lut_action" and continuous_steps != 0:
         raise ValueError(
-            "lut_action standalone diff_sizing requires "
-            "diff_sizing_continuous_steps=0"
+            "lut_action standalone diff_sizing requires diff_sizing_continuous_steps=0"
         )
     from dreamplace.flows.diff_sizing_spec import parse_diff_sizing_flows
 
-    flows = parse_diff_sizing_flows(
-        result.get("diff_sizing_optimization_flows")
-    )
+    flows = parse_diff_sizing_flows(result.get("diff_sizing_optimization_flows"))
     if flows is not None and action_mode != "lut_action":
         raise ValueError(
-            "diff_sizing_optimization_flows requires "
-            "timing_action_gradient_mode=lut_action"
+            "diff_sizing_optimization_flows requires timing_action_gradient_mode=lut_action"
         )
     if flows is not None:
-        result["diff_sizing_optimization_flows"] = [
-            spec.to_list() for spec in flows
-        ]
+        result["diff_sizing_optimization_flows"] = [spec.to_list() for spec in flows]
     timing_rc_mode = _resolve_diff_sizing_rc_mode(result, explicit_keys)
     coefficients = resolve_timing_coefficients(result, "diff_sizing_coefficients")
     result["diff_sizing_coefficients"] = coefficients
@@ -236,9 +226,7 @@ def _apply_diff_sizing_defaults(params: dict, *, explicit_keys=None) -> dict:
         )
     stages = list(result.get("global_place_stages") or [{}])
     first_stage = dict(stages[0]) if isinstance(stages[0], dict) else {}
-    stage_rounds = (
-        sum(spec.rounds for spec in flows) if flows is not None else 50
-    )
+    stage_rounds = sum(spec.rounds for spec in flows) if flows is not None else 50
     first_stage.update(
         num_bins_x=512,
         num_bins_y=512,
