@@ -5,6 +5,7 @@ import os
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.project.toml_edit import set_pdk_root
+from chipcompiler.project.manifest import CONFIG_FILENAME
 from chipcompiler.utility.file import write_text_atomic
 
 
@@ -85,7 +86,7 @@ def set_root(command_input, ctx: CommandContext) -> CommandResult:
             [
                 error_record(
                     "missing_config",
-                    path=os.path.join(ctx.project_dir, "ecc.toml"),
+                    path=os.path.join(ctx.project_dir, CONFIG_FILENAME),
                 )
             ]
         )
@@ -144,7 +145,7 @@ def show(command_input, ctx: CommandContext) -> CommandResult:
     root, source = _resolve_root_source(cfg, ctx.project_dir)
 
     pdk_name = cfg.pdk_name if cfg is not None and cfg.pdk_name else "ics55"
-    records = [
+    records: list[dict[str, object]] = [
         {
             "pdk": "show",
             "name": pdk_name,

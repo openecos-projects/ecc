@@ -5,7 +5,8 @@ from chipcompiler.cli.core.output import normalize_state, normalize_step_name
 from chipcompiler.cli.inspection.discovery import get_run_status
 from chipcompiler.cli.inspection.project_artifacts import read_workspace_artifact
 from chipcompiler.cli.inspection.project_checkers import checker_evidence
-from chipcompiler.data.types import FlowStepCategory, default_flow_step_category
+from chipcompiler.data.types import FlowStepCategory
+from chipcompiler.data.workspace.flow_policy import flow_category
 from chipcompiler.engine.snapshot_limits import ENGINEERING_SNAPSHOT_MAX_BYTES
 from chipcompiler.project.manifest import ProjectManifest
 
@@ -14,7 +15,7 @@ def _flow(root: Path) -> tuple[list[dict], str]:
     result = read_workspace_artifact(
         root, root / "home" / "flow.json", ENGINEERING_SNAPSHOT_MAX_BYTES
     )
-    if result.status != "available":
+    if result.status != "available" or result.data is None:
         return [], result.status
     steps = result.data.get("steps")
     if not isinstance(steps, list) or any(
@@ -45,7 +46,7 @@ def _qor(root: Path, steps: list[dict], flow_status: str) -> dict:
         "source": str(source),
         "provisional": flow_status == "ongoing",
     }
-    if result.status != "available":
+    if result.status != "available" or result.data is None:
         return record
     report = result.data
     try:
@@ -105,9 +106,7 @@ def build_project_matrix(manifest: ProjectManifest) -> dict:
                     "tool": step["tool"],
                 },
             )
-            category = str(
-                step.get("category") or default_flow_step_category(step["name"]).value
-            ).upper()
+            category = flow_category(step).value
             state = normalize_state(step["state"])
             checker = (
                 checker_evidence(root, step, manifest.design_name)

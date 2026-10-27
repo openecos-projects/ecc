@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from chipcompiler.cli.project.effective_config import _diverging_lower_keys
@@ -19,6 +21,13 @@ from chipcompiler.cli.project.params import (
     validate_schema_record,
     validate_value,
 )
+
+
+def _required_schema(key: str) -> Any:
+    schema = lookup_schema(key)
+    assert schema is not None
+    return schema
+
 
 REQUIRED_KEYS = [
     "design.frequency_mhz",
@@ -75,13 +84,13 @@ class TestSchemaRegistry:
                 )
 
     def test_cli_keys_map_to_backend_names(self):
-        density = lookup_schema("place.target_density")
+        density = _required_schema("place.target_density")
         assert density.maps_to == {"dreamplace": "target_density"}
 
-        fanout = lookup_schema("cts.max_fanout")
+        fanout = _required_schema("cts.max_fanout")
         assert fanout.maps_to == "max_fanout"
 
-        util = lookup_schema("floorplan.core_util")
+        util = _required_schema("floorplan.core_util")
         assert util.maps_to == {"core": "utilitization"}
 
     def test_internal_keys_not_accepted_as_cli_keys(self):
@@ -108,7 +117,7 @@ class TestSchemaRegistry:
         assert lookup_schema("nonexistent.key") is None
 
     def test_config_schema_has_direct_target(self):
-        schema = lookup_schema("cts.skew_bound")
+        schema = _required_schema("cts.skew_bound")
         assert schema is not None
         assert schema.config_target is not None
         assert schema.config_target.config_key == "CTS"
@@ -140,7 +149,7 @@ class TestValueParsing:
         ],
     )
     def test_parse_value_correct_types(self, raw, ptype, expected):
-        schema = lookup_schema("place.target_density")
+        schema = _required_schema("place.target_density")
         schema = ParamSchema(
             param="test",
             group="test",
@@ -195,24 +204,24 @@ class TestValueParsing:
             parse_value("not_a_number", schema)
 
     def test_range_validation_rejects_out_of_bounds(self):
-        schema = lookup_schema("place.target_density")
+        schema = _required_schema("place.target_density")
         errors = validate_value(1.2, schema)
         assert len(errors) > 0
         assert "out of range" in errors[0]
 
     def test_range_validation_accepts_in_bounds(self):
-        schema = lookup_schema("place.target_density")
+        schema = _required_schema("place.target_density")
         errors = validate_value(0.5, schema)
         assert errors == []
 
     def test_choice_validation_rejects_invalid(self):
-        schema = lookup_schema("route.top_layer")
+        schema = _required_schema("route.top_layer")
         errors = validate_value("MET99", schema)
         assert len(errors) > 0
         assert "not in allowed choices" in errors[0]
 
     def test_choice_validation_accepts_valid(self):
-        schema = lookup_schema("route.top_layer")
+        schema = _required_schema("route.top_layer")
         errors = validate_value("MET5", schema)
         assert errors == []
 
@@ -322,7 +331,7 @@ class TestSourceAwareResolution:
 
 class TestBackendMapping:
     def test_flat_key_mapping(self):
-        schema = lookup_schema("place.target_density")
+        schema = _required_schema("place.target_density")
         rp = ResolvedParam(
             param="place.target_density",
             value=0.65,
@@ -334,7 +343,7 @@ class TestBackendMapping:
         assert result == {"dreamplace": {"target_density": 0.65}}
 
     def test_nested_key_mapping(self):
-        schema = lookup_schema("floorplan.core_util")
+        schema = _required_schema("floorplan.core_util")
         rp = ResolvedParam(
             param="floorplan.core_util",
             value=0.45,
@@ -346,7 +355,7 @@ class TestBackendMapping:
         assert result == {"core": {"utilitization": 0.45}}
 
     def test_nested_list_mapping(self):
-        schema = lookup_schema("floorplan.core_margin")
+        schema = _required_schema("floorplan.core_margin")
         rp = ResolvedParam(
             param="floorplan.core_margin",
             value=(3, 3),
@@ -358,7 +367,7 @@ class TestBackendMapping:
         assert result == {"core": {"margin": (3, 3)}}
 
     def test_string_key_mapping(self):
-        schema = lookup_schema("route.top_layer")
+        schema = _required_schema("route.top_layer")
         rp = ResolvedParam(
             param="route.top_layer",
             value="MET4",
@@ -370,7 +379,7 @@ class TestBackendMapping:
         assert result == {"top_layer": "MET4"}
 
     def test_flow_bool_top_level_mapping(self):
-        schema = lookup_schema("flow.run_analysis")
+        schema = _required_schema("flow.run_analysis")
         rp = ResolvedParam(
             param="flow.run_analysis",
             value=False,
@@ -392,7 +401,7 @@ class TestBackendMapping:
         assert build_config_overrides(resolved) == {"CTS": {"skew_bound": "0.05"}}
 
     def test_mapping_does_not_mutate_schema_defaults(self):
-        schema = lookup_schema("place.target_density")
+        schema = _required_schema("place.target_density")
         original_default = schema.default
         rp = ResolvedParam(
             param="place.target_density",

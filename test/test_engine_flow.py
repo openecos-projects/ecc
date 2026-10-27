@@ -2,6 +2,7 @@ import ctypes
 import json
 from hashlib import sha256
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -23,7 +24,12 @@ from chipcompiler.data import (
     YosysStep,
 )
 from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow_completion import sync_step_checklist
 from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
+
+
+def _none_workspace() -> Any:
+    return None
 
 
 class CompletionObserver:
@@ -36,20 +42,152 @@ class CompletionObserver:
         self.completed.append((state, error))
 
 
-def test_engine_flow_missing_path_is_not_initialized():
-    engine_flow = EngineFlow(Workspace())
+def test_engine_flow_missing_path_is_not_initialized(tmp_path):
+    engine_flow: Any = EngineFlow(Workspace(directory=tmp_path))
 
     assert engine_flow.has_init() is False
+
+
+def test_engine_flow_load_repairs_legacy_checker_categories(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    flow_path = home / "flow.json"
+    flow_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "steps": [
+                    {
+                        "name": StepEnum.ANTENNA_CHECK.value,
+                        "tool": "ecc",
+                        "category": "PNR",
+                        "state": "Unstart",
+                    },
+                    {
+                        "name": StepEnum.HARDEN.value,
+                        "tool": "ecc",
+                        "category": "PNR",
+                        "state": "Unstart",
+                    },
+                    {
+                        "name": StepEnum.EMIR.value,
+                        "tool": "ecc",
+                        "category": "PNR",
+                        "state": "Unstart",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    workspace: Any = Workspace(directory=tmp_path)
+    workspace.flow.path = flow_path
+
+    EngineFlow(workspace)
+
+    assert [step["category"] for step in workspace.flow.data["steps"]] == [
+        "CHECKER",
+        "PNR",
+        "CHECKER",
+    ]
+    assert [step["category"] for step in json.loads(flow_path.read_text())["steps"]] == [
+        "CHECKER",
+        "PNR",
+        "CHECKER",
+    ]
+
+
+def test_engine_flow_blocks_on_and_writes_compact_checklist_status(tmp_path):
+    workspace: Any = Workspace(directory=tmp_path)
+    workspace.flow.path = tmp_path / "flow.json"
+    engine_flow: Any = EngineFlow(workspace)
+    workspace.flow.data = {
+        "steps": [
+            {
+                "name": "route",
+                "tool": "ecc",
+                "state": "Success",
+                "checklist_status": {"status": "blocked", "blocked": True},
+            },
+            {"name": "filler", "tool": "ecc", "state": "Unstart"},
+        ]
+    }
+    filler = EccStep(name="filler", directory=tmp_path, tool="ecc")
+
+    assert engine_flow.run_step(filler) == StateEnum.Invalid
+
+    flow_step = engine_flow.get_step("filler", "ecc")
+    assert "checklist" not in flow_step
+    assert flow_step["checklist_status"] == {
+        "status": "blocked",
+        "blocked": True,
+        "failed_items": ["prerequisite:route"],
+        "source": "home/flow.json",
+    }
+
+
+@pytest.mark.parametrize("blocked_step", [StepEnum.FILLER.value, StepEnum.DRC.value])
+def test_checkers_run_past_blocked_checklist_and_gate_next_pnr_step(
+    tmp_path, monkeypatch, blocked_step
+):
+    workspace: Any = Workspace(directory=tmp_path)
+    workspace.flow.path = tmp_path / "flow.json"
+    engine_flow: Any = EngineFlow(workspace)
+    names = [
+        StepEnum.FILLER.value,
+        StepEnum.LVS.value,
+        StepEnum.DRC.value,
+        StepEnum.ANTENNA_CHECK.value,
+        SkippableStepEnum.POST_ROUTE_LEC.value,
+        StepEnum.RCX.value,
+        StepEnum.STA.value,
+        StepEnum.POWER_ANALYSIS.value,
+        StepEnum.EMIR.value,
+        StepEnum.HARDEN.value,
+    ]
+    workspace.flow.data = {
+        "steps": [
+            {
+                "name": name,
+                "tool": "ecc",
+                "state": "Unstart",
+                **(
+                    {"checklist_status": {"status": "blocked", "blocked": True}}
+                    if name == blocked_step
+                    else {}
+                ),
+            }
+            for name in names
+        ]
+    }
+    engine_flow.workspace_steps = [SimpleNamespace(name=name, tool="ecc") for name in names]
+    executed = []
+
+    def run_step(step, **_kwargs):
+        blocked_by = engine_flow._blocked_checklist_prerequisite(step)
+        executed.append((step.name, blocked_by))
+        return StateEnum.Invalid if blocked_by is not None else StateEnum.Success
+
+    monkeypatch.setattr(engine_flow, "init_db_engine", lambda: True)
+    monkeypatch.setattr(engine_flow, "_can_parallelize_checker_batch", lambda *_args: False)
+    monkeypatch.setattr(engine_flow, "run_step", run_step)
+    monkeypatch.setattr(flow_module, "log_flow", lambda **_kwargs: None)
+
+    assert engine_flow.run_steps() is False
+    assert [name for name, _blocked_by in executed] == names
+    assert [blocked_by for name, blocked_by in executed if name == StepEnum.HARDEN.value] == [
+        blocked_step
+    ]
 
 
 def test_run_step_without_runtime_operation_marker_does_not_expand_function(monkeypatch, tmp_path):
     from chipcompiler.engine.execution import ExecutionObserver
 
-    workspace = Workspace()
+    workspace: Any = Workspace(directory=tmp_path)
     workspace.flow.data = {
         "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
     }
-    engine_flow = EngineFlow(workspace)
+    engine_flow: Any = EngineFlow(workspace)
     workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
     engine_flow.workspace_steps = [workspace_step]
     engine_flow.engine_db = SimpleNamespace(engine=None)
@@ -62,10 +200,10 @@ def test_run_step_without_runtime_operation_marker_does_not_expand_function(monk
 
 
 def test_engine_flow_default_steps_include_synthesis_lec(tmp_path):
-    workspace = Workspace()
+    workspace: Any = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
 
-    engine_flow = EngineFlow(workspace)
+    engine_flow: Any = EngineFlow(workspace)
     engine_flow.build_default_steps()
 
     assert [(step["name"], step["tool"]) for step in workspace.flow.data["steps"][:5]] == [
@@ -81,7 +219,7 @@ def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
     monkeypatch,
     tmp_path,
 ):
-    workspace = Workspace()
+    workspace: Any = Workspace(directory=tmp_path)
     workspace.flow.data = {
         "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
     }
@@ -98,7 +236,7 @@ def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
         tool="ecc",
         feature=EccFeature(step=step_feature),
     )
-    engine_flow = EngineFlow(workspace)
+    engine_flow: Any = EngineFlow(workspace)
     engine_flow.workspace_steps = [workspace_step]
     engine_flow.engine_db = SimpleNamespace(engine=None)
     refreshed = []
@@ -130,11 +268,11 @@ def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
 
 
 def test_engine_flow_does_not_delay_short_step_before_return(monkeypatch, tmp_path):
-    workspace = Workspace()
+    workspace: Any = Workspace(directory=tmp_path)
     workspace.flow.data = {
         "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
     }
-    engine_flow = EngineFlow(workspace)
+    engine_flow: Any = EngineFlow(workspace)
     workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
     engine_flow.workspace_steps = [workspace_step]
     engine_flow.engine_db = SimpleNamespace(engine=None)
@@ -148,14 +286,14 @@ def test_engine_flow_does_not_delay_short_step_before_return(monkeypatch, tmp_pa
 
 
 def test_failed_synthesis_lec_is_persisted_as_incomplete(monkeypatch, tmp_path):
-    workspace = Workspace(directory=tmp_path)
+    workspace: Any = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
         "steps": [{"name": SkippableStepEnum.LEC.value, "tool": "yosys_lec", "state": "Unstart"}]
     }
     workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
     workspace_step = EccStep(name=SkippableStepEnum.LEC.value, directory=tmp_path, tool="yosys_lec")
-    engine_flow = EngineFlow(workspace)
+    engine_flow: Any = EngineFlow(workspace)
     engine_flow.workspace_steps = [workspace_step]
     engine_flow.engine_db = SimpleNamespace(engine=None)
 
@@ -173,12 +311,12 @@ def test_failed_synthesis_lec_is_persisted_as_incomplete(monkeypatch, tmp_path):
 
 
 def test_step_execution_exception_is_persisted_as_incomplete(monkeypatch, tmp_path):
-    workspace = Workspace(directory=tmp_path)
+    workspace: Any = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {"steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]}
     workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
     workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
-    engine_flow = EngineFlow(workspace)
+    engine_flow: Any = EngineFlow(workspace)
     engine_flow.workspace_steps = [workspace_step]
     engine_flow.engine_db = SimpleNamespace(engine=None)
 
@@ -193,14 +331,14 @@ def test_step_execution_exception_is_persisted_as_incomplete(monkeypatch, tmp_pa
 
 
 def test_run_steps_stops_after_synthesis_lec_failure(monkeypatch, tmp_path):
-    workspace = Workspace(directory=tmp_path)
+    workspace: Any = Workspace(directory=tmp_path)
     workspace.flow.data = {
         "steps": [
             {"name": SkippableStepEnum.LEC.value, "tool": "yosys_lec", "state": "Unstart"},
             {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": "Unstart"},
         ]
     }
-    engine_flow = EngineFlow(workspace)
+    engine_flow: Any = EngineFlow(workspace)
     engine_flow.workspace_steps = [
         EccStep(name=SkippableStepEnum.LEC.value, directory=tmp_path, tool="yosys_lec"),
         EccStep(name=StepEnum.FLOORPLAN.value, directory=tmp_path, tool="ecc"),
@@ -225,13 +363,13 @@ def test_check_step_result_synthesis_uses_common_verilog(tmp_path):
     verilog = tmp_path / "gcd.v"
     verilog.write_text("module gcd; endmodule\n")
     step = YosysStep(name=StepEnum.SYNTHESIS.value, output=YosysOutput(verilog=verilog))
-    assert EngineFlow(Workspace()).check_step_result(step) is True
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is True
 
 
 def test_engine_flow_refreshes_home_checklist_after_harden_success(monkeypatch, tmp_path):
     home = tmp_path / "home"
     home.mkdir()
-    workspace = Workspace(directory=tmp_path)
+    workspace: Any = Workspace(directory=tmp_path)
     workspace.flow.path = home / "flow.json"
     workspace.flow.data = {
         "steps": [{"name": StepEnum.HARDEN.value, "tool": "ecc", "state": StateEnum.Unstart.value}]
@@ -248,7 +386,7 @@ def test_engine_flow_refreshes_home_checklist_after_harden_success(monkeypatch, 
         output=EccOutput(lef=lef, lib=lib),
         checklist=ChecklistState(path=tmp_path / "Harden_ecc" / "checklist.json"),
     )
-    engine_flow = EngineFlow(workspace)
+    engine_flow: Any = EngineFlow(workspace)
     engine_flow.workspace_steps = [workspace_step]
     engine_flow.engine_db = SimpleNamespace(engine=None)
 
@@ -283,13 +421,13 @@ def test_check_step_result_harden_reads_ecc_only_lef_lib(tmp_path):
     lef.write_text("")
     lib.write_text("")
     step = EccStep(name=StepEnum.HARDEN.value, output=EccOutput(lef=lef, lib=lib))
-    assert EngineFlow(Workspace()).check_step_result(step) is True
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is True
     # missing lib -> not success
     step_missing = EccStep(
         name=StepEnum.HARDEN.value,
         output=EccOutput(lef=lef, lib=tmp_path / "missing.lib"),
     )
-    assert EngineFlow(Workspace()).check_step_result(step_missing) is False
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step_missing) is False
 
 
 def test_check_step_result_default_requires_def_verilog(tmp_path):
@@ -302,7 +440,7 @@ def test_check_step_result_default_requires_def_verilog(tmp_path):
             verilog=tmp_path / "gcd.v",
         ),
     )
-    assert EngineFlow(Workspace()).check_step_result(step) is True
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is True
 
 
 def test_check_step_result_placement_only_requires_def_and_verilog(tmp_path):
@@ -329,9 +467,9 @@ def test_check_step_result_placement_only_requires_def_and_verilog(tmp_path):
         ),
     )
 
-    assert EngineFlow(Workspace()).check_step_result(step) is True
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is True
     def_file.unlink()
-    assert EngineFlow(Workspace()).check_step_result(step) is False
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is False
 
 
 def test_check_step_result_timing_opt_does_not_require_gds(tmp_path):
@@ -342,7 +480,7 @@ def test_check_step_result_timing_opt_does_not_require_gds(tmp_path):
         output=EccOutput(def_=tmp_path / "gcd.def", verilog=tmp_path / "gcd.v"),
     )
     # gds intentionally absent; timing-opt result must still succeed.
-    assert EngineFlow(Workspace()).check_step_result(step) is True
+    assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is True
 
 
 @pytest.mark.parametrize(
@@ -363,7 +501,7 @@ def test_rcx_to_sta_spef_transfer(monkeypatch, tmp_path, spef_paths):
     if spef_paths is None:
         spef_paths = [tmp_path / "gcd_c.spef", tmp_path / "gcd_r.spef"]
 
-    workspace = Workspace(
+    workspace: Any = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
@@ -379,7 +517,7 @@ def test_rcx_to_sta_spef_transfer(monkeypatch, tmp_path, spef_paths):
 
     monkeypatch.setattr(tools_api, "create_step", fake_create_step)
 
-    flow = EngineFlow(workspace)
+    flow: Any = EngineFlow(workspace)
     # load() leaves flow.data empty (no flow.path); set the steps for this test.
     flow.workspace.flow.data = {
         "steps": [
@@ -399,7 +537,7 @@ def test_create_step_workspaces_can_preserve_existing_configs(monkeypatch, tmp_p
     import chipcompiler.tools as tools_api
     from chipcompiler.data import OriginDesign
 
-    workspace = Workspace(
+    workspace: Any = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
@@ -411,7 +549,7 @@ def test_create_step_workspaces_can_preserve_existing_configs(monkeypatch, tmp_p
 
     monkeypatch.setattr(tools_api, "create_step", fake_create_step)
 
-    flow = EngineFlow(workspace)
+    flow: Any = EngineFlow(workspace)
     flow.workspace.flow.data = {"steps": [{"name": "Floorplan", "tool": "ecc"}]}
     flow.create_step_workspaces(initialize_config=False)
 
@@ -422,7 +560,9 @@ def test_checker_step_uses_latest_pnr_input(monkeypatch, tmp_path):
     import chipcompiler.tools as tools_api
     from chipcompiler.data import OriginDesign
 
-    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    workspace: Any = Workspace(
+        directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd")
+    )
     inputs = []
     outputs = {
         "route": EccOutput(def_=tmp_path / "route.def", verilog=tmp_path / "route.v"),
@@ -434,7 +574,7 @@ def test_checker_step_uses_latest_pnr_input(monkeypatch, tmp_path):
         return EccStep(name=step, tool=eda, output=outputs.get(step, EccOutput()))
 
     monkeypatch.setattr(tools_api, "create_step", fake_create_step)
-    flow = EngineFlow(workspace)
+    flow: Any = EngineFlow(workspace)
     flow.workspace.flow.data = {
         "steps": [
             {"name": "route", "tool": "ecc", "category": "PNR"},
@@ -456,7 +596,9 @@ def test_checker_step_can_select_explicit_input_step(monkeypatch, tmp_path):
     import chipcompiler.tools as tools_api
     from chipcompiler.data import OriginDesign
 
-    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    workspace: Any = Workspace(
+        directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd")
+    )
     inputs = []
     outputs = {
         "route": EccOutput(def_=tmp_path / "route.def", verilog=tmp_path / "route.v"),
@@ -468,7 +610,7 @@ def test_checker_step_can_select_explicit_input_step(monkeypatch, tmp_path):
         return EccStep(name=step, tool=eda, output=outputs.get(step, EccOutput()))
 
     monkeypatch.setattr(tools_api, "create_step", fake_create_step)
-    flow = EngineFlow(workspace)
+    flow: Any = EngineFlow(workspace)
     flow.workspace.flow.data = {
         "steps": [
             {"name": "route", "tool": "ecc", "category": "PNR"},
@@ -494,7 +636,7 @@ class TestCheckStepResultRcx:
             name=StepEnum.RCX.value,
             output=EccOutput(spef=[spef]),
         )
-        assert EngineFlow(Workspace()).check_step_result(step) is False
+        assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is False
 
     def test_rcx_succeeds_when_all_spef_exist(self, tmp_path):
         spef1 = tmp_path / "corner1.spef"
@@ -505,14 +647,14 @@ class TestCheckStepResultRcx:
             name=StepEnum.RCX.value,
             output=EccOutput(spef=[spef1, spef2]),
         )
-        assert EngineFlow(Workspace()).check_step_result(step) is True
+        assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is True
 
-    def test_rcx_fails_with_empty_spef_list(self):
+    def test_rcx_fails_with_empty_spef_list(self, tmp_path):
         step = EccStep(
             name=StepEnum.RCX.value,
             output=EccOutput(spef=[]),
         )
-        assert EngineFlow(Workspace()).check_step_result(step) is False
+        assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is False
 
     def test_rcx_fails_when_spef_is_zero_byte(self, tmp_path):
         spef = tmp_path / "corner1.spef"
@@ -521,7 +663,7 @@ class TestCheckStepResultRcx:
             name=StepEnum.RCX.value,
             output=EccOutput(spef=[spef]),
         )
-        assert EngineFlow(Workspace()).check_step_result(step) is False
+        assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is False
 
     def test_rcx_fails_when_one_of_two_spef_missing(self, tmp_path):
         spef1 = tmp_path / "corner1.spef"
@@ -531,22 +673,22 @@ class TestCheckStepResultRcx:
             name=StepEnum.RCX.value,
             output=EccOutput(spef=[spef1, spef2]),
         )
-        assert EngineFlow(Workspace()).check_step_result(step) is False
+        assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is False
 
-    def test_rcx_fails_when_output_is_not_ecc_output(self):
+    def test_rcx_fails_when_output_is_not_ecc_output(self, tmp_path):
         step = YosysStep(name=StepEnum.RCX.value, tool="yosys")
-        assert EngineFlow(Workspace()).check_step_result(step) is False
+        assert EngineFlow(Workspace(directory=tmp_path)).check_step_result(step) is False
 
 
 class TestStepExceptionForcesIncomplete:
     """Regression: tool exception should force Incomplete, never Success."""
 
     def test_exception_forces_incomplete(self, monkeypatch, tmp_path):
-        workspace = Workspace()
+        workspace: Any = Workspace(directory=tmp_path)
         workspace.flow.data = {
             "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
         }
-        engine_flow = EngineFlow(workspace)
+        engine_flow: Any = EngineFlow(workspace)
         workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
         engine_flow.workspace_steps = [workspace_step]
         engine_flow.engine_db = SimpleNamespace(engine=None)
@@ -561,7 +703,7 @@ class TestStepExceptionForcesIncomplete:
         assert state == StateEnum.Imcomplete
 
     def test_native_output_precedes_failure_summary(self, monkeypatch, tmp_path):
-        workspace = Workspace()
+        workspace: Any = Workspace(directory=tmp_path)
         workspace.flow.data = {
             "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart"}],
         }
@@ -572,7 +714,7 @@ class TestStepExceptionForcesIncomplete:
             tool="dreamplace",
             log=LogPaths(file=log_file),
         )
-        engine_flow = EngineFlow(workspace)
+        engine_flow: Any = EngineFlow(workspace)
         engine_flow.workspace_steps = [workspace_step]
         engine_flow.engine_db = SimpleNamespace(engine=None)
         monkeypatch.setattr(workspace.logger, "error", print)
@@ -595,11 +737,11 @@ class TestStepExceptionForcesIncomplete:
         )
 
     def test_no_exception_uses_file_check(self, monkeypatch, tmp_path):
-        workspace = Workspace()
+        workspace: Any = Workspace(directory=tmp_path)
         workspace.flow.data = {
             "steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}],
         }
-        engine_flow = EngineFlow(workspace)
+        engine_flow: Any = EngineFlow(workspace)
         workspace_step = EccStep(name="route", directory=tmp_path, tool="ecc")
         engine_flow.workspace_steps = [workspace_step]
         engine_flow.engine_db = SimpleNamespace(engine=None)
@@ -613,8 +755,8 @@ class TestStepExceptionForcesIncomplete:
         assert state == StateEnum.Success
 
     def test_marker_persist_failure_does_not_start_tool(self, monkeypatch, tmp_path):
-        workspace = Workspace()
-        engine_flow = EngineFlow(workspace)
+        workspace: Any = Workspace(directory=tmp_path)
+        engine_flow: Any = EngineFlow(workspace)
         workspace.flow.data = {
             "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart", "info": {}}],
         }
@@ -646,14 +788,14 @@ class TestStepExceptionForcesIncomplete:
         }
 
     def test_terminal_persist_failure_keeps_recoverable_marker(self, monkeypatch, tmp_path):
-        workspace = Workspace()
+        workspace: Any = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
         flow_data = {
             "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart", "info": {}}],
         }
         workspace.flow.path.write_text(json.dumps(flow_data), encoding="utf-8")
         workspace.flow.data = flow_data
-        engine_flow = EngineFlow(workspace)
+        engine_flow: Any = EngineFlow(workspace)
         workspace_step = EccStep(name="place", directory=tmp_path, tool="dreamplace")
         engine_flow.workspace_steps = [workspace_step]
         engine_flow.engine_db = SimpleNamespace(engine=None)
@@ -678,13 +820,13 @@ class TestStepExceptionForcesIncomplete:
         assert step["info"]["runtime_operation"]["operation_id"] == "operation-1"
 
     def test_fatal_completion_commit_restores_ongoing_flow_marker(self, monkeypatch, tmp_path):
-        workspace = Workspace()
+        workspace: Any = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
         workspace.flow.data = {
             "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart", "info": {}}],
         }
         workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
-        engine_flow = EngineFlow(workspace)
+        engine_flow: Any = EngineFlow(workspace)
         workspace_step = EccStep(name="place", directory=tmp_path, tool="dreamplace")
         engine_flow.workspace_steps = [workspace_step]
         engine_flow.engine_db = SimpleNamespace(engine=None)
@@ -711,13 +853,13 @@ class TestStepExceptionForcesIncomplete:
         assert persisted["info"]["runtime_operation"]["operation_id"] == "operation-1"
 
     def test_result_check_system_exit_still_finalizes_step(self, monkeypatch, tmp_path):
-        workspace = Workspace()
+        workspace: Any = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
         workspace.flow.data = {
             "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart", "info": {}}],
         }
         workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
-        engine_flow = EngineFlow(workspace)
+        engine_flow: Any = EngineFlow(workspace)
         workspace_step = EccStep(name="place", directory=tmp_path, tool="dreamplace")
         engine_flow.workspace_steps = [workspace_step]
         engine_flow.engine_db = SimpleNamespace(engine=None)
@@ -753,14 +895,14 @@ class TestStepExceptionForcesIncomplete:
 
     @pytest.mark.parametrize("exit_code", [0, 1])
     def test_system_exit_is_incomplete_and_preserves_error(self, monkeypatch, tmp_path, exit_code):
-        workspace = Workspace()
+        workspace: Any = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
         flow_data = {
             "steps": [{"name": "place", "tool": "dreamplace", "state": "Unstart", "info": {}}],
         }
         workspace.flow.path.write_text(json.dumps(flow_data), encoding="utf-8")
         workspace.flow.data = flow_data
-        engine_flow = EngineFlow(workspace)
+        engine_flow: Any = EngineFlow(workspace)
         subflow_path = tmp_path / "subflow.json"
         workspace_step = EccStep(
             name="place",
@@ -814,11 +956,11 @@ class TestRunStepReturnContract:
 
     @staticmethod
     def _make_flow(tmp_path, name, tool, output):
-        workspace = Workspace()
+        workspace: Any = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
         flow_data = {"steps": [{"name": name, "tool": tool, "state": "Unstart"}]}
         workspace.flow.path.write_text(json.dumps(flow_data), encoding="utf-8")
-        engine_flow = EngineFlow(workspace)
+        engine_flow: Any = EngineFlow(workspace)
         workspace_step = EccStep(name=name, directory=tmp_path, tool=tool, output=output)
         engine_flow.workspace_steps = [workspace_step]
         engine_flow.engine_db = SimpleNamespace(engine=None)
@@ -918,21 +1060,21 @@ class TestCreateStepFailureBreaksChain:
         flow_path = tmp_path / "flow.json"
         flow_data = {
             "steps": [
-                {"name": "SYNTHESIS", "tool": "yosys", "state": "Unstart"},
-                {"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"},
+                {"name": "Synthesis", "tool": "yosys", "state": "Unstart"},
+                {"name": "Floorplan", "tool": "ecc", "state": "Unstart"},
             ]
         }
         flow_path.write_text(json.dumps(flow_data), encoding="utf-8")
-        workspace = Workspace(directory=tmp_path)
+        workspace: Any = Workspace(directory=tmp_path)
         workspace.flow.path = flow_path
         workspace.flow.data = json.loads(json.dumps(flow_data))
-        engine_flow = EngineFlow(workspace)
+        engine_flow: Any = EngineFlow(workspace)
 
         call_count = [0]
 
         def fake_create_step(*args, **kwargs):
             call_count[0] += 1
-            if kwargs.get("step") == "FLOORPLAN":
+            if kwargs.get("step") == "Floorplan":
                 return None  # simulate tool not found
             return EccStep(name=kwargs["step"], directory=tmp_path, tool=kwargs.get("eda", ""))
 
@@ -941,13 +1083,13 @@ class TestCreateStepFailureBreaksChain:
         monkeypatch.setattr(tools_mod, "create_step", fake_create_step)
         engine_flow.create_step_workspaces()
 
-        # Only SYNTHESIS should be created; FLOORPLAN fails and the chain stops.
+        # Only Synthesis should be created; Floorplan fails and the chain stops.
         assert len(engine_flow.workspace_steps) == 1
-        assert engine_flow.workspace_steps[0].name == "SYNTHESIS"
-        assert call_count[0] == 2  # SYNTHESIS + FLOORPLAN
+        assert engine_flow.workspace_steps[0].name == "Synthesis"
+        assert call_count[0] == 2  # Synthesis + Floorplan
 
-        # FLOORPLAN should be marked Incomplete in flow data
-        fp_step = next(s for s in workspace.flow.data["steps"] if s["name"] == "FLOORPLAN")
+        # Floorplan should be marked Incomplete in flow data
+        fp_step = next(s for s in workspace.flow.data["steps"] if s["name"] == "Floorplan")
         assert fp_step["state"] == StateEnum.Imcomplete.value
 
     def test_run_steps_returns_false_when_steps_skipped(self, monkeypatch, tmp_path):
@@ -955,15 +1097,15 @@ class TestCreateStepFailureBreaksChain:
         flow_path = tmp_path / "flow.json"
         flow_data = {
             "steps": [
-                {"name": "SYNTHESIS", "tool": "yosys", "state": "Unstart"},
-                {"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"},
+                {"name": "Synthesis", "tool": "yosys", "state": "Unstart"},
+                {"name": "Floorplan", "tool": "ecc", "state": "Unstart"},
             ]
         }
         flow_path.write_text(json.dumps(flow_data), encoding="utf-8")
-        workspace = Workspace(directory=tmp_path)
+        workspace: Any = Workspace(directory=tmp_path)
         workspace.flow.path = flow_path
         workspace.flow.data = json.loads(json.dumps(flow_data))
-        engine_flow = EngineFlow(workspace)
+        engine_flow: Any = EngineFlow(workspace)
 
         # Only create SYNTHESIS
         engine_flow.workspace_steps = [EccStep(name="SYNTHESIS", directory=tmp_path, tool="yosys")]
@@ -997,7 +1139,7 @@ class TestEccRunStepReturnType:
 
         monkeypatch.setattr(ecc_runner, "is_eda_exist", lambda: False)
         result = ecc_runner.run_step(
-            workspace=None,
+            workspace=_none_workspace(),
             step=EccStep(name="FLOORPLAN", directory=None, tool="ecc"),
         )
         assert result is False
@@ -1021,12 +1163,12 @@ class TestMandatoryArtifactFailure:
     def test_synthesis_missing_verilog_gives_incomplete(self, monkeypatch, tmp_path):
         from chipcompiler.data import YosysOutput, YosysStep
 
-        workspace = Workspace(directory=tmp_path)
+        workspace: Any = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
         workspace.flow.data = {
             "steps": [{"name": "SYNTHESIS", "tool": "yosys", "state": "Unstart"}]
         }
-        engine_flow = EngineFlow(workspace)
+        engine_flow: Any = EngineFlow(workspace)
         ws_step = YosysStep(
             name="SYNTHESIS",
             directory=tmp_path,
@@ -1043,10 +1185,10 @@ class TestMandatoryArtifactFailure:
         assert state == StateEnum.Imcomplete
 
     def test_harden_missing_lef_gives_incomplete(self, monkeypatch, tmp_path):
-        workspace = Workspace(directory=tmp_path)
+        workspace: Any = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
         workspace.flow.data = {"steps": [{"name": "HARDEN", "tool": "ecc", "state": "Unstart"}]}
-        engine_flow = EngineFlow(workspace)
+        engine_flow: Any = EngineFlow(workspace)
         ws_step = EccStep(
             name="HARDEN",
             directory=tmp_path,
@@ -1066,10 +1208,10 @@ class TestMandatoryArtifactFailure:
 
     def test_floorplan_missing_gds_succeeds(self, monkeypatch, tmp_path):
         (tmp_path / "home").mkdir()
-        workspace = Workspace(directory=tmp_path)
+        workspace: Any = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
         workspace.flow.data = {"steps": [{"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"}]}
-        engine_flow = EngineFlow(workspace)
+        engine_flow: Any = EngineFlow(workspace)
         ws_step = EccStep(
             name="FLOORPLAN",
             directory=tmp_path,
@@ -1092,10 +1234,10 @@ class TestMandatoryArtifactFailure:
         assert state == StateEnum.Success
 
     def test_exception_with_partial_output_gives_incomplete(self, monkeypatch, tmp_path):
-        workspace = Workspace(directory=tmp_path)
+        workspace: Any = Workspace(directory=tmp_path)
         workspace.flow.path = tmp_path / "flow.json"
         workspace.flow.data = {"steps": [{"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"}]}
-        engine_flow = EngineFlow(workspace)
+        engine_flow: Any = EngineFlow(workspace)
         ws_step = EccStep(
             name="FLOORPLAN",
             directory=tmp_path,
@@ -1124,7 +1266,7 @@ def test_engine_flow_post_success_failure_marks_incomplete_not_success(
     step to Incomplete — the terminal commit happens after the fallible
     work, so no forbidden Success -> Incomplete rollback is attempted and
     the original error is not masked."""
-    workspace = Workspace()
+    workspace: Any = Workspace(directory=tmp_path)
     flow_path = tmp_path / "home" / "flow.json"
     flow_path.parent.mkdir(parents=True)
     flow_path.write_text(
@@ -1158,7 +1300,7 @@ def test_engine_flow_post_success_failure_marks_incomplete_not_success(
     assert step_feature_path is not None
     step_feature_path.parent.mkdir(parents=True, exist_ok=True)
     step_feature_path.write_text("{}", encoding="utf-8")
-    engine_flow = EngineFlow(workspace)
+    engine_flow: Any = EngineFlow(workspace)
     engine_flow.workspace_steps = [workspace_step]
     engine_flow.engine_db = SimpleNamespace(engine=None)
 
@@ -1176,3 +1318,199 @@ def test_engine_flow_post_success_failure_marks_incomplete_not_success(
     assert result == StateEnum.Imcomplete
     persisted = json.loads(flow_path.read_text(encoding="utf-8"))
     assert persisted["steps"][0]["state"] == StateEnum.Imcomplete.value
+
+
+def test_checker_batch_honors_the_info_category_fallback(monkeypatch, tmp_path):
+    import chipcompiler.tools as tools_api
+    from chipcompiler.data import OriginDesign
+
+    workspace: Any = Workspace(
+        directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd")
+    )
+    inputs = []
+    outputs = {
+        "route": EccOutput(def_=tmp_path / "route.def", verilog=tmp_path / "route.v"),
+        "filler": EccOutput(def_=tmp_path / "filler.def", verilog=tmp_path / "filler.v"),
+    }
+
+    def fake_create_step(workspace, step, eda, **kwargs):
+        inputs.append((step, kwargs["input_def"]))
+        return EccStep(name=step, tool=eda, output=outputs.get(step, EccOutput()))
+
+    monkeypatch.setattr(tools_api, "create_step", fake_create_step)
+    flow: Any = EngineFlow(workspace)
+    flow.workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc"},
+            {"name": "filler", "tool": "ecc"},
+            {"name": "drc", "tool": "ecc", "info": {"category": "CHECKER"}},
+            {"name": "lvs", "tool": "ecc", "info": {"category": "CHECKER"}},
+        ]
+    }
+
+    flow.create_step_workspaces()
+
+    assert inputs[2:] == [
+        ("drc", outputs["filler"].def_),
+        ("lvs", outputs["filler"].def_),
+    ]
+
+
+def test_checklist_gate_follows_the_input_chain(tmp_path):
+    from chipcompiler.data import OriginDesign
+
+    workspace: Any = Workspace(
+        directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd")
+    )
+    flow_path = tmp_path / "home" / "flow.json"
+    flow_path.parent.mkdir()
+    workspace.flow.path = flow_path
+    flow: Any = EngineFlow(workspace)
+    flow.workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc", "category": "PNR"},
+            {
+                "name": "filler",
+                "tool": "ecc",
+                "category": "PNR",
+                "checklist": {"status": "blocked"},
+            },
+            {"name": "lvs", "tool": "ecc", "category": "CHECKER"},
+            {"name": "drc", "tool": "ecc", "category": "CHECKER"},
+            {"name": "antennaCheck", "tool": "ecc", "category": "CHECKER"},
+            {"name": "Harden", "tool": "ecc", "category": "PNR"},
+        ]
+    }
+
+    for checker in ("lvs", "drc", "antennaCheck"):
+        assert flow._blocked_checklist_prerequisite(EccStep(name=checker, tool="ecc")) is None
+
+    assert flow._blocked_checklist_prerequisite(EccStep(name="Harden", tool="ecc")) == "filler"
+
+
+def test_checklist_gate_blocks_the_step_after_a_synced_blocked_prerequisite(tmp_path, monkeypatch):
+    from chipcompiler.data import OriginDesign
+
+    workspace: Any = Workspace(
+        directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd")
+    )
+    flow_path = tmp_path / "home" / "flow.json"
+    flow_path.parent.mkdir()
+    workspace.flow.path = flow_path
+    flow: Any = EngineFlow(workspace)
+    workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc", "category": "PNR", "state": "Success"},
+            {
+                "name": "filler",
+                "tool": "ecc",
+                "category": "PNR",
+                "state": "Unstart",
+                "checklist": [{"id": "filler.preexisting", "state": "pass"}],
+            },
+        ]
+    }
+    checklist_path = tmp_path / "route_checklist.json"
+    checklist_path.write_text(
+        json.dumps({"status": "blocked", "checklist": [{"id": "route", "blocked": True}]}),
+        encoding="utf-8",
+    )
+    sync_step_checklist(
+        flow,
+        EccStep(
+            name="route",
+            tool="ecc",
+            directory=tmp_path,
+            checklist=ChecklistState(path=checklist_path),
+        ),
+    )
+    monkeypatch.setattr(
+        flow_module,
+        "execute_tool_step",
+        lambda **_kwargs: pytest.fail("blocked step must not run its tool"),
+    )
+
+    assert flow.run_step(EccStep(name="filler", tool="ecc")) is StateEnum.Invalid
+
+    entry = flow.get_step("filler", "ecc")
+    assert entry == {
+        "name": "filler",
+        "tool": "ecc",
+        "category": "PNR",
+        "state": "Unstart",
+        "checklist_status": {
+            "status": "blocked",
+            "blocked": True,
+            "failed_items": ["prerequisite:route"],
+            "source": "home/flow.json",
+        },
+    }
+    assert "checklist" not in entry
+    assert all(not isinstance(step.get("checklist"), dict) for step in workspace.flow.data["steps"])
+
+
+@pytest.mark.parametrize("status", ["passed", "attention", "unknown", None])
+def test_run_step_runs_after_a_non_blocked_prerequisite(tmp_path, monkeypatch, status):
+    from chipcompiler.data import OriginDesign
+
+    workspace: Any = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    flow_path = tmp_path / "home" / "flow.json"
+    flow_path.parent.mkdir()
+    workspace.flow.path = flow_path
+    flow: Any = EngineFlow(workspace)
+    workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc", "category": "PNR", "state": "Success"},
+            {"name": "filler", "tool": "ecc", "category": "PNR", "state": "Unstart"},
+        ]
+    }
+    if status is not None:
+        route = flow.get_step("route", "ecc")
+        assert route is not None
+        route["checklist_status"] = {"status": status, "blocked": False}
+        flow.save()
+    step = EccStep(name="filler", directory=tmp_path, tool="ecc")
+    flow.workspace_steps = [step]
+    monkeypatch.setattr(flow, "engine_db", SimpleNamespace(engine=None))
+    called = []
+    monkeypatch.setattr(tools, "run_step", lambda **kwargs: called.append(kwargs["step"]) or True)
+    monkeypatch.setattr(flow, "check_step_result", lambda **_kwargs: True)
+    monkeypatch.setattr(tools, "save_layout_image", lambda **_kwargs: True)
+
+    assert flow.run_step(step) == StateEnum.Success
+    assert called == [step]
+
+
+@pytest.mark.parametrize("status", ["passed", "attention", "unknown", None])
+def test_checklist_gate_allows_non_blocked_status(tmp_path, status):
+    from chipcompiler.data import OriginDesign
+
+    workspace: Any = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    flow_path = tmp_path / "home" / "flow.json"
+    flow_path.parent.mkdir()
+    workspace.flow.path = flow_path
+    flow: Any = EngineFlow(workspace)
+    workspace.flow.data = {
+        "steps": [
+            {"name": "route", "tool": "ecc", "category": "PNR"},
+            {"name": "filler", "tool": "ecc", "category": "PNR"},
+        ]
+    }
+    if status is not None:
+        route = flow.get_step("route", "ecc")
+        assert route is not None
+        route["checklist_status"] = {"status": status, "blocked": False}
+        flow.save()
+
+    assert flow._blocked_checklist_prerequisite(EccStep(name="filler", tool="ecc")) is None
+
+
+def test_unregistered_checker_step_fails_the_classification(tmp_path):
+    from chipcompiler.data import OriginDesign
+
+    workspace: Any = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    flow: Any = EngineFlow(workspace)
+    flow.workspace.flow.data = {"steps": [{"name": "custom", "tool": "one", "category": "CHECKER"}]}
+
+    with pytest.raises(ValueError, match="no flow policy registered"):
+        flow._is_checker_step(EccStep(name="custom", tool="one"))

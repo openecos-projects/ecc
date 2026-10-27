@@ -1,7 +1,7 @@
 import ctypes
 import errno
 
-from chipcompiler.engine.workspace_lifecycle import _exchange_directories
+from chipcompiler.engine.workspace_lifecycle import exchange_directories
 
 
 def test_exchange_directories_falls_back_when_nfs_rejects_rename_exchange(tmp_path, monkeypatch):
@@ -20,7 +20,7 @@ def test_exchange_directories_falls_back_when_nfs_rejects_rename_exchange(tmp_pa
 
     monkeypatch.setattr(ctypes, "CDLL", lambda *_args, **_kwargs: UnsupportedRenameExchange())
 
-    _exchange_directories(left, right)
+    exchange_directories(left, right)
 
     assert (left / "identity").read_text() == "new"
     assert (right / "identity").read_text() == "old"

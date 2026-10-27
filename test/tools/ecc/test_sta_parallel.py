@@ -6,6 +6,7 @@ import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -38,6 +39,8 @@ def test_worker_arms_parent_death_signal_and_closes_startup_race(stale_parent):
             assert receiver.recv() == signal.SIGKILL
     finally:
         if process.is_alive():
+            assert process.pid is not None
+            assert process.pid is not None
             os.kill(process.pid, signal.SIGKILL)
             process.join()
         process.close()
@@ -73,6 +76,7 @@ def _parent_death_supervisor(connection, death_signal):
     try:
         assert receiver.poll(15)
         worker_pid = receiver.recv()
+        assert parent.pid is not None
         os.kill(parent.pid, death_signal)
         parent.join(timeout=5)
         assert parent.exitcode == -death_signal
@@ -131,7 +135,7 @@ def test_worker_setting_applies_to_every_workspace_sta_step(tmp_path, monkeypatc
     config_path = tmp_path / "sta.json"
     workspace.config["sta"] = config_path
     config_path.write_text("{}")
-    step = SimpleNamespace(tool="ecc", name="sta")
+    step: Any = SimpleNamespace(tool="ecc", name="sta")
     assert sta.sta_workers(workspace, step) == 1
     monkeypatch.setenv("ECOS_AGENT_STA_WORKERS", "4")
     for value in (1, 2, 3, 4):
@@ -151,7 +155,7 @@ def test_non_linux_keeps_serial_default(tmp_path, monkeypatch):
     config_path = tmp_path / "sta.json"
     config_path.write_text('{"max_parallel_corners": 4}')
     workspace.config["sta"] = config_path
-    step = SimpleNamespace(tool="ecc", name="sta")
+    step: Any = SimpleNamespace(tool="ecc", name="sta")
     assert sta.sta_workers(workspace, step) == 1
 
 
@@ -159,7 +163,7 @@ def test_non_linux_keeps_serial_default(tmp_path, monkeypatch):
 def test_cpu_affinity_limits_corner_concurrency(tmp_path, monkeypatch):
     config_path = tmp_path / "sta.json"
     config_path.write_text('{"max_parallel_corners": 4}')
-    workspace = SimpleNamespace(config={"sta": config_path})
+    workspace: Any = SimpleNamespace(config={"sta": config_path})
     monkeypatch.setattr(sta.sys, "platform", "linux")
     monkeypatch.setattr(sta.os, "sched_getaffinity", lambda _: {0})
     assert sta.sta_workers(workspace, SimpleNamespace(tool="ecc", name="sta")) == 1
@@ -169,8 +173,8 @@ def test_cpu_affinity_limits_corner_concurrency(tmp_path, monkeypatch):
 def test_cli_tool_dispatch_uses_the_sta_config(tmp_path, monkeypatch, workers):
     config_path = tmp_path / "sta.json"
     config_path.write_text(json.dumps({"max_parallel_corners": workers}))
-    workspace = SimpleNamespace(config={"sta": config_path})
-    step = SimpleNamespace(name="sta", tool="ecc")
+    workspace: Any = SimpleNamespace(config={"sta": config_path})
+    step: Any = SimpleNamespace(name="sta", tool="ecc")
     monkeypatch.setattr(sta.sys, "platform", "linux")
     monkeypatch.setattr(sta.os, "cpu_count", lambda: 8)
     monkeypatch.setattr(sta.runner, "is_eda_exist", lambda: True)
@@ -186,10 +190,10 @@ def test_full_corner_barrier_isolates_jobs_and_publishes_only_after_success(
     tmp_path, monkeypatch, fail
 ):
     workspace = _workspace(tmp_path)
-    step = SimpleNamespace(log=SimpleNamespace(dir=tmp_path / "log"))
+    step: Any = SimpleNamespace(log=SimpleNamespace(dir=tmp_path / "log"))
     module = SimpleNamespace(save_data=lambda _: None, is_db_data_exists=lambda _: True)
     proxy = sta._ParallelTiming(module, workspace, step, 2, 13, tmp_path / "temporary")
-    originals = [
+    originals: list[dict[str, Any]] = [
         dict(
             work_dir=tmp_path / "shared",
             report_dir=tmp_path / "report" / str(index),
@@ -236,7 +240,7 @@ def test_full_corner_barrier_isolates_jobs_and_publishes_only_after_success(
 
 def test_failed_validation_clears_stale_corner_and_aggregate(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
-    step = SimpleNamespace(
+    step: Any = SimpleNamespace(
         report=SimpleNamespace(dir=tmp_path / "report"),
         feature=SimpleNamespace(dir=tmp_path / "feature"),
         analysis=SimpleNamespace(dir=tmp_path / "analysis"),
@@ -245,6 +249,7 @@ def test_failed_validation_clears_stale_corner_and_aggregate(tmp_path, monkeypat
     item = dict(corner="MAX", temperature=125, rcx_corner="rcworst")
     for root in (step.report.dir, step.feature.dir):
         directory = sta.sta_artifact_directory(root, "MAX", 125, "rcworst")
+        assert directory is not None
         directory.mkdir(parents=True)
         (directory / "qor_summary.json").write_text("old")
     step.analysis.dir.mkdir()
@@ -326,7 +331,7 @@ def test_runtime_observer_cancellation_is_checked():
         raise RuntimeError("cancelled")
 
     observer = SimpleNamespace(raise_if_cancelled=cancel)
-    workspace = SimpleNamespace(_runtime_flow_observer=observer)
+    workspace: Any = SimpleNamespace(_runtime_flow_observer=observer)
     with pytest.raises(RuntimeError, match="cancelled"):
         sta._check_cancelled(workspace)
 

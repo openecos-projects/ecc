@@ -99,8 +99,8 @@ def current_process_identity() -> ProcessIdentity:
         pid=pid,
         pgid=os.getpgid(pid),
         process_start_id=_process_start_id(pid),
-        boot_id=_boot_id(),
-        host_id=_host_id(),
+        boot_id=boot_id(),
+        host_id=host_id(),
     )
 
 
@@ -289,7 +289,7 @@ def read_runtime_process(
 
 def identity_is_live(entry: dict[str, Any]) -> bool:
     value = validate_runtime_entry(entry)
-    if value["host_id"] != _host_id() or value["boot_id"] != _boot_id():
+    if value["host_id"] != host_id() or value["boot_id"] != boot_id():
         return False
     try:
         return (
@@ -360,7 +360,7 @@ def _process_start_id(pid: int) -> str:
     return value
 
 
-def _boot_id() -> str:
+def boot_id() -> str:
     try:
         value = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip()
     except (OSError, UnicodeDecodeError) as exc:
@@ -370,7 +370,7 @@ def _boot_id() -> str:
     return value
 
 
-def _host_id() -> str:
+def host_id() -> str:
     sources = (Path("/etc/machine-id"), Path("/var/lib/dbus/machine-id"))
     for path in sources:
         try:
@@ -381,7 +381,7 @@ def _host_id() -> str:
             return hashlib.sha256(value).hexdigest()
     try:
         namespace = Path("/proc/self/ns/pid").stat()
-        identity = f"linux-boot:{_boot_id()}:pidns:{namespace.st_dev}:{namespace.st_ino}"
+        identity = f"linux-boot:{boot_id()}:pidns:{namespace.st_dev}:{namespace.st_ino}"
     except OSError as exc:
         raise RuntimeProcessError("host_identity_unavailable", str(exc)) from exc
     return hashlib.sha256(identity.encode("ascii")).hexdigest()

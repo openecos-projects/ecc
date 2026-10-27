@@ -108,7 +108,11 @@ def _count_check(rows: list[dict], predicate) -> dict:
 
 
 def _uniform_check(rows: list[dict], key: str) -> dict:
-    values = {row.get(key) for row in rows if isinstance(row.get(key), str) and row.get(key)}
+    values: set[str] = set()
+    for row in rows:
+        value = row.get(key)
+        if isinstance(value, str) and value:
+            values.add(value)
     return {
         "status": "pass" if rows and len(values) == 1 else "unknown",
         "observed": sorted(values),

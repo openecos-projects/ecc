@@ -42,6 +42,7 @@ def test_project_root_uses_current_directory_without_guessing_workspace(
 
     assert command_input == _input()
     assert ctx.project_dir == str(project)
+    assert ctx.manifest_error is not None
     assert ctx.manifest_error.startswith("workspace_required:")
 
 

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from chipcompiler.cli.experiments.operations import payload_fingerprint
 from chipcompiler.data.parameter_schema import parse_cli_overrides
+from chipcompiler.project.manifest import CONFIG_FILENAME, MANIFEST_FILENAME
 from ecc_experience.files import digest, read_json, safe_child
 from ecc_experience.modeling.predict import ADVICE_SCHEMA, read_model_release
 from ecc_experience.modeling.validation import invalid
@@ -20,7 +21,7 @@ def seed_sweep(
     project: str | Path, advice: str | Path, model_release: str | Path, name: str
 ) -> dict:
     root = Path(project).expanduser().resolve()
-    if not (root / "ecc.toml").is_file() and not (root / "project.json").is_file():
+    if not (root / CONFIG_FILENAME).is_file() and not (root / MANIFEST_FILENAME).is_file():
         raise invalid("Sweep target must be an ECC project")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", name):
         raise invalid("Sweep name must be a single safe path component")

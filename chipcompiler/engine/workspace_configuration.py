@@ -34,10 +34,10 @@ from chipcompiler.utility import JsonReadError
 
 from .workspace_lifecycle import (
     WorkspaceLifecycleError,
-    _command_retry_matches,
     _load_committed_workspace,
-    _workspace_command_fingerprint,
-    _write_workspace_command,
+    command_retry_matches,
+    workspace_command_fingerprint,
+    write_workspace_command,
 )
 
 
@@ -115,13 +115,13 @@ def _apply_workspace_parameters(
         raise WorkspaceLifecycleError(
             "conflicting_parameter_patch", "Parameters cannot be repeated or set and unset"
         )
-    fingerprint = _workspace_command_fingerprint(
+    fingerprint = workspace_command_fingerprint(
         "parameter_apply",
         {"sets": sets, "unsets": sorted(unset_keys), "stepId": step_id},
         {},
         expected_workspace_revision,
     )
-    if command_id and _command_retry_matches(target, command_id, fingerprint):
+    if command_id and command_retry_matches(target, command_id, fingerprint):
         return _load_committed_workspace(target)
 
     workspace = _load_committed_workspace(target)
@@ -179,7 +179,7 @@ def _apply_workspace_parameters(
             changed = True
 
     if not changed:
-        _write_workspace_command(
+        write_workspace_command(
             target,
             command_id,
             fingerprint,
@@ -201,7 +201,7 @@ def _apply_workspace_parameters(
         cause="workspace.parameters_applied",
         first_invalidated_step=first_step,
     )
-    _write_workspace_command(
+    write_workspace_command(
         target,
         command_id,
         fingerprint,
@@ -248,10 +248,10 @@ def _update_workspace_configuration(
     if not isinstance(requested, dict):
         raise WorkspaceLifecycleError("workspace_spec_invalid", "parameters must be an object")
     parameters = {str(key): value for key, value in requested.items()}
-    fingerprint = _workspace_command_fingerprint(
+    fingerprint = workspace_command_fingerprint(
         "configuration", config, workspace_bindings, expected_workspace_revision
     )
-    if command_id and _command_retry_matches(target, command_id, fingerprint):
+    if command_id and command_retry_matches(target, command_id, fingerprint):
         return _load_committed_workspace(target)
 
     workspace = _load_committed_workspace(target)
@@ -280,7 +280,7 @@ def _update_workspace_configuration(
             changed = True
 
     if not changed:
-        _write_workspace_command(
+        write_workspace_command(
             target,
             command_id,
             fingerprint,
@@ -303,7 +303,7 @@ def _update_workspace_configuration(
         workspace_id=current["workspaceId"],
         cause="workspace.configuration_updated",
     )
-    _write_workspace_command(
+    write_workspace_command(
         target,
         command_id,
         fingerprint,
@@ -442,13 +442,13 @@ def _update_workspace_step_configuration(
             "workspace_spec_invalid", "Step identity and parameters object are required"
         )
     patch = {str(key): value for key, value in parameters.items()}
-    fingerprint = _workspace_command_fingerprint(
+    fingerprint = workspace_command_fingerprint(
         "step_configuration",
         {"stepId": step_id, "parameters": patch},
         {},
         expected_workspace_revision,
     )
-    if command_id and _command_retry_matches(target, command_id, fingerprint):
+    if command_id and command_retry_matches(target, command_id, fingerprint):
         return _load_committed_workspace(target)
 
     workspace = _load_committed_workspace(target)
@@ -483,7 +483,7 @@ def _update_workspace_step_configuration(
             changed = True
 
     if not changed:
-        _write_workspace_command(
+        write_workspace_command(
             target,
             command_id,
             fingerprint,
@@ -504,7 +504,7 @@ def _update_workspace_step_configuration(
         cause="workspace.step_configuration_updated",
         first_invalidated_step=step,
     )
-    _write_workspace_command(
+    write_workspace_command(
         target,
         command_id,
         fingerprint,

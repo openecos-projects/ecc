@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 
 from chipcompiler.utility import file_digest, json_read
+from chipcompiler.utility.path import require_path
 
 __all__ = [
     "build_lec_step_space",
@@ -65,12 +66,14 @@ def write_step_result(step, *, proven: bool) -> None:
         "equiv_status": str(getattr(step.report, "equiv_status", None) or ""),
         "status_report": str(getattr(step.report, "status", None) or ""),
     }
-    Path(step.output.json).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    require_path(step.output.json, "LEC result json").write_text(
+        json.dumps(payload, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 def build_lec_step_space(step) -> None:
     """Create every declared directory group of an LEC step."""
-    step_directory = Path(step.directory)
+    step_directory = require_path(step.directory, "step directory")
     step_directory.mkdir(parents=True, exist_ok=True)
     for group in (step.output, step.data, step.report, step.log, step.script, step.analysis):
         directory = getattr(group, "dir", None)

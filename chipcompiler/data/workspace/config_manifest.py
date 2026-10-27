@@ -11,8 +11,12 @@ refresh can refuse to clobber edits instead of silently discarding them.
 """
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from chipcompiler.utility import file_digest, json_read, json_write
+
+if TYPE_CHECKING:
+    from . import Workspace
 
 DERIVED_CONFIG_MANIFEST_FILENAME = "config-derived-manifest.json"
 
@@ -21,7 +25,7 @@ def derived_config_manifest_path(workspace_dir: str | Path) -> Path:
     return Path(workspace_dir) / "home" / DERIVED_CONFIG_MANIFEST_FILENAME
 
 
-def record_derived_config(workspace) -> bool:
+def record_derived_config(workspace: "Workspace") -> bool:
     """Write the hash manifest of the managed config files after a derivation.
 
     Called at the end of ``refresh_workspace_config`` (atomic tmp+replace,
@@ -33,7 +37,7 @@ def record_derived_config(workspace) -> bool:
     if not workspace.config:
         return False
     config_dir_value = workspace.config.get("dir")
-    if config_dir_value is None or workspace.directory is None:
+    if config_dir_value is None:
         return False
     config_dir = Path(config_dir_value)
     if not config_dir.is_dir():

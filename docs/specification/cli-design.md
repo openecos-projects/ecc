@@ -139,6 +139,7 @@ Current implementation status:
 | `ecc version` | hidden `--json` only (desktop app contract) |
 | `ecc gdsview` | `--plain` and `--json` (opens KLayout) |
 | `ecc chipview` | `--plain` and `--json` (launches a native viewer) |
+| `ecc check-update` | `--plain`, plus hidden `--json` (desktop app contract) |
 
 When `--plain` is given, the implementation renders plain records; otherwise it
 renders pretty text.
@@ -198,6 +199,7 @@ ecc version
 ecc init
 ecc check
 ecc doctor
+ecc check-update
 ecc run
 ecc status
 ecc log
@@ -224,6 +226,7 @@ Responsibilities:
 | `ecc init` | Create a project skeleton and `ecc.toml` |
 | `ecc check` | Validate RTL, constraints, PDK, tools, and config |
 | `ecc doctor` | Probe host environment (PDK, yosys+slang, bundled tools); optional failures do not exit non-zero |
+| `ecc check-update` | Compare the installed build against the latest nightly release and point to the ecos-installer pages; every status exits 0 (`--plain` supported) |
 | `ecc run` | Execute the configured flow (`--preset` overrides `[flow] preset` for one run) |
 | `ecc status` | Summarize run and step state |
 | `ecc log` | Show available logs or complete step log content |
@@ -447,10 +450,13 @@ ecc project set flow.preset rtl2gds
 ecc workspace refresh baseline
 ```
 
-`ecc project` edits only `ecc.toml`: the field registry covers the `[design]`
-inputs (`name`, `top`, `rtl`, `netlist`, `golden_netlist`, `def`, `sdc`,
-`spef`, `clock_port`, `frequency_mhz`), `[pdk] name/root`, and `[flow] preset`.
-`ecc param` continues to own all `[params.*]` and `[pdk.overrides]` fields.
+`ecc project` edits `ecc.toml` and, for manifest projects, atomically syncs
+`project.json.base_design`; existing workspace snapshots are unchanged. Legacy
+and virgin projects write only `ecc.toml`. The field registry covers the
+`[design]` inputs (`name`, `top`, `rtl`, `netlist`, `golden_netlist`, `def`,
+`sdc`, `spef`, `clock_port`, `frequency_mhz`), `[pdk] name/root`, and
+`[flow] preset`. `ecc param` continues to own all `[params.*]` and
+`[pdk.overrides]` fields.
 `ecc workspace refresh NAME` accepts only a workspace declared in
 `project.json`, recreates it with the existing overwrite safeguards, records
 status `not_started`, and never executes the flow. If any generated
@@ -475,10 +481,12 @@ ecc version --json
 
 `ecc --version` prints one line for package-manager and script probes. `ecc
 version` prints fixed-order text lines for `ecc`, `dreamplace`, `ecc_tools`, and
-`runtime`. `ecc version --json` returns schema version `1` with `runtime`,
-`ecc`, `dreamplace`, and `ecc_tools` fields. Missing distribution metadata is
-reported as `unknown`, except the `ecc` field may fall back to the source
-package `__version__`.
+`runtime`. `ecc version --json` returns schema version `2` with `runtime`,
+`ecc`, `dreamplace`, `ecc_tools`, `cli_contract`, and nullable
+`build_commit`/`build_date` fields (populated only in CI-stamped bundles;
+`null` in source installs). Missing distribution metadata is reported as
+`unknown`, except the `ecc` field may fall back to the source package
+`__version__`.
 
 ### Desktop CLI Contract
 

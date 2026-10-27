@@ -74,7 +74,7 @@ def build_qor_analysis(workspace) -> QorAnalysis:
 
 
 def report_path(workspace) -> Path:
-    return Path(workspace.directory or "") / "home" / REPORT_FILENAME
+    return Path(workspace.directory) / "home" / REPORT_FILENAME
 
 
 def write_qor_report(workspace, analysis=None) -> Path:

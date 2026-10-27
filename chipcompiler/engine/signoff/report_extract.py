@@ -14,7 +14,7 @@ from chipcompiler.engine.signoff.report_data import (
     ParsedQorSummaryMetrics,
     canonicalize_stage_name,
 )
-from chipcompiler.tools.ecc.power_artifacts import workspace_power_report_path
+from chipcompiler.tools.ecc.power_artifacts import workspace_power_report_source_path
 from chipcompiler.utility.json import json_read
 
 # ---------------------------------------------------------------------------
@@ -378,7 +378,7 @@ def _sta_corner_reports(workspace, workspace_root: Path) -> tuple[dict, dict | N
             payload.setdefault("violating_endpoints_hold", rpt.hold_nvp)
         if payload:
             corners[label] = payload
-    power_rpt = parse_power_rpt(_read_text(workspace_power_report_path(workspace_root)))
+    power_rpt = parse_power_rpt(_read_text(workspace_power_report_source_path(workspace_root)))
     if power_rpt.total_power_mw is not None:
         power_payload = dataclasses.asdict(power_rpt)
 
@@ -404,7 +404,7 @@ def _sta_corner_reports(workspace, workspace_root: Path) -> tuple[dict, dict | N
 
 def collect_workspace_report(workspace) -> DesignReportData:
     """Walk an ECC workspace (Workspace or duck-typed stand-in) and extract."""
-    workspace_root = Path(workspace.directory or "")
+    workspace_root = Path(workspace.directory)
     flow_data = workspace.flow.data if getattr(workspace, "flow", None) else {}
     flow = json_read(workspace_root / "home" / "flow.json") or flow_data
     parameters = getattr(getattr(workspace, "parameters", None), "data", None)

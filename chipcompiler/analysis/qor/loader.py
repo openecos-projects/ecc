@@ -13,15 +13,16 @@ from pathlib import Path
 from chipcompiler.analysis.qor.metric_registry import SCORED_STEP_VALUES
 from chipcompiler.data import StateEnum, StepEnum
 from chipcompiler.data.step import STEP_DIRECTORIES
-from chipcompiler.tools.ecc.power_artifacts import workspace_power_summary_path
+from chipcompiler.tools.ecc.power_artifacts import power_step_path, workspace_power_summary_path
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
     STA_POWER_SUMMARY_FILENAME,
     configured_sta_artifact_directories,
+    read_power_step_summary_json,
     read_sta_power_summary_json,
     read_sta_qor_summary,
 )
-from chipcompiler.utility.json import json_read
+from chipcompiler.utility.json import JsonObject, json_read
 
 _ROLE_PRIORITY = {"final": 0, "gate": 1, "trend": 2, "none": 3}
 
@@ -138,15 +139,16 @@ def _select_metrics(step_payloads: list) -> dict:
             role = raw.get("project_role")
             if role not in _ROLE_PRIORITY or role == "none":
                 continue
+            fields = JsonObject(raw)
             record = MetricRecord(
                 metric_id=metric_id,
                 value=float(value),
-                unit=raw.get("unit") if isinstance(raw.get("unit"), str) else "",
+                unit=fields.get_str("unit"),
                 step=step_value,
                 project_role=role,
-                corner=raw.get("corner") if isinstance(raw.get("corner"), str) else None,
-                source=raw.get("source") if isinstance(raw.get("source"), dict) else {},
-                scope=raw.get("scope") if isinstance(raw.get("scope"), str) else None,
+                corner=fields.get_str("corner", None),
+                source=dict(fields.get_obj("source")),
+                scope=fields.get_str("scope", None),
                 endpoint_population=(
                     float(raw["endpoint_population"])
                     if isinstance(raw.get("endpoint_population"), (int, float))
@@ -198,9 +200,21 @@ def _corner_slack(workspace, workspace_root: Path, flow_states: dict) -> tuple[l
 
 
 def _power_summary(workspace, workspace_root: Path, flow_states: dict):
-    """Select the worst available signoff power, with synthesis fallback."""
+    """Select signoff power from the current step artifact, with fallbacks."""
     power_state = flow_states.get(StepEnum.POWER_ANALYSIS.value)
     if power_state == StateEnum.Success.value:
+        feature_dir = workspace_root / STEP_DIRECTORIES[StepEnum.POWER_ANALYSIS.value] / "feature"
+        path = power_step_path(feature_dir)
+        summary = read_power_step_summary_json(path)
+        if summary is not None:
+            return (
+                summary.dynamic_uw + summary.leakage_uw,
+                path,
+                "signoff",
+                StepEnum.POWER_ANALYSIS.value,
+            )
+
+        # Keep pre-step-artifact workspaces readable while they are migrated.
         path = workspace_power_summary_path(workspace_root)
         summary = read_sta_power_summary_json(path)
         if summary is not None:
@@ -290,7 +304,7 @@ def _resolve_parameters(parameters: dict, warnings: list) -> tuple:
 
 
 def load_workspace_qor_inputs(workspace) -> QorInputs:
-    workspace_root = Path(workspace.directory or "")
+    workspace_root = Path(workspace.directory)
     design = getattr(getattr(workspace, "design", None), "name", "") or getattr(
         workspace, "name", ""
     )

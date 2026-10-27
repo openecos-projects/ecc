@@ -3,73 +3,22 @@ import os
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
 from agent import tools as eda
 from agent.data import parameter_runtime_observer as runtime_observer
 from agent.data.candidate_materialization import materialize_candidate_config
-from agent.plot import AgentECCToolsPlot
-from chipcompiler.tools.ecc import runner as ecc_runner
-from chipcompiler.tools.ecc.plot import ECCToolsPlot
+
+
+def _ns(**kwargs: object) -> Any:
+    return SimpleNamespace(**kwargs)
 
 
 def _write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data), encoding="utf-8")
-
-
-def test_agent_plotter_skips_all_display_plots_for_candidate_workspaces(monkeypatch, tmp_path):
-    calls = []
-    monkeypatch.setattr(ECCToolsPlot, "plot", lambda plotter: calls.append(plotter.workspace))
-    candidate = SimpleNamespace(directory=tmp_path / ".agent" / "candidates" / "candidate-1")
-    ordinary = SimpleNamespace(directory=tmp_path / "ordinary")
-
-    assert AgentECCToolsPlot(candidate, SimpleNamespace()).plot() is True
-    AgentECCToolsPlot(ordinary, SimpleNamespace()).plot()
-
-    assert calls == [ordinary]
-
-
-def test_run_analysis_routes_plots_through_agent_plotter(monkeypatch, tmp_path):
-    plotted = []
-    monkeypatch.setattr(ECCToolsPlot, "plot", lambda plotter: plotted.append(plotter))
-    monkeypatch.setattr(ecc_runner, "build_step_metrics", lambda **kwargs: None)
-    monkeypatch.setattr(
-        ecc_runner,
-        "EccChecklist",
-        lambda **kwargs: SimpleNamespace(check=lambda: None),
-    )
-
-    def run_analysis_at(root):
-        workspace = SimpleNamespace(directory=root, parameters=SimpleNamespace(data={}))
-        ecc_runner.run_analysis(
-            workspace=workspace,
-            step=SimpleNamespace(name="cts"),
-            subflow=SimpleNamespace(),
-        )
-
-    run_analysis_at(tmp_path / ".agent" / "candidates" / "candidate-1")
-    assert plotted == []
-
-    run_analysis_at(tmp_path / "ordinary")
-    assert len(plotted) == 1
-    assert isinstance(plotted[0], AgentECCToolsPlot)
-
-
-def test_agent_plotter_uses_headless_display_helper_only_when_requested(monkeypatch, tmp_path):
-    calls = []
-    ordinary = SimpleNamespace(
-        directory=tmp_path / "ordinary",
-        logger=SimpleNamespace(warning=lambda message: calls.append(message)),
-    )
-    monkeypatch.setenv("ECOS_AGENT_SKIP_DISPLAY_PLOTS", "1")
-    monkeypatch.setattr("agent.plot.plot_array_maps", lambda paths, warn: calls.append(paths))
-    monkeypatch.setattr(ECCToolsPlot, "plot_array_maps", lambda *_args: calls.append("default"))
-
-    AgentECCToolsPlot(ordinary, SimpleNamespace()).plot_array_maps(["map.csv"])
-
-    assert calls == [["map.csv"]]
 
 
 class _Scalar:
@@ -83,14 +32,14 @@ class _Scalar:
 def test_tool_runner_reapplies_candidate_overlay_after_builder_refresh(monkeypatch, tmp_path):
     config_path = tmp_path / "config" / "dreamplace_ecc.json"
     _write_json(config_path, {"target_density": 0.8})
-    workspace = SimpleNamespace(
+    workspace = _ns(
         directory=str(tmp_path),
         config={"dreamplace": config_path},
-        pdk=SimpleNamespace(),
-        logger=SimpleNamespace(),
-        flow=SimpleNamespace(data={"steps": [{"name": "place", "tool": "dreamplace"}]}),
+        pdk=_ns(),
+        logger=_ns(),
+        flow=_ns(data={"steps": [{"name": "place", "tool": "dreamplace"}]}),
     )
-    step = SimpleNamespace(name="place", tool="dreamplace")
+    step = _ns(name="place", tool="dreamplace")
     materialize_candidate_config(
         workspace,
         "place",
@@ -107,7 +56,7 @@ def test_tool_runner_reapplies_candidate_overlay_after_builder_refresh(monkeypat
         consumed.append(json.loads(config_path.read_text(encoding="utf-8"))["target_density"])
         return ecc_module
 
-    tool = SimpleNamespace(build_step_config=build_step_config, run_step=run_step)
+    tool = _ns(build_step_config=build_step_config, run_step=run_step)
     monkeypatch.setattr(eda, "load_eda_module", lambda *_args, **_kwargs: tool)
     monkeypatch.setattr(eda, "log_workspace_step", lambda *_args, **_kwargs: None)
 
@@ -116,13 +65,13 @@ def test_tool_runner_reapplies_candidate_overlay_after_builder_refresh(monkeypat
 
 
 def test_agent_sizer_runner_isolates_loader_environment(monkeypatch, tmp_path):
-    workspace = SimpleNamespace(
+    workspace = _ns(
         directory=str(tmp_path),
         config={},
-        logger=SimpleNamespace(),
-        flow=SimpleNamespace(data={"steps": [{"name": "Timing optimization", "tool": "sizer"}]}),
+        logger=_ns(),
+        flow=_ns(data={"steps": [{"name": "Timing optimization", "tool": "sizer"}]}),
     )
-    step = SimpleNamespace(name="Timing optimization", tool="sizer")
+    step = _ns(name="Timing optimization", tool="sizer")
     runtime_root = tmp_path / "sizer"
     executable = runtime_root / "bin" / "Sizer"
     executable.parent.mkdir(parents=True)
@@ -137,7 +86,7 @@ def test_agent_sizer_runner_isolates_loader_environment(monkeypatch, tmp_path):
         )
         return True
 
-    tool = SimpleNamespace(build_step_config=lambda *_args: None, run_step=run_step)
+    tool = _ns(build_step_config=lambda *_args: None, run_step=run_step)
     monkeypatch.setattr(eda, "load_eda_module", lambda *_args, **_kwargs: tool)
     monkeypatch.setattr(eda, "log_workspace_step", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(eda, "reapply_materialized_candidate_config", lambda *_args: None)
@@ -155,14 +104,14 @@ def test_agent_sizer_runner_isolates_loader_environment(monkeypatch, tmp_path):
 def test_tool_runner_owns_candidate_runtime_report(monkeypatch, tmp_path):
     config_path = tmp_path / "config" / "dreamplace_ecc.json"
     _write_json(config_path, {"target_density": 0.8})
-    workspace = SimpleNamespace(
+    workspace = _ns(
         directory=str(tmp_path),
         config={"dreamplace": config_path},
-        pdk=SimpleNamespace(),
-        logger=SimpleNamespace(exception=lambda *_args, **_kwargs: None),
-        flow=SimpleNamespace(data={"steps": [{"name": "place", "tool": "dreamplace"}]}),
+        pdk=_ns(),
+        logger=_ns(exception=lambda *_args, **_kwargs: None),
+        flow=_ns(data={"steps": [{"name": "place", "tool": "dreamplace"}]}),
     )
-    step = SimpleNamespace(name="place", tool="dreamplace")
+    step = _ns(name="place", tool="dreamplace")
     materialize_candidate_config(
         workspace,
         "place",
@@ -174,9 +123,9 @@ def test_tool_runner_owns_candidate_runtime_report(monkeypatch, tmp_path):
     )
 
     def run_step(**_kwargs):
-        recorder.engine = SimpleNamespace(
-            params=SimpleNamespace(target_density=0.65),
-            placer=SimpleNamespace(data_collections=SimpleNamespace(target_density=_Scalar(0.65))),
+        recorder.engine = _ns(
+            params=_ns(target_density=0.65),
+            placer=_ns(data_collections=_ns(target_density=_Scalar(0.65))),
         )
         recorder.ppa = {"iteration": 3}
         recorder.probe["density_operator_call_count"] = 2
@@ -184,7 +133,7 @@ def test_tool_runner_owns_candidate_runtime_report(monkeypatch, tmp_path):
         recorder.probe["density_tensor_value"] = 0.65
         return True
 
-    tool = SimpleNamespace(build_step_config=lambda *_args: None, run_step=run_step)
+    tool = _ns(build_step_config=lambda *_args: None, run_step=run_step)
     monkeypatch.setattr(eda, "load_eda_module", lambda *_args, **_kwargs: tool)
     monkeypatch.setattr(eda, "log_workspace_step", lambda *_args, **_kwargs: None)
 
@@ -204,14 +153,14 @@ def test_tool_runner_owns_candidate_runtime_report(monkeypatch, tmp_path):
 def test_legalization_runner_reapplies_real_dreamplace_overlay(monkeypatch, tmp_path):
     config_path = tmp_path / "config" / "dreamplace_ecc.json"
     _write_json(config_path, {"bndry_padding_x": 0})
-    workspace = SimpleNamespace(
+    workspace = _ns(
         directory=str(tmp_path),
         config={"dreamplace": config_path},
-        pdk=SimpleNamespace(),
-        logger=SimpleNamespace(),
-        flow=SimpleNamespace(data={"steps": [{"name": "legalization", "tool": "dreamplace"}]}),
+        pdk=_ns(),
+        logger=_ns(),
+        flow=_ns(data={"steps": [{"name": "legalization", "tool": "dreamplace"}]}),
     )
-    step = SimpleNamespace(name="legalization", tool="dreamplace")
+    step = _ns(name="legalization", tool="dreamplace")
     materialize_candidate_config(
         workspace,
         "legalization",
@@ -228,7 +177,7 @@ def test_legalization_runner_reapplies_real_dreamplace_overlay(monkeypatch, tmp_
         consumed.append(json.loads(config_path.read_text(encoding="utf-8"))["bndry_padding_x"])
         return ecc_module
 
-    tool = SimpleNamespace(build_step_config=build_step_config, run_step=run_step)
+    tool = _ns(build_step_config=build_step_config, run_step=run_step)
     monkeypatch.setattr(eda, "load_eda_module", lambda *_args, **_kwargs: tool)
     monkeypatch.setattr(eda, "log_workspace_step", lambda *_args, **_kwargs: None)
 
@@ -241,13 +190,13 @@ def test_candidate_sta_routes_only_parallel_mode_to_agent(monkeypatch, tmp_path,
     calls = []
     config_path = tmp_path / "sta.json"
     _write_json(config_path, {"max_parallel_corners": workers})
-    workspace = SimpleNamespace(
+    workspace = _ns(
         directory=tmp_path / ".agent" / "candidates" / "one",
         logger=None,
         config={"sta": config_path},
     )
-    step = SimpleNamespace(name="sta", tool="ecc")
-    tool = SimpleNamespace(
+    step = _ns(name="sta", tool="ecc")
+    tool = _ns(
         build_step_config=lambda *_: None,
         run_step=lambda **_: calls.append("serial") or True,
     )

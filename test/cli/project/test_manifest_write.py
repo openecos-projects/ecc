@@ -2,7 +2,7 @@
 
 import json
 
-from chipcompiler.cli.project.manifest_write import (
+from chipcompiler.project.manifest_write import (
     build_manifest_document,
     pre_register_workspace,
     update_manifest,

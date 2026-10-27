@@ -1,6 +1,7 @@
 import copy
 import json
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -10,7 +11,7 @@ from chipcompiler.engine import rerun
 from chipcompiler.engine.flow import EngineFlow
 
 
-def _make_run_flow(tmp_path, steps, tools_by_name=None):
+def _make_run_flow(tmp_path, steps, tools_by_name=None) -> Any:
     """EngineFlow over a persisted flow.json plus aligned workspace steps."""
     tools_by_name = tools_by_name or {}
     home = tmp_path / "home"
@@ -409,6 +410,43 @@ class TestRunResume:
         assert result.ok
         assert result.executed == ()
         assert calls == []
+
+    def test_forwards_progress_events_to_event_sink(self, monkeypatch, tmp_path):
+        flow = _make_run_flow(tmp_path, [("place", "Incomplete")])
+        calls = []
+
+        class Sink:
+            def on_execution_started(self, intent, step_ids):
+                calls.append(("execution_started", intent, step_ids))
+
+            def on_step_started(self, step):
+                calls.append(("step_started", step.name))
+
+            def on_step_completed(self, step, state, error=None):
+                calls.append(("step_completed", step.name, state.value, error))
+
+            def on_execution_finished(self, state, error):
+                calls.append(("execution_finished", state, error))
+
+        def run_step(workspace_step, *, rerun=False, observer: Any = None):
+            flow.set_state(workspace_step.name, workspace_step.tool, StateEnum.Ongoing)
+            observer.on_step_started(workspace_step)
+            flow.set_state(workspace_step.name, workspace_step.tool, StateEnum.Success)
+            observer.on_step_completed(workspace_step, StateEnum.Success, None)
+            return StateEnum.Success
+
+        monkeypatch.setattr(flow, "run_step", run_step)
+        monkeypatch.setattr(flow, "init_db_engine_for_step", lambda step: True)
+
+        result = rerun.run_resume(flow, event_sink=Sink())
+
+        assert result.ok
+        assert calls == [
+            ("execution_started", "rerun", ("place",)),
+            ("step_started", "place"),
+            ("step_completed", "place", "Success", None),
+            ("execution_finished", "Success", None),
+        ]
 
 
 class TestInitDbEngineForStep:

@@ -15,4 +15,7 @@ def lec_engine_module(engine: LECEngineEnum) -> ToolModule[Any]:
     """
     if engine is LECEngineEnum.DUAL:
         raise ValueError("lec_dual is a composite; it has no physical engine module")
-    return importlib.import_module(f"chipcompiler.tools.{engine.value}")
+    module = importlib.import_module(f"chipcompiler.tools.{engine.value}")
+    if not isinstance(module, ToolModule):
+        raise ImportError(f"{engine.value} does not implement the tool module contract")
+    return module

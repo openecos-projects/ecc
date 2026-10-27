@@ -68,6 +68,10 @@ class FakeStaEcc:
             (sdf_dir / "gcd.sdf").write_text("(DELAYFILE\n)\n", encoding="utf-8")
         return True
 
+    def prepare_timing_model(self):
+        self.calls.append(("prepare_timing_model", (), {}))
+        return True
+
     def destroy_sta(self):
         self.calls.append(("destroy_sta", (), {}))
         return True
@@ -285,7 +289,7 @@ def test_run_timing_publishes_nothing_when_structured_artifact_missing(tmp_path)
     assert not feature_dir.exists()
 
 
-def test_run_timing_stringifies_path_arguments(tmp_path):
+def test_run_timing_forwards_path_arguments(tmp_path):
     module = make_module()
 
     module.run_timing(
@@ -300,13 +304,13 @@ def test_run_timing_stringifies_path_arguments(tmp_path):
     )
 
     assert module.ecc.calls == [
-        ("lib_init", {"lib_paths": ["/pdk/lib.lib"]}),
-        ("sdc_init", "/ws/design.sdc"),
-        ("spef_init", "/ws/design.spef"),
+        ("lib_init", {"lib_paths": [Path("/pdk/lib.lib")]}),
+        ("sdc_init", Path("/ws/design.sdc")),
+        ("spef_init", Path("/ws/design.spef")),
         (
             "init_sta",
             {
-                "config": "/ws/config/sta_ecc.json",
+                "config": Path("/ws/config/sta_ecc.json"),
                 "config_dict": {
                     "-temp_directory_path": str(tmp_path / "sta_work"),
                     "-output_timing_reports": "1",
@@ -320,3 +324,22 @@ def test_run_timing_stringifies_path_arguments(tmp_path):
         ("run_sta", (), {}),
         ("destroy_sta", (), {}),
     ]
+
+
+@pytest.mark.parametrize(
+    ("inputs", "operation", "mode"),
+    [
+        ({}, "prepare_timing_model", "model_only"),
+        ({"timing_mode": "complete"}, "run_sta", "complete"),
+    ],
+)
+def test_place_timing_defaults_to_model_only_preparation(tmp_path, inputs, operation, mode):
+    module = make_module()
+    module._place_timing_active = False
+
+    summary = module.prepare_place_timing(
+        {"lib": ["/pdk/lib.lib"], "sdc": "/ws/design.sdc", "work_dir": str(tmp_path), **inputs}
+    )
+
+    assert [call[0] for call in module.ecc.calls][-1] == operation
+    assert summary["mode"] == mode

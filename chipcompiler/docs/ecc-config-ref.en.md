@@ -24,7 +24,7 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 │   ├── params.toml        # schema_version 2; parameter hub (see §1)
 │   ├── flow.json          # schema_version 1; step status
 │   └── config-derived-manifest.json # hashes from the last config derivation
-├── config/                # ← this document's focus: 10 JSON files + the Tcl macro-location handoff
+├── config/                # ← this document's focus: 11 JSON files + Tcl handoff + packaged EMIR tech file
 │   ├── db_ecc.json        # database build (loads LEF/DEF/netlist/LIB/SDC; shared by every ecc step)
 │   ├── floorplan_ecc.json # floorplanning
 │   ├── cts_ecc.json       # clock tree synthesis
@@ -35,13 +35,15 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 │   ├── sta_ecc.json       # static timing analysis (multi-corner)
 │   ├── sizer_ecc.json     # ECC Sizer hold-pass options
 │   ├── dreamplace_ecc.json# DreamPlace placement/legalization (shared by placement and legalization)
-│   └── macro_location.tcl # macro-placement Tcl handoff (see §1.5; written by macroPlacement or the macro.placements parameter)
+│   ├── emir_ecc.json      # iEMIR technology-file selection
+│   ├── macro_location.tcl # macro-placement Tcl handoff (see §1.5; written by macroPlacement or the macro.placements parameter)
+│   └── ics55_synthetic.tech # packaged default technology file copied for EMIR
 ├── Synthesis_yosys/
 │   └── data/global_var.tcl  # the synthesis step's "config" (Tcl variables, not JSON)
-├── lec_kepler_formal/         # synthesis-level LEC (Tcl-script driven)
+├── lec_kepler_formal/         # synthesis-level LEC (default engine; data/lec_config.yaml)
 ├── timing_optimization_sizer/
 │   └── script/<design>.{env_file,cmd_file}  # generated Sizer configuration
-└── postRouteLec_kepler_formal/  # post-route LEC step (Tcl-script driven)
+└── postRouteLec_kepler_formal/  # post-route LEC step (default engine; YAML config)
 ```
 
 > History: the old `flow_ecc.json` (configuration-path aggregator) and `fixfanout_ecc.json` (high-fanout fixing, a standalone step) were removed along with an ecc-tools update. `cts.max_fanout` now feeds both the auto-generated SDC `set_max_fanout` constraint and CTS's `max_fanout` field.
@@ -55,7 +57,7 @@ graph LR
     A["ecc.toml [params]<br/>/ ecc run --set"] -->|"canonical params + per-step direct-config schema"| B["home/params.toml<br/>(params + config_overrides)"]
     C["PDK description<br/>(data/pdk.py)"] -->|"buffers / tap / endcap<br/>site / liberty corners"| B
     B -->|"param→field mapping<br/>PARAMETER_CONFIG_FIELD_MAPPINGS"| D["config/*.json"]
-    E["templates tools/ecc/configs/*.json"] -->|copies default files| D
+    E["templates tools/ecc/configs/*"] -->|copies missing default files| D
     F["step scheduling (before each step runs)"] -->|"rewrites input/output paths<br/>and other step-specific fields"| D
 ```
 
@@ -75,21 +77,26 @@ Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG
 | Step | db_ecc | Step-specific config | Notes |
 |---|---|---|---|
 | synthesis | — | `global_var.tcl` (Tcl) | Yosys is driven by Tcl variables, not JSON |
-| lec | — | none (Tcl) | Synthesis-level Yosys LEC; compares the mapped and golden synthesis netlists; an unproven result fails the step and stops the flow |
+| lec | — | engine-generated config | Synthesis-level LEC; the checked-in default is `kepler_formal` (YAML), while `yosys_lec` uses Tcl and `lec_dual` runs both; an unproven result fails the step and stops the flow |
 | preFloorplan | ✓ | `floorplan_ecc.json` | automatic macro floorplanning |
 | macroPlacement | — | `dreamplace_ecc.json` + `macro_location.tcl` | writes the Tcl macro-placement handoff (skips DreamPlace when `macro.placements` is set, see §1.5) |
 | postFloorplan | ✓ | `floorplan_ecc.json` + `macro_location.tcl` | reads the Tcl macro-placement handoff |
+| preplace | ✓ | none | Sizer's pre-placement preparation reads `db_ecc.json` |
 | placement | — | `dreamplace_ecc.json` | shares one file with legalization |
+| diff_sizing | — | `dreamplace_ecc.json` | standalone differentiable sizing shares the DreamPlace config |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | `def_input`/`result_dir` etc. rewritten per step |
 | timing optimization | ✓ | `sizer_ecc.json` + `dreamplace_ecc.json` | Sizer uses its ECC config and generated scripts, then runs an inner DreamPlace legalization; see §6 |
 | routing | ✓ | `route_ecc.json` | |
 | filler | ✓ | `filler_ecc.json` | |
+| lvs | — | none | tool default behavior |
+| drc | ✓ | `drc_ecc.json` (empty) | rules come from the tech LEF |
+| antennaCheck | ✓ | none | reads `db_ecc.json`; advisory step, so an incomplete analysis does not by itself stop the flow |
+| postroutelec | — | engine-generated config | Post-route LEC on the `filler` netlist; engine selection and evidence are shared with `lec`, see §11 |
 | rcx | ✓ | `rcx_ecc.json` | corner set decided by the PDK (see §12) |
 | sta | ✓ | `sta_ecc.json` + `rcx_ecc.json` | reads the rcx config to align SPEFs |
-| lvs | — | none | tool default behavior |
-| postroutelec | — | none (Tcl) | Yosys LEC, see §11 |
-| drc | ✓ | `drc_ecc.json` (empty) | rules come from the tech LEF |
+| powerAnalysis | — | no explicit step config | the runner reuses `db_ecc.json` internally; not present in `_STEP_CONFIG_KEYS` |
+| emir | ✓ | `emir_ecc.json` | iEMIR technology file; advisory step, see §13.5 |
 | harden | — | no step-specific config | the tool reuses `db_ecc.json` internally to locate inputs/outputs, but it is not in `_STEP_CONFIG_KEYS`; `ecc config harden` explicitly reports that the step has no configuration |
 
 ## 1. The Parameter Chain (user-tunable parameters)
@@ -153,7 +160,7 @@ The file has four sections:
 |---|---|
 | `[design]` | `name` / `top` / `clock_port` / `frequency_mhz`, matching the project-level `ecc.toml [design]` vocabulary |
 | `[pdk]` | `name` / `root` / `config`; `config` is stored workspace-relative and resolved back to an absolute path on load |
-| `[flow]` | `preset = "rtl2gds"`, or a `start` + `end` pair (canonical persisted step names only); when absent, it is derived from the first/last steps of `home/flow.json` |
+| `[flow]` | `preset = "rtl2gds"`, or a `start` + `end` pair (canonical persisted step names only), plus optional `skip_steps` and `lec_engine`; when the target is absent, it is derived from the first/last steps of `home/flow.json` |
 | `[params]` | canonical flat snake_case parameters; nested values render as subtables (for example `[params.die]`, `[params.floorplan.phy_placer.well_tap]`) |
 
 **Identity parameters remain canonical flat keys at runtime, but v2 no longer persists them twice**: the seven identity keys `design`, `top_module`, `clock`, `frequency_max`, `pdk`, `pdk_root`, and `pdk_config` are persisted in the human-facing `[design]`/`[pdk]` sections and reconstructed into the flat `[params]` payload when loaded. Version-1 files remain readable and are deduplicated when a writable workspace is opened. This keeps `[design]`/`[pdk]`/`[flow]` in the same vocabulary as `ecc.toml` while the runtime parameter hub continues to provide step parameters, `config_overrides`, and back-filled results.
@@ -228,10 +235,10 @@ Shared by all ecc tool steps. At step startup it is used to load LEF/DEF/netlist
 | Field | Example value (during the harden step) | Source | Meaning |
 |---|---|---|---|
 | `INPUT.tech_lef_path` | `…/prtech/techLEF/N551P6M_ecos.lef` | PDK | Process LEF (layer definitions/rules) |
-| `INPUT.lef_paths` | `[H7CR_lef, H7CL_lef, H7CH_lef, IO_lef]` | PDK | Standard-cell and IO LEFs (abstract views) |
+| `INPUT.lef_paths` | `[H7CR_lef, H7CL_lef, H7CH_lef]` | PDK | Standard-cell LEFs (abstract views); IO LEFs are configured through `pdk.lefs` |
 | `INPUT.def_path` | `sta_ecc/output/gcd_sta.def.gz` | rewritten per step | Input DEF (previous step's layout) |
 | `INPUT.verilog_path` | `sta_ecc/output/gcd_sta.v.gz` | rewritten per step | Input gate-level netlist |
-| `INPUT.lib_path` | H7CR/H7CL/H7CH SS + IO SS | PDK | Shared timing libraries; Yosys synthesis excludes H7CH |
+| `INPUT.lib_path` | H7CR/H7CL/H7CH SS | PDK | Shared timing libraries; Yosys synthesis excludes H7CH |
 | `INPUT.sdc_path` | `origin/gcd.sdc` | workspace | Timing constraints (auto-generated or user-provided) |
 | `INPUT.spef` | `""` | PDK/workspace | Pre-set parasitics file (usually empty before RCX) |
 | `OUTPUT.output_dir_path` | `Harden_ecc/output` | rewritten per step | Output directory for this step's artifacts |
@@ -257,25 +264,32 @@ No JSON configuration. Yosys is driven by two Tcl pieces: `script/yosys_synthesi
 | `tie_high_cell/port` | `TIEHIH7R` / `Z` | PDK | Tie-high cell and its output port |
 | `abc_driver_cell` | `BUFX0P5H7L` | PDK | Driver cell assumed by ABC mapping |
 | `abc_load` | `0.015` | PDK | Load capacitance for ABC mapping (pF) |
-| `lib_stdcell_list` | H7CR/H7CL + IO SS | PDK (excluding H7CH) | Libraries passed to ABC, DFF and clockgate mapping; preserves the existing behavior without an additional IO filter |
-| `lib_list` | H7CR/H7CL + IO `ss_1p08_2p97_125c` | PDK / workspace DB | Models loaded by `read_liberty -lib`; IO describes existing instances, while H7CH remains excluded |
+| `lib_stdcell_list` | H7CR/H7CL | PDK (excluding H7CH) | Libraries passed to ABC, DFF and clockgate mapping; IO libraries configured in `pdk.libs` are passed through without an additional filter |
+| `lib_list` | H7CR/H7CL | PDK / workspace DB | Models loaded by `read_liberty -lib`; configured IO libraries describe existing IO instances, while H7CH remains excluded |
 | `tmp_dir` | `Synthesis_yosys/data/tmp` | step scheduling | Intermediate file directory |
 
-The shared ICS55 PDK library list includes
-`ICSIOA_N55_3P3_ss_1p08_2p97_125c.lib` when present in the PDK. CTS, setup
-Sizer and post-synthesis STA also obtain the IO library from this list; final
-STA and hold Sizer still use the corner configuration in §13. The shared LEF
-list also loads the matching `ICSIOA_N55_3P3_1P6M1TM_ecos.lef`; this does not
-insert IO cells. Sizer requires LEF masters for Liberty cells even when the
-design instantiates no IO cells. Existing workspace DB library lists and
-explicit `pdk.libs` / `pdk.lefs` overrides are not extended automatically and
-must be updated separately.
+The built-in ICS55 PDK does not load IO cell LEFs or Liberty files by
+default. Designs that use IO cells add
+`IP/IO/ICsprout_55LLULP1233_IO_251013/lef/ICSIOA_N55_3P3_1P6M1TM_ecos.lef` to
+`lefs` and `ICSIOA_N55_3P3_ss_1p08_2p97_125c.lib` from the sibling `liberty/`
+directory to `libs` under `[pdk.overrides]`. Overrides replace the whole list,
+so the standard-cell files must be listed as well. CTS, setup Sizer and
+post-synthesis STA obtain IO libraries from this list; final STA and hold Sizer
+use `sta.liberty` in §13. Sizer requires LEF masters for Liberty cells, so the
+IO LEF and Liberty must be configured together.
+
+The PDK's `ss_1p08_2p97_m40c`, `ff_1p32_3p63_125c` and `ff_1p32_3p63_m40c` IO
+libraries still carry invalid rise delay and rise transition tables (about
+200 ns). PDK validation fails when any of them appears in `pdk.libs`, and the
+error names the corrected library for the same process corner. Existing
+workspace DB library lists keep the IO library that was previously loaded by
+default.
 
 There is also the environment variable `YOSYS_SYNTH_STRATEGY` (e.g. `DELAY 4` / `AREA N` / `BALANCE N`) that steers the synthesis strategy; the default is `DELAY 4` (frequency-first).
 
 ## 4. floorplan (ecc-tools)
 
-Configuration file `floorplan_ecc.json` is shared by the `preFloorplan` and `postFloorplan` steps. `preFloorplan` runs load data → init simple floorplan → save data with automatic macro placement; `macroPlacement` runs macro-only placement, writes `config/macro_location.tcl` through `tcl_save`, and forms the handoff checkpoint (when the `macro.placements` parameter is set, DreamPlace is skipped and the handoff is rendered from the parameter, see §1.5); `postFloorplan` consumes that file in `file` mode, then runs load data → create tracks → place IO pins → tap cells → PDN → set clock net → save data → analysis.
+Configuration file `floorplan_ecc.json` is shared by the `preFloorplan` and `postFloorplan` steps. `preFloorplan` marks the `clock` net when configured, derives `floorplan_ecc_simple.json` with `macro_placer.mode = "auto"` and an empty `file_path`, then runs load data → init simple floorplan → save data. `macroPlacement` runs macro-only placement, writes `config/macro_location.tcl` through `tcl_save`, and forms the handoff checkpoint (when the `macro.placements` parameter is set, DreamPlace is skipped and the handoff is rendered during config refresh, see §1.5). `postFloorplan` rewrites the shared config to `macro_placer.mode = "file"` with that path, then runs load data → init/run floorplan → create tracks → place IO pins → tap cells → PDN → save data → analysis.
 
 ### ifp (the iFP floorplan engine)
 
@@ -332,9 +346,9 @@ Configuration file `floorplan_ecc.json` is shared by the `preFloorplan` and `pos
 | `stripe` (MET4/MET5) | width 1.0, pitch 16.0, offset 0.5 | Power stripes: layer/width/pitch (spacing)/offset (µm) |
 | `connect_layers` | MET1–MET4, MET4–MET5 | Adjacent-layer via connection pairs for power |
 
-## 5. macro placement / placement / legalization (DreamPlace)
+## 5. macro placement / placement / diff_sizing / legalization (DreamPlace)
 
-The three steps share `config/dreamplace_ecc.json`; before each step runs, `def_input`, `verilog_input`, and `result_dir` are rewritten. `macroPlacement` uses `macroPlacement_dreamplace/data/macro`, placement reads the post-floorplan output and uses `place_dreamplace/data/pl`, and legalization reads the CTS output and uses `legalization_dreamplace/data/pl`. The parameters are exactly the upstream DreamPlace JSON parameter set, explained group by group below (defaults = template values; `*` marks user-parameter mapping points).
+These steps share `config/dreamplace_ecc.json`; before each step runs, `def_input`, `verilog_input`, and `result_dir` are rewritten. `macroPlacement` uses `macroPlacement_dreamplace/data/macro`, placement reads the post-floorplan output and uses `place_dreamplace/data/pl`, `diff_sizing` reuses the placement configuration, and legalization reads the CTS output and uses `legalization_dreamplace/data/pl`. The parameters are exactly the upstream DreamPlace JSON parameter set, explained group by group below (defaults = template values; `*` marks user-parameter mapping points).
 
 ### Inputs and outputs
 
@@ -354,12 +368,12 @@ The three steps share `config/dreamplace_ecc.json`; before each step runs, `def_
 |---|---|---|
 | `global_place_flag` | 1 | Run global placement |
 | `legalize_flag` | 1 | Run legalization |
-| `detailed_place_flag` | 0 | Run detailed placement (not enabled in this flow) |
-| `enable_fillers` | 1 | Allow virtual filler occupancy during placement (for density computation) |
+| `detailed_place_flag` | 1 | Run detailed placement |
+| `enable_fillers` | 0 | Do not insert fillers during standalone placement |
 | `routability_opt_flag` | 1 `*place.routability_opt` | Routing-congestion-driven placement optimization |
-| `timing_opt_flag` / `timing_eval_flag` | 0 | Timing-driven placement (not enabled in this flow; requires sizer/STA support) |
+| `timing_opt_flag` / `timing_eval_flag` | 0 / 1 | Legacy timing optimization is off; timing evaluation is enabled |
 | `macro_place_flag` | 0 | Enabled for the dedicated `macroPlacement` step |
-| `plot_flag` / `get_congestion_map` / `evaluate_pl` | 1 / 1 / 0 | Plotting / congestion-map export / placement evaluation |
+| `plot_flag` / `get_congestion_map` / `evaluate_pl` | 1 / 0 / 0 | Plotting / congestion-map export / placement evaluation |
 | `dump_global_place_solution_flag` / `dump_legalize_solution_flag` | 0 | Export intermediate solutions |
 
 ### Global placement core (★ the main tuning area)
@@ -588,7 +602,7 @@ timing_metric_scope = "setup_plus_recovery"
 | `target_density` | 0.4 `*place.target_density` (template 0.4) | Target placement density (lower = looser, friendlier to routing) |
 | `stop_overflow` | 0.1 `*place.target_overflow` | Overflow convergence threshold; stop once met |
 | `overflow_reference_mode` | `initial` | Overflow normalization: `initial` freezes GP-entry area; `ordinary` preserves the original PR's area publication behavior, using published native + virtual area when available, otherwise PlaceDB area. Both exclude fillers; normalized overflow also feeds gamma and overflow-based scheduling |
-| `density_weight` | 0.00085 | Initial weight of the density term (starting point of auto-adjustment) |
+| `density_weight` | 8e-05 | Initial weight of the density term (starting point of auto-adjustment) |
 | `inflation_density_weight_scale` | 0.001 | Scale on the Xplace-style `||grad wirelength||_1 / ||grad density||_1` restart ratio after inflation; the default keeps the restarted density force small, `1.0` uses the normalized ratio directly, and `0.1` reproduces the historical DreamPlace restart scale |
 | `inflation_filler_consumption_mode` | `filler_first` | How routability inflation consumes whitespace: `filler_first` shrinks filler before raising target density, `proportional` shrinks filler and other whitespace together, and `capacity_only` preserves filler until the placement-area limit |
 | `timing_coeff_growth_factor` | 1.01 `*place.timing_coeff_growth_factor` | Multiplier for both WNS/TNS coefficients at each GP density-weight update; 1.0 disables growth; skipped in `size_only` |
@@ -597,11 +611,11 @@ timing_metric_scope = "setup_plus_recovery"
 | `timing_aggregation_mode` | `smooth` `*place.timing_aggregation_mode` | AAT/RAT propagation aggregation: `hard` or `smooth` (LSE) |
 | `timing_aggregation_tau_ps` | 2.0 `*place.timing_aggregation_tau_ps` | Positive temperature in ps for `smooth` mode |
 | `timing_metric_scope` | `setup_plus_recovery` `*place.timing_metric_scope` | Max timing checks in placement WNS/TNS: `setup_only` or `setup_plus_recovery` |
-| `num_bins_x/y` | 32/32 | Number of density grid bins |
+| `num_bins_x/y` | 256/256 | Number of density grid bins |
 | `global_place_stages[]` | see below | Multi-stage global placement table (multiple entries allowed) |
 | `global_place_stages[].iteration` | 3000 | Iteration limit in this stage; convergence can stop earlier |
-| `global_place_stages[].learning_rate` | 1.0 | Learning rate |
-| `global_place_stages[].learning_rate_decay` | 0.99 | Learning-rate decay |
+| `global_place_stages[].learning_rate` | 0.01 | Learning rate |
+| `global_place_stages[].learning_rate_decay` | 1.0 | Learning-rate decay |
 | `global_place_stages[].wirelength` | `weighted_average` | Wirelength model |
 | `global_place_stages[].optimizer` | `nesterov` | Optimizer |
 | `global_place_stages[].Llambda_density_weight_iteration` / `Lsub_iteration` | 1 / 1 | Density-weight adaptation step sizes |
@@ -626,7 +640,7 @@ timing_metric_scope = "setup_plus_recovery"
 | `gpugr_backend` | `auto` | CUDA when both device and extension support it; otherwise parallel CPU `cpu_pr_mt`, using `num_threads` |
 | `gpugr_area_adjust_rrr_iters` | 0 | Pattern-routing-only inflation; CPU routing requires 0 |
 | `gpugr_area_adjust_congestion_mode` | `max_hv` | Aggregate horizontal and vertical overflow by maximum |
-| `l_shape_routability_flag` / `l_shape_update_interval` | 0 / 30 | Enable the L-shape objective / iterations between topology and direction refreshes |
+| `l_shape_routability_flag` / `l_shape_update_interval` | 1 / 30 | Enable the L-shape objective / iterations between topology and direction refreshes |
 | `l_shape_weight_max_multiplier` | 10.0 `*place.l_shape_weight_max_multiplier` | Cap adaptive L-shape weight growth at this multiple of the first calibrated weight in each calibration epoch; 0 disables the relative cap |
 | `area_adjust_stop_ratio` / `route_area_adjust_stop_ratio` / `pin_area_adjust_stop_ratio` | 0.01 / 0.01 / 0.05 | Stop ratios for each kind of area adjustment |
 | `unit_horizontal_capacity` / `unit_vertical_capacity` / `unit_pin_capacity` | 1.5625 / 1.45 / 0.058 | Unit routing/pin capacities |
@@ -653,15 +667,21 @@ also be set in that section without adding top-level ECC parameters.
 | `macro_halo_x/y` / `macro_pin_halo_x/y` | 0 | Macro/macro-pin halos |
 | `macro_overlap_flag` / `macro_overlap_weight` / `macro_overlap_mult_weight` | 0 / 8e-6 / 1 | Macro overlap handling |
 
-### Timing-driven (off by default in this flow)
+### Timing-driven
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `with_sta` / `enable_net_weighting` / `differentiable_timing_obj` | 0 | Embedded STA / net weighting / differentiable timing objective |
-| `pin2pin_max/min_weight` / `pin2pin_accumulate_weight` / `pin2pin_weight` / `pin2pin_net_weighting` | 1 / 1 / 0.1 / 2.5e-5 / 0 | Pin-to-pin timing weight parameters |
+| `with_sta` / `enable_net_weighting` / `differentiable_timing_obj` | 1 / 0 / 1 | Embedded STA / net weighting / differentiable timing objective |
+| `pin2pin_max/min_weight` / `pin2pin_accumulate_weight` / `pin2pin_weight` / `pin2pin_net_weighting` | 50 / 10 / 0.2 / 0.0005 / 0 | Pin-to-pin timing weight parameters |
 | `net_weighting_scheme` | `lilith` | Net weighting scheme |
 | `max_net_weight` | `inf` | Net weight cap |
 | `momentum_decay_factor` / `start_iter` | 0.5 / 0 | Momentum decay / start iteration |
+
+The template enables STA-backed timing evaluation (`with_sta=1`,
+`differentiable_timing_obj=1`, `timing_eval_flag=1`) while leaving the legacy
+`timing_opt_flag=0`. Treat timing optimization as an explicit opt-in, and use
+the reviewed `place.*` timing parameters above rather than assuming the legacy
+switch controls all timing behavior.
 
 ### Runtime and numerics
 
@@ -747,6 +767,17 @@ Configuration file `route_ecc.json`; the `RT` group holds the router parameters.
 
 - **drc**: `drc_ecc.json` is an empty object `{}` — the check rules come from the tech LEF's layer definitions and rules; there is nothing to tune.
 - **lvs**: no configuration file; the tool compares layout against netlist with its default flow (inputs/outputs are chained via `db_ecc.json`).
+- **antennaCheck**: uses the same post-route physical database input as DRC. ECC writes the native `antenna_check.rpt` report, copies it to `antennaCheck_ecc/report/antennaCheck.rpt`, and passes the feature path to ecc-tools through `-step_json`; ecc-tools writes the structured `feature/antennaCheck.step.json` file. The JSON uses `schema_version: 1`, identifies the step as `antennaCheck`, records `antenna_check.violation_count` and diagnostic counters, and includes detailed entries in `violations`. A successful ECC step requires both the native report and the structured JSON file; the signoff checklist checks the canonical report as a non-blocking report item.
+
+The native interfaces accept the output path as follows:
+
+```python
+ecc.check_antenna(config_dict={"-step_json": "/path/to/antennaCheck.step.json"})
+```
+
+```tcl
+check_antenna -step_json /path/to/antennaCheck.step.json
+```
 
 Both steps' sub-phases are: load data → run DRC/LVS → save data → analysis.
 
@@ -758,18 +789,40 @@ Configuration file `filler_ecc.json`. Sub-phases: load data → run filler → s
 |---|---|---|
 | `-min_filler_width` | 1 | Minimum filler width allowed to fill (in sites; gaps smaller than this are left unfilled) |
 
-## 11. postroutelec (Yosys LEC)
+## 11. lec / postroutelec (engine-selected LEC)
 
-No JSON configuration; driven by `script/run_lec.tcl` (read liberty → normalize both netlists → prove equivalence). It sits after LVS and before DRC:
+These steps have no reviewed JSON schema or `ecc param` fields. The project
+`ecc.toml` `[flow] lec_engine` selects the engine; `kepler_formal` is the code
+default, `yosys_lec` is the Yosys/Tcl implementation, and `lec_dual` (alias
+`dual`) runs both engines and aggregates their verdicts. The selected engine is
+recorded in the workspace flow ledger and determines the step directory and
+generated configuration:
+
+| `lec_engine` | Default step directories | Generated configuration | Reports |
+|---|---|---|---|
+| `kepler_formal` (default) | `lec_kepler_formal/`, `postRouteLec_kepler_formal/` | `data/lec_config.yaml`, `script/run_lec.yaml` | `report/equiv_status.rpt`, `report/run_lec_status.rpt`, `report/miter_log.txt` |
+| `yosys_lec` | `lec_yosys_lec/`, `postRouteLec_yosys_lec/` | `data/lec_config.tcl`, `script/run_lec.tcl` | `report/equiv_status.rpt`, `report/run_lec_status.rpt`, plus failed-netlist evidence |
+| `lec_dual` | `lec_dual/`, `postRouteLec_dual/` plus both engine directories | per-engine generated configs | aggregate result plus per-engine reports |
+
+Both steps use the engine-neutral result contract `output/<design>_<step>_result.json`: `status` is `proven` or `incomplete`, and the file records both netlists' path, SHA-256, and size plus the report paths. A proof is accepted only while those identities still match the current files; an unproven or stale result fails the step.
 
 | Item | Content |
 |---|---|
-| Input (golden) | Synthesis mapped netlist (e.g. `Synthesis_yosys/output/gcd_Synthesis.v.gz`) |
-| Input (gate) | Previous (LVS) step's output netlist (`lvs_ecc/output/gcd_lvs.v.gz`; chaining uses `pre_step.output.verilog`) |
-| Output | `output/<design>_postRouteLec_result.json`: `status` (`proven` / failure) + both sides' `sha256` + report paths; `report/equiv_status.rpt`, `report/run_lec_status.rpt` |
-| Signoff | `status=proven` counts toward the signoff checklist (LEC results go into the signoff package `final/reports/postRouteLec/`) |
+| `lec` input | The synthesis-mapped netlist is the gate; the declared `design.golden_netlist` (or the resolved step wiring) is the golden side. It sits immediately after synthesis and is **skipped by default** (`[flow] skip_steps` defaults to `["lec"]`). |
+| `postRouteLec` input | The synthesis-mapped netlist is the golden side and the `filler` output netlist is the gate (`filler_ecc/output/<design>_filler.v.gz`). It sits after `antennaCheck` and before `RCX`; post-route LEC is the only exception to checker-result chaining. |
+| Signoff | A current `status=proven` counts toward the signoff checklist; post-route LEC results go into the signoff package under `final/reports/postRouteLec/`. |
 
-The `lec` step sits immediately after synthesis in the canonical `rtl2gds` chain but is **skipped by default** (`[flow] skip_steps` defaults to `["lec"]`; set `skip_steps = []` to run it). There is also a `synthesis_lec` preset (just the two steps synthesis + lec) for standalone synthesis-level equivalence checking; it requires `skip_steps = []`.
+Enable the synthesis LEC and optionally pin the engine with:
+
+```toml
+[flow]
+preset = "rtl2gds"
+skip_steps = []
+lec_engine = "kepler_formal"  # yosys_lec | lec_dual (or dual)
+```
+
+There is also a `synthesis_lec` preset (synthesis + `lec`) for standalone
+synthesis-level equivalence checking; it likewise requires `skip_steps = []`.
 
 ## 12. rcx (ecc-tools)
 
@@ -790,20 +843,22 @@ Configuration file `sta_ecc.json`, made of two parts: `liberty` (corner → libe
 |---|---|---|
 | `liberty[].corner` | `MAX` / `WCL` / `TYP` / `MIN` / `ML` | Timing corner type (slow / worst-cold / typical / fast / fast-hot library groups) |
 | `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | Standard-cell group temperature (°C), used to select the SPEF; does not override IO library characterization temperatures |
-| `liberty[].path` | H7CR + H7CL + H7CH + IO | Liberty files for this corner (PDK-relative paths auto-expanded) |
+| `liberty[].path` | H7CR + H7CL + H7CH | Liberty files for this corner (PDK-relative paths auto-expanded) |
 | `signoff[0]` | MAX:[Cworst,RCworst]; WCL:[Cworst,RCworst]; TYP:[TYPICAL]; MIN/ML:[Cworst,RCworst,Cbest,RCbest] | "liberty corner × RC corner" combinations to run for signoff — 13 analysis corners in total |
 
 ics55 corner naming: `Cworst/Cbest` = worst/best capacitance; `RCworst/RCbest` = worst/best for both R and C; `TYPICAL` = typical.
 
-Default IO libraries use only three characterizations: MAX/WCL use
-`ss_1p08_2p97_125c`, TYP uses `tt_1p2_3p3_25c`, and MIN/ML both use
-`ff_1p32_3p63v_0c`. These libraries are under
-`IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/` in the PDK. This restriction
-applies only to IO; standard-cell libraries, SPEF temperatures and the 13 analysis
-corners remain unchanged. For example, MIN still uses -40°C standard-cell
-libraries alongside the 0°C IO library. Explicit project or workspace
-`sta.liberty` overrides replace the entire default list and are not migrated
-automatically; update their IO library paths separately.
+The default `sta.liberty` contains no IO libraries. Designs that use IO cells
+add the IO library under `IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/` in the
+PDK to every corner in `sta.liberty`. Only three characterizations are usable:
+MAX/WCL use `ss_1p08_2p97_125c`, TYP uses `tt_1p2_3p3_25c`, and MIN/ML use
+`ff_1p32_3p63v_0c`. The other three IO libraries (`ss_1p08_2p97_m40c`,
+`ff_1p32_3p63_125c` and `ff_1p32_3p63_m40c`) have invalid timing tables and fail
+config refresh. IO characterization temperatures may differ from the corner
+temperature; for example, MIN uses -40°C standard-cell libraries alongside the
+0°C IO library. Standard-cell libraries, SPEF temperatures and the 13 analysis
+corners are unaffected. A `sta.liberty` setting replaces the entire default
+list, so the standard-cell libraries must be listed as well.
 
 For each corner, ecc-tools splits the reports by path type (`sta_ecc/report/<lib_corner>_<temp>/<RCcorner>/`):
 
@@ -816,14 +871,42 @@ For each corner, ecc-tools splits the reports by path type (`sta_ecc/report/<lib
 Power is produced by the separate `powerAnalysis` iPW step, not by each STA
 corner. Its native outputs are
 `powerAnalysis_ecc/data/pw/power_reporter/power.rpt` and
-`powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`; ECC derives
-`powerAnalysis_ecc/feature/power_summary.json` from the report for QoR. When
+`powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`; ECC atomically
+copies the report to `powerAnalysis_ecc/report/powerAnalysis.rpt`, derives
+`powerAnalysis_ecc/feature/powerAnalysis.step.json` from the report for QoR, and
+stores the payload under its `power_summary` key. The signoff checklist also
+checks the canonical report. The legacy
+`powerAnalysis_ecc/feature/power_summary.json` is retained as a compatibility
+fallback. The step artifact has no
+duplicate top-level `metrics` object. When
 present, the signoff package includes the report once at
 `final/timing/power/power.rpt`.
 
+### 13.5 emir (iEMIR)
+
+`emir_ecc.json` contains one public field, `technology_file_path`. When the
+template value is empty, workspace refresh fills it with the workspace-local
+`config/ics55_synthetic.tech` copy created from the packaged resource. A legacy
+workspace whose default still points at the packaged file is migrated on
+refresh. Preflight for an `emir` selection requires the configured path to
+exist. Change it with:
+
+```bash
+ecc param list --step emir
+ecc param set emir.technology_file_path /path/to/process.tech --workspace NAME
+```
+
+iEMIR consumes the routed database from the preceding flow, the post-floorplan
+PDN location file (`postFloorplan_ecc/data/fp/pdn_generator/power.ploc`), and
+the per-instance power from `powerAnalysis`. Sub-phases are load data → run
+EMIR → save data. Native reports under
+`emir_ecc/data/emir/emir_reporter/` are copied into `emir_ecc/report/`.
+`emir` is an advisory flow step: an incomplete analysis is recorded, but does
+not by itself stop the remaining flow.
+
 ## 14. harden (ecc-tools)
 
-No step-specific configuration file: it reuses `db_ecc.json` to locate its inputs (the DEF/netlist output by STA) and its output (`Harden_ecc/output`). Sub-phases are just load data → run harden. Artifacts are `<design>_Harden.gds/.lef/.lib/.png` (layout / abstract LEF / timing LIB / layout snapshot).
+No step-specific configuration file: it reuses `db_ecc.json` to locate its inputs (the DEF/netlist output by `filler`) and its output (`Harden_ecc/output`). Sub-phases are just load data → run harden. Current artifacts are `<design>_Harden.gds`, `<design>_Harden.lef`, and `<design>_Harden.lib` (layout / abstract LEF / timing LIB). Harden does not publish a geometry snapshot or generate a PNG; a signoff package may still include a historical `<design>_Harden.png` when one exists in an older workspace.
 
 ## 15. ECC CLI configuration commands by step
 
@@ -901,15 +984,16 @@ ecc param set route.RT.-thread_number VALUE
 
 The temporary directory in `route_ecc.json` is generated by step scheduling and cannot be set through the CLI.
 
-### 15.7 lec, drc, lvs, and postroutelec
+### 15.7 lec, drc, lvs, postroutelec, and powerAnalysis
 
-These four steps have no step configuration that `ecc param` can modify: `drc_ecc.json` is empty, while synthesis LEC, LVS, and post-route LEC are driven by a Tcl script, the tool default flow, and a Tcl script respectively. Use these commands to confirm their actual configuration files:
+These steps have no step configuration that `ecc param` can modify: `drc_ecc.json` is empty, LEC uses the engine-generated configuration selected by `[flow] lec_engine` (see §11), LVS follows the tool default flow, and `powerAnalysis` has no explicit step config (the runner reuses `db_ecc.json` internally). Use these commands to confirm their actual configuration files:
 
 ```bash
 ecc config lec
 ecc config drc
 ecc config lvs
 ecc config postroutelec
+ecc config poweranalysis
 ```
 
 ### 15.8 filler
@@ -944,6 +1028,21 @@ ecc param set sta.max_paths VALUE
 
 harden has no dedicated `ecc param` schema; it only reuses workflow-generated `db_ecc.json` inputs and outputs. Use `ecc config harden` to confirm that the step has no configuration file.
 
+### 15.12 emir
+
+The only reviewed `emir_ecc.json` field is the process technology file:
+
+```bash
+ecc param list --step emir
+ecc param set emir.technology_file_path /path/to/process.tech
+ecc param set emir.technology_file_path /path/to/process.tech --workspace NAME
+```
+
+When the field is empty, workspace refresh selects the workspace-local
+`config/ics55_synthetic.tech`; an explicitly configured path must exist before
+the step runs. EMIR is advisory, so record any incomplete analysis rather than
+assuming it blocks Harden.
+
 ## 16. Configuration inspection and modification cheat sheet
 
 ```bash
@@ -973,4 +1072,4 @@ This section targets automation agents and batch scripts; it sets the boundaries
 
 Before tuning parameters, check which fields are actually public — run `ecc param list --all`, `ecc param show`, or the installed version's `--help` — then change them with `ecc param set` or `ecc param unset` in the scope that owns them. As a rule, do not edit `home/params.toml`, generated JSON/Tcl, or internal templates by hand. The one exception is the QoR reference's `qor_profile` and `qor_power_budget_w`: both are workspace parameters outside the CLI schema, and they must still follow the QoR document's semantics and revalidation rules. `run --set` only applies when creating a new workspace, and the override must be recorded as part of the candidate's provenance. When changing parameters on an existing workspace, first work out which steps are invalidated and what range must be rerun.
 
-A field mentioned in documentation but absent from the current public schema is not a usable interface. In particular, do not bypass the CLI by writing to internal `flow.skip_steps`, QoR profiles/budgets, or unreviewed DreamPlace fields. If the CLI lacks a capability you need, record the version, the command output, and the impact — do not claim the configuration succeeded. Changing frequency, corners, constraints, or verification coverage changes what an experiment means: give it its own candidate and never compare it directly against the original result.
+A field mentioned in documentation but absent from the current public schema is not a usable interface. Configure flow policy through the project `ecc.toml` `[flow]` keys (`preset`, optional `start`/`end`, `skip_steps`, `lec_engine`), not by hand-editing persisted workspace `home/params.toml` or `home/flow.json`; likewise do not hand-write QoR profiles/budgets or unreviewed DreamPlace fields. If the CLI lacks a capability you need, record the version, the command output, and the impact — do not claim the configuration succeeded. Changing frequency, corners, constraints, or verification coverage changes what an experiment means: give it its own candidate and never compare it directly against the original result.

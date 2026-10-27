@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 
 import csv
+import importlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
-from ecc_tools_bin import ecc_py
 
 from chipcompiler.data import OriginDesign, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.tools.ecc import metrics as ecc_metrics
 from chipcompiler.tools.ecc import plot as ecc_plot
-from chipcompiler.tools.ecc import service as ecc_service
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
 from chipcompiler.tools.ecc.metrics import (
     build_metrics_cts,
@@ -23,6 +23,8 @@ from chipcompiler.tools.ecc.metrics import (
 )
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.subflow import EccSubFlow
+
+ecc_py = importlib.import_module("ecc_tools_bin.ecc_py")
 
 
 class FakeEcc:
@@ -109,17 +111,6 @@ class FakeEcc:
             return True
 
         return record_call
-
-
-def _assert_no_path_values(value):
-    if isinstance(value, Path):
-        raise AssertionError(f"native ECC boundary received Path: {value!r}")
-    if isinstance(value, dict):
-        for item in value.values():
-            _assert_no_path_values(item)
-    elif isinstance(value, (list, tuple, set)):
-        for item in value:
-            _assert_no_path_values(item)
 
 
 def test_ecc_tools_module_imports_installed_native_extension():
@@ -243,7 +234,7 @@ def test_geometry_snapshot_save_passes_output_directory():
     assert module.geometry_snapshot_save(Path("/tmp/geometry")) is True
 
     assert module.ecc.calls == [
-        ("geometry_snapshot_save", (), {"output_dir": "/tmp/geometry"}),
+        ("geometry_snapshot_save", (), {"output_dir": Path("/tmp/geometry")}),
     ]
 
 
@@ -254,7 +245,7 @@ def test_geometry_snapshot_save_includes_drc_only_when_requested():
     assert module.geometry_snapshot_save(Path("/tmp/geometry"), include_drc=True) is True
 
     assert module.ecc.calls == [
-        ("geometry_snapshot_save", (), {"output_dir": "/tmp/geometry", "include_drc": True}),
+        ("geometry_snapshot_save", (), {"output_dir": Path("/tmp/geometry"), "include_drc": True}),
     ]
 
 
@@ -273,7 +264,7 @@ def test_geometry_snapshot_save_passes_thumbnail_path():
         (
             "geometry_snapshot_save",
             (),
-            {"output_dir": "/tmp/geometry", "thumbnail_path": "/tmp/geometry.png"},
+            {"output_dir": Path("/tmp/geometry"), "thumbnail_path": Path("/tmp/geometry.png")},
         ),
     ]
 
@@ -293,13 +284,13 @@ def test_geometry_edit_session_wrappers_forward_instance_name():
         (
             "geometry_session_snapshot_save",
             (),
-            {"output_dir": "/tmp/session-geometry"},
+            {"output_dir": Path("/tmp/session-geometry")},
         ),
         ("reset_geometry_session", (), {}),
     ]
 
 
-def test_ecc_binding_wrappers_stringify_path_arguments():
+def test_ecc_binding_wrappers_forward_path_arguments():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
@@ -318,7 +309,7 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
     module.update_sta_data_config(
         db_config=Path("/ws/config/db.json"),
         output_dir=Path("/ws/out"),
-        lib_paths=[Path("/pdk/lib.lib")],
+        lib_paths=["/pdk/lib.lib"],
         sdc_path=Path("/ws/design.sdc"),
     )
 
@@ -326,34 +317,34 @@ def test_ecc_binding_wrappers_stringify_path_arguments():
         (
             "db_init",
             {
-                "config_path": "/ws/config/db.json",
-                "output_path": "/ws/output",
-                "feature_path": "/ws/feature",
+                "config_path": Path("/ws/config/db.json"),
+                "output_path": Path("/ws/output"),
+                "feature_path": Path("/ws/feature"),
             },
         ),
         (
             "db_init",
             {
-                "output_path": "/ws/output",
-                "feature_path": "/ws/feature",
+                "output_path": Path("/ws/output"),
+                "feature_path": Path("/ws/feature"),
             },
         ),
-        ("tech_lef_init", "/pdk/tech.lef"),
-        ("lef_init", {"lef_paths": ["/pdk/std.lef"]}),
-        ("idb_init", "/ws/config/db.json"),
+        ("tech_lef_init", Path("/pdk/tech.lef")),
+        ("lef_init", {"lef_paths": [Path("/pdk/std.lef")]}),
+        ("idb_init", Path("/ws/config/db.json")),
         (
             "db_init",
             {
-                "config_path": "/ws/config/db.json",
-                "output_path": "/ws/out",
-                "lib_paths": ["/pdk/lib.lib"],
-                "sdc_path": "/ws/design.sdc",
+                "config_path": Path("/ws/config/db.json"),
+                "output_path": Path("/ws/out"),
+                "lib_paths": [Path("/pdk/lib.lib")],
+                "sdc_path": Path("/ws/design.sdc"),
             },
         ),
     ]
 
 
-def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
+def test_ecc_runtime_wrappers_forward_path_arguments(tmp_path):
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
     timing_output = tmp_path / "output" / "gcd.lib"
@@ -404,7 +395,7 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
         timing_output,
         config=Path("/ws/config/sta_ecc.json"),
         output_dir=timing_work_dir,
-        lib_paths=[Path("/pdk/lib.lib")],
+        lib_paths=["/pdk/lib.lib"],
         sdc_path=Path("/ws/design.sdc"),
         spef_path=Path("/ws/design.spef"),
         design_name="gcd",
@@ -413,13 +404,12 @@ def test_ecc_runtime_wrappers_stringify_path_arguments(tmp_path):
     module.run_lvs()
     module.destroy_lvs()
 
-    _assert_no_path_values(module.ecc.calls)
     assert (
         "gds_save",
         (),
         {
-            "gds_name": "/ws/output/gcd.gds.gz",
-            "layer_map_path": "/pdk/ics55.layermap",
+            "gds_name": Path("/ws/output/gcd.gds.gz"),
+            "layer_map_path": Path("/pdk/ics55.layermap"),
         },
     ) in module.ecc.calls
     assert timing_output.read_text(encoding="utf-8") == module.ecc.generated_timing_lib_contents
@@ -443,7 +433,7 @@ def test_gds_save_requires_layer_map():
     module.ecc = FakeEcc()
 
     with pytest.raises(ValueError, match="set pdk.mapping_file"):
-        module.gds_save(Path("/ws/output/gcd.gds.gz"), None)
+        module.gds_save(Path("/ws/output/gcd.gds.gz"), "")
 
     assert module.ecc.calls == []
 
@@ -467,6 +457,7 @@ def test_ecc_metrics_qor_summary_marks_blocking_lvs_violations(tmp_path):
     )
 
     metrics = build_metrics_lvs(workspace, step)
+    assert metrics is not None
 
     assert metrics is not None
     assert metrics.data["lvs_count"] == 2
@@ -522,6 +513,7 @@ def test_ecc_metrics_qor_summary_marks_blocking_drc_violations(tmp_path):
     )
 
     metrics = build_metrics_drc(workspace, step)
+    assert metrics is not None
 
     assert metrics is not None
     assert step.analysis.qor_summary is not None
@@ -608,6 +600,7 @@ def test_ecc_metrics_emits_bounded_drc_rule_layer_qor_hotspots(tmp_path):
     )
 
     metrics = build_metrics_drc(workspace, step)
+    assert metrics is not None
 
     assert metrics.data["drc_num"] == 99
     assert step.analysis.qor_hotspots is not None
@@ -735,6 +728,7 @@ def test_ecc_metrics_omits_missing_drc_and_legalization_values(tmp_path):
     drc_step.feature.step.write_text(json.dumps({"drc": {}}), encoding="utf-8")
 
     drc_metrics = build_metrics_drc(workspace, drc_step)
+    assert drc_metrics is not None
 
     assert "drc_num" not in drc_metrics.data
     assert drc_step.analysis.qor_summary is not None
@@ -775,6 +769,7 @@ def test_ecc_metrics_omits_missing_drc_and_legalization_values(tmp_path):
     )
 
     legal_metrics = build_metrics_legalization(workspace, legal_step)
+    assert legal_metrics is not None
 
     assert "total_movement" not in legal_metrics.data
     assert legal_step.analysis.qor_summary is not None
@@ -835,6 +830,7 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
     )
 
     metrics = build_metrics_placement(workspace, step)
+    assert metrics is not None
 
     assert metrics.data["HPWL"] == 3880.214
     assert metrics.data["GRWL"] == 4509
@@ -950,16 +946,14 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
     )
     assert step.analysis.dir is not None
     legacy_metrics = step.analysis.dir / "CTS_metrics.json"
-    legacy_preview = step.analysis.dir / "CTS_metrics.png"
     legacy_metrics.write_text("{}", encoding="utf-8")
-    legacy_preview.write_text("legacy", encoding="utf-8")
 
     metrics = build_metrics_cts(workspace, step)
+    assert metrics is not None
 
     assert metrics.data["max_clock_wirelength"] == 97514
     assert metrics.data["max_level_of_clock_tree"] == 2
     assert not legacy_metrics.exists()
-    assert not legacy_preview.exists()
     assert step.analysis.qor_metrics is not None
     records = {
         record["id"]: record
@@ -1089,6 +1083,7 @@ def test_ecc_metrics_persists_structured_cts_timing_without_log(tmp_path):
 
     assert ecc_metrics.save_cts_timing_feature_facts(step, timing_quality)
     metrics = build_metrics_cts(workspace, step)
+    assert metrics is not None
 
     assert metrics.data["cts_worst_optimized_skew_ns"] == 0.07
     assert metrics.data["cts_worst_max_insertion_latency_ns"] == 0.42
@@ -1117,6 +1112,7 @@ def test_ecc_metrics_excludes_cts_metrics_without_feature_provenance(tmp_path):
     step.feature.step = untraceable_feature
 
     metrics = build_metrics_cts(workspace, step)
+    assert metrics is not None
 
     assert metrics.data["buffer_num"] == 3
     assert step.analysis.qor_metrics is not None
@@ -1203,6 +1199,7 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
     )
 
     metrics = build_metrics_routing(workspace, step)
+    assert metrics is not None
 
     assert metrics.data["route_la_total_overflow"] == 2
     assert metrics.data["route_la_total_demand"] == 10431
@@ -1305,6 +1302,7 @@ def test_ecc_metrics_qor_summary_lists_missing_supported_route_metrics(tmp_path)
     )
 
     metrics = build_metrics_routing(workspace, step)
+    assert metrics is not None
 
     assert metrics is not None
     assert step.analysis.qor_summary is not None
@@ -1375,6 +1373,7 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
     for spef_path in existing_spef:
         spef_path.unlink()
     metrics = ecc_metrics.build_metrics_rcx(workspace, step)
+    assert metrics is not None
 
     assert metrics.data["rcx_spef_file_count"] == 2
     assert metrics.data["rcx_expected_corner_count"] == 3
@@ -1495,6 +1494,7 @@ invalid cap record
 
     assert ecc_metrics.save_rcx_spef_feature_facts(workspace, step)
     metrics = ecc_metrics.build_metrics_rcx(workspace, step)
+    assert metrics is not None
 
     assert metrics.data["rcx_spef_parse_failure_count"] == 1
     assert "rcx_worst_total_capacitance_ff" not in metrics.data
@@ -1654,6 +1654,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
         path.write_text(json.dumps(payload), encoding="utf-8")
 
     metrics = ecc_metrics.build_metrics_sta(workspace, step)
+    assert metrics is not None
 
     assert metrics.data["max_WNS"] == -0.2
     assert metrics.data["max_TNS"] == -1.2
@@ -1853,6 +1854,7 @@ def test_ecc_metrics_marks_missing_configured_sta_corner(tmp_path):
     )
 
     metrics = ecc_metrics.build_metrics_sta(workspace, step)
+    assert metrics is not None
 
     assert metrics.data["sta_corner_count"] == 1
     assert metrics.data["sta_expected_corner_count"] == 2
@@ -1928,6 +1930,7 @@ def test_ecc_metrics_classifies_configured_sta_pvt_rc_corners(tmp_path):
         )
 
     metrics = ecc_metrics.build_metrics_sta(workspace, step)
+    assert metrics is not None
 
     assert step.feature.step is not None
     feature = json.loads(step.feature.step.read_text(encoding="utf-8"))["sta"]
@@ -2011,6 +2014,7 @@ def test_ecc_metrics_sta_does_not_fallback_to_legacy_report_json(tmp_path):
     )
 
     metrics = ecc_metrics.build_metrics_sta(workspace, step)
+    assert metrics is not None
 
     assert "max_WNS" not in metrics.data
     assert metrics.data["sta_corner_count"] == 0
@@ -2051,6 +2055,7 @@ def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):
     step.output.image.write_text("png", encoding="utf-8")
 
     metrics = ecc_metrics.build_metrics_harden(workspace, step)
+    assert metrics is not None
 
     assert metrics.data["harden_gds_exists"] == 1
     assert metrics.data["harden_lef_exists"] == 1
@@ -2099,6 +2104,26 @@ def _write_harden_signoff_summary(tmp_path, step_name, *, status="pass", hard_ga
     )
 
 
+def _write_harden_signoff_v4_summary(tmp_path, step_name, *, gates):
+    summary_path = tmp_path / f"{step_name}_ecc" / "analysis" / "qor_summary.json"
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 4,
+                "analysis_revision": "quality-gates-v4",
+                "analysis_status": "valid",
+                "quality_status": (
+                    "blocked" if any(gate["state"] == "failed" for gate in gates) else "pass"
+                ),
+                "gates": gates,
+                "missing_metrics": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def _write_harden_output_artifacts(step):
     for output_key, contents in (
         ("gds", "gds"),
@@ -2129,9 +2154,9 @@ def test_ecc_metrics_harden_summarizes_completed_signoff_sources(tmp_path):
     )
     workspace.flow.data = {
         "steps": [
-            {"name": StepEnum.DRC.value, "state": "Success"},
-            {"name": StepEnum.STA.value, "state": "Success"},
-            {"name": StepEnum.RCX.value, "state": "Success"},
+            {"name": StepEnum.DRC.value, "tool": "ecc", "state": "Success"},
+            {"name": StepEnum.STA.value, "tool": "ecc", "state": "Success"},
+            {"name": StepEnum.RCX.value, "tool": "ecc", "state": "Success"},
         ]
     }
     _write_harden_signoff_summary(tmp_path, StepEnum.DRC.value)
@@ -2159,6 +2184,48 @@ def test_ecc_metrics_harden_summarizes_completed_signoff_sources(tmp_path):
     assert summary["gates"] == []
 
 
+def test_ecc_metrics_harden_reads_v4_signoff_summary(tmp_path):
+    workspace: Any = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    workspace.flow.data = {"steps": [{"name": StepEnum.DRC.value, "state": "Success"}]}
+    _write_harden_signoff_v4_summary(
+        tmp_path,
+        StepEnum.DRC.value,
+        gates=[
+            {
+                "id": "qor.drc.clean",
+                "title": "Final DRC clean",
+                "state": "failed",
+                "blocking": True,
+                "metrics": [{"id": "drc_count", "actual": 2, "operator": "==", "expected": 0}],
+                "evidence": [],
+            }
+        ],
+    )
+
+    source = ecc_metrics._harden_signoff_source(workspace, StepEnum.DRC.value)
+
+    assert source == {
+        "step": StepEnum.DRC.value,
+        "flow_completed": True,
+        "available": True,
+        "status": "blocked",
+        "hard_gates": [
+            {
+                "id": "qor.drc.clean",
+                "title": "Final DRC clean",
+                "state": "failed",
+                "blocking": True,
+                "metrics": [{"id": "drc_count", "actual": 2, "operator": "==", "expected": 0}],
+                "evidence": [],
+            }
+        ],
+    }
+    assert not ecc_metrics._harden_source_passed(source, ("qor.drc.clean",))
+
+
 def test_ecc_metrics_harden_rejects_stale_signoff_summary(tmp_path):
     workspace = Workspace(
         directory=tmp_path,
@@ -2166,9 +2233,9 @@ def test_ecc_metrics_harden_rejects_stale_signoff_summary(tmp_path):
     )
     workspace.flow.data = {
         "steps": [
-            {"name": StepEnum.DRC.value, "state": "Incomplete"},
-            {"name": StepEnum.STA.value, "state": "Success"},
-            {"name": StepEnum.RCX.value, "state": "Success"},
+            {"name": StepEnum.DRC.value, "tool": "ecc", "state": "Incomplete"},
+            {"name": StepEnum.STA.value, "tool": "ecc", "state": "Success"},
+            {"name": StepEnum.RCX.value, "tool": "ecc", "state": "Success"},
         ]
     }
     _write_harden_signoff_summary(tmp_path, StepEnum.DRC.value)
@@ -2250,6 +2317,7 @@ def test_ecc_plot_drc_statis_accepts_path_statis_csv(tmp_path):
     )
     assert ecc_plot.ECCToolsPlot(workspace, step).plot_drc_statis() is True
 
+    assert step.analysis.statis_csv is not None
     with open(step.analysis.statis_csv, newline="") as csvfile:
         assert list(csv.DictReader(csvfile)) == [
             {"Type": "short", "M1": "2", "M2": "3", "total": "5"},
@@ -2385,62 +2453,9 @@ def test_split_floorplan_subflows_are_independent(tmp_path, step_name, expected)
     assert [item["name"] for item in step.subflow.steps] == expected
 
 
-def test_ecc_step_info_stringifies_path_payloads(tmp_path, monkeypatch):
-    workspace = Workspace(
-        directory=tmp_path,
-        design=OriginDesign(name="gcd", top_module="gcd"),
-        config={StepEnum.PLACEMENT.value: tmp_path / "config" / "pl.json"},
-    )
-    step = build_step(
-        workspace=workspace,
-        step_name=StepEnum.PLACEMENT.value,
-        input_def=tmp_path / "input.def",
-        input_verilog=tmp_path / "input.v",
-    )
-    monkeypatch.setattr(
-        ecc_service,
-        "build_step_metrics",
-        lambda workspace, step: SimpleNamespace(path=tmp_path / "metrics.json"),
-    )
-
-    assert ecc_service.get_step_info(workspace, step, "views") == {
-        "image": str(step.output.image),
-        "json": str(step.output.json),
-        "metrics": str(tmp_path / "metrics.json"),
-        "information": {},
-    }
-    assert ecc_service.get_step_info(workspace, step, "layout") == {
-        "image": str(step.output.image),
-        "json": str(step.output.json),
-    }
-    assert ecc_service.get_step_info(workspace, step, "metrics") == {
-        "metrics": str(tmp_path / "metrics.json"),
-    }
-    assert ecc_service.get_step_info(workspace, step, "subflow") == {"path": str(step.subflow.path)}
-    assert ecc_service.get_step_info(workspace, step, "config") == {
-        "config": str(workspace.config[StepEnum.PLACEMENT.value]),
-    }
-    assert ecc_service.get_step_info(workspace, step, "analysis") == {
-        "metrics": str(step.analysis.metrics),
-        "qor_metrics": str(step.analysis.qor_metrics),
-        "qor_summary": str(step.analysis.qor_summary),
-        "qor_hotspots": str(step.analysis.qor_hotspots),
-        "statis": str(step.analysis.statis_csv),
-        "data summary": str(step.feature.db),
-        "step feature": str(step.feature.step),
-        "step report": str(step.report.db),
-    }
-    assert ecc_service.get_step_info(workspace, step, "sta") == {
-        "report_root": str(step.report.dir),
-        "feature_root": str(step.feature.dir),
-        "qor_summary_root": str(step.feature.dir),
-        "timing_paths_root": str(step.feature.dir),
-    }
-
-
 def test_ecc_builder_uses_explicit_step_directory(tmp_path):
     workspace = Workspace(
-        directory=str(tmp_path),
+        directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
     step_directory = tmp_path / "timing_optimization_sizer"

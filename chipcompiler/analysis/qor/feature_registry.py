@@ -21,6 +21,12 @@ FEATURE_REGISTRY = {
         "composition_fraction",
         ["synthesis_power_dynamic_uw", "synthesis_power_leakage_uw"],
     ),
+    "F_PWR_LEAK_FRAC": _feature(
+        "power_analysis_leakage_uw / (power_analysis_dynamic_uw + power_analysis_leakage_uw)",
+        "EXACT_TRANSFORMATION",
+        "composition_fraction",
+        ["power_analysis_dynamic_uw", "power_analysis_leakage_uw"],
+    ),
     "F_PLAN_DENSITY": _feature(
         "synthesis_cell_area / core_area",
         "DERIVED_ENGINEERING_FEATURE",
@@ -112,7 +118,15 @@ FEATURE_REGISTRY = {
 }
 
 
-def make_record(feature_id, value, state, artifacts, interpretation="", compatibility=None):
+def make_record(
+    feature_id,
+    value,
+    state,
+    artifacts,
+    interpretation="",
+    compatibility=None,
+    input_metric_ids=None,
+):
     """Build a FeatureRecord from the registry entry."""
     from chipcompiler.analysis.qor.models import FeatureRecord
 
@@ -125,7 +139,7 @@ def make_record(feature_id, value, state, artifacts, interpretation="", compatib
         classification=entry["classification"],
         semantic_class=entry["semantic_class"],
         state=state,
-        input_metric_ids=list(entry["input_metric_ids"]),
+        input_metric_ids=list(input_metric_ids or entry["input_metric_ids"]),
         input_source_artifacts=artifacts,
         interpretation=interpretation,
         compatibility=compatibility,

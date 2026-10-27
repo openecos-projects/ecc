@@ -3,6 +3,7 @@
 import os
 import shlex
 
+from chipcompiler.cli.core.errors import CommandError, command_handler
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
@@ -166,7 +167,7 @@ def _design_name(workspace) -> str:
 
     from chipcompiler.utility.json import json_read
 
-    parameters = json_read(os.path.join(workspace.directory or "", "home", "parameters.json"))
+    parameters = json_read(os.path.join(workspace.directory, "home", "parameters.json"))
     return parameters.get("design") or parameters.get("Design") or "design"
 
 
@@ -193,7 +194,7 @@ def summary(command_input, ctx: CommandContext) -> CommandResult:
     )
 
 
-def _resolve_workspace_dir(command_input, ctx: CommandContext):
+def _resolve_workspace_dir(command_input, ctx: CommandContext) -> str:
     """Resolve the workspace directory without loading a Workspace.
 
     `report step` previews current artifacts only; load_workspace would
@@ -207,14 +208,14 @@ def _resolve_workspace_dir(command_input, ctx: CommandContext):
         command_input.workspace, ctx.project, ctx.run_id, ctx.run_dir
     )
     if error is not None:
-        return None, CommandResult.err([error])
-    return workspace_dir, None
+        raise CommandError([error])
+    assert workspace_dir is not None
+    return workspace_dir
 
 
+@command_handler
 def step(command_input, ctx: CommandContext) -> CommandResult:
-    workspace_dir, failure = _resolve_workspace_dir(command_input, ctx)
-    if failure is not None:
-        return failure
+    workspace_dir = _resolve_workspace_dir(command_input, ctx)
 
     from chipcompiler.cli.inspection.step_view import (
         SECTIONS,

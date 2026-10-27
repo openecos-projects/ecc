@@ -1,31 +1,36 @@
 """Handlers for project-level ``ecc.toml`` declarations."""
 
+import json
 import os
 import tomllib
 
+from chipcompiler.cli.core.errors import CommandError, command_handler
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.project.config_fields import lookup_project_field, parse_project_field_values
 from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_scoped_key
+from chipcompiler.project.manifest import CONFIG_FILENAME
 from chipcompiler.utility.file import write_text_atomic
 
 
+@command_handler
 def project_set(args, ctx: CommandContext) -> CommandResult:
-    field, error = _field_or_error(args.key)
-    if error is not None:
-        return error
+    field = _require_field(args.key)
     try:
         value = parse_project_field_values(field, args.values)
     except ValueError as exc:
         return CommandResult.err(
             [error_record("invalid_project_value", key=args.key, reason=str(exc))]
         )
-    config_path, missing = _config_path_or_error(ctx)
-    if missing is not None:
-        return missing
-    error = _set_value(config_path, field, value)
+    config_path = _require_config_path(ctx)
+    if ctx.project_state == "manifest":
+        raw = json.dumps(value) if field.list_value else str(value)
+        error = _apply_manifest_change(ctx, sets=(f"{field.key}={raw}",))
+    else:
+        _set_value(config_path, field, value)
+        error = None
     if error is not None:
-        return error
+        raise CommandError.from_result(error)
     return CommandResult.ok([_record(field.key, value, "set")])
 
 
@@ -91,48 +96,53 @@ def project_reconcile(args, ctx: CommandContext) -> CommandResult:
     return CommandResult.ok([record])
 
 
+@command_handler
 def project_unset(args, ctx: CommandContext) -> CommandResult:
-    field, error = _field_or_error(args.key)
-    if error is not None:
-        return error
-    config_path, missing = _config_path_or_error(ctx)
-    if missing is not None:
-        return missing
+    field = _require_field(args.key)
+    config_path = _require_config_path(ctx)
     try:
         with open(config_path) as file:
             changed = remove_scoped_key(file.read(), field.table, field.name)
     except (OSError, UnicodeDecodeError) as exc:
         return CommandResult.err([_io_error(config_path, exc)])
     if changed is None:
+        if ctx.project_state == "manifest":
+            error = _apply_manifest_change(ctx, unsets=(field.key,))
+            if error is not None:
+                return error
         return CommandResult.ok([_record(field.key, None, "no_value")])
-    try:
-        write_text_atomic(config_path, changed)
-    except OSError as exc:
-        return CommandResult.err([_io_error(config_path, exc)])
+    if ctx.project_state == "manifest":
+        error = _apply_manifest_change(ctx, unsets=(field.key,))
+        if error is not None:
+            return error
+    else:
+        try:
+            write_text_atomic(config_path, changed)
+        except OSError as exc:
+            return CommandResult.err([_io_error(config_path, exc)])
     return CommandResult.ok([_record(field.key, None, "unset")])
 
 
+@command_handler
 def project_add(args, ctx: CommandContext) -> CommandResult:
     return _change_rtl(args, ctx, add=True)
 
 
+@command_handler
 def project_remove(args, ctx: CommandContext) -> CommandResult:
     return _change_rtl(args, ctx, add=False)
 
 
+@command_handler
 def project_show(args, ctx: CommandContext) -> CommandResult:
-    config_path, missing = _config_path_or_error(ctx)
-    if missing is not None:
-        return missing
+    config_path = _require_config_path(ctx)
     try:
         with open(config_path, "rb") as file:
             data = tomllib.load(file)
     except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         return CommandResult.err([_io_error(config_path, exc)])
     if args.key is not None:
-        field, error = _field_or_error(args.key)
-        if error is not None:
-            return error
+        field = _require_field(args.key)
         section = data.get(field.table, {})
         value = section.get(field.name) if isinstance(section, dict) else None
         return CommandResult.ok(
@@ -174,9 +184,7 @@ def _change_rtl(args, ctx: CommandContext, *, add: bool) -> CommandResult:
                 )
             ]
         )
-    config_path, missing = _config_path_or_error(ctx)
-    if missing is not None:
-        return missing
+    config_path = _require_config_path(ctx)
     try:
         with open(config_path, "rb") as file:
             data = tomllib.load(file)
@@ -193,42 +201,93 @@ def _change_rtl(args, ctx: CommandContext, *, add: bool) -> CommandResult:
     else:
         updated = [value for value in current if value not in values]
         status = "removed"
-    error = _set_value(config_path, field, updated)
+    if ctx.project_state == "manifest":
+        error = _apply_manifest_change(ctx, sets=(f"{field.key}={json.dumps(updated)}",))
+    else:
+        _set_value(config_path, field, updated)
+        error = None
     if error is not None:
-        return error
+        raise CommandError.from_result(error)
     return CommandResult.ok([_record(field.key, updated, status)])
 
 
-def _set_value(config_path: str, field, value: object) -> CommandResult | None:
-    """Apply one field edit; returns a failed CommandResult when the edit fails."""
+def _apply_manifest_change(
+    ctx: CommandContext,
+    *,
+    sets: tuple[str, ...] = (),
+    unsets: tuple[str, ...] = (),
+) -> CommandResult | None:
+    """Apply one project edit to ``ecc.toml`` and ``project.json`` atomically.
+
+    Skip full project validation to preserve project-set behavior on partially
+    configured projects; the field value was already validated above.
+    """
+    from chipcompiler.cli.project.project_application import (
+        ProjectApplicationError,
+        apply_project,
+    )
+    from chipcompiler.project.manifest import ManifestError
+
+    try:
+        apply_project(
+            ctx.project_dir,
+            sets=sets,
+            unsets=unsets,
+            add_rtl=(),
+            remove_rtl=(),
+            validate=False,
+        )
+    except BlockingIOError:
+        return CommandResult.err([error_record("project_busy")], exit_code=20)
+    except (ManifestError, ProjectApplicationError) as exc:
+        code = getattr(exc, "code", "manifest_invalid")
+        fields = {"reason": str(exc)}
+        key = getattr(exc, "key", None)
+        if key:
+            fields["key"] = key
+        return CommandResult.err([error_record(code, **fields)])
+    return None
+
+
+def _set_value(config_path: str, field, value: object) -> None:
+    """Apply one field edit, raising CommandError when the edit fails."""
     try:
         with open(config_path) as file:
             updated = set_scoped_key(file.read(), field.table, field.name, value)
     except (OSError, UnicodeDecodeError) as exc:
-        return CommandResult.err([_io_error(config_path, exc)])
+        raise CommandError([_io_error(config_path, exc)]) from exc
     try:
         write_text_atomic(config_path, updated)
     except OSError as exc:
-        return CommandResult.err([_io_error(config_path, exc)])
-    return None
+        raise CommandError([_io_error(config_path, exc)]) from exc
+
+    try:
+        with open(config_path) as file:
+            updated = set_scoped_key(file.read(), field.table, field.name, value)
+    except (OSError, UnicodeDecodeError) as exc:
+        raise CommandError([_io_error(config_path, exc)]) from exc
+    try:
+        write_text_atomic(config_path, updated)
+    except OSError as exc:
+        raise CommandError([_io_error(config_path, exc)]) from exc
 
 
 def _io_error(config_path: str, exc: Exception) -> dict:
     return error_record("config_error", path=config_path, reason=str(exc))
 
 
-def _field_or_error(key: str):
+def _require_field(key: str):
     field = lookup_project_field(key)
-    if field is not None:
-        return field, None
-    return None, CommandResult.err([error_record("unknown_project_field", key=key)])
+    if field is None:
+        raise CommandError([error_record("unknown_project_field", key=key)])
+    return field
 
 
-def _config_path_or_error(ctx: CommandContext):
-    path = os.path.join(ctx.project_dir, "ecc.toml")
-    if os.path.isfile(path):
-        return path, None
-    return None, CommandResult.err([error_record("missing_config", path=path)])
+def _require_config_path(ctx: CommandContext) -> str:
+    path = os.path.join(ctx.project_dir, CONFIG_FILENAME)
+    if not os.path.isfile(path):
+        raise CommandError([error_record("missing_config", path=path)])
+    return path
 
 
 def _record(key: str, value: object, status: str) -> dict:

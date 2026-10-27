@@ -21,6 +21,7 @@ from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandResult
 from chipcompiler.cli.project.run_existing import run_existing_workspace
 from chipcompiler.cli.project.run_prepare import execute_fresh_run
+from chipcompiler.project.manifest import MANIFEST_FILENAME
 
 
 def _is_ecc_run_dir(path: str) -> bool:
@@ -99,7 +100,7 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
     discarded once the replacement is fully constructed.
     """
     from chipcompiler.cli.core.records import error_record
-    from chipcompiler.engine.reconcile import _workspace_lock
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
     project_dir = ctx.project_dir
     backup_path = None
@@ -128,7 +129,7 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
         # re-acquires it on the recreated tree, so two runs never execute
         # against the same paths. The lock stays entered in *ws_locks* until
         # the replacement is built.
-        ws_locks.enter_context(_workspace_lock(Path(run_dir), blocking=not command_input.no_wait))
+        ws_locks.enter_context(workspace_lock(Path(run_dir), blocking=not command_input.no_wait))
         from chipcompiler.cli.project.revision import expected_revision_error
 
         conflict = expected_revision_error(
@@ -142,6 +143,14 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
         # An atomic rename, not a delete: until the replacement is fully
         # constructed the old tree stays on disk and recoverable.
         os.replace(run_dir, backup_path)
+
+    # Every fresh run holds the workspace lock from before the target is
+    # created through engine execution (see execute_fresh_run): a live run
+    # must hold the sibling lock, or `ecc process inspect` reports it dead
+    # and project reconcile flags it as an inconsistent runtime process.
+    # The overwrite branch entered the lock above the rename; entering it
+    # again here is a same-thread reentrant no-op.
+    ws_locks.enter_context(workspace_lock(Path(run_dir), blocking=not command_input.no_wait))
 
     if command_input.expected_revision is not None and not os.path.lexists(run_dir):
         from chipcompiler.cli.project.revision import expected_revision_error
@@ -392,7 +401,7 @@ def dispatch_project_run(
                 # publishes the directory first and registers it in the
                 # fresh-run commit path.
                 if not workspace_registered and not os.path.lexists(
-                    os.path.join(project_dir, "project.json")
+                    os.path.join(project_dir, MANIFEST_FILENAME)
                 ):
                     from chipcompiler.cli.core.records import error_record
                     from chipcompiler.cli.project.config import resolve_pdk_root

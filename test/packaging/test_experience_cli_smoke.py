@@ -13,6 +13,8 @@ from chipcompiler.cli.app import app
 def test_smoke_checks_the_real_cli_contract_and_preserves_source(tmp_path, monkeypatch):
     path = Path(__file__).parents[2] / "packaging/experience_cli_smoke.py"
     specification = importlib.util.spec_from_file_location("experience_cli_smoke", path)
+    assert specification is not None
+    assert specification.loader is not None
     module = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(module)
     project = tmp_path / "generic project"
@@ -63,6 +65,8 @@ def test_smoke_checks_the_real_cli_contract_and_preserves_source(tmp_path, monke
 def test_real_matrix_reports_independence_without_inventing_generalization(tmp_path):
     path = Path(__file__).parents[2] / "packaging/experience_matrix_report.py"
     specification = importlib.util.spec_from_file_location("experience_matrix_report", path)
+    assert specification is not None
+    assert specification.loader is not None
     module = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(module)
     for name in ("first", "second"):
@@ -116,6 +120,8 @@ def test_real_matrix_reports_independence_without_inventing_generalization(tmp_p
 def test_real_matrix_reports_candidate_variation_and_rejects_corrupt_records(tmp_path):
     path = Path(__file__).parents[2] / "packaging/experience_matrix_report.py"
     specification = importlib.util.spec_from_file_location("experience_matrix_report", path)
+    assert specification is not None
+    assert specification.loader is not None
     module = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(module)
     for name, density in (("first", 0.45), ("second", 0.55)):
@@ -148,6 +154,8 @@ def test_real_matrix_reports_candidate_variation_and_rejects_corrupt_records(tmp
 def test_packaged_dse_smoke_spec_uses_a_supported_stage_metric():
     path = Path(__file__).parents[2] / "packaging/experience_cli_smoke.py"
     specification = importlib.util.spec_from_file_location("experience_cli_smoke", path)
+    assert specification is not None
+    assert specification.loader is not None
     module = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(module)
 
@@ -173,6 +181,8 @@ def test_packaged_dse_smoke_spec_uses_a_supported_stage_metric():
 def test_packaged_dse_patience_contract_checks_the_frozen_plan(tmp_path, monkeypatch):
     path = Path(__file__).parents[2] / "packaging/experience_cli_smoke.py"
     specification = importlib.util.spec_from_file_location("experience_cli_smoke", path)
+    assert specification is not None
+    assert specification.loader is not None
     module = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(module)
     output = tmp_path / "output"

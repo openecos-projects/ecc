@@ -19,6 +19,7 @@ from chipcompiler.tools.ecc_dreamplace.parameter_overrides import (
     apply_parameter_overrides as _apply_parameter_overrides,
 )
 from chipcompiler.utility import json_read, json_write
+from chipcompiler.utility.path import require_path
 
 from .diff_opt import apply_diff_opt_defaults
 from .diff_opt import prepare_drive_table as prepare_diff_opt_drive_table
@@ -91,7 +92,10 @@ def step_config_path(workspace: Workspace, step: WorkspaceStep) -> Path:
     if step.name == StepEnum.DIFF_BUFFERING.value:
         return Path(step.data.workdir_for(step.name)) / "dreamplace_diff_buffering.json"
     if step.name == StepEnum.DIFF_SIZING.value:
-        return Path(step.data.workdir_for(step.name)) / "dreamplace_diff_sizing.json"
+        return (
+            require_path(step.data.workdir_for(step.name), "DreamPlace diff-sizing workdir")
+            / "dreamplace_diff_sizing.json"
+        )
     return Path(workspace.config["dreamplace"])
 
 

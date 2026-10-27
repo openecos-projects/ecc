@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -120,12 +121,13 @@ def test_summary_uses_case_id_when_input_fingerprint_is_missing(tmp_path):
 def test_summary_never_selects_incomplete_facts(tmp_path, change):
     store = ExperienceStore(tmp_path / "store")
     case = _case(tmp_path, "incomplete")
+    facts: Any = case.facts
     if change == "checklist":
-        case.facts["flow"]["steps"][0].pop("checklist_status")
+        facts["flow"]["steps"][0].pop("checklist_status")
     elif change == "bad_step":
-        case.facts["flow"]["steps"].append(None)
+        facts["flow"]["steps"].append(None)
     else:
-        case.facts["workspaceSpec"] = None
+        facts["workspaceSpec"] = None
     case = case.model_copy(update={"case_id": case_identity(case.model_dump())})
     store.put(case, {})
 

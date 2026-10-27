@@ -10,7 +10,7 @@ class EngineDB:
 
     from chipcompiler.tools.ecc import ECCToolsModule
 
-    def __init__(self, workspace: Workspace, ecc_module: ECCToolsModule = None):
+    def __init__(self, workspace: Workspace, ecc_module: "ECCToolsModule | None" = None):
         self.workspace = workspace
         self.ecc_module = ecc_module
         self.initialization_error: Exception | None = None
@@ -47,9 +47,9 @@ class EngineDB:
             return False
 
         # check eda tool exist
-        from chipcompiler.tools import load_eda_module
+        from chipcompiler.tools import load_tool
 
-        eda_module = load_eda_module("ecc")
+        eda_module = load_tool("ecc")
         if eda_module is None:
             return False
 
@@ -79,4 +79,6 @@ class EngineDB:
         if step is "place", read instances data from step output def file and update to db egine.
         """
         _ = step.output.def_
+        if self.ecc_module is None:
+            raise RuntimeError("ECC database is not initialized")
         self.ecc_module.read_def()

@@ -10,7 +10,7 @@
 
 ```mermaid
 graph LR
-    A["各步骤产物<br/>qor_metrics.json / qor_summary.json<br/>power_summary.json"] --> B["ECC QoR V3 引擎<br/>（唯一计算方）"]
+    A["各步骤产物<br/>qor_metrics.json / qor_summary.json<br/>powerAnalysis.step.json"] --> B["ECC QoR V3 引擎<br/>（唯一计算方）"]
     B --> C["home/qor_report.json<br/>每步成功后自动刷新"]
     C --> D["ECOS Studio<br/>（渲染方：五维分解/门禁/诊断）"]
     B --> E["ecc report qor<br/>文本报告 → signoff/*.txt"]
@@ -167,10 +167,11 @@ $$
 已布局 core 利用率 `core_utilization` 的双侧目标区间校准（欠利用=浪费硅面积，过利用=布通风险）：
 
 $$
-Q_A=100\cdot\psi_{target}(U_{core};\;0.45,\;0.70,\;0.85)
+Q_A=100\cdot\psi_{target}(U_{core};\;0.45,\;0.70,\;1.00)
 $$
 
-- U ∈ [0.45, 0.70] 满分；U < 0.45 按 U/0.45 线性降分；U ∈ (0.70, 0.85] 按 (0.85−U)/0.15 线性降到 0。
+- U ∈ [0.45, 0.70] 满分；U < 0.45 按 U/0.45 线性降分；U ∈ (0.70, 1.00] 按 (1.00−U)/0.30 线性降到 0。例如 U=0.85 得 50 分，U=0.925 得 25 分。
+- 连续面积评分与签核门禁相互独立。Q_A 较低或为 0 本身不会使 `feasibility.status` 变为 `PHYSICAL_FAIL`；如果配置了 MPC 最小/最大面积 checklist 门禁，面积超限仍然可以阻止签核包导出。
 - 注意用的是**已布局 core 利用率**，不是布图规划密度（synthesis 面积 / core 面积，后者只是早期可行性指标 `F_PLAN_DENSITY`，不参与评分）。
 
 ### 3.4 Q_P 功耗质量
@@ -309,7 +310,7 @@ I_E = 100 × E_integrity × E_coverage × E_consistency（乘性合成，故意�
 2. **Tier 2（质量瓶颈）**：按瓶颈严重度降序，先于优化机会；
 3. **Tier 3（优化机会）**：过约束裕量的降驱动/缩尺寸建议。
 
-示例干预与参数旋钮（`parameter_knob` 字段）：互连瓶颈 → `route.dr_search_depth`（需试跑重布线验证）；面积 → floorplan 利用率目标；鲁棒性 → CTS 平衡与多 corner skew 目标。
+示例干预与公开参数旋钮（`parameter_knob` 字段）：互连瓶颈 → `route.bottom_layer` / `route.top_layer` 或 `place.routability_opt`（需试跑重布线验证）；面积 → floorplan 利用率目标；鲁棒性 → CTS 平衡与多 corner skew 目标。这些仍是待验证假设；`route.dr_search_depth` 不是公开的 `ecc param` 键。
 
 ## 8. 用户可配置参数
 
@@ -342,7 +343,7 @@ qor_power_budget_w = 0.5
 |---|---|---|
 | 逐步指标 | `<step_dir>/analysis/qor_metrics.json`（schema_version 3，由各步骤产出，**保持不变**） | 指标值与溯源 |
 | 逐 corner 时序 | `sta_ecc/feature/<corner>/Cworst/qor_summary.json` | 有符号 setup/hold WS、TNS、NVP；PVT 离散度 |
-| 功耗 | `powerAnalysis_ecc/feature/power_summary.json`（回退 `Synthesis_yosys/feature/post_synthesis/power_summary.json`） | P_total |
+| 功耗 | `powerAnalysis_ecc/feature/powerAnalysis.step.json`（读取 `power_summary`；兼容回退 `power_summary.json`，再回退 `Synthesis_yosys/feature/post_synthesis/power_summary.json`） | P_total |
 | 步骤状态 | `home/flow.json` | 只有状态为 `Success` 的步骤参与分析（invalidation 后的陈旧产物不计分） |
 | 参数 | `home/params.toml` | profile / 预算 / 频率 |
 
@@ -350,13 +351,14 @@ qor_power_budget_w = 0.5
 
 ### 9.2 引擎消费的指标目录
 
-综合：`synthesis_cell_area`、`synthesis_cell_count`、`synthesis_wire_count`、`synthesis_power_dynamic_uw`、`synthesis_power_leakage_uw`；
+综合：`synthesis_cell_area`、`synthesis_cell_count`、`synthesis_wire_count`；
 布图：`die_area`、`core_area`、`core_utilization`；
 布局：`place_hpwl`、`place_grwl`、`place_flute_wirelength`、`place_congestion_egr_overflow_max/total`、`place_rudy_utilization_max`、`place_lutrudy_utilization_max`；
 CTS：`cts_buffer_count`、`cts_inverter_count`、`clock_path_max_buffer/min_buffer`、`clock_wirelength`；
 布线：`route_wirelength`、`route_via_count`；
 RCX：`rcx_spef_file_count`、`rcx_expected/missing_corner_count`、`rcx_spef_parse_failure_count`、`rcx_worst_total/coupling_capacitance_ff`；
 STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup/hold_violation_count`、`sta_frequency_mhz`、`sta_corner_count`、`sta_expected/missing_corner_count`、`sta_worst_setup_corner`；
+功耗分析：`power_analysis_internal_uw`、`power_analysis_switching_uw`、`power_analysis_dynamic_uw`、`power_analysis_leakage_uw`（旧 workspace 的 `synthesis_power_*` 产物仍可兼容读取）；
 签核：`drc_count`、`lvs_count`、`harden_artifact_missing_count`。
 
 ### 9.3 派生特征目录
@@ -364,6 +366,7 @@ STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup
 | 特征 | 公式 | 认识论分类 |
 |---|---|---|
 | F_SYN_LEAK_FRAC | P_leak / (P_dyn + P_leak) | EXACT_TRANSFORMATION |
+| F_PWR_LEAK_FRAC | powerAnalysis 的 P_leak / (P_dyn + P_leak) | EXACT_TRANSFORMATION |
 | F_PLAN_DENSITY | synthesis_cell_area / core_area | DERIVED_ENGINEERING |
 | F_PL_I_PLACE | GRWL / HPWL | DERIVED_ENGINEERING |
 | F_PL_CONG_CONC | EGR_max / EGR_total | DERIVED_ENGINEERING |
@@ -378,6 +381,30 @@ STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup
 | S_CONG | max(RUDY/1, EGR_max/20, EGR_total/100) | CALIBRATED_HEURISTIC |
 
 每个特征记录携带：值（或 null）、公式串、认识论分类、状态、输入指标 id、溯源工件（path + selector）、兼容性契约、解释文本——从顶层诊断可直接回溯到原始报告 selector。
+
+### 9.4 步骤证据与展示契约
+
+QoR 相关文件分工如下，GUI 只消费 ECC 已经得出的结论，不重新解释或重算门禁。
+
+| 文件 | 生产者 / 版本 | 用途与权威边界 |
+|---|---|---|
+| `<step_dir>/analysis/qor_metrics.json` | 各步骤；schema 3 | 原始指标记录、单位和 provenance。步骤分析必需。 |
+| `<step_dir>/analysis/qor_summary.json` | 各步骤；**schema 4**（当前写入版本） | 步骤级 QoR 结论：`analysis_revision`、`analysis_status`（`valid` / `incomplete`）、`quality_status`（`pass` / `blocked` / `incomplete`）、`gates[]`、`missing_metrics[]`。步骤分析必需。 |
+| `<step_dir>/analysis/qor_hotspots.json` | 各步骤；schema 3 | 可选的热点索引；缺失不表示步骤失败。 |
+| `<workspace>/home/qor_report.json` | ECC QoR 引擎；schema 3，`scoring_engine: "qor-v3"` | 工作区评分与七条 feasibility gate 的**唯一权威**。GUI 不重新计分。 |
+| `sta_ecc/feature/<corner>/<view>/qor_summary.json` | STA 时序工具；timing schema 1 形状 | 逐 corner setup/hold 原始摘要，供 workspace QoR 归约；文件名与步骤级 `analysis/qor_summary.json` 相同但契约不同。 |
+| `sta_ecc/analysis/sta_timing_issues.json` | STA；schema 1 | STA 步骤分析的必需证据，用于展示 timing issue 明细。 |
+| `<workspace>/home/checklist.json` | signoff checklist；schema 3 | 工作区签核检查的聚合权威。`requirements_status` 区分 `none`（没有要求）与 `present`（有要求）；`status` 为 `ready` / `attention` / `blocked`。 |
+| `<step_dir>/checklist.json` | 步骤完成时刷新；schema 3 | 该步骤的证据快照。聚合时优先使用它，只有快照缺失时才从 `qor_summary.json` 回填 QoR gate 项。 |
+| `<workspace>/home/flow.json` | flow 引擎 | 只保存 compact `checklist_status`：`status`、`blocked`、`failed_items`、`summary`、`requirements_status`、`revision`、`updated_at`、`source`。不再复制完整 checklist items。 |
+
+`analysis_status` 与 `quality_status` 表达不同事实，不能合并：
+
+- `analysis_status: incomplete` 表示覆盖率不完整，例如缺少非关键指标；不等于质量失败。
+- `quality_status: blocked` 表示当前 gate 明确失败；`incomplete` 表示 gate 因证据不可用而无法判定。
+- `gates[].state` 只使用 `pass` / `failed` / `unavailable`；旧 schema 3 的 `status` / `hard_gates` 仅作兼容读取。
+
+Engineering Snapshot v6 的 artifact index 为每个分析文件携带 `required` 标志；GUI 按该标志决定缺失是否导致步骤 `incomplete`。QoR metrics/summary、STA timing issues 为必需，hotspot 索引为可选。对没有 QoR 工件、只发布 checklist/report 的步骤，Antenna Check 与 EMIR 是 advisory，Post-route LEC 是 required evidence。
 
 ## 10. JSON 报告契约（home/qor_report.json）
 
@@ -411,7 +438,7 @@ STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup
     "timing":       {"key": "timing",       "value": 100.0, "state": "OPPORTUNITY", "features": ["…F_STA_HEADROOM 记录…"]},
     "interconnect": {"key": "interconnect", "value": 100.0, "state": "PASS",        "features": ["…六个特征记录…"]},
     "area":         {"key": "area",         "value": 100.0, "state": "PASS",        "features": ["…F_PLAN_DENSITY…"]},
-    "power":        {"key": "power",        "value": null,  "state": "UNKNOWN",     "features": ["…F_SYN_LEAK_FRAC…"]},
+    "power":        {"key": "power",        "value": null,  "state": "UNKNOWN",     "features": ["…F_PWR_LEAK_FRAC…"]},
     "robustness":   {"key": "robustness",   "value": 94.1,  "state": "PASS",        "features": ["…四个特征记录…"]}
   },
   "scalar_summary": {"score": 98.96, "status": "GREEN", "profile": "balanced",

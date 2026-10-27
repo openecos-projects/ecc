@@ -6,14 +6,15 @@ import uuid
 from pathlib import Path
 
 from chipcompiler.cli.command_handlers.param import (
-    _find_config_path,
     _load_toml_overrides,
     _manifest_mode_error,
     _remove_param_from_toml,
     _write_param_to_toml,
 )
+from chipcompiler.cli.core.errors import CommandError, command_handler
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
+from chipcompiler.cli.project.config import find_config_path
 from chipcompiler.cli.project.params import lookup_schema
 from chipcompiler.cli.project.workspace_params import (
     set_workspace_param,
@@ -28,17 +29,17 @@ MACRO_PARAM = "macro.placements"
 _MAX_STDIN_BYTES = 4 * 1024 * 1024
 
 
+@command_handler
 def macro_set(args, ctx: CommandContext) -> CommandResult:
     schema = lookup_schema(MACRO_PARAM)
-    entry, error = _entry(args)
-    if error is not None:
-        return error
+    entry = _entry(args)
 
     if getattr(args, "workspace", None) is not None:
         return _workspace_set(args, ctx, schema, entry)
     return _project_set(args, ctx, schema, entry)
 
 
+@command_handler
 def macro_remove(args, ctx: CommandContext) -> CommandResult:
     schema = lookup_schema(MACRO_PARAM)
 
@@ -47,6 +48,7 @@ def macro_remove(args, ctx: CommandContext) -> CommandResult:
     return _project_remove(args, ctx, schema)
 
 
+@command_handler
 def macro_import(args, ctx: CommandContext) -> CommandResult:
     schema = lookup_schema(MACRO_PARAM)
 
@@ -69,18 +71,15 @@ def macro_import(args, ctx: CommandContext) -> CommandResult:
     return _project_import(args, ctx, schema, placements)
 
 
+@command_handler
 def macro_show(args, ctx: CommandContext) -> CommandResult:
     schema = lookup_schema(MACRO_PARAM)
 
     if getattr(args, "workspace", None) is not None:
         from chipcompiler.cli.command_handlers.workspace_params import _load_workspace
 
-        workspace, workspace_error = _load_workspace(ctx)
-        if workspace_error is not None:
-            return workspace_error
-        placements, error = _workspace_placements(workspace, schema)
-        if error is not None:
-            return error
+        workspace = _load_workspace(ctx)
+        placements = _workspace_placements(workspace, schema)
         from chipcompiler.data.workspace import workspace_config_paths
 
         file_path = workspace_config_paths(workspace.directory)["macro_location"]
@@ -91,9 +90,10 @@ def macro_show(args, ctx: CommandContext) -> CommandResult:
             "source": "workspace",
             "workspace": ctx.run_id,
         }
-        file_placements, file_error = _read_file_placements(file_path)
-        if file_error is not None:
-            record["file_error"] = file_error
+        try:
+            file_placements = _read_file_placements(file_path)
+        except CommandError as error:
+            record["file_error"] = error.records[0].get("reason", str(error))
         else:
             record["file_placements"] = file_placements
             record["diverged"] = not _same_placements(placements, file_placements)
@@ -102,9 +102,7 @@ def macro_show(args, ctx: CommandContext) -> CommandResult:
     manifest_error = _manifest_mode_error(ctx)
     if manifest_error is not None:
         return manifest_error
-    placements, load_error = _project_placements(ctx)
-    if load_error is not None:
-        return load_error
+    placements = _project_placements(ctx)
     return CommandResult.ok(
         [
             {
@@ -127,9 +125,10 @@ def _workspace_set(args, ctx: CommandContext, schema, entry: dict) -> CommandRes
     written: dict = {}
 
     def mutation(workspace):
-        current, error = _workspace_placements(workspace, schema)
-        if error is not None:
-            raise ValueError(error.records[0].get("reason", "invalid macro.placements"))
+        try:
+            current = _workspace_placements(workspace, schema)
+        except CommandError as error:
+            raise ValueError(error.records[0].get("reason", "invalid macro.placements")) from error
         placements = _upsert(current, entry)
         written["placements"] = placements
         return set_workspace_param(workspace, schema, placements)
@@ -142,12 +141,8 @@ def _workspace_set(args, ctx: CommandContext, schema, entry: dict) -> CommandRes
 def _workspace_remove(args, ctx: CommandContext, schema) -> CommandResult:
     from chipcompiler.cli.command_handlers.workspace_params import _load_workspace, _mutate
 
-    workspace, workspace_error = _load_workspace(ctx)
-    if workspace_error is not None:
-        return workspace_error
-    current, error = _workspace_placements(workspace, schema)
-    if error is not None:
-        return error
+    workspace = _load_workspace(ctx)
+    current = _workspace_placements(workspace, schema)
     if not any(entry.get("instance") == args.instance for entry in current):
         return CommandResult.ok(
             [
@@ -176,10 +171,10 @@ def _workspace_remove(args, ctx: CommandContext, schema) -> CommandResult:
     return result
 
 
-def _workspace_placements(workspace, schema) -> tuple[list, CommandResult | None]:
+def _workspace_placements(workspace, schema) -> list:
     value = workspace_param_value(workspace, schema)
     if not isinstance(value, list):
-        return [], CommandResult.err(
+        raise CommandError(
             [
                 error_record(
                     "invalid_value",
@@ -189,7 +184,7 @@ def _workspace_placements(workspace, schema) -> tuple[list, CommandResult | None
             ],
             exit_code=1,
         )
-    return value, None
+    return value
 
 
 def _workspace_import(args, ctx, schema, placements: list) -> CommandResult:
@@ -204,9 +199,9 @@ def _workspace_import(args, ctx, schema, placements: list) -> CommandResult:
         _annotate_import(result, args.path, placements)
         return result
     from chipcompiler.engine import apply_workspace_parameters
-    from chipcompiler.engine.reconcile import _workspace_lock
     from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
     from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
     if ctx.manifest_error or ctx.project_state != "manifest" or ctx.run_id is None:
         return CommandResult.err(
@@ -218,7 +213,7 @@ def _workspace_import(args, ctx, schema, placements: list) -> CommandResult:
             ]
         )
     try:
-        with _workspace_lock(Path(ctx.run_dir), blocking=not args.no_wait):
+        with workspace_lock(Path(ctx.run_dir), blocking=not args.no_wait):
             current = read_engineering_snapshot_from_directory(ctx.run_dir)
             expected = args.expected_revision or current["workspaceRevision"]
             apply_workspace_parameters(
@@ -263,12 +258,10 @@ def _project_set(args, ctx: CommandContext, schema, entry: dict) -> CommandResul
     manifest_error = _manifest_mode_error(ctx)
     if manifest_error is not None:
         return manifest_error
-    current, load_error = _project_placements(ctx)
-    if load_error is not None:
-        return load_error
+    current = _project_placements(ctx)
 
     placements = _upsert(current, entry)
-    config_path = _find_config_path(ctx.project_dir)
+    config_path = find_config_path(ctx.project_dir)
     if config_path is None:
         return CommandResult.err([error_record("missing_config")], exit_code=1)
     try:
@@ -298,9 +291,7 @@ def _project_remove(args, ctx: CommandContext, schema) -> CommandResult:
     manifest_error = _manifest_mode_error(ctx)
     if manifest_error is not None:
         return manifest_error
-    current, load_error = _project_placements(ctx)
-    if load_error is not None:
-        return load_error
+    current = _project_placements(ctx)
 
     if not any(entry.get("instance") == args.instance for entry in current):
         return CommandResult.ok(
@@ -316,7 +307,7 @@ def _project_remove(args, ctx: CommandContext, schema) -> CommandResult:
         )
 
     remaining = [entry for entry in current if entry.get("instance") != args.instance]
-    config_path = _find_config_path(ctx.project_dir)
+    config_path = find_config_path(ctx.project_dir)
     if config_path is None:
         return CommandResult.err([error_record("missing_config")], exit_code=1)
     try:
@@ -342,15 +333,13 @@ def _project_remove(args, ctx: CommandContext, schema) -> CommandResult:
     )
 
 
-def _project_placements(ctx: CommandContext) -> tuple[list, CommandResult | None]:
+def _project_placements(ctx: CommandContext) -> list:
     overrides, param_errors = _load_toml_overrides(ctx.project_dir)
     if param_errors:
-        return [], CommandResult.err(
-            [error_record("invalid_param_config", reason=e) for e in param_errors]
-        )
+        raise CommandError([error_record("invalid_param_config", reason=e) for e in param_errors])
     value = overrides.get(MACRO_PARAM, [])
     if not isinstance(value, list):
-        return [], CommandResult.err(
+        raise CommandError(
             [
                 error_record(
                     "invalid_value",
@@ -360,7 +349,7 @@ def _project_placements(ctx: CommandContext) -> tuple[list, CommandResult | None
             ],
             exit_code=1,
         )
-    return value, None
+    return value
 
 
 def _project_import(args, ctx, schema, placements: list) -> CommandResult:
@@ -376,7 +365,7 @@ def _project_import(args, ctx, schema, placements: list) -> CommandResult:
     manifest_error = _manifest_mode_error(ctx)
     if manifest_error is not None:
         return manifest_error
-    config_path = _find_config_path(ctx.project_dir)
+    config_path = find_config_path(ctx.project_dir)
     if config_path is None:
         return CommandResult.err([error_record("missing_config")], exit_code=1)
     try:
@@ -407,14 +396,14 @@ def _project_import(args, ctx, schema, placements: list) -> CommandResult:
 # ---------------------------------------------------------------------------
 
 
-def _entry(args) -> tuple[dict, CommandResult | None]:
+def _entry(args) -> dict:
     if not args.instance.strip():
-        return None, CommandResult.err(
+        raise CommandError(
             [error_record("invalid_value", param=MACRO_PARAM, reason="instance name is empty")],
             exit_code=1,
         )
     if args.orientation not in MACRO_ORIENTATIONS:
-        return None, CommandResult.err(
+        raise CommandError(
             [
                 error_record(
                     "invalid_value",
@@ -425,19 +414,16 @@ def _entry(args) -> tuple[dict, CommandResult | None]:
             exit_code=1,
         )
     if not math.isfinite(args.x) or not math.isfinite(args.y):
-        return None, CommandResult.err(
+        raise CommandError(
             [error_record("invalid_value", param=MACRO_PARAM, reason="coordinates must be finite")],
             exit_code=1,
         )
-    return (
-        {
-            "instance": args.instance,
-            "x": args.x,
-            "y": args.y,
-            "orientation": args.orientation,
-        },
-        None,
-    )
+    return {
+        "instance": args.instance,
+        "x": args.x,
+        "y": args.y,
+        "orientation": args.orientation,
+    }
 
 
 def _upsert(placements: list, entry: dict) -> list:
@@ -468,15 +454,25 @@ def _annotate_import(result: CommandResult, path: str, placements: list) -> None
         record["status"] = "imported"
 
 
-def _read_file_placements(path) -> tuple[list | None, str | None]:
+def _read_file_placements(path) -> list:
     try:
         text = Path(path).read_text(encoding="utf-8")
-    except OSError:
-        return None, f"{Path(path).name} is missing or unreadable"
+    except OSError as exc:
+        raise CommandError(
+            [
+                error_record(
+                    "file_unreadable",
+                    param=MACRO_PARAM,
+                    reason=f"{Path(path).name} is missing or unreadable",
+                )
+            ]
+        ) from exc
     try:
-        return parse_macro_location_tcl(text), None
+        return parse_macro_location_tcl(text)
     except ValueError as exc:
-        return None, str(exc)
+        raise CommandError(
+            [error_record("invalid_value", param=MACRO_PARAM, reason=str(exc))]
+        ) from exc
 
 
 def _read_import_text(path: str) -> str:

@@ -23,6 +23,8 @@ on:
       - 'agent/**'
       - 'ecc_experience/**'
       - 'test/**'
+      - 'scripts/**'
+      - 'docs/examples/**'
       - 'ecc.spec'
       - 'packaging/**'
       - 'hooks/**'
@@ -329,10 +331,11 @@ jobs:
         run: |
           # xtea disabled everywhere for now: real run shows hold WNS < 0,
           # which would keep its strict signoff gates red until tuned.
-          # aes is nightly-only: its ~50min flow would dominate PR feedback.
+          # Keep aes (~50min) and memory-heavy BM64 out of PR validation;
+          # retain both for push, scheduled, and manual runs.
           excludes=(xtea)
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            excludes+=(aes)
+            excludes+=(aes BM64)
           fi
           designs="$(find designs -mindepth 2 -maxdepth 2 -name ecc.toml -printf '%h\n' \
             | xargs -n1 basename | grep -vxFf <(printf '%s\n' "${excludes[@]}") \
@@ -432,6 +435,26 @@ jobs:
 
       - name: Cache Nix store
         uses: DeterminateSystems/magic-nix-cache-action@v15
+
+      - name: Add swap cushion
+        shell: bash
+        # The image already carries a 3 GiB /swapfile, and fallocate on an
+        # in-use swap file fails with ETXTBSY, so the cushion is a separate
+        # file. It absorbs a short overshoot instead of letting the kernel
+        # OOM-kill a native tool; a sustained overshoot still shows up as the
+        # job's timeout.
+        run: |
+          free -h
+          swapon --show
+          df -h /
+          sudo fallocate -l 4G /swapfile.ecc
+          sudo chmod 600 /swapfile.ecc
+          sudo mkswap /swapfile.ecc
+          sudo swapon /swapfile.ecc
+          # Keep swap as a safety net rather than a routine spill area.
+          sudo sysctl -w vm.swappiness=10
+          swapon --show
+          free -h
 
       - name: Run design flows
         id: design-flow
@@ -545,8 +568,24 @@ jobs:
       - name: Ruff lint
         run: uv run --no-sync ruff check --output-format=github chipcompiler test agent ecc_experience
 
-      # - name: Pyright
-      #   run: uv run pyright chipcompiler
+      - name: Basedpyright
+        run: |
+          uv run --no-sync basedpyright --baselinemode=auto
+          git diff --exit-code .basedpyright/baseline.json
+          if grep -q reportMissingImports .basedpyright/baseline.json; then
+            echo "::error::basedpyright baseline must not contain reportMissingImports"
+            exit 1
+          fi
+
+      - name: Ty cross-check (non-blocking)
+        continue-on-error: true
+        run: |
+          {
+            echo "basedpyright is the gate; ty is a cross-check."
+            echo '```'
+            .github/scripts/type-check-compare.sh
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
   nix-build:
     name: Nix Build (flake checks)

@@ -69,17 +69,17 @@ workspace 文件带有显式 schema 版本，来自更新版本的文件会响�
 | --- | --- | --- | --- |
 | `home/params.toml` | `schema_version` | 2 | 缺省 = 版本 0（前版本化时代）；版本 0 走 legacy `parameters.json` 迁移，版本 1 迁移为去重后的 v2 |
 | `home/flow.json` | `schema_version` | 1 | 缺省 = 版本 0；写入处盖章，reconcile 拒绝更高版本 |
-| `home/engineering-snapshot.json` | `schemaVersion` | 6 | 与 GUI 共享；破坏性变更计数器（ADR-0005）——不支持的版本 fail-closed，从不迁移 |
+| `home/engineering-snapshot.json` | `schemaVersion` | 4 | 与 GUI 共享；v2/v3 可读取并重建为 v4，不支持的版本以 `snapshot_rebuild_required` fail-closed |
 
 注册表位于 `chipcompiler/data/schema_migrations.py`：
 `{文件类型: {目标版本: 迁移函数}}`，在 workspace 打开时按版本升序依次
 应用。`params.toml` 或 `flow.json` 声明的版本高于支持范围时抛出
 `unsupported_schema_version`，错误信息带文件路径与版本号——绝不静默解析。
-`engineering-snapshot.json` 不符合支持的形态时则 fail-closed：损坏或
-结构非法的文件抛出 `EngineeringSnapshotError`
-（`invalid Engineering Snapshot: <路径>`），不支持的 `schemaVersion`
-抛出 `snapshot_rebuild_required`。快照是可再生的投影，因此没有为它
-注册迁移链——不支持的版本走重建，从不迁移。
+Engineering Snapshot 注册表支持 v2、v3、v4，目标版本为 4：旧的 v2/v3 快照可读取，
+并由 `migrate_engineering_snapshot` 显式重建为 v4 契约；v4 已是当前版本，不再迁移。
+损坏或结构非法的文件抛出 `EngineeringSnapshotError`
+（`invalid Engineering Snapshot: <路径>`），不支持或更新的 `schemaVersion`
+则以 `snapshot_rebuild_required` fail-closed。
 
 ## Engineering Snapshot 载荷边界
 

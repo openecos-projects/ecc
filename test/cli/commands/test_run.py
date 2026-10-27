@@ -39,7 +39,7 @@ class TestRun:
             or {"workspaceId": kwargs["workspace_id"], "workspaceRevision": 1},
         )
         monkeypatch.setattr(
-            "chipcompiler.engine.workspace_lifecycle._write_workspace_command",
+            "chipcompiler.engine.workspace_lifecycle.write_workspace_command",
             lambda *_args, **_kwargs: None,
         )
 
@@ -330,6 +330,7 @@ class TestWorkspaceRun:
             from_step=None,
             resume=False,
             bounded_through=None,
+            event_sinks=[],
             result=StepRunResult(ok=True, executed=("place",)),
         )
 
@@ -339,6 +340,9 @@ class TestWorkspaceRun:
 
             def has_init(self):
                 return seen.has_init
+
+            def load(self):
+                return True
 
             def create_step_workspaces(self, *, executable_steps=None):
                 seen.create_calls += 1
@@ -358,16 +362,19 @@ class TestWorkspaceRun:
             seen.bounded_through = through
             return ["place", "CTS"]
 
-        def run_only(flow, name, *, force=False):
+        def run_only(flow, name, *, force=False, event_sink=None):
             seen.only = (name, force)
+            seen.event_sinks.append(event_sink)
             return seen.result
 
-        def run_from(flow, name, *, through=None):
+        def run_from(flow, name, *, through=None, event_sink=None):
             seen.from_step = name
+            seen.event_sinks.append(event_sink)
             return seen.result
 
-        def run_resume(flow, *, through=None):
+        def run_resume(flow, *, through=None, event_sink=None):
             seen.resume = True
+            seen.event_sinks.append(event_sink)
             return seen.result
 
         def fake_load_workspace(path):
@@ -449,6 +456,41 @@ class TestWorkspaceRun:
         assert rc == 0
         assert workspace_mocks.from_step == "CTS"
         assert workspace_mocks.executable == {"CTS"}
+
+    @pytest.mark.parametrize(
+        "selectors",
+        [
+            [],
+            ["--resume"],
+            ["--from", "CTS"],
+            ["--only", "place", "--force"],
+        ],
+    )
+    def test_tty_run_attaches_step_progress_sink(
+        self,
+        workspace_mocks,
+        monkeypatch,
+        selectors,
+    ):
+        monkeypatch.setattr(
+            "chipcompiler.cli.rendering.progress.should_enable_run_progress",
+            lambda ctx, stderr: True,
+        )
+
+        rc = cli_main.run(
+            [
+                "run",
+                "--project",
+                workspace_mocks.project,
+                "--workspace",
+                "workspace",
+                *selectors,
+            ]
+        )
+
+        assert rc == 0
+        assert len(workspace_mocks.event_sinks) == 1
+        assert workspace_mocks.event_sinks[0] is not None
 
     def test_noop_selection_skips_workspace_rebuild(self, workspace_mocks, capsys, plain_records):
         workspace_mocks.result = StepRunResult(ok=True, executed=())

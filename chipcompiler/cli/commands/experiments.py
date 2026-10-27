@@ -93,7 +93,8 @@ def reproducible_inspect(
                 payload = [
                     entry.get("path")
                     for entry in manifest.get("files", [])
-                    if package_file_matches(entry.get("path", ""), file_type)
+                    if isinstance(entry, dict)
+                    and package_file_matches(entry.get("path", ""), file_type)
                 ]
             else:
                 payload = manifest

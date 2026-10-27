@@ -91,6 +91,7 @@ workspace = create_workspace(
     parameters=parameters,
     input_filelist=input_filelist,  # Provide filelist path here
 )
+assert workspace is not None
 # Use load_workspace to resume from existing workspace
 # workspace = load_workspace(directory=workspace_dir)
 

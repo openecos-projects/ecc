@@ -1,6 +1,7 @@
 import json
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -23,6 +24,7 @@ from chipcompiler.data.workspace import (
     sync_workspace_config_to_parameters,
     update_step_config,
 )
+from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.data.workspace.layout import EccData, EccOutput, EccStep, StepInput
 from chipcompiler.utility import json_read, json_write
 
@@ -50,18 +52,17 @@ ROUTABILITY_FLAG_STRING_CASES = (
 
 
 def test_flow_has_step_uses_cached_data_and_path(tmp_path):
-    flow = Flow(
-        data={
-            "steps": [
-                {"name": StepEnum.SYNTHESIS.value, "tool": "yosys"},
-                {"name": StepEnum.FLOORPLAN.value, "tool": "ecc"},
-            ]
-        }
-    )
+    steps: list[FlowStepEntry] = [
+        {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": "Unstart"},
+        {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": "Unstart"},
+    ]
+    flow = Flow(data={"steps": steps})
     assert flow.has_step(StepEnum.SYNTHESIS)
     assert flow.has_step("Synthesis", "yosys")
     assert not flow.has_step(StepEnum.SYNTHESIS, "ecc")
-    assert flow.get_step(StepEnum.FLOORPLAN)["tool"] == "ecc"
+    floorplan = flow.get_step(StepEnum.FLOORPLAN)
+    assert floorplan is not None
+    assert floorplan["tool"] == "ecc"
     assert flow.get_step(StepEnum.PLACEMENT) is None
 
     path = tmp_path / "flow.json"
@@ -93,7 +94,7 @@ def _create_loaded_ics55_workspace(
     workspace_name,
     minimal_ics55_pdk_factory,
     default_ics55_parameters,
-):
+) -> tuple[Path, Any]:
     pdk_root = minimal_ics55_pdk_factory(tmp_path / f"{workspace_name}_pdk")
     rtl_path = tmp_path / f"{workspace_name}.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
@@ -127,6 +128,7 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
         parameters={**default_ics55_parameters, "max_fanout": 37},
         pdk_root=pdk_root,
     )
+    assert workspace is not None
 
     assert workspace is not None
     assert workspace.directory == workspace_dir.resolve()
@@ -169,56 +171,66 @@ def test_create_workspace_rejects_existing_non_empty_directory(tmp_path):
         pdk="ics55",
         parameters={},
     )
-
     assert workspace is None
 
 
 EXPECTED_ICS55_DEFAULT_SDC = """\
 # ECC-generated SDC file
 
-set clk_name          clk
-set clk_port_name     clk
-set clk_freq_mhz      100
-set clk_period        [expr 1000.0 / $clk_freq_mhz]
+# -------------------------------------------------
+# SDC version & units
+# -------------------------------------------------
+set sdc_version 2.1
+set_units -time ns -resistance kOhm -capacitance pF -voltage V -current mA
 
 # -------------------------------------------------
 # Clock definition
 # -------------------------------------------------
+set clk_name      clk
+set clk_port_name clk
+set clk_freq_mhz  100
+set clk_period    [expr {1000.0 / $clk_freq_mhz}]
+
 set clk_port [get_ports $clk_port_name]
 create_clock -name $clk_name -period $clk_period $clk_port
-set_propagated_clock [get_clocks $clk_name]
+set_propagated_clock [all_clocks]
+
+set_clock_latency -source 0.5 [get_clocks $clk_name]
 
 # -------------------------------------------------
 # IO Delay
 # -------------------------------------------------
-set clk_input          [get_ports $clk_port_name]
-set all_inputs_wo_clk  [remove_from_collection [all_inputs] $clk_input]
-
-set_input_delay  0  -clock [get_clocks $clk_name] $all_inputs_wo_clk
-set_output_delay 0 -clock [get_clocks $clk_name] [all_outputs]
+set data_inputs [remove_from_collection [all_inputs] $clk_port]
+set_input_delay -max 3.0 -clock [get_clocks $clk_name] $data_inputs
+set_input_delay -min 1.0 -clock [get_clocks $clk_name] $data_inputs
+set_output_delay -max 1.0 -clock [get_clocks $clk_name] [all_outputs]
 
 # -------------------------------------------------
 # Output load (pF) - ics55 pdk
 # -------------------------------------------------
-set_load 0.001 [all_outputs]
+set_load 0.2 [all_outputs]
 
 # -------------------------------------------------
 # Clock uncertainty & transition
 # -------------------------------------------------
-set clk_setup_uncertainty [expr $clk_period * 0.015]            ;# 1.5% of period
-set clk_hold_uncertainty  [expr $clk_period * 0.005]            ;# 0.5% of period
-set clk_transition        [expr min(0.15, $clk_period * 0.03)]  ;# 3%, cap 0.15ns
-set input_transition      [expr min(0.20, $clk_period * 0.05)]  ;# 5%, cap 0.20ns
-
-set_clock_uncertainty -setup $clk_setup_uncertainty [get_clocks $clk_name]
-set_clock_uncertainty -hold  $clk_hold_uncertainty  [get_clocks $clk_name]
-set_clock_transition  $clk_transition   [get_clocks $clk_name]
-set_input_transition  $input_transition $all_inputs_wo_clk
+set_clock_uncertainty -setup 0.20 [all_clocks]
+set_clock_uncertainty -hold  0.25 [get_clocks $clk_name]
+set_clock_transition        0.15 [get_clocks $clk_name]
+set_input_transition        0.20 $data_inputs
 
 # -------------------------------------------------
 # Design-level constraints
 # -------------------------------------------------
-set_max_fanout 32 [current_design]
+set_max_fanout      32   [current_design]
+set_max_transition [expr {$clk_period * 0.17}] -clock_path [get_clocks $clk_name]
+set_max_transition [expr {$clk_period * 0.34}] -data_path [get_clocks $clk_name]
+
+# -------------------------------------------------
+# Timing derate (OCV)
+# -------------------------------------------------
+set_timing_derate -early 0.95 -clock
+set_timing_derate -late  1.10 -clock
+set_timing_derate -late  1.10 -data
 """
 
 
@@ -246,45 +258,56 @@ def test_create_workspace_generates_default_sdc_from_parameters(
 EXPECTED_ICS55_VIRTUAL_CLOCK_SDC = """\
 # ECC-generated SDC file
 
-set clk_name          __VIRTUAL_CLK__
-set clk_freq_mhz      100
-set clk_period        [expr 1000.0 / $clk_freq_mhz]
+# -------------------------------------------------
+# SDC version & units
+# -------------------------------------------------
+set sdc_version 2.1
+set_units -time ns -resistance kOhm -capacitance pF -voltage V -current mA
 
 # -------------------------------------------------
 # Clock definition
 # -------------------------------------------------
+set clk_name      __VIRTUAL_CLK__
+set clk_freq_mhz  100
+set clk_period    [expr {1000.0 / $clk_freq_mhz}]
+
 create_clock -name $clk_name -period $clk_period
+set_clock_latency -source 0.5 [get_clocks $clk_name]
 
 # -------------------------------------------------
 # IO Delay
 # -------------------------------------------------
-set all_inputs_wo_clk  [all_inputs]
-
-set_input_delay  0  -clock [get_clocks $clk_name] $all_inputs_wo_clk
-set_output_delay 0 -clock [get_clocks $clk_name] [all_outputs]
+set data_inputs [all_inputs]
+set_input_delay -max 3.0 -clock [get_clocks $clk_name] $data_inputs
+set_input_delay -min 1.0 -clock [get_clocks $clk_name] $data_inputs
+set_output_delay -max 1.0 -clock [get_clocks $clk_name] [all_outputs]
 
 # -------------------------------------------------
 # Output load (pF) - ics55 pdk
 # -------------------------------------------------
-set_load 0.001 [all_outputs]
+set_load 0.2 [all_outputs]
 
 # -------------------------------------------------
 # Clock uncertainty & transition
 # -------------------------------------------------
-set clk_setup_uncertainty [expr $clk_period * 0.015]            ;# 1.5% of period
-set clk_hold_uncertainty  [expr $clk_period * 0.005]            ;# 0.5% of period
-set clk_transition        [expr min(0.15, $clk_period * 0.03)]  ;# 3%, cap 0.15ns
-set input_transition      [expr min(0.20, $clk_period * 0.05)]  ;# 5%, cap 0.20ns
-
-set_clock_uncertainty -setup $clk_setup_uncertainty [get_clocks $clk_name]
-set_clock_uncertainty -hold  $clk_hold_uncertainty  [get_clocks $clk_name]
-set_clock_transition  $clk_transition   [get_clocks $clk_name]
-set_input_transition  $input_transition $all_inputs_wo_clk
+set_clock_uncertainty -setup 0.20 [all_clocks]
+set_clock_uncertainty -hold  0.25 [get_clocks $clk_name]
+set_clock_transition        0.15 [get_clocks $clk_name]
+set_input_transition        0.20 $data_inputs
 
 # -------------------------------------------------
 # Design-level constraints
 # -------------------------------------------------
-set_max_fanout 32 [current_design]
+set_max_fanout      32   [current_design]
+set_max_transition [expr {$clk_period * 0.17}] -clock_path [get_clocks $clk_name]
+set_max_transition [expr {$clk_period * 0.34}] -data_path [get_clocks $clk_name]
+
+# -------------------------------------------------
+# Timing derate (OCV)
+# -------------------------------------------------
+set_timing_derate -early 0.95 -clock
+set_timing_derate -late  1.10 -clock
+set_timing_derate -late  1.10 -data
 """
 
 
@@ -332,6 +355,7 @@ def test_create_workspace_persists_dynamic_flow_steps(
             "steps": ["Placement", "CTS", "legal", "Route", "DRC"],
         },
     )
+    assert workspace is not None
 
     assert workspace is not None
     flow_data = json_read(workspace_dir / "home" / "flow.json")
@@ -387,6 +411,7 @@ def test_create_workspace_copies_external_lec_and_sta_inputs(
         pdk_root=pdk_root,
         flow_config={"start_step": "postlec", "end_step": "postlec"},
     )
+    assert workspace is not None
 
     assert workspace is not None
     flow_data = json_read(workspace_dir / "home" / "flow.json")
@@ -418,6 +443,7 @@ def test_load_workspace_keeps_golden_prefixed_primary_netlist(
     )
 
     loaded = load_workspace(str(workspace_dir))
+    assert loaded is not None
     assert loaded.design.origin_verilog == workspace_dir / "origin" / "golden_gcd.v"
     assert loaded.design.golden_verilog is None
 
@@ -444,6 +470,7 @@ def test_load_workspace_restores_golden_from_persisted_flow_info(
     )
 
     loaded = load_workspace(str(workspace_dir))
+    assert loaded is not None
     assert loaded.design.origin_verilog == workspace_dir / "origin" / "gcd.v"
     assert loaded.design.golden_verilog == workspace_dir / "origin" / "golden_gcd_golden.v"
 
@@ -468,6 +495,7 @@ def test_create_workspace_non_contiguous_flow_seeds_both_stores_contiguous(
             pdk_root=pdk_root,
             flow_config={"steps": ["Synth", "Place", "CTS"]},
         )
+    assert workspace is not None
 
     assert workspace is not None
     # Both stores carry the same contiguous first..last range.
@@ -638,6 +666,7 @@ def test_create_workspace_from_step_output_copies_only_origin_inputs_and_rebuild
             "end_step": "legalization",
         },
     )
+    assert workspace is not None
 
     assert workspace is not None
     assert (workspace_dir / "origin" / "gcd_Floorplan.def.gz").read_text() == "def from floorplan\n"
@@ -681,6 +710,7 @@ def test_build_flow_for_dynamic_workspace_initializes_step_metadata_files(
             "end_step": "CTS",
         },
     )
+    assert workspace is not None
 
     from chipcompiler.engine.workspace_flow import build_flow_for_workspace
 
@@ -728,6 +758,7 @@ def test_load_workspace_restores_path_fields_from_existing_json(
     )
 
     loaded = load_workspace(workspace_dir)
+    assert loaded is not None
 
     assert loaded is not None
     assert loaded.directory == workspace_dir.resolve()
@@ -862,6 +893,7 @@ def test_load_workspace_migrates_legacy_config_filenames(
         parameters=default_ics55_parameters,
         pdk_root=pdk_root,
     )
+    assert workspace is not None
 
     config_dir = workspace_dir / "config"
     legacy_filenames = workspace_data._LEGACY_WORKSPACE_CONFIG_FILENAMES
@@ -869,6 +901,7 @@ def test_load_workspace_migrates_legacy_config_filenames(
         workspace.config[config_key].rename(config_dir / legacy_filename)
 
     loaded = load_workspace(workspace_dir)
+    assert loaded is not None
 
     assert loaded is not None
     for config_key, legacy_filename in legacy_filenames.items():
@@ -906,15 +939,15 @@ def test_workspace_config_paths_match_build_workspace_config_paths(tmp_path):
 def test_workspace_config_path_handles_known_and_unknown_keys(tmp_path):
     workspace_dir = tmp_path / "workspace"
 
-    assert data_api.workspace_config_path(str(workspace_dir), "db") == (
+    assert data_api.workspace_config_key_path(str(workspace_dir), "db") == (
         workspace_dir / "config" / "db_ecc.json"
     )
-    assert data_api.workspace_config_path(workspace_dir, StepEnum.FILLER.value) == (
+    assert data_api.workspace_config_key_path(workspace_dir, StepEnum.FILLER.value) == (
         workspace_dir / "config" / "filler_ecc.json"
     )
-    assert data_api.workspace_config_path(workspace_dir, StepEnum.PLACEMENT.value) is None
-    assert data_api.workspace_config_path(workspace_dir, StepEnum.LEGALIZATION.value) is None
-    assert data_api.workspace_config_path(workspace_dir, "unknown") is None
+    assert data_api.workspace_config_key_path(workspace_dir, StepEnum.PLACEMENT.value) is None
+    assert data_api.workspace_config_key_path(workspace_dir, StepEnum.LEGALIZATION.value) is None
+    assert data_api.workspace_config_key_path(workspace_dir, "unknown") is None
 
 
 def test_step_config_keys_return_workspace_config_keys():
@@ -1072,6 +1105,7 @@ def test_create_workspace_persists_pdk_root_in_parameters(
         parameters=default_ics55_parameters,
         pdk_root=str(pdk_root),
     )
+    assert workspace is not None
 
     assert workspace is not None
     resolved_root = pdk_root.resolve()
@@ -1100,6 +1134,7 @@ def test_load_workspace_restores_pdk_root_from_parameters(
     )
 
     loaded = load_workspace(str(workspace_dir))
+    assert loaded is not None
 
     assert loaded is not None
     resolved_root = pdk_root.resolve()
@@ -1155,6 +1190,7 @@ def test_load_workspace_external_pdk_recovers_origin_sdc_spef(
     spef_source.unlink()
 
     loaded = load_workspace(str(workspace_dir))
+    assert loaded is not None
 
     assert loaded is not None
     assert loaded.pdk.sdc == origin_sdc
@@ -1179,6 +1215,7 @@ def test_workspace_config_refresh_uses_updated_parameters(
     )
 
     workspace = load_workspace(str(workspace_dir))
+    assert workspace is not None
     parameter_path = workspace_dir / "home" / "params.toml"
     params = _read_parameters(parameter_path)
     params["max_fanout"] = 88
@@ -1209,6 +1246,7 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     )
 
     workspace = load_workspace(str(workspace_dir))
+    assert workspace is not None
     parameter_path = workspace_dir / "home" / "params.toml"
     params = _read_parameters(parameter_path)
     params["max_fanout"] = 91
@@ -1320,7 +1358,7 @@ def test_refresh_workspace_config_updates_generated_sdc_frequency(
 
     refresh_workspace_config(workspace)
 
-    assert "set clk_freq_mhz      250.0" in workspace.pdk.sdc.read_text(encoding="utf-8")
+    assert "set clk_freq_mhz  250.0" in workspace.pdk.sdc.read_text(encoding="utf-8")
 
 
 def test_refresh_workspace_config_preserves_external_sdc(
@@ -1431,6 +1469,7 @@ def test_refresh_workspace_config_reapplies_direct_config_overrides(
         },
         pdk_root=str(pdk_root),
     )
+    assert workspace is not None
 
     cts = json_read(workspace.config[StepEnum.CTS.value])
     dreamplace = json_read(workspace.config["dreamplace"])
@@ -1478,6 +1517,7 @@ def test_refresh_workspace_config_expands_pdk_relative_sta_liberty_overrides(
         },
         pdk_root=str(pdk_root),
     )
+    assert workspace is not None
 
     expected = [str(pdk_root / path.lstrip("/")) for path in relative_liberty[0]["path"]]
     sta = json_read(workspace.config[StepEnum.STA.value])
@@ -1516,6 +1556,7 @@ def test_update_step_config_keeps_sta_liberty_expanded_after_override_replay(
         },
         pdk_root=str(pdk_root),
     )
+    assert workspace is not None
     expected = [str(pdk_root / path.lstrip("/")) for path in relative_liberty[0]["path"]]
 
     step = EccStep(
@@ -1533,9 +1574,40 @@ def test_update_step_config_keeps_sta_liberty_expanded_after_override_replay(
     assert sta["liberty"][0]["path"] == expected
 
 
+def test_create_workspace_rejects_sta_liberty_with_invalid_io_timing(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    invalid_io_liberty = (
+        "/IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/ICSIOA_N55_3P3_ff_1p32_3p63_m40c.lib"
+    )
+    liberty = [{"corner": "MIN", "temperature": -40, "path": [invalid_io_liberty]}]
+
+    with pytest.raises(ValueError) as exc_info:
+        create_workspace(
+            directory=str(tmp_path / "workspace"),
+            origin_def="",
+            origin_verilog=str(rtl_path),
+            pdk="ics55",
+            parameters={
+                **default_ics55_parameters,
+                "Config Overrides": {"sta": {"liberty": liberty}},
+            },
+            pdk_root=str(pdk_root),
+        )
+    assert str(exc_info.value) == (
+        "STA liberty validation failed:\n"
+        "  ICS55 IO liberty has invalid rise timing tables: "
+        f"{pdk_root / invalid_io_liberty.lstrip('/')}; "
+        "use ICSIOA_N55_3P3_ff_1p32_3p63v_0c.lib instead"
+    )
+
+
 def test_refresh_sta_config_does_not_overwrite_corrupt_json(tmp_path):
     sta_path = tmp_path / "sta_ecc.json"
-    workspace = Workspace(config={StepEnum.STA.value: sta_path})
+    workspace = Workspace(directory=tmp_path, config={StepEnum.STA.value: sta_path})
     workspace.pdk.root = tmp_path / "pdk"
     sta_path.write_text("{corrupt", encoding="utf-8")
 
@@ -1594,6 +1666,7 @@ def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshe
     )
 
     workspace = load_workspace(str(workspace_dir))
+    assert workspace is not None
     routing = json_read(workspace.config["route"])
     routing["RT"]["-bottom_routing_layer"] = "MET4"
     routing["RT"]["-top_routing_layer"] = "MET7"
@@ -1679,6 +1752,7 @@ def test_sync_workspace_config_to_parameters_ignores_unmanaged_fields(
     )
 
     workspace = load_workspace(str(workspace_dir))
+    assert workspace is not None
     cts = json_read(workspace.config["CTS"])
     cts["skew_bound"] = 0.12
     json_write(workspace.config["CTS"], cts)
@@ -1707,6 +1781,7 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_runtime_st
         parameters=default_ics55_parameters,
         pdk_root=str(pdk_root),
     )
+    assert workspace is not None
 
     parameters_before = _read_parameters(workspace_dir / "home" / "params.toml")
     config_before = (workspace_dir / "config" / "filler_ecc.json").read_text()
@@ -1872,6 +1947,7 @@ def test_create_workspace_sg13g2_persists_pdk_root_in_parameters(
         parameters=default_sg13g2_parameters,
         pdk_root=str(pdk_root),
     )
+    assert workspace is not None
 
     assert workspace is not None
     resolved_root = pdk_root.resolve()
@@ -1900,6 +1976,7 @@ def test_load_workspace_sg13g2_restores_pdk_root_from_parameters(
     )
 
     loaded = load_workspace(str(workspace_dir))
+    assert loaded is not None
 
     assert loaded is not None
     resolved_root = pdk_root.resolve()
@@ -1925,6 +2002,7 @@ def test_create_workspace_with_pdk_overrides_str_branch(
         pdk_root=str(pdk_root),
         pdk_overrides={"dont_use": ["ICG*"]},
     )
+    assert workspace is not None
 
     assert workspace is not None
     assert workspace.pdk.dont_use == ["ICG*"]
@@ -1950,6 +2028,7 @@ def test_create_workspace_with_pdk_overrides_pdk_object_ignored(
         parameters=default_ics55_parameters,
         pdk_overrides={"dont_use": ["ICG*"]},
     )
+    assert workspace is not None
 
     assert workspace is not None
     assert workspace.pdk.dont_use == original_dont_use
@@ -1974,9 +2053,11 @@ def test_workspace_pdk_overrides_persisted_on_reload(
         pdk_root=str(pdk_root),
         pdk_overrides={"dont_use": ["ICG*"], "mapping_file": str(layer_map)},
     )
+    assert workspace is not None
     assert workspace.pdk.dont_use == ["ICG*"]
 
     loaded = load_workspace(str(workspace_dir))
+    assert loaded is not None
 
     assert loaded.pdk == workspace.pdk
 

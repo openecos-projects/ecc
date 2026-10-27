@@ -1,6 +1,7 @@
 import json
 import os
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -116,7 +117,7 @@ class TestMetricSelection:
             "route_ecc",
             [_metric("place_hpwl", 200.0, project_role="final")],
         )
-        inputs = load_workspace_qor_inputs(workspace)
+        inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.value("place_hpwl") == 200.0
 
     def test_later_step_wins_within_same_role(self, tmp_path):
@@ -131,7 +132,7 @@ class TestMetricSelection:
             "route_ecc",
             [_metric("place_hpwl", 111.0, project_role="trend")],
         )
-        inputs = load_workspace_qor_inputs(workspace)
+        inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.value("place_hpwl") == 111.0
         assert inputs.metrics["place_hpwl"].step == "route"
 
@@ -140,7 +141,7 @@ class TestMetricSelection:
         steps["route"] = "Unstart"
         workspace = _make_workspace(tmp_path, steps)
         _write_step_payload(workspace.directory, "route_ecc", [_metric("route_wirelength", 9999.0)])
-        inputs = load_workspace_qor_inputs(workspace)
+        inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.value("route_wirelength") is None
         assert "route" not in inputs.analyzed_steps
         assert inputs.parse_failures == 0  # unstarted steps are not failures
@@ -151,7 +152,7 @@ class TestMetricSelection:
             os.path.join(workspace.directory, "drc_ecc", "analysis", "qor_metrics.json"),
             {"broken": True},
         )
-        inputs = load_workspace_qor_inputs(workspace)
+        inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.parse_failures == 1
         assert "drc" not in inputs.analyzed_steps
 
@@ -159,7 +160,7 @@ class TestMetricSelection:
 class TestParameterResolution:
     def test_frequency_max_resolves_tclk(self, tmp_path):
         workspace = _make_workspace(tmp_path, _FULL_FLOW)
-        inputs = load_workspace_qor_inputs(workspace)
+        inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.tclk_ns == pytest.approx(20.0)
         assert inputs.config_warnings == []
 
@@ -169,7 +170,7 @@ class TestParameterResolution:
             os.path.join(workspace.directory, "home", "parameters.json"),
             {"frequency_max": 50.0, "qor_profile": "speed_demon"},
         )
-        inputs = load_workspace_qor_inputs(workspace)
+        inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.profile == "balanced"
         assert inputs.config_warnings
 
@@ -179,7 +180,7 @@ class TestParameterResolution:
             os.path.join(workspace.directory, "home", "parameters.json"),
             {"frequency_max": 50.0, "qor_power_budget_w": -1},
         )
-        inputs = load_workspace_qor_inputs(workspace)
+        inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.power_budget_uw is None
         assert inputs.config_warnings
 
@@ -205,7 +206,7 @@ class TestCornerLoading:
                     },
                 },
             )
-        inputs = load_workspace_qor_inputs(workspace)
+        inputs: Any = load_workspace_qor_inputs(workspace)
         assert [corner.setup_ws for corner in inputs.corners] == [16.622, 18.98]
 
     def test_failed_sta_does_not_load_stale_corner_files(self, tmp_path):
@@ -229,7 +230,7 @@ class TestCornerLoading:
                 },
             },
         )
-        inputs = load_workspace_qor_inputs(workspace)
+        inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.corners == []
 
     def test_synthesis_power_summary_is_loaded(self, tmp_path):
@@ -250,7 +251,7 @@ class TestCornerLoading:
                 "switching_uw": 2.0,
             },
         )
-        inputs = load_workspace_qor_inputs(workspace)
+        inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.power_total_uw == 7.0
         assert inputs.power_source_path.endswith(
             "Synthesis_yosys/feature/post_synthesis/power_summary.json"
@@ -293,7 +294,7 @@ class TestCornerLoading:
                     "switching_uw": total - 1.0,
                 },
             )
-        inputs = load_workspace_qor_inputs(workspace)
+        inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.power_total_uw == 9.0
         assert inputs.power_source_path.endswith("MIN_m40/Cbest/power_summary.json")
         assert inputs.power_source_kind == "signoff"
@@ -307,14 +308,18 @@ class TestCornerLoading:
                 workspace.directory,
                 "powerAnalysis_ecc",
                 "feature",
-                "power_summary.json",
+                "powerAnalysis.step.json",
             ),
             {
                 "schema_version": 1,
-                "dynamic_uw": 8.0,
-                "leakage_uw": 1.0,
-                "internal_uw": 2.0,
-                "switching_uw": 6.0,
+                "step": "powerAnalysis",
+                "power_summary": {
+                    "schema_version": 1,
+                    "dynamic_uw": 8.0,
+                    "leakage_uw": 1.0,
+                    "internal_uw": 2.0,
+                    "switching_uw": 6.0,
+                },
             },
         )
         # A current workspace must not fall back to the old STA location.
@@ -336,7 +341,35 @@ class TestCornerLoading:
             },
         )
 
-        inputs = load_workspace_qor_inputs(workspace)
+        inputs: Any = load_workspace_qor_inputs(workspace)
+
+        assert inputs.power_total_uw == 9.0
+        assert inputs.power_source_path.endswith(
+            "powerAnalysis_ecc/feature/powerAnalysis.step.json"
+        )
+        assert inputs.power_source_kind == "signoff"
+        assert inputs.power_corner == "powerAnalysis"
+
+    def test_power_analysis_legacy_summary_is_used_when_step_artifact_is_missing(self, tmp_path):
+        steps = {**_FULL_FLOW, "powerAnalysis": SUCCESS}
+        workspace = _make_workspace(tmp_path, steps)
+        _write(
+            os.path.join(
+                workspace.directory,
+                "powerAnalysis_ecc",
+                "feature",
+                "power_summary.json",
+            ),
+            {
+                "schema_version": 1,
+                "dynamic_uw": 8.0,
+                "leakage_uw": 1.0,
+                "internal_uw": 2.0,
+                "switching_uw": 6.0,
+            },
+        )
+
+        inputs: Any = load_workspace_qor_inputs(workspace)
 
         assert inputs.power_total_uw == 9.0
         assert inputs.power_source_path.endswith("powerAnalysis_ecc/feature/power_summary.json")
@@ -362,7 +395,7 @@ class TestCornerLoading:
             },
         )
 
-        inputs = load_workspace_qor_inputs(workspace)
+        inputs: Any = load_workspace_qor_inputs(workspace)
 
         assert inputs.power_total_uw is None
 
@@ -382,7 +415,7 @@ class TestCornerLoading:
                 "summary": {"setup": {"wns": 1.0, "tns": 0.0, "nvp": 0}},
             },
         )
-        inputs = load_workspace_qor_inputs(workspace)
+        inputs: Any = load_workspace_qor_inputs(workspace)
         assert len(inputs.corners) == 1
         assert inputs.sta_setup_only is True
 
@@ -392,5 +425,5 @@ class TestDesignResolution:
         workspace = _make_workspace(tmp_path, _FULL_FLOW)
         workspace.design = SimpleNamespace(name="")
         workspace.name = ""
-        inputs = load_workspace_qor_inputs(workspace)
+        inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.design == "gcd"

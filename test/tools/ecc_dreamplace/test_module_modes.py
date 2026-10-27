@@ -1,5 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -13,7 +14,6 @@ from chipcompiler.data import (
     Workspace,
 )
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
-from chipcompiler.tools.ecc_dreamplace.service import get_step_info
 from chipcompiler.utility import json_write
 
 from .test_module import FakeParams
@@ -38,7 +38,7 @@ def test_legalization_params_follow_owner(tmp_path, owner, detailed_place_flag):
         },
     )
     workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
+        directory=Path(tmp_path / "workspace"),
         design=OriginDesign(name="gcd"),
         config={"dreamplace": config_path},
     )
@@ -49,7 +49,7 @@ def test_legalization_params_follow_owner(tmp_path, owner, detailed_place_flag):
             steps={owner: tmp_path / "data" / "pl"},
         ),
     )
-    module = DreamplaceModule(
+    module: Any = DreamplaceModule(
         workspace=workspace,
         step=step,
         ecc_module=None,
@@ -111,8 +111,8 @@ def test_geometry_legalization_clears_inherited_padding(
             seen.append((self.params.detailed_place_flag, self.params.cell_padding_x))
             return {"hpwl": 1.0}
 
-    module = _module_for_owner(tmp_path, owner)
-    module.ecc_module = SimpleNamespace(
+    module: Any = _module_for_owner(tmp_path, owner)
+    vars(module)["ecc_module"] = SimpleNamespace(
         dir_workspace=str(tmp_path),
         verilog_save=lambda **kwargs: Path(kwargs["output_verilog"]).write_text("fixture"),
     )
@@ -124,28 +124,11 @@ def test_geometry_legalization_clears_inherited_padding(
     assert seen == [(0, expected_padding)]
 
 
-def test_dreamplace_step_info_stringifies_path_config(tmp_path):
-    workspace = Workspace(
-        directory=tmp_path,
-        design=OriginDesign(name="gcd"),
-        config={"dreamplace": tmp_path / "config" / "dreamplace_ecc.json"},
-    )
-    workspace.logger = SimpleNamespace(
-        log_section=lambda *args, **kwargs: None,
-        info=lambda *args, **kwargs: None,
-    )
-    step = EccStep(name=StepEnum.PLACEMENT.value)
-
-    assert get_step_info(workspace, step, "config") == {
-        "config": str(workspace.config["dreamplace"]),
-    }
-
-
 def _module_for_owner(tmp_path, step_name: str) -> DreamplaceModule:
     config_path = tmp_path / "dreamplace_ecc.json"
     json_write(config_path, {})
     workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
+        directory=Path(tmp_path / "workspace"),
         design=OriginDesign(name="gcd"),
         config={"dreamplace": config_path},
     )
@@ -178,7 +161,7 @@ def _module_for_owner(tmp_path, step_name: str) -> DreamplaceModule:
 def test_detailed_place_default_respects_run_mode(
     tmp_path, dreamplace_default_config, mode, step_name, expected
 ):
-    module = _module_for_owner(tmp_path, step_name)
+    module: Any = _module_for_owner(tmp_path, step_name)
     from dreamplace.flows.flow_config import resolve_flow_config
 
     config = resolve_flow_config(dreamplace_default_config, explicit_keys=())
@@ -188,7 +171,7 @@ def test_detailed_place_default_respects_run_mode(
 
 
 def test_placement_respects_explicit_detailed_place_disable(tmp_path, dreamplace_default_config):
-    module = _module_for_owner(tmp_path, StepEnum.PLACEMENT.value)
+    module: Any = _module_for_owner(tmp_path, StepEnum.PLACEMENT.value)
     from dreamplace.flows.flow_config import resolve_flow_config
 
     config = resolve_flow_config(dreamplace_default_config, explicit_keys=())
@@ -247,7 +230,7 @@ def test_dreamplace_run_step_ignores_timing_opt(tmp_path, monkeypatch):
     monkeypatch.setattr(dreamplace_runner, "run_placement", lambda **kwargs: True)
     monkeypatch.setattr(dreamplace_runner, "run_legalization", lambda **kwargs: True)
 
-    workspace = Workspace(directory=str(tmp_path / "workspace"), design=OriginDesign(name="gcd"))
+    workspace = Workspace(directory=tmp_path / "workspace", design=OriginDesign(name="gcd"))
     step = EccStep(name=SkippableStepEnum.TIMING_OPT.value)
 
     assert dreamplace_runner.run_step(workspace, step) is False
@@ -257,7 +240,7 @@ def test_legalize_layout_rebuilds_from_sources_and_closes_on_failure(tmp_path, m
     from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
     from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
 
-    module = _module_for_owner(tmp_path, SkippableStepEnum.TIMING_OPT.value)
+    module: Any = _module_for_owner(tmp_path, SkippableStepEnum.TIMING_OPT.value)
     staging_def = tmp_path / "sizer.def.gz"
     staging_verilog = tmp_path / "sizer.v.gz"
     created = []
@@ -301,7 +284,7 @@ def test_legalize_layout_rebuilds_from_sources_and_closes_on_failure(tmp_path, m
 def test_legalize_layout_returns_none_without_dreamplace_config(tmp_path, monkeypatch):
     from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
 
-    workspace = Workspace(directory=str(tmp_path / "workspace"), design=OriginDesign(name="gcd"))
+    workspace = Workspace(directory=tmp_path / "workspace", design=OriginDesign(name="gcd"))
     step = EccStep(name=SkippableStepEnum.TIMING_OPT.value)
     monkeypatch.setattr(dreamplace_runner, "is_eda_exist", lambda: True)
 
@@ -325,7 +308,7 @@ def test_legalize_layout_fills_missing_dreamplace_config_without_clobbering(tmp_
     config_path.parent.mkdir(parents=True)
     json_write(config_path, {})
     workspace = Workspace(
-        directory=str(workspace_dir),
+        directory=Path(workspace_dir),
         design=OriginDesign(name="gcd"),
         config={"db": workspace_dir / "config" / "db_ecc.json"},
     )
@@ -363,7 +346,7 @@ def test_legalize_layout_returns_engine_when_legalize_succeeds(tmp_path, monkeyp
     from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
     from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
 
-    module = _module_for_owner(tmp_path, SkippableStepEnum.TIMING_OPT.value)
+    module: Any = _module_for_owner(tmp_path, SkippableStepEnum.TIMING_OPT.value)
     engine = SimpleNamespace(close=lambda: (_ for _ in ()).throw(AssertionError("closed")))
 
     monkeypatch.setattr(dreamplace_runner, "is_eda_exist", lambda: True)

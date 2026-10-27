@@ -9,6 +9,7 @@ import time
 from contextlib import contextmanager, suppress
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import TextIO
 
 # ponytail: process-wide fds require one lock; move tools to subprocesses for parallel capture.
@@ -90,7 +91,7 @@ def redirect_stdio_to_file(log_file: str) -> TextIO:
 
 
 @contextmanager
-def capture_stdio_to_file(log_file: str | None):
+def capture_stdio_to_file(log_file: str | Path | None):
     """Redirect fd 1/2 for one scope, then restore the original streams."""
     if not log_file:
         yield
@@ -101,7 +102,7 @@ def capture_stdio_to_file(log_file: str | None):
         saved_streams = (sys.stdout, sys.stderr)
         log_stream = None
         try:
-            log_stream = redirect_stdio_to_file(log_file)
+            log_stream = redirect_stdio_to_file(str(log_file))
             yield
         finally:
             for stream in (sys.stdout, sys.stderr):
@@ -134,8 +135,8 @@ class Logger:
     def __init__(
         self,
         name: str = "ecc",
-        log_file: str | None = None,
-        log_dir: str | None = None,
+        log_file: str | Path | None = None,
+        log_dir: str | Path | None = None,
         max_bytes: int = 10 * 1024 * 1024,  # 10MB
         backup_count: int = 5,
         level: int = logging.INFO,
@@ -202,8 +203,8 @@ class Logger:
 
 def create_logger(
     name: str = "ecc",
-    log_file: str | None = None,
-    log_dir: str | None = None,
+    log_file: str | Path | None = None,
+    log_dir: str | Path | None = None,
     max_bytes: int = 10 * 1024 * 1024,  # 10MB
     backup_count: int = 5,
     level: int = logging.INFO,

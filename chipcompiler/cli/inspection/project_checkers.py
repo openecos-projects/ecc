@@ -48,6 +48,9 @@ def checker_evidence(root: Path, step: dict, design: str) -> dict:
     if result.status != "available":
         return record
     payload = result.data
+    if payload is None:
+        record["availability"] = "invalid"
+        return record
     if (
         payload.get("schema_version") != 3
         or payload.get("step") != name
@@ -109,7 +112,7 @@ def _lec_evidence(root: Path, step_root: Path, name: str, design: str, record: d
     record["source"] = str(path)
     result = read_workspace_artifact(root, path, CHECKLIST_READ_MAX_BYTES)
     record["availability"] = result.status
-    if result.status != "available":
+    if result.status != "available" or result.data is None:
         return record
     if result.data.get("status") == "proven":
         record["verdict"] = "proven_saved"

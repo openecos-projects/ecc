@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -10,14 +11,14 @@ def test_execution_plan_dispatches_full_flow_and_single_step():
     calls = []
 
     class Flow:
-        def run_steps(self, *, rerun=False, observer=None):
+        def run_steps(self, *, rerun=False, observer: Any = None):
             calls.append(("flow", rerun, observer))
             return True
 
         def get_workspace_step(self, step_id):
             return SimpleNamespace(name=step_id)
 
-        def run_step(self, step, *, rerun=False, observer=None):
+        def run_step(self, step, *, rerun=False, observer: Any = None):
             calls.append((step.name, rerun, observer))
             return StateEnum.Success
 
@@ -43,8 +44,9 @@ def test_execution_plan_dispatches_full_flow_and_single_step():
 def test_execution_observer_does_not_hide_unknown_callbacks():
     from chipcompiler.engine.execution import ExecutionObserver
 
+    callback = "unknown_callback"
     with pytest.raises(AttributeError):
-        _ = ExecutionObserver(object()).unknown_callback
+        _ = getattr(ExecutionObserver(object()), callback)
 
 
 def test_execution_plan_checks_cancel_before_each_selected_step():
@@ -70,7 +72,7 @@ def test_execution_plan_checks_cancel_before_each_selected_step():
         def get_workspace_step(self, step_id):
             return SimpleNamespace(name=step_id)
 
-        def run_step(self, step, *, rerun=False, observer=None):
+        def run_step(self, step, *, rerun=False, observer: Any = None):
             calls.append(step.name)
             observer.on_step_completed(step, StateEnum.Success)
             return StateEnum.Success
@@ -89,7 +91,7 @@ def test_execution_failure_keeps_main_blocking_semantics():
     class Flow:
         workspace = SimpleNamespace(flow=SimpleNamespace(data={"steps": []}))
 
-        def run_steps(self, *, rerun=False, observer=None):
+        def run_steps(self, *, rerun=False, observer: Any = None):
             return False
 
     result = execute(Flow(), ExecutionPlan(intent="run"), event_sink=object())
@@ -100,7 +102,7 @@ def test_execution_failure_keeps_main_blocking_semantics():
 
 def test_successful_flow_with_advisory_failure_has_no_blocking_failed_step():
     class Flow:
-        def run_steps(self, *, rerun=False, observer=None):
+        def run_steps(self, *, rerun=False, observer: Any = None):
             observer.on_step_completed(SimpleNamespace(name="emir"), StateEnum.Imcomplete)
             observer.on_step_completed(SimpleNamespace(name="Harden"), StateEnum.Success)
             return True
@@ -120,7 +122,7 @@ def test_selected_flow_continues_after_incomplete_advisory(advisory_step, raw_st
         def get_workspace_step(self, step_id):
             return SimpleNamespace(name=step_id)
 
-        def run_step(self, step, *, rerun=False, observer=None):
+        def run_step(self, step, *, rerun=False, observer: Any = None):
             calls.append(step.name)
             state = StateEnum.Imcomplete if step.name == advisory_step else StateEnum.Success
             observer.on_step_completed(step, state)
@@ -149,7 +151,7 @@ def test_selected_flow_still_stops_on_blocking_failure(step_name, state):
         def get_workspace_step(self, step_id):
             return SimpleNamespace(name=step_id)
 
-        def run_step(self, step, *, rerun=False, observer=None):
+        def run_step(self, step, *, rerun=False, observer: Any = None):
             calls.append(step.name)
             step_state = StateEnum.Imcomplete if step.name == "antennaCheck" else state
             observer.on_step_completed(step, step_state)
@@ -174,7 +176,7 @@ def test_default_execution_observer_commits_completed_steps(monkeypatch, tmp_pat
     class Flow:
         workspace = SimpleNamespace(directory=tmp_path)
 
-        def run_steps(self, *, rerun=False, observer=None):
+        def run_steps(self, *, rerun=False, observer: Any = None):
             observer.on_step_completed(SimpleNamespace(name="synthesis"), StateEnum.Success)
             return True
 

@@ -1,5 +1,3 @@
-from typing import TYPE_CHECKING
-
 from .csv import csv_write
 from .file import chmod_folder, file_digest, find_files
 from .filelist import (
@@ -9,7 +7,16 @@ from .filelist import (
     resolve_path,
     validate_filelist,
 )
-from .json import JsonReadError, dict_to_str, json_read, json_read_strict, json_write
+from .json import (
+    JsonObject,
+    JsonReadError,
+    dict_to_str,
+    finite_number,
+    json_read,
+    json_read_object,
+    json_read_strict,
+    json_write,
+)
 from .log import (
     Logger,
     build_timestamped_log_file,
@@ -20,34 +27,16 @@ from .log import (
 )
 from .util import track_process_memory
 
-# Plot helpers pull in matplotlib (~1s import, font scan on cold cache), so
-# they are re-exported lazily via PEP 562 instead of at package import time.
-_PLOT_EXPORTS = frozenset({"plot_csv_map"})
-
-if TYPE_CHECKING:
-    from .plot import plot_csv_map
-
-
-else:
-    # Hidden from type checkers so unknown attributes still fail statically.
-    def __getattr__(name: str):
-        if name in _PLOT_EXPORTS:
-            from . import plot
-
-            return getattr(plot, name)
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-    def __dir__() -> list[str]:
-        return sorted(set(globals()) | _PLOT_EXPORTS)
-
-
 __all__ = [
     "chmod_folder",
     "json_read",
     "json_read_strict",
+    "JsonObject",
     "JsonReadError",
+    "json_read_object",
     "json_write",
     "dict_to_str",
+    "finite_number",
     "Logger",
     "create_logger",
     "build_timestamped_log_file",
@@ -55,7 +44,6 @@ __all__ = [
     "redirect_stdio_to_file",
     "init_api_runtime_log",
     "track_process_memory",
-    "plot_csv_map",
     "parse_filelist",
     "resolve_path",
     "validate_filelist",

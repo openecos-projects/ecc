@@ -336,6 +336,42 @@ def test_workspace_spec_update_preserves_omitted_config_parameters(
     assert cts["skew_bound"] == "0.20"
 
 
+def test_workspace_spec_update_normalizes_persisted_flag_booleans(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    """DreamPlace round-trips its 0/1 flags as JSON booleans into the Snapshot.
+
+    A refresh revalidates that committed baseline, so the persisted spelling
+    must be normalized back to the registry's int instead of failing the
+    Workspace that produced it.
+    """
+    from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
+    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    create_workspace_from_spec(target, deepcopy(payload["workspaceSpec"]), bindings)
+
+    snapshot_path = target / "home" / "engineering-snapshot.json"
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    snapshot["workspaceSpec"]["parameters"]["place.auto_adjust_bins"] = True
+    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+    after = read_engineering_snapshot_from_directory(target)
+
+    update_spec = deepcopy(payload["workspaceSpec"])
+    update_spec["parameters"] = {}
+    update_workspace_from_spec(
+        target,
+        after["workspaceRevision"],
+        update_spec,
+        bindings,
+        "flag-bool-1",
+    )
+    refreshed = read_engineering_snapshot_from_directory(target)
+    assert refreshed["workspaceSpec"]["parameters"]["place.auto_adjust_bins"] == 1
+
+
 def test_workspace_spec_update_preserves_declared_sta_paths_across_pdk_migration(
     tmp_path, minimal_ics55_pdk_factory
 ):
@@ -602,8 +638,44 @@ def test_workspace_spec_update_retain_backup_preserves_replaced_generation(
         retain_backup=True,
     )
     assert second.backup_directory == tmp_path / ".workspace.replace-backup-2"
+    assert second.backup_directory is not None
     retained_second = read_engineering_snapshot_from_directory(second.backup_directory)
     assert retained_second["workspaceRevision"] == after["workspaceRevision"]
+
+
+def test_workspace_spec_create_and_update_materialize_step_directories(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
+    from chipcompiler.engine.snapshot import read_engineering_snapshot
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    created = create_workspace_from_spec(target, payload["workspaceSpec"], bindings)
+
+    expected_directories = [
+        "Synthesis_yosys",
+        "preFloorplan_ecc",
+        "macroPlacement_dreamplace",
+        "preplace_sizer",
+        "timing_optimization_sizer",
+        "route_ecc",
+        "Harden_ecc",
+    ]
+    for directory in expected_directories:
+        assert (target / directory).is_dir(), directory
+
+    updated_spec = deepcopy(payload["workspaceSpec"])
+    updated_spec["parameters"]["design.frequency_mhz"] = 250.0
+    update_workspace_from_spec(
+        target,
+        read_engineering_snapshot(created)["workspaceRevision"],
+        updated_spec,
+        bindings,
+    )
+    for directory in expected_directories:
+        assert (target / directory).is_dir(), directory
 
 
 def test_workspace_spec_update_without_retain_backup_keeps_no_backup(

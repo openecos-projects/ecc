@@ -303,7 +303,9 @@ def test_optimize_applies_only_allowed_observed_changes(
     snapshot["workspaceBindings"] = source["workspaceBindings"]
     if observed_density is None:
         snapshot["workspaceSpec"]["parameters"].pop("place.target_density")
-        expected_density = lookup_schema("place.target_density").default
+        density_schema = lookup_schema("place.target_density")
+        assert density_schema is not None
+        expected_density = density_schema.default
     else:
         snapshot["workspaceSpec"]["parameters"]["place.target_density"] = observed_density
         expected_density = observed_density

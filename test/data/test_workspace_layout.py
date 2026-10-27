@@ -252,10 +252,10 @@ def test_log_workspace_step_renders_legacy_tables(tmp_path):
     assert "EccOutput(" not in rendered
 
 
-def test_load_metrics_requires_present_metrics_path():
+def test_load_metrics_requires_present_metrics_path(tmp_path):
     from chipcompiler.analysis.step import StepMetricsBuilder
 
-    builder = StepMetricsBuilder(workspace=Workspace())
+    builder = StepMetricsBuilder(workspace=Workspace(directory=tmp_path))
     step = EccStep(name="place")  # analysis.metrics is None (never set)
     with pytest.raises(ValueError):
         builder.load(step)

@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -11,6 +12,10 @@ from chipcompiler.data import (
 )
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
 from chipcompiler.utility import json_write
+
+
+def _ecc_placeholder() -> Any:
+    return object()
 
 
 class FakeParams:
@@ -76,7 +81,7 @@ def test_run_accepts_only_the_defined_empty_macro_short_circuit(
     module = DreamplaceModule(
         workspace=workspace,
         step=step,
-        ecc_module=object(),
+        ecc_module=_ecc_placeholder(),
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
         output_def=tmp_path / "output.def",
@@ -104,7 +109,7 @@ def test_build_params_preserves_placement_timing_config(tmp_path):
         },
     )
     workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
+        directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
         config={"dreamplace": config_path},
     )
@@ -134,10 +139,40 @@ def test_build_params_preserves_placement_timing_config(tmp_path):
     assert params.timing_opt_flag == 1
     assert params.timing_eval_flag == 1
     assert params.differentiable_timing_obj == 1
-    assert params.def_input == str(tmp_path / "input.def")
-    assert params.verilog_input == str(tmp_path / "input.v")
+    # ECC hands the workspace Paths over unchanged; dreamplace's Params
+    # normalizes path-like values to str on assignment.
+    assert params.def_input == tmp_path / "input.def"
+    assert params.verilog_input == tmp_path / "input.v"
     assert params.result_dir == str(result_dir)
     assert params.base_design_name == "gcd"
+
+
+def test_build_params_uses_empty_string_for_unset_inputs(tmp_path):
+    config_path = tmp_path / "dreamplace_ecc.json"
+    config_path.write_text("{}", encoding="utf-8")
+    workspace = Workspace(
+        directory=tmp_path / "workspace",
+        design=OriginDesign(name="gcd"),
+        config={"dreamplace": config_path},
+    )
+    result_dir = tmp_path / "data" / "pl"
+    step_data = EccData(dir=tmp_path / "data", steps={StepEnum.PLACEMENT.value: result_dir})
+    step = EccStep(name=StepEnum.PLACEMENT.value, data=step_data)
+    module = DreamplaceModule(
+        workspace=workspace,
+        step=step,
+        ecc_module=None,
+        input_def=None,
+        input_verilog=None,
+        output_def=None,
+        output_verilog=None,
+    )
+
+    params = module._build_params(FakeParams, mode=DreamplaceRunMode.PLACEMENT)
+
+    # The C++ options spell "unset" as the empty string, not None.
+    assert params.def_input == ""
+    assert params.verilog_input == ""
 
 
 def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreamplace_default_config):
@@ -170,7 +205,7 @@ def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreampla
     module = DreamplaceModule(
         workspace=workspace,
         step=step,
-        ecc_module=object(),
+        ecc_module=_ecc_placeholder(),
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
         output_def=tmp_path / "output.def",
@@ -297,13 +332,13 @@ def test_build_params_resolves_openroad_timing_inputs(tmp_path):
     assert params.timing_topology_refresh_interval == 15
     assert params.timing_topology_enable_overflow_threshold == 0.35
     assert params.design_inputs == {
-        "tech_lef": str(pdk_root / "tech.lef"),
-        "lef": [str(pdk_root / "cells.lef")],
-        "lib": [str(pdk_root / "cells.lib")],
-        "def": str(tmp_path / "input.def"),
-        "verilog": str(tmp_path / "input.v"),
-        "sdc": str(tmp_path / "gcd.sdc"),
-        "rc_tcl": str(rc_tcl),
+        "tech_lef": pdk_root / "tech.lef",
+        "lef": [pdk_root / "cells.lef"],
+        "lib": [pdk_root / "cells.lib"],
+        "def": tmp_path / "input.def",
+        "verilog": tmp_path / "input.v",
+        "sdc": tmp_path / "gcd.sdc",
+        "rc_tcl": rc_tcl,
     }
 
 
@@ -325,7 +360,7 @@ def test_build_params_accepts_ecc_geometry_only_placement(tmp_path):
     module = DreamplaceModule(
         workspace=workspace,
         step=step,
-        ecc_module=object(),
+        ecc_module=_ecc_placeholder(),
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
         output_def=tmp_path / "output.def",
@@ -353,7 +388,7 @@ def test_build_params_resolves_ecc_timing_inputs(tmp_path):
     module = DreamplaceModule(
         workspace=workspace,
         step=step,
-        ecc_module=object(),
+        ecc_module=_ecc_placeholder(),
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
         output_def=tmp_path / "output.def",
@@ -364,18 +399,18 @@ def test_build_params_resolves_ecc_timing_inputs(tmp_path):
 
     assert params.place_io_engine == "ecc"
     assert params.with_sta == 1
-    assert params.design_inputs["def"] == str(tmp_path / "input.def")
-    assert params.design_inputs["verilog"] == str(tmp_path / "input.v")
+    assert params.design_inputs["def"] == tmp_path / "input.def"
+    assert params.design_inputs["verilog"] == tmp_path / "input.v"
     assert "lib" in params.design_inputs
     assert "sdc" in params.design_inputs
-    assert Path(params.design_inputs["work_dir"]).parent == Path(module.result_dir)
+    assert params.design_inputs["work_dir"] == Path(module.result_dir) / "native_sta"
 
 
 def test_build_params_uses_empty_strings_for_missing_inputs(tmp_path):
     config_path = tmp_path / "dreamplace_ecc.json"
     json_write(config_path, {})
     workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
+        directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
         config={"dreamplace": config_path},
     )
@@ -417,7 +452,7 @@ def test_macro_placement_forces_selective_non_routable_placement_params(tmp_path
         },
     )
     workspace = Workspace(
-        directory=str(tmp_path / "workspace"),
+        directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
         config={"dreamplace": config_path},
     )

@@ -185,6 +185,8 @@ class FlowAgentRuntimeApi:
             else:
                 reapply_candidate_input_binding(candidate_workspace, flow, request.target_step)
             run_candidate_steps_isolated(flow, steps, observer=observer)
+            if candidate_root_ref is None or parent is None:
+                raise RuntimeApiError("command_failed", "candidate rerun identity is unavailable")
             return _candidate_rerun_result(
                 candidate_workspace,
                 request,
@@ -193,20 +195,27 @@ class FlowAgentRuntimeApi:
                 terminal_state="succeeded",
             )
         except Exception as exc:
-            try:
-                result = _candidate_rerun_result(
-                    candidate_workspace,
-                    request,
-                    candidate_root_ref,
-                    parent,
-                    terminal_state="failed",
-                )
-            except Exception as evidence_error:
+            if candidate_root_ref is None or parent is None:
                 result = {
                     "candidateId": request.candidate_id,
                     "candidateRootRef": candidate_root_ref,
-                    "evidenceError": str(evidence_error),
+                    "error": str(exc),
                 }
+            else:
+                try:
+                    result = _candidate_rerun_result(
+                        candidate_workspace,
+                        request,
+                        candidate_root_ref,
+                        parent,
+                        terminal_state="failed",
+                    )
+                except Exception as evidence_error:
+                    result = {
+                        "candidateId": request.candidate_id,
+                        "candidateRootRef": candidate_root_ref,
+                        "evidenceError": str(evidence_error),
+                    }
             raise RuntimeOperationFailed(
                 str(exc),
                 code=getattr(exc, "code", "command_failed"),
@@ -262,7 +271,7 @@ class FlowAgentRuntimeApi:
     ) -> bool:
         try:
             steps = _candidate_step_range(
-                workspace.flow.data["steps"],
+                workspace.flow.data.get("steps", []),
                 request.target_step,
                 request.end_step,
                 request.execution_scope,
@@ -852,7 +861,10 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
     if not rtl_files or not sdc_files:
         raise RuntimeApiError("command_failed", "candidate input fingerprints are unavailable")
     try:
-        tech_lef = Path(getattr(getattr(workspace, "pdk", None), "tech", None))
+        tech = getattr(getattr(workspace, "pdk", None), "tech", None)
+        if not isinstance(tech, (str, Path)) or not tech:
+            raise ValueError("PDK tech LEF is unavailable")
+        tech_lef = Path(tech)
         site_core = getattr(getattr(workspace, "pdk", None), "site_core", None)
         if not isinstance(site_core, str) or not site_core.strip():
             raise ValueError("core site is unavailable")

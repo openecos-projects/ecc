@@ -16,8 +16,6 @@ import sys
 
 from typing_extensions import deprecated
 
-from chipcompiler.cli.project.manifest import find_manifest
-from chipcompiler.cli.project.manifest_write import update_manifest
 from chipcompiler.cli.project.migrate_plan import (
     MigrationEntry,
     MigrationPreview,
@@ -26,6 +24,8 @@ from chipcompiler.cli.project.migrate_plan import (
     read_migration_manifest,
     render_preview,
 )
+from chipcompiler.project.manifest import CONFIG_FILENAME, find_manifest
+from chipcompiler.project.manifest_write import update_manifest
 
 logger = logging.getLogger(__name__)
 
@@ -71,13 +71,17 @@ def _append_manifest_entries(
                 # The id is already bound to a different path by a winning
                 # writer: silently keeping it would report a migration whose
                 # workspace the manifest does not point at.
-                if existing.get("workspace_path") != planned.get("workspace_path"):
-                    if rebind_legacy_paths and _is_legacy_workspace_path(
-                        project_dir,
-                        existing.get("workspace_path"),
-                        (legacy_source_by_id or {}).get(
-                            planned["workspace_id"], planned["workspace_id"]
-                        ),
+                existing_path = existing.get("workspace_path")
+                if existing_path != planned.get("workspace_path"):
+                    if (
+                        isinstance(existing_path, str)
+                        and rebind_legacy_paths
+                        and _is_legacy_workspace_path(
+                            project_dir,
+                            existing_path,
+                            (legacy_source_by_id or {}).get(planned["workspace_id"])
+                            or planned["workspace_id"],
+                        )
                     ):
                         existing.update(dict(planned))
                         continue
@@ -145,7 +149,7 @@ def execute_migration(project_dir: str, preview: MigrationPreview) -> tuple[list
     that actually moved.
     """
     from chipcompiler.cli.project import migrate_fs
-    from chipcompiler.cli.project.manifest_write import write_manifest_if_absent
+    from chipcompiler.project.manifest_write import write_manifest_if_absent
 
     plan = preview.plan
     records: list[dict] = []
@@ -491,7 +495,7 @@ def migrate_project(command_input, ctx):
 )
 def _migrate_project_impl(command_input, ctx):
     from chipcompiler.cli.core.types import CommandResult
-    from chipcompiler.cli.project.manifest import find_manifest, has_legacy_runs_layout
+    from chipcompiler.project.manifest import find_manifest, has_legacy_runs_layout
 
     project_dir = ctx.project_dir
     has_manifest = find_manifest(project_dir) is not None
@@ -502,7 +506,7 @@ def _migrate_project_impl(command_input, ctx):
         # Validate the existing manifest semantically before reporting any
         # outcome — a malformed winner must fail loud, whether it is about
         # to be resumed into or reported as already migrated.
-        from chipcompiler.cli.project.manifest import ManifestError, load_manifest
+        from chipcompiler.project.manifest import ManifestError, load_manifest
 
         manifest = None
         try:
@@ -595,7 +599,7 @@ def _migrate_project_impl(command_input, ctx):
                 {
                     "kind": "error",
                     "error": "missing_config",
-                    "path": os.path.join(project_dir, "ecc.toml"),
+                    "path": os.path.join(project_dir, CONFIG_FILENAME),
                 }
             ]
         )

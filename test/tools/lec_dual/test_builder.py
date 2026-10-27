@@ -2,11 +2,12 @@
 
 import json
 from pathlib import Path
+from typing import Any
 
 from ._helpers import GCD_RTL, _workspace
 
 
-def _build(tmp_path):
+def _build(tmp_path) -> Any:
     from chipcompiler.tools.lec_dual import builder
 
     workspace = _workspace(tmp_path)

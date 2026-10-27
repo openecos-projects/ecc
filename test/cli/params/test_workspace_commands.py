@@ -344,6 +344,7 @@ def test_workspace_param_list_hydrates_persisted_flow_ledger(
     workspace = _workspace(workspace_dir)
     flow_data = workspace.flow.data
     workspace.flow = Flow(path=workspace_dir / "home" / "flow.json")
+    assert workspace.flow.path is not None
     workspace.flow.path.parent.mkdir(parents=True, exist_ok=True)
     workspace.flow.path.write_text(json.dumps(flow_data), encoding="utf-8")
     monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _path: workspace)

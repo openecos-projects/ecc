@@ -16,8 +16,8 @@ from chipcompiler.cli.project.effective_config import (
     declared_skip_steps,
     skip_steps_shadow_warning,
 )
-from chipcompiler.cli.project.manifest import ManifestError, load_manifest
-from chipcompiler.cli.project.manifest_write import write_back_workspace_status
+from chipcompiler.project.manifest import ManifestError, load_manifest
+from chipcompiler.project.manifest_write import write_back_workspace_status
 
 
 def _write_manifest(project_dir, workspaces):
@@ -252,7 +252,7 @@ def test_pre_register_materializes_declared_skip_steps(tmp_path, monkeypatch):
     """A fresh manifest registration records the workspace's declared
     skip policy on the entry (declared spelling preserved)."""
     from chipcompiler.cli.project.config import load_project_config
-    from chipcompiler.cli.project.manifest_write import pre_register_workspace
+    from chipcompiler.project.manifest_write import pre_register_workspace
 
     (tmp_path / "ecc.toml").write_text(
         "[design]\n"

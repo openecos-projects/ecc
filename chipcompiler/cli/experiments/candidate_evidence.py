@@ -8,7 +8,7 @@ from chipcompiler.cli.inspection.evidence_summary import (
 )
 
 
-def _step_checklist(step: dict, checklist: dict) -> str:
+def step_checklist(step: dict, checklist: dict) -> str:
     projection = step.get("checklist_status")
     if isinstance(projection, dict):
         if projection.get("blocked") is True:
@@ -22,6 +22,47 @@ def _step_checklist(step: dict, checklist: dict) -> str:
             item for item in checklist_items(checklist) if item.get("step") == step.get("name")
         ]
     return checklist_status({"checklist": items})
+
+
+def status_step_records(payload: object) -> list[dict]:
+    """Return the step records from an `ecc status --json` payload."""
+    if not isinstance(payload, list):
+        return []
+    return [
+        record
+        for record in payload
+        if isinstance(record, dict) and isinstance(record.get("step"), str)
+    ]
+
+
+def normalized_step_statuses(flow: dict, status_payload: object) -> list[dict]:
+    """Project flow.json steps or status step records into one status shape."""
+    raw_steps = flow.get("steps") if isinstance(flow, dict) else None
+    records = (
+        [step for step in raw_steps if isinstance(step, dict)]
+        if isinstance(raw_steps, list)
+        else []
+    )
+    if not records:
+        records = [
+            {
+                "name": record["step"],
+                "status": record.get("status", "unknown"),
+                "checklist_status": {
+                    "status": record.get("checklist_status", "unknown"),
+                    "blocked": record.get("checklist_blocked") is True,
+                },
+            }
+            for record in status_step_records(status_payload)
+        ]
+    return [
+        {
+            "name": step.get("name", "unknown"),
+            "status": step_status(step),
+            "checklist": step_checklist(step, {}),
+        }
+        for step in records
+    ]
 
 
 def _signoff_status(payload: dict | list | str | int | float | None) -> str:
@@ -68,7 +109,7 @@ def candidate_evidence(
         {
             "name": step.get("name", "unknown"),
             "status": step_status(step),
-            "checklist": _step_checklist(step, checklist),
+            "checklist": step_checklist(step, checklist),
         }
         for step in steps
         if isinstance(step, dict)

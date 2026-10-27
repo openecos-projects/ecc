@@ -39,18 +39,19 @@ dependencies = [
   "tqdm>=4.67.1",
   "typer>=0.12",
   "uvicorn>=0.27",
+  "packaging>=25.0",
 ]
 scripts.ecc = "chipcompiler.cli.main:main"
 
 [dependency-groups]
 dev = [
   "auditwheel>=6",
+  "basedpyright==1.40.2",
   "black>=23",
   "mypy>=1",
   "prek>=0.2.20",
   "pyinstaller==6.17",
   "pyinstaller>=6",
-  "pyright>=1.1.407",
   "pytest>=7",
   "pytest-cov>=4",
   "ruff>=0.14.10",
@@ -121,6 +122,34 @@ addopts = [
   "--deselect=test/integration/test_rtl2gds_flow.py::test_sg13g2_gcd",
 ]
 
+[tool.basedpyright]
+typeCheckingMode = "standard"
+pythonVersion = "3.11"
+venvPath = "."
+venv = ".venv"
+include = [
+  "chipcompiler",
+  "test",
+  "agent",
+  "ecc_experience",
+  "scripts",
+  "packaging",
+  "hooks",
+  "docs/examples",
+]
+exclude = ["chipcompiler/thirdparty"]
+extraPaths = ["test/lit"]
+
 [tool.ty]
 environment.python-version = "3.11"
-src.include = [ "chipcompiler/**/*.py", "ecc_experience/**/*.py", "test/**/*.py" ]
+src.include = [
+  "chipcompiler",
+  "test",
+  "agent",
+  "ecc_experience",
+  "scripts",
+  "packaging",
+  "hooks",
+  "docs/examples",
+]
+src.exclude = ["chipcompiler/thirdparty"]

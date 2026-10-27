@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 from chipcompiler.data import LECEngineEnum
-from chipcompiler.tools.lec_subflow import LecSubFlow
+from chipcompiler.tools.subflow import SubFlow
 
 
-class LecDualSubFlow(LecSubFlow):
+class LecDualSubFlow(SubFlow):
     """Aggregate subflow: one stage per physical engine plus analysis.
 
     Child engine threads never touch this subflow (their own per-engine

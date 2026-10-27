@@ -265,8 +265,10 @@ def _parse_via(lines: list[str], start: int, name: str, source: str) -> tuple[Le
         stripped = lines[idx].strip()
         layer_match = _LAYER_RE.search(stripped)
         if layer_match:
-            current_layer = layer_match.group(1)
-            rects_by_layer.setdefault(current_layer, [])
+            layer_name = layer_match.group(1)
+            if layer_name:
+                current_layer = layer_name
+                rects_by_layer.setdefault(layer_name, [])
         rect_match = _RECT_RE.search(stripped)
         if rect_match and current_layer:
             llx, lly, urx, ury = (float(rect_match.group(i)) for i in range(1, 5))

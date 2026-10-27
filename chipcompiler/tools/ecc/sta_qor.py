@@ -375,11 +375,7 @@ def sta_power_summary_payload(summary: StaPowerSummary) -> dict:
     }
 
 
-def read_sta_power_summary_json(path: Path) -> StaPowerSummary | None:
-    if not path.is_file() or path.stat().st_size <= 0:
-        return None
-
-    data = json_read(path)
+def _power_summary_from_payload(data: dict, path: Path) -> StaPowerSummary | None:
     if not isinstance(data, dict) or data.get("schema_version") != 1:
         return None
 
@@ -391,3 +387,29 @@ def read_sta_power_summary_json(path: Path) -> StaPowerSummary | None:
         values[field] = value
 
     return StaPowerSummary(path=path, **values)
+
+
+def read_sta_power_summary_json(path: Path) -> StaPowerSummary | None:
+    if not path.is_file() or path.stat().st_size <= 0:
+        return None
+
+    return _power_summary_from_payload(json_read(path), path)
+
+
+def read_power_step_summary_json(path: Path) -> StaPowerSummary | None:
+    """Read the canonical merged powerAnalysis step artifact."""
+    if not path.is_file() or path.stat().st_size <= 0:
+        return None
+
+    data = json_read(path)
+    if (
+        not isinstance(data, dict)
+        or data.get("schema_version") != 1
+        or data.get("step") != StepEnum.POWER_ANALYSIS.value
+    ):
+        return None
+
+    power_summary = data.get("power_summary")
+    if not isinstance(power_summary, dict):
+        return None
+    return _power_summary_from_payload(power_summary, path)

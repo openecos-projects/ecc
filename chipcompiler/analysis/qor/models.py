@@ -180,7 +180,10 @@ class QorAnalysis:
     config_warnings: list
 
     def to_dict(self) -> dict:
-        return to_dict(self)
+        result = to_dict(self)
+        if not isinstance(result, dict):
+            raise TypeError("QorAnalysis did not serialize to an object")
+        return result
 
     @property
     def overall_score(self) -> float | None:

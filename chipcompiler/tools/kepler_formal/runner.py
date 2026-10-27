@@ -7,6 +7,7 @@ from chipcompiler.data import KeplerFormalStep, StateEnum, Workspace
 from chipcompiler.tools.kepler_formal.subflow import KeplerFormalSubFlow
 from chipcompiler.tools.kepler_formal.utility import get_kepler_formal_runtime
 from chipcompiler.tools.lec_result import write_step_result
+from chipcompiler.utility.path import MissingPathError, require_path
 
 # kepler-formal LEC exits 0 whether the designs are equivalent or not; the
 # verdict only appears in its stdout. Positive evidence is required for a
@@ -27,17 +28,27 @@ def _miter_verdict_lines(miter_log: Path | str | None) -> list[str]:
     return [line.strip() for line in text.splitlines() if "Circuits are" in line]
 
 
-def _write_equiv_status(step: KeplerFormalStep) -> None:
+def _write_equiv_status(step: KeplerFormalStep) -> bool:
+    try:
+        target = require_path(step.report.equiv_status, "equivalence status")
+    except MissingPathError:
+        return False
     verdict_lines = _miter_verdict_lines(step.report.miter_log)
-    Path(step.report.equiv_status).write_text("\n".join(verdict_lines) + "\n", encoding="utf-8")
+    target.write_text("\n".join(verdict_lines) + "\n", encoding="utf-8")
+    return True
 
 
-def _write_status_report(step: KeplerFormalStep, *, proven: bool, reason: str) -> None:
+def _write_status_report(step: KeplerFormalStep, *, proven: bool, reason: str) -> bool:
     if proven:
         message = "kepler-formal LEC completed with proven equivalence."
     else:
         message = f"kepler-formal LEC did not prove equivalence: {reason}"
-    Path(step.report.status).write_text(message + "\n", encoding="utf-8")
+    try:
+        target = require_path(step.report.status, "status report")
+    except MissingPathError:
+        return False
+    target.write_text(message + "\n", encoding="utf-8")
+    return True
 
 
 def _classify(log_text: str) -> tuple[bool, str]:
@@ -59,12 +70,20 @@ def _prepare_compare_netlists(workspace: Workspace, step: KeplerFormalStep) -> t
     from chipcompiler.tools.kepler_formal.netlist_prep import physical_cell_names, prepare_netlist
 
     physical_cells = physical_cell_names(getattr(workspace, "pdk", None))
-    data_dir = Path(step.data.dir or step.directory)
+    data_dir = (
+        Path(step.data.dir) if step.data.dir else require_path(step.directory, "step directory")
+    )
 
     golden = prepare_netlist(
-        step.input.golden_verilog, data_dir / "golden_compare.v", physical_cells
+        require_path(step.input.golden_verilog, "golden netlist"),
+        data_dir / "golden_compare.v",
+        physical_cells,
     )
-    gate = prepare_netlist(step.input.gate_verilog, data_dir / "gate_compare.v", physical_cells)
+    gate = prepare_netlist(
+        require_path(step.input.gate_verilog, "gate netlist"),
+        data_dir / "gate_compare.v",
+        physical_cells,
+    )
     write_step_config(workspace, step, golden_verilog=golden, gate_verilog=gate)
     return golden, gate
 
@@ -94,19 +113,22 @@ def run_step(workspace: Workspace, step: KeplerFormalStep, ecc_module=None) -> b
 
     try:
         _prepare_compare_netlists(workspace, step)
-    except OSError as exc:
+    except (OSError, MissingPathError) as exc:
         sub_flow.update_step(step_name="run lec", state=StateEnum.Invalid)
         Path(log_path).write_text(f"Error: preparing compare netlists: {exc}\n", encoding="utf-8")
         write_step_result(step, proven=False)
         _write_status_report(step, proven=False, reason=f"preparing netlists failed: {exc}")
         return False
 
-    cmd = kepler_cmd + ["--config", str(step.data.config)]
     try:
+        cmd = kepler_cmd + [
+            "--config",
+            str(require_path(step.data.config, "kepler-formal config")),
+        ]
         with open(log_path, "w", encoding="utf-8") as log_file:
             result = subprocess.run(
                 cmd,
-                cwd=str(step.directory),
+                cwd=str(require_path(step.directory, "step directory")),
                 env=kepler_env,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
@@ -123,13 +145,16 @@ def run_step(workspace: Workspace, step: KeplerFormalStep, ecc_module=None) -> b
         sub_flow.update_step(step_name="run lec", state=StateEnum.Imcomplete)
         return False
 
-    _write_equiv_status(step)
     proven, reason = _classify(_read_text(log_path))
     if result.returncode != 0:
         proven = False
         reason = f"kepler-formal exited with code {result.returncode}"
+    if not _write_equiv_status(step) or not _write_status_report(
+        step, proven=proven, reason=reason
+    ):
+        sub_flow.update_step(step_name="run lec", state=StateEnum.Imcomplete)
+        return False
     write_step_result(step, proven=proven)
-    _write_status_report(step, proven=proven, reason=reason)
     if proven:
         sub_flow.update_step(step_name="run lec", state=StateEnum.Success)
         sub_flow.update_step(step_name="analysis", state=StateEnum.Success)

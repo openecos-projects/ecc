@@ -326,6 +326,7 @@ def _validated_candidate_resume_patch(
     workspace, flow, manifest: dict, request: CandidateResumeRequest
 ) -> list[dict]:
     target_step = manifest["target_step"]
+    materialization: dict | None = None
     try:
         mode = validate_floorplan_mode_resume(workspace, request)
         if mode is not None and mode["target_step"] != target_step:
@@ -356,6 +357,8 @@ def _validated_candidate_resume_patch(
         raise RuntimeApiError("command_failed", "candidate resume seed binding is invalid")
     if mode_only:
         return []
+    if materialization is None:
+        raise RuntimeApiError("command_failed", "candidate materialization receipt is missing")
     requested_patch = _candidate_resume_requested_patch(
         workspace, manifest, request, materialization["patch"], target_step
     )
@@ -429,7 +432,7 @@ def _restore_candidate_resume_configs(workspace, backups: dict[Path, bytes]) -> 
         os.replace(temporary_path, path)
     parameters = getattr(workspace, "parameters", None)
     parameters_path = getattr(parameters, "path", None)
-    if parameters_path and Path(parameters_path) in backups:
+    if parameters is not None and parameters_path and Path(parameters_path) in backups:
         from chipcompiler.data.parameter import load_parameter
 
         parameters.data = load_parameter(parameters_path).data

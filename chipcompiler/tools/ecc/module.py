@@ -1,21 +1,17 @@
 #!/usr/bin/env python
+import importlib
 import json
 import os
 import shutil
 from pathlib import Path
-from typing import TypeAlias
+from typing import Any
 
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_run_outputs, publish_sta_artifacts
-from chipcompiler.utility.path import path_text, path_texts
+from chipcompiler.utility.path import PathArg, path_list, path_text
 
 # ecc-tools loggers terminate the host process on error by default; embedded in
 # Python they must raise instead so failures surface as Python exceptions.
 os.environ.setdefault("ECC_LOGGER_THROW_ON_ERROR", "1")
-
-# Path arguments to the native-wrapper methods are normalized via path_text(),
-# so they accept a Path, a str, or None (a step group field is Path | None).
-PathArg: TypeAlias = str | Path | None
-
 
 STA_OUTPUT_MODES = frozenset(("report", "structured"))
 
@@ -35,6 +31,44 @@ def _normalize_sta_output_modes(output_modes) -> tuple[str, ...]:
     return modes
 
 
+def _positive_int(value: object, default: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _place_timing_kwargs(inputs: dict[str, object]) -> dict[str, Any]:
+    """Map a placement-timing input record onto _start_place_timing's keywords.
+
+    The record comes from DreamPlace and is untyped, so path-like values are
+    read as-is; missing or empty entries become "" (the native "unset" value).
+    """
+
+    def first(*keys: str) -> Any:
+        for key in keys:
+            if inputs.get(key):
+                return inputs[key]
+        return ""
+
+    return {
+        "lib_paths": list(first("lib_paths", "lib") or []),
+        "sdc_path": first("sdc_path", "sdc"),
+        "spef_path": first("spef_path", "spef"),
+        "rcx_config": first("rcx_config"),
+        "rcx_pdk": str(first("rcx_pdk")),
+        "rcx_output_dir": first("rcx_output_dir"),
+        "rcx_spef_path": first("rcx_spef_path"),
+        "config": first("config", "sta_config"),
+        "work_dir": first("work_dir"),
+        "thread_number": _positive_int(inputs.get("thread_number"), 2),
+        "max_paths": _positive_int(inputs.get("max_paths"), 20),
+        "timing_mode": str(first("timing_mode", "preparation_mode") or "model_only"),
+    }
+
+
 class ECCToolsModule:
     """
     python api package of ECC.
@@ -42,7 +76,7 @@ class ECCToolsModule:
 
     def __init__(self):
         try:
-            from ecc_tools_bin import ecc_py as ecc
+            ecc = importlib.import_module("ecc_tools_bin.ecc_py")
         except ImportError as exc:
             ecc_bin_dir = Path(__file__).resolve().parent / "bin"
             candidates = sorted(p.name for p in ecc_bin_dir.glob("ecc_py*.so"))
@@ -53,7 +87,8 @@ class ECCToolsModule:
                 f"Available ecc_py binaries in {ecc_bin_dir}: {candidates}"
             ) from exc
 
-        self.ecc = ecc
+        self.ecc: Any = ecc
+        self.dir_workspace = ""
         self._place_timing_active = False
         self._place_timing_inputs = None
 
@@ -82,7 +117,7 @@ class ECCToolsModule:
         with_sta: int,
         include_m2_pg_rail_blockage: bool = False,  # noqa: FBT001, FBT002
         include_m2_pg_rail_density: bool = True,  # noqa: FBT001, FBT002
-        timing_model_only: bool = False,  # noqa: FBT001
+        timing_model_only: bool = False,  # noqa: FBT001, FBT002
     ):
         return self.ecc.pydb(
             dm_inst_ptr,
@@ -98,7 +133,7 @@ class ECCToolsModule:
     def _place_timing_config(
         self,
         *,
-        config: str = "",
+        config: PathArg = "",
         work_dir: PathArg = "",
         thread_number: int = 2,
         max_paths: int = 20,
@@ -115,8 +150,8 @@ class ECCToolsModule:
             "-thread_number": str(int(thread_number)),
         }
         if work_dir:
-            config_dict["-temp_directory_path"] = path_text(work_dir)
-        return {"config": path_text(config), **config_dict}
+            config_dict["-temp_directory_path"] = os.fspath(work_dir)
+        return {"config": os.fspath(config), **config_dict}
 
     def _start_place_timing(
         self,
@@ -128,15 +163,15 @@ class ECCToolsModule:
         rcx_pdk: str = "",
         rcx_output_dir: PathArg = "",
         rcx_spef_path: PathArg = "",
-        config: str = "",
+        config: PathArg = "",
         work_dir: PathArg = "",
         thread_number: int = 2,
         max_paths: int = 20,
-        timing_mode: str = "complete",
+        timing_mode: str = "model_only",
     ) -> dict[str, object]:
-        normalized_libs = [path_text(path) for path in lib_paths if path]
-        normalized_sdc = path_text(sdc_path)
-        normalized_spef = path_text(spef_path)
+        normalized_libs = [os.fspath(path) for path in lib_paths if path]
+        normalized_sdc = os.fspath(sdc_path)
+        normalized_spef = os.fspath(spef_path)
         if not normalized_libs:
             raise ValueError("ECC placement timing requires at least one Liberty")
         if not normalized_sdc:
@@ -146,14 +181,14 @@ class ECCToolsModule:
             raise RuntimeError("ECC placement timing Liberty initialization failed")
         if self.ecc.sdc_init(normalized_sdc) is not True:
             raise RuntimeError("ECC placement timing SDC initialization failed")
-        normalized_rcx = path_text(rcx_config)
-        normalized_rcx_output = path_text(rcx_output_dir)
+        normalized_rcx = os.fspath(rcx_config)
+        normalized_rcx_output = os.fspath(rcx_output_dir)
         if normalized_rcx:
             normalized_spef, rcx_summary = self._extract_place_parasitics(
                 normalized_rcx,
                 pdk=rcx_pdk,
                 output_dir=normalized_rcx_output,
-                requested_spef=path_text(rcx_spef_path) or normalized_spef,
+                requested_spef=os.fspath(rcx_spef_path) or normalized_spef,
             )
         else:
             rcx_summary = {
@@ -174,7 +209,9 @@ class ECCToolsModule:
         if timing_mode not in {"complete", "model_only"}:
             raise ValueError("timing_mode must be complete or model_only")
         try:
-            operation = self.ecc.run_sta if timing_mode == "complete" else self.ecc.prepare_timing_model
+            operation = (
+                self.ecc.run_sta if timing_mode == "complete" else self.ecc.prepare_timing_model
+            )
             if operation() is not True:
                 raise RuntimeError(
                     "ECC placement timing "
@@ -194,7 +231,7 @@ class ECCToolsModule:
             "rcx_output_dir": normalized_rcx_output,
             "rcx_spef_path": normalized_spef if normalized_rcx else "",
             "config": sta_config,
-            "work_dir": path_text(work_dir),
+            "work_dir": os.fspath(work_dir),
             "thread_number": int(thread_number),
             "max_paths": int(max_paths),
             "timing_mode": timing_mode,
@@ -213,7 +250,7 @@ class ECCToolsModule:
 
     def _extract_place_parasitics(
         self,
-        config: str,
+        config: PathArg,
         *,
         pdk: str = "",
         output_dir: PathArg = "",
@@ -268,39 +305,14 @@ class ECCToolsModule:
         """Initialize current-main iSTA for an ECC DreamPlace session."""
         if self._place_timing_active:
             self.destroy_place_timing()
-        return self._start_place_timing(
-            lib_paths=list(inputs.get("lib_paths") or inputs.get("lib") or []),
-            sdc_path=inputs.get("sdc_path") or inputs.get("sdc") or "",
-            spef_path=inputs.get("spef_path") or inputs.get("spef") or "",
-            rcx_config=inputs.get("rcx_config") or "",
-            rcx_pdk=str(inputs.get("rcx_pdk") or ""),
-            rcx_output_dir=inputs.get("rcx_output_dir") or "",
-            rcx_spef_path=inputs.get("rcx_spef_path") or "",
-            config=inputs.get("config") or inputs.get("sta_config") or "",
-            work_dir=inputs.get("work_dir") or "",
-            thread_number=int(inputs.get("thread_number", 2) or 2),
-            max_paths=int(inputs.get("max_paths", 20) or 20),
-            timing_mode=str(inputs.get("timing_mode", inputs.get("preparation_mode", "complete")) or "complete"),
-        )
+        return self._start_place_timing(**_place_timing_kwargs(inputs))
 
     def refresh_place_timing(self, inputs: dict[str, object] | None = None) -> dict[str, object]:
         """Destroy and fully rebuild current-main iSTA after a native mutation."""
         if self._place_timing_active:
             self.destroy_place_timing()
-        refresh_inputs = dict(inputs or self._place_timing_inputs or {})
         return self._start_place_timing(
-            lib_paths=list(refresh_inputs.get("lib_paths") or refresh_inputs.get("lib") or []),
-            sdc_path=refresh_inputs.get("sdc_path") or refresh_inputs.get("sdc") or "",
-            spef_path=refresh_inputs.get("spef_path") or refresh_inputs.get("spef") or "",
-            rcx_config=refresh_inputs.get("rcx_config") or "",
-            rcx_pdk=str(refresh_inputs.get("rcx_pdk") or ""),
-            rcx_output_dir=refresh_inputs.get("rcx_output_dir") or "",
-            rcx_spef_path=refresh_inputs.get("rcx_spef_path") or "",
-            config=refresh_inputs.get("config") or refresh_inputs.get("sta_config") or "",
-            work_dir=refresh_inputs.get("work_dir") or "",
-            thread_number=int(refresh_inputs.get("thread_number", 2) or 2),
-            max_paths=int(refresh_inputs.get("max_paths", 20) or 20),
-            timing_mode=str(refresh_inputs.get("timing_mode", refresh_inputs.get("preparation_mode", "complete")) or "complete"),
+            **_place_timing_kwargs(dict(inputs or self._place_timing_inputs or {}))
         )
 
     def destroy_place_timing(self) -> None:
@@ -327,35 +339,35 @@ class ECCToolsModule:
     ########################################################################
     # config api
     ########################################################################
-    def init_config(self, db_config: str, output_dir: PathArg, feature_dir: PathArg):
+    def init_config(self, db_config: PathArg, output_dir: PathArg, feature_dir: PathArg):
         """init_config"""
         self.ecc.db_init(
-            config_path=path_text(db_config),
-            output_path=path_text(output_dir),
-            feature_path=path_text(feature_dir),
+            config_path=db_config,
+            output_path=output_dir,
+            feature_path=feature_dir,
         )
 
     def update_step_paths(self, output_dir: PathArg, feature_dir: PathArg):
         self.ecc.db_init(
-            output_path=path_text(output_dir),
-            feature_path=path_text(feature_dir),
+            output_path=output_dir,
+            feature_path=feature_dir,
         )
 
     def update_sta_data_config(
-        self, db_config: str, output_dir: str, lib_paths: list[str], sdc_path: str
+        self, db_config: PathArg, output_dir: PathArg, lib_paths: list[PathArg], sdc_path: PathArg
     ):
         self.ecc.db_init(
-            config_path=path_text(db_config),
-            output_path=path_text(output_dir),
-            lib_paths=path_texts(lib_paths),
-            sdc_path=path_text(sdc_path),
+            config_path=db_config,
+            output_path=output_dir,
+            lib_paths=path_list(lib_paths),
+            sdc_path=sdc_path,
         )
 
     ########################################################################
     # data api
     ########################################################################
-    def idb_init(self, config_path: str):
-        return self.ecc.idb_init(path_text(config_path))
+    def idb_init(self, config_path: PathArg):
+        return self.ecc.idb_init(config_path)
 
     def set_net(self, net_name: str, net_type: str):
         """
@@ -444,54 +456,50 @@ class ECCToolsModule:
     ########################################################################
     # data io api
     ########################################################################
-    def init_techlef(self, tech_lef_path: str):
+    def init_techlef(self, tech_lef_path: PathArg):
         """init tech lef"""
-        self.ecc.tech_lef_init(path_text(tech_lef_path))
+        self.ecc.tech_lef_init(tech_lef_path)
 
     def init_lefs(self, lef_paths: list):
         """init_lef"""
-        self.ecc.lef_init(lef_paths=path_texts(lef_paths))
+        self.ecc.lef_init(lef_paths=lef_paths)
 
-    def read_def(self, path: str = "") -> bool:
+    def read_def(self, path: PathArg = "") -> bool:
         """init def"""
-        return self.ecc.def_init(def_path=path_text(path))
+        return self.ecc.def_init(def_path=path)
 
     def read_verilog(self, verilog: PathArg, top_module: str) -> bool:
         """init verilog"""
-        return self.ecc.verilog_init(path_text(verilog), top_module)
+        return self.ecc.verilog_init(verilog, top_module)
 
     def read_lvs_verilog(self, verilog: PathArg, top_module: str) -> bool:
         """init verilog for iLVS"""
-        return self.ecc.lvs_verilog_init(path_text(verilog), top_module)
+        return self.ecc.lvs_verilog_init(verilog, top_module)
 
     def def_save(self, def_path: PathArg):
         """save def file"""
-        self.ecc.def_save(def_name=path_text(def_path))
+        self.ecc.def_save(def_name=def_path)
 
     def gds_save(self, output_path: PathArg, layer_map_path: PathArg) -> bool:
         """save gds file"""
-        layer_map = path_text(layer_map_path)
-        if not layer_map:
+        if not layer_map_path:
             raise ValueError(
                 "PDK layer mapping file is required for GDS export; set pdk.mapping_file"
             )
-        return self.ecc.gds_save(
-            gds_name=path_text(output_path),
-            layer_map_path=layer_map,
-        )
+        return self.ecc.gds_save(gds_name=output_path, layer_map_path=layer_map_path)
 
     def tcl_save(self, output_path: PathArg) -> bool:
         """Save hard-macro placement commands in Tcl format."""
-        return self.ecc.tcl_save(path_text(output_path))
+        return self.ecc.tcl_save(output_path)
 
     def verilog_save(self, output_verilog, cell_names: set | None = None):
         """verilog save"""
         if cell_names is None:
             cell_names = set()
-        self.ecc.netlist_save(netlist_path=path_text(output_verilog), exclude_cell_names=cell_names)
+        self.ecc.netlist_save(netlist_path=output_verilog, exclude_cell_names=cell_names)
 
-    def json_save(self, path: str):
-        self.ecc.json_save(path=path_text(path))
+    def json_save(self, path: PathArg):
+        self.ecc.json_save(path=path)
 
     def geometry_snapshot_save(
         self,
@@ -501,11 +509,11 @@ class ECCToolsModule:
         thumbnail_path: PathArg | None = None,
     ):
         """Export the current in-memory IDB geometry for GUI rendering."""
-        kwargs: dict[str, object] = {"output_dir": path_text(output_dir)}
+        kwargs: dict[str, object] = {"output_dir": output_dir}
         if include_drc:
             kwargs["include_drc"] = True
         if thumbnail_path is not None:
-            kwargs["thumbnail_path"] = path_text(thumbnail_path)
+            kwargs["thumbnail_path"] = thumbnail_path
         return self.ecc.geometry_snapshot_save(**kwargs)
 
     def initialize_geometry_session(self):
@@ -518,7 +526,7 @@ class ECCToolsModule:
 
     def geometry_session_snapshot_save(self, output_dir: PathArg):
         """Export the incremental geometry-session snapshot for GUI rendering."""
-        return self.ecc.geometry_session_snapshot_save(output_dir=path_text(output_dir))
+        return self.ecc.geometry_session_snapshot_save(output_dir=output_dir)
 
     def reset_geometry_session(self):
         """Discard the active geometry edit session."""
@@ -526,11 +534,11 @@ class ECCToolsModule:
 
     def save_data(self, path: PathArg):
         """save ECC data"""
-        return self.ecc.save_data(path=path_text(path))
+        return self.ecc.save_data(path=path)
 
-    def load_data(self, path: str | Path):
+    def load_data(self, path: PathArg):
         """load ECC data"""
-        return self.ecc.load_data(path=path_text(path))
+        return self.ecc.load_data(path=path)
 
     def is_db_data_exists(self, db_path: str | Path) -> bool:
         if not db_path or not os.path.isdir(db_path):
@@ -563,11 +571,11 @@ class ECCToolsModule:
 
         return all(os.path.isfile(os.path.join(db_path, file_path)) for file_path in DB_DATA_FILES)
 
-    def write_soc_json(self, path: str, harden_cores: list[str] | None = None):
+    def write_soc_json(self, path: PathArg, harden_cores: list[str] | None = None):
         """write SoC json"""
         if harden_cores is None:
             harden_cores = []
-        return self.ecc.write_soc_json(path=path_text(path), harden_cores=harden_cores)
+        return self.ecc.write_soc_json(path=path, harden_cores=harden_cores)
 
     ########################################################################
     # feature api
@@ -576,59 +584,59 @@ class ECCToolsModule:
         """
         generate feature summary
         """
-        self.ecc.feature_summary(path_text(json_path))
+        self.ecc.feature_summary(json_path)
 
     def feature_step(self, step: str, json_path: PathArg):
         """
         generate step feature
         """
-        self.ecc.feature_tool(path_text(json_path), step)
+        self.ecc.feature_tool(json_path, step)
 
-    def feature_eval_map(self, path: str, bin_cnt_x: int, bin_cnt_y: int):
+    def feature_eval_map(self, path: PathArg, bin_cnt_x: int, bin_cnt_y: int):
         return self.ecc.feature_eval_map(
-            path=path_text(path),
+            path=path,
             bin_cnt_x=bin_cnt_x,
             bin_cnt_y=bin_cnt_y,
         )
 
-    def feature_eval_summary(self, path: str, grid_size: int):
-        return self.ecc.feature_eval_summary(path=path_text(path), grid_size=grid_size)
+    def feature_eval_summary(self, path: PathArg, grid_size: int):
+        return self.ecc.feature_eval_summary(path=path, grid_size=grid_size)
 
-    def feature_timing_eval_summary(self, path: str):
-        return self.ecc.feature_timing_eval_summary(path=path_text(path))
+    def feature_timing_eval_summary(self, path: PathArg):
+        return self.ecc.feature_timing_eval_summary(path=path)
 
-    def feature_net_eval(self, path: str):
-        return self.ecc.feature_net_eval(path=path_text(path))
+    def feature_net_eval(self, path: PathArg):
+        return self.ecc.feature_net_eval(path=path)
 
-    def feature_cong_map(self, step: str, dir: str):
-        return self.ecc.feature_cong_map(step=step, dir=path_text(dir))
+    def feature_cong_map(self, step: str, dir: PathArg):
+        return self.ecc.feature_cong_map(step=step, dir=dir)
 
     ########################################################################
     # reports api
     ########################################################################
-    def report_wirelength(self, path: str = ""):
-        return self.ecc.report_wirelength(path=path_text(path))
+    def report_wirelength(self, path: PathArg = ""):
+        return self.ecc.report_wirelength(path=path)
 
     def report_summary(self, path: PathArg):
         """
         generate step report
         """
-        self.ecc.report_db(path_text(path))
+        self.ecc.report_db(path)
 
-    def report_congestion(self, path: str = ""):
-        return self.ecc.report_congestion(path=path_text(path))
+    def report_congestion(self, path: PathArg = ""):
+        return self.ecc.report_congestion(path=path)
 
-    def report_dangling_net(self, path: str = ""):
-        return self.ecc.report_dangling_net(path=path_text(path))
+    def report_dangling_net(self, path: PathArg = ""):
+        return self.ecc.report_dangling_net(path=path)
 
     def report_route(
         self,
-        path: str = "",
+        path: PathArg = "",
         net: str = "",
         *,
         summary: bool = True,
     ):
-        return self.ecc.report_route(path=path_text(path), net=net, summary=summary)
+        return self.ecc.report_route(path=path, net=net, summary=summary)
 
     def report_place_distribution(self, prefixes: list[str] | None = None):
         if prefixes is None:
@@ -647,17 +655,17 @@ class ECCToolsModule:
             num_threshold=num_threshold,
         )
 
-    def report_drc(self, path: str):
-        return self.ecc.report_drc(path=path_text(path))
+    def report_drc(self, path: PathArg):
+        return self.ecc.report_drc(path=path)
 
     ########################################################################
     # CTS api
     ########################################################################
-    def run_cts(self, config: str, output: PathArg) -> bool:
-        return self.ecc.run_cts(path_text(config), path_text(output))
+    def run_cts(self, config: PathArg, output: PathArg) -> bool:
+        return self.ecc.run_cts(config, output)
 
     def report_cts(self, output: PathArg):
-        self.ecc.cts_report(path_text(output))
+        self.ecc.cts_report(output)
 
     def feature_cts_timing(self) -> dict:
         """Return post-optimization CTS FastSTA timing aggregates."""
@@ -667,7 +675,7 @@ class ECCToolsModule:
         """
         generate cts map feature
         """
-        self.ecc.feature_cts_eval(path_text(json_path), map_grid_size)
+        self.ecc.feature_cts_eval(json_path, map_grid_size)
 
     ########################################################################
     # DRC api
@@ -676,7 +684,7 @@ class ECCToolsModule:
         """
         init drc config
         """
-        self.ecc.init_drc(temp_directory_path=path_text(output_dir), thread_number=therad_number)
+        self.ecc.init_drc(temp_directory_path=output_dir, thread_number=therad_number)
 
     def run_drc(self) -> bool:
         """
@@ -695,7 +703,7 @@ class ECCToolsModule:
     ########################################################################
     def init_lvs(self, output_dir: PathArg, thread_number: int = 128):
         return self.ecc.init_lvs(
-            temp_directory_path=path_text(output_dir),
+            temp_directory_path=output_dir,
             thread_number=thread_number,
         )
 
@@ -708,8 +716,8 @@ class ECCToolsModule:
     ########################################################################
     # floorplan api
     ########################################################################
-    def init_fp(self, config: str):
-        return self.ecc.init_fp(config=path_text(config))
+    def init_fp(self, config: PathArg):
+        return self.ecc.init_fp(config=config)
 
     def run_simple_fp(self):
         return self.ecc.run_simple_fp()
@@ -727,19 +735,22 @@ class ECCToolsModule:
         """
         generate placement map feature
         """
-        self.ecc.feature_pl_eval(path_text(json_path), map_grid_size)
+        self.ecc.feature_pl_eval(json_path, map_grid_size)
 
     ########################################################################
     # iMJ api
     ########################################################################
     def init_mj(self, output_dir: PathArg) -> bool:
-        return self.ecc.init_mj(config_dict={"-temp_directory_path": path_text(output_dir)})
+        return self.ecc.init_mj(config_dict={"-temp_directory_path": os.fspath(output_dir)})
 
     def run_filler(self, config: PathArg) -> bool:
-        return self.ecc.insert_filler(config=path_text(config))
+        return self.ecc.insert_filler(config=config)
 
-    def check_antenna(self) -> bool:
-        return self.ecc.check_antenna()
+    def check_antenna(self, step_json: PathArg | None = None) -> bool:
+        config_dict = {}
+        if step_json:
+            config_dict["-step_json"] = path_text(step_json)
+        return self.ecc.check_antenna(config_dict=config_dict)
 
     def destroy_mj(self) -> bool:
         return self.ecc.destroy_mj()
@@ -747,13 +758,13 @@ class ECCToolsModule:
     ########################################################################
     # routing api
     ########################################################################
-    def run_ert(self, config: str = "", config_dict: dict[str, str] | None = None):
+    def run_ert(self, config: PathArg = "", config_dict: dict[str, str] | None = None):
         if config_dict is None:
             config_dict = {}
-        return self.ecc.run_ert(config=path_text(config), config_dict=config_dict)
+        return self.ecc.run_ert(config=config, config_dict=config_dict)
 
-    def run_routing(self, config: str):
-        self.ecc.init_rt(config=path_text(config))
+    def run_routing(self, config: PathArg):
+        self.ecc.init_rt(config=config)
         self.ecc.run_rt()
         self.ecc.destroy_rt()
 
@@ -761,20 +772,20 @@ class ECCToolsModule:
         self.ecc.destroy_rt()
 
     # read route json file to ecc route data
-    def feature_route_read(self, json_path: str):
-        self.ecc.feature_route_read(path=path_text(json_path))
+    def feature_route_read(self, json_path: PathArg):
+        self.ecc.feature_route_read(path=json_path)
 
     # read route def and save route data to json
-    def feature_route(self, json_path: str):
-        self.ecc.feature_route(path=path_text(json_path))
+    def feature_route(self, json_path: PathArg):
+        self.ecc.feature_route(path=json_path)
 
     ########################################################################
     # RCX api
     ########################################################################
-    def init_rcx(self, config: str, pdk: str = "ics55"):
+    def init_rcx(self, config: PathArg, pdk: str = "ics55"):
         if pdk:
-            return self.ecc.init_rcx(config=path_text(config), pdk=pdk)
-        return self.ecc.init_rcx(config=path_text(config))
+            return self.ecc.init_rcx(config=config, pdk=pdk)
+        return self.ecc.init_rcx(config=config)
 
     def run_rcx(self):
         return self.ecc.run_rcx()
@@ -797,11 +808,11 @@ class ECCToolsModule:
     ):
         if lib_paths is None:
             lib_paths = []
-        if not self.ecc.lib_init(lib_paths=path_texts(lib_paths)):
+        if not self.ecc.lib_init(lib_paths=lib_paths):
             return False
-        self.ecc.sdc_init(path_text(sdc_path))
-        self.ecc.spef_init(path_text(spef_path))
-        return self.ecc.init_pw(config_dict={"-temp_directory_path": path_text(output_dir)})
+        self.ecc.sdc_init(sdc_path)
+        self.ecc.spef_init(spef_path)
+        return self.ecc.init_pw(config_dict={"-temp_directory_path": os.fspath(output_dir)})
 
     def run_pw(self):
         return self.ecc.run_pw()
@@ -820,10 +831,10 @@ class ECCToolsModule:
         ploc_file_path: PathArg,
     ):
         return self.ecc.init_emir(
-            temp_directory_path=path_text(output_dir),
-            instance_power_file_path=path_text(instance_power_file_path),
-            technology_file_path=path_text(technology_file_path),
-            ploc_file_path=path_text(ploc_file_path),
+            temp_directory_path=output_dir,
+            instance_power_file_path=instance_power_file_path,
+            technology_file_path=technology_file_path,
+            ploc_file_path=ploc_file_path,
         )
 
     def run_emir(self):
@@ -837,13 +848,13 @@ class ECCToolsModule:
     ########################################################################
     def run_timing(
         self,
-        config: str = "",
+        config: PathArg = "",
         work_dir: PathArg = "",
         report_dir: PathArg = "",
         feature_dir: PathArg = "",
         lib_paths: list[Path] | list[str] | None = None,
-        sdc_path: str = "",
-        spef_path: str = "",
+        sdc_path: PathArg = "",
+        spef_path: PathArg = "",
         output_modes: tuple[str, ...] = ("report", "structured"),
         max_paths_per_analysis: int = 20,
         max_paths: int = 1000,
@@ -869,13 +880,13 @@ class ECCToolsModule:
 
         discard_sta_run_outputs(work_dir, report_dir, feature_dir, modes)
 
-        if not self.ecc.lib_init(lib_paths=path_texts(lib_paths)):
+        if not self.ecc.lib_init(lib_paths=lib_paths):
             raise RuntimeError("Failed to load Liberty libraries for STA")
-        self.ecc.sdc_init(path_text(sdc_path))
-        self.ecc.spef_init(path_text(spef_path))
+        self.ecc.sdc_init(sdc_path)
+        self.ecc.spef_init(spef_path)
         config_dict = {}
         if work_dir:
-            config_dict["-temp_directory_path"] = path_text(work_dir)
+            config_dict["-temp_directory_path"] = os.fspath(work_dir)
         config_dict.update(
             {
                 "-output_timing_reports": "1" if "report" in modes else "0",
@@ -886,7 +897,7 @@ class ECCToolsModule:
         )
         if corner:
             config_dict["-timing_corner"] = corner
-        self.ecc.init_sta(config=path_text(config), config_dict=config_dict)
+        self.ecc.init_sta(config=config, config_dict=config_dict)
         try:
             self.ecc.run_sta()
         finally:
@@ -900,17 +911,17 @@ class ECCToolsModule:
         )
 
     def write_abstract_lef(self, output_lef_path: PathArg):
-        return self.ecc.write_abstract_lef(path_text(output_lef_path))
+        return self.ecc.write_abstract_lef(output_lef_path)
 
     def write_timing_model(
         self,
         output_lib_path: PathArg,
         analysis_mode: str = "max",
-        config: str = "",
+        config: PathArg = "",
         output_dir: PathArg = "",
         lib_paths: list[str] | None = None,
-        sdc_path: str = "",
-        spef_path: str = "",
+        sdc_path: PathArg = "",
+        spef_path: PathArg = "",
         design_name: str = "",
     ):
         output_lib_path = Path(output_lib_path or "")
@@ -926,12 +937,12 @@ class ECCToolsModule:
                 design_name = design_name[: -len("_Harden")]
 
         sta_output_dir = Path(output_dir) if output_dir else output_lib_path.parent
-        if not self.ecc.lib_init(lib_paths=path_texts(lib_paths)):
+        if not self.ecc.lib_init(lib_paths=lib_paths):
             raise RuntimeError("Failed to load Liberty libraries for timing model")
-        self.ecc.sdc_init(path_text(sdc_path))
-        self.ecc.spef_init(path_text(spef_path))
-        config_dict = {"-temp_directory_path": path_text(sta_output_dir)}
-        self.ecc.init_sta(config=path_text(config), config_dict=config_dict)
+        self.ecc.sdc_init(sdc_path)
+        self.ecc.spef_init(spef_path)
+        config_dict = {"-temp_directory_path": os.fspath(sta_output_dir)}
+        self.ecc.init_sta(config=config, config_dict=config_dict)
         try:
             self.ecc.extract_lib()
         finally:

@@ -163,7 +163,8 @@ def _measurement(workspace: Path, facts: dict, objective: Objective) -> dict:
             if (
                 metric.get("id") == metric_id
                 and metric.get("unit") == objective.unit
-                and type(value) in (int, float)
+                and isinstance(value, (int, float))
+                and not isinstance(value, bool)
                 and math.isfinite(value)
             ):
                 matching.append(

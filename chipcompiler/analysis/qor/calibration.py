@@ -71,10 +71,10 @@ def clamp01(value: float) -> float:
 TAU_I_PREF = 1.25
 TAU_I_FAIL = 1.75
 
-# Placed core utilization target interval.
+# Placed core utilization target interval and physical upper bound.
 TAU_AREA_MIN = 0.45
 TAU_AREA_MAX = 0.70
-TAU_AREA_FAIL = 0.85
+TAU_AREA_HARD_MAX = 1.0
 
 # Robustness: structural clock imbalance vs multi-corner PVT dispersion.
 W_CTS_IMBALANCE = 0.5

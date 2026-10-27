@@ -360,12 +360,11 @@ baseline, and one fresh final validation. Reuse a trustworthy existing baseline
 when possible. Record candidate, total-time, per-run-time, CPU/RAM/storage limits
 before launching.
 
-Current sweep execution is serial with a `--max-candidates` prefix limit.
-`ECC_SWEEP_TIMEOUT_SECONDS` defaults to 86400 seconds per subprocess. It is not a
-total-project budget, memory limit, or guarantee of complete EDA child-process cleanup.
-After a timeout, inspect states and confirm this task's processes have exited before
-recovery. The AI manages total budget. Thread/corner parallelism controls resources;
-it is not inherently a PPA improvement.
+Current sweep execution is serial with a `--max-candidates` prefix limit. There is no
+per-candidate sweep timeout option or timeout environment-variable hook in the current
+implementation. Enforce wall-clock limits externally if required, then inspect states and
+confirm this task's processes have exited before recovery. The AI manages total budget.
+Thread/corner parallelism controls resources; it is not inherently a PPA improvement.
 
 ## 5. Interpret PPA and QoR
 
@@ -460,7 +459,7 @@ and the persisted flow determine execution.
 | `cts.skew_bound` | Current schema: str; physical quantity: ns | CTS skew/area/power tradeoff | CTS |
 | `cts.max_fanout` | int; current range 1–200 | Clock-tree structure | CTS; may also affect generated SDC, so inspect invalidation |
 | `cts.routing_layer`, `cts.buffer_type` | JSON lists | Supported clock layers/buffer cells | CTS |
-| `timing_opt.hold_margin` | float; current default 0.1 ns; negatives rejected by tool | Sizer hold-only margin | Timing optimization |
+| `timing_opt.hold_margin` | float; current default 0.04 ns; negatives rejected by tool | Sizer hold-only margin | Timing optimization |
 | `route.bottom_layer`, `route.top_layer` | Process-layer strings | Routing capacity, RC, vias/wirelength | May affect placement routing proxies and Sizer; inspect invalidation |
 | `macro.placements` / `ecc macro` | Legal macro positions/orientations | Macro channels and critical wires | macroPlacement |
 
@@ -645,18 +644,17 @@ ecc sweep create --project "$PPA_PROJECT" --name "$PPA_SWEEP" \
   --param floorplan.core_util=0.30 \
   --param place.target_density=0.15,0.20,0.25
 ecc sweep show --project "$PPA_PROJECT" --name "$PPA_SWEEP" --json
-ECC_SWEEP_TIMEOUT_SECONDS=3600 ecc sweep run --project "$PPA_PROJECT" \
-  --name "$PPA_SWEEP" --max-candidates 3 --json
+ecc sweep run --project "$PPA_PROJECT" --name "$PPA_SWEEP" --max-candidates 3
 ecc sweep verify --project "$PPA_PROJECT" --name "$PPA_SWEEP"
 ecc sweep compare --project "$PPA_PROJECT" --name "$PPA_SWEEP" --json
-ecc explore rank --project "$PPA_PROJECT" --name "$PPA_SWEEP" --json
+ecc explore rank --project "$PPA_PROJECT" --name "$PPA_SWEEP"
 ecc explore export --project "$PPA_PROJECT" --name "$PPA_SWEEP" \
   --format csv --output "$PPA_EVIDENCE/$PPA_SWEEP.csv"
 ecc explore export --project "$PPA_PROJECT" --name "$PPA_SWEEP" \
   --format json --output "$PPA_EVIDENCE/$PPA_SWEEP.json"
 ```
 
-The 3600-second per-run limit is illustrative; derive it from baseline cost.
+The candidate count and external time budget should be derived from baseline cost.
 Validate parameters and physical plausibility before execution.
 sweep create parses `KEY=VALUE[,VALUE]` and creates a plan; **it does not establish
 schema validity or physical feasibility for every value**. Actual run validates overrides.
@@ -697,22 +695,25 @@ ecc report qor --project "$PPA_CAND_PROJECT" --workspace candidate_0001 \
 
 ### 10.3 Sweep states and integrity checks
 
-- A `passed` candidate requires a successful complete flow, passing checklist,
-  valid overall QoR, and explicitly passing signoff.
-- Signoff exit 7 cannot yield passed; missing scores stay null.
-  blocked/failed/unknown candidates cannot be promoted.
-- Passing `sweep verify` establishes consistency of plan/results, parameters,
-  states, exit codes, and evidence. It does not mean all candidates passed.
-  Legitimate blocked/failed/unknown records can pass integrity validation.
+- A recorded `passed` candidate means no step/checklist was blocked, `ecc run` exited
+  zero, the signoff probe exited `0` or `7`, and step evidence or `ecc status` succeeded. It
+  does not by itself prove complete flow, valid QoR, passing checklist, or full signoff.
+- Signoff exit `7` is evidence, not an automatic failure; missing scores stay null.
+  blocked/failed/unknown candidates cannot be promoted by candidate mode.
+- Passing `sweep verify` checks only the plan fingerprint, unique result membership,
+  exact candidate parameters, workspace-directory existence, and missing results. It
+  does not audit step states, QoR, signoff, checklist contents, or field types, and it
+  does not mean all candidates passed. Legitimate blocked/failed/unknown records can
+  pass integrity validation.
 - `--max-candidates N` limits execution to the first N planned candidates,
   not N additional candidates per invocation. After running two of three,
   verification reports a missing result as expected. Audit after completing the plan.
-- Candidates with existing results and workspaces have evidence recollected,
-  without automatically rerunning EDA. Recover a failure through its public
-  run/resume or create a new experiment; repeated sweep run does not fix a design.
-- Current caching preserves the original candidate run's exit_code. External
-  recovery followed by evidence recollection does not rewrite the failed execution
-  record. Prefer a new candidate/sweep and retain the recovery ledger.
+- A candidate with any recorded status and an existing workspace is reused without
+  rerunning EDA or recollecting evidence. Recovery does not rewrite the cached row;
+  use public run/resume on the candidate workspace or create a new candidate/sweep.
+- Candidate-mode `explore promote` checks only the cached row and `passed` status.
+  Pareto promotion revalidates current committed parameters, complete flow/checklist/
+  signoff evidence, zero checker counts, metric registry values, and snapshot stability.
 - Ranking orders passed, blocked, failed, unknown, then descending QoR within
   each class. It is not area/power/timing Pareto ranking or a global optimum guarantee.
 
@@ -795,10 +796,12 @@ proven improvements.
 
 ### 13.1 Record the selection
 
-For a sweep candidate, promote only after confirming passed and the user's PPA goal:
+For a sweep candidate, candidate-mode promotion only checks the cached `passed` row. Use
+Pareto promotion when the current full-flow evidence must be revalidated. Confirm the
+user's PPA goal before either explicit selection:
 
 ```bash
-ecc explore promote --project "$PPA_PROJECT" --name "$PPA_SWEEP" --candidate candidate_0002 --json
+ecc explore promote --project "$PPA_PROJECT" --name "$PPA_SWEEP" --candidate candidate_0002
 ```
 
 candidate_0002 illustrates syntax, not a winner already selected by this manual.
@@ -861,7 +864,8 @@ environment/versions, raw PPA comparisons, and explicit unverified items.
 | diagnose failed/blocked | 6 | Save JSON and investigate; not passed |
 | signoff check hard-gate failure | 6 | Fix the cause; do not promote |
 | signoff check cannot rate required evidence | 7 | UNKNOWN; obtain real evidence |
-| sweep verify integrity failure | 6 | Distinguish incomplete plans, corrupt fields, stale passed, and missing files |
+| sweep verify integrity failure | 6 | Distinguish plan-fingerprint, membership/parameter, workspace, and missing-result failures |
+| Pareto promotion has no verified front | 7 | Inspect `excluded`; do not invent a winner |
 | Parameter/usage error | Usually 1 or 2, per command | Correct the request; do not count a successful candidate |
 | Timeout | Nonzero timeout code | Inspect this task's processes, budget, and recovery boundary |
 
@@ -1043,8 +1047,9 @@ Stage acceptance evaluates real requirements of executed stages. Later gates rem
 unverified. Early completion may leave overall QoR NOT_RATED/null, signoff exit 7,
 or exit 6 for an existing blocker. Such results do not automatically prohibit
 early DSE and do not establish complete passed status.
-Current sweep candidates require valid overall QoR and full signoff pass; do not
-force-promote early candidates.
+A candidate-mode `passed` row does not require valid overall QoR or full signoff. Do not
+treat it as a complete-delivery winner; use Pareto promotion for current full-flow and
+signoff revalidation.
 
 Record stage constraints before running, such as usable DEF/Verilog, congestion
 limits, and macro-legality evidence. Derive thresholds from the design/process
@@ -1203,9 +1208,10 @@ parameters. New-project defaults are not the baseline.
 | --- | --- | --- |
 | synthesis | `design.rtl` | Fixed RTL; synthesis still runs |
 | preFloorplan | `design.netlist` | Verified synthesized netlist; skip synthesis |
-| macroPlacement / postFloorplan / place | `design.def` + `design.netlist` | Matching checkpoint from the preceding stage |
-| CTS / legalization / Timing optimization / route | `design.def` + `design.netlist` | Matching completed preceding checkpoint |
+| macroPlacement / postFloorplan / preplace / place / diff_sizing | `design.def` + `design.netlist` | Matching checkpoint from the preceding stage |
+| CTS / legalization / Timing optimization / route / filler / lvs / drc / Harden | `design.def` + `design.netlist` | Matching completed preceding checkpoint |
 | sta | Both above + `design.spef` | Real RCX and matching design; early placement is not equivalent |
+| antennaCheck / powerAnalysis / emir | No entry-input contract | Start from an earlier validated checkpoint; these steps rely on chained upstream artifacts |
 
 An explicitly declared SDC is also validated. Macro models and physical libraries
 must remain complete. Do not combine an arbitrary DEF with another candidate's

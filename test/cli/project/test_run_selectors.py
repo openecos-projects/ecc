@@ -21,8 +21,8 @@ def test_manifest_workspace_honors_explicit_run_selectors(tmp_path, monkeypatch,
     seen = []
     expected = CommandResult.ok([{"status": "success"}])
 
-    def selected(request, path, identity, *, project_dir):
-        seen.append((request, path, identity, project_dir))
+    def selected(request, path, identity, *, project_dir, ctx):
+        seen.append((request, path, identity, project_dir, ctx))
         return expected
 
     monkeypatch.setattr("chipcompiler.cli.project.run_workspace.execute_workspace_run", selected)
@@ -38,4 +38,4 @@ def test_manifest_workspace_honors_explicit_run_selectors(tmp_path, monkeypatch,
         workspace_registered=True,
     )
     assert result == expected
-    assert seen == [(command, str(tmp_path / "trial"), "trial", str(tmp_path))]
+    assert seen == [(command, str(tmp_path / "trial"), "trial", str(tmp_path), context)]

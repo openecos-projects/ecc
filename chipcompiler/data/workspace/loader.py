@@ -82,8 +82,7 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
             # disclosure must fire on every open for the current format.
             warn_legacy_config_shadow(workspace_dir)
 
-    workspace = Workspace()
-    workspace.directory = workspace_dir
+    workspace = Workspace(directory=workspace_dir)
     if not read_only:
         apply_schema_migrations(WORKSPACE_CONFIGS, workspace_dir)
     workspace.config = build_workspace_config_paths(workspace)

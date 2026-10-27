@@ -1,5 +1,6 @@
 """PyInstaller hook for DreamPlace native modules and package data."""
 
+import logging
 import re
 from pathlib import Path
 
@@ -8,8 +9,9 @@ from PyInstaller.utils.hooks import (
     collect_dynamic_libs,
     collect_submodules,
     get_module_file_attribute,
-    logger,
 )
+
+logger = logging.getLogger(__name__)
 
 hiddenimports = collect_submodules("dreamplace")
 binaries = collect_dynamic_libs("dreamplace")
@@ -18,7 +20,7 @@ datas = collect_data_files("dreamplace")
 _ABI_TAG_RE = re.compile(r"\.cpython-\d+-.*$")
 
 try:
-    dreamplace_dir = Path(get_module_file_attribute("dreamplace")).parent
+    dreamplace_dir = Path(get_module_file_attribute("dreamplace") or "").parent
     ops_dir = dreamplace_dir / "ops"
 
     if ops_dir.is_dir():

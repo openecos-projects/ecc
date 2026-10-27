@@ -8,11 +8,21 @@ contracts. Shared through composition, so ``self`` is the composed
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from chipcompiler.data import SkippableStepEnum, StepEnum
+from chipcompiler.data import SkippableStepEnum, StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data.step import STEP_DIRECTORIES
+from chipcompiler.data.workspace.flow_types import FlowStepEntry
 
 
 class CollectorDiscoveryMixin:
+    if TYPE_CHECKING:
+        workspace: Workspace
+
+        def _build_workspace_step(
+            self, flow_step: FlowStepEntry, input_source: object
+        ) -> WorkspaceStep | None: ...
+
     def _read_json(self, path: Path) -> dict:
         try:
             with open(path, encoding="utf-8") as file:
@@ -87,10 +97,11 @@ class CollectorDiscoveryMixin:
         return None, "Required file is missing or empty"
 
     def _design_from_outputs(self, workspace_dir: Path) -> str:
-        for pattern, suffix in (
-            ("Harden_ecc/output/*_Harden.gds", "_Harden.gds"),
-            ("filler_ecc/output/*_filler.v.gz", "_filler.v.gz"),
+        for step_name, suffix in (
+            (StepEnum.HARDEN.value, "_Harden.gds"),
+            (StepEnum.FILLER.value, "_filler.v.gz"),
         ):
+            pattern = f"{STEP_DIRECTORIES[step_name]}/output/*{suffix}"
             matches = sorted(workspace_dir.glob(pattern))
             if matches:
                 name = matches[0].name
@@ -101,8 +112,8 @@ class CollectorDiscoveryMixin:
     def _synthesis_output_verilog(self) -> Path | None:
         """Resolve the netlist from the Yosys step's declared output contract."""
         synthesis_step = self._build_workspace_step(
-            {"name": StepEnum.SYNTHESIS.value, "tool": "yosys"},
-            previous_step=None,
+            {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": ""},
+            input_source=None,
         )
         output = getattr(synthesis_step, "output", None)
         verilog = getattr(output, "verilog", None)

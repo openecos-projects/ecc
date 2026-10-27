@@ -79,11 +79,13 @@ def _gate_diagnosis(gate, inputs) -> Diagnosis:
         for metric in (_supporting(inputs, metric_id) for metric_id in gate.metrics)
         if metric is not None
     ]
+    support_value = support[0].value if support else None
+    numeric_support = support_value if isinstance(support_value, (int, float)) else None
     if gate.id in ("GATE_SETUP_SLACK", "GATE_HOLD_SLACK"):
         interpretation = (
-            f"{gate.stage} signed worst slack is negative; {abs(support[0].value):g} ns of "
+            f"{gate.stage} signed worst slack is negative; {abs(numeric_support):g} ns of "
             "violation magnitude is present in the signoff timing reports."
-            if support
+            if numeric_support is not None
             else f"{gate.stage} signoff slack gate failed."
         )
         hypothesis = (
@@ -93,9 +95,9 @@ def _gate_diagnosis(gate, inputs) -> Diagnosis:
         validation = "Rerun STA after implementation changes to confirm slack >= 0."
     else:
         interpretation = (
-            f"{gate.stage} signoff reports {support[0].value:g} violation(s); "
+            f"{gate.stage} signoff reports {numeric_support:g} violation(s); "
             "tapeout feasibility is blocked."
-            if support
+            if numeric_support is not None
             else f"{gate.stage} signoff gate failed."
         )
         hypothesis = (

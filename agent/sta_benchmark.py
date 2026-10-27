@@ -124,8 +124,11 @@ def _run_workspace(root, workers):
         raise RuntimeError("cannot initialize routed benchmark database")
     elapsed = {}
     for stage in ("sta", "Harden"):
+        step = flow.get_workspace_step(stage)
+        if step is None:
+            raise RuntimeError(f"cannot resolve benchmark step {stage}")
         started = time.monotonic()
-        state = flow.run_step(stage, rerun=True)
+        state = flow.run_step(step, rerun=True)
         elapsed[stage] = time.monotonic() - started
         if state != StateEnum.Success:
             raise RuntimeError(f"benchmark stage failed: {stage}: {state}")

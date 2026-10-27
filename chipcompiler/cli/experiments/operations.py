@@ -17,6 +17,18 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from chipcompiler.cli.experiments.candidate_evidence import normalized_step_statuses
+from chipcompiler.cli.inspection.evidence_summary import (
+    checklist_items,
+    checklist_status,
+    flow_status,
+    item_blocked,
+    qor_score,
+    step_status,
+)
+from chipcompiler.data import ADVISORY_FLOW_STEPS
+from chipcompiler.project.manifest import CONFIG_FILENAME, MANIFEST_FILENAME
+
 SCHEMA_VERSION = 1
 
 
@@ -60,7 +72,7 @@ def runtime_versions(project: Path) -> dict[str, Any]:
         versions["tools"] = tool_versions()
     except (ImportError, OSError):
         versions["tools"] = {}
-    config_path = project / "ecc.toml"
+    config_path = project / CONFIG_FILENAME
     try:
         config = tomllib.loads(config_path.read_text())
         pdk = config.get("pdk", {})
@@ -77,38 +89,35 @@ def project_path(value: str | None) -> Path:
     if path.is_file():
         path = path.parent
     for candidate in (path, *path.parents):
-        if (candidate / "project.json").exists() or (candidate / "ecc.toml").exists():
+        if (candidate / MANIFEST_FILENAME).exists() or (candidate / CONFIG_FILENAME).exists():
             return candidate
     return path
 
 
 def diagnose_workspace(project: Path, workspace_name: str) -> dict[str, Any]:
     workspace = workspace_path(project, workspace_name)
-    flow = load_json(workspace / "home" / "flow.json", {}) or {}
-    checklist = load_json(workspace / "home" / "checklist.json", {}) or {}
-    qor = load_json(workspace / "home" / "qor_report.json", {}) or {}
-    steps = flow.get("steps", []) if isinstance(flow, dict) else []
-    failed_steps = [
-        step.get("name", step.get("id", "unknown"))
-        for step in steps
-        if isinstance(step, dict)
-        and step.get("status", step.get("state")) in {"failed", "blocked", "error"}
-    ]
-    items = (
-        checklist.get("items", checklist.get("checklist", []))
-        if isinstance(checklist, dict)
-        else []
-    )
-    blocked_items = [
-        item.get("id", "unknown")
-        for item in items
-        if isinstance(item, dict)
-        and (
-            item.get("status") in {"blocked", "failed"}
-            or item.get("blocked") is True
-            or item.get("state") in {"blocked", "fail"}
-        )
-    ]
+    flow_value = load_json(workspace / "home" / "flow.json", {})
+    checklist_value = load_json(workspace / "home" / "checklist.json", {})
+    qor_value = load_json(workspace / "home" / "qor_report.json", {})
+    flow = flow_value if isinstance(flow_value, dict) else {}
+    checklist = checklist_value if isinstance(checklist_value, dict) else {}
+    qor = qor_value if isinstance(qor_value, dict) else {}
+    steps = flow.get("steps", [])
+    failed_steps = []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        state = step_status(step)
+        if state not in {"failed", "blocked", "error", "incomplete", "invalid"}:
+            continue
+        if state == "incomplete" and step.get("name") in ADVISORY_FLOW_STEPS:
+            continue
+        failed_steps.append(step.get("name", step.get("id", "unknown")))
+    flow_state = flow_status(flow)
+    items = checklist_items(checklist)
+    blocked_items = [item.get("id", "unknown") for item in items if item_blocked(item)]
+    checks_state = checklist_status(checklist)
+    score = qor_score(qor)
     missing = [
         str(path.relative_to(workspace))
         for path in (workspace / "home" / "flow.json", workspace / "home" / "checklist.json")
@@ -116,11 +125,11 @@ def diagnose_workspace(project: Path, workspace_name: str) -> dict[str, Any]:
     ]
     status = (
         "failed"
-        if failed_steps
+        if failed_steps or flow_state == "failed"
         else "blocked"
-        if blocked_items
+        if blocked_items or checks_state == "blocked"
         else "attention"
-        if missing or not qor
+        if missing or not qor or flow_state != "success" or checks_state != "passed"
         else "passed"
     )
     actions = []
@@ -136,15 +145,18 @@ def diagnose_workspace(project: Path, workspace_name: str) -> dict[str, Any]:
         "project": str(project),
         "workspace": str(workspace),
         "flow": {
-            "status": flow.get("status", flow.get("state", "unknown")),
+            "status": flow_state,
             "failed_steps": failed_steps,
         },
         "checklist": {
-            "status": "blocked" if blocked_items else "passed" if items else "unknown",
+            "status": checks_state,
             "blocked_count": len(blocked_items),
             "blocked_items": blocked_items,
         },
-        "qor": {"available": bool(qor), "score": qor.get("qor_score", qor.get("score", "unknown"))},
+        "qor": {
+            "available": bool(qor),
+            "score": score if score is not None else "unknown",
+        },
         "missing_artifacts": missing,
         "next_actions": actions,
     }
@@ -175,7 +187,7 @@ def export_package(project: Path, workspace: Path, output: Path) -> dict[str, An
     if not workspace.is_dir():
         raise ValueError(f"workspace does not exist: {workspace}")
     files: list[Path] = []
-    roots = [project / "project.json", project / "ecc.toml"]
+    roots = [project / MANIFEST_FILENAME, project / CONFIG_FILENAME]
     for relative in ("home", "config", "reports", "results"):
         candidate = workspace / relative
         if candidate.exists():
@@ -233,8 +245,13 @@ def read_package(package: Path) -> Iterator[tuple[tarfile.TarFile, dict[str, Any
             member = archive.getmember("./manifest.json")
         except KeyError:
             raise ValueError("package does not contain manifest.json") from None
-        with archive.extractfile(member) as stream:
+        stream = archive.extractfile(member)
+        if stream is None:
+            raise ValueError("package manifest is not a regular file")
+        with stream:
             manifest = json.load(stream)
+        if not isinstance(manifest, dict):
+            raise ValueError("manifest must be a JSON object")
         yield archive, manifest
 
 
@@ -269,7 +286,11 @@ def verify_package(package: Path) -> dict[str, Any]:
                 errors.append(f"missing: {entry['path']}")
                 continue
             member = archive.getmember(name)
-            content = archive.extractfile(member).read()
+            stream = archive.extractfile(member)
+            if stream is None:
+                errors.append(f"unreadable: {entry['path']}")
+                continue
+            content = stream.read()
             digest = hashlib.sha256(content).hexdigest()
             if len(content) != entry["size"]:
                 errors.append(f"size: {entry['path']}")
@@ -298,8 +319,12 @@ def package_report(package: Path) -> dict[str, Any]:
         invalid_json: list[str] = []
         for member in archive.getmembers():
             if member.isfile() and member.name.endswith(".json"):
+                stream = archive.extractfile(member)
+                if stream is None:
+                    invalid_json.append(member.name)
+                    continue
                 try:
-                    payloads[member.name] = json.load(archive.extractfile(member))
+                    payloads[member.name] = json.load(stream)
                 except (json.JSONDecodeError, OSError):
                     invalid_json.append(member.name)
                     continue
@@ -474,12 +499,8 @@ def compare_sweep(project: Path, name: str) -> list[dict[str, Any]]:
     return sorted(
         rows,
         key=lambda row: (
-            order.get(row.get("status", "unknown"), 3),
-            -(
-                row.get("qor_score")
-                if isinstance(row.get("qor_score"), (int, float))
-                else float("-inf")
-            ),
+            order.get(str(row.get("status", "unknown")), 3),
+            -(score if isinstance(score := row.get("qor_score"), (int, float)) else float("-inf")),
         ),
     )
 
@@ -523,16 +544,16 @@ def export_sweep(rows: list[dict[str, Any]], fmt: str) -> str:
     )
     if fmt == "csv":
         stream = io.StringIO()
-        writer = csv.DictWriter(stream, fieldnames=columns)
-        writer.writeheader()
+        writer = csv.writer(stream)
+        writer.writerow(columns)
         for row in matrix:
             writer.writerow(
-                {
-                    **row,
-                    "parameters": ",".join(
-                        f"{key}={value}" for key, value in row["parameters"].items()
-                    ),
-                }
+                [
+                    ",".join(f"{key}={value}" for key, value in row["parameters"].items())
+                    if column == "parameters"
+                    else row[column]
+                    for column in columns
+                ]
             )
         return stream.getvalue()
     if fmt == "markdown":
@@ -619,18 +640,7 @@ def collect_candidate_evidence(project: Path, workspace: Path, exit_code: int) -
     flow = load_json(workspace / "home" / "flow.json", {}) or {}
     status_code, status_payload = _json_command(project, workspace, "status")
     signoff_code, signoff_payload = _json_command(project, workspace, "signoff check")
-    steps = flow.get("steps", []) if isinstance(flow, dict) else []
-    if not steps and isinstance(status_payload, dict):
-        steps = status_payload.get("steps", [])
-    step_statuses = [
-        {
-            "name": step.get("name"),
-            "status": step.get("status", "unknown"),
-            "checklist": step.get("checklist_status", "unknown"),
-        }
-        for step in steps
-        if isinstance(step, dict)
-    ]
+    step_statuses = normalized_step_statuses(flow, status_payload)
     blocked = any(
         step["status"] == "blocked" or step["checklist"] == "blocked" for step in step_statuses
     )
@@ -640,6 +650,8 @@ def collect_candidate_evidence(project: Path, workspace: Path, exit_code: int) -
         if blocked
         else "failed"
         if failed
+        else "unknown"
+        if any(step["status"] not in {"success", "passed"} for step in step_statuses)
         else "passed"
         if step_statuses or status_code == 0
         else "unknown"
@@ -687,7 +699,7 @@ def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str,
                 }
 
             shutil.copytree(project, candidate_project, ignore=ignore)
-            manifest_path = candidate_project / "project.json"
+            manifest_path = candidate_project / MANIFEST_FILENAME
             manifest = load_json(manifest_path, {})
             if isinstance(manifest, dict):
                 manifest["root_path"] = str(candidate_project)

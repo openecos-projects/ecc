@@ -11,6 +11,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from chipcompiler.cli.core.inputs import InitInput
+from chipcompiler.project.manifest import CONFIG_FILENAME, MANIFEST_FILENAME
 from chipcompiler.project.manifest_write import build_project_document
 
 _AT_FDCWD = -100
@@ -169,7 +170,7 @@ def _populate(
     rtl.mkdir()
     constraints.mkdir()
     config = _default_toml(design_name)
-    _write_file(staging / "ecc.toml", config)
+    _write_file(staging / CONFIG_FILENAME, config)
     base_design = {
         "pdk": "ics55",
         "top_module": design_name,
@@ -191,7 +192,7 @@ def _populate(
         mpc=mpc,
     )
     _write_file(
-        staging / "project.json",
+        staging / MANIFEST_FILENAME,
         json.dumps(document, ensure_ascii=False, indent=2) + "\n",
     )
     _fsync_directory(rtl)
@@ -270,7 +271,9 @@ def _load_mpc(command_input: InitInput) -> dict | None:
     for key, expected in (("resource_id", resource_id), ("version", version)):
         if key in spec and spec[key] != expected:
             raise ProjectInitError("mpc_invalid", f"MPC spec {key} does not match", spec_path)
-    index = int(command_input.mpc_design_index)
+    if command_input.mpc_design_index is None:
+        raise ProjectInitError("mpc_invalid", "MPC design index is required", spec_path)
+    index = command_input.mpc_design_index
     if index >= len(designs) or not isinstance(designs[index], dict):
         raise ProjectInitError("mpc_invalid", "MPC design index is invalid", spec_path)
     design = designs[index]

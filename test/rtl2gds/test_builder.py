@@ -85,15 +85,17 @@ def test_default_flow_data_marks_checker_steps():
     from chipcompiler.data.workspace import build_dynamic_flow_data
 
     ledger = build_dynamic_flow_data({"start_step": "Synthesis", "end_step": "Harden"})
-    categories = {step["name"]: step["category"] for step in ledger["steps"]}
+    categories = {step["name"]: step.get("category") for step in ledger.get("steps", [])}
 
     assert {name for name, category in categories.items() if category == "CHECKER"} == {
         "lvs",
         "drc",
+        "antennaCheck",
         "postRouteLec",
         "RCX",
         "sta",
         "powerAnalysis",
+        "emir",
     }
 
 
@@ -306,7 +308,7 @@ def test_all_creation_paths_build_the_same_ledger_for_one_policy():
     policy = {"start_step": "Synthesis", "end_step": "Harden", "skip_steps": ["lec"]}
 
     # Sidecar/direct flow_config path: the dynamic ledger.
-    sidecar = [step["name"] for step in build_dynamic_flow_data(policy)["steps"]]
+    sidecar = [step["name"] for step in build_dynamic_flow_data(policy).get("steps", [])]
 
     # CLI ranged path: build_flow_range with the resolved policy.
     ranged = [
@@ -347,7 +349,7 @@ def test_unknown_flow_config_keys_never_become_steps_or_errors():
         }
     )
 
-    names = [step["name"] for step in ledger["steps"]]
+    names = [step["name"] for step in ledger.get("steps", [])]
     assert "Synthesis" in names
     assert "future_unknown_key" not in names
 
@@ -359,7 +361,7 @@ def test_preset_shaped_flow_config_builds_the_preset_ledger():
     policy = {"preset": "synthesis_lec", "skip_steps": []}
 
     ledger = build_dynamic_flow_data(policy)
-    assert [step["name"] for step in ledger["steps"]] == ["Synthesis", "lec"]
+    assert [step["name"] for step in ledger.get("steps", [])] == ["Synthesis", "lec"]
 
     # The persisted flow section keeps the preset and the normalized policy.
     section = flow_section_from_flow_config(policy)

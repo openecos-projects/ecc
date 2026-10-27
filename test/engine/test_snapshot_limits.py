@@ -138,7 +138,10 @@ def test_snapshot_indexes_power_analysis_artifacts(tmp_path):
     (root / "home").mkdir(parents=True)
     report = root / "powerAnalysis_ecc" / "data" / "pw" / "power_reporter" / "power.rpt"
     report.parent.mkdir(parents=True)
-    report.write_text("Total Dynamic Power = 1.0 mW\n", encoding="utf-8")
+    report.write_text("legacy power report\n", encoding="utf-8")
+    published_report = root / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt"
+    published_report.parent.mkdir(parents=True)
+    published_report.write_text("Total Dynamic Power = 1.0 mW\n", encoding="utf-8")
     summary = root / "powerAnalysis_ecc" / "feature" / "power_summary.json"
     summary.parent.mkdir(parents=True)
     summary.write_text('{"schema_version": 1}\n', encoding="utf-8")
@@ -159,10 +162,12 @@ def test_snapshot_indexes_power_analysis_artifacts(tmp_path):
         if artifact["kind"] in {"power_report", "power_summary"}
     ]
     assert [(artifact["kind"], artifact["reference"]) for artifact in power_artifacts] == [
-        ("power_report", "powerAnalysis_ecc/data/pw/power_reporter/power.rpt"),
+        ("power_report", "powerAnalysis_ecc/report/powerAnalysis.rpt"),
         ("power_summary", "powerAnalysis_ecc/feature/power_summary.json"),
     ]
     assert all(artifact["availability"] == "available" for artifact in power_artifacts)
+    artifact_ids = [artifact["artifactId"] for artifact in snapshot["artifacts"]]
+    assert len(artifact_ids) == len(set(artifact_ids))
 
 
 def test_snapshot_limits_sta_corner_artifacts_deterministically(tmp_path):
@@ -234,6 +239,41 @@ def test_checklist_projection_cap_is_a_producer_error(tmp_path):
     assert not (root / "home" / "engineering-snapshot.json").exists()
 
 
+def test_checklist_projection_exposes_requirement_state(tmp_path):
+    root = tmp_path / "workspace"
+    (root / "home").mkdir(parents=True)
+    (root / "home" / "checklist.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "kind": "signoff_checklist",
+                "status": "attention",
+                "requirements_status": "present",
+                "checklist": [
+                    {
+                        "id": "sta.hold",
+                        "title": "STA hold",
+                        "state": "warning",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    workspace = SimpleNamespace(
+        directory=root,
+        flow=SimpleNamespace(data={"steps": []}),
+        home=SimpleNamespace(data={}),
+        parameters=SimpleNamespace(data={"design": "gcd"}),
+        design=SimpleNamespace(name="gcd"),
+    )
+
+    snapshot = create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
+
+    assert snapshot["checklist"]["status"] == "attention"
+    assert snapshot["checklist"]["requirementsStatus"] == "present"
+
+
 def test_artifact_index_cap_is_a_producer_error(tmp_path):
     root = tmp_path / "workspace"
     (root / "home").mkdir(parents=True)
@@ -266,3 +306,69 @@ def test_read_rejects_artifact_index_beyond_limit(tmp_path):
 
     with pytest.raises(EngineeringSnapshotError, match="section: artifacts"):
         read_engineering_snapshot(workspace)
+
+
+def _snapshot_with_step_outputs(step_count, *, references_per_step=0, extra_reference=False):
+    steps = []
+    for index in range(step_count):
+        step = {
+            "step": f"step-{index}",
+            "tool": "ecc",
+            "state": "Success",
+            "verilog": None,
+            "def": None,
+        }
+        if references_per_step >= 1:
+            step["verilog"] = {"path": f"step-{index}.v", "exists": True}
+        if references_per_step >= 2:
+            step["def"] = {"path": f"step-{index}.def", "exists": True}
+        steps.append(step)
+    return {
+        "stepOutputs": {
+            "directory": ".",
+            "design": "gcd",
+            "steps": steps,
+            "sdc": {"path": "gcd.sdc", "exists": True} if extra_reference else None,
+        }
+    }
+
+
+def test_step_output_limit_accepts_exactly_the_limit():
+    from chipcompiler.engine.snapshot import SNAPSHOT_STEP_LIMIT, _validate_step_outputs
+
+    # No artifact references: only the step-count policy is exercised.
+    _validate_step_outputs(_snapshot_with_step_outputs(SNAPSHOT_STEP_LIMIT), Path("."))
+
+
+def test_step_output_limit_rejects_one_over():
+    from chipcompiler.engine.snapshot import SNAPSHOT_STEP_LIMIT, _validate_step_outputs
+
+    with pytest.raises(EngineeringSnapshotError):
+        _validate_step_outputs(_snapshot_with_step_outputs(SNAPSHOT_STEP_LIMIT + 1), Path("."))
+
+
+def test_step_output_reference_limit_accepts_exactly_the_limit():
+    from chipcompiler.engine.snapshot import SNAPSHOT_REFERENCE_LIMIT, _validate_step_outputs
+
+    # 2048 steps * 2 references = exactly the reference limit, below the
+    # independent step limit.
+    _validate_step_outputs(
+        _snapshot_with_step_outputs(SNAPSHOT_REFERENCE_LIMIT // 2, references_per_step=2),
+        Path("."),
+    )
+
+
+def test_step_output_reference_limit_rejects_one_over():
+    from chipcompiler.engine.snapshot import SNAPSHOT_REFERENCE_LIMIT, _validate_step_outputs
+
+    # The same step count plus one top-level SDC reference is one over the
+    # reference limit while the step count stays below its own limit.
+    with pytest.raises(EngineeringSnapshotError):
+        _validate_step_outputs(
+            _snapshot_with_step_outputs(
+                SNAPSHOT_REFERENCE_LIMIT // 2,
+                references_per_step=2,
+                extra_reference=True,
+            ),
+            Path("."),
+        )

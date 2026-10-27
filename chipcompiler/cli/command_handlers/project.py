@@ -14,6 +14,7 @@ from chipcompiler.cli.core.inputs import (
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
+from chipcompiler.project.manifest import CONFIG_FILENAME
 
 
 def init(command_input: InitInput, ctx: CommandContext) -> CommandResult:
@@ -87,7 +88,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             [
                 error_record(
                     "missing_config",
-                    path=os.path.join(ctx.project_dir, "ecc.toml"),
+                    path=os.path.join(ctx.project_dir, CONFIG_FILENAME),
                     inspect=disclosure_cmd("ecc check", project),
                 )
             ]
@@ -166,7 +167,10 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
 
 
 def _preflight_environment(
-    preset: str | None, project: str | None, flow_config: dict | None = None
+    preset: str | None,
+    project: str | None,
+    flow_config: dict | None = None,
+    cfg=None,
 ) -> CommandResult | None:
     """Fail fast when the tools a fresh flow target needs are missing.
 
@@ -176,6 +180,7 @@ def _preflight_environment(
     None means ready.
     """
     from chipcompiler.cli.inspection import env_probe
+    from chipcompiler.cli.project import run_preflight
     from chipcompiler.rtl2gds import resolve_lec_engine, resolve_skip_steps
 
     if preset is None:
@@ -185,10 +190,19 @@ def _preflight_environment(
     probes = env_probe.probe_environment(
         env_probe.probe_components_for_preset(preset, skip=skip, lec_engine=lec_engine)
     )
-    return _preflight_failures(probes, project, preset)
+    from chipcompiler import rtl2gds as rtl2gds_api
+
+    builder = rtl2gds_api.get_flow_builders().get(preset)
+    steps = [] if builder is None else builder()
+    steps = rtl2gds_api.filter_flow_steps(
+        rtl2gds_api.substitute_lec_engine(steps, lec_engine), skip
+    )
+    step_names = [getattr(step, "value", str(step)) for step, _tool, _state in steps]
+    resource_issues = run_preflight.pdk_issues_for_config(cfg, step_names)
+    return _preflight_failures(probes, project, preset, resource_issues)
 
 
-def _preflight_flow_range(flow_config: dict, project: str | None) -> CommandResult | None:
+def _preflight_flow_range(flow_config: dict, project: str | None, cfg=None) -> CommandResult | None:
     """Fail fast when the tools a fresh flow range needs are missing.
 
     The selected range already names its tools, so a missing tool is a
@@ -197,6 +211,7 @@ def _preflight_flow_range(flow_config: dict, project: str | None) -> CommandResu
     from the policy-filtered chain, matching ledger creation.
     """
     from chipcompiler.cli.inspection import env_probe
+    from chipcompiler.cli.project import run_preflight
     from chipcompiler.rtl2gds import build_flow_range, resolve_lec_engine, resolve_skip_steps
 
     try:
@@ -213,32 +228,45 @@ def _preflight_flow_range(flow_config: dict, project: str | None) -> CommandResu
         # failure mode in front of the run.
         return None
     probes = env_probe.probe_environment(env_probe.probe_components_for_steps(steps))
-    return _preflight_failures(probes, project, None)
+    step_names = [getattr(step, "value", str(step)) for step, _tool, _state in steps]
+    resource_issues = run_preflight.pdk_issues_for_config(cfg, step_names)
+    return _preflight_failures(probes, project, None, resource_issues)
 
 
-def _preflight_failures(probes, project: str | None, preset: str | None) -> CommandResult | None:
+def _preflight_failures(
+    probes, project: str | None, preset: str | None, extra_issues=()
+) -> CommandResult | None:
     """Map failed probes to env_not_ready; None means ready."""
     from chipcompiler.cli.inspection import env_probe
 
     failures = [p for p in probes if p.status == env_probe.FAIL]
+    failures.extend(extra_issues)
     if not failures:
         return None
+
+    def field(item, name, default: object = ""):
+        return item.get(name, default) if isinstance(item, dict) else getattr(item, name, default)
+
     records = [
         error_record(
             "env_not_ready",
-            reason="; ".join(f"{p.component}: {p.remediation or p.detail}" for p in failures),
+            reason="; ".join(
+                f"{field(item, 'component')}: {field(item, 'remediation') or field(item, 'detail')}"
+                for item in failures
+            ),
             preset=preset,
             doctor=disclosure_cmd("ecc doctor", project),
         )
     ]
     records.extend(
         {
-            "component": p.component,
-            "status": p.status,
-            "required": p.required,
-            "remediation": p.remediation,
+            "component": field(item, "component"),
+            "status": field(item, "status", "fail"),
+            "required": field(item, "required", default=True),
+            "detail": field(item, "detail"),
+            "remediation": field(item, "remediation"),
         }
-        for p in failures
+        for item in failures
     )
     return CommandResult.err(records)
 
@@ -429,7 +457,8 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
     from chipcompiler.project import repoint_generation_pointers
 
     try:
-        repoint_generation_pointers(ctx.project_dir, ctx.run_id, backup_id)
+        if ctx.run_id is not None:
+            repoint_generation_pointers(ctx.project_dir, ctx.run_id, backup_id)
     except (OSError, ValueError) as exc:
         warnings.append(
             error_record(
@@ -471,7 +500,7 @@ def import_workspace(command_input: WorkspaceImportInput, ctx: CommandContext) -
             [
                 error_record(
                     "missing_config",
-                    path=os.path.join(ctx.project_dir, "ecc.toml"),
+                    path=os.path.join(ctx.project_dir, CONFIG_FILENAME),
                 )
             ]
         )
@@ -559,7 +588,7 @@ def derive_workspace(command_input, ctx: CommandContext) -> CommandResult:
     from chipcompiler.cli.project.run_prepare import invalid_workspace_name
     from chipcompiler.engine.workspace_derive import derive_workspace as derive
     from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
-    from chipcompiler.project.api import _project_manifest_mutator
+    from chipcompiler.project.api import project_manifest_mutator
     from chipcompiler.project.manifest import load_manifest
     from chipcompiler.project.manifest_write import manifest_lock, update_manifest_locked
 
@@ -598,7 +627,7 @@ def derive_workspace(command_input, ctx: CommandContext) -> CommandResult:
                     **({"source_step": command_input.from_step} if command_input.from_step else {}),
                 },
             }
-            if not update_manifest_locked(project, _project_manifest_mutator(project, mutation)):
+            if not update_manifest_locked(project, project_manifest_mutator(project, mutation)):
                 raise OSError("Project Manifest update failed")
     except BlockingIOError:
         return CommandResult.err([error_record("workspace_busy")], exit_code=20)
@@ -803,7 +832,7 @@ def _run_project(
                 {
                     "kind": "error",
                     "error": "missing_config",
-                    "path": os.path.join(project_dir, "ecc.toml"),
+                    "path": os.path.join(project_dir, CONFIG_FILENAME),
                 }
             ]
         )
@@ -818,6 +847,8 @@ def _run_project(
         cfg, flow_config, entry_warnings = resolved_cfg
         layer_warnings.extend(entry_warnings)
     else:
+        if cfg is None:
+            return CommandResult.err([error_record("missing_config")])
         # Virgin projects have no manifest layer; an ecc.toml skip policy
         # still rides on the flow config (policy-only when no range applies).
         from chipcompiler.cli.project.effective_config import (
@@ -838,7 +869,8 @@ def _run_project(
         )
         flow_config = _attach_lec_engine(flow_config, lec_engine)
 
-    assert cfg is not None
+    if cfg is None:
+        return CommandResult.err([error_record("missing_config")])
 
     flow_builders = rtl2gds_api.get_flow_builders()
     effective_preset = command_input.preset or cfg.flow_preset
@@ -1015,9 +1047,9 @@ def _run_project(
     # instead of surfacing mid-creation.
     if fresh_target:
         if flow_config_selects_steps(flow_config):
-            preflight = _preflight_flow_range(flow_config, project)
+            preflight = _preflight_flow_range(flow_config, project, cfg)
         elif effective_preset:
-            preflight = _preflight_environment(effective_preset, project, flow_config)
+            preflight = _preflight_environment(effective_preset, project, flow_config, cfg)
         else:
             preflight = None
         if preflight is not None:
@@ -1086,5 +1118,9 @@ def _run_workspace(command_input: RunInput, ctx: CommandContext) -> CommandResul
     # Only manifest projects carry a project.json status to write back.
     project_dir = ctx.project_dir if ctx.project_state == "manifest" else None
     return run_workspace.execute_workspace_run(
-        command_input, ctx.run_dir, ctx.run_id, project_dir=project_dir
+        command_input,
+        ctx.run_dir,
+        ctx.run_id,
+        project_dir=project_dir,
+        ctx=ctx,
     )

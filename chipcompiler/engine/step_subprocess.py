@@ -23,7 +23,7 @@ import sys
 import time
 from pathlib import Path
 
-from chipcompiler.data import EccOutput, StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data import EccOutput, StepEnum, Workspace, WorkspaceStep, is_sta_step
 from chipcompiler.engine.resource_observation import start_observation
 from chipcompiler.engine.step_execution import (
     StepExecutionResult,
@@ -95,11 +95,15 @@ def execute_step_subprocess(
         return _result(start_time, 0.0, error=f"{step_tag} worker failed to start: {exc}")
 
     workspace.logger.info("[STEP] %s pid=%s worker started", step_tag, process.pid)
-    process.stdin.write(json.dumps(payload).encode("utf-8"))
-    process.stdin.close()
+    worker_stdin = process.stdin
+    if worker_stdin is None:
+        process.kill()
+        return _result(start_time, 0.0, error=f"{step_tag} worker stdin is unavailable")
+    worker_stdin.write(json.dumps(payload).encode("utf-8"))
+    worker_stdin.close()
 
     memory_reader = get_process_rss_mb
-    if workspace_step.tool == "ecc" and workspace_step.name == "sta":
+    if is_sta_step(workspace_step):
         from chipcompiler.tools.ecc.sta_parallel import get_sta_process_rss_mb
 
         memory_reader = get_sta_process_rss_mb
@@ -318,6 +322,8 @@ def main() -> int:
         workspace._runtime_flow_observer = _ResultFileObserver(result, flush)
 
         flow.init_db_engine_for_step(step)
+        if flow.engine_db is None:
+            raise RuntimeError("ECC engine was not initialized")
         initialization_error = getattr(flow.engine_db, "initialization_error", None)
         if initialization_error is not None:
             raise initialization_error

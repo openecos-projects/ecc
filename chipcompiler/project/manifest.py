@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 MANIFEST_FILENAME = "project.json"
+CONFIG_FILENAME = "ecc.toml"
 
 # GUI display names for the canonical rtl2gds chain.
 MANIFEST_FLOW_STEPS = (

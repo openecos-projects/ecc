@@ -70,6 +70,7 @@ workspace = create_workspace(
     pdk=pdk,
     parameters=parameters,
 )
+assert workspace is not None
 # Use load_workspace to resume from existing workspace
 # workspace = load_workspace(directory=workspace_dir)
 

@@ -20,7 +20,7 @@ from ..parameter import (
 from ..parameter import (
     load_parameter as load_parameter,
 )
-from ..pdk import PDK, get_pdk
+from ..pdk import PDK, get_pdk, invalid_io_liberty_errors
 from ..types import (
     SkippableStepEnum,
     StepBaseEnum,
@@ -51,6 +51,7 @@ from .flow_data import (
 from .flow_data import (
     build_dynamic_flow_data as build_dynamic_flow_data,
 )
+from .flow_types import FlowDocument, FlowStepEntry, load_flow_document
 from .layout import EccData, WorkspaceStepBase
 from .macro_location import refresh_generated_macro_location
 from .sdc import create_default_sdc as create_default_sdc
@@ -81,23 +82,19 @@ class Flow:
     """
 
     path: Path | None = None  # flow file path
-    data: dict = field(default_factory=dict)  # flow steps
+    data: FlowDocument = field(default_factory=lambda: FlowDocument())  # flow steps
 
-    def steps(self) -> list[dict]:
-        data = self.data if isinstance(self.data, dict) else {}
+    def steps(self) -> list[FlowStepEntry]:
+        data = self.data
         if not data and self.path is not None:
-            from chipcompiler.utility import json_read
-
-            loaded = json_read(self.path)
-            if isinstance(loaded, dict):
-                self.data = loaded
-                data = loaded
+            self.data = load_flow_document(self.path)
+            data = self.data
         raw_steps = data.get("steps", [])
         if not isinstance(raw_steps, list):
             return []
         return [step for step in raw_steps if isinstance(step, dict)]
 
-    def get_step(self, name: str | StepBaseEnum, tool: str | None = None) -> dict | None:
+    def get_step(self, name: str | StepBaseEnum, tool: str | None = None) -> FlowStepEntry | None:
         step_name = name.value if isinstance(name, StepBaseEnum) else name
         for step in self.steps():
             if step.get("name") != step_name:
@@ -116,7 +113,7 @@ class Workspace:
     Dataclass for workspace information
     """
 
-    directory: Path | None = None  # workspace directory
+    directory: Path  # workspace directory
     design: OriginDesign = field(default_factory=OriginDesign)  # original design info
     pdk: PDK = field(default_factory=PDK)  # pdk information
     parameters: Parameters = field(default_factory=Parameters)  # design parameters
@@ -125,6 +122,10 @@ class Workspace:
 
     # logger
     logger: Logger = field(default_factory=Logger)  # logger for this workspace
+
+    # Transient observer installed while a step runs; not part of the
+    # persisted workspace document.
+    _runtime_flow_observer: object | None = field(default=None, repr=False, compare=False)
 
 
 def step_group_to_dict(group: Any) -> dict:
@@ -270,7 +271,7 @@ def migrate_workspace_config_filenames(workspace_dir: str | Path) -> None:
             legacy_path.rename(canonical_path)
 
 
-def workspace_config_path(workspace_dir: str | Path, config_key: str) -> Path | None:
+def workspace_config_key_path(workspace_dir: str | Path, config_key: str) -> Path | None:
     return workspace_config_paths(workspace_dir).get(config_key)
 
 
@@ -302,8 +303,7 @@ def step_config_paths(
 
 def build_workspace_config_paths(workspace: Workspace) -> dict[str, Path]:
     """Build workspace-level config file paths."""
-    workspace_dir = Path(workspace.directory) if workspace.directory is not None else Path("")
-    return workspace_config_paths(workspace_dir)
+    return workspace_config_paths(workspace.directory)
 
 
 @dataclass(frozen=True)
@@ -417,7 +417,7 @@ def _reload_workspace_parameters(workspace: Workspace) -> None:
 def _apply_parameter_mappings_to_workspace_config(workspace: Workspace) -> None:
     from chipcompiler.utility import json_read, json_write
 
-    configs: dict[str, dict] = {}
+    configs: dict[Path, dict] = {}
     for mapping in PARAMETER_CONFIG_FIELD_MAPPINGS:
         if mapping.parameter_key not in workspace.parameters.data:
             continue
@@ -451,6 +451,50 @@ def _load_default_floorplan_config() -> dict:
 
     root_dir = Path(__file__).resolve().parent.parent.parent
     return json_read(root_dir / "tools" / "ecc" / "configs" / "floorplan_ecc.json")
+
+
+def _default_emir_technology_file() -> Path:
+    import sys
+
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if bundle_root:
+        return (
+            Path(bundle_root)
+            / "chipcompiler"
+            / "tools"
+            / "ecc"
+            / "configs"
+            / "ics55_synthetic.tech"
+        )
+
+    root_dir = Path(__file__).resolve().parent.parent.parent
+    return root_dir / "tools" / "ecc" / "configs" / "ics55_synthetic.tech"
+
+
+def _refresh_emir_config(workspace: Workspace) -> None:
+    from chipcompiler.utility import json_read, json_write
+
+    config_path = workspace.config.get(StepEnum.EMIR.value)
+    if not config_path:
+        return
+
+    config = json_read(config_path)
+    if not isinstance(config, dict):
+        raise FileNotFoundError(f"EMIR config missing or corrupt: {config_path}")
+
+    technology_path = config_path.parent / "ics55_synthetic.tech"
+    configured = config.get("technology_file_path")
+    if configured:
+        configured_path = Path(str(configured)).expanduser()
+        if configured_path == technology_path:
+            return
+        if configured_path != _default_emir_technology_file().expanduser():
+            return
+
+    if not technology_path.is_file():
+        raise FileNotFoundError(f"Workspace EMIR technology file is missing: {technology_path}")
+    config["technology_file_path"] = str(technology_path)
+    json_write(config_path, config)
 
 
 def _has_new_floorplan_schema(config: dict) -> bool:
@@ -495,6 +539,11 @@ def _refresh_sta_config(workspace: Workspace) -> None:
             else str((workspace.pdk.root or Path("")) / path.lstrip(os.sep))
             for path in liberty.get("path", [])
         ]
+    errors = invalid_io_liberty_errors(
+        path for liberty in sta.get("liberty", []) for path in liberty["path"]
+    )
+    if errors:
+        raise ValueError("STA liberty validation failed:\n  " + "\n  ".join(errors))
 
     json_write(workspace.config[f"{StepEnum.STA.value}"], sta)
 
@@ -581,7 +630,7 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
     json_write(config_path, floorplan)
 
 
-def _ensure_writable(path: str):
+def _ensure_writable(path: str | Path):
     import os
     import stat
     from contextlib import suppress
@@ -600,7 +649,7 @@ def _ensure_writable(path: str):
                 os.chmod(target, os.stat(target).st_mode | stat.S_IWUSR)
 
 
-def _copy_missing_files(src_dir: str, dst_dir: str):
+def _copy_missing_files(src_dir: str | Path, dst_dir: str | Path):
     import os
     import shutil
 
@@ -636,8 +685,7 @@ def init_workspace_config(workspace: Workspace) -> None:
     ecc_config_dir = root_dir / "tools" / "ecc" / "configs"
     dreamplace_config = root_dir / "tools" / "ecc_dreamplace" / "configs" / "dreamplace_ecc.json"
 
-    if workspace.directory is not None:
-        migrate_workspace_config_filenames(workspace.directory)
+    migrate_workspace_config_filenames(workspace.directory)
 
     _copy_missing_files(ecc_config_dir, config_dir)
     if not workspace.config["dreamplace"].exists():
@@ -710,6 +758,7 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     _refresh_floorplan_config(workspace)
 
     _apply_parameter_mappings_to_workspace_config(workspace)
+    _refresh_emir_config(workspace)
 
     # rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
     # rcx["pdk"] = "ics55" if workspace.pdk.name == "ics55" else ""
@@ -1001,7 +1050,7 @@ def create_workspace(
     spef: str | Path = "",
     golden_verilog: str | Path = "",
     pdk_overrides: dict | None = None,
-) -> Workspace:
+) -> Workspace | None:
     """
     Create a workspace for chip design flow.
 
@@ -1051,7 +1100,7 @@ def create_workspace(
         return None
 
     # create workspace instance
-    workspace = Workspace()
+    workspace = Workspace(directory=workspace_dir)
 
     # pdk
     if isinstance(pdk, PDK):
@@ -1085,7 +1134,6 @@ def create_workspace(
         workspace.design.top_module = workspace.parameters.data["top_module"]
 
     # update path
-    workspace.directory = workspace_dir
     workspace.config = build_workspace_config_paths(workspace)
 
     # create logger first (needed for copy operations)
@@ -1121,7 +1169,7 @@ def create_workspace(
     workspace.flow.path = home_dir / "flow.json"
     workspace.parameters.path = workspace_config_toml_path(home_dir.parent)
     if dynamic_flow_data:
-        from chipcompiler.utility import json_write
+        from .flow_ledger import save_ledger
 
         workspace.flow.data = dynamic_flow_data
         from ..workspace_config import flow_section_from_flow_config
@@ -1130,13 +1178,12 @@ def create_workspace(
         if flow_section:
             workspace.parameters.data["_flow"] = flow_section
 
-        if workspace.design.golden_verilog is not None:
-            dynamic_flow_data["steps"][0]["info"]["golden_verilog"] = str(
-                workspace.design.golden_verilog
-            )
-        if workspace.pdk.spef is not None:
-            dynamic_flow_data["steps"][0]["info"]["spef"] = str(workspace.pdk.spef)
-        if not json_write(workspace.flow.path, workspace.flow.data):
+        steps = dynamic_flow_data.get("steps", [])
+        if steps and workspace.design.golden_verilog is not None:
+            steps[0].setdefault("info", {})["golden_verilog"] = str(workspace.design.golden_verilog)
+        if steps and workspace.pdk.spef is not None:
+            steps[0].setdefault("info", {})["spef"] = str(workspace.pdk.spef)
+        if not save_ledger(workspace.flow):
             raise OSError(f"Failed to write initial flow.json: {workspace.flow.path}")
     elif isinstance(flow_config, dict) and (
         "skip_steps" in flow_config or "lec_engine" in flow_config

@@ -52,6 +52,29 @@ def test_get_pdk_raises_on_missing_pdk_files(tmp_path):
         get_pdk("ics55", pdk_root=str(invalid_root))
 
 
+def test_get_pdk_rejects_ics55_io_liberty_with_invalid_timing(tmp_path, minimal_ics55_pdk_factory):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55").resolve()
+    io_liberty_dir = pdk_root / "IP" / "IO" / "ICsprout_55LLULP1233_IO_251013" / "liberty"
+    io_liberty_dir.mkdir(parents=True)
+    valid = io_liberty_dir / "ICSIOA_N55_3P3_ss_1p08_2p97_125c.lib"
+    invalid = io_liberty_dir / "ICSIOA_N55_3P3_ss_1p08_2p97_m40c.lib"
+    for path in (valid, invalid):
+        path.write_text("library(io) { }\n")
+    stdcell_libs = get_pdk("ics55", pdk_root=pdk_root).libs
+    stdcell_lib_texts = [str(path) for path in stdcell_libs]
+
+    pdk = get_pdk("ics55", pdk_root=pdk_root, overrides={"libs": [*stdcell_lib_texts, str(valid)]})
+    assert pdk.libs == [*stdcell_libs, valid]
+
+    with pytest.raises(ValueError) as exc_info:
+        get_pdk("ics55", pdk_root=pdk_root, overrides={"libs": [*stdcell_lib_texts, str(invalid)]})
+    assert str(exc_info.value) == (
+        "PDK validation failed:\n"
+        f"  ICS55 IO liberty has invalid rise timing tables: {invalid}; "
+        f"use {valid.name} instead"
+    )
+
+
 def test_get_pdk_sg13g2_prefers_explicit_root_over_env(
     tmp_path, monkeypatch, minimal_sg13g2_pdk_factory
 ):

@@ -2,12 +2,21 @@ import gzip
 import json
 import os
 import stat
+from typing import Any
 
 import pytest
 
 from chipcompiler.data import Workspace
 from chipcompiler.data.workspace.layout import EccStep
-from chipcompiler.utility.json import JsonReadError, json_read, json_read_strict, json_write
+from chipcompiler.utility.json import (
+    JsonObject,
+    JsonReadError,
+    finite_number,
+    json_read,
+    json_read_object,
+    json_read_strict,
+    json_write,
+)
 
 
 class Unserializable:
@@ -63,6 +72,14 @@ def test_json_write_accepts_path_input(tmp_path):
     assert json.loads(path.read_text()) == {"value": 1}
 
 
+@pytest.mark.parametrize("content", ["[1, 2]", "null", "3", '"text"'])
+def test_json_read_returns_empty_dict_for_a_non_object_document(tmp_path, content):
+    path = tmp_path / "data.json"
+    path.write_text(content)
+
+    assert json_read(path) == {}
+
+
 def test_json_read_accepts_gz_path_input(tmp_path):
     path = tmp_path / "data.json.gz"
     with gzip.open(path, "wt") as f:
@@ -81,6 +98,70 @@ def test_json_write_accepts_gz_path_input(tmp_path):
 
 
 # --- Phase 2: Silent failure regression tests ---
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (3, 3),
+        (2.5, 2.5),
+        (True, None),
+        ("1", None),
+        (None, None),
+        (float("nan"), None),
+        (float("inf"), None),
+        (10**400, None),
+    ],
+)
+def test_finite_number_accepts_only_finite_int_and_float(value, expected):
+    assert finite_number(value) == expected
+
+
+def test_json_object_getters_return_only_correctly_typed_values():
+    obj = JsonObject(
+        {
+            "name": "gcd",
+            "count": 3,
+            "ratio": 0.5,
+            "bad": float("nan"),
+            "items": [1],
+            "child": {"a": "b"},
+        }
+    )
+
+    assert obj.get_str("name") == "gcd"
+    assert obj.get_str("count") == ""
+    assert obj.get_str("missing", None) is None
+    assert obj.get_number("count") == 3
+    assert obj.get_number("ratio") == 0.5
+    assert obj.get_number("bad") is None
+    assert obj.get_number("name") is None
+    assert obj.get_list("items") == [1]
+    assert obj.get_list("name") == []
+    assert obj.get_obj("child").get_str("a") == "b"
+    assert obj.get_obj("name") == JsonObject()
+
+
+def test_json_object_behaves_as_a_read_only_mapping():
+    obj = JsonObject({"a": 1, "b": 2})
+
+    assert dict(obj) == {"a": 1, "b": 2}
+    assert len(obj) == 2
+    assert "a" in obj
+    assert obj.get("missing") is None
+    assert not JsonObject([1, 2])
+    assert not hasattr(obj, "__setitem__")
+
+
+def test_json_read_object_is_empty_for_missing_invalid_and_non_object_files(tmp_path):
+    good = tmp_path / "good.json"
+    good.write_text(json.dumps({"k": "v"}))
+    (tmp_path / "list.json").write_text("[1]")
+    (tmp_path / "bad.json").write_text("{")
+
+    assert json_read_object(good).get_str("k") == "v"
+    for name in ("list.json", "bad.json", "absent.json"):
+        assert len(json_read_object(tmp_path / name)) == 0
 
 
 class TestJsonReadStrict:
@@ -170,7 +251,7 @@ class TestFlowSetStatePersistence:
             json.dumps({"steps": [{"name": "SYNTHESIS", "tool": "yosys", "state": "Unstart"}]})
         )
 
-        workspace = type(
+        workspace: Any = type(
             "MockWorkspace",
             (),
             {
@@ -190,8 +271,8 @@ class TestFlowSetStatePersistence:
             },
         )()
 
-        flow = EngineFlow.__new__(EngineFlow)
-        flow.workspace = workspace
+        flow: Any = EngineFlow.__new__(EngineFlow)
+        vars(flow)["workspace"] = workspace
         flow.workspace_steps = []
 
         monkeypatch.setattr("chipcompiler.utility.json_write", lambda *a, **kw: False)

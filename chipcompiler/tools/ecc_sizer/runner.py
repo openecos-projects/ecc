@@ -9,6 +9,7 @@ from chipcompiler.data import EccOutput, EccStep, StateEnum, StepEnum, Workspace
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc_dreamplace.runner import legalize_layout
 from chipcompiler.tools.ecc_dreamplace.utility import is_eda_exist as is_dreamplace_exist
+from chipcompiler.utility.path import MissingPathError, require_path
 
 from .builder import (
     build_hold_config,
@@ -50,7 +51,7 @@ def _termination_reason(returncode: int) -> str:
     return f"signal={signame}({signum})"
 
 
-def _first_fatal_log_line(log_path: str) -> str:
+def _first_fatal_log_line(log_path: str | Path) -> str:
     """The first native fatal banner in the step log, or an empty string."""
     try:
         with open(log_path, errors="replace") as log_file:
@@ -69,7 +70,7 @@ def _run_sizer_pass(
     *,
     step: EccStep,
     output_dir: str | Path,
-    log_path: str,
+    log_path: str | Path,
     label: str,
 ) -> bool:
     """Run one Sizer pass and require it to produce fresh staging outputs."""
@@ -191,7 +192,13 @@ def run_step(
     os.makedirs(output_dir, exist_ok=True)
     log_path = step.log.file or ""
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    os.makedirs(os.path.dirname(step.output.def_ or ""), exist_ok=True)
+    try:
+        output_def = require_path(step.output.def_, "sizer output DEF")
+    except MissingPathError as exc:
+        logger.error("Sizer output path is missing for %s: %s", step.name, exc)
+        sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Imcomplete)
+        return False
+    os.makedirs(output_def.parent, exist_ok=True)
     _delete_staging_outputs(step)
     sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Ongoing)
 
@@ -210,9 +217,14 @@ def run_step(
         sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Success)
         sub_flow.update_step(step_name=save_data_step, state=StateEnum.Ongoing)
         try:
-            shutil.copy2(sizer_staging_def(step), step.output.def_)
-            shutil.copy2(sizer_staging_verilog(step), step.output.verilog)
-        except OSError:
+            shutil.copy2(
+                sizer_staging_def(step), require_path(step.output.def_, "sizer output DEF")
+            )
+            shutil.copy2(
+                sizer_staging_verilog(step),
+                require_path(step.output.verilog, "sizer output verilog"),
+            )
+        except (OSError, MissingPathError):
             logger.exception("Failed to publish preplace outputs for %s", step.name)
             _delete_published_outputs(step)
             sub_flow.update_step(step_name=save_data_step, state=StateEnum.Imcomplete)

@@ -15,16 +15,16 @@ from chipcompiler.data import LEC_STEP_TOOLS
 from chipcompiler.data.step import STEP_DIRECTORIES, flow_step_directory, step_storage_name
 from chipcompiler.engine.qor import collect_metric_records
 from chipcompiler.tools.ecc.power_artifacts import (
-    workspace_power_report_path,
+    workspace_power_report_source_path,
     workspace_power_summary_path,
 )
 from chipcompiler.tools.ecc.sta_qor import STA_REPORT_FILENAMES
 from chipcompiler.utility import JsonReadError, json_read_strict
 
 _ANALYSIS_FILES = (
-    ("qor_metrics", "qor_metrics.json"),
-    ("qor_summary", "qor_summary.json"),
-    ("qor_hotspots", "qor_hotspots.json"),
+    ("qor_metrics", "qor_metrics.json", True),
+    ("qor_summary", "qor_summary.json", True),
+    ("qor_hotspots", "qor_hotspots.json", False),
 )
 _TIMING_ISSUES_KIND = "sta_timing_issues"
 _TIMING_ISSUES_FILENAME = "sta_timing_issues.json"
@@ -32,18 +32,6 @@ _TIMING_PREVIEW_ISSUE_LIMIT = 5
 _HOTSPOT_PREVIEW_LIMIT = 5
 _HOTSPOT_SEVERITY_RANK = {"critical": 0, "warning": 1}
 _STA_CORNER_LIMIT = 32
-_CONGESTION_IMAGES = (
-    ("egr_congestion_map", "{step}_egr_horizontal_overflow.png"),
-    ("egr_congestion_map", "{step}_egr_vertical_overflow.png"),
-    ("egr_congestion_map", "{step}_egr_union_overflow.png"),
-    ("RUDY_map", "{step}_rudy_horizontal.png"),
-    ("RUDY_map", "{step}_rudy_vertical.png"),
-    ("RUDY_map", "{step}_rudy_union.png"),
-    ("RUDY_map", "{step}_lut_rudy_horizontal.png"),
-    ("RUDY_map", "{step}_lut_rudy_vertical.png"),
-    ("RUDY_map", "{step}_lut_rudy_union.png"),
-    ("density_map", "{step}_allcell_density.png"),
-)
 
 
 def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str, Any]:
@@ -77,13 +65,14 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
                 step_id, f"{step_storage_name(step_id, tool_id)}_{tool_id}"
             )
         analysis_dir = step_dir / "analysis"
-        for kind, filename in _ANALYSIS_FILES:
+        for kind, filename, required in _ANALYSIS_FILES:
             artifacts.append(
                 _artifact_ref(
                     analysis_dir / filename,
                     workspace_id=workspace_id,
                     step_id=step_id,
                     kind=kind,
+                    required=required,
                     root=root,
                 )
             )
@@ -105,6 +94,7 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
                     workspace_id=workspace_id,
                     step_id=step_id,
                     kind=_TIMING_ISSUES_KIND,
+                    required=True,
                     root=root,
                 )
             )
@@ -217,7 +207,7 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
         if step_id == "powerAnalysis":
             timing_files.extend(
                 (
-                    ("power_report", workspace_power_report_path(root)),
+                    ("power_report", workspace_power_report_source_path(root)),
                     ("power_summary", workspace_power_summary_path(root)),
                 )
             )
@@ -232,17 +222,6 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
             if step_id.lower() == "sta":
                 artifact["name"] = path.relative_to(step_dir / "feature").as_posix()
             artifacts.append(artifact)
-        if step_id.lower() in {"place", "cts"}:
-            for directory, filename in _CONGESTION_IMAGES:
-                artifacts.append(
-                    _artifact_ref(
-                        step_dir / "feature" / directory / filename.format(step=step_id),
-                        workspace_id=workspace_id,
-                        step_id=step_id,
-                        kind="congestion_image",
-                        root=root,
-                    )
-                )
     checklist_artifact = _artifact_ref(
         root / "home" / "checklist.json",
         workspace_id=workspace_id,
@@ -252,6 +231,9 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
     )
     if checklist_artifact["availability"] == "available":
         artifacts.append(checklist_artifact)
+    # One workspace path may have both a generic and a typed projection. Keep
+    # the later, more specific entry so the artifact-id contract stays unique.
+    artifacts = list({artifact["artifactId"]: artifact for artifact in artifacts}.values())
     return {
         "artifacts": artifacts,
         "metrics": metrics,
@@ -342,6 +324,7 @@ def _artifact_ref(
     workspace_id: str,
     step_id: str,
     kind: str,
+    required: bool | None = None,
     root: Path,
 ) -> dict[str, Any]:
     reference = path.relative_to(root).as_posix()
@@ -353,6 +336,8 @@ def _artifact_ref(
         "reference": reference,
         "availability": "missing",
     }
+    if required is not None:
+        artifact["required"] = required
     try:
         if path.is_file() and not _has_symlink(path, root):
             artifact["availability"] = "available"

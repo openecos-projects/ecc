@@ -3,7 +3,8 @@
 Discovery-based: packages under ``chipcompiler/tools/`` are imported and
 checked against :class:`chipcompiler.tools.protocol.ToolModule` — presence
 via ``isinstance``, plus the contract functions' parameter names and
-``run_step``'s ``bool`` return annotation. CI runs no pyright, so the
+``run_step``'s ``bool`` return annotation. The type checker does not
+enforce the structural protocol, so the
 signature surface is asserted here. A newly added tool package that does
 not satisfy the contract fails this test; there is no pass list to forget.
 
@@ -16,6 +17,7 @@ import inspect
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -42,7 +44,7 @@ def _discovered_tool_packages() -> list[str]:
     )
 
 
-def _assert_contract_signature(module: ModuleType, function_name: str) -> None:
+def _assert_contract_signature(module: Any, function_name: str) -> None:
     contract = tool_module_functions()[function_name]
     function = getattr(module, function_name)
     parameters = list(inspect.signature(function).parameters.values())
@@ -62,12 +64,13 @@ def _assert_contract_signature(module: ModuleType, function_name: str) -> None:
     )
 
 
-def _assert_contract_conformance(module: ModuleType) -> None:
+def _assert_contract_conformance(module: Any) -> None:
+    module_name = getattr(module, "__name__", "<unnamed>")
     assert isinstance(module, ToolModule)
     for function_name in tool_module_functions():
         _assert_contract_signature(module, function_name)
     assert inspect.signature(module.run_step).return_annotation is bool, (
-        f"{module.__name__}.run_step must annotate -> bool, got "
+        f"{module_name}.run_step must annotate -> bool, got "
         f"{inspect.signature(module.run_step).return_annotation!r}"
     )
 
@@ -106,13 +109,18 @@ def _conforming_fake_module() -> ModuleType:
         return None
 
     module = ModuleType("chipcompiler.tools.fake_conforming")
-    module.is_eda_exist = lambda: True
-    module.build_step = build_step
-    module.build_step_space = lambda step: None
-    module.build_step_config = lambda workspace, step: None
-    module.run_step = lambda workspace, step, ecc_module=None: True
-    # Lambdas carry no return annotation; annotate the contract-critical one.
-    module.run_step.__annotations__["return"] = bool
+
+    def run_step(workspace, step, ecc_module=None):
+        return True
+
+    run_step.__annotations__["return"] = bool
+    module.__dict__.update(
+        is_eda_exist=lambda: True,
+        build_step=build_step,
+        build_step_space=lambda step: None,
+        build_step_config=lambda workspace, step: None,
+        run_step=run_step,
+    )
     return module
 
 
@@ -122,7 +130,7 @@ def test_fake_conforming_module_passes():
 
 def test_module_missing_run_step_fails_contract():
     module = _conforming_fake_module()
-    del module.run_step
+    module.__dict__.pop("run_step", None)
     assert not isinstance(module, ToolModule)
 
 
@@ -135,21 +143,27 @@ def test_module_with_non_bool_run_step_fails_contract():
 
 def test_module_with_wrong_parameter_names_fails_contract():
     module = _conforming_fake_module()
-    module.build_step_config = lambda ws, step: None
+    module.__dict__["build_step_config"] = lambda ws, step: None
     with pytest.raises(AssertionError, match="parameter prefix"):
         _assert_contract_conformance(module)
 
 
-def test_load_eda_module_rejects_module_missing_contract_member(monkeypatch):
+def test_load_tool_rejects_module_missing_contract_member(monkeypatch):
+    import chipcompiler.tools.registry as registry
+
     module = _conforming_fake_module()
-    del module.build_step_space
+    module.__dict__.pop("build_step_space", None)
     monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setattr(registry, "tool_spec", lambda _name: registry.ToolSpec("fake_conforming"))
 
-    assert eda.load_eda_module("fake_conforming", check_dependency=False) is None
+    assert eda.load_tool("fake_conforming", check_dependency=False) is None
 
 
-def test_load_eda_module_accepts_conforming_module(monkeypatch):
+def test_load_tool_accepts_conforming_module(monkeypatch):
+    import chipcompiler.tools.registry as registry
+
     module = _conforming_fake_module()
     monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setattr(registry, "tool_spec", lambda _name: registry.ToolSpec("fake_conforming"))
 
-    assert eda.load_eda_module("fake_conforming", check_dependency=False) is module
+    assert eda.load_tool("fake_conforming", check_dependency=False) is module

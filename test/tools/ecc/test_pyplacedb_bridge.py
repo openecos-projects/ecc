@@ -26,4 +26,5 @@ def test_pydb_forwards_placement_and_rail_options(rail_options):
         0,
         rail_options.get("include_m2_pg_rail_blockage", False),
         rail_options.get("include_m2_pg_rail_density", True),
+        rail_options.get("timing_model_only", False),
     )

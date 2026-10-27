@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any
 
 from chipcompiler.data import OriginDesign, Parameters, StateEnum, Workspace
 from chipcompiler.engine import EngineFlow
@@ -112,8 +113,8 @@ def _make_signoff_workspace(
     _write(workspace_dir / "RCX_ecc" / "output" / f"{top_module}_RCworst_125C.spef")
     golden = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
     gate = workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz"
-    golden_digest = file_digest(golden)
-    gate_digest = file_digest(gate)
+    golden_digest: Any = file_digest(golden)
+    gate_digest: Any = file_digest(gate)
     _write_json(
         workspace_dir / "postRouteLec_yosys_lec" / "output" / f"{design}_postRouteLec_result.json",
         {
@@ -154,7 +155,11 @@ def _make_signoff_workspace(
     )
     _write(
         workspace_dir / "powerAnalysis_ecc" / "data" / "pw" / "power_reporter" / "power.rpt",
-        "power.rpt\n",
+        "native power.rpt\n",
+    )
+    _write(
+        workspace_dir / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt",
+        "published power.rpt\n",
     )
 
     _write_json(
@@ -212,8 +217,7 @@ def _make_engine_flow(
     design: str = "gcd",
     top_module: str = "gcd",
 ) -> EngineFlow:
-    workspace = Workspace()
-    workspace.directory = str(workspace_dir)
+    workspace = Workspace(directory=workspace_dir)
     workspace.design = OriginDesign(
         name=design,
         top_module=top_module,
@@ -226,9 +230,10 @@ def _make_engine_flow(
         "sta": workspace_dir / "config" / "sta_ecc.json",
     }
     workspace.flow.path = workspace_dir / "home" / "flow.json"
+    assert workspace.flow.path is not None
     workspace.flow.data = json.loads(workspace.flow.path.read_text(encoding="utf-8"))
     workspace.parameters = Parameters(
-        path=str(workspace_dir / "home" / "params.toml"),
+        path=workspace_dir / "home" / "params.toml",
         data={"design": design, "top_module": top_module, "pdk": "ics55"},
     )
     return EngineFlow(workspace=workspace)
@@ -285,6 +290,9 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
         f"final/timing/sta/MAX_125/RCworst/report/{report_name}" for report_name in STA_REPORT_NAMES
     }.issubset(destinations)
     assert "final/timing/power/power.rpt" in destinations
+    assert (package_dir / "final" / "timing" / "power" / "power.rpt").read_text() == (
+        "published power.rpt\n"
+    )
     assert {
         "final/timing/sta/MAX_125/RCworst/feature/qor_summary.json",
         "final/timing/sta/MAX_125/RCworst/feature/timing_paths.json",
@@ -350,8 +358,8 @@ def test_collect_signoff_package_rejects_lec_proof_bound_to_copied_netlists(tmp_
     current_gate = workspace_dir / "lvs_ecc" / "output" / "gcd_lvs.v.gz"
     _write(old_golden, current_golden.read_text())
     _write(old_gate, current_gate.read_text())
-    golden_digest = file_digest(old_golden)
-    gate_digest = file_digest(old_gate)
+    golden_digest: Any = file_digest(old_golden)
+    gate_digest: Any = file_digest(old_gate)
     _write_json(
         workspace_dir / "postRouteLec_yosys_lec" / "output" / "gcd_postRouteLec_result.json",
         {
@@ -460,8 +468,8 @@ def _rewrite_flow_without_synthesis(workspace_dir: Path, first_step: dict) -> No
 
 
 def _bind_post_route_lec(workspace_dir: Path, golden: Path, gate: Path) -> None:
-    golden_digest = file_digest(golden)
-    gate_digest = file_digest(gate)
+    golden_digest: Any = file_digest(golden)
+    gate_digest: Any = file_digest(gate)
     _write_json(
         workspace_dir / "postRouteLec_yosys_lec" / "output" / "gcd_postRouteLec_result.json",
         {
@@ -535,10 +543,10 @@ def test_collect_signoff_package_ignores_leftover_synthesis_for_floorplan_start(
 
 
 def test_collect_signoff_package_tolerates_missing_power_analysis_report(tmp_path):
-    # The power report remains optional for a package, as it was when STA
-    # produced it, but its source is now iPW's dedicated output.
+    # The power report remains optional for a package.
     workspace_dir = _make_signoff_workspace(tmp_path)
     (workspace_dir / "powerAnalysis_ecc" / "data" / "pw" / "power_reporter" / "power.rpt").unlink()
+    (workspace_dir / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt").unlink()
     engine_flow = _make_engine_flow(workspace_dir)
 
     result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
@@ -547,6 +555,21 @@ def test_collect_signoff_package_tolerates_missing_power_analysis_report(tmp_pat
     manifest = json.loads((Path(result.package_dir) / "manifest.json").read_text())
     destinations = {item["destination"] for item in manifest["files"]}
     assert "final/timing/power/power.rpt" not in destinations
+
+
+def test_collect_signoff_package_uses_legacy_power_report_when_unpublished(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    (workspace_dir / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt").unlink()
+
+    result = _make_engine_flow(workspace_dir).collect_signoff_package(
+        SignoffPackageOptions(archive=True)
+    )
+
+    assert result.ok is True
+    package_dir = Path(result.package_dir)
+    assert (package_dir / "final" / "timing" / "power" / "power.rpt").read_text() == (
+        "native power.rpt\n"
+    )
 
 
 def test_collect_signoff_package_uses_top_module_for_rcx_spef(tmp_path):
@@ -988,3 +1011,41 @@ def test_collect_signoff_package_dual_without_aggregate_fails_the_gate(tmp_path)
         issue.destination == "final/reports/postRouteLec/result.json" and issue.required
         for issue in result.issues
     )
+
+
+def test_single_step_post_route_lec_ledger_reports_issues(tmp_path):
+    import json
+
+    from chipcompiler.data import OriginDesign, Workspace
+    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.engine.signoff import SignoffPackageOptions
+
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(
+            name="gcd",
+            top_module="gcd",
+            origin_def=tmp_path / "origin.def",
+            origin_verilog=tmp_path / "origin.v",
+        ),
+    )
+    workspace.flow.path = tmp_path / "home" / "flow.json"
+    assert workspace.flow.path is not None
+    workspace.flow.path.parent.mkdir(parents=True)
+    workspace.flow.data = {
+        "steps": [
+            {
+                "name": "postRouteLec",
+                "tool": "kepler_formal",
+                "state": "Success",
+                "category": "CHECKER",
+            }
+        ]
+    }
+    workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
+    engine_flow = EngineFlow(workspace)
+
+    result = engine_flow.collect_signoff_package(SignoffPackageOptions())
+
+    assert result.ok is False
+    assert result.missing_required

@@ -158,6 +158,7 @@ def test_optional_identity_failure_does_not_fail_the_flow(recorded_design, monke
         workspace = SimpleNamespace(directory=design.workspace, _ecc_project_dir=design.project)
 
         def run_steps(self, *, rerun=False, observer=None):
+            assert observer is not None
             observer.on_step_completed(
                 SimpleNamespace(name="Synthesis", tool="yosys"), StateEnum.Success
             )

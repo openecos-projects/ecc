@@ -6,6 +6,7 @@ import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -18,6 +19,7 @@ from chipcompiler.cli.rendering.progress import (
     format_error_context,
     latest_log_line,
     run_flow_with_progress,
+    run_with_step_progress,
     sanitize_log_line,
     should_enable_run_progress,
     style,
@@ -47,6 +49,28 @@ class FakeTTYStderr:
 
     def flush(self):
         pass
+
+
+class RecordingEventSink:
+    def __init__(self):
+        self.calls = []
+        self.execution = {"schema_version": 1, "run_id": "test1"}
+        self.runtime_operation = None
+
+    def on_execution_started(self, intent, step_ids):
+        self.calls.append(("execution_started", intent, step_ids))
+
+    def on_step_started(self, step):
+        self.calls.append(("step_started", step.name))
+
+    def on_step_completed(self, step, state, error=None):
+        self.calls.append(("step_completed", step.name, state.value, error))
+
+    def on_execution_finished(self, state, error):
+        self.calls.append(("execution_finished", state, error))
+
+    def raise_if_cancelled(self):
+        self.calls.append(("raise_if_cancelled",))
 
 
 class RecordingRenderer:
@@ -636,13 +660,17 @@ def _make_step(name, tool, log_file=""):
 def _make_flow(ws, steps, run_step_fn, init_db_engine_fn=None, check_state_fn=None):
     if init_db_engine_fn is None:
 
-        def init_db_engine_fn(self):
+        def _init_db_engine(self):
             return None
+
+        init_db_engine_fn = _init_db_engine
 
     if check_state_fn is None:
 
-        def check_state_fn(self, name, tool, state):
+        def _check_state(self, name, tool, state):
             return False
+
+        check_state_fn = _check_state
 
     return type(
         "EF",
@@ -1103,7 +1131,7 @@ class TestRunFlowWithProgress:
         )
         monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: sink)
 
-        def fake_run_step(self, step, *, rerun=False, observer=None):
+        def fake_run_step(self, step, *, rerun=False, observer: Any = None):
             assert rerun is False
             observer.on_step_completed(step, StateEnum.Success)
             return StateEnum.Success
@@ -1133,7 +1161,7 @@ class TestRunFlowWithProgress:
         )
         monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: sink)
 
-        def fake_run_step(self, step, *, rerun=False, observer=None):
+        def fake_run_step(self, step, *, rerun=False, observer: Any = None):
             state = StateEnum.Success if step.name == "Synthesis" else StateEnum.Imcomplete
             observer.on_step_completed(step, state)
             return state
@@ -1368,3 +1396,92 @@ class TestFailureContextIntegration:
         for i, line in enumerate(body_lines):
             assert line.strip() != "", f"blank line at index {i} in context block: {body_lines!r}"
             assert line.startswith(" "), f"context row not indented at index {i}: {line!r}"
+
+
+class TestRunWithStepProgress:
+    def _flow(self, tmp_path):
+        workspace: Any = _make_ws(str(tmp_path))
+        workspace.flow.data = {
+            "steps": [
+                {
+                    "name": "Synthesis",
+                    "runtime": "0:00:03",
+                }
+            ]
+        }
+        step = _make_step("Synthesis", "yosys", str(tmp_path / "synth.log"))
+        return _make_flow(workspace, [step], lambda self, s: StateEnum.Success), step
+
+    def test_rerun_events_render_step_start_and_success(self, tmp_path, monkeypatch):
+        flow, step = self._flow(tmp_path)
+        delegate = RecordingEventSink()
+        monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: delegate)
+        seen = []
+
+        def runner(engine_flow, *, event_sink: Any = None):
+            seen.append(event_sink)
+            event_sink.on_execution_started("rerun", ("Synthesis",))
+            event_sink.on_step_started(step)
+            event_sink.on_step_completed(step, StateEnum.Success)
+            event_sink.on_execution_finished("Success", None)
+            return "result"
+
+        output = FakeTTYStderr(isatty_value=True)
+        result = run_with_step_progress(
+            runner,
+            flow,
+            _make_ctx(run_id="test1"),
+            "myproj",
+            stderr=output,
+        )
+
+        assert result == "result"
+        assert seen[0] is not None
+        assert seen[0].execution == delegate.execution
+        plain = _strip_ansi("".join(output.written))
+        assert "[run] test1 workspace=" in plain
+        assert "> synthesis (yosys)" in plain
+        assert "✓ synthesis (yosys) 0:00:03" in plain
+        assert "  inspect: ecc log synthesis --project myproj --workspace test1" in plain
+        assert delegate.calls == [
+            ("execution_started", "rerun", ("Synthesis",)),
+            ("step_started", "Synthesis"),
+            ("step_completed", "Synthesis", "Success", None),
+            ("execution_finished", "Success", None),
+        ]
+
+    def test_rerun_failure_renders_failed_step_status(self, tmp_path, monkeypatch):
+        flow, step = self._flow(tmp_path)
+        monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: None)
+
+        def runner(engine_flow, *, event_sink: Any = None):
+            event_sink.on_execution_started("rerun", ("Synthesis",))
+            event_sink.on_step_started(step)
+            event_sink.on_step_completed(step, StateEnum.Imcomplete)
+            event_sink.on_execution_finished("Incomplete", None)
+            return "result"
+
+        output = FakeTTYStderr(isatty_value=True)
+        run_with_step_progress(runner, flow, _make_ctx(), "myproj", stderr=output)
+
+        plain = _strip_ansi("".join(output.written))
+        assert "✗ synthesis (yosys) incomplete 0:00:03" in plain
+
+    def test_plain_mode_invokes_runner_without_progress_sink(self, tmp_path):
+        flow, _step = self._flow(tmp_path)
+        calls = []
+
+        def runner(engine_flow, **kwargs):
+            calls.append(kwargs)
+            return "result"
+
+        result = run_with_step_progress(
+            runner,
+            flow,
+            _make_ctx(OutputMode.PLAIN),
+            "myproj",
+            stderr=FakeTTYStderr(isatty_value=True),
+        )
+
+        assert result == "result"
+        assert calls == [{}]

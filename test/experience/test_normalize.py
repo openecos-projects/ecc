@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 import pytest
 
@@ -64,14 +65,15 @@ def test_configuration_identity_does_not_mix_incompatible_or_unknown_cases(tmp_p
     store = ExperienceStore(tmp_path / "store")
     _put(store, _case(tmp_path, "baseline"))
     candidate = _case(tmp_path, "candidate")
+    facts: Any = candidate.facts
     if change == "tool":
-        candidate.facts["experienceExecutionContext"]["runtime"]["tools"]["yosys"] = "0.61"
+        facts["experienceExecutionContext"]["runtime"]["tools"]["yosys"] = "0.61"
     elif change == "parameters":
-        candidate.facts["workspaceSpec"]["parameters"]["place.target_density"] = 0.5
+        facts["workspaceSpec"]["parameters"]["place.target_density"] = 0.5
     elif change == "flow":
-        candidate.facts["flow"]["steps"][0]["name"] = "other_step"
+        facts["flow"]["steps"][0]["name"] = "other_step"
     elif change == "missing":
-        candidate.facts.pop("experienceExecutionContext")
+        facts.pop("experienceExecutionContext")
     else:
         field = "process_fingerprint" if change == "process" else "input_content_fingerprint"
         candidate = candidate.model_copy(update={field: "different"})

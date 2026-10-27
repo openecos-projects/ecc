@@ -53,6 +53,7 @@ class TestCreateWorkspaceIntegration:
             parameters=test_parameters,
             input_filelist=str(filelist),
         )
+        assert workspace is not None
 
         assert os.path.exists(workspace_dir)
         assert os.path.exists(workspace_dir / "origin")

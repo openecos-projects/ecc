@@ -14,10 +14,10 @@ from chipcompiler.engine.snapshot import (
 )
 from chipcompiler.engine.workspace_lifecycle import (
     WorkspaceLifecycleError,
-    _command_retry_matches,
     _replace_string_prefix,
-    _workspace_command_fingerprint,
-    _write_workspace_command,
+    command_retry_matches,
+    workspace_command_fingerprint,
+    write_workspace_command,
 )
 from chipcompiler.utility.path import path_is_within
 
@@ -49,7 +49,7 @@ def derive_workspace(
     Returns the loaded derived workspace.
     """
     from chipcompiler.data import load_workspace
-    from chipcompiler.engine.reconcile import _workspace_lock
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
     source = Path(source_directory).expanduser().resolve()
     target = Path(target_directory).expanduser().resolve()
@@ -63,10 +63,10 @@ def derive_workspace(
         )
 
     locks = sorted((source, target), key=str)
-    with _workspace_lock(locks[0], blocking=blocking), _workspace_lock(locks[1], blocking=blocking):
+    with workspace_lock(locks[0], blocking=blocking), workspace_lock(locks[1], blocking=blocking):
         if target.exists():
             if command_id:
-                fingerprint = _workspace_command_fingerprint(
+                fingerprint = workspace_command_fingerprint(
                     "derive",
                     {
                         "directory": str(source),
@@ -75,7 +75,7 @@ def derive_workspace(
                     },
                     None,
                 )
-                if _command_retry_matches(target, command_id, fingerprint):
+                if command_retry_matches(target, command_id, fingerprint):
                     workspace = load_workspace(target)
                     if workspace is not None:
                         return workspace
@@ -126,10 +126,10 @@ def derive_workspace(
                     "targetDirectory": str(target),
                     "resetFromStep": reset_from_step,
                 }
-                _write_workspace_command(
+                write_workspace_command(
                     staging,
                     command_id,
-                    _workspace_command_fingerprint(
+                    workspace_command_fingerprint(
                         "derive",
                         command_spec,
                         None,

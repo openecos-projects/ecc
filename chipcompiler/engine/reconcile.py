@@ -34,7 +34,6 @@ when the flow is compatible but an append/adopt is due.
 """
 
 import logging
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -212,14 +211,6 @@ def _derive_section_from_persisted(persisted: list[tuple[str, str]]) -> dict:
 def _persisted_flow_data(workspace_dir: Path, json_read) -> dict:
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     return flow_data if isinstance(flow_data, dict) else {}
-
-
-@contextmanager
-def _workspace_lock(workspace_dir: Path, *, blocking: bool = True):
-    from chipcompiler.utility.workspace_lock import workspace_lock
-
-    with workspace_lock(workspace_dir, blocking=blocking):
-        yield
 
 
 def resolve_target_section(project_flow: dict | None, workspace_flow: dict | None) -> dict:
@@ -423,7 +414,9 @@ def reconcile_workspace(
         # Mismatch and read-only outcomes never see the lock created.
         return probe
 
-    with _workspace_lock(workspace_dir):
+    from chipcompiler.utility.workspace_lock import workspace_lock
+
+    with workspace_lock(workspace_dir):
         # Re-read and reclassify under the lock: a concurrent reconcile may
         # already have appended or repaired, downgrading this to read-only.
         fresh, context = _probe_workspace(workspace_dir, target_section)

@@ -3,11 +3,14 @@
 import logging
 from copy import deepcopy
 from pathlib import Path
+from typing import Literal
+
+from chipcompiler.data.workspace.flow_types import ChecklistStatus, FlowStepEntry
 
 logger = logging.getLogger(__name__)
 
 
-def summarize_step_checklist(workspace_step) -> dict | None:
+def summarize_step_checklist(workspace_step) -> ChecklistStatus | None:
     """Return a compact checklist gate projection for flow.json."""
     path = getattr(getattr(workspace_step, "checklist", None), "path", None)
     if not path:
@@ -23,33 +26,51 @@ def summarize_step_checklist(workspace_step) -> dict | None:
             "status": "unknown",
             "blocked": False,
             "failed_items": [],
-            "source": str(path),
+            "source": _checklist_source(path),
         }
-    status = {
-        "ready": "passed",
-        "blocked": "blocked",
-        "attention": "attention",
-    }.get(data.get("status"), "unknown")
+    raw_status = data.get("status")
+    status_value: Literal["passed", "blocked", "attention", "unknown"]
+    if raw_status == "ready":
+        status_value = "passed"
+    elif raw_status == "blocked":
+        status_value = "blocked"
+    elif raw_status == "attention":
+        status_value = "attention"
+    else:
+        status_value = "unknown"
     failed_items = [
         item.get("id") or item.get("title", "")
         for item in data["checklist"]
         if isinstance(item, dict) and item.get("blocked") is True
     ]
-    result = {
-        "status": status,
-        "blocked": status == "blocked",
+    result: ChecklistStatus = {
+        "status": status_value,
+        "blocked": status_value == "blocked",
         "failed_items": failed_items,
-        "items": [item for item in data["checklist"] if isinstance(item, dict)],
-        "source": str(path),
+        "source": _checklist_source(path),
     }
     if isinstance(data.get("summary"), dict):
         result["summary"] = dict(data["summary"])
+    if data.get("requirements_status") in {"none", "present"}:
+        result["requirements_status"] = data["requirements_status"]
+    if isinstance(data.get("checker_revision"), str):
+        result["revision"] = data["checker_revision"]
     if isinstance(data.get("generated_at"), str):
         result["updated_at"] = data["generated_at"]
     return result
 
 
-def sync_step_checklist(flow, workspace_step) -> dict | None:
+def _checklist_source(path: Path) -> str:
+    workspace_root = path.parent.parent
+    if (workspace_root / "home").is_dir():
+        try:
+            return path.relative_to(workspace_root).as_posix()
+        except ValueError:
+            pass
+    return str(path)
+
+
+def sync_step_checklist(flow, workspace_step) -> ChecklistStatus | None:
     """Persist checklist projection before publishing step completion."""
     projection = summarize_step_checklist(workspace_step)
     if projection is None:
@@ -57,7 +78,7 @@ def sync_step_checklist(flow, workspace_step) -> dict | None:
     current = flow.get_step(workspace_step.name, workspace_step.tool)
     if current is None:
         return projection
-    current["checklist"] = projection.pop("items", [])
+    current.pop("checklist", None)
     current["checklist_status"] = projection
     if not flow.save():
         raise RuntimeError(
@@ -140,7 +161,7 @@ def notify_step_completed(
     workspace_step,
     state,
     error,
-    previous_step: dict | None,
+    previous_step: FlowStepEntry | None,
 ) -> None:
     """Publish completion and restore Ongoing state when a fatal commit fails."""
     try:

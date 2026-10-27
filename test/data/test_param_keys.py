@@ -32,12 +32,18 @@ def test_knob_value_transforms_follow_the_agent_contract():
     enable_timing = by_id["route.enable_timing"].value_transform
     routability_opt = by_id["place.routability_opt"].value_transform
     assert enable_timing is not None and routability_opt is not None
-    assert enable_timing(value=True) == "1"
-    assert enable_timing(value=False) == "0"
-    assert routability_opt(value=True) == 1
-    assert routability_opt(value=False) == 0
-    assert by_id["cts.skew_bound"].value_transform(0.12) == "0.12"
-    assert by_id["route.thread_number"].value_transform(32) == "32"
+    enabled = True
+    disabled = False
+    assert enable_timing(enabled) == "1"
+    assert enable_timing(disabled) == "0"
+    assert routability_opt(enabled) == 1
+    assert routability_opt(disabled) == 0
+    skew_transform = by_id["cts.skew_bound"].value_transform
+    thread_transform = by_id["route.thread_number"].value_transform
+    assert skew_transform is not None
+    assert thread_transform is not None
+    assert skew_transform(0.12) == "0.12"
+    assert thread_transform(32) == "32"
     assert by_id["design.frequency_max"].value_transform is None
     assert AgentKnob("place.num_threads").value_transform is None
     assert "floorplan.utilitization" not in by_id

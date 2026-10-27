@@ -7,7 +7,12 @@ from pathlib import Path
 from chipcompiler import __version__
 from chipcompiler.cli.core.version_info import distribution_version
 from chipcompiler.cli.inspection.tool_versions import tool_versions
-from chipcompiler.project.manifest import ManifestError, load_manifest
+from chipcompiler.project.manifest import (
+    CONFIG_FILENAME,
+    MANIFEST_FILENAME,
+    ManifestError,
+    load_manifest,
+)
 from ecc_experience.adapters.chipcompiler_reader import read_workspace_observation
 from ecc_experience.adapters.process_context import process_context
 from ecc_experience.benchmark.manifest import CampaignManifest
@@ -86,7 +91,7 @@ def prepare(
             )
         files = {
             name: file_digest(project / name)[0] if (project / name).exists() else None
-            for name in ("project.json", "ecc.toml")
+            for name in (MANIFEST_FILENAME, CONFIG_FILENAME)
         }
         process = process_context(observation.facts)
         prepared.append(

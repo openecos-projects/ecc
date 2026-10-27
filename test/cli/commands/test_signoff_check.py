@@ -183,6 +183,21 @@ def test_artifact_gate_requires_one_nonempty_file(tmp_path):
     assert result["status"] == "pass"
 
 
+@pytest.mark.parametrize("checklist", [[None, "malformed"], "malformed"])
+def test_artifact_gate_ignores_malformed_checklist_entries(tmp_path, checklist):
+    checklist_path = tmp_path / "Harden_ecc" / "checklist.json"
+    checklist_path.parent.mkdir()
+    checklist_path.write_text(json.dumps({"checklist": checklist}), encoding="utf-8")
+
+    result = _artifact_gate(tmp_path, "Harden GDS", "Harden_ecc/checklist.json")
+
+    assert result == {
+        "status": "unknown",
+        "reason": "artifact_evidence_unavailable",
+        "source": "Harden_ecc/checklist.json",
+    }
+
+
 def test_sta_gate_separates_setup_and_hold(tmp_path):
     checklist = tmp_path / "sta_ecc" / "checklist.json"
     checklist.parent.mkdir()
@@ -299,7 +314,7 @@ def test_signoff_contract_exit_code_matrix(monkeypatch, tmp_path, status, expect
     from types import SimpleNamespace
 
     import chipcompiler.cli.command_handlers.signoff_check as module
-    from chipcompiler.cli.core.types import CommandContext
+    from chipcompiler.cli.core.types import CommandContext, OutputMode
 
     home = tmp_path / "home"
     home.mkdir()
@@ -322,7 +337,7 @@ def test_signoff_contract_exit_code_matrix(monkeypatch, tmp_path, status, expect
     monkeypatch.setattr(module, "_metric_checker_gate", lambda root, *args: {"status": status})
     result = module.check(
         SimpleNamespace(profile="rtl2gds"),
-        CommandContext("", None, "", None, SimpleNamespace(value="json")),
+        CommandContext("", None, "", None, OutputMode.JSON),
     )
     assert result.exit_code == expected_code
     assert result.records[0]["status"] == status

@@ -86,9 +86,10 @@ environment.
 uv run ruff format chipcompiler/ test/ ecc_experience/
 uv run ruff check chipcompiler/ test/ ecc_experience/
 
-# Type check
+# Type check (basedpyright is the gate; ty is a cross-check)
+uv run basedpyright
 uv run ty check
-uv run pyright chipcompiler/
+.github/scripts/type-check-compare.sh
 uv run mypy chipcompiler/
 
 # Legacy formatters
@@ -662,6 +663,10 @@ required by doctor.
   type / `list_value`). Add a field there and the subcommands pick it up;
   `add`/`remove` are hard-restricted to `design.rtl`
   (`unsupported_project_collection` otherwise).
+- For manifest projects, `set`/`unset`/`add`/`remove` route through
+  `project_application.apply_project` so `ecc.toml` and
+  `project.json.base_design` update in one locked write. Legacy/virgin
+  projects still edit only `ecc.toml`.
 - `ecc workspace refresh` projects the current Project structure into an
   Engine workspace-update transaction. The transaction validates the expected
   revision, builds a staging Workspace, preserves Workspace-local parameter
@@ -757,6 +762,13 @@ advisory failure cannot leave downstream stages without physical inputs. This or
 newly created preset flows and canonical ranges; existing workspace ledgers and
 explicit custom flows retain their stored order.
 
+All physical signoff steps in this sequence, including LVS, DRC, antennaCheck,
+RCX, STA, powerAnalysis, EMIR, and Harden, load the filler output as their
+physical design input. Their own DEF, Verilog, and database snapshots are
+evidence or reports and do not become the next physical source. Post-route LEC
+is the exception: it compares the synthesis golden netlist with the filler gate
+netlist.
+
 The report-only `antennaCheck` step calls iMJ's `init_mj → check_antenna →
 destroy_mj`; it does not insert diodes or repair violations. The native report is
 `antennaCheck_ecc/data/mj/antenna_checker/antenna_check.rpt`, copied unchanged to
@@ -769,14 +781,17 @@ LEF antenna rules or gate-area annotations can leave the check without coverage.
 Inspect the native log and report together. No separate antenna JSON is needed.
 
 The EMIR stage consumes `powerAnalysis_ecc/data/pw/power_reporter/instance_power.tsv`
-and the preceding physical database. Set `emir.technology_file_path` to the absolute
+and the filler physical database. Set `emir.technology_file_path` to the absolute
 path of a real `process.tech`, using `ecc param set` or `[emir]` in `ecc.toml`.
 The value is replayed into `config/emir_ecc.json` when creating or refreshing the
 workspace; editing only that generated JSON is not persistent. The default is
 an empty placeholder and will stop the step. Supply sources come from iFP's
 `postFloorplan_ecc/data/fp/pdn_generator/power.ploc`, passed as `ploc_file_path`
 without enabling `add_ploc_from_top_def`. These are ideal sources at PDN stripe
-intersections, not a package/pad model. Native outputs go to `emir_ecc/data/emir/`.
+intersections, not a package/pad model. Native outputs go to `emir_ecc/data/emir/`;
+after a successful save, every file under `data/emir/emir_reporter/` is published
+to `emir_ecc/report/`, where the GUI discovers step reports. Publication failure
+is logged without changing the save result.
 
 CI explicitly selects `test/fixtures/emir/ics55_synthetic.tech`. Its resistance
 and EM limits are invented test data, **not foundry data**. A successful CI run

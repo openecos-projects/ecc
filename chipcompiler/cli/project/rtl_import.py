@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 
 from chipcompiler.cli.project.toml_edit import set_scoped_key
+from chipcompiler.project.manifest import CONFIG_FILENAME, MANIFEST_FILENAME
 from chipcompiler.project.manifest_write import update_manifest
 from chipcompiler.utility.filelist import parse_filelist
 
@@ -26,10 +27,10 @@ def import_project_rtl(
     force: bool = False,
 ) -> dict:
     root = Path(project_dir).resolve()
-    config_path = root / "ecc.toml"
+    config_path = root / CONFIG_FILENAME
     if not config_path.is_file():
         raise RtlImportError("missing_config", "ecc.toml was not found", str(config_path))
-    if not (root / "project.json").is_file():
+    if not (root / MANIFEST_FILENAME).is_file():
         raise RtlImportError("missing_manifest", "project.json was not found", str(root))
     if filelist and verilog:
         raise RtlImportError("rtl_inputs_exclusive", "use --filelist or --verilog, not both")
@@ -37,6 +38,7 @@ def import_project_rtl(
     rtl_root = root / "rtl"
     rtl_root.mkdir(exist_ok=True)
     copied: list[tuple[Path, Path]] = []
+    source_list: Path | None = None
     if filelist:
         source_list = Path(filelist).expanduser().resolve()
         if not source_list.is_file():
@@ -78,6 +80,7 @@ def import_project_rtl(
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
     if filelist:
+        assert source_list is not None
         _write_filelist(copied[0][1], source_list, copied[1:])
 
     text = config_path.read_text(encoding="utf-8")

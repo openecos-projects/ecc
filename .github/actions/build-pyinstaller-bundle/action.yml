@@ -42,6 +42,15 @@ runs:
         /tmp/micromamba/bin/micromamba create -y -p /opt/bf -c conda-forge binutils=2.44
         echo "/opt/bf/bin" >> "$GITHUB_PATH"
 
+    - name: Stamp build identity
+      shell: bash
+      run: |
+        # Stamp the checked-out revision, not the event SHA: tag-checkout
+        # workflows (release.yml) dispatch from a branch ref while building a
+        # different commit.
+        printf 'BUILD_COMMIT = "%s"\nBUILD_DATE = "%s"\n' \
+          "$(git rev-parse HEAD)" "$(date -u +%Y%m%d)" > chipcompiler/_build_info.py
+
     - name: Build PyInstaller bundle
       shell: bash
       run: |
@@ -89,6 +98,10 @@ runs:
         version_json="$("$SMOKE_DIR/ecc" version --json)"
         printf '%s\n' "$version_json"
         grep -q '"cli_contract": 1' <<<"$version_json"
+        if "$SMOKE_DIR/ecc" version --json | grep -q '"build_commit": null'; then
+          echo "::error::PyInstaller bundle is missing the build identity stamp"
+          exit 1
+        fi
         "$SMOKE_DIR/ecc" doc config --plain > /dev/null
         "$SMOKE_DIR/ecc" doc ug --lang cn --plain > /dev/null
         "$SMOKE_DIR/ecc" experience --help

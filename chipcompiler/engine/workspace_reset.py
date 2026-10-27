@@ -7,10 +7,10 @@ from typing import Any
 from chipcompiler.engine.snapshot import commit_engineering_snapshot, read_engineering_snapshot
 from chipcompiler.engine.workspace_lifecycle import (
     WorkspaceLifecycleError,
-    _command_retry_matches,
     _load_committed_workspace,
-    _workspace_command_fingerprint,
-    _write_workspace_command,
+    command_retry_matches,
+    workspace_command_fingerprint,
+    write_workspace_command,
 )
 from chipcompiler.utility.path import path_is_within
 
@@ -86,9 +86,9 @@ def reset_workspace_flow(
     blocking: bool = True,
 ):
     target = Path(target_directory).expanduser().resolve()
-    from chipcompiler.engine.reconcile import _workspace_lock
+    from chipcompiler.utility.workspace_lock import workspace_lock
 
-    with _workspace_lock(target, blocking=blocking):
+    with workspace_lock(target, blocking=blocking):
         return _reset_workspace_flow(target, expected_workspace_revision, command_id=command_id)
 
 
@@ -98,10 +98,10 @@ def _reset_workspace_flow(
     *,
     command_id: str,
 ):
-    fingerprint = _workspace_command_fingerprint(
+    fingerprint = workspace_command_fingerprint(
         "reset_flow", {"directory": str(target)}, {}, expected_workspace_revision
     )
-    if command_id and _command_retry_matches(target, command_id, fingerprint):
+    if command_id and command_retry_matches(target, command_id, fingerprint):
         return _load_committed_workspace(target)
     workspace = _load_committed_workspace(target)
     snapshot = read_engineering_snapshot(workspace)
@@ -123,7 +123,7 @@ def _reset_workspace_flow(
         workspace_id=snapshot["workspaceId"],
         cause="workspace.flow_reset",
     )
-    _write_workspace_command(
+    write_workspace_command(
         target,
         command_id,
         fingerprint,
@@ -138,7 +138,7 @@ def _reset_step_subflow(workspace_step: Any) -> None:
 
     subflow = getattr(workspace_step, "subflow", None)
     path = getattr(subflow, "path", None)
-    if not path:
+    if not path or subflow is None:
         return
     subflow_path = Path(path)
     data = json_read(subflow_path)
@@ -158,7 +158,7 @@ def _reset_step_checklist(workspace_step: Any) -> None:
 
     checklist = getattr(workspace_step, "checklist", None)
     path = getattr(checklist, "path", None)
-    if not path:
+    if not path or checklist is None:
         return
     Checklist(Path(path)).replace([])
     checklist.checklist = []

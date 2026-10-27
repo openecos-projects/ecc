@@ -1,7 +1,19 @@
+import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock, call
 
-from chipcompiler.data import PDK, EccData, EccFeature, EccStep, OriginDesign, StepEnum, Workspace
+from chipcompiler.data import (
+    PDK,
+    EccAnalysis,
+    EccData,
+    EccFeature,
+    EccReport,
+    EccStep,
+    OriginDesign,
+    StepEnum,
+    Workspace,
+)
 from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc.module import ECCToolsModule
@@ -20,7 +32,7 @@ Cell Leakage Power   =    4.0000 uW
 """
 
 
-class FakePowerModule(ECCToolsModule):
+class FakePowerModule:
     def __init__(self):
         self.calls = []
         self.output_dir = None
@@ -49,6 +61,7 @@ class FakePowerModule(ECCToolsModule):
     def run_pw(self):
         self.calls.append(("run_pw",))
         if self.emit_report:
+            assert self.output_dir is not None
             power_report_dir = self.output_dir / "power_reporter"
             power_report_dir.mkdir(parents=True)
             (power_report_dir / STA_POWER_REPORT_FILENAME).write_text(POWER_REPORT_TEXT)
@@ -92,15 +105,23 @@ def _power_workspace(tmp_path, monkeypatch):
 
 def test_power_analysis_uses_its_own_data_directory_and_native_lifecycle(tmp_path, monkeypatch):
     power_data_dir = tmp_path / "powerAnalysis_ecc" / "data" / "pw"
-    step = EccStep(
+    analysis_dir = tmp_path / "powerAnalysis_ecc" / "analysis"
+    analysis_dir.mkdir(parents=True)
+    step: Any = EccStep(
         name=StepEnum.POWER_ANALYSIS.value,
+        directory=tmp_path / "powerAnalysis_ecc",
         data=EccData(
             dir=tmp_path / "powerAnalysis_ecc" / "data",
             steps={StepEnum.POWER_ANALYSIS.value: power_data_dir},
         ),
         feature=EccFeature(dir=tmp_path / "powerAnalysis_ecc" / "feature"),
+        report=EccReport(
+            dir=tmp_path / "powerAnalysis_ecc" / "report",
+            step=tmp_path / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt",
+        ),
+        analysis=EccAnalysis(qor_metrics=analysis_dir / "qor_metrics.json"),
     )
-    module = FakePowerModule()
+    module: Any = FakePowerModule()
     workspace, liberty, sdc, spef = _power_workspace(tmp_path, monkeypatch)
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
     monkeypatch.setattr(
@@ -135,20 +156,40 @@ def test_power_analysis_uses_its_own_data_directory_and_native_lifecycle(tmp_pat
         ("run_analysis",),
     ]
     assert (power_data_dir / "power_reporter" / STA_POWER_REPORT_FILENAME).is_file()
+    assert step.report.step.read_text(encoding="utf-8") == POWER_REPORT_TEXT
     assert read_sta_power_summary_json(step.feature.dir / STA_POWER_SUMMARY_FILENAME) is not None
+    power_step = json.loads(
+        (step.feature.dir / "powerAnalysis.step.json").read_text(encoding="utf-8")
+    )
+    assert power_step["power_summary"]["internal_uw"] == 1000.0
+    assert "metrics" not in power_step
+    power_metrics = json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))
+    assert {record["id"] for record in power_metrics["metrics"]} == {
+        "power_analysis_internal_uw",
+        "power_analysis_switching_uw",
+        "power_analysis_dynamic_uw",
+        "power_analysis_leakage_uw",
+    }
+    assert {record["source"]["path"] for record in power_metrics["metrics"]} == {
+        "feature/powerAnalysis.step.json"
+    }
 
 
 def test_power_analysis_requires_native_power_report(tmp_path, monkeypatch):
     power_data_dir = tmp_path / "powerAnalysis_ecc" / "data" / "pw"
-    step = EccStep(
+    step: Any = EccStep(
         name=StepEnum.POWER_ANALYSIS.value,
         data=EccData(
             dir=tmp_path / "powerAnalysis_ecc" / "data",
             steps={StepEnum.POWER_ANALYSIS.value: power_data_dir},
         ),
         feature=EccFeature(dir=tmp_path / "powerAnalysis_ecc" / "feature"),
+        report=EccReport(
+            dir=tmp_path / "powerAnalysis_ecc" / "report",
+            step=tmp_path / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt",
+        ),
     )
-    module = FakePowerModule()
+    module: Any = FakePowerModule()
     workspace, liberty, sdc, spef = _power_workspace(tmp_path, monkeypatch)
     module.emit_report = False
     stale_report = power_data_dir / "power_reporter" / STA_POWER_REPORT_FILENAME
@@ -157,11 +198,15 @@ def test_power_analysis_requires_native_power_report(tmp_path, monkeypatch):
     stale_summary = step.feature.dir / STA_POWER_SUMMARY_FILENAME
     stale_summary.parent.mkdir(parents=True)
     stale_summary.write_text("{}\n")
+    stale_published_report = step.report.step
+    stale_published_report.parent.mkdir(parents=True)
+    stale_published_report.write_text("stale published power\n")
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
 
     assert ecc_runner.run_power_analysis(workspace, step, module) is False
     assert not stale_report.exists()
     assert not stale_summary.exists()
+    assert not stale_published_report.exists()
     assert module.calls == [
         (
             "update_step_paths",
@@ -183,7 +228,7 @@ def test_power_analysis_requires_native_power_report(tmp_path, monkeypatch):
 
 def test_power_analysis_requires_configured_spef(tmp_path, monkeypatch):
     power_data_dir = tmp_path / "powerAnalysis_ecc" / "data" / "pw"
-    step = EccStep(
+    step: Any = EccStep(
         name=StepEnum.POWER_ANALYSIS.value,
         data=EccData(
             dir=tmp_path / "powerAnalysis_ecc" / "data",
@@ -191,7 +236,7 @@ def test_power_analysis_requires_configured_spef(tmp_path, monkeypatch):
         ),
         feature=EccFeature(dir=tmp_path / "powerAnalysis_ecc" / "feature"),
     )
-    module = FakePowerModule()
+    module: Any = FakePowerModule()
     workspace, _liberty, _sdc, spef = _power_workspace(tmp_path, monkeypatch)
     spef.unlink()
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
@@ -223,18 +268,18 @@ def test_power_analysis_native_module_methods_forward_to_ecc(tmp_path):
     assert module.run_pw() is native.run_pw.return_value
     assert module.destroy_pw() is native.destroy_pw.return_value
     assert native.mock_calls[:4] == [
-        call.lib_init(lib_paths=["/pdk/lib.lib"]),
-        call.sdc_init("/ws/design.sdc"),
-        call.spef_init("/ws/design.spef"),
+        call.lib_init(lib_paths=[Path("/pdk/lib.lib")]),
+        call.sdc_init(Path("/ws/design.sdc")),
+        call.spef_init(Path("/ws/design.spef")),
         call.init_pw(config_dict={"-temp_directory_path": str(tmp_path)}),
     ]
     native.run_pw.assert_called_once_with()
     native.destroy_pw.assert_called_once_with()
 
 
-def test_run_step_dispatches_power_analysis(monkeypatch):
-    workspace = Workspace()
-    step = EccStep(name=StepEnum.POWER_ANALYSIS.value)
+def test_run_step_dispatches_power_analysis(monkeypatch, tmp_path):
+    workspace = Workspace(directory=tmp_path)
+    step: Any = EccStep(name=StepEnum.POWER_ANALYSIS.value)
     run_power_analysis = Mock(return_value=True)
     monkeypatch.setattr(ecc_runner, "is_eda_exist", lambda: True)
     monkeypatch.setattr(ecc_runner, "run_power_analysis", run_power_analysis)
@@ -244,7 +289,7 @@ def test_run_step_dispatches_power_analysis(monkeypatch):
 
 
 def test_power_analysis_subflow_and_directory_contract(tmp_path):
-    step = EccStep(
+    step: Any = EccStep(
         name=StepEnum.POWER_ANALYSIS.value,
         subflow=Mock(path=tmp_path / "subflow.json", steps=[]),
     )

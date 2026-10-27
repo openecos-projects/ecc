@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from chipcompiler.data import EccStep, StepEnum
-from chipcompiler.utility import json_read, json_write
+from chipcompiler.utility import JsonReadError, json_read_strict, json_write
 
 
 def save_drc_feature(step: EccStep) -> bool:
@@ -13,8 +13,11 @@ def save_drc_feature(step: EccStep) -> bool:
         return False
 
     violation_map_path = Path(data_dir) / "violation_map.json"
-    violations = json_read(violation_map_path)
-    if not violation_map_path.is_file() or not isinstance(violations, list):
+    try:
+        violations = json_read_strict(violation_map_path)
+    except (OSError, JsonReadError):
+        return False
+    if not isinstance(violations, list):
         return False
 
     distribution = {}

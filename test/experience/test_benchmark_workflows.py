@@ -16,6 +16,12 @@ from ecc_experience.benchmark.spec import validate
 from ecc_experience.models import ExperienceError
 
 
+def _read_member(archive, item):
+    stream = archive.extractfile(item)
+    assert stream is not None
+    return stream.read()
+
+
 def _observation(root: Path, name: str, fingerprint: str, density: float) -> None:
     directory = root / name
     directory.mkdir(parents=True)
@@ -183,9 +189,7 @@ def test_campaign_archive_is_deterministic_and_redacts_paths(tmp_path):
     assert first["case_ids"] == ["case-1"]
     assert first["archive_sha256"] == second["archive_sha256"]
     with tarfile.open(tmp_path / "first.tar.gz", "r:gz") as archive:
-        contents = {
-            item.name: archive.extractfile(item).read() for item in archive if item.isfile()
-        }
+        contents = {item.name: _read_member(archive, item) for item in archive if item.isfile()}
     assert b"<path-redacted>" in contents["campaign/campaign-run.json"]
 
 
