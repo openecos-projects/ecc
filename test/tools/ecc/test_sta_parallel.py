@@ -2,6 +2,7 @@ import json
 import multiprocessing
 import os
 import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -46,6 +47,20 @@ def test_worker_arms_parent_death_signal_and_closes_startup_race(stale_parent):
         process.close()
         receiver.close()
         sender.close()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux parent-death signal")
+def test_explicit_parent_pid_mismatch_kills_corner_process():
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "from chipcompiler.engine.worker import arm_parent_death_signal; "
+            "arm_parent_death_signal(1)",
+        ]
+    )
+
+    assert process.wait(timeout=10) == -signal.SIGKILL
 
 
 def _guarded_slow_worker(connection):
