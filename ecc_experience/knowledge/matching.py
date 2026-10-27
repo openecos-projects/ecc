@@ -88,10 +88,16 @@ def match_cases(
             result["excluded"].append({"case_id": candidate_id, "reasons": ["stage_unavailable"]})
             continue
         stage = candidate["steps"][-1]
-        reasons = compatibility_reasons(query, candidate, query_stage, stage)
         same_inputs = (
             query["input_content_fingerprint"] is not None
             and query["input_content_fingerprint"] == candidate["input_content_fingerprint"]
+        )
+        reasons = compatibility_reasons(
+            query,
+            candidate,
+            query_stage,
+            stage,
+            cross_design=not same_inputs,
         )
         if not same_inputs and not experimental_cross_design:
             reasons.append("cross_design_not_enabled")
@@ -114,6 +120,15 @@ def match_cases(
         if reasons:
             result["excluded"].append({"case_id": candidate_id, "reasons": reasons})
             continue
+        timing_constraints_differ = analysis_timing_fingerprint(
+            query_stage
+        ) != analysis_timing_fingerprint(stage)
+        limitations = []
+        if not same_inputs and timing_constraints_differ:
+            limitations.append(
+                "Cross-design match has different timing constraints; "
+                "the observed configuration is not a constraint transfer"
+            )
         result["matches"].append(
             {
                 "case_id": candidate_id,
@@ -129,6 +144,8 @@ def match_cases(
                 "parameter_evidence_level": candidate["parameters"].get("level", "unknown"),
                 "safe_to_apply": False,
                 "compatibility": "selected_process_tool_analysis_match",
+                "timing_constraints_differ": timing_constraints_differ,
+                "limitations": limitations,
                 "provenance": [
                     {
                         "release_id": frozen["release_id"],
@@ -136,6 +153,7 @@ def match_cases(
                         "distance": distance,
                         "feature_coverage": coverage,
                         "confidence": "observed" if same_inputs else "experimental",
+                        "timing_constraints_differ": timing_constraints_differ,
                     }
                 ],
             }
@@ -153,6 +171,11 @@ def match_cases(
             "observed" if result["match_quality"] == "exact_input" else "experimental"
         )
         result["parameter_ranges"] = parameter_ranges(result["matches"])
+        if any(item["timing_constraints_differ"] for item in result["matches"]):
+            result["limitations"].append(
+                "Some cross-design matches use different timing constraints; "
+                "their observed configuration is not a constraint transfer"
+            )
     else:
         result["reason"] = "No compatible observed stage configuration in the frozen release"
     try:
@@ -171,14 +194,21 @@ def match_cases(
     return result
 
 
-def compatibility_reasons(query: dict, candidate: dict, left: dict, right: dict) -> list[str]:
+def compatibility_reasons(
+    query: dict,
+    candidate: dict,
+    left: dict,
+    right: dict,
+    *,
+    cross_design: bool = False,
+) -> list[str]:
     reasons = []
     for key in ("process", "process_fingerprint"):
         if not query.get(key) or not candidate.get(key):
             reasons.append(f"{key}_unknown")
         elif query[key] != candidate[key]:
             reasons.append(f"{key}_mismatch")
-    for key in ("tool_identity", "analysis_revision", "analysis_context"):
+    for key in ("tool_identity", "analysis_revision"):
         if not left.get(key) or not right.get(key):
             reasons.append(f"{key}_unknown")
         elif left[key] != right[key]:
@@ -190,9 +220,33 @@ def compatibility_reasons(query: dict, candidate: dict, left: dict, right: dict)
             not isinstance(constraints, dict) or not constraints.get("sdc_sha256")
         ) and "timing_constraints_unknown" not in reasons:
             reasons.append("timing_constraints_unknown")
+    left_context = left.get("analysis_context")
+    right_context = right.get("analysis_context")
+    if not left_context or not right_context:
+        reasons.append("analysis_context_unknown")
+    elif left_context != right_context:
+        timing_only_difference = (
+            cross_design
+            and analysis_timing_fingerprint(left) != analysis_timing_fingerprint(right)
+            and _without_timing_constraints(left_context)
+            == _without_timing_constraints(right_context)
+        )
+        if not timing_only_difference:
+            reasons.append("analysis_context_mismatch")
     if candidate["status"] == "fail" or left["state"] != "Success" or right["state"] != "Success":
         reasons.append("stage_not_successful")
     return reasons
+
+
+def analysis_timing_fingerprint(stage: dict) -> str | None:
+    context = stage.get("analysis_context")
+    constraints = context.get("timing_constraints") if isinstance(context, dict) else None
+    fingerprint = constraints.get("sdc_sha256") if isinstance(constraints, dict) else None
+    return fingerprint if isinstance(fingerprint, str) and fingerprint else None
+
+
+def _without_timing_constraints(context: dict) -> dict:
+    return {key: value for key, value in context.items() if key != "timing_constraints"}
 
 
 def feature_distance_legacy(left: dict, right: dict) -> tuple[float | None, list[dict]]:

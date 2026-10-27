@@ -40,6 +40,7 @@ def matching_cases(workspace_factory, tmp_path):
         sdc="sdc-hash",
         revision="quality-gates-v4",
         executed=True,
+        analysis_metadata=None,
     ):
         workspace = workspace_factory(name)
         source = workspace / "input.v"
@@ -69,7 +70,10 @@ def matching_cases(workspace_factory, tmp_path):
                     "status": "success",
                     "integrity": {"status": "pass"},
                     "analysis_revision": revision,
-                    "context": {"timing_constraints": {"sdc_sha256": sdc}},
+                    "context": {
+                        "timing_constraints": {"sdc_sha256": sdc},
+                        **(analysis_metadata or {}),
+                    },
                     "metrics": [
                         {"id": "cells", "value": 100, "unit": "count", "category": "area_cost"}
                     ],
@@ -157,6 +161,57 @@ def test_cross_design_requires_opt_in_and_family_groups_are_explicit(matching_ca
         )["status"]
         == "matches_available"
     )
+
+
+def test_cross_design_sdc_difference_is_experimental_and_recorded(matching_cases):
+    create, store, release = matching_cases
+    query = create("query")
+    same_input = create("same-input", sdc="different-sdc")
+    cross_design = create("cross-design", rtl="different design content", sdc="different-sdc")
+    create_release([same_input.case_id, cross_design.case_id], store.root, release)
+
+    result = match_cases(
+        query.case_id,
+        store.root,
+        release=release,
+        through_step="Synthesis",
+        experimental_cross_design=True,
+        cross_design_only=True,
+    )
+
+    assert [item["case_id"] for item in result["matches"]] == [cross_design.case_id]
+    match = result["matches"][0]
+    assert match["confidence"] == "experimental"
+    assert match["timing_constraints_differ"] is True
+    assert match["provenance"][0]["timing_constraints_differ"] is True
+    assert match["safe_to_apply"] is False
+    assert "different timing constraints" in match["limitations"][0]
+    assert any("different timing constraints" in item for item in result["limitations"])
+    excluded = next(item for item in result["excluded"] if item["case_id"] == same_input.case_id)
+    assert "analysis_context_mismatch" in excluded["reasons"]
+
+
+def test_cross_design_does_not_ignore_non_sdc_analysis_difference(matching_cases):
+    create, store, release = matching_cases
+    query = create("query")
+    candidate = create(
+        "candidate",
+        rtl="different design content",
+        sdc="different-sdc",
+        analysis_metadata={"analysis_profile": "different"},
+    )
+    create_release([candidate.case_id], store.root, release)
+
+    result = match_cases(
+        query.case_id,
+        store.root,
+        release=release,
+        through_step="Synthesis",
+        experimental_cross_design=True,
+    )
+
+    assert result["status"] == "insufficient_evidence"
+    assert "analysis_context_mismatch" in result["excluded"][0]["reasons"]
 
 
 def test_cross_design_only_excludes_same_input_from_the_match_limit(matching_cases):
