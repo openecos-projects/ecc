@@ -161,8 +161,10 @@ def test_gr_sizing_resolves_diff_sizing_continuous_steps(
     }
 
 
+@pytest.mark.parametrize("timing_device", ["cpu", "cuda"])
 def test_gr_sizing_lut_action_uses_real_size_discrete_owner(
     dreamplace_default_config,
+    timing_device,
 ):
     from dreamplace.flows.flow_config import resolve_flow_config
 
@@ -180,6 +182,7 @@ def test_gr_sizing_lut_action_uses_real_size_discrete_owner(
         "pin2pin_net_weighting": 0,
         "diff_sizing_continuous_steps": 0,
         "timing_action_gradient_mode": "lut_action",
+        "timing_propagation_device": timing_device,
     }
 
     resolved = resolve_flow_config(config, explicit_keys=tuple(config))
@@ -191,12 +194,14 @@ def test_gr_sizing_lut_action_uses_real_size_discrete_owner(
             "real_size_execution_mode",
             "real_size_warmup_steps",
             "continuous_size_dynamics_mode",
+            "timing_propagation_device",
         )
     } == {
         "sizing_parameterization": "real_size",
         "real_size_execution_mode": "continuous_only",
         "real_size_warmup_steps": 0,
         "continuous_size_dynamics_mode": "none",
+        "timing_propagation_device": timing_device,
     }
 
 
