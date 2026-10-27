@@ -191,9 +191,6 @@ def _api(tmp_path, monkeypatch, *, fail_once=False, split_topology=False):
     api = FlowAgentRuntimeApi(Api(workspace))
     monkeypatch.setattr(api, "_build_flow", build_flow)
     monkeypatch.setattr(
-        "agent.workspace_api._init_db_engine_for_workspace_step", lambda *_args: None
-    )
-    monkeypatch.setattr(
         tools,
         "load_eda_module",
         lambda *_args, **_kwargs: SimpleNamespace(build_step_config=rebuild, run_step=native),

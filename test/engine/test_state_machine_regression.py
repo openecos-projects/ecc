@@ -390,7 +390,6 @@ def test_advisory_step_failure_does_not_stop_flow(tmp_path, monkeypatch, advisor
         SimpleNamespace(name=advisory, tool="ecc"),
         SimpleNamespace(name=StepEnum.HARDEN.value, tool="ecc"),
     ]
-    monkeypatch.setattr(flow, "init_db_engine", lambda: True)
     monkeypatch.setattr("chipcompiler.engine.flow.log_flow", lambda workspace: None)
 
     executed = []
@@ -653,7 +652,6 @@ class TestRunStepsLedgerCompleteness:
         flow.workspace_steps = [
             SimpleNamespace(name=f"step_{i}", tool="mock") for i in range(created_steps)
         ]
-        monkeypatch.setattr(flow, "init_db_engine", lambda: True)
         monkeypatch.setattr(flow, "run_step", lambda *args, **kwargs: StateEnum.Success)
         monkeypatch.setattr("chipcompiler.engine.flow.log_flow", lambda workspace: None)
         return flow

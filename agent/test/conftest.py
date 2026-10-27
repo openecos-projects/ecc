@@ -1,8 +1,4 @@
-import os
-
 import pytest
-
-os.environ["ECC_CANDIDATE_STEP_ISOLATION"] = "0"
 
 
 @pytest.fixture(autouse=True)

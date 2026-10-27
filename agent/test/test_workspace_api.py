@@ -405,11 +405,6 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
         "agent.workspace_api.reapply_candidate_input_binding",
         lambda _ws, _flow, target: calls.append(("reapply", target)),
     )
-    monkeypatch.setattr(
-        "agent.workspace_api._init_db_engine_for_workspace_step",
-        lambda _flow, step: calls.append(("init", step.name)),
-    )
-
     result = api.candidate_rerun(
         CandidateRerunRequest(
             workspace_id="workspace-1",
@@ -456,9 +451,6 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
             "candidate-1",
         ),
         ("reapply", "place"),
-        ("init", "place"),
-        ("init", "CTS"),
-        ("init", "Harden"),
     ]
     candidate_root = tmp_path / ".agent" / "candidates" / "candidate-1"
     candidate_root_ref = ".agent/candidates/candidate-1"

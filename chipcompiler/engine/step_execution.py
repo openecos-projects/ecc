@@ -1,7 +1,6 @@
 import logging
 import os
 from dataclasses import dataclass
-from threading import Event
 
 from chipcompiler.data import Workspace, WorkspaceStep
 from chipcompiler.engine.db import EngineDB
@@ -32,13 +31,6 @@ def get_process_rss_mb(pid: int) -> float:
     except (OSError, ValueError):
         pass
     return rss_mb
-
-
-def track_current_process_memory(pid: int, stop_event: Event, peak_memory: list[float]) -> None:
-    while not stop_event.is_set():
-        peak_memory[0] = max(peak_memory[0], get_process_rss_mb(pid))
-        stop_event.wait(0.1)
-    peak_memory[0] = max(peak_memory[0], get_process_rss_mb(pid))
 
 
 def _execute_in_worker(

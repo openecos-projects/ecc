@@ -21,10 +21,6 @@ def main() -> int | None:
         else:
             raise SystemExit(f"unknown worker: {arguments[1]}")
         return entrypoint()
-    if "--ecc-candidate-worker" in arguments:
-        from agent.candidate_worker import main as entrypoint
-
-        return entrypoint()
     from chipcompiler.cli.main import main as entrypoint
 
     return entrypoint()
