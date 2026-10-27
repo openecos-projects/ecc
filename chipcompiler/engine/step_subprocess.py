@@ -29,6 +29,7 @@ def execute_step_subprocess(
     observer=None,
     started_at: float | None = None,
     worker_module: str = STEP_WORKER_MODULE,
+    layout_image: bool = True,
 ) -> StepExecutionResult:
     start_time = time.time() if started_at is None else started_at
     step_tag = f"{workspace_step.name}({workspace_step.tool})"
@@ -41,6 +42,7 @@ def execute_step_subprocess(
         "step_name": str(workspace_step.name),
         "tool": str(workspace_step.tool),
         "attempt_id": attempt_id,
+        "layout_image": layout_image,
     }
 
     try:
@@ -126,8 +128,18 @@ def execute_step_subprocess(
             step_error = f"{step_tag} worker reported failure: {result.get('error')}"
         elif returncode != 0:
             step_error = f"{step_tag} worker exited with code {returncode}."
-        elif workspace_step.name == StepEnum.RCX.value:
-            step_error = _restore_rcx_outputs(workspace_step, result)
+    if (
+        isinstance(result, dict)
+        and result.get("attempt_id") == attempt_id
+        and result.get("done") is True
+        and workspace_step.name == StepEnum.RCX.value
+        and "rcx_spef" in result
+        and cancel_error is None
+        and (step_error is None or result.get("ok") is False)
+    ):
+        rcx_error = _restore_rcx_outputs(workspace_step, result)
+        if rcx_error is not None:
+            step_error = rcx_error
     if (
         isinstance(result, dict)
         and result.get("attempt_id") == attempt_id
@@ -254,6 +266,12 @@ def run_step_worker(payload: dict, result: dict, flush) -> bool:
         ok = run_step(workspace=workspace, step=step, ecc_module=flow.engine_db.engine) is True
     if ok and step.name == StepEnum.RCX.value and isinstance(step.output, EccOutput):
         result["rcx_spef"] = [Path(path).name for path in step.output.spef]
+    outputs_complete = ok and flow.check_step_result(workspace_step=step)
+    if outputs_complete and payload["layout_image"] and not flow._is_placement_only_step(step):
+        from chipcompiler.tools import save_layout_image
+
+        if not save_layout_image(workspace=workspace, step=step):
+            workspace.logger.warning("[STEP] %s layout image was not generated", step.name)
     if not ok:
         result["error"] = f"step {payload['step_name']} reported failure"
     return ok

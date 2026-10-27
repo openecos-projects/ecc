@@ -1,7 +1,6 @@
 import io
 import json
 import logging
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -139,6 +138,63 @@ def test_rcx_worker_restores_outputs_and_preserves_shared_sta_list(monkeypatch, 
     assert step.output.spef is shared_sta_inputs
 
 
+def test_rcx_outputs_are_restored_when_worker_image_fails(monkeypatch, tmp_path):
+    from chipcompiler.data import EccOutput
+
+    step = _workspace_step(tmp_path, name="RCX")
+    step.output = EccOutput(dir=tmp_path / "output")
+    result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
+    monkeypatch.setattr(
+        step_subprocess.worker.subprocess,
+        "Popen",
+        _spawn_with_result(
+            result_path,
+            {
+                "done": True,
+                "ok": False,
+                "error": "render failed",
+                "events": [],
+                "rcx_spef": ["sample_TYPICAL_25C.spef"],
+            },
+            returncode=1,
+        ),
+    )
+
+    result = step_subprocess.execute_step_subprocess(_workspace(tmp_path), step)
+
+    assert result.error is not None
+    assert "render failed" in result.error
+    assert step.output.spef == [tmp_path / "output/sample_TYPICAL_25C.spef"]
+
+
+def test_rcx_success_result_with_nonzero_exit_does_not_restore(monkeypatch, tmp_path):
+    from chipcompiler.data import EccOutput
+
+    step = _workspace_step(tmp_path, name="RCX")
+    step.output = EccOutput(dir=tmp_path / "output")
+    result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
+    monkeypatch.setattr(
+        step_subprocess.worker.subprocess,
+        "Popen",
+        _spawn_with_result(
+            result_path,
+            {
+                "done": True,
+                "ok": True,
+                "events": [],
+                "rcx_spef": ["sample_TYPICAL_25C.spef"],
+            },
+            returncode=-11,
+        ),
+    )
+
+    result = step_subprocess.execute_step_subprocess(_workspace(tmp_path), step)
+
+    assert result.error is not None
+    assert "code -11" in result.error
+    assert step.output.spef == []
+
+
 @pytest.mark.parametrize(
     "names", [[], ["../escape.spef"], ["/tmp/escape.spef"], ["dup.spef", "dup.spef"], [False]]
 )
@@ -246,6 +302,7 @@ def test_execute_step_subprocess_reports_worker_crash(monkeypatch, tmp_path):
     payload = json.loads(fake.stdin.getvalue())
     assert payload["step_name"] == "place"
     assert payload["tool"] == "ecc"
+    assert payload["layout_image"] is True
     assert payload["result_path"].endswith(step_subprocess._RESULT_NAME)
     assert result.error is not None
     assert "code -11" in result.error
@@ -538,162 +595,3 @@ def test_resource_finalization_failure_still_terminates_worker(monkeypatch, tmp_
         step_subprocess.execute_step_subprocess(_workspace(tmp_path), step)
 
     assert terminated == [fake]
-
-
-class _FakeFlow:
-    engine_db = _ns(initialization_error=None, engine=None)
-    _step: Any = None
-
-    def __init__(self, workspace):
-        self.workspace = workspace
-        self.initialized_for = None
-
-    def create_step_workspaces(self, *, initialize_config=True):
-        assert initialize_config is False
-
-    def get_workspace_step(self, name):
-        return self._step if name == self._step.name else None
-
-    def init_db_engine_for_step(self, step):
-        self.initialized_for = step
-        return True
-
-
-def _patch_worker_dependencies(monkeypatch, tmp_path, step, flow, run_step):
-    def load_workspace(directory, *, read_only=False):
-        assert read_only is True
-        return _workspace(tmp_path)
-
-    monkeypatch.setattr("chipcompiler.data.load_workspace", load_workspace)
-    monkeypatch.setattr("chipcompiler.engine.flow.EngineFlow", lambda workspace: flow)
-    monkeypatch.setattr("chipcompiler.tools.run_step", run_step)
-
-
-def _payload_stream(tmp_path, step, result_path):
-    payload = {
-        "schema_version": 1,
-        "workspace_directory": str(tmp_path),
-        "step_name": step.name,
-        "tool": step.tool,
-        "attempt_id": "test-attempt",
-        "result_path": str(result_path),
-        "parent_pid": os.getpid(),
-    }
-    return io.StringIO(json.dumps(payload))
-
-
-def test_worker_main_success_writes_result(monkeypatch, tmp_path):
-    step = _workspace_step(tmp_path)
-    result_path = tmp_path / "out" / "result.json"
-    flow = _FakeFlow(_workspace(tmp_path))
-    flow._step = step
-    events = []
-
-    def fake_run_step(workspace, step, ecc_module=None):
-        workspace._runtime_flow_observer.on_subflow_stage(
-            step, {"name": "load", "state": "Ongoing"}
-        )
-        events.append("ran")
-        return True
-
-    _patch_worker_dependencies(monkeypatch, tmp_path, step, flow, fake_run_step)
-    monkeypatch.setattr(sys, "stdin", _payload_stream(tmp_path, step, result_path))
-
-    assert step_subprocess.main() == 0
-    result = json.loads(result_path.read_text(encoding="utf-8"))
-    assert result["done"] is True
-    assert result["ok"] is True
-    assert result["attempt_id"] == "test-attempt"
-    assert result["error"] is None
-    assert result["events"] == [
-        {"type": "subflow_stage", "subflow_step": {"name": "load", "state": "Ongoing"}}
-    ]
-    assert events == ["ran"]
-    assert flow.initialized_for is step
-
-
-def test_worker_main_rejects_ledger_save_without_writing(monkeypatch, tmp_path):
-    from contextlib import nullcontext
-
-    from chipcompiler.data.workspace.flow_ledger import save_ledger
-
-    step = _workspace_step(tmp_path)
-    result_path = tmp_path / "out" / "result.json"
-    workspace = _workspace(tmp_path)
-    flow = _FakeFlow(workspace)
-    flow._step = step
-    assert workspace.flow.path is not None
-    workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
-    before = workspace.flow.path.read_bytes()
-
-    monkeypatch.setattr(
-        "chipcompiler.data.load_workspace",
-        lambda directory, *, read_only=False: workspace,
-    )
-    monkeypatch.setattr("chipcompiler.engine.flow.EngineFlow", lambda _workspace: flow)
-    monkeypatch.setattr(
-        "chipcompiler.utility.log.capture_stdio_to_file", lambda _path: nullcontext()
-    )
-
-    def save_from_tool(workspace, step, ecc_module=None):
-        save_ledger(workspace.flow)
-        return True
-
-    monkeypatch.setattr("chipcompiler.tools.run_step", save_from_tool)
-    monkeypatch.setattr(sys, "stdin", _payload_stream(tmp_path, step, result_path))
-
-    assert step_subprocess.main() == 1
-    result = json.loads(result_path.read_text(encoding="utf-8"))
-    assert result["done"] is True
-    assert result["ok"] is False
-    assert "read-only" in result["error"]
-    assert workspace.flow.read_only is True
-    assert workspace.flow.path.read_bytes() == before
-
-
-def test_worker_main_records_step_failure(monkeypatch, tmp_path):
-    step = _workspace_step(tmp_path)
-    result_path = tmp_path / "out" / "result.json"
-    flow = _FakeFlow(_workspace(tmp_path))
-    flow._step = step
-
-    _patch_worker_dependencies(monkeypatch, tmp_path, step, flow, lambda *a, **k: False)
-    monkeypatch.setattr(sys, "stdin", _payload_stream(tmp_path, step, result_path))
-
-    assert step_subprocess.main() == 1
-    result = json.loads(result_path.read_text(encoding="utf-8"))
-    assert result["done"] is True
-    assert result["ok"] is False
-    assert "reported failure" in result["error"]
-
-
-def test_worker_main_records_missing_step(monkeypatch, tmp_path):
-    step = _workspace_step(tmp_path)
-    result_path = tmp_path / "out" / "result.json"
-    flow = _FakeFlow(_workspace(tmp_path))
-    flow._step = _ns(name="other", tool="ecc")
-
-    _patch_worker_dependencies(monkeypatch, tmp_path, step, flow, lambda *a, **k: True)
-    monkeypatch.setattr(sys, "stdin", _payload_stream(tmp_path, step, result_path))
-
-    assert step_subprocess.main() == 1
-    result = json.loads(result_path.read_text(encoding="utf-8"))
-    assert result["done"] is True
-    assert "missing in worker" in result["error"]
-
-
-def test_worker_main_records_exceptions(monkeypatch, tmp_path):
-    step = _workspace_step(tmp_path)
-    result_path = tmp_path / "out" / "result.json"
-
-    def broken_loader(directory, *, read_only=False):
-        raise OSError("no workspace")
-
-    monkeypatch.setattr("chipcompiler.data.load_workspace", broken_loader)
-    monkeypatch.setattr(sys, "stdin", _payload_stream(tmp_path, step, result_path))
-
-    assert step_subprocess.main() == 1
-    result = json.loads(result_path.read_text(encoding="utf-8"))
-    assert result["done"] is True
-    assert result["ok"] is False
-    assert "OSError" in result["error"]

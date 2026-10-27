@@ -280,6 +280,7 @@ def test_worker_uses_persisted_explicit_input_step(tmp_path, monkeypatch):
             "workspace_directory": str(tmp_path),
             "step_name": "RCX",
             "tool": "ecc",
+            "layout_image": False,
         },
         {"events": []},
         lambda: None,
