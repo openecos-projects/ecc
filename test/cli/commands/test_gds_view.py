@@ -69,7 +69,9 @@ def test_gds_view_opens_the_selected_step_gds(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     monkeypatch.setenv("DISPLAY", ":99")
     opened = []
-    monkeypatch.setattr(gds_view, "view_gds", lambda path: opened.append(path))
+    monkeypatch.setattr(
+        "chipcompiler.tools.klayout_tool.viewer.view_gds", lambda path: opened.append(path)
+    )
 
     result = gds_view.gds_view(_input(), _context(workspace))
 
@@ -82,8 +84,7 @@ def test_gds_view_reports_missing_klayout_gui(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     monkeypatch.setenv("DISPLAY", ":99")
     monkeypatch.setattr(
-        gds_view,
-        "view_gds",
+        "chipcompiler.tools.klayout_tool.viewer.view_gds",
         lambda path: (_ for _ in ()).throw(
             KlayoutUnavailableError("KLayout GUI executable was not found")
         ),

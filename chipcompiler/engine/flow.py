@@ -267,6 +267,9 @@ class EngineFlow:
             )
         )
 
+    def _should_save_layout_image(self) -> bool:
+        return True
+
     def check_step_result(self, workspace_step: WorkspaceStep):
         """
         check step output exist
@@ -801,6 +804,7 @@ class EngineFlow:
                 self.engine_db,
                 observer=observer,
                 started_at=start_time,
+                layout_image=self._should_save_layout_image(),
             )
             step_error = execution.error
             elapsed = execution.elapsed_seconds
@@ -835,15 +839,6 @@ class EngineFlow:
                     runtime,
                     peak_memory_mb,
                 )
-
-            # Run fallible post-success work BEFORE the terminal commit: a
-            # failure here must still transition Ongoing -> a terminal failure
-            # state; after a persisted Success the transition table forbids
-            # the rollback and the ledger would claim a failed step succeeded.
-            if state == StateEnum.Success and not placement_only:
-                from chipcompiler.tools import save_layout_image
-
-                save_layout_image(workspace=self.workspace, step=workspace_step)
 
             if flow_step is not None and not self.set_state(
                 name=workspace_step.name,
