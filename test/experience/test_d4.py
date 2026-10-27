@@ -188,6 +188,7 @@ def test_d4_summarizes_selection_conditioned_model_calibration(tmp_path):
     assert calibration["mae"] == 0.0
     assert calibration["interval"] == {
         "status": "available",
+        "design_count": 6,
         "observation_count": 12,
         "covered_count": 12,
         "observed_coverage": 1.0,
@@ -207,6 +208,52 @@ def test_d4_summarizes_selection_conditioned_model_calibration(tmp_path):
         "covered": True,
         "target_coverage": 0.9,
         "basis": "held_out_grouped_calibration",
+    }
+
+
+def test_d4_tolerates_a_malformed_prediction_interval(tmp_path):
+    spec = _write_spec(tmp_path)
+    result_path = tmp_path / "design-0-0-model_assisted-result.json"
+    result = json.loads(result_path.read_text())
+    for trial in result["trials"]:
+        trial["model_prediction"]["prediction"]["interval"] = []
+    result_path.write_text(json.dumps(result))
+
+    report = d4_evaluate(spec, tmp_path / "report.json")
+
+    row = next(
+        item
+        for item in report["runs"]
+        if item["design"] == "design-0" and item["strategy"] == "model_assisted"
+    )
+    assert row["model_metrics"]["post_selection"]["interval_status"] == "available"
+    assert row["model_metrics"]["post_selection"]["target_coverage"] is None
+    assert row["model_metrics"]["post_selection"]["basis"] is None
+
+
+def test_d4_does_not_claim_interval_calibration_from_one_design(tmp_path):
+    spec = _write_spec(tmp_path)
+    for design_index in range(1, 6):
+        for seed in range(2):
+            result_path = tmp_path / f"design-{design_index}-{seed}-model_assisted-result.json"
+            result = json.loads(result_path.read_text())
+            for trial in result["trials"]:
+                prediction = trial["model_prediction"]["prediction"]
+                prediction.pop("lower_bound")
+                prediction.pop("upper_bound")
+            result_path.write_text(json.dumps(result))
+
+    report = d4_evaluate(spec, tmp_path / "report.json")
+
+    calibration = report["summary"]["model_calibration"]
+    assert calibration["status"] == "available"
+    assert calibration["interval"] == {
+        "status": "insufficient_evidence",
+        "design_count": 1,
+        "observation_count": 2,
+        "covered_count": 2,
+        "observed_coverage": 1.0,
+        "target_coverage": 0.9,
     }
 
 

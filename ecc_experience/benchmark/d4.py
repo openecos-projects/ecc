@@ -1159,6 +1159,11 @@ def _post_selection_calibration(result: dict) -> dict:
             "candidate_id": candidate_id,
         }
     residual = observed_qor - predicted_qor
+    basis = None
+    if isinstance(raw, dict):
+        interval = raw.get("interval")
+        if isinstance(interval, dict) and isinstance(interval.get("basis"), str):
+            basis = interval["basis"]
     row = {
         "status": "available",
         "candidate_id": candidate_id,
@@ -1171,7 +1176,7 @@ def _post_selection_calibration(result: dict) -> dict:
         "upper_bound": None,
         "covered": None,
         "target_coverage": None,
-        "basis": raw.get("interval", {}).get("basis") if isinstance(raw, dict) else None,
+        "basis": basis,
     }
     if isinstance(raw, dict):
         lower = raw.get("lower_bound")
@@ -1207,6 +1212,7 @@ def _model_calibration_summary(metrics: list[dict]) -> dict:
         for row in rows
         if row["model_metrics"]["post_selection"]["interval_status"] == "available"
     ]
+    interval_designs = {row["design"] for row in interval_rows}
     covered = sum(
         row["model_metrics"]["post_selection"]["covered"] is True for row in interval_rows
     )
@@ -1229,8 +1235,9 @@ def _model_calibration_summary(metrics: list[dict]) -> dict:
         "rmse": (sum(error**2 for error in errors) / len(errors)) ** 0.5 if errors else None,
         "interval": {
             "status": "available"
-            if len(designs) >= 3 and interval_rows
+            if len(interval_designs) >= 3
             else "insufficient_evidence",
+            "design_count": len(interval_designs),
             "observation_count": len(interval_rows),
             "covered_count": covered,
             "observed_coverage": covered / len(interval_rows) if interval_rows else None,
