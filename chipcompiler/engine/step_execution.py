@@ -49,6 +49,7 @@ def _execute_in_worker(
     observer=None,
     started_at: float | None = None,
     worker_module: str = STEP_WORKER_MODULE,
+    layout_image: bool = True,
 ) -> StepExecutionResult:
     from chipcompiler.engine import step_subprocess
 
@@ -58,6 +59,7 @@ def _execute_in_worker(
         observer=observer,
         started_at=started_at,
         worker_module=worker_module,
+        layout_image=layout_image,
     )
 
 
@@ -69,6 +71,7 @@ def execute_tool_step(
     observer=None,
     started_at: float | None = None,
     worker_module: str = STEP_WORKER_MODULE,
+    layout_image: bool = True,
 ) -> StepExecutionResult:
     return _execute_in_worker(
         workspace,
@@ -77,6 +80,7 @@ def execute_tool_step(
         observer=observer,
         started_at=started_at,
         worker_module=worker_module,
+        layout_image=layout_image,
     )
 
 

@@ -1324,14 +1324,11 @@ class TestMandatoryArtifactFailure:
         assert state == StateEnum.Imcomplete
 
 
-def test_engine_flow_post_success_failure_marks_incomplete_not_success(
+def test_engine_flow_worker_failure_marks_incomplete_not_success(
     monkeypatch,
     tmp_path,
 ):
-    """A failure in post-success work (layout snapshot) must transition the
-    step to Incomplete — the terminal commit happens after the fallible
-    work, so no forbidden Success -> Incomplete rollback is attempted and
-    the original error is not masked."""
+    """A worker-side failure reaches a terminal Incomplete ledger state."""
     workspace: Any = Workspace(directory=tmp_path)
     flow_path = tmp_path / "home" / "flow.json"
     flow_path.parent.mkdir(parents=True)
@@ -1370,14 +1367,24 @@ def test_engine_flow_post_success_failure_marks_incomplete_not_success(
     engine_flow.workspace_steps = [workspace_step]
     engine_flow.engine_db = SimpleNamespace(engine=None)
 
-    monkeypatch.setattr(tools, "run_step", lambda **_kwargs: True)
-    monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
-    monkeypatch.setattr(engine_flow, "save_step_flow_facts", lambda **_kwargs: False)
+    from chipcompiler.engine import step_execution
+    from chipcompiler.engine.step_execution import StepExecutionResult
 
-    def explode_layout(**_kwargs):
-        raise RuntimeError("layout render exploded")
-
-    monkeypatch.setattr(tools, "save_layout_image", explode_layout)
+    monkeypatch.setattr(
+        step_execution,
+        "_execute_in_worker",
+        lambda *_args, **_kwargs: StepExecutionResult(
+            error="layout render exploded",
+            elapsed_seconds=0.0,
+            peak_memory_mb=0.0,
+            runtime="0:0:0",
+        ),
+    )
+    monkeypatch.setattr(
+        tools,
+        "save_layout_image",
+        lambda **_kwargs: pytest.fail("parent must not render a layout image"),
+    )
 
     result = engine_flow.run_step(workspace_step)
 

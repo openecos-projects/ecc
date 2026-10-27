@@ -32,6 +32,7 @@ def execute_in_process(
     observer=None,
     started_at=None,
     worker_module=None,
+    layout_image=True,
 ):
     start_time = time.time() if started_at is None else started_at
     step_tag = f"{workspace_step.name}({workspace_step.tool})"
