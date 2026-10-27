@@ -185,8 +185,26 @@ def test_legalization_runner_reapplies_real_dreamplace_overlay(monkeypatch, tmp_
     assert consumed == [16]
 
 
+def test_tool_runner_without_receipts_uses_the_shared_tool_contract(monkeypatch, tmp_path):
+    workspace = _ns(directory=tmp_path, config={}, logger=None)
+    step = _ns(name="route", tool="ecc")
+    calls = []
+    tool = _ns(
+        build_step_config=lambda *_args: calls.append("build"),
+        run_step=lambda **_kwargs: calls.append("run") or True,
+    )
+    monkeypatch.setattr(eda, "load_eda_module", lambda *_args, **_kwargs: tool)
+    monkeypatch.setattr(eda, "log_workspace_step", lambda *_args: calls.append("log"))
+
+    assert eda.run_step(workspace, step) is True
+    assert calls == ["build", "log", "run"]
+
+
 @pytest.mark.parametrize("workers", [1, 2, 3, 4])
-def test_candidate_sta_routes_only_parallel_mode_to_agent(monkeypatch, tmp_path, workers):
+def test_candidate_sta_uses_shared_parallel_dispatch(monkeypatch, tmp_path, workers):
+    from chipcompiler.tools.ecc import runner as shared_runner
+    from chipcompiler.tools.ecc import sta_parallel as shared_sta
+
     calls = []
     config_path = tmp_path / "sta.json"
     _write_json(
@@ -204,18 +222,23 @@ def test_candidate_sta_routes_only_parallel_mode_to_agent(monkeypatch, tmp_path,
     step = _ns(name="sta", tool="ecc")
     tool = _ns(
         build_step_config=lambda *_: None,
-        run_step=lambda **_: calls.append("serial") or True,
+        run_step=shared_runner.run_step,
     )
     monkeypatch.setattr(os, "cpu_count", lambda: 8)
     monkeypatch.setattr(os, "sched_getaffinity", lambda _pid: set(range(8)), raising=False)
     monkeypatch.setattr(eda, "load_eda_module", lambda *_args, **_kwargs: tool)
     monkeypatch.setattr(eda, "log_workspace_step", lambda *_: None)
-    monkeypatch.setattr(eda, "reapply_materialized_candidate_config", lambda *_: None)
-    monkeypatch.setattr(eda, "run_with_parameter_observation", lambda *args: args[-1]())
+    monkeypatch.setattr(shared_sta, "sta_workers", lambda *_args: workers)
     monkeypatch.setattr(
-        eda,
+        shared_sta,
         "run_parallel_sta",
         lambda _workspace, _step, _module, count: calls.append(count) or True,
     )
+    monkeypatch.setattr(
+        shared_runner,
+        "run_sta",
+        lambda **_kwargs: calls.append("serial") or True,
+    )
+
     assert eda.run_step(workspace, step) is True
     assert calls == (["serial"] if workers == 1 else [workers])

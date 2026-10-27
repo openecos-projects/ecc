@@ -5,7 +5,7 @@ import traceback
 from pathlib import Path
 from threading import Event, Thread
 
-from chipcompiler.data import StateEnum, WorkspaceStep
+from chipcompiler.data import StateEnum, StepEnum, WorkspaceStep
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.flow_completion import (
     normalize_legacy_terminal_state,
@@ -41,13 +41,17 @@ def _wait_for_step_rendered(observer, workspace_step: WorkspaceStep, state: Stat
 
 
 class AgentEngineFlow(EngineFlow):
+    step_worker_module = "agent.step_worker"
+
     def build_default_steps(self):
         super().build_default_steps()
         steps = self.workspace.flow.data.get("steps", [])
-        if any(step["name"] == "DRC" for step in steps):
+        if any(step["name"].casefold() == StepEnum.DRC.value for step in steps):
             return
         filler_index = next(index for index, step in enumerate(steps) if step["name"] == "filler")
-        steps.insert(filler_index, self.init_flow_step("DRC", "ecc", StateEnum.Unstart))
+        steps.insert(
+            filler_index, self.init_flow_step(StepEnum.DRC.value, "ecc", StateEnum.Unstart)
+        )
         self.save()
 
     def run_step(

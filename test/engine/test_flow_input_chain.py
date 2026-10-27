@@ -284,6 +284,8 @@ def test_worker_uses_persisted_explicit_input_step(tmp_path, monkeypatch):
         },
         {"events": []},
         lambda: None,
+        flow_factory=EngineFlow,
+        tool_runner=run_step,
     )
 
     assert executed == {

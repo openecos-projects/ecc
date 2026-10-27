@@ -293,6 +293,24 @@ def test_frozen_execution_uses_packaged_worker_dispatch(monkeypatch, tmp_path):
     assert commands == [[sys.executable, "--ecc-worker", "chipcompiler.engine.step_subprocess"]]
 
 
+def test_execute_tool_step_selects_worker_module(monkeypatch, tmp_path):
+    step = _workspace_step(tmp_path)
+    result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
+    commands = []
+    spawn_result = _spawn_with_result(result_path, {"done": True, "ok": True, "events": []})
+
+    def spawn(arguments, **kwargs):
+        commands.append(arguments)
+        return spawn_result(arguments, **kwargs)
+
+    monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", spawn)
+
+    result = execute_tool_step(_workspace(tmp_path), step, None, worker_module="agent.step_worker")
+
+    assert result.error is None
+    assert commands == [[sys.executable, "-m", "agent.step_worker"]]
+
+
 def test_execute_step_subprocess_reports_worker_crash(monkeypatch, tmp_path):
     fake = _FakePopen(returncode=-11)
     monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", lambda *a, **k: fake)
