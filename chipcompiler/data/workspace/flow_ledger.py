@@ -73,6 +73,9 @@ def save_ledger(flow) -> bool:
     flows over one workspace serialize their writes the way one EngineFlow's
     instance lock used to.
     """
+    if getattr(flow, "read_only", False):
+        raise RuntimeError("flow ledger is read-only")
+
     from chipcompiler.utility import json_write
 
     path = flow.path

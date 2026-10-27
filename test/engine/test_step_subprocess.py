@@ -48,13 +48,19 @@ def _workspace_step(tmp_path, name="place", tool="ecc"):
 
 def _workspace(tmp_path):
     from chipcompiler.data.parameter import Parameters, save_parameter
+    from chipcompiler.data.workspace import Flow
 
     parameters = Parameters(
         path=tmp_path / "home/params.toml",
         data={"design": "example", "top_module": "example", "pdk": "ics55", "clock": "clk"},
     )
     assert save_parameter(parameters)
-    return _ns(directory=str(tmp_path), logger=logging.getLogger("ecc-test"), parameters=parameters)
+    return _ns(
+        directory=str(tmp_path),
+        logger=logging.getLogger("ecc-test"),
+        parameters=parameters,
+        flow=Flow(path=tmp_path / "home/flow.json", data={"steps": []}),
+    )
 
 
 class _FakeStdin(io.BytesIO):
@@ -604,6 +610,45 @@ def test_worker_main_success_writes_result(monkeypatch, tmp_path):
     ]
     assert events == ["ran"]
     assert flow.initialized_for is step
+
+
+def test_worker_main_rejects_ledger_save_without_writing(monkeypatch, tmp_path):
+    from contextlib import nullcontext
+
+    from chipcompiler.data.workspace.flow_ledger import save_ledger
+
+    step = _workspace_step(tmp_path)
+    result_path = tmp_path / "out" / "result.json"
+    workspace = _workspace(tmp_path)
+    flow = _FakeFlow(workspace)
+    flow._step = step
+    assert workspace.flow.path is not None
+    workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
+    before = workspace.flow.path.read_bytes()
+
+    monkeypatch.setattr(
+        "chipcompiler.data.load_workspace",
+        lambda directory, *, read_only=False: workspace,
+    )
+    monkeypatch.setattr("chipcompiler.engine.flow.EngineFlow", lambda _workspace: flow)
+    monkeypatch.setattr(
+        "chipcompiler.utility.log.capture_stdio_to_file", lambda _path: nullcontext()
+    )
+
+    def save_from_tool(workspace, step, ecc_module=None):
+        save_ledger(workspace.flow)
+        return True
+
+    monkeypatch.setattr("chipcompiler.tools.run_step", save_from_tool)
+    monkeypatch.setattr(sys, "stdin", _payload_stream(tmp_path, step, result_path))
+
+    assert step_subprocess.main() == 1
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert result["done"] is True
+    assert result["ok"] is False
+    assert "read-only" in result["error"]
+    assert workspace.flow.read_only is True
+    assert workspace.flow.path.read_bytes() == before
 
 
 def test_worker_main_records_step_failure(monkeypatch, tmp_path):

@@ -6,6 +6,9 @@ shape every real workspace has, with ``category``) and a legacy ledger without
 module does not assert that they agree.
 """
 
+import json
+from contextlib import nullcontext
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -239,6 +242,55 @@ def test_explicit_input_step_selects_the_named_step(tmp_path, input_step, expect
     sources = _iterated_sources(_workspace(tmp_path), ledger)
 
     assert sources["RCX"] == expected
+
+
+def test_worker_uses_persisted_explicit_input_step(tmp_path, monkeypatch):
+    from chipcompiler.engine import step_subprocess
+
+    workspace = _workspace(tmp_path)
+    ledger = _real_ledger()
+    next(step for step in ledger.get("steps", []) if step["name"] == "RCX")["input_step"] = "route"
+    flow_path = tmp_path / "home" / "flow.json"
+    workspace.flow.path = flow_path
+    flow_path.parent.mkdir()
+    flow_path.write_text(json.dumps(ledger), encoding="utf-8")
+    before = flow_path.read_bytes()
+    monkeypatch.setattr(
+        "chipcompiler.data.load_workspace",
+        lambda directory, *, read_only=False: workspace,
+    )
+
+    def initialize_db(flow, step):
+        flow.engine_db = SimpleNamespace(engine=object(), initialization_error=None)
+
+    monkeypatch.setattr(EngineFlow, "init_db_engine_for_step", initialize_db)
+    monkeypatch.setattr(
+        "chipcompiler.utility.log.capture_stdio_to_file", lambda _path: nullcontext()
+    )
+    executed = {}
+
+    def run_step(workspace, step, ecc_module=None):
+        executed.update(name=step.name, input_def=step.input.def_)
+        return True
+
+    monkeypatch.setattr("chipcompiler.tools.run_step", run_step)
+
+    assert step_subprocess.run_step_worker(
+        {
+            "workspace_directory": str(tmp_path),
+            "step_name": "RCX",
+            "tool": "ecc",
+        },
+        {"events": []},
+        lambda: None,
+    )
+
+    assert executed == {
+        "name": "RCX",
+        "input_def": _build(workspace, "route", "ecc").output.def_,
+    }
+    assert workspace.flow.read_only is True
+    assert flow_path.read_bytes() == before
 
 
 @pytest.mark.parametrize("input_step", ["does_not_exist", "sta"])

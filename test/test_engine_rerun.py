@@ -59,7 +59,6 @@ def _fake_execution(engine_flow, monkeypatch, outcomes=None):
         return state
 
     monkeypatch.setattr(engine_flow, "run_step", run_step)
-    monkeypatch.setattr(engine_flow, "init_db_engine_for_step", lambda step: True)
     return calls
 
 
@@ -256,7 +255,6 @@ class TestRunFrom:
             return StateEnum.Success
 
         monkeypatch.setattr(flow, "run_step", run_step)
-        monkeypatch.setattr(flow, "init_db_engine_for_step", lambda step: True)
 
         assert rerun.run_from(flow, "place").ok
         # the suffix is already persisted Unstart when the first selected step runs
@@ -436,7 +434,6 @@ class TestRunResume:
             return StateEnum.Success
 
         monkeypatch.setattr(flow, "run_step", run_step)
-        monkeypatch.setattr(flow, "init_db_engine_for_step", lambda step: True)
 
         result = rerun.run_resume(flow, event_sink=Sink())
 
@@ -447,6 +444,44 @@ class TestRunResume:
             ("step_completed", "place", "Success", None),
             ("execution_finished", "Success", None),
         ]
+
+
+@pytest.mark.parametrize("selector", ["from", "only", "resume"])
+def test_rerun_never_initializes_native_db_or_redirects_in_parent(monkeypatch, tmp_path, selector):
+    from chipcompiler.engine import EngineDB
+    from chipcompiler.tools.ecc.module import ECCToolsModule
+
+    flow = _make_run_flow(
+        tmp_path,
+        [("Synthesis", "Success"), ("place", "Incomplete"), ("CTS", "Incomplete")],
+    )
+    calls = _fake_execution(flow, monkeypatch)
+    redirects = []
+    monkeypatch.setattr(
+        rerun,
+        "redirect_stdio_to_file",
+        lambda path: redirects.append(path),
+        raising=False,
+    )
+
+    def fail_native_init(*_args, **_kwargs):
+        raise AssertionError("parent native DB initialization must not run")
+
+    monkeypatch.setattr(EngineDB, "create_db_engine", fail_native_init)
+    monkeypatch.setattr(ECCToolsModule, "__init__", fail_native_init)
+    monkeypatch.setattr(flow, "init_db_engine_for_step", fail_native_init)
+
+    if selector == "from":
+        result = rerun.run_from(flow, "place")
+    elif selector == "only":
+        result = rerun.run_only(flow, "place", force=True)
+    else:
+        result = rerun.run_resume(flow)
+
+    assert result.ok
+    assert redirects == []
+    expected = ["place"] if selector == "only" else ["place", "CTS"]
+    assert [name for name, _rerun in calls] == expected
 
 
 class TestInitDbEngineForStep:

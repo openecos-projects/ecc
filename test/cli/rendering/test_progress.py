@@ -657,30 +657,15 @@ def _make_step(name, tool, log_file=""):
     return type("WSS", (), {"name": name, "tool": tool, "log": log})()
 
 
-def _make_flow(ws, steps, run_step_fn, init_db_engine_fn=None, check_state_fn=None):
-    if init_db_engine_fn is None:
-
-        def _init_db_engine(self):
-            return None
-
-        init_db_engine_fn = _init_db_engine
-
-    if check_state_fn is None:
-
-        def _check_state(self, name, tool, state):
-            return False
-
-        check_state_fn = _check_state
-
+def _make_flow(ws, steps, run_step_fn):
     return type(
         "EF",
         (),
         {
             "workspace": ws,
             "workspace_steps": steps,
-            "init_db_engine": init_db_engine_fn,
+            "init_db_engine": lambda self: None,
             "run_step": run_step_fn,
-            "check_state": check_state_fn,
         },
     )()
 
@@ -929,11 +914,27 @@ class TestRunFlowWithProgress:
         end_idx = call_order.index(("section", "ecc - end step - Floorplan"))
         assert begin_idx < run_idx < end_idx
 
-    def test_init_db_engine_called_before_run_step(self, tmp_path):
-        call_order = []
+    def test_run_step_does_not_initialize_parent_db(self, tmp_path, monkeypatch):
+        from chipcompiler.engine import EngineDB
+        from chipcompiler.tools.ecc.module import ECCToolsModule
 
-        def fake_init_db_engine(self):
-            call_order.append(("init_db_engine",))
+        call_order = []
+        redirects = []
+        monkeypatch.setattr(
+            progress,
+            "redirect_stdio_to_file",
+            lambda path: redirects.append(path),
+            raising=False,
+        )
+
+        def fail_native_init(*_args, **_kwargs):
+            raise AssertionError("parent native DB initialization must not run")
+
+        monkeypatch.setattr(EngineDB, "create_db_engine", fail_native_init)
+        monkeypatch.setattr(ECCToolsModule, "__init__", fail_native_init)
+
+        def fake_init_db_engine():
+            raise AssertionError("parent DB initialization must not run")
 
         def fake_run_step(self, s):
             call_order.append(("run_step", s.name))
@@ -945,24 +946,21 @@ class TestRunFlowWithProgress:
             ),
             [_make_step("Synthesis", "yosys")],
             fake_run_step,
-            init_db_engine_fn=fake_init_db_engine,
         )
+        monkeypatch.setattr(flow, "init_db_engine", fake_init_db_engine)
 
         buf = FakeTTYStderr(isatty_value=True)
-        run_flow_with_progress(flow, _make_ctx(), None, buf)
+        assert run_flow_with_progress(flow, _make_ctx(), None, buf) is True
 
         begin_idx = call_order.index(("section", "yosys - begin step - Synthesis"))
-        init_idx = call_order.index(("init_db_engine",))
         run_idx = call_order.index(("run_step", "Synthesis"))
         end_idx = call_order.index(("section", "yosys - end step - Synthesis"))
-        assert begin_idx < init_idx < run_idx < end_idx
+        assert begin_idx < run_idx < end_idx
+        assert redirects == []
 
     def test_restores_progress_output_after_run_step_redirects_stdio(self, tmp_path, capfd):
         log_file = tmp_path / "place.log"
         call_order = []
-
-        def fake_init_db_engine(self):
-            call_order.append(("init_db_engine",))
 
         def fake_run_step(self, s):
             call_order.append(("run_step", s.name))
@@ -979,7 +977,6 @@ class TestRunFlowWithProgress:
             ),
             [_make_step("placement", "dreamplace", str(log_file))],
             fake_run_step,
-            init_db_engine_fn=fake_init_db_engine,
         )
 
         result = run_flow_with_progress(flow, _make_ctx(), "myproj", sys.stderr)
@@ -1006,54 +1003,14 @@ class TestRunFlowWithProgress:
         assert "after progress stderr" not in step_log
 
         begin_idx = call_order.index(("section", "dreamplace - begin step - placement"))
-        init_idx = call_order.index(("init_db_engine",))
         run_idx = call_order.index(("run_step", "placement"))
         end_idx = call_order.index(("section", "dreamplace - end step - placement"))
-        assert begin_idx < init_idx < run_idx < end_idx
+        assert begin_idx < run_idx < end_idx
 
-    def test_captures_init_db_engine_output_in_step_log(self, tmp_path, capfd):
-        log_file = tmp_path / "floorplan.log"
-
-        def fake_init_db_engine(self):
-            print("raw init stdout")
-            sys.stderr.write("raw init stderr\n")
-            sys.stderr.flush()
-
-        def fake_run_step(self, s):
-            time.sleep(1.0)
-            return StateEnum.Success
-
-        flow = _make_flow(
-            _make_ws(str(tmp_path)),
-            [_make_step("Floorplan", "ecc", str(log_file))],
-            fake_run_step,
-            init_db_engine_fn=fake_init_db_engine,
-        )
-
-        result = run_flow_with_progress(flow, _make_ctx(), "myproj", sys.stderr)
-
-        captured = capfd.readouterr()
-        terminal = _strip_ansi(captured.err)
-        step_log = log_file.read_text()
-
-        assert result is True
-        assert "raw init stdout" in step_log
-        assert "raw init stderr" in step_log
-        assert "raw init stdout" not in captured.out
-        assert "log: raw init stderr" in terminal
-        assert "\nraw init stderr\n" not in terminal
-
-    def test_does_not_initialize_db_for_skipped_progress_step(self, tmp_path):
+    def test_progress_does_not_initialize_parent_db_for_any_step(self, tmp_path, monkeypatch):
         synth_log = tmp_path / "synth.log"
         floorplan_log = tmp_path / "floorplan.log"
         init_calls = []
-
-        def fake_check_state(self, name, tool, state):
-            return name == "Synthesis" and state == StateEnum.Success
-
-        def fake_init_db_engine(self):
-            init_calls.append("init_db_engine")
-            print("init for step")
 
         def fake_run_step(self, s):
             return StateEnum.Success
@@ -1065,17 +1022,16 @@ class TestRunFlowWithProgress:
                 _make_step("Floorplan", "ecc", str(floorplan_log)),
             ],
             fake_run_step,
-            init_db_engine_fn=fake_init_db_engine,
-            check_state_fn=fake_check_state,
         )
+        monkeypatch.setattr(flow, "init_db_engine", lambda: init_calls.append("init_db_engine"))
 
         buf = FakeTTYStderr(isatty_value=True)
         result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
 
         assert result is True
-        assert init_calls == ["init_db_engine"]
+        assert init_calls == []
         assert not synth_log.exists()
-        assert "init for step" in floorplan_log.read_text()
+        assert not floorplan_log.exists()
 
     def test_monitor_cleanup_on_run_step_exception(self, tmp_path):
         def raising_run_step(self, s):
