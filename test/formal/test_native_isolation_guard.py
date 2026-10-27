@@ -124,7 +124,7 @@ def _scan_paths(paths, root=_ROOT):
 
 def _production_sources():
     completed = subprocess.run(
-        ["git", "ls-files", "--", "chipcompiler", "agent"],
+        ["git", "ls-files", "--", "*.py"],
         cwd=_ROOT,
         check=True,
         capture_output=True,
@@ -133,7 +133,7 @@ def _production_sources():
     return [
         _ROOT / relative
         for relative in completed.stdout.splitlines()
-        if relative.endswith(".py")
+        if not relative.startswith("test/")
         and not relative.startswith("agent/test/")
         and not relative.startswith("chipcompiler/thirdparty/")
     ]
@@ -174,6 +174,18 @@ def test_guard_rejects_new_function_in_allowlisted_module(tmp_path):
 
     assert _unexpected(_scan(tmp_path)) == [
         NativeCall("chipcompiler.engine.flow", "helper", "create_db_engine", 2)
+    ]
+
+
+def test_guard_scans_other_first_party_packages(tmp_path):
+    _write(
+        tmp_path,
+        "packaging/run_ecc.py",
+        "def helper():\n    return create_db_engine(None, None)\n",
+    )
+
+    assert _unexpected(_scan(tmp_path)) == [
+        NativeCall("packaging.run_ecc", "helper", "create_db_engine", 2)
     ]
 
 
