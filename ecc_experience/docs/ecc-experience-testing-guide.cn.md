@@ -1974,7 +1974,9 @@ family 隔离（`family_isolation=explicit_groups`）时，`adaptive_warm` 才�
 同输入 seed 会标记为 `same_input` 并产生 `warm_start_not_cross_design:<design>`；缺少
 分组会产生 `warm_start_family_isolation_missing:<design>`。报告同时给出
 `config_file_counts` 和 `config_files_by_strategy`，用于确认各策略确实探索了预期的工具
-配置文件，而不是只重复一个参数。
+配置文件，而不是只重复一个参数。`summary.strategy_separation` 会按设计比较各策略最终
+选中的参数，并将本轮标记为 `separated`、`converged` 或 `unknown`。`converged` 仍是
+有效证据，但不能证明策略优势；下一轮应扩大或更换经过审核的搜索轴，而不是降低验收门槛。
 
 ```bash
 ecc experience dse d4 --spec ./inputs/d4.json --output ./reports/d4.json --json

@@ -164,6 +164,12 @@ def test_d4_reports_the_iteration_config_files_each_strategy_explored(tmp_path):
 
     assert report["summary"]["config_file_counts"] == {"floorplan_ecc.json": 48}
     assert report["summary"]["config_files_by_strategy"]["grid"] == ["floorplan_ecc.json"]
+    assert report["summary"]["strategy_separation"] == {
+        "status": "converged",
+        "separated_designs": [],
+        "converged_designs": [f"design-{index}" for index in range(6)],
+        "unknown_designs": [],
+    }
     assert report["runs"][0]["config_files"] == ["floorplan_ecc.json"]
 
 

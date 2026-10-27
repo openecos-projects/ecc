@@ -146,6 +146,7 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
             "warm_start_modes": dict(
                 sorted(Counter(row["warm_start"]["status"] for row in metrics).items())
             ),
+            "strategy_separation": _strategy_separation(metrics),
         },
         "strategies": strategy_summary,
         "comparisons": comparisons,
@@ -615,6 +616,16 @@ def _metrics(run: dict) -> dict:
     peak_rss = resources["peak_rss_bytes"]
     observed_load = resources["load_average"]["median"]
     objective = plan.get("objectives", [{}])[0]
+    selection = result.get("selection")
+    selected_candidate = selection.get("candidate") if isinstance(selection, dict) else None
+    selected_parameters = next(
+        (
+            trial.get("parameters")
+            for trial in trials
+            if isinstance(trial, dict) and trial.get("candidate_id") == selected_candidate
+        ),
+        None,
+    )
     return {
         "design": run["design"],
         "family": run["family"],
@@ -635,6 +646,8 @@ def _metrics(run: dict) -> dict:
             "full": _validation_signoff(result.get("full_validation")),
             "fresh": _validation_signoff(fresh),
         },
+        "selected_candidate": selected_candidate,
+        "selected_parameters": selected_parameters,
         "score_delta": result.get("score_delta"),
         "improved": result.get("improved"),
         "recommendation_hit": bool(
@@ -660,6 +673,30 @@ def _metrics(run: dict) -> dict:
         "observed_load_average": observed_load,
         "observed_max_load_1m": resources["load_1m"]["max"],
         "model_metrics": _model_metrics(result),
+    }
+
+
+def _strategy_separation(metrics: list[dict]) -> dict:
+    by_design = defaultdict(dict)
+    for row in metrics:
+        if row["status"] == "complete" and row["selected_parameters"] is not None:
+            by_design[row["design"]][row["strategy"]] = digest(row["selected_parameters"])
+    separated = []
+    converged = []
+    unknown = []
+    for design, selections in sorted(by_design.items()):
+        if set(selections) != set(STRATEGIES):
+            unknown.append(design)
+        elif len(set(selections.values())) > 1:
+            separated.append(design)
+        else:
+            converged.append(design)
+    status = "separated" if separated else "converged" if converged else "unknown"
+    return {
+        "status": status,
+        "separated_designs": separated,
+        "converged_designs": converged,
+        "unknown_designs": unknown,
     }
 
 

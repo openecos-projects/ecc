@@ -2307,7 +2307,11 @@ seed is reported as `same_input` and produces
 `warm_start_family_isolation_missing:<design>`. The report also lists
 `config_file_counts` and `config_files_by_strategy` so a reader can confirm
 that the strategies explored the intended tool configuration files rather than
-only replaying one parameter.
+only replaying one parameter. `summary.strategy_separation` compares each
+strategy's selected parameters per design and labels the round `separated`,
+`converged` or `unknown`. A converged round remains valid evidence but cannot
+show a strategy advantage; widen or change a reviewed axis before the next
+round instead of lowering the acceptance gates.
 
 ```bash
 ecc experience dse d4 --spec ./inputs/d4.json --output ./reports/d4.json --json
