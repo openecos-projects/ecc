@@ -98,7 +98,7 @@ app.add_typer(diagnose_app, name="diagnose")
 
 
 def invoke_typer_app(argv: Sequence[str]) -> int:
-    if argv and argv[0] == "--step-worker":
+    if list(argv) == ["--ecc-worker", "chipcompiler.engine.step_subprocess"]:
         from chipcompiler.engine.step_subprocess import main as step_worker_main
 
         return step_worker_main()

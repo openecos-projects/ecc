@@ -8,6 +8,7 @@ import threading
 import time
 from contextlib import suppress
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -98,6 +99,22 @@ def test_spawn_replaces_stale_result_and_supplies_payload(tmp_path):
         "error": None,
         "events": [],
     }
+
+
+def test_spawn_stdin_failure_terminates_started_process(monkeypatch, tmp_path):
+    class BrokenStdin(io.BytesIO):
+        def write(self, _data):
+            raise BrokenPipeError("worker closed stdin")
+
+    process = SimpleNamespace(pid=4321, stdin=BrokenStdin())
+    monkeypatch.setattr(worker.subprocess, "Popen", lambda *_args, **_kwargs: process)
+    terminated = []
+    monkeypatch.setattr(worker, "terminate_process_group", terminated.append)
+
+    with pytest.raises(BrokenPipeError, match="worker closed stdin"):
+        worker.spawn("unused.module", {}, result_path=tmp_path / "result.json")
+
+    assert terminated == [process]
 
 
 def test_spawn_resolves_relative_result_path_before_changing_cwd(tmp_path, monkeypatch):
