@@ -2057,3 +2057,47 @@ place.density_weight`，边界使用 `place`；需要区分放置策略时，可
 `Timing optimization` 或其后的 rung 评估。JSON 对象型字段（如
 `place.diff_sizing_coefficients`、`place.global_place_stages`、完整 Sizer
 `global_routing_rc`）暂不直接作为搜索轴，必须走显式 schema、范围和回执评审。
+
+### 22.6 将每轮 benchmark 转为候选知识
+
+knowledge 命令是可选的。它们只消费冻结证据，不启动 EDA、不改写 case、不 apply 参数，
+也不自动发布模型。每轮 benchmark 或 D4 先生成 `campaign-manifest/1` candidate；同一轮
+数据不能同时充当训练集和泛化证据。
+
+```bash
+ecc experience knowledge manifest \
+  --report ./reports/d4.json --output ./reports/campaign-manifest.json --json
+ecc experience knowledge delta \
+  --manifest ./reports/campaign-manifest.json \
+  --previous-release ./releases/champion.json \
+  --heldout ./inputs/heldout.json \
+  --active-cohort "$ECC_ACTIVE_COHORT" \
+  --output ./reports/knowledge-delta.json --json
+ecc experience knowledge advice \
+  --manifest ./reports/campaign-manifest.json \
+  --output ./reports/strategy-advice.json --json
+```
+
+`knowledge delta` 将 run 分到 `reuse`、`rebridge`、`reobserve` 和 `retire`。只有
+`reuse` 可以进入 candidate dataset；runtime cohort 变化或 step contract 不完整时必须
+`rebridge`，质量证据、验证或回执不完整时必须 `reobserve`。`retire` 只是基于保留历史
+证据的建议。默认策略固定为 `training_allowed=false`、`promotion_allowed=false` 和
+`safe_to_apply=false`。
+
+工具链或 step contract 升级时，使用 bridge spec 和 drift observation 评估可比性。
+bridge 至少需要 3 个独立 design 和 2 个 family；指标缺失保持 `unknown`，即使通过也只
+得到 `compatible_experimental`。
+
+```bash
+ecc experience knowledge bridge \
+  --spec ./inputs/bridge.json --output ./reports/bridge.json --json
+ecc experience knowledge drift \
+  --observation ./inputs/drift.json --output ./reports/drift.json --json
+ecc experience knowledge champion \
+  --spec ./inputs/champion.json --output ./reports/champion.json --json
+```
+
+`strategy advice` 只使用等预算、按 design/seed 配对的 grid 对照。少于 6 对或符号检验
+不显著时回退到 `grid`。`champion` 在独立 held-out 证据上比较 champion 和 challenger，
+但最强结论也只是 `promote_candidate`，仍需人工审阅后的 release 命令。每轮都要保留
+manifest、delta 和源报告 SHA256，不覆盖上一版 release。

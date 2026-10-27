@@ -2417,3 +2417,52 @@ optimization` or a later rung. JSON-object fields such as
 `place.diff_sizing_coefficients`, `place.global_place_stages` and the complete
 Sizer `global_routing_rc` are not direct axes until an explicit schema, range
 and receipt review exists.
+
+### 22.6 Turn benchmark rounds into candidate knowledge
+
+The knowledge commands are optional. They consume frozen evidence and never
+start EDA, rewrite cases, apply parameters or publish a model. A benchmark or
+D4 round first produces a `campaign-manifest/1` candidate; the same round must
+not also serve as its own training or generalization evidence.
+
+```bash
+ecc experience knowledge manifest \
+  --report ./reports/d4.json --output ./reports/campaign-manifest.json --json
+ecc experience knowledge delta \
+  --manifest ./reports/campaign-manifest.json \
+  --previous-release ./releases/champion.json \
+  --heldout ./inputs/heldout.json \
+  --active-cohort "$ECC_ACTIVE_COHORT" \
+  --output ./reports/knowledge-delta.json --json
+ecc experience knowledge advice \
+  --manifest ./reports/campaign-manifest.json \
+  --output ./reports/strategy-advice.json --json
+```
+
+`knowledge delta` sorts runs into `reuse`, `rebridge`, `reobserve` and `retire`.
+Only `reuse` evidence may enter a candidate dataset. A changed runtime cohort or
+incomplete step contract requires `rebridge`; incomplete quality, failed
+validation or missing receipts require `reobserve`. Retirement remains a
+recommendation backed by preserved historical evidence. The default policy is
+`training_allowed=false`, `promotion_allowed=false` and `safe_to_apply=false`.
+
+Use a bridge specification and drift observation when a toolchain or step
+contract changes. A bridge needs at least three independent designs and two
+families; missing metrics stay `unknown`, and even a pass is only
+`compatible_experimental`.
+
+```bash
+ecc experience knowledge bridge \
+  --spec ./inputs/bridge.json --output ./reports/bridge.json --json
+ecc experience knowledge drift \
+  --observation ./inputs/drift.json --output ./reports/drift.json --json
+ecc experience knowledge champion \
+  --spec ./inputs/champion.json --output ./reports/champion.json --json
+```
+
+`strategy advice` requires equal-budget, matched grid pairs. Below six pairs or
+without a significant sign test it falls back to `grid`. `champion` compares a
+champion and challenger on independent held-out evidence, but its strongest
+outcome is `promote_candidate`; a reviewed release command is still required.
+Keep every round's manifest, delta and source report SHA256 instead of
+overwriting the previous release.
