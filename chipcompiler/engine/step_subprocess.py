@@ -272,7 +272,10 @@ def run_step_worker(
         raise RuntimeError("load workspace failed")
     workspace.flow.read_only = True
     flow = flow_factory(workspace)
-    flow.create_step_workspaces(initialize_config=False)
+    flow.create_step_workspaces(
+        executable_steps={payload["step_name"]},
+        initialize_config=False,
+    )
     step = flow.get_workspace_step(payload["step_name"])
     if step is None or step.tool != payload["tool"]:
         raise RuntimeError(f"step {payload['step_name']}({payload['tool']}) missing in worker")
