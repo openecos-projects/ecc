@@ -98,6 +98,9 @@ To build the installable CLI bundle yourself (the same PyInstaller pipeline
 as the official release):
 
 ```bash
+# Record the exact clean checkout revision in the packaged bundle.
+python3 packaging/stamp_build_info.py
+
 ECOS_PYINSTALLER_MODE=onedir uv run --no-sync --managed-python \
   pyinstaller ecc.spec --clean --noconfirm
 # rebuilds dist/ecc/ (onedir, ~0.9G; the first run triggers dreamplace's cmake install, which is normal)

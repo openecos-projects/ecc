@@ -47,9 +47,8 @@ runs:
       run: |
         # Stamp the checked-out revision, not the event SHA: tag-checkout
         # workflows (release.yml) dispatch from a branch ref while building a
-        # different commit.
-        printf 'BUILD_COMMIT = "%s"\nBUILD_DATE = "%s"\n' \
-          "$(git rev-parse HEAD)" "$(date -u +%Y%m%d)" > chipcompiler/_build_info.py
+        # different commit. The shared script also rejects dirty tracked files.
+        python3 packaging/stamp_build_info.py
 
     - name: Build PyInstaller bundle
       shell: bash
