@@ -2528,7 +2528,9 @@ overwriting the previous release.
 
 `knowledge next` is a read-only planner for the following round. Per design it
 reports missing strategies, failed validation, quality/resource gaps, model
-evidence and strategy convergence. It also reports search axes to widen,
+evidence and strategy convergence. Strategy comparisons happen within each
+`design+seed`; disagreeing seeds are reported as `unstable`, so seed variation
+is not mistaken for strategy separation. It also reports search axes to widen,
 independent design/family/seed gaps, the minimum exploration reruns and the
 minimum confirmation designs/runs. Output always keeps `planning_only=true`,
 `safe_to_apply=false` and `promotion_allowed=false`; confirmation must use new

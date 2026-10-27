@@ -2145,7 +2145,9 @@ ecc experience knowledge champion \
 manifest、delta 和源报告 SHA256，不覆盖上一版 release。
 
 `knowledge next` 是只读的下一轮计划器。它按设计列出缺失策略、失败验证、质量/资源缺口、
-模型证据和策略是否收敛；同时给出需要扩张的搜索轴、独立 design/family/seed 缺口，以及
+模型证据和策略是否收敛。策略比较先在每个 `design+seed` 内完成；seed 间结论不一致时
+报告为 `unstable`，不会把 seed 差异误判成策略差异。它同时给出需要扩张的搜索轴、
+独立 design/family/seed 缺口，以及
 探索轮的最低补跑数和确认轮的最低新设计/run 数。输出固定
 `planning_only=true`、`safe_to_apply=false`、`promotion_allowed=false`；确认预算必须使用
 新的独立设计和 family，不能把探索轮本身当成 held-out。
