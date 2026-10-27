@@ -131,48 +131,87 @@ def arm_parent_death_signal(
         os.kill(os.getpid(), death_signal)
 
 
-def _parent_death_watchdog(worker_pid: int) -> None:
-    def kill_worker_group(_signum, _frame):
+def _parent_death_watchdog(worker_pid: int, channel) -> None:
+    def kill_worker_group(_signum=None, _frame=None):
         with suppress(ProcessLookupError):
             os.killpg(worker_pid, signal.SIGKILL)
         os._exit(0)
 
     signal.signal(signal.SIGTERM, kill_worker_group)
     arm_parent_death_signal(worker_pid, death_signal=signal.SIGTERM)
-    while True:
-        signal.pause()
+    with suppress(BrokenPipeError, EOFError):
+        channel.send(None)
+    try:
+        channel.recv()
+    except EOFError:
+        kill_worker_group()
+    channel.close()
 
 
-def _start_parent_death_watchdog() -> None:
+def _start_parent_death_watchdog():
     import multiprocessing
 
+    parent_channel, child_channel = multiprocessing.Pipe(duplex=True)
     process = multiprocessing.get_context("spawn").Process(
-        target=_parent_death_watchdog, args=(os.getpid(),), daemon=True
+        target=_parent_death_watchdog, args=(os.getpid(), child_channel), daemon=True
     )
-    process.start()
+    try:
+        process.start()
+    except BaseException:
+        parent_channel.close()
+        child_channel.close()
+        raise
+    child_channel.close()
+    try:
+        if not parent_channel.poll(5.0):
+            process.kill()
+            process.join()
+            raise RuntimeError("worker watchdog did not arm within 5 seconds")
+        parent_channel.recv()
+    except BaseException:
+        parent_channel.close()
+        raise
+    return process, parent_channel
+
+
+def _stop_parent_death_watchdog(watchdog) -> None:
+    process, channel = watchdog
+    with suppress(BrokenPipeError, EOFError):
+        channel.send(None)
+    channel.close()
+    process.join(timeout=5.0)
+    if process.is_alive():
+        process.terminate()
+        process.join()
+    process.close()
 
 
 def worker_main(handler: Callable[[dict, dict, Callable[[], None]], bool]) -> int:
     payload = json.loads(sys.stdin.read())
+    watchdog = None
     if sys.platform == "linux":
         arm_parent_death_signal(payload["parent_pid"])
-        _start_parent_death_watchdog()
-    result_path = Path(payload["result_path"])
-    result = {
-        "attempt_id": payload["attempt_id"],
-        "ok": False,
-        "done": False,
-        "error": None,
-        "events": [],
-    }
-
-    def flush() -> None:
-        write_result_atomic(result_path, result)
-
+        watchdog = _start_parent_death_watchdog()
     try:
-        result["ok"] = handler(payload, result, flush) is True
-    except (Exception, SystemExit) as exc:
-        result["error"] = f"{type(exc).__name__}: {exc}"
-    result["done"] = True
-    flush()
-    return 0 if result["ok"] else 1
+        result_path = Path(payload["result_path"])
+        result = {
+            "attempt_id": payload["attempt_id"],
+            "ok": False,
+            "done": False,
+            "error": None,
+            "events": [],
+        }
+
+        def flush() -> None:
+            write_result_atomic(result_path, result)
+
+        try:
+            result["ok"] = handler(payload, result, flush) is True
+        except (Exception, SystemExit) as exc:
+            result["error"] = f"{type(exc).__name__}: {exc}"
+        result["done"] = True
+        flush()
+        return 0 if result["ok"] else 1
+    finally:
+        if watchdog is not None:
+            _stop_parent_death_watchdog(watchdog)
