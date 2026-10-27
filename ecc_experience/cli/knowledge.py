@@ -190,6 +190,36 @@ def advice_cmd(
     )
 
 
+@knowledge_app.command(
+    "next", help="Plan exploration and confirmation for the next benchmark round"
+)
+def next_cmd(
+    *,
+    manifest: Annotated[str, typer.Option("--manifest")],
+    output: Annotated[str, typer.Option("--output")],
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    def handle(command: KnowledgeInput, _context: CommandContext) -> CommandResult:
+        def operation() -> CommandResult:
+            from ecc_experience.api import benchmark_next
+
+            result = benchmark_next(command.source or "", command.output_path)
+            return CommandResult.ok([{"experience": "benchmark_next", **result}])
+
+        return _guard(operation)
+
+    execute_command(
+        "experience",
+        KnowledgeInput(
+            output=output_options(plain=plain, json_output=json_output),
+            source=manifest,
+            output_path=output,
+        ),
+        handle,
+    )
+
+
 @knowledge_app.command("champion", help="Compare champion and challenger release evidence")
 def champion_cmd(
     *,

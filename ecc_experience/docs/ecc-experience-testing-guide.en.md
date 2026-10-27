@@ -2473,6 +2473,9 @@ ecc experience knowledge delta \
 ecc experience knowledge advice \
   --manifest ./reports/campaign-manifest.json \
   --output ./reports/strategy-advice.json --json
+ecc experience knowledge next \
+  --manifest ./reports/campaign-manifest.json \
+  --output ./reports/next-round.json --json
 ```
 
 `knowledge delta` sorts runs into `reuse`, `rebridge`, `reobserve` and `retire`.
@@ -2521,3 +2524,12 @@ champion and challenger on independent held-out evidence, but its strongest
 outcome is `promote_candidate`; a reviewed release command is still required.
 Keep every round's manifest, delta and source report SHA256 instead of
 overwriting the previous release.
+
+`knowledge next` is a read-only planner for the following round. Per design it
+reports missing strategies, failed validation, quality/resource gaps, model
+evidence and strategy convergence. It also reports search axes to widen,
+independent design/family/seed gaps, the minimum exploration reruns and the
+minimum confirmation designs/runs. Output always keeps `planning_only=true`,
+`safe_to_apply=false` and `promotion_allowed=false`; confirmation must use new
+independent designs and families rather than treating the exploration round as
+held-out evidence.

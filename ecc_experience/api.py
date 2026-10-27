@@ -21,6 +21,7 @@ from ecc_experience.knowledge.campaign import build_campaign_manifest, compute_k
 from ecc_experience.knowledge.champion import compare_champion
 from ecc_experience.knowledge.drift import assess_drift
 from ecc_experience.knowledge.features import case_features
+from ecc_experience.knowledge.iteration import plan_next_benchmark
 from ecc_experience.knowledge.matching import match_cases
 from ecc_experience.knowledge.normalize import normalize_stores
 from ecc_experience.knowledge.recommend import recommend as recommend_cases
@@ -239,6 +240,10 @@ def strategy_advice(
     manifest: str | Path, output: str | Path, *, direction: str = "minimize"
 ) -> dict:
     return advise_strategy(manifest, output, direction=direction)
+
+
+def benchmark_next(manifest: str | Path, output: str | Path) -> dict:
+    return plan_next_benchmark(manifest, output)
 
 
 def champion_compare(spec: str | Path, output: str | Path) -> dict:

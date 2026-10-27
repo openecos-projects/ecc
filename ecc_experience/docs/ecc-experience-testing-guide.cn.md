@@ -2100,6 +2100,9 @@ ecc experience knowledge delta \
 ecc experience knowledge advice \
   --manifest ./reports/campaign-manifest.json \
   --output ./reports/strategy-advice.json --json
+ecc experience knowledge next \
+  --manifest ./reports/campaign-manifest.json \
+  --output ./reports/next-round.json --json
 ```
 
 `knowledge delta` 将 run 分到 `reuse`、`rebridge`、`reobserve` 和 `retire`。只有
@@ -2139,3 +2142,9 @@ ecc experience knowledge champion \
 不显著时回退到 `grid`。`champion` 在独立 held-out 证据上比较 champion 和 challenger，
 但最强结论也只是 `promote_candidate`，仍需人工审阅后的 release 命令。每轮都要保留
 manifest、delta 和源报告 SHA256，不覆盖上一版 release。
+
+`knowledge next` 是只读的下一轮计划器。它按设计列出缺失策略、失败验证、质量/资源缺口、
+模型证据和策略是否收敛；同时给出需要扩张的搜索轴、独立 design/family/seed 缺口，以及
+探索轮的最低补跑数和确认轮的最低新设计/run 数。输出固定
+`planning_only=true`、`safe_to_apply=false`、`promotion_allowed=false`；确认预算必须使用
+新的独立设计和 family，不能把探索轮本身当成 held-out。
