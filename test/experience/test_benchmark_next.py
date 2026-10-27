@@ -135,7 +135,14 @@ def test_next_round_prioritizes_missing_matrix_and_confirmation_gap(tmp_path):
 
 def test_next_round_proposes_config_axes_and_cartesian_trial_budget(tmp_path):
     run = _run("design-a", "grid")
-    run["budget"] = {"limits": {"max_seconds": 60, "max_trials": 16}}
+    run["budget"] = {
+        "limits": {"max_seconds": 60, "max_trials": 16},
+        "screening_trials": 12,
+        "rungs": [
+            {"through_step": "place", "promote_count": 2},
+            {"through_step": "Timing optimization", "promote_count": 1},
+        ],
+    }
     manifest = {
         "schema": CAMPAIGN_MANIFEST_SCHEMA,
         "campaign_id": "campaign-space",
@@ -185,11 +192,14 @@ def test_next_round_proposes_config_axes_and_cartesian_trial_budget(tmp_path):
     assert plan["cartesian_combinations"] == 27
     assert plan["budget"] == {
         "current_max_trials": [16],
-        "minimum_equal_max_trials": 27,
+        "minimum_equal_max_trials": 31,
+        "required_trials": 31,
+        "reserved_trials": 4,
         "decision": "increase_equal_max_trials",
         "reason": (
-            "The proposed Cartesian space must fit every strategy's equal max_trials; "
-            "do not run a truncated grid and call it complete coverage"
+            "The proposed Cartesian space, rung promotions and two independent full/fresh "
+            "validations must fit every strategy's equal max_trials; do not run a truncated "
+            "grid and call it complete coverage"
         ),
     }
     assert plan["config_files"] == {
@@ -203,7 +213,7 @@ def test_next_round_proposes_config_axes_and_cartesian_trial_budget(tmp_path):
         action for action in result["actions"] if action["code"] == "search_space_proposal"
     )
     assert proposal["proposed_axes"]["place.target_density"] == [0.2, 0.25, 0.3]
-    assert proposal["minimum_equal_max_trials"] == 27
+    assert proposal["minimum_equal_max_trials"] == 31
 
 
 def test_next_round_requires_verified_cross_design_warm_start(tmp_path):
@@ -407,6 +417,7 @@ def test_next_round_flags_cartesian_space_larger_than_trial_budget(tmp_path):
         "status": "budget_limited",
         "declared_combination_counts": [27],
         "trial_budget_limits": [16],
+        "required_trial_budgets": [31],
         "budget_limited_runs": ["design-a:grid:1"],
     }
     path = tmp_path / "manifest.json"
@@ -420,10 +431,11 @@ def test_next_round_flags_cartesian_space_larger_than_trial_budget(tmp_path):
         "status": "budget_limited",
         "declared_combination_counts": [27],
         "trial_budget_limits": [16],
+        "required_trial_budgets": [31],
         "budget_limited_runs": ["design-a:grid:1"],
         "reason": (
-            "The declared Cartesian space is larger than max_trials; reduce the combination "
-            "count or freeze a larger equal per-run budget instead of presenting a partial "
-            "grid as full coverage"
+            "The Cartesian grid, rung promotions and two full/fresh validations exceed "
+            "max_trials; reduce the combination count or freeze a larger equal per-run budget "
+            "instead of presenting a partial grid as full coverage"
         ),
     } in result["actions"]

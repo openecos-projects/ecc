@@ -63,8 +63,7 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
         if any(row["result"]["status"] != "complete" for row in rows):
             reasons.append(f"run_not_complete:{design}")
         if any(
-            _validation_status(row["result"].get("full_validation")) != "passed"
-            for row in rows
+            _validation_status(row["result"].get("full_validation")) != "passed" for row in rows
         ):
             reasons.append(f"full_validation_not_passed:{design}")
         if any(
@@ -93,13 +92,9 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
             for row in warm_rows
         ):
             reasons.append(f"warm_start_cross_design_unverified:{design}")
-        if any(
-            _declares_store(row) and row["resources"]["observation_count"] == 0 for row in rows
-        ):
+        if any(_declares_store(row) and row["resources"]["observation_count"] == 0 for row in rows):
             reasons.append(f"resource_evidence_unavailable:{design}")
-        if any(
-            _declares_store(row) and row["resources"]["load_1m"]["count"] == 0 for row in rows
-        ):
+        if any(_declares_store(row) and row["resources"]["load_1m"]["count"] == 0 for row in rows):
             reasons.append(f"host_load_evidence_unavailable:{design}")
         receipt_statuses = {
             status
@@ -744,15 +739,9 @@ def _resource_summary(metrics: list[dict]) -> dict:
 
 def _resource_acceptance(metrics: list[dict], runs: list[dict]) -> dict:
     declared = {
-        (run["design"], run["strategy"], run["seed"])
-        for run in runs
-        if _declares_store(run)
+        (run["design"], run["strategy"], run["seed"]) for run in runs if _declares_store(run)
     }
-    rows = [
-        row
-        for row in metrics
-        if (row["design"], row["strategy"], row["seed"]) in declared
-    ]
+    rows = [row for row in metrics if (row["design"], row["strategy"], row["seed"]) in declared]
     with_observations = [row for row in rows if row["resources"]["observation_count"] > 0]
     with_host_load = [
         row
@@ -919,6 +908,7 @@ def _search_space_summary(runs: list[dict]) -> dict:
     axes: dict[str, dict] = {}
     declared_counts = set()
     budget_limits = set()
+    required_budgets = set()
     budget_limited_runs = []
     missing_budget_runs = []
     for run in runs:
@@ -932,7 +922,9 @@ def _search_space_summary(runs: list[dict]) -> dict:
             max_trials = limits.get("max_trials") if isinstance(limits, dict) else None
             if isinstance(max_trials, int) and not isinstance(max_trials, bool):
                 budget_limits.add(max_trials)
-                if combination_count > max_trials:
+                required = required_trial_budget(run["plan"], combination_count)
+                required_budgets.add(required)
+                if max_trials < required:
                     budget_limited_runs.append(_run_identity(run))
             else:
                 missing_budget_runs.append(_run_identity(run))
@@ -1022,11 +1014,13 @@ def _search_space_summary(runs: list[dict]) -> dict:
             else "complete",
             "declared_combination_counts": sorted(declared_counts),
             "trial_budget_limits": sorted(budget_limits),
+            "required_trial_budgets": sorted(required_budgets),
             "budget_limited_runs": sorted(budget_limited_runs),
             "missing_budget_runs": sorted(missing_budget_runs),
             "limitation": (
-                "A declared Cartesian space larger than max_trials cannot be treated as "
-                "fully explored; reduce combinations or freeze a larger equal per-run budget"
+                "The Cartesian grid must fit max_trials after reserving rung promotions and "
+                "two independent full/fresh validations; otherwise the grid cannot be treated "
+                "as fully explored"
                 if budget_limited_runs
                 else None
             ),
@@ -1036,6 +1030,24 @@ def _search_space_summary(runs: list[dict]) -> dict:
             "preference; the next round must widen or shift the axis and re-freeze every run"
         ),
     }
+
+
+def required_trial_budget(plan_or_budget: dict, combination_count: int) -> int:
+    """Return the trial count needed for a full grid, promotions and validations."""
+    rungs = plan_or_budget.get("rungs")
+    later_trials = 0
+    if isinstance(rungs, list):
+        for rung in rungs[:-1]:
+            if not isinstance(rung, dict):
+                continue
+            promote_count = rung.get("promote_count")
+            if isinstance(promote_count, int) and not isinstance(promote_count, bool):
+                later_trials += promote_count
+    screening = plan_or_budget.get("screening_trials")
+    screening_trials = combination_count
+    if isinstance(screening, int) and not isinstance(screening, bool):
+        screening_trials = max(screening_trials, screening)
+    return screening_trials + later_trials + 2
 
 
 def _space_combination_count(space: object) -> int | None:
@@ -1264,9 +1276,7 @@ def _model_calibration_summary(metrics: list[dict]) -> dict:
         "mae": sum(errors) / len(errors) if errors else None,
         "rmse": (sum(error**2 for error in errors) / len(errors)) ** 0.5 if errors else None,
         "interval": {
-            "status": "available"
-            if len(interval_designs) >= 3
-            else "insufficient_evidence",
+            "status": "available" if len(interval_designs) >= 3 else "insufficient_evidence",
             "design_count": len(interval_designs),
             "observation_count": len(interval_rows),
             "covered_count": covered,

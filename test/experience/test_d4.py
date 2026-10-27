@@ -461,15 +461,44 @@ def test_search_space_reports_incomplete_cartesian_coverage():
         "status": "budget_limited",
         "declared_combination_counts": [27],
         "trial_budget_limits": [16],
-        "budget_limited_runs": sorted(
-            f"design-a:{strategy}:1" for strategy in STRATEGIES
-        ),
+        "required_trial_budgets": [29],
+        "budget_limited_runs": sorted(f"design-a:{strategy}:1" for strategy in STRATEGIES),
         "missing_budget_runs": [],
         "limitation": (
-            "A declared Cartesian space larger than max_trials cannot be treated as fully "
-            "explored; reduce combinations or freeze a larger equal per-run budget"
+            "The Cartesian grid must fit max_trials after reserving rung promotions and "
+            "two independent full/fresh validations; otherwise the grid cannot be treated "
+            "as fully explored"
         ),
     }
+
+
+def test_search_space_counts_promotions_and_validations_before_claiming_coverage():
+    ready = {
+        "space": {
+            "core_util": [0.4, 0.44, 0.48],
+            "density": [0.2, 0.25, 0.3],
+            "hold_margin": [0.0, 0.02, 0.04],
+        },
+        "limits": {"max_trials": 31},
+        "screening_trials": 27,
+        "rungs": [
+            {"through_step": "place", "promote_count": 2},
+            {"through_step": "Timing optimization", "promote_count": 1},
+        ],
+    }
+    run = {
+        "design": "design-a",
+        "strategy": "grid",
+        "seed": 1,
+        "plan": ready,
+        "result": {"selection": {"candidate": "candidate-0"}, "trials": []},
+    }
+    assert _search_space_summary([run])["cartesian_coverage"]["status"] == "complete"
+
+    run["plan"] = {**ready, "limits": {"max_trials": 27}}
+    coverage = _search_space_summary([run])["cartesian_coverage"]
+    assert coverage["status"] == "budget_limited"
+    assert coverage["required_trial_budgets"] == [31]
 
 
 def test_d4_cli_returns_unknown_exit_code_without_enough_designs(tmp_path):

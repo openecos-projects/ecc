@@ -2342,9 +2342,10 @@ boundary counts and interior counts for every numeric DSE axis. A
 `boundary_limited` round means the frozen range did not bracket the observed
 preference. Shift or widen the reviewed axis and regenerate all plans; do not
 mix old and new spaces in one equal-budget comparison.
-`cartesian_coverage.status=budget_limited` means the declared Cartesian
-combination count exceeds `max_trials`; do not describe a partial grid as full
-coverage. Reduce the combinations or freeze a larger equal per-run budget.
+`cartesian_coverage.status=budget_limited` means the declared Cartesian grid,
+rung promotions and two independent full/fresh validations do not fit
+`max_trials`; do not describe a partial grid as full coverage. Reduce the
+combinations or freeze a larger equal per-run budget.
 
 ```bash
 ecc experience dse d4 --spec ./inputs/d4.json --output ./reports/d4.json --json
@@ -2545,8 +2546,10 @@ raise the equal per-run trial budget first.
 When a search axis selects a boundary, the planner also emits a review-only
 `search_plan`: it extends the observed step beyond that boundary, maps each axis
 to `floorplan_ecc.json`, `dreamplace_ecc.json` or `sizer_ecc.json`, and computes
-the new Cartesian combination count. If that count exceeds the current common
-`max_trials`, `search_plan.budget.decision=increase_equal_max_trials` and
+the new Cartesian combination count plus the observed rung promotions and two
+validation slots. If that total exceeds the current common `max_trials`,
+`search_plan.budget.decision=increase_equal_max_trials`,
+`required_trials`/`reserved_trials` show the calculation, and
 `minimum_equal_max_trials` records the required equal budget. The proposal is
 always `safe_to_apply=false` and requires every strategy, seed and validation
 slot to be frozen again; a partial grid must not be presented as full coverage.

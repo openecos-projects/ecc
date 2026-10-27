@@ -11,6 +11,7 @@ from ecc_experience.benchmark.d4 import (
     MIN_FAMILIES,
     MIN_SEEDS,
     STRATEGIES,
+    required_trial_budget,
 )
 from ecc_experience.benchmark.separation import analyze_strategy_separation
 from ecc_experience.dse.config_surface import describe_config_surface
@@ -380,6 +381,8 @@ def _search_plan(search: Any, runs: list[dict[str, Any]]) -> dict[str, Any]:
         "budget": {
             "current_max_trials": [],
             "minimum_equal_max_trials": None,
+            "required_trials": None,
+            "reserved_trials": None,
             "decision": "unknown",
         },
         "policy": {
@@ -455,10 +458,11 @@ def _search_plan(search: Any, runs: list[dict[str, Any]]) -> dict[str, Any]:
             and not isinstance(limit.get("max_trials"), bool)
         }
     )
-    minimum = max([combinations, *current_limits])
+    required = max(required_trial_budget(row.get("budget", {}), combinations) for row in runs)
+    minimum = max([required, *current_limits])
     if len(current_limits) != 1:
         decision = "freeze_equal_max_trials"
-    elif current_limits[0] < combinations:
+    elif current_limits[0] < required:
         decision = "increase_equal_max_trials"
     else:
         decision = "keep_equal_max_trials"
@@ -478,10 +482,13 @@ def _search_plan(search: Any, runs: list[dict[str, Any]]) -> dict[str, Any]:
         "budget": {
             "current_max_trials": current_limits,
             "minimum_equal_max_trials": minimum,
+            "required_trials": required,
+            "reserved_trials": required - combinations,
             "decision": decision,
             "reason": (
-                "The proposed Cartesian space must fit every strategy's equal max_trials; "
-                "do not run a truncated grid and call it complete coverage"
+                "The proposed Cartesian space, rung promotions and two independent full/fresh "
+                "validations must fit every strategy's equal max_trials; do not run a truncated "
+                "grid and call it complete coverage"
             ),
         },
         "policy": empty["policy"],
@@ -564,11 +571,12 @@ def _search_actions(search: Any) -> list[dict[str, Any]]:
                 "status": "budget_limited",
                 "declared_combination_counts": cartesian.get("declared_combination_counts", []),
                 "trial_budget_limits": cartesian.get("trial_budget_limits", []),
+                "required_trial_budgets": cartesian.get("required_trial_budgets", []),
                 "budget_limited_runs": cartesian.get("budget_limited_runs", []),
                 "reason": (
-                    "The declared Cartesian space is larger than max_trials; reduce the "
-                    "combination count or freeze a larger equal per-run budget instead of "
-                    "presenting a partial grid as full coverage"
+                    "The Cartesian grid, rung promotions and two full/fresh validations exceed "
+                    "max_trials; reduce the combination count or freeze a larger equal per-run "
+                    "budget instead of presenting a partial grid as full coverage"
                 ),
             }
         )

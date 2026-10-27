@@ -1997,8 +1997,9 @@ seed 的结论不一致。本轮标记为 `separated`、`converged` 或 `unknown
 `summary.search_space_coverage` 会按数值轴记录最终取值、下界/上界命中次数和内部命中
 次数。`boundary_limited` 表示冻结范围没有包围观测到的最优区域；应移动或扩大审核过的轴并
 重新生成全部 plan，不能把新旧空间混在同一等预算对照中。
-`cartesian_coverage.status=budget_limited` 表示声明的 Cartesian 组合数超过
-`max_trials`；此时不能把部分网格描述成完整空间，必须减少组合或冻结更大的等额预算。
+`cartesian_coverage.status=budget_limited` 表示声明的 Cartesian 网格加上 rung 晋级和两次
+独立 full/fresh 验证后不能放入 `max_trials`；此时不能把部分网格描述成完整空间，必须减少
+组合或冻结更大的等额预算。
 
 ```bash
 ecc experience dse d4 --spec ./inputs/d4.json --output ./reports/d4.json --json
@@ -2157,10 +2158,12 @@ manifest、delta 和源报告 SHA256，不覆盖上一版 release。
 `search_space_budget` 动作，要求先减少组合或提高等额 trial 预算。
 当搜索轴命中边界时，planner 还会在 `search_plan` 中给出待人工审核的下一轮提案：按
 现有步长外扩边界，列出每个轴对应的 `floorplan_ecc.json`、`dreamplace_ecc.json` 或
-`sizer_ecc.json` 映射，并计算新 Cartesian 组合数。若组合数超过当前统一
-`max_trials`，`search_plan.budget.decision=increase_equal_max_trials`，同时给出
-`minimum_equal_max_trials`。该提案固定 `safe_to_apply=false` 且要求全部策略、seed 和
-验证槽重新冻结；不能只跑部分网格后宣称覆盖完整空间。
+`sizer_ecc.json` 映射，并计算新 Cartesian 组合数。预算判断还会计入已观测的 rung 晋级
+和两次验证槽；若总需求超过当前统一 `max_trials`，
+`search_plan.budget.decision=increase_equal_max_trials`，同时用
+`required_trials`/`reserved_trials` 展示计算，并给出 `minimum_equal_max_trials`。该提案
+固定 `safe_to_apply=false` 且要求全部策略、seed 和验证槽重新冻结；不能只跑部分网格后
+宣称覆盖完整空间。
 `adaptive_warm` 若缺少 `cross_design`、显式 family isolation 或已验证的 release，
 planner 会报告 `cross_design_warm_evidence_invalid` 并给出
 `refresh_cross_design_warm_start`，不会让该设计进入 confirmation-ready。修复时需从独立
