@@ -46,15 +46,34 @@ def _signal_process_group(process: subprocess.Popen, sig: int) -> None:
             process.kill()
 
 
+def _process_group_exists(process: subprocess.Popen) -> bool:
+    if os.name != "posix" or not process.pid:
+        return process.poll() is None
+    try:
+        os.killpg(process.pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
 def terminate_process_group(process: subprocess.Popen) -> None:
     """Terminate the whole group, including descendants left by an exited leader."""
+    if os.name != "posix":
+        _signal_process_group(process, signal.SIGTERM)
+        with suppress(subprocess.TimeoutExpired):
+            process.wait(timeout=_TERMINATE_TIMEOUT_SECONDS)
+        if process.poll() is None:
+            process.kill()
+        process.wait()
+        return
+
+    deadline = time.monotonic() + _TERMINATE_TIMEOUT_SECONDS
     _signal_process_group(process, signal.SIGTERM)
-    with suppress(subprocess.TimeoutExpired):
-        process.wait(timeout=_TERMINATE_TIMEOUT_SECONDS)
-    if os.name == "posix":
+    while _process_group_exists(process) and time.monotonic() < deadline:
+        process.poll()
+        time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+    if _process_group_exists(process):
         _signal_process_group(process, signal.SIGKILL)
-    elif process.poll() is None:
-        process.kill()
     process.wait()
 
 

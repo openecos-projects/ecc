@@ -326,6 +326,38 @@ def test_execute_step_subprocess_reports_worker_crash(monkeypatch, tmp_path):
     assert "code -11" in result.error
 
 
+def test_failed_worker_reloads_subflow_for_interrupted_finalization(monkeypatch, tmp_path):
+    from chipcompiler.data import StateEnum, SubflowState
+    from chipcompiler.engine.flow_completion import finalize_interrupted_subflow
+
+    step = _workspace_step(tmp_path)
+    subflow_path = tmp_path / "subflow.json"
+    step.subflow = SubflowState(path=subflow_path, steps=[])
+    subflow_path.write_text(
+        json.dumps(
+            {
+                "path": str(subflow_path),
+                "steps": [{"name": "load", "state": StateEnum.Ongoing.value}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake = _FakePopen(poll_script=[-11])
+    monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", lambda *_args, **_kwargs: fake)
+
+    result = execute_tool_step(_workspace(tmp_path), step, None)
+
+    assert result.error is not None
+    assert "code -11" in result.error
+    assert step.subflow.steps == [{"name": "load", "state": "Ongoing"}]
+
+    finalize_interrupted_subflow(None, step, "0:0:1", 0.0)
+
+    assert json.loads(subflow_path.read_text(encoding="utf-8"))["steps"] == [
+        {"name": "load", "state": "Incomplete", "runtime": "0:0:1", "peak memory (mb)": 0.0}
+    ]
+
+
 def test_worker_crash_does_not_trust_stale_success_result(monkeypatch, tmp_path):
     step = _workspace_step(tmp_path)
     result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
