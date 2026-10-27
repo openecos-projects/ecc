@@ -1,14 +1,17 @@
 import json
 
+import pytest
 from typer.testing import CliRunner
 
 from chipcompiler.cli.app import app
+from ecc_experience.files import digest
 from ecc_experience.knowledge.campaign import (
     CAMPAIGN_MANIFEST_SCHEMA,
     build_campaign_manifest,
     compute_knowledge_delta,
 )
 from ecc_experience.knowledge.strategy import advise_strategy
+from ecc_experience.models import ExperienceError
 
 
 def _plan(design, strategy):
@@ -67,15 +70,28 @@ def _campaign(tmp_path):
             }
         )
     spec = tmp_path / "d4-spec.json"
-    spec.write_text(json.dumps({"schema": "ecc-experience-d4-spec/1", "runs": runs}))
+    spec_payload = {"schema": "ecc-experience-d4-spec/1", "runs": runs}
+    spec.write_text(json.dumps(spec_payload))
     report = {
         "schema": "ecc-experience-d4-report/1",
         "report_id": "d4-test",
         "status": "unknown",
         "reasons": [],
         "spec": str(spec),
+        "spec_fingerprint": digest(spec_payload),
         "summary": {"equal_budget": True, "minimum_designs": 6, "minimum_families": 3},
-        "runs": [{} for _ in runs],
+        "runs": [
+            {
+                "design": run["design"],
+                "strategy": run["strategy"],
+                "seed": run["seed"],
+                "status": "complete",
+                "full_validation": "passed",
+                "fresh_validation": "passed",
+                "final_qor": 10.0,
+            }
+            for run in runs
+        ],
     }
     report_path = tmp_path / "d4-report.json"
     report_path.write_text(json.dumps(report))
@@ -147,6 +163,27 @@ def test_heldout_design_overlap_blocks_training(tmp_path):
     assert delta["heldout"]["ready"] is False
     assert "design-a" in delta["heldout"]["overlap"]
     assert delta["decisions"]["training_allowed"] is False
+
+
+def test_campaign_manifest_rejects_stale_spec_fingerprint(tmp_path):
+    report = _campaign(tmp_path)
+    payload = json.loads(report.read_text())
+    payload["spec_fingerprint"] = "stale"
+    report.write_text(json.dumps(payload))
+
+    with pytest.raises(ExperienceError, match="fingerprint"):
+        build_campaign_manifest(report, tmp_path / "manifest.json")
+
+
+def test_campaign_manifest_rejects_changed_run_evidence(tmp_path):
+    report = _campaign(tmp_path)
+    result_path = tmp_path / "grid-result.json"
+    payload = json.loads(result_path.read_text())
+    payload["status"] = "stopped"
+    result_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ExperienceError, match="run evidence"):
+        build_campaign_manifest(report, tmp_path / "manifest.json")
 
 
 def test_strategy_advice_requires_significant_paired_evidence(tmp_path):

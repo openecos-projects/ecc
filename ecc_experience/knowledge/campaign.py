@@ -26,8 +26,7 @@ def build_campaign_manifest(report_path: str | Path, output: str | Path) -> dict
     spec = read_json(spec_path, 16 * 1024 * 1024)
     entries = _entries(spec)
     measured = [_load_run(spec_path.parent, entry) for entry in entries]
-    if len(measured) != len(report["runs"]):
-        raise _invalid("D4 report and specification disagree on run count")
+    _verify_report_evidence(report, spec, spec_path, measured)
 
     runs = [_run_record(run) for run in measured]
     cohorts = Counter(row["cohort"]["cohort_id"] for row in runs if row["cohort"]["cohort_id"])
@@ -74,6 +73,49 @@ def build_campaign_manifest(report_path: str | Path, output: str | Path) -> dict
     }
     _write_once(Path(output).expanduser().absolute(), manifest)
     return manifest
+
+
+def _verify_report_evidence(
+    report: dict[str, Any], spec: dict[str, Any], spec_path: Path, measured: list[dict[str, Any]]
+) -> None:
+    if report.get("spec_fingerprint") != digest(spec):
+        raise _invalid("D4 report fingerprint does not match its frozen specification")
+    recorded_spec = report.get("spec")
+    if not isinstance(recorded_spec, str) or not recorded_spec:
+        raise _invalid("D4 report has no frozen specification path")
+    if Path(recorded_spec).expanduser().absolute() != spec_path:
+        raise _invalid("D4 report and specification paths disagree")
+    reported = report["runs"]
+    if len(measured) != len(reported):
+        raise _invalid("D4 report and specification disagree on run count")
+
+    actual = {_run_key(run): run for run in measured}
+    if len(actual) != len(measured):
+        raise _invalid("D4 specification contains duplicate run identities")
+    reported_keys = [_run_key(row) for row in reported]
+    if len(set(reported_keys)) != len(reported_keys) or set(reported_keys) != set(actual):
+        raise _invalid("D4 report and specification disagree on run identities")
+
+    for row in reported:
+        run = actual[_run_key(row)]
+        result = run["result"]
+        fresh = result.get("fresh_validation")
+        final_qor = fresh.get("qor_score") if isinstance(fresh, dict) else None
+        if (
+            row.get("status") != result.get("status")
+            or row.get("full_validation") != _validation_status(result.get("full_validation"))
+            or row.get("fresh_validation") != _validation_status(fresh)
+            or row.get("final_qor") != final_qor
+        ):
+            raise _invalid("D4 report and current run evidence disagree")
+
+
+def _run_key(row: dict[str, Any]) -> tuple[Any, Any, Any]:
+    return row.get("design"), row.get("strategy"), row.get("seed")
+
+
+def _validation_status(value: Any) -> str:
+    return value.get("status", "unknown") if isinstance(value, dict) else "unknown"
 
 
 def compute_knowledge_delta(
