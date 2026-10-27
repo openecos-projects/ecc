@@ -1,19 +1,3 @@
-"""Build a signoff assessment dict from workspace checklist.
-
-In:
-    workspace — loaded Workspace (flow + home/checklist.json)
-    checklist — optional preloaded schema-v3 signoff_checklist
-Out:
-    dict — status/risks/review_groups + readiness (via attach_readiness)
-Entry:
-    snapshot assembly  chipcompiler/engine/snapshot.py
-    signoff export     chipcompiler/engine/signoff_export.py
-See:
-    attach_readiness()          chipcompiler/runtime/signoff/readiness.py
-    classify_signoff_readiness() chipcompiler/runtime/signoff/readiness.py
-    SIGNOFF_ITEM_CATALOG        chipcompiler/runtime/signoff/catalog.py
-"""
-
 from typing import Any, TypedDict
 
 from chipcompiler.data import ADVISORY_FLOW_STEPS, StepEnum
@@ -50,20 +34,6 @@ def build_signoff_assessment(
     *,
     checklist: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Assemble assessment + readiness for one workspace.
-
-    In:
-        workspace — Workspace with directory/flow
-        checklist — optional schema-v3 checklist; else read home/checklist.json
-    Out:
-        dict — assessment including readiness field
-    Entry:
-        chipcompiler/engine/snapshot.py (signoffAssessment)
-        chipcompiler/engine/signoff_export.py
-    See:
-        attach_readiness()  chipcompiler/runtime/signoff/readiness.py
-        build_checklist()   chipcompiler/tools/ecc/signoff_checklist.py
-    """
     flow = getattr(workspace, "flow", None)
     steps_fn = getattr(flow, "steps", None)
     if callable(steps_fn):
@@ -180,7 +150,7 @@ def _risk(group: _ReviewGroup, severity: str, details: list[dict], summary: str)
     }
 
 
-def _detail(item: dict) -> dict:
+def _detail(item: dict[str, Any]) -> dict[str, Any]:
     source = item.get("source", {})
     source = source if isinstance(source, dict) else {}
     evidence = item.get("evidence", [])
@@ -196,7 +166,7 @@ def _detail(item: dict) -> dict:
     }
 
 
-def _group_for(item: dict) -> str:
+def _group_for(item: dict[str, Any]) -> str:
     step = str(item.get("step", ""))
     category = str(item.get("category", ""))
     source = item.get("source", {})
@@ -205,19 +175,24 @@ def _group_for(item: dict) -> str:
         return "config"
     if category == "provenance" or path.startswith(("origin/", "initial/")):
         return "initial"
-    if step == "Harden" or path.startswith(
+    if step == StepEnum.HARDEN.value or path.startswith(
         (f"{STEP_DIRECTORIES[StepEnum.HARDEN.value]}/", "harden/")
     ):
         return "harden"
-    if step == "sta" or path.startswith(
+    if step == StepEnum.STA.value or path.startswith(
         (f"{STEP_DIRECTORIES[StepEnum.STA.value]}/", "final/timing/sta/")
     ):
         return "sta"
-    if step == "RCX" or path.startswith(
+    if step == StepEnum.RCX.value or path.startswith(
         (f"{STEP_DIRECTORIES[StepEnum.RCX.value]}/", "final/timing/spef/")
     ):
         return "spef"
-    if step in {"Route", "drc", "lvs", "filler"} or path.startswith(
+    if step in {
+        StepEnum.ROUTING.value,
+        StepEnum.DRC.value,
+        StepEnum.LVS.value,
+        StepEnum.FILLER.value,
+    } or path.startswith(
         (
             f"{STEP_DIRECTORIES[StepEnum.ROUTING.value]}/",
             f"{STEP_DIRECTORIES[StepEnum.DRC.value]}/",
@@ -251,7 +226,18 @@ def _unavailable_assessment() -> dict[str, Any]:
                 "severity": "blocked",
                 "title": "Signoff checklist unavailable",
                 "summary": "Re-run signoff inspection after current-output analysis completes.",
-                "details": [],
+                "details": [
+                    {
+                        "kind": "freshness",
+                        "label": "Signoff checklist",
+                        "location": "home/checklist.json",
+                        "reason": "The current signoff checklist could not be generated.",
+                        "owner": "checklist",
+                        "policy": "block",
+                        "state": "unavailable",
+                        "evidence": [],
+                    }
+                ],
             }
         ],
     }

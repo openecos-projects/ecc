@@ -5,6 +5,8 @@ gate results and owns the separate flow, artifact, and provenance checks needed
 to assemble a signoff package.
 """
 
+from __future__ import annotations
+
 import re
 from pathlib import Path
 
@@ -20,15 +22,6 @@ from chipcompiler.data import (
     WorkspaceStep,
 )
 from chipcompiler.data.step import STEP_DIRECTORIES, all_step_directories, flow_step_directory
-from chipcompiler.runtime.signoff.catalog import (
-    CONFIG_FILENAMES as _CONFIG_FILENAMES,
-)
-from chipcompiler.runtime.signoff.catalog import (
-    REQUIRED_FLOW_STEPS as _REQUIRED_FLOW_STEPS,
-)
-from chipcompiler.runtime.signoff.catalog import (
-    catalog_defaults,
-)
 from chipcompiler.tools.ecc.lec_gates import (
     latest_pnr_output as _latest_pnr_output,
 )
@@ -50,6 +43,24 @@ from chipcompiler.tools.ecc.sta_qor import (
 from chipcompiler.utility import json_read
 from chipcompiler.utility.filelist import resolve_initial_rtl
 
+
+def _required_flow_steps() -> tuple[str, ...]:
+    # Deferred like EngineDB's TYPE_CHECKING gate: avoid importing catalog at module load.
+    from chipcompiler.runtime.signoff.catalog import REQUIRED_FLOW_STEPS
+
+    return REQUIRED_FLOW_STEPS
+
+
+def _config_filenames() -> dict[str, str]:
+    from chipcompiler.runtime.signoff.catalog import CONFIG_FILENAMES
+
+    return CONFIG_FILENAMES
+
+
+def _catalog_defaults(item_id: str) -> dict[str, str]:
+    from chipcompiler.runtime.signoff.catalog import catalog_defaults
+
+    return catalog_defaults(item_id)
 
 def _path_text(workspace: Workspace, path: Path | str | None) -> str:
     if not path:
@@ -103,7 +114,7 @@ def _item(
     source: dict | None = None,
     evidence: list[dict] | None = None,
 ) -> dict:
-    defaults = catalog_defaults(item_id)
+    defaults = _catalog_defaults(item_id)
     if defaults:
         step = defaults["step"] or step
         category = defaults["category"] or category
@@ -572,7 +583,7 @@ def _flow_items(workspace: Workspace) -> list[dict]:
         if isinstance(item.get("name"), str)
     }
     items = []
-    for step in (*_REQUIRED_FLOW_STEPS, *sorted(ADVISORY_FLOW_STEPS)):
+    for step in (*_required_flow_steps(), *sorted(ADVISORY_FLOW_STEPS)):
         if step in ADVISORY_FLOW_STEPS and step not in states:
             continue
         if step == SkippableStepEnum.POST_ROUTE_LEC.value and not _requires_post_route_lec(
@@ -637,7 +648,7 @@ def _workspace_items(workspace: Workspace) -> list[dict]:
             (
                 f"configuration.{key.lower()}",
                 f"Configuration {key}",
-                config.get(key, workspace_directory / "config" / _CONFIG_FILENAMES[key]),
+                config.get(key, workspace_directory / "config" / _config_filenames()[key]),
             )
             for key in config_keys
         ),
