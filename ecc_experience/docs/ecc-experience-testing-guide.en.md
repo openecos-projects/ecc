@@ -2269,6 +2269,14 @@ has no trial observations or host load, D4 emits
 with `shared_process_tree` scope may still be evaluated, but the report must keep
 that partial scope and must not call it a hard memory bound.
 
+`summary.model_calibration` compares each run's selected-candidate prediction
+with fresh QoR and reports the selection-conditioned residual and prediction
+interval coverage. It remains `insufficient_evidence` with fewer than three
+independent designs. Repeated seeds add observation pairs, not independent
+designs. The field does not evaluate unselected candidates and is neither a
+candidate-ranking estimate nor proof of strategy benefit; it does not replace
+the model release's held-out validation.
+
 ### 22.3 Dataset v2, family holdouts and model promotion
 
 New datasets use `ecc-experience-model-dataset/2` and

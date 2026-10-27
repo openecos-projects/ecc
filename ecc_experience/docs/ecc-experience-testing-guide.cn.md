@@ -1947,6 +1947,11 @@ D4 会产生 `resource_evidence_unavailable:<design>` /
 `host_load_evidence_unavailable:<design>` 并拒绝 pass；覆盖完整但 scope 为
 `shared_process_tree` 时仍可继续评价，但报告必须保留 partial scope，不能把它表述为硬内存上限。
 
+`summary.model_calibration` 用每个 run 的 selected candidate 模型预测与 fresh QoR 计算
+条件性残差和预测区间覆盖率，并在少于 3 个独立设计时保持 `insufficient_evidence`。重复
+seed 只增加观测对，不增加独立设计数；该字段不评价未选候选，也不是候选排序准确率或策略
+收益证明，不能替代模型 release 的 held-out validation。
+
 ### 22.3 Dataset v2、family 留出和模型晋级
 
 新建 dataset 使用 `ecc-experience-model-dataset/2` 和

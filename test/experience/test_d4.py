@@ -283,6 +283,11 @@ def test_d4_rejects_a_loaded_model_without_available_predictions(tmp_path):
     )
     assert row["model_metrics"]["status"] == "available"
     assert row["model_metrics"]["prediction_count"] == 0
+    assert row["model_metrics"]["post_selection"] == {
+        "status": "unknown",
+        "reason": "selected_prediction_unavailable",
+        "candidate_id": "candidate-0",
+    }
 
 
 def test_d4_rejects_same_input_warm_start_as_a_distinct_strategy(tmp_path):
