@@ -57,7 +57,11 @@ from chipcompiler.engine.signoff import (
     SignoffPackageOptions,
     SignoffPackageResult,
 )
-from chipcompiler.engine.step_execution import execute_tool_step, record_tool_failure
+from chipcompiler.engine.step_execution import (
+    STEP_WORKER_MODULE,
+    execute_tool_step,
+    record_tool_failure,
+)
 from chipcompiler.utility import file_digest
 
 logger = logging.getLogger(__name__)
@@ -94,6 +98,8 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
 
 
 class EngineFlow:
+    step_worker_module = STEP_WORKER_MODULE
+
     def __init__(self, workspace: Workspace, engine_db: EngineDB | None = None):
         self.workspace = workspace
         self.workspace_steps = []
@@ -808,6 +814,7 @@ class EngineFlow:
                 self.engine_db,
                 observer=observer,
                 started_at=start_time,
+                worker_module=self.step_worker_module,
                 layout_image=self._should_save_layout_image(),
             )
             step_error = execution.error

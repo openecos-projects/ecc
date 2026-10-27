@@ -72,7 +72,10 @@ def execute_in_process(
             observer_installed = True
         with capture_stdio_to_file(log_file):
             try:
-                from chipcompiler.tools import run_step
+                if worker_module == "agent.step_worker":
+                    from agent.tools import run_step
+                else:
+                    from chipcompiler.tools import run_step
 
                 if engine_db is None:
                     engine_db = _initialize_worker_db(workspace, workspace_step)

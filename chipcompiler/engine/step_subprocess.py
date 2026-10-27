@@ -3,6 +3,7 @@
 import logging
 import os
 import time
+from functools import partial
 from pathlib import Path
 
 from chipcompiler.data import EccOutput, StepEnum, Workspace, WorkspaceStep, is_sta_step
@@ -235,16 +236,22 @@ class _ResultFileObserver:
         self._flush()
 
 
-def run_step_worker(payload: dict, result: dict, flush) -> bool:
+def run_step_worker(
+    payload: dict,
+    result: dict,
+    flush,
+    *,
+    flow_factory,
+    tool_runner,
+) -> bool:
     result["schema_version"] = RESULT_SCHEMA_VERSION
     import chipcompiler.data as data_api
-    from chipcompiler.engine.flow import EngineFlow
 
     workspace = data_api.load_workspace(directory=payload["workspace_directory"], read_only=True)
     if workspace is None:
         raise RuntimeError("load workspace failed")
     workspace.flow.read_only = True
-    flow = EngineFlow(workspace)
+    flow = flow_factory(workspace)
     flow.create_step_workspaces(initialize_config=False)
     step = flow.get_workspace_step(payload["step_name"])
     if step is None or step.tool != payload["tool"]:
@@ -261,9 +268,7 @@ def run_step_worker(payload: dict, result: dict, flush) -> bool:
     from chipcompiler.utility.log import capture_stdio_to_file
 
     with capture_stdio_to_file(step.log.file):
-        from chipcompiler.tools import run_step
-
-        ok = run_step(workspace=workspace, step=step, ecc_module=flow.engine_db.engine) is True
+        ok = tool_runner(workspace=workspace, step=step, ecc_module=flow.engine_db.engine) is True
     if ok and step.name == StepEnum.RCX.value and isinstance(step.output, EccOutput):
         result["rcx_spef"] = [Path(path).name for path in step.output.spef]
     outputs_complete = ok and flow.check_step_result(workspace_step=step)
@@ -278,7 +283,11 @@ def run_step_worker(payload: dict, result: dict, flush) -> bool:
 
 
 def main() -> int:
-    return worker.worker_main(run_step_worker)
+    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.tools import run_step
+
+    handler = partial(run_step_worker, flow_factory=EngineFlow, tool_runner=run_step)
+    return worker.worker_main(handler)
 
 
 if __name__ == "__main__":
