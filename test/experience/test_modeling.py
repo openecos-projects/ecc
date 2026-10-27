@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
@@ -9,7 +10,7 @@ from ecc_experience.collection.collect import collect_committed_case
 from ecc_experience.files import canonical_bytes, digest
 from ecc_experience.knowledge.release import create_release
 from ecc_experience.knowledge.store import ExperienceStore
-from ecc_experience.modeling.dataset import build_dataset
+from ecc_experience.modeling.dataset import build_dataset, target_value
 from ecc_experience.modeling.model import evaluate_model, train_model
 from ecc_experience.modeling.predict import advise_dataset, read_model_release
 from ecc_experience.modeling.registry import promote, rollback, status
@@ -349,3 +350,19 @@ def test_dataset_build_reads_verified_release(workspace_factory, tmp_path):
         "required_identity_fields": 4,
     }
     assert "constraints.clock_period_count" in payload["rows"][0]["features"]
+
+
+def test_final_qor_rejects_physically_failed_snapshot():
+    case = SimpleNamespace(
+        facts={
+            "flow": {"steps": [{"name": "Synthesis"}, {"name": "Timing optimization"}]},
+            "qorSnapshotExtension": {
+                "status": "available",
+                "score": 0.0,
+                "scalarStatus": "FAIL",
+                "feasibility": {"status": "PHYSICAL_FAIL"},
+            },
+        }
+    )
+
+    assert target_value(case, "final_qor", "Synthesis") is None

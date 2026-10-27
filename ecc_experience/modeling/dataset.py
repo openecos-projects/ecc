@@ -325,6 +325,10 @@ def target_value(case: ExperienceCase, target: str, through_step: str) -> float 
             raise invalid("Final QoR cannot be predicted from a prefix containing the final step")
         if qor_data.get("status") != "available":
             return None
+        feasibility = qor_data.get("feasibility")
+        feasibility_status = feasibility.get("status") if isinstance(feasibility, dict) else None
+        if feasibility_status in {"FAIL", "PHYSICAL_FAIL"}:
+            return None
         return _finite(qor_data.get("score"))
     if target == "feasibility":
         if qor_data.get("status") != "available":
