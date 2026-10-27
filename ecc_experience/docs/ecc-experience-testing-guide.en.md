@@ -834,9 +834,10 @@ EDA violations and evidence damage remain distinct.
 
 Writes use a single collector and atomic publication from a temporary directory,
 preserving existing cases. The store's .write-lock directory signals an active writer.
-After a crash, confirm that the original collector has stopped before removing this
-empty lock directory. Never delete cases or live temporary directories to manufacture
-a pass.
+Concurrent collectors wait briefly on a store-directory flock before returning
+experience_store_busy on timeout. After a crash, still confirm that the original
+collector has stopped before removing a leftover empty lock directory. Never delete
+cases or live temporary directories to manufacture a pass.
 
 ### 10.3 Summarize store quality and resources
 
@@ -1770,8 +1771,11 @@ physical-entry inputs remain part of their declared configuration.
 
 Flow persistence also keeps the in-memory schema metadata aligned with the
 written ledger, so a newly derived, unexecuted workspace has a snapshot that
-matches `home/flow.json`. A disagreement still returns revision conflict 21;
-do not bypass this check when preparing campaign seeds.
+matches `home/flow.json`. Collection tolerates only execution-time fields
+(state, runtime, checklist gate, info, resource observation) advancing after the
+snapshot commit. A different step list, tool, category, or other flow structure
+still returns revision conflict 21; do not bypass this check when preparing
+campaign seeds.
 
 Software regression, packaged smoke and the real design matrix are separate
 checks. Record each remote job's actual status and artifact; a locally passing

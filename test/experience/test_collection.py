@@ -1,10 +1,13 @@
 import json
 import shutil
+import threading
+import time
 
 import pytest
 
 from ecc_experience.api import collect, list_cases, show, verify
 from ecc_experience.files import file_digest, safe_child
+from ecc_experience.knowledge import store as store_module
 from ecc_experience.knowledge.store import ExperienceStore
 from ecc_experience.models import ExperienceError
 
@@ -144,6 +147,25 @@ def test_snapshot_flow_disagreement_is_rejected(workspace_factory, tmp_path):
         collect(root, tmp_path / "store")
 
 
+def test_snapshot_allows_live_flow_execution_fields_to_advance(workspace_factory, tmp_path):
+    root = workspace_factory()
+    flow_path = root / "home/flow.json"
+    flow = json.loads(flow_path.read_text())
+    flow["steps"][0].update(
+        state="Unstart",
+        runtime="0:1:00",
+        **{"peak memory (mb)": 2048.0},
+        info={"execution": {"run_id": "run-1"}},
+        checklist_status={"status": "blocked", "blocked": True},
+        resource_observation={"status": "partial"},
+    )
+    flow_path.write_text(json.dumps(flow))
+
+    result = collect(root, tmp_path / "store")
+
+    assert result.case.facts["flow"]["steps"][0]["state"] == "Success"
+
+
 def test_captured_evidence_damage_is_not_hidden_by_idempotence(workspace_factory, tmp_path):
     root = workspace_factory()
     store = tmp_path / "store"
@@ -209,6 +231,56 @@ def test_store_writer_conflict_and_symlink_rejected(workspace_factory, tmp_path)
     linked.symlink_to(store, target_is_directory=True)
     with pytest.raises(ExperienceError, match="symlink"):
         collect(root, linked)
+
+
+def test_store_writer_waits_for_transient_writer(tmp_path):
+    store = ExperienceStore(tmp_path / "store")
+    entered = threading.Event()
+    release = threading.Event()
+    acquired = threading.Event()
+
+    def holder():
+        with store._writer():
+            entered.set()
+            release.wait(2)
+
+    def waiter():
+        with store._writer():
+            acquired.set()
+
+    first = threading.Thread(target=holder)
+    second = threading.Thread(target=waiter)
+    first.start()
+    assert entered.wait(1)
+    second.start()
+    assert not acquired.wait(0.1)
+    release.set()
+    first.join(1)
+    second.join(1)
+    assert acquired.is_set()
+
+
+def test_store_writer_times_out_instead_of_hanging(tmp_path, monkeypatch):
+    store = ExperienceStore(tmp_path / "store")
+    entered = threading.Event()
+    release = threading.Event()
+    monkeypatch.setattr(store_module, "STORE_LOCK_TIMEOUT_SECONDS", 0.1)
+
+    def holder():
+        with store._writer():
+            entered.set()
+            release.wait(2)
+
+    first = threading.Thread(target=holder)
+    first.start()
+    assert entered.wait(1)
+    started = time.monotonic()
+    with pytest.raises(ExperienceError) as raised, store._writer():
+        pass
+    assert raised.value.code == "experience_store_busy"
+    assert time.monotonic() - started < 1
+    release.set()
+    first.join(1)
 
 
 def test_missing_source_retains_archive_and_reports_unknown(workspace_factory, tmp_path):

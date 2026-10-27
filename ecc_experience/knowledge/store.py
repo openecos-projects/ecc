@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -11,7 +12,14 @@ from ecc_experience.files import canonical_bytes, case_identity, read_json, safe
 from ecc_experience.knowledge.verify import verify_integrity
 from ecc_experience.models import CaseContents, ExperienceCase, ExperienceError
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - ECC runtime is POSIX-only.
+    fcntl = None
+
 CASE_ID_PATTERN = re.compile(r"case-[0-9a-f]{64}\Z")
+STORE_LOCK_TIMEOUT_SECONDS = 60.0
+STORE_LOCK_POLL_SECONDS = 0.05
 
 
 class ExperienceStore:
@@ -58,18 +66,40 @@ class ExperienceStore:
     def _writer(self):
         self.root.mkdir(parents=True, exist_ok=True)
         lock = safe_child(self.root, ".write-lock")
+        directory_fd = None
         try:
-            lock.mkdir()
-        except FileExistsError as exc:
-            raise ExperienceError(
-                "Another collector holds the store lock; recover a stale lock only after "
-                "confirming that its writer has stopped",
-                code="experience_store_busy",
-            ) from exc
-        try:
-            yield
+            if fcntl is not None:
+                directory_fd = os.open(self.root, os.O_RDONLY)
+                deadline = time.monotonic() + STORE_LOCK_TIMEOUT_SECONDS
+                while True:
+                    try:
+                        fcntl.flock(directory_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError as exc:
+                        if time.monotonic() >= deadline:
+                            raise ExperienceError(
+                                "Another collector holds the store lock; recover a stale lock "
+                                "only after confirming that its writer has stopped",
+                                code="experience_store_busy",
+                            ) from exc
+                        time.sleep(STORE_LOCK_POLL_SECONDS)
+            try:
+                lock.mkdir()
+            except FileExistsError as exc:
+                raise ExperienceError(
+                    "Another collector holds the store lock; recover a stale lock only after "
+                    "confirming that its writer has stopped",
+                    code="experience_store_busy",
+                ) from exc
+            try:
+                yield
+            finally:
+                lock.rmdir()
         finally:
-            lock.rmdir()
+            if directory_fd is not None:
+                if fcntl is not None:
+                    fcntl.flock(directory_fd, fcntl.LOCK_UN)
+                os.close(directory_fd)
 
     def put(self, case: ExperienceCase, copies: dict[str, bytes]) -> str:
         return self.put_many([CaseContents(case, copies)])[case.case_id]

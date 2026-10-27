@@ -734,8 +734,9 @@ JSON 始终保留。P0 的显式 collect 没有 attempt 身份；P1 通过 drain
 损坏分开。
 
 正常写入采用单 collector 与临时目录原子发布，不覆盖既有案例。store 内的
-.write-lock 表示写入占用；崩溃遗留时先确认原 collector 已停止，再移除这个空
-锁目录。不要删除案例或正在写入的临时目录来制造通过。
+.write-lock 表示写入占用。并发 collector 会先在 store 目录 flock 上等待短暂写入，
+超时才返回 experience_store_busy；崩溃遗留 `.write-lock` 时仍先确认原 collector
+已停止，再移除这个空锁目录。不要删除案例或正在写入的临时目录来制造通过。
 
 ### 10.3 汇总经验库质量与资源数据
 
@@ -1553,7 +1554,9 @@ flow 与独立 fresh 验证。总结 baseline、全部候选、完整及 fresh �
 输入仍按其配置保留。
 
 flow 持久化时同步内存中的 schema 元数据，使新派生且尚未执行的 workspace 的 snapshot
-与 `home/flow.json` 一致。不一致仍返回版本冲突 21；准备 campaign seed 时不要绕过校验。
+与 `home/flow.json` 一致。采集时只容忍执行期字段（state、runtime、checklist gate、
+info、resource observation）在 snapshot 提交后继续推进；step 列表、tool、category 或
+其他流结构不一致仍返回版本冲突 21。准备 campaign seed 时不要绕过校验。
 
 软件回归、packaged smoke 和真实 design matrix 分别验收。逐项记录远端 job 状态和 artifact，
 本地通过不等于远端 CI 通过；矩阵证据不足仍为 unknown。只有独立质量与效果门槛通过后

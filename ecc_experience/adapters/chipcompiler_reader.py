@@ -28,6 +28,40 @@ from ecc_experience.models import (
     WorkspaceObservation,
 )
 
+_VOLATILE_FLOW_STEP_FIELDS = frozenset(
+    {
+        "state",
+        "runtime",
+        "peak memory (mb)",
+        "info",
+        "checklist_status",
+        "resource_observation",
+    }
+)
+
+
+def _stable_flow_projection(flow: object) -> object:
+    if not isinstance(flow, dict):
+        return flow
+    projection = {key: value for key, value in flow.items() if key != "steps"}
+    steps = flow.get("steps")
+    if not isinstance(steps, list):
+        return flow
+    stable_steps = []
+    for step in steps:
+        if not isinstance(step, dict):
+            stable_steps.append(step)
+            continue
+        stable_steps.append(
+            {
+                key: value
+                for key, value in step.items()
+                if key not in _VOLATILE_FLOW_STEP_FIELDS
+            }
+        )
+    projection["steps"] = stable_steps
+    return projection
+
 
 def _capture(
     root: Path, reference: str, availability: str, *, validate_json: bool = True
@@ -212,7 +246,9 @@ def _read_locked(root: Path) -> WorkspaceObservation:
         if record.stored_path is not None and content is not None:
             copies[record.stored_path] = content
     flow_path = safe_child(root, "home/flow.json")
-    if flow_path.exists() and read_json(flow_path) != facts["flow"]:
+    if flow_path.exists() and _stable_flow_projection(read_json(flow_path)) != (
+        _stable_flow_projection(facts["flow"])
+    ):
         raise ExperienceError(
             "Flow does not match committed snapshot", code="experience_source_changed"
         )
