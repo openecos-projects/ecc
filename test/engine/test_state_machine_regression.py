@@ -545,8 +545,8 @@ class TestLegacyStateNormalization:
         assert "Incomplete" in caplog.text
 
 
-def test_agent_flow_unusable_log_path_does_not_block_execution(tmp_path, monkeypatch):
-    """AgentEngineFlow: unusable step-log path must not block tool execution."""
+def test_agent_flow_unusable_log_path_fails_step_without_ongoing(tmp_path, monkeypatch):
+    """AgentEngineFlow uses the shared step-log failure contract."""
     import agent.engine as agent_engine
 
     step_dir = tmp_path / "Floorplan_ecc"
@@ -581,20 +581,20 @@ def test_agent_flow_unusable_log_path_does_not_block_execution(tmp_path, monkeyp
     vars(agent_flow)["engine_db"] = SimpleNamespace(engine=None)
 
     mock_run = MagicMock(return_value=True)
-    monkeypatch.setattr(agent_engine, "run_agent_step", mock_run)
+    monkeypatch.setattr("agent.tools.run_step", mock_run)
     monkeypatch.setattr(agent_flow, "check_step_result", lambda **_kw: True)
 
     result = agent_flow.run_step(agent_flow.workspace_steps[0], rerun=False)
 
-    assert mock_run.call_count == 1
-    assert result == StateEnum.Success
+    assert mock_run.call_count == 0
+    assert result == StateEnum.Imcomplete
 
     persisted = json.loads((tmp_path / "flow.json").read_text())
     assert persisted["steps"][0]["state"] != StateEnum.Ongoing.value
 
 
 def test_agent_flow_step_failure_not_silently_swallowed(tmp_path, monkeypatch):
-    """AgentEngineFlow: run_agent_step() failure must not be swallowed."""
+    """AgentEngineFlow reports tool failures through the shared terminal path."""
     import agent.engine as agent_engine
 
     log_file = tmp_path / "agent_step.log"
@@ -632,7 +632,7 @@ def test_agent_flow_step_failure_not_silently_swallowed(tmp_path, monkeypatch):
     def _raise(**_kw):
         raise RuntimeError("tool crashed")
 
-    monkeypatch.setattr(agent_engine, "run_agent_step", _raise)
+    monkeypatch.setattr("agent.tools.run_step", _raise)
 
     result = agent_flow.run_step(agent_flow.workspace_steps[0], rerun=False)
 
