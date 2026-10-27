@@ -1,6 +1,7 @@
 """Evaluate grid, adaptive, warm-start and model-assisted DSE evidence."""
 
 from collections import Counter, defaultdict
+from functools import lru_cache
 from math import comb, isfinite
 from pathlib import Path
 from statistics import median
@@ -61,6 +62,17 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
         if any(row["result"]["status"] != "complete" for row in rows):
             reasons.append(f"run_not_complete:{design}")
         if any(
+            _validation_status(row["result"].get("full_validation")) != "passed"
+            for row in rows
+        ):
+            reasons.append(f"full_validation_not_passed:{design}")
+        if any(
+            _validation_status(row["result"].get("fresh_validation")) != "passed" for row in rows
+        ):
+            reasons.append(f"fresh_validation_not_passed:{design}")
+        if any(_final_qor(row["result"]) is None for row in rows):
+            reasons.append(f"final_qor_unavailable:{design}")
+        if any(
             row["strategy"] == "model_assisted"
             and row["result"].get("model", {}).get("status") != "available"
             for row in rows
@@ -71,6 +83,20 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
             reasons.append(f"warm_start_not_cross_design:{design}")
         if any(row["warm_start"]["family_isolation"] != "explicit_groups" for row in warm_rows):
             reasons.append(f"warm_start_family_isolation_missing:{design}")
+        if any(
+            row["warm_start"]["status"] == "cross_design"
+            and row["warm_start"]["cross_design_verified"] is not True
+            for row in warm_rows
+        ):
+            reasons.append(f"warm_start_cross_design_unverified:{design}")
+        if any(
+            _declares_store(row) and row["resources"]["observation_count"] == 0 for row in rows
+        ):
+            reasons.append(f"resource_evidence_unavailable:{design}")
+        if any(
+            _declares_store(row) and row["resources"]["load_1m"]["count"] == 0 for row in rows
+        ):
+            reasons.append(f"host_load_evidence_unavailable:{design}")
         receipt_statuses = {
             status
             for row in rows
@@ -87,6 +113,7 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
     order_balanced = _order_balanced(runs)
     passed = not reasons
     resource_coverage = _resource_summary(metrics)
+    resource_acceptance = _resource_acceptance(metrics, runs)
     result = {
         "schema": D4_REPORT_SCHEMA,
         "spec": str(spec_path),
@@ -121,6 +148,7 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
                 if row["host_load"] is not None
             ],
             "resource_coverage": resource_coverage,
+            "resource_acceptance": resource_acceptance,
             "config_file_counts": dict(
                 sorted(Counter(file for row in metrics for file in row["config_files"]).items())
             ),
@@ -167,6 +195,10 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
             "selected design",
             "adaptive_warm must use cross-design seeds with explicit family isolation; "
             "same-input seeds are reported as same_input and do not qualify",
+            "Cross-design verification compares release design fingerprints and explicit "
+            "evaluation groups; an unavailable release keeps the run unproven",
+            "Resource acceptance requires declared runs to have step observations and host "
+            "load; shared scope remains partial and is not treated as a hard memory bound",
             "No recommendation is written to a workspace and no model is promoted automatically",
         ],
     }
@@ -230,7 +262,7 @@ def _load_run(base: Path, entry: dict) -> dict:
     ):
         raise invalid("D4 run plan and result are not a frozen version 2 pair")
     resources = _resource_evidence(plan, result)
-    warm_start = _warm_start_evidence(plan)
+    warm_start = _warm_start_evidence(plan, base)
     surface = plan.get("config_surface") or describe_config_surface(plan.get("space", {}))
     return {
         "design": entry["design"],
@@ -307,7 +339,7 @@ def _strategy_matches(strategy: str, plan: dict, result: dict) -> bool:
     return False
 
 
-def _warm_start_evidence(plan: dict) -> dict:
+def _warm_start_evidence(plan: dict, base: Path | None = None) -> dict:
     warm = plan.get("warm_start")
     warm = warm if isinstance(warm, dict) else {}
     seeds = warm.get("seeds")
@@ -324,6 +356,7 @@ def _warm_start_evidence(plan: dict) -> dict:
         if cross_design
         else "same_input"
     )
+    verification = _cross_design_verification(plan, warm, seeds, base or Path.cwd())
     return {
         "status": status,
         "experimental_cross_design": warm.get("experimental_cross_design") is True,
@@ -331,7 +364,154 @@ def _warm_start_evidence(plan: dict) -> dict:
         "cross_design_seed_count": cross_design,
         "family_isolation": warm.get("family_isolation", "not_checked"),
         "release_id": plan.get("release_id"),
+        **verification,
     }
+
+
+def _cross_design_verification(plan: dict, warm: dict, seeds: list, base: Path) -> dict:
+    result = {
+        "cross_design_verified": None,
+        "cross_design_verification": "not_applicable",
+        "baseline_design_fingerprint": None,
+        "seed_design_fingerprints": [],
+        "evaluation_group_isolated": None,
+    }
+    if not seeds:
+        return result
+    release_path = warm.get("release")
+    if not isinstance(release_path, str) or not release_path:
+        result["cross_design_verification"] = "release_not_declared"
+        return result
+    release = _read_release(_resolve(base, release_path))
+    if release["status"] != "available":
+        result["cross_design_verification"] = release["reason"]
+        return result
+    cases = release["cases"]
+    release_id = release["release_id"]
+    if not release_id or (plan.get("release_id") and release_id != plan["release_id"]):
+        result["cross_design_verification"] = "release_id_mismatch"
+        result["cross_design_verified"] = False
+        return result
+    baseline_case_id = plan.get("baseline_case_id")
+    baseline = cases.get(baseline_case_id)
+    if not isinstance(baseline, dict):
+        result["cross_design_verification"] = "baseline_case_absent_from_release"
+        return result
+    baseline_design = baseline.get("design_fingerprint")
+    result["baseline_design_fingerprint"] = baseline_design
+    if not isinstance(baseline_design, str) or not baseline_design:
+        result["cross_design_verification"] = "baseline_design_fingerprint_unavailable"
+        return result
+    if (
+        plan.get("input_content_fingerprint")
+        and baseline.get("input_content_fingerprint") != plan["input_content_fingerprint"]
+    ):
+        result["cross_design_verification"] = "baseline_input_mismatch"
+        result["cross_design_verified"] = False
+        return result
+    process = plan.get("process")
+    process_fingerprint = process.get("fingerprint") if isinstance(process, dict) else None
+    seed_designs = []
+    for seed in seeds:
+        if not isinstance(seed, dict) or not isinstance(seed.get("case_id"), str):
+            result["cross_design_verification"] = "seed_case_unknown"
+            return result
+        case_id = seed["case_id"]
+        observed = cases.get(case_id)
+        if not isinstance(observed, dict):
+            result["cross_design_verification"] = "seed_case_absent_from_release"
+            return result
+        design_fingerprint = observed.get("design_fingerprint")
+        if not isinstance(design_fingerprint, str) or not design_fingerprint:
+            result["cross_design_verification"] = "seed_design_fingerprint_unavailable"
+            return result
+        if design_fingerprint == baseline_design:
+            result["cross_design_verification"] = "same_design_fingerprint"
+            result["cross_design_verified"] = False
+            return result
+        if process_fingerprint and observed.get("process_fingerprint") != process_fingerprint:
+            result["cross_design_verification"] = "seed_process_mismatch"
+            result["cross_design_verified"] = False
+            return result
+        seed_designs.append(design_fingerprint)
+    result["seed_design_fingerprints"] = seed_designs
+    if warm.get("family_isolation") != "explicit_groups":
+        result["cross_design_verification"] = "family_groups_not_declared"
+        return result
+    groups_path = warm.get("groups")
+    if not isinstance(groups_path, str) or not groups_path:
+        result["cross_design_verification"] = "family_groups_not_declared"
+        return result
+    groups = _read_groups(_resolve(base, groups_path))
+    if groups["status"] != "available":
+        result["cross_design_verification"] = groups["reason"]
+        return result
+    baseline_group = groups["cases"].get(baseline_case_id)
+    if baseline_group is None:
+        result["cross_design_verification"] = "baseline_group_unknown"
+        return result
+    for seed in seeds:
+        seed_group = groups["cases"].get(seed["case_id"])
+        if seed_group is None:
+            result["cross_design_verification"] = "seed_group_unknown"
+            return result
+        if seed_group == baseline_group:
+            result["cross_design_verification"] = "same_evaluation_group"
+            result["evaluation_group_isolated"] = False
+            result["cross_design_verified"] = False
+            return result
+    result["evaluation_group_isolated"] = True
+    result["cross_design_verified"] = True
+    result["cross_design_verification"] = "release_design_and_group_isolation"
+    return result
+
+
+@lru_cache(maxsize=32)
+def _read_release(path: Path) -> dict:
+    try:
+        payload = read_json(path, 64 * 1024 * 1024)
+    except (ExperienceError, OSError) as exc:
+        return {"status": "unknown", "reason": f"release_unreadable:{exc}"}
+    cases = payload.get("cases")
+    if (
+        payload.get("schema") != "ecc-experience-release/1"
+        or not isinstance(payload.get("release_id"), str)
+        or not payload["release_id"]
+        or not isinstance(cases, list)
+    ):
+        return {"status": "unknown", "reason": "release_invalid"}
+    indexed = {}
+    for case in cases:
+        if not isinstance(case, dict) or not isinstance(case.get("case_id"), str):
+            return {"status": "unknown", "reason": "release_invalid"}
+        if case["case_id"] in indexed:
+            return {"status": "unknown", "reason": "release_duplicate_case"}
+        indexed[case["case_id"]] = case
+    return {
+        "status": "available",
+        "release_id": payload["release_id"],
+        "cases": indexed,
+    }
+
+
+@lru_cache(maxsize=32)
+def _read_groups(path: Path) -> dict:
+    try:
+        payload = read_json(path, 1024 * 1024)
+    except (ExperienceError, OSError) as exc:
+        return {"status": "unknown", "reason": f"family_groups_unreadable:{exc}"}
+    cases = payload.get("cases")
+    if (
+        payload.get("schema_version") != 1
+        or not isinstance(cases, dict)
+        or not cases
+        or not all(
+            isinstance(key, str) and isinstance(value, str) and 0 < len(value) <= 128
+            for key, value in cases.items()
+        )
+    ):
+        return {"status": "unknown", "reason": "family_groups_invalid"}
+    return {"status": "available", "cases": cases}
 
 
 def _resource_evidence(plan: dict, result: dict) -> dict:
@@ -552,6 +732,45 @@ def _resource_summary(metrics: list[dict]) -> dict:
             }
             for row in metrics
         ],
+    }
+
+
+def _resource_acceptance(metrics: list[dict], runs: list[dict]) -> dict:
+    declared = {
+        (run["design"], run["strategy"], run["seed"])
+        for run in runs
+        if _declares_store(run)
+    }
+    rows = [
+        row
+        for row in metrics
+        if (row["design"], row["strategy"], row["seed"]) in declared
+    ]
+    with_observations = [row for row in rows if row["resources"]["observation_count"] > 0]
+    with_host_load = [
+        row
+        for row in with_observations
+        if isinstance(row["observed_load_average"], list) and row["observed_load_average"]
+    ]
+    if not declared:
+        status = "not_declared"
+    elif len(with_host_load) == len(rows):
+        status = "complete"
+    elif with_observations:
+        status = "partial"
+    else:
+        status = "unknown"
+    return {
+        "status": status,
+        "declared_run_count": len(declared),
+        "runs_with_observations": len(with_observations),
+        "runs_with_host_load": len(with_host_load),
+        "run_ratio": len(with_observations) / len(rows) if rows else 0.0,
+        "host_load_ratio": len(with_host_load) / len(rows) if rows else 0.0,
+        "measurement_scope": "step_observations_remain_partial_when_shared_process_tree",
+        "limitation": (
+            "Coverage complete does not make shared process-tree RSS a hard memory bound"
+        ),
     }
 
 
@@ -800,6 +1019,19 @@ def _search_space_summary(runs: list[dict]) -> dict:
 
 def _validation_status(value: object) -> str:
     return value.get("status", "unknown") if isinstance(value, dict) else "unknown"
+
+
+def _final_qor(result: dict) -> float | None:
+    fresh = result.get("fresh_validation")
+    value = fresh.get("qor_score") if isinstance(fresh, dict) else None
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and isfinite(value):
+        return float(value)
+    return None
+
+
+def _declares_store(run: dict) -> bool:
+    store = run["plan"].get("store")
+    return isinstance(store, str) and bool(store)
 
 
 def _config_receipt_statuses(trials: list[dict]) -> dict:

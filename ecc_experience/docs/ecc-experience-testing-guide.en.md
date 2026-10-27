@@ -2258,10 +2258,16 @@ still require full plus fresh validation; resume cannot change the opt-in or
 groups. The seed does not establish cross-design benefit.
 
 D4 records observed host load, peak RSS, measurement scope and coverage in
-`summary.resource_coverage` and each run; `summary.warm_start_modes` separates
+`summary.resource_coverage` and each run; `summary.resource_acceptance` separates
+complete, partial and absent coverage, while `summary.warm_start_modes` separates
 `not_requested`, `same_input`, `mixed` and `cross_design`. Missing or shared
 process-tree observations must stay `unknown/partial`; they are never zero-filled
-or presented as isolated per-step attribution.
+or presented as isolated per-step attribution. If a plan declares a store but
+has no trial observations or host load, D4 emits
+`resource_evidence_unavailable:<design>` /
+`host_load_evidence_unavailable:<design>` and refuses to pass. Complete coverage
+with `shared_process_tree` scope may still be evaluated, but the report must keep
+that partial scope and must not call it a hard memory bound.
 
 ### 22.3 Dataset v2, family holdouts and model promotion
 
@@ -2306,7 +2312,11 @@ cross-design seed (`warm_start.status=cross_design`) and the release used
 explicit family isolation (`family_isolation=explicit_groups`). A same-input
 seed is reported as `same_input` and produces
 `warm_start_not_cross_design:<design>`; missing groups produce
-`warm_start_family_isolation_missing:<design>`. The report also lists
+`warm_start_family_isolation_missing:<design>`. The report also reads the
+baseline and seed `design_fingerprint` values from the frozen release and checks
+the explicit groups. When that proof is absent or identifies the same design,
+it emits `warm_start_cross_design_unverified:<design>`; a boolean in the plan is
+not sufficient. The report also lists
 `config_file_counts` and `config_files_by_strategy` so a reader can confirm
 that the strategies explored the intended tool configuration files rather than
 only replaying one parameter. `summary.strategy_separation` compares each
@@ -2328,9 +2338,12 @@ ecc experience index status --store "$ECC_TEST_STORE" --json
 
 Insufficient samples, budgets, order balance or run completeness produce
 `unknown` and `generalization_status=unproven` while preserving all results and
-reasons. Only passing evidence with statistically significant positive gain
-over grid sets `promotion_allowed=true`; nothing is applied or promoted
-automatically.
+reasons. A run whose full or fresh validation did not pass, or whose fresh
+result has no finite QoR, emits `full_validation_not_passed:<design>`,
+`fresh_validation_not_passed:<design>` or `final_qor_unavailable:<design>`;
+`status=complete` is not treated as validation success. Only passing evidence
+with statistically significant positive gain over grid sets
+`promotion_allowed=true`; nothing is applied or promoted automatically.
 
 `index/cases.json` is a rebuildable derived cache, not case identity or a source
 of truth. `recommend/match` may use it to conservatively exclude candidates with

@@ -1939,9 +1939,13 @@ feature coverage 和 confidence；`warm_start_groups` 的路径与 SHA256 一并
 跨设计收益；resume 不得改变该开关或分组。
 
 D4 在 `summary.resource_coverage` 和逐 run 结果中记录实际 case 的 host load、峰值 RSS、
-measurement scope 与覆盖率；`summary.warm_start_modes` 区分 `not_requested`、`same_input`、
-`mixed` 和 `cross_design`。资源缺失或 shared process-tree 观测必须保持
-`unknown/partial`，不得填零，也不得把 `partial` 当作隔离的逐步资源归因。
+measurement scope 与覆盖率；`summary.resource_acceptance` 区分覆盖完整、部分和完全缺失，
+`summary.warm_start_modes` 区分 `not_requested`、`same_input`、`mixed` 和 `cross_design`。
+资源缺失或 shared process-tree 观测必须保持 `unknown/partial`，不得填零，也不得把
+`partial` 当作隔离的逐步资源归因。plan 声明了 store 却没有任何 trial 观测或 host load 时，
+D4 会产生 `resource_evidence_unavailable:<design>` /
+`host_load_evidence_unavailable:<design>` 并拒绝 pass；覆盖完整但 scope 为
+`shared_process_tree` 时仍可继续评价，但报告必须保留 partial scope，不能把它表述为硬内存上限。
 
 ### 22.3 Dataset v2、family 留出和模型晋级
 
@@ -1973,7 +1977,10 @@ grid/adaptive/adaptive_warm/model_assisted。报告强制等预算、同 input/p
 只有所有冻结 seed 都是跨设计 seed（`warm_start.status=cross_design`）且 release 使用显式
 family 隔离（`family_isolation=explicit_groups`）时，`adaptive_warm` 才是独立策略。
 同输入 seed 会标记为 `same_input` 并产生 `warm_start_not_cross_design:<design>`；缺少
-分组会产生 `warm_start_family_isolation_missing:<design>`。报告同时给出
+分组会产生 `warm_start_family_isolation_missing:<design>`。报告还会从冻结 release 读取
+baseline 与 seed 的真实 `design_fingerprint`，并核对显式 groups；无法证明或发现同一设计时
+产生 `warm_start_cross_design_unverified:<design>`，不能仅凭 plan 中的布尔标记通过。
+报告同时给出
 `config_file_counts` 和 `config_files_by_strategy`，用于确认各策略确实探索了预期的工具
 配置文件，而不是只重复一个参数。`summary.strategy_separation` 会按设计比较各策略最终
 选中的参数，并将本轮标记为 `separated`、`converged` 或 `unknown`。`converged` 仍是
@@ -1989,7 +1996,10 @@ ecc experience index status --store "$ECC_TEST_STORE" --json
 ```
 
 样本、预算、顺序或运行完整性不足时，D4 返回 `unknown`、`generalization_status=unproven`，
-保留完整结果和原因。只有证据通过且相对 grid 有统计显著正收益时才设置
+保留完整结果和原因。任一 run 的 full/fresh 未通过，或 fresh 没有有限 QoR 时分别产生
+`full_validation_not_passed:<design>`、`fresh_validation_not_passed:<design>`、
+`final_qor_unavailable:<design>`，不得把 `status=complete` 当作验证通过。只有证据通过且
+相对 grid 有统计显著正收益时才设置
 `promotion_allowed=true`，仍不会自动 apply 或晋级。
 
 `index/cases.json` 是可重建的派生缓存，不属于 case 身份，也不是事实源。`recommend/match`

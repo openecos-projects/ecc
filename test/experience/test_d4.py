@@ -5,6 +5,7 @@ from typer.testing import CliRunner
 from chipcompiler.cli.app import app
 from ecc_experience.api import d4_evaluate
 from ecc_experience.benchmark.d4 import (
+    _resource_acceptance,
     _resource_evidence,
     _summarize_resources,
     _warm_start_evidence,
@@ -13,19 +14,21 @@ from ecc_experience.benchmark.d4 import (
 STRATEGIES = ("grid", "adaptive", "adaptive_warm", "model_assisted")
 
 
-def _plan(strategy, design, family):
+def _plan(strategy, design, family, root=None):
     warm = (
-        [{"case_id": "candidate", "confidence": "experimental"}]
+        [{"case_id": f"warm-{design}", "confidence": "experimental"}]
         if strategy == "adaptive_warm"
         else []
     )
-    return {
+    payload = {
         "schema": "ecc-experience-stage-dse-plan/2",
         "plan_fingerprint": f"plan-{strategy}-{design}-{family}",
         "strategy": "grid" if strategy == "grid" else "adaptive",
         "input_content_fingerprint": f"input-{design}",
         "process": {"status": "available", "fingerprint": "process"},
         "runtime": {"ecc": "test"},
+        "baseline_case_id": f"baseline-{design}",
+        "release_id": "release-test",
         "objectives": [{"id": "qor", "direction": "minimize"}],
         "space": {"floorplan.core_util": [0.3, 0.4]},
         "limits": {"max_trials": 4, "max_seconds": 60, "trial_timeout_seconds": 30},
@@ -37,6 +40,10 @@ def _plan(strategy, design, family):
             "family_isolation": "explicit_groups" if warm else "not_checked",
         },
     }
+    if warm and root is not None:
+        payload["warm_start"]["release"] = str(root / "release.json")
+        payload["warm_start"]["groups"] = str(root / "groups.json")
+    return payload
 
 
 def _result(plan, strategy, score):
@@ -74,12 +81,46 @@ def _result(plan, strategy, score):
 def _write_spec(tmp_path, *, designs=6, seeds=2):
     runs = []
     families = ("arithmetic", "memory", "control")
+    release_cases = []
+    groups = {}
+    for design_index in range(designs):
+        design = f"design-{design_index}"
+        release_cases.extend(
+            [
+                {
+                    "case_id": f"baseline-{design}",
+                    "design_fingerprint": f"baseline-design-{design}",
+                    "input_content_fingerprint": f"input-{design}",
+                    "process_fingerprint": "process",
+                },
+                {
+                    "case_id": f"warm-{design}",
+                    "design_fingerprint": f"warm-design-{design}",
+                    "input_content_fingerprint": f"warm-input-{design}",
+                    "process_fingerprint": "process",
+                },
+            ]
+        )
+        groups[f"baseline-{design}"] = f"eval-{design}"
+        groups[f"warm-{design}"] = f"train-{design}"
+    (tmp_path / "release.json").write_text(
+        json.dumps(
+            {
+                "schema": "ecc-experience-release/1",
+                "release_id": "release-test",
+                "cases": release_cases,
+            }
+        )
+    )
+    (tmp_path / "groups.json").write_text(
+        json.dumps({"schema_version": 1, "cases": groups})
+    )
     for design_index in range(designs):
         design = f"design-{design_index}"
         family = families[design_index % len(families)]
         for seed in range(seeds):
             for order, strategy in enumerate(STRATEGIES):
-                plan = _plan(strategy, design, family)
+                plan = _plan(strategy, design, family, tmp_path)
                 plan_path = tmp_path / f"{design}-{seed}-{strategy}-plan.json"
                 result_path = tmp_path / f"{design}-{seed}-{strategy}-result.json"
                 plan_path.write_text(json.dumps(plan))
@@ -141,6 +182,36 @@ def test_d4_equal_budget_ignores_algorithm_patience_and_trial_timeout(tmp_path):
 
     assert report["status"] == "pass"
     assert report["summary"]["equal_budget"] is True
+
+
+def test_d4_requires_full_and_fresh_validation_to_pass(tmp_path):
+    spec = _write_spec(tmp_path)
+    result_path = tmp_path / "design-0-0-grid-result.json"
+    result = json.loads(result_path.read_text())
+    result["full_validation"]["status"] = "failed"
+    result["fresh_validation"] = {"status": "failed"}
+    result_path.write_text(json.dumps(result))
+
+    report = d4_evaluate(spec, tmp_path / "report.json")
+
+    assert report["status"] == "unknown"
+    assert "full_validation_not_passed:design-0" in report["reasons"]
+    assert "fresh_validation_not_passed:design-0" in report["reasons"]
+    assert "final_qor_unavailable:design-0" in report["reasons"]
+
+
+def test_d4_requires_resource_evidence_when_a_store_is_declared(tmp_path):
+    spec = _write_spec(tmp_path)
+    plan_path = tmp_path / "design-0-0-grid-plan.json"
+    plan = json.loads(plan_path.read_text())
+    plan["store"] = str(tmp_path / "missing-store")
+    plan_path.write_text(json.dumps(plan))
+
+    report = d4_evaluate(spec, tmp_path / "report.json")
+
+    assert report["status"] == "unknown"
+    assert "resource_evidence_unavailable:design-0" in report["reasons"]
+    assert "host_load_evidence_unavailable:design-0" in report["reasons"]
 
 
 def test_d4_rejects_same_input_warm_start_as_a_distinct_strategy(tmp_path):
@@ -254,19 +325,101 @@ def test_d4_resource_evidence_does_not_trust_result_only_resources():
     assert evidence["peak_rss_bytes"] is None
 
 
-def test_d4_warm_start_evidence_distinguishes_cross_design_seeds():
+def test_d4_resource_acceptance_requires_load_without_hiding_partial_scope():
+    run = {
+        "design": "design-a",
+        "strategy": "grid",
+        "seed": 1,
+        "plan": {"store": "/store"},
+    }
+    complete = _resource_acceptance(
+        [
+            {
+                "design": "design-a",
+                "strategy": "grid",
+                "seed": 1,
+                "resources": {"observation_count": 2},
+                "observed_load_average": [4.0, 3.0, 2.0],
+            }
+        ],
+        [run],
+    )
+    partial = _resource_acceptance(
+        [
+            {
+                "design": "design-a",
+                "strategy": "grid",
+                "seed": 1,
+                "resources": {"observation_count": 2},
+                "observed_load_average": None,
+            }
+        ],
+        [run],
+    )
+
+    assert complete["status"] == "complete"
+    assert complete["run_ratio"] == 1.0
+    assert complete["host_load_ratio"] == 1.0
+    assert partial["status"] == "partial"
+    assert partial["host_load_ratio"] == 0.0
+    assert "shared_process_tree" in complete["measurement_scope"]
+
+
+def test_d4_warm_start_evidence_distinguishes_cross_design_seeds(tmp_path):
+    (tmp_path / "release.json").write_text(
+        json.dumps(
+            {
+                "schema": "ecc-experience-release/1",
+                "release_id": "release-a",
+                "cases": [
+                    {
+                        "case_id": "baseline",
+                        "design_fingerprint": "design-query",
+                        "input_content_fingerprint": "input-query",
+                        "process_fingerprint": "process-a",
+                    },
+                    {
+                        "case_id": "case-a",
+                        "design_fingerprint": "design-a",
+                        "input_content_fingerprint": "input-a",
+                        "process_fingerprint": "process-a",
+                    },
+                    {
+                        "case_id": "case-b",
+                        "design_fingerprint": "design-b",
+                        "input_content_fingerprint": "input-b",
+                        "process_fingerprint": "process-a",
+                    },
+                ],
+            }
+        )
+    )
+    (tmp_path / "groups.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "cases": {"baseline": "eval", "case-a": "family-a", "case-b": "family-b"},
+            }
+        )
+    )
     evidence = _warm_start_evidence(
         {
             "release_id": "release-a",
+            "baseline_case_id": "baseline",
+            "input_content_fingerprint": "input-query",
+            "process": {"fingerprint": "process-a"},
             "warm_start": {
                 "experimental_cross_design": True,
                 "family_isolation": "explicit_groups",
+                "release": str(tmp_path / "release.json"),
+                "groups": str(tmp_path / "groups.json"),
                 "seeds": [
                     {"case_id": "case-a", "confidence": "experimental"},
                     {"case_id": "case-b", "confidence": "experimental"},
                 ],
             },
-        }
+        },
+        tmp_path,
     )
 
     assert evidence == {
@@ -276,4 +429,54 @@ def test_d4_warm_start_evidence_distinguishes_cross_design_seeds():
         "cross_design_seed_count": 2,
         "family_isolation": "explicit_groups",
         "release_id": "release-a",
+        "cross_design_verified": True,
+        "cross_design_verification": "release_design_and_group_isolation",
+        "baseline_design_fingerprint": "design-query",
+        "seed_design_fingerprints": ["design-a", "design-b"],
+        "evaluation_group_isolated": True,
     }
+
+
+def test_d4_warm_start_rejects_seed_from_the_same_design(tmp_path):
+    (tmp_path / "release.json").write_text(
+        json.dumps(
+            {
+                "schema": "ecc-experience-release/1",
+                "release_id": "release-a",
+                "cases": [
+                    {
+                        "case_id": "baseline",
+                        "design_fingerprint": "same-design",
+                        "input_content_fingerprint": "input-query",
+                        "process_fingerprint": "process-a",
+                    },
+                    {
+                        "case_id": "case-a",
+                        "design_fingerprint": "same-design",
+                        "input_content_fingerprint": "input-a",
+                        "process_fingerprint": "process-a",
+                    },
+                ],
+            }
+        )
+    )
+
+    evidence = _warm_start_evidence(
+        {
+            "release_id": "release-a",
+            "baseline_case_id": "baseline",
+            "input_content_fingerprint": "input-query",
+            "process": {"fingerprint": "process-a"},
+            "warm_start": {
+                "experimental_cross_design": True,
+                "family_isolation": "explicit_groups",
+                "release": str(tmp_path / "release.json"),
+                "groups": str(tmp_path / "groups.json"),
+                "seeds": [{"case_id": "case-a", "confidence": "experimental"}],
+            },
+        },
+        tmp_path,
+    )
+
+    assert evidence["cross_design_verified"] is False
+    assert evidence["cross_design_verification"] == "same_design_fingerprint"
