@@ -1,6 +1,9 @@
 import json
 
+import pytest
+
 from ecc_experience.knowledge.bridge import evaluate_bridge
+from ecc_experience.models import ExperienceError
 
 
 def _metric_set(value=0.0):
@@ -58,3 +61,22 @@ def test_bridge_regression_is_fail(tmp_path):
 
     assert result["status"] == "fail"
     assert "bridge_regression" in result["reasons"]
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("max_qor_regression", -0.1),
+        ("min_rank_consistency", 1.1),
+        ("min_interval_coverage_delta", -1.1),
+        ("max_resource_error", -0.2),
+    ],
+)
+def test_bridge_rejects_invalid_thresholds(tmp_path, key, value):
+    path = _spec(tmp_path)
+    payload = json.loads(path.read_text())
+    payload["thresholds"] = {key: value}
+    path.write_text(json.dumps(payload))
+
+    with pytest.raises(ExperienceError, match="Bridge"):
+        evaluate_bridge(path, tmp_path / "report.json")

@@ -105,7 +105,15 @@ def _thresholds(value: Any) -> dict[str, float]:
     result = {**defaults, **value}
     if not all(_number(item) for item in result.values()):
         raise _invalid("Bridge thresholds must be finite numbers")
-    return {key: float(value) for key, value in result.items()}
+    thresholds = {key: float(value) for key, value in result.items()}
+    if not 0 <= thresholds["min_rank_consistency"] <= 1:
+        raise _invalid("Bridge rank consistency threshold must be between 0 and 1")
+    if not -1 <= thresholds["min_interval_coverage_delta"] <= 1:
+        raise _invalid("Bridge interval coverage delta must be between -1 and 1")
+    non_negative = set(defaults) - {"min_rank_consistency", "min_interval_coverage_delta"}
+    if any(thresholds[key] < 0 for key in non_negative):
+        raise _invalid("Bridge regression thresholds must be non-negative")
+    return thresholds
 
 
 def _design_result(item: dict[str, Any], thresholds: dict[str, float]) -> dict[str, Any]:
