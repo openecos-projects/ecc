@@ -97,6 +97,37 @@ def test_engine_flow_load_repairs_legacy_checker_categories(tmp_path):
     ]
 
 
+def test_engine_flow_read_only_load_does_not_persist_legacy_normalization(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    flow_path = home / "flow.json"
+    flow_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "steps": [
+                    {
+                        "name": StepEnum.ANTENNA_CHECK.value,
+                        "tool": "ecc",
+                        "category": "PNR",
+                        "state": "Unstart",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    before = flow_path.read_bytes()
+    workspace: Any = Workspace(directory=tmp_path)
+    workspace.flow.path = flow_path
+    workspace.flow.read_only = True
+
+    with pytest.raises(RuntimeError, match="read-only"):
+        EngineFlow(workspace)
+
+    assert flow_path.read_bytes() == before
+
+
 def test_engine_flow_blocks_on_and_writes_compact_checklist_status(tmp_path):
     workspace: Any = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
@@ -178,6 +209,41 @@ def test_checkers_run_past_blocked_checklist_and_gate_next_pnr_step(
     assert [blocked_by for name, blocked_by in executed if name == StepEnum.HARDEN.value] == [
         blocked_step
     ]
+
+
+def test_run_steps_never_initializes_native_db_or_redirects_in_parent(monkeypatch, tmp_path):
+    from chipcompiler.engine import EngineDB, step_execution
+    from chipcompiler.engine.step_execution import StepExecutionResult
+    from chipcompiler.tools.ecc.module import ECCToolsModule
+
+    workspace: Any = Workspace(directory=tmp_path)
+    workspace.flow.path = tmp_path / "flow.json"
+    workspace.flow.data = {"steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]}
+    engine_flow: Any = EngineFlow(workspace)
+    engine_flow.workspace_steps = [EccStep(name="route", directory=tmp_path, tool="ecc")]
+    redirects = []
+    monkeypatch.setattr(
+        "chipcompiler.utility.log.redirect_stdio_to_file", lambda path: redirects.append(path)
+    )
+
+    def fail_native_init(*_args, **_kwargs):
+        raise AssertionError("parent native DB initialization must not run")
+
+    monkeypatch.setattr(EngineDB, "create_db_engine", fail_native_init)
+    monkeypatch.setattr(ECCToolsModule, "__init__", fail_native_init)
+    monkeypatch.setattr(
+        step_execution,
+        "_execute_in_worker",
+        lambda *_args, **_kwargs: StepExecutionResult(
+            error=None, elapsed_seconds=0.0, peak_memory_mb=0.0, runtime="0:0:0"
+        ),
+    )
+    monkeypatch.setattr(engine_flow, "check_step_result", lambda **_kwargs: True)
+    monkeypatch.setattr(tools, "save_layout_image", lambda **_kwargs: True)
+    monkeypatch.setattr(flow_module, "log_flow", lambda **_kwargs: None)
+
+    assert engine_flow.run_steps() is True
+    assert redirects == []
 
 
 def test_run_step_without_runtime_operation_marker_does_not_expand_function(monkeypatch, tmp_path):

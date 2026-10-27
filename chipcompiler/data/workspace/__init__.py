@@ -81,6 +81,7 @@ class Flow:
 
     path: Path | None = None  # flow file path
     data: FlowDocument = field(default_factory=lambda: FlowDocument())  # flow steps
+    read_only: bool = False
 
     def steps(self) -> list[FlowStepEntry]:
         data = self.data
