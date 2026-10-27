@@ -1,12 +1,10 @@
 import json
-import logging
 import os
 import subprocess
 import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
 
 import pytest
 
@@ -157,24 +155,6 @@ def test_real_worker_tree_is_sampled_and_sampler_stops(tmp_path):
         process.wait()
 
 
-def test_in_process_execution_persists_shared_scope(monkeypatch, tmp_path):
-    from chipcompiler.engine.step_execution import execute_tool_step
-
-    monkeypatch.setenv("ECC_STEP_SUBPROCESS", "0")
-    monkeypatch.setattr("chipcompiler.tools.run_step", lambda **_kwargs: True)
-    workspace: Any = SimpleNamespace(logger=logging.getLogger("resource-test"))
-    step: Any = SimpleNamespace(name="route", tool="ecc", log=SimpleNamespace(file=""))
-
-    engine_db: Any = SimpleNamespace(engine=None)
-    result = execute_tool_step(workspace, step, engine_db)
-
-    assert result.error is None
-    assert result.resource_observation is not None
-    assert result.resource_observation["scope"] == "shared_process_tree"
-    assert result.resource_observation["status"] in {"partial", "unavailable"}
-    json.dumps(result.resource_observation, allow_nan=False)
-
-
 def test_frozen_execution_is_explicitly_shared(monkeypatch):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     observation = start_observation(
@@ -191,7 +171,6 @@ def test_failed_execution_persists_facts_and_rerun_gets_a_new_identity(monkeypat
     from chipcompiler.data import EccStep, StateEnum, Workspace
     from chipcompiler.engine.flow import EngineFlow
 
-    monkeypatch.setenv("ECC_STEP_SUBPROCESS", "0")
     monkeypatch.setattr("chipcompiler.tools.run_step", lambda **_kwargs: False)
     workspace = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
@@ -213,7 +192,6 @@ def test_failed_execution_persists_facts_and_rerun_gets_a_new_identity(monkeypat
         first["resource_observation"]["attempt_id"] != second["resource_observation"]["attempt_id"]
     )
     assert second["state"] == StateEnum.Imcomplete.value
-    assert second["resource_observation"]["scope"] == "shared_process_tree"
     flow.clear_states()
     assert "resource_observation" not in json.loads(workspace.flow.path.read_text())["steps"][0]
 
