@@ -152,6 +152,7 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
             ],
             "resource_coverage": resource_coverage,
             "resource_acceptance": resource_acceptance,
+            "model_calibration": _model_calibration_summary(metrics),
             "config_file_counts": dict(
                 sorted(Counter(file for row in metrics for file in row["config_files"]).items())
             ),
@@ -203,6 +204,8 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
             "Resource acceptance requires declared runs to have step observations and host "
             "load; shared scope remains partial and is not treated as a hard memory bound",
             "No recommendation is written to a workspace and no model is promoted automatically",
+            "Model calibration uses only the selected candidate and fresh QoR; it does not "
+            "estimate candidate-level ranking accuracy",
         ],
     }
     result["report_id"] = f"d4-{digest(result)}"
@@ -1060,12 +1063,14 @@ def _model_metrics(result: dict) -> dict:
     model = result.get("model")
     predictions = _model_predictions(result)
     available = sum(item.get("status") == "available" for item in predictions)
+    post_selection = _post_selection_calibration(result)
     if not isinstance(model, dict) or model.get("status") != "available":
         return {
             "status": "unknown",
             "reason": model.get("reason") if isinstance(model, dict) else None,
             "prediction_count": available,
             "unknown_prediction_count": len(predictions) - available,
+            "post_selection": post_selection,
         }
     metrics = {
         "status": "available",
@@ -1075,6 +1080,7 @@ def _model_metrics(result: dict) -> dict:
         "used_for_selection": model.get("used_for_selection", False),
         "prediction_count": available,
         "unknown_prediction_count": len(predictions) - available,
+        "post_selection": post_selection,
     }
     requested = model.get("requested")
     if isinstance(requested, str):
@@ -1106,6 +1112,136 @@ def _model_predictions(result: dict) -> list[dict]:
 
 def _available_model_predictions(result: dict) -> int:
     return sum(item.get("status") == "available" for item in _model_predictions(result))
+
+
+def _post_selection_calibration(result: dict) -> dict:
+    selection = result.get("selection")
+    candidate_id = selection.get("candidate") if isinstance(selection, dict) else None
+    if not isinstance(candidate_id, str) or not candidate_id:
+        return {"status": "unknown", "reason": "selected_candidate_unavailable"}
+    fresh = result.get("fresh_validation")
+    observed = fresh.get("qor_score") if isinstance(fresh, dict) else None
+    observed_qor = _finite_number(observed)
+    if observed_qor is None:
+        return {
+            "status": "unknown",
+            "reason": "fresh_qor_unavailable",
+            "candidate_id": candidate_id,
+        }
+    trials = result.get("trials")
+    selected = next(
+        (
+            trial
+            for trial in reversed(trials if isinstance(trials, list) else [])
+            if isinstance(trial, dict)
+            and trial.get("candidate_id") == candidate_id
+            and isinstance(trial.get("model_prediction"), dict)
+            and trial["model_prediction"].get("status") == "available"
+        ),
+        None,
+    )
+    if selected is None:
+        return {
+            "status": "unknown",
+            "reason": "selected_prediction_unavailable",
+            "candidate_id": candidate_id,
+        }
+    raw = selected["model_prediction"].get("prediction")
+    predicted = raw.get("prediction") if isinstance(raw, dict) else raw
+    predicted_qor = _finite_number(predicted)
+    if predicted_qor is None:
+        predicted = selected.get("predicted_qor")
+        predicted_qor = _finite_number(predicted)
+    if predicted_qor is None:
+        return {
+            "status": "unknown",
+            "reason": "selected_prediction_invalid",
+            "candidate_id": candidate_id,
+        }
+    residual = observed_qor - predicted_qor
+    row = {
+        "status": "available",
+        "candidate_id": candidate_id,
+        "predicted_final_qor": predicted_qor,
+        "observed_final_qor": observed_qor,
+        "residual": residual,
+        "absolute_residual": abs(residual),
+        "interval_status": "unknown",
+        "lower_bound": None,
+        "upper_bound": None,
+        "covered": None,
+        "target_coverage": None,
+        "basis": raw.get("interval", {}).get("basis") if isinstance(raw, dict) else None,
+    }
+    if isinstance(raw, dict):
+        lower = raw.get("lower_bound")
+        upper = raw.get("upper_bound")
+        interval = raw.get("interval")
+        lower_bound = _finite_number(lower)
+        upper_bound = _finite_number(upper)
+        if lower_bound is not None and upper_bound is not None and lower_bound <= upper_bound:
+            row.update(
+                interval_status="available",
+                lower_bound=lower_bound,
+                upper_bound=upper_bound,
+                covered=lower_bound <= observed_qor <= upper_bound,
+            )
+        if isinstance(interval, dict):
+            target_coverage = _finite_number(interval.get("target_coverage"))
+            if target_coverage is not None:
+                row["target_coverage"] = target_coverage
+    return row
+
+
+def _model_calibration_summary(metrics: list[dict]) -> dict:
+    rows = [
+        row
+        for row in metrics
+        if row["model_metrics"].get("post_selection", {}).get("status") == "available"
+    ]
+    errors = [row["model_metrics"]["post_selection"]["absolute_residual"] for row in rows]
+    designs = {row["design"] for row in rows}
+    families = {row["family"] for row in rows}
+    interval_rows = [
+        row
+        for row in rows
+        if row["model_metrics"]["post_selection"]["interval_status"] == "available"
+    ]
+    covered = sum(
+        row["model_metrics"]["post_selection"]["covered"] is True for row in interval_rows
+    )
+    targets = {
+        row["model_metrics"]["post_selection"]["target_coverage"]
+        for row in interval_rows
+        if row["model_metrics"]["post_selection"]["target_coverage"] is not None
+    }
+    return {
+        "status": "available"
+        if len(designs) >= 3
+        else "insufficient_evidence"
+        if rows
+        else "unknown",
+        "selection_conditioned": True,
+        "pair_count": len(rows),
+        "design_count": len(designs),
+        "family_count": len(families),
+        "mae": sum(errors) / len(errors) if errors else None,
+        "rmse": (sum(error**2 for error in errors) / len(errors)) ** 0.5 if errors else None,
+        "interval": {
+            "status": "available"
+            if len(designs) >= 3 and interval_rows
+            else "insufficient_evidence",
+            "observation_count": len(interval_rows),
+            "covered_count": covered,
+            "observed_coverage": covered / len(interval_rows) if interval_rows else None,
+            "target_coverage": targets.pop() if len(targets) == 1 else None,
+        },
+        "limitations": [
+            "Only the selected candidate is compared with fresh final QoR",
+            "Repeated seeds do not count as independent designs",
+            "Selection-conditioned coverage is not an unbiased candidate ranking estimate",
+        ],
+    }
 
 
 def _strategy_summary(metrics: list[dict]) -> dict:
@@ -1231,7 +1367,14 @@ def _mean(values: list[float]) -> float | None:
 
 
 def _number(value: object) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and isfinite(value)
+    return _finite_number(value) is not None
+
+
+def _finite_number(value: object) -> float | None:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    number = float(value)
+    return number if isfinite(number) else None
 
 
 def _resolve(base: Path, value: str) -> Path:

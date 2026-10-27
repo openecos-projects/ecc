@@ -70,7 +70,20 @@ def _result(plan, strategy, score):
                 "commands": [],
                 "elapsed_seconds": 5.0,
                 **(
-                    {"model_prediction": {"status": "available", "prediction": score}}
+                    {
+                        "model_prediction": {
+                            "status": "available",
+                            "prediction": {
+                                "prediction": score,
+                                "lower_bound": score - 1,
+                                "upper_bound": score + 1,
+                                "interval": {
+                                    "basis": "held_out_grouped_calibration",
+                                    "target_coverage": 0.9,
+                                },
+                            },
+                        }
+                    }
                     if strategy == "model_assisted"
                     else {}
                 ),
@@ -117,9 +130,7 @@ def _write_spec(tmp_path, *, designs=6, seeds=2):
             }
         )
     )
-    (tmp_path / "groups.json").write_text(
-        json.dumps({"schema_version": 1, "cases": groups})
-    )
+    (tmp_path / "groups.json").write_text(json.dumps({"schema_version": 1, "cases": groups}))
     for design_index in range(designs):
         design = f"design-{design_index}"
         family = families[design_index % len(families)]
@@ -163,6 +174,40 @@ def test_d4_requires_multi_design_family_and_seed_evidence(tmp_path):
     assert report["summary"]["seed_count"] == 2
     assert report["safe_to_apply"] is False
     assert report["promotion_allowed"] is True
+
+
+def test_d4_summarizes_selection_conditioned_model_calibration(tmp_path):
+    report = d4_evaluate(_write_spec(tmp_path), tmp_path / "report.json")
+
+    calibration = report["summary"]["model_calibration"]
+    assert calibration["status"] == "available"
+    assert calibration["selection_conditioned"] is True
+    assert calibration["pair_count"] == 12
+    assert calibration["design_count"] == 6
+    assert calibration["family_count"] == 3
+    assert calibration["mae"] == 0.0
+    assert calibration["interval"] == {
+        "status": "available",
+        "observation_count": 12,
+        "covered_count": 12,
+        "observed_coverage": 1.0,
+        "target_coverage": 0.9,
+    }
+    model_row = next(row for row in report["runs"] if row["strategy"] == "model_assisted")
+    assert model_row["model_metrics"]["post_selection"] == {
+        "status": "available",
+        "candidate_id": "candidate-0",
+        "predicted_final_qor": 90.0,
+        "observed_final_qor": 90.0,
+        "residual": 0.0,
+        "absolute_residual": 0.0,
+        "interval_status": "available",
+        "lower_bound": 89.0,
+        "upper_bound": 91.0,
+        "covered": True,
+        "target_coverage": 0.9,
+        "basis": "held_out_grouped_calibration",
+    }
 
 
 def test_d4_insufficient_sample_stays_unknown(tmp_path):
