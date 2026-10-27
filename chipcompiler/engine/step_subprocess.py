@@ -24,12 +24,13 @@ import time
 from pathlib import Path
 
 from chipcompiler.data import EccOutput, StepEnum, Workspace, WorkspaceStep, is_sta_step
-from chipcompiler.engine.resource_observation import start_observation
+from chipcompiler.engine.resource_observation import new_attempt_id, start_observation
 from chipcompiler.engine.step_execution import (
     StepExecutionResult,
     _prepare_log_file,
     get_process_rss_mb,
 )
+from chipcompiler.utility.file import write_text_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -76,16 +77,19 @@ def execute_step_subprocess(
     step_tag = f"{workspace_step.name}({workspace_step.tool})"
     log_file = _prepare_log_file(workspace_step)
     result_path = Path(os.path.dirname(log_file) or ".") / _RESULT_NAME
+    attempt_id = new_attempt_id()
     payload = {
         "schema_version": PAYLOAD_SCHEMA_VERSION,
         "workspace_directory": str(workspace.directory),
         "step_name": str(workspace_step.name),
         "tool": str(workspace_step.tool),
+        "attempt_id": attempt_id,
         "result_path": str(result_path),
         "parent_pid": os.getpid(),
     }
 
     try:
+        result_path.unlink(missing_ok=True)
         if log_file:
             with open(log_file, "ab") as log_handle:
                 process = _spawn_worker(log_handle)
@@ -112,7 +116,11 @@ def execute_step_subprocess(
     step_error = None
     emitted = 0
     resources = start_observation(
-        process.pid, isolated=True, step=workspace_step.name, tool=workspace_step.tool
+        process.pid,
+        attempt_id=attempt_id,
+        isolated=True,
+        step=workspace_step.name,
+        tool=workspace_step.tool,
     )
     try:
         while process.poll() is None:
@@ -121,23 +129,36 @@ def execute_step_subprocess(
                 step_error = f"{step_tag} cancelled: {cancel_error}"
                 break
             peak_memory_mb = max(peak_memory_mb, memory_reader(process.pid))
-            emitted = _replay_events(result_path, workspace_step, observer, emitted)
+            emitted = _replay_events(result_path, workspace_step, observer, emitted, attempt_id)
             time.sleep(_POLL_SECONDS)
         peak_memory_mb = max(peak_memory_mb, memory_reader(process.pid))
-        emitted = _replay_events(result_path, workspace_step, observer, emitted)
+        emitted = _replay_events(result_path, workspace_step, observer, emitted, attempt_id)
     finally:
         resource_observation = resources.finish()
         _terminate_worker(process)
 
     result = _read_result(result_path)
     if step_error is None:
-        if not isinstance(result, dict) or result.get("done") is not True:
+        if not isinstance(result, dict):
+            step_error = f"{step_tag} worker exited with code {process.returncode}."
+        elif result.get("attempt_id") != attempt_id:
+            if process.returncode != 0:
+                step_error = f"{step_tag} worker exited with code {process.returncode}."
+            else:
+                step_error = f"{step_tag} worker result has a mismatched attempt id."
+        elif result.get("done") is not True:
             step_error = f"{step_tag} worker exited with code {process.returncode}."
         elif result.get("ok") is not True:
             step_error = f"{step_tag} worker reported failure: {result.get('error')}"
+        elif process.returncode != 0:
+            step_error = f"{step_tag} worker exited with code {process.returncode}."
         elif workspace_step.name == StepEnum.RCX.value:
             step_error = _restore_rcx_outputs(workspace_step, result)
-    if isinstance(result, dict) and result.get("done") is True:
+    if (
+        isinstance(result, dict)
+        and result.get("attempt_id") == attempt_id
+        and result.get("done") is True
+    ):
         try:
             from chipcompiler.data.parameter import load_parameter, parameters_have_chip_identity
 
@@ -240,11 +261,21 @@ def _terminate_worker(process: subprocess.Popen) -> None:
         process.wait()
 
 
-def _replay_events(result_path: Path, workspace_step: WorkspaceStep, observer, emitted: int) -> int:
+def _replay_events(
+    result_path: Path,
+    workspace_step: WorkspaceStep,
+    observer,
+    emitted: int,
+    attempt_id: str,
+) -> int:
     """Deliver worker-side subflow stage events to the parent observer."""
     callback = getattr(observer, "on_subflow_stage", None)
     result = _read_result(result_path)
-    if not callable(callback) or not isinstance(result, dict):
+    if (
+        not callable(callback)
+        or not isinstance(result, dict)
+        or result.get("attempt_id") != attempt_id
+    ):
         return emitted
     events = result.get("events")
     if not isinstance(events, list):
@@ -286,6 +317,11 @@ def _arm_parent_death_signal(parent_pid: int) -> None:
         os.kill(os.getpid(), signal.SIGKILL)
 
 
+def _write_result_atomic(result_path: Path, result: dict) -> None:
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    write_text_atomic(result_path, json.dumps(result))
+
+
 def main() -> int:
     payload = json.loads(sys.stdin.read())
     if sys.platform == "linux":
@@ -293,6 +329,7 @@ def main() -> int:
     result_path = Path(payload["result_path"])
     result = {
         "schema_version": RESULT_SCHEMA_VERSION,
+        "attempt_id": payload["attempt_id"],
         "ok": False,
         "done": False,
         "error": None,
@@ -300,8 +337,7 @@ def main() -> int:
     }
 
     def flush() -> None:
-        result_path.parent.mkdir(parents=True, exist_ok=True)
-        result_path.write_text(json.dumps(result), encoding="utf-8")
+        _write_result_atomic(result_path, result)
 
     try:
         import chipcompiler.data as data_api
