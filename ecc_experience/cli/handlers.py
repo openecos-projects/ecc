@@ -77,6 +77,11 @@ def _guard(operation: Callable[[], CommandResult]) -> CommandResult:
             "experience_benchmark_invalid": EXIT_USAGE_ERROR,
             "experience_budget_invalid": EXIT_USAGE_ERROR,
             "experience_index_invalid": EXIT_USAGE_ERROR,
+            "experience_knowledge_invalid": EXIT_USAGE_ERROR,
+            "experience_bridge_invalid": EXIT_USAGE_ERROR,
+            "experience_drift_invalid": EXIT_USAGE_ERROR,
+            "experience_strategy_invalid": EXIT_USAGE_ERROR,
+            "experience_champion_invalid": EXIT_USAGE_ERROR,
         }
         return CommandResult.err([error_record(exc.code, reason=str(exc))], codes.get(exc.code, 1))
     except OSError as exc:

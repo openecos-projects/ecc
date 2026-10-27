@@ -15,7 +15,11 @@ from ecc_experience.collection.drain import drain as drain_recording
 from ecc_experience.dse.execute import run_dse
 from ecc_experience.dse.plan import plan_dse
 from ecc_experience.dse.report import report_dse
+from ecc_experience.knowledge.bridge import evaluate_bridge
 from ecc_experience.knowledge.budget import resource_budget
+from ecc_experience.knowledge.campaign import build_campaign_manifest, compute_knowledge_delta
+from ecc_experience.knowledge.champion import compare_champion
+from ecc_experience.knowledge.drift import assess_drift
 from ecc_experience.knowledge.features import case_features
 from ecc_experience.knowledge.matching import match_cases
 from ecc_experience.knowledge.normalize import normalize_stores
@@ -23,6 +27,7 @@ from ecc_experience.knowledge.recommend import recommend as recommend_cases
 from ecc_experience.knowledge.release import create_release, verify_release
 from ecc_experience.knowledge.release_from_manifest import release_from_manifest
 from ecc_experience.knowledge.store import ExperienceStore
+from ecc_experience.knowledge.strategy import advise_strategy
 from ecc_experience.knowledge.summary import summarize_store
 from ecc_experience.knowledge.transfer import export_package, import_package
 from ecc_experience.knowledge.verify import verify_case
@@ -199,6 +204,45 @@ def dse_compare(
     from ecc_experience.dse.compare import compare_runs
 
     return compare_runs(plan, result, other_plan, other_result, output)
+
+
+def campaign_manifest(report: str | Path, output: str | Path) -> dict:
+    return build_campaign_manifest(report, output)
+
+
+def knowledge_delta(
+    manifest: str | Path,
+    output: str | Path,
+    *,
+    previous_release: str | Path | None = None,
+    heldout: str | Path | None = None,
+    active_cohort: str | None = None,
+) -> dict:
+    return compute_knowledge_delta(
+        manifest,
+        output,
+        previous_release=previous_release,
+        heldout=heldout,
+        active_cohort=active_cohort,
+    )
+
+
+def knowledge_bridge(spec: str | Path, output: str | Path) -> dict:
+    return evaluate_bridge(spec, output)
+
+
+def knowledge_drift(observation: str | Path, output: str | Path) -> dict:
+    return assess_drift(observation, output)
+
+
+def strategy_advice(
+    manifest: str | Path, output: str | Path, *, direction: str = "minimize"
+) -> dict:
+    return advise_strategy(manifest, output, direction=direction)
+
+
+def champion_compare(spec: str | Path, output: str | Path) -> dict:
+    return compare_champion(spec, output)
 
 
 def collect(workspace: str | Path, store: str | Path) -> CollectionResult:

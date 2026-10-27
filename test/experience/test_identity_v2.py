@@ -67,7 +67,7 @@ def test_schema_v2_captures_all_identity_dimensions_and_explains_findings(
         attempt_id="attempt-v2",
         execution_context=context,
     ).case
-    assert case.schema_version == 2
+    assert case.schema_version == 3
     assert case.input_content_fingerprint
     assert case.design is not None and case.design.closure == "complete"
     assert case.design.tags[0].source == "spec"

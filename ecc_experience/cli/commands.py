@@ -25,6 +25,7 @@ from ecc_experience.cli.inputs import (
     SummaryInput,
     TransferInput,
 )
+from ecc_experience.cli.knowledge import knowledge_app
 from ecc_experience.cli.modeling import dataset_app, model_app
 from ecc_experience.cli.normalize import register_normalize
 from ecc_experience.cli.study import study_app
@@ -43,6 +44,7 @@ experience_app.add_typer(dse_app, name="dse")
 experience_app.add_typer(study_app, name="study")
 experience_app.add_typer(dataset_app, name="dataset")
 experience_app.add_typer(model_app, name="model")
+experience_app.add_typer(knowledge_app, name="knowledge")
 index_app = create_app(help="Build and inspect the derived local store index")
 experience_app.add_typer(index_app, name="index")
 

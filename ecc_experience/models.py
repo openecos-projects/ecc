@@ -130,7 +130,7 @@ class FailureIdentity(Model):
 
 
 class ExperienceCase(Model):
-    schema_version: Literal[1, 2] = 1
+    schema_version: Literal[1, 2, 3] = 1
     case_id: str
     collector_version: str
     collected_at: str

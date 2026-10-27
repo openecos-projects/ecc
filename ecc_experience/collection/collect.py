@@ -6,6 +6,7 @@ from typing import Protocol
 from ecc_experience import __version__
 from ecc_experience.adapters.input_closure import content_fingerprint
 from ecc_experience.files import case_identity, digest
+from ecc_experience.knowledge.cohort import knowledge_binding
 from ecc_experience.knowledge.design_tags import design_tags, memory_identity
 from ecc_experience.knowledge.failure import classify_failure
 from ecc_experience.knowledge.store import ExperienceStore
@@ -114,8 +115,19 @@ def collect_committed_case(
             "receipt_status": "not_applicable",
         }
     )
+    stored = {
+        item.stored_path: observation.copies[item.stored_path]
+        for item in observation.evidence
+        if item.stored_path in observation.copies
+    }
+    copies_by_reference = {
+        item.reference: stored[item.stored_path]
+        for item in observation.evidence
+        if item.stored_path in stored
+    }
+    facts = {**facts, "experienceKnowledge": knowledge_binding(facts, copies_by_reference)}
     case = ExperienceCase(
-        schema_version=2,
+        schema_version=3,
         case_id="",
         collector_version=__version__,
         collected_at=datetime.now(UTC).isoformat(),
