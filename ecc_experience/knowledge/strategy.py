@@ -29,6 +29,7 @@ def advise_strategy(
         raise _invalid("Invalid campaign manifest")
     if direction not in {"minimize", "maximize"}:
         raise _invalid("Direction must be minimize or maximize")
+    equal_budget = bool(manifest.get("budget", {}).get("equal_budget"))
     pairs = _pairs(manifest["runs"], direction)
     comparisons = {
         strategy: _comparison(values) for strategy, values in sorted(pairs.items()) if values
@@ -36,7 +37,8 @@ def advise_strategy(
     eligible = [
         (name, result)
         for name, result in comparisons.items()
-        if result["pair_count"] >= MIN_PAIRS
+        if equal_budget
+        and result["pair_count"] >= MIN_PAIRS
         and result["wins"] > result["losses"]
         and result["sign_test_p"] is not None
         and result["sign_test_p"] <= MIN_P_VALUE
@@ -49,14 +51,14 @@ def advise_strategy(
         if eligible
         else "grid"
     )
-    evidence = recommended != "grid"
+    evidence = equal_budget and recommended != "grid"
     result = {
         "schema": ADVICE_SCHEMA,
         "manifest_sha256": digest(manifest),
         "recommended": recommended,
         "fallback": "grid",
         "confidence": "experimental" if evidence else "insufficient_evidence",
-        "equal_budget": bool(manifest.get("budget", {}).get("equal_budget")),
+        "equal_budget": equal_budget,
         "comparisons": comparisons,
         "provenance": {
             "campaign_id": manifest.get("campaign_id"),
@@ -65,9 +67,13 @@ def advise_strategy(
         },
         "promotion_allowed": False,
         "safe_to_apply": False,
-        "reason": "Paired campaign evidence supports an experimental preference"
-        if evidence
-        else "No strategy has sufficient equal-budget paired evidence",
+        "reason": (
+            "Campaign budget is not equal; fallback to grid"
+            if not equal_budget
+            else "Paired campaign evidence supports an experimental preference"
+            if evidence
+            else "No strategy has sufficient equal-budget paired evidence"
+        ),
     }
     destination = Path(output).expanduser().absolute()
     if destination.exists() or destination.is_symlink():

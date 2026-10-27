@@ -217,6 +217,38 @@ def test_strategy_advice_requires_significant_paired_evidence(tmp_path):
     assert result["comparisons"]["adaptive"]["wins"] == 6
 
 
+def test_strategy_advice_rejects_unequal_budget_evidence(tmp_path):
+    runs = []
+    for index in range(6):
+        for strategy, score in (("grid", 10.0), ("adaptive", 9.0)):
+            runs.append(
+                {
+                    "design": f"design-{index}",
+                    "seed": 1,
+                    "strategy": strategy,
+                    "final_qor": score,
+                    "eligible": True,
+                }
+            )
+    manifest = {
+        "schema": CAMPAIGN_MANIFEST_SCHEMA,
+        "campaign_id": "campaign-unequal",
+        "mode": "candidate",
+        "budget": {"equal_budget": False},
+        "runs": runs,
+    }
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest))
+
+    result = advise_strategy(path, tmp_path / "advice.json")
+
+    assert result["recommended"] == "grid"
+    assert result["confidence"] == "insufficient_evidence"
+    assert result["equal_budget"] is False
+    assert result["promotion_allowed"] is False
+    assert "not equal" in result["reason"]
+
+
 def test_knowledge_cli_exposes_candidate_output(tmp_path):
     runs = []
     for index in range(6):
