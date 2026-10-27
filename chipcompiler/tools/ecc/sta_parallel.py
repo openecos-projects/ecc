@@ -8,7 +8,6 @@ import json
 import multiprocessing
 import os
 import shutil
-import signal
 import sys
 import time
 from contextlib import suppress
@@ -16,7 +15,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from chipcompiler.data import is_sta_step
+from chipcompiler.engine.memory import read_memory_status
 from chipcompiler.engine.step_execution import get_process_rss_mb
+from chipcompiler.engine.worker import arm_parent_death_signal as _arm_parent_death_signal
 from chipcompiler.tools.ecc import runner
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.sta_artifacts import copy_sta_artifact, discard_sta_outputs
@@ -49,50 +50,8 @@ def sta_workers(workspace, step) -> int:
 
 
 def _memory_headroom_mb():
-    try:
-        fields = dict(line.split(":", 1) for line in Path("/proc/meminfo").read_text().splitlines())
-        available = int(fields["MemAvailable"].split()[0]) / 1024
-        total = int(fields["MemTotal"].split()[0]) / 1024
-        for line in Path("/proc/self/cgroup").read_text().splitlines():
-            if "memory" in line.split(":", 2)[1].split(","):
-                return 0
-            if not line.startswith("0::"):
-                continue
-            root = Path("/sys/fs/cgroup")
-            relative = line.split("::", 1)[1].lstrip("/")
-            if ".." in relative.split("/"):
-                return 0
-            directory = root / relative
-            while directory == root or root in directory.parents:
-                limit_path = directory / "memory.max"
-                if limit_path.is_file():
-                    limit = limit_path.read_text().strip()
-                    if limit != "max":
-                        capacity = int(limit) / 1024**2
-                        used = int((directory / "memory.current").read_text()) / 1024**2
-                        total = min(total, capacity)
-                        available = min(available, capacity - used)
-                directory = directory.parent
-        return max(0, available - max(1024, total * 0.1))
-    except (OSError, ValueError, KeyError, IndexError):
-        return 0
-
-
-def _arm_parent_death_signal(parent_pid=None):
-    import ctypes
-
-    # A caller can be killed without running its Python cleanup.
-    if parent_pid is None:
-        parent = multiprocessing.parent_process()
-        if parent is None or parent.pid is None:
-            return
-        parent_pid = parent.pid
-    libc = ctypes.CDLL(None, use_errno=True)
-    if libc.prctl(1, signal.SIGKILL, 0, 0, 0) != 0:  # PR_SET_PDEATHSIG
-        error = ctypes.get_errno()
-        raise OSError(error, os.strerror(error))
-    if os.getppid() != parent_pid:
-        os.kill(os.getpid(), signal.SIGKILL)
+    status = read_memory_status()
+    return max(0, status.available_mb - max(1024, status.total_mb * 0.1))
 
 
 def _run_corner(db_config, snapshot, job, log_path):
