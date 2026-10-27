@@ -67,8 +67,26 @@ class _Visitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def _nested(self, node):
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        for default in [*node.args.defaults, *node.args.kw_defaults]:
+            if default is not None:
+                self.visit(default)
+        arguments = [
+            *node.args.posonlyargs,
+            *node.args.args,
+            *node.args.kwonlyargs,
+            node.args.vararg,
+            node.args.kwarg,
+        ]
+        for argument in arguments:
+            if argument is not None and argument.annotation is not None:
+                self.visit(argument.annotation)
+        if node.returns is not None:
+            self.visit(node.returns)
         self.scopes.append(node.name)
-        self.generic_visit(node)
+        for statement in node.body:
+            self.visit(statement)
         self.scopes.pop()
 
     visit_FunctionDef = _nested
@@ -156,6 +174,18 @@ def test_guard_rejects_new_function_in_allowlisted_module(tmp_path):
 
     assert _unexpected(_scan(tmp_path)) == [
         NativeCall("chipcompiler.engine.flow", "helper", "create_db_engine", 2)
+    ]
+
+
+def test_guard_rejects_import_time_initialization_in_default_argument(tmp_path):
+    _write(
+        tmp_path,
+        "chipcompiler/tools/ecc/runner.py",
+        "def get_eda_instance(ecc_module=ECCToolsModule()):\n    return ecc_module\n",
+    )
+
+    assert _unexpected(_scan(tmp_path)) == [
+        NativeCall("chipcompiler.tools.ecc.runner", "<module>", "ECCToolsModule", 1)
     ]
 
 
