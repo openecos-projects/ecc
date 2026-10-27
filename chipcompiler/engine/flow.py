@@ -19,7 +19,6 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
     default_flow_step_category,
-    is_finished_step_state,
     log_flow,
 )
 from chipcompiler.data.workspace.flow_data import normalize_flow_step_categories
@@ -444,40 +443,6 @@ class EngineFlow:
                     step.get("tool", "?"),
                 )
                 break
-
-    def init_db_engine(self) -> bool:
-        if len(self.workspace_steps) <= 0:
-            return False
-
-        # check ecc is initialized by last step, if exist and success,
-        # use it to init db engine directly.
-        if self.engine_db is None:
-            self.engine_db = EngineDB(workspace=self.workspace)
-        else:
-            if self.engine_db.has_init():
-                return True
-
-        # init engine step by last workpsace step data if all steps finished
-        workspace_step: WorkspaceStep | None = None
-        for ws_step in self.workspace_steps:
-            step = self.get_step(name=ws_step.name, tool=ws_step.tool)
-            state = step.get("state") if step is not None else None
-            if not is_finished_step_state(state):
-                # use the first unfinished step to setup db engine
-                workspace_step = ws_step
-                break
-
-        # LEC is a netlist comparison step and does not expose an ECC DB
-        # input. Keep any existing DB alive, but do not try to initialize one
-        # from the LEC workspace.
-        if workspace_step is not None and workspace_step.tool in LEC_STEP_TOOLS:
-            return True
-        if workspace_step is not None and self._uses_openroad_placement_db(workspace_step):
-            return True
-
-        if workspace_step is None:
-            return self.engine_db.ecc_module is not None
-        return self.engine_db.create_db_engine(step=workspace_step)
 
     def _uses_openroad_placement_db(self, workspace_step: WorkspaceStep) -> bool:
         if (

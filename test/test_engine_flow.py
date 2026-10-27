@@ -199,7 +199,6 @@ def test_checkers_run_past_blocked_checklist_and_gate_next_pnr_step(
         executed.append((step.name, blocked_by))
         return StateEnum.Invalid if blocked_by is not None else StateEnum.Success
 
-    monkeypatch.setattr(engine_flow, "init_db_engine", lambda: True)
     monkeypatch.setattr(engine_flow, "_can_parallelize_checker_batch", lambda *_args: False)
     monkeypatch.setattr(engine_flow, "run_step", run_step)
     monkeypatch.setattr(flow_module, "log_flow", lambda **_kwargs: None)
@@ -418,7 +417,6 @@ def test_run_steps_stops_after_synthesis_lec_failure(monkeypatch, tmp_path):
         return StateEnum.Success
 
     monkeypatch.setattr(engine_flow, "run_step", fake_run_step)
-    monkeypatch.setattr(engine_flow, "init_db_engine", lambda: True)
     monkeypatch.setattr(flow_module, "log_flow", lambda **_kwargs: None)
 
     assert engine_flow.run_steps() is False

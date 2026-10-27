@@ -32,17 +32,6 @@ def test_agent_worker_flag_selects_worker_entrypoint(monkeypatch):
     assert calls == ["worker"]
 
 
-def test_candidate_worker_flag_selects_worker_entrypoint(monkeypatch):
-    module = _load_entrypoint_module()
-    calls = []
-
-    monkeypatch.setattr(sys, "argv", [os.path.join("dist", "ecc"), "--ecc-candidate-worker"])
-    monkeypatch.setattr("agent.candidate_worker.main", lambda: calls.append("worker") or 9)
-
-    assert module.main() == 9
-    assert calls == ["worker"]
-
-
 def test_step_worker_flag_selects_worker_entrypoint(monkeypatch):
     module = _load_entrypoint_module()
     calls = []
@@ -60,7 +49,10 @@ def test_step_worker_flag_selects_worker_entrypoint(monkeypatch):
     assert calls == ["worker"]
 
 
-@pytest.mark.parametrize("arguments", [["--ecc-worker"], ["--ecc-worker", "unknown.module"]])
+@pytest.mark.parametrize(
+    "arguments",
+    [["--ecc-worker"], ["--ecc-worker", "unknown.module"], ["--ecc-candidate-worker"]],
+)
 def test_invalid_worker_dispatch_exits_nonzero_without_import(arguments):
     project_root = Path(__file__).parents[2]
     completed = subprocess.run(

@@ -11,9 +11,15 @@ from chipcompiler.engine.step_execution import (
     _prepare_log_file,
     get_process_rss_mb,
     record_tool_failure,
-    track_current_process_memory,
 )
 from chipcompiler.utility.log import capture_stdio_to_file
+
+
+def _track_current_process_memory(pid, stop_event, peak_memory):
+    while not stop_event.is_set():
+        peak_memory[0] = max(peak_memory[0], get_process_rss_mb(pid))
+        stop_event.wait(0.1)
+    peak_memory[0] = max(peak_memory[0], get_process_rss_mb(pid))
 
 
 def _initialize_worker_db(workspace, workspace_step):
@@ -56,7 +62,7 @@ def execute_in_process(
         workspace.logger.info(f"[STEP] {step_tag} pid={pid} started")
         start_memory_mb = get_process_rss_mb(pid)
         peak_memory[0] = start_memory_mb
-        memory_tracker = track_current_process_memory
+        memory_tracker = _track_current_process_memory
         if is_sta_step(workspace_step):
             from chipcompiler.tools.ecc.sta_parallel import track_sta_process_memory
 

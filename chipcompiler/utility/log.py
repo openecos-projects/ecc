@@ -131,6 +131,14 @@ def init_api_runtime_log(
     return resolved
 
 
+def _logger_key(name: str, log_dir: str | Path | None) -> str:
+    if not log_dir:
+        return name
+    directory = Path(log_dir).expanduser().resolve()
+    workspace_dir = directory.parent if directory.name == "log" else directory
+    return f"{name}:{workspace_dir}"
+
+
 class Logger:
     def __init__(
         self,
@@ -144,7 +152,7 @@ class Logger:
         file_level: int | None = None,
         fmt: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     ):
-        self.logger = logging.getLogger(name)
+        self.logger = logging.getLogger(_logger_key(name, log_dir))
         self.logger.setLevel(level)
         self.logger.propagate = False
 
