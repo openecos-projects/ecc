@@ -155,7 +155,7 @@ def _run(plan, limits, destination, *, resume, select, model_release, max_concur
     save()
     candidates = audit_history(plan, result)["candidates"]
 
-    model_cache = {}
+    model_cache: dict[int, tuple[dict | None, str | None]] = {}
 
     def stage_plan(rung_index):
         rung = plan["rungs"][rung_index]
@@ -173,9 +173,9 @@ def _run(plan, limits, destination, *, resume, select, model_release, max_concur
             "decision": decision,
         }
 
-    def model_for_rung(rung_index):
+    def model_for_rung(rung_index: int) -> tuple[dict | None, str | None]:
         if not model_release:
-            return None
+            return None, None
         if rung_index not in model_cache:
             with result_lock:
                 if rung_index not in model_cache:
@@ -215,8 +215,12 @@ def _run(plan, limits, destination, *, resume, select, model_release, max_concur
                     "fallback": "measured_objective_tie_break_only",
                 }
                 record["predicted_qor"] = prediction["prediction"]["prediction"]
-                result["model"]["status"] = "available"
-                result["model"]["release_id"] = release["release_id"]
+                result["model"].update(
+                    status="available",
+                    release_id=release["release_id"],
+                    model_id=release["model_id"],
+                    reason=None,
+                )
         except (ExperienceError, OSError, KeyError, TypeError, ValueError) as exc:
             with result_lock:
                 record["model_prediction"] = {

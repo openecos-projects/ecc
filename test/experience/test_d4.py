@@ -69,6 +69,11 @@ def _result(plan, strategy, score):
                 "exit_code": 0,
                 "commands": [],
                 "elapsed_seconds": 5.0,
+                **(
+                    {"model_prediction": {"status": "available", "prediction": score}}
+                    if strategy == "model_assisted"
+                    else {}
+                ),
             }
             for index in range(2)
         ],
@@ -212,6 +217,27 @@ def test_d4_requires_resource_evidence_when_a_store_is_declared(tmp_path):
     assert report["status"] == "unknown"
     assert "resource_evidence_unavailable:design-0" in report["reasons"]
     assert "host_load_evidence_unavailable:design-0" in report["reasons"]
+
+
+def test_d4_rejects_a_loaded_model_without_available_predictions(tmp_path):
+    spec = _write_spec(tmp_path)
+    result_path = tmp_path / "design-0-0-model_assisted-result.json"
+    result = json.loads(result_path.read_text())
+    for trial in result["trials"]:
+        trial.pop("model_prediction")
+    result_path.write_text(json.dumps(result))
+
+    report = d4_evaluate(spec, tmp_path / "report.json")
+
+    assert report["status"] == "unknown"
+    assert "model_evidence_unavailable:design-0" in report["reasons"]
+    row = next(
+        item
+        for item in report["runs"]
+        if item["design"] == "design-0" and item["strategy"] == "model_assisted"
+    )
+    assert row["model_metrics"]["status"] == "available"
+    assert row["model_metrics"]["prediction_count"] == 0
 
 
 def test_d4_rejects_same_input_warm_start_as_a_distinct_strategy(tmp_path):

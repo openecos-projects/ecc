@@ -74,7 +74,10 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
             reasons.append(f"final_qor_unavailable:{design}")
         if any(
             row["strategy"] == "model_assisted"
-            and row["result"].get("model", {}).get("status") != "available"
+            and not (
+                row["result"].get("model", {}).get("status") == "available"
+                and _available_model_predictions(row["result"]) > 0
+            )
             for row in rows
         ):
             reasons.append(f"model_evidence_unavailable:{design}")
@@ -1055,10 +1058,14 @@ def _validation_signoff(value: object) -> dict:
 
 def _model_metrics(result: dict) -> dict:
     model = result.get("model")
+    predictions = _model_predictions(result)
+    available = sum(item.get("status") == "available" for item in predictions)
     if not isinstance(model, dict) or model.get("status") != "available":
         return {
             "status": "unknown",
             "reason": model.get("reason") if isinstance(model, dict) else None,
+            "prediction_count": available,
+            "unknown_prediction_count": len(predictions) - available,
         }
     metrics = {
         "status": "available",
@@ -1066,6 +1073,8 @@ def _model_metrics(result: dict) -> dict:
         "model_id": model.get("model_id"),
         "policy": model.get("policy"),
         "used_for_selection": model.get("used_for_selection", False),
+        "prediction_count": available,
+        "unknown_prediction_count": len(predictions) - available,
     }
     requested = model.get("requested")
     if isinstance(requested, str):
@@ -1082,6 +1091,21 @@ def _model_metrics(result: dict) -> dict:
         except (ExperienceError, OSError, KeyError, TypeError, ValueError) as exc:
             metrics["validation"] = {"status": "unknown", "reason": str(exc)}
     return metrics
+
+
+def _model_predictions(result: dict) -> list[dict]:
+    trials = result.get("trials")
+    if not isinstance(trials, list):
+        return []
+    return [
+        trial["model_prediction"]
+        for trial in trials
+        if isinstance(trial, dict) and isinstance(trial.get("model_prediction"), dict)
+    ]
+
+
+def _available_model_predictions(result: dict) -> int:
+    return sum(item.get("status") == "available" for item in _model_predictions(result))
 
 
 def _strategy_summary(metrics: list[dict]) -> dict:
@@ -1107,6 +1131,12 @@ def _strategy_summary(metrics: list[dict]) -> dict:
             ),
             "model_metrics_available": sum(
                 row["model_metrics"]["status"] == "available" for row in rows
+            ),
+            "model_prediction_count": sum(
+                row["model_metrics"].get("prediction_count", 0) for row in rows
+            ),
+            "model_used_for_selection_count": sum(
+                row["model_metrics"].get("used_for_selection") is True for row in rows
             ),
             "recommendation_hit_count": sum(row["recommendation_hit"] for row in rows),
             "recommendation_hit_rate": (
