@@ -296,6 +296,70 @@ def test_worker_uses_persisted_explicit_input_step(tmp_path, monkeypatch):
     assert flow_path.read_bytes() == before
 
 
+def test_worker_defers_unselected_optional_steps(tmp_path, monkeypatch):
+    from chipcompiler.engine import step_subprocess
+
+    workspace = _workspace(tmp_path)
+    flow = EngineFlow(workspace)
+    flow.workspace.flow.data = {
+        "steps": [
+            flow.init_flow_step("preFloorplan", "ecc", "Unstart"),
+            flow.init_flow_step("place", "dreamplace", "Unstart"),
+            flow.init_flow_step("CTS", "ecc", "Unstart"),
+        ]
+    }
+    flow_path = tmp_path / "home" / "flow.json"
+    workspace.flow.path = flow_path
+    flow_path.parent.mkdir()
+    assert flow.save()
+    before = flow_path.read_bytes()
+    monkeypatch.setattr(
+        "chipcompiler.data.load_workspace",
+        lambda directory, *, read_only=False: workspace,
+    )
+
+    import chipcompiler.tools as tools
+
+    real_create_step = tools.create_step
+
+    def create_step(*args, **kwargs):
+        if kwargs["eda"] == "dreamplace" and kwargs["check_dependency"]:
+            return None
+        return real_create_step(*args, **kwargs)
+
+    monkeypatch.setattr(tools, "create_step", create_step)
+
+    def initialize_db(flow, step):
+        flow.engine_db = SimpleNamespace(engine=object(), initialization_error=None)
+
+    monkeypatch.setattr(EngineFlow, "init_db_engine_for_step", initialize_db)
+    monkeypatch.setattr(EngineFlow, "check_step_result", lambda self, workspace_step: True)
+    monkeypatch.setattr(
+        "chipcompiler.utility.log.capture_stdio_to_file", lambda _path: nullcontext()
+    )
+    executed = []
+
+    def run_step(workspace, step, ecc_module=None):
+        executed.append(step.name)
+        return True
+
+    assert step_subprocess.run_step_worker(
+        {
+            "workspace_directory": str(tmp_path),
+            "step_name": "preFloorplan",
+            "tool": "ecc",
+            "layout_image": False,
+        },
+        {"events": []},
+        lambda: None,
+        flow_factory=EngineFlow,
+        tool_runner=run_step,
+    )
+
+    assert executed == ["preFloorplan"]
+    assert flow_path.read_bytes() == before
+
+
 @pytest.mark.parametrize("input_step", ["does_not_exist", "sta"])
 def test_explicit_input_step_must_already_exist(tmp_path, input_step):
     from chipcompiler.data.workspace.flow_policy import FlowInputStepError
