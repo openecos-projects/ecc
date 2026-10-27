@@ -911,3 +911,48 @@ def test_failure_during_pretrial_checks_keeps_intent_and_does_not_run(
     assert result["trials"][0]["candidate_id"] == "candidate-0001"
     assert result["trials"][0]["status"] == "failed"
     assert not simulated_cli
+
+
+def test_collection_retries_a_brief_flow_snapshot_race(monkeypatch):
+    calls = []
+
+    def collect(*_args, **_kwargs):
+        calls.append(None)
+        if len(calls) < 3:
+            raise ExperienceError("Flow changed", code="experience_source_changed")
+        return {"status": "passed"}
+
+    monkeypatch.setattr(trial, "collect_trial", collect)
+    monkeypatch.setattr(trial, "COLLECTION_RETRY_DELAYS", (0.0, 0.0))
+
+    assert trial._collect_trial_with_stability_retry() == {"status": "passed"}
+    assert len(calls) == 3
+
+
+def test_collection_does_not_retry_other_source_failures(monkeypatch):
+    calls = []
+
+    def collect(*_args, **_kwargs):
+        calls.append(None)
+        raise ExperienceError("Input changed", code="experience_input_changed")
+
+    monkeypatch.setattr(trial, "collect_trial", collect)
+
+    with pytest.raises(ExperienceError, match="Input changed"):
+        trial._collect_trial_with_stability_retry()
+    assert len(calls) == 1
+
+
+def test_collection_keeps_source_failure_after_bounded_retries(monkeypatch):
+    calls = []
+
+    def collect(*_args, **_kwargs):
+        calls.append(None)
+        raise ExperienceError("Flow changed", code="experience_source_changed")
+
+    monkeypatch.setattr(trial, "collect_trial", collect)
+    monkeypatch.setattr(trial, "COLLECTION_RETRY_DELAYS", (0.0, 0.0))
+
+    with pytest.raises(ExperienceError, match="Flow changed"):
+        trial._collect_trial_with_stability_retry()
+    assert len(calls) == 3

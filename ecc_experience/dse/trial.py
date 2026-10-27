@@ -27,6 +27,8 @@ from ecc_experience.optimization.evidence import check_trial_configuration, insp
 from ecc_experience.optimization.policy import reviewed_parameter_effects
 from ecc_experience.optimization.process import CliRunner
 
+COLLECTION_RETRY_DELAYS = (0.25, 0.5, 1.0)
+
 
 def check_source(plan: dict) -> WorkspaceObservation:
     manifest = load_manifest(plan["project"])
@@ -66,6 +68,26 @@ def requested_observation(baseline: WorkspaceObservation, parameters: dict) -> W
     facts = deepcopy(baseline.facts)
     facts["workspaceSpec"]["parameters"].update(reviewed_parameter_effects(parameters))
     return replace(baseline, facts=facts)
+
+
+def _collect_trial_with_stability_retry(*args, **kwargs) -> dict:
+    """Re-read a settled workspace across a brief flow/snapshot write-back race.
+
+    Collection runs immediately after a detached ``ecc run``. A completed
+    workspace can briefly expose a flow projection newer than its committed
+    snapshot while the final write-back is still draining. The retry only
+    absorbs that bounded source-change window; genuine input or snapshot
+    changes remain failures after the retries are exhausted.
+    """
+    for attempt, delay in enumerate((0.0, *COLLECTION_RETRY_DELAYS)):
+        if delay:
+            time.sleep(delay)
+        try:
+            return collect_trial(*args, **kwargs)
+        except ExperienceError as exc:
+            if exc.code != "experience_source_changed" or attempt == len(COLLECTION_RETRY_DELAYS):
+                raise
+    raise AssertionError("unreachable collection retry state")
 
 
 def execute_trial(
@@ -233,7 +255,7 @@ def execute_trial(
             stage=plan["through_step"],
         )
         if store_lock is None:
-            collected = collect_trial(
+            collected = _collect_trial_with_stability_retry(
                 workspace,
                 plan["store"],
                 requested,
@@ -243,7 +265,7 @@ def execute_trial(
             )
         else:
             with store_lock:
-                collected = collect_trial(
+                collected = _collect_trial_with_stability_retry(
                     workspace,
                     plan["store"],
                     requested,
