@@ -143,14 +143,12 @@ class CliRunner:
         process.wait()
         deadline = time.monotonic() + 5
         while identities and time.monotonic() < deadline:
-            running = []
+            remaining = []
             for pid, identity in identities:
                 with suppress(OSError, RuntimeProcessError):
-                    stat = Path(f"/proc/{pid}/stat").read_text()
-                    state = stat[stat.rfind(")") + 2 :].split()[0]
-                    if _process_start_id(pid) == identity and state not in {"Z", "X"}:
-                        running.append((pid, identity))
-            identities = running
+                    if _process_start_id(pid) == identity:
+                        remaining.append((pid, identity))
+            identities = remaining
             if identities:
                 time.sleep(0.01)
         if identities:

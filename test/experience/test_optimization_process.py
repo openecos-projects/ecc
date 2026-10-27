@@ -3,7 +3,6 @@ import signal
 import subprocess
 import sys
 import time
-from contextlib import suppress
 from pathlib import Path
 
 import pytest
@@ -30,9 +29,7 @@ def test_timeout_stops_descendants_in_an_independent_session(tmp_path, monkeypat
 
     assert invocation.exit_code == 124
     pid = int(child_pid.read_text())
-    stat = Path(f"/proc/{pid}/stat")
-    with suppress(FileNotFoundError, ProcessLookupError):
-        assert stat.read_text().split(")", 1)[1].split()[0] == "Z"
+    assert not Path(f"/proc/{pid}").exists()
 
 
 def test_sigterm_uses_the_cancellation_path_and_restores_handler():
