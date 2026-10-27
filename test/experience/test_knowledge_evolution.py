@@ -7,6 +7,7 @@ from chipcompiler.cli.app import app
 from ecc_experience.files import digest
 from ecc_experience.knowledge.campaign import (
     CAMPAIGN_MANIFEST_SCHEMA,
+    _run_record,
     build_campaign_manifest,
     compute_knowledge_delta,
 )
@@ -155,6 +156,81 @@ def test_campaign_manifest_stays_candidate_and_delta_requires_heldout(tmp_path):
     assert delta["decisions"]["promotion_allowed"] is False
     assert delta["model"]["previous_release"]["release_id"] == "model-release-old"
     assert delta["queue"]["rebridge"]
+
+
+def test_campaign_quality_accepts_complete_coverage_with_partial_scope():
+    plan = _plan("design-a", "grid")
+    result = _result(plan, 10)
+    result["trials"][0]["feature_status"] = "partial"
+    result["trials"][0]["config_receipt"] = {
+        "status": "applied",
+        "mismatches": [],
+        "unmapped": [],
+    }
+    run = {
+        "design": "design-a",
+        "family": "family-a",
+        "strategy": "grid",
+        "seed": 1,
+        "plan": plan,
+        "result": result,
+        "warm_start": {"seeds": []},
+        "config_files": [],
+        "resources": {
+            "status": "partial",
+            "observation_count": 2,
+            "coverage": {
+                "record_ratio": 1.0,
+                "rss_observation_ratio": 1.0,
+                "host_load_observation_ratio": 1.0,
+            },
+            "scope_counts": {"shared_process_tree": 2},
+        },
+    }
+
+    row = _run_record(run)
+
+    assert row["quality"]["level"] == "high"
+    assert row["eligible"] is True
+    assert row["feature_usable"] is True
+    assert row["quality"]["checks"]["feature_complete"] is False
+    assert row["quality"]["checks"]["resource_available"] is True
+    assert row["quality"]["checks"]["resource_attribution_isolated"] is False
+    assert row["quality"]["limitations"] == [
+        "feature_step_coverage_partial",
+        "resource_attribution_shared",
+    ]
+
+
+def test_campaign_quality_rejects_incomplete_resource_coverage():
+    plan = _plan("design-a", "grid")
+    result = _result(plan, 10)
+    run = {
+        "design": "design-a",
+        "family": "family-a",
+        "strategy": "grid",
+        "seed": 1,
+        "plan": plan,
+        "result": result,
+        "warm_start": {"seeds": []},
+        "config_files": [],
+        "resources": {
+            "status": "partial",
+            "observation_count": 0,
+            "coverage": {
+                "record_ratio": 0.0,
+                "rss_observation_ratio": 0.0,
+                "host_load_observation_ratio": 0.0,
+            },
+            "scope_counts": {},
+        },
+    }
+
+    row = _run_record(run)
+
+    assert row["quality"]["level"] == "medium"
+    assert row["eligible"] is False
+    assert "resource_measurement_incomplete" in row["rejected_reasons"]
 
 
 def test_heldout_design_overlap_blocks_training(tmp_path):

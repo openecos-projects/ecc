@@ -2100,6 +2100,15 @@ ecc experience knowledge advice \
 证据的建议。默认策略固定为 `training_allowed=false`、`promotion_allowed=false` 和
 `safe_to_apply=false`。
 
+campaign 的 run quality 是 **候选就绪度**，不能替代 W7 的 `step-quality/1`。候选要求
+full/fresh 通过、trial feature 为 `available/partial`、配置回执为 `applied/matched` 且
+`mismatches`/`unmapped` 为空，并且 trial 资源覆盖率完整（record/RSS/host-load ratio
+均为 1）。RSS 和 host load 覆盖完整但 scope 为 `shared_process_tree` 时，仍可进入 QoR
+候选，同时保留 `resource_attribution_isolated=false` 和
+`resource_attribution_shared` 限制；feature 只有部分 step 报告时保留
+`feature_complete=false` 和 `feature_step_coverage_partial`。这些字段不能被解释为可用于
+资源模型或 active warm-start；缺少覆盖则保持 `medium`/`rebridge`。
+
 工具链或 step contract 升级时，使用 bridge spec 和 drift observation 评估可比性。
 bridge 至少需要 3 个独立 design 和 2 个 family；指标缺失保持 `unknown`，即使通过也只
 得到 `compatible_experimental`。

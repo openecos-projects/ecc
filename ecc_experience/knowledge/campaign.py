@@ -178,7 +178,7 @@ def compute_knowledge_delta(
             "designs": len(designs),
         },
         "coverage": {
-            "feature": _ratio(manifest["runs"], "feature_available"),
+            "feature": _ratio(manifest["runs"], "feature_usable"),
             "resource": _ratio(manifest["runs"], "resource_available"),
             "validation": _ratio(manifest["runs"], "validated"),
         },
@@ -232,15 +232,33 @@ def _run_record(run: dict[str, Any]) -> dict[str, Any]:
         for item in trials
         if isinstance(item, dict) and isinstance(item.get("config_receipt"), dict)
     )
-    feature_available = bool(trials) and all(
-        isinstance(item, dict) and item.get("feature_status") == "available" for item in trials
+    feature_statuses = [
+        item.get("feature_status") for item in trials if isinstance(item, dict)
+    ]
+    feature_usable = bool(feature_statuses) and all(
+        status in {"available", "partial"} for status in feature_statuses
+    )
+    feature_complete = bool(feature_statuses) and all(
+        status == "available" for status in feature_statuses
     )
     resources = run["resources"]
-    resource_available = resources.get("status") == "available"
-    receipt_clean = bool(receipt_statuses) and set(receipt_statuses) == {"matched"}
+    coverage = resources.get("coverage") if isinstance(resources.get("coverage"), dict) else {}
+    resource_available = bool(resources.get("observation_count")) and all(
+        coverage.get(key) == 1.0
+        for key in ("record_ratio", "rss_observation_ratio", "host_load_observation_ratio")
+    )
+    resource_attribution_isolated = resources.get("status") == "available"
+    receipt_clean = bool(trials) and all(
+        isinstance(item, dict)
+        and isinstance(item.get("config_receipt"), dict)
+        and item["config_receipt"].get("status") in {"applied", "matched"}
+        and not item["config_receipt"].get("mismatches")
+        and not item["config_receipt"].get("unmapped")
+        for item in trials
+    )
     quality = _run_quality(
         validated=validated,
-        feature_available=feature_available,
+        feature_usable=feature_usable,
         resource_available=resource_available,
         receipt_clean=receipt_clean,
         case_count=len(case_ids),
@@ -261,11 +279,28 @@ def _run_record(run: dict[str, Any]) -> dict[str, Any]:
             "level": quality,
             "checks": {
                 "validated": validated,
-                "feature_available": feature_available,
+                "feature_usable": feature_usable,
+                "feature_complete": feature_complete,
                 "resource_available": resource_available,
+                "resource_attribution_isolated": resource_attribution_isolated,
                 "config_receipts": dict(sorted(receipt_statuses.items())),
                 "case_evidence": bool(case_ids),
             },
+            "basis": (
+                "campaign_qor_candidate"
+                if quality == "high"
+                else "observation_only"
+                if quality == "medium"
+                else "insufficient_evidence"
+            ),
+            "limitations": [
+                reason
+                for reason, limited in (
+                    ("feature_step_coverage_partial", not feature_complete),
+                    ("resource_attribution_shared", not resource_attribution_isolated),
+                )
+                if limited
+            ],
         },
         "cohort": cohort,
         "budget": {
@@ -277,8 +312,10 @@ def _run_record(run: dict[str, Any]) -> dict[str, Any]:
         "config_files": run["config_files"],
         "selected_candidate": selected_candidate,
         "selected_parameters": selected_parameters,
-        "feature_available": feature_available,
+        "feature_available": feature_complete,
+        "feature_usable": feature_usable,
         "resource_available": resource_available,
+        "resource_attribution_isolated": resource_attribution_isolated,
         "final_qor": _final_qor(result),
         "score_delta": result.get("score_delta"),
         "model": _model_evidence(result),
@@ -291,7 +328,7 @@ def _run_record(run: dict[str, Any]) -> dict[str, Any]:
         },
         "rejected_reasons": _rejected_reasons(
             validated=validated,
-            feature_available=feature_available,
+            feature_usable=feature_usable,
             resource_available=resource_available,
             receipt_clean=receipt_clean,
             case_count=len(case_ids),
@@ -318,14 +355,14 @@ def _selection_evidence(
 def _run_quality(
     *,
     validated: bool,
-    feature_available: bool,
+    feature_usable: bool,
     resource_available: bool,
     receipt_clean: bool,
     case_count: int,
 ) -> str:
     if not validated or not case_count:
         return "low"
-    if feature_available and resource_available and receipt_clean:
+    if feature_usable and resource_available and receipt_clean:
         return "high"
     return "medium"
 
@@ -333,7 +370,7 @@ def _run_quality(
 def _rejected_reasons(**checks: Any) -> list[str]:
     names = {
         "validated": "full_and_fresh_validation_not_passed",
-        "feature_available": "feature_evidence_incomplete",
+        "feature_usable": "feature_evidence_incomplete",
         "resource_available": "resource_measurement_incomplete",
         "receipt_clean": "config_receipt_mismatch_or_missing",
         "case_count": "case_evidence_missing",

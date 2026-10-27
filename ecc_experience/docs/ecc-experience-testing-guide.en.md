@@ -2470,6 +2470,18 @@ validation or missing receipts require `reobserve`. Retirement remains a
 recommendation backed by preserved historical evidence. The default policy is
 `training_allowed=false`, `promotion_allowed=false` and `safe_to_apply=false`.
 
+Campaign run quality measures **candidate readiness**, not W7 `step-quality/1`.
+A candidate requires passed full/fresh validation, trial features in
+`available/partial`, config receipts in `applied/matched` with empty
+`mismatches`/`unmapped`, and complete trial resource coverage (record, RSS and
+host-load ratios all equal 1). Complete RSS/host-load coverage with
+`shared_process_tree` scope may still enter the QoR candidate set, while keeping
+`resource_attribution_isolated=false` and a `resource_attribution_shared`
+limitation. Partial step reports keep `feature_complete=false` and a
+`feature_step_coverage_partial` limitation. Neither field may be treated as
+evidence for a resource model or active warm-start. Missing coverage remains
+`medium`/`rebridge`.
+
 Use a bridge specification and drift observation when a toolchain or step
 contract changes. A bridge needs at least three independent designs and two
 families; missing metrics stay `unknown`, and even a pass is only
