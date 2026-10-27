@@ -58,9 +58,11 @@ class _FakeFlow:
     def __init__(self, workspace):
         self.workspace = workspace
         self.initialized_for = None
+        self.executable_steps = None
 
-    def create_step_workspaces(self, *, initialize_config=True):
+    def create_step_workspaces(self, *, executable_steps=None, initialize_config=True):
         assert initialize_config is False
+        self.executable_steps = executable_steps
 
     def get_workspace_step(self, name):
         return self._step if name == self._step.name else None
@@ -154,6 +156,7 @@ def test_worker_main_success_writes_result(monkeypatch, tmp_path):
     ]
     assert events == ["ran"]
     assert flow.initialized_for is step
+    assert flow.executable_steps == {step.name}
 
 
 def test_worker_main_rejects_ledger_save_without_writing(monkeypatch, tmp_path):
