@@ -917,11 +917,28 @@ def _selected_parameters(result: dict) -> object | None:
 
 def _search_space_summary(runs: list[dict]) -> dict:
     axes: dict[str, dict] = {}
+    declared_counts = set()
+    budget_limits = set()
+    budget_limited_runs = []
+    missing_budget_runs = []
     for run in runs:
+        space = run["plan"].get("space")
+        combination_count = _space_combination_count(space)
+        if combination_count is None:
+            missing_budget_runs.append(_run_identity(run))
+        else:
+            declared_counts.add(combination_count)
+            limits = run["plan"].get("limits")
+            max_trials = limits.get("max_trials") if isinstance(limits, dict) else None
+            if isinstance(max_trials, int) and not isinstance(max_trials, bool):
+                budget_limits.add(max_trials)
+                if combination_count > max_trials:
+                    budget_limited_runs.append(_run_identity(run))
+            else:
+                missing_budget_runs.append(_run_identity(run))
         parameters = _selected_parameters(run["result"])
         if not isinstance(parameters, dict):
             continue
-        space = run["plan"].get("space")
         if not isinstance(space, dict):
             continue
         for axis, values in space.items():
@@ -997,11 +1014,43 @@ def _search_space_summary(runs: list[dict]) -> dict:
         "boundary_axes": boundary_axes,
         "inconsistent_axes": inconsistent_axes,
         "axes": dict(sorted(axes.items())),
+        "cartesian_coverage": {
+            "status": "budget_limited"
+            if budget_limited_runs
+            else "unknown"
+            if missing_budget_runs or not declared_counts
+            else "complete",
+            "declared_combination_counts": sorted(declared_counts),
+            "trial_budget_limits": sorted(budget_limits),
+            "budget_limited_runs": sorted(budget_limited_runs),
+            "missing_budget_runs": sorted(missing_budget_runs),
+            "limitation": (
+                "A declared Cartesian space larger than max_trials cannot be treated as "
+                "fully explored; reduce combinations or freeze a larger equal per-run budget"
+                if budget_limited_runs
+                else None
+            ),
+        },
         "limitation": (
             "Boundary-limited selections mean the frozen range did not bracket the observed "
             "preference; the next round must widen or shift the axis and re-freeze every run"
         ),
     }
+
+
+def _space_combination_count(space: object) -> int | None:
+    if not isinstance(space, dict) or not space:
+        return None
+    count = 1
+    for values in space.values():
+        if not isinstance(values, list) or not values:
+            return None
+        count *= len(values)
+    return count
+
+
+def _run_identity(run: dict) -> str:
+    return f"{run['design']}:{run['strategy']}:{run['seed']}"
 
 
 def _validation_status(value: object) -> str:

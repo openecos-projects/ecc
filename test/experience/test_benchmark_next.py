@@ -279,3 +279,31 @@ def test_next_round_repeats_matched_seeds_when_seed_conclusions_disagree(tmp_pat
     assert priority["priority"] == "medium"
     assert {"code": "strategy_separation_unstable"} in priority["reasons"]
     assert priority["next_action"] == "repeat_matched_seeds"
+
+
+def test_next_round_flags_cartesian_space_larger_than_trial_budget(tmp_path):
+    manifest = _manifest()
+    manifest["search"]["space_coverage"]["cartesian_coverage"] = {
+        "status": "budget_limited",
+        "declared_combination_counts": [27],
+        "trial_budget_limits": [16],
+        "budget_limited_runs": ["design-a:grid:1"],
+    }
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest))
+
+    result = plan_next_benchmark(path, tmp_path / "next.json")
+
+    assert {
+        "code": "search_space_budget",
+        "priority": "high",
+        "status": "budget_limited",
+        "declared_combination_counts": [27],
+        "trial_budget_limits": [16],
+        "budget_limited_runs": ["design-a:grid:1"],
+        "reason": (
+            "The declared Cartesian space is larger than max_trials; reduce the combination "
+            "count or freeze a larger equal per-run budget instead of presenting a partial "
+            "grid as full coverage"
+        ),
+    } in result["actions"]

@@ -7,6 +7,7 @@ from ecc_experience.api import d4_evaluate
 from ecc_experience.benchmark.d4 import (
     _resource_acceptance,
     _resource_evidence,
+    _search_space_summary,
     _summarize_resources,
     _warm_start_evidence,
 )
@@ -431,6 +432,43 @@ def test_strategy_separation_compares_within_each_seed():
                 "distinct_selections": 1,
             },
         ],
+    }
+
+
+def test_search_space_reports_incomplete_cartesian_coverage():
+    runs = []
+    for strategy in STRATEGIES:
+        runs.append(
+            {
+                "design": "design-a",
+                "strategy": strategy,
+                "seed": 1,
+                "plan": {
+                    "space": {
+                        "core_util": [0.4, 0.44, 0.48],
+                        "density": [0.2, 0.25, 0.3],
+                        "hold_margin": [0.0, 0.02, 0.04],
+                    },
+                    "limits": {"max_trials": 16},
+                },
+                "result": {"selection": {"candidate": "candidate-0"}, "trials": []},
+            }
+        )
+
+    result = _search_space_summary(runs)
+
+    assert result["cartesian_coverage"] == {
+        "status": "budget_limited",
+        "declared_combination_counts": [27],
+        "trial_budget_limits": [16],
+        "budget_limited_runs": sorted(
+            f"design-a:{strategy}:1" for strategy in STRATEGIES
+        ),
+        "missing_budget_runs": [],
+        "limitation": (
+            "A declared Cartesian space larger than max_trials cannot be treated as fully "
+            "explored; reduce combinations or freeze a larger equal per-run budget"
+        ),
     }
 
 

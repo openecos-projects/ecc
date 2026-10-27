@@ -2342,6 +2342,9 @@ boundary counts and interior counts for every numeric DSE axis. A
 `boundary_limited` round means the frozen range did not bracket the observed
 preference. Shift or widen the reviewed axis and regenerate all plans; do not
 mix old and new spaces in one equal-budget comparison.
+`cartesian_coverage.status=budget_limited` means the declared Cartesian
+combination count exceeds `max_trials`; do not describe a partial grid as full
+coverage. Reduce the combinations or freeze a larger equal per-run budget.
 
 ```bash
 ecc experience dse d4 --spec ./inputs/d4.json --output ./reports/d4.json --json
@@ -2536,3 +2539,6 @@ minimum confirmation designs/runs. Output always keeps `planning_only=true`,
 `safe_to_apply=false` and `promotion_allowed=false`; confirmation must use new
 independent designs and families rather than treating the exploration round as
 held-out evidence.
+When the source report says `cartesian_coverage=budget_limited`, the planner
+emits a high-priority `search_space_budget` action to reduce combinations or
+raise the equal per-run trial budget first.

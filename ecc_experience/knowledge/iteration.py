@@ -293,6 +293,25 @@ def _search_actions(search: Any) -> list[dict[str, Any]]:
     if not isinstance(coverage, dict) or not isinstance(coverage.get("axes"), dict):
         return []
     actions = []
+    cartesian = coverage.get("cartesian_coverage")
+    if isinstance(cartesian, dict) and cartesian.get("status") == "budget_limited":
+        actions.append(
+            {
+                "code": "search_space_budget",
+                "priority": "high",
+                "status": "budget_limited",
+                "declared_combination_counts": cartesian.get(
+                    "declared_combination_counts", []
+                ),
+                "trial_budget_limits": cartesian.get("trial_budget_limits", []),
+                "budget_limited_runs": cartesian.get("budget_limited_runs", []),
+                "reason": (
+                    "The declared Cartesian space is larger than max_trials; reduce the "
+                    "combination count or freeze a larger equal per-run budget instead of "
+                    "presenting a partial grid as full coverage"
+                ),
+            }
+        )
     for axis, entry in sorted(coverage["axes"].items()):
         if not isinstance(axis, str) or not isinstance(entry, dict):
             continue

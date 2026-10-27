@@ -1997,6 +1997,8 @@ seed 的结论不一致。本轮标记为 `separated`、`converged` 或 `unknown
 `summary.search_space_coverage` 会按数值轴记录最终取值、下界/上界命中次数和内部命中
 次数。`boundary_limited` 表示冻结范围没有包围观测到的最优区域；应移动或扩大审核过的轴并
 重新生成全部 plan，不能把新旧空间混在同一等预算对照中。
+`cartesian_coverage.status=budget_limited` 表示声明的 Cartesian 组合数超过
+`max_trials`；此时不能把部分网格描述成完整空间，必须减少组合或冻结更大的等额预算。
 
 ```bash
 ecc experience dse d4 --spec ./inputs/d4.json --output ./reports/d4.json --json
@@ -2151,3 +2153,5 @@ manifest、delta 和源报告 SHA256，不覆盖上一版 release。
 探索轮的最低补跑数和确认轮的最低新设计/run 数。输出固定
 `planning_only=true`、`safe_to_apply=false`、`promotion_allowed=false`；确认预算必须使用
 新的独立设计和 family，不能把探索轮本身当成 held-out。
+若上游报告标记 `cartesian_coverage=budget_limited`，planner 会输出高优先级的
+`search_space_budget` 动作，要求先减少组合或提高等额 trial 预算。
