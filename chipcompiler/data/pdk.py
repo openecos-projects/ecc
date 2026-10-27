@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 
@@ -13,6 +14,24 @@ logger = logging.getLogger(__name__)
 
 #: Default ABC output load (fF) when the PDK does not declare one.
 DEFAULT_ABC_LOAD = 0.015
+
+# ICS55 IO Liberty views whose rise delay/transition tables still carry
+# ~200 ns values; the PDK corrected only the SS/125 C, TT/25 C and FF/0 C
+# views. Each maps to the corrected view of the same process corner.
+_ICS55_INVALID_IO_LIBS = {
+    "ICSIOA_N55_3P3_ss_1p08_2p97_m40c.lib": "ICSIOA_N55_3P3_ss_1p08_2p97_125c.lib",
+    "ICSIOA_N55_3P3_ff_1p32_3p63_125c.lib": "ICSIOA_N55_3P3_ff_1p32_3p63v_0c.lib",
+    "ICSIOA_N55_3P3_ff_1p32_3p63_m40c.lib": "ICSIOA_N55_3P3_ff_1p32_3p63v_0c.lib",
+}
+
+
+def invalid_io_liberty_errors(paths: Iterable[str | Path]) -> list[str]:
+    """Return one error per ICS55 IO Liberty view with known-bad timing tables."""
+    return [
+        f"ICS55 IO liberty has invalid rise timing tables: {path}; use {replacement} instead"
+        for path in paths
+        if (replacement := _ICS55_INVALID_IO_LIBS.get(Path(path).name))
+    ]
 
 
 @dataclass
@@ -77,6 +96,7 @@ class PDK:
             for liberty in self.libs:
                 if not liberty.is_file():
                     errors.append(f"PDK liberty file not found: {liberty}")
+            errors.extend(invalid_io_liberty_errors(self.libs))
         _raise_pdk_validation_error(errors)
 
 
@@ -307,14 +327,12 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
     )
     resolved_root = Path(root_text).expanduser().resolve()
     stdcell_dir = resolved_root / "IP" / "STD_cell" / "ics55_LLSC_H7C_V1p10C100"
-    io_dir = resolved_root / "IP" / "IO" / "ICsprout_55LLULP1233_IO_251013"
 
     tech_path = resolved_root / "prtech" / "techLEF" / "N551P6M_ecos.lef"
     lef_paths = [
         stdcell_dir / "ics55_LLSC_H7CR" / "lef" / "ics55_LLSC_H7CR_ecos.lef",
         stdcell_dir / "ics55_LLSC_H7CL" / "lef" / "ics55_LLSC_H7CL_ecos.lef",
         stdcell_dir / "ics55_LLSC_H7CH" / "lef" / "ics55_LLSC_H7CH_ecos.lef",
-        io_dir / "lef" / "ICSIOA_N55_3P3_1P6M1TM_ecos.lef",
     ]
     lib_paths = [
         (
@@ -335,7 +353,6 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
             / "liberty"
             / "ics55_LLSC_H7CH_ss_rcworst_1p08_125_nldm.lib"
         ),
-        io_dir / "liberty" / "ICSIOA_N55_3P3_ss_1p08_2p97_125c.lib",
     ]
     mapping_path = resolved_root / "techfile" / "icsprout55.layermap"
     mapping_file = mapping_path if mapping_path.is_file() else None

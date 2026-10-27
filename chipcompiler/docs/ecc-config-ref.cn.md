@@ -236,10 +236,10 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | 字段 | 示例值（harden 步运行时） | 来源 | 含义 |
 |---|---|---|---|
 | `INPUT.tech_lef_path` | `…/prtech/techLEF/N551P6M_ecos.lef` | PDK | 工艺 LEF（层定义/规则） |
-| `INPUT.lef_paths` | `[H7CR_lef, H7CL_lef, H7CH_lef, IO_lef]` | PDK | 标准单元和 IO LEF（抽象） |
+| `INPUT.lef_paths` | `[H7CR_lef, H7CL_lef, H7CH_lef]` | PDK | 标准单元 LEF（抽象）；IO LEF 需通过 `pdk.lefs` 配置 |
 | `INPUT.def_path` | `sta_ecc/output/gcd_sta.def.gz` | 每步重写 | 输入 DEF（上一步版图） |
 | `INPUT.verilog_path` | `sta_ecc/output/gcd_sta.v.gz` | 每步重写 | 输入门级网表 |
-| `INPUT.lib_path` | H7CR/H7CL/H7CH SS 库 + IO SS 库 | PDK | 公共时序库；Yosys 综合阶段排除 H7CH |
+| `INPUT.lib_path` | H7CR/H7CL/H7CH SS 库 | PDK | 公共时序库；Yosys 综合阶段排除 H7CH |
 | `INPUT.sdc_path` | `origin/gcd.sdc` | workspace | 时序约束（自动生成或用户提供） |
 | `INPUT.spef` | `""` | PDK/workspace | 预置寄生文件（RCX 前一般为空） |
 | `OUTPUT.output_dir_path` | `Harden_ecc/output` | 每步重写 | 本步骤产物输出目录 |
@@ -265,17 +265,21 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `tie_high_cell/port` | `TIEHIH7R` / `Z` | PDK | 高电平约束单元及输出端口 |
 | `abc_driver_cell` | `BUFX0P5H7L` | PDK | ABC 映射假设的驱动单元 |
 | `abc_load` | `0.015` | PDK | ABC 映射负载电容（pF） |
-| `lib_stdcell_list` | H7CR/H7CL + IO SS 库 | PDK（排除 H7CH） | 传给 ABC、DFF 和 clockgate 的库列表，沿用原逻辑，不额外排除 IO |
-| `lib_list` | H7CR/H7CL + IO `ss_1p08_2p97_125c` | PDK / workspace DB | 通过 `read_liberty -lib` 读取的模型库；IO 用于识别已有实例，H7CH 仍不加载 |
+| `lib_stdcell_list` | H7CR/H7CL | PDK（排除 H7CH） | 传给 ABC、DFF 和 clockgate 的库列表；`pdk.libs` 中配置的 IO 库也会传入，不额外排除 |
+| `lib_list` | H7CR/H7CL | PDK / workspace DB | 通过 `read_liberty -lib` 读取的模型库；配置 IO 库后用于识别已有 IO 实例，H7CH 仍不加载 |
 | `tmp_dir` | `Synthesis_yosys/data/tmp` | 步骤调度 | 中间文件目录 |
 
-ICS55 的公共 PDK 库列表默认增加
-`ICSIOA_N55_3P3_ss_1p08_2p97_125c.lib`（PDK 中存在该文件时加载）。CTS、setup Sizer
-及综合后 STA 也从该列表取得 IO 库；最终 STA 和 hold Sizer 仍使用 §13 的 corner
-配置。公共 LEF 列表同时加载配套的 `ICSIOA_N55_3P3_1P6M1TM_ecos.lef`，不会自动插入
-IO cell。Sizer 要求 Liberty 单元有对应的 LEF master，即使设计没有实例化 IO cell
-也需要该 LEF。已有 workspace 的 DB 库列表或显式 `pdk.libs` / `pdk.lefs` 覆盖配置
-不会自动补齐，需要单独更新。
+ICS55 内置 PDK 不默认加载 IO cell 的 LEF 和 Liberty。设计需要 IO cell 时，在
+`[pdk.overrides]` 中把 `IP/IO/ICsprout_55LLULP1233_IO_251013/lef/ICSIOA_N55_3P3_1P6M1TM_ecos.lef`
+加入 `lefs`，把同目录 `liberty/` 下的 `ICSIOA_N55_3P3_ss_1p08_2p97_125c.lib` 加入
+`libs`。覆盖是整列表替换，需同时列出标准单元文件。CTS、setup Sizer 及综合后 STA
+从该列表取得 IO 库；最终 STA 和 hold Sizer 使用 §13 的 `sta.liberty`。Sizer 要求
+Liberty 单元有对应的 LEF master，因此 IO 的 LEF 与 Liberty 必须同时配置。
+
+PDK 中 `ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、`ff_1p32_3p63_m40c` 三个 IO 库的
+上升延迟和上升转换表仍为错误值（约 200 ns）。它们出现在 `pdk.libs` 中时 PDK 校验
+直接失败，错误信息会给出同工艺角的已修正库。已创建 workspace 的 DB 库列表不会自动
+移除此前默认加载的 IO 库。
 
 另有环境变量 `YOSYS_SYNTH_STRATEGY`（如 `DELAY 4` / `AREA N` / `BALANCE N`）控制综合策略方向，默认 `DELAY 4`（提频优先）。
 
@@ -675,17 +679,19 @@ lec_engine = "kepler_formal"  # yosys_lec | lec_dual（或 dual）
 |---|---|---|
 | `liberty[].corner` | `MAX` / `WCL` / `TYP` / `MIN` / `ML` | 时序 corner 类型（慢/最差低温/典型/快/快高温库组） |
 | `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | 标准单元库组温度（℃），用于选择对应温度的 SPEF，不覆盖 IO 库的表征温度 |
-| `liberty[].path` | H7CR + H7CL + H7CH + IO | 该 corner 的 liberty 文件（PDK 相对路径自动展开） |
+| `liberty[].path` | H7CR + H7CL + H7CH | 该 corner 的 liberty 文件（PDK 相对路径自动展开） |
 | `signoff[0]` | MAX:[Cworst,RCworst]；WCL:[Cworst,RCworst]；TYP:[TYPICAL]；MIN/ML:[Cworst,RCworst,Cbest,RCbest] | 签核要跑的「liberty corner × RC corner」组合，共 13 个分析 corner |
 
 ics55 的 corner 命名：`Cworst/Cbest`=电容最差/最好，`RCworst/RCbest`=RC 均最差/最好，`TYPICAL`=典型。
 
-默认 IO 库仅使用三种表征：MAX/WCL 使用 `ss_1p08_2p97_125c`，TYP 使用
-`tt_1p2_3p3_25c`，MIN/ML 均使用 `ff_1p32_3p63v_0c`。这些库位于 PDK 的
-`IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/`。此限制只针对 IO；标准单元库、
-SPEF 温度及上述 13 个分析 corner 不变。例如 MIN 的标准单元仍用 -40°C 库，
-IO 则用 0°C 库。项目或 workspace 显式设置的 `sta.liberty` 会替换整份默认列表，
-不会自动迁移；已有覆盖配置需要自行同步 IO 库路径。
+默认 `sta.liberty` 不包含 IO 库。设计使用 IO cell 时，需在 `sta.liberty` 中为每个
+corner 加入 PDK `IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/` 下的 IO 库。只有三种
+表征可用：MAX/WCL 使用 `ss_1p08_2p97_125c`，TYP 使用 `tt_1p2_3p3_25c`，MIN/ML 使用
+`ff_1p32_3p63v_0c`。其余三个 IO 库（`ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、
+`ff_1p32_3p63_m40c`）时序表有误，配置刷新时直接报错。IO 库表征温度可以与 corner
+温度不同，例如 MIN 的标准单元用 -40°C 库，IO 用 0°C 库；标准单元库、SPEF 温度及
+上述 13 个分析 corner 不受影响。`sta.liberty` 设置会替换整份默认列表，需同时列出
+标准单元库。
 
 每个 corner 的报告由 ecc-tools 按路径类型拆分输出（`sta_ecc/report/<lib_corner>_<温度>/<RCcorner>/`）：
 

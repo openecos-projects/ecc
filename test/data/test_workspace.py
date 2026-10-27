@@ -1569,6 +1569,37 @@ def test_update_step_config_keeps_sta_liberty_expanded_after_override_replay(
     assert sta["liberty"][0]["path"] == expected
 
 
+def test_create_workspace_rejects_sta_liberty_with_invalid_io_timing(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    invalid_io_liberty = (
+        "/IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/ICSIOA_N55_3P3_ff_1p32_3p63_m40c.lib"
+    )
+    liberty = [{"corner": "MIN", "temperature": -40, "path": [invalid_io_liberty]}]
+
+    with pytest.raises(ValueError) as exc_info:
+        create_workspace(
+            directory=str(tmp_path / "workspace"),
+            origin_def="",
+            origin_verilog=str(rtl_path),
+            pdk="ics55",
+            parameters={
+                **default_ics55_parameters,
+                "Config Overrides": {"sta": {"liberty": liberty}},
+            },
+            pdk_root=str(pdk_root),
+        )
+    assert str(exc_info.value) == (
+        "STA liberty validation failed:\n"
+        "  ICS55 IO liberty has invalid rise timing tables: "
+        f"{pdk_root / invalid_io_liberty.lstrip('/')}; "
+        "use ICSIOA_N55_3P3_ff_1p32_3p63v_0c.lib instead"
+    )
+
+
 def test_refresh_sta_config_does_not_overwrite_corrupt_json(tmp_path):
     sta_path = tmp_path / "sta_ecc.json"
     workspace = Workspace(directory=tmp_path, config={StepEnum.STA.value: sta_path})
