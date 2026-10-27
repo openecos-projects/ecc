@@ -246,3 +246,36 @@ def test_next_round_does_not_treat_seed_variation_as_strategy_separation(tmp_pat
     priority = result["priorities"][0]
     assert priority["strategy_separation"] == "converged"
     assert {"code": "strategies_converged"} in priority["reasons"]
+
+
+def test_next_round_repeats_matched_seeds_when_seed_conclusions_disagree(tmp_path):
+    runs = []
+    for seed, separated in ((1, True), (2, False)):
+        for index, strategy in enumerate(
+            ("grid", "adaptive", "adaptive_warm", "model_assisted")
+        ):
+            runs.append(
+                _run(
+                    "design-a",
+                    strategy,
+                    seed,
+                    selected=float(index) if separated else 1.0,
+                    model="available" if strategy == "model_assisted" else "not_requested",
+                )
+            )
+    manifest = {
+        "schema": CAMPAIGN_MANIFEST_SCHEMA,
+        "campaign_id": "campaign-unstable-separation",
+        "budget": {"equal_budget": True},
+        "runs": runs,
+    }
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest))
+
+    result = plan_next_benchmark(path, tmp_path / "next.json")
+
+    priority = result["priorities"][0]
+    assert priority["strategy_separation"] == "unstable"
+    assert priority["priority"] == "medium"
+    assert {"code": "strategy_separation_unstable"} in priority["reasons"]
+    assert priority["next_action"] == "repeat_matched_seeds"
