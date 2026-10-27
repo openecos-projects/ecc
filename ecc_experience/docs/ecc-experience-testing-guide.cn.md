@@ -1977,6 +1977,9 @@ family 隔离（`family_isolation=explicit_groups`）时，`adaptive_warm` 才�
 配置文件，而不是只重复一个参数。`summary.strategy_separation` 会按设计比较各策略最终
 选中的参数，并将本轮标记为 `separated`、`converged` 或 `unknown`。`converged` 仍是
 有效证据，但不能证明策略优势；下一轮应扩大或更换经过审核的搜索轴，而不是降低验收门槛。
+`summary.search_space_coverage` 会按数值轴记录最终取值、下界/上界命中次数和内部命中
+次数。`boundary_limited` 表示冻结范围没有包围观测到的最优区域；应移动或扩大审核过的轴并
+重新生成全部 plan，不能把新旧空间混在同一等预算对照中。
 
 ```bash
 ecc experience dse d4 --spec ./inputs/d4.json --output ./reports/d4.json --json

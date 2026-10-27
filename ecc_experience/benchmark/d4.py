@@ -147,6 +147,7 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
                 sorted(Counter(row["warm_start"]["status"] for row in metrics).items())
             ),
             "strategy_separation": _strategy_separation(metrics),
+            "search_space_coverage": _search_space_summary(runs),
         },
         "strategies": strategy_summary,
         "comparisons": comparisons,
@@ -618,14 +619,7 @@ def _metrics(run: dict) -> dict:
     objective = plan.get("objectives", [{}])[0]
     selection = result.get("selection")
     selected_candidate = selection.get("candidate") if isinstance(selection, dict) else None
-    selected_parameters = next(
-        (
-            trial.get("parameters")
-            for trial in trials
-            if isinstance(trial, dict) and trial.get("candidate_id") == selected_candidate
-        ),
-        None,
-    )
+    selected_parameters = _selected_parameters(result)
     return {
         "design": run["design"],
         "family": run["family"],
@@ -697,6 +691,110 @@ def _strategy_separation(metrics: list[dict]) -> dict:
         "separated_designs": separated,
         "converged_designs": converged,
         "unknown_designs": unknown,
+    }
+
+
+def _selected_parameters(result: dict) -> object | None:
+    selection = result.get("selection")
+    selected_candidate = selection.get("candidate") if isinstance(selection, dict) else None
+    raw_trials = result.get("trials")
+    trials: list[object] = raw_trials if isinstance(raw_trials, list) else []
+    return next(
+        (
+            trial.get("parameters")
+            for trial in trials
+            if isinstance(trial, dict) and trial.get("candidate_id") == selected_candidate
+        ),
+        None,
+    )
+
+
+def _search_space_summary(runs: list[dict]) -> dict:
+    axes: dict[str, dict] = {}
+    for run in runs:
+        parameters = _selected_parameters(run["result"])
+        if not isinstance(parameters, dict):
+            continue
+        space = run["plan"].get("space")
+        if not isinstance(space, dict):
+            continue
+        for axis, values in space.items():
+            if (
+                not isinstance(values, list)
+                or not values
+                or not all(_number(value) for value in values)
+                or axis not in parameters
+                or not _number(parameters[axis])
+            ):
+                continue
+            ordered = sorted(float(value) for value in values)
+            entry = axes.setdefault(
+                axis,
+                {
+                    "lower_bound": ordered[0],
+                    "upper_bound": ordered[-1],
+                    "selected_values": set(),
+                    "lower_boundary_selections": 0,
+                    "upper_boundary_selections": 0,
+                    "interior_selections": 0,
+                    "bounds": set(),
+                },
+            )
+            entry["bounds"].add((ordered[0], ordered[-1]))
+            selected = float(parameters[axis])
+            entry["selected_values"].add(selected)
+            if selected == entry["lower_bound"]:
+                entry["lower_boundary_selections"] += 1
+            elif selected == entry["upper_bound"]:
+                entry["upper_boundary_selections"] += 1
+            else:
+                entry["interior_selections"] += 1
+
+    for entry in axes.values():
+        selected = entry["selected_values"]
+        lower = entry["lower_boundary_selections"]
+        upper = entry["upper_boundary_selections"]
+        interior = entry["interior_selections"]
+        if len(entry.pop("bounds")) > 1:
+            entry["status"] = "inconsistent_bounds"
+        elif selected == {entry["lower_bound"]}:
+            entry["status"] = "lower_boundary"
+        elif selected == {entry["upper_bound"]}:
+            entry["status"] = "upper_boundary"
+        elif lower or upper:
+            if interior:
+                entry["status"] = "boundary_mixed"
+            else:
+                entry["status"] = "boundary_only"
+        else:
+            entry["status"] = "interior"
+        entry["selected_values"] = sorted(selected)
+
+    boundary_axes = sorted(
+        axis
+        for axis, entry in axes.items()
+        if entry["status"] in {"lower_boundary", "upper_boundary", "boundary_only"}
+    )
+    inconsistent_axes = sorted(
+        axis for axis, entry in axes.items() if entry["status"] == "inconsistent_bounds"
+    )
+    return {
+        "status": (
+            "boundary_limited"
+            if boundary_axes
+            else "inconsistent"
+            if inconsistent_axes
+            else "interior"
+            if axes
+            else "unknown"
+        ),
+        "boundary_axes": boundary_axes,
+        "inconsistent_axes": inconsistent_axes,
+        "axes": dict(sorted(axes.items())),
+        "limitation": (
+            "Boundary-limited selections mean the frozen range did not bracket the observed "
+            "preference; the next round must widen or shift the axis and re-freeze every run"
+        ),
     }
 
 

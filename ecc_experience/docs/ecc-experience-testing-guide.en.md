@@ -2312,6 +2312,11 @@ strategy's selected parameters per design and labels the round `separated`,
 `converged` or `unknown`. A converged round remains valid evidence but cannot
 show a strategy advantage; widen or change a reviewed axis before the next
 round instead of lowering the acceptance gates.
+`summary.search_space_coverage` reports the selected values, lower/upper
+boundary counts and interior counts for every numeric DSE axis. A
+`boundary_limited` round means the frozen range did not bracket the observed
+preference. Shift or widen the reviewed axis and regenerate all plans; do not
+mix old and new spaces in one equal-budget comparison.
 
 ```bash
 ecc experience dse d4 --spec ./inputs/d4.json --output ./reports/d4.json --json

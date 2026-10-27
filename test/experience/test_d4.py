@@ -170,6 +170,17 @@ def test_d4_reports_the_iteration_config_files_each_strategy_explored(tmp_path):
         "converged_designs": [f"design-{index}" for index in range(6)],
         "unknown_designs": [],
     }
+    assert report["summary"]["search_space_coverage"]["status"] == "boundary_limited"
+    assert report["summary"]["search_space_coverage"]["boundary_axes"] == ["floorplan.core_util"]
+    assert report["summary"]["search_space_coverage"]["axes"]["floorplan.core_util"] == {
+        "lower_bound": 0.3,
+        "upper_bound": 0.4,
+        "selected_values": [0.3],
+        "lower_boundary_selections": 48,
+        "upper_boundary_selections": 0,
+        "interior_selections": 0,
+        "status": "lower_boundary",
+    }
     assert report["runs"][0]["config_files"] == ["floorplan_ecc.json"]
 
 
