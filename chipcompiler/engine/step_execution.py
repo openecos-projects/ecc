@@ -6,7 +6,7 @@ from threading import Event, Thread
 
 from chipcompiler.data import Workspace, WorkspaceStep, is_sta_step
 from chipcompiler.engine.db import EngineDB
-from chipcompiler.engine.resource_observation import start_observation
+from chipcompiler.engine.resource_observation import new_attempt_id, start_observation
 from chipcompiler.utility.log import Logger, capture_stdio_to_file, flush_cstdio
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,11 @@ def execute_tool_step(
     log_file = _prepare_log_file(workspace_step)
     pid = os.getpid()
     resources = start_observation(
-        pid, isolated=False, step=workspace_step.name, tool=workspace_step.tool
+        pid,
+        attempt_id=new_attempt_id(),
+        isolated=False,
+        step=workspace_step.name,
+        tool=workspace_step.tool,
     )
     start_memory_mb = 0.0
     peak_memory = [0.0]

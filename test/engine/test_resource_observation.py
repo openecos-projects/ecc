@@ -26,7 +26,9 @@ def _process(root, pid, parent=0, *, start="100", pages=10, children=""):
 
 def _observer(root, monkeypatch, *, isolated=True):
     monkeypatch.setattr(resources, "_PROC", root)
-    observation = ResourceObservation(100, isolated=isolated, step="place", tool="ecc")
+    observation = ResourceObservation(
+        100, attempt_id="test-attempt", isolated=isolated, step="place", tool="ecc"
+    )
     observation.start_id = "100"
     return observation
 
@@ -91,7 +93,9 @@ def test_shared_process_scope_never_claims_step_attribution(tmp_path, monkeypatc
 
 def test_unavailable_proc_is_not_reported_as_zero(tmp_path, monkeypatch):
     monkeypatch.setattr(resources, "_PROC", tmp_path)
-    observation = start_observation(100, isolated=True, step="route", tool="ecc")
+    observation = start_observation(
+        100, attempt_id="test-attempt", isolated=True, step="route", tool="ecc"
+    )
 
     result = observation.finish()
 
@@ -107,7 +111,9 @@ def test_sampling_errors_do_not_escape(monkeypatch):
         raise PermissionError("denied")
 
     monkeypatch.setattr(resources, "_stat", denied)
-    observation = start_observation(100, isolated=True, step="sta", tool="ecc")
+    observation = start_observation(
+        100, attempt_id="test-attempt", isolated=True, step="sta", tool="ecc"
+    )
 
     assert observation.finish()["status"] == "unavailable"
 
@@ -133,7 +139,9 @@ def test_real_worker_tree_is_sampled_and_sampler_stops(tmp_path):
         while not ready.is_file() and time.monotonic() < deadline:
             time.sleep(0.01)
         assert ready.is_file()
-        observation = start_observation(process.pid, isolated=True, step="route", tool="ecc")
+        observation = start_observation(
+            process.pid, attempt_id="test-attempt", isolated=True, step="route", tool="ecc"
+        )
         assert observation is not None
         time.sleep(0.3)
         result = observation.finish()
@@ -169,7 +177,9 @@ def test_in_process_execution_persists_shared_scope(monkeypatch, tmp_path):
 
 def test_frozen_execution_is_explicitly_shared(monkeypatch):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
-    observation = start_observation(os.getpid(), isolated=False, step="place", tool="ecc")
+    observation = start_observation(
+        os.getpid(), attempt_id="test-attempt", isolated=False, step="place", tool="ecc"
+    )
 
     result = observation.finish()
 

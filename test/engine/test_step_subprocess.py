@@ -22,6 +22,8 @@ def _no_parent_death_signal(monkeypatch):
     # main() runs in the pytest process here; arming PR_SET_PDEATHSIG would
     # SIGKILL the runner when the recorded parent pid is not our ppid.
     monkeypatch.setattr(step_subprocess, "_arm_parent_death_signal", lambda parent_pid: None)
+    monkeypatch.setattr(step_subprocess, "new_attempt_id", lambda: "test-attempt")
+    monkeypatch.setenv(step_subprocess._ENABLED_ENV, "1")
 
 
 def _workspace_step(tmp_path, name="place", tool="ecc"):
@@ -86,6 +88,14 @@ class _FakePopen:
         return self.returncode
 
 
+def _spawn_with_result(result_path, result, *, returncode=0):
+    def spawn(*_args, **_kwargs):
+        result_path.write_text(json.dumps({"attempt_id": "test-attempt", **result}))
+        return _FakePopen(poll_script=[returncode])
+
+    return spawn
+
+
 def test_is_enabled_env_switch(monkeypatch):
     monkeypatch.delenv("ECC_STEP_SUBPROCESS", raising=False)
     assert step_subprocess.is_enabled()
@@ -102,18 +112,18 @@ def test_rcx_worker_restores_outputs_and_preserves_shared_sta_list(monkeypatch, 
     step.output = EccOutput(dir=tmp_path / "output")
     shared_sta_inputs = step.output.spef
     result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
-    result_path.write_text(
-        json.dumps(
+    monkeypatch.setattr(
+        step_subprocess.subprocess,
+        "Popen",
+        _spawn_with_result(
+            result_path,
             {
                 "done": True,
                 "ok": True,
                 "events": [],
                 "rcx_spef": ["sample_TYPICAL_25C.spef"],
-            }
-        )
-    )
-    monkeypatch.setattr(
-        step_subprocess.subprocess, "Popen", lambda *_args, **_kwargs: _FakePopen(poll_script=[0])
+            },
+        ),
     )
 
     result = step_subprocess.execute_step_subprocess(_workspace(tmp_path), step)
@@ -140,9 +150,11 @@ def test_sta_step_memory_includes_corner_workers(monkeypatch, tmp_path):
 
     step = _workspace_step(tmp_path, name="sta")
     result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
-    result_path.write_text(json.dumps({"done": True, "ok": True, "events": []}))
-    fake = _FakePopen(poll_script=[0])
-    monkeypatch.setattr(step_subprocess.subprocess, "Popen", lambda *_args, **_kwargs: fake)
+    monkeypatch.setattr(
+        step_subprocess.subprocess,
+        "Popen",
+        _spawn_with_result(result_path, {"done": True, "ok": True, "events": []}),
+    )
     readings = iter([30, 60])
     monkeypatch.setattr(sta_parallel, "get_sta_process_rss_mb", lambda _pid: next(readings))
     result = step_subprocess.execute_step_subprocess(_workspace(tmp_path), step)
@@ -164,7 +176,16 @@ def test_worker_parameter_updates_are_visible_before_terminal_snapshot(
         parameters = load_parameter(workspace.parameters.path)
         parameters.data["core"] = {"aspect_ratio": 0.8, "size": [8.0, 10.0]}
         assert save_parameter(parameters)
-        result_path.write_text(json.dumps({"done": True, "ok": worker_ok, "error": "boom"}))
+        result_path.write_text(
+            json.dumps(
+                {
+                    "attempt_id": "test-attempt",
+                    "done": True,
+                    "ok": worker_ok,
+                    "error": "boom",
+                }
+            )
+        )
         return _FakePopen(poll_script=[0])
 
     monkeypatch.setattr(step_subprocess.subprocess, "Popen", spawn)
@@ -182,7 +203,7 @@ def test_worker_corrupt_parameters_prevent_success(monkeypatch, tmp_path):
 
     def spawn(*_args, **_kwargs):
         workspace.parameters.path.write_text("{broken")
-        result_path.write_text(json.dumps({"done": True, "ok": True}))
+        result_path.write_text(json.dumps({"attempt_id": "test-attempt", "done": True, "ok": True}))
         return _FakePopen(poll_script=[0])
 
     monkeypatch.setattr(step_subprocess.subprocess, "Popen", spawn)
@@ -206,16 +227,121 @@ def test_execute_step_subprocess_reports_worker_crash(monkeypatch, tmp_path):
     assert "code -11" in result.error
 
 
+def test_worker_crash_does_not_trust_stale_success_result(monkeypatch, tmp_path):
+    step = _workspace_step(tmp_path)
+    result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
+    result_path.write_text(
+        json.dumps({"attempt_id": "test-attempt", "done": True, "ok": True, "events": []})
+    )
+    fake = _FakePopen(poll_script=[-11])
+    monkeypatch.setattr(step_subprocess.subprocess, "Popen", lambda *_args, **_kwargs: fake)
+
+    result = execute_tool_step(_workspace(tmp_path), step, None)
+
+    assert result.error is not None
+    assert "code -11" in result.error
+    assert not result_path.exists()
+
+
+def test_worker_exit_without_result_is_a_failure(monkeypatch, tmp_path):
+    step = _workspace_step(tmp_path)
+    fake = _FakePopen(poll_script=[0])
+    monkeypatch.setattr(step_subprocess.subprocess, "Popen", lambda *_args, **_kwargs: fake)
+
+    result = execute_tool_step(_workspace(tmp_path), step, None)
+
+    assert result.error is not None
+    assert "code 0" in result.error
+
+
+def test_success_result_with_nonzero_exit_is_a_failure(monkeypatch, tmp_path):
+    step = _workspace_step(tmp_path)
+    result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
+    monkeypatch.setattr(
+        step_subprocess.subprocess,
+        "Popen",
+        _spawn_with_result(result_path, {"done": True, "ok": True, "events": []}, returncode=-11),
+    )
+
+    result = execute_tool_step(_workspace(tmp_path), step, None)
+
+    assert result.error is not None
+    assert "code -11" in result.error
+
+
+def test_mismatched_attempt_result_and_events_are_rejected(monkeypatch, tmp_path):
+    step = _workspace_step(tmp_path)
+    result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
+    monkeypatch.setattr(
+        step_subprocess.subprocess,
+        "Popen",
+        _spawn_with_result(
+            result_path,
+            {
+                "attempt_id": "other-attempt",
+                "done": True,
+                "ok": True,
+                "events": [{"type": "subflow_stage", "subflow_step": {"name": "stale"}}],
+            },
+        ),
+    )
+    replayed = []
+    observer = _ns(on_subflow_stage=lambda _step, event: replayed.append(event))
+
+    result = execute_tool_step(_workspace(tmp_path), step, None, observer=observer)
+
+    assert result.error is not None
+    assert "mismatched attempt id" in result.error
+    assert replayed == []
+
+
+def test_sequential_attempts_accept_only_their_own_results(monkeypatch, tmp_path):
+    workspace = _workspace(tmp_path)
+    step = _workspace_step(tmp_path)
+    result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
+    attempt_ids = iter(["attempt-one", "attempt-two"])
+    monkeypatch.setattr(step_subprocess, "new_attempt_id", lambda: next(attempt_ids))
+    processes = []
+
+    def spawn(*_args, **_kwargs):
+        attempt_id = "attempt-one" if not processes else "attempt-two"
+        process = _FakePopen(poll_script=[0])
+        processes.append(process)
+        result_path.write_text(
+            json.dumps({"attempt_id": attempt_id, "done": True, "ok": True, "events": []})
+        )
+        return process
+
+    monkeypatch.setattr(step_subprocess.subprocess, "Popen", spawn)
+
+    first = execute_tool_step(workspace, step, None)
+    second = execute_tool_step(workspace, step, None)
+
+    payload_ids = [json.loads(process.stdin.getvalue())["attempt_id"] for process in processes]
+    assert payload_ids == ["attempt-one", "attempt-two"]
+    assert first.error is None
+    assert second.error is None
+    assert first.resource_observation is not None
+    assert second.resource_observation is not None
+    assert [
+        first.resource_observation["attempt_id"],
+        second.resource_observation["attempt_id"],
+    ] == payload_ids
+
+
 def test_execute_step_subprocess_reports_worker_failure_result(monkeypatch, tmp_path):
     monkeypatch.setenv(step_subprocess._ENABLED_ENV, "1")
     step = _workspace_step(tmp_path)
     result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
-    result_path.write_text(
-        json.dumps({"done": True, "ok": False, "error": "boom", "events": []}),
-        encoding="utf-8",
+    monkeypatch.setattr(
+        step_subprocess.subprocess,
+        "Popen",
+        _spawn_with_result(
+            result_path,
+            {"done": True, "ok": False, "error": "boom", "events": []},
+            returncode=1,
+        ),
     )
-    fake = _FakePopen(returncode=1)
-    monkeypatch.setattr(step_subprocess.subprocess, "Popen", lambda *a, **k: fake)
     result = execute_tool_step(_workspace(tmp_path), step, None)
 
     assert result.error is not None
@@ -226,22 +352,25 @@ def test_execute_step_subprocess_succeeds_and_replays_events(monkeypatch, tmp_pa
     monkeypatch.setenv(step_subprocess._ENABLED_ENV, "1")
     step = _workspace_step(tmp_path)
     result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
-    result_path.write_text(
-        json.dumps(
+    monkeypatch.setattr(
+        step_subprocess.subprocess,
+        "Popen",
+        _spawn_with_result(
+            result_path,
             {
                 "done": True,
                 "ok": True,
                 "error": None,
                 "events": [
-                    {"type": "subflow_stage", "subflow_step": {"name": "load", "state": "Ongoing"}},
+                    {
+                        "type": "subflow_stage",
+                        "subflow_step": {"name": "load", "state": "Ongoing"},
+                    },
                     {"type": "subflow_stage", "subflow_step": {"name": "load", "state": "Success"}},
                 ],
-            }
+            },
         ),
-        encoding="utf-8",
     )
-    fake = _FakePopen(returncode=0)
-    monkeypatch.setattr(step_subprocess.subprocess, "Popen", lambda *a, **k: fake)
 
     replayed = []
 
@@ -338,6 +467,7 @@ def _payload_stream(tmp_path, step, result_path):
         "workspace_directory": str(tmp_path),
         "step_name": step.name,
         "tool": step.tool,
+        "attempt_id": "test-attempt",
         "result_path": str(result_path),
         "parent_pid": os.getpid(),
     }
@@ -365,6 +495,7 @@ def test_worker_main_success_writes_result(monkeypatch, tmp_path):
     result = json.loads(result_path.read_text(encoding="utf-8"))
     assert result["done"] is True
     assert result["ok"] is True
+    assert result["attempt_id"] == "test-attempt"
     assert result["error"] is None
     assert result["events"] == [
         {"type": "subflow_stage", "subflow_step": {"name": "load", "state": "Ongoing"}}
