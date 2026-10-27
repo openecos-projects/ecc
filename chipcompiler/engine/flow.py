@@ -51,6 +51,7 @@ from chipcompiler.engine.flow_completion import (
     refresh_signoff_checklist as _refresh_signoff_checklist,
 )
 from chipcompiler.engine.flow_completion import sync_step_checklist as _sync_step_checklist
+from chipcompiler.engine.memory import read_memory_status
 from chipcompiler.engine.signoff import (
     SignoffPackageCollector,
     SignoffPackageOptions,
@@ -614,7 +615,7 @@ class EngineFlow:
         )
 
     def _checker_parallelism(self, steps: list[WorkspaceStep]) -> int:
-        available_mb = _available_memory_mb()
+        available_mb = read_memory_status().available_mb
         if available_mb <= 0:
             return 1
         estimates = [self._step_memory_estimate_mb(step) for step in steps]
@@ -695,7 +696,7 @@ class EngineFlow:
             "[FLOW] checker batch size=%d workers=%d available_memory_mb=%.1f",
             len(steps),
             workers,
-            _available_memory_mb(),
+            read_memory_status().available_mb,
         )
         if workers == 1:
             return [self.run_step(step, rerun=rerun) for step in steps]
@@ -932,14 +933,3 @@ class EngineFlow:
             return True
 
         return self.engine_db.create_db_engine(step=workspace_step)
-
-
-def _available_memory_mb() -> float:
-    try:
-        with open("/proc/meminfo", encoding="utf-8") as meminfo:
-            for line in meminfo:
-                if line.startswith("MemAvailable:"):
-                    return float(line.split()[1]) / 1024
-    except (OSError, ValueError, IndexError):
-        return 0.0
-    return 0.0
