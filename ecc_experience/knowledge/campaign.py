@@ -53,6 +53,10 @@ def build_campaign_manifest(report_path: str | Path, output: str | Path) -> dict
             {"cohort_id": cohort_id, "run_count": count}
             for cohort_id, count in sorted(cohorts.items())
         ],
+        "search": {
+            "strategy_separation": report.get("summary", {}).get("strategy_separation"),
+            "space_coverage": report.get("summary", {}).get("search_space_coverage"),
+        },
         "runs": runs,
         "counts": {
             "runs": len(runs),
@@ -212,6 +216,7 @@ def _run_record(run: dict[str, Any]) -> dict[str, Any]:
     result = run["result"]
     plan = run["plan"]
     trials = result.get("trials") if isinstance(result.get("trials"), list) else []
+    selected_candidate, selected_parameters = _selection_evidence(result, trials)
     case_ids = sorted(
         {
             item["case_id"]
@@ -270,6 +275,8 @@ def _run_record(run: dict[str, Any]) -> dict[str, Any]:
         },
         "warm_start": run["warm_start"],
         "config_files": run["config_files"],
+        "selected_candidate": selected_candidate,
+        "selected_parameters": selected_parameters,
         "feature_available": feature_available,
         "resource_available": resource_available,
         "final_qor": _final_qor(result),
@@ -290,6 +297,22 @@ def _run_record(run: dict[str, Any]) -> dict[str, Any]:
             case_count=len(case_ids),
         ),
     }
+
+
+def _selection_evidence(
+    result: dict[str, Any], trials: list[Any]
+) -> tuple[str | None, dict[str, Any] | None]:
+    selection = result.get("selection")
+    candidate = selection.get("candidate") if isinstance(selection, dict) else None
+    for trial in trials:
+        if not isinstance(trial, dict) or trial.get("candidate_id") != candidate:
+            continue
+        parameters = trial.get("parameters")
+        return (
+            candidate if isinstance(candidate, str) else None,
+            parameters if isinstance(parameters, dict) else None,
+        )
+    return candidate if isinstance(candidate, str) else None, None
 
 
 def _run_quality(

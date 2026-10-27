@@ -39,6 +39,7 @@ def _result(plan, score):
         "trials": [
             {
                 "candidate_id": "candidate-a",
+                "parameters": {"floorplan.core_util": 0.3},
                 "case_id": "case-a",
                 "status": "stage_passed",
                 "feature_status": "available",
@@ -47,6 +48,7 @@ def _result(plan, score):
         ],
         "full_validation": {"status": "passed", "qor_score": score, "case_id": "case-full"},
         "fresh_validation": {"status": "passed", "qor_score": score, "case_id": "case-fresh"},
+        "selection": {"candidate": "candidate-a"},
         "model": {"status": "not_requested"},
     }
 
@@ -79,7 +81,13 @@ def _campaign(tmp_path):
         "reasons": [],
         "spec": str(spec),
         "spec_fingerprint": digest(spec_payload),
-        "summary": {"equal_budget": True, "minimum_designs": 6, "minimum_families": 3},
+        "summary": {
+            "equal_budget": True,
+            "minimum_designs": 6,
+            "minimum_families": 3,
+            "strategy_separation": {"status": "converged"},
+            "search_space_coverage": {"status": "boundary_limited"},
+        },
         "runs": [
             {
                 "design": run["design"],
@@ -107,6 +115,12 @@ def test_campaign_manifest_stays_candidate_and_delta_requires_heldout(tmp_path):
     assert manifest["safe_to_apply"] is False
     assert manifest["counts"]["candidate_cases"] == 0
     assert manifest["runs"][0]["quality"]["level"] == "medium"
+    assert manifest["runs"][0]["selected_candidate"] == "candidate-a"
+    assert manifest["runs"][0]["selected_parameters"] == {"floorplan.core_util": 0.3}
+    assert manifest["search"] == {
+        "strategy_separation": {"status": "converged"},
+        "space_coverage": {"status": "boundary_limited"},
+    }
 
     release = tmp_path / "release.json"
     release.write_text(
