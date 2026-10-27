@@ -17,6 +17,21 @@ def _load_entrypoint_module():
     return module
 
 
+def test_agent_worker_flag_selects_worker_entrypoint(monkeypatch):
+    module = _load_entrypoint_module()
+    calls = []
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [os.path.join("dist", "ecc"), "--ecc-worker", "agent.step_worker"],
+    )
+    monkeypatch.setattr("agent.step_worker.main", lambda: calls.append("worker") or 8)
+
+    assert module.main() == 8
+    assert calls == ["worker"]
+
+
 def test_candidate_worker_flag_selects_worker_entrypoint(monkeypatch):
     module = _load_entrypoint_module()
     calls = []

@@ -5,7 +5,6 @@ from .data import reapply_materialized_candidate_config
 from .data.parameter_runtime_observer import run_with_parameter_observation
 from .floorplan_mode import apply_floorplan_mode
 from .runtime_env import isolated_sizer_loader_environment
-from .sta_parallel import run_parallel_sta, sta_workers
 
 
 def run_step(workspace: Workspace, step: WorkspaceStep, ecc_module=None) -> bool:
@@ -18,9 +17,6 @@ def run_step(workspace: Workspace, step: WorkspaceStep, ecc_module=None) -> bool
     log_workspace_step(step, workspace.logger)
 
     def run_tool():
-        workers = sta_workers(workspace, step)
-        if workers > 1:
-            return run_parallel_sta(workspace, step, ecc_module, workers)
         if step.tool != "sizer":
             return eda_module.run_step(workspace=workspace, step=step, ecc_module=ecc_module)
         with isolated_sizer_loader_environment():
