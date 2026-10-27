@@ -40,7 +40,7 @@ def _wait_for_file(path: Path) -> None:
 def _process_state(pid: int) -> str | None:
     try:
         return Path(f"/proc/{pid}/stat").read_text().split(")", 1)[1].split()[0]
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
         return None
 
 
