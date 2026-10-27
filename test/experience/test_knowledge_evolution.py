@@ -86,8 +86,28 @@ def _campaign(tmp_path):
             "equal_budget": True,
             "minimum_designs": 6,
             "minimum_families": 3,
+            "model_calibration": {
+                "status": "available",
+                "design_count": 6,
+                "mae": 0.5,
+                "interval": {"observed_coverage": 0.9, "target_coverage": 0.9},
+            },
             "strategy_separation": {"status": "converged"},
             "search_space_coverage": {"status": "boundary_limited"},
+        },
+        "strategies": {
+            "grid": {
+                "run_count": 1,
+                "model_metrics_available": 0,
+                "model_prediction_count": 0,
+                "model_used_for_selection_count": 0,
+            },
+            "model_assisted": {
+                "run_count": 1,
+                "model_metrics_available": 1,
+                "model_prediction_count": 2,
+                "model_used_for_selection_count": 0,
+            },
         },
         "runs": [
             {
@@ -122,6 +142,28 @@ def test_campaign_manifest_stays_candidate_and_delta_requires_heldout(tmp_path):
         "strategy_separation": {"status": "converged"},
         "space_coverage": {"status": "boundary_limited"},
     }
+    assert manifest["model_evidence"] == {
+        "calibration": {
+            "status": "available",
+            "design_count": 6,
+            "mae": 0.5,
+            "interval": {"observed_coverage": 0.9, "target_coverage": 0.9},
+        },
+        "strategies": {
+            "grid": {
+                "run_count": 1,
+                "model_metrics_available": 0,
+                "model_prediction_count": 0,
+                "model_used_for_selection_count": 0,
+            },
+            "model_assisted": {
+                "run_count": 1,
+                "model_metrics_available": 1,
+                "model_prediction_count": 2,
+                "model_used_for_selection_count": 0,
+            },
+        },
+    }
 
     release = tmp_path / "release.json"
     release.write_text(
@@ -155,6 +197,7 @@ def test_campaign_manifest_stays_candidate_and_delta_requires_heldout(tmp_path):
     assert delta["decisions"]["training_allowed"] is False
     assert delta["decisions"]["promotion_allowed"] is False
     assert delta["model"]["previous_release"]["release_id"] == "model-release-old"
+    assert delta["model"]["campaign_calibration"] == manifest["model_evidence"]["calibration"]
     assert delta["queue"]["rebridge"]
 
 

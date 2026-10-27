@@ -57,6 +57,21 @@ def build_campaign_manifest(report_path: str | Path, output: str | Path) -> dict
             "strategy_separation": report.get("summary", {}).get("strategy_separation"),
             "space_coverage": report.get("summary", {}).get("search_space_coverage"),
         },
+        "model_evidence": {
+            "calibration": report.get("summary", {}).get("model_calibration"),
+            "strategies": {
+                strategy: {
+                    "run_count": values.get("run_count"),
+                    "model_metrics_available": values.get("model_metrics_available"),
+                    "model_prediction_count": values.get("model_prediction_count"),
+                    "model_used_for_selection_count": values.get(
+                        "model_used_for_selection_count"
+                    ),
+                }
+                for strategy, values in sorted(report.get("strategies", {}).items())
+                if isinstance(values, dict)
+            },
+        },
         "runs": runs,
         "counts": {
             "runs": len(runs),
@@ -186,6 +201,7 @@ def compute_knowledge_delta(
             "previous_release": release,
             "candidate_release": None,
             "metrics_delta": None,
+            "campaign_calibration": manifest.get("model_evidence", {}).get("calibration"),
             "calibration_required": True,
         },
         "strategy": _strategy_results(manifest["runs"]),

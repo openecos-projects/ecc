@@ -2114,6 +2114,11 @@ full/fresh 通过、trial feature 为 `available/partial`、配置回执为 `app
 `feature_complete=false` 和 `feature_step_coverage_partial`。这些字段不能被解释为可用于
 资源模型或 active warm-start；缺少覆盖则保持 `medium`/`rebridge`。
 
+`campaign-manifest/1` 的 `model_evidence` 会冻结 D4 的 selected-candidate 校准摘要和
+各策略的模型证据计数；`knowledge-delta/1` 将它解码为 `model.campaign_calibration`。
+该摘要只用于跨轮次比较候选模型质量，仍要求独立 held-out 和 champion/challenger 门槛，
+不能直接触发训练、发布或 apply。
+
 工具链或 step contract 升级时，使用 bridge spec 和 drift observation 评估可比性。
 bridge 至少需要 3 个独立 design 和 2 个 family；指标缺失保持 `unknown`，即使通过也只
 得到 `compatible_experimental`。

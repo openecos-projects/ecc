@@ -2490,6 +2490,13 @@ limitation. Partial step reports keep `feature_complete=false` and a
 evidence for a resource model or active warm-start. Missing coverage remains
 `medium`/`rebridge`.
 
+`campaign-manifest/1` freezes the D4 selected-candidate calibration summary and
+per-strategy model evidence counts in `model_evidence`;
+`knowledge-delta/1` exposes them as `model.campaign_calibration`. This summary
+supports comparison across benchmark rounds only. Independent held-out and
+champion/challenger gates still apply, and it cannot trigger training,
+publication or parameter application.
+
 Use a bridge specification and drift observation when a toolchain or step
 contract changes. A bridge needs at least three independent designs and two
 families; missing metrics stay `unknown`, and even a pass is only
