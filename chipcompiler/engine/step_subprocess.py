@@ -231,6 +231,7 @@ def run_step_worker(payload: dict, result: dict, flush) -> bool:
     workspace = data_api.load_workspace(directory=payload["workspace_directory"], read_only=True)
     if workspace is None:
         raise RuntimeError("load workspace failed")
+    workspace.flow.read_only = True
     flow = EngineFlow(workspace)
     flow.create_step_workspaces(initialize_config=False)
     step = flow.get_workspace_step(payload["step_name"])
