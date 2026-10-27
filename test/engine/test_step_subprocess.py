@@ -12,6 +12,14 @@ import pytest
 from chipcompiler.engine import step_subprocess
 from chipcompiler.engine.step_execution import execute_tool_step
 
+pytestmark = pytest.mark.real_step_worker
+
+
+def _terminate_fake(process):
+    if process.poll() is None:
+        process.terminate()
+    process.wait()
+
 
 def _ns(**kwargs: object) -> Any:
     return SimpleNamespace(**kwargs)
@@ -21,9 +29,9 @@ def _ns(**kwargs: object) -> Any:
 def _no_parent_death_signal(monkeypatch):
     # main() runs in the pytest process here; arming PR_SET_PDEATHSIG would
     # SIGKILL the runner when the recorded parent pid is not our ppid.
-    monkeypatch.setattr(step_subprocess, "_arm_parent_death_signal", lambda parent_pid: None)
+    monkeypatch.setattr(step_subprocess.worker, "arm_parent_death_signal", lambda parent_pid: None)
+    monkeypatch.setattr(step_subprocess.worker, "terminate_process_group", _terminate_fake)
     monkeypatch.setattr(step_subprocess, "new_attempt_id", lambda: "test-attempt")
-    monkeypatch.setenv(step_subprocess._ENABLED_ENV, "1")
 
 
 def _workspace_step(tmp_path, name="place", tool="ecc"):
@@ -96,15 +104,6 @@ def _spawn_with_result(result_path, result, *, returncode=0):
     return spawn
 
 
-def test_is_enabled_env_switch(monkeypatch):
-    monkeypatch.delenv("ECC_STEP_SUBPROCESS", raising=False)
-    assert step_subprocess.is_enabled()
-    monkeypatch.setenv("ECC_STEP_SUBPROCESS", "1")
-    assert step_subprocess.is_enabled()
-    monkeypatch.setenv("ECC_STEP_SUBPROCESS", "0")
-    assert not step_subprocess.is_enabled()
-
-
 def test_rcx_worker_restores_outputs_and_preserves_shared_sta_list(monkeypatch, tmp_path):
     from chipcompiler.data import EccOutput
 
@@ -113,7 +112,7 @@ def test_rcx_worker_restores_outputs_and_preserves_shared_sta_list(monkeypatch, 
     shared_sta_inputs = step.output.spef
     result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
     monkeypatch.setattr(
-        step_subprocess.subprocess,
+        step_subprocess.worker.subprocess,
         "Popen",
         _spawn_with_result(
             result_path,
@@ -151,7 +150,7 @@ def test_sta_step_memory_includes_corner_workers(monkeypatch, tmp_path):
     step = _workspace_step(tmp_path, name="sta")
     result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
     monkeypatch.setattr(
-        step_subprocess.subprocess,
+        step_subprocess.worker.subprocess,
         "Popen",
         _spawn_with_result(result_path, {"done": True, "ok": True, "events": []}),
     )
@@ -188,7 +187,7 @@ def test_worker_parameter_updates_are_visible_before_terminal_snapshot(
         )
         return _FakePopen(poll_script=[0])
 
-    monkeypatch.setattr(step_subprocess.subprocess, "Popen", spawn)
+    monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", spawn)
     result = step_subprocess.execute_step_subprocess(workspace, step)
 
     assert (result.error is None) is worker_ok
@@ -206,16 +205,34 @@ def test_worker_corrupt_parameters_prevent_success(monkeypatch, tmp_path):
         result_path.write_text(json.dumps({"attempt_id": "test-attempt", "done": True, "ok": True}))
         return _FakePopen(poll_script=[0])
 
-    monkeypatch.setattr(step_subprocess.subprocess, "Popen", spawn)
+    monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", spawn)
     result = step_subprocess.execute_step_subprocess(workspace, step)
     assert result.error is not None
     assert "parameters could not be reloaded" in result.error
 
 
+def test_frozen_execution_uses_packaged_worker_dispatch(monkeypatch, tmp_path):
+    step = _workspace_step(tmp_path)
+    result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    commands = []
+    spawn_result = _spawn_with_result(result_path, {"done": True, "ok": True, "events": []})
+
+    def spawn(arguments, **kwargs):
+        commands.append(arguments)
+        return spawn_result(arguments, **kwargs)
+
+    monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", spawn)
+
+    result = execute_tool_step(_workspace(tmp_path), step, None)
+
+    assert result.error is None
+    assert commands == [[sys.executable, "--ecc-worker", "chipcompiler.engine.step_subprocess"]]
+
+
 def test_execute_step_subprocess_reports_worker_crash(monkeypatch, tmp_path):
-    monkeypatch.setenv(step_subprocess._ENABLED_ENV, "1")
     fake = _FakePopen(returncode=-11)
-    monkeypatch.setattr(step_subprocess.subprocess, "Popen", lambda *a, **k: fake)
+    monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", lambda *a, **k: fake)
     step = _workspace_step(tmp_path)
     result = execute_tool_step(_workspace(tmp_path), step, None)
 
@@ -234,7 +251,7 @@ def test_worker_crash_does_not_trust_stale_success_result(monkeypatch, tmp_path)
         json.dumps({"attempt_id": "test-attempt", "done": True, "ok": True, "events": []})
     )
     fake = _FakePopen(poll_script=[-11])
-    monkeypatch.setattr(step_subprocess.subprocess, "Popen", lambda *_args, **_kwargs: fake)
+    monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", lambda *_args, **_kwargs: fake)
 
     result = execute_tool_step(_workspace(tmp_path), step, None)
 
@@ -246,7 +263,7 @@ def test_worker_crash_does_not_trust_stale_success_result(monkeypatch, tmp_path)
 def test_worker_exit_without_result_is_a_failure(monkeypatch, tmp_path):
     step = _workspace_step(tmp_path)
     fake = _FakePopen(poll_script=[0])
-    monkeypatch.setattr(step_subprocess.subprocess, "Popen", lambda *_args, **_kwargs: fake)
+    monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", lambda *_args, **_kwargs: fake)
 
     result = execute_tool_step(_workspace(tmp_path), step, None)
 
@@ -258,7 +275,7 @@ def test_success_result_with_nonzero_exit_is_a_failure(monkeypatch, tmp_path):
     step = _workspace_step(tmp_path)
     result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
     monkeypatch.setattr(
-        step_subprocess.subprocess,
+        step_subprocess.worker.subprocess,
         "Popen",
         _spawn_with_result(result_path, {"done": True, "ok": True, "events": []}, returncode=-11),
     )
@@ -273,7 +290,7 @@ def test_mismatched_attempt_result_and_events_are_rejected(monkeypatch, tmp_path
     step = _workspace_step(tmp_path)
     result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
     monkeypatch.setattr(
-        step_subprocess.subprocess,
+        step_subprocess.worker.subprocess,
         "Popen",
         _spawn_with_result(
             result_path,
@@ -312,7 +329,7 @@ def test_sequential_attempts_accept_only_their_own_results(monkeypatch, tmp_path
         )
         return process
 
-    monkeypatch.setattr(step_subprocess.subprocess, "Popen", spawn)
+    monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", spawn)
 
     first = execute_tool_step(workspace, step, None)
     second = execute_tool_step(workspace, step, None)
@@ -330,11 +347,10 @@ def test_sequential_attempts_accept_only_their_own_results(monkeypatch, tmp_path
 
 
 def test_execute_step_subprocess_reports_worker_failure_result(monkeypatch, tmp_path):
-    monkeypatch.setenv(step_subprocess._ENABLED_ENV, "1")
     step = _workspace_step(tmp_path)
     result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
     monkeypatch.setattr(
-        step_subprocess.subprocess,
+        step_subprocess.worker.subprocess,
         "Popen",
         _spawn_with_result(
             result_path,
@@ -349,11 +365,10 @@ def test_execute_step_subprocess_reports_worker_failure_result(monkeypatch, tmp_
 
 
 def test_execute_step_subprocess_succeeds_and_replays_events(monkeypatch, tmp_path):
-    monkeypatch.setenv(step_subprocess._ENABLED_ENV, "1")
     step = _workspace_step(tmp_path)
     result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
     monkeypatch.setattr(
-        step_subprocess.subprocess,
+        step_subprocess.worker.subprocess,
         "Popen",
         _spawn_with_result(
             result_path,
@@ -388,9 +403,8 @@ def test_execute_step_subprocess_succeeds_and_replays_events(monkeypatch, tmp_pa
 
 
 def test_execute_step_subprocess_cancel_terminates_worker(monkeypatch, tmp_path):
-    monkeypatch.setenv(step_subprocess._ENABLED_ENV, "1")
     fake = _FakePopen(returncode=0, poll_script=[None, None, None])
-    monkeypatch.setattr(step_subprocess.subprocess, "Popen", lambda *a, **k: fake)
+    monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", lambda *a, **k: fake)
 
     class Cancelled(RuntimeError):
         pass
@@ -411,25 +425,73 @@ def test_execute_step_subprocess_cancel_terminates_worker(monkeypatch, tmp_path)
     assert "cancelled" in result.error
 
 
-def test_execute_tool_step_falls_back_in_process(monkeypatch, tmp_path):
-    monkeypatch.setenv("ECC_STEP_SUBPROCESS", "0")
-    dispatched = []
+@pytest.mark.parametrize("outcome", ["success", "crash", "cancel"])
+def test_resource_observation_finishes_before_group_termination(monkeypatch, tmp_path, outcome):
+    workspace = _workspace(tmp_path)
+    step = _workspace_step(tmp_path)
+    result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
+    if outcome == "success":
+        popen = _spawn_with_result(result_path, {"done": True, "ok": True, "events": []})
+    else:
+        fake = _FakePopen(poll_script=[-11] if outcome == "crash" else [None])
+
+        def popen(*_args, **_kwargs):
+            return fake
+
+    monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", popen)
+    calls = []
     monkeypatch.setattr(
         step_subprocess,
-        "execute_step_subprocess",
-        lambda *a, **k: dispatched.append(a),
+        "start_observation",
+        lambda *_args, **_kwargs: _ns(finish=lambda: calls.append("resources") or {}),
     )
-    ran = []
-    monkeypatch.setattr(
-        "chipcompiler.tools.run_step",
-        lambda **kwargs: ran.append(kwargs) or True,
-    )
-    step = _workspace_step(tmp_path)
-    engine_db = _ns(engine=object(), initialization_error=None)
-    result = execute_tool_step(_workspace(tmp_path), step, engine_db)
 
-    assert dispatched == []
-    assert ran and result.error is None
+    def terminate(process):
+        calls.append("terminate")
+        _terminate_fake(process)
+
+    monkeypatch.setattr(step_subprocess.worker, "terminate_process_group", terminate)
+    observer = None
+    if outcome == "cancel":
+
+        def cancelled():
+            raise RuntimeError("stop")
+
+        observer = _ns(raise_if_cancelled=cancelled)
+
+    result = step_subprocess.execute_step_subprocess(workspace, step, observer=observer)
+
+    assert calls == ["resources", "terminate"]
+    if outcome == "success":
+        assert result.error is None
+    else:
+        assert result.error is not None
+
+
+def test_resource_finalization_failure_still_terminates_worker(monkeypatch, tmp_path):
+    step = _workspace_step(tmp_path)
+    fake = _FakePopen(poll_script=[0])
+    monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", lambda *_args, **_kwargs: fake)
+
+    def fail_finish():
+        raise RuntimeError("observation failed")
+
+    monkeypatch.setattr(
+        step_subprocess,
+        "start_observation",
+        lambda *_args, **_kwargs: _ns(finish=fail_finish),
+    )
+    terminated = []
+    monkeypatch.setattr(
+        step_subprocess.worker,
+        "terminate_process_group",
+        lambda process: terminated.append(process),
+    )
+
+    with pytest.raises(RuntimeError, match="observation failed"):
+        step_subprocess.execute_step_subprocess(_workspace(tmp_path), step)
+
+    assert terminated == [fake]
 
 
 class _FakeFlow:

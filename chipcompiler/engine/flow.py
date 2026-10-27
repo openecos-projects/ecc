@@ -549,8 +549,6 @@ class EngineFlow:
         to a range narrower than the persisted ledger pass False.
         """
 
-        from chipcompiler.engine import step_subprocess
-
         index = 0
         while index < len(self.workspace_steps):
             workspace_step = self.workspace_steps[index]
@@ -576,8 +574,6 @@ class EngineFlow:
             self.workspace.logger.log_section(
                 f"{workspace_step.tool} - begin step - {workspace_step.name}"
             )
-            if not step_subprocess.is_enabled():
-                self.init_db_engine()
             state = (
                 self.run_step(workspace_step, rerun=rerun)
                 if observer is None
@@ -636,14 +632,11 @@ class EngineFlow:
         return is_checker_batch_step(flow_step)
 
     def _can_parallelize_checker_batch(self, workspace_step, index, observer) -> bool:
-        from chipcompiler.engine import step_subprocess
-
         return (
             index > 0
             and self._is_checker_batch_step(workspace_step)
             and self.workspace_steps[index - 1].name == StepEnum.FILLER.value
             and observer is None
-            and step_subprocess.is_enabled()
         )
 
     def _checker_parallelism(self, steps: list[WorkspaceStep]) -> int:
