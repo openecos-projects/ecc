@@ -2155,3 +2155,9 @@ manifest、delta 和源报告 SHA256，不覆盖上一版 release。
 新的独立设计和 family，不能把探索轮本身当成 held-out。
 若上游报告标记 `cartesian_coverage=budget_limited`，planner 会输出高优先级的
 `search_space_budget` 动作，要求先减少组合或提高等额 trial 预算。
+当搜索轴命中边界时，planner 还会在 `search_plan` 中给出待人工审核的下一轮提案：按
+现有步长外扩边界，列出每个轴对应的 `floorplan_ecc.json`、`dreamplace_ecc.json` 或
+`sizer_ecc.json` 映射，并计算新 Cartesian 组合数。若组合数超过当前统一
+`max_trials`，`search_plan.budget.decision=increase_equal_max_trials`，同时给出
+`minimum_equal_max_trials`。该提案固定 `safe_to_apply=false` 且要求全部策略、seed 和
+验证槽重新冻结；不能只跑部分网格后宣称覆盖完整空间。

@@ -2542,3 +2542,11 @@ held-out evidence.
 When the source report says `cartesian_coverage=budget_limited`, the planner
 emits a high-priority `search_space_budget` action to reduce combinations or
 raise the equal per-run trial budget first.
+When a search axis selects a boundary, the planner also emits a review-only
+`search_plan`: it extends the observed step beyond that boundary, maps each axis
+to `floorplan_ecc.json`, `dreamplace_ecc.json` or `sizer_ecc.json`, and computes
+the new Cartesian combination count. If that count exceeds the current common
+`max_trials`, `search_plan.budget.decision=increase_equal_max_trials` and
+`minimum_equal_max_trials` records the required equal budget. The proposal is
+always `safe_to_apply=false` and requires every strategy, seed and validation
+slot to be frozen again; a partial grid must not be presented as full coverage.

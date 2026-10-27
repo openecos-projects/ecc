@@ -2,6 +2,7 @@
 
 import json
 from collections import Counter, defaultdict
+from math import isfinite, prod
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ from ecc_experience.benchmark.d4 import (
     STRATEGIES,
 )
 from ecc_experience.benchmark.separation import analyze_strategy_separation
+from ecc_experience.dse.config_surface import describe_config_surface
 from ecc_experience.files import digest, read_json
 from ecc_experience.knowledge.campaign import CAMPAIGN_MANIFEST_SCHEMA
 from ecc_experience.models import ExperienceError
@@ -31,7 +33,29 @@ def plan_next_benchmark(manifest_path: str | Path, output: str | Path) -> dict[s
     missing_ids = _missing_run_ids(runs, designs, seeds)
     invalid_ids = _invalid_run_ids(runs)
     priorities = _design_priorities(runs, designs, seeds)
+    search_plan = _search_plan(manifest.get("search", {}), runs)
     search_actions = _search_actions(manifest.get("search", {}))
+    if search_plan["status"] == "review_required":
+        search_actions.insert(
+            0,
+            {
+                "code": "search_space_proposal",
+                "priority": "high",
+                "status": "review_required",
+                "proposed_axes": {
+                    axis: entry["proposed_values"] for axis, entry in search_plan["axes"].items()
+                },
+                "config_files": search_plan["config_files"],
+                "cartesian_combinations": search_plan["cartesian_combinations"],
+                "current_max_trials": search_plan["budget"]["current_max_trials"],
+                "minimum_equal_max_trials": search_plan["budget"]["minimum_equal_max_trials"],
+                "budget_decision": search_plan["budget"]["decision"],
+                "reason": (
+                    "Review and freeze the whole proposed space for every strategy and seed; "
+                    "do not mix old and new spaces in one equal-budget comparison"
+                ),
+            },
+        )
     coverage_actions = _coverage_actions(len(designs), len(families), len(seeds))
     model_actions = _model_actions(manifest.get("model_evidence", {}))
     exploration_ids = sorted(set(missing_ids) | set(invalid_ids))
@@ -43,8 +67,7 @@ def plan_next_benchmark(manifest_path: str | Path, output: str | Path) -> dict[s
     )
     seed_gap = max(0, MIN_SEEDS - len(seeds))
     confirmation_runs = (
-        new_designs * len(STRATEGIES) * MIN_SEEDS
-        + len(designs) * len(STRATEGIES) * seed_gap
+        new_designs * len(STRATEGIES) * MIN_SEEDS + len(designs) * len(STRATEGIES) * seed_gap
     )
     actions = [*coverage_actions, *search_actions, *model_actions]
     action_required = bool(actions or exploration_ids) or any(
@@ -77,6 +100,7 @@ def plan_next_benchmark(manifest_path: str | Path, output: str | Path) -> dict[s
         },
         "priorities": priorities,
         "actions": actions,
+        "search_plan": search_plan,
         "budget": {
             "per_run_limits": limits,
             "exploration": {
@@ -147,9 +171,7 @@ def _runs(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     return runs
 
 
-def _missing_run_ids(
-    runs: list[dict[str, Any]], designs: list[str], seeds: list[Any]
-) -> list[str]:
+def _missing_run_ids(runs: list[dict[str, Any]], designs: list[str], seeds: list[Any]) -> list[str]:
     present = {_run_id(row) for row in runs}
     expected = {
         _run_id({"design": design, "strategy": strategy, "seed": seed})
@@ -204,14 +226,11 @@ def _design_priorities(
             or row.get("fresh_validation") != "passed"
         )
         quality = Counter(_quality_level(row) for row in rows)
-        quality_gaps = sorted(
-            _run_id(row) for row in rows if _quality_level(row) != "high"
-        )
+        quality_gaps = sorted(_run_id(row) for row in rows if _quality_level(row) != "high")
         resource_gaps = sorted(
             _run_id(row)
             for row in rows
-            if _check(row, "resource_available") is False
-            or _check(row, "feature_usable") is False
+            if _check(row, "resource_available") is False or _check(row, "feature_usable") is False
         )
         model_rows = [row for row in rows if row["strategy"] == "model_assisted"]
         model_available = any(_model_status(row) == "available" for row in model_rows)
@@ -286,6 +305,185 @@ def _next_action(codes: set[str]) -> str:
     return "add_independent_confirmation"
 
 
+def _search_plan(search: Any, runs: list[dict[str, Any]]) -> dict[str, Any]:
+    empty = {
+        "status": "unavailable",
+        "reason": "Campaign manifest has no aggregate search-space axes",
+        "axes": {},
+        "config_files": {},
+        "config_surface": None,
+        "cartesian_combinations": None,
+        "budget": {
+            "current_max_trials": [],
+            "minimum_equal_max_trials": None,
+            "decision": "unknown",
+        },
+        "policy": {
+            "planning_only": True,
+            "safe_to_apply": False,
+            "requires_runtime_freeze": True,
+            "requires_full_requalification": True,
+        },
+    }
+    if not isinstance(search, dict):
+        return empty
+    coverage = search.get("space_coverage")
+    axes = coverage.get("axes") if isinstance(coverage, dict) else None
+    if not isinstance(axes, dict) or not axes:
+        return empty
+
+    proposed: dict[str, dict[str, Any]] = {}
+    blocked: list[str] = []
+    for axis, entry in sorted(axes.items()):
+        if not isinstance(axis, str) or not isinstance(entry, dict):
+            continue
+        values = _proposed_axis_values(entry)
+        if values is None:
+            blocked.append(axis)
+            continue
+        source_values = sorted(set(_numbers(entry.get("selected_values"))))
+        lower_change = values[0] < source_values[0]
+        upper_change = values[-1] > source_values[-1]
+        proposed[axis] = {
+            "source_status": entry.get("status"),
+            "lower_bound": entry.get("lower_bound"),
+            "upper_bound": entry.get("upper_bound"),
+            "source_values": source_values,
+            "proposed_values": values,
+            "change": (
+                "expand_both"
+                if lower_change and upper_change
+                else "expand_lower"
+                if lower_change
+                else "expand_upper"
+                if upper_change
+                else "unchanged"
+            ),
+        }
+    surface = describe_config_surface(list(proposed))
+    files_by_axis = {entry["parameter"]: entry["config_file"] for entry in surface["entries"]}
+    for axis, entry in proposed.items():
+        entry["config_file"] = files_by_axis.get(axis)
+    unmapped = [axis for axis, entry in proposed.items() if entry["config_file"] is None]
+    if blocked or unmapped or not proposed:
+        reasons = []
+        if blocked:
+            reasons.append(f"axes without a reviewable frozen range: {', '.join(blocked)}")
+        if unmapped:
+            reasons.append(f"axes without a config-file receipt: {', '.join(unmapped)}")
+        return {
+            **empty,
+            "status": "blocked",
+            "reason": "; ".join(reasons) or "No search axis can be proposed",
+            "axes": proposed,
+            "config_files": surface["files"],
+            "config_surface": surface,
+            "blocked_axes": blocked,
+            "unmapped_axes": unmapped,
+        }
+
+    combinations = prod(len(entry["proposed_values"]) for entry in proposed.values())
+    current_limits = sorted(
+        {
+            limit["max_trials"]
+            for limit in _per_run_limits(runs)
+            if isinstance(limit.get("max_trials"), int)
+            and not isinstance(limit.get("max_trials"), bool)
+        }
+    )
+    minimum = max([combinations, *current_limits])
+    if len(current_limits) != 1:
+        decision = "freeze_equal_max_trials"
+    elif current_limits[0] < combinations:
+        decision = "increase_equal_max_trials"
+    else:
+        decision = "keep_equal_max_trials"
+    changed = any(entry["change"] != "unchanged" for entry in proposed.values())
+    return {
+        "status": "review_required" if changed else "no_expansion_required",
+        "reason": (
+            "Boundary selections require a wider reviewed space before the next equal-budget "
+            "comparison"
+            if changed
+            else "Observed selections are interior to the frozen ranges"
+        ),
+        "axes": proposed,
+        "config_files": surface["files"],
+        "config_surface": surface,
+        "cartesian_combinations": combinations,
+        "budget": {
+            "current_max_trials": current_limits,
+            "minimum_equal_max_trials": minimum,
+            "decision": decision,
+            "reason": (
+                "The proposed Cartesian space must fit every strategy's equal max_trials; "
+                "do not run a truncated grid and call it complete coverage"
+            ),
+        },
+        "policy": empty["policy"],
+    }
+
+
+def _proposed_axis_values(entry: dict[str, Any]) -> list[float] | None:
+    selected = sorted(set(_numbers(entry.get("selected_values"))))
+    lower = _number(entry.get("lower_bound"))
+    upper = _number(entry.get("upper_bound"))
+    status = entry.get("status")
+    if not selected or lower is None or upper is None or upper < lower:
+        return None
+    if status == "inconsistent_bounds":
+        return None
+    if status == "interior":
+        return selected
+    if status not in {"lower_boundary", "upper_boundary", "boundary_only", "boundary_mixed"}:
+        return None
+
+    if len(selected) > 1:
+        step = min(
+            right - left
+            for left, right in zip(selected, selected[1:], strict=False)
+            if right > left
+        )
+    else:
+        step = (upper - lower) / 2
+    if step <= 0:
+        return None
+
+    lower_hits = entry.get("lower_boundary_selections", 0)
+    upper_hits = entry.get("upper_boundary_selections", 0)
+    if not isinstance(lower_hits, int) or isinstance(lower_hits, bool):
+        lower_hits = 0
+    if not isinstance(upper_hits, int) or isinstance(upper_hits, bool):
+        upper_hits = 0
+    values = set(selected)
+    if lower_hits or selected[0] == lower:
+        if len(selected) == 1 and status in {"lower_boundary", "boundary_only"}:
+            values.add(_clean(lower - 2 * step))
+        values.add(_clean(lower - step))
+    if upper_hits or selected[-1] == upper:
+        if len(selected) == 1 and status in {"upper_boundary", "boundary_only"}:
+            values.add(_clean(upper + 2 * step))
+        values.add(_clean(upper + step))
+    return sorted(values)
+
+
+def _numbers(value: Any) -> list[float]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in (_number(entry) for entry in value) if item is not None]
+
+
+def _number(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if isfinite(number) else None
+
+
+def _clean(value: float) -> float:
+    return round(value, 12) + 0.0
+
+
 def _search_actions(search: Any) -> list[dict[str, Any]]:
     if not isinstance(search, dict):
         return []
@@ -300,9 +498,7 @@ def _search_actions(search: Any) -> list[dict[str, Any]]:
                 "code": "search_space_budget",
                 "priority": "high",
                 "status": "budget_limited",
-                "declared_combination_counts": cartesian.get(
-                    "declared_combination_counts", []
-                ),
+                "declared_combination_counts": cartesian.get("declared_combination_counts", []),
                 "trial_budget_limits": cartesian.get("trial_budget_limits", []),
                 "budget_limited_runs": cartesian.get("budget_limited_runs", []),
                 "reason": (
@@ -369,8 +565,7 @@ def _coverage_actions(designs: int, families: int, seeds: int) -> list[dict[str,
                 "current": families,
                 "required": MIN_FAMILIES,
                 "reason": (
-                    "Add independent families; directory names must not be used as family "
-                    "labels"
+                    "Add independent families; directory names must not be used as family labels"
                 ),
             }
         )
@@ -398,8 +593,7 @@ def _model_actions(model_evidence: Any) -> list[dict[str, Any]]:
                 "priority": "medium",
                 "status": calibration.get("status") if isinstance(calibration, dict) else "unknown",
                 "reason": (
-                    "Run model-assisted trials with measured fresh QoR before comparing "
-                    "calibration"
+                    "Run model-assisted trials with measured fresh QoR before comparing calibration"
                 ),
             }
         ]

@@ -125,6 +125,79 @@ def test_next_round_prioritizes_missing_matrix_and_confirmation_gap(tmp_path):
     } <= codes
 
 
+def test_next_round_proposes_config_axes_and_cartesian_trial_budget(tmp_path):
+    run = _run("design-a", "grid")
+    run["budget"] = {"limits": {"max_seconds": 60, "max_trials": 16}}
+    manifest = {
+        "schema": CAMPAIGN_MANIFEST_SCHEMA,
+        "campaign_id": "campaign-space",
+        "budget": {"equal_budget": True},
+        "runs": [run],
+        "search": {
+            "space_coverage": {
+                "axes": {
+                    "floorplan.core_util": {
+                        "status": "upper_boundary",
+                        "lower_bound": 0.32,
+                        "upper_bound": 0.4,
+                        "selected_values": [0.4],
+                        "lower_boundary_selections": 0,
+                        "upper_boundary_selections": 8,
+                    },
+                    "place.target_density": {
+                        "status": "lower_boundary",
+                        "lower_bound": 0.3,
+                        "upper_bound": 0.4,
+                        "selected_values": [0.3],
+                        "lower_boundary_selections": 8,
+                        "upper_boundary_selections": 0,
+                    },
+                    "timing_opt.hold_margin": {
+                        "status": "boundary_mixed",
+                        "lower_bound": 0.02,
+                        "upper_bound": 0.06,
+                        "selected_values": [0.02, 0.04],
+                        "lower_boundary_selections": 6,
+                        "upper_boundary_selections": 0,
+                    },
+                }
+            }
+        },
+    }
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest))
+
+    result = plan_next_benchmark(path, tmp_path / "next.json")
+
+    plan = result["search_plan"]
+    assert plan["status"] == "review_required"
+    assert plan["axes"]["floorplan.core_util"]["proposed_values"] == [0.4, 0.44, 0.48]
+    assert plan["axes"]["place.target_density"]["proposed_values"] == [0.2, 0.25, 0.3]
+    assert plan["axes"]["timing_opt.hold_margin"]["proposed_values"] == [0.0, 0.02, 0.04]
+    assert plan["cartesian_combinations"] == 27
+    assert plan["budget"] == {
+        "current_max_trials": [16],
+        "minimum_equal_max_trials": 27,
+        "decision": "increase_equal_max_trials",
+        "reason": (
+            "The proposed Cartesian space must fit every strategy's equal max_trials; "
+            "do not run a truncated grid and call it complete coverage"
+        ),
+    }
+    assert plan["config_files"] == {
+        "dreamplace_ecc.json": ["place.target_density"],
+        "floorplan_ecc.json": ["floorplan.core_util"],
+        "sizer_ecc.json": ["timing_opt.hold_margin"],
+    }
+    assert plan["policy"]["safe_to_apply"] is False
+    assert plan["policy"]["requires_full_requalification"] is True
+    proposal = next(
+        action for action in result["actions"] if action["code"] == "search_space_proposal"
+    )
+    assert proposal["proposed_axes"]["place.target_density"] == [0.2, 0.25, 0.3]
+    assert proposal["minimum_equal_max_trials"] == 27
+
+
 def test_next_round_is_ready_only_when_gates_and_evidence_are_complete(tmp_path):
     runs = []
     for design_index in range(6):
@@ -251,9 +324,7 @@ def test_next_round_does_not_treat_seed_variation_as_strategy_separation(tmp_pat
 def test_next_round_repeats_matched_seeds_when_seed_conclusions_disagree(tmp_path):
     runs = []
     for seed, separated in ((1, True), (2, False)):
-        for index, strategy in enumerate(
-            ("grid", "adaptive", "adaptive_warm", "model_assisted")
-        ):
+        for index, strategy in enumerate(("grid", "adaptive", "adaptive_warm", "model_assisted")):
             runs.append(
                 _run(
                     "design-a",
