@@ -62,7 +62,6 @@ def _catalog_defaults(item_id: str) -> dict[str, str]:
 
     return catalog_defaults(item_id)
 
-
 def _path_text(workspace: Workspace, path: Path | str | None) -> str:
     if not path:
         return ""
@@ -679,40 +678,44 @@ def _filesystem_artifact_items(workspace: Workspace) -> list[dict]:
     """Catalog artifact slots from conventional paths (no per-step checklist required)."""
     workspace_dir = Path(workspace.directory)
     design = getattr(getattr(workspace, "design", None), "name", "") or ""
+    harden_dir = STEP_DIRECTORIES[StepEnum.HARDEN.value]
+    synthesis_dir = STEP_DIRECTORIES[StepEnum.SYNTHESIS.value]
+    lvs_dir = STEP_DIRECTORIES[StepEnum.LVS.value]
+    rcx_dir = STEP_DIRECTORIES[StepEnum.RCX.value]
     files = [
         (
             "artifact.harden.gds",
-            workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.gds",
+            workspace_dir / harden_dir / "output" / f"{design}_Harden.gds",
             "Harden GDS",
         ),
         (
             "artifact.harden.lef",
-            workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.lef",
+            workspace_dir / harden_dir / "output" / f"{design}_Harden.lef",
             "Harden LEF",
         ),
         (
             "artifact.harden.lib",
-            workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.lib",
+            workspace_dir / harden_dir / "output" / f"{design}_Harden.lib",
             "Harden LIB",
         ),
         (
             "artifact.synthesis.netlist",
-            workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz",
+            workspace_dir / synthesis_dir / "output" / f"{design}_Synthesis.v.gz",
             "Mapped synthesis netlist",
         ),
         (
             "artifact.lvs.verilog",
-            workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz",
+            workspace_dir / lvs_dir / "output" / f"{design}_lvs.v.gz",
             "LVS Verilog",
         ),
         (
             "artifact.lvs.def",
-            workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.def.gz",
+            workspace_dir / lvs_dir / "output" / f"{design}_lvs.def.gz",
             "LVS DEF",
         ),
         (
             "artifact.lvs.gds",
-            workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.gds",
+            workspace_dir / lvs_dir / "output" / f"{design}_lvs.gds",
             "LVS GDS",
         ),
     ]
@@ -738,7 +741,8 @@ def _filesystem_artifact_items(workspace: Workspace) -> list[dict]:
                 evidence=[{"kind": "output", "path": _path_text(workspace, path)}] if path else [],
             )
         )
-    spefs = sorted((workspace_dir / "RCX_ecc" / "output").glob("*.spef"))
+    rcx_output = f"{rcx_dir}/output"
+    spefs = sorted((workspace_dir / rcx_dir / "output").glob("*.spef"))
     spef_state = (
         "pass" if spefs and all(_file_state(path)[0] == "pass" for path in spefs) else "failed"
     )
@@ -756,7 +760,7 @@ def _filesystem_artifact_items(workspace: Workspace) -> list[dict]:
                 if spef_state == "pass"
                 else "Current RCX SPEF output files are missing or empty."
             ),
-            source={"kind": "output", "path": "RCX_ecc/output"},
+            source={"kind": "output", "path": rcx_output},
             evidence=[{"kind": "output", "path": _path_text(workspace, path)} for path in spefs],
         )
     )

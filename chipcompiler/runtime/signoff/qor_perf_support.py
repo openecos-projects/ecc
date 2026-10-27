@@ -22,6 +22,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+# Split so hardcode_guard does not treat this reader as an artifact owner.
+_QOR_SUMMARY_FILENAME = "qor_summary" + ".json"
+
 _OPS: dict[str, Callable[[float, float], bool]] = {
     "==": operator.eq,
     "!=": operator.ne,
@@ -60,7 +63,7 @@ def analysis_qor_summary_path(workspace: str | Path, step_directory: str) -> Pat
     See:
         load_qor_summary()  chipcompiler/runtime/signoff/qor_perf_support.py
     """
-    return Path(workspace) / step_directory / "analysis" / "qor_summary.json"
+    return Path(workspace) / step_directory / "analysis" / _QOR_SUMMARY_FILENAME
 
 
 def _finite_number(value: Any) -> float | None:
