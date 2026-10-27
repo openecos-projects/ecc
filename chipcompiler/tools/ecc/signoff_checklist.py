@@ -62,6 +62,7 @@ def _catalog_defaults(item_id: str) -> dict[str, str]:
 
     return catalog_defaults(item_id)
 
+
 def _path_text(workspace: Workspace, path: Path | str | None) -> str:
     if not path:
         return ""
