@@ -30,6 +30,7 @@ def _no_parent_death_signal(monkeypatch):
     # main() runs in the pytest process here; arming PR_SET_PDEATHSIG would
     # SIGKILL the runner when the recorded parent pid is not our ppid.
     monkeypatch.setattr(step_subprocess.worker, "arm_parent_death_signal", lambda parent_pid: None)
+    monkeypatch.setattr(step_subprocess.worker, "_start_parent_death_watchdog", lambda: None)
     monkeypatch.setattr(step_subprocess.worker, "terminate_process_group", _terminate_fake)
     monkeypatch.setattr(step_subprocess, "new_attempt_id", lambda: "test-attempt")
 
@@ -400,6 +401,45 @@ def test_execute_step_subprocess_succeeds_and_replays_events(monkeypatch, tmp_pa
 
     assert result.error is None
     assert [entry[1]["state"] for entry in replayed] == ["Ongoing", "Success"]
+
+
+def test_execute_step_subprocess_cancel_replays_pending_events(monkeypatch, tmp_path):
+    step = _workspace_step(tmp_path)
+    result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
+
+    def spawn(*_args, **_kwargs):
+        result_path.write_text(
+            json.dumps(
+                {
+                    "attempt_id": "test-attempt",
+                    "done": False,
+                    "ok": False,
+                    "events": [
+                        {
+                            "type": "subflow_stage",
+                            "subflow_step": {"name": "load", "state": "Success"},
+                        }
+                    ],
+                }
+            )
+        )
+        return _FakePopen(poll_script=[None])
+
+    monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", spawn)
+    replayed = []
+
+    class Observer:
+        def on_subflow_stage(self, _step, subflow_step):
+            replayed.append(subflow_step)
+
+        def raise_if_cancelled(self):
+            raise RuntimeError("stop")
+
+    result = execute_tool_step(_workspace(tmp_path), step, None, observer=Observer())
+
+    assert result.error is not None
+    assert "cancelled" in result.error
+    assert replayed == [{"name": "load", "state": "Success"}]
 
 
 def test_execute_step_subprocess_cancel_terminates_worker(monkeypatch, tmp_path):

@@ -102,6 +102,7 @@ def execute_step_subprocess(
         except (Exception, SystemExit) as exc:
             if cancel_error is not exc:
                 raise
+            on_poll(worker.read_result(result_path))
             step_error = f"{step_tag} cancelled: {str(exc) or type(exc).__name__}"
     finally:
         try:
