@@ -346,5 +346,61 @@ def test_group_termination_includes_descendant_of_exited_leader(tmp_path):
         if child_pid is not None:
             with suppress(ProcessLookupError):
                 os.kill(child_pid, signal.SIGKILL)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux process groups required")
+def test_group_termination_allows_sigterm_cleanup_to_finish(tmp_path, monkeypatch):
+    child_pid_path = tmp_path / "child.pid"
+    ready_path = tmp_path / "ready"
+    handled_path = tmp_path / "handled"
+    descendant = (
+        "import signal,time,pathlib,sys\n"
+        "def handle(signum, frame):\n"
+        "    pathlib.Path(sys.argv[1]).write_text('handled')\n"
+        "    time.sleep(0.2)\n"
+        "    raise SystemExit(0)\n"
+        "signal.signal(signal.SIGTERM, handle); "
+        "pathlib.Path(sys.argv[2]).write_text('ready'); time.sleep(60)"
+    )
+    leader_script = (
+        "import subprocess,sys,pathlib; "
+        "child=subprocess.Popen([sys.executable,'-c',sys.argv[1],sys.argv[2],sys.argv[3]]); "
+        "pathlib.Path(sys.argv[4]).write_text(str(child.pid))"
+    )
+    leader = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            leader_script,
+            descendant,
+            str(handled_path),
+            str(ready_path),
+            str(child_pid_path),
+        ],
+        start_new_session=True,
+    )
+    child_pid = None
+    signals = []
+    original_killpg = os.killpg
+
+    def record_signal(pgid, sig):
+        signals.append(sig)
+        original_killpg(pgid, sig)
+
+    monkeypatch.setattr(worker.os, "killpg", record_signal)
+    try:
+        assert leader.wait(timeout=10) == 0
+        _wait_for_file(ready_path)
+        child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+
+        worker.terminate_process_group(leader)
+
+        assert handled_path.read_text(encoding="utf-8") == "handled"
+        assert signal.SIGKILL not in signals
+        _wait_for_process_death(child_pid)
+    finally:
+        if child_pid is not None:
+            with suppress(ProcessLookupError):
+                os.kill(child_pid, signal.SIGKILL)
         if leader.poll() is None:
             worker.terminate_process_group(leader)

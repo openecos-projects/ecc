@@ -1,5 +1,6 @@
 """Run one flow step's native tool execution in a one-shot worker process."""
 
+import json
 import logging
 import os
 import time
@@ -115,6 +116,7 @@ def execute_step_subprocess(
             worker.terminate_process_group(process)
 
     result = worker.read_result(result_path)
+    _reload_subflow_state(workspace_step, result, attempt_id)
     if step_error is None:
         if not isinstance(result, dict):
             step_error = f"{step_tag} worker exited with code {returncode}."
@@ -164,6 +166,24 @@ def execute_step_subprocess(
         error=step_error,
         resource_observation=resource_observation,
     )
+
+
+def _reload_subflow_state(step: WorkspaceStep, result: dict | None, attempt_id: str) -> None:
+    if isinstance(result, dict) and result.get("attempt_id") != attempt_id:
+        return
+    subflow = getattr(step, "subflow", None)
+    path = getattr(subflow, "path", None)
+    if not path:
+        return
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if not isinstance(data, dict):
+        return
+    steps = data.get("steps")
+    if isinstance(steps, list) and all(isinstance(item, dict) for item in steps):
+        step.subflow.steps = steps
 
 
 def _restore_rcx_outputs(step: WorkspaceStep, result: dict) -> str | None:
