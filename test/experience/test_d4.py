@@ -10,6 +10,7 @@ from ecc_experience.benchmark.d4 import (
     _summarize_resources,
     _warm_start_evidence,
 )
+from ecc_experience.benchmark.separation import analyze_strategy_separation
 
 STRATEGIES = ("grid", "adaptive", "adaptive_warm", "model_assisted")
 
@@ -360,9 +361,22 @@ def test_d4_reports_the_iteration_config_files_each_strategy_explored(tmp_path):
     assert report["summary"]["config_files_by_strategy"]["grid"] == ["floorplan_ecc.json"]
     assert report["summary"]["strategy_separation"] == {
         "status": "converged",
+        "comparison_unit": "design_seed_strategy",
         "separated_designs": [],
         "converged_designs": [f"design-{index}" for index in range(6)],
+        "unstable_designs": [],
         "unknown_designs": [],
+        "seed_groups": [
+            {
+                "design": f"design-{design_index}",
+                "seed": seed,
+                "status": "converged",
+                "strategy_count": 4,
+                "distinct_selections": 1,
+            }
+            for design_index in range(6)
+            for seed in range(2)
+        ],
     }
     assert report["summary"]["search_space_coverage"]["status"] == "boundary_limited"
     assert report["summary"]["search_space_coverage"]["boundary_axes"] == ["floorplan.core_util"]
@@ -376,6 +390,48 @@ def test_d4_reports_the_iteration_config_files_each_strategy_explored(tmp_path):
         "status": "lower_boundary",
     }
     assert report["runs"][0]["config_files"] == ["floorplan_ecc.json"]
+
+
+def test_strategy_separation_compares_within_each_seed():
+    rows = []
+    for seed in (0, 1):
+        for index, strategy in enumerate(STRATEGIES):
+            rows.append(
+                {
+                    "design": "design-a",
+                    "seed": seed,
+                    "strategy": strategy,
+                    "status": "complete",
+                    "selected_parameters": {"core_util": index if seed == 0 else 0.4},
+                }
+            )
+
+    result = analyze_strategy_separation(rows, STRATEGIES)
+
+    assert result == {
+        "status": "unknown",
+        "comparison_unit": "design_seed_strategy",
+        "separated_designs": [],
+        "converged_designs": [],
+        "unstable_designs": ["design-a"],
+        "unknown_designs": [],
+        "seed_groups": [
+            {
+                "design": "design-a",
+                "seed": 0,
+                "status": "separated",
+                "strategy_count": 4,
+                "distinct_selections": 4,
+            },
+            {
+                "design": "design-a",
+                "seed": 1,
+                "status": "converged",
+                "strategy_count": 4,
+                "distinct_selections": 1,
+            },
+        ],
+    }
 
 
 def test_d4_cli_returns_unknown_exit_code_without_enough_designs(tmp_path):

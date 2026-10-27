@@ -1990,8 +1990,9 @@ baseline 与 seed 的真实 `design_fingerprint`，并核对显式 groups；无�
 产生 `warm_start_cross_design_unverified:<design>`，不能仅凭 plan 中的布尔标记通过。
 报告同时给出
 `config_file_counts` 和 `config_files_by_strategy`，用于确认各策略确实探索了预期的工具
-配置文件，而不是只重复一个参数。`summary.strategy_separation` 会按设计比较各策略最终
-选中的参数，并将本轮标记为 `separated`、`converged` 或 `unknown`。`converged` 仍是
+配置文件，而不是只重复一个参数。`summary.strategy_separation` 会先在每个
+`design+seed` 内比较四策略最终选中的参数，再聚合到设计；`unstable_designs` 表示不同
+seed 的结论不一致。本轮标记为 `separated`、`converged` 或 `unknown`。`converged` 仍是
 有效证据，但不能证明策略优势；下一轮应扩大或更换经过审核的搜索轴，而不是降低验收门槛。
 `summary.search_space_coverage` 会按数值轴记录最终取值、下界/上界命中次数和内部命中
 次数。`boundary_limited` 表示冻结范围没有包围观测到的最优区域；应移动或扩大审核过的轴并

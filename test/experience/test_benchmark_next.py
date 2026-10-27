@@ -216,3 +216,33 @@ def test_next_round_cli_exposes_planning_only_output(tmp_path):
     payload = json.loads(result.stdout)[0]
     assert payload["experience"] == "benchmark_next"
     assert payload["policy"]["planning_only"] is True
+
+
+def test_next_round_does_not_treat_seed_variation_as_strategy_separation(tmp_path):
+    runs = []
+    for seed, selected in ((1, 1.0), (2, 2.0)):
+        for strategy in ("grid", "adaptive", "adaptive_warm", "model_assisted"):
+            runs.append(
+                _run(
+                    "design-a",
+                    strategy,
+                    seed,
+                    family="family-a",
+                    selected=selected,
+                    model="available" if strategy == "model_assisted" else "not_requested",
+                )
+            )
+    manifest = {
+        "schema": CAMPAIGN_MANIFEST_SCHEMA,
+        "campaign_id": "campaign-seed-variation",
+        "budget": {"equal_budget": True},
+        "runs": runs,
+    }
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest))
+
+    result = plan_next_benchmark(path, tmp_path / "next.json")
+
+    priority = result["priorities"][0]
+    assert priority["strategy_separation"] == "converged"
+    assert {"code": "strategies_converged"} in priority["reasons"]

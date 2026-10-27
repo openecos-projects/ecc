@@ -11,6 +11,7 @@ from ecc_experience.benchmark.d4 import (
     MIN_SEEDS,
     STRATEGIES,
 )
+from ecc_experience.benchmark.separation import analyze_strategy_separation
 from ecc_experience.files import digest, read_json
 from ecc_experience.knowledge.campaign import CAMPAIGN_MANIFEST_SCHEMA
 from ecc_experience.models import ExperienceError
@@ -175,6 +176,21 @@ def _design_priorities(
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in runs:
         grouped[row["design"]].append(row)
+    separation = analyze_strategy_separation(
+        [
+            row
+            for row in runs
+            if row.get("status") == "complete"
+            and row.get("full_validation") == "passed"
+            and row.get("fresh_validation") == "passed"
+        ],
+        STRATEGIES,
+    )
+    separation_by_design = {
+        **{design: "separated" for design in separation["separated_designs"]},
+        **{design: "converged" for design in separation["converged_designs"]},
+        **{design: "unstable" for design in separation["unstable_designs"]},
+    }
     priorities = []
     for design in designs:
         rows = grouped[design]
@@ -199,19 +215,7 @@ def _design_priorities(
         )
         model_rows = [row for row in rows if row["strategy"] == "model_assisted"]
         model_available = any(_model_status(row) == "available" for row in model_rows)
-        signatures = {
-            digest(row["selected_parameters"])
-            for row in rows
-            if isinstance(row.get("selected_parameters"), dict)
-        }
-        if set(present) != set(STRATEGIES):
-            separation = "unknown"
-        elif len(signatures) > 1:
-            separation = "separated"
-        elif len(signatures) == 1:
-            separation = "converged"
-        else:
-            separation = "unknown"
+        separation_status = separation_by_design.get(design, "unknown")
         reasons = []
         if missing:
             reasons.append({"code": "strategy_missing", "strategies": missing})
@@ -223,9 +227,11 @@ def _design_priorities(
             reasons.append({"code": "resource_evidence_incomplete", "run_ids": resource_gaps})
         if model_rows and not model_available:
             reasons.append({"code": "model_evidence_unavailable"})
-        if separation == "converged":
+        if separation_status == "converged":
             reasons.append({"code": "strategies_converged"})
-        elif separation == "unknown" and not missing:
+        elif separation_status == "unstable":
+            reasons.append({"code": "strategy_separation_unstable"})
+        elif separation_status == "unknown" and not missing:
             reasons.append({"code": "strategy_separation_unknown"})
         codes = {reason["code"] for reason in reasons}
         if codes & {"strategy_missing", "run_invalid", "model_evidence_unavailable"}:
@@ -234,6 +240,7 @@ def _design_priorities(
             "quality_gap",
             "resource_evidence_incomplete",
             "strategies_converged",
+            "strategy_separation_unstable",
             "strategy_separation_unknown",
         }:
             priority = "medium"
@@ -250,7 +257,7 @@ def _design_priorities(
                 "seed_count": len({row["seed"] for row in rows}),
                 "expected_seed_count": len(seeds),
                 "quality_levels": dict(sorted(quality.items())),
-                "strategy_separation": separation,
+                "strategy_separation": separation_status,
                 "model_evidence_available": model_available if model_rows else None,
                 "reasons": reasons,
                 "next_action": _next_action(codes),
@@ -274,6 +281,8 @@ def _next_action(codes: set[str]) -> str:
         return "repair_evidence_coverage"
     if codes & {"strategies_converged", "strategy_separation_unknown"}:
         return "refreeze_and_expand_search"
+    if "strategy_separation_unstable" in codes:
+        return "repeat_matched_seeds"
     return "add_independent_confirmation"
 
 

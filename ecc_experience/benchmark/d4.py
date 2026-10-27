@@ -6,6 +6,7 @@ from math import comb, isfinite
 from pathlib import Path
 from statistics import median
 
+from ecc_experience.benchmark.separation import analyze_strategy_separation
 from ecc_experience.dse.audit import audit_history
 from ecc_experience.dse.config_surface import describe_config_surface
 from ecc_experience.files import digest, read_json
@@ -896,27 +897,7 @@ def _metrics(run: dict) -> dict:
 
 
 def _strategy_separation(metrics: list[dict]) -> dict:
-    by_design = defaultdict(dict)
-    for row in metrics:
-        if row["status"] == "complete" and row["selected_parameters"] is not None:
-            by_design[row["design"]][row["strategy"]] = digest(row["selected_parameters"])
-    separated = []
-    converged = []
-    unknown = []
-    for design, selections in sorted(by_design.items()):
-        if set(selections) != set(STRATEGIES):
-            unknown.append(design)
-        elif len(set(selections.values())) > 1:
-            separated.append(design)
-        else:
-            converged.append(design)
-    status = "separated" if separated else "converged" if converged else "unknown"
-    return {
-        "status": status,
-        "separated_designs": separated,
-        "converged_designs": converged,
-        "unknown_designs": unknown,
-    }
+    return analyze_strategy_separation(metrics, STRATEGIES)
 
 
 def _selected_parameters(result: dict) -> object | None:

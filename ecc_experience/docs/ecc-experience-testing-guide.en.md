@@ -2331,11 +2331,12 @@ it emits `warm_start_cross_design_unverified:<design>`; a boolean in the plan is
 not sufficient. The report also lists
 `config_file_counts` and `config_files_by_strategy` so a reader can confirm
 that the strategies explored the intended tool configuration files rather than
-only replaying one parameter. `summary.strategy_separation` compares each
-strategy's selected parameters per design and labels the round `separated`,
-`converged` or `unknown`. A converged round remains valid evidence but cannot
-show a strategy advantage; widen or change a reviewed axis before the next
-round instead of lowering the acceptance gates.
+only replaying one parameter. `summary.strategy_separation` compares the four
+strategies within each `design+seed` group before aggregating by design;
+`unstable_designs` records groups whose seeds disagree. The round is labelled
+`separated`, `converged` or `unknown`. A converged round remains valid evidence
+but cannot show a strategy advantage; widen or change a reviewed axis before
+the next round instead of lowering the acceptance gates.
 `summary.search_space_coverage` reports the selected values, lower/upper
 boundary counts and interior counts for every numeric DSE axis. A
 `boundary_limited` round means the frozen range did not bracket the observed
