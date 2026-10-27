@@ -98,7 +98,7 @@ def _result(plan, strategy, score):
     }
 
 
-def _write_spec(tmp_path, *, designs=6, seeds=2):
+def _write_spec(tmp_path, *, designs=6, seeds=2, strategies=STRATEGIES):
     runs = []
     families = ("arithmetic", "memory", "control")
     release_cases = []
@@ -137,7 +137,7 @@ def _write_spec(tmp_path, *, designs=6, seeds=2):
         design = f"design-{design_index}"
         family = families[design_index % len(families)]
         for seed in range(seeds):
-            for order, strategy in enumerate(STRATEGIES):
+            for order, strategy in enumerate(strategies):
                 plan = _plan(strategy, design, family, tmp_path)
                 plan_path = tmp_path / f"{design}-{seed}-{strategy}-plan.json"
                 result_path = tmp_path / f"{design}-{seed}-{strategy}-result.json"
@@ -155,7 +155,7 @@ def _write_spec(tmp_path, *, designs=6, seeds=2):
                         "family": family,
                         "strategy": strategy,
                         "seed": seed,
-                        "order": (len(STRATEGIES) - 1 - order if seed % 2 else order),
+                        "order": (len(strategies) - 1 - order if seed % 2 else order),
                         "host_class": "test-host",
                         "plan": plan_path.name,
                         "result": result_path.name,
@@ -164,6 +164,28 @@ def _write_spec(tmp_path, *, designs=6, seeds=2):
     spec = tmp_path / "d4.json"
     spec.write_text(json.dumps({"schema": "ecc-experience-d4-spec/1", "runs": runs}))
     return spec
+
+
+def _write_omission_evidence(
+    tmp_path,
+    *,
+    omitted=None,
+    reason="model gates failed",
+    evaluation_status="unknown",
+    model_release=None,
+):
+    path = tmp_path / "omission-evidence.json"
+    path.write_text(
+        json.dumps(
+            {
+                "evaluation_status": evaluation_status,
+                "model_release": model_release,
+                "omitted_strategies": ["model_assisted"] if omitted is None else omitted,
+                "omitted_reason": reason,
+            }
+        )
+    )
+    return path
 
 
 def test_d4_requires_multi_design_family_and_seed_evidence(tmp_path):
@@ -176,6 +198,68 @@ def test_d4_requires_multi_design_family_and_seed_evidence(tmp_path):
     assert report["summary"]["seed_count"] == 2
     assert report["safe_to_apply"] is False
     assert report["promotion_allowed"] is True
+
+
+def test_d4_accepts_an_explicitly_omitted_optional_model_arm(tmp_path):
+    spec = _write_spec(tmp_path, strategies=STRATEGIES[:-1])
+    evidence = _write_omission_evidence(tmp_path)
+
+    report = d4_evaluate(spec, tmp_path / "report.json", omission_evidence=evidence)
+
+    assert report["status"] == "pass"
+    assert report["summary"]["included_strategies"] == list(STRATEGIES[:-1])
+    assert report["summary"]["omitted_strategies"] == ["model_assisted"]
+    assert set(report["strategies"]) == set(STRATEGIES[:-1])
+    assert [item["strategy"] for item in report["comparisons"]] == [
+        "adaptive",
+        "adaptive_warm",
+    ]
+    assert report["summary"]["model_calibration"]["status"] == "unknown"
+    assert report["omission_evidence"]["path"] == str(evidence.resolve())
+    assert len(report["omission_evidence"]["sha256"]) == 64
+    assert report["omission_evidence"]["reason"] == "model gates failed"
+
+
+def test_d4_rejects_an_unexplained_missing_optional_model_arm(tmp_path):
+    report = d4_evaluate(
+        _write_spec(tmp_path, strategies=STRATEGIES[:-1]),
+        tmp_path / "report.json",
+    )
+
+    assert report["status"] == "unknown"
+    assert "optional_strategy_omission_unproven:model_assisted" in report["reasons"]
+    assert not any(reason.startswith("strategy_missing:") for reason in report["reasons"])
+
+
+def test_d4_rejects_omission_evidence_that_contradicts_the_run_matrix(tmp_path):
+    evidence = _write_omission_evidence(tmp_path)
+
+    report = d4_evaluate(
+        _write_spec(tmp_path),
+        tmp_path / "report.json",
+        omission_evidence=evidence,
+    )
+
+    assert report["status"] == "unknown"
+    assert "optional_strategy_omission_mismatch" in report["reasons"]
+
+
+def test_d4_rejects_omission_evidence_that_claims_a_working_model(tmp_path):
+    evidence = _write_omission_evidence(
+        tmp_path,
+        evaluation_status="pass",
+        model_release="model-release.json",
+    )
+
+    report = d4_evaluate(
+        _write_spec(tmp_path, strategies=STRATEGIES[:-1]),
+        tmp_path / "report.json",
+        omission_evidence=evidence,
+    )
+
+    assert report["status"] == "unknown"
+    assert "omission_evidence_claims_a_model_release" in report["reasons"]
+    assert "omission_evidence_claims_model_pass" in report["reasons"]
 
 
 def test_d4_summarizes_selection_conditioned_model_calibration(tmp_path):
@@ -518,6 +602,29 @@ def test_d4_cli_returns_unknown_exit_code_without_enough_designs(tmp_path):
 
     assert result.exit_code == 7, result.output
     assert json.loads(result.stdout)[0]["status"] == "unknown"
+
+
+def test_d4_cli_accepts_explicit_optional_strategy_omission(tmp_path):
+    result = CliRunner().invoke(
+        app,
+        [
+            "experience",
+            "dse",
+            "d4",
+            "--spec",
+            str(_write_spec(tmp_path, strategies=STRATEGIES[:-1])),
+            "--omission-evidence",
+            str(_write_omission_evidence(tmp_path)),
+            "--output",
+            str(tmp_path / "report.json"),
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.stdout)[0]
+    assert report["status"] == "pass"
+    assert report["summary"]["omitted_strategies"] == ["model_assisted"]
 
 
 def test_d4_resource_summary_keeps_partial_scope_and_maximum_trial_rss():

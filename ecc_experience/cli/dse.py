@@ -37,6 +37,7 @@ class DseInput:
     model_release: str | None = None
     result_path: str | None = None
     spec: str | None = None
+    omission_evidence: str | None = None
     resume: bool = False
     select: str | None = None
     max_concurrent: int | None = None
@@ -266,6 +267,13 @@ def d4_cmd(
     *,
     spec: Annotated[str, typer.Option("--spec", help="D4 run matrix JSON")],
     output: Annotated[str, typer.Option("--output")],
+    omission_evidence: Annotated[
+        str | None,
+        typer.Option(
+            "--omission-evidence",
+            help="JSON evidence for explicitly omitted optional strategies",
+        ),
+    ] = None,
     plain: PlainOption = False,
     json_output: JsonOption = False,
 ) -> None:
@@ -273,7 +281,11 @@ def d4_cmd(
         def operation():
             from ecc_experience.api import d4_evaluate
 
-            report = d4_evaluate(command.spec or "", command.output_path)
+            report = d4_evaluate(
+                command.spec or "",
+                command.output_path,
+                omission_evidence=command.omission_evidence,
+            )
             return CommandResult(
                 records=({"experience": "dse_d4", **report},),
                 exit_code=report["exit_code"],
@@ -288,6 +300,7 @@ def d4_cmd(
             project=project_options(None),
             output_path=output,
             spec=spec,
+            omission_evidence=omission_evidence,
         ),
         handle,
     )

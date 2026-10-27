@@ -419,10 +419,15 @@ def campaign_effect(
     return compare(report, output, baselines)
 
 
-def d4_evaluate(spec: str | Path, output: str | Path) -> dict:
+def d4_evaluate(
+    spec: str | Path,
+    output: str | Path,
+    *,
+    omission_evidence: str | Path | None = None,
+) -> dict:
     from ecc_experience.benchmark.d4 import evaluate_d4
 
-    return evaluate_d4(spec, output)
+    return evaluate_d4(spec, output, omission_evidence=omission_evidence)
 
 
 def validate_benchmark_spec(spec: str | Path) -> dict:

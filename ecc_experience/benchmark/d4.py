@@ -15,34 +15,73 @@ from ecc_experience.optimization.plan import write_plan
 
 D4_SPEC_SCHEMA = "ecc-experience-d4-spec/1"
 D4_REPORT_SCHEMA = "ecc-experience-d4-report/1"
-STRATEGIES = ("grid", "adaptive", "adaptive_warm", "model_assisted")
+FORMAL_STRATEGIES = ("grid", "adaptive", "adaptive_warm")
+OPTIONAL_STRATEGIES = ("model_assisted",)
+STRATEGIES = FORMAL_STRATEGIES + OPTIONAL_STRATEGIES
 MIN_DESIGNS = 6
 MIN_FAMILIES = 3
 MIN_SEEDS = 2
 BUDGET_LIMIT_KEYS = ("max_seconds", "max_trials")
 
 
-def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
+def evaluate_d4(
+    spec: str | Path,
+    output: str | Path,
+    *,
+    omission_evidence: str | Path | None = None,
+) -> dict:
     spec_path = Path(spec).expanduser().absolute()
     payload = read_json(spec_path, 16 * 1024 * 1024)
     entries = _entries(payload)
     runs = [_load_run(spec_path.parent, entry) for entry in entries]
+    observed_strategies = {run["strategy"] for run in runs}
+    included_strategies = tuple(
+        strategy
+        for strategy in STRATEGIES
+        if strategy in FORMAL_STRATEGIES or strategy in observed_strategies
+    )
+    missing_optional = tuple(
+        strategy for strategy in OPTIONAL_STRATEGIES if strategy not in observed_strategies
+    )
+    omission = (
+        _load_omission_evidence(spec_path.parent, omission_evidence)
+        if omission_evidence is not None
+        else None
+    )
     designs = defaultdict(list)
     for run in runs:
         designs[run["design"]].append(run)
 
     reasons = []
+    omitted_strategies = set(omission["omitted_strategies"]) if omission else set()
+    if missing_optional and omission is None:
+        reasons.append(f"optional_strategy_omission_unproven:{','.join(missing_optional)}")
+    if omission is not None:
+        if omitted_strategies != set(missing_optional):
+            reasons.append("optional_strategy_omission_mismatch")
+        if any(strategy in FORMAL_STRATEGIES for strategy in omitted_strategies):
+            reasons.append("formal_strategy_cannot_be_omitted")
+        if omitted_strategies - set(OPTIONAL_STRATEGIES):
+            reasons.append("unknown_optional_strategy_omitted")
+        if omission.get("model_release_present") is True:
+            reasons.append("omission_evidence_claims_a_model_release")
+        if "model_assisted" in omitted_strategies and omission.get("evaluation_status") in {
+            "pass",
+            "available",
+            "calibrated",
+        }:
+            reasons.append("omission_evidence_claims_model_pass")
     budget_signatures = {run["budget_signature"] for run in runs}
     if len(budget_signatures) != 1:
         reasons.append("equal_budget_not_established")
     families = {run["family"] for run in runs}
     seeds = {
         strategy: {run["seed"] for run in runs if run["strategy"] == strategy}
-        for strategy in STRATEGIES
+        for strategy in included_strategies
     }
-    if any(len(seeds[strategy]) < MIN_SEEDS for strategy in STRATEGIES):
+    if any(len(seeds[strategy]) < MIN_SEEDS for strategy in included_strategies):
         reasons.append("insufficient_seeds")
-    if any(seeds[strategy] != seeds["grid"] for strategy in STRATEGIES):
+    if any(seeds[strategy] != seeds["grid"] for strategy in included_strategies):
         reasons.append("seed_sets_not_matched")
     if len(families) < MIN_FAMILIES:
         reasons.append("insufficient_families")
@@ -52,7 +91,7 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
         reasons.append("run_order_not_balanced")
 
     for design, rows in designs.items():
-        if {row["strategy"] for row in rows} != set(STRATEGIES):
+        if {row["strategy"] for row in rows} != set(included_strategies):
             reasons.append(f"strategy_missing:{design}")
         if len({row["family"] for row in rows}) != 1:
             reasons.append(f"family_mismatch:{design}")
@@ -107,8 +146,8 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
             reasons.append(f"config_receipt_unavailable:{design}")
 
     metrics = [_metrics(row) for row in runs]
-    strategy_summary = _strategy_summary(metrics)
-    comparisons = [_compare(strategy, metrics, runs) for strategy in STRATEGIES[1:]]
+    strategy_summary = _strategy_summary(metrics, included_strategies)
+    comparisons = [_compare(strategy, metrics, runs) for strategy in included_strategies[1:]]
     order_balanced = _order_balanced(runs)
     passed = not reasons
     resource_coverage = _resource_summary(metrics)
@@ -126,6 +165,9 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
             "family_count": len(families),
             "seed_count": len({run["seed"] for run in runs}),
             "strategy_count": len({run["strategy"] for run in runs}),
+            "included_strategies": list(included_strategies),
+            "optional_strategies": list(OPTIONAL_STRATEGIES),
+            "omitted_strategies": sorted(omitted_strategies),
             "minimum_designs": MIN_DESIGNS,
             "minimum_families": MIN_FAMILIES,
             "minimum_seeds": MIN_SEEDS,
@@ -161,7 +203,7 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
                         for file in row["config_files"]
                     }
                 )
-                for strategy in STRATEGIES
+                for strategy in included_strategies
             },
             "config_receipt_statuses": dict(
                 sorted(
@@ -174,12 +216,13 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
             "warm_start_modes": dict(
                 sorted(Counter(row["warm_start"]["status"] for row in metrics).items())
             ),
-            "strategy_separation": _strategy_separation(metrics),
+            "strategy_separation": _strategy_separation(metrics, included_strategies),
             "search_space_coverage": _search_space_summary(runs),
         },
         "strategies": strategy_summary,
         "comparisons": comparisons,
         "runs": metrics,
+        "omission_evidence": omission,
         "generalization_status": "validated_for_declared_scope" if passed else "unproven",
         "promotion_allowed": passed
         and any(item["significant_positive_improvement"] for item in comparisons),
@@ -202,6 +245,8 @@ def evaluate_d4(spec: str | Path, output: str | Path) -> dict:
             "No recommendation is written to a workspace and no model is promoted automatically",
             "Model calibration uses only the selected candidate and fresh QoR; it does not "
             "estimate candidate-level ranking accuracy",
+            "Optional strategies are excluded only with explicit omission evidence; an "
+            "unexecuted model arm is not evidence of model quality or strategy equivalence",
         ],
     }
     result["report_id"] = f"d4-{digest(result)}"
@@ -885,8 +930,8 @@ def _metrics(run: dict) -> dict:
     }
 
 
-def _strategy_separation(metrics: list[dict]) -> dict:
-    return analyze_strategy_separation(metrics, STRATEGIES)
+def _strategy_separation(metrics: list[dict], strategies: tuple[str, ...]) -> dict:
+    return analyze_strategy_separation(metrics, strategies)
 
 
 def _selected_parameters(result: dict) -> object | None:
@@ -1291,9 +1336,9 @@ def _model_calibration_summary(metrics: list[dict]) -> dict:
     }
 
 
-def _strategy_summary(metrics: list[dict]) -> dict:
+def _strategy_summary(metrics: list[dict], strategies: tuple[str, ...]) -> dict:
     result = {}
-    for strategy in STRATEGIES:
+    for strategy in strategies:
         rows = [row for row in metrics if row["strategy"] == strategy]
         values = [row["final_qor"] for row in rows if row["final_qor"] is not None]
         result[strategy] = {
@@ -1431,3 +1476,27 @@ def _resolve(base: Path, value: str) -> Path:
 
 def invalid(reason: str) -> ExperienceError:
     return ExperienceError(reason, code="experience_benchmark_invalid")
+
+
+def _load_omission_evidence(base: Path, value: str | Path) -> dict:
+    path = _resolve(base, str(value))
+    payload = read_json(path, 1024 * 1024)
+    omitted = payload.get("omitted_strategies") if isinstance(payload, dict) else None
+    reason = payload.get("omitted_reason") if isinstance(payload, dict) else None
+    if (
+        not isinstance(omitted, list)
+        or not omitted
+        or any(not isinstance(item, str) or not item for item in omitted)
+        or len(set(omitted)) != len(omitted)
+        or not isinstance(reason, str)
+        or not reason.strip()
+    ):
+        raise invalid("Invalid D4 optional-strategy omission evidence")
+    return {
+        "path": str(path),
+        "sha256": digest(payload),
+        "omitted_strategies": list(omitted),
+        "reason": reason.strip(),
+        "evaluation_status": payload.get("evaluation_status"),
+        "model_release_present": payload.get("model_release") is not None,
+    }

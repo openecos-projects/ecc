@@ -2306,7 +2306,7 @@ only to the declared scope and requires real DSE plus full/fresh validation.
 Without independent multi-design evidence, keep `unproven` and do not publish a
 stronger recommendation or promote a model automatically.
 
-### 22.4 D4 four-strategy reports and the derived index
+### 22.4 D4 strategy reports and the derived index
 
 D4 consumes completed plan/result pairs; it does not rerun missing experiments.
 The spec identifies design, family, strategy, seed, order, host data and
@@ -2318,6 +2318,17 @@ Equal budget is defined by `max_trials`, `max_seconds`, concurrency and rungs.
 `patience` is an algorithm stopping rule and `trial_timeout_seconds` is a
 per-trial hang guard; both may vary by strategy or design size and are excluded
 from the budget signature. A timed-out run still fails.
+
+The formal arms are grid, adaptive and adaptive_warm. `model_assisted` is
+optional and is not part of a required ECC flow. Include it only when a model
+passes the frozen held-out gates. When the model arm is omitted, pass
+`--omission-evidence` with explicit JSON evidence containing at least
+`omitted_strategies` and a non-empty `omitted_reason` (for example,
+`inputs/model-status.json`). The report records the evidence path, SHA256,
+reason and `summary.omitted_strategies`. Without that evidence D4 returns
+`unknown` rather than silently treating the missing model arm as equivalent.
+Contradictory evidence, a claimed model release or a passing evaluation status
+also fails closed.
 
 `adaptive_warm` is only a distinct strategy when every frozen seed is a
 cross-design seed (`warm_start.status=cross_design`) and the release used
@@ -2331,8 +2342,8 @@ it emits `warm_start_cross_design_unverified:<design>`; a boolean in the plan is
 not sufficient. The report also lists
 `config_file_counts` and `config_files_by_strategy` so a reader can confirm
 that the strategies explored the intended tool configuration files rather than
-only replaying one parameter. `summary.strategy_separation` compares the four
-strategies within each `design+seed` group before aggregating by design;
+only replaying one parameter. `summary.strategy_separation` compares the
+included strategies within each `design+seed` group before aggregating by design;
 `unstable_designs` records groups whose seeds disagree. The round is labelled
 `separated`, `converged` or `unknown`. A converged round remains valid evidence
 but cannot show a strategy advantage; widen or change a reviewed axis before
@@ -2349,6 +2360,10 @@ combinations or freeze a larger equal per-run budget.
 
 ```bash
 ecc experience dse d4 --spec ./inputs/d4.json --output ./reports/d4.json --json
+# Only when model_assisted is explicitly omitted:
+ecc experience dse d4 --spec ./inputs/d4.json \
+  --omission-evidence ./inputs/model-status.json \
+  --output ./reports/d4.json --json
 ecc experience index build --store "$ECC_TEST_STORE" --json
 ecc experience index status --store "$ECC_TEST_STORE" --json
 ```

@@ -1972,7 +1972,7 @@ family 数和阈值；`safe_to_apply=false`、`auto_apply=false` 不得放宽。
 `validated_for_declared_scope`。该状态仍只适用于声明 scope，后续必须真实 DSE + full/fresh。
 没有独立多设计证据时保持 `unproven`，不得发布更强推荐或自动晋级模型。
 
-### 22.4 D4 四策略报告与派生索引
+### 22.4 D4 策略报告与派生索引
 
 D4 消费已完成的四组 plan/result，不负责补跑缺失实验。spec 至少包含 design、family、
 strategy、seed、order、host 信息以及 plan/result 路径；strategy 必须是
@@ -1981,6 +1981,14 @@ grid/adaptive/adaptive_warm/model_assisted。报告强制等预算、同 input/p
 等预算由 `max_trials`、`max_seconds`、并发和 rung 定义；`patience` 是算法停止规则，
 `trial_timeout_seconds` 是防止单个 trial 挂死的安全阀，均可按策略或设计规模不同，不计入
 等预算签名，但超时 run 仍失败。
+
+正式臂固定为 grid/adaptive/adaptive_warm；model_assisted 是 optional，不构成 ECC 必备
+流程。只有模型通过冻结的 held-out 门槛时才加入 model_assisted 并执行四臂对照。省略该臂
+时必须通过 `--omission-evidence` 提供显式 JSON 证据（至少包含 `omitted_strategies` 和
+非空 `omitted_reason`），例如 `inputs/model-status.json`；报告会记录证据路径、SHA256、
+理由和 `summary.omitted_strategies`。缺少证据时 D4 返回 `unknown`，不会把缺失模型臂静默
+解释为等价；证据与 run 矩阵矛盾、声称已有 model release 或 evaluation status 已通过时
+同样 fail closed。
 
 只有所有冻结 seed 都是跨设计 seed（`warm_start.status=cross_design`）且 release 使用显式
 family 隔离（`family_isolation=explicit_groups`）时，`adaptive_warm` 才是独立策略。
@@ -1991,7 +1999,7 @@ baseline 与 seed 的真实 `design_fingerprint`，并核对显式 groups；无�
 报告同时给出
 `config_file_counts` 和 `config_files_by_strategy`，用于确认各策略确实探索了预期的工具
 配置文件，而不是只重复一个参数。`summary.strategy_separation` 会先在每个
-`design+seed` 内比较四策略最终选中的参数，再聚合到设计；`unstable_designs` 表示不同
+`design+seed` 内比较本次实际纳入的策略最终选中的参数，再聚合到设计；`unstable_designs` 表示不同
 seed 的结论不一致。本轮标记为 `separated`、`converged` 或 `unknown`。`converged` 仍是
 有效证据，但不能证明策略优势；下一轮应扩大或更换经过审核的搜索轴，而不是降低验收门槛。
 `summary.search_space_coverage` 会按数值轴记录最终取值、下界/上界命中次数和内部命中
@@ -2003,6 +2011,10 @@ seed 的结论不一致。本轮标记为 `separated`、`converged` 或 `unknown
 
 ```bash
 ecc experience dse d4 --spec ./inputs/d4.json --output ./reports/d4.json --json
+# 仅当 model_assisted 按规则省略时：
+ecc experience dse d4 --spec ./inputs/d4.json \
+  --omission-evidence ./inputs/model-status.json \
+  --output ./reports/d4.json --json
 ecc experience index build --store "$ECC_TEST_STORE" --json
 ecc experience index status --store "$ECC_TEST_STORE" --json
 ```
