@@ -323,6 +323,8 @@ def test_memory_headroom_limits_dispatch(tmp_path, monkeypatch, headroom, expect
 
 
 def test_memory_reserves_host_and_cgroup_headroom(tmp_path, monkeypatch):
+    from chipcompiler.engine import memory as memory_probe
+
     def mapped_path(value):
         return tmp_path / value.lstrip("/")
 
@@ -336,7 +338,7 @@ def test_memory_reserves_host_and_cgroup_headroom(tmp_path, monkeypatch):
         path = mapped_path(name)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
-    monkeypatch.setattr(sta, "Path", mapped_path)
+    monkeypatch.setattr(memory_probe, "Path", mapped_path)
     assert sta._memory_headroom_mb() == 1024
     mapped_path("/proc/self/cgroup").write_text("5:memory:/test\n")
     assert sta._memory_headroom_mb() == 0
