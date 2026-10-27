@@ -157,6 +157,7 @@ def test_worker_main_echoes_attempt_id_on_every_flush(monkeypatch, tmp_path):
     }
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
     monkeypatch.setattr(worker, "arm_parent_death_signal", lambda _pid: None)
+    monkeypatch.setattr(worker, "_start_parent_death_watchdog", lambda: None)
     writes = []
     write_atomic = worker.write_result_atomic
 
@@ -260,7 +261,8 @@ def test_cancel_exception_escapes_and_caller_stops_process_tree(tmp_path):
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux parent-death signal required")
-def test_worker_dies_when_parent_is_killed_after_arming(tmp_path):
+@pytest.mark.parametrize("mode", ["parent_death", "tree"])
+def test_worker_dies_when_parent_is_killed_after_arming(tmp_path, mode):
     ready_path = tmp_path / "ready"
     worker_pid_path = tmp_path / "worker.pid"
     parent = subprocess.Popen(
@@ -272,13 +274,17 @@ def test_worker_dies_when_parent_is_killed_after_arming(tmp_path):
         start_new_session=True,
     )
     worker_pid = None
+    child_pid = None
+    child_pid_path = tmp_path / "child.pid"
     try:
         assert parent.stdin is not None
         with parent.stdin:
             parent.stdin.write(
                 json.dumps(
                     {
+                        "mode": mode,
                         "ready_path": str(ready_path),
+                        "child_pid_path": str(child_pid_path),
                         "worker_pid_path": str(worker_pid_path),
                         "result_path": str(tmp_path / "worker-result.json"),
                         "repository": str(_REPOSITORY),
@@ -288,10 +294,15 @@ def test_worker_dies_when_parent_is_killed_after_arming(tmp_path):
         _wait_for_file(worker_pid_path)
         _wait_for_file(ready_path)
         worker_pid = int(worker_pid_path.read_text(encoding="utf-8"))
+        if mode == "tree":
+            _wait_for_file(child_pid_path)
+            child_pid = int(child_pid_path.read_text(encoding="utf-8"))
 
         os.kill(parent.pid, signal.SIGKILL)
         assert parent.wait(timeout=10) == -signal.SIGKILL
         _wait_for_process_death(worker_pid)
+        if child_pid is not None:
+            _wait_for_process_death(child_pid)
     finally:
         if parent.poll() is None:
             parent.kill()
@@ -299,6 +310,9 @@ def test_worker_dies_when_parent_is_killed_after_arming(tmp_path):
         if worker_pid is not None:
             with suppress(ProcessLookupError):
                 os.kill(worker_pid, signal.SIGKILL)
+        if child_pid is not None:
+            with suppress(ProcessLookupError):
+                os.kill(child_pid, signal.SIGKILL)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux process groups required")

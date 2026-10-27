@@ -110,7 +110,9 @@ def poll_until_exit(
     return process.wait()
 
 
-def arm_parent_death_signal(parent_pid: int | None = None) -> None:
+def arm_parent_death_signal(
+    parent_pid: int | None = None, *, death_signal: int = signal.SIGKILL
+) -> None:
     if parent_pid is None:
         import multiprocessing
 
@@ -122,17 +124,39 @@ def arm_parent_death_signal(parent_pid: int | None = None) -> None:
     import ctypes
 
     libc = ctypes.CDLL(None, use_errno=True)
-    if libc.prctl(1, signal.SIGKILL, 0, 0, 0) != 0:  # PR_SET_PDEATHSIG
+    if libc.prctl(1, death_signal, 0, 0, 0) != 0:  # PR_SET_PDEATHSIG
         error = ctypes.get_errno()
         raise OSError(error, os.strerror(error))
     if os.getppid() != parent_pid:
-        os.kill(os.getpid(), signal.SIGKILL)
+        os.kill(os.getpid(), death_signal)
+
+
+def _parent_death_watchdog(worker_pid: int) -> None:
+    def kill_worker_group(_signum, _frame):
+        with suppress(ProcessLookupError):
+            os.killpg(worker_pid, signal.SIGKILL)
+        os._exit(0)
+
+    signal.signal(signal.SIGTERM, kill_worker_group)
+    arm_parent_death_signal(worker_pid, death_signal=signal.SIGTERM)
+    while True:
+        signal.pause()
+
+
+def _start_parent_death_watchdog() -> None:
+    import multiprocessing
+
+    process = multiprocessing.get_context("spawn").Process(
+        target=_parent_death_watchdog, args=(os.getpid(),), daemon=True
+    )
+    process.start()
 
 
 def worker_main(handler: Callable[[dict, dict, Callable[[], None]], bool]) -> int:
     payload = json.loads(sys.stdin.read())
     if sys.platform == "linux":
         arm_parent_death_signal(payload["parent_pid"])
+        _start_parent_death_watchdog()
     result_path = Path(payload["result_path"])
     result = {
         "attempt_id": payload["attempt_id"],
