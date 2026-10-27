@@ -19,6 +19,7 @@ from chipcompiler.pyinstaller_utils import (
     collect_package_extension_binaries,
     filter_collected_payloads,
     filter_hiddenimports,
+    normalize_python_extension,
 )
 
 ECC_DIR = Path(SPECPATH)
@@ -80,6 +81,7 @@ HIDDENIMPORTS = [
     "yaml",
     "tqdm",
     "klayout",
+    "ecc_tools_bin.ecc_py",
     "click",
     "typer",
     "shellingham",
@@ -231,11 +233,14 @@ def collect_ecc_tools_extension_binaries():
     if module_spec is None or module_spec.submodule_search_locations is None:
         return []
 
-    return collect_package_extension_binaries(
-        module_spec.submodule_search_locations,
-        "ecc_py*.so",
-        "ecc_tools_bin",
-    )
+    return [
+        (normalize_python_extension(source, ECC_DIR / "build" / "native_extensions"), destination)
+        for source, destination in collect_package_extension_binaries(
+            module_spec.submodule_search_locations,
+            "ecc_py*.so",
+            "ecc_tools_bin",
+        )
+    ]
 
 
 def filter_host_fontconfig(binaries):
