@@ -973,6 +973,13 @@ ecc workspace reset-flow <NAME>     # clear persisted flow state so the next run
 ecc workspace reconcile-deletes     # finish half-completed workspace deletions after a crash
 ```
 
+`reconcile-deletes` operates on the whole project and does not accept `--workspace`.
+Run it from the project root, or specify the project with
+`ecc workspace reconcile-deletes --project /path/to/project`; zero or multiple workspaces
+are supported. Only staging directories with valid delete-intent records are processed:
+restore the directory if its manifest entry remains, or remove staging if the entry is gone.
+With no pending deletions, the command succeeds without changes.
+
 `create` is what `ecc run` does before executing, split out for GUI/automation flows that
 register the ID first; `--from/--to` declare a bounded range and `--set` records parameter
 overrides at creation (the same fresh-run semantics as `ecc run --set`). `derive` copies the

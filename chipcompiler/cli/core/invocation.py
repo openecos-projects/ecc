@@ -13,6 +13,7 @@ from chipcompiler.cli.core.inputs import (
     RunInput,
     WorkspaceCreateInput,
     WorkspaceImportInput,
+    WorkspaceReconcileDeletesInput,
 )
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
 from chipcompiler.cli.project.config import (
@@ -152,6 +153,7 @@ def build_context(command_input: CommandInput) -> CommandContext:
     from chipcompiler.project.manifest import (
         ManifestError,
         classify_project,
+        load_manifest,
     )
 
     project_state = classify_project(project_dir)
@@ -215,15 +217,18 @@ def build_context(command_input: CommandInput) -> CommandContext:
         # even when an ecc.toml also exists (config values still layer the
         # ecc.toml above the manifest base).
         try:
-            run_dir, run_id, manifest_error = _resolve_manifest_workspace(
-                project_dir,
-                workspace_name,
-                allow_create=isinstance(
-                    command_input, (RunInput, WorkspaceCreateInput, WorkspaceImportInput)
-                ),
-                workspace_path=workspace_path,
-                path_selector=workspace_path_selector,
-            )
+            if isinstance(command_input, WorkspaceReconcileDeletesInput):
+                load_manifest(project_dir)
+            else:
+                run_dir, run_id, manifest_error = _resolve_manifest_workspace(
+                    project_dir,
+                    workspace_name,
+                    allow_create=isinstance(
+                        command_input, (RunInput, WorkspaceCreateInput, WorkspaceImportInput)
+                    ),
+                    workspace_path=workspace_path,
+                    path_selector=workspace_path_selector,
+                )
         except ManifestError as exc:
             run_dir, run_id = os.path.join(project_dir, "default"), workspace_name
             manifest_error = f"manifest_invalid: {exc}"

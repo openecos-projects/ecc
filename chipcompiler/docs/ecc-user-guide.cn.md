@@ -988,6 +988,11 @@ ecc workspace reset-flow <NAME>     # 清除持久化 flow 状态，下次 run �
 ecc workspace reconcile-deletes     # 崩溃后收尾未完成的 workspace 删除
 ```
 
+`reconcile-deletes` 面向整个项目，不需要选择工作区，也不接受 `--workspace`。
+在项目根目录运行，或使用 `ecc workspace reconcile-deletes --project /path/to/project`
+指定项目；项目中没有工作区或有多个工作区时都可以执行。该命令只处理有有效删除意图记录的
+暂存目录：manifest 中仍有登记时恢复原目录，已移除登记时清理暂存目录；没有待恢复项时成功返回。
+
 `create` 是 `ecc run` 在执行前所做创建动作的独立形式，供 GUI/自动化流程先登记 ID；
 `--from/--to` 声明有界范围，`--set` 在创建时记录参数覆盖（与 `ecc run --set` 的
 fresh-run 语义相同）。`derive` 把源 workspace 复制到 `<project>/<TARGET>`，
