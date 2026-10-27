@@ -124,7 +124,7 @@ def recover_campaign(manifest_path: str | Path, *, trial_id: str) -> dict:
                     directory,
                     summary["store"],
                     trial,
-                    CliRunner(queries, deadline),
+                    CliRunner(queries, deadline, durable_receipts=True),
                     deadline,
                 )
                 assert_inputs(manifest, summary, inputs, design_id=source.design_id)

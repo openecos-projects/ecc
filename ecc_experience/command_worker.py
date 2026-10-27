@@ -1,6 +1,5 @@
 """Keep command completion evidence alive when a campaign coordinator is lost."""
 
-import ctypes
 import os
 import signal
 import subprocess
@@ -15,15 +14,7 @@ from ecc_experience.command_receipts import load_request
 from ecc_experience.files import canonical_bytes, safe_child
 from ecc_experience.optimization.plan import write_plan
 from ecc_experience.optimization.process import cli_prefix
-
-
-def _enable_subreaper() -> bool:
-    if not Path("/proc/self/stat").is_file():
-        return False
-    try:
-        return ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) == 0
-    except (OSError, AttributeError):
-        return False
+from ecc_experience.process_tree import enable_subreaper, quiesce_descendants
 
 
 def execute(request_path: Path) -> int:
@@ -33,7 +24,7 @@ def execute(request_path: Path) -> int:
     owner = safe_child(request.path.parent, request.receipt.name + ".owner")
     with owner.open("xb") as stream:
         stream.write(canonical_bytes({"request_fingerprint": request.fingerprint}))
-    subreaper = _enable_subreaper()
+    subreaper = enable_subreaper()
     receipt = {
         "schema_version": 1,
         "kind": "ecc-experience-command-receipt",
@@ -65,21 +56,19 @@ def execute(request_path: Path) -> int:
     except OSError as exc:
         exit_code = 1
         receipt["reason"] = str(exc)
-    orphan_exits = []
-    if subreaper:
-        while True:
-            try:
-                _pid, status = os.waitpid(-1, 0)
-                orphan_exits.append(os.waitstatus_to_exitcode(status))
-            except ChildProcessError:
-                break
+    quiescence = quiesce_descendants() if subreaper else None
+    orphan_exits = list(quiescence.orphan_exit_codes) if quiescence is not None else []
     if exit_code == 0 and any(status != 0 for status in orphan_exits):
         exit_code = 6
+    if quiescence is not None and (quiescence.cleanup_forced or not quiescence.quiescent):
+        exit_code = exit_code or 6
     receipt.update(
         status="complete",
         exit_code=exit_code,
-        process_tree_quiescent=subreaper,
+        process_tree_quiescent=bool(quiescence is not None and quiescence.quiescent),
         orphan_exit_codes=orphan_exits,
+        cleanup_forced=bool(quiescence is not None and quiescence.cleanup_forced),
+        zombie_children=list(quiescence.remaining_pids) if quiescence is not None else [],
         finished_at=datetime.now(UTC).isoformat(),
     )
     write_plan(request.receipt, receipt)

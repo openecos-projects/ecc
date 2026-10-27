@@ -138,7 +138,9 @@ def create_campaign(spec: str | Path, output: str | Path) -> dict:
     }
     audit_path = destination / "logs/create.json"
     write_plan(audit_path, audit)
-    runner = CliRunner(destination / "logs", time.monotonic() + 3600)
+    runner = CliRunner(
+        destination / "logs", time.monotonic() + 3600, durable_receipts=True
+    )
     try:
         with cancellation_signals():
             for design, (name, workspace, observation) in zip(designs, sources, strict=True):

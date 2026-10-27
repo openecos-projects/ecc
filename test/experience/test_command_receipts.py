@@ -38,8 +38,10 @@ def test_durable_public_command_writes_completion_and_does_not_repeat(tmp_path):
 def test_receipt_waits_for_orphan_in_separate_session(tmp_path):
     request = prepare_request(tmp_path / "command-0001", ["status", "--json"])
     marker = tmp_path / "child-finished"
+    child_pid = tmp_path / "child.pid"
     orphan_code = (
-        "import time; from pathlib import Path; time.sleep(0.8); "
+        "import os,time; from pathlib import Path; "
+        f"Path({str(child_pid)!r}).write_text(str(os.getpid())); time.sleep(0.8); "
         f"Path({str(marker)!r}).write_text('done')"
     )
     cli_code = (
@@ -64,10 +66,42 @@ def test_receipt_waits_for_orphan_in_separate_session(tmp_path):
         assert marker.read_text() == "done"
         assert receipt["process_tree_quiescent"] is True
         assert receipt["orphan_exit_codes"] == [0]
+        assert receipt["cleanup_forced"] is False
+        assert receipt["zombie_children"] == []
+        assert not Path(f"/proc/{child_pid.read_text()}").exists()
     finally:
         if process.poll() is None:
             process.kill()
             process.wait()
+
+
+def test_straggler_is_terminated_and_reaped_before_quiescence(tmp_path):
+    pid_file = tmp_path / "straggler.pid"
+    child_code = (
+        "import subprocess,sys; from pathlib import Path; "
+        "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)'],"
+        "start_new_session=True); "
+        f"Path({str(pid_file)!r}).write_text(str(child.pid))"
+    )
+    code = (
+        "import json,subprocess,sys,time; from pathlib import Path; "
+        "from ecc_experience.process_tree import enable_subreaper,quiesce_descendants; "
+        "assert enable_subreaper(); "
+        f"child=subprocess.Popen([sys.executable,'-c',{child_code!r}]); child.wait(); "
+        "q=quiesce_descendants(0.1,0.1); "
+        "print(json.dumps({'forced':q.cleanup_forced,'remaining':q.remaining_pids,"
+        "'codes':q.orphan_exit_codes}))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=False
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["forced"] is True
+    assert payload["remaining"] == []
+    assert any(exit_code < 0 for exit_code in payload["codes"])
+    assert not Path(f"/proc/{pid_file.read_text()}").exists()
 
 
 @pytest.mark.parametrize(

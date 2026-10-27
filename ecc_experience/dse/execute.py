@@ -55,7 +55,7 @@ def run_dse(
             raise invalid("DSE output must not overlap source workspace or store")
     destination.mkdir(parents=True, exist_ok=False)
     started = time.monotonic()
-    runner = CliRunner(destination, started + limits.max_seconds)
+    runner = CliRunner(destination, started + limits.max_seconds, durable_receipts=True)
     result: dict = {
         "schema": "ecc-experience-stage-dse-result/1",
         "plan_fingerprint": plan["plan_fingerprint"],

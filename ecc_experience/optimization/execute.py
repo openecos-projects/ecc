@@ -185,7 +185,7 @@ def _optimize(
         raise invalid_plan("Optimization output must not be inside the baseline workspace")
     destination.mkdir(parents=True, exist_ok=False)
     started = time.monotonic()
-    runner = CliRunner(destination, started + limits.max_seconds)
+    runner = CliRunner(destination, started + limits.max_seconds, durable_receipts=True)
     result = {
         "schema": "ecc-experience-optimization-result/1",
         "optimization_id": f"opt_{uuid.uuid4().hex[:12]}",
