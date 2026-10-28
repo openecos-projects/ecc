@@ -115,8 +115,6 @@ uv run ecc --help
 | 21 | `revision_conflict`: `--expected-revision` disagrees with the manifest revision | commands taking `--expected-revision` |
 | 22 | `process_not_found`: the registered run process is stale and no live process holds the workspace lock | `ecc process` group |
 | 23 | contract incompatible (reserved: the CLI itself never emits it; the GUI-side contract gate uses it when the runtime/CLI contract is unsupported) | — |
-| 124 | timeout for bounded experience optimization or campaigns | `experience optimize`, `experience campaign run` |
-| 130 | bounded experience optimization or campaign was cancelled | `experience optimize`, `experience campaign run` |
 - Step tokens come in three vocabularies, distinguished by context:
   - **display names** (output and input of `ecc status` / `ecc log` / `ecc report step`, uniformly lowercase/underscore): `synthesis / lec / pre_floorplan / macro_placement / post_floorplan / preplace / placement / diff_sizing / cts / legalization / timing_optimization / routing / filler / lvs / drc / antennacheck / postroutelec / rcx / sta / poweranalysis / emir / harden`;
   - **persisted names** (the original names in `home/flow.json`; required by `--from`/`--only`/`--to` on existing workspaces, e.g. `place`, `CTS`, `Timing optimization`): `Synthesis / lec / preFloorplan / macroPlacement / postFloorplan / preplace / place / diff_sizing / CTS / legalization / Timing optimization / route / filler / lvs / drc / antennaCheck / postRouteLec / RCX / sta / powerAnalysis / emir / Harden`;
@@ -156,7 +154,6 @@ Commands:
   sweep         Run deterministic parameter sweeps
   explore       Rank and select sweep candidates
   diagnose      Diagnose workspace flow, checklist, QoR, and recovery actions
-  experience    Collect, query and verify design experience evidence
 ```
 
 ## 1.5. doc — read the bundled guides in the terminal
@@ -219,15 +216,6 @@ Every command and subcommand at a glance (semantics, options, and examples in th
 | `ecc sweep create / show / list / run / compare / verify` | deterministic parameter sweeps | §11.5 |
 | `ecc explore rank / export / promote` | rank, export, and promote candidates | §11.5 |
 | `ecc diagnose run` | workspace diagnosis and recovery suggestions | §11.5 |
-| `ecc experience normalize / collect / list / show / verify / features / summary / match` | build a store manifest, collect/query/verify cases, read stage features, summarize quality, and match frozen releases | [Experience testing manual](../../ecc_experience/docs/ecc-experience-testing-guide.en.md#6-evidence-after-each-execution) |
-| `ecc experience export / import / enable / status / disable / drain` | exchange experience packages and manage non-invasive execution-fact recording | [Experience testing manual](../../ecc_experience/docs/ecc-experience-testing-guide.en.md#105-back-up-and-exchange-experience-cases) |
-| `ecc experience recommend / plan / optimize / evaluate` | show conservative recommendations, write/execute bounded plans, and compare cases | [Experience testing manual](../../ecc_experience/docs/ecc-experience-testing-guide.en.md#101-execute-a-bounded-experience-plan) |
-| `ecc experience campaign create / report / matrix / readiness / archive / effect / validate / run / recover / init / record / status / summary / quality / benchmark` | create, run, resume, audit, compare, and archive serial experience campaigns | [Experience testing manual](../../ecc_experience/docs/ecc-experience-testing-guide.en.md#serial-baseline-campaigns) |
-| `ecc experience release create / verify / from-manifest` | freeze and verify evidence-backed experience releases | [Experience testing manual](../../ecc_experience/docs/ecc-experience-testing-guide.en.md#102-compare-and-release-cases) |
-| `ecc experience dse plan / run / report / compare` | freeze, execute, summarize, and compare staged PNR design-space exploration | [Experience testing manual](../../ecc_experience/docs/ecc-experience-testing-guide.en.md#20-dse-v2-adaptive-proposals-objectives-and-staged-screening) |
-| `ecc experience study evaluate / publish` | evaluate isolated held-out trials and publish verified feedback | [Experience testing manual](../../ecc_experience/docs/ecc-experience-testing-guide.en.md#held-out-evaluation-and-k1-experience-releases) |
-| `ecc experience dataset build / split` | build leakage-auditable datasets and split train/validation/test groups | [Experience testing manual](../../ecc_experience/docs/ecc-experience-testing-guide.en.md#161-build-datasets) |
-| `ecc experience model train / evaluate / publish / predict / advise / validate / promote / rollback / registry / seed-sweep` | train, verify, publish, query, validate, promote, and roll back explainable models | [Experience testing manual](../../ecc_experience/docs/ecc-experience-testing-guide.en.md#162-train-and-evaluate) |
 
 ## 2. version — show versions
 

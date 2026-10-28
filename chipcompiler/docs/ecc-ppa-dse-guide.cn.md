@@ -10,8 +10,6 @@ PPA 指功耗（Power）、性能（Performance）和面积（Area）；QoR 是�
 
 阅读顺序：首次建项从 §3 开始；已有基线从 §8 开始；全流程参数搜索见 §9–§11；前段 PNR DSE 见 §17；每次任务结束必须按 §18 总结；委托 AI 自主操作使用 §19 的执行契约。
 
-开展重复测试、负向场景和经验积累时，配合 [ICS55 调优经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md) 保存证据、验证推荐效果并管理知识版本；其中未实现接口有明确标记。
-
 ## 1. 适用范围与能力
 
 **用户或 AI 大模型可以用 ECC CLI 对支持的芯片设计开展有边界的 PPA / QoR 参数调优和 DSE。**
@@ -19,7 +17,7 @@ AI 大模型可以发现参数、读取证据、提出实验、创建隔离候�
 再在 fresh workspace 中复验并导出交付。现有命令足以完成这条操作链，不需要先增加一个
 `ecc optimize` 命令。
 
-AI 大模型负责 spec、搜索范围和取舍，ECC 可负责预算内的确定性候选、阶段筛选、执行与证据。
+AI 大模型负责 spec、搜索范围、取舍、候选生成和阶段筛选，ECC 提供执行与读取证据的公开命令。
 不承诺全局最优；支持程度取决于约束、工艺资源、实际 EDA 工具与报告覆盖。
 
 | 任务 | 当前支持情况 | 正确使用方式 |
@@ -28,14 +26,14 @@ AI 大模型负责 spec、搜索范围和取舍，ECC 可负责预算内的确�
 | 对 fresh workspace 设置候选参数 | 支持 | `ecc run --set KEY=VALUE` |
 | 对已有候选原地小步迭代 | 支持 | workspace scope 的 param set/apply；重跑被失效的后缀 |
 | 完整 RTL-to-GDS 执行、单步与范围重跑 | 支持 | run/preset/resume/from/to/only/force |
-| rtl2gds 前段 PNR 的分阶段 DSE | experience dse v2 支持 | 声明式 spec、阶段指标、Pareto、逐级筛选与 full/fresh；详见 §17 |
+| rtl2gds 前段 PNR 的分阶段 DSE | 用户/AI 编排 | 通过公开 workspace 派生与区间执行命令完成；详见 §17 |
 | 获取阶段指标、时序/违例与总体 QoR | 支持 | report step、report qor、report project、signoff check |
 | 小规模确定性网格搜索 | 支持 | sweep create/run/verify/compare |
 | 排序、矩阵导出、记录选中候选 | 支持 | explore rank/export/promote |
 | 同一 workspace 前后状态和指标比较 | 支持 | report snapshot + compare run |
 | 不同 workspace 的独立 PPA 候选比较 | 可由 AI 大模型完成 | 从公开报告提取可比原始指标，维护外部实验表 |
 | 独立可复现证据包、ECC 签核交付包 | 支持 | reproducible 与 signoff 两类 export |
-| 自适应搜索、Pareto 与执行预算 | ECC 提供机制，用户/AI 定义策略 | experience dse v2；多目标显式选点，不自动应用参数 |
+| 自适应搜索与执行预算 | 用户/AI 负责 | 外部管理候选与预算；explore 可对实测证据排序 |
 | 对任意 RTL 自动做架构改写并证明等价 | 不属于默认参数调优 | 另开 RTL 优化任务，补功能验证及必要 LEC |
 | GDS 级 DRC、完整代工厂签核 | 当前不支持由 ECC 保证 | 当前 DRC 结论只对应已有 checker 证据 |
 
@@ -801,7 +799,7 @@ signoff export 是另一套交付检查和设计产物打包；缺必需证据�
 | 当前边界 | 用户或 AI 大模型的操作 |
 | --- | --- |
 | 跨 workspace compare 不自动确认可比 | 外部台账核对输入内容、阶段、corner、来源和单位 |
-| sweep 仍是固定网格；阶段 DSE 有独立入口 | explore 支持经签核核验的 Pareto；experience dse v2 负责自适应与逐级筛选 |
+| sweep 仍是固定网格 | 通过公开 workspace/区间执行命令，在外部管理自适应候选与逐级筛选 |
 | QoR profile/功耗预算无公开参数 | 保持已有 profile；用户预算在外部判定，不伪造原生评分 |
 | sweep 标量逗号语法、缓存恢复有限 | 数组用公开 run/param；失败后诊断，必要时建新候选 |
 | 证据包不是完整运行环境镜像 | 补输入内容摘要、PDK/工具版本、约束与环境说明 |
@@ -816,10 +814,7 @@ signoff export 是另一套交付检查和设计产物打包；缺必需证据�
 
 ### 17.1 能支持到什么程度
 
-**可以。AI 大模型负责 spec、目标、空间与预算，`experience dse` v2 负责确定性候选、
-多目标和逐级筛选；公开 derive/range 仍可用于人工控制。**
-新入口的 spec、恢复、历史种子及 full/fresh 契约见
-[经验测试手册 §20](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#20-dse-v2自适应多目标与逐级筛选)。
+用户或 AI 通过公开 workspace 派生与区间执行命令，管理候选生成、目标、搜索空间、预算与逐级筛选。
 
 这里的 DSE（Design Space Exploration，设计空间探索）是在固定设计规格下，探索
 floorplan、placement、CTS 等参数组合，比较面积、互连、拥塞与时钟树质量，逐步缩小候选集合。
@@ -834,7 +829,7 @@ floorplan、placement、CTS 等参数组合，比较面积、互连、拥塞与�
 | `report step` 的 feature/analysis/checklist/outputs | 已有 | 收集阶段指标、执行证据与中间 DEF/Verilog |
 | `report snapshot`、同 workspace 的 `compare run` | 已有 | 固定检查点证据，核对原地迭代前后变化 |
 | sweep 的 `--from/--to`、早停与逐级晋级 | 尚无 | 用 AI 大模型 + 公开 CLI 编排，不能假定 sweep 已支持 |
-| 阶段多目标/Pareto | experience dse v2 已有 | 比较同口径实测指标；不冒充 ECC 总体 QoR |
+| 阶段多目标/Pareto | 用户/AI 负责 | 外部比较同口径实测指标；不冒充 ECC 总体 QoR |
 
 `derive --from place` 的含义是“place 及以后重新执行”，不是“从 place 开始复制文件”。
 当前实现复制源 workspace，再清除目标中选定后缀的状态、产物与 checklist，保留更早步骤。

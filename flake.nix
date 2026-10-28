@@ -92,7 +92,6 @@
           ./README.md
           ./agent
           ./chipcompiler
-          ./ecc_experience
           ./pyproject.toml
           ./uv.lock
         ];
@@ -137,7 +136,6 @@
         "chipcompiler.engine"
         "chipcompiler.tools"
         "chipcompiler.cli"
-        "ecc_experience"
       ];
 
       meta.mainProgram = "ecc";

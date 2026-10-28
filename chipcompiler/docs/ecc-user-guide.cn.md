@@ -114,8 +114,6 @@ uv run ecc --help
 | 21 | `revision_conflict`：`--expected-revision` 与 manifest revision 不一致 | 带 `--expected-revision` 的命令 |
 | 22 | `process_not_found`：登记的运行进程已失效且无存活进程持有 workspace 锁 | `ecc process` 组 |
 | 23 | 契约不兼容（保留值：CLI 自身不发射，由 GUI 侧契约门禁在 runtime/CLI 契约不受支持时使用） | — |
-| 124 | 有界经验优化或 campaign 超时 | `experience optimize`、`experience campaign run` |
-| 130 | 有界经验优化或 campaign 被取消 | `experience optimize`、`experience campaign run` |
 - 步骤名（step token）有三套写法，按场景区分：
   - **展示名**（`ecc status` / `ecc log` / `ecc report step` 的输出与入参，统一小写/下划线）：`synthesis / lec / pre_floorplan / macro_placement / post_floorplan / preplace / placement / diff_sizing / cts / legalization / timing_optimization / routing / filler / lvs / drc / antennacheck / postroutelec / rcx / sta / poweranalysis / emir / harden`；
   - **持久化名**（`home/flow.json` 中的原始名；已有 workspace 上的 `--from`/`--only`/`--to` 必须用它，如 `place`、`CTS`、`Timing optimization`）：`Synthesis / lec / preFloorplan / macroPlacement / postFloorplan / preplace / place / diff_sizing / CTS / legalization / Timing optimization / route / filler / lvs / drc / antennaCheck / postRouteLec / RCX / sta / powerAnalysis / emir / Harden`；
@@ -214,7 +212,6 @@ Commands:
   sweep         Run deterministic parameter sweeps
   explore       Rank and select sweep candidates
   diagnose      Diagnose workspace flow, checklist, QoR, and recovery actions
-  experience    Collect, query and verify design experience evidence
 ```
 
 ## 1.5. doc — 在终端阅读内置指南
@@ -277,15 +274,6 @@ eval "$(ecc --show-completion)"     # 自动探测当前 shell
 | `ecc sweep create / show / list / run / compare / verify` | 确定性参数扫描 | §11.5 |
 | `ecc explore rank / export / promote` | 候选排序、导出与提升 | §11.5 |
 | `ecc diagnose run` | 工作区诊断与恢复建议 | §11.5 |
-| `ecc experience normalize / collect / list / show / verify / features / summary / match` | 构建经验库清单，采集/查询/校验案例，读取阶段特征，汇总质量并匹配冻结 release | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#6-每次运行后保存什么) |
-| `ecc experience export / import / enable / status / disable / drain` | 交换经验包，管理非侵入式执行事实记录 | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#105-备份和交换经验案例) |
-| `ecc experience recommend / plan / optimize / evaluate` | 保守推荐、编写/执行有界计划并比较案例 | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#101-受控执行经验计划) |
-| `ecc experience campaign create / report / matrix / readiness / archive / effect / validate / run / recover / init / record / status / summary / quality / benchmark` | 创建、运行、恢复、审计、比较并归档串行经验 campaign | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#串行-baseline-批次) |
-| `ecc experience release create / verify / from-manifest` | 冻结并校验有证据支撑的经验 release | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#102-比较与发布案例) |
-| `ecc experience dse plan / run / report / compare` | 冻结、执行、汇总并比较分阶段 PNR 设计空间探索 | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#20-dse-v2自适应多目标与逐级筛选) |
-| `ecc experience study evaluate / publish` | 评估隔离的留出实验并发布已校验反馈 | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#留出评价与-k1-经验发布) |
-| `ecc experience dataset build / split` | 构建可审计泄漏的数据集并划分训练/验证/测试组 | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#161-构建-dataset) |
-| `ecc experience model train / evaluate / publish / predict / advise / validate / promote / rollback / registry / seed-sweep` | 训练、校验、发布、查询、验证、晋级并回滚可解释模型 | [经验测试手册](../../ecc_experience/docs/ecc-experience-testing-guide.cn.md#162-训练和检查模型) |
 
 ## 2. version — 查看版本
 

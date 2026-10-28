@@ -174,22 +174,6 @@ class _EngineeringCommitSink:
 
         self.workspace = workspace
         self.snapshot = ensure_engineering_snapshot(workspace)
-        self.recorder = None
-        project = getattr(workspace, "_ecc_project_dir", None)
-        if project:
-            try:
-                from ecc_experience.recording import recorder_for
-
-                self.recorder = recorder_for(project, workspace.directory)
-            except Exception:
-                logger = getattr(workspace, "logger", None)
-                if logger is not None:
-                    logger.exception("experience recorder initialization failed")
-
-    def on_execution_started(self, intent: str, step_ids: tuple[str, ...]) -> None:
-        recorder = self.recorder
-        if recorder is not None:
-            self._record(lambda: recorder.start(intent=intent, requested_steps=step_ids))
 
     def on_step_completed(self, _step: Any, state: Any, _error: str | None = None) -> None:
         from chipcompiler.engine.snapshot import commit_engineering_snapshot
@@ -199,25 +183,6 @@ class _EngineeringCommitSink:
             workspace_id=self.snapshot["workspaceId"],
             cause=f"flow_step.{getattr(state, 'value', str(state)).lower()}",
         )
-        recorder = self.recorder
-        if recorder is not None:
-            self._record(lambda: recorder.committed_step(self.snapshot, _step, state, _error))
-
-    def on_execution_finished(self, state: str, error: str | None) -> None:
-        status = "success" if state == StateEnum.Success.value else state
-        recorder = self.recorder
-        if recorder is not None:
-            self._record(lambda: recorder.finish(status=status, error=error))
-
-    def _record(self, callback) -> None:
-        if self.recorder is None:
-            return
-        try:
-            callback()
-        except (Exception, SystemExit):
-            logger = getattr(self.workspace, "logger", None)
-            if logger is not None:
-                logger.exception("experience recorder event failed")
 
     @property
     def execution(self) -> dict[str, Any] | None:
