@@ -19,6 +19,14 @@ def _write_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
+def _metrics_payload(*pairs: tuple[str, float]) -> dict:
+    return {
+        "schema_version": 3,
+        "status": "success",
+        "metrics": [{"id": metric_id, "value": value} for metric_id, value in pairs],
+    }
+
+
 def _complete_optional_artifacts(workspace_dir: Path, design: str = "gcd") -> None:
     """Satisfy warn-policy optional package members so readiness can be PASS."""
     (workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.png").write_text("png\n")
@@ -26,6 +34,67 @@ def _complete_optional_artifacts(workspace_dir: Path, design: str = "gcd") -> No
     lec_report.mkdir(parents=True, exist_ok=True)
     (lec_report / "equiv_failed.il").write_text("x\n")
     (lec_report / "equiv_failed.v").write_text("x\n")
+    # Performance slots are optional WARN; seed analysis metrics so they pass.
+    _write_json(
+        workspace_dir / "sta_ecc" / "analysis" / "qor_metrics.json",
+        _metrics_payload(
+            ("sta_setup_wns", 0.12),
+            ("sta_setup_tns", 0.0),
+            ("sta_hold_wns", 0.05),
+            ("sta_hold_tns", 0.0),
+            ("sta_frequency_mhz", 100.0),
+            ("runtime_seconds", 10.0),
+            ("peak_memory_mb", 512.0),
+        ),
+    )
+    _write_json(
+        workspace_dir / "powerAnalysis_ecc" / "analysis" / "qor_metrics.json",
+        _metrics_payload(
+            ("power_analysis_dynamic_uw", 1.0),
+            ("power_analysis_leakage_uw", 0.1),
+            ("runtime_seconds", 1.0),
+            ("peak_memory_mb", 64.0),
+        ),
+    )
+    _write_json(
+        workspace_dir / "CTS_ecc" / "analysis" / "qor_metrics.json",
+        _metrics_payload(
+            ("cts_worst_optimized_skew_ns", 0.01),
+            ("cts_worst_max_insertion_latency_ns", 0.2),
+            ("cts_buffer_count", 3),
+            ("cts_clock_wirelength_max", 100.0),
+            ("cts_clock_tree_max_level", 2),
+            ("runtime_seconds", 2.0),
+            ("peak_memory_mb", 128.0),
+        ),
+    )
+    _write_json(
+        workspace_dir / "place_dreamplace" / "analysis" / "qor_metrics.json",
+        _metrics_payload(
+            ("place_hpwl", 1000.0),
+            ("place_congestion_egr_overflow_total", 0.0),
+            ("runtime_seconds", 3.0),
+            ("peak_memory_mb", 256.0),
+        ),
+    )
+    _write_json(
+        workspace_dir / "route_ecc" / "analysis" / "qor_metrics.json",
+        _metrics_payload(
+            ("route_wirelength", 2000.0),
+            ("route_via_count", 50),
+            ("runtime_seconds", 4.0),
+            ("peak_memory_mb", 200.0),
+        ),
+    )
+    _write_json(
+        workspace_dir / "Synthesis_yosys" / "analysis" / "qor_metrics.json",
+        _metrics_payload(
+            ("synthesis_cell_area", 100.0),
+            ("synthesis_cell_count", 42),
+            ("runtime_seconds", 5.0),
+            ("peak_memory_mb", 300.0),
+        ),
+    )
 
 
 def test_fixture_workspace_pass_and_export_archive(tmp_path: Path):
