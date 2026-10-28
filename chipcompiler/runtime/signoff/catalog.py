@@ -133,7 +133,7 @@ def _quality_optional(gate_id: str, step: str, title: str) -> SignoffItemSpec:
 
 
 def _performance(item_id: str, step: str, title: str) -> SignoffItemSpec:
-    """Numeric PPA / iSTA catalog slots (unbound placeholders; not checklist-wired)."""
+    """Numeric PPA / iSTA slots; filled by runtime.signoff.performance collector."""
     return SignoffItemSpec(
         id=item_id,
         step=step,
@@ -254,15 +254,15 @@ SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
         title="Configuration sta",
         fail_readiness="MISS",
     ),
-    # Performance placeholders (not checklist-wired). Numbers: runtime.signoff.qor_perf_support.
-    # Reading on the board = "<value> <unit>".
+    # Performance / iSTA — wired by runtime.signoff.performance (optional WARN).
+    # Board reading = checklist summary "<value> <unit>".
     _performance("performance.sta.setup_wns", StepEnum.STA.value, "STA setup WNS"),
     _performance("performance.sta.setup_tns", StepEnum.STA.value, "STA setup TNS"),
     _performance("performance.sta.hold_wns", StepEnum.STA.value, "STA hold WNS"),
     _performance("performance.sta.hold_tns", StepEnum.STA.value, "STA hold TNS"),
     _performance("performance.sta.frequency", StepEnum.STA.value, "STA frequency"),
-    _performance("performance.power.dynamic", StepEnum.STA.value, "Dynamic power"),
-    _performance("performance.power.leakage", StepEnum.STA.value, "Leakage power"),
+    _performance("performance.power.dynamic", StepEnum.POWER_ANALYSIS.value, "Dynamic power"),
+    _performance("performance.power.leakage", StepEnum.POWER_ANALYSIS.value, "Leakage power"),
     _performance("performance.sdc.clock_count", "workspace", "SDC clock count"),
     _performance("performance.cts.skew", StepEnum.CTS.value, "CTS worst skew"),
     _performance(

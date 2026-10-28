@@ -857,6 +857,9 @@ def rebuild_home_checklist(
     items.extend(_workspace_items(workspace))
     items.extend(_filesystem_artifact_items(workspace))
     items.extend(_package_items(resource_issues))
+    from chipcompiler.runtime.signoff.performance import collect_performance_items
+
+    items.extend(collect_performance_items(workspace))
 
     # Package errors are refreshed as a group.  Deduplicate by requirement id
     # so resource collection cannot leave stale copies behind.

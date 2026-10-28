@@ -1,7 +1,7 @@
 """Read numeric QoR gate metrics from on-disk summaries for performance checks.
 
-Pure helpers over schema-v4 ``qor_summary`` payloads. Catalog ``performance.*``
-slots stay unbound; this module does not write checklist predicates.
+Pure helpers over schema-v4 ``qor_summary`` gate actuals. Checklist rows for
+catalog ``performance.*`` are assembled in ``performance.collect_performance_items``.
 
 In:
     path / summary — on-disk or loaded qor_summary JSON
@@ -10,8 +10,8 @@ Out:
 Entry:
     check_metric()  chipcompiler/runtime/signoff/qor_perf_support.py
 See:
-    SIGNOFF_ITEM_CATALOG (performance.*)  chipcompiler/runtime/signoff/catalog.py
-    signoff_baseline.py                   nix/scripts/signoff_baseline.py
+    collect_performance_items()  chipcompiler/runtime/signoff/performance.py
+    signoff_baseline.py          nix/scripts/signoff_baseline.py
 """
 
 from __future__ import annotations

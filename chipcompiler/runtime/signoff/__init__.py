@@ -1,11 +1,12 @@
-"""Runtime signoff helpers (catalog, readiness, QoR metric reads).
+"""Runtime signoff helpers (catalog, readiness, performance, QoR metric reads).
 
 Entry:
     build_signoff_assessment()  chipcompiler/engine/signoff_assessment.py
 See:
-    SIGNOFF_ITEM_CATALOG         chipcompiler/runtime/signoff/catalog.py
-    classify_signoff_readiness() chipcompiler/runtime/signoff/readiness.py
-    check_metric()              chipcompiler/runtime/signoff/qor_perf_support.py
+    SIGNOFF_ITEM_CATALOG            chipcompiler/runtime/signoff/catalog.py
+    classify_signoff_readiness()    chipcompiler/runtime/signoff/readiness.py
+    collect_performance_items()     chipcompiler/runtime/signoff/performance.py
+    check_metric()                  chipcompiler/runtime/signoff/qor_perf_support.py
 """
 
 from __future__ import annotations

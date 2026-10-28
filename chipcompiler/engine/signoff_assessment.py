@@ -16,6 +16,7 @@ _REVIEW_GROUPS: tuple[tuple[str, str], ...] = (
     ("final_design", "Final Design"),
     ("sta", "STA"),
     ("spef", "SPEF"),
+    ("performance", "Performance"),
     ("reports", "Reports"),
 )
 
@@ -171,6 +172,8 @@ def _group_for(item: dict[str, Any]) -> str:
     category = str(item.get("category", ""))
     source = item.get("source", {})
     path = source.get("path", "") if isinstance(source, dict) else ""
+    if category == "performance":
+        return "performance"
     if category == "configuration" or path.startswith("config/"):
         return "config"
     if category == "provenance" or path.startswith(("origin/", "initial/")):
