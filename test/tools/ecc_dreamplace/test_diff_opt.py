@@ -30,7 +30,7 @@ def test_diff_opt_parser_preserves_configured_flows_and_uses_placement_parasitic
     assert config["flow_kind"] == "placement"
     assert config["timing_rc_mode"] == "placement"
     assert config["timing_objective_lane"] == "timing_slew_cap"
-    assert config["timing_action_gradient_mode"] == "off"
+    assert config["timing_action_gradient_mode"] == "lut_action"
     assert config["diff_optimization_flows"] == flows
 
 
@@ -101,6 +101,7 @@ def test_diff_opt_rejects_conflicting_explicit_legacy_buffering_fields(
 def test_diff_opt_public_fields_are_scoped_to_diff_opt():
     payload = {
         "place.diff_optimization_mode": "joint",
+        "place.timing_sizing_action": "quad",
         "place.diff_optimization_flows": [
             ["sz", 2, [100.0, 1.0, 1.0, 1.0]],
             ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
@@ -109,6 +110,7 @@ def test_diff_opt_public_fields_are_scoped_to_diff_opt():
     cli, errors = parse_cli_overrides(
         [
             "place.diff_optimization_mode=joint",
+            "place.timing_sizing_action=quad",
             "place.diff_optimization_flows=" + json.dumps(payload["place.diff_optimization_flows"]),
         ]
     )
@@ -118,6 +120,7 @@ def test_diff_opt_public_fields_are_scoped_to_diff_opt():
     values = {item.param: item.value for item in resolved}
     assert values["place.diff_optimization_mode"] == "joint"
     assert values["place.diff_optimization_flows"] == payload["place.diff_optimization_flows"]
+    assert values["place.timing_sizing_action"] == payload["place.timing_sizing_action"]
 
 
 def test_diff_opt_replaces_diff_buffering_but_keeps_diff_sizing():
@@ -133,6 +136,8 @@ def test_diff_opt_replaces_diff_buffering_but_keeps_diff_sizing():
     ("overrides", "flow_kind"),
     [
         ({}, "placement"),
+        ({"timing_sizing_action": "quad"}, "placement"),
+        ({"timing_sizing_action": "down", "timing_action_gradient_mode": "off"}, "placement"),
         ({"diff_optimization_mode": "buffering", "diff_optimization_flows": None}, "buffering"),
     ],
 )
@@ -177,6 +182,10 @@ def test_diff_opt_module_uses_placement_rc_and_own_result_directory(
     assert params.flow_kind == flow_kind
     assert params.timing_rc_mode == "placement"
     assert params.diff_opt_parasitic_source == "placement"
+    assert params.timing_action_gradient_mode == overrides.get(
+        "timing_action_gradient_mode", "lut_action"
+    )
+    assert params.timing_sizing_action == overrides.get("timing_sizing_action", "up")
     assert params.result_dir == str(result_dir)
 
 

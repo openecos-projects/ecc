@@ -4,6 +4,18 @@ from .common import config_param
 
 SCHEMAS = (
     config_param(
+        "place.timing_sizing_action",
+        "dreamplace",
+        ("timing_sizing_action",),
+        "up",
+        applies="placement,diff_opt",
+        choices=("up", "down", "quad"),
+        description=(
+            "action family for placement sizing windows and diff_opt sizing: "
+            "up | down | quad; explicit diff_sizing phase masks take precedence"
+        ),
+    ),
+    config_param(
         "place.stop_overflow",
         "dreamplace",
         ("stop_overflow",),

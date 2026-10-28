@@ -66,8 +66,8 @@ SCHEMAS = (
             "ordered standalone diff_sizing phases: "
             "[action, rounds, [wns, tns, slew, cap], selection_percent]; "
             "action is quad, up, or down and percent is in (0, 100]; "
-            "null selects one up phase with 50 rounds, diff_sizing_coefficients, "
-            "and a shared 1% budget per round in lut_action mode"
+            "null selects an up phase; ECC defaults to 50 rounds with "
+            "diff_sizing_coefficients and a shared 1% budget per round"
         ),
     ),
     config_param(
@@ -77,7 +77,7 @@ SCHEMAS = (
         "lut_action",
         type="str",
         choices=("off", "lut_action"),
-        applies="diff_sizing",
+        applies="placement,diff_opt,diff_sizing",
         description="discrete sizing gradient mode; default lut_action, off is the legacy path",
     ),
     config_param(

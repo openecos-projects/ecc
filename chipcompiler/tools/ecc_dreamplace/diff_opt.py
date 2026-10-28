@@ -89,9 +89,7 @@ def _apply_common_diff_opt_defaults(result, *, mode, flows):
         joint_quality_profile="",
         buffering_continuous_steps=flows[0].steps,
         buffering_route_b_selection_fraction=result.get("diff_buffering_selection_fraction", 0.001),
-        # The four-action LUT path is owned by standalone diff_sizing; the
-        # placement-parasitic diff_opt lane keeps its original discrete path.
-        timing_action_gradient_mode="off",
+        timing_action_gradient_mode=result.get("timing_action_gradient_mode", "lut_action"),
     )
     if mode == "buffering":
         result.update(flow_kind="buffering", placement_sizing_mode="place_only")

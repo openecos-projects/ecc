@@ -160,6 +160,7 @@
     "sizing_parameterization": "logits",
     "timing_surrogate_mode": "auto",
     "timing_action_gradient_mode": "lut_action",
+    "timing_sizing_action": "up",
     "timing_action_score_objective": "loss",
     "timing_topology_refresh_interval": 15,
     "timing_topology_enable_overflow_threshold": 0.35,

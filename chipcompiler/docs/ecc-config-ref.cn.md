@@ -480,6 +480,11 @@ buffering-only `diff_opt` 的兼容别名。
 已有 workspace 继续使用保存的 `diff_buffering` alias；新建 workspace 使用
 `diff_opt → diff_sizing` 两个独立步骤。
 
+placement 的 sizing 窗口和 `diff_opt` 的 `sz` 阶段也默认使用 LUT action，
+并以 `place.timing_sizing_action="up"` 限制为 `size_up`/`vt_speedup` 二选一。
+轮数、共享预算和系数沿用各自配置；该参数可显式设为 `quad` 或 `down`。
+独立 `diff_sizing` 使用自己的 phase 链，其显式 action 优先。
+
 独立 S50 的连续 sizing step 数由 `place.diff_sizing_continuous_steps` 控制，默认值为 0。
 它表示投影到合法 cell 之前执行的 continuous real-size step 数；设为 0 会直接使用
 输入 master 的 logits 进入 `discrete_gradient_topk`，设为 3 则执行 3 个连续 sizing
@@ -491,7 +496,8 @@ step 后再投影到合法 cell 并切换到离散 sizing。
 `diff_sizing_continuous_steps=0`，使用 real-size 坐标，并以 S50 stage 的迭代数作为
 离散 action 轮数。该模式要求活动的 ECC-Tools 扩展导出与 cap table 同序的
 `flat_lib_pin_names`；只修改源文件不够，必须重新编译并加载与当前 Python
-版本匹配的扩展。该默认只作用于独立 `diff_sizing`；`diff_opt` 仍保持原路径。
+版本匹配的扩展。placement 的 sizing 窗口、`diff_opt` 的 sizing 和独立
+`diff_sizing` 均默认使用该梯度路径。
 由于默认已开启，若要设置 `diff_sizing_continuous_steps>0`，需显式把
 `timing_action_gradient_mode` 设为 `off`。
 

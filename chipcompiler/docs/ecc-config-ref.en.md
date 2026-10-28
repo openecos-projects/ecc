@@ -498,6 +498,13 @@ use `--to diff_sizing` to continue through the separate standalone GR S50 step.
 Existing workspace ledgers retain the stored `diff_buffering` alias; new
 workspaces use `diff_opt` followed by `diff_sizing`.
 
+Placement sizing windows and `diff_opt` sizing phases also default to LUT
+actions. `place.timing_sizing_action="up"` restricts them to `size_up` or
+`vt_speedup`. Their round counts, shared budgets and coefficients retain
+their own configuration. Set this parameter to `quad` or `down` explicitly
+to select another action family. Standalone `diff_sizing` uses its own phase
+chain, whose explicit action takes precedence.
+
 The number of continuous sizing steps in standalone S50 is controlled by
 `place.diff_sizing_continuous_steps`, which defaults to 0. It is the number of
 continuous real-size steps before projection to legal cells. Set it to 0 to
@@ -513,8 +520,9 @@ path. The action path currently requires
 stage iteration count as its discrete round budget. It also requires the
 active ECC-Tools extension to export `flat_lib_pin_names` in cap-table order;
 changing the source alone is insufficient, and the extension must be rebuilt
-and loaded for the active Python version. This default applies only to
-standalone `diff_sizing`; `diff_opt` keeps its original path.
+and loaded for the active Python version. Placement sizing windows,
+`diff_opt` sizing and standalone `diff_sizing` all default to this gradient
+path.
 Because the action path is now the default, setting
 `diff_sizing_continuous_steps>0` requires explicitly setting
 `timing_action_gradient_mode=off`.
