@@ -32,16 +32,20 @@ def sta_workers(workspace, step) -> int:
     if not path:
         return 1
     with open(path, encoding="utf-8") as stream:
-        value = json.load(stream).get("max_parallel_corners", 1)
-    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 4:
-        raise ValueError("STA max_parallel_corners must be an integer between 1 and 4")
+        config = json.load(stream)
+    value = config.get("max_parallel_corners", 1)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError("STA max_parallel_corners must be a positive integer")
+    corner_count = sum(
+        len(corners) for group in config.get("signoff", []) for corners in group.values()
+    )
     if sys.platform != "linux":
         return 1
     cpu_count = os.cpu_count() or 1
     if hasattr(os, "sched_getaffinity"):
         with suppress(OSError):
             cpu_count = min(cpu_count, len(os.sched_getaffinity(0)) or 1)
-    return min(value, cpu_count)
+    return min(value, max(1, corner_count), cpu_count)
 
 
 def _memory_headroom_mb():

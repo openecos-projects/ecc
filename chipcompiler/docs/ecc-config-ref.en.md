@@ -7,7 +7,10 @@ This document consolidates **the tool configuration files actually used by each 
 
 ## 0. Configuration System Overview
 
-`sta.max_parallel_corners` is an integer from 1 to 4 (default 1). Set it with
+`sta.max_parallel_corners` is a positive integer (default 1). Its effective maximum
+is the number of process/RC corner combinations in the generated STA JSON's
+`signoff` list (for example, 13 combinations in the standard ICS55 configuration).
+The parameter catalog reports `[1, null]`, where `null` means no fixed upper bound. Set it with
 `ecc param set sta.max_parallel_corners 3 --workspace baseline`. Standard config
 refresh writes the value into the STA JSON's `max_parallel_corners`. ECC/Studio's
 Linux runtime treats it as an upper bound and reduces concurrency when memory
