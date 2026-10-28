@@ -88,6 +88,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.DRC.value,
         StepEnum.LVS.value,
         StepEnum.FILLER.value,
+        StepEnum.DEFVIEW.value,
     }
 )
 
@@ -322,6 +323,9 @@ class EngineFlow:
                 | StepEnum.DIFF_SIZING.value
             ):
                 if os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""):
+                    success = True
+            case StepEnum.DEFVIEW.value:
+                if ecc_output and os.path.exists(output.def_ or ""):
                     success = True
             case _:
                 if os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""):

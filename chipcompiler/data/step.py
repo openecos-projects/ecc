@@ -38,6 +38,7 @@ STEP_DIRECTORIES = {
     StepEnum.DRC.value: "drc_ecc",
     StepEnum.ANTENNA_CHECK.value: "antennaCheck_ecc",
     StepEnum.HARDEN.value: "Harden_ecc",
+    StepEnum.DEFVIEW.value: "defview_ecc",
 }
 
 # Directories of retired LEC engines. Workspaces whose ledger still records

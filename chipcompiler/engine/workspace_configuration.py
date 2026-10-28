@@ -356,7 +356,8 @@ def build_workspace_configuration_projection(
                 "clockPort": str(workspace.parameters.data.get("clock", "")),
             },
             "inputMode": workspace.parameters.data.get("_input_mode")
-            if workspace.parameters.data.get("_input_mode") in {"rtl", "postSynthesis"}
+            if workspace.parameters.data.get("_input_mode")
+            in {"rtl", "postSynthesis", "def"}
             else ("postSynthesis" if workspace.design.origin_def is not None else "rtl"),
             "inputs": inputs,
             "pdk": {
@@ -567,7 +568,9 @@ def read_workspace_configuration_from_directory(
 def _workspace_inputs(workspace: Any) -> tuple[list[dict[str, str]], dict[str, str]]:
     values = []
     input_mode = workspace.parameters.data.get("_input_mode")
-    if input_mode == "postSynthesis" and workspace.design.origin_verilog is not None:
+    if input_mode == "def":
+        pass
+    elif input_mode == "postSynthesis" and workspace.design.origin_verilog is not None:
         values.append(("netlist", workspace.design.origin_verilog))
     elif workspace.design.input_filelist is not None:
         values.append(("filelist", workspace.design.input_filelist))

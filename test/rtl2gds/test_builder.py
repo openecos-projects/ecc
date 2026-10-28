@@ -10,6 +10,7 @@ def test_discovery_includes_current_presets():
         "rtl2gds",
         "syn_sta",
         "synthesis_lec",
+        "defview",
     }
 
 
