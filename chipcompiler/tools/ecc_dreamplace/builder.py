@@ -124,7 +124,7 @@ def _resolve_diff_sizing_rc_mode(result: dict, explicit_keys) -> str:
 
 
 def _apply_diff_sizing_defaults(params: dict, *, explicit_keys=None) -> dict:
-    """Apply the standalone S50 profile with selectable placement/GR RC."""
+    """Apply standalone up-50 sizing with selectable placement/GR RC."""
     result = deepcopy(params)
     continuous_steps = result.get("diff_sizing_continuous_steps", 0)
     terminal_gr_sta_enabled = result.get("diff_sizing_terminal_gr_sta_enabled", 0)
@@ -148,7 +148,11 @@ def _apply_diff_sizing_defaults(params: dict, *, explicit_keys=None) -> dict:
         )
     from dreamplace.flows.diff_sizing_spec import parse_diff_sizing_flows
 
-    flows = parse_diff_sizing_flows(result.get("diff_sizing_optimization_flows"))
+    coefficients = resolve_timing_coefficients(result, "diff_sizing_coefficients")
+    flow_config = result.get("diff_sizing_optimization_flows")
+    if flow_config is None and action_mode == "lut_action":
+        flow_config = [["up", 50, coefficients, 1.0]]
+    flows = parse_diff_sizing_flows(flow_config)
     if flows is not None and action_mode != "lut_action":
         raise ValueError(
             "diff_sizing_optimization_flows requires timing_action_gradient_mode=lut_action"
@@ -156,7 +160,6 @@ def _apply_diff_sizing_defaults(params: dict, *, explicit_keys=None) -> dict:
     if flows is not None:
         result["diff_sizing_optimization_flows"] = [spec.to_list() for spec in flows]
     timing_rc_mode = _resolve_diff_sizing_rc_mode(result, explicit_keys)
-    coefficients = resolve_timing_coefficients(result, "diff_sizing_coefficients")
     result["diff_sizing_coefficients"] = coefficients
     result.update(
         flow_kind="sizing",

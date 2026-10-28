@@ -66,7 +66,8 @@ SCHEMAS = (
             "ordered standalone diff_sizing phases: "
             "[action, rounds, [wns, tns, slew, cap], selection_percent]; "
             "action is quad, up, or down and percent is in (0, 100]; "
-            "null keeps one quad phase with the stage round budget"
+            "null selects one up phase with 50 rounds, diff_sizing_coefficients, "
+            "and a shared 1% budget per round in lut_action mode"
         ),
     ),
     config_param(

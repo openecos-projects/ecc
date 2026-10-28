@@ -538,10 +538,23 @@ an ordered chain of action phases. Each entry is:
 `size_down` and `vt_slowdown`. `selection_percent` is the per-round percentage
 of sizeable instances, in `(0, 100]` (for example, `1` means 1% and `0.1`
 means 0.1%). Each phase uses its own round budget and coefficients, and phases
-run in list order. The stage iteration is set to the sum of phase rounds. The
-default `null` keeps one `quad` phase.
+run in list order. The stage iteration is set to the sum of phase rounds.
+For standalone `diff_sizing` in `lut_action` mode, the default `null` expands
+to one `up` phase: 50 rounds with a shared 1% budget per round for
+`size_up`/`vt_speedup`. Its coefficients come from `diff_sizing_coefficients`
+(default `[500, 5, 1, 1]`). The generated step configuration is equivalent to:
 
-Example:
+```toml
+[params.place]
+diff_sizing_optimization_flows = [["up", 50, [500, 5, 1, 1], 1.0]]
+```
+
+An explicit phase chain uses its own coefficients and budgets; configure
+`quad` explicitly to select among all four directions.
+`timing_action_gradient_mode=off` keeps the legacy path and does not accept
+an action phase chain.
+
+Custom chain example:
 
 ```toml
 [params.place]

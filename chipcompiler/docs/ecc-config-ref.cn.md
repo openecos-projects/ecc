@@ -512,10 +512,20 @@ snapshot + RRR3 路径。显式设置 `place.timing_rc_mode` 也会作为该步�
 `size_up`/`vt_speedup` 中二选一，`down` 只在 `size_down`/`vt_slowdown` 中二选一。
 `selection_percent` 是每轮参与选择的 sizeable instance 百分比，范围 `(0, 100]`；
 例如 `1` 表示 1%，`0.1` 表示 0.1%。每个 phase 使用自己的轮数和系数，phase
-按列表顺序执行；stage iteration 会自动等于各 phase 轮数之和。设为 `null`
-（默认）时保持单个 `quad` phase。
+按列表顺序执行；stage iteration 会自动等于各 phase 轮数之和。默认 `null`
+在独立 `diff_sizing` 的 `lut_action` 模式下展开为单个 `up` phase：50 轮，
+每轮 `size_up`/`vt_speedup` 共享 1% 预算，系数读取 `diff_sizing_coefficients`
+（默认 `[500, 5, 1, 1]`）。生成的步骤配置等价于：
 
-例如：
+```toml
+[params.place]
+diff_sizing_optimization_flows = [["up", 50, [500, 5, 1, 1], 1.0]]
+```
+
+显式提供 phase 链时使用链内的系数和预算；如需四方向选择，可显式配置 `quad`。
+`timing_action_gradient_mode=off` 仍使用原有路径，不能指定 action phase 链。
+
+自定义链示例：
 
 ```toml
 [params.place]

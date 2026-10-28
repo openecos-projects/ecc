@@ -29,6 +29,7 @@ from chipcompiler.utility import json_read
 def test_public_s50_coefficients_survive_step_resolution_without_changing_placement(
     tmp_path, monkeypatch, make_ics55_parameters, dreamplace_default_config, override
 ):
+    from dreamplace.flows.diff_sizing import _validate_action_profile
     from dreamplace.Params import Params
 
     public = {"place.diff_sizing_coefficients": override}
@@ -71,6 +72,7 @@ def test_public_s50_coefficients_survive_step_resolution_without_changing_placem
     expected_policy = dreamplace_default_config["diff_sizing_coefficients"] | override
     expected = {
         "diff_sizing_coefficients": expected_policy,
+        "diff_sizing_optimization_flows": [["up", 50, expected_policy, 1.0]],
         "gpugr_bottom_routing_layer": "MET2",
         "gpugr_top_routing_layer": "MET5",
         "timing_wns_coeff": expected_policy["wns"],
@@ -86,6 +88,11 @@ def test_public_s50_coefficients_survive_step_resolution_without_changing_placem
     module = DreamplaceModule(workspace, step, None, None, None, None, None)
     sizing = module._build_params(Params, mode=DreamplaceRunMode.DIFF_SIZING)
     assert {key: getattr(sizing, key) for key in expected} == expected
+    (phase,) = _validate_action_profile(sizing)
+    assert (phase.to_list(), phase.action_mask) == (
+        expected["diff_sizing_optimization_flows"][0],
+        (True, False, False, True),
+    )
     placement_step = builder.build_step(
         workspace,
         StepEnum.PLACEMENT.value,
@@ -377,6 +384,7 @@ def test_diff_sizing_continuous_steps_selects_the_sizing_entry_path(
             "real_size_execution_mode",
             "real_size_warmup_steps",
             "continuous_size_dynamics_mode",
+            "diff_sizing_optimization_flows",
         )
     } == {
         "diff_sizing_continuous_steps": steps,
@@ -384,6 +392,7 @@ def test_diff_sizing_continuous_steps_selects_the_sizing_entry_path(
         "real_size_execution_mode": execution,
         "real_size_warmup_steps": steps,
         "continuous_size_dynamics_mode": dynamics,
+        "diff_sizing_optimization_flows": None,
     }
 
 
