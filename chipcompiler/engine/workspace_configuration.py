@@ -356,8 +356,7 @@ def build_workspace_configuration_projection(
                 "clockPort": str(workspace.parameters.data.get("clock", "")),
             },
             "inputMode": workspace.parameters.data.get("_input_mode")
-            if workspace.parameters.data.get("_input_mode")
-            in {"rtl", "postSynthesis", "def"}
+            if workspace.parameters.data.get("_input_mode") in {"rtl", "postSynthesis", "def"}
             else ("postSynthesis" if workspace.design.origin_def is not None else "rtl"),
             "inputs": inputs,
             "pdk": {

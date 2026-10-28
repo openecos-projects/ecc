@@ -1,4 +1,3 @@
-import logging
 from pathlib import Path
 
 from chipcompiler.data import EccStep, StepEnum, Workspace
@@ -29,7 +28,6 @@ def _workspace_and_step(tmp_path):
     step.output.def_ = tmp_path / "defview_ecc" / "output" / "design.def"
     step.output.image = tmp_path / "defview_ecc" / "output" / "design.png"
     workspace = Workspace(directory=tmp_path)
-    workspace.logger = logging.getLogger("test-defview")
     return workspace, step
 
 
@@ -40,6 +38,7 @@ def test_run_defview_saves_def_and_geometry_snapshot(tmp_path, monkeypatch):
 
     assert defview_runner.run_defview(workspace, step, None) is True
     assert [call[0] for call in module.calls] == ["def_save", "geometry_snapshot_save"]
+    assert step.output.geometry_manifest is not None
     assert step.output.geometry_manifest.is_file()
 
 

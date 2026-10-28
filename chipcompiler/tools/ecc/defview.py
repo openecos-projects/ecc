@@ -5,7 +5,7 @@ workspace can be opened in Chip Viewer through the regular flow machinery
 (the engine resolves the first step's DEF input from the workspace origin).
 """
 
-from chipcompiler.data import EccStep, StepEnum, Workspace
+from chipcompiler.data import EccStep, Workspace
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.runner import get_eda_instance
 
