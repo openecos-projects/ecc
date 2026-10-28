@@ -83,8 +83,8 @@ environment.
 
 ```bash
 # Format and lint
-uv run ruff format chipcompiler/ test/ ecc_experience/
-uv run ruff check chipcompiler/ test/ ecc_experience/
+uv run ruff format chipcompiler/ test/
+uv run ruff check chipcompiler/ test/
 
 # Type check (basedpyright is the gate; ty is a cross-check)
 uv run basedpyright
@@ -1126,45 +1126,6 @@ For Python-level debugging, invoke the same CLI module directly:
 4. Use `clear_states()` to re-run.
 
 ## Conventions
-
-### Experience collection ownership
-
-`ecc_experience/` is a sibling of `chipcompiler/` and `agent/`, shipped in the same
-ECC distribution. Its API is `collect(workspace, store)`, `list_cases(store)`,
-`show(case_id, store)`, `verify(case_id, store)`, and project recording operations
-`enable/status/disable/drain`, conservative read-only `recommend`, and generic campaign manifest validation. CLI composition is registered
-only in `chipcompiler/cli/app.py`; core engine/data/tools do not import experience.
-Domain collection accepts an observation-reader Protocol. The chipcompiler adapter
-uses read-only snapshot APIs and the existing nonblocking workspace lock.
-
-Cases are immutable, content-addressed observations. Store writes have one collector,
-staged digest verification and atomic directory publication. Explicit collection keeps
-attempt identity unknown; P1 recording allocates attempt IDs and writes non-fatal
-post-commit events to a project outbox. `drain` verifies the final snapshot before
-materializing a case. Parameter evidence is configured/unknown and input closure and
-process fingerprints remain unverified. Verification separates archive integrity from
-unknown provenance or unavailable metrics. Recommendations remain a later delivery
-stage.
-
-Run `uv run pytest test/experience test/cli/commands/test_experience.py test/engine/test_execution.py`
-for the narrow
-contract suite. `packaging/experience_cli_smoke.py` exercises public CLI collection,
-idempotence, queries and corruption rejection against a supplied project/workspace.
-The packaged design matrix runs this after the existing flow artifact checks. Keep
-stores, benchmarks and build output outside source trees; do not package private cases.
-
-Campaign manifests are validated and tracked by `ecc_experience.benchmark` without
-importing private benchmark layouts or starting EDA. `campaign init` freezes the manifest
-fingerprint in an output-local ledger, `campaign record` appends idempotent trial facts, and
-`campaign status` verifies the fingerprint before reporting resumable progress. `campaign
-summary` joins the latest trial state with linked case verification without treating a trial
-pass as QoR or signoff success. `experience plan` writes a fingerprinted, manual-review
-optimization plan and never applies parameters or starts EDA. `experience evaluate` compares
-two evidence-backed cases read-only when their input fingerprints match and their evidence
-has no failures. `experience release create/verify` freezes and rechecks only fully verified
-cases, without copying private paths or enabling automatic application. `recommend` and
-`plan` can bind retrieval to a verified release. The user procedures are documented in the
-[experience testing manual](../ecc_experience/docs/ecc-experience-testing-guide.en.md).
 
 Contributor conventions are not repeated here; they live in
 [../CLAUDE.md](../CLAUDE.md) (behavioral guidelines, test placement, module

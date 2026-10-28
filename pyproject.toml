@@ -66,7 +66,7 @@ constraint-dependencies = [
   "llvmlite>=0.40.0",
   "numba>=0.57.0",
 ]
-build-backend.module-name = [ "agent", "chipcompiler", "ecc_experience" ]
+build-backend.module-name = [ "agent", "chipcompiler" ]
 build-backend.module-root = ""
 build-backend.source-exclude = [
   "/scripts/**",
@@ -107,7 +107,7 @@ extend-include = ["*.spec"]
 extend-exclude = ["chipcompiler/thirdparty", "test/lit"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["chipcompiler", "csv_gates", "ecc_experience"]
+known-first-party = ["chipcompiler", "csv_gates"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
@@ -131,7 +131,6 @@ include = [
   "chipcompiler",
   "test",
   "agent",
-  "ecc_experience",
   "scripts",
   "packaging",
   "hooks",
@@ -146,7 +145,6 @@ src.include = [
   "chipcompiler",
   "test",
   "agent",
-  "ecc_experience",
   "scripts",
   "packaging",
   "hooks",

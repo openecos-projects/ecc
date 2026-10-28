@@ -21,11 +21,6 @@ Reading order: start at §3 for a new project or §8 for an existing baseline. F
 parameter searches are in §9–§11, early PNR DSE in §17, mandatory result summaries in
 §18, and the autonomous AI execution contract in §19.
 
-For repeated tests, negative scenarios, and experience accumulation, use the
-[ICS55 experience testing manual](../../ecc_experience/docs/ecc-experience-testing-guide.en.md) to preserve
-evidence, evaluate recommendations, and manage knowledge versions. Unimplemented
-interfaces are explicitly identified there.
-
 ## 1. Scope and capabilities
 
 **Users and AI language models can use ECC CLI for bounded PPA/QoR parameter tuning
@@ -34,8 +29,8 @@ propose experiments, create isolated candidates, run EDA, screen results, record
 winner, validate it in a fresh workspace, and export deliverables. Existing commands
 provide this operation chain without requiring a new `ecc optimize` command.
 
-The AI defines the spec, search space and tradeoffs. ECC can own bounded,
-deterministic proposals, staged screening, execution and evidence. Neither guarantees a global optimum.
+The AI defines the spec, search space, tradeoffs, candidate proposals, and staged
+screening. ECC provides public commands for execution and evidence. Neither guarantees a global optimum.
 Coverage depends on constraints, process resources, installed EDA tools, and reports.
 
 | Task | Current support | Usage |
@@ -44,14 +39,14 @@ Coverage depends on constraints, process resources, installed EDA tools, and rep
 | Set candidate parameters in a fresh workspace | Supported | `ecc run --set KEY=VALUE` |
 | Make small local changes to an existing candidate | Supported | Workspace-scoped param set/apply; rerun the invalidated suffix |
 | Run full RTL-to-GDS, individual steps, or ranges | Supported | run/preset/resume/from/to/only/force |
-| Explore early rtl2gds PNR stages | Supported through experience dse v2 | Declarative specs, measured objectives, Pareto, rungs and full/fresh validation; see §17 |
+| Explore early rtl2gds PNR stages | User/AI orchestration | Public workspace derivation and range execution; see §17 |
 | Read stage metrics, timing/violations, and overall QoR | Supported | report step, report qor, report project, signoff check |
 | Run a small deterministic parameter grid | Supported | sweep create/run/verify/compare |
 | Rank, export matrices, and record a selected candidate | Supported | explore rank/export/promote |
 | Compare before/after evidence within one workspace | Supported | report snapshot + compare run |
 | Compare independent PPA candidates across workspaces | AI responsibility | Align comparable raw metrics from public reports in an external ledger |
 | Export reproducible evidence and ECC signoff deliverables | Supported | reproducible and signoff export |
-| Adaptive search, Pareto and execution budgets | ECC mechanisms with user/AI policy | experience dse v2; explicit multi-objective selection without automatic parameter application |
+| Adaptive search and execution budgets | User/AI responsibility | Orchestrate candidates and budgets externally; explore can rank measured evidence |
 | Automatically rewrite arbitrary RTL architectures and prove equivalence | Outside default parameter tuning | Separate RTL optimization task with functional validation and required LEC |
 | GDS-level DRC and complete foundry signoff | Not guaranteed by current ECC | Current DRC conclusions cover the available checker evidence only |
 
@@ -918,7 +913,7 @@ budget,” not global optimum. Without a valid gain, retain the baseline and sti
 | Current limit | User/AI action |
 | --- | --- |
 | Cross-workspace compare does not automatically establish comparability | Check input content, stage, corner, source, and units externally |
-| Sweep remains a fixed grid; stage DSE has its own entry point | Explore verifies Pareto evidence; experience dse v2 owns adaptive proposals and staged screening |
+| Sweep remains a fixed grid | Use public workspace/range commands and manage adaptive proposals and staged screening externally |
 | No public QoR profile/power-budget parameter | Retain the profile; apply user budgets externally without faking native scores |
 | Scalar comma sweep syntax and limited cached recovery | Use public run/param for arrays; diagnose and create fresh candidates when needed |
 | Evidence package is not a complete execution environment image | Supplement input digests, PDK/tool versions, constraints, and environment |
@@ -935,11 +930,8 @@ Input functional verification and real constraint review remain required.
 
 ### 17.1 Current support
 
-**The AI defines the spec, objectives, space and budget. `experience dse` v2 owns
-deterministic proposals, multiple objectives and rung screening; public derive/range
-commands remain available for manual control.**
-See the [experience testing guide, §20](../../ecc_experience/docs/ecc-experience-testing-guide.en.md#20-dse-v2-adaptive-proposals-objectives-and-staged-screening)
-for specs, recovery, historical seeds and full/fresh contracts.
+The user or AI manages candidate proposals, objectives, search space, budgets,
+and staged screening through public workspace derivation and range commands.
 
 Here, DSE explores floorplan, placement, and CTS parameter combinations under a fixed
 design spec, compares area/interconnect/congestion/clock-tree quality, and narrows
@@ -955,7 +947,7 @@ not automatic RTL architecture rewrites.
 | report step feature/analysis/checklist/outputs | Available | Read metrics, execution evidence, intermediate DEF/Verilog |
 | report snapshot and same-workspace compare run | Available | Save checkpoints and inspect before/after iteration |
 | Sweep range options, early stopping, staged advancement | Unavailable | Orchestrate public CLI calls through an AI |
-| Measured stage objectives and Pareto | Available through experience dse v2 | Compare matching measured metrics, separate from overall ECC QoR |
+| Measured stage objectives and Pareto | User/AI responsibility | Compare matching measured metrics externally, separate from overall ECC QoR |
 
 `derive --from place` means rerun place and subsequent steps. It does not mean
 copy only files starting at place. Current implementation copies the source workspace,
