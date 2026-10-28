@@ -394,6 +394,7 @@ class WorkspaceDeriveInput:
     workspace: str
     target_workspace: str
     from_step: str | None = None
+    to_step: str | None = None
     command_id: str = ""
     no_wait: bool = False
 
