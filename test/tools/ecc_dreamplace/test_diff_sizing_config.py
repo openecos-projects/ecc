@@ -73,6 +73,11 @@ def test_public_s50_coefficients_survive_step_resolution_without_changing_placem
     expected = {
         "diff_sizing_coefficients": expected_policy,
         "diff_sizing_optimization_flows": [["up", 50, expected_policy, 1.0]],
+        "auto_adjust_bins": 1,
+        "num_bins_x": 256,
+        "num_bins_y": 256,
+        "route_num_bins_x": 512,
+        "route_num_bins_y": 512,
         "gpugr_bottom_routing_layer": "MET2",
         "gpugr_top_routing_layer": "MET5",
         "timing_wns_coeff": expected_policy["wns"],
@@ -385,6 +390,7 @@ def test_diff_sizing_continuous_steps_selects_the_sizing_entry_path(
             "real_size_warmup_steps",
             "continuous_size_dynamics_mode",
             "diff_sizing_optimization_flows",
+            "auto_adjust_bins",
         )
     } == {
         "diff_sizing_continuous_steps": steps,
@@ -393,6 +399,7 @@ def test_diff_sizing_continuous_steps_selects_the_sizing_entry_path(
         "real_size_warmup_steps": steps,
         "continuous_size_dynamics_mode": dynamics,
         "diff_sizing_optimization_flows": None,
+        "auto_adjust_bins": 1,
     }
 
 

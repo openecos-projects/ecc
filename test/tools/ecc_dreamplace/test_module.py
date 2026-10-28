@@ -264,9 +264,9 @@ def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreampla
         "overflow_reference_mode": "ordinary",
         "gpugr_backend": "cpu_pr_maze",
         "gr_sizing_rrr_iters": 3,
-        "auto_adjust_bins": 0,
-        "num_bins_x": 512,
-        "num_bins_y": 512,
+        "auto_adjust_bins": 1,
+        "num_bins_x": 256,
+        "num_bins_y": 256,
         "route_num_bins_x": 512,
         "route_num_bins_y": 512,
         "timing_opt_enabled": 0,
@@ -280,7 +280,7 @@ def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreampla
     assert {
         key: params.global_place_stages[0][key]
         for key in ("num_bins_x", "num_bins_y", "iteration", "optimizer")
-    } == {"num_bins_x": 512, "num_bins_y": 512, "iteration": 50, "optimizer": "adam"}
+    } == {"num_bins_x": 256, "num_bins_y": 256, "iteration": 50, "optimizer": "adam"}
     assert params.design_inputs["rcx_config"] == ""
 
 

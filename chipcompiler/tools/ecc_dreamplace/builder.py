@@ -172,9 +172,12 @@ def _apply_diff_sizing_defaults(params: dict, *, explicit_keys=None) -> dict:
         continuous_size_dynamics_mode="none",
         target_density=0.4,
         cell_padding_x=0,
-        auto_adjust_bins=0,
-        num_bins_x=512,
-        num_bins_y=512,
+        # Match placement's adaptive bin profile.  compute_auto_bin_counts
+        # keeps its 512-bin cap, and GR sizing follows the resolved placement
+        # bin count when auto_adjust_bins is enabled.
+        auto_adjust_bins=1,
+        num_bins_x=256,
+        num_bins_y=256,
         route_num_bins_x=512,
         route_num_bins_y=512,
         timing_opt_enabled=0,
@@ -231,8 +234,8 @@ def _apply_diff_sizing_defaults(params: dict, *, explicit_keys=None) -> dict:
     first_stage = dict(stages[0]) if isinstance(stages[0], dict) else {}
     stage_rounds = sum(spec.rounds for spec in flows) if flows is not None else 50
     first_stage.update(
-        num_bins_x=512,
-        num_bins_y=512,
+        num_bins_x=256,
+        num_bins_y=256,
         iteration=stage_rounds,
         optimizer="adam",
     )

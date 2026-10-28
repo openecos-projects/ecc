@@ -421,7 +421,9 @@ slew = 1.0
 `ecc run --set 'place.diff_sizing_coefficients={"tns":10.0}'` 单独覆盖 TNS。
 已有 workspace 使用
 `ecc param set place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`。
-S50 继续使用 RRR=3、padding=0、固定 512×512 bins 和最终 legalization。
+S50 继续使用 RRR=3、padding=0 和最终 legalization；placement bin 使用 256×256
+预设并进行自适应计算，计算上限仍为 512×512，GR route grid 跟随该自适应 bin
+并按 die aspect ratio 调整。
 
 `diff_opt` 是 placement 之后、`diff_sizing` 之前的独立步骤，用来替换新 workspace
 中的 `diff_buffering`。它从上一阶段的 DEF/Verilog 开始，只支持 placement parasitic，

@@ -430,7 +430,10 @@ For a fresh workspace, use
 `ecc run --set 'place.diff_sizing_coefficients={"tns":10.0}'` to override TNS alone.
 For an existing workspace, use
 `ecc param set place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`.
-S50 retains RRR=3, zero padding, fixed 512×512 bins and final legalization.
+S50 retains RRR=3, zero padding and final legalization. Its placement bins
+start from the placement 256×256 preset and use the adaptive calculation,
+whose cap remains 512×512. The GR route grid follows that adaptive bin count
+with die-aspect-ratio adjustment.
 
 `diff_opt` is the independent step between placement and `diff_sizing`.
 It replaces the new-workspace `diff_buffering` entry and reads the preceding
