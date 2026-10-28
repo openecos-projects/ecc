@@ -115,7 +115,11 @@ def derive_workspace(
                     workspace, engine_flow, preserve_user_inputs=True
                 )
 
-            snapshot = create_engineering_snapshot(workspace, cause=cause)
+            snapshot = create_engineering_snapshot(
+                workspace,
+                workspace_id=target_workspace_id or None,
+                cause=cause,
+            )
             _rewrite_staged_paths(
                 staging,
                 ((str(source), str(target)), (str(staging), str(target))),

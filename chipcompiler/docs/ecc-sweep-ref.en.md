@@ -109,6 +109,19 @@ over a large grid. The command is resumable: any candidate with a recorded statu
 reused without re-running the flow or recollecting evidence, so an interrupted `run`
 continues where it stopped.
 
+Candidate projects start with an empty runtime-process object (`{}`); parent process
+records are not copied. When an older candidate contains the invalid empty array
+`runtime_processes: []`, `sweep run` repairs that field while holding the workspace
+and manifest locks, then runs the candidate again instead of reusing its cached result.
+Existing workspace files and valid runtime-process objects are preserved. A busy
+workspace or failed repair stops the command without launching that candidate.
+On an existing workspace, the run uses the saved candidate parameters; creation-only
+`--set` options are not sent again.
+
+A completed batch command exits `0` even if individual candidates fail. Check each
+result's `exit_code`, `status`, and step evidence before treating a candidate as successful.
+`explore promote` continues to reject candidates whose recorded status is not `passed`.
+
 ### 4.5 sweep compare
 
 ```bash
@@ -231,7 +244,10 @@ For each candidate (in plan order, bounded by `--max-candidates`):
 
 1. If the candidate's project copy does not exist yet, the project is copied to
    `experiments/<name>/candidates/<id>/project/`, excluding `experiments/`, `.git`,
-   `*.lock`, and `ws_*` entries. The copied `project.json` is rewritten so
+   `*.lock`, and `ws_*` entries. Registered source Workspace paths are also
+   excluded, including ordinary names, nested paths, and symbolic links into
+   imported Workspaces. Sibling project inputs are preserved, and source
+   Workspaces are not modified. The copied `project.json` is rewritten so
    `root_path` points at the copy and `workspaces` / `runtime_processes` are empty —
    the copy starts as a clean single-workspace project.
 2. If a previous result exists for the candidate with any of the four recorded statuses

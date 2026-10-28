@@ -40,7 +40,9 @@ def _manifest_skip_target(run_dir: str, flow_config) -> dict | None:
         workspace_flow = load_workspace_config(run_dir)["_flow"]
     except (FileNotFoundError, OSError, WorkspaceConfigError, WorkspaceFlowTargetError):
         return None
-    if "start" not in workspace_flow or "end" not in workspace_flow:
+    if "preset" not in workspace_flow and (
+        "start" not in workspace_flow or "end" not in workspace_flow
+    ):
         return None
     return {**workspace_flow, "skip_steps": declared}
 

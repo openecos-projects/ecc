@@ -569,9 +569,9 @@ $ ecc run --workspace default          # 已全部成功时再跑一次 → 无�
 
 run 汇总记录会带 `no_op: true`（`--plain` 输出可见；用 `--resume`/`--only` 等选择器时还会带 `executed_steps` 列表）。若 `ecc.toml` 与 `project.json` 记录的基线值实际不一致（如 `pdk.root` 解析到了与首次运行记录不同的 PDK，或 `flow.preset` 与 workspace 声明的范围不一致），汇总块前会多一行 `warning: ...` 提示（`config_layer_diverged`），不影响执行结果。
 
-**已有 workspace 的目标对齐（reconcile）**：再次 `ecc run` 时，CLI 会把 workspace 已持久化的 flow 与当前目标（`ecc.toml` 的 `flow.preset`，或 `project.json` 中该 workspace 声明的 start/end 范围）对齐：
+**已有 workspace 的目标对齐（reconcile）**：再次 `ecc run` 时，workspace 的 `home/params.toml` 中已持久化的 `[flow]` 拥有默认目标；如果该段不存在，则以已持久化的 flow ledger 本身作为目标。项目级 `flow.preset` 只用于新建或 `--overwrite`，不会在续跑时静默扩大已有 workspace 的范围。若确实要让本次调用使用其他目标，显式传 `--preset`；若要按项目配置重建 workspace，使用 `ecc workspace refresh` 或 `--overwrite`：
 
-- 已持久化步骤是目标的**前缀**且未跑完 → 续跑，必要时**自动扩展**到目标终点（例如先用 `--preset synthesis_lec` 建的 workspace，`ecc.toml` 是 `rtl2gds`，再裸跑 `ecc run` 会从当前进度继续把物理流程跑完）；
+- 已持久化步骤是目标的**前缀**且未跑完 → 续跑，必要时**自动扩展**到目标终点；
 - 已持久化范围 ⊇ 目标且全部成功 → `no_op`（默认 resume 不会越过目标终点重跑更宽的账本）；
 - 目标与持久化 flow **分叉**（既非前缀也非超集）→ `flow_mismatch`，按提示 `--overwrite` 重建或换新的 `--workspace`。
 
@@ -987,6 +987,11 @@ ecc workspace delete <NAME> [--delete-directory]
 ecc workspace reset-flow <NAME>     # 清除持久化 flow 状态，下次 run 从头开始
 ecc workspace reconcile-deletes     # 崩溃后收尾未完成的 workspace 删除
 ```
+
+`reconcile-deletes` 面向整个项目，不需要选择工作区，也不接受 `--workspace`。
+在项目根目录运行，或使用 `ecc workspace reconcile-deletes --project /path/to/project`
+指定项目；项目中没有工作区或有多个工作区时都可以执行。该命令只处理有有效删除意图记录的
+暂存目录：manifest 中仍有登记时恢复原目录，已移除登记时清理暂存目录；没有待恢复项时成功返回。
 
 `create` 是 `ecc run` 在执行前所做创建动作的独立形式，供 GUI/自动化流程先登记 ID；
 `--from/--to` 声明有界范围，`--set` 在创建时记录参数覆盖（与 `ecc run --set` 的
@@ -1450,7 +1455,10 @@ ecc explore promote --project /path/to/project --name density --candidate candid
 
 `--max-candidates N` 把 `sweep run` 限制为计划的前 N 个候选（适合对大笛卡尔积先做
 一轮冒烟）。`sweep run` 可续跑：已有四种状态之一的结果记录且 workspace 存在时直接复用，
-不重跑，也不重新采集证据。`sweep show` 与 `explore rank` 直接输出 JSON；`sweep compare`
+不重跑，也不重新采集证据。旧候选若含 `runtime_processes: []`，会在持锁修复该字段后
+重新运行，保留原工作区文件。新候选使用空对象 `{}`，不继承父工程进程记录。批处理
+完成时退出 `0`，候选仍可能失败；需检查各候选的 `exit_code`、`status` 和步骤证据。
+`sweep show` 与 `explore rank` 直接输出 JSON；`sweep compare`
 默认输出人类可读表格，可用 `--json` 切换为 JSON。它们都是 `results.json` 的只读视图；
 排序为 passed 优先、QoR 分数降序。候选模式的 `explore promote` 只检查缓存结果行及其
 `passed` 状态，然后写入 `experiments/<name>/winner.json`，不会重新校验当前证据。需要按
