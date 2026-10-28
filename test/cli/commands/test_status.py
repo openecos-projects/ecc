@@ -33,7 +33,6 @@ class TestStatus:
             "post_floorplan",
             "preplace",
             "placement",
-            "diff_opt",
             "diff_sizing",
             "cts",
             "legalization",

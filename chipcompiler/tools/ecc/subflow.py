@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from enum import Enum
 
-from chipcompiler.data import StepBaseEnum, StepEnum, step_from_value
+from chipcompiler.data import SkippableStepEnum, StepBaseEnum, StepEnum, step_from_value
 from chipcompiler.tools.subflow import SubFlow
 
 
@@ -67,7 +67,7 @@ _STAGES: dict[StepBaseEnum, tuple[EccSubFlowEnum, ...]] = {
         EccSubFlowEnum.run_diff_buffering,
         EccSubFlowEnum.save_data,
     ),
-    StepEnum.DIFF_OPT: (
+    SkippableStepEnum.DIFF_OPT: (
         EccSubFlowEnum.load_data,
         EccSubFlowEnum.run_diff_opt,
         EccSubFlowEnum.save_data,

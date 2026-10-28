@@ -3,7 +3,7 @@
 from dataclasses import replace
 from pathlib import Path
 
-from chipcompiler.data import EccStep, StateEnum, StepEnum, StepInput, Workspace
+from chipcompiler.data import EccStep, SkippableStepEnum, StateEnum, StepEnum, StepInput, Workspace
 from chipcompiler.data.workspace.macro_location import macro_placements
 from chipcompiler.tools.ecc import EccSubFlow, EccSubFlowEnum, ECCToolsModule
 from chipcompiler.tools.ecc import runner as ecc_runner
@@ -55,7 +55,7 @@ def run_step(
             state = run_macro_placement(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.PLACEMENT.value:
             state = run_placement(workspace=workspace, step=step, ecc_module=ecc_module)
-        case StepEnum.DIFF_OPT.value:
+        case SkippableStepEnum.DIFF_OPT.value:
             state = run_diff_opt(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.DIFF_SIZING.value:
             state = run_diff_sizing(workspace=workspace, step=step, ecc_module=ecc_module)

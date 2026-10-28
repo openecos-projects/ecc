@@ -360,7 +360,6 @@ def test_create_workspace_persists_dynamic_flow_steps(
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [step["name"] for step in flow_data["steps"]] == [
         "place",
-        "diff_opt",
         "diff_sizing",
         "CTS",
         "legalization",
@@ -371,7 +370,6 @@ def test_create_workspace_persists_dynamic_flow_steps(
         "drc",
     ]
     assert [step["tool"] for step in flow_data["steps"]] == [
-        "dreamplace",
         "dreamplace",
         "dreamplace",
         "ecc",
@@ -506,7 +504,6 @@ def test_create_workspace_non_contiguous_flow_seeds_both_stores_contiguous(
         "postFloorplan",
         "preplace",
         "place",
-        "diff_opt",
         "diff_sizing",
         "CTS",
     ]
@@ -540,7 +537,6 @@ def test_create_workspace_derives_dynamic_flow_from_boundaries(
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [step["name"] for step in flow_data["steps"]] == [
         "place",
-        "diff_opt",
         "diff_sizing",
         "CTS",
         "legalization",
@@ -677,7 +673,6 @@ def test_create_workspace_from_step_output_copies_only_origin_inputs_and_rebuild
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [step["name"] for step in flow_data["steps"]] == [
         "place",
-        "diff_opt",
         "diff_sizing",
         "CTS",
         "legalization",

@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from chipcompiler.cli.project.params import parse_cli_overrides, resolve_parameters
-from chipcompiler.data import EccData, EccStep, OriginDesign, StepEnum, Workspace
+from chipcompiler.data import EccData, EccStep, OriginDesign, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.rtl2gds.builder import build_flow_range
 from chipcompiler.tools.ecc_dreamplace.diff_opt import apply_diff_opt_defaults
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
@@ -127,7 +127,7 @@ def test_diff_opt_replaces_diff_buffering_but_keeps_diff_sizing():
     chain = build_flow_range("place", "diff_sizing")
     assert [(step.value, tool) for step, tool, _state in chain] == [
         (StepEnum.PLACEMENT.value, "dreamplace"),
-        (StepEnum.DIFF_OPT.value, "dreamplace"),
+        (SkippableStepEnum.DIFF_OPT.value, "dreamplace"),
         (StepEnum.DIFF_SIZING.value, "dreamplace"),
     ]
 
@@ -155,8 +155,8 @@ def test_diff_opt_module_uses_placement_rc_and_own_result_directory(
     )
     result_dir = tmp_path / "data" / "diff_opt"
     step = EccStep(
-        name=StepEnum.DIFF_OPT.value,
-        data=EccData(dir=tmp_path / "data", steps={StepEnum.DIFF_OPT.value: result_dir}),
+        name=SkippableStepEnum.DIFF_OPT.value,
+        data=EccData(dir=tmp_path / "data", steps={SkippableStepEnum.DIFF_OPT.value: result_dir}),
     )
     workspace = Workspace(
         directory=tmp_path / "workspace",

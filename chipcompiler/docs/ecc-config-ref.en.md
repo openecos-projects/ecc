@@ -435,14 +435,27 @@ start from the placement 256×256 preset and use the adaptive calculation,
 whose cap remains 512×512. The GR route grid follows that adaptive bin count
 with die-aspect-ratio adjustment.
 
-`diff_opt` is the independent step between placement and `diff_sizing`.
-It replaces the new-workspace `diff_buffering` entry and reads the preceding
+`diff_opt` is an optional independent step between placement and `diff_sizing`.
+New workspaces skip it by default and still run standalone `diff_sizing`.
+Enable it with one parameter in the project's `ecc.toml`:
+
+```toml
+[flow]
+skip_steps = ["lec"]  # Enable diff_opt; the default is ["lec", "diff_opt"].
+```
+
+`skip_steps` replaces the complete skip list; retain any other steps you want
+to skip. An empty list enables both synthesis LEC and `diff_opt`.
+Existing workspaces resume their saved ledgers; use a new workspace or
+`--overwrite` to apply a different policy.
+
+When enabled, it replaces the new-workspace `diff_buffering` entry and reads the preceding
 DEF/Verilog using placement parasitics only. It runs discrete candidate buffering
 with three positions per segment and the four ICS55 masters BUFX8H7L, BUFX12H7L,
 BUFX16H7L and BUFX20H7L. Each round accepts at most one action per net,
 then selects the configured fraction of nets by global gradient benefit.
-The default joint flow runs five S1+B1 cycles with weights 500/5/1/1:
-five sizing rounds and five buffering rounds in total.
+The default joint configuration runs the ten S1+B1 cycles shown below,
+with weights 500/5/1/1.
 Each buffering round selects 0.1% of candidate-bearing nets. After native
 buffer insertion it rebuilds the topology,
 runs geometry-only legalization with zero padding, and saves DEF/Verilog and
@@ -483,7 +496,7 @@ diff_optimization_flows = [
 ]
 ```
 
-This is also the default configuration for new workspaces: ten S1+B1 cycles.
+This is the default configuration when `diff_opt` is enabled: ten S1+B1 cycles.
 The list runs once;
 repeated S1+B1 cycles are explicit entries. Each S phase performs one discrete
 sizing round and each B phase performs one buffering phase.
@@ -495,11 +508,11 @@ B10 shorthand instead.
 grid, route-extracted SPEF and post-route RC are rejected as inputs. The old
 `diff_buffering_*` fields remain legacy aliases for buffering-only `diff_opt`.
 
-Run it alone with
+After removing `diff_opt` from `skip_steps`, run it alone with
 `ecc run --project PROJECT --workspace NAME --from diff_opt --to diff_opt`;
 use `--to diff_sizing` to continue through the separate standalone GR S50 step.
 Existing workspace ledgers retain the stored `diff_buffering` alias; new
-workspaces use `diff_opt` followed by `diff_sizing`.
+workspaces run `diff_opt` followed by `diff_sizing` when it is enabled.
 
 Placement sizing windows and `diff_opt` sizing phases also default to LUT
 actions. `place.timing_sizing_action="up"` restricts them to `size_up` or
@@ -832,7 +845,7 @@ Both steps use the engine-neutral result contract `output/<design>_<step>_result
 
 | Item | Content |
 |---|---|
-| `lec` input | The synthesis-mapped netlist is the gate; the declared `design.golden_netlist` (or the resolved step wiring) is the golden side. It sits immediately after synthesis and is **skipped by default** (`[flow] skip_steps` defaults to `["lec"]`). |
+| `lec` input | The synthesis-mapped netlist is the gate; the declared `design.golden_netlist` (or the resolved step wiring) is the golden side. It sits immediately after synthesis and is **skipped by default** (`[flow] skip_steps` defaults to `["lec", "diff_opt"]`). |
 | `postRouteLec` input | The synthesis-mapped netlist is the golden side and the `filler` output netlist is the gate (`filler_ecc/output/<design>_filler.v.gz`). It sits after `antennaCheck` and before `RCX`; post-route LEC is the only exception to checker-result chaining. |
 | Signoff | A current `status=proven` counts toward the signoff checklist; post-route LEC results go into the signoff package under `final/reports/postRouteLec/`. |
 

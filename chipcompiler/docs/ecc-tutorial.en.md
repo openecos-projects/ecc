@@ -266,11 +266,11 @@ rc=0
 
 ### 4.1 Start
 
-The `rtl2gds` preset is the full 22-step chain, running all the way through Harden (which produces the GDS + abstract LEF + timing LIB). The synthesis LEC (step 2) is part of the chain but **skipped by default**: `[flow] skip_steps` defaults to `["lec"]`, and setting `skip_steps = []` in `ecc.toml` is the only way to run it. To reproduce every step shown below (including the LEC), clear the list once before running:
+The `rtl2gds` preset runs all the way through Harden (which produces the GDS + abstract LEF + timing LIB). Synthesis LEC (step 2) and the post-placement `diff_opt` step are **skipped by default**: `[flow] skip_steps` defaults to `["lec", "diff_opt"]`. This tutorial keeps `diff_opt` disabled and enables the LEC shown below:
 
 ```bash
 # enable the synthesis LEC for this tutorial
-sed -i 's/skip_steps = \["lec"\]/skip_steps = []/' ecc.toml
+sed -i 's/skip_steps = \["lec", "diff_opt"\]/skip_steps = ["diff_opt"]/' ecc.toml
 
 ecc run --preset rtl2gds
 ```

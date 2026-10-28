@@ -78,7 +78,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.MACRO_PLACEMENT.value,
         StepEnum.POST_FLOORPLAN.value,
         StepEnum.PLACEMENT.value,
-        StepEnum.DIFF_OPT.value,
+        SkippableStepEnum.DIFF_OPT.value,
         StepEnum.DIFF_BUFFERING.value,
         StepEnum.DIFF_SIZING.value,
         StepEnum.CTS.value,
@@ -316,7 +316,7 @@ class EngineFlow:
                 )
             case (
                 SkippableStepEnum.TIMING_OPT.value
-                | StepEnum.DIFF_OPT.value
+                | SkippableStepEnum.DIFF_OPT.value
                 | StepEnum.PREPLACE.value
                 | StepEnum.DIFF_BUFFERING.value
                 | StepEnum.DIFF_SIZING.value

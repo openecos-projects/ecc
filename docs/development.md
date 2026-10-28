@@ -118,9 +118,10 @@ uv run prek install --config .pre-commit-config.yaml --hook-type pre-commit --ho
 
 ## Testing
 
-The timing optimization flow after placement is
-`place → diff_opt → diff_sizing → CTS → legalization → Timing optimization → route`.
-`diff_opt` runs the placement-parasitic discrete sizing/buffering controller,
+The default timing optimization flow after placement is
+`place → diff_sizing → CTS → legalization → Timing optimization → route`.
+Set `[flow] skip_steps = ["lec"]` to insert the optional `diff_opt` step
+between `place` and `diff_sizing`. It runs the placement-parasitic discrete sizing/buffering controller,
 while the legacy `diff_buffering` name remains an alias for existing workspaces.
 The controller's ordered mode/flow tuple configuration is documented in
 [the configuration reference](../chipcompiler/docs/ecc-config-ref.en.md).
@@ -798,8 +799,9 @@ and EM limits are invented test data, **not foundry data**. A successful CI run
 with this fixture verifies execution and data handoff only; its IR/EM numbers
 must not be used for signoff. Normal projects do not select it automatically.
 
-Three optional steps can be excluded from a workspace at creation time:
-the synthesis LEC (`lec`), the post-route LEC (`postRouteLec`), and timing
+Four optional steps can be excluded from a workspace at creation time:
+the synthesis LEC (`lec`), placement-parasitic optimization (`diff_opt`),
+the post-route LEC (`postRouteLec`), and timing
 optimization (`Timing optimization`). Skipped steps never enter the
 workspace's execution ledger — their inputs fall through to the previous
 retained step, and no step directory is created for them. State-machine,
@@ -813,14 +815,16 @@ The policy is declared on two surfaces, with the common precedence
 1. `ecc.toml` → `[flow] skip_steps` (project level; an explicit
    declaration — including an empty list — wins over the workspace entry),
 2. `project.json` → `workspaces[].skip_steps` (per-workspace base layer),
-3. code default `("lec",)` when neither declares the key.
+3. code default `("lec", "diff_opt")` when neither declares the key.
 
 When both surfaces declare the policy with different effective values,
 `ecc run`/`ecc check` emit a `skip_steps_shadowed` warning naming the
 winning source.
 
-An explicit `skip_steps = []` runs every step and is the only way to
-enable the synthesis LEC. Selecting the `synthesis_lec` preset while the
+Set `skip_steps = ["lec"]` to enable `diff_opt` while leaving synthesis LEC
+disabled, or `["diff_opt"]` to enable synthesis LEC alone.
+An explicit `skip_steps = []` runs every step, enabling both.
+Selecting the `synthesis_lec` preset while the
 effective policy skips `lec` is a creation-time configuration error; the
 fix is `skip_steps = []`. Entries accept the same aliases as flow ranges
 (e.g. `LEC`, `postlec`, `TimingOpt`) and are validated against the
@@ -829,8 +833,8 @@ skippable set.
 ```toml
 [flow]
 preset = "rtl2gds"
-# LEC is skipped by default; clear the list to enable it.
-skip_steps = ["lec"]
+# Remove diff_opt to enable it; clear the list to also enable synthesis LEC.
+skip_steps = ["lec", "diff_opt"]
 ```
 
 ### Reports
@@ -885,7 +889,7 @@ root = "/path/to/ics55"
 
 [flow]
 preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
-# Optional: skip_steps = ["lec"] (default); [] runs everything (enables LEC)
+# Optional: skip_steps = ["lec", "diff_opt"] (default); [] runs everything
 ```
 
 For filelist mode, set `design.rtl` to a single filelist path, for example

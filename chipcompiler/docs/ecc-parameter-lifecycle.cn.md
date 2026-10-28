@@ -33,7 +33,8 @@ manifest 基础层是"地板"而不是"覆盖"：`ecc.toml` 与 `--set` 的值�
 
 `skip_steps` 遵循同一收敛方向：显式的 `ecc.toml` `[flow] skip_steps`
 （含空列表 `[]`）优先于 `project.json` workspace 条目，后者优先于代码
-默认 `("lec",)`；两个面声明的策略不一致时，`ecc run`/`ecc check`
+默认 `("lec", "diff_opt")`；设为 `["lec"]` 可开启 `diff_opt`。
+两个面声明的策略不一致时，`ecc run`/`ecc check`
 发出 `skip_steps_shadowed` 警告并指明获胜来源。
 
 ## 生效时机

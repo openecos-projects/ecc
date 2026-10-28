@@ -12,7 +12,7 @@ from chipcompiler.cli.project.params import (
     parse_cli_overrides,
     resolve_parameters,
 )
-from chipcompiler.data import PDK, OriginDesign, StepEnum, Workspace
+from chipcompiler.data import PDK, OriginDesign, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.data.workspace import init_workspace_config
 from chipcompiler.rtl2gds.builder import build_flow_range
 from chipcompiler.tools.ecc_dreamplace import builder
@@ -139,7 +139,7 @@ def test_placement_range_connects_diff_opt_to_sizing():
     chain = build_flow_range("place", "diff_sizing")
     assert [(step.value, tool) for step, tool, _state in chain] == [
         (StepEnum.PLACEMENT.value, "dreamplace"),
-        (StepEnum.DIFF_OPT.value, "dreamplace"),
+        (SkippableStepEnum.DIFF_OPT.value, "dreamplace"),
         (StepEnum.DIFF_SIZING.value, "dreamplace"),
     ]
 

@@ -339,7 +339,7 @@ class DreamplaceModule:
                     alias = dict(ppa)
                     alias.update(
                         legacy_step=StepEnum.DIFF_BUFFERING.value,
-                        canonical_step=StepEnum.DIFF_OPT.value,
+                        canonical_step=SkippableStepEnum.DIFF_OPT.value,
                         flow_kind="diff_buffering_legacy_alias",
                     )
                     json_write(Path(self.result_dir) / "diff_buffering_summary.json", alias)

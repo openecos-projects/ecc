@@ -6,6 +6,7 @@ from pathlib import Path
 
 from chipcompiler.data import (
     EccStep,
+    SkippableStepEnum,
     StepEnum,
     Workspace,
     WorkspaceStep,
@@ -87,7 +88,7 @@ def _apply_placement_buffering_profile(
 
 
 def step_config_path(workspace: Workspace, step: WorkspaceStep) -> Path:
-    if step.name == StepEnum.DIFF_OPT.value:
+    if step.name == SkippableStepEnum.DIFF_OPT.value:
         return (
             require_path(step.data.workdir_for(step.name), "DreamPlace diff-opt workdir")
             / "dreamplace_diff_opt.json"
@@ -292,7 +293,7 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
     explicit_keys = set(dreamplace_overrides) if isinstance(dreamplace_overrides, dict) else set()
     explicit_keys.update(apply_direct_config_overrides({}, parameter_data))
     explicit_keys.update(internal_buffering_keys)
-    if step.name == StepEnum.DIFF_OPT.value:
+    if step.name == SkippableStepEnum.DIFF_OPT.value:
         params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
     elif step.name == StepEnum.DIFF_SIZING.value:
         params = _apply_diff_sizing_defaults(params, explicit_keys=explicit_keys)
@@ -309,7 +310,7 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
     # effective config and therefore must be replayed after profile expansion.
     params = apply_parameter_overrides(params, parameter_data)
     params = apply_direct_config_overrides(params, parameter_data)
-    if step.name == StepEnum.DIFF_OPT.value:
+    if step.name == SkippableStepEnum.DIFF_OPT.value:
         params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
     elif step.name == StepEnum.DIFF_SIZING.value:
         # Workspace-level placement values (density, padding and routability)

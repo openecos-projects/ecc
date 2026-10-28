@@ -36,7 +36,8 @@ re-resolves the matrix:
 
 `skip_steps` follows the same convergence: an explicit `ecc.toml`
 `[flow] skip_steps` (including `[]`) wins over the `project.json`
-workspace entry, which wins over the code default `("lec",)`; when both
+workspace entry, which wins over the code default `("lec", "diff_opt")`.
+Set `["lec"]` to enable `diff_opt`. When both
 surfaces declare different policies, `ecc run`/`ecc check` emit a
 `skip_steps_shadowed` warning naming the winning source.
 

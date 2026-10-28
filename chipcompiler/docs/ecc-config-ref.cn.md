@@ -425,13 +425,24 @@ S50 继续使用 RRR=3、padding=0 和最终 legalization；placement bin 使用
 预设并进行自适应计算，计算上限仍为 512×512，GR route grid 跟随该自适应 bin
 并按 die aspect ratio 调整。
 
-`diff_opt` 是 placement 之后、`diff_sizing` 之前的独立步骤，用来替换新 workspace
-中的 `diff_buffering`。它从上一阶段的 DEF/Verilog 开始，只支持 placement parasitic，
+`diff_opt` 是 placement 之后、`diff_sizing` 之前的可选独立步骤，用来替换新 workspace
+中的 `diff_buffering`。新建 workspace 默认跳过该步骤，仍执行独立的 `diff_sizing`。
+通过项目 `ecc.toml` 的一个参数即可开启：
+
+```toml
+[flow]
+skip_steps = ["lec"]  # 开启 diff_opt；默认值为 ["lec", "diff_opt"]
+```
+
+`skip_steps` 是完整跳过列表；若另有需跳过的步骤，请保留在列表中。
+`skip_steps = []` 同时开启 synthesis LEC 和 `diff_opt`。
+已有 workspace 按保存的 ledger 续跑；切换策略需新建 workspace 或使用 `--overwrite`。
+
+启用后，它从上一阶段的 DEF/Verilog 开始，只支持 placement parasitic，
 并可以执行 discrete sizing、candidate buffering 或二者交错：每个 segment 保留三个候选位置，
 使用 ICS55 的 BUFX8H7L、BUFX12H7L、BUFX16H7L、BUFX20H7L 四档 buffer，
 每轮每条 net 最多接受一个动作，再按全局梯度收益排序选取配置比例的 net。
-默认使用 joint 模式：执行五组 S1+B1，权重均为 500/5/1/1；合计 5 轮
-sizing、5 轮 buffering。
+启用后的默认 joint 配置为下例的十组 S1+B1，权重均为 500/5/1/1。
 每轮 buffering 的选择比例为 0.1%。buffer 实体化后完整刷新拓扑，
 使用 padding=0 做 geometry-only legalization，并保存新的 DEF/Verilog 和终态 hard STA。
 该步骤不执行 GP，按三元组顺序执行离散 sizing 或 buffering。
@@ -468,7 +479,7 @@ diff_optimization_flows = [
 ]
 ```
 
-上例也是新 workspace 的默认配置，即十轮 S1+B1。列表只执行一次，S1+B1 的重复由列表显式表示；
+上例是启用 `diff_opt` 后的默认配置，即十轮 S1+B1。列表只执行一次，S1+B1 的重复由列表显式表示；
 每个 S phase 执行一次离散 sizing，每个 B phase 执行一次 buffering。
 切换为 sizing-only 或 buffering-only 时，应同时将 flow 列表改为对应动作；
 JSON 中也可设为 `null`，分别使用该模式的 S50 或 B10 简写。
@@ -477,10 +488,11 @@ JSON 中也可设为 `null`，分别使用该模式的 S50 或 B10 简写。
 route-extracted SPEF 或 post-route RC 会直接报错。旧的 `diff_buffering_*` 参数仍作为
 buffering-only `diff_opt` 的兼容别名。
 
-可以用 `ecc run --project PROJECT --workspace NAME --from diff_opt --to diff_opt`
+在 `skip_steps` 中移除 `diff_opt` 后，可以用
+`ecc run --project PROJECT --workspace NAME --from diff_opt --to diff_opt`
 单独执行；结束范围改为 `--to diff_sizing` 则继续做独立 GR S50。
 已有 workspace 继续使用保存的 `diff_buffering` alias；新建 workspace 使用
-`diff_opt → diff_sizing` 两个独立步骤。
+启用 `diff_opt` 时执行 `diff_opt → diff_sizing` 两个独立步骤。
 
 placement 的 sizing 窗口和 `diff_opt` 的 `sz` 阶段也默认使用 LUT action，
 并以 `place.timing_sizing_action="up"` 限制为 `size_up`/`vt_speedup` 二选一。
@@ -784,7 +796,7 @@ check_antenna -step_json /path/to/antennaCheck.step.json
 
 | 项 | 内容 |
 |---|---|
-| `lec` 输入 | 综合映射网表为 gate；声明的 `design.golden_netlist`（或解析后的步骤接线）为 golden。它紧跟 synthesis，且**默认被跳过**（`[flow] skip_steps` 默认为 `["lec"]`）。 |
+| `lec` 输入 | 综合映射网表为 gate；声明的 `design.golden_netlist`（或解析后的步骤接线）为 golden。它紧跟 synthesis，且**默认被跳过**（`[flow] skip_steps` 默认为 `["lec", "diff_opt"]`）。 |
 | `postRouteLec` 输入 | 综合映射网表为 golden，`filler` 输出网表为 gate（`filler_ecc/output/<设计>_filler.v.gz`）。它位于 `antennaCheck` 之后、`RCX` 之前；post-route LEC 是唯一不按 checker 结果继续传递的例外。 |
 | 签核 | 当前有效的 `status=proven` 计入签核清单；布线后 LEC 结果进入签核包的 `final/reports/postRouteLec/`。 |
 
