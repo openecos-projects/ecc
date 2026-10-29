@@ -508,7 +508,11 @@ $ ecc run --workspace default          # everything already succeeded → nothin
 
 The run summary record carries `no_op: true` (visible in `--plain` output; the `--resume`/`--only` selector paths also carry an `executed_steps` list). If `ecc.toml` and the baseline values recorded in `project.json` effectively disagree (for example `pdk.root` resolving to a different PDK than the one recorded by the first run, or `flow.preset` differing from the workspace's declared range), a `warning: ...` line (`config_layer_diverged`) is prepended to the summary block; it does not affect the execution result.
 
-**Target reconciliation on an existing workspace**: on a repeat `ecc run`, the CLI aligns the workspace's persisted flow with the current target (the `flow.preset` from `ecc.toml`, or the start/end range declared for that workspace in `project.json`):
+**Target reconciliation on an existing workspace**: on a repeat `ecc run`, an explicit
+start/end range in `home/params.toml` remains the target, including for bounded derived
+workspaces in a project declaring `flow.preset`. Otherwise the project preset or the
+workspace's persisted target governs. An explicit `--preset` overrides the saved range.
+The CLI aligns the persisted ledger with that target:
 
 - the persisted steps are a **prefix** of the target and not finished yet → resume, **auto-extending** to the target end when necessary (for example a workspace first created with `--preset synthesis_lec` while `ecc.toml` says `rtl2gds`: a subsequent bare `ecc run` continues from the current progress and completes the physical flow);
 - the persisted range ⊇ the target and every step succeeded → `no_op` (a default resume never re-runs the wider persisted range past the target end);
@@ -960,7 +964,7 @@ The remaining `ecc workspace` subcommands manage the declared lifecycle without 
 ```bash
 ecc workspace create <NAME> [--path DIR] [--from STEP] [--to STEP] [--set KEY=VALUE...]
                                     # create and register an empty managed workspace (no run)
-ecc workspace derive <SOURCE> <TARGET> [--from STEP]
+ecc workspace derive <SOURCE> <TARGET> [--from STEP] [--to STEP]
                                     # branch a new workspace from an existing one's completed state
 ecc workspace archive <NAME>        # mark the workspace archived: kept on disk, out of auto-selection
 ecc workspace delete <NAME> [--delete-directory]
@@ -972,9 +976,21 @@ ecc workspace reconcile-deletes     # finish half-completed workspace deletions 
 `create` is what `ecc run` does before executing, split out for GUI/automation flows that
 register the ID first; `--from/--to` declare a bounded range and `--set` records parameter
 overrides at creation (the same fresh-run semantics as `ecc run --set`). `derive` copies the
-source workspace's completed steps into `<project>/<TARGET>` — optionally only from a given
-step — and registers the branch relationship in `project.json`, so an experiment can continue
-from an intermediate result without touching the source. `archive` is the preferred way to
+source workspace into `<project>/<TARGET>` and registers the branch relationship in
+`project.json`. `--from STEP` resets that step and all later steps, retaining earlier
+completed states and outputs. To continue from a selected output, pass the **next runnable
+step**; for example, `ecc workspace derive source trial --from preFloorplan` retains the
+Synthesis output. Without `--from`, all steps are reset.
+Adding `--to STEP` creates a bounded flow: `home/flow.json` contains only the inclusive
+`--from`/`--to` range (or starts at the source's first step if `--from` is omitted).
+The entry step's inherited netlist/DEF and constraints are copied into `origin/`, so the
+flow can resume without putting earlier steps back into the ledger. For example,
+`ecc workspace derive source trial --from preFloorplan --to macroPlacement` creates
+exactly those two steps, using the source Synthesis output as input.
+The derived snapshot uses the target
+Workspace ID and starts at revision 1. Workspace-local parameter changes can then be applied
+with `ecc param apply --workspace trial --set KEY=VALUE ...`, without modifying the source.
+`archive` is the preferred way to
 retire a workspace from auto-selection (instead of editing `project.json` by hand); `delete`
 unregisters it and optionally removes the directory. The automation flags apply where
 relevant (`--expected-revision` on archive/delete/reset-flow; `--command-id` and `--no-wait`

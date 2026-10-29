@@ -128,9 +128,15 @@ def _workspace(tmp_path):
     )
 
 
+def _sta_config(**overrides):
+    template = Path(sta.__file__).parent / "configs" / "sta_ecc.json"
+    return {**json.loads(template.read_text()), **overrides}
+
+
 def test_worker_setting_applies_to_every_workspace_sta_step(tmp_path, monkeypatch):
     monkeypatch.setattr(sta.sys, "platform", "linux")
-    monkeypatch.setattr(sta.os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(sta.os, "cpu_count", lambda: 32)
+    monkeypatch.setattr(sta.os, "sched_getaffinity", lambda _: set(range(32)), raising=False)
     workspace = _workspace(tmp_path)
     config_path = tmp_path / "sta.json"
     workspace.config["sta"] = config_path
@@ -138,22 +144,44 @@ def test_worker_setting_applies_to_every_workspace_sta_step(tmp_path, monkeypatc
     step: Any = SimpleNamespace(tool="ecc", name="sta")
     assert sta.sta_workers(workspace, step) == 1
     monkeypatch.setenv("ECOS_AGENT_STA_WORKERS", "4")
-    for value in (1, 2, 3, 4):
-        config_path.write_text(json.dumps({"max_parallel_corners": value}))
+    for value in (1, 2, 3, 4, 13):
+        config_path.write_text(json.dumps(_sta_config(max_parallel_corners=value)))
         assert sta.sta_workers(workspace, step) == value
-    for value in (0, 5, True, 2.5, "2"):
+    for value in (0, -1, True, 2.5, "2"):
         config_path.write_text(json.dumps({"max_parallel_corners": value}))
-        with pytest.raises(ValueError, match="between 1 and 4"):
+        with pytest.raises(ValueError, match="positive integer"):
             sta.sta_workers(workspace, step)
     step.name = "Harden"
     assert sta.sta_workers(workspace, step) == 1
+
+
+@pytest.mark.parametrize(
+    ("signoff", "cpu_count", "expected"),
+    [
+        ([{"MAX": ["Cworst", "RCworst"]}, {"MIN": ["Cbest"]}], 32, 3),
+        ([{"MAX": [f"RC{index}" for index in range(17)]}], 32, 17),
+        ([{"MAX": [f"RC{index}" for index in range(17)]}], 8, 8),
+        ([], 32, 1),
+    ],
+)
+def test_worker_limit_tracks_configured_signoff_jobs(
+    tmp_path, monkeypatch, signoff, cpu_count, expected
+):
+    config_path = tmp_path / "sta.json"
+    config_path.write_text(json.dumps(_sta_config(max_parallel_corners=32, signoff=signoff)))
+    monkeypatch.setattr(sta.sys, "platform", "linux")
+    monkeypatch.setattr(sta.os, "cpu_count", lambda: cpu_count)
+    monkeypatch.setattr(sta.os, "sched_getaffinity", lambda _: set(range(32)), raising=False)
+    workspace = SimpleNamespace(config={"sta": config_path})
+    step = SimpleNamespace(tool="ecc", name="sta")
+    assert sta.sta_workers(workspace, step) == expected
 
 
 def test_non_linux_keeps_serial_default(tmp_path, monkeypatch):
     monkeypatch.setattr(sta.sys, "platform", "darwin")
     workspace = _workspace(tmp_path)
     config_path = tmp_path / "sta.json"
-    config_path.write_text('{"max_parallel_corners": 4}')
+    config_path.write_text(json.dumps(_sta_config(max_parallel_corners=13)))
     workspace.config["sta"] = config_path
     step: Any = SimpleNamespace(tool="ecc", name="sta")
     assert sta.sta_workers(workspace, step) == 1
@@ -162,21 +190,22 @@ def test_non_linux_keeps_serial_default(tmp_path, monkeypatch):
 @pytest.mark.skipif(not hasattr(os, "sched_getaffinity"), reason="CPU affinity unavailable")
 def test_cpu_affinity_limits_corner_concurrency(tmp_path, monkeypatch):
     config_path = tmp_path / "sta.json"
-    config_path.write_text('{"max_parallel_corners": 4}')
+    config_path.write_text(json.dumps(_sta_config(max_parallel_corners=13)))
     workspace: Any = SimpleNamespace(config={"sta": config_path})
     monkeypatch.setattr(sta.sys, "platform", "linux")
     monkeypatch.setattr(sta.os, "sched_getaffinity", lambda _: {0})
     assert sta.sta_workers(workspace, SimpleNamespace(tool="ecc", name="sta")) == 1
 
 
-@pytest.mark.parametrize("workers", [1, 2, 3, 4])
+@pytest.mark.parametrize("workers", [1, 2, 3, 4, 13])
 def test_cli_tool_dispatch_uses_the_sta_config(tmp_path, monkeypatch, workers):
     config_path = tmp_path / "sta.json"
-    config_path.write_text(json.dumps({"max_parallel_corners": workers}))
+    config_path.write_text(json.dumps(_sta_config(max_parallel_corners=workers)))
     workspace: Any = SimpleNamespace(config={"sta": config_path})
     step: Any = SimpleNamespace(name="sta", tool="ecc")
     monkeypatch.setattr(sta.sys, "platform", "linux")
-    monkeypatch.setattr(sta.os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(sta.os, "cpu_count", lambda: 32)
+    monkeypatch.setattr(sta.os, "sched_getaffinity", lambda _: set(range(32)), raising=False)
     monkeypatch.setattr(sta.runner, "is_eda_exist", lambda: True)
     calls = []
     monkeypatch.setattr(sta.runner, "run_sta", lambda **_: calls.append(1) or True)

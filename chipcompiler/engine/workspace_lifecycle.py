@@ -195,10 +195,16 @@ def _create_workspace_from_spec(
     flow_steps = get_flow_builders()[resolved["flow"]["flowId"]]()
     flow_start = resolved["flow"].get("fromStepId")
     flow_end = resolved["flow"].get("throughStepId")
-    flow_config = {
-        "start_step": flow_start or str(getattr(flow_steps[0][0], "value", flow_steps[0][0])),
-        "end_step": flow_end or str(getattr(flow_steps[-1][0], "value", flow_steps[-1][0])),
-    }
+    flow_id = resolved["flow"]["flowId"]
+    if flow_id != "rtl2gds":
+        # Non-canonical presets (syn_sta, defview, ...) persist as their
+        # preset name; their steps are not a range of the canonical chain.
+        flow_config = {"preset": flow_id}
+    else:
+        flow_config = {
+            "start_step": flow_start or str(getattr(flow_steps[0][0], "value", flow_steps[0][0])),
+            "end_step": flow_end or str(getattr(flow_steps[-1][0], "value", flow_steps[-1][0])),
+        }
     pdk, pdk_root, pdk_overrides = _bound_pdk(
         resolved["pdk"], _string_keyed_dict(binding_map["pdk"])
     )

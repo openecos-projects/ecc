@@ -515,6 +515,10 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
             state = run_filler(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.HARDEN.value:
             state = run_harden(workspace=workspace, step=step, ecc_module=ecc_module)
+        case StepEnum.DEFVIEW.value:
+            from chipcompiler.tools.ecc.defview import run_defview
+
+            state = run_defview(workspace=workspace, step=step, ecc_module=ecc_module)
 
         case StepEnum.RCX.value:
             state = run_rcx(workspace=workspace, step=step, ecc_module=ecc_module)

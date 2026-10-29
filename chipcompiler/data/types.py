@@ -58,6 +58,7 @@ class StepEnum(StepBaseEnum):
     EMIR = "emir"
     ABSTRACT_LEF = "Abstract lef"
     HARDEN = "Harden"
+    DEFVIEW = "defview"
 
 
 class SkippableStepEnum(StepBaseEnum):
@@ -141,6 +142,7 @@ FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
     StepEnum.ABSTRACT_LEF.value: FlowStepPolicy(FlowStepCategory.PNR),
     SkippableStepEnum.LEC.value: FlowStepPolicy(FlowStepCategory.PNR),
     SkippableStepEnum.TIMING_OPT.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.DEFVIEW.value: FlowStepPolicy(FlowStepCategory.PNR),
 }
 
 ADVISORY_FLOW_STEPS: Final = frozenset(

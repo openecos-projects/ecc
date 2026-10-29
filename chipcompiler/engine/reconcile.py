@@ -177,6 +177,7 @@ def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
     """
     from chipcompiler.data import LEC_STEP_TOOLS, SkippableStepEnum
     from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
+    from chipcompiler.data.workspace.flow_data import _flow_entries_for_config
     from chipcompiler.data.workspace_config import flow_range_of
     from chipcompiler.rtl2gds import resolve_lec_engine
 
@@ -184,7 +185,12 @@ def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
     if flow_range is None:
         return []
     start, end = flow_range
-    chain = _canonical_rtl2gds_flow_entries()
+    preset = flow_section.get("preset") if isinstance(flow_section, dict) else None
+    chain = (
+        _flow_entries_for_config({"preset": preset})
+        if isinstance(preset, str)
+        else _canonical_rtl2gds_flow_entries()
+    )
     names = [name for name, _tool, _state in chain]
     entries = [
         (name, tool) for name, tool, _state in chain[names.index(start) : names.index(end) + 1]

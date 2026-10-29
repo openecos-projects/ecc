@@ -7,8 +7,11 @@ SCHEMAS = (
         ("max_parallel_corners",),
         1,
         applies="sta",
-        description="Maximum simultaneous STA corners, reduced when memory headroom is low.",
-        range=(1, 4),
+        description=(
+            "Maximum simultaneous STA corners, capped by the configured signoff corner "
+            "combinations, available CPUs, and memory headroom."
+        ),
+        range=(1, None),
     ),
     config_param(
         "sta.liberty",

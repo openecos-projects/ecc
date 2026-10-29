@@ -177,6 +177,7 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
         "poweranalysis": StepEnum.POWER_ANALYSIS.value,
         "emir": StepEnum.EMIR.value,
         "harden": StepEnum.HARDEN.value,
+        "defview": StepEnum.DEFVIEW.value,
     }
     return aliases.get(alias_key, token)
 
@@ -233,6 +234,11 @@ def build_synthesis_lec_flow(*, lec_engine: LECEngineEnum | str = DEFAULT_LEC_EN
     steps.append((SkippableStepEnum.LEC, lec_tool, StateEnum.Unstart))
 
     return steps
+
+
+def build_defview_flow() -> list:
+    """LEF+DEF layout preview: load the design DEF and export a geometry snapshot."""
+    return [(StepEnum.DEFVIEW, ToolName.ECC.value, StateEnum.Unstart)]
 
 
 def get_flow_builders() -> dict[str, Callable[[], list]]:

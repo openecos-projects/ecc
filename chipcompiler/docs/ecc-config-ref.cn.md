@@ -7,7 +7,10 @@
 
 ## 0. 配置体系总览
 
-STA 并行调度参数：`sta.max_parallel_corners` 为整数 1–4，默认 1，
+STA 并行调度参数：`sta.max_parallel_corners` 为正整数，默认 1。实际最大值由生成的
+STA JSON 中 `signoff` 的工艺/RC corner 组合数决定，例如标准 ICS55 配置为 13。
+参数目录中的范围为 `[1, null]`，`null` 表示没有固定数值上限。
+
 通过 `ecc param set sta.max_parallel_corners 3 --workspace baseline` 设置。
 参数经标准配置刷新写入 STA JSON 的 `max_parallel_corners`。ECC/Studio Linux
 runtime 将其作为最大并行 corner 数，内存余量不足时减少并行度；

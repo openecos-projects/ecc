@@ -322,7 +322,7 @@ def validate_value(value: object, schema: ParamSchema) -> list[str]:
     if schema.range is not None:
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             errors.append(f"value {value!r} is not numeric for {schema.param}")
-        elif value < schema.range[0] or value > schema.range[1]:
+        elif value < schema.range[0] or (schema.range[1] is not None and value > schema.range[1]):
             errors.append(
                 f"value {value} out of range [{schema.range[0]}, {schema.range[1]}] "
                 f"for {schema.param}"

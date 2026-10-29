@@ -19,7 +19,7 @@ class ParamSchema:
     maps_to: str | dict | None = None
     config_target: ConfigTarget | None = None
     pdk_target: str | None = None
-    range: tuple[float, float] | None = None
+    range: tuple[float, float | None] | None = None
     choices: tuple[str, ...] | None = None
     unit: str | None = None
     example: str | None = None
@@ -46,7 +46,7 @@ def config_param(
     applies: str,
     description: str,
     type: str | None = None,
-    range: tuple[float, float] | None = None,
+    range: tuple[float, float | None] | None = None,
     choices: tuple[str, ...] | None = None,
 ) -> ParamSchema:
     if type is None:

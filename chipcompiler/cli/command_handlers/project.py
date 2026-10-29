@@ -609,6 +609,7 @@ def derive_workspace(command_input, ctx: CommandContext) -> CommandResult:
             ctx.run_dir,
             target,
             reset_from_step=command_input.from_step or "",
+            through_step=command_input.to_step or "",
             command_id=command_id,
             blocking=not command_input.no_wait,
             project_id=project_manifest.project_id,

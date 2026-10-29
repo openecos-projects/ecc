@@ -30,6 +30,7 @@ def derive_workspace(
     target_directory: str | Path,
     *,
     reset_from_step: str = "",
+    through_step: str = "",
     command_id: str = "",
     cause: str = "workspace.derived",
     blocking: bool = True,
@@ -40,11 +41,14 @@ def derive_workspace(
     """Copy ``source_directory`` to ``target_directory`` under a new identity.
 
     The source stays read-only and byte-identical. The target receives a new
-    Engineering Snapshot (fresh workspaceId, revision 1, ``cause``), an empty
+    Engineering Snapshot (target_workspace_id or a fresh ID, revision 1, ``cause``), an empty
     runtime command ledger, and no inherited workspace command records. With an
     empty ``reset_from_step`` the whole flow is prepared for a rerun; otherwise
     only the named step and its flow suffix are reset while earlier steps keep
     their Success state and artifacts.
+
+    With ``through_step``, the ledger contains only the inclusive requested
+    range, with the first step's inherited inputs frozen into ``origin/``.
 
     Returns the loaded derived workspace.
     """
@@ -53,6 +57,13 @@ def derive_workspace(
 
     source = Path(source_directory).expanduser().resolve()
     target = Path(target_directory).expanduser().resolve()
+    command_spec = {
+        "directory": str(source),
+        "targetDirectory": str(target),
+        "resetFromStep": reset_from_step,
+        **({"throughStep": through_step} if through_step else {}),
+    }
+    fingerprint = workspace_command_fingerprint("derive", command_spec, None)
     if path_is_within(target, source):
         raise WorkspaceLifecycleError(
             "workspace_invalid", f"Target directory is inside the source Workspace: {target}"
@@ -65,20 +76,10 @@ def derive_workspace(
     locks = sorted((source, target), key=str)
     with workspace_lock(locks[0], blocking=blocking), workspace_lock(locks[1], blocking=blocking):
         if target.exists():
-            if command_id:
-                fingerprint = workspace_command_fingerprint(
-                    "derive",
-                    {
-                        "directory": str(source),
-                        "targetDirectory": str(target),
-                        "resetFromStep": reset_from_step,
-                    },
-                    None,
-                )
-                if command_retry_matches(target, command_id, fingerprint):
-                    workspace = load_workspace(target)
-                    if workspace is not None:
-                        return workspace
+            if command_id and command_retry_matches(target, command_id, fingerprint):
+                workspace = load_workspace(target)
+                if workspace is not None:
+                    return workspace
             raise WorkspaceLifecycleError("workspace_exists", f"Workspace already exists: {target}")
         staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=target.parent))
         staging.rmdir()
@@ -104,7 +105,12 @@ def derive_workspace(
             )
 
             engine_flow = build_flow_for_workspace(workspace)
-            if reset_from_step:
+            if through_step:
+                from chipcompiler.engine.workspace_derive_range import bound_derived_flow
+
+                bound_derived_flow(workspace, engine_flow, reset_from_step, through_step)
+                _prune_derived_checklist(workspace, engine_flow.workspace_steps)
+            elif reset_from_step:
                 reset_steps = _reset_step_suffix(engine_flow, reset_from_step)
                 prepare_steps_for_rerun(workspace, engine_flow, reset_steps)
                 _prune_derived_checklist(workspace, reset_steps)
@@ -115,25 +121,18 @@ def derive_workspace(
                     workspace, engine_flow, preserve_user_inputs=True
                 )
 
-            snapshot = create_engineering_snapshot(workspace, cause=cause)
+            snapshot = create_engineering_snapshot(
+                workspace, workspace_id=target_workspace_id or None, cause=cause
+            )
             _rewrite_staged_paths(
                 staging,
                 ((str(source), str(target)), (str(staging), str(target))),
             )
             if command_id:
-                command_spec = {
-                    "directory": str(source),
-                    "targetDirectory": str(target),
-                    "resetFromStep": reset_from_step,
-                }
                 write_workspace_command(
                     staging,
                     command_id,
-                    workspace_command_fingerprint(
-                        "derive",
-                        command_spec,
-                        None,
-                    ),
+                    fingerprint,
                     snapshot["workspaceId"],
                     snapshot["workspaceRevision"],
                     metadata={
@@ -162,12 +161,15 @@ def derive_workspace(
 
 
 def _reset_step_suffix(engine_flow, reset_from_step: str) -> list:
+    from chipcompiler.rtl2gds import normalize_flow_step
+
+    identity = normalize_flow_step(reset_from_step).casefold()
     workspace_steps = list(getattr(engine_flow, "workspace_steps", []))
     index = next(
         (
             position
             for position, step in enumerate(workspace_steps)
-            if str(getattr(step, "name", "")).casefold() == reset_from_step.casefold()
+            if normalize_flow_step(str(getattr(step, "name", ""))).casefold() == identity
         ),
         -1,
     )

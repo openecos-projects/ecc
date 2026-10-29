@@ -569,7 +569,7 @@ $ ecc run --workspace default          # 已全部成功时再跑一次 → 无�
 
 run 汇总记录会带 `no_op: true`（`--plain` 输出可见；用 `--resume`/`--only` 等选择器时还会带 `executed_steps` 列表）。若 `ecc.toml` 与 `project.json` 记录的基线值实际不一致（如 `pdk.root` 解析到了与首次运行记录不同的 PDK，或 `flow.preset` 与 workspace 声明的范围不一致），汇总块前会多一行 `warning: ...` 提示（`config_layer_diverged`），不影响执行结果。
 
-**已有 workspace 的目标对齐（reconcile）**：再次 `ecc run` 时，CLI 会把 workspace 已持久化的 flow 与当前目标（`ecc.toml` 的 `flow.preset`，或 `project.json` 中该 workspace 声明的 start/end 范围）对齐：
+**已有 workspace 的目标对齐（reconcile）**：再次 `ecc run` 时，`home/params.toml` 中显式保存的 start/end 范围继续作为目标，即使项目声明了 `flow.preset`，有界派生 workspace 也保持所选范围。否则使用项目预设或 workspace 已持久化的目标。显式 `--preset` 可覆盖保存的范围。CLI 将已持久化的账本与该目标对齐：
 
 - 已持久化步骤是目标的**前缀**且未跑完 → 续跑，必要时**自动扩展**到目标终点（例如先用 `--preset synthesis_lec` 建的 workspace，`ecc.toml` 是 `rtl2gds`，再裸跑 `ecc run` 会从当前进度继续把物理流程跑完）；
 - 已持久化范围 ⊇ 目标且全部成功 → `no_op`（默认 resume 不会越过目标终点重跑更宽的账本）；
@@ -979,7 +979,7 @@ $ ecc workspace refresh default --keep-backup   # 被替换的目录保留为归
 ```bash
 ecc workspace create <NAME> [--path DIR] [--from STEP] [--to STEP] [--set KEY=VALUE...]
                                     # 创建并登记空的受管 workspace（不运行）
-ecc workspace derive <SOURCE> <TARGET> [--from STEP]
+ecc workspace derive <SOURCE> <TARGET> [--from STEP] [--to STEP]
                                     # 从已有 workspace 的完成状态分叉出新 workspace
 ecc workspace archive <NAME>        # 标记归档：保留在磁盘上，但退出自动选择
 ecc workspace delete <NAME> [--delete-directory]
@@ -990,9 +990,19 @@ ecc workspace reconcile-deletes     # 崩溃后收尾未完成的 workspace 删�
 
 `create` 是 `ecc run` 在执行前所做创建动作的独立形式，供 GUI/自动化流程先登记 ID；
 `--from/--to` 声明有界范围，`--set` 在创建时记录参数覆盖（与 `ecc run --set` 的
-fresh-run 语义相同）。`derive` 把源 workspace 已完成的步骤复制到
-`<project>/<TARGET>`——可以只从指定步骤开始——并在 `project.json` 中登记分叉关系，
-使实验可以从中间结果继续而不影响源。`archive` 是让 workspace 退出自动选择的推荐方式
+fresh-run 语义相同）。`derive` 把源 workspace 复制到 `<project>/<TARGET>`，
+并在 `project.json` 中登记分叉关系。`--from STEP` 会重置该步骤及后续步骤，保留此前
+步骤的完成状态和输出。从选定输出继续时，应传入**下一个可运行步骤**；例如
+`ecc workspace derive source trial --from preFloorplan` 会保留 Synthesis 的输出。
+不传 `--from` 时重置全部步骤。
+增加 `--to STEP` 后，`home/flow.json` 只包含 `--from` 到 `--to` 的闭区间；未传 `--from`
+时从源工作区的首步开始。入口步骤原本使用的网表、DEF 和约束会复制到新工作区的 `origin/`，
+因此无需将此前步骤重新加入流程。例如，
+`ecc workspace derive source trial --from preFloorplan --to macroPlacement`
+只生成这两个步骤，并使用源 Synthesis 输出作为输入。
+派生快照使用目标 workspace ID，初始 revision 为 1。
+随后可用 `ecc param apply --workspace trial --set KEY=VALUE ...` 批量修改目标参数，
+不影响源 workspace。`archive` 是让 workspace 退出自动选择的推荐方式
 （不必手改 `project.json`）；`delete` 取消登记并可选删除目录。自动化选项按需适用
 （archive/delete/reset-flow 带 `--expected-revision`；创建/分叉类子命令带
 `--command-id` 与 `--no-wait`；见 §5.1），对占用中的 workspace 执行变更会报
