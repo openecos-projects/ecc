@@ -30,6 +30,7 @@ def test_workspace_initialization_generates_both_sets_and_refreshes_parameters(
         assert post.startswith(pre)
         assert "set_propagated_clock" not in pre
         assert post.endswith("set_propagated_clock [all_clocks]\n")
+    assert "steps" in workspace.flow.data
     assert all(entry["state"] == "Unstart" for entry in workspace.flow.data["steps"])
 
     loaded = load_workspace(workspace.directory)
