@@ -477,35 +477,87 @@ jobs:
           test -s "$E2E_STAGE_ROOT/kepler-formal/kepler-formal-linux-x64.tar.gz"
           test -s "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.gz"
 
-          print_sha256() {
+          archive_sha256() {
             local archive="$1"
             local checksum
             checksum="$(sha256sum "$archive")"
-            printf 'archive=%s\nsha256=%s\n' "${archive#"$E2E_STAGE_ROOT"/}" "${checksum%% *}"
+            printf '%s' "${checksum%% *}"
           }
+
+          metadata_value() {
+            local key="$1"
+            local file="$2"
+            local value
+            value="$(grep -m1 "^${key}=" "$file")"
+            printf '%s' "${value#*=}"
+          }
+
+          sizer_revision="$(metadata_value revision "$E2E_STAGE_ROOT/sizer/ci-metadata")"
+          sizer_run_id="$(metadata_value run_id "$E2E_STAGE_ROOT/sizer/ci-metadata")"
+          kepler_head_sha="$(metadata_value head_sha "$E2E_STAGE_ROOT/kepler-formal/ci-metadata")"
+          kepler_run_id="$(metadata_value run_id "$E2E_STAGE_ROOT/kepler-formal/ci-metadata")"
+          pdk_revision="$(metadata_value revision "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/ci-metadata")"
+          pdk_release="$(metadata_value release "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/ci-metadata")"
+          ecc_commit_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/"
+
+          # Keep archive locations in the job log, but out of the summary page.
+          printf 'Staged artifact checksums:\n'
+          for archive in \
+            "$E2E_STAGE_ROOT/pyinstaller/ecc.tar" \
+            "$E2E_STAGE_ROOT/oss-cad-suite/oss-cad-suite.tgz" \
+            "$E2E_STAGE_ROOT/sizer/ecc-sizer.tar.gz" \
+            "$E2E_STAGE_ROOT/kepler-formal/kepler-formal-linux-x64.tar.gz" \
+            "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.gz"; do
+            checksum="$(archive_sha256 "$archive")"
+            printf '%s  %s\n' "$checksum" "${archive#"$E2E_STAGE_ROOT"/}"
+          done
+
+          pyinstaller_summary="$(
+            "$RUNNER_TEMP/ecc-smoke/ecc" version --json |
+              jq -er --arg commit_url "$ecc_commit_url" '
+                "| Field | Value |",
+                "|---|---|",
+                "| ECC | \(.ecc) |",
+                "| DreamPlace | \(.dreamplace) |",
+                "| ECC-Tools | \(.ecc_tools) |",
+                "| CLI contract | \(.cli_contract) |",
+                "| Build commit | [\(.build_commit)](\($commit_url + .build_commit)) |",
+                "| Build date | \(.build_date) |"
+              '
+          )"
 
           # Summary code fences are literal Markdown, not shell expressions.
           # shellcheck disable=SC2016
           {
             printf '## Staged E2E dependency versions\n\n'
-            printf '### PyInstaller\n\n```text\n'
-            "$RUNNER_TEMP/ecc-smoke/ecc" version --json
-            print_sha256 "$E2E_STAGE_ROOT/pyinstaller/ecc.tar"
-            printf '```\n\n### OSS CAD Suite\n\n```text\n'
+            printf '### PyInstaller\n\n'
+            printf '%s\n' "$pyinstaller_summary"
+            printf '| SHA-256 | %s |\n\n' "$(archive_sha256 "$E2E_STAGE_ROOT/pyinstaller/ecc.tar")"
+            printf '### OSS CAD Suite\n\n```text\n'
             grep '^version=' "$E2E_STAGE_ROOT/oss-cad-suite/ci-metadata"
             "$E2E_STAGE_ROOT/oss-cad-suite/bin/yosys" -V
-            print_sha256 "$E2E_STAGE_ROOT/oss-cad-suite/oss-cad-suite.tgz"
-            printf '```\n\n### Sizer\n\n```text\n'
-            grep -E '^(revision|run_id)=' "$E2E_STAGE_ROOT/sizer/ci-metadata"
-            print_sha256 "$E2E_STAGE_ROOT/sizer/ecc-sizer.tar.gz"
-            printf '```\n\n### kepler-formal\n\n```text\n'
-            grep -E '^(head_sha|run_id)=' "$E2E_STAGE_ROOT/kepler-formal/ci-metadata"
+            printf 'sha256=%s\n' "$(archive_sha256 "$E2E_STAGE_ROOT/oss-cad-suite/oss-cad-suite.tgz")"
+            printf '```\n\n### Sizer\n\n'
+            printf -- '- Git commit: [%s](https://github.com/openecos-projects/ecc-sizer/commit/%s)\n' \
+              "$sizer_revision" "$sizer_revision"
+            printf -- '- CI run: [%s](https://github.com/openecos-projects/ecc-sizer/actions/runs/%s)\n' \
+              "$sizer_run_id" "$sizer_run_id"
+            printf -- '- SHA-256: `%s`\n' "$(archive_sha256 "$E2E_STAGE_ROOT/sizer/ecc-sizer.tar.gz")"
+            printf '\n### kepler-formal\n\n'
+            printf -- '- Git commit: [%s](https://github.com/openecos-projects/kepler-formal/commit/%s)\n' \
+              "$kepler_head_sha" "$kepler_head_sha"
+            printf -- '- CI run: [%s](https://github.com/openecos-projects/kepler-formal/actions/runs/%s)\n' \
+              "$kepler_run_id" "$kepler_run_id"
+            printf -- '- SHA-256: `%s`\n\n' \
+              "$(archive_sha256 "$E2E_STAGE_ROOT/kepler-formal/kepler-formal-linux-x64.tar.gz")"
+            printf '```text\n'
             "$E2E_STAGE_ROOT/kepler-formal/bin/kepler-formal" --version
-            print_sha256 "$E2E_STAGE_ROOT/kepler-formal/kepler-formal-linux-x64.tar.gz"
-            printf '```\n\n### PDK\n\n```text\n'
-            grep -E '^(revision|release)=' "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/ci-metadata"
-            print_sha256 "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.gz"
-            printf '```\n'
+            printf '```\n\n### PDK\n\n'
+            printf -- '- Git commit: [%s](https://github.com/openecos-projects/icsprout55-pdk/commit/%s)\n' \
+              "$pdk_revision" "$pdk_revision"
+            printf -- '- Release: [%s](https://github.com/openecos-projects/icsprout55-pdk/releases/tag/%s)\n' \
+              "$pdk_release" "$pdk_release"
+            printf -- '- SHA-256: `%s`\n' "$(archive_sha256 "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.gz")"
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
   e2e-designs:
