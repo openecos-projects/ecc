@@ -22,6 +22,7 @@ from chipcompiler.data import (
     Workspace,
 )
 from chipcompiler.data.workspace.sdc import create_default_sdc
+from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
@@ -264,6 +265,9 @@ class FakeCtsModule:
 
     def update_step_paths(self, **kwargs):
         self.calls.append(("update_step_paths", kwargs))
+
+    def update_sta_data_config(self, **kwargs):
+        self.calls.append(("update_sta_data_config", kwargs))
 
     def report_cts(self, **kwargs):
         self.calls.append(("report_cts", kwargs))
@@ -580,6 +584,7 @@ def test_run_cts_merges_structured_timing_into_step_feature(tmp_path, monkeypatc
     }
     assert [call[0] for call in module.calls] == [
         "update_step_paths",
+        "update_sta_data_config",
         "run_cts",
         "report_cts",
         "feature_cts_map",
@@ -608,7 +613,11 @@ def test_run_cts_stops_when_native_run_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(ecc_runner, "run_analysis", analysis)
 
     assert ecc_runner.run_cts(workspace, step, module) is False
-    assert [call[0] for call in module.calls] == ["update_step_paths", "run_cts"]
+    assert [call[0] for call in module.calls] == [
+        "update_step_paths",
+        "update_sta_data_config",
+        "run_cts",
+    ]
     sub_flow.update_step.assert_any_call(
         step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Imcomplete
     )
@@ -978,6 +987,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
     monkeypatch.setattr(module, "feature_sammry", export_summary, raising=False)
     if generated_sdc:
         create_default_sdc(workspace)
+        generate_timing_scripts(workspace)
     original_sdc = sdc.read_bytes()
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
     monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **kwargs: module)
@@ -997,7 +1007,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
             "feature_dir": step.feature.dir / "MAX_125" / "RCworst",
             "lib_paths": [str(max_lib)],
             "sdc_path": (
-                step.data.steps[StepEnum.STA.value] / "MAX_125/RCworst/signoff.tcl"
+                workspace.directory / "origin/post_CTS/MAX_125_RCworst.tcl"
                 if generated_sdc
                 else sdc
             ),
@@ -1013,9 +1023,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
             "feature_dir": step.feature.dir / "MIN_m40" / "Cbest",
             "lib_paths": [str(min_lib)],
             "sdc_path": (
-                step.data.steps[StepEnum.STA.value] / "MIN_m40/Cbest/signoff.tcl"
-                if generated_sdc
-                else sdc
+                workspace.directory / "origin/post_CTS/MIN_m40_Cbest.tcl" if generated_sdc else sdc
             ),
             "spef_path": str(spef_root / "gcd_Cbest_m40C.spef"),
             "output_modes": ("report", "structured"),
@@ -1037,7 +1045,6 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
         ] == [
             [
                 'set top "gcd"',
-                'set phase "CTS"',
                 'set clk_port_name "clk"',
                 'set clk_name "CLK_clk"',
                 "set clk_freq_mhz 100.0",
@@ -1045,16 +1052,6 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
                 f'set corner "{corner}"',
                 f'set rc_para "{rc}"',
             ]
-            + (
-                []
-                if io_cell_count
-                else [
-                    'set virtual_clk_name "VCLK_clk"',
-                    "set data_inputs [remove_from_collection "
-                    "[get_ports -quiet -filter {direction == in} *] [get_ports $clk_port_name]]",
-                    "set data_outputs [get_ports -quiet -filter {direction == out} *]",
-                ]
-            )
             for corner, rc in (("MAX", "RCworst"), ("MIN", "Cbest"))
         ]
 

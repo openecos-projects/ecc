@@ -1,15 +1,15 @@
-"""Generate design clocks and CX55 signoff constraints.
+"""Generate design clocks and pre/post-CTS golden timing-constraint Tcl.
 
-The origin SDC describes the design, not a particular analysis corner. STA
-specializes the signoff golden for each PVT/RC pair in ``sta_ecc.json``. The
-reference flow calls post-layout analysis ``CTS``; it is not the CTS operation.
-User-supplied SDCs remain authoritative and are never rewritten or supplemented.
+The two scenario sets share golden rules; only post-CTS propagates clocks.
+Custom full constraint files remain authoritative and are never supplemented.
 """
 
 import math
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from chipcompiler.utility.file import write_text_atomic
 
 if TYPE_CHECKING:
     from chipcompiler.data import Workspace
@@ -37,12 +37,11 @@ def _clock_frequency(workspace: "Workspace") -> float:
     return frequency
 
 
-def _design_constraints(workspace: "Workspace", phase: str) -> list[str]:
+def _design_constraints(workspace: "Workspace") -> list[str]:
     lines = [
         _GENERATED_MARKER,
         *_section("1. Design and flow context"),
         f"set top {_tcl_word(workspace.design.top_module or workspace.design.name)}",
-        f"set phase {_tcl_word(phase)}",
         *_section("2. Primary clock - user design input resolved by ECC"),
     ]
     clock = workspace.parameters.data.get("clock", "")
@@ -61,7 +60,9 @@ def _design_constraints(workspace: "Workspace", phase: str) -> list[str]:
     return lines
 
 
-def _is_generated(path: Path) -> bool:
+def is_generated_sdc(path: Path | None) -> bool:
+    if path is None or not path.is_file():
+        return False
     with path.open("rb") as stream:
         return stream.readline().strip() == _GENERATED_MARKER.encode("ascii")
 
@@ -71,19 +72,19 @@ def create_default_sdc(workspace: "Workspace") -> None:
 
     ECC's default design interface declares a single clock port and frequency.
     Design-specific clocks, groups, IO delays and exceptions require a custom SDC.
-    The golden IO policy is selected at signoff after loading the physical design.
+    Consumers select the golden IO policy after loading the current design.
     A clockless design does not acquire an invented virtual clock.
     """
     if workspace.pdk.sdc is not None:
         workspace.pdk.sdc.write_text(
-            "\n".join(_design_constraints(workspace, "SYN")) + "\n", encoding="utf-8"
+            "\n".join(_design_constraints(workspace)) + "\n", encoding="utf-8"
         )
 
 
 def refresh_generated_sdc(workspace: "Workspace") -> None:
     """Refresh only the common SDC owned by this generator."""
     path = workspace.pdk.sdc
-    if path is not None and path.is_file() and _is_generated(path):
+    if is_generated_sdc(path):
         create_default_sdc(workspace)
 
 
@@ -91,27 +92,18 @@ def signoff_sdc_path(
     workspace: "Workspace",
     output_path: Path,
     *,
-    phase: str,
+    post_cts: bool,
     corner: str,
     rc_para: str,
-    has_io_cells: bool,
 ) -> Path:
-    """Write one post-layout STA constraint Tcl script, or return custom SDC.
-
-    ``corner`` and ``rc_para`` come from the same signoff item as the Liberty/SPEF
-    inputs, never from a guessed global default. Actual instantiated IO cells
-    select the golden's father-empty branch; bare cores select father-nonempty.
-    Each job owns its file so parallel STA cannot overwrite shared constraints.
-    The caller supplies the analysis phase; the Tcl CTS condition alone controls
-    propagated clocks, independently of the primary clock name.
-    """
+    """Write a pre/post-CTS scenario; actual IO mode is supplied by the loaded design."""
     source = workspace.pdk.sdc
     if source is None:
         raise ValueError("Signoff STA requires an SDC path")
-    if not _is_generated(source):
+    if not is_generated_sdc(source):
         return source
 
-    lines = _design_constraints(workspace, phase)
+    lines = _design_constraints(workspace)
     lines.extend(
         [
             *_section("3. Signoff scenario - selected by ECC"),
@@ -120,6 +112,74 @@ def signoff_sdc_path(
             *_section("4. IO interface constraints - golden branch selected from iDB"),
         ]
     )
+    context = workspace.directory / "home" / "timing_io.tcl"
+    lines.append(f"source {_tcl_word(str(context))}")
+    lines.append("if {$has_io_cells} {")
+    lines.extend(
+        "    " + line if line else ""
+        for line in _io_constraints(workspace, corner, has_io_cells=True)
+    )
+    lines.append("} else {")
+    lines.extend(
+        "    " + line if line else ""
+        for line in _io_constraints(workspace, corner, has_io_cells=False)
+    )
+    lines.append("}")
+
+    clock = workspace.parameters.data.get("clock", "")
+    lines.extend(_section("5. OCV derate - first matching golden rule"))
+    slow = re.search(r"(?:MAX|WCL)$", corner) and (
+        rc_para.endswith("worst") or "default" in rc_para
+    )
+    fast = re.search(r"(?:MIN|ML)$", corner)
+    if slow or fast:
+        early_clock = 0.95 if slow else 0.9
+        for delay in ("cell", "net"):
+            for path in ("clock", "data"):
+                for bound in ("late", "early"):
+                    factor = early_clock if (path, bound) == ("clock", "early") else 1.0
+                    lines.append(f"set_timing_derate -{delay}_delay -{path} -{bound} {factor}")
+    else:
+        lines.extend(["set_timing_derate -late 1.0", "set_timing_derate -early 0.95"])
+
+    if clock:
+        frequency = _clock_frequency(workspace)
+        lines.extend(_section("6. Clock uncertainty - setup and hold margins"))
+        if frequency <= 10000:
+            lines.extend(
+                [
+                    "set_clock_uncertainty -setup 0.200 [all_clocks]",
+                    "set_clock_uncertainty -hold 0.1 [all_clocks]",
+                ]
+            )
+        lines.extend(
+            [
+                *_section("7. Maximum transition - scaled by the clock period"),
+                "set_max_transition [expr {$clk_period * 0.17}] \\",
+                "    -clock_path [all_clocks]",
+                "set_max_transition [expr {$clk_period * 0.34}] \\",
+                "    -data_path [all_clocks]",
+            ]
+        )
+    lines.extend(
+        [
+            *_section("8. Design-level electrical constraints"),
+            "set_max_fanout 32 [current_design]",
+        ]
+    )
+    if post_cts:
+        lines.extend(_section("9. Propagated clocks"))
+        lines.append("set_propagated_clock [all_clocks]")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    text = "\n".join(lines) + "\n"
+    if not output_path.exists() or output_path.read_text(encoding="utf-8") != text:
+        write_text_atomic(output_path, text)
+    return output_path
+
+
+def _io_constraints(workspace: "Workspace", corner: str, *, has_io_cells: bool) -> list[str]:
+    lines = []
     clock = workspace.parameters.data.get("clock", "")
     if has_io_cells:
         lines.extend(["", "# 4.1 Output load"])
@@ -175,55 +235,4 @@ def signoff_sdc_path(
             ]
         )
 
-    lines.extend(_section("5. OCV derate - first matching golden rule"))
-    slow = re.search(r"(?:MAX|WCL)$", corner) and (
-        rc_para.endswith("worst") or "default" in rc_para
-    )
-    fast = re.search(r"(?:MIN|ML)$", corner)
-    if slow or fast:
-        early_clock = 0.95 if slow else 0.9
-        for delay in ("cell", "net"):
-            for path in ("clock", "data"):
-                for bound in ("late", "early"):
-                    factor = early_clock if (path, bound) == ("clock", "early") else 1.0
-                    lines.append(f"set_timing_derate -{delay}_delay -{path} -{bound} {factor}")
-    else:
-        lines.extend(["set_timing_derate -late 1.0", "set_timing_derate -early 0.95"])
-
-    if clock:
-        frequency = _clock_frequency(workspace)
-        lines.extend(_section("6. Clock uncertainty - setup and hold margins"))
-        if frequency <= 10000:
-            lines.extend(
-                [
-                    "set_clock_uncertainty -setup 0.200 [all_clocks]",
-                    "set_clock_uncertainty -hold 0.1 [all_clocks]",
-                ]
-            )
-        lines.extend(
-            [
-                *_section("7. Maximum transition - scaled by the clock period"),
-                "set_max_transition [expr {$clk_period * 0.17}] \\",
-                "    -clock_path [all_clocks]",
-                "set_max_transition [expr {$clk_period * 0.34}] \\",
-                "    -data_path [all_clocks]",
-            ]
-        )
-    lines.extend(
-        [
-            *_section("8. Design-level electrical constraints"),
-            "set_max_fanout 32 [current_design]",
-        ]
-    )
-    lines.extend(
-        [
-            *_section("9. Propagated clocks - CTS phase only"),
-            "if {[regexp {CTS} $phase match]} {",
-            "    set_propagated_clock [all_clocks]",
-            "}",
-        ]
-    )
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return output_path
+    return lines

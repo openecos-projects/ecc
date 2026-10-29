@@ -794,6 +794,9 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     # explicit sta.liberty parameters carry the same PDK-relative defaults,
     # and re-applying them above must not resurrect unexpanded paths.
     _refresh_sta_config(workspace)
+    from .timing_constraints import generate_timing_scripts
+
+    generate_timing_scripts(workspace)
     record_derived_config(workspace)
 
 

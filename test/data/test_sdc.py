@@ -13,6 +13,7 @@ from chipcompiler.data.workspace.sdc import (
     refresh_generated_sdc,
     signoff_sdc_path,
 )
+from chipcompiler.data.workspace.timing_constraints import write_timing_io_context
 
 
 @pytest.fixture
@@ -73,7 +74,10 @@ proc get_clocks {name} {return $name}
 proc all_outputs {} {return out}
 proc all_clocks {} {return $::clocks}
 proc current_design {} {return $::top}
-source [lindex $argv 0]
+set input_file [open [lindex $argv 0] r]
+set input_text [read $input_file]
+close $input_file
+eval $input_text
 if {[info exists ::injected]} {error "input executed as Tcl"}
 """,
         encoding="utf-8",
@@ -140,20 +144,18 @@ def _configured_signoff_pairs():
 @pytest.mark.parametrize("corner,rc", _configured_signoff_pairs())
 @pytest.mark.parametrize("frequency", [12.288, 100, 10000, 10001])
 @pytest.mark.parametrize("has_io_cells", [False, True])
-@pytest.mark.parametrize("phase", ["SYN", "PLACE", "CTS", "POST_CTS"])
+@pytest.mark.parametrize("post_cts", [False, True])
 def test_signoff_evaluates_golden_for_each_configured_pair(
-    workspace, sdc_trace, corner, rc, frequency, has_io_cells, phase
+    workspace, sdc_trace, corner, rc, frequency, has_io_cells, post_cts
 ):
     workspace.parameters.data["frequency_max"] = frequency
     create_default_sdc(workspace)
     original = workspace.pdk.sdc.read_bytes()
+    write_timing_io_context(workspace, has_io_cells=has_io_cells)
     target = workspace.directory / "sta" / corner / rc / "signoff.tcl"
 
     assert (
-        signoff_sdc_path(
-            workspace, target, phase=phase, corner=corner, rc_para=rc, has_io_cells=has_io_cells
-        )
-        == target
+        signoff_sdc_path(workspace, target, post_cts=post_cts, corner=corner, rc_para=rc) == target
     )
 
     period = 1000.0 / frequency
@@ -209,7 +211,7 @@ def test_signoff_evaluates_golden_for_each_configured_pair(
             ("set_max_fanout", 32, "chip"),
         ]
     )
-    if "CTS" in phase:
+    if post_cts:
         expected.append(("set_propagated_clock", clocks))
     assert sdc_trace(target) == expected
     assert workspace.pdk.sdc.read_bytes() == original
@@ -223,17 +225,15 @@ def test_signoff_evaluates_golden_for_each_configured_pair(
     ],
 )
 @pytest.mark.parametrize("has_io_cells", [False, True])
-@pytest.mark.parametrize("phase", ["SYN", "CTS"])
+@pytest.mark.parametrize("post_cts", [False, True])
 def test_custom_sdc_is_authoritative_for_refresh_and_signoff(
-    workspace, content, has_io_cells, phase
+    workspace, content, has_io_cells, post_cts
 ):
     workspace.pdk.sdc.write_bytes(content)
     target = workspace.directory / "sta" / "signoff.tcl"
 
     refresh_generated_sdc(workspace)
-    actual = signoff_sdc_path(
-        workspace, target, phase=phase, corner="MAX", rc_para="Cworst", has_io_cells=has_io_cells
-    )
+    actual = signoff_sdc_path(workspace, target, post_cts=post_cts, corner="MAX", rc_para="Cworst")
 
     assert (actual, actual.read_bytes(), target.exists()) == (workspace.pdk.sdc, content, False)
 
@@ -253,10 +253,9 @@ def test_clockless_core_uses_core_loads_without_inventing_a_virtual_clock(worksp
     workspace.parameters.data["clock"] = ""
     create_default_sdc(workspace)
     target = workspace.directory / "sta" / "signoff.tcl"
+    write_timing_io_context(workspace, has_io_cells=False)
 
-    signoff_sdc_path(
-        workspace, target, phase="CTS", corner="TYP", rc_para="TYPICAL", has_io_cells=False
-    )
+    signoff_sdc_path(workspace, target, post_cts=True, corner="TYP", rc_para="TYPICAL")
 
     assert sdc_trace(target) == [
         ("set_load", "-max", 0.2, "out"),
@@ -268,17 +267,15 @@ def test_clockless_core_uses_core_loads_without_inventing_a_virtual_clock(worksp
     ]
 
 
-def test_generated_phase_controls_propagation_at_tcl_execution(workspace, sdc_trace):
+def test_pre_and_post_cts_only_differ_in_propagation(workspace, sdc_trace):
     create_default_sdc(workspace)
-    target = workspace.directory / "signoff.tcl"
-    signoff_sdc_path(
-        workspace, target, phase="CTS", corner="TYP", rc_para="TYPICAL", has_io_cells=False
-    )
-    post_cts_calls = sdc_trace(target)
-    target.write_text(target.read_text().replace('set phase "CTS"', 'set phase "SYN"'))
-
-    assert post_cts_calls[-1] == ("set_propagated_clock", "CLK_clk VCLK_clk")
-    assert sdc_trace(target) == post_cts_calls[:-1]
+    write_timing_io_context(workspace, has_io_cells=False)
+    paths = [workspace.directory / "pre.tcl", workspace.directory / "post.tcl"]
+    for path, post_cts in zip(paths, (False, True), strict=True):
+        signoff_sdc_path(workspace, path, post_cts=post_cts, corner="TYP", rc_para="TYPICAL")
+    pre_calls, post_calls = map(sdc_trace, paths)
+    assert post_calls == [*pre_calls, ("set_propagated_clock", "CLK_clk VCLK_clk")]
+    assert paths[1].read_text().startswith(paths[0].read_text())
 
 
 @pytest.mark.parametrize("frequency", [0, -1, float("inf"), float("nan")])
