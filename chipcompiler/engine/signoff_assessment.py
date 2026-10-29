@@ -12,6 +12,7 @@ from chipcompiler.runtime.signoff.readiness import attach_readiness
 _REVIEW_GROUPS: tuple[tuple[str, str], ...] = (
     ("initial", "Initial"),
     ("config", "Config"),
+    ("cts", "CTS"),
     ("harden", "Harden"),
     ("final_design", "Final Design"),
     ("sta", "STA"),
@@ -178,6 +179,8 @@ def _group_for(item: dict[str, Any]) -> str:
         return "config"
     if category == "provenance" or path.startswith(("origin/", "initial/")):
         return "initial"
+    if step == StepEnum.CTS.value or path.startswith(f"{STEP_DIRECTORIES[StepEnum.CTS.value]}/"):
+        return "cts"
     if step == StepEnum.HARDEN.value or path.startswith(
         (f"{STEP_DIRECTORIES[StepEnum.HARDEN.value]}/", "harden/")
     ):

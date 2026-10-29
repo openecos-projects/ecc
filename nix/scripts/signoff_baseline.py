@@ -10,7 +10,7 @@ Entry:
     .github workflow (Verify in-repo multi-version baseline)
 See:
     check_metric()          chipcompiler/runtime/signoff/qor_perf_support.py
-    generate-signoff-kanban.py  nix/scripts/generate-signoff-kanban.py
+    catalog_defaults()      chipcompiler/runtime/signoff/catalog.py
 
 Usage:
   PYTHONPATH=. python nix/scripts/signoff_baseline.py list

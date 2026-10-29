@@ -21,6 +21,9 @@ def test_required_ids_include_core_quality_and_provenance():
     assert "artifact.harden.gds" in required
     assert "provenance.initial.rtl" in required
     assert "flow.drc.completed" in required
+    assert "flow.cts.completed" in required
+    assert "configuration.cts" in required
+    assert "artifact.cts.feature" in required
     assert "flow.postroutelec.completed" in required
     assert "artifact.postroutelec.result" in required
     assert "artifact.lec.result" not in required
@@ -30,6 +33,14 @@ def test_required_ids_omit_lec_when_skipped():
     required = set(required_item_ids(include_post_route_lec=False))
     assert "flow.postroutelec.completed" not in required
     assert "artifact.postroutelec.result" not in required
+    assert "quality.drc.clean" in required
+
+
+def test_required_ids_omit_cts_when_skipped():
+    required = set(required_item_ids(include_cts=False))
+    assert "flow.cts.completed" not in required
+    assert "configuration.cts" not in required
+    assert "artifact.cts.feature" not in required
     assert "quality.drc.clean" in required
 
 

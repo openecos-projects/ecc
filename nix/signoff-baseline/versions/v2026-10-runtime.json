@@ -12,5 +12,5 @@
     "sta_hold_wns": 0.0,
     "sta_setup_tns": 0.0
   },
-  "notes": "runtime.signoff catalog/readiness/qor_perf_support; boards generated in CI only."
+  "notes": "runtime.signoff catalog/readiness/qor_perf_support; durable CSV/lit gates."
 }

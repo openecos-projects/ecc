@@ -13,7 +13,7 @@ Entry:
     build_signoff_assessment()  chipcompiler/engine/signoff_assessment.py
 See:
     classify_signoff_readiness() chipcompiler/runtime/signoff/readiness.py
-    generate-signoff-kanban.py   nix/scripts/generate-signoff-kanban.py
+    signoff_baseline.py          nix/scripts/signoff_baseline.py
 """
 
 from __future__ import annotations
@@ -41,6 +41,7 @@ QUALITY_GATES_BY_STEP: dict[str, tuple[str, ...]] = {
 }
 
 REQUIRED_FLOW_STEPS: tuple[str, ...] = (
+    StepEnum.CTS.value,
     StepEnum.ROUTING.value,
     StepEnum.DRC.value,
     StepEnum.LVS.value,
@@ -53,6 +54,7 @@ REQUIRED_FLOW_STEPS: tuple[str, ...] = (
 
 CONFIG_FILENAMES: dict[str, str] = {
     "db": "db_ecc.json",
+    StepEnum.CTS.value: "cts_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",
     StepEnum.STA.value: "sta_ecc.json",
 }
@@ -104,7 +106,10 @@ def _artifact(
 
 def _flow(step: str, *, optional: bool | None = None) -> SignoffItemSpec:
     if optional is None:
-        optional = step == SkippableStepEnum.POST_ROUTE_LEC.value
+        optional = step in {
+            StepEnum.CTS.value,
+            SkippableStepEnum.POST_ROUTE_LEC.value,
+        }
     return SignoffItemSpec(
         id=f"flow.{step.lower()}.completed",
         step=step,
@@ -179,6 +184,16 @@ SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
     ),
     _artifact("artifact.sta.timing_paths", StepEnum.STA.value, "STA structured timing paths"),
     _artifact("artifact.synthesis.netlist", StepEnum.SYNTHESIS.value, "Mapped synthesis netlist"),
+    _artifact("artifact.cts.def", StepEnum.CTS.value, "CTS DEF", optional=True),
+    _artifact("artifact.cts.verilog", StepEnum.CTS.value, "CTS Verilog", optional=True),
+    _artifact("artifact.cts.feature", StepEnum.CTS.value, "CTS feature JSON", optional=True),
+    _artifact(
+        "artifact.cts.report",
+        StepEnum.CTS.value,
+        "CTS report",
+        category="report",
+        optional=True,
+    ),
     _artifact(
         "artifact.sdc.constraints",
         "workspace",
@@ -202,7 +217,6 @@ SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
     # Early / mid-chain flow (optional until checklist builders bind evidence).
     _flow(StepEnum.SYNTHESIS.value, optional=True),
     _flow(StepEnum.PLACEMENT.value, optional=True),
-    _flow(StepEnum.CTS.value, optional=True),
     _flow(StepEnum.LEGALIZATION.value, optional=True),
     _flow(StepEnum.POWER_ANALYSIS.value, optional=True),
     # Soft quality (optional) — CTS skew target / route DR.
@@ -254,8 +268,18 @@ SIGNOFF_ITEM_CATALOG: tuple[SignoffItemSpec, ...] = (
         title="Configuration sta",
         fail_readiness="MISS",
     ),
+    SignoffItemSpec(
+        id="configuration.cts",
+        step="workspace",
+        category="configuration",
+        owner="checklist",
+        policy="block",
+        title="Configuration CTS",
+        optional=True,
+        fail_readiness="MISS",
+    ),
     # Performance / iSTA — wired by runtime.signoff.performance (optional WARN).
-    # Board reading = checklist summary "<value> <unit>".
+    # Checklist reading = checklist summary "<value> <unit>".
     _performance("performance.sta.setup_wns", StepEnum.STA.value, "STA setup WNS"),
     _performance("performance.sta.setup_tns", StepEnum.STA.value, "STA setup TNS"),
     _performance("performance.sta.hold_wns", StepEnum.STA.value, "STA hold WNS"),
@@ -327,7 +351,9 @@ def lookup_item(item_id: str) -> SignoffItemSpec | None:
     return None
 
 
-def required_item_ids(*, include_post_route_lec: bool = True) -> tuple[str, ...]:
+def required_item_ids(
+    *, include_post_route_lec: bool = True, include_cts: bool = True
+) -> tuple[str, ...]:
     """Ids that must appear for a full blocking package.
 
     In:
@@ -343,11 +369,21 @@ def required_item_ids(*, include_post_route_lec: bool = True) -> tuple[str, ...]
         "artifact.postroutelec.result",
         "flow.postroutelec.completed",
     }
+    cts_when_required = {
+        "flow.cts.completed",
+        "configuration.cts",
+        "artifact.cts.def",
+        "artifact.cts.verilog",
+        "artifact.cts.feature",
+        "artifact.cts.report",
+    }
     for item in SIGNOFF_ITEM_CATALOG:
         if item.id == "artifact.lec.result":
             continue
         if item.optional:
-            if include_post_route_lec and item.id in lec_when_required:
+            if (include_post_route_lec and item.id in lec_when_required) or (
+                include_cts and item.id in cts_when_required
+            ):
                 ids.append(item.id)
             continue
         ids.append(item.id)

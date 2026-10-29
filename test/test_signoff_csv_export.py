@@ -164,6 +164,63 @@ class TestProjection:
         assert any("gate checklist quality.drc.clean status=pass" in line for line in lines)
         assert "readiness: PASS" in lines
 
+    def test_projection_emits_drc_lvs_sta_basic_gates(self, tmp_path: Path):
+        csv_dir = tmp_path / "csv"
+        csv_dir.mkdir()
+        (csv_dir / "qor_metrics.csv").write_text(
+            "step,metric_name,value,unit,scope,corner,project_role,reference,present\n"
+            ",drc_count,0,,,,,,0,true\n"
+            ",lvs_count,0,,,,,,0,true\n"
+            ",sta_setup_wns,0.12,,,,,,0.0,true\n"
+            ",sta_hold_wns,0.05,,,,,,0.0,true\n",
+            encoding="utf-8",
+        )
+        (csv_dir / "checklist.csv").write_text(
+            "id,step,category,title,state,policy,blocked,summary,evidence,present\n"
+            "quality.drc.clean,,,,pass,,false,,,true\n"
+            "quality.lvs.clean,,,,pass,,false,,,true\n"
+            "quality.sta.setup_closed,,,,pass,,false,,,true\n"
+            "quality.sta.hold_closed,,,,pass,,false,,,true\n",
+            encoding="utf-8",
+        )
+        spec_path = _write_spec(
+            tmp_path,
+            {
+                "version": 1,
+                "metrics": [
+                    {"id": "drc_count", "reference": 0, "op": "=="},
+                    {"id": "lvs_count", "reference": 0, "op": "=="},
+                    {"id": "sta_setup_wns", "reference": 0.0, "op": ">="},
+                    {"id": "sta_hold_wns", "reference": 0.0, "op": ">="},
+                ],
+                "checklist": [
+                    {"id": "quality.drc.clean", "require_state": "pass", "require_blocked": False},
+                    {"id": "quality.lvs.clean", "require_state": "pass", "require_blocked": False},
+                    {
+                        "id": "quality.sta.setup_closed",
+                        "require_state": "pass",
+                        "require_blocked": False,
+                    },
+                    {
+                        "id": "quality.sta.hold_closed",
+                        "require_state": "pass",
+                        "require_blocked": False,
+                    },
+                ],
+            },
+        )
+        spec = load_csv_spec(str(spec_path))
+        lines = projection_lines(csv_dir, "gcd", spec=spec)
+        assert any("gate metric drc_count status=pass" in line for line in lines)
+        assert any("gate metric lvs_count status=pass" in line for line in lines)
+        assert any("gate metric sta_setup_wns status=pass" in line for line in lines)
+        assert any("gate metric sta_hold_wns status=pass" in line for line in lines)
+        assert any("gate checklist quality.drc.clean status=pass" in line for line in lines)
+        assert any("gate checklist quality.lvs.clean status=pass" in line for line in lines)
+        assert any("gate checklist quality.sta.setup_closed status=pass" in line for line in lines)
+        assert any("gate checklist quality.sta.hold_closed status=pass" in line for line in lines)
+        assert "readiness: PASS" in lines
+
     def test_projection_readiness_error_on_failed_gate(self, tmp_path: Path):
         csv_dir = tmp_path / "csv"
         csv_dir.mkdir()

@@ -120,6 +120,9 @@ def test_fixture_workspace_pass_and_export_archive(tmp_path: Path):
     assert "artifact.rcx.spef_outputs" in produced
     assert "provenance.initial.rtl" in produced
     assert "flow.drc.completed" in produced
+    assert "flow.cts.completed" in produced
+    assert "configuration.cts" in produced
+    assert "artifact.cts.feature" in produced
     assert "configuration.sta" in produced
 
     archive_path = tmp_path / "gcd_signoff.tar.gz"
@@ -184,3 +187,22 @@ def test_fixture_workspace_optional_gaps_are_warn(tmp_path: Path):
     assessment = build_signoff_assessment(flow.workspace)
     assert assessment["status"] == "attention"
     assert assessment["readiness"] == "WARN"
+
+
+def test_fixture_workspace_omits_cts_when_ledger_has_no_clock_tree(tmp_path: Path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    flow_path = workspace_dir / "home" / "flow.json"
+    data = json.loads(flow_path.read_text(encoding="utf-8"))
+    data["steps"] = [step for step in data["steps"] if step.get("name") != "CTS"]
+    flow_path.write_text(json.dumps(data), encoding="utf-8")
+
+    flow = _make_engine_flow(workspace_dir)
+    flow.collect_signoff_package(
+        SignoffPackageOptions(archive=False, materialize=True, refresh_analysis=False)
+    )
+    assessment = build_signoff_assessment(flow.workspace)
+    produced = {item["id"] for item in assessment.get("items") or []}
+    assert "flow.cts.completed" not in produced
+    assert "configuration.cts" not in produced
+    assert "artifact.cts.feature" not in produced
+    assert "quality.drc.clean" in produced

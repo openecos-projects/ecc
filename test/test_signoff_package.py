@@ -72,6 +72,7 @@ def _make_signoff_workspace(
         {
             "steps": [
                 {"name": "Synthesis", "tool": "yosys", "state": StateEnum.Success.value},
+                {"name": "CTS", "tool": "ecc", "state": StateEnum.Success.value},
                 {"name": "route", "tool": "ecc", "state": StateEnum.Success.value},
                 {"name": "drc", "tool": "ecc", "state": StateEnum.Success.value},
                 {"name": "lvs", "tool": "ecc", "state": StateEnum.Success.value},
@@ -98,8 +99,13 @@ def _make_signoff_workspace(
             "signoff": [{"MAX": ["RCworst"]}],
         },
     )
-    for config_name in ("db_ecc.json", "rcx_ecc.json"):
+    for config_name in ("db_ecc.json", "cts_ecc.json", "rcx_ecc.json"):
         _write_json(workspace_dir / "config" / config_name, {})
+
+    _write(workspace_dir / "CTS_ecc" / "output" / f"{design}_CTS.def.gz")
+    _write(workspace_dir / "CTS_ecc" / "output" / f"{design}_CTS.v.gz")
+    _write_json(workspace_dir / "CTS_ecc" / "feature" / "CTS.step.json", {"CTS": {"buffer_num": 1}})
+    _write(workspace_dir / "CTS_ecc" / "report" / "CTS.rpt")
 
     _write(workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.gds")
     _write(workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.lef")
@@ -226,6 +232,7 @@ def _make_engine_flow(
     workspace.pdk.sdc = workspace_dir / "origin" / f"{top_module}.sdc"
     workspace.config = {
         "db": workspace_dir / "config" / "db_ecc.json",
+        "CTS": workspace_dir / "config" / "cts_ecc.json",
         "RCX": workspace_dir / "config" / "rcx_ecc.json",
         "sta": workspace_dir / "config" / "sta_ecc.json",
     }

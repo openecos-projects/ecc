@@ -277,6 +277,13 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
             ("report", "LVS report", getattr(step.report, "step", None)),
             ("json", "LVS JSON", getattr(step.feature, "step", None)),
         )
+    elif step.name == StepEnum.CTS.value:
+        artifacts = (
+            ("def", "CTS DEF", getattr(step.output, "def_", None)),
+            ("verilog", "CTS Verilog", getattr(step.output, "verilog", None)),
+            ("feature", "CTS feature JSON", getattr(step.feature, "step", None)),
+            ("report", "CTS report", getattr(step.report, "step", None)),
+        )
     elif step.name == StepEnum.RCX.value:
         spefs = getattr(step.output, "spef", []) or []
         files = [Path(path) for path in spefs] if isinstance(spefs, list) else []
@@ -572,20 +579,32 @@ def refresh_step_checklist(workspace: Workspace, step: WorkspaceStep) -> bool:
     if step.name in ADVISORY_FLOW_STEPS:
         items.extend(item for item in _flow_items(workspace) if item["step"] == step.name)
     step.checklist.checklist = checklist.replace(items)
-    rebuild_home_checklist(workspace)
+    # Performance PPA slots are package/signoff-time only; skip on per-step refresh
+    # so mid-flow home checklists stay gate-focused.
+    rebuild_home_checklist(workspace, include_performance=False)
     return not any(item["blocked"] for item in step.checklist.checklist)
 
 
-def _flow_items(workspace: Workspace) -> list[dict]:
+def _flow_named_states(workspace: Workspace) -> dict[str, str]:
     flow = getattr(workspace, "flow", None)
-    states = {
+    return {
         item.get("name"): item.get("state")
         for item in (flow.steps() if flow is not None else [])
         if isinstance(item.get("name"), str)
     }
+
+
+def _flow_includes(workspace: Workspace, step_name: str) -> bool:
+    return step_name in _flow_named_states(workspace)
+
+
+def _flow_items(workspace: Workspace) -> list[dict]:
+    states = _flow_named_states(workspace)
     items = []
     for step in (*_required_flow_steps(), *sorted(ADVISORY_FLOW_STEPS)):
         if step in ADVISORY_FLOW_STEPS and step not in states:
+            continue
+        if step == StepEnum.CTS.value and not _flow_includes(workspace, step):
             continue
         if step == SkippableStepEnum.POST_ROUTE_LEC.value and not _requires_post_route_lec(
             workspace
@@ -634,6 +653,8 @@ def _workspace_items(workspace: Workspace) -> list[dict]:
     if not origin_sdc:
         origin_sdc = next(iter(sorted(origin_directory.glob("*.sdc"))), None)
     config_keys = ("db", StepEnum.RCX.value, StepEnum.STA.value)
+    if _flow_includes(workspace, StepEnum.CTS.value):
+        config_keys = ("db", StepEnum.CTS.value, StepEnum.RCX.value, StepEnum.STA.value)
     inputs = (
         (
             "provenance.initial.rtl",
@@ -683,6 +704,7 @@ def _filesystem_artifact_items(workspace: Workspace) -> list[dict]:
     synthesis_dir = STEP_DIRECTORIES[StepEnum.SYNTHESIS.value]
     lvs_dir = STEP_DIRECTORIES[StepEnum.LVS.value]
     rcx_dir = STEP_DIRECTORIES[StepEnum.RCX.value]
+    cts_dir = STEP_DIRECTORIES[StepEnum.CTS.value]
     files = [
         (
             "artifact.harden.gds",
@@ -705,6 +727,36 @@ def _filesystem_artifact_items(workspace: Workspace) -> list[dict]:
             "Mapped synthesis netlist",
         ),
         (
+            "artifact.cts.def",
+            next(
+                (
+                    candidate
+                    for candidate in (
+                        workspace_dir / cts_dir / "output" / f"{design}_CTS.def.gz",
+                        workspace_dir / cts_dir / "output" / f"{design}_CTS.def",
+                    )
+                    if candidate.is_file()
+                ),
+                workspace_dir / cts_dir / "output" / f"{design}_CTS.def.gz",
+            ),
+            "CTS DEF",
+        ),
+        (
+            "artifact.cts.verilog",
+            workspace_dir / cts_dir / "output" / f"{design}_CTS.v.gz",
+            "CTS Verilog",
+        ),
+        (
+            "artifact.cts.feature",
+            workspace_dir / cts_dir / "feature" / "CTS.step.json",
+            "CTS feature JSON",
+        ),
+        (
+            "artifact.cts.report",
+            workspace_dir / cts_dir / "report" / "CTS.rpt",
+            "CTS report",
+        ),
+        (
             "artifact.lvs.verilog",
             workspace_dir / lvs_dir / "output" / f"{design}_lvs.v.gz",
             "LVS Verilog",
@@ -721,7 +773,10 @@ def _filesystem_artifact_items(workspace: Workspace) -> list[dict]:
         ),
     ]
     items = []
+    cts_live = _flow_includes(workspace, StepEnum.CTS.value)
     for item_id, path, title in files:
+        if item_id.startswith("artifact.cts.") and not cts_live:
+            continue
         skip_if_absent = (
             item_id.startswith("artifact.lvs.") or item_id == "artifact.synthesis.netlist"
         )
@@ -801,7 +856,11 @@ def _package_items(resource_issues) -> list[dict]:
 
 
 def rebuild_home_checklist(
-    workspace: Workspace, resource_issues=None, *, persist: bool = True
+    workspace: Workspace,
+    resource_issues=None,
+    *,
+    persist: bool = True,
+    include_performance: bool = True,
 ) -> dict:
     """Replace the aggregate workspace checklist from current step snapshots."""
     workspace_dir = Path(workspace.directory)
@@ -857,9 +916,10 @@ def rebuild_home_checklist(
     items.extend(_workspace_items(workspace))
     items.extend(_filesystem_artifact_items(workspace))
     items.extend(_package_items(resource_issues))
-    from chipcompiler.runtime.signoff.performance import collect_performance_items
+    if include_performance:
+        from chipcompiler.runtime.signoff.performance import collect_performance_items
 
-    items.extend(collect_performance_items(workspace))
+        items.extend(collect_performance_items(workspace))
 
     # Package errors are refreshed as a group.  Deduplicate by requirement id
     # so resource collection cannot leave stale copies behind.
