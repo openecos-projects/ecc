@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -1025,7 +1026,13 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
     assert sdc.read_bytes() == original_sdc
     if generated_sdc:
         assert [
-            [line for line in call["sdc_path"].read_text().splitlines() if line.startswith("set ")]
+            [
+                line
+                for line in re.sub(
+                    r"[ \t]*\\\n[ \t]*", " ", call["sdc_path"].read_text()
+                ).splitlines()
+                if line.startswith("set ")
+            ]
             for call in calls
         ] == [
             [
